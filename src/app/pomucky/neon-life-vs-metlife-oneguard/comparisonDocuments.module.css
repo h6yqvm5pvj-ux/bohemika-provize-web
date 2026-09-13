@@ -1,0 +1,41 @@
+.trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 35px; padding: 8px 11px; border: 1px solid #ddd6e9; border-radius: 9px; background: #faf8fd; color: #826997; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.trigger:hover { border-color: #c5b7d7; background: #f2ecf8; }
+.trigger > span { display: grid; place-items: center; min-width: 18px; height: 18px; margin-left: 2px; padding: 0 4px; border-radius: 5px; background: #eee7f5; color: #9a83af; font-size: 9px; }
+.dialog { width: calc(100% - 32px); max-width: 560px; max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow-y: auto; border: 1px solid #e2e5ee; border-radius: 20px; background: #fff; color: #364b62; box-shadow: 0 24px 90px #24334638; font-family: var(--font-sans), system-ui, sans-serif; }
+.dialog::backdrop { background: #24314580; backdrop-filter: blur(4px); }
+.dialog :is(button, a):focus-visible, .trigger:focus-visible { outline: 2px solid #a391be; outline-offset: 3px; }
+.header { display: flex; align-items: center; gap: 13px; padding: 24px 24px 22px; }
+.headerIcon { display: grid; place-items: center; flex-shrink: 0; width: 43px; height: 45px; border: 1px solid #e3d9ed; border-radius: 12px; background: linear-gradient(145deg, #fcfaff, #f0e9f8); color: #a088b8; }
+.header > div { min-width: 0; flex: 1; }
+.header h2 { margin: 0; color: #364b62; font-size: 22px; line-height: 1.25; font-weight: 700; letter-spacing: -.03em; }
+.header p { margin: 5px 0 0; color: #8090a2; font-size: 11px; line-height: 1.6; }
+.close { display: grid; place-items: center; align-self: flex-start; flex-shrink: 0; width: 30px; height: 30px; margin: -4px -6px 0 0; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #8b9aab; cursor: pointer; }
+.close:hover { background: #f3eff8; color: #8a719f; }
+.files { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0 24px 24px; }
+.file { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; padding: 16px; border: 1px solid #e3e8ef; border-radius: 12px; background: #fafbfd; }
+.logo { position: relative; display: block; width: 64px; height: 44px; overflow: hidden; border: 1px solid #e9ecf2; border-radius: 8px; background: #fff; }
+.identity { min-width: 0; }
+.identity h3 { margin: 0; color: #3e566e; font-size: 13px; font-weight: 650; line-height: 1.4; }
+.identity p { margin: 5px 0; color: #7c8a9d; font-size: 10px; line-height: 1.6; }
+.identity > span { display: inline-block; padding: 1px 5px; border: 1px solid #e1e6ed; border-radius: 4px; color: #8b99ab; font-size: 8px; letter-spacing: .04em; background: #fff; }
+.download { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 35px; padding: 8px 10px; border: 1px solid #d8e2ed; border-radius: 8px; background: #fff; color: #69869f; font-size: 10px; font-weight: 600; text-decoration: none; }
+.download:hover { border-color: #adc7dc; background: #f1f7fc; }
+.loading { display: inline-flex; align-items: center; gap: 6px; color: #8695a8; font-size: 10px; }
+.error { display: flex; align-items: flex-start; gap: 7px; grid-column: 2 / -1; color: #a26678; font-size: 11px; line-height: 1.6; }
+.error > svg { flex-shrink: 0; margin-top: 2px; }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-top: 1px solid #e9edf3; background: #fcfdfe; }
+.footer > span { color: #94a1b1; font-size: 10px; }
+.footer button { min-height: 35px; padding: 8px 15px; border: 1px solid #dfe4ed; border-radius: 8px; background: #fff; color: #6e8198; font-size: 11px; font-weight: 600; cursor: pointer; }
+.footer button:hover { background: #f3f6fb; border-color: #ccd7e6; }
+@media (max-width: 480px) {
+  .dialog { width: calc(100% - 24px); max-height: calc(100dvh - 24px); border-radius: 17px; }
+  .header { gap: 10px; padding: 20px 18px; }
+  .headerIcon { width: 37px; height: 40px; border-radius: 10px; }
+  .header h2 { font-size: 21px; }
+  .header p { font-size: 10px; }
+  .files { padding: 0 18px 20px; }
+  .file { grid-template-columns: 55px minmax(0, 1fr); gap: 10px; padding: 13px; }
+  .logo { width: 55px; height: 39px; }
+  .download, .loading, .error { grid-column: 2; justify-self: start; }
+  .footer { padding: 13px 18px; }
+}

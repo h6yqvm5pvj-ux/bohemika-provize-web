@@ -1,0 +1,283 @@
+{
+  "schema": "bohemika-cashflow-shadow-deployment-v1",
+  "verifiedAt": "2026-09-12T09:05:36.660951+00:00",
+  "domain": "https://bohemka.app",
+  "deploymentId": "dpl_35btPGYkeGXnNLyMDfKvjzzSMgQA",
+  "deploymentUrl": "https://bohemika-provize-9nodzxfkr-jacobrausch989s-projects-909dd478.vercel.app",
+  "previousProductionDeploymentId": "dpl_58P3z6dHVsTJUEsW4JkPeGuDdjTe",
+  "previousProductionDeploymentUrl": "https://bohemika-provize-296ahjoij-jacobrausch989s-projects-909dd478.vercel.app",
+  "sourceBaseCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+  "sourcePatchSha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec",
+  "sourceFileCount": 27,
+  "approvedScope": "Deploy isolated shadow comparison version with measurement disabled",
+  "isolatedSourceUpload": true,
+  "remoteBuildFromProductionConfiguration": true,
+  "localSyntheticPrebuiltOutputUploaded": false,
+  "domainPromotionAfterStageSmoke": true,
+  "productionDomainResolvesToApprovedDeployment": true,
+  "diagnosticDisabledObserved": true,
+  "serverBusinessCalculationComparedOnLiveAccount": false,
+  "authenticatedUserFlowsTested": false,
+  "productionSpeedupMeasured": false,
+  "newCandidateOrMutationTrackingCodeDeployed": false,
+  "databaseRulesChanged": false,
+  "businessMutationFunctionsChanged": false,
+  "globalProductionTimeZoneChanged": false,
+  "rollbackUsed": false,
+  "globalProjectEnvironmentChanged": false,
+  "deploymentFlagsRequested": {
+    "NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED": "1",
+    "CASHFLOW_SHADOW_ENABLED": "0",
+    "CASHFLOW_CACHE_TRACK_WRITES": "0",
+    "CASHFLOW_CANDIDATES_ENABLED": "0",
+    "CASHFLOW_SHADOW_EMAILS": "<user-approved-account; omitted from artifact>"
+  },
+  "validation": {
+    "localUnitTestsPassed": 1413,
+    "localUnitTestFiles": 164,
+    "localTypeScriptPassed": true,
+    "localLintPassed": true,
+    "localWebpackBuildPassed": true,
+    "remoteBuild": {
+      "exitCode": 0,
+      "imageRuntimeVerified": true,
+      "authProxyVerified": true,
+      "compiledSuccessfully": true,
+      "buildCompleted": true,
+      "nextVersion": "16.3.4"
+    }
+  },
+  "stageSmoke": {
+    "schema": "bohemika-shadow-smoke-v1",
+    "deployment": "https://bohemika-provize-9nodzxfkr-jacobrausch989s-projects-909dd478.vercel.app",
+    "authenticated": false,
+    "followedRedirects": false,
+    "passed": true,
+    "checks": [
+      {
+        "name": "login_html",
+        "method": "GET",
+        "path": "/login",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 200,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 4368.0
+      },
+      {
+        "name": "cashflow_login_redirect",
+        "method": "GET",
+        "path": "/cashflow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 307,
+        "contentType": "text/plain",
+        "cacheControl": "private, no-store, max-age=0, must-revalidate",
+        "location": "/login",
+        "elapsedMs": 2576.2
+      },
+      {
+        "name": "shadow_disabled",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 3922.4
+      },
+      {
+        "name": "shadow_disabled_invalid_json",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 2776.3
+      },
+      {
+        "name": "shadow_get_not_allowed",
+        "method": "GET",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 405,
+        "contentType": "other",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3948.5
+      },
+      {
+        "name": "contracts_require_auth",
+        "method": "GET",
+        "path": "/api/contracts/list",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3063.0
+      },
+      {
+        "name": "statements_require_auth",
+        "method": "GET",
+        "path": "/api/commission-statements?shape=cashflow&limit=1",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2688.5
+      }
+    ]
+  },
+  "productionSmoke": {
+    "schema": "bohemika-shadow-smoke-v1",
+    "deployment": "https://bohemka.app",
+    "authenticated": false,
+    "followedRedirects": false,
+    "passed": true,
+    "checks": [
+      {
+        "name": "login_html",
+        "method": "GET",
+        "path": "/login",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2780.3
+      },
+      {
+        "name": "cashflow_login_redirect",
+        "method": "GET",
+        "path": "/cashflow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 307,
+        "contentType": "text/plain",
+        "cacheControl": "private, no-store, max-age=0, must-revalidate",
+        "location": "/login",
+        "elapsedMs": 2524.2
+      },
+      {
+        "name": "shadow_disabled",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 3228.8
+      },
+      {
+        "name": "shadow_disabled_invalid_json",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 2785.9
+      },
+      {
+        "name": "shadow_get_not_allowed",
+        "method": "GET",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 405,
+        "contentType": "other",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2711.8
+      },
+      {
+        "name": "contracts_require_auth",
+        "method": "GET",
+        "path": "/api/contracts/list",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2696.2
+      },
+      {
+        "name": "statements_require_auth",
+        "method": "GET",
+        "path": "/api/commission-statements?shape=cashflow&limit=1",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3462.7
+      }
+    ]
+  },
+  "verificationLimits": [
+    "Vercel CLI used existing hosting authorization for deployment protection, without application cookies or login tokens.",
+    "No authenticated portfolio or calculation comparison was run; smoke exercised public login, auth refusal and disabled diagnostic branches.",
+    "New server calculation remains disabled; no performance gain is claimed.",
+    "Production runtime IANA time zone is not measured; compatibility remains a prerequisite before activating comparison."
+  ]
+}

@@ -4,6 +4,8 @@ import styles from "../cashflowToolbar.module.css";
 
 type CashflowHeaderProps = {
   totalCashflow: number;
+  calculating?: boolean;
+  calculationFailed?: boolean;
   hasPaidMonthTotals?: boolean;
   forecastYears: number;
   intelligentPredictionEnabled: boolean;
@@ -16,6 +18,8 @@ type CashflowHeaderProps = {
 
 export function CashflowHeader({
   totalCashflow,
+  calculating = false,
+  calculationFailed = false,
   hasPaidMonthTotals = false,
   forecastYears,
   intelligentPredictionEnabled,
@@ -38,7 +42,7 @@ export function CashflowHeader({
         <span className={styles.totalLabel}>{tipsterMode
           ? "Celkem očekávané TIP provize"
           : hasPaidMonthTotals ? "Celkem cashflow" : "Celkem očekávané cashflow"}</span>
-        <strong className={styles.totalAmount}>{formatMoney(totalCashflow)}</strong>
+        <strong className={styles.totalAmount} aria-label={calculating ? "Aktualizuji částku" : calculationFailed ? "Částka není k dispozici" : undefined}>{calculating ? "…" : calculationFailed ? "—" : formatMoney(totalCashflow)}</strong>
         <p className={styles.totalPeriod}>{showPastYears
           ? `Včetně minulých let · výhled na ${forecastYears} let`
           : `Letošní rok + výhled na ${forecastYears} let`}</p>

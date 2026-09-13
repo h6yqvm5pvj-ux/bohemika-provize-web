@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
@@ -667,6 +669,7 @@ const loadCredentials = () => {
 };
 
 async function main() {
+  return withCashflowScriptMutation("script:backfill-installment-commission-codes", async () => {
   const apply = hasArg("--apply");
   const verbose = hasArg("--verbose");
   const targetEmail = normalizeEmail(parseArgValue("--email"));
@@ -710,7 +713,7 @@ async function main() {
 
   const commitBatch = async () => {
     if (!apply || pending === 0) return;
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), db);
     committed += pending;
     batch = db.batch();
     pending = 0;
@@ -778,6 +781,7 @@ async function main() {
   console.log(`planned_by_product=${JSON.stringify(stats.plannedByProduct)}`);
   console.log(`update_key_counts=${JSON.stringify(stats.updateKeyCounts)}`);
   console.log(`skipped=${JSON.stringify(stats.skipped)}`);
+  });
 }
 
 main().catch((error) => {

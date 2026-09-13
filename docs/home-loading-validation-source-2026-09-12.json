@@ -1,0 +1,7 @@
+{
+  "snapshotMatches": true,
+  "files": 9,
+  "exceptionsOnlyInBuild": [
+    "src/app/home-render-probe/page.tsx"
+  ]
+}

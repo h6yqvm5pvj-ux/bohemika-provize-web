@@ -1,3 +1,5 @@
+import { withCashflowMutation, trackCashflowWrite } from "./cashflowMutationTracking";
+import { withContractHistory } from "./contractHistory";
 import { FieldValue, type DocumentData, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 
 import { contractLifecycleStatus } from "../../app/lib/contractLifecycle";
@@ -6,7 +8,8 @@ import { toDate } from "../../app/lib/formatters";
 import { adminDb } from "./firebaseAdmin";
 
 const ENTRY_PAGE_SIZE = 300;
-const BATCH_LIMIT = 300;
+// Up to four writes per contract, including legacy history migration.
+const BATCH_LIMIT = 100;
 const DOZITA_STATUS_VALUE = "dožitá";
 
 type ExpiredContractUpdate = {
@@ -17,6 +20,8 @@ type ExpiredContractUpdate = {
   ref: FirebaseFirestore.DocumentReference<DocumentData>;
   indexFields: ReturnType<typeof contractListIndexFieldsForContract>;
   paid: boolean;
+  current: DocumentData;
+  updateTime: FirebaseFirestore.Timestamp;
 };
 
 export type MarkExpiredPolicyEndContractsOptions = {
@@ -93,17 +98,17 @@ const commitUpdates = async (updates: ExpiredContractUpdate[]): Promise<number> 
   let written = 0;
 
   for (const update of updates) {
-    batch.update(update.ref, {
+    batch.update(update.ref, withContractHistory(batch, update.ref, update.current, {
       status: DOZITA_STATUS_VALUE,
       userEmail: update.ownerEmail,
       paid: update.paid,
       ...update.indexFields,
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    }, { actorEmail: null, title: "Smlouva dosáhla data konce" }), { lastUpdateTime: update.updateTime });
     inBatch += 1;
 
     if (inBatch >= BATCH_LIMIT) {
-      await batch.commit();
+      await trackCashflowWrite(() => batch.commit());
       written += inBatch;
       batch = adminDb.batch();
       inBatch = 0;
@@ -111,7 +116,7 @@ const commitUpdates = async (updates: ExpiredContractUpdate[]): Promise<number> 
   }
 
   if (inBatch > 0) {
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
     written += inBatch;
   }
 
@@ -121,6 +126,7 @@ const commitUpdates = async (updates: ExpiredContractUpdate[]): Promise<number> 
 export async function markExpiredPolicyEndContractsDozita(
   options: MarkExpiredPolicyEndContractsOptions = {}
 ): Promise<MarkExpiredPolicyEndContractsResult> {
+  return withCashflowMutation<MarkExpiredPolicyEndContractsResult>("lib/server/contractLifecycleMaintenance:markExpiredPolicyEndContractsDozita", async () => {
   if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
 
   const now = options.now ?? new Date();
@@ -216,6 +222,8 @@ export async function markExpiredPolicyEndContractsDozita(
             now
           ),
           paid: data.paid === true,
+          current: data,
+          updateTime: doc.updateTime,
         });
       }
 
@@ -241,4 +249,5 @@ export async function markExpiredPolicyEndContractsDozita(
       policyEndDate: item.policyEndDate,
     })),
   };
+  });
 }

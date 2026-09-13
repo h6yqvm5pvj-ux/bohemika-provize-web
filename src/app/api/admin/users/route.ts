@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import type { MultiFactorInfo, UserRecord } from "firebase-admin/auth";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
@@ -463,6 +464,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/admin/users/route:PATCH", async () => {
   try {
     const ctx = await getAdminAuthContext(req, {
       minimumRole: "admin",
@@ -670,7 +672,7 @@ export async function PATCH(req: NextRequest) {
       };
     }
 
-    await publicRef.set(patch, { merge: true });
+    await trackCashflowWrite(() => publicRef.set(patch, { merge: true }));
 
     return NextResponse.json({
       ok: true,
@@ -695,9 +697,11 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function DELETE(req: NextRequest) {
+  return withCashflowMutation("app/api/admin/users/route:DELETE", async () => {
   try {
     const ctx = await getAdminAuthContext(req, {
       minimumRole: "owner",
@@ -758,7 +762,7 @@ export async function DELETE(req: NextRequest) {
     [...publicRefs, ...privateRefs].forEach((ref) => batch.delete(ref));
     if (publicRefs.length === 0) batch.delete(adminDb.collection("users").doc(email));
     if (privateRefs.length === 0) batch.delete(adminDb.collection("usersPrivate").doc(email));
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     return NextResponse.json({
       ok: true,
@@ -773,4 +777,5 @@ export async function DELETE(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

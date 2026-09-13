@@ -1,0 +1,13 @@
+{
+  "startedAtUtc": "2026-09-13T10:41:24.960486+00:00",
+  "previousRequestHttpStatus": 429,
+  "attemptViaVercel": 1,
+  "status": "delivered_user_confirmed",
+  "deliveryConfirmed": true,
+  "httpStatus": 200,
+  "transportExitCode": 0,
+  "requestedHostVerified": true,
+  "accepted": true,
+  "completedAtUtc": "2026-09-13T10:41:28.755948+00:00",
+  "deliveryEvidence": "User explicitly confirmed receipt of the reset email. Action link was not opened by the agent; password was not changed."
+}

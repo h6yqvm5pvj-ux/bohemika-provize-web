@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -61,6 +63,7 @@ function loadCredentials() {
 }
 
 async function main() {
+  return withCashflowScriptMutation("script:migrate-users-private-fields", async () => {
   const apply = hasArg("--apply");
   const deleteFromUsers = hasArg("--delete-from-users");
 
@@ -95,7 +98,7 @@ async function main() {
 
   const commitBatch = async () => {
     if (!apply || opsInBatch === 0) return;
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), db);
     batch = db.batch();
     opsInBatch = 0;
   };
@@ -160,6 +163,7 @@ async function main() {
   } else {
     console.log("dry-run mode: no writes");
   }
+  });
 }
 
 main().catch((error) => {

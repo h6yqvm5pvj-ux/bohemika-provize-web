@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
 
@@ -81,7 +83,7 @@ const commitUpdates = async (updates) => {
     inBatch += 1;
 
     if (inBatch >= BATCH_LIMIT) {
-      await batch.commit();
+      await trackCashflowScriptWrite(() => batch.commit(), adminDb);
       written += inBatch;
       batch = adminDb.batch();
       inBatch = 0;
@@ -89,7 +91,7 @@ const commitUpdates = async (updates) => {
   }
 
   if (inBatch > 0) {
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), adminDb);
     written += inBatch;
   }
 
@@ -97,6 +99,7 @@ const commitUpdates = async (updates) => {
 };
 
 const main = async () => {
+  return withCashflowScriptMutation("script:backfill-neon-policy-end-dates", async () => {
   if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
 
   const write = hasArg("--write") || hasArg("--apply");
@@ -230,6 +233,7 @@ const main = async () => {
   }
 
   console.log(JSON.stringify({ stats, examples, errors }, null, 2));
+  });
 };
 
 main().catch((error) => {

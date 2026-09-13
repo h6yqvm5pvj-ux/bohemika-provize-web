@@ -218,21 +218,21 @@ export function sortCashflowItemsForDisplay(
 
 export function filterPastItems(
   cashflowItems: CashflowItem[],
-  showPastYears: boolean
+  showPastYears: boolean,
+  now = new Date()
 ): CashflowItem[] {
   if (showPastYears) return cashflowItems;
-  const now = new Date();
   const startCurrentYear = new Date(now.getFullYear(), 0, 1);
   return cashflowItems.filter((item) => item.date >= startCurrentYear);
 }
 
 export function filterPastStatementMonths(
   statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]>,
-  showPastYears: boolean
+  showPastYears: boolean,
+  now = new Date()
 ): Record<string, CashflowCommissionStatementSummary[]> {
   if (showPastYears) return statementsByMonthKey;
 
-  const now = new Date();
   const startYear = now.getFullYear();
   const filtered: Record<string, CashflowCommissionStatementSummary[]> = {};
 

@@ -1,0 +1,98 @@
+.sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: none;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-self: flex-start;
+  width: 256px;
+  height: 100dvh;
+  border-right: 1px solid #e8e8f0;
+  background: linear-gradient(180deg, #fafaff 0%, #f8f9fc 60%, #f5f4fa 100%);
+  transition: width 220ms ease;
+}
+.brandRow { padding: 26px 20px 18px; }
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; border-radius: 12px; }
+.brandLogo { display: flex; flex: 0 0 36px; align-items: center; justify-content: center; height: 40px; }
+.brandLogo img { width: 36px; height: auto; }
+.brandCopy { min-width: 0; overflow: hidden; white-space: nowrap; }
+.brandName { display: block; font-size: 19px; font-weight: 750; letter-spacing: -.7px; color: #222638; }
+.brandName > span { font-weight: 500; color: #796789; }
+.brandTagline { display: block; margin-top: 3px; font-size: 11px; color: #7b8093; letter-spacing: .1px; }
+.collapseButton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  height: 36px;
+  margin: 0 14px 18px;
+  padding: 0 13px;
+  border: 1px solid #e4e5ee;
+  border-radius: 10px;
+  color: #77788b;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 160ms, color 160ms;
+}
+.collapseButton:hover { color: #4f3b73; background: #eeecf5; }
+.collapseButton > svg, .logout > svg { flex-shrink: 0; }
+.desktopNav { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d8d7e5 transparent; padding: 2px 12px 16px; }
+.navList { display: flex; flex-direction: column; gap: 4px; }
+.navItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 11px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 13px;
+  border-radius: 11px;
+  color: #64697c;
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: color 160ms, background 160ms, box-shadow 160ms;
+}
+.navItem:hover { background: #edecf5; color: #33294b; }
+.navIcon { display: inline-flex; flex: 0 0 20px; align-items: center; justify-content: center; }
+.itemLabel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.active, .active:hover {
+  background: linear-gradient(110deg, #29253e, #433256);
+  color: #fff;
+  box-shadow: 0 4px 10px #30253f18, inset 0 1px 0 #ffffff14;
+}
+.active .navIcon { color: #dccbf6; }
+.activeDot { margin-left: auto; flex: 0 0 5px; height: 5px; border-radius: 50%; background: #c5ade6; }
+.groupStart { margin-top: 16px; }
+.groupStart::before { content: ""; position: absolute; height: 1px; top: -10px; left: 13px; right: 13px; background: #e5e5ee; }
+.disabled { opacity: .45; cursor: not-allowed; }
+.footer { flex-shrink: 0; margin: 0 12px; padding: 14px 0 18px; border-top: 1px solid #e4e5ee; }
+.profile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 6px 12px; }
+.profileCopy { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow: hidden; }
+.profileLabel { font-size: 12px; font-weight: 650; color: #3a3d50; white-space: nowrap; }
+.profileEmail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; color: #7e8193; }
+.logout { display: flex; align-items: center; gap: 11px; height: 40px; width: 100%; padding: 0 13px; border-radius: 10px; color: #75798b; font-size: 12px; font-weight: 550; cursor: pointer; transition: background 160ms, color 160ms; }
+.logout:hover { background: #f6e9ef; color: #a34162; }
+.brand:focus-visible, .collapseButton:focus-visible, .navItem:focus-visible, .logout:focus-visible, .mobileMenuButton:focus-visible { outline: 2px solid #9469bb; outline-offset: 3px; }
+.sidebar[data-collapsed="true"] { width: 76px; }
+.sidebar[data-collapsed="true"] .brandRow { padding: 26px 20px 18px; }
+.sidebar[data-collapsed="true"] .brandCopy,
+.sidebar[data-collapsed="true"] .itemLabel,
+.sidebar[data-collapsed="true"] .profileCopy,
+.sidebar[data-collapsed="true"] .activeDot { display: none; }
+.sidebar[data-collapsed="true"] .collapseButton { margin-inline: 14px; justify-content: center; padding-inline: 0; }
+.sidebar[data-collapsed="true"] .navItem { justify-content: center; padding-inline: 0; gap: 0; }
+.sidebar[data-collapsed="true"] .profile { justify-content: center; padding-inline: 0; }
+.sidebar[data-collapsed="true"] .logout { justify-content: center; padding-inline: 0; }
+.tooltip { position: fixed; z-index: 100; transform: translateY(-50%); padding: 8px 12px; border: 1px solid #ffffff14; border-radius: 8px; background: #30283f; color: white; box-shadow: 0 4px 16px #201a3429; font-family: var(--ui-font-mono), sans-serif; font-size: 12px; font-weight: 550; pointer-events: none; }
+.mobileHeader { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #e5e5ee; background: #fdfdff; }
+.mobileMenuButton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 42px; height: 42px; padding: 0 10px; border: 1px solid #e5e3ed; border-radius: 11px; background: #f5f3f9; color: #534361; font-size: 12px; cursor: pointer; }
+.backdrop { position: absolute; inset: 0; background: #17132380; backdrop-filter: blur(3px); }
+.mobileDrawer { position: relative; display: flex; flex-direction: column; width: 300px; max-width: 88%; height: 100dvh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); background: #fafaff; box-shadow: 16px 0 60px #17132326; animation: enter 180ms ease-out; }
+.mobileBrandRow { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; padding: 20px 18px; }
+.mobileNav { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 12px 20px; }
+@keyframes enter { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@media (min-width: 1024px) { .sidebar { display: flex; } .mobileHeader { display: none; } }
+@media (prefers-reduced-motion: reduce) { .sidebar, .navItem, .collapseButton, .logout { transition: none; } .mobileDrawer { animation: none; } }

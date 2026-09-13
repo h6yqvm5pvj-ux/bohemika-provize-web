@@ -21,6 +21,9 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  contractHistoryId?: string;
+  contractHistoryStartedAtMs?: number;
+  contractNotesPath?: string;
   id?: string;
   contractPdfAttachment?: {
     kind?: "contractPdf" | string;
@@ -510,6 +513,7 @@ export type ContractDetailResponse = {
 };
 
 export type ContractsResponse = {
+  availablePositions?: Position[];
   ok: true;
   scope: "my" | "team";
   position: Position | null;
@@ -608,6 +612,7 @@ export type ContractListFilters = {
   commissionAuditCodeFilter: CommissionAuditCodeFilter;
   categories: Set<ContractListProductCategory>;
   institutions: Set<ProductInstitutionId>;
+  positions: Set<Position>;
   signedFrom: Date | null;
 };
 
@@ -650,4 +655,6 @@ export type SubscriptionStatus = "active" | "expired" | "unpaid" | "none";
 export type AuthContextOptions = {
   requireKnownUser?: boolean;
   requireActiveSubscription?: boolean;
+  /** Trusted server caller only; never read from request headers or parameters. */
+  freshCashflowContext?: boolean;
 };

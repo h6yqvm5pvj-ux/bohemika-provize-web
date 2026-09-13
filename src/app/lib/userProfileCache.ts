@@ -75,21 +75,26 @@ export async function getUserProfileCached(
     return profileInFlight[key];
   }
 
-  profileInFlight[key] = fetchAuthedJsonOrThrow<UserProfileResponse>(
+  const request = fetchAuthedJsonOrThrow<UserProfileResponse>(
     user,
     "/api/user/profile",
     { method: "GET" }
   )
     .then((payload) => {
-      profileCache[key] = {
-        ts: Date.now(),
-        payload,
-      };
+      // A save or a newer forced refresh may have invalidated this request.
+      if (profileInFlight[key] === request) {
+        profileCache[key] = {
+          ts: Date.now(),
+          payload,
+        };
+      }
       return payload;
     })
     .finally(() => {
-      delete profileInFlight[key];
+      if (profileInFlight[key] === request) {
+        delete profileInFlight[key];
+      }
     });
-
-  return profileInFlight[key];
+  profileInFlight[key] = request;
+  return request;
 }

@@ -1,7 +1,10 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAllBatched } from "@/lib/server/firestoreReads";
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
@@ -1525,9 +1528,9 @@ async function loadContractStatsFromReadModel(
   );
 
   const [totalsSnaps, monthSnaps, previousMonthSnaps] = await Promise.all([
-    Promise.all(totalsRefs.map((ref) => ref.get())),
-    Promise.all(monthRefs.map((ref) => ref.get())),
-    Promise.all(previousMonthRefs.map((ref) => ref.get())),
+    getAllBatched(db, totalsRefs),
+    getAllBatched(db, monthRefs),
+    getAllBatched(db, previousMonthRefs),
   ]);
 
   owners.forEach((owner, idx) => {
@@ -1758,7 +1761,7 @@ async function transferOwnerEntriesToSuccessor({
 
   const commit = async () => {
     if (ops === 0) return;
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
     batch = db.batch();
     ops = 0;
   };
@@ -1787,10 +1790,14 @@ async function transferOwnerEntriesToSuccessor({
       });
 
       const destinationRef = toRef.doc(entryId);
-      batch.set(destinationRef, nextData, { merge: false });
+      batch.create(destinationRef, withContractHistory(batch, entrySnap.ref, entryData, {
+        ...nextData, contractNotesPath: entryData.contractNotesPath ?? entrySnap.ref.path,
+      }, { actorEmail, kind: "transfer", title: "Převod při ukončení spolupráce", atMs: now.getTime(),
+        changes: [{ label: "Správce", before: fromOwnerEmail, after: toOwnerEmail }] }));
+      ops += 4; // Audit, legacy migration and the stable notes location.
       ops += 1;
 
-      batch.delete(entrySnap.ref);
+      batch.delete(entrySnap.ref, { lastUpdateTime: entrySnap.updateTime });
       ops += 1;
 
       batch.delete(
@@ -1974,7 +1981,7 @@ async function endCollaborationAndTransfer({
 
   const commit = async () => {
     if (ops === 0) return;
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
     batch = db.batch();
     ops = 0;
   };
@@ -2603,6 +2610,7 @@ async function rejectEndCollaborationRequest(params: {
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/team-overview/route:PATCH", async () => {
   try {
     if (!adminDb) {
       return NextResponse.json(
@@ -2653,7 +2661,7 @@ export async function PATCH(req: NextRequest) {
 
       const { request, summary } = await approveEndCollaborationRequest({
         requestId: parsed.requestId,
-        actorEmail: email,
+        actorEmail: authCtx.actorEmail || email,
       });
       const response = NextResponse.json({
         ok: true,
@@ -2882,9 +2890,9 @@ export async function PATCH(req: NextRequest) {
       updated.push("position");
     }
 
-    await adminDb.collection("users").doc(target.docId || target.email).set(patch, {
+    await trackCashflowWrite(() => adminDb!.collection("users").doc(target.docId || target.email).set(patch, {
       merge: true,
-    });
+    }));
 
     const response = NextResponse.json({
       ok: true,
@@ -2908,6 +2916,7 @@ export async function PATCH(req: NextRequest) {
     }
     return response;
   }
+  });
 }
 
 export async function GET(req: NextRequest) {

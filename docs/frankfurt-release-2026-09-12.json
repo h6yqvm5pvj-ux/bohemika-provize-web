@@ -1,0 +1,45 @@
+{
+  "status": "deployed_and_smoke_verified",
+  "date": "2026-09-12",
+  "baseline": {
+    "deploymentId": "dpl_G8ZJ4eutmWx6gf1wVzFoGu422V6W",
+    "gitCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+    "patches": [
+      {
+        "file": "cashflow-shadow-only-release-2026-09-12.patch",
+        "sha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec"
+      },
+      {
+        "file": "data-loading-release-2026-09-12.patch",
+        "sha256": "f6b57f741b545d55dda1b97b0905032e377061aecf1f115af08c36bb74c11b9a"
+      },
+      {
+        "file": "cashflow-worker-release-2026-09-12.patch",
+        "sha256": "6254a818e4db13acf931702ddecbaf0e63fa4e56c7fea40f005991f230285ee4"
+      },
+      {
+        "file": "home-loading-release-2026-09-12.patch",
+        "sha256": "e5e32b72669144b0df61b35751d915e0cacb8d442cd0e02e3f4d5f6d6787b3b4"
+      }
+    ]
+  },
+  "codePatch": {
+    "file": "frankfurt-release-2026-09-12.patch",
+    "sha256": "176f2944d2340be88d2f2280d6a5a6be259215dfb71991b2a55e40ca42e686c7"
+  },
+  "files": [
+    {
+      "path": "vercel.json",
+      "sha256": "913be1ac852f8ea5ec28d1a4743caab4aacf5348fba1c5616c92bbaec5595f98"
+    }
+  ],
+  "targetRegion": "fra1",
+  "previousRegion": "iad1",
+  "applicationCodeChanged": false,
+  "cronSchedulesChanged": false,
+  "dataMigration": false,
+  "deploymentId": "dpl_BJsEiRgSqD2HBFhbeeZw2FLW7xMe",
+  "verifiedAtUtc": "2026-09-12T18:41:34.887045+00:00",
+  "productionDomain": "https://bohemka.app",
+  "rollbackDeploymentId": "dpl_G8ZJ4eutmWx6gf1wVzFoGu422V6W"
+}

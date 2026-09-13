@@ -1,0 +1,98 @@
+{
+  "date": "2026-09-13",
+  "scope": "local working tree; synthetic data only",
+  "source_sha256": {
+    "src/app/lib/authSession.ts": "e5a0de262a42a51ca29feaa650a967935424f1ee9b8f815d4c2a04faa595f3eb",
+    "src/app/api/auth/confirm-email-for-mfa/route.ts": "9dbbea6d3d66ea5433f2e3aaa625b6dff9018b2c2b429d3bdae0abba1df43cdc",
+    "src/app/login/page.tsx": "c9ddc5c282e88ccbaf06cf323c6745bcc0464de54ec220bdee2c551f79761d40",
+    "src/app/pomucky/vypoved-smlouvy/contractTerminationPrefill.ts": "4bc46fddf3567bc2760255743814ca7d915648e2df7d567537be279ccd998c6f",
+    "src/app/lib/clientCardPrivacy.ts": "3e26eab0c42945e4b63f44772e87139e468213f597d1e4321dba873ce490bb2a",
+    "firestore.rules": "badc95d7f8f0994a1501c576a6e863e7da15230af506b7b0f17fa53e86453bbc",
+    "storage.rules": "af9f6cb2151920c457237aefaf8655bc9212c42d92a6a5a0f8b0f00b569a542d",
+    "src/proxy.ts": "e2043520522409a65913aa047f4bcaf37ae44ec8a47bdb185a99e9e1377b4156",
+    "src/lib/server/apiEntryGuard.ts": "aa661b905580d5bf539dc2adb77f2c09c12add98eeb13cffb5efa1ea37237256",
+    "src/lib/server/adminAuth.ts": "c1df3c5023760f3b00a6397c9519601fd394e50cbb9673feced58bf1341336bf",
+    "src/lib/server/activeAppSession.ts": "0b5e01eb69acdf1e2adf535d42887155a6334c30d24a720e215d7538942c091c",
+    "package.json": "56b454d45b104d4a62435e817f9acf340d22779467231af44e631bbef10105c0"
+  },
+  "application_tests": {
+    "passed": 1958,
+    "files": 197,
+    "failed": 0
+  },
+  "firestore_tests": {
+    "passed": 249,
+    "files": 6,
+    "failed": 0,
+    "security_rules_tests": 214,
+    "host": "127.0.0.1:8180",
+    "project": "demo-bohemika-rules",
+    "stopped": true
+  },
+  "api_entry_probes": {
+    "routes": 90,
+    "route_method_pairs": 133,
+    "passed": 266,
+    "failed": 0,
+    "external_services": "mocked; rate limit and lockout allowed; application auth guards active; verifier rejects synthetic credentials"
+  },
+  "proof_scenarios": {
+    "passed": 14,
+    "unsafe_behavior_reproduction_assertions": 4,
+    "distinct_findings": 3
+  },
+  "all_additional_probes": {
+    "numTotalTests": 280,
+    "numPassedTests": 280,
+    "numFailedTests": 0,
+    "success": true
+  },
+  "typecheck": {
+    "command": "tsc --noEmit --incremental false",
+    "exit_code": 0
+  },
+  "local_image_runtime_policy_check": {
+    "imageRuntimeSecurity": "verified",
+    "platform": "darwin",
+    "arch": "arm64",
+    "next": "16.3.4",
+    "sharp": "0.35.4",
+    "libheif": "1.23.2",
+    "libvips": "8.18.6",
+    "nextSharp": "0.35.4",
+    "nextLibheif": "1.23.2"
+  },
+  "secret_scan": {
+    "scanned_tracked_text_files": 1110,
+    "secret_pattern_findings": [],
+    "sensitive_tracked_filenames": [],
+    "public_data_file_candidates": []
+  },
+  "limitations": [
+    "No production requests or production credential loading",
+    "No historical Git blob or binary contents scan",
+    "No online vulnerability database lookup",
+    "No full build or real-login browser E2E",
+    "Runtime services replaced for API probes; not a full authentication integration test"
+  ],
+  "findings": [
+    {
+      "id": "L-01",
+      "severity": "medium",
+      "title": "Email verification without mailbox challenge",
+      "verified": "mocked route reproduction"
+    },
+    {
+      "id": "L-02",
+      "severity": "medium",
+      "title": "External login redirect accepted after URL normalization",
+      "verified": "helper reproduction and installed Next router source"
+    },
+    {
+      "id": "L-03",
+      "severity": "medium",
+      "title": "Unused private contract prefill survives logout",
+      "verified": "synthetic browser storage and application logout helper"
+    }
+  ]
+}

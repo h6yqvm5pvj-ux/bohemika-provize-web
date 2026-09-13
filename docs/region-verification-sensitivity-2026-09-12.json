@@ -1,0 +1,204 @@
+{
+  "selection": "All complete matched warm pairs from rounds >= 6; fixed by the smoke-completion boundary, without selecting on measured performance.",
+  "smokeCompletionObservation": {
+    "recordedAt": "2026-09-12T17:55:43.019210+00:00",
+    "completedRequests": 62
+  },
+  "firstRetainedRequestOneBased": 71,
+  "roundsConsidered": [
+    6,
+    7,
+    8,
+    9
+  ],
+  "primarySampleRowsRetained": 40,
+  "earlierSampleRowsExcludedFromSensitivityOnly": 60,
+  "warmupRowsExcluded": 10,
+  "allPairsCompleteAndWarm": true,
+  "pairedComparisons": [
+    {
+      "mode": "baseline",
+      "warmPairs": 4,
+      "dbPhaseMs": {
+        "iadMedian": 0.0,
+        "fraMedian": 0.0,
+        "medianPairedDifferenceMs": 0.0,
+        "pairsWithLowerFraValue": 0
+      },
+      "handlerMs": {
+        "iadMedian": 0.09,
+        "fraMedian": 0.11,
+        "medianPairedDifferenceMs": -0.02,
+        "pairsWithLowerFraValue": 2
+      },
+      "httpTtfbMs": {
+        "iadMedian": 400.6,
+        "fraMedian": 168.18,
+        "medianPairedDifferenceMs": 211.38,
+        "pairsWithLowerFraValue": 3
+      },
+      "httpTotalMs": {
+        "iadMedian": 408.85,
+        "fraMedian": 175.89,
+        "medianPairedDifferenceMs": 218.27,
+        "pairsWithLowerFraValue": 3
+      },
+      "includedRounds": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "unmatchedOrNonwarmRounds": []
+    },
+    {
+      "mode": "query1",
+      "warmPairs": 4,
+      "dbPhaseMs": {
+        "iadMedian": 109.0,
+        "fraMedian": 30.91,
+        "medianPairedDifferenceMs": 80.58,
+        "pairsWithLowerFraValue": 4
+      },
+      "handlerMs": {
+        "iadMedian": 109.14,
+        "fraMedian": 31.02,
+        "medianPairedDifferenceMs": 80.61,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTtfbMs": {
+        "iadMedian": 479.61,
+        "fraMedian": 193.36,
+        "medianPairedDifferenceMs": 270.03,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTotalMs": {
+        "iadMedian": 486.8,
+        "fraMedian": 201.06,
+        "medianPairedDifferenceMs": 271.49,
+        "pairsWithLowerFraValue": 4
+      },
+      "includedRounds": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "unmatchedOrNonwarmRounds": []
+    },
+    {
+      "mode": "sequential5",
+      "warmPairs": 4,
+      "dbPhaseMs": {
+        "iadMedian": 1145.41,
+        "fraMedian": 150.89,
+        "medianPairedDifferenceMs": 1006.27,
+        "pairsWithLowerFraValue": 4
+      },
+      "handlerMs": {
+        "iadMedian": 1145.54,
+        "fraMedian": 151.0,
+        "medianPairedDifferenceMs": 1006.28,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTtfbMs": {
+        "iadMedian": 1527.73,
+        "fraMedian": 315.84,
+        "medianPairedDifferenceMs": 1211.89,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTotalMs": {
+        "iadMedian": 1528.94,
+        "fraMedian": 329.28,
+        "medianPairedDifferenceMs": 1199.66,
+        "pairsWithLowerFraValue": 4
+      },
+      "includedRounds": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "unmatchedOrNonwarmRounds": []
+    },
+    {
+      "mode": "parallel5",
+      "warmPairs": 4,
+      "dbPhaseMs": {
+        "iadMedian": 346.22,
+        "fraMedian": 39.79,
+        "medianPairedDifferenceMs": 307.18,
+        "pairsWithLowerFraValue": 4
+      },
+      "handlerMs": {
+        "iadMedian": 346.34,
+        "fraMedian": 39.91,
+        "medianPairedDifferenceMs": 307.12,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTtfbMs": {
+        "iadMedian": 727.3,
+        "fraMedian": 284.67,
+        "medianPairedDifferenceMs": 322.35,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTotalMs": {
+        "iadMedian": 734.18,
+        "fraMedian": 286.92,
+        "medianPairedDifferenceMs": 322.97,
+        "pairsWithLowerFraValue": 4
+      },
+      "includedRounds": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "unmatchedOrNonwarmRounds": []
+    },
+    {
+      "mode": "getAll5",
+      "warmPairs": 4,
+      "dbPhaseMs": {
+        "iadMedian": 111.09,
+        "fraMedian": 32.11,
+        "medianPairedDifferenceMs": 85.66,
+        "pairsWithLowerFraValue": 4
+      },
+      "handlerMs": {
+        "iadMedian": 111.21,
+        "fraMedian": 32.23,
+        "medianPairedDifferenceMs": 85.68,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTtfbMs": {
+        "iadMedian": 529.76,
+        "fraMedian": 197.78,
+        "medianPairedDifferenceMs": 352.51,
+        "pairsWithLowerFraValue": 4
+      },
+      "httpTotalMs": {
+        "iadMedian": 536.43,
+        "fraMedian": 204.6,
+        "medianPairedDifferenceMs": 352.07,
+        "pairsWithLowerFraValue": 4
+      },
+      "includedRounds": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "unmatchedOrNonwarmRounds": []
+    }
+  ],
+  "limitations": [
+    "Compatibility smoke HTTP requests overlapped the middle of the complete benchmark. Full-grid HTTP timings may therefore include additional client/network and service contention; the exact effect is not quantified.",
+    "The full 110-request record and its primary warm summaries remain unchanged. This sensitivity subset conservatively excludes all earlier rounds, including some requests which may already have followed smoke completion.",
+    "Completion order and a single in-flight benchmark request establish the retained boundary. Individual request timestamps were not captured, so this is not a timestamp-level reconstruction of overlap.",
+    "Only four matched warm pairs per mode are expected. The subset is a sensitivity comparison, not an independent randomized rerun or a reliable production percentile estimate. Later timing may also reflect warming or unrelated temporal variation.",
+    "Client location and authenticated application behavior remain unverified; these timings cannot establish European-user page loading or true production INP."
+  ],
+  "measurementsSha256": "02e05fa4f78a8979ae287ee0b070aa5e08d2700fadad8492a5461ec73e65318f",
+  "overlapRecordSha256": "3814004db3cd10cbe301ad98a0e389aca8e4d30f618ee94d8d1b57bebec492f4"
+}

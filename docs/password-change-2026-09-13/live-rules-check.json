@@ -1,0 +1,6 @@
+{
+  "verified": true,
+  "source": "current Firebase Firestore release",
+  "matchesEmulatorTestedRules": true,
+  "sha256": "badc95d7f8f0994a1501c576a6e863e7da15230af506b7b0f17fa53e86453bbc"
+}

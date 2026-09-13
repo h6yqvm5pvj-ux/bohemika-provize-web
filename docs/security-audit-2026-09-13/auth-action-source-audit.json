@@ -1,0 +1,31 @@
+{
+  "id": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+  "url": "bohemika-provize-d3qr12vya-jacobrausch989s-projects-909dd478.vercel.app",
+  "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+  "readyState": "READY",
+  "target": "production",
+  "regions": [
+    "fra1"
+  ],
+  "baselineDeploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+  "sourceFileCount": 1246,
+  "reviewedGeneratedTypeFile": "next-env.d.ts",
+  "addedFiles": [
+    "src/app/ucet/akce/AuthEmailActionPage.test.tsx",
+    "src/app/ucet/akce/AuthEmailActionPage.tsx",
+    "src/app/ucet/akce/authEmailAction.module.css",
+    "src/app/ucet/akce/page.tsx",
+    "src/lib/authEmailAction.test.ts",
+    "src/lib/authEmailAction.ts",
+    "src/lib/server/authEmailActionProxy.test.ts"
+  ],
+  "removedFiles": [],
+  "changedFiles": [
+    "src/lib/server/firebaseAuthEmail.test.ts",
+    "src/lib/server/firebaseAuthEmail.ts",
+    "src/proxy.ts"
+  ],
+  "localSourceMismatches": [],
+  "forbiddenDiagnosticPaths": [],
+  "passed": true
+}

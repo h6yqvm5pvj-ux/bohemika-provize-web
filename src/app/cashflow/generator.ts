@@ -478,11 +478,12 @@ function splitImmediatePartFromTitle(
 export function generateCashflow(
   entries: EntryDoc[],
   horizonYears = 10,
-  viewerEmail?: string | null
+  viewerEmail?: string | null,
+  asOf: Date = new Date()
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
   let globalItemSequence = 0;
-  const now = new Date();
+  const now = new Date(asOf);
   const horizonEnd = new Date(
     now.getFullYear() + horizonYears,
     now.getMonth(),
@@ -514,7 +515,7 @@ export function generateCashflow(
       toDate(entry.policyStartDate) ??
       toDate(entry.contractSignedDate) ??
       toDate(entry.createdAt) ??
-      new Date();
+      new Date(now);
     const agreement =
       toDate(entry.contractSignedDate) ??
       toDate(entry.createdAt) ??

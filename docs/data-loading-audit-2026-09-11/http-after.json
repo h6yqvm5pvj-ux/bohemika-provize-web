@@ -1,0 +1,429 @@
+[
+  {
+    "path": "/admin/data-health",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fdata-health"
+  },
+  {
+    "path": "/admin/provizni-vypisy/produktova-mapa",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fprovizni-vypisy%2Fproduktova-mapa"
+  },
+  {
+    "path": "/admin/zadosti",
+    "status": 307,
+    "location": "/login?next=%2Fadmin%2Fzadosti"
+  },
+  {
+    "path": "/cashflow",
+    "status": 307,
+    "location": "/login?next=%2Fcashflow"
+  },
+  {
+    "path": "/cuzk",
+    "status": 307,
+    "location": "/login?next=%2Fcuzk"
+  },
+  {
+    "path": "/embed/pojisteni-vozidla",
+    "status": 200,
+    "location": null
+  },
+  {
+    "path": "/embed/zivotni-pojisteni",
+    "status": 200,
+    "location": null
+  },
+  {
+    "path": "/embed/zlato",
+    "status": 200,
+    "location": null
+  },
+  {
+    "path": "/intranet",
+    "status": 307,
+    "location": "/login?next=%2Fintranet"
+  },
+  {
+    "path": "/jakubrauscher",
+    "status": 200,
+    "location": null
+  },
+  {
+    "path": "/kalkulacka",
+    "status": 307,
+    "location": "/login?next=%2Fkalkulacka"
+  },
+  {
+    "path": "/klienti/performance-probe",
+    "status": 404,
+    "location": null
+  },
+  {
+    "path": "/klienti",
+    "status": 404,
+    "location": null
+  },
+  {
+    "path": "/login",
+    "status": 200,
+    "location": null
+  },
+  {
+    "path": "/muj-tym",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym"
+  },
+  {
+    "path": "/muj-tym/sin-slavy",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym%2Fsin-slavy"
+  },
+  {
+    "path": "/muj-tym/tydenni-report",
+    "status": 307,
+    "location": "/login?next=%2Fmuj-tym%2Ftydenni-report"
+  },
+  {
+    "path": "/nastaveni",
+    "status": 307,
+    "location": "/login?next=%2Fnastaveni"
+  },
+  {
+    "path": "/",
+    "status": 307,
+    "location": "/login"
+  },
+  {
+    "path": "/pomucky/ares",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fares"
+  },
+  {
+    "path": "/pomucky/argumenty",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fargumenty"
+  },
+  {
+    "path": "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fcestovni-pojisteni-cpp-vs-kooperativa"
+  },
+  {
+    "path": "/pomucky/data-o-vozidle",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdata-o-vozidle"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fallianz"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcpp"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/csob",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcsob"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fkooperativa"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fpillow"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/slavia",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fslavia"
+  },
+  {
+    "path": "/pomucky/dokumenty/auto/uniqa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Funiqa"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fallianz"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fcpp"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fkooperativa"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/maxima",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fmaxima"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek"
+  },
+  {
+    "path": "/pomucky/dokumenty/majetek/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fpillow"
+  },
+  {
+    "path": "/pomucky/dokumenty",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/allianz",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fallianz"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/cpp",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fcpp"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/kooperativa",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fkooperativa"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/maxima",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fmaxima"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni"
+  },
+  {
+    "path": "/pomucky/dokumenty/zivotni-pojisteni/pillow",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fpillow"
+  },
+  {
+    "path": "/pomucky/export-produkce",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fexport-produkce"
+  },
+  {
+    "path": "/pomucky/hypoteka-vlastni-zdroje",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fhypoteka-vlastni-zdroje"
+  },
+  {
+    "path": "/pomucky/invalidita",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Finvalidita"
+  },
+  {
+    "path": "/pomucky/jak-stiham-vypoved-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fjak-stiham-vypoved-smlouvy"
+  },
+  {
+    "path": "/pomucky/karta-klienta",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fkarta-klienta"
+  },
+  {
+    "path": "/pomucky/naceneni-celniho-skla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnaceneni-celniho-skla"
+  },
+  {
+    "path": "/pomucky/naceneni-vozidla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnaceneni-vozidla"
+  },
+  {
+    "path": "/pomucky/nahrada-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnahrada-smlouvy"
+  },
+  {
+    "path": "/pomucky/nastaveni-zivotniho-pojisteni",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fnastaveni-zivotniho-pojisteni"
+  },
+  {
+    "path": "/pomucky/neon-life-vs-metlife-oneguard",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fneon-life-vs-metlife-oneguard"
+  },
+  {
+    "path": "/pomucky",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky"
+  },
+  {
+    "path": "/pomucky/plan-produkce",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fplan-produkce"
+  },
+  {
+    "path": "/pomucky/pracovni-neschopenka",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fpracovni-neschopenka"
+  },
+  {
+    "path": "/pomucky/projekce-vykonu",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fprojekce-vykonu"
+  },
+  {
+    "path": "/pomucky/proklepka-vozidla",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fproklepka-vozidla"
+  },
+  {
+    "path": "/pomucky/radar-vyroci",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fradar-vyroci"
+  },
+  {
+    "path": "/pomucky/skolici-materialy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fskolici-materialy"
+  },
+  {
+    "path": "/pomucky/srovnavac-pracovni-neschopnosti",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fsrovnavac-pracovni-neschopnosti"
+  },
+  {
+    "path": "/pomucky/srovnavac-trvalych-nasledku",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fsrovnavac-trvalych-nasledku"
+  },
+  {
+    "path": "/pomucky/statistika",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fstatistika"
+  },
+  {
+    "path": "/pomucky/struktura",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fstruktura"
+  },
+  {
+    "path": "/pomucky/tipar",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Ftipar"
+  },
+  {
+    "path": "/pomucky/tvorba",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Ftvorba"
+  },
+  {
+    "path": "/pomucky/vypoved-smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fvypoved-smlouvy"
+  },
+  {
+    "path": "/pomucky/zaznam",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam"
+  },
+  {
+    "path": "/pomucky/zaznam/vysledky",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky"
+  },
+  {
+    "path": "/pomucky/zaznam/vysledky-auto",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky-auto"
+  },
+  {
+    "path": "/pomucky/zlato",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzlato"
+  },
+  {
+    "path": "/pomucky/zprava-tymu",
+    "status": 307,
+    "location": "/login?next=%2Fpomucky%2Fzprava-tymu"
+  },
+  {
+    "path": "/posta",
+    "status": 307,
+    "location": "/login?next=%2Fposta"
+  },
+  {
+    "path": "/provizni-vypisy",
+    "status": 307,
+    "location": "/login?next=%2Fprovizni-vypisy"
+  },
+  {
+    "path": "/smlouvy/performance-probe",
+    "status": 307,
+    "location": "/login?next=%2Fsmlouvy%2Fperformance-probe"
+  },
+  {
+    "path": "/smlouvy",
+    "status": 307,
+    "location": "/login?next=%2Fsmlouvy"
+  },
+  {
+    "path": "/tipy/performance-probe",
+    "status": 307,
+    "location": "/login?next=%2Ftipy%2Fperformance-probe"
+  },
+  {
+    "path": "/tipy",
+    "status": 307,
+    "location": "/login?next=%2Ftipy"
+  },
+  {
+    "path": "/api/user/profile",
+    "status": 401
+  },
+  {
+    "path": "/api/contracts/list",
+    "status": 401
+  },
+  {
+    "path": "/api/contracts/detail?id=performance-probe",
+    "status": 401
+  },
+  {
+    "path": "/api/team-overview",
+    "status": 401
+  },
+  {
+    "path": "/api/mailbox?countOnly=1",
+    "status": 401
+  },
+  {
+    "path": "/api/commission-statements?shape=cashflow",
+    "status": 401
+  },
+  {
+    "path": "/api/contacts",
+    "status": 401
+  },
+  {
+    "path": "/api/user-stats",
+    "status": 401
+  }
+]

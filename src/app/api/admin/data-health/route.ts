@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -1727,7 +1728,7 @@ async function deleteTipPayoutDocsForSource({
       batch.delete(docSnap.ref);
       deleted += 1;
     });
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     if (existingSnap.size < TIP_PAYOUTS_BATCH_LIMIT) break;
   }
@@ -2085,6 +2086,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  return withCashflowMutation("app/api/admin/data-health/route:DELETE", async () => {
   const authCtx = await getAdminAuthContext(req, {
     minimumRole: "admin",
     actionLabel: "smazání duplicitní smlouvy",
@@ -2243,7 +2245,7 @@ export async function DELETE(req: NextRequest) {
       { merge: true }
     );
   }
-  await batch.commit();
+  await trackCashflowWrite(() => batch.commit());
 
   let deletedTipPayouts = 0;
   try {
@@ -2252,6 +2254,7 @@ export async function DELETE(req: NextRequest) {
       sourceKey,
     });
   } catch (error) {
+    markCashflowMutationIncomplete();
     cleanupWarnings.push(`TIP payout cleanup selhal: ${formatError(error)}`);
   }
 
@@ -2283,5 +2286,6 @@ export async function DELETE(req: NextRequest) {
     warnings: cleanupWarnings,
     deletedContract: duplicateMemberFromEntry(targetEntry),
     deletedBy: authCtx.adminEmail,
+  });
   });
 }

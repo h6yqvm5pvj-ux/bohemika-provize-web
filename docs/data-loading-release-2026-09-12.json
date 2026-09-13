@@ -1,0 +1,82 @@
+{
+  "status": "deployed",
+  "baseDeploymentId": "dpl_35btPGYkeGXnNLyMDfKvjzzSMgQA",
+  "baseGitCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+  "baseShadowPatchSha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec",
+  "deltaPatchSha256": "f6b57f741b545d55dda1b97b0905032e377061aecf1f115af08c36bb74c11b9a",
+  "files": [
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.projectedSearch.test.ts",
+      "sha256": "cc2790646e1b3a5680659fed69291a88b674b52f17d6dab4bd3f5cb7f7fde73f"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.projectedSearch.ts",
+      "sha256": "2af267af997b436911422035939882863eab64176e82bc9e0b5c203f272abbeb"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.projectedSearchRoute.test.ts",
+      "sha256": "1cb8033841e362804529de5dad00ef44cc71b9051491bef236afb64eb869bb17"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.ts",
+      "sha256": "f471a0111791de73270c866616f46bbe863ec782cc234e6d49df91b29ece7074"
+    },
+    {
+      "path": "src/app/api/mailbox/mailboxLoading.test.ts",
+      "sha256": "a435916797ac473295a69ede6c83e83da6da9a3320cee97f338a683a5a0ba3d0"
+    },
+    {
+      "path": "src/app/api/mailbox/route.ts",
+      "sha256": "4fb5a2cbd1be18ca2f62f1ab860e32ca52937f871d4bc011b6de71233a76c95c"
+    },
+    {
+      "path": "src/app/cashflow/page.loading.test.tsx",
+      "sha256": "f754435a0fa6827aad99519143c010decd530faaac353ab8883bfcd55ccad618"
+    },
+    {
+      "path": "src/app/cashflow/page.tsx",
+      "sha256": "8f58ec356baeb91830fd577d5c56416e54651d4f2e5189a67a89f00e1b20f669"
+    },
+    {
+      "path": "src/app/posta/page.tsx",
+      "sha256": "8a338ee1f9b766c9c9eacae109f3abfc4b495cf14b42625c751d5981174a5acc"
+    },
+    {
+      "path": "tests/firestore/projectedContractSearch.test.ts",
+      "sha256": "8cf15b461dc0ba753483adbaf4de7e85afcf631d800113e4bbd3b7d4247ab6ad"
+    },
+    {
+      "path": "vitest.rules.config.ts",
+      "sha256": "bd6c5bea48e15d952c10315932f5d6b22dd8b696a7386cd08f37ef8c45af5196"
+    }
+  ],
+  "validation": {
+    "unitTestsPassed": 1455,
+    "unitTestsFailed": 0,
+    "firestoreSdkEmulatorTestsPassed": 2,
+    "typescript": "passed",
+    "eslint": "passed",
+    "remoteBuild": "READY",
+    "stageSmokeChecksPassed": 10,
+    "productionSmokeChecksPassed": 10,
+    "mainWorkspaceTypescript": "passed",
+    "authenticatedBusinessFlowsTested": false
+  },
+  "productionRegionChange": false,
+  "cashflowShadowEnabled": false,
+  "cashflowCandidatesEnabled": false,
+  "businessDataWrites": false,
+  "remainingLimits": [
+    "Search still scans projected metadata for all personal contracts in the fallback path, adding page-size+1 document reads for hydration.",
+    "Conversation history still may scan up to 1200 mailbox records because legacy conversation IDs are not proven complete."
+  ],
+  "deploymentId": "dpl_98QKyaT7qDVQxXNk8nahXtm2arRW",
+  "productionUrl": "https://bohemka.app",
+  "deploymentUrl": "https://bohemika-provize-mik5thk33-jacobrausch989s-projects-909dd478.vercel.app",
+  "rollbackDeploymentId": "dpl_35btPGYkeGXnNLyMDfKvjzzSMgQA",
+  "runtimeRegions": [
+    "iad1"
+  ],
+  "deploymentReport": "data-loading-deployment-2026-09-12.json",
+  "regionTestReport": "region-latency-test-2026-09-12.json"
+}

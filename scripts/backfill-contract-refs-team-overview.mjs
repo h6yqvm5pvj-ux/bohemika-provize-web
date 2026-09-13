@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -220,6 +222,7 @@ function loadCredentials() {
 }
 
 async function main() {
+  return withCashflowScriptMutation("script:backfill-contract-refs-team-overview", async () => {
   const apply = hasArg("--apply");
   const dryRun = !apply;
 
@@ -260,7 +263,7 @@ async function main() {
 
   const commitBatch = async () => {
     if (dryRun || opsInBatch === 0) return;
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), db);
     batch = db.batch();
     opsInBatch = 0;
   };
@@ -421,6 +424,7 @@ async function main() {
   } else {
     console.log("write mode: done");
   }
+  });
 }
 
 main().catch((error) => {

@@ -1,0 +1,212 @@
+{
+  "purpose": "Isolated cashflow shadow comparison release; deployed with measurement disabled",
+  "productionDomain": "https://bohemka.app",
+  "productionDeploymentId": "dpl_58P3z6dHVsTJUEsW4JkPeGuDdjTe",
+  "productionCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+  "productionState": "READY",
+  "deploymentMetadataVerifiedAt": "2026-09-12T08:38:38Z",
+  "productionChangedByThisPreparation": false,
+  "diagnosticPresentInProductionCommit": false,
+  "productionDiagnosticFlagsPresent": false,
+  "explicitTimeZoneFoundInDeploymentEnvironmentNames": false,
+  "runtimeTimeZoneMeasured": false,
+  "publicAnonymousProbe": {
+    "method": "HEAD",
+    "path": "/api/cashflow/shadow",
+    "status": 429,
+    "reason": "Vercel challenge; route presence cannot be inferred"
+  },
+  "plannedFlags": {
+    "NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED": "1",
+    "CASHFLOW_SHADOW_ENABLED": "1",
+    "CASHFLOW_SHADOW_EMAILS": "<approved-account-only>",
+    "CASHFLOW_CACHE_TRACK_WRITES": "0",
+    "CASHFLOW_CANDIDATES_ENABLED": "0"
+  },
+  "activationPrerequisites": [
+    "Review and validate isolated source package",
+    "Verify compatible browser/server IANA time zones without changing global production TZ",
+    "Deploy supporting frontend and server together",
+    "User signs in with existing MFA and role, then opts in in own tab"
+  ],
+  "validation": {
+    "unitTestsPassed": 1413,
+    "unitTestFiles": 164,
+    "unitTestsFailed": 0,
+    "typeScriptPassed": true,
+    "webpackProductionBuildPassed": true,
+    "buildClientShadowFlag": "1",
+    "buildServerShadowFlag": "0",
+    "buildCredentials": "synthetic public Firebase settings; no admin credentials; no environment files",
+    "imageRuntimeCheckPassed": true,
+    "authProxyBuildCheckPassed": true,
+    "eslintChangedSourceFilesPassed": true,
+    "patchAppliesToProductionCommit": true,
+    "patchWhitespaceCheckPassed": true,
+    "unexpectedTrackedChangesOutsideSource": [],
+    "candidateAndMutationModulesAbsent": true,
+    "sourceWriteDeclarationComparison": "385 declarations reviewed; only required authorization/GET helpers changed",
+    "independentServerReview": "no blocking findings",
+    "independentFrontendReview": "no blocking findings; not a production data comparison",
+    "liveBusinessDocumentsRead": false,
+    "productionSettingsChanged": false,
+    "deployed": false,
+    "firestoreRulesTestsRunForThisIsolatedRelease": false,
+    "firestoreRulesTestsReason": "No rules or business write implementation changed; source handlers covered by API tests"
+  },
+  "sourceFiles": [
+    {
+      "path": "src/app/api/cashflow/shadow/route.test.ts",
+      "new": true,
+      "sha256": "be322fb9af674ca153bb778fc0acb4ca1099bc11fe268ca266f716b82f2fec83"
+    },
+    {
+      "path": "src/app/api/cashflow/shadow/route.ts",
+      "new": true,
+      "sha256": "cf3cfd1e5a84838f41cae2c2f776a70d933abf524b972d4063f5d03712a5cef7"
+    },
+    {
+      "path": "src/app/api/commission-statements/cashflowResponse.test.ts",
+      "new": true,
+      "sha256": "2bdb3573e5add2a1d7833449ea169338cc6ff37f0b8c1b18321df774751115ee"
+    },
+    {
+      "path": "src/app/api/commission-statements/route.ts",
+      "new": false,
+      "sha256": "ee02c9a4bdebb7087e1cea40d5c6990eb424195b455bbb974f7532ae7f21f3e3"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.freshContext.test.ts",
+      "new": true,
+      "sha256": "1ada36070be3eececb8c262f4c4b7f9492efb483b1d0f16c7a0d1c77c28f2700"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.ts",
+      "new": false,
+      "sha256": "9b148742f260eb2aec2866b0e2cffd55e9a424409d9261466f8e193d303a937e"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.types.ts",
+      "new": false,
+      "sha256": "fd564d4d1435b994ed03b88136a00f8dadd4e236c2b9713613331d22104be6f9"
+    },
+    {
+      "path": "src/app/cashflow/buildCashflowView.test.ts",
+      "new": true,
+      "sha256": "0b561608d786f77b0eab4532cc9a742d3d2e5190c017f8005669d6bdfb1081b9"
+    },
+    {
+      "path": "src/app/cashflow/buildCashflowView.ts",
+      "new": true,
+      "sha256": "8878fcc9d6568c4c15304327069e89d843a20e0f15cad8a1cf47bb40ea7c76b4"
+    },
+    {
+      "path": "src/app/cashflow/computeCashflow.test.ts",
+      "new": true,
+      "sha256": "19dc2540f1765eac3115652093bed25a744d82e4a147e229725150fc8299c219"
+    },
+    {
+      "path": "src/app/cashflow/computeCashflow.ts",
+      "new": true,
+      "sha256": "c69b8674a8ae7dd8cf44a83738f6ada75b1c9da8deda976241d20546eec3334a"
+    },
+    {
+      "path": "src/app/cashflow/generator.ts",
+      "new": false,
+      "sha256": "73ed58b96ee45ce71902dd26f122e76bfc7757d2a8337b71ba6e276e05ee814c"
+    },
+    {
+      "path": "src/app/cashflow/helpers.ts",
+      "new": false,
+      "sha256": "2cb0237b2081b20085547237ff21b1decd2345a35d7859485b232164aa6abad3"
+    },
+    {
+      "path": "src/app/cashflow/page.tsx",
+      "new": false,
+      "sha256": "44762bc30a27b036ffa50feb656b01debe1d63b4dcd8d7c82e83c40ba718fa96"
+    },
+    {
+      "path": "src/app/cashflow/reportCashflowShadow.test.ts",
+      "new": true,
+      "sha256": "20c370863ae218452f526672683d8f1cd6f75982dd75b851d95a61ef214c8178"
+    },
+    {
+      "path": "src/app/cashflow/reportCashflowShadow.ts",
+      "new": true,
+      "sha256": "8eb1b2e6108ffe9dc63a70a69d7b037d912f63c84e449df451be0913fe4a00c2"
+    },
+    {
+      "path": "src/app/cashflow/shadowDiagnosticProtocol.test.ts",
+      "new": true,
+      "sha256": "00a77899554c971b4cb2323a5191e1ef5160119b6084af3785e2269477ad43d5"
+    },
+    {
+      "path": "src/app/cashflow/shadowDiagnosticProtocol.ts",
+      "new": true,
+      "sha256": "c805f1cd86656446d166eb32e32755135b0f74d706194096eb7f17c0f4a05463"
+    },
+    {
+      "path": "src/app/cashflow/shadowProtocol.test.ts",
+      "new": true,
+      "sha256": "9f894b193b94fb326a88500e0ff88281272da0313d5bd368f2a92b5494f83651"
+    },
+    {
+      "path": "src/app/cashflow/shadowProtocol.ts",
+      "new": true,
+      "sha256": "d5d39953f783ea3c42657dfc8bda3bccedb4df93b46e0b0b52e465061bd50755"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.ts",
+      "new": false,
+      "sha256": "88bc2ad8abda64a58f4ff938b048d9923d77d215f78ea175e503586479795b08"
+    },
+    {
+      "path": "src/lib/server/cashflowDiagnosticHttp.test.ts",
+      "new": true,
+      "sha256": "ae8b23f9cc7eb24ee09279580a1d7550316eb9aa2b35c793a0360ae2b79619e3"
+    },
+    {
+      "path": "src/lib/server/cashflowDiagnosticHttp.ts",
+      "new": true,
+      "sha256": "4fab5d69f6f62c1bb08ad973ece20ea65027b7a34ee54f4f340f1643f0c7c2db"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.test.ts",
+      "new": true,
+      "sha256": "3d4c09e83b6691d09732c42b5e464adc7c7568bd76121207bc4ae89a53bd7014"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.ts",
+      "new": true,
+      "sha256": "6cdf26169083667606a13338962c42cf4dee431de865a46874116d745384772f"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.test.ts",
+      "new": true,
+      "sha256": "b417474fdea3895e14f5a0209db13539f4077281940d3c28fc42a9c3d748c594"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.ts",
+      "new": true,
+      "sha256": "8ecdccab4c54dda2b10878e049517d0c8c1f9cde2b4e54edc05b1603aa44745e"
+    }
+  ],
+  "sourceFileCount": 27,
+  "patchSha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec",
+  "status": "deployed_disabled",
+  "initialDeploymentFlags": {
+    "NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED": "1",
+    "CASHFLOW_SHADOW_ENABLED": "0",
+    "CASHFLOW_SHADOW_EMAILS": "<approved-account-only>",
+    "CASHFLOW_CACHE_TRACK_WRITES": "0",
+    "CASHFLOW_CANDIDATES_ENABLED": "0"
+  },
+  "deployment": {
+    "verifiedAt": "2026-09-12T09:05:36.660951+00:00",
+    "id": "dpl_35btPGYkeGXnNLyMDfKvjzzSMgQA",
+    "url": "https://bohemika-provize-9nodzxfkr-jacobrausch989s-projects-909dd478.vercel.app",
+    "domain": "https://bohemka.app",
+    "diagnosticDisabledObserved": true,
+    "report": "cashflow-shadow-deployment-2026-09-12.json"
+  }
+}

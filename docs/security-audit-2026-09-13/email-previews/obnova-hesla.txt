@@ -1,0 +1,23 @@
+Předmět: Obnovení hesla do BohemkaApp
+
+BohemkaApp
+
+Nastav si nové heslo
+
+Ahoj,
+
+Obdrželi jsme žádost o obnovení hesla k tvému účtu v BohemkaApp. Nové heslo si nastavíš pomocí tlačítka níže.
+
+Nastavit nové heslo:
+
+https://example.invalid/ukazkovy-odkaz?nahled=1&neodesila=true
+
+Po nastavení nového hesla se vrať do aplikace a přihlas se.
+
+Odkaz je jednorázový. Pokud jeho platnost vypršela, vyžádej si v aplikaci nový.
+
+Pokud jsi o změnu hesla nežádal/a, tuto zprávu ignoruj. Samotným doručením e-mailu se heslo nezmění.
+
+Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.
+
+bohemka.app

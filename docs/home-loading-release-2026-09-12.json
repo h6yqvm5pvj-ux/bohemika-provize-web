@@ -1,0 +1,75 @@
+{
+  "status": "deployed",
+  "date": "2026-09-12",
+  "baseline": {
+    "deploymentId": "dpl_CDRYn8XZqSMkvY1ZqhGfPAK9TWUa",
+    "gitCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+    "patches": [
+      {
+        "file": "cashflow-shadow-only-release-2026-09-12.patch",
+        "sha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec"
+      },
+      {
+        "file": "data-loading-release-2026-09-12.patch",
+        "sha256": "f6b57f741b545d55dda1b97b0905032e377061aecf1f115af08c36bb74c11b9a"
+      },
+      {
+        "file": "cashflow-worker-release-2026-09-12.patch",
+        "sha256": "6254a818e4db13acf931702ddecbaf0e63fa4e56c7fea40f005991f230285ee4"
+      }
+    ]
+  },
+  "codePatch": {
+    "file": "home-loading-release-2026-09-12.patch",
+    "sha256": "e5e32b72669144b0df61b35751d915e0cacb8d442cd0e02e3f4d5f6d6787b3b4"
+  },
+  "files": [
+    {
+      "path": "src/app/api/tip-payouts/list/homeResponse.test.ts",
+      "sha256": "6ea50937cb8f9f543e73438bb7c68f55ed685a68db43cbed7eed8cef857c0ee7"
+    },
+    {
+      "path": "src/app/api/tip-payouts/list/route.ts",
+      "sha256": "375682f702ced62c3309f19132486f48701411332e73071bffa29ed7c7b97a1a"
+    },
+    {
+      "path": "src/app/home/components/MonthlyGoalSection.tsx",
+      "sha256": "d5e7e6f1b3af62ad5cd4f7ad069c2dbe4c4cc0f314e2a06089bdef0990462987"
+    },
+    {
+      "path": "src/app/home/components/ProductionLoading.test.tsx",
+      "sha256": "c5bfdf90540ab93e05d88f3ff52c894bec9605a3ea37d4c2c010fd895b87cb0f"
+    },
+    {
+      "path": "src/app/home/components/ProductionSummarySection.tsx",
+      "sha256": "33b78f293527d2eb4d21767d99222fbd50e6a5113475bab2655d7ac7e55493a3"
+    },
+    {
+      "path": "src/app/home/useHomeData.test.tsx",
+      "sha256": "d65d5dab94a8df08ef4d7e16e540547ce99f7697a2ecd6af08cc60fca37aef01"
+    },
+    {
+      "path": "src/app/home/useHomeData.ts",
+      "sha256": "6c912fae02aff02d17cd09d39d9b782a186f7fd4606e1f71e2933ee156ccb2d6"
+    },
+    {
+      "path": "src/app/page.tsx",
+      "sha256": "cf33464563c4afe22b0dd35d55671689d401bae16f4abaf11322710b66547b7f"
+    },
+    {
+      "path": "tests/firestore/tipPayoutHome.test.ts",
+      "sha256": "1802f801b32a9c32199588ec42c69236f77bb7a2280dcae1bb4dbd80ea6dbaac"
+    }
+  ],
+  "intendedRegion": "iad1",
+  "preservesExistingPayoutFromSelection": true,
+  "reducesPayoutDocumentReads": false,
+  "businessDataWrites": false,
+  "schemaChanges": false,
+  "regionVerificationSeparate": true,
+  "deploymentId": "dpl_G8ZJ4eutmWx6gf1wVzFoGu422V6W",
+  "productionUrl": "https://bohemka.app",
+  "runtimeRegions": [
+    "iad1"
+  ]
+}

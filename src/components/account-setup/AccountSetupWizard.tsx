@@ -855,8 +855,9 @@ export function AccountSetupWizard({
                   {!mfaEnabled && !mfaSecretKey ? (
                     <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
                       <p className="text-sm leading-relaxed text-violet-100/68">
-                        Nejdřív potvrď aktuální heslo. Potom se zobrazí QR kód pro
-                        přidání účtu do aplikace s ověřovacími kódy.
+                        Nejdřív potvrď aktuální heslo. Pokud ještě nemáš ověřený
+                        e-mail, pošleme ti odkaz do schránky. Po jeho potvrzení
+                        znovu klikni na Zapnout 2FA a zobrazí se QR kód.
                       </p>
                       <label className="mt-3 block space-y-2">
                         <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">

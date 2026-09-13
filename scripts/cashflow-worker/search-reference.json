@@ -1,0 +1,7 @@
+{
+  "sourcePath": "src/app/cashflow/page.tsx",
+  "pageSha256": "8f58ec356baeb91830fd577d5c56416e54651d4f2e5189a67a89f00e1b20f669",
+  "callbackName": "contractSearchStats",
+  "callbackSha256": "f1045a4bef341a1a875da48701fbaacf3a19f81abb961e24e932833edc68adbc",
+  "callbackTypeScript": "() => {\n    if (!contractNumberSearchActive) {\n      return { itemCount: 0, contractCount: 0, summary: null };\n    }\n\n    const contracts = new Map<string, CashflowItem>();\n    filteredCashflowItems.forEach((item) => {\n      const normalized = normalizeContractNumberSearch(item.contractNumber);\n      if (normalized && !contracts.has(normalized)) {\n        contracts.set(normalized, item);\n      }\n    });\n    const summaryItem = contracts.size === 1 ? Array.from(contracts.values())[0] : null;\n\n    return {\n      itemCount: filteredCashflowItems.length,\n      contractCount: contracts.size,\n      summary: summaryItem\n        ? {\n            productKey: summaryItem.productKey,\n            clientName: summaryItem.clientName ?? null,\n            inputAmount: summaryItem.inputAmount ?? null,\n            frequency: summaryItem.frequency ?? null,\n            contractStatus: summaryItem.contractStatus ?? null,\n          }\n        : null,\n    };\n  }"
+}

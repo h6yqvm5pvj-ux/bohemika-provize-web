@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -69,6 +71,7 @@ async function findPublicProfileRefs(db, email, uid) {
 }
 
 async function main() {
+  return withCashflowScriptMutation("script:set-document-specialist", async () => {
   const email = normalizeEmail(process.argv[2]);
   const mode = String(process.argv[3] ?? "on").trim().toLowerCase();
   if (!email || (mode !== "on" && mode !== "off")) {
@@ -107,7 +110,7 @@ async function main() {
 
   const batch = db.batch();
   targetRefs.forEach((ref) => batch.set(ref, patch, { merge: true }));
-  await batch.commit();
+  await trackCashflowScriptWrite(() => batch.commit(), db);
 
   console.log(
     JSON.stringify(
@@ -122,6 +125,7 @@ async function main() {
       2
     )
   );
+  });
 }
 
 main().catch((error) => {

@@ -1,0 +1,9 @@
+{
+  "emulatorOnly": true,
+  "externalNetworkBlocked": true,
+  "checks": [
+    "verification applied only with valid code; consumed code rejected",
+    "reset consumed once; old password rejected; new password signs in"
+  ],
+  "passed": true
+}

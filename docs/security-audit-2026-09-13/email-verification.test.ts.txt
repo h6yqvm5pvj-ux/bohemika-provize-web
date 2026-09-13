@@ -1,0 +1,51 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const mocks = vi.hoisted(() => ({ verifyIdToken: vi.fn(), getUser: vi.fn(), updateUser: vi.fn() }));
+vi.mock('@/lib/server/firebaseAdmin', () => ({ adminAuth: mocks, adminDb: null }));
+vi.mock('@/lib/server/rateLimit', () => ({ consumeRateLimit: async () => ({ allowed: true }), applyRateLimitHeaders: () => {} }));
+vi.mock('@/lib/server/loginAttemptLockout', () => ({ getLoginAttemptLockoutError: async () => null }));
+import { POST } from '@/app/api/auth/confirm-email-for-mfa/route';
+const email = 'audit-synthetic@example.test';
+const uid = 'audit-synthetic-uid';
+const request = (bearer = true) => new Request('http://localhost/api/auth/confirm-email-for-mfa', {
+  method: 'POST', headers: bearer ? { Authorization: 'Bearer synthetic-token' } : {},
+});
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.verifyIdToken.mockResolvedValue({ uid, email, email_verified: false, auth_time: Math.floor(Date.now()/1000) });
+  mocks.getUser.mockResolvedValue({ uid, email, emailVerified: false, disabled: false });
+  mocks.updateUser.mockResolvedValue({ uid, email, emailVerified: true });
+});
+describe('local audit: current email-verification behavior, with no Firebase connection', () => {
+  it('rejects a missing bearer token', async () => {
+    expect((await POST(request(false))).status).toBe(401);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it('rejects an invalid bearer token', async () => {
+    mocks.verifyIdToken.mockRejectedValue(new Error('synthetic invalid token'));
+    expect((await POST(request())).status).toBe(401);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it('rejects old authentication', async () => {
+    mocks.verifyIdToken.mockResolvedValue({ uid, email, auth_time: Math.floor(Date.now()/1000) - 601 });
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it('rejects a disabled account', async () => {
+    mocks.getUser.mockResolvedValue({ uid, email, emailVerified: false, disabled: true });
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it('rejects an account/token email mismatch', async () => {
+    mocks.getUser.mockResolvedValue({ uid, email: 'different@example.test', emailVerified: false, disabled: false });
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  // This is a reproduction of an unsafe behavior, NOT an assertion that it is secure.
+  it('CONFIRMED FINDING: marks an unverified email verified with no mailbox challenge', async () => {
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, emailVerified: true, alreadyVerified: false });
+    expect(mocks.verifyIdToken).toHaveBeenCalledWith('synthetic-token', true);
+    expect(mocks.updateUser).toHaveBeenCalledExactlyOnceWith(uid, { emailVerified: true });
+  });
+});

@@ -1,0 +1,251 @@
+{
+  "query": "five sequential ID-only queries for random missing diagnostic document IDs per request",
+  "dataWrites": 0,
+  "businessDataRead": false,
+  "results": [
+    {
+      "region": "iad1",
+      "round": -1,
+      "deniedWithoutSecret": true
+    },
+    {
+      "region": "fra1",
+      "round": -1,
+      "deniedWithoutSecret": true
+    },
+    {
+      "region": "iad1",
+      "round": 0,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        718.04,
+        150.02,
+        405.19,
+        126.99,
+        405.98
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 0,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        260.6,
+        77.92,
+        58.82,
+        65.79,
+        51.26
+      ]
+    },
+    {
+      "region": "iad1",
+      "round": 1,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        131.48,
+        407.11,
+        125.84,
+        438.42,
+        147.82
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 1,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        45.86,
+        44.14,
+        54.46,
+        47.66,
+        84.31
+      ]
+    },
+    {
+      "region": "iad1",
+      "round": 2,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        124.56,
+        103.73,
+        97.8,
+        97.47,
+        406.33
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 2,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        47.69,
+        45.08,
+        39.45,
+        20.19,
+        19.91
+      ]
+    },
+    {
+      "region": "iad1",
+      "round": 3,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        118.74,
+        107.69,
+        183.77,
+        117.06,
+        105.41
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 3,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        53.72,
+        27.64,
+        29.88,
+        25.92,
+        20.42
+      ]
+    },
+    {
+      "region": "iad1",
+      "round": 4,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        104.43,
+        108.84,
+        102.21,
+        92.54,
+        102.89
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 4,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        40.9,
+        29.49,
+        35.06,
+        35.25,
+        27.41
+      ]
+    },
+    {
+      "region": "iad1",
+      "round": 5,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        99.21,
+        104.61,
+        94.28,
+        100.76,
+        97.93
+      ]
+    },
+    {
+      "region": "fra1",
+      "round": 5,
+      "empty": true,
+      "databaseLocation": "eur3",
+      "durationsMs": [
+        58.46,
+        32.06,
+        19.4,
+        29.94,
+        29.66
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "region": "iad1",
+      "databaseLocations": [
+        "eur3"
+      ],
+      "reads": 30,
+      "firstReadMs": 718.04,
+      "warmReads": 29,
+      "warmMedianMs": 108.84,
+      "warmP95Ms": 407.11,
+      "warmMinMs": 92.54,
+      "warmMaxMs": 438.42
+    },
+    {
+      "region": "fra1",
+      "databaseLocations": [
+        "eur3"
+      ],
+      "reads": 30,
+      "firstReadMs": 260.6,
+      "warmReads": 29,
+      "warmMedianMs": 39.45,
+      "warmP95Ms": 77.92,
+      "warmMinMs": 19.4,
+      "warmMaxMs": 84.31
+    }
+  ],
+  "date": "2026-09-12",
+  "baseDeploymentId": "dpl_35btPGYkeGXnNLyMDfKvjzzSMgQA",
+  "diagnosticRouteSha256": "fccd58f145f94bc203d0530dc00badd355dbc1f971055fdefff19386d614625a",
+  "deployments": [
+    {
+      "requestedRegion": "iad1",
+      "id": "dpl_4kDLVEH9Xor16qdNx5yZLnfRGJaF",
+      "url": "bohemika-provize-2y9qk02cf-jacobrausch989s-projects-909dd478.vercel.app",
+      "readyState": "READY",
+      "target": "preview",
+      "regions": null
+    },
+    {
+      "requestedRegion": "fra1",
+      "id": "dpl_CqQpAXHuW7zn97jbeEVKm2fGiMfD",
+      "url": "bohemika-provize-8ufccol3n-jacobrausch989s-projects-909dd478.vercel.app",
+      "readyState": "READY",
+      "target": "preview",
+      "regions": null
+    }
+  ],
+  "productionRegionChanged": false,
+  "limitations": [
+    "Single short synthetic read-only run, not authenticated end-to-end page timing.",
+    "Warm statistics exclude only the first read in each region; process reuse is not independently tracked.",
+    "No contract or mailbox document was queried.",
+    "No conclusion about whole-page speedup or costs from query latency alone."
+  ],
+  "warmMedianReductionPercent": 63.8,
+  "cleanup": {
+    "deploymentIds": [
+      "dpl_4kDLVEH9Xor16qdNx5yZLnfRGJaF",
+      "dpl_CqQpAXHuW7zn97jbeEVKm2fGiMfD"
+    ],
+    "removeExitCode": 0,
+    "confirmedPreviewBeforeDeletion": true,
+    "checks": [
+      {
+        "id": "dpl_4kDLVEH9Xor16qdNx5yZLnfRGJaF",
+        "exitCode": 1,
+        "notFound": true
+      },
+      {
+        "id": "dpl_CqQpAXHuW7zn97jbeEVKm2fGiMfD",
+        "exitCode": 1,
+        "notFound": true
+      }
+    ],
+    "removedVerified": true
+  }
+}

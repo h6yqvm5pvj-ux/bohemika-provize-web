@@ -50,22 +50,22 @@ export function GoldWidget({
   return (
     <section className={`${styles.card} ${styles.gold} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
       <Image src="/images/investicni-zlato-pamp.png" alt="" width={1536} height={1024} aria-hidden="true" priority className={`${styles.ghost} ${styles.goldGhost}`} />
-      <div className={`${styles.content} ${styles.moneyLayout}`}>
-        <div>
-          <h2 className={styles.title}><span className={styles.icon}><Coins aria-hidden="true" /></span>{copy.currentPrice}</h2>
+      <div className={styles.content}>
+        <h2 className={styles.title}><span className={styles.icon}><Coins aria-hidden="true" /></span>{copy.currentPrice}</h2>
+        <div className={styles.goldMetrics}>
           <p className={styles.amount}>{goldLoading && !goldData ? copy.loading : goldData ? formatMoney(goldData.czkPerOz) : "—"}</p>
-          {goldError && <p className={styles.error}>{goldError}</p>}
+          <aside className={styles.trend} data-direction={goldDir}>
+            <TrendIcon aria-hidden="true" />
+            <div>
+              <p className={styles.label}>{copy.dailyMove}</p>
+              <p className={styles.trendValues}>
+                <span>{goldChangePct == null ? copy.noChange : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}</span>
+                {goldChangeAbs != null && <small>{goldChangeAbs > 0 ? "+" : goldChangeAbs < 0 ? "−" : ""}{formatMoney(Math.abs(goldChangeAbs))}</small>}
+              </p>
+            </div>
+          </aside>
         </div>
-        <aside className={styles.trend} data-direction={goldDir}>
-          <TrendIcon aria-hidden="true" />
-          <div>
-            <p className={styles.label}>{copy.dailyMove}</p>
-            <p className={styles.trendValues}>
-              <span>{goldChangePct == null ? copy.noChange : `${goldChangePct > 0 ? "+" : ""}${goldChangePct.toFixed(2)} %`}</span>
-              {goldChangeAbs != null && <small>{goldChangeAbs > 0 ? "+" : goldChangeAbs < 0 ? "−" : ""}{formatMoney(Math.abs(goldChangeAbs))}</small>}
-            </p>
-          </div>
-        </aside>
+        {goldError && <p className={styles.error}>{goldError}</p>}
       </div>
     </section>
   );

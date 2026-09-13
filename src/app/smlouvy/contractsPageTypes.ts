@@ -137,6 +137,7 @@ export type ProductCategory =
 export type Institution = ProductInstitutionId;
 
 export type ContractsCache = {
+  availablePositions?: Position[];
   userEmail: string;
   position: Position | null;
   myContracts: ContractDoc[];
@@ -150,6 +151,7 @@ export type ContractsCache = {
 };
 
 export type ContractsApiResponse = {
+  availablePositions?: Position[];
   ok: boolean;
   error?: string;
   position?: Position | null;
@@ -182,6 +184,7 @@ export type ContractsListFilters = {
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
+  selectedPositions: Position[];
   selectedSubordinates: string[];
 };
 
@@ -199,6 +202,7 @@ export type ContractsViewState = {
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
   selectedInstitutions: Institution[];
+  selectedPositions: Position[];
   selectedSubordinates: string[];
   scrollY: number;
 };

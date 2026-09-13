@@ -1,0 +1,19 @@
+{
+  "verifiedAtUtc": "2026-09-13T11:07:38.490913+00:00",
+  "before": {
+    "alias": "bohemka.app",
+    "deploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+    "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX"
+  },
+  "promotionExitCode": 0,
+  "after": {
+    "alias": "bohemka.app",
+    "deploymentId": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+    "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX"
+  },
+  "regions": [
+    "fra1"
+  ],
+  "rollbackDeploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+  "promotedVerified": true
+}

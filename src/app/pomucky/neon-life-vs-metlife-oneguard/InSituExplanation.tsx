@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight, CircleHelp, Microscope, ShieldAlert } from "lucide-react";
 
 import { HelpDialog } from "@/components/HelpDialog";
+import styles from "./comparison.module.css";
 
 export function InSituExplanation() {
   const [open, setOpen] = useState(false);
@@ -13,7 +14,7 @@ export function InSituExplanation() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-fuchsia-200 bg-white px-2.5 py-1.5 text-xs font-black text-fuchsia-800 shadow-sm transition hover:-translate-y-0.5 hover:border-fuchsia-300 hover:bg-fuchsia-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2"
+        className={styles.helpButton}
       >
         <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
         Co je to?

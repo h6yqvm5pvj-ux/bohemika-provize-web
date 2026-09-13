@@ -1,0 +1,3656 @@
+diff --git a/src/app/api/cashflow/shadow/route.test.ts b/src/app/api/cashflow/shadow/route.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/cashflow/shadow/route.test.ts
+@@ -0,0 +1,152 @@
++import { NextRequest } from "next/server";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { computeCashflow, type CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import { buildCashflowView, type CashflowViewOptions } from "@/app/cashflow/buildCashflowView";
++import { CASHFLOW_SHADOW_VERSION, hashCashflowValue } from "@/app/cashflow/shadowProtocol";
++
++const mocks = vi.hoisted(() => ({ load: vi.fn(), rateLimit: vi.fn(), auth: vi.fn() }));
++vi.mock("@/lib/server/apiEntryGuard", () => ({ requireAuthedRateLimited: mocks.auth }));
++vi.mock("@/lib/server/cashflowShadowInputs", async (original) => ({
++  ...await original<typeof import("@/lib/server/cashflowShadowInputs")>(),
++  loadCashflowShadowInputs: mocks.load,
++}));
++vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rateLimit }));
++import { CashflowShadowInputsError } from "@/lib/server/cashflowShadowInputs";
++import { POST } from "./route";
++
++const email = "own@example.test";
++const snapshot: CashflowSnapshot = {
++  email, myPosition: null, myCommissionMode: null, hasAnyTeam: false,
++  ownEntries: [], teamEntriesRaw: [], subscriptionPayments: [],
++  tipPayouts: [{ id: "tip1", payoutDate: new Date(2026, 8, 10).getTime(), amount: 123, clientName: "Private client" }],
++};
++const options: CashflowViewOptions = {
++  scopeFilter: "combined", productFilter: "all", tipsterMode: false,
++  showPastYears: true, intelligentPredictionEnabled: false, contractNumberQuery: "",
++};
++const inputs = () => ({ snapshot: structuredClone(snapshot), statements: [], effectiveEmail: email, tipsterMode: false });
++async function body() {
++  const asOf = new Date();
++  const items = computeCashflow(snapshot, { ...options, asOf });
++  const months = buildCashflowView(items, [], options, asOf);
++  return {
++    version: CASHFLOW_SHADOW_VERSION, asOfMs: asOf.getTime(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++    options, inputHash: await hashCashflowValue({ snapshot, statements: [] }),
++    itemsHash: await hashCashflowValue(items), monthsHash: await hashCashflowValue(months),
++  };
++}
++function request(data: unknown, signal?: AbortSignal) {
++  return new NextRequest("https://example.test/api/cashflow/shadow?email=other@example.test", {
++    method: "POST", headers: { Authorization: "Bearer test-token", "Content-Type": "application/json" },
++    body: typeof data === "string" ? data : JSON.stringify(data), signal,
++  });
++}
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  vi.stubEnv("CASHFLOW_SHADOW_ENABLED", "1");
++  vi.stubEnv("CASHFLOW_SHADOW_EMAILS", email);
++  mocks.auth.mockResolvedValue({ ok: true, ctx: { email, uid: "verified-uid" } });
++  vi.spyOn(console, "info").mockImplementation(() => undefined);
++  mocks.rateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 300 });
++  mocks.load.mockImplementation(async (_req, { authorizeEmail }) => {
++    if (!await authorizeEmail(email)) throw new CashflowShadowInputsError("not_allowed", 403);
++    return inputs();
++  });
++});
++afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
++
++describe("cashflow server shadow endpoint", () => {
++  it("authenticates own-account access before source reads", async () => {
++    mocks.auth.mockResolvedValue({ ok: false, response: new Response(null, { status: 401 }) });
++    expect((await POST(request(await body()))).status).toBe(401);
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("requests fresh profile and permission context only after own-account authentication", async () => {
++    const response = await POST(request({ ...await body(), email: "intruder@test", uid: "intruder" }));
++    expect(await response.json()).toEqual({ ok: true, status: "match", itemsMatch: true, monthsMatch: true });
++    expect(mocks.auth.mock.invocationCallOrder[0]).toBeLessThan(mocks.load.mock.invocationCallOrder[0]);
++    expect(mocks.load.mock.calls[0][1]).toMatchObject({ freshCashflowContext: true });
++    expect(mocks.auth.mock.calls[0][1]).toMatchObject({ allowImpersonation: false, enforceAdvisorSetup: false });
++  });
++  it("rejects a changed effective identity even if a source handler returned success", async () => {
++    mocks.load.mockResolvedValue({ ...inputs(), effectiveEmail: "other@test" });
++    expect(await (await POST(request(await body()))).json()).toMatchObject({ status: "skipped", reason: "different_inputs" });
++  });
++  it.each(["CASHFLOW_SHADOW_ENABLED", "CASHFLOW_SHADOW_EMAILS"])("does no reads when %s is missing", async (flag) => {
++    vi.stubEnv(flag, "");
++    const response = await POST(request(await body()));
++    expect(await response.json()).toEqual({ ok: true, status: "skipped", reason: "disabled" });
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("compares actual computation and months only for the authorized effective account", async () => {
++    const response = await POST(request({ ...await body(), email: "other@example.test", snapshot: { amount: 999 } }));
++    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
++    expect(response.headers.get("Server-Timing")).toMatch(/cashflow_(?:auth|inputs|compute|hash);dur=/);
++    expect(response.headers.get("Server-Timing")).not.toMatch(/storage|Private client|own@example|inputHash/);
++    expect(await response.json()).toEqual({ ok: true, status: "match", itemsMatch: true, monthsMatch: true });
++    expect(mocks.rateLimit).toHaveBeenCalledWith({ namespace: "api:cashflow:shadow", key: email, limit: 1, windowMs: 300000 });
++    expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toMatch(/Private client|own@example|123|inputHash/);
++  });
++  it.each(["itemsHash", "monthsHash"] as const)("reports a changed %s without returning amounts or portfolio", async (key) => {
++    const response = await POST(request({ ...await body(), [key]: "0".repeat(64) }));
++    expect(await response.json()).toEqual({ ok: true, status: "mismatch", itemsMatch: key !== "itemsHash", monthsMatch: key !== "monthsHash" });
++  });
++  it("marks newer source data inconclusive instead of claiming a calculation mismatch", async () => {
++    const response = await POST(request({ ...await body(), inputHash: "0".repeat(64) }));
++    expect(await response.json()).toEqual({ ok: true, status: "skipped", reason: "different_inputs" });
++    expect(console.info).not.toHaveBeenCalled();
++  });
++  it("skips potentially excessive calculation work before generating predictions", async () => {
++    mocks.load.mockResolvedValue({
++      ...inputs(), snapshot: { ...snapshot, ownEntries: [{ id: "bad", durationYears: 10000000 }] },
++    });
++    expect(await (await POST(request(await body()))).json()).toEqual({ ok: true, status: "skipped", reason: "resource_limit" });
++    expect(console.info).not.toHaveBeenCalled();
++  });
++  it("does not trust the client account type", async () => {
++    const valid = await body();
++    const response = await POST(request({ ...valid, options: { ...options, tipsterMode: true } }));
++    expect(await response.json()).toMatchObject({ status: "skipped", reason: "different_inputs" });
++  });
++  it("rejects accounts outside the allowlist before consuming their diagnostic allowance", async () => {
++    vi.stubEnv("CASHFLOW_SHADOW_EMAILS", "other@example.test");
++    expect((await POST(request(await body()))).status).toBe(403);
++    expect(mocks.rateLimit).not.toHaveBeenCalled();
++  });
++  it("preserves authentication failure", async () => {
++    mocks.load.mockRejectedValue(new CashflowShadowInputsError("unauthorized", 401));
++    expect((await POST(request(await body()))).status).toBe(401);
++  });
++  it("limits heavy rereads independently of normal cashflow requests", async () => {
++    mocks.rateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 299 });
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(429);
++    expect(response.headers.get("Retry-After")).toBe("299");
++  });
++  it.each(["time_zone", "stale_context"])("skips %s before reading portfolio", async (reason) => {
++    const valid = await body();
++    const response = await POST(request({ ...valid, ...(reason === "time_zone" ? { timeZone: "different/zone" } : { asOfMs: valid.asOfMs - 300001 }) }));
++    expect(await response.json()).toMatchObject({ status: "skipped", reason });
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each(["incomplete", "limit", "timeout"] as const)("never calls a partial %s result a match", async (code) => {
++    mocks.load.mockRejectedValue(new CashflowShadowInputsError(code));
++    expect(await (await POST(request(await body()))).json()).toMatchObject({ status: "skipped", reason: code === "timeout" ? "unavailable" : "incomplete_inputs" });
++  });
++  it("isolates unexpected failures and does not expose source data", async () => {
++    mocks.load.mockRejectedValue(new Error("private database contents"));
++    const response = await POST(request(await body()));
++    expect(await response.json()).toEqual({ ok: true, status: "skipped", reason: "unavailable" });
++    expect(console.info).not.toHaveBeenCalled();
++  });
++  it("ignores completed work after request cancellation", async () => {
++    const controller = new AbortController();
++    mocks.load.mockImplementation(async () => { controller.abort(); return inputs(); });
++    expect(await (await POST(request(await body(), controller.signal))).json()).toMatchObject({ status: "skipped", reason: "unavailable" });
++  });
++  it.each(["{", "x".repeat(4097)])("bounds and validates the body before data reads", async (raw) => {
++    expect((await POST(request(raw))).status).toBe(400);
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/app/api/cashflow/shadow/route.ts b/src/app/api/cashflow/shadow/route.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/cashflow/shadow/route.ts
+@@ -0,0 +1,99 @@
++import { NextResponse, type NextRequest } from "next/server";
++import { computeCashflow } from "@/app/cashflow/computeCashflow";
++import { buildCashflowView } from "@/app/cashflow/buildCashflowView";
++import {
++  CASHFLOW_SHADOW_VERSION,
++  hashCashflowValue,
++  isCashflowShadowContextCurrent,
++  parseCashflowShadowRequest,
++  type CashflowShadowResult,
++} from "@/app/cashflow/shadowProtocol";
++import { CashflowShadowInputsError, loadCashflowShadowInputs } from "@/lib/server/cashflowShadowInputs";
++import { isCashflowShadowWithinBudget } from "@/lib/server/cashflowShadowBudget";
++import { consumeRateLimit } from "@/lib/server/rateLimit";
++import { requireAuthedRateLimited } from "@/lib/server/apiEntryGuard";
++import {
++  cashflowShadowAllowedEmails, readCashflowDiagnosticJson, createCashflowDiagnosticTiming,
++} from "@/lib/server/cashflowDiagnosticHttp";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++
++class ShadowRateLimitError extends Error {
++  constructor(readonly retryAfter: number) { super("Shadow rate limit"); }
++}
++
++// Diagnostics only. No calculated snapshot is persisted or returned as display data.
++export async function POST(req: NextRequest): Promise<NextResponse> {
++  const timing = createCashflowDiagnosticTiming();
++  const json = timing.json;
++  const skipped = (reason: CashflowShadowResult["reason"]) => json({ ok: true, status: "skipped", reason } satisfies CashflowShadowResult);
++  const allowedEmails = cashflowShadowAllowedEmails();
++  if (process.env.CASHFLOW_SHADOW_ENABLED !== "1" || allowedEmails.size === 0) return skipped("disabled");
++
++  const body = parseCashflowShadowRequest(await readCashflowDiagnosticJson(req));
++  if (!body) return json({ ok: false, error: "Invalid shadow comparison request." }, 400);
++  if (body.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone) return skipped("time_zone");
++  if (!isCashflowShadowContextCurrent(body.asOfMs)) return skipped("stale_context");
++
++  try {
++    const auth = await timing.measure("auth", () => requireAuthedRateLimited(req, {
++      namespace: "api:cashflow:shadow:auth", limit: 30, windowMs: 60_000,
++      allowImpersonation: false, enforceAdvisorSetup: false,
++    }));
++    if (!auth.ok) {
++      const response = json({ ok: false, error: "Shadow comparison unavailable." }, auth.response.status);
++      const retry = auth.response.headers.get("Retry-After");
++      if (retry) response.headers.set("Retry-After", retry);
++      return response;
++    }
++    if (!allowedEmails.has(auth.ctx.email)) return json({ ok: false, error: "Shadow comparison unavailable." }, 403);
++    const inputs = await timing.measure("inputs", () => loadCashflowShadowInputs(req, {
++      freshCashflowContext: true,
++      authorizeEmail: async (email) => {
++        if (email !== auth.ctx.email || !allowedEmails.has(email)) return false;
++        const limit = await consumeRateLimit({
++          namespace: "api:cashflow:shadow", key: email, limit: 1, windowMs: 5 * 60_000,
++        });
++        if (!limit.allowed) throw new ShadowRateLimitError(limit.retryAfterSeconds);
++        return true;
++      },
++    }));
++    if (inputs.effectiveEmail !== auth.ctx.email || inputs.snapshot.email !== auth.ctx.email) return skipped("different_inputs");
++    if (req.signal.aborted) return skipped("unavailable");
++    if (!isCashflowShadowContextCurrent(body.asOfMs)) return skipped("stale_context");
++    if (inputs.tipsterMode !== body.options.tipsterMode) return skipped("different_inputs");
++    const asOf = new Date(body.asOfMs);
++    if (!isCashflowShadowWithinBudget(inputs.snapshot, asOf)) return skipped("resource_limit");
++    const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
++    if (inputHash !== body.inputHash) return skipped("different_inputs");
++
++    const { items, months } = await timing.measure("compute", () => {
++      const items = computeCashflow(inputs.snapshot, { ...body.options, asOf });
++      return { items, months: buildCashflowView(items, inputs.statements, body.options, asOf) };
++    });
++    const [itemsHash, monthsHash] = await timing.measure("hash", () => Promise.all([hashCashflowValue(items), hashCashflowValue(months)]));
++    if (req.signal.aborted) return skipped("unavailable");
++    const result: CashflowShadowResult = {
++      ok: true,
++      status: itemsHash === body.itemsHash && monthsHash === body.monthsHash ? "match" : "mismatch",
++      itemsMatch: itemsHash === body.itemsHash,
++      monthsMatch: monthsHash === body.monthsHash,
++    };
++    // Aggregate diagnostics only: no identifiers, fingerprints or amounts.
++    console.info("[cashflow-shadow]", { version: CASHFLOW_SHADOW_VERSION, ...result });
++    return json(result);
++  } catch (error) {
++    if (error instanceof ShadowRateLimitError) {
++      const response = json({ ok: false, error: "Shadow comparison is rate limited." }, 429);
++      response.headers.set("Retry-After", String(error.retryAfter));
++      return response;
++    }
++    if (error instanceof CashflowShadowInputsError) {
++      if ([401, 403, 429].includes(error.status)) return json({ ok: false, error: "Shadow comparison unavailable." }, error.status);
++      return skipped(error.code === "incomplete" || error.code === "limit" ? "incomplete_inputs" : "unavailable");
++    }
++    // Verification must not expose upstream errors or be mistaken for a match.
++    return skipped("unavailable");
++  }
++}
+diff --git a/src/app/api/commission-statements/cashflowResponse.test.ts b/src/app/api/commission-statements/cashflowResponse.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/commission-statements/cashflowResponse.test.ts
+@@ -0,0 +1,157 @@
++import { NextRequest, NextResponse } from "next/server";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  guard: vi.fn(),
++  reads: vi.fn(),
++  records: new Map<string, Record<string, unknown>>(),
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => ({
++  adminDb: {
++    collection: (name: string) => ({
++      doc: (email: string) => ({
++        collection: (child: string) => {
++          const path = `${name}/${email}/${child}`;
++          const snapshot = (id: string, fields?: string[]) => ({
++            id,
++            exists: mocks.records.has(id),
++            data: () => {
++              const data = mocks.records.get(id);
++              return data && fields
++                ? Object.fromEntries(Object.entries(data).filter(([key]) => fields.includes(key)))
++                : data;
++            },
++          });
++          const query = (fields?: string[], limit?: number) => ({
++            orderBy: () => query(fields, limit),
++            limit: (nextLimit: number) => query(fields, nextLimit),
++            select: (...selected: string[]) => query(selected, limit),
++            get: async () => {
++              mocks.reads(path, fields);
++              return { docs: [...mocks.records.keys()].slice(0, limit).map(id => snapshot(id, fields)) };
++            },
++            doc: (id: string) => ({ get: async () => snapshot(id) }),
++          });
++          return query();
++        },
++      }),
++    }),
++  },
++}));
++vi.mock("@/lib/server/apiEntryGuard", () => ({
++  requireAuthedRateLimited: mocks.guard,
++  withRateLimitHeaders: (response: NextResponse) => response,
++}));
++vi.mock("@/app/api/contracts/_lib/contractsApi", () => ({
++  requireContractsEntryGuard: vi.fn(),
++  hasContractAccess: vi.fn(),
++}));
++
++import { GET } from "./route";
++import { statementMonthKey, dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
++
++const summaryFields = [
++  "id", "fileName", "statementNumber", "statementDate", "period", "advisorNumber",
++  "periodStartMs", "periodEndMs", "statementDateMs", "payoutMonthKey",
++  "paidContractNumbers", "paidCommissionKeys", "commissionTotal", "payoutTotal",
++  "otherPaymentsTotal", "managerCommissionTotal", "createdAtMs", "updatedAtMs",
++];
++const request = (query = "") => new NextRequest(`https://example.test/api/commission-statements?${query}`);
++const read = async (query = "") => {
++  const response = await GET(request(query));
++  expect(response.status).toBe(200);
++  return response.json();
++};
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  mocks.records.clear();
++  mocks.guard.mockResolvedValue({ ok: true, ctx: { email: "advisor@example.test" } });
++  mocks.records.set("statement_000001", {
++    fileName: "Vypis.html", statementNumber: "123", statementDate: "10.09.2026",
++    period: "01.08.2026 - 31.08.2026", advisorNumber: "42",
++    periodStartMs: Date.UTC(2026, 7, 1), periodEndMs: Date.UTC(2026, 7, 31),
++    statementDateMs: Date.UTC(2026, 8, 10), createdAtMs: 1000, updatedAtMs: 2000,
++    commissionTotal: 1500, otherPaymentsTotal: 250, managerCommissionTotal: 300,
++    payoutTotal: 2050,
++    html: '<div id="ostatni_platby"><table><tr><td>Doplatek smlouvy 123456789 A101</td><td>250</td></tr></table></div>',
++    autoPremiumRows: [{ rowId: "1", contractNumber: "123456789", productCode: "CPP_ACPIV", commissionCode: "B101", basePremium: 12000 }],
++    processingResult: { details: "expensive unused processing details".repeat(4000) },
++  });
++});
++
++describe("cashflow statement response", () => {
++  it("marks bounded raw queries conservatively even when deduplication returns fewer rows", async () => {
++    mocks.records.set("statement_000002", { ...mocks.records.get("statement_000001")! });
++    const result = await read("shape=cashflow&limit=2");
++    expect(result.items).toHaveLength(1);
++    expect(result.hasMore).toBe(true);
++    expect((await read("shape=cashflow&limit=3")).hasMore).toBe(false);
++    expect((await read("limit=2")).hasMore).toBeUndefined();
++  });
++
++  it("excludes unfinished and unknown import metadata from shadow verification", async () => {
++    expect((await read("shape=cashflow")).processingComplete).toBe(false);
++    const record = mocks.records.get("statement_000001")!;
++    record.processedAtMs = record.updatedAtMs;
++    expect((await read("shape=cashflow")).processingComplete).toBe(true);
++    record.updatedAtMs = 3000;
++    expect((await read("shape=cashflow")).processingComplete).toBe(false);
++    mocks.records.clear();
++    expect((await read("shape=cashflow")).processingComplete).toBe(true);
++  });
++
++  it("preserves every cashflow field and paid-contract matching while omitting unused details", async () => {
++    const full = (await read("limit=240")).items[0];
++    const compact = (await read("shape=cashflow&limit=240")).items[0];
++    expect(compact).toEqual(Object.fromEntries(summaryFields.map(key => [key, full[key]])));
++    expect(compact.paidContractNumbers).toEqual(["123456789"]);
++    expect(compact.paidCommissionKeys).not.toHaveLength(0);
++    expect(statementMonthKey(compact)).toBe(statementMonthKey(full));
++    expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(full).length / 10);
++    expect(mocks.reads).toHaveBeenLastCalledWith(
++      "usersPrivate/advisor@example.test/commissionStatements",
++      expect.arrayContaining(["html", "advisorNumber", "updatedAtMs", "processedAtMs"]),
++    );
++    const selected = mocks.reads.mock.lastCall?.[1] as string[];
++    expect(selected).not.toContain("processingResult");
++    expect(selected).not.toContain("autoPremiumRows");
++  });
++
++  it("retains the same defaults and date fallback for legacy statements", async () => {
++    mocks.records.set("statement_000001", { periodEndMs: Date.UTC(2026, 7, 31) });
++    const full = (await read()).items[0];
++    const compact = (await read("shape=cashflow")).items[0];
++    expect(compact).toEqual(Object.fromEntries(summaryFields.map(key => [key, full[key]])));
++    expect(compact.paidContractNumbers).toEqual([]);
++    expect(compact.paidCommissionKeys).toEqual([]);
++    expect(statementMonthKey(compact)).toBe(statementMonthKey(full));
++  });
++
++  it("preserves duplicate selection including the processed timestamp fallback", async () => {
++    const first = mocks.records.get("statement_000001")!;
++    delete first.updatedAtMs;
++    first.processedAtMs = 3000;
++    mocks.records.set("statement_000002", { ...first, processedAtMs: 4000, payoutTotal: 999 });
++    const full = (await read("limit=240")).items;
++    const compact = (await read("shape=cashflow&limit=240")).items;
++    expect(compact).toHaveLength(1);
++    expect(compact[0].id).toBe(full[0].id);
++    expect(compact[0].payoutTotal).toBe(999);
++    expect(dedupeCashflowCommissionStatements(compact)).toEqual(compact);
++  });
++
++  it("keeps month filtering and the full statement preview available", async () => {
++    expect((await read("shape=cashflow&year=2025&month=1")).items).toEqual([]);
++    const detail = (await read("id=statement_000001&includeHtml=1")).item;
++    expect(detail.html).toBe(mocks.records.get("statement_000001")!.html);
++    expect(detail.processingResult).toBeTruthy();
++    expect(detail.autoPremiumRows).toHaveLength(1);
++  });
++
++  it("rejects unauthenticated requests before reading any statements", async () => {
++    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
++    expect((await GET(request("shape=cashflow"))).status).toBe(401);
++    expect(mocks.reads).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/app/api/commission-statements/route.ts b/src/app/api/commission-statements/route.ts
+--- a/src/app/api/commission-statements/route.ts
++++ b/src/app/api/commission-statements/route.ts
+@@ -1364,7 +1364,8 @@
+ 
+ const serializeStatementDoc = (
+   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
+-  includeHtml = false
++  includeHtml = false,
++  shape: "full" | "cashflow" = "full"
+ ) => {
+   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+   const html = normalizeText(data.html, MAX_HTML_LENGTH);
+@@ -1387,9 +1388,7 @@
+     normalizeNullableNumber(data.payoutTotal) ?? extractPayoutTotalFromStoredHtml(html);
+   const paidContractNumbers = extractPaidContractNumbersFromStoredHtml(html);
+   const paidCommissionKeys = extractPaidCommissionKeysFromStoredHtml(html);
+-  const autoPremiumRows = autoPremiumRowsFromStatementData(data, html);
+-
+-  return {
++  const summary = {
+     id: docSnap.id,
+     fileName: normalizeText(data.fileName) ?? "Provizní výpis",
+     statementNumber: normalizeText(data.statementNumber, 64),
+@@ -1399,24 +1398,31 @@
+     periodStartMs,
+     periodEndMs,
+     statementDateMs,
+-    statementChronologyMs,
+     payoutMonthKey,
+     paidContractNumbers,
+     paidCommissionKeys,
+-    autoPremiumRows,
++    commissionTotal: normalizeNumber(data.commissionTotal),
++    payoutTotal,
++    otherPaymentsTotal: normalizeNumber(data.otherPaymentsTotal),
++    managerCommissionTotal: normalizeNumber(data.managerCommissionTotal),
++    createdAtMs: toMillis(data.createdAtMs),
++    updatedAtMs: toMillis(data.updatedAtMs),
++  };
++  // Cashflow still needs paid-contract/code matching from legacy HTML, but not
++  // premium-history rows or the potentially large processing report.
++  if (shape === "cashflow") return summary;
++
++  return {
++    ...summary,
++    statementChronologyMs,
++    autoPremiumRows: autoPremiumRowsFromStatementData(data, html),
+     commissionRowCount: normalizeNumber(data.commissionRowCount),
+-    commissionTotal: normalizeNumber(data.commissionTotal),
+     reserveFundTotal: normalizeNumber(data.reserveFundTotal),
+-    payoutTotal,
+     otherPaymentsCount: normalizeNumber(data.otherPaymentsCount),
+-    otherPaymentsTotal: normalizeNumber(data.otherPaymentsTotal),
+     managerAdvisorCount: normalizeNumber(data.managerAdvisorCount),
+     managerRowCount: normalizeNumber(data.managerRowCount),
+-    managerCommissionTotal: normalizeNumber(data.managerCommissionTotal),
+     stornoRowCount: normalizeNumber(data.stornoRowCount),
+     stornoTotal: normalizeNumber(data.stornoTotal),
+-    createdAtMs: toMillis(data.createdAtMs),
+-    updatedAtMs: toMillis(data.updatedAtMs),
+     processedAtMs: toMillis(data.processedAtMs),
+     processedBy: normalizeText(data.processedBy, 180),
+     processingResult:
+@@ -5001,15 +5007,38 @@
+       req.nextUrl.searchParams.get("year"),
+       req.nextUrl.searchParams.get("month")
+     );
+-    const snap = await statementCollection(ctx.email)
++    let listQuery = statementCollection(ctx.email)
+       .orderBy("periodStartMs", "desc")
+-      .limit(limit)
+-      .get();
++      .limit(limit);
++    const cashflowShape = requestedShape === "cashflow";
++    if (cashflowShape) {
++      listQuery = listQuery.select(
++        "html", "fileName", "statementNumber", "statementDate", "period", "advisorNumber",
++        "periodStartMs", "periodEndMs", "statementDateMs", "payoutMonthKey", "payoutTotal",
++        "commissionTotal", "otherPaymentsTotal", "managerCommissionTotal",
++        "createdAtMs", "updatedAtMs", "processedAtMs"
++      );
++    }
++    const snap = await listQuery.get();
+     const items = dedupeStatementSnapshots(snap.docs)
+-      .map((docSnap) => serializeStatementDoc(docSnap, false))
++      .map((docSnap) => serializeStatementDoc(docSnap, false, cashflowShape ? "cashflow" : "full"))
+       .filter((item) => !requestedMonthKey || item.payoutMonthKey === requestedMonthKey);
+ 
+-    return withRateLimitHeaders(NextResponse.json({ ok: true, items }), ctx);
++    return withRateLimitHeaders(NextResponse.json({
++      ok: true,
++      items,
++      ...(cashflowShape ? {
++        // Count raw documents before deduplication. Reaching the limit cannot
++        // certify a complete input for shadow verification.
++        hasMore: snap.docs.length >= limit,
++        processingComplete: snap.docs.every((docSnap) => {
++          const data = docSnap.data();
++          const updatedAt = toMillis(data.updatedAtMs);
++          const processedAt = toMillis(data.processedAtMs);
++          return updatedAt != null && processedAt != null && processedAt >= updatedAt;
++        }),
++      } : {}),
++    }), ctx);
+   } catch (error) {
+     console.error("Commission statements GET failed:", error);
+     return withRateLimitHeaders(
+diff --git a/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+@@ -0,0 +1,108 @@
++import { NextRequest, NextResponse } from "next/server";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  guard: vi.fn(),
++  users: vi.fn(),
++  subscription: vi.fn(),
++  collection: vi.fn(),
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => ({
++  adminDb: { collection: mocks.collection }, adminAuth: null, adminMessaging: null, adminStorage: null,
++}));
++vi.mock("@/lib/server/apiEntryGuard", () => ({
++  requireAuthedRateLimited: mocks.guard,
++  withRateLimitHeaders: (response: Response) => response,
++}));
++
++const email = "viewer@example.test";
++const rateLimit = { namespace: "test:cashflow:fresh", limit: 100, windowMs: 60_000 };
++let profiles: Record<string, Record<string, unknown>>;
++let subscriptionStatus: string;
++const request = () => new NextRequest("https://example.test/api/contracts/list?scope=team&freshCashflowContext=true", {
++  headers: { "x-cashflow-fresh-context": "true" },
++});
++
++beforeEach(() => {
++  vi.resetModules();
++  vi.resetAllMocks();
++  profiles = {
++    [email]: { position: "manazer4", commissionMode: "standard", accountType: "advisor" },
++    "team@example.test": { position: "poradce2", managerEmail: email, accountType: "advisor" },
++  };
++  subscriptionStatus = "active";
++  mocks.guard.mockResolvedValue({ ok: true, ctx: {
++    email, uid: "uid", decoded: { email }, isImpersonating: false,
++    actorEmail: email, actorUid: "uid", impersonation: null,
++  } });
++  mocks.users.mockImplementation(async () => {
++    const docs = Object.entries(profiles).map(([id, data]) => ({ id, data: () => ({ ...data }) }));
++    return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };
++  });
++  mocks.subscription.mockImplementation(async () => ({
++    exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: "2099-01-01" }),
++  }));
++  mocks.collection.mockImplementation((name: string) => {
++    if (name === "users") return { get: mocks.users };
++    if (name === "usersPrivate") return { doc: () => ({ get: mocks.subscription }) };
++    throw new Error(`Unexpected collection ${name}`);
++  });
++});
++
++describe("fresh contract context for server cashflow candidates", () => {
++  it("rereads current position, mode and team without reusing or extending the shared tree cache", async () => {
++    const { requireContractsEntryGuard } = await import("./contractsApi");
++    const initial = await requireContractsEntryGuard(request(), rateLimit);
++    expect(initial.ok && initial.ctx).toMatchObject({
++      position: "manazer4", commissionMode: "standard", teamEmails: ["team@example.test"],
++    });
++    profiles[email] = { position: "manazer8", commissionMode: "accelerated", accountType: "advisor" };
++    profiles["team@example.test"].managerEmail = null;
++    const cached = await requireContractsEntryGuard(request(), rateLimit);
++    expect(cached.ok && cached.ctx.position).toBe("manazer4");
++    const fresh = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true });
++    expect(fresh.ok && fresh.ctx).toMatchObject({ position: "manazer8", commissionMode: "accelerated", teamEmails: [] });
++    expect(mocks.users).toHaveBeenCalledTimes(2);
++    expect(mocks.subscription).toHaveBeenCalledTimes(2);
++    const stillCached = await requireContractsEntryGuard(request(), rateLimit);
++    expect(stillCached.ok && stillCached.ctx.position).toBe("manazer4");
++    expect(mocks.users).toHaveBeenCalledTimes(2);
++  });
++
++  it("rechecks subscription denial even when normal requests still hold cached access", async () => {
++    const { requireContractsEntryGuard } = await import("./contractsApi");
++    expect((await requireContractsEntryGuard(request(), rateLimit)).ok).toBe(true);
++    subscriptionStatus = "unpaid";
++    expect((await requireContractsEntryGuard(request(), rateLimit)).ok).toBe(true);
++    const fresh = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true });
++    expect(fresh.ok).toBe(false);
++    if (!fresh.ok) expect(fresh.response.status).toBe(403);
++    expect(mocks.subscription).toHaveBeenCalledTimes(2);
++  });
++
++  it("propagates the trusted list option through authentication and rejects a removed profile", async () => {
++    const { requireContractsEntryGuard, handleContractsList } = await import("./contractsApi");
++    await requireContractsEntryGuard(request(), rateLimit);
++    delete profiles[email];
++    const response = await handleContractsList(request(), { freshCashflowContext: true });
++    expect(response.status).toBe(403);
++    expect(await response.json()).toMatchObject({ ok: false, error: "Uživatel nemá interní profil v systému." });
++    expect(mocks.users).toHaveBeenCalledTimes(2);
++  });
++
++  it("does not use cached permissions after a fresh database read fails", async () => {
++    const { requireContractsEntryGuard } = await import("./contractsApi");
++    await requireContractsEntryGuard(request(), rateLimit);
++    const failure = new Error("read unavailable");
++    mocks.users.mockRejectedValueOnce(failure);
++    await expect(requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true })).rejects.toBe(failure);
++  });
++
++  it("authenticates and rate limits before either fresh database read", async () => {
++    const { handleContractsList } = await import("./contractsApi");
++    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
++    expect((await handleContractsList(request(), { freshCashflowContext: true })).status).toBe(401);
++    expect(mocks.users).not.toHaveBeenCalled();
++    expect(mocks.subscription).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/app/api/contracts/_lib/contractsApi.ts b/src/app/api/contracts/_lib/contractsApi.ts
+--- a/src/app/api/contracts/_lib/contractsApi.ts
++++ b/src/app/api/contracts/_lib/contractsApi.ts
+@@ -3777,15 +3777,17 @@
+   email,
+   rawTokenEmail,
+   uid,
++  freshCashflowContext = false,
+ }: {
+   email: string;
+   rawTokenEmail: string;
+   uid: string;
++  freshCashflowContext?: boolean;
+ }): Promise<CachedSubscriptionAccess | null> => {
+   if (!adminDb) return null;
+ 
+   const cacheKey = normalizeEmail(email || rawTokenEmail || uid);
+-  if (cacheKey) {
++  if (cacheKey && !freshCashflowContext) {
+     const cached = readCachedSubscriptionStatus(cacheKey);
+     if (cached !== undefined) {
+       return cached;
+@@ -3820,7 +3822,7 @@
+       paidUntil: privateSnapshot.paidUntil,
+       effectiveState: evaluated.state,
+     };
+-    if (cacheKey) {
++    if (cacheKey && !freshCashflowContext) {
+       writeCachedSubscriptionStatus(cacheKey, resolved);
+     }
+     return resolved;
+@@ -3868,7 +3870,7 @@
+         }).state,
+       } satisfies CachedSubscriptionAccess)
+     : null;
+-  if (cacheKey) {
++  if (cacheKey && !freshCashflowContext) {
+     writeCachedSubscriptionStatus(cacheKey, resolved);
+   }
+   return resolved;
+@@ -3886,6 +3888,7 @@
+   const {
+     requireKnownUser = false,
+     requireActiveSubscription = false,
++    freshCashflowContext = false,
+   } = options;
+ 
+   if (!adminDb) {
+@@ -3897,7 +3900,9 @@
+   }
+   const rawTokenEmail = identity.rawTokenEmail;
+ 
+-  const { users, childrenByManager } = await getCachedUserTree();
++  const { users, childrenByManager } = freshCashflowContext
++    ? await buildUserTree()
++    : await getCachedUserTree();
+   const me = users.find((u) => u.email === email) ?? null;
+   if (requireKnownUser && !me) {
+     return { error: "Uživatel nemá interní profil v systému.", status: 403 } as const;
+@@ -3908,6 +3913,7 @@
+       email,
+       rawTokenEmail,
+       uid: identity.uid,
++      freshCashflowContext,
+     });
+     if (subscriptionAccess?.effectiveState === "blocked") {
+       if (subscriptionAccess.status === "unpaid") {
+@@ -3967,7 +3973,8 @@
+     namespace: string;
+     limit: number;
+     windowMs: number;
+-  }
++  },
++  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+ ): Promise<ContractsEntryGuardResult> {
+   const guard = await requireAuthedRateLimited(req, {
+     ...rateLimit,
+@@ -3992,6 +3999,7 @@
+     {
+       requireKnownUser: true,
+       requireActiveSubscription: true,
++      freshCashflowContext: options.freshCashflowContext,
+     }
+   );
+   if ("error" in authCtx) {
+@@ -4079,13 +4087,14 @@
+ 
+ export async function handleContractsGet(
+   req: NextRequest,
+-  mode: ContractsGetMode = "auto"
++  mode: ContractsGetMode = "auto",
++  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+ ) {
+   const guard = await requireContractsEntryGuard(req, {
+     namespace: "api:contracts:get",
+     limit: CONTRACTS_GET_RATE_LIMIT,
+     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+-  });
++  }, options);
+   if (!guard.ok) return guard.response;
+   const { ctx, withRateLimit } = guard;
+   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
+@@ -7808,8 +7817,11 @@
+   return withRateLimit(NextResponse.json({ ok: true, deleted }));
+ }
+ 
+-export async function handleContractsList(req: NextRequest) {
+-  return handleContractsGet(req, "list");
++export async function handleContractsList(
++  req: NextRequest,
++  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
++) {
++  return handleContractsGet(req, "list", options);
+ }
+ 
+ export async function handleContractDetail(req: NextRequest) {
+diff --git a/src/app/api/contracts/_lib/contractsApi.types.ts b/src/app/api/contracts/_lib/contractsApi.types.ts
+--- a/src/app/api/contracts/_lib/contractsApi.types.ts
++++ b/src/app/api/contracts/_lib/contractsApi.types.ts
+@@ -650,4 +650,6 @@
+ export type AuthContextOptions = {
+   requireKnownUser?: boolean;
+   requireActiveSubscription?: boolean;
+-};
++  /** Trusted server caller only; never read from request headers or parameters. */
++  freshCashflowContext?: boolean;
++};
+diff --git a/src/app/cashflow/buildCashflowView.test.ts b/src/app/cashflow/buildCashflowView.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/buildCashflowView.test.ts
+@@ -0,0 +1,181 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++
++import { buildCashflowView, type CashflowViewOptions } from "./buildCashflowView";
++import type { CashflowCommissionStatementSummary, CashflowItem } from "./types";
++
++const options: CashflowViewOptions = {
++  scopeFilter: "combined",
++  productFilter: "all",
++  tipsterMode: false,
++  showPastYears: false,
++  intelligentPredictionEnabled: false,
++  contractNumberQuery: "",
++};
++const asOf = new Date(2026, 8, 12, 12);
++
++const item = (patch: Partial<CashflowItem> = {}): CashflowItem => ({
++  id: "commission-1",
++  date: new Date(2026, 8, 25),
++  amount: 1000,
++  productKey: "cppAuto",
++  source: "own",
++  contractNumber: "00012345",
++  ownerEmail: "advisor@example.com",
++  entryId: "contract-1",
++  commissionCode: "A101",
++  payoutStatus: "predicted",
++  ...patch,
++});
++
++const statement = (
++  patch: Partial<CashflowCommissionStatementSummary> = {},
++): CashflowCommissionStatementSummary => ({
++  id: "statement-1",
++  fileName: "statement-1.html",
++  statementNumber: "1",
++  statementDate: "24.09.2026",
++  period: "08/2026",
++  advisorNumber: null,
++  periodStartMs: Date.UTC(2026, 7, 1),
++  periodEndMs: Date.UTC(2026, 7, 31),
++  statementDateMs: Date.UTC(2026, 8, 24),
++  payoutMonthKey: "2026-9",
++  paidContractNumbers: ["00012345"],
++  paidCommissionKeys: ["00012345:A101"],
++  commissionTotal: 750,
++  payoutTotal: 750,
++  otherPaymentsTotal: 0,
++  managerCommissionTotal: 0,
++  createdAtMs: 1,
++  updatedAtMs: 1,
++  ...patch,
++});
++
++afterEach(() => vi.useRealTimers());
++
++describe("server cashflow view preserves the displayed calculation", () => {
++  it("carries unpaid December commission into January before hiding past years", () => {
++    const oldDate = new Date(2025, 11, 25);
++    const months = buildCashflowView([
++      item({ date: oldDate }),
++    ], [
++      statement({
++        payoutMonthKey: "2025-12",
++        period: "11/2025",
++        paidContractNumbers: ["99999"],
++        paidCommissionKeys: ["99999:A101"],
++      }),
++    ], options, asOf);
++
++    expect(months).toHaveLength(1);
++    expect(months[0]).toMatchObject({
++      key: "2026-1", total: 1000, totalSource: "predicted", statementPayoutTotal: null,
++    });
++    expect(months[0].items[0]).toMatchObject({
++      date: new Date(2026, 0, 25), originalDate: oldDate,
++      payoutStatus: "shifted", missedStatementPeriods: ["11/2025"],
++    });
++  });
++
++  it("uses actual statement totals while preserving commission estimates and statement-only months", () => {
++    const months = buildCashflowView([item()], [
++      statement(),
++      statement({ id: "statement-2", statementNumber: "2", payoutMonthKey: "2026-10", payoutTotal: 325 }),
++    ], options, asOf);
++
++    expect(months.map(month => ({
++      key: month.key, total: month.total, predictedTotal: month.predictedTotal,
++      totalSource: month.totalSource, count: month.items.length,
++    }))).toEqual([
++      { key: "2026-9", total: 750, predictedTotal: 1000, totalSource: "paid", count: 1 },
++      { key: "2026-10", total: 325, predictedTotal: 0, totalSource: "paid", count: 0 },
++    ]);
++    expect(months[0].items[0].payoutStatus).toBe("paid");
++  });
++
++  it.each<Partial<CashflowViewOptions>>([
++    { scopeFilter: "own" },
++    { scopeFilter: "team" },
++    { productFilter: "auto" },
++    { productFilter: "life" },
++    { productFilter: "tip" },
++    { productFilter: "subscription" },
++    { tipsterMode: true },
++    { contractNumberQuery: "12345" },
++  ])("keeps already filtered items and excludes whole-account statement totals for %j", patch => {
++    // Scope/product selection happens in computeCashflow. The view must neither
++    // add whole-account statement-only months nor shift these selected items.
++    const selected = item();
++    const months = buildCashflowView([selected], [
++      statement({ paidContractNumbers: ["99999"], paidCommissionKeys: ["99999:A101"] }),
++      statement({ id: "statement-2", statementNumber: "2", payoutMonthKey: "2026-10" }),
++    ], { ...options, ...patch }, asOf);
++
++    expect(months).toHaveLength(1);
++    expect(months[0]).toMatchObject({
++      key: "2026-9", total: 1000, totalSource: "predicted", statementPayoutTotal: null,
++    });
++    expect(months[0].items).toEqual([selected]);
++  });
++
++  it("searches historical contract payments even when past years are hidden", () => {
++    const old = item({ id: "old", date: new Date(2024, 11, 25), amount: 300 });
++    const current = item({ id: "current", amount: 700 });
++    const other = item({ id: "other", contractNumber: "99999", amount: 900 });
++    const months = buildCashflowView([old, current, other], [statement()], {
++      ...options, contractNumberQuery: "12 345",
++    }, asOf);
++
++    expect(months.map(month => [month.key, month.total, month.totalSource])).toEqual([
++      ["2024-12", 300, "predicted"], ["2026-9", 700, "predicted"],
++    ]);
++    expect(months.flatMap(month => month.items.map(row => row.id))).toEqual(["old", "current"]);
++  });
++
++  it("uses asOf for year boundaries and retains older statement-only months only when requested", () => {
++    vi.useFakeTimers();
++    vi.setSystemTime(new Date(2035, 0, 1));
++    const data = [item({ date: new Date(2025, 11, 25) }), item({ id: "new", date: new Date(2026, 0, 25) })];
++    const statements = [statement({ payoutMonthKey: "2024-6", payoutTotal: 80 })];
++
++    expect(buildCashflowView(data, statements, options, new Date(2026, 0, 1)).map(month => month.key))
++      .toEqual(["2026-1"]);
++    expect(buildCashflowView(data, statements, { ...options, showPastYears: true }, asOf).map(month => month.key))
++      .toEqual(["2024-6", "2025-12", "2026-1"]);
++  });
++
++  it("anchors optional prediction to asOf and keeps paid payouts unchanged", () => {
++    vi.useFakeTimers();
++    vi.setSystemTime(new Date(2035, 0, 1));
++    const future = item({ date: new Date(2027, 6, 25), policyStartDate: new Date(2026, 6, 1), frequency: "annual" });
++    const paid = item({ ...future, id: "paid", payoutStatus: "paid" });
++    const predictionOptions = { ...options, scopeFilter: "own" as const, intelligentPredictionEnabled: true };
++    const months = buildCashflowView([future, paid], [], predictionOptions, new Date(2026, 6, 24));
++    const predictedRow = months.flatMap(month => month.items).find(row => row.id === future.id);
++
++    expect(predictedRow).toMatchObject({ amount: 1075, predictionAdjustment: { kind: "autoPremiumGrowth", steps: 1 } });
++    expect(months[0].items.find(row => row.id === "paid")?.amount).toBe(1000);
++    for (const patch of [{ intelligentPredictionEnabled: false }, { tipsterMode: true }]) {
++      const unchanged = buildCashflowView([future], [], { ...predictionOptions, ...patch }, new Date(2026, 6, 24));
++      expect(unchanged[0].items[0].amount).toBe(1000);
++      expect(unchanged[0].items[0].predictionAdjustment).toBeUndefined();
++    }
++  });
++
++  it("does not mutate source items, dates, statements or options during reconciliation and sorting", () => {
++    const inputs = [item({ id: "later", date: new Date(2026, 8, 26) }), item()];
++    const statements = [
++      statement({ id: "late-statement", statementDate: "26.09.2026", paidContractNumbers: ["99999"] }),
++      statement({ id: "early-statement", statementDate: "24.09.2026", paidContractNumbers: ["99999"] }),
++    ];
++    const before = structuredClone({ inputs, statements, options, asOf });
++    Object.freeze(inputs);
++    Object.freeze(statements);
++    inputs.forEach(Object.freeze);
++    statements.forEach(Object.freeze);
++
++    buildCashflowView(inputs, statements, options, asOf);
++
++    expect({ inputs, statements, options, asOf }).toEqual(before);
++  });
++});
+diff --git a/src/app/cashflow/buildCashflowView.ts b/src/app/cashflow/buildCashflowView.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/buildCashflowView.ts
+@@ -0,0 +1,69 @@
++import {
++  applyIntelligentCashflowPrediction,
++  applyStatementMissingPayoutShifts,
++  applyStatementPayoutTotalsToMonths,
++  filterItemsByContractNumber,
++  filterPastItems,
++  filterPastStatementMonths,
++  groupItemsByMonth,
++  normalizeContractNumberSearch,
++  statementMonthKey,
++} from "./helpers";
++import type {
++  CashflowCommissionStatementSummary,
++  CashflowItem,
++  MonthGroup,
++  ProductFilter,
++  ScopeFilter,
++} from "./types";
++
++export type CashflowViewOptions = {
++  scopeFilter: ScopeFilter;
++  productFilter: ProductFilter;
++  tipsterMode: boolean;
++  showPastYears: boolean;
++  intelligentPredictionEnabled: boolean;
++  contractNumberQuery: string;
++};
++
++// Mirrors the page's existing composition, using the same business helpers.
++// Kept off the display path so shadow comparison also detects composition drift.
++export function buildCashflowView(
++  items: CashflowItem[],
++  statements: CashflowCommissionStatementSummary[],
++  options: CashflowViewOptions,
++  asOf: Date,
++): MonthGroup[] {
++  const searching = normalizeContractNumberSearch(options.contractNumberQuery).length > 0;
++  const useStatementTotals = !options.tipsterMode && !searching &&
++    options.scopeFilter === "combined" && options.productFilter === "all";
++  const statementsByMonth: Record<string, CashflowCommissionStatementSummary[]> = {};
++  for (const statement of statements) {
++    const key = statementMonthKey(statement);
++    if (key) (statementsByMonth[key] ??= []).push(statement);
++  }
++  for (const month of Object.values(statementsByMonth)) {
++    month.sort((a, b) => (a.statementDate ?? a.fileName).localeCompare(
++      b.statementDate ?? b.fileName, "cs",
++    ));
++  }
++  const beforeSearch = useStatementTotals || searching
++    ? items
++    : filterPastItems(items, options.showPastYears, asOf);
++  const filtered = filterItemsByContractNumber(beforeSearch, options.contractNumberQuery);
++  const reconciled = applyStatementMissingPayoutShifts({
++    cashflowItems: filtered, statementsByMonthKey: statementsByMonth, enabled: useStatementTotals,
++  });
++  const predicted = applyIntelligentCashflowPrediction({
++    cashflowItems: reconciled,
++    enabled: options.intelligentPredictionEnabled && !options.tipsterMode,
++    today: asOf,
++  });
++  return applyStatementPayoutTotalsToMonths({
++    monthGroups: groupItemsByMonth(searching ? predicted : filterPastItems(predicted, options.showPastYears, asOf)),
++    statementsByMonthKey: searching
++      ? statementsByMonth
++      : filterPastStatementMonths(statementsByMonth, options.showPastYears, asOf),
++    enabled: useStatementTotals,
++  });
++}
+diff --git a/src/app/cashflow/computeCashflow.test.ts b/src/app/cashflow/computeCashflow.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/computeCashflow.test.ts
+@@ -0,0 +1,256 @@
++import { createHash } from "node:crypto";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import {
++  computeCashflow,
++  type CashflowComputationOptions,
++  type CashflowSnapshot,
++} from "./computeCashflow";
++import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "./subscriptionCashflow";
++import type { EntryDoc } from "./types";
++
++const asOf = new Date(2026, 8, 12, 12);
++const email = SUBSCRIPTION_CASHFLOW_OWNER_EMAIL;
++const memberEmail = "member@example.cz";
++
++function snapshotFixture(): CashflowSnapshot {
++  const ownAuto: EntryDoc = {
++    id: "own-auto",
++    userEmail: email,
++    productKey: "kooperativaAuto",
++    frequencyRaw: "quarterly",
++    policyStartDate: new Date(2026, 1, 25),
++    contractSignedDate: new Date(2026, 1, 23),
++    position: "poradce2",
++    inputAmount: 7200,
++    status: "storno",
++    stornoDate: new Date(2026, 3, 21),
++    items: [{ title: "Okamžitá provize", amount: 609.56, code: "A101" }],
++    commissionPayouts: [
++      { key: "paid", code: "APZ101", amount: 609.56, status: "paid", payoutMonthKey: "2026-3", writtenBy: email },
++      { key: "storno", code: "APZ101", amount: -609.56, status: "storno", payoutMonthKey: "2026-4", writtenBy: email },
++    ],
++  };
++  const inherited: EntryDoc = {
++    id: "inherited-life",
++    userEmail: email,
++    productKey: "neon",
++    acquisitionType: "inherited",
++    originalAdviserEmail: "old@example.cz",
++    originalPosition: "poradce3",
++    servicingOwnerEmail: email,
++    transferEffectiveDate: "2022-02-01",
++    commissionMode: "standard",
++    frequencyRaw: "annual",
++    inputAmount: 1000,
++    policyStartDate: new Date(2020, 0, 15),
++    contractSignedDate: new Date(2020, 0, 1),
++    items: [
++      { title: "Okamžitá provize", amount: 1000, code: "A101" },
++      { title: "Následná provize (2.–5. rok)", amount: 20, code: "B101-B104" },
++      { title: "Pečovatelská provize (5.–10. rok)", amount: 10, code: "B201-B206" },
++    ],
++  };
++  const teamAuto: EntryDoc = {
++    id: "team-auto",
++    userEmail: memberEmail,
++    productKey: "cppAuto",
++    frequencyRaw: "monthly",
++    policyStartDate: new Date(2025, 0, 31),
++    contractSignedDate: new Date(2025, 0, 20),
++    ownerCurrentPosition: "poradce4",
++    position: "poradce2",
++    items: [{ title: "Okamžitá provize", amount: 100, code: "A101" }],
++    managerOverrides: [{
++      email,
++      position: "manazer5",
++      commissionMode: "standard",
++      total: 999999,
++      items: [
++        { title: "Okamžitá provize", amount: 12, code: "A101" },
++        { title: "Následná provize", amount: 8, code: "B101" },
++        { title: "Celkem", amount: 999999, code: "TOTAL" },
++      ],
++    }],
++  };
++  return {
++    email,
++    myPosition: "manazer8",
++    myCommissionMode: "accelerated",
++    hasAnyTeam: true,
++    ownEntries: [
++      ownAuto,
++      inherited,
++      {
++        ...inherited,
++        id: "transferred-life",
++        acquisitionType: null,
++        originalPosition: "poradce5",
++      },
++      {
++        id: "missing-start",
++        userEmail: email,
++        productKey: "cppAuto",
++        frequencyRaw: "annual",
++        items: [{ title: "Okamžitá provize", amount: 90, code: "A101" }],
++      },
++    ],
++    teamEntriesRaw: [
++      { ...ownAuto },
++      teamAuto,
++      { ...teamAuto, id: "no-override", managerOverrides: [] },
++      {
++        ...inherited,
++        id: "team-life",
++        userEmail: memberEmail,
++        acquisitionType: null,
++        originalAdviserEmail: null,
++        servicingOwnerEmail: null,
++        ownerCurrentPosition: "poradce2",
++        managerOverrides: [{
++          email,
++          position: "manazer4",
++          commissionMode: "accelerated",
++          total: 40,
++          items: [{ title: "Následná provize (2.–5. rok)", amount: 10, code: "B101-B104" }],
++        }],
++      },
++    ],
++    tipPayouts: [
++      { id: "valid", payoutDate: new Date(2026, 7, 25).getTime(), amount: 350, productKey: "neon", sourceOwnerEmail: "  Jan.Novak@Example.cz ", clientName: " Klient " },
++      { payoutDate: new Date(2026, 8, 25).getTime(), amount: 125, adviserEmail: "other@example.cz" },
++      { id: "invalid-date", payoutDate: Number.NaN, amount: 100 },
++      { id: "negative", payoutDate: new Date(2026, 8, 25).getTime(), amount: -100 },
++    ],
++    subscriptionPayments: [
++      { id: "old", userEmail: "subscriber@example.cz", plan: "monthly", amountCzk: 300, periodFrom: "2026-01-31" },
++      { id: "current", userEmail: "subscriber@example.cz", plan: "monthly", amountCzk: 450, periodFrom: "2026-04-30", periodUntil: "2026-07-29", paymentDateMs: new Date(2026, 4, 2).getTime() },
++      { id: "yearly", userEmail: "yearly@example.cz", plan: "yearly", amountCzk: 900, periodFrom: "2026-09-12" },
++      { id: "invalid", userEmail: "invalid@example.cz", plan: "unknown", amountCzk: 900, periodFrom: "2026-09-12" },
++      { id: "invalid-date", userEmail: "invalid@example.cz", plan: "yearly", amountCzk: 900, periodFrom: "2026-02-30" },
++    ],
++  };
++}
++
++// Dates and timestamps embedded in generated IDs use local calendar fields so
++// the frozen legacy samples also run in UTC, without changing production dates.
++function canonical(value: unknown): unknown {
++  if (value instanceof Date) {
++    return [value.getFullYear(), value.getMonth() + 1, value.getDate(), value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds()];
++  }
++  if (Array.isArray(value)) return value.map(canonical);
++  if (value && typeof value === "object") {
++    return Object.fromEntries(Object.entries(value).map(([key, child]) => [
++      key,
++      key === "id" && typeof child === "string"
++        ? child.replace(/-(\d{13})-/g, (_match, timestamp) => `-${JSON.stringify(canonical(new Date(Number(timestamp))))}-`)
++        : canonical(child),
++    ]));
++  }
++  return value;
++}
++
++function fingerprint(value: unknown): string {
++  return createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
++}
++
++const legacyCases: Array<[string, CashflowComputationOptions, string]> = [
++  ["combined", { scopeFilter: "combined", productFilter: "all" }, "c784a2bc89ddac5ae8ca2a510a54ee005ddc1dc2919475c0796e4b245035798a"],
++  ["own", { scopeFilter: "own", productFilter: "all" }, "4d4b6424c08418e66f6abf092a26e172162015cce11cdf71426ea3016187679c"],
++  ["team", { scopeFilter: "team", productFilter: "all" }, "4692379ea3f907de702b4eb60c4c2f9ac7868bbfac70528e24436e224c5eb4f1"],
++  ["life", { scopeFilter: "combined", productFilter: "life" }, "fa95fd6871507f01cc661615fd179538bb874b6fb9121c1976ca84909643c697"],
++  ["auto", { scopeFilter: "combined", productFilter: "auto" }, "c5420a3339d8b3d253a61ece8ff3f9e717d18c9276945d373cf26fa3e9d6fb70"],
++  ["tip", { scopeFilter: "own", productFilter: "tip" }, "d81fff1d49edd4125931996b4ef5c4fee843a509193dc9fd701055bee03408e4"],
++  ["team tip", { scopeFilter: "team", productFilter: "tip" }, "d81fff1d49edd4125931996b4ef5c4fee843a509193dc9fd701055bee03408e4"],
++  ["subscription", { scopeFilter: "own", productFilter: "subscription" }, "cd243808d363a2723b14790f08344ff211424828db11c14d3fb8525a58555b19"],
++  ["tipster", { scopeFilter: "combined", productFilter: "all", tipsterMode: true }, "d81fff1d49edd4125931996b4ef5c4fee843a509193dc9fd701055bee03408e4"],
++];
++
++describe("computeCashflow", () => {
++  beforeEach(() => {
++    vi.useFakeTimers();
++    vi.setSystemTime(asOf);
++  });
++  afterEach(() => vi.useRealTimers());
++
++  // Fingerprints were captured from the original hook calculation and original
++  // generator before extraction, with the clock frozen to the same local time.
++  it.each(legacyCases)("preserves every legacy output field for %s", (_name, options, expected) => {
++    expect(fingerprint(computeCashflow(snapshotFixture(), { ...options, asOf }))).toBe(expected);
++  });
++
++  it("keeps original transfer positions and uses current own and manager positions", () => {
++    const items = computeCashflow(snapshotFixture(), { scopeFilter: "combined", productFilter: "all", asOf });
++    const byEntry = (id: string) => items.find((item) => item.entryId === id);
++    expect(byEntry("own-auto")?.predictionPosition).toBe("manazer8");
++    expect(byEntry("inherited-life")?.predictionPosition).toBe("poradce3");
++    expect(byEntry("transferred-life")?.predictionPosition).toBe("poradce5");
++    expect(byEntry("inherited-life")?.predictionCommissionMode).toBe("standard");
++    expect(byEntry("team-auto")).toMatchObject({ source: "manager", predictionPosition: "manazer8", predictionBaselinePosition: "poradce4" });
++    expect(byEntry("team-life")?.predictionCommissionMode).toBe("standard");
++    expect(byEntry("no-override")).toBeUndefined();
++    expect(items.some((item) => item.amount === 999999)).toBe(false);
++    expect(items.filter((item) => item.entryId === "own-auto").map((item) => item.amount)).toEqual([609.56, -609.56]);
++  });
++
++  it("normalizes tip payouts and preserves existing tipster filtering", () => {
++    const items = computeCashflow(snapshotFixture(), { scopeFilter: "team", productFilter: "life", tipsterMode: true, asOf });
++    expect(items).toHaveLength(2);
++    expect(items[0]).toMatchObject({ amount: 350, isTipPayout: true, clientName: "Klient", tipSourceAdviserEmail: "jan.novak@example.cz", tipSourceAdviserName: "Jan Novak" });
++    expect(items[1]).toMatchObject({ amount: 125, isTipPayout: true, productKey: "unknown" });
++  });
++
++  it("forecasts the latest subscription amount and includes actual payments once", () => {
++    const items = computeCashflow(snapshotFixture(), { scopeFilter: "own", productFilter: "subscription", asOf });
++    expect(items.filter((item) => item.payoutStatus === "paid").map((item) => item.amount)).toEqual([300, 450, 900]);
++    const monthlyForecasts = items.filter((item) => item.subscriptionPlan === "monthly" && item.payoutStatus === "predicted");
++    expect(monthlyForecasts.every((item) => item.amount === 450)).toBe(true);
++    expect(monthlyForecasts[0].subscriptionPeriodFrom).toBe("2026-07-30");
++    expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
++    expect(items.every((item) => item.date <= new Date(2036, 8, 12, 12))).toBe(true);
++  });
++
++  it("excludes subscriptions for a different owner and for team scope", () => {
++    const snapshot = snapshotFixture();
++    expect(computeCashflow(snapshot, { scopeFilter: "team", productFilter: "subscription", asOf })).toEqual([]);
++    snapshot.email = "other@example.cz";
++    expect(computeCashflow(snapshot, { scopeFilter: "own", productFilter: "subscription", asOf })).toEqual([]);
++  });
++
++  it("uses the explicit date for horizons, storno cutoff and missing start dates", () => {
++    const snapshot = snapshotFixture();
++    snapshot.ownEntries.push({
++      id: "storno-without-date",
++      userEmail: email,
++      productKey: "cppAuto",
++      frequencyRaw: "annual",
++      policyStartDate: new Date(2025, 0, 15),
++      status: "storno",
++      items: [{ title: "Okamžitá provize", amount: 90, code: "A101" }],
++    });
++    const options = { scopeFilter: "combined", productFilter: "all", asOf } as const;
++    const expected = computeCashflow(snapshot, options);
++    vi.setSystemTime(new Date(2031, 0, 1));
++    expect(computeCashflow(snapshot, options)).toEqual(expected);
++    expect(computeCashflow(snapshot, { scopeFilter: "combined", productFilter: "all" })).not.toEqual(expected);
++    expect(expected.find((item) => item.entryId === "missing-start")?.date).toEqual(new Date(2026, 9, 25));
++    const stornoItems = expected.filter((item) => item.entryId === "storno-without-date");
++    expect(stornoItems.length).toBeGreaterThan(0);
++    expect(stornoItems.every((item) => item.date < new Date(2026, 8, 1))).toBe(true);
++  });
++
++  it("does not mutate the supplied snapshot or computation date", () => {
++    const snapshot = snapshotFixture();
++    const before = structuredClone(snapshot);
++    const freeze = (value: unknown): void => {
++      if (value && typeof value === "object") {
++        Object.values(value).forEach(freeze);
++        Object.freeze(value);
++      }
++    };
++    freeze(snapshot);
++    const time = asOf.getTime();
++    computeCashflow(snapshot, { scopeFilter: "combined", productFilter: "all", asOf });
++    expect(snapshot).toEqual(before);
++    expect(asOf.getTime()).toBe(time);
++  });
++});
+diff --git a/src/app/cashflow/computeCashflow.ts b/src/app/cashflow/computeCashflow.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/computeCashflow.ts
+@@ -0,0 +1,504 @@
++import { isInheritedContract } from "@/app/lib/inheritedContracts";
++
++import {
++  type CommissionMode,
++  type PaymentFrequency,
++  type Position,
++  type Product,
++} from "../types/domain";
++import { totalWithMultipliers } from "../lib/commissionTotals";
++import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
++import { generateCashflow } from "./generator";
++import {
++  CASHFLOW_FORECAST_YEARS,
++  matchesProductFilter,
++  stripTotalRows,
++} from "./helpers";
++import {
++  addSubscriptionMonths,
++  formatSubscriptionIsoDay,
++  isCashflowSubscriptionPlan,
++  isSubscriptionCashflowOwner,
++  parseSubscriptionIsoDay,
++  subscriptionIntervalMonths,
++  subscriptionPeriodUntilIso,
++  subscriptionPlanLabel,
++  type CashflowSubscriptionPlan,
++} from "./subscriptionCashflow";
++import type {
++  CashflowItem,
++  EntryDoc,
++  ProductFilter,
++  ScopeFilter,
++} from "./types";
++
++export type TipPayoutApiItem = {
++  id?: string;
++  payoutDate?: number | null;
++  amount?: number;
++  note?: string | null;
++  productKey?: Product | null;
++  frequencyRaw?: PaymentFrequency | null;
++  tipsterPercent?: number | null;
++  clientName?: string | null;
++  sourceOwnerName?: string | null;
++  sourceOwnerEmail?: string | null;
++  adviserEmail?: string | null;
++};
++
++export type SubscriptionPaymentApiItem = {
++  id?: string;
++  userEmail?: string | null;
++  userName?: string | null;
++  plan?: CashflowSubscriptionPlan | string | null;
++  amountCzk?: number | null;
++  periodFrom?: string | null;
++  periodUntil?: string | null;
++  createdAtMs?: number | null;
++  paymentDateMs?: number | null;
++  note?: string | null;
++};
++
++export type CashflowSnapshot = {
++  email: string;
++  myPosition: Position | null;
++  myCommissionMode: CommissionMode | null;
++  hasAnyTeam: boolean;
++  ownEntries: EntryDoc[];
++  teamEntriesRaw: EntryDoc[];
++  tipPayouts: TipPayoutApiItem[];
++  subscriptionPayments: SubscriptionPaymentApiItem[];
++};
++
++export type CashflowComputationOptions = {
++  scopeFilter: ScopeFilter;
++  productFilter: ProductFilter;
++  tipsterMode?: boolean;
++  asOf?: Date;
++};
++
++const SUBSCRIPTION_FORECAST_YEARS = 10;
++
++const normalizeEmail = (value: string | null | undefined): string =>
++  (value ?? "").trim().toLowerCase();
++
++const nameFromEmail = (email: string | null | undefined): string | null => {
++  const normalized = normalizeEmail(email);
++  if (!normalized) return null;
++  const local = normalized.split("@")[0] ?? "";
++  const parts = local.split(/[.\-_]+/).filter(Boolean);
++  if (parts.length === 0) return null;
++  return parts
++    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
++    .join(" ");
++};
++
++type NormalizedSubscriptionPayment = {
++  sourceId: string;
++  plan: CashflowSubscriptionPlan;
++  amount: number;
++  paymentDate: Date;
++  anchorDate: Date;
++  userEmail: string | null;
++  userName: string;
++  periodFrom: string | null;
++  periodUntil: string | null;
++  note: string | null;
++};
++
++const subscriptionOccurrenceKey = (
++  userKey: string,
++  plan: CashflowSubscriptionPlan,
++  periodFrom: string
++): string => `${userKey}|${plan}|${periodFrom}`;
++
++const validTimestampDate = (value: unknown): Date | null => {
++  if (typeof value !== "number" || !Number.isFinite(value)) return null;
++  const date = new Date(value);
++  return Number.isNaN(date.getTime()) ? null : date;
++};
++
++const normalizeSubscriptionPaymentForCashflow = (
++  payment: SubscriptionPaymentApiItem,
++  index: number
++): NormalizedSubscriptionPayment | null => {
++  const plan = isCashflowSubscriptionPlan(payment.plan) ? payment.plan : null;
++  if (!plan) return null;
++
++  const amount =
++    typeof payment.amountCzk === "number" && Number.isFinite(payment.amountCzk)
++      ? payment.amountCzk
++      : 0;
++  if (!(amount > 0)) return null;
++
++  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom);
++  const paymentDate =
++    validTimestampDate(payment.paymentDateMs) ??
++    validTimestampDate(payment.createdAtMs) ??
++    periodFromDate;
++  if (!paymentDate) return null;
++
++  const anchorDate = periodFromDate ?? paymentDate;
++  const periodFrom = periodFromDate ? formatSubscriptionIsoDay(periodFromDate) : null;
++  const periodUntil =
++    typeof payment.periodUntil === "string" && payment.periodUntil.trim()
++      ? payment.periodUntil.trim()
++      : null;
++  const userEmail = normalizeEmail(payment.userEmail) || null;
++  const userName =
++    typeof payment.userName === "string" && payment.userName.trim()
++      ? payment.userName.trim()
++      : nameFromEmail(userEmail) ?? userEmail ?? "Uživatel";
++  const sourceId =
++    String(payment.id ?? "").trim() ||
++    `subscription-${userEmail ?? "user"}-${anchorDate.getTime()}-${index}`;
++  const note =
++    typeof payment.note === "string" && payment.note.trim()
++      ? payment.note.trim()
++      : null;
++
++  return {
++    sourceId,
++    plan,
++    amount,
++    paymentDate,
++    anchorDate,
++    userEmail,
++    userName,
++    periodFrom,
++    periodUntil,
++    note,
++  };
++};
++
++/** Shared by the browser and server; the supplied snapshot is never mutated. */
++export function computeCashflow(
++  snapshot: CashflowSnapshot,
++  { scopeFilter, productFilter, tipsterMode = false, asOf = new Date() }: CashflowComputationOptions
++): CashflowItem[] {
++  const email = snapshot.email;
++  const entryWasTransferred = (entry: EntryDoc): boolean => {
++    if (isInheritedContract(entry)) return true;
++    const originalOwner = normalizeEmail(entry.originalAdviserEmail);
++    const currentOwner = normalizeEmail(
++      entry.servicingOwnerEmail ?? entry.commissionOwnerEmail ?? entry.userEmail
++    );
++    return Boolean(
++      originalOwner && currentOwner && originalOwner !== currentOwner
++    );
++  };
++  const transferredContractPosition = (entry: EntryDoc): Position | null =>
++    (entry.originalPosition as Position | null | undefined) ??
++    (entry.position as Position | null | undefined) ??
++    null;
++  const predictionModeForEntry = (
++    entry: EntryDoc,
++    source: "own" | "manager"
++  ): CommissionMode =>
++    source === "manager" && matchesProductFilter(entry.productKey, "life")
++      ? "standard"
++      : (entryWasTransferred(entry)
++          ? (entry.commissionMode as CommissionMode | null | undefined) ??
++            (entry.mode as CommissionMode | null | undefined)
++          : snapshot.myCommissionMode) ??
++        (entry.commissionMode as CommissionMode | null | undefined) ??
++        (entry.mode as CommissionMode | null | undefined) ??
++        "standard";
++  const currentOwnerPosition = (entry: EntryDoc): Position | null =>
++    (entry.ownerCurrentPosition as Position | null | undefined) ??
++    (entry.effectivePosition as Position | null | undefined) ??
++    (entry.timelinePosition as Position | null | undefined) ??
++    (entry.position as Position | null | undefined) ??
++    null;
++  const allEntriesByKey = new Map<string, EntryDoc>();
++  const pushEntry = (entry: EntryDoc) => {
++    const ownerEmail = normalizeEmail(entry.userEmail);
++    const docId = String(entry.id ?? "").trim();
++    if (!ownerEmail || !docId) return;
++    const key = `${ownerEmail}___${docId}`;
++    if (allEntriesByKey.has(key)) return;
++    allEntriesByKey.set(key, {
++      ...(entry as any),
++      id: docId,
++      userEmail: ownerEmail,
++    });
++  };
++
++  snapshot.ownEntries.forEach(pushEntry);
++  snapshot.teamEntriesRaw.forEach(pushEntry);
++
++  const allEntries = Array.from(allEntriesByKey.values());
++  const ownEntries = allEntries
++    .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
++    .map((entry) => ({
++      ...entry,
++      source: "own" as const,
++      predictionPosition:
++        (entryWasTransferred(entry)
++          ? transferredContractPosition(entry)
++          : snapshot.myPosition) ??
++        (entry.effectivePosition as Position | null | undefined) ??
++        (entry.timelinePosition as Position | null | undefined) ??
++        (entry.position as Position | null | undefined) ??
++        null,
++      predictionBaselinePosition: null,
++      predictionCommissionMode: predictionModeForEntry(entry, "own"),
++    }));
++  const teamRaw = snapshot.teamEntriesRaw;
++
++  const overrides: EntryDoc[] = [];
++  if (teamRaw.length > 0) {
++    for (const entry of teamRaw) {
++      const storedOverride =
++        (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
++          (override) => (override.email ?? "").toLowerCase() === email
++        ) ?? null;
++
++      if (!storedOverride) continue;
++
++      const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
++      const storedOverrideTotal = computeLegacyFrequencyOverrideTotal({
++        productKey: (entry.productKey as Product | null | undefined) ?? null,
++        frequencyRaw: (entry.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
++        items: storedOverrideItems,
++        fallbackTotal: totalWithMultipliers(storedOverrideItems),
++      });
++      if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0) continue;
++
++      const storedOverridePosition =
++        (storedOverride.position as Position | null | undefined) ??
++        (entry.managerPositionSnapshot as Position | null | undefined) ??
++        null;
++
++      overrides.push({
++        ...entry,
++        originalEntryId: entry.id,
++        id: `${entry.id}-override`,
++        items: storedOverrideItems,
++        total: storedOverrideTotal,
++        source: "manager",
++        position: storedOverridePosition ?? null,
++        predictionPosition: snapshot.myPosition ?? storedOverridePosition ?? null,
++        predictionBaselinePosition: currentOwnerPosition(entry),
++        predictionCommissionMode: predictionModeForEntry(entry, "manager"),
++        managerPositionSnapshot: storedOverridePosition ?? null,
++        managerModeSnapshot:
++          (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
++          (entry.managerModeSnapshot as EntryDoc["managerModeSnapshot"]) ??
++          null,
++        clientName: entry.clientName ?? null,
++      });
++    }
++  }
++
++  let entriesForCashflow: EntryDoc[] = [];
++  if (scopeFilter === "own") {
++    entriesForCashflow = ownEntries;
++  } else if (scopeFilter === "team") {
++    entriesForCashflow = overrides;
++  } else {
++    entriesForCashflow = [...ownEntries, ...overrides];
++  }
++
++  if (tipsterMode || productFilter === "tip") {
++    entriesForCashflow = [];
++  } else if (productFilter !== "all") {
++    entriesForCashflow = entriesForCashflow.filter((entry) => {
++      return matchesProductFilter(entry.productKey, productFilter);
++    });
++  }
++
++  const generatedCashflow = generateCashflow(
++    entriesForCashflow,
++    CASHFLOW_FORECAST_YEARS,
++    email,
++    asOf
++  );
++  const includeTipPayouts =
++    tipsterMode ||
++    productFilter === "tip" ||
++    (productFilter === "all" && scopeFilter !== "team");
++  const tipCashflowItems: CashflowItem[] = includeTipPayouts
++    ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
++        const payoutTs =
++          typeof payout.payoutDate === "number" && Number.isFinite(payout.payoutDate)
++            ? payout.payoutDate
++            : null;
++        if (payoutTs == null) return acc;
++        const payoutDate = new Date(payoutTs);
++        if (Number.isNaN(payoutDate.getTime())) return acc;
++
++        const amount =
++          typeof payout.amount === "number" && Number.isFinite(payout.amount)
++            ? payout.amount
++            : 0;
++        if (!(amount > 0)) return acc;
++
++        const productKey =
++          typeof payout.productKey === "string" && payout.productKey.trim()
++            ? (payout.productKey as Product)
++            : "unknown";
++        const tipSourceAdviserEmail =
++          normalizeEmail(payout.sourceOwnerEmail ?? payout.adviserEmail) || null;
++        const tipSourceAdviserName =
++          typeof payout.sourceOwnerName === "string" && payout.sourceOwnerName.trim()
++            ? payout.sourceOwnerName.trim()
++            : nameFromEmail(tipSourceAdviserEmail);
++        const clientName =
++          typeof payout.clientName === "string" && payout.clientName.trim()
++            ? payout.clientName.trim()
++            : null;
++        const note =
++          typeof payout.note === "string" && payout.note.trim()
++            ? payout.note.trim()
++            : "TIP provize";
++        const id = String(payout.id ?? "").trim() || `tip-${payoutTs}-${index}`;
++
++        acc.push({
++          id: `tip-${id}`,
++          date: payoutDate,
++          amount,
++          productKey,
++          note,
++          frequency: (payout.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
++          source: "own",
++          contractNumber: null,
++          clientName,
++          ownerEmail: null,
++          entryId: null,
++          isTipPayout: true,
++          tipSourceAdviserEmail,
++          tipSourceAdviserName,
++        });
++        return acc;
++      }, [])
++    : [];
++  const includeSubscriptionPayments =
++    isSubscriptionCashflowOwner(email) &&
++    !tipsterMode &&
++    scopeFilter !== "team" &&
++    (productFilter === "all" || productFilter === "subscription");
++  const subscriptionCashflowItems: CashflowItem[] = includeSubscriptionPayments
++    ? (() => {
++        const normalizedPayments = snapshot.subscriptionPayments
++          .map((payment, index) =>
++            normalizeSubscriptionPaymentForCashflow(payment, index)
++          )
++          .filter((payment): payment is NormalizedSubscriptionPayment =>
++            Boolean(payment)
++          );
++
++        const actualOccurrenceKeys = new Set<string>();
++        const latestPaymentByUser = new Map<string, NormalizedSubscriptionPayment>();
++        const items: CashflowItem[] = [];
++
++        normalizedPayments.forEach((payment) => {
++          const userKey = payment.userEmail ?? payment.sourceId;
++          const actualPeriodFrom =
++            payment.periodFrom ?? formatSubscriptionIsoDay(payment.anchorDate);
++          actualOccurrenceKeys.add(
++            subscriptionOccurrenceKey(userKey, payment.plan, actualPeriodFrom)
++          );
++
++          const existingLatest = latestPaymentByUser.get(userKey);
++          if (
++            !existingLatest ||
++            payment.anchorDate.getTime() > existingLatest.anchorDate.getTime() ||
++            (
++              payment.anchorDate.getTime() === existingLatest.anchorDate.getTime() &&
++              payment.paymentDate.getTime() > existingLatest.paymentDate.getTime()
++            )
++          ) {
++            latestPaymentByUser.set(userKey, payment);
++          }
++
++          const periodLabel =
++            payment.periodFrom && payment.periodUntil
++              ? ` (${payment.periodFrom} - ${payment.periodUntil})`
++              : "";
++          const note =
++            payment.note ??
++            `${subscriptionPlanLabel(payment.plan)} předplatné${periodLabel}`;
++
++          items.push({
++            id: `subscription-${payment.sourceId}`,
++            date: payment.paymentDate,
++            amount: payment.amount,
++            productKey: "subscription",
++            note,
++            frequency: null,
++            source: "own",
++            contractNumber: null,
++            clientName: payment.userName,
++            ownerEmail: null,
++            entryId: null,
++            commissionLabel: "Platba předplatného",
++            isSubscriptionPayment: true,
++            subscriptionPlan: payment.plan,
++            subscriptionUserEmail: payment.userEmail,
++            subscriptionUserName: payment.userName,
++            subscriptionPeriodFrom: payment.periodFrom,
++            subscriptionPeriodUntil: payment.periodUntil,
++            payoutStatus: "paid",
++          });
++        });
++
++        const forecastHorizonEnd = new Date(asOf);
++        forecastHorizonEnd.setFullYear(
++          forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS
++        );
++
++        latestPaymentByUser.forEach((payment, userKey) => {
++          const intervalMonths = subscriptionIntervalMonths(payment.plan);
++          let occurrenceDate = addSubscriptionMonths(payment.anchorDate, intervalMonths);
++
++          for (let guard = 0; guard < SUBSCRIPTION_FORECAST_YEARS * 12; guard += 1) {
++            if (occurrenceDate > forecastHorizonEnd) break;
++
++            const periodFrom = formatSubscriptionIsoDay(occurrenceDate);
++            const occurrenceKey = subscriptionOccurrenceKey(
++              userKey,
++              payment.plan,
++              periodFrom
++            );
++            const periodUntil = subscriptionPeriodUntilIso(
++              occurrenceDate,
++              payment.plan
++            );
++
++            if (!actualOccurrenceKeys.has(occurrenceKey)) {
++              items.push({
++                id: `subscription-${payment.sourceId}-forecast-${periodFrom}`,
++                date: occurrenceDate,
++                amount: payment.amount,
++                productKey: "subscription",
++                note: `${subscriptionPlanLabel(payment.plan)} předplatné (${periodFrom} - ${periodUntil})`,
++                frequency: null,
++                source: "own",
++                contractNumber: null,
++                clientName: payment.userName,
++                ownerEmail: null,
++                entryId: null,
++                commissionLabel: "Platba předplatného",
++                isSubscriptionPayment: true,
++                subscriptionPlan: payment.plan,
++                subscriptionUserEmail: payment.userEmail,
++                subscriptionUserName: payment.userName,
++                subscriptionPeriodFrom: periodFrom,
++                subscriptionPeriodUntil: periodUntil,
++                payoutStatus: "predicted",
++              });
++            }
++
++            occurrenceDate = addSubscriptionMonths(occurrenceDate, intervalMonths);
++          }
++        });
++
++        return items;
++      })()
++    : [];
++  const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems].sort(
++    (a, b) => a.date.getTime() - b.date.getTime()
++  );
++  return cashflow;
++}
+diff --git a/src/app/cashflow/generator.ts b/src/app/cashflow/generator.ts
+--- a/src/app/cashflow/generator.ts
++++ b/src/app/cashflow/generator.ts
+@@ -478,11 +478,12 @@
+ export function generateCashflow(
+   entries: EntryDoc[],
+   horizonYears = 10,
+-  viewerEmail?: string | null
++  viewerEmail?: string | null,
++  asOf: Date = new Date()
+ ): CashflowItem[] {
+   const out: CashflowItem[] = [];
+   let globalItemSequence = 0;
+-  const now = new Date();
++  const now = new Date(asOf);
+   const horizonEnd = new Date(
+     now.getFullYear() + horizonYears,
+     now.getMonth(),
+@@ -514,7 +515,7 @@
+       toDate(entry.policyStartDate) ??
+       toDate(entry.contractSignedDate) ??
+       toDate(entry.createdAt) ??
+-      new Date();
++      new Date(now);
+     const agreement =
+       toDate(entry.contractSignedDate) ??
+       toDate(entry.createdAt) ??
+diff --git a/src/app/cashflow/helpers.ts b/src/app/cashflow/helpers.ts
+--- a/src/app/cashflow/helpers.ts
++++ b/src/app/cashflow/helpers.ts
+@@ -218,21 +218,21 @@
+ 
+ export function filterPastItems(
+   cashflowItems: CashflowItem[],
+-  showPastYears: boolean
++  showPastYears: boolean,
++  now = new Date()
+ ): CashflowItem[] {
+   if (showPastYears) return cashflowItems;
+-  const now = new Date();
+   const startCurrentYear = new Date(now.getFullYear(), 0, 1);
+   return cashflowItems.filter((item) => item.date >= startCurrentYear);
+ }
+ 
+ export function filterPastStatementMonths(
+   statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]>,
+-  showPastYears: boolean
++  showPastYears: boolean,
++  now = new Date()
+ ): Record<string, CashflowCommissionStatementSummary[]> {
+   if (showPastYears) return statementsByMonthKey;
+ 
+-  const now = new Date();
+   const startYear = now.getFullYear();
+   const filtered: Record<string, CashflowCommissionStatementSummary[]> = {};
+ 
+diff --git a/src/app/cashflow/page.tsx b/src/app/cashflow/page.tsx
+--- a/src/app/cashflow/page.tsx
++++ b/src/app/cashflow/page.tsx
+@@ -214,6 +214,7 @@
+   const [cashflowHelpOpen, setCashflowHelpOpen] = useState(false);
+   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
+   const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
++  const [statementVerificationEmail, setStatementVerificationEmail] = useState<string | null>(null);
+   const [statementPreview, setStatementPreview] = useState<CashflowCommissionStatementDetail | null>(null);
+   const [statementPreviewLoadingId, setStatementPreviewLoadingId] = useState<string | null>(null);
+   const [statementPreviewError, setStatementPreviewError] = useState<string | null>(null);
+@@ -298,6 +299,7 @@
+   }, [effectiveEmail, user]);
+ 
+   useEffect(() => {
++    setStatementVerificationEmail(null);
+     if (!user) {
+       setCommissionStatements([]);
+       setStatementPreview(null);
+@@ -307,23 +309,27 @@
+ 
+     let cancelled = false;
+ 
++    const requestScopeEmail = effectiveEmail || effectiveUserEmail(user.email);
+     const loadStatements = async () => {
+       try {
+         const token = await user.getIdToken();
+-        const response = await fetch("/api/commission-statements?limit=240", {
++        const response = await fetch("/api/commission-statements?shape=cashflow&limit=240", {
+           headers: {
+             Authorization: `Bearer ${token}`,
+           },
+           cache: "no-store",
+         });
+         const payload = (await response.json().catch(() => null)) as
+-          | { ok?: boolean; items?: CashflowCommissionStatementSummary[]; error?: string }
++          | { ok?: boolean; items?: CashflowCommissionStatementSummary[]; error?: string; hasMore?: boolean; processingComplete?: boolean }
+           | null;
+         if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items)) {
+           throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
+         }
+         if (!cancelled) {
+           setCommissionStatements(dedupeCashflowCommissionStatements(payload.items));
++          setStatementVerificationEmail(
++            payload.hasMore === false && payload.processingComplete === true ? requestScopeEmail : null,
++          );
+           setStatementPreviewError(null);
+         }
+       } catch (error) {
+@@ -341,7 +347,7 @@
+     return () => {
+       cancelled = true;
+     };
+-  }, [user]);
++  }, [user, effectiveEmail]);
+ 
+   const isTipsterMode = accountType === "tipster";
+   const canViewSubscriptionCashflow =
+@@ -359,6 +365,7 @@
+     loading,
+     ready: cashflowReady,
+     cashflowItems,
++    verificationInput,
+     hasTeam,
+     loadingProgress,
+   } = useCashflowData({
+@@ -529,6 +536,32 @@
+   );
+ 
+   const yearGroups = useMemo(() => includeCurrentYear(groupMonthsByYear(monthGroups)), [monthGroups]);
++
++  useEffect(() => {
++    if (process.env.NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED !== "1" || !user ||
++      loading || !cashflowReady || !verificationInput ||
++      statementVerificationEmail !== verificationInput.snapshot.email ||
++      verificationInput.snapshot.email !== user.email?.trim().toLowerCase() ||
++      verificationInput.snapshot.email !== effectiveUserEmail(user.email)) return;
++    try {
++      if (sessionStorage.getItem("cashflow_shadow_opt_in") !== "1") return;
++    } catch { return; }
++    const controller = new AbortController();
++    const timer = window.setTimeout(() => {
++      void import("./reportCashflowShadow").then(({ reportCashflowShadow }) =>
++        reportCashflowShadow({
++          user, ...verificationInput, statements: commissionStatements,
++          items: cashflowItems, months: monthGroups,
++          options: { scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears,
++            intelligentPredictionEnabled, contractNumberQuery },
++          signal: controller.signal,
++        }),
++      ).catch(() => undefined);
++    }, 1500);
++    return () => { window.clearTimeout(timer); controller.abort(); };
++  }, [user, effectiveEmail, loading, cashflowReady, verificationInput, statementVerificationEmail,
++    commissionStatements, cashflowItems, monthGroups, scopeFilter, productFilter, isTipsterMode,
++    showPastYears, intelligentPredictionEnabled, contractNumberQuery]);
+ 
+   const selectedMonthForDisplay = useMemo(() => {
+     if (!selectedMonth) return null;
+diff --git a/src/app/cashflow/reportCashflowShadow.test.ts b/src/app/cashflow/reportCashflowShadow.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/reportCashflowShadow.test.ts
+@@ -0,0 +1,413 @@
++// @vitest-environment happy-dom
++
++import { webcrypto } from "node:crypto";
++import type { User } from "firebase/auth";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { CASHFLOW_SHADOW_MAX_AGE_MS, hashCashflowValue } from "./shadowProtocol";
++import type { reportCashflowShadow as Reporter } from "./reportCashflowShadow";
++
++type ReportInput = Parameters<typeof Reporter>[0];
++
++describe("reportCashflowShadow", () => {
++  let report: typeof Reporter;
++  let now: number;
++  let visibility: DocumentVisibilityState;
++  let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
++  let user: User;
++
++  const matched = { ok: true, status: "match", itemsMatch: true, monthsMatch: true } as const;
++  const storedSummary = () => JSON.parse(sessionStorage.getItem("cashflow_shadow_last_result") ?? "null");
++
++  const input = (): ReportInput => {
++    const item = {
++      id: "private-entry-payout-id",
++      date: new Date(now),
++      amount: 7_774_321.89,
++      productKey: "cppAuto" as const,
++      clientName: "Private Client Name",
++      contractNumber: "PRIVATE-CONTRACT-NUMBER",
++      ownerEmail: "private-owner@example.cz",
++      entryId: "private-entry-id",
++    };
++    return {
++      user,
++      snapshot: {
++        email: "private-owner@example.cz",
++        myPosition: "poradce3",
++        myCommissionMode: "standard",
++        hasAnyTeam: false,
++        ownEntries: [{
++          id: item.entryId,
++          userEmail: item.ownerEmail,
++          productKey: item.productKey,
++          clientName: item.clientName,
++          contractNumber: item.contractNumber,
++          items: [{ title: "Private commission title", amount: item.amount, code: "A101" }],
++        }],
++        teamEntriesRaw: [],
++        tipPayouts: [],
++        subscriptionPayments: [],
++      },
++      statements: [{
++        id: "private-statement-id",
++        fileName: "private-statement-filename.html",
++        statementNumber: "private-statement-number",
++        statementDate: null,
++        period: "2026-09",
++        advisorNumber: "private-advisor-number",
++        periodStartMs: null,
++        periodEndMs: null,
++        statementDateMs: null,
++        payoutMonthKey: "2026-10",
++        paidContractNumbers: [item.contractNumber],
++        paidCommissionKeys: [],
++        commissionTotal: item.amount,
++        payoutTotal: item.amount,
++        otherPaymentsTotal: 0,
++        managerCommissionTotal: 0,
++        createdAtMs: now,
++        updatedAtMs: now,
++      }],
++      items: [item],
++      months: [{
++        key: "2026-09",
++        year: 2026,
++        monthIndex: 8,
++        label: "září",
++        total: item.amount,
++        predictedTotal: item.amount,
++        totalSource: "predicted",
++        statementPayoutTotal: null,
++        items: [item],
++      }],
++      options: {
++        scopeFilter: "combined",
++        productFilter: "all",
++        tipsterMode: false,
++        showPastYears: false,
++        intelligentPredictionEnabled: false,
++        contractNumberQuery: "",
++      },
++      asOf: new Date(now),
++      signal: new AbortController().signal,
++    };
++  };
++
++  beforeEach(async () => {
++    vi.resetModules();
++    now = new Date(2026, 8, 12, 12).getTime();
++    visibility = "visible";
++    sessionStorage.clear();
++    vi.spyOn(Date, "now").mockImplementation(() => now);
++    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
++    vi.stubGlobal("crypto", webcrypto);
++    user = { uid: "authenticated-uid", email: "private-owner@example.cz", getIdToken: vi.fn(async () => "test-token") } as unknown as User;
++    fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(matched));
++    vi.stubGlobal("fetch", fetchMock);
++    report = (await import("./reportCashflowShadow")).reportCashflowShadow;
++  });
++
++  afterEach(() => {
++    vi.restoreAllMocks();
++    vi.unstubAllGlobals();
++  });
++
++  it("sends only real fingerprints and calculation context, with authenticated no-store transport", async () => {
++    const args = input();
++    const before = structuredClone({ snapshot: args.snapshot, statements: args.statements, items: args.items, months: args.months });
++    expect(await report(args)).toEqual(matched);
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    const [url, init] = fetchMock.mock.calls[0];
++    expect(url).toBe("/api/cashflow/shadow");
++    expect(init).toMatchObject({ method: "POST", cache: "no-store", signal: args.signal });
++    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-token");
++    expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
++    const body = JSON.parse(String(init?.body));
++    expect(body).toEqual({
++      version: "cashflow-shadow-v1",
++      asOfMs: now,
++      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++      inputHash: await hashCashflowValue({ snapshot: args.snapshot, statements: args.statements }),
++      itemsHash: await hashCashflowValue(args.items),
++      monthsHash: await hashCashflowValue(args.months),
++      options: args.options,
++    });
++    expect([body.inputHash, body.itemsHash, body.monthsHash].every((hash) => /^[a-f0-9]{64}$/.test(hash))).toBe(true);
++    expect(String(init?.body)).not.toMatch(/private|7774321|Private Client/i);
++    expect({ snapshot: args.snapshot, statements: args.statements, items: args.items, months: args.months }).toEqual(before);
++  });
++
++  it("does no hashing or network work in a hidden tab, and allows the visible attempt", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    visibility = "hidden";
++    expect(await report(input())).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    visibility = "visible";
++    expect(await report(input())).toEqual(matched);
++  });
++
++  it("skips impersonated accounts before hashing and accepts a normalized own-account email", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    const args = input();
++    args.snapshot.email = "impersonated@example.cz";
++    expect(await report(args)).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    const normalizedUser = { ...user, email: "  PRIVATE-OWNER@EXAMPLE.CZ " } as User;
++    expect(await report({ ...input(), user: normalizedUser })).toEqual(matched);
++  });
++
++  it("skips a calculation from the previous local day even when less than five minutes old", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    now = new Date(2026, 8, 13, 0, 1).getTime();
++    const asOf = new Date(2026, 8, 12, 23, 59);
++    expect(now - asOf.getTime()).toBeLessThan(CASHFLOW_SHADOW_MAX_AGE_MS);
++    expect(await report({ ...input(), asOf })).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    expect(await report(input())).toEqual(matched);
++  });
++
++  it("skips more than 25,000 cashflow items before hashing or requesting a comparison", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    const args = input();
++    args.items = Array.from({ length: 25_001 }, () => args.items[0]);
++    expect(await report(args)).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    expect(await report(input())).toEqual(matched);
++  });
++
++  it("does no hashing or network work for an already aborted render", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    const controller = new AbortController();
++    controller.abort();
++    expect(await report({ ...input(), signal: controller.signal })).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    expect(await report(input())).toEqual(matched);
++  });
++
++  it.each(["past", "future", "invalid"] as const)("skips %s calculation context before hashing", async (kind) => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    const asOf = kind === "invalid" ? new Date(Number.NaN) : new Date(now + (kind === "past" ? -1 : 1) * (CASHFLOW_SHADOW_MAX_AGE_MS + 1));
++    expect(await report({ ...input(), asOf })).toBeNull();
++    expect(digest).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++    expect(await report(input())).toEqual(matched);
++  });
++
++  it("throttles hashing and requests for five minutes during concurrent renders and filter changes", async () => {
++    const digest = vi.spyOn(webcrypto.subtle, "digest");
++    const results = await Promise.all([
++      report(input()),
++      report(input()),
++      report({ ...input(), options: { ...input().options, productFilter: "life" } }),
++    ]);
++    expect(results).toEqual([matched, null, null]);
++    expect(digest).toHaveBeenCalledTimes(3);
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    now += CASHFLOW_SHADOW_MAX_AGE_MS - 1;
++    expect(await report(input())).toBeNull();
++    expect(digest).toHaveBeenCalledTimes(3);
++    now += 1;
++    expect(await report(input())).toEqual(matched);
++    expect(digest).toHaveBeenCalledTimes(6);
++    expect(fetchMock).toHaveBeenCalledTimes(2);
++  });
++
++  it("keeps the throttle separate for authenticated UIDs and effective accounts", async () => {
++    expect(await report(input())).toEqual(matched);
++    const otherAccount = input();
++    otherAccount.snapshot.email = "other-effective@example.cz";
++    otherAccount.user = { ...user, email: "other-effective@example.cz" } as User;
++    expect(await report(otherAccount)).toEqual(matched);
++    const otherUser = { ...user, uid: "other-authenticated-uid" } as User;
++    expect(await report({ ...input(), user: otherUser })).toEqual(matched);
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(3);
++  });
++
++  it.each(["aborted", "hidden", "stale"] as const)("skips the request if the render becomes %s during hashing", async (kind) => {
++    const controller = new AbortController();
++    const gate = Promise.withResolvers<void>();
++    const realDigest = webcrypto.subtle.digest.bind(webcrypto.subtle);
++    const digest = vi.spyOn(webcrypto.subtle, "digest").mockImplementation(async (...args) => {
++      await gate.promise;
++      return realDigest(...args);
++    });
++    const pending = report({ ...input(), signal: controller.signal });
++    expect(digest).toHaveBeenCalledTimes(3);
++    if (kind === "aborted") controller.abort();
++    if (kind === "hidden") visibility = "hidden";
++    if (kind === "stale") now += CASHFLOW_SHADOW_MAX_AGE_MS + 1;
++    gate.resolve();
++    expect(await pending).toBeNull();
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++
++  it.each(["aborted", "hidden", "stale", "account"] as const)("does not fetch when context becomes %s while obtaining a token", async (kind) => {
++    const controller = new AbortController();
++    const started = Promise.withResolvers<void>();
++    const token = Promise.withResolvers<string>();
++    vi.mocked(user.getIdToken).mockImplementationOnce(() => {
++      started.resolve();
++      return token.promise;
++    });
++    const pending = report({ ...input(), signal: controller.signal });
++    await started.promise;
++    if (kind === "aborted") controller.abort();
++    if (kind === "hidden") visibility = "hidden";
++    if (kind === "stale") now += CASHFLOW_SHADOW_MAX_AGE_MS + 1;
++    if (kind === "account") Object.assign(user, { email: "different@example.test" });
++    token.resolve("late-token");
++    expect(await pending).toBeNull();
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++
++  it.each(["visible", "hidden"] as const)("retries 401 with a refreshed token only if the tab remains visible (%s)", async (nextVisibility) => {
++    const refreshStarted = Promise.withResolvers<void>();
++    const refreshedToken = Promise.withResolvers<string>();
++    vi.mocked(user.getIdToken)
++      .mockResolvedValueOnce("expired-token")
++      .mockImplementationOnce(() => {
++        refreshStarted.resolve();
++        return refreshedToken.promise;
++      });
++    fetchMock.mockResolvedValueOnce(Response.json({ error: "Expired" }, { status: 401 }));
++    const args = input();
++    const pending = report(args);
++    await refreshStarted.promise;
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get("Authorization")).toBe("Bearer expired-token");
++    expect(vi.mocked(user.getIdToken).mock.calls).toEqual([[false], [true]]);
++    visibility = nextVisibility;
++    refreshedToken.resolve("refreshed-token");
++    expect(await pending).toEqual(nextVisibility === "visible" ? matched : null);
++    expect(fetchMock).toHaveBeenCalledTimes(nextVisibility === "visible" ? 2 : 1);
++    if (nextVisibility === "visible") {
++      const retry = fetchMock.mock.calls[1][1];
++      expect(new Headers(retry?.headers).get("Authorization")).toBe("Bearer refreshed-token");
++      expect(retry).toMatchObject({ body: fetchMock.mock.calls[0][1]?.body, signal: args.signal, cache: "no-store" });
++    }
++  });
++
++  it.each(["aborted", "hidden", "stale"] as const)("ignores late successful responses when the render is %s", async (kind) => {
++    const controller = new AbortController();
++    const started = Promise.withResolvers<void>();
++    const deferred = Promise.withResolvers<Response>();
++    fetchMock.mockImplementationOnce(() => {
++      started.resolve();
++      return deferred.promise;
++    });
++    const pending = report({ ...input(), signal: controller.signal });
++    await started.promise;
++    expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
++    if (kind === "aborted") controller.abort();
++    if (kind === "hidden") visibility = "hidden";
++    if (kind === "stale") now += CASHFLOW_SHADOW_MAX_AGE_MS + 1;
++    deferred.resolve(Response.json(matched));
++    expect(await pending).toBeNull();
++  });
++
++  it.each(["hash", "auth", "network", "server"] as const)("isolates %s failures and throttles retries", async (kind) => {
++    if (kind === "hash") vi.spyOn(webcrypto.subtle, "digest").mockRejectedValue(new Error("Hash unavailable"));
++    if (kind === "auth") vi.mocked(user.getIdToken).mockRejectedValue(new Error("Signed out"));
++    if (kind === "network") fetchMock.mockRejectedValue(new Error("Network unavailable"));
++    if (kind === "server") fetchMock.mockResolvedValue(Response.json({ error: "Unavailable" }, { status: 503 }));
++    expect(await report(input())).toBeNull();
++    const attempts = fetchMock.mock.calls.length;
++    expect(attempts).toBe(kind === "hash" || kind === "auth" ? 0 : 1);
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(attempts);
++  });
++
++  it("returns mismatches and skipped comparisons without replacing the supplied cashflow", async () => {
++    const args = input();
++    const before = structuredClone({ items: args.items, months: args.months });
++    const mismatch = { ok: true, status: "mismatch", itemsMatch: false, monthsMatch: true };
++    fetchMock.mockResolvedValueOnce(Response.json(mismatch));
++    expect(await report(args)).toEqual(mismatch);
++    now += CASHFLOW_SHADOW_MAX_AGE_MS;
++    const skipped = { ok: true, status: "skipped", reason: "different_inputs" };
++    fetchMock.mockResolvedValueOnce(Response.json(skipped));
++    expect(await report({ ...args, asOf: new Date(now) })).toEqual(skipped);
++    expect({ items: args.items, months: args.months }).toEqual(before);
++  });
++
++  it("persists only the whitelisted result and numerical timing aggregates", async () => {
++    vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(125);
++    fetchMock.mockResolvedValueOnce(Response.json({ ...matched, email: "private@example.test", amount: 123 }, { headers: {
++      "Server-Timing": 'cashflow_total;dur=20, cashflow_inputs;dur=15;desc="private text", other;dur=999',
++    } }));
++    const args = input();
++    const before = structuredClone({ items: args.items, months: args.months });
++    expect(await report(args)).toEqual(matched);
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    expect(storedSummary()).toEqual({
++      version: "cashflow-shadow-v1",
++      shadow: { status: "match", requestMs: 25, serverTimingMs: { cashflow_total: 20, cashflow_inputs: 15 } },
++    });
++    expect(sessionStorage.getItem("cashflow_shadow_last_result")).not.toMatch(/private|123|authenticated|options|amount|email/i);
++    expect({ items: args.items, months: args.months }).toEqual(before);
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++  });
++
++  it("retains only a known skip reason for pilot diagnosis", async () => {
++    const result = { ok: true, status: "skipped", reason: "time_zone", details: "private account information" };
++    fetchMock.mockResolvedValueOnce(Response.json(result));
++    expect(await report(input())).toEqual({ ok: true, status: "skipped", reason: "time_zone" });
++    expect(storedSummary().shadow).toMatchObject({ status: "skipped", reason: "time_zone" });
++    expect(sessionStorage.getItem("cashflow_shadow_last_result")).not.toContain("private");
++  });
++
++  it.each(["401", "403", "429", "503", "network", "json"] as const)("does not persist or fall back after a %s failure", async kind => {
++    if (kind === "network") fetchMock.mockRejectedValue(new Error("offline"));
++    else if (kind === "json") fetchMock.mockResolvedValue(new Response("invalid-json"));
++    else fetchMock.mockImplementation(async () => Response.json({ error: "private failure" }, { status: Number(kind) }));
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(kind === "401" ? 2 : 1);
++    expect(storedSummary()).toBeNull();
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(kind === "401" ? 2 : 1);
++  });
++
++  it.each(["aborted", "hidden", "stale", "account"] as const)("discards decoded responses when context becomes %s before persistence", async kind => {
++    const controller = new AbortController();
++    const started = Promise.withResolvers<void>();
++    const parsed = Promise.withResolvers<unknown>();
++    const response = Response.json(matched);
++    vi.spyOn(response, "json").mockImplementationOnce(() => { started.resolve(); return parsed.promise; });
++    fetchMock.mockResolvedValueOnce(response);
++    const pending = report({ ...input(), signal: controller.signal });
++    await started.promise;
++    if (kind === "aborted") controller.abort();
++    if (kind === "hidden") visibility = "hidden";
++    if (kind === "stale") now += CASHFLOW_SHADOW_MAX_AGE_MS + 1;
++    if (kind === "account") Object.assign(user, { email: "different@example.test" });
++    parsed.resolve(matched);
++    expect(await pending).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    expect(storedSummary()).toBeNull();
++  });
++
++  it.each([
++    { ...matched, status: "mismatch" },
++    { ...matched, itemsMatch: "true" },
++    { ok: true, status: "skipped", reason: "private reason" },
++    { ok: true, status: "unknown" },
++  ])("excludes bogus results from storage: %j", async bogus => {
++    fetchMock.mockResolvedValueOnce(Response.json(bogus));
++    expect(await report(input())).toBeNull();
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++    expect(storedSummary()).toBeNull();
++  });
++
++  it("ignores denied session storage without changing a valid diagnostic result", async () => {
++    vi.spyOn(sessionStorage, "setItem").mockImplementation(() => { throw new DOMException("Storage denied", "SecurityError"); });
++    expect(await report(input())).toEqual(matched);
++    expect(fetchMock).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/src/app/cashflow/reportCashflowShadow.ts b/src/app/cashflow/reportCashflowShadow.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/reportCashflowShadow.ts
+@@ -0,0 +1,112 @@
++import type { User } from "firebase/auth";
++import type { CashflowSnapshot } from "./computeCashflow";
++import type { CashflowViewOptions } from "./buildCashflowView";
++import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } from "./types";
++import {
++  parseCashflowServerTiming,
++  parseCashflowShadowResult,
++  type CashflowServerTiming,
++} from "./shadowDiagnosticProtocol";
++import {
++  CASHFLOW_SHADOW_VERSION,
++  CASHFLOW_SHADOW_MAX_AGE_MS,
++  CASHFLOW_SHADOW_MAX_ITEMS,
++  isCashflowShadowContextCurrent,
++  hashCashflowValue,
++  type CashflowShadowRequest,
++  type CashflowShadowResult,
++} from "./shadowProtocol";
++
++const lastAttempts = new Map<string, number>();
++
++type RequestMeasurement = { requestMs: number; serverTimingMs: CashflowServerTiming };
++type DiagnosticSummary = {
++  version: typeof CASHFLOW_SHADOW_VERSION;
++  shadow: RequestMeasurement & Pick<CashflowShadowResult, "status" | "reason">;
++};
++
++const requestMeasurement = (response: Response, startedAt: number): RequestMeasurement => ({
++  requestMs: Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000),
++  serverTimingMs: parseCashflowServerTiming(response.headers.get("Server-Timing")),
++});
++
++function saveDiagnosticSummary(summary: DiagnosticSummary): void {
++  try { sessionStorage.setItem("cashflow_shadow_last_result", JSON.stringify(summary)); }
++  catch { /* Diagnostics must remain optional when browser storage is unavailable. */ }
++}
++
++export async function reportCashflowShadow({
++  user, snapshot, statements, items, months, options, asOf, signal,
++}: {
++  user: User;
++  snapshot: CashflowSnapshot;
++  statements: CashflowCommissionStatementSummary[];
++  items: CashflowItem[];
++  months: MonthGroup[];
++  options: CashflowViewOptions;
++  asOf: Date;
++  signal: AbortSignal;
++}): Promise<CashflowShadowResult | null> {
++  const accountUid = user.uid;
++  const accountEmail = snapshot.email;
++  const asOfMs = asOf.getTime();
++  const unavailable = () => signal.aborted || document.visibilityState !== "visible" ||
++    user.uid !== accountUid || snapshot.email !== accountEmail ||
++    accountEmail !== user.email?.trim().toLowerCase() || asOf.getTime() !== asOfMs ||
++    !isCashflowShadowContextCurrent(asOfMs);
++  // The first browser pilot verifies the signed-in account only. The global
++  // impersonation transport does not enable this diagnostic POST route.
++  if (unavailable() || items.length > CASHFLOW_SHADOW_MAX_ITEMS) return null;
++  const key = `${user.uid}:${snapshot.email}`;
++  const now = Date.now();
++  if (now - (lastAttempts.get(key) ?? -Infinity) < CASHFLOW_SHADOW_MAX_AGE_MS) return null;
++  // Bound both local hashing and server rereads even when navigating/filtering.
++  for (const [oldKey, time] of lastAttempts) {
++    if (now - time >= CASHFLOW_SHADOW_MAX_AGE_MS) lastAttempts.delete(oldKey);
++  }
++  lastAttempts.set(key, now);
++
++  try {
++    const [inputHash, itemsHash, monthsHash] = await Promise.all([
++      hashCashflowValue({ snapshot, statements }), hashCashflowValue(items), hashCashflowValue(months),
++    ]);
++    if (unavailable()) return null;
++    const body: CashflowShadowRequest = {
++      version: CASHFLOW_SHADOW_VERSION,
++      asOfMs,
++      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++      inputHash, itemsHash, monthsHash, options,
++    };
++    // Authentication refresh preserves the exact context and fingerprints.
++    const serializedBody = JSON.stringify(body);
++    const request = async (refreshToken = false) => {
++      if (unavailable()) return null;
++      const token = await user.getIdToken(refreshToken);
++      // Token acquisition can outlive navigation, tab visibility or context.
++      if (unavailable()) return null;
++      return fetch("/api/cashflow/shadow", {
++        method: "POST", body: serializedBody, signal, cache: "no-store",
++        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
++      });
++    };
++    const shadowStartedAt = performance.now();
++    let response = await request();
++    if (response?.status === 401) response = await request(true);
++    if (!response?.ok) return null;
++    const result = parseCashflowShadowResult(await response.json());
++    if (!result || unavailable()) return null;
++    const summary: DiagnosticSummary = {
++      version: CASHFLOW_SHADOW_VERSION,
++      shadow: {
++        status: result.status,
++        ...(result.reason !== undefined ? { reason: result.reason } : {}),
++        ...requestMeasurement(response, shadowStartedAt),
++      },
++    };
++    if (unavailable()) return null;
++    saveDiagnosticSummary(summary);
++    return result;
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/app/cashflow/shadowDiagnosticProtocol.test.ts b/src/app/cashflow/shadowDiagnosticProtocol.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/shadowDiagnosticProtocol.test.ts
+@@ -0,0 +1,46 @@
++import { describe, expect, it } from "vitest";
++import { parseCashflowServerTiming, parseCashflowShadowResult } from "./shadowDiagnosticProtocol";
++
++const matched = { ok: true, status: "match", itemsMatch: true, monthsMatch: true };
++
++describe("cashflow diagnostic response protocol", () => {
++  it("whitelists comparison outcomes and excludes raw inputs and identity", () => {
++    const extra = { email: "private@example.test", amount: 123, inputHash: "secret-hash", data: [{ contract: "private" }] };
++    expect(parseCashflowShadowResult({ ...matched, ...extra })).toEqual(matched);
++  });
++
++  it.each([
++    null, [], "match", { ...matched, ok: false }, { ...matched, status: "unexpected" },
++    { ...matched, status: ["mismatch"], itemsMatch: false },
++    { ...matched, itemsMatch: false }, { ...matched, monthsMatch: "true" },
++    { ...matched, status: "mismatch" }, { ok: true, status: "match" },
++    { ok: true, status: "skipped", reason: "private-details" },
++  ])("rejects malformed or contradictory comparisons: %j", value => {
++    expect(parseCashflowShadowResult(value)).toBeNull();
++  });
++
++  it("accepts mismatches and known skip reasons", () => {
++    const mismatch = { ...matched, status: "mismatch", itemsMatch: false };
++    expect(parseCashflowShadowResult(mismatch)).toEqual(mismatch);
++    expect(parseCashflowShadowResult({ ok: true, status: "skipped", reason: "stale_context" })).toEqual({ ok: true, status: "skipped", reason: "stale_context" });
++    expect(parseCashflowShadowResult({ ok: true, status: "skipped", reason: "resource_limit" })).toEqual({ ok: true, status: "skipped", reason: "resource_limit" });
++  });
++});
++
++describe("cashflow Server-Timing aggregates", () => {
++  it("retains only finite numerical durations for named metrics", () => {
++    expect(parseCashflowServerTiming('cashflow_total;dur=12.5;desc="private text", cashflow_auth;dur=0, cashflow_hash;dur=.25, unrelated;dur=42, cashflow_inputs;desc="private"')).toEqual({
++      cashflow_total: 12.5, cashflow_auth: 0, cashflow_hash: 0.25,
++    });
++  });
++
++  it.each(["NaN", "Infinity", "-1", "1e3", "3600001", '"12"', "private-value"])("discards invalid duration %s", value => {
++    expect(parseCashflowServerTiming(`cashflow_total;dur=${value}`)).toEqual({});
++  });
++
++  it("discards duplicate metrics/parameters and oversized headers", () => {
++    expect(parseCashflowServerTiming("cashflow_total;dur=1, cashflow_total;dur=2, cashflow_total;dur=3, cashflow_auth;dur=1;dur=2")).toEqual({});
++    expect(parseCashflowServerTiming("x".repeat(8193))).toEqual({});
++    expect(parseCashflowServerTiming(null)).toEqual({});
++  });
++});
+diff --git a/src/app/cashflow/shadowDiagnosticProtocol.ts b/src/app/cashflow/shadowDiagnosticProtocol.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/shadowDiagnosticProtocol.ts
+@@ -0,0 +1,50 @@
++import type { CashflowShadowResult } from "./shadowProtocol";
++
++const shadowReasons = new Set(["disabled", "time_zone", "stale_context", "different_inputs", "unavailable", "incomplete_inputs", "resource_limit"]);
++
++const object = (value: unknown): Record<string, unknown> | null =>
++  value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
++
++function comparisonMatchesStatus(value: Record<string, unknown>): boolean {
++  return typeof value.itemsMatch === "boolean" && typeof value.monthsMatch === "boolean" &&
++    (value.status === "match" ? value.itemsMatch && value.monthsMatch : !(value.itemsMatch && value.monthsMatch));
++}
++
++/** Reject inconsistent comparisons and discard every unrecognized field. */
++export function parseCashflowShadowResult(value: unknown): CashflowShadowResult | null {
++  const result = object(value);
++  if (!result || result.ok !== true) return null;
++  if (result.status === "skipped") {
++    if (typeof result.reason !== "string" || !shadowReasons.has(result.reason)) return null;
++    return { ok: true, status: "skipped", reason: result.reason as CashflowShadowResult["reason"] };
++  }
++  if (typeof result.status !== "string" || !["match", "mismatch"].includes(result.status) || !comparisonMatchesStatus(result)) return null;
++  return {
++    ok: true,
++    status: result.status as "match" | "mismatch",
++    itemsMatch: result.itemsMatch as boolean,
++    monthsMatch: result.monthsMatch as boolean,
++  };
++}
++
++const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash"] as const;
++export type CashflowServerTiming = Partial<Record<typeof timingNames[number], number>>;
++
++/** Only numerical duration aggregates may reach diagnostic session storage. */
++export function parseCashflowServerTiming(header: string | null): CashflowServerTiming {
++  const timings: CashflowServerTiming = {};
++  if (!header || header.length > 8192) return timings;
++  const seen = new Set<string>();
++  for (const metric of header.split(",")) {
++    const [rawName, ...parameters] = metric.split(";");
++    const name = rawName.trim() as typeof timingNames[number];
++    if (!timingNames.includes(name)) continue;
++    if (seen.has(name)) { delete timings[name]; continue; }
++    seen.add(name);
++    const durations = parameters.map(parameter => parameter.trim()).filter(parameter => parameter.startsWith("dur="));
++    if (durations.length !== 1 || !/^dur=(?:\d+(?:\.\d+)?|\.\d+)$/.test(durations[0])) continue;
++    const value = Number(durations[0].slice(4));
++    if (Number.isFinite(value) && value >= 0 && value <= 3_600_000) timings[name] = value;
++  }
++  return timings;
++}
+diff --git a/src/app/cashflow/shadowProtocol.test.ts b/src/app/cashflow/shadowProtocol.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/shadowProtocol.test.ts
+@@ -0,0 +1,53 @@
++import { describe, expect, it } from "vitest";
++import { CASHFLOW_SHADOW_VERSION, cashflowCanonicalJson, hashCashflowValue, isCashflowShadowContextCurrent, parseCashflowShadowRequest } from "./shadowProtocol";
++
++const valid = () => ({
++  version: CASHFLOW_SHADOW_VERSION, asOfMs: 1_789_200_000_000, timeZone: "Europe/Prague",
++  inputHash: "a".repeat(64), itemsHash: "b".repeat(64), monthsHash: "c".repeat(64),
++  options: { scopeFilter: "combined", productFilter: "all", tipsterMode: false,
++    showPastYears: false, intelligentPredictionEnabled: false, contractNumberQuery: "" },
++});
++
++describe("cashflow shadow protocol", () => {
++  it("skips a different calendar day even within the five-minute comparison window", () => {
++    const now = new Date(2027, 0, 1, 0, 1).getTime();
++    expect(isCashflowShadowContextCurrent(now - 120000, now)).toBe(false);
++    expect(isCashflowShadowContextCurrent(now - 30000, now)).toBe(true);
++  });
++  it("whitelists context and fingerprints, never trusts client identity or portfolio", () => {
++    expect(parseCashflowShadowRequest({ ...valid(), email: "someone@example.test", snapshot: { amount: 999 } })).toEqual(valid());
++  });
++  it.each([
++    { scopeFilter: ["own"] }, { scopeFilter: "other" }, { productFilter: "other" },
++    { tipsterMode: "false" }, { intelligentPredictionEnabled: 1 }, { showPastYears: null },
++    { contractNumberQuery: "a".repeat(129) },
++  ])("rejects malformed filter context %j", (options) => {
++    expect(parseCashflowShadowRequest({ ...valid(), options: { ...valid().options, ...options } })).toBeNull();
++  });
++  it.each([
++    { version: "old" }, { asOfMs: NaN }, { asOfMs: 0 }, { asOfMs: 1e16 },
++    { inputHash: "bad" }, { timeZone: "" }, { monthsHash: "B".repeat(64) },
++  ])("rejects invalid comparison metadata %j", (override) => {
++    expect(parseCashflowShadowRequest({ ...valid(), ...override })).toBeNull();
++  });
++  it("hashes the same serialized API inputs identically in either object key order", async () => {
++    const left = { b: 2, a: { date: new Date("2026-09-12T12:00:00Z"), missing: undefined, value: 0 } };
++    const right = { a: { value: 0, date: "2026-09-12T12:00:00.000Z" }, b: 2 };
++    expect(await hashCashflowValue(left)).toBe(await hashCashflowValue(right));
++    expect(JSON.parse(cashflowCanonicalJson(left))).toEqual(right);
++  });
++  it("detects equal totals with changed attribution, duplicate rows or fractional amounts", async () => {
++    const first = [{ owner: "one", amount: 1.001 }, { owner: "two", amount: 2 }];
++    const fingerprint = await hashCashflowValue(first);
++    expect(await hashCashflowValue([{ owner: "one", amount: 2 }, { owner: "two", amount: 1.001 }])).not.toBe(fingerprint);
++    expect(await hashCashflowValue([...first, first[0]])).not.toBe(fingerprint);
++    expect(await hashCashflowValue([{ ...first[0], amount: 1.002 }, first[1]])).not.toBe(fingerprint);
++    expect(await hashCashflowValue(first.toReversed())).not.toBe(fingerprint);
++  });
++  it.each([NaN, Infinity, -Infinity, new Date(NaN)])("does not mask an invalid value as JSON null", (value) => {
++    expect(() => cashflowCanonicalJson({ value })).toThrow();
++  });
++  it("bounds fingerprint input size", async () => {
++    await expect(hashCashflowValue("x".repeat(16 * 1024 * 1024))).rejects.toThrow("too large");
++  });
++});
+diff --git a/src/app/cashflow/shadowProtocol.ts b/src/app/cashflow/shadowProtocol.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/shadowProtocol.ts
+@@ -0,0 +1,108 @@
++import type { CashflowViewOptions } from "./buildCashflowView";
++
++export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v1";
++export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
++export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
++export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;
++
++export function isCashflowShadowContextCurrent(asOfMs: number, nowMs = Date.now()): boolean {
++  if (!Number.isFinite(asOfMs) || Math.abs(nowMs - asOfMs) > CASHFLOW_SHADOW_MAX_AGE_MS) return false;
++  const asOf = new Date(asOfMs);
++  const now = new Date(nowMs);
++  return asOf.getFullYear() === now.getFullYear() && asOf.getMonth() === now.getMonth() && asOf.getDate() === now.getDate();
++}
++
++export type CashflowShadowRequest = {
++  version: typeof CASHFLOW_SHADOW_VERSION;
++  asOfMs: number;
++  timeZone: string;
++  inputHash: string;
++  itemsHash: string;
++  monthsHash: string;
++  options: CashflowViewOptions;
++};
++
++export type CashflowShadowResult = {
++  ok: true;
++  status: "match" | "mismatch" | "skipped";
++  reason?: "disabled" | "time_zone" | "stale_context" | "different_inputs" | "incomplete_inputs" | "unavailable" | "resource_limit";
++  itemsMatch?: boolean;
++  monthsMatch?: boolean;
++};
++
++const productFilters = new Set([
++  "pension", "all", "tip", "subscription", "life", "auto", "property",
++  "entrepreneurs", "travel", "foreigners", "gold",
++]);
++const hashPattern = /^[a-f0-9]{64}$/;
++
++export function parseCashflowShadowRequest(value: unknown): CashflowShadowRequest | null {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
++  const request = value as Record<string, unknown>;
++  const rawOptions = request.options;
++  if (!rawOptions || typeof rawOptions !== "object" || Array.isArray(rawOptions)) return null;
++  const options = rawOptions as Record<string, unknown>;
++  if (
++    request.version !== CASHFLOW_SHADOW_VERSION ||
++    typeof request.asOfMs !== "number" || !Number.isSafeInteger(request.asOfMs) ||
++    request.asOfMs <= 0 || !Number.isFinite(new Date(request.asOfMs).getTime()) ||
++    typeof request.timeZone !== "string" || request.timeZone.length > 100 ||
++    !request.timeZone ||
++    ![request.inputHash, request.itemsHash, request.monthsHash].every(
++      (hash) => typeof hash === "string" && hashPattern.test(hash),
++    ) ||
++    typeof options.scopeFilter !== "string" || !["combined", "own", "team"].includes(options.scopeFilter) ||
++    typeof options.productFilter !== "string" || !productFilters.has(options.productFilter) ||
++    typeof options.tipsterMode !== "boolean" ||
++    typeof options.showPastYears !== "boolean" ||
++    typeof options.intelligentPredictionEnabled !== "boolean" ||
++    typeof options.contractNumberQuery !== "string" || options.contractNumberQuery.length > 128
++  ) return null;
++  // Whitelist fields; never accept client identities or calculation inputs.
++  return {
++    version: CASHFLOW_SHADOW_VERSION,
++    asOfMs: request.asOfMs,
++    timeZone: request.timeZone,
++    inputHash: request.inputHash as string,
++    itemsHash: request.itemsHash as string,
++    monthsHash: request.monthsHash as string,
++    options: {
++      scopeFilter: options.scopeFilter as CashflowViewOptions["scopeFilter"],
++      productFilter: options.productFilter as CashflowViewOptions["productFilter"],
++      tipsterMode: options.tipsterMode,
++      showPastYears: options.showPastYears,
++      intelligentPredictionEnabled: options.intelligentPredictionEnabled,
++      contractNumberQuery: options.contractNumberQuery,
++    },
++  };
++}
++
++// Deterministic JSON across browser and Node, retaining order, duplicates,
++// amounts and all provenance. Invalid numbers must never hash as a valid null.
++export function cashflowCanonicalJson(value: unknown): string {
++  const normalize = (item: unknown): unknown => {
++    if (item instanceof Date) {
++      if (!Number.isFinite(item.getTime())) throw new Error("Invalid cashflow date");
++      return item.toISOString();
++    }
++    if (typeof item === "number" && !Number.isFinite(item)) throw new Error("Invalid cashflow number");
++    if (item === null || typeof item !== "object") {
++      if (["function", "symbol", "bigint"].includes(typeof item)) throw new Error("Invalid cashflow value");
++      return item;
++    }
++    if (Array.isArray(item)) return item.map(normalize);
++    return Object.fromEntries(Object.keys(item).sort().map(
++      (key) => [key, normalize((item as Record<string, unknown>)[key])],
++    ));
++  };
++  const json = JSON.stringify(normalize(value));
++  if (json === undefined) throw new Error("Missing cashflow input");
++  return json;
++}
++
++export async function hashCashflowValue(value: unknown): Promise<string> {
++  const bytes = new TextEncoder().encode(cashflowCanonicalJson(value));
++  if (bytes.length > CASHFLOW_SHADOW_MAX_INPUT_BYTES) throw new Error("Cashflow shadow input too large");
++  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
++  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
++}
+diff --git a/src/app/cashflow/useCashflowData.ts b/src/app/cashflow/useCashflowData.ts
+--- a/src/app/cashflow/useCashflowData.ts
++++ b/src/app/cashflow/useCashflowData.ts
+@@ -55,6 +55,7 @@
+   loading: boolean;
+   ready: boolean;
+   cashflowItems: CashflowItem[];
++  verificationInput: { snapshot: RawContractsSnapshot; asOf: Date } | null;
+   hasTeam: boolean;
+   loadingProgress: CashflowLoadingProgress;
+ };
+@@ -914,9 +915,13 @@
+     snapshot && currentEmail && normalizeEmail(snapshot.email) === currentEmail
+   );
+   const dataReady = ready && (!snapshot || snapshotMatchesCurrentUser);
+-  const cashflowItems = useMemo<CashflowItem[]>(() => {
+-    if (!enabled || !snapshot || !snapshotMatchesCurrentUser) return [];
+-
++  const { cashflowItems, verificationInput } = useMemo(() => {
++    if (!enabled || !snapshot || !snapshotMatchesCurrentUser) {
++      return { cashflowItems: [] as CashflowItem[], verificationInput: null };
++    }
++
++    // Capture the reference calculation's instant for optional server comparison.
++    const asOf = new Date();
+     const email = snapshot.email;
+     const entryWasTransferred = (entry: EntryDoc): boolean => {
+       if (isInheritedContract(entry)) return true;
+@@ -1052,7 +1057,8 @@
+     const generatedCashflow = generateCashflow(
+       entriesForCashflow,
+       CASHFLOW_FORECAST_YEARS,
+-      email
++      email,
++      asOf
+     );
+     const includeTipPayouts =
+       tipsterMode ||
+@@ -1183,7 +1189,7 @@
+             });
+           });
+ 
+-          const forecastHorizonEnd = new Date();
++          const forecastHorizonEnd = new Date(asOf);
+           forecastHorizonEnd.setFullYear(
+             forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS
+           );
+@@ -1273,13 +1279,14 @@
+       });
+     }
+ 
+-    return cashflow;
++    return { cashflowItems: cashflow, verificationInput: { snapshot, asOf } };
+   }, [enabled, productFilter, scopeFilter, snapshot, snapshotMatchesCurrentUser, tipsterMode]);
+ 
+   return {
+     loading,
+     ready: dataReady,
+     cashflowItems,
++    verificationInput,
+     hasTeam: snapshotMatchesCurrentUser ? hasTeam : false,
+     loadingProgress,
+   };
+diff --git a/src/lib/server/cashflowDiagnosticHttp.test.ts b/src/lib/server/cashflowDiagnosticHttp.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowDiagnosticHttp.test.ts
+@@ -0,0 +1,26 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { NextRequest } from "next/server";
++import { createCashflowDiagnosticTiming, readCashflowDiagnosticJson } from "./cashflowDiagnosticHttp";
++afterEach(() => vi.restoreAllMocks());
++
++describe("cashflow diagnostic transport", () => {
++  it("reports monotonic aggregate durations including repeated phases and failures", async () => {
++    let time = 100;
++    vi.spyOn(performance, "now").mockImplementation(() => time);
++    const timing = createCashflowDiagnosticTiming();
++    await timing.measure("inputs", () => { time += 12.5; });
++    await expect(timing.measure("inputs", () => { time += 7.5; throw new Error("private"); })).rejects.toThrow();
++    await timing.measure("auth", async () => { time += 3; });
++    const response = timing.json({ ok: true });
++    expect(response.headers.get("Server-Timing")).toBe("cashflow_inputs;dur=20.00, cashflow_auth;dur=3.00, cashflow_total;dur=23.00");
++    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
++  });
++  it("enforces the byte limit across multibyte UTF-8 content", async () => {
++    const text = JSON.stringify({ value: "ž".repeat(2100) });
++    expect(text.length).toBeLessThan(4096);
++    expect(await readCashflowDiagnosticJson(new NextRequest("https://example.test", { method: "POST", body: text }))).toBeNull();
++  });
++  it("accepts a bounded valid request", async () => {
++    expect(await readCashflowDiagnosticJson(new NextRequest("https://example.test", { method: "POST", body: '{"version":1}' }))).toEqual({ version: 1 });
++  });
++});
+diff --git a/src/lib/server/cashflowDiagnosticHttp.ts b/src/lib/server/cashflowDiagnosticHttp.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowDiagnosticHttp.ts
+@@ -0,0 +1,50 @@
++import { NextResponse, type NextRequest } from "next/server";
++
++export function cashflowShadowAllowedEmails(): Set<string> {
++  return new Set((process.env.CASHFLOW_SHADOW_EMAILS ?? "")
++    .split(/[,\s]+/).map(email => email.trim().toLowerCase()).filter(Boolean));
++}
++
++export async function readCashflowDiagnosticJson(req: NextRequest): Promise<unknown> {
++  if (!req.body) return null;
++  const reader = req.body.getReader();
++  const chunks: Uint8Array[] = [];
++  let length = 0;
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      length += value.byteLength;
++      if (length > 4096) { await reader.cancel(); return null; }
++      chunks.push(value);
++    }
++    const bytes = new Uint8Array(length);
++    let offset = 0;
++    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
++    return JSON.parse(new TextDecoder().decode(bytes));
++  } catch { return null; }
++  finally { reader.releaseLock(); }
++}
++
++type Phase = "auth" | "inputs" | "compute" | "hash";
++
++/** Monotonic, aggregate timing only. No request values or database identifiers. */
++export function createCashflowDiagnosticTiming() {
++  const start = performance.now();
++  const phases = new Map<Phase, number>();
++  const elapsed = (since: number) => Math.max(0, performance.now() - since);
++  return {
++    async measure<T>(phase: Phase, work: () => T | Promise<T>): Promise<T> {
++      const since = performance.now();
++      try { return await work(); }
++      finally { phases.set(phase, (phases.get(phase) ?? 0) + elapsed(since)); }
++    },
++    json(body: unknown, status = 200): NextResponse {
++      const metrics = [...phases].map(([phase, ms]) => `cashflow_${phase};dur=${ms.toFixed(2)}`);
++      metrics.push(`cashflow_total;dur=${elapsed(start).toFixed(2)}`);
++      return NextResponse.json(body, { status, headers: {
++        "Cache-Control": "private, no-store", "Server-Timing": metrics.join(", "),
++      } });
++    },
++  };
++}
+diff --git a/src/lib/server/cashflowShadowBudget.test.ts b/src/lib/server/cashflowShadowBudget.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowShadowBudget.test.ts
+@@ -0,0 +1,97 @@
++import { describe, expect, it } from "vitest";
++
++import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import type { EntryDoc } from "@/app/cashflow/types";
++import { isCashflowShadowWithinBudget } from "./cashflowShadowBudget";
++
++const asOf = new Date("2026-09-12T12:00:00Z");
++const snapshot = (patch: Partial<CashflowSnapshot> = {}): CashflowSnapshot => ({
++  email: "viewer@example.test", myPosition: null, myCommissionMode: null,
++  hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [], ...patch,
++});
++const entry = (patch: Partial<EntryDoc> = {}): EntryDoc => ({
++  id: "contract", productKey: "cppAuto", policyStartDate: "2026-09-01", ...patch,
++});
++const entries = (count: number, patch: Partial<EntryDoc> = {}) =>
++  Array.from({ length: count }, (_, id) => entry({ id: String(id), ...patch }));
++
++describe("server cashflow shadow resource budget", () => {
++  it("accepts ordinary portfolios without changing their contents", () => {
++    const input = snapshot({ ownEntries: entries(150), tipPayouts: [{ id: "tip", amount: 10 }] });
++    const before = structuredClone(input);
++    expect(isCashflowShadowWithinBudget(input, asOf)).toBe(true);
++    expect(input).toEqual(before);
++    expect(isCashflowShadowWithinBudget(snapshot(), asOf)).toBe(true);
++  });
++
++  it("estimates historical monthly expansion instead of using only source row counts", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100, { policyStartDate: "2000-01-01" }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(200) }), asOf)).toBe(false);
++  });
++
++  it("uses the earliest source date, even when a newer policy date is present", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100, {
++      policyStartDate: "2026-09-01", contractSignedDate: "2000-01-01",
++    }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100, {
++      createdAt: { seconds: Date.parse("2000-01-01") / 1000, nanoseconds: 0 },
++    }) }), asOf)).toBe(false);
++  });
++
++  it("budgets team rows for both possible generation paths and life review additions", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(100) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(110, { productKey: "neon" }) }), asOf)).toBe(false);
++  });
++
++  it("accounts for up to 120 forecasts plus the actual subscription payment", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ subscriptionPayments: Array.from({ length: 206 }, () => ({})) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ subscriptionPayments: Array.from({ length: 207 }, () => ({})) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ tipPayouts: Array.from({ length: 25_000 }, () => ({})) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ tipPayouts: Array.from({ length: 25_001 }, () => ({})) }), asOf)).toBe(false);
++  });
++
++  it.each(["invalid", "1800-01-01", "+275760-09-01", new Date(NaN), { seconds: 1e308 }])("rejects malformed or extreme dates: %j", value => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ policyStartDate: value })] }), asOf)).toBe(false);
++  });
++
++  it.each([101, 1e308, Infinity, NaN, -1])("rejects unbounded life duration %s before shared helper loops", durationYears => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ productKey: "flexi", durationYears })] }), asOf)).toBe(false);
++  });
++
++  it("accepts bounded legacy dates/durations and missing optional dates", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ policyStartDate: null, durationYears: 100, durationMonths: 1_200 })] }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ policyStartDate: "1. 2. 2020" })] }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ durationMonths: 1_201 })] }), asOf)).toBe(false);
++  });
++
++  it("caps nested arrays and counts split commissions in the expansion estimate", () => {
++    const items = Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 }));
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { items }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ items: Array.from({ length: 129 }, () => ({ title: "Provize", amount: 1 })) })] }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ commissionPayouts: Array.from({ length: 501 }, () => ({})) })] }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: [entry({ managerOverrides: Array.from({ length: 21 }, () => ({ email: null, position: null, commissionMode: null, items: [], total: 0 })) })] }), asOf)).toBe(false);
++  });
++
++  it("uses manager commission parts for team expansion, not only contract parts", () => {
++    const managerOverrides: EntryDoc["managerOverrides"] = [{
++      email: "viewer@example.test", position: null, commissionMode: null, total: 4,
++      items: Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 })),
++    }];
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(25, { managerOverrides }) }), asOf)).toBe(false);
++  });
++
++  it("bounds payout matching work even when output size alone fits", () => {
++    const commissionPayouts = Array.from({ length: 500 }, () => ({}));
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(6, { commissionPayouts }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(7, { commissionPayouts }) }), asOf)).toBe(false);
++  });
++
++  it("rejects invalid reference time and malformed legacy arrays", () => {
++    expect(isCashflowShadowWithinBudget(snapshot(), new Date(NaN))).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot(), new Date("2500-01-01"))).toBe(false);
++    const malformed = entry({ items: {} as EntryDoc["items"] });
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [malformed] }), asOf)).toBe(false);
++  });
++});
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -0,0 +1,98 @@
++import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import type { EntryDoc } from "@/app/cashflow/types";
++import { toDate } from "@/app/lib/formatters";
++
++const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
++const MAX_PAYOUT_MATCH_WORK = 2_000_000;
++const MAX_NESTED_ROWS = 10_000;
++const MAX_COMMISSION_PARTS = 128;
++const MAX_PAYOUTS_PER_ENTRY = 500;
++const MAX_MANAGERS_PER_ENTRY = 20;
++const LIFE_PRODUCTS = new Set(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"]);
++
++function boundedArray(value: unknown, limit: number): unknown[] | null {
++  if (value == null) return [];
++  return Array.isArray(value) && value.length <= limit ? value : null;
++}
++
++/**
++ * Resource gate for the optional server shadow only, never a business-data filter.
++ *
++ * Estimate every contract at monthly frequency from its earliest source date to
++ * the ten-year horizon, multiplied by its largest commission-parts array. Count
++ * team rows twice (own and override paths can both include them), allow 100 extra
++ * life-review items and 16 fixed items per generated entry, and include every
++ * statement-only payout. Each subscription row gets 1 actual + 120 forecasts.
++ *
++ * The 25k output estimate is supplemented by bounds on payout matching work,
++ * nested arrays and dates/durations: a small number of corrupt historical rows
++ * must not cause unbounded synchronous loops. Exceeding any bound skips the
++ * diagnostic comparison; callers keep the existing browser calculation.
++ */
++export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date): boolean {
++  const asOfMs = asOf.getTime();
++  if (!Number.isFinite(asOfMs) || asOf.getFullYear() < 2000 || asOf.getFullYear() > 2200) return false;
++  const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
++  const maxDateYear = asOf.getFullYear() + 100;
++  let estimatedOutputItems = snapshot.tipPayouts.length + snapshot.subscriptionPayments.length * 121;
++  let payoutMatchWork = 0;
++  let nestedRows = 0;
++  if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return false;
++  if (snapshot.ownEntries.length + snapshot.teamEntriesRaw.length > MAX_ESTIMATED_OUTPUT_ITEMS) return false;
++
++  const entryWithinBudget = (entry: EntryDoc, multiplicity: number): boolean => {
++    if (!entry || typeof entry !== "object") return false;
++    if (entry.durationYears != null && (
++      typeof entry.durationYears !== "number" || !Number.isFinite(entry.durationYears) ||
++      entry.durationYears < 0 || entry.durationYears > 100
++    )) return false;
++    if (entry.durationMonths != null && (
++      typeof entry.durationMonths !== "number" || !Number.isFinite(entry.durationMonths) ||
++      entry.durationMonths < 0 || entry.durationMonths > 1_200
++    )) return false;
++
++    let earliestMonth = asOf.getFullYear() * 12 + asOf.getMonth();
++    for (const field of ["policyStartDate", "contractSignedDate", "createdAt", "policyEndDate", "stornoDate", "transferEffectiveDate"] as const) {
++      const value = entry[field];
++      if (value == null) continue;
++      const date = toDate(value);
++      if (!date || !Number.isFinite(date.getTime()) || date.getFullYear() < 1900 || date.getFullYear() > maxDateYear) return false;
++      if (field === "policyStartDate" || field === "contractSignedDate" || field === "createdAt") {
++        earliestMonth = Math.min(earliestMonth, date.getFullYear() * 12 + date.getMonth());
++      }
++    }
++
++    const items = boundedArray(entry.items, MAX_COMMISSION_PARTS);
++    const payouts = boundedArray(entry.commissionPayouts, MAX_PAYOUTS_PER_ENTRY);
++    const overrides = boundedArray(entry.managerOverrides, MAX_MANAGERS_PER_ENTRY);
++    const managers = boundedArray(entry.managerChain, MAX_MANAGERS_PER_ENTRY);
++    if (!items || !payouts || !overrides || !managers) return false;
++    nestedRows += items.length + payouts.length + overrides.length + managers.length;
++    let parts = Math.max(1, items.length);
++    for (const override of overrides) {
++      if (!override || typeof override !== "object") return false;
++      const overrideItems = boundedArray((override as { items?: unknown }).items, MAX_COMMISSION_PARTS);
++      if (!overrideItems) return false;
++      nestedRows += overrideItems.length;
++      parts = Math.max(parts, overrideItems.length);
++    }
++    if (nestedRows > MAX_NESTED_ROWS) return false;
++
++    // Three additional months cover inclusive endpoints and payout-date offsets.
++    const months = horizonMonth - earliestMonth + 3;
++    const extraReviews = LIFE_PRODUCTS.has(entry.productKey ?? "") ? 100 : 0;
++    const expansion = multiplicity * (months * parts + payouts.length + extraReviews + 16);
++    estimatedOutputItems += expansion;
++    // The generator scans and ranks historical payouts for each forecast item.
++    payoutMatchWork += expansion * (1 + payouts.length);
++    return estimatedOutputItems <= MAX_ESTIMATED_OUTPUT_ITEMS && payoutMatchWork <= MAX_PAYOUT_MATCH_WORK;
++  };
++
++  try {
++    return snapshot.ownEntries.every(entry => entryWithinBudget(entry, 1)) &&
++      snapshot.teamEntriesRaw.every(entry => entryWithinBudget(entry, 2));
++  } catch {
++    // Unexpected legacy field shapes cannot authorize an expensive computation.
++    return false;
++  }
++}
+diff --git a/src/lib/server/cashflowShadowInputs.test.ts b/src/lib/server/cashflowShadowInputs.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowShadowInputs.test.ts
+@@ -0,0 +1,257 @@
++import { NextRequest } from "next/server";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "@/app/cashflow/subscriptionCashflow";
++import { loadCashflowShadowInputs } from "./cashflowShadowInputs";
++
++const handlers = vi.hoisted(() => ({
++  profile: vi.fn<(request: NextRequest) => Promise<Response>>(),
++  contracts: vi.fn<(request: NextRequest, options?: { freshCashflowContext?: boolean }) => Promise<Response>>(),
++  tips: vi.fn<(request: NextRequest) => Promise<Response>>(),
++  subscriptions: vi.fn<(request: NextRequest) => Promise<Response>>(),
++  statements: vi.fn<(request: NextRequest) => Promise<Response>>(),
++}));
++
++vi.mock("@/app/api/user/profile/route", () => ({ GET: handlers.profile }));
++vi.mock("@/app/api/contracts/_lib/contractsApi", () => ({ handleContractsList: handlers.contracts }));
++vi.mock("@/app/api/tip-payouts/list/route", () => ({ GET: handlers.tips }));
++vi.mock("@/app/api/subscription-payments/list/route", () => ({ GET: handlers.subscriptions }));
++vi.mock("@/app/api/commission-statements/route", () => ({ GET: handlers.statements }));
++
++const json = (body: unknown, status = 200) => Promise.resolve(Response.json(body, { status }));
++const profile = (email = "viewer@example.test", data: Record<string, unknown> = {}) => ({
++  ok: true, hasProfile: true, email, profile: { accountType: "advisor", ...data },
++});
++const contracts = (items: Record<string, unknown>[] = [], extra: Record<string, unknown> = {}) => ({
++  ok: true, contracts: items, totalCount: items.length, hasMore: false,
++  nextCursorToken: null, nextCursor: null, position: "poradce", commissionMode: "standard",
++  hasTeam: false, teamEmails: [], ...extra,
++});
++const tips = (items: Record<string, unknown>[] = [], extra: Record<string, unknown> = {}) => ({
++  ok: true, payouts: items, hasMore: false, nextCursorToken: null, ...extra,
++});
++const statements = (extra: Record<string, unknown> = {}) => ({
++  ok: true, items: [], hasMore: false, processingComplete: true, ...extra,
++});
++const request = (signal?: AbortSignal) => new NextRequest("https://example.test/api/cashflow/shadow?targetEmail=untrusted@example.test", {
++  method: "POST", headers: { authorization: "Bearer actor-token", cookie: "impersonation=verified-cookie" }, signal,
++});
++const deferred = <T>() => {
++  let resolve!: (value: T) => void;
++  const promise = new Promise<T>(done => { resolve = done; });
++  return { promise, resolve };
++};
++
++beforeEach(() => {
++  vi.resetAllMocks();
++  handlers.profile.mockImplementation(() => json(profile()));
++  handlers.contracts.mockImplementation(() => json(contracts()));
++  handlers.tips.mockImplementation(() => json(tips()));
++  handlers.subscriptions.mockImplementation(() => json({ ok: true, payments: [], hasMore: false }));
++  handlers.statements.mockImplementation(() => json(statements()));
++});
++
++afterEach(() => vi.useRealTimers());
++
++describe("cashflow shadow independent inputs", () => {
++  it("passes fresh context only as a trusted server option, never from the request", async () => {
++    const req = request();
++    req.headers.set("x-cashflow-fresh-context", "true");
++    await loadCashflowShadowInputs(req);
++    expect(handlers.contracts.mock.calls[0][1]).toEqual({ freshCashflowContext: false });
++    handlers.contracts.mockClear();
++    await loadCashflowShadowInputs(req, { freshCashflowContext: true });
++    expect(handlers.contracts.mock.calls[0][1]).toEqual({ freshCashflowContext: true });
++  });
++
++  it("preserves authentication and impersonation through direct handlers and normalizes portfolio owners", async () => {
++    const fetch = vi.spyOn(globalThis, "fetch");
++    handlers.profile.mockImplementation(() => json(profile(" Viewer@Example.Test ")));
++    handlers.contracts.mockImplementation(() => json(contracts([
++      { id: " one ", userEmail: "ignored@example.test", adviserEmail: " OWNER@Example.Test ", inputAmount: 123 },
++    ])));
++    const result = await loadCashflowShadowInputs(request());
++    expect(result.effectiveEmail).toBe("viewer@example.test");
++    expect(result.snapshot).toMatchObject({
++      email: "viewer@example.test", myPosition: "poradce", myCommissionMode: "standard",
++      hasAnyTeam: false, ownEntries: [{ id: "one", userEmail: "owner@example.test", inputAmount: 123 }],
++      teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
++    });
++    for (const handler of [handlers.profile, handlers.contracts, handlers.tips, handlers.statements]) {
++      const child = handler.mock.calls[0][0];
++      expect(child.method).toBe("GET");
++      expect(child.nextUrl.origin).toBe("http://cashflow-shadow.internal");
++      expect(child.headers.get("authorization")).toBe("Bearer actor-token");
++      expect(child.headers.get("cookie")).toBe("impersonation=verified-cookie");
++      expect(child.nextUrl.searchParams.has("targetEmail")).toBe(false);
++    }
++    expect(handlers.contracts.mock.calls[0][0].nextUrl.searchParams.get("shape")).toBe("cashflow");
++    expect(handlers.subscriptions).not.toHaveBeenCalled();
++    expect(fetch).not.toHaveBeenCalled();
++    fetch.mockRestore();
++  });
++
++  it("waits for authenticated asynchronous authorization before any expensive reads", async () => {
++    const allowed = deferred<boolean>();
++    const authorizeEmail = vi.fn(() => allowed.promise);
++    const result = loadCashflowShadowInputs(request(), { authorizeEmail });
++    await vi.waitFor(() => expect(authorizeEmail).toHaveBeenCalledWith("viewer@example.test"));
++    expect(handlers.contracts).not.toHaveBeenCalled();
++    expect(handlers.tips).not.toHaveBeenCalled();
++    expect(handlers.statements).not.toHaveBeenCalled();
++    allowed.resolve(false);
++    await expect(result).rejects.toMatchObject({ code: "not_allowed", status: 403 });
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
++
++  it("propagates a controlled authorization rejection before portfolio loading", async () => {
++    const denied = new Error("rate limited");
++    await expect(loadCashflowShadowInputs(request(), { authorizeEmail: async () => { throw denied; } })).rejects.toBe(denied);
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
++
++  it.each([401, 403, 429])("does not downgrade a profile %i into successful empty data", async status => {
++    handlers.profile.mockImplementation(() => json({ ok: false, error: "sensitive backend text" }, status));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ status, message: "Cashflow shadow inputs are unavailable." });
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
++
++  it("rejects a missing profile before authorizing portfolio access", async () => {
++    handlers.profile.mockImplementation(() => json({ ...profile(), hasProfile: false }));
++    const authorizeEmail = vi.fn(() => true);
++    await expect(loadCashflowShadowInputs(request(), { authorizeEmail })).rejects.toMatchObject({ code: "incomplete" });
++    expect(authorizeEmail).not.toHaveBeenCalled();
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
++
++  it("collects all pages with owner-aware deduplication and follows team hints", async () => {
++    handlers.contracts.mockImplementation(child => {
++      const scope = child.nextUrl.searchParams.get("scope");
++      const cursor = child.nextUrl.searchParams.get("cursor");
++      if (scope === "team") return json(contracts([{ id: "shared", adviserEmail: "team@example.test" }]));
++      if (cursor === "page-2") return json(contracts([{ id: "shared" }, { id: "second" }], { totalCount: null }));
++      return json(contracts([{ id: "shared" }], { totalCount: 2, hasMore: true, nextCursorToken: "page-2", hasTeam: false, teamEmails: ["team@example.test"] }));
++    });
++    handlers.tips.mockImplementation(child => child.nextUrl.searchParams.get("cursor") === "23"
++      ? json(tips([{ id: "a", amount: 1 }, { id: "b", amount: 2 }]))
++      : json(tips([{ id: "a", amount: 1 }], { hasMore: true, nextCursor: 23 })));
++    const { snapshot } = await loadCashflowShadowInputs(request());
++    expect(snapshot.ownEntries.map(entry => entry.id)).toEqual(["shared", "second"]);
++    expect(snapshot.teamEntriesRaw[0].userEmail).toBe("team@example.test");
++    expect(snapshot.hasAnyTeam).toBe(true);
++    expect(snapshot.tipPayouts).toEqual([{ id: "a", amount: 1 }, { id: "b", amount: 2 }]);
++    expect(handlers.contracts).toHaveBeenCalledTimes(3);
++  });
++
++  it("loads only TIP payouts and statements for the profile's tipster mode", async () => {
++    handlers.profile.mockImplementation(() => json(profile(SUBSCRIPTION_CASHFLOW_OWNER_EMAIL, { accountType: null, userRole: " TIPSTER " })));
++    handlers.tips.mockImplementation(() => json(tips([{ id: "tip", amount: 250 }])));
++    const result = await loadCashflowShadowInputs(request());
++    expect(result.tipsterMode).toBe(true);
++    expect(result.snapshot).toMatchObject({ myPosition: null, hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [{ id: "tip", amount: 250 }] });
++    expect(handlers.contracts).not.toHaveBeenCalled();
++    expect(handlers.subscriptions).not.toHaveBeenCalled();
++    expect(handlers.statements).toHaveBeenCalledOnce();
++  });
++
++  it("includes eligible subscription payments but rejects their unpageable limit", async () => {
++    handlers.profile.mockImplementation(() => json(profile(SUBSCRIPTION_CASHFLOW_OWNER_EMAIL)));
++    handlers.subscriptions.mockImplementationOnce(() => json({ ok: true, payments: [{ id: "payment", amountCzk: 350 }], hasMore: false }));
++    expect((await loadCashflowShadowInputs(request())).snapshot.subscriptionPayments).toEqual([{ id: "payment", amountCzk: 350 }]);
++    expect(handlers.subscriptions.mock.calls[0][0].nextUrl.searchParams.get("limit")).toBe("5000");
++    handlers.subscriptions.mockImplementation(() => json({ ok: true, payments: [], hasMore: true }));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "incomplete" });
++  });
++
++  it.each([
++    { totalCount: 2 },
++    { totalCount: null },
++    { hasMore: true, nextCursorToken: null },
++    { hasMore: undefined },
++    { contracts: undefined },
++  ])("rejects incomplete contracts: %j", async extra => {
++    handlers.contracts.mockImplementation(() => json(contracts([{ id: "one" }], extra)));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "incomplete" });
++  });
++
++  it("rejects repeated pagination cursors instead of accepting a partial portfolio", async () => {
++    handlers.contracts.mockImplementation(() => json(contracts([{ id: "one" }], { totalCount: 2, hasMore: true, nextCursorToken: "same" })));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "incomplete" });
++    expect(handlers.contracts).toHaveBeenCalledTimes(2);
++  });
++
++  it("rejects a team authorization change rather than silently dropping team cashflow", async () => {
++    handlers.contracts.mockImplementation(child => child.nextUrl.searchParams.get("scope") === "team"
++      ? json({ ok: false }, 403)
++      : json(contracts([], { hasTeam: true })));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "forbidden" });
++  });
++
++  it.each(["tips", "subscriptions", "statements"] as const)("fails on %s errors even when the client would have continued", async source => {
++    handlers.profile.mockImplementation(() => json(profile(SUBSCRIPTION_CASHFLOW_OWNER_EMAIL)));
++    handlers[source].mockImplementation(() => json({ ok: false }, 500));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "upstream_failed" });
++  });
++
++  it.each([{ hasMore: true }, { hasMore: undefined }, { processingComplete: false }, { processingComplete: undefined }])("rejects statements with uncertain completeness or an incomplete import: %j", async extra => {
++    handlers.statements.mockImplementation(() => json(statements(extra)));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "incomplete" });
++  });
++
++  it("deduplicates statements by the same identity and recency as the browser", async () => {
++    const common = { statementNumber: "42", advisorNumber: "7", fileName: "statement", period: "09/2026" };
++    handlers.statements.mockImplementation(() => json(statements({ items: [
++      { ...common, id: "old", updatedAtMs: 1 }, { ...common, id: "new", updatedAtMs: 2 },
++    ] })));
++    expect((await loadCashflowShadowInputs(request())).statements.map(item => item.id)).toEqual(["new"]);
++  });
++
++  it("caps total requests even when every page advertises a new cursor", async () => {
++    let count = 0;
++    handlers.tips.mockImplementation(() => json(tips([{ id: String(++count) }], { hasMore: true, nextCursorToken: String(count) })));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "limit" });
++    const calls = Object.values(handlers).reduce((sum, handler) => sum + handler.mock.calls.length, 0);
++    expect(calls).toBe(50);
++  });
++
++  it("starts no handler for an already aborted caller", async () => {
++    const controller = new AbortController();
++    controller.abort();
++    await expect(loadCashflowShadowInputs(request(controller.signal))).rejects.toMatchObject({ code: "aborted" });
++    expect(handlers.profile).not.toHaveBeenCalled();
++  });
++
++  it("bounds a stalled handler and aborts its request without exposing a partial result", async () => {
++    vi.useFakeTimers();
++    handlers.profile.mockImplementation(() => new Promise(() => undefined));
++    const result = loadCashflowShadowInputs(request());
++    const rejected = expect(result).rejects.toMatchObject({ code: "timeout", status: 504 });
++    await vi.advanceTimersByTimeAsync(20_000);
++    await rejected;
++    expect(handlers.profile.mock.calls[0][0].signal.aborted).toBe(true);
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
++
++  it("aborts in-flight input reads when the caller disconnects", async () => {
++    const controller = new AbortController();
++    handlers.contracts.mockImplementation(() => new Promise(() => undefined));
++    const result = loadCashflowShadowInputs(request(controller.signal));
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledOnce());
++    const rejected = expect(result).rejects.toMatchObject({ code: "aborted" });
++    controller.abort();
++    await rejected;
++    expect(handlers.contracts.mock.calls[0][0].signal.aborted).toBe(true);
++  });
++
++  it("stops sibling pagination after another required source fails", async () => {
++    const pending = deferred<Response>();
++    handlers.contracts.mockImplementation(() => pending.promise);
++    handlers.tips.mockImplementation(() => json({ ok: false }, 500));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "upstream_failed" });
++    expect(handlers.contracts.mock.calls[0][0].signal.aborted).toBe(true);
++    pending.resolve(Response.json(contracts([{ id: "one" }], { totalCount: 2, hasMore: true, nextCursorToken: "next" })));
++    await Promise.resolve();
++    await Promise.resolve();
++    expect(handlers.contracts).toHaveBeenCalledOnce();
++  });
++});
+diff --git a/src/lib/server/cashflowShadowInputs.ts b/src/lib/server/cashflowShadowInputs.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowShadowInputs.ts
+@@ -0,0 +1,267 @@
++import { NextRequest } from "next/server";
++
++import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
++import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
++import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
++
++const MAX_REQUESTS = 50;
++const MAX_DURATION_MS = 20_000;
++const CONTRACT_PAGE_LIMIT = 100;
++const TIP_PAGE_LIMIT = 100;
++const STATEMENTS_LIMIT = 240;
++const SUBSCRIPTIONS_LIMIT = 5_000;
++
++type Source = "profile" | "contracts" | "tips" | "subscriptions" | "statements";
++type JsonObject = Record<string, unknown>;
++
++export type CashflowShadowInputsErrorCode =
++  | "unauthorized"
++  | "forbidden"
++  | "not_allowed"
++  | "upstream_failed"
++  | "incomplete"
++  | "limit"
++  | "aborted"
++  | "timeout";
++
++export class CashflowShadowInputsError extends Error {
++  constructor(
++    public readonly code: CashflowShadowInputsErrorCode,
++    public readonly status = 503
++  ) {
++    super("Cashflow shadow inputs are unavailable.");
++    this.name = "CashflowShadowInputsError";
++  }
++}
++
++export type CashflowShadowInputs = {
++  snapshot: CashflowSnapshot;
++  statements: CashflowCommissionStatementSummary[];
++  effectiveEmail: string;
++  tipsterMode: boolean;
++};
++
++type LoadOptions = {
++  /** Evaluated after authentication, before any portfolio reads. */
++  authorizeEmail?: (email: string) => boolean | Promise<boolean>;
++  /** Bypass process-local role/team/subscription caches for diagnostic input reads. */
++  freshCashflowContext?: boolean;
++};
++
++const isObject = (value: unknown): value is JsonObject =>
++  value !== null && typeof value === "object" && !Array.isArray(value);
++
++const normalizeEmail = (value: unknown): string =>
++  typeof value === "string" ? value.trim().toLowerCase() : "";
++
++const incomplete = (): never => {
++  throw new CashflowShadowInputsError("incomplete");
++};
++
++function rows(data: JsonObject, key: string, limit: number): JsonObject[] {
++  const values = data[key];
++  if (!Array.isArray(values) || values.length > limit || !values.every(isObject)) {
++    return incomplete();
++  }
++  return values;
++}
++
++function nextCursor(data: JsonObject, chunkSize: number, seen: Set<string>): string | null {
++  if (typeof data.hasMore !== "boolean") return incomplete();
++  const token = typeof data.nextCursorToken === "string" ? data.nextCursorToken.trim() : "";
++  const legacy = typeof data.nextCursor === "number" && Number.isFinite(data.nextCursor)
++    ? String(data.nextCursor)
++    : "";
++  const cursor = token || legacy || null;
++  if (cursor && seen.has(cursor)) return incomplete();
++  if (data.hasMore && (!cursor || chunkSize === 0)) return incomplete();
++  if (cursor) seen.add(cursor);
++  return data.hasMore ? cursor : null;
++}
++
++async function invoke(source: Source, request: NextRequest, freshCashflowContext: boolean): Promise<Response> {
++  // Direct authorized handlers: no HTTP request, user supplied URL or auth bypass.
++  switch (source) {
++    case "profile":
++      return (await import("@/app/api/user/profile/route")).GET(request);
++    case "contracts":
++      return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, { freshCashflowContext });
++    case "tips":
++      return (await import("@/app/api/tip-payouts/list/route")).GET(request);
++    case "subscriptions":
++      return (await import("@/app/api/subscription-payments/list/route")).GET(request);
++    case "statements":
++      return (await import("@/app/api/commission-statements/route")).GET(request);
++  }
++}
++
++/**
++ * Independent, bounded reread for shadow comparison only. These reads are not a
++ * transaction and must never be treated as proof of snapshot freshness.
++ */
++export async function loadCashflowShadowInputs(
++  request: NextRequest,
++  options: LoadOptions = {}
++): Promise<CashflowShadowInputs> {
++  const controller = new AbortController();
++  let stopError: CashflowShadowInputsError | null = null;
++  let rejectStopped: (error: CashflowShadowInputsError) => void = () => undefined;
++  const stopped = new Promise<never>((_resolve, reject) => { rejectStopped = reject; });
++  // The signal may already be aborted before the first asynchronous read.
++  void stopped.catch(() => undefined);
++  const stop = (code: "aborted" | "timeout") => {
++    if (stopError) return;
++    stopError = new CashflowShadowInputsError(code, code === "timeout" ? 504 : 499);
++    controller.abort();
++    rejectStopped(stopError);
++  };
++  const onAbort = () => stop("aborted");
++  request.signal.addEventListener("abort", onAbort, { once: true });
++  if (request.signal.aborted) onAbort();
++  const timer = setTimeout(() => stop("timeout"), MAX_DURATION_MS);
++  let requests = 0;
++
++  const read = async (source: Source, path: string, params?: URLSearchParams): Promise<JsonObject> => {
++    if (stopError) throw stopError;
++    if (controller.signal.aborted) throw new CashflowShadowInputsError("aborted", 499);
++    if (requests >= MAX_REQUESTS) throw new CashflowShadowInputsError("limit");
++    requests += 1;
++    const url = new URL(path, "http://cashflow-shadow.internal");
++    if (params) url.search = params.toString();
++    const child = new NextRequest(url, {
++      method: "GET",
++      headers: new Headers(request.headers),
++      signal: controller.signal,
++    });
++    try {
++      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true), stopped]);
++      if (!response.ok) {
++        const code = response.status === 401 ? "unauthorized"
++          : response.status === 403 ? "forbidden" : "upstream_failed";
++        throw new CashflowShadowInputsError(code, [401, 403, 429].includes(response.status) ? response.status : 503);
++      }
++      const body: unknown = await Promise.race([response.json(), stopped]);
++      if (!isObject(body) || body.ok !== true) return incomplete();
++      return body;
++    } catch (error) {
++      if (error instanceof CashflowShadowInputsError) throw error;
++      throw new CashflowShadowInputsError("upstream_failed");
++    }
++  };
++
++  try {
++    const profile = await read("profile", "/api/user/profile");
++    const effectiveEmail = normalizeEmail(profile.email);
++    if (!effectiveEmail || !isObject(profile.profile) || profile.hasProfile !== true) return incomplete();
++    if (options.authorizeEmail && !await Promise.race([options.authorizeEmail(effectiveEmail), stopped])) {
++      throw new CashflowShadowInputsError("not_allowed", 403);
++    }
++    const accountType = typeof profile.profile.accountType === "string" ? profile.profile.accountType
++      : typeof profile.profile.userRole === "string" ? profile.profile.userRole : "";
++    const tipsterMode = accountType.trim().toLowerCase() === "tipster";
++
++    const collectContracts = async (scope: "my" | "team") => {
++      const entries: EntryDoc[] = [];
++      const seenIds = new Set<string>();
++      const seenCursors = new Set<string>();
++      let cursor: string | null = null;
++      let first: JsonObject | null = null;
++      let totalCount = 0;
++      do {
++        const params = new URLSearchParams({ scope, limit: String(CONTRACT_PAGE_LIMIT), shape: "cashflow" });
++        if (cursor) params.set("cursor", cursor);
++        const data = await read("contracts", "/api/contracts/list", params);
++        if (!first) {
++          first = data;
++          if (typeof data.totalCount !== "number" || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) return incomplete();
++          if (typeof data.hasTeam !== "boolean" || !Array.isArray(data.teamEmails) || !data.teamEmails.every(email => typeof email === "string")) return incomplete();
++          totalCount = data.totalCount;
++        } else if (data.totalCount != null && data.totalCount !== totalCount) {
++          return incomplete();
++        }
++        const chunk = rows(data, "contracts", CONTRACT_PAGE_LIMIT);
++        for (const item of chunk) {
++          const ownerEmail = normalizeEmail(item.adviserEmail ?? item.userEmail ?? effectiveEmail);
++          const id = String(item.id ?? "").trim();
++          if (!ownerEmail || !id) return incomplete();
++          const key = `${ownerEmail}___${id}`;
++          if (seenIds.has(key)) continue;
++          seenIds.add(key);
++          entries.push({ ...item, id, userEmail: ownerEmail } as EntryDoc);
++        }
++        if (entries.length > totalCount) return incomplete();
++        cursor = nextCursor(data, chunk.length, seenCursors);
++      } while (cursor);
++      if (entries.length !== totalCount) return incomplete();
++      return { entries, first };
++    };
++
++    const collectTips = async (): Promise<CashflowSnapshot["tipPayouts"]> => {
++      const payouts: CashflowSnapshot["tipPayouts"] = [];
++      const seenIds = new Set<string>();
++      const seenCursors = new Set<string>();
++      let cursor: string | null = null;
++      do {
++        const params = new URLSearchParams({ limit: String(TIP_PAGE_LIMIT) });
++        if (cursor) params.set("cursor", cursor);
++        const data = await read("tips", "/api/tip-payouts/list", params);
++        const chunk = rows(data, "payouts", TIP_PAGE_LIMIT);
++        for (const item of chunk) {
++          const id = String(item.id ?? "").trim();
++          if (!id) return incomplete();
++          if (!seenIds.has(id)) payouts.push(item);
++          seenIds.add(id);
++        }
++        cursor = nextCursor(data, chunk.length, seenCursors);
++      } while (cursor);
++      return payouts;
++    };
++
++    const collectSubscriptions = async (): Promise<CashflowSnapshot["subscriptionPayments"]> => {
++      if (tipsterMode || !isSubscriptionCashflowOwner(effectiveEmail)) return [];
++      const data = await read("subscriptions", "/api/subscription-payments/list", new URLSearchParams({ limit: String(SUBSCRIPTIONS_LIMIT) }));
++      if (data.hasMore !== false) return incomplete();
++      return rows(data, "payments", SUBSCRIPTIONS_LIMIT);
++    };
++
++    const collectStatements = async () => {
++      const data = await read("statements", "/api/commission-statements", new URLSearchParams({ shape: "cashflow", limit: String(STATEMENTS_LIMIT) }));
++      // This uses raw-query metadata, since deduplication can hide hitting the cap.
++      if (data.hasMore !== false || data.processingComplete !== true) return incomplete();
++      const items = rows(data, "items", STATEMENTS_LIMIT);
++      if (items.some(item => typeof item.id !== "string" || !item.id.trim())) return incomplete();
++      return dedupeCashflowCommissionStatements(items as CashflowCommissionStatementSummary[]);
++    };
++
++    const collectPortfolio = async (): Promise<Pick<CashflowSnapshot, "myPosition" | "myCommissionMode" | "hasAnyTeam" | "ownEntries" | "teamEntriesRaw">> => {
++      if (tipsterMode) return { myPosition: null, myCommissionMode: null, hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [] };
++      const own = await collectContracts("my");
++      const hasTeam = own.first.hasTeam === true || (own.first.teamEmails as string[]).some(email => normalizeEmail(email));
++      const teamEntriesRaw = hasTeam ? (await collectContracts("team")).entries : [];
++      return {
++        myPosition: (own.first.position ?? null) as CashflowSnapshot["myPosition"],
++        myCommissionMode: (own.first.commissionMode ?? null) as CashflowSnapshot["myCommissionMode"],
++        hasAnyTeam: hasTeam || teamEntriesRaw.length > 0,
++        ownEntries: own.entries,
++        teamEntriesRaw,
++      };
++    };
++
++    const [portfolio, tipPayouts, subscriptionPayments, statements] = await Promise.all([
++      collectPortfolio(), collectTips(), collectSubscriptions(), collectStatements(),
++    ]);
++    if (stopError) throw stopError;
++    return {
++      snapshot: { email: effectiveEmail, ...portfolio, tipPayouts, subscriptionPayments },
++      statements,
++      effectiveEmail,
++      tipsterMode,
++    };
++  } finally {
++    clearTimeout(timer);
++    request.signal.removeEventListener("abort", onAbort);
++    controller.abort();
++    rejectStopped(new CashflowShadowInputsError("aborted", 499));
++  }
++}

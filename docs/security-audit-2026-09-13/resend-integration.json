@@ -1,0 +1,87 @@
+{
+  "status": "deployed_reset_delivery_user_confirmed",
+  "date": "2026-09-13",
+  "domain": "bohemka.app",
+  "dnsRecordsObserved": [
+    "SPF",
+    "DKIM",
+    "sending MX"
+  ],
+  "resendDomainVerified": "user-confirmed",
+  "vercelEnvironmentConfigured": "Both user-created sensitive Shared variables linked to the production project; inclusion in the READY deployment confirmed by key names only.",
+  "tests": {
+    "passed": 2099,
+    "files": 207,
+    "externalNetworking": "blocked",
+    "credentials": "synthetic only"
+  },
+  "build": {
+    "passed": true,
+    "command": "next build --webpack",
+    "scope": "isolated copy of current workspace; validation only, not a release upload"
+  },
+  "resendMessagesSent": 1,
+  "productionChangedByAgent": true,
+  "files": [
+    {
+      "path": "src/lib/authEmailMessages.ts",
+      "sha256": "cc49d3e09303efddbc447939590344e4defbe4011b4614b24237448b7e3be125"
+    },
+    {
+      "path": "src/lib/server/authEmailTemplate.ts",
+      "sha256": "ec35217fc908cae607f69edb45fcc4437a580694320416bcbe5133c9c1e20267"
+    },
+    {
+      "path": "src/lib/server/firebaseAuthEmail.ts",
+      "sha256": "7b242fc6856f4168e8e215dbc7f31b4c26c393d2c27fb3abe9779b5fd202d1f3"
+    },
+    {
+      "path": "src/app/lib/authEmailRequest.ts",
+      "sha256": "a597c14f174f9429dc7565f99c4d362e12570c9e06fc52d359e572823d2a15fe"
+    },
+    {
+      "path": "src/app/lib/mfaEmailVerification.ts",
+      "sha256": "90b062cec9430f9c300b238bb34beda9aaa2724265eb592577b190076abc1427"
+    },
+    {
+      "path": "src/app/login/page.tsx",
+      "sha256": "52042d14dce8ff6aceb692af143b96db3ca3a20638d429873e96d60bc5f0dc19"
+    },
+    {
+      "path": "src/app/api/auth/password-reset/route.ts",
+      "sha256": "4ce9b3ff8759bda8494fec311d7f29ce602a07ebc82171819aba3439907386b2"
+    },
+    {
+      "path": "src/app/api/auth/confirm-email-for-mfa/route.ts",
+      "sha256": "0df4984d9e8daecb4359b981835194b6fb231b8924ddfd6cbfb00711b59f53f0"
+    },
+    {
+      "path": "src/app/api/auth/email-verification-link/route.ts",
+      "sha256": "0f79a20ac8b981bf7a3df6b23efce6232bfdc5ddcbecc684039045646822f29d"
+    },
+    {
+      "path": "src/app/api/admin/users/security/route.ts",
+      "sha256": "db4217c8d928aae72d96ac82c025ceec5eaa58aa22ea9d2db6574cbf029f0d1e"
+    },
+    {
+      "path": "src/components/account-setup/useAccountSetupFlow.ts",
+      "sha256": "1a09760c46cbbc9bf1b63bfaca77ebc1700a43ccc83031c9695b7d948a490b1d"
+    },
+    {
+      "path": "src/components/account-setup/AccountSetupWizard.tsx",
+      "sha256": "3e00bfc1536693491e526042f6f67dfbcf1b4974992ed82fe998d640ff1a235f"
+    },
+    {
+      "path": "src/app/nastaveni/page.tsx",
+      "sha256": "0fb83763ed354b8bd47aded314ea1255a8863539539f701857e6c8a243714cdb"
+    },
+    {
+      "path": "src/app/nastaveni/components/AccountSecurityPanel.tsx",
+      "sha256": "1d0ead364a13fd6eaa87092e653bfb42d43a2d5f8c54901f2018ddaf5bbc7136"
+    }
+  ],
+  "releaseEvidence": "resend-release.json",
+  "deliveryConfirmed": true,
+  "deliveryEvidence": "user-confirmed reset email receipt",
+  "verificationEmailDelivery": "same tested transport; no real verification email was sent"
+}

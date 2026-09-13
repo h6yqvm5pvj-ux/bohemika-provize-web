@@ -30,6 +30,8 @@ type ContractSearchSummary = {
 };
 
 type CashflowFiltersProps = {
+  calculating?: boolean;
+  calculationFailed?: boolean;
   hasTeam: boolean;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
@@ -102,6 +104,8 @@ function contractStatusLabel(
 }
 
 export function CashflowFilters({
+  calculating = false,
+  calculationFailed = false,
   hasTeam,
   scopeFilter,
   productFilter,
@@ -186,8 +190,8 @@ export function CashflowFilters({
       </div>
 
       {contractNumberSearchActive && <div id={searchResultId} role="status"
-        className={`${styles.searchResult} ${contractNumberMatchCount === 0 ? styles.noResults : ""}`}>
-        {contractNumberSummary ? <div className={styles.searchSummary}>
+        className={`${styles.searchResult} ${!calculating && !calculationFailed && contractNumberMatchCount === 0 ? styles.noResults : ""}`}>
+        {calculating ? "Vyhledávám smlouvu…" : calculationFailed ? "Výsledky vyhledávání nejsou k dispozici." : contractNumberSummary ? <div className={styles.searchSummary}>
           <span>Nalezena smlouva <strong>{productLabel(contractNumberSummary.productKey)}</strong></span>
           <span>Klient: <strong>{summaryClientName}</strong></span>
           <span>Pojistné: <strong>{summaryAmount}</strong> / {summaryFrequency}</span>

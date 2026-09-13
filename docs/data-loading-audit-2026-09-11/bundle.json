@@ -1,0 +1,21 @@
+{
+  "before": {
+    "files": 333,
+    "jsBytes": 9871325,
+    "gzipBytes": 2812958,
+    "firestoreChunks": [
+      {
+        "file": ".next/static/chunks/7508b87c-388124116581bb78.js",
+        "bytes": 109499,
+        "gzipBytes": 32849
+      }
+    ]
+  },
+  "after": {
+    "files": 332,
+    "jsBytes": 9712944,
+    "gzipBytes": 2762247,
+    "firestoreChunks": []
+  },
+  "note": "All emitted client chunks; this is not the amount downloaded by an individual page."
+}

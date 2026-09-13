@@ -1,0 +1,30 @@
+{
+  "baselineDeploymentId": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+  "root": "/private/tmp/bohemika-sidebar-20260913-4fpb8kzc",
+  "sourceFiles": [
+    "src/components/navigation/AppNavigation.tsx",
+    "src/components/navigation/appNavigation.module.css",
+    "src/components/navigation/useSidebarPreference.ts"
+  ],
+  "testFiles": [
+    "src/components/navigation/AppNavigation.test.tsx"
+  ],
+  "files": [
+    {
+      "path": "src/components/navigation/AppNavigation.tsx",
+      "sha256": "e532a5079b22d60a48eae5c20df0bb5c2c4b95cf50f30f5eb7fbd1232124485f"
+    },
+    {
+      "path": "src/components/navigation/appNavigation.module.css",
+      "sha256": "5ed7d6e7e65fdffdc0634f437b93c1bdf3fe9195fa52e19c60453e34cee1b927"
+    },
+    {
+      "path": "src/components/navigation/useSidebarPreference.ts",
+      "sha256": "829b74392d1982b7dbc38cc0a1840a6eb99a372dcfadbf152da74c15299d2e63"
+    },
+    {
+      "path": "src/components/navigation/AppNavigation.test.tsx",
+      "sha256": "14349ba447aafde046321d0f0692b67b9dac761bca0883af9ef8988009e52bad"
+    }
+  ]
+}

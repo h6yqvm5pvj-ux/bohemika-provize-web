@@ -34,7 +34,8 @@ import { auth } from "@/app/firebase";
 import { AppLayout } from "@/components/AppLayout";
 import { RadarAnniversaryLoader } from "./RadarAnniversaryLoader";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { loadAnniversaryPortfolio, type AnniversaryContract as ContractRow } from "@/app/lib/anniversaryPortfolio";
+import type { AnniversaryContract as ContractRow } from "@/app/lib/anniversaryPortfolio";
+import { loadRadarData } from "./loadRadarData";
 import type { AnniversaryReview, AnniversaryReviewMutationResponse, ContactOutcome } from "@/app/lib/anniversaryReviews";
 import { AnniversaryHistory } from "./AnniversaryHistory";
 import { anniversaryStage, RADAR_STAGE_LABELS, type RadarActivityFilter } from "./radarActivity";
@@ -63,12 +64,6 @@ import {
   isAnniversarySoon,
   shouldTrackAnniversary,
 } from "@/app/lib/contractAnniversary";
-
-type ReviewsResponse = {
-  ok: boolean;
-  error?: string;
-  reviews?: AnniversaryReview[];
-};
 
 const WINDOW_OPTIONS = [14, 30, 60, DEFAULT_ANNIVERSARY_WINDOW_DAYS] as const;
 
@@ -420,18 +415,10 @@ export default function RadarVyrociPage() {
     setContractDetailWindow(null);
     setSavedNotice(null);
     try {
-      const portfolio = await loadAnniversaryPortfolio(user, signal);
-      const reviewsData = await fetchAuthedJsonOrThrow<ReviewsResponse>(
-        user,
-        "/api/contracts/anniversary-review",
-        { signal }
-      );
+      const portfolio = await loadRadarData(user, signal);
       signal.throwIfAborted();
-      if (!reviewsData?.ok || !Array.isArray(reviewsData.reviews)) {
-        throw new Error(reviewsData?.error || "Nepodařilo se načíst stav výročí smluv.");
-      }
       const map = new Map<string, AnniversaryReview>();
-      for (const r of reviewsData.reviews) {
+      for (const r of portfolio.reviews) {
         const key = reviewKey(r.ownerEmail, r.entryId);
         map.set(key, {
           ...r,

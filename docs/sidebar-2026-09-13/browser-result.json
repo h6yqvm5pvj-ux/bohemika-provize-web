@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "scope": "Local navigation preview with synthetic data; all external requests blocked.",
+  "results": [
+    {
+      "name": "desktop-expanded",
+      "width": 256,
+      "passed": true
+    },
+    {
+      "name": "desktop-collapsed-tooltip",
+      "contentGained": 180,
+      "passed": true
+    },
+    {
+      "name": "preference-after-reload",
+      "passed": true
+    },
+    {
+      "name": "short-desktop-scroll-and-footer",
+      "passed": true
+    },
+    {
+      "name": "mobile-labels-focus-escape",
+      "passed": true
+    },
+    {
+      "name": "mobile-to-desktop-resize",
+      "passed": true
+    },
+    {
+      "name": "small-mobile",
+      "passed": true
+    }
+  ],
+  "blockedExternal": 0
+}

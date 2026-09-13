@@ -1,0 +1,84 @@
+{
+  "status": "measured_prototype_not_deployed",
+  "baseline": {
+    "deploymentId": "dpl_98QKyaT7qDVQxXNk8nahXtm2arRW",
+    "gitCommit": "f96e3c0606028f9eee48c32b70c7e7225b2fc5d0",
+    "patches": [
+      {
+        "file": "cashflow-shadow-only-release-2026-09-12.patch",
+        "sha256": "06da737452ff3f79120e729f5186f67ffd72c934bc3cc645f31b42c7932c93ec"
+      },
+      {
+        "file": "data-loading-release-2026-09-12.patch",
+        "sha256": "f6b57f741b545d55dda1b97b0905032e377061aecf1f115af08c36bb74c11b9a"
+      }
+    ]
+  },
+  "codePatch": {
+    "file": "cashflow-worker-pilot-2026-09-12.patch",
+    "sha256": "e558885bd50cfcb311db253f7fad36209fc55ea2400bdde22ef62315925a2e43"
+  },
+  "files": [
+    {
+      "path": "scripts/cashflow-worker/browser.ts",
+      "sha256": "e44a2c597813e61c9443243330890330a87f195a2506b9f2ac1e1ac47fc9a54a"
+    },
+    {
+      "path": "scripts/cashflow-worker/calibration.ts",
+      "sha256": "1172983e3328c04bee04f3d87c21094a08ff69cb239ebf2b744b7df23df45a62"
+    },
+    {
+      "path": "scripts/cashflow-worker/client.test.ts",
+      "sha256": "827d035e8675afacd14d01e598919df918cc727895b8e5b24433e8185bb4328d"
+    },
+    {
+      "path": "scripts/cashflow-worker/client.ts",
+      "sha256": "a3029a2fa8adc51303d53d689eb03641f5c00e116badca7af63cd2bfc64dbbfa"
+    },
+    {
+      "path": "scripts/cashflow-worker/fixtures.test.ts",
+      "sha256": "d361ab9753224425a5310971f126c303f8d8a3bdb6e767321ff8a92e634aa839"
+    },
+    {
+      "path": "scripts/cashflow-worker/fixtures.ts",
+      "sha256": "e5c8f53d060b451b15d061f84f65f068b1419063dc1bc449dff036355f531eaa"
+    },
+    {
+      "path": "scripts/cashflow-worker/generate-reference.mjs",
+      "sha256": "f37238e7d3111f9fd46270f877370fd2b78147904cea3cfed15957c7bf0e9ef7"
+    },
+    {
+      "path": "scripts/cashflow-worker/reference.test.ts",
+      "sha256": "b29346c1eb4f2ef473da3a9b062dd44e920a0896143167672a586eb882e02263"
+    },
+    {
+      "path": "scripts/cashflow-worker/reference.ts",
+      "sha256": "b8d943ce439468b839c5d95abfa331c3fa990e88221f10316aa72a62787b0e8c"
+    },
+    {
+      "path": "scripts/cashflow-worker/run.mjs",
+      "sha256": "b742627c7c871c29492139732e198f929e84a7c50faeb45847db15915a3748c6"
+    },
+    {
+      "path": "scripts/cashflow-worker/tsconfig.json",
+      "sha256": "8efedae54be63d398a2e70575a1b68948dc0fad0a7c462346c2e31f30e9398c6"
+    },
+    {
+      "path": "scripts/cashflow-worker/worker.ts",
+      "sha256": "32bca7ee02a386cc1577530ccc18313e8b0208d7f1c8d8ddd8f1cb39b840fa91"
+    }
+  ],
+  "validation": {
+    "unitTestsPassed": 74,
+    "browserCorrectnessCasesPassed": 27,
+    "browserLifecycleChecksPassed": 6,
+    "timingTrials": 240,
+    "typescript": "passed",
+    "eslint": "passed",
+    "astReferenceRegeneration": "passed"
+  },
+  "businessDataRead": false,
+  "businessDataWrites": false,
+  "productionChanged": false,
+  "browserReport": "cashflow-worker-pilot-results-2026-09-12.json"
+}

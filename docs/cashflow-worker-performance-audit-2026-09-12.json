@@ -1,0 +1,688 @@
+{
+  "version": 1,
+  "auditedAt": "2026-09-12T14:09:08.393106+00:00",
+  "sourceHashesSha256": {
+    "ui-final-results.json": "9b2c077d28af5d9755acf91deb2d633f3b012de9bb60bdd2c536f34e6a721ef2",
+    "work/scripts/cashflow-worker-ui/run.mjs": "972f786f2ed58dfd9fe41716963019cbfbf0d67628a3e84b8e80a0543aed89c2",
+    "work/scripts/cashflow-worker-ui/browser.tsx": "1eeeb3d078daf1317f540df9e2e052d617c5de7b1671abd2572afd00a64c1c58",
+    "work/scripts/cashflow-worker-ui/execution-audit.ts": "6911d00ec092f04e37e22794365d1879d883100b84404756e1ef5b44d43c522b"
+  },
+  "passed": true,
+  "measurement": {
+    "units": "ms",
+    "cpu": "native",
+    "cpuThrottleMultiplier": 1,
+    "browserVersion": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/152.0.7977.83",
+      "revision": "@79460ebecaa5625e57a5fb679a735659e73dc687",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "jsVersion": "15.2.124.21"
+    },
+    "synthetic": true,
+    "appSourcesModifiedByAudit": false,
+    "sourceResultsModifiedByAudit": false
+  },
+  "checks": {
+    "completeUniqueTrialGrid": true,
+    "allTrialMetricsFiniteAndNonnegative": true,
+    "allSummaryRowsExactlyRecomputed": true,
+    "diagnosticCountsInternallyConsistent": true,
+    "expectedExecutionPathsForEveryTrial": true,
+    "noFallbackOrPendingInAnyTrial": true,
+    "smallPortfolioAndBaselineCreateNoWorker": true,
+    "correctnessGrid36PlusForcedFallback": true,
+    "allCorrectnessComparisonsPassed": true,
+    "forcedFallbackOverviewAndDetailMatch": true,
+    "zeroExternalRequestsAndPageErrors": true,
+    "finalResultsDifferFromEarlierRun": true,
+    "buildPageHashesMatchCurrentSource": true,
+    "baselineAndWorkPageHashesDistinct": true,
+    "allRecordedWorkCashflowInputsMatchReleaseUpload": true
+  },
+  "counts": {
+    "summaryRows": 30,
+    "trials": 150,
+    "samplesPerSummary": 5,
+    "workerTrials300": 25,
+    "workerTrials1000": 25,
+    "trialsWithFallback": 0,
+    "trialsWithPending": 0,
+    "correctnessStandard": 36,
+    "correctnessForcedFallback": 1,
+    "correctnessTotal": 37
+  },
+  "recomputedSummary": [
+    {
+      "contracts": 30,
+      "scenario": "initial",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 66.7,
+      "medianTimerDelayMs": 0.6,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "initial",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 67.2,
+      "medianTimerDelayMs": 0.8,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "auto",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 33.5,
+      "medianTimerDelayMs": 11.2,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "auto",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 33.3,
+      "medianTimerDelayMs": 11.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "search",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 34.3,
+      "medianTimerDelayMs": 28.6,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "search",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 33.4,
+      "medianTimerDelayMs": 27.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "burst",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 150.0,
+      "medianTimerDelayMs": 8.6,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "burst",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 151.2,
+      "medianTimerDelayMs": 9.1,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "month",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 65.7,
+      "medianTimerDelayMs": 9.4,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 30,
+      "scenario": "month",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 66.8,
+      "medianTimerDelayMs": 8.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "initial",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 84.2,
+      "medianTimerDelayMs": 1.0,
+      "medianMaxFrameGapMs": 33.3,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "initial",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 102.1,
+      "medianTimerDelayMs": 1.0,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "auto",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 33.9,
+      "medianTimerDelayMs": 27.6,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "auto",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 49.8,
+      "medianTimerDelayMs": 1.7,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "search",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 34.5,
+      "medianTimerDelayMs": 21.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "search",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 34.9,
+      "medianTimerDelayMs": 1.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "burst",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 166.7,
+      "medianTimerDelayMs": 27.2,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "burst",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 149.8,
+      "medianTimerDelayMs": 1.4,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "month",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 66.8,
+      "medianTimerDelayMs": 5.4,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 300,
+      "scenario": "month",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 66.7,
+      "medianTimerDelayMs": 5.4,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "initial",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 250.1,
+      "medianTimerDelayMs": 2.7,
+      "medianMaxFrameGapMs": 183.4,
+      "trialsWithLongTasks": 5,
+      "maxLongTaskMs": 209
+    },
+    {
+      "contracts": 1000,
+      "scenario": "initial",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 266.8,
+      "medianTimerDelayMs": 2.8,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "auto",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 82.6,
+      "medianTimerDelayMs": 81.6,
+      "medianMaxFrameGapMs": 66.6,
+      "trialsWithLongTasks": 2,
+      "maxLongTaskMs": 83
+    },
+    {
+      "contracts": 1000,
+      "scenario": "auto",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 100.1,
+      "medianTimerDelayMs": 1.6,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "search",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 34.3,
+      "medianTimerDelayMs": 23.1,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "search",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 33.9,
+      "medianTimerDelayMs": 1.7,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "burst",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 266.6,
+      "medianTimerDelayMs": 79.2,
+      "medianMaxFrameGapMs": 66.7,
+      "trialsWithLongTasks": 5,
+      "maxLongTaskMs": 79
+    },
+    {
+      "contracts": 1000,
+      "scenario": "burst",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 200.0,
+      "medianTimerDelayMs": 1.4,
+      "medianMaxFrameGapMs": 16.8,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "month",
+      "variant": "baseline",
+      "samples": 5,
+      "medianElapsedMs": 66.7,
+      "medianTimerDelayMs": 7.0,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    },
+    {
+      "contracts": 1000,
+      "scenario": "month",
+      "variant": "work",
+      "samples": 5,
+      "medianElapsedMs": 66.7,
+      "medianTimerDelayMs": 5.4,
+      "medianMaxFrameGapMs": 16.7,
+      "trialsWithLongTasks": 0,
+      "maxLongTaskMs": 0
+    }
+  ],
+  "comparisonsFromRoundedMedians": [
+    {
+      "contracts": 30,
+      "scenario": "initial",
+      "medianElapsedMs": {
+        "baseline": 66.7,
+        "work": 67.2,
+        "differenceMs": 0.5,
+        "differencePercent": 0.75
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.8
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 30,
+      "scenario": "auto",
+      "medianElapsedMs": {
+        "baseline": 33.5,
+        "work": 33.3,
+        "differenceMs": -0.2,
+        "differencePercent": -0.6
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 30,
+      "scenario": "search",
+      "medianElapsedMs": {
+        "baseline": 34.3,
+        "work": 33.4,
+        "differenceMs": -0.9,
+        "differencePercent": -2.62
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 30,
+      "scenario": "burst",
+      "medianElapsedMs": {
+        "baseline": 150.0,
+        "work": 151.2,
+        "differenceMs": 1.2,
+        "differencePercent": 0.8
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 30,
+      "scenario": "month",
+      "medianElapsedMs": {
+        "baseline": 65.7,
+        "work": 66.8,
+        "differenceMs": 1.1,
+        "differencePercent": 1.67
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 300,
+      "scenario": "initial",
+      "medianElapsedMs": {
+        "baseline": 84.2,
+        "work": 102.1,
+        "differenceMs": 17.9,
+        "differencePercent": 21.26
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 33.3,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 300,
+      "scenario": "auto",
+      "medianElapsedMs": {
+        "baseline": 33.9,
+        "work": 49.8,
+        "differenceMs": 15.9,
+        "differencePercent": 46.9
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.8
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 300,
+      "scenario": "search",
+      "medianElapsedMs": {
+        "baseline": 34.5,
+        "work": 34.9,
+        "differenceMs": 0.4,
+        "differencePercent": 1.16
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 300,
+      "scenario": "burst",
+      "medianElapsedMs": {
+        "baseline": 166.7,
+        "work": 149.8,
+        "differenceMs": -16.9,
+        "differencePercent": -10.14
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.8,
+        "work": 16.8
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 300,
+      "scenario": "month",
+      "medianElapsedMs": {
+        "baseline": 66.8,
+        "work": 66.7,
+        "differenceMs": -0.1,
+        "differencePercent": -0.15
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 1000,
+      "scenario": "initial",
+      "medianElapsedMs": {
+        "baseline": 250.1,
+        "work": 266.8,
+        "differenceMs": 16.7,
+        "differencePercent": 6.68
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 183.4,
+        "work": 16.8
+      },
+      "trialsWithLongTasks": {
+        "baseline": 5,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 1000,
+      "scenario": "auto",
+      "medianElapsedMs": {
+        "baseline": 82.6,
+        "work": 100.1,
+        "differenceMs": 17.5,
+        "differencePercent": 21.19
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 66.6,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 2,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 1000,
+      "scenario": "search",
+      "medianElapsedMs": {
+        "baseline": 34.3,
+        "work": 33.9,
+        "differenceMs": -0.4,
+        "differencePercent": -1.17
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 1000,
+      "scenario": "burst",
+      "medianElapsedMs": {
+        "baseline": 266.6,
+        "work": 200.0,
+        "differenceMs": -66.6,
+        "differencePercent": -24.98
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 66.7,
+        "work": 16.8
+      },
+      "trialsWithLongTasks": {
+        "baseline": 5,
+        "work": 0
+      }
+    },
+    {
+      "contracts": 1000,
+      "scenario": "month",
+      "medianElapsedMs": {
+        "baseline": 66.7,
+        "work": 66.7,
+        "differenceMs": 0.0,
+        "differencePercent": 0.0
+      },
+      "medianMaxFrameGapMs": {
+        "baseline": 16.7,
+        "work": 16.7
+      },
+      "trialsWithLongTasks": {
+        "baseline": 0,
+        "work": 0
+      }
+    }
+  ],
+  "limitations": [
+    "All measurements are milliseconds, desktop Chrome at native CPU speed; no 4x CPU throttling. Five repetitions per combination are indicative and provide no production percentile or statistical confidence interval.",
+    "The harness mounts the real React cashflow page with synthetic auth/profile/data-hook adapters and esbuild test-only worker URL/diagnostics instrumentation. Live loading, server/network, surrounding application shell and real business data are excluded.",
+    "elapsedMs includes the requested action and harness wait-until-ready checks (including animation-frame waits and, for some operations, DOM reading/hash work). It is neither isolated computation time nor total page-load time.",
+    "The burst scenario sends five changes with a deliberate 16 ms wait after every change. Its elapsed duration includes those scheduled waits and settling; it is not the latency of a single user interaction.",
+    "medianMaxFrameGapMs is the median across five per-trial maximum requestAnimationFrame intervals. The gap window also includes setup/cleanup frames outside elapsedMs. It is not an INP measurement, dropped-frame count or precise paint latency; approximately 16.7 ms values reflect the display/browser frame cadence.",
+    "Timer delay measures one setTimeout(0) callback scheduled at action start, not continuous responsiveness; it may fire before later expensive work.",
+    "Long-task entries cover only the browser main thread, filtered by task start time within elapsedMs. Worker computation is intentionally excluded; tasks starting outside the interval can also be excluded despite overlap.",
+    "Execution diagnostics are snapshots at trial completion. All 50 large-portfolio work trials show one active worker and no recorded fallback/pending; all 150 trial records contain zero fallback. Forced fallback is verified separately and is not part of timing trials.",
+    "The 36 standard correctness records compare visible UI semantics with baseline across 12 scenarios and three portfolio sizes; the runner additionally checks the opened combined-view month for each size. The 37th record explicitly verifies forced-fallback overview and month detail. These records do not constitute 37 independent month-detail or internal-numeric comparisons.",
+    "The final 1000-contract initial action completes 16.7 ms later (250.1 to 266.8 ms) in the work median even though its largest frame-gap median falls from 183.4 to 16.8 ms. Supported conclusion is smoother main-thread behavior in this synthetic case; do not promise faster total loading or improved production INP.",
+    "Native Next/Turbopack production bundling and browser worker execution were verified separately in next-worker-runtime.json; the UI performance measurements themselves remain the esbuild synthetic harness."
+  ],
+  "supersedesMeasurementArtifact": "perf-audit.json",
+  "buildIdentity": {
+    "variants": {
+      "baseline": {
+        "pageSha256": "8f58ec356baeb91830fd577d5c56416e54651d4f2e5189a67a89f00e1b20f669",
+        "currentSourceMatches": true
+      },
+      "work": {
+        "pageSha256": "4f5b656ff11ba02b66366d969e8f48ad8348a255d0bec71eb8060fc24a775c12",
+        "currentSourceMatches": true
+      }
+    },
+    "releaseUploadCashflowInputFilesCompared": 32,
+    "releaseUploadCashflowMismatches": [],
+    "scope": "Build page hashes verified against source and all recorded cashflow source inputs compared with release-upload; no claim of a compiled remote bundle hash match."
+  }
+}

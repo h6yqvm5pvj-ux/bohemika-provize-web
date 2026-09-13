@@ -1,0 +1,25 @@
+{
+  "id": "dpl_FK81FV8LqN1GtKUuYeQdui8zuaC6",
+  "url": "bohemika-provize-o2z5ksydu-jacobrausch989s-projects-909dd478.vercel.app",
+  "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+  "readyState": "READY",
+  "target": "production",
+  "regions": [
+    "fra1"
+  ],
+  "baselineDeploymentId": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+  "sourceFileCount": 1249,
+  "reviewedGeneratedTypeFile": "next-env.d.ts",
+  "addedFiles": [
+    "src/components/navigation/AppNavigation.test.tsx",
+    "src/components/navigation/appNavigation.module.css",
+    "src/components/navigation/useSidebarPreference.ts"
+  ],
+  "removedFiles": [],
+  "changedFiles": [
+    "src/components/navigation/AppNavigation.tsx"
+  ],
+  "localSourceMismatches": [],
+  "forbiddenDiagnosticPaths": [],
+  "passed": true
+}

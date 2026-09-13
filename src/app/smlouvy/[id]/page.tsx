@@ -4,6 +4,7 @@
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ContractHistoryDialog } from "./ContractHistoryDialog";
 import { ContractDetailLoader } from "./ContractDetailLoader";
 import actionStyles from "./contractDetailActions.module.css";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +24,7 @@ import {
   FileSignature,
   FileText,
   Gauge,
+  History,
   IdCard,
   Menu,
   Package,
@@ -51,6 +53,10 @@ import {
   resolveContractTerminationProductDefaults,
   storeContractTerminationPrefill,
 } from "@/app/pomucky/vypoved-smlouvy/contractTerminationPrefill";
+import {
+  getContractTerminationContext,
+  isContractTerminationContextCurrent,
+} from "@/app/lib/contractTerminationPrivacy";
 import {
   getTerminationReasonsForSelection,
   shouldShowContractTerminationAction,
@@ -569,6 +575,7 @@ export default function ContractDetailPage() {
   const [stornoDateInput, setStornoDateInput] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showStornoModal, setShowStornoModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showTerminationReasonModal, setShowTerminationReasonModal] =
@@ -4797,6 +4804,8 @@ export default function ContractDetailPage() {
   };
   const handleCreateTermination = async (reason: TerminationReason) => {
     if (!contract || !terminationInsurer || !showTerminationAction) return;
+    const context = getContractTerminationContext();
+    if (!context || context.uid !== user?.uid || context.impersonatedEmail !== (adminImpersonation?.email ?? "")) return;
     setTerminationPrefillLoading(true);
     try {
       let pdfPolicyholder = {
@@ -4862,6 +4871,9 @@ export default function ContractDetailPage() {
         }
       }
 
+      // A PDF request started before logout/account switching must never restore
+      // client details or navigate the next account into this form.
+      if (!isContractTerminationContextCurrent(context)) return;
       const prefillKey = storeContractTerminationPrefill({
         sourcePath: `${window.location.pathname}${window.location.search}`,
         sourceProduct: prod ?? null,
@@ -4878,7 +4890,7 @@ export default function ContractDetailPage() {
         insurer: terminationInsurer,
         insuranceType: terminationInsuranceType,
         reason,
-      });
+      }, context);
       if (!prefillKey) {
         pushToast(
           "Předvyplnění se nepodařilo připravit. Otevírám prázdný formulář.",
@@ -5543,6 +5555,7 @@ export default function ContractDetailPage() {
                       setShowContractActionsMenu((current) => !current);
                     }}
                     aria-controls="contract-actions-menu"
+                    data-contract-menu
                     aria-expanded={showContractActionsMenu}
                     className={actionStyles.button}
                   >
@@ -5627,6 +5640,12 @@ export default function ContractDetailPage() {
                             </button>
                           )}
 
+                          <button type="button" onClick={() => { setShowContractActionsMenu(false); setShowHistoryModal(true); }}
+                            className={`${contractActionMenuItemClass} border-violet-100 bg-violet-50/70 hover:border-violet-200 hover:bg-violet-50`}>
+                            <span className={`${contractActionMenuIconClass} border-violet-200 text-violet-700`}><History size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+                            <span className="min-w-0"><span className="block text-sm font-black text-slate-950">Historie a správa</span><span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">Změny, převody a správce smlouvy</span></span>
+                          </button>
+
                           {canOpenContractManagement && (
                             <button
                               type="button"
@@ -5644,10 +5663,10 @@ export default function ContractDetailPage() {
                               </span>
                               <span className="min-w-0">
                                 <span className="block text-sm font-black text-slate-950">
-                                  Správa smlouvy
+                                  Další akce smlouvy
                                 </span>
                                 <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Storno, převod a další správa
+                                  Storno, převod nebo odstranění
                                 </span>
                               </span>
                             </button>
@@ -5993,71 +6012,6 @@ export default function ContractDetailPage() {
                         className="h-9 w-auto flex-shrink-0"
                       />
                     </div>
-                  </section>
-                )}
-
-                {/* U převedené smlouvy vždy oddělujeme sjednatele a správce. */}
-                {contract && (contractWasTransferred || isManagerViewingSubordinate) && (
-                  <section className={sectionPanelClass}>
-                    <ContractSectionHeading
-                      icon={<UserRound size={17} strokeWidth={2.2} aria-hidden="true" />}
-                      className="mb-2"
-                    >
-                      {contractWasTransferred ? "Správa smlouvy" : "Sjednatel"}
-                    </ContractSectionHeading>
-                    <dl className="grid max-w-[520px] grid-cols-[112px_minmax(0,1fr)] gap-x-5 gap-y-2 text-base text-slate-800">
-                      <dt className={keyValueLabelClass}>Sjednal</dt>
-                      <dd className="text-base font-semibold text-slate-900">
-                        {contractOriginalAdviserName}
-                      </dd>
-
-                      <dt className={keyValueLabelClass}>Pozice při sjednání</dt>
-                      <dd className="text-base font-semibold text-slate-900">
-                        {positionLabel(contractOriginalPosition)}
-                      </dd>
-
-                      {contractWasTransferred && (
-                        <>
-                          <dt className={keyValueLabelClass}>Správce</dt>
-                          <dd className="text-base font-semibold text-slate-900">
-                            {contractServicingOwnerName}
-                            <span className="block text-sm font-normal text-slate-600">
-                              {contractIsInherited ? "Čerpá následné provize od převzetí" : "Čerpá dosud nevyplacené a budoucí provize"}
-                            </span>
-                          </dd>
-
-                          {contractTransferDate && (
-                            <>
-                              <dt className={keyValueLabelClass}>{contractIsInherited ? "Převzato" : "Převedeno"}</dt>
-                              <dd className="text-base font-semibold text-slate-900">
-                                {contractTransferDate.toLocaleDateString("cs-CZ")}
-                              </dd>
-                            </>
-                          )}
-                        </>
-                      )}
-
-                      {ownerManagerEmail && (
-                        <>
-                          <dt className={keyValueLabelClass}>Nadřízený</dt>
-                          <dd className="text-base font-semibold text-slate-900">
-                            {nameFromEmail(ownerManagerEmail)}
-                            {ownerManagerPosition && (
-                              <span className="block text-sm text-slate-600">
-                                {positionLabel(ownerManagerPosition)}
-                              </span>
-                            )}
-                          </dd>
-                        </>
-                      )}
-                    </dl>
-                    {contractWasTransferred && (
-                      <p className="mt-3 max-w-[620px] rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm leading-relaxed text-violet-950">
-                        {contractIsInherited
-                          ? "Následné provize se předpovídají od data převzetí, podle původního počátku smlouvy a pozice při sjednání. Pořizovací provize ani jejich odložené splátky se nezapočítávají."
-                          : "Již vyplacené provize zůstávají původnímu sjednateli. Správce čerpá pouze dosud nevyplacené a budoucí provize, vždy podle pozice při sjednání uvedené výše."}
-                      </p>
-                    )}
                   </section>
                 )}
 
@@ -7187,6 +7141,75 @@ export default function ContractDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showHistoryModal && contract && ownerEmail && entryId && (
+        <ContractHistoryDialog ownerEmail={ownerEmail} entryId={entryId} contractNumber={contract.contractNumber ?? ""}
+          request={requestContractsApi} onClose={() => setShowHistoryModal(false)}
+          management={
+                  <section className={sectionPanelClass}>
+                    <ContractSectionHeading
+                      icon={<UserRound size={17} strokeWidth={2.2} aria-hidden="true" />}
+                      className="mb-2"
+                    >
+                      {contractWasTransferred ? "Správa smlouvy" : "Sjednatel"}
+                    </ContractSectionHeading>
+                    <dl className="grid max-w-[520px] grid-cols-[112px_minmax(0,1fr)] gap-x-5 gap-y-2 text-base text-slate-800">
+                      <dt className={keyValueLabelClass}>Sjednal</dt>
+                      <dd className="text-base font-semibold text-slate-900">
+                        {contractOriginalAdviserName}
+                      </dd>
+
+                      <dt className={keyValueLabelClass}>Pozice při sjednání</dt>
+                      <dd className="text-base font-semibold text-slate-900">
+                        {positionLabel(contractOriginalPosition)}
+                      </dd>
+
+                      {contractWasTransferred && (
+                        <>
+                          <dt className={keyValueLabelClass}>Správce</dt>
+                          <dd className="text-base font-semibold text-slate-900">
+                            {contractServicingOwnerName}
+                            <span className="block text-sm font-normal text-slate-600">
+                              {contractIsInherited ? "Čerpá následné provize od převzetí" : "Čerpá dosud nevyplacené a budoucí provize"}
+                            </span>
+                          </dd>
+
+                          {contractTransferDate && (
+                            <>
+                              <dt className={keyValueLabelClass}>{contractIsInherited ? "Převzato" : "Převedeno"}</dt>
+                              <dd className="text-base font-semibold text-slate-900">
+                                {contractTransferDate.toLocaleDateString("cs-CZ")}
+                              </dd>
+                            </>
+                          )}
+                        </>
+                      )}
+
+                      {ownerManagerEmail && (
+                        <>
+                          <dt className={keyValueLabelClass}>Nadřízený</dt>
+                          <dd className="text-base font-semibold text-slate-900">
+                            {nameFromEmail(ownerManagerEmail)}
+                            {ownerManagerPosition && (
+                              <span className="block text-sm text-slate-600">
+                                {positionLabel(ownerManagerPosition)}
+                              </span>
+                            )}
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+                    {contractWasTransferred && (
+                      <p className="mt-3 max-w-[620px] rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm leading-relaxed text-violet-950">
+                        {contractIsInherited
+                          ? "Následné provize se předpovídají od data převzetí, podle původního počátku smlouvy a pozice při sjednání. Pořizovací provize ani jejich odložené splátky se nezapočítávají."
+                          : "Již vyplacené provize zůstávají původnímu sjednateli. Správce čerpá pouze dosud nevyplacené a budoucí provize, vždy podle pozice při sjednání uvedené výše."}
+                      </p>
+                    )}
+                  </section>
+          }
+        />
       )}
 
       {canOpenContractManagement && showManagementModal && (

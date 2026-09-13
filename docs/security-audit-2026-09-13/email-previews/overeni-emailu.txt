@@ -1,0 +1,23 @@
+Předmět: Ověření e-mailu pro BohemkaApp
+
+BohemkaApp
+
+Potvrď svůj e-mail
+
+Ahoj,
+
+Pro potvrzení své e-mailové adresy v BohemkaApp použij tlačítko níže.
+
+Ověřit e-mail:
+
+https://example.invalid/ukazkovy-odkaz?nahled=1&neodesila=true
+
+Po ověření se vrať do aplikace. Pokud nastavuješ dvoufázové ověření (2FA), zadej znovu heslo a klikni na Zapnout 2FA.
+
+Odkaz je jednorázový. Pokud jeho platnost vypršela, vyžádej si v aplikaci nový.
+
+Pokud jsi o ověření e-mailu nežádal/a, tuto zprávu můžeš ignorovat.
+
+Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.
+
+bohemka.app

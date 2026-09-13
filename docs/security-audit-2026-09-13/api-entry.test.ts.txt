@@ -1,0 +1,43 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+import matrix from '../api-matrix.json';
+import { CASHFLOW_SHADOW_VERSION } from '@/app/cashflow/shadowProtocol';
+const mocks = vi.hoisted(() => ({ verify: vi.fn(), db: vi.fn(), storage: vi.fn() }));
+vi.mock('@/lib/server/firebaseAdmin', () => ({
+  adminAuth: { verifyIdToken: mocks.verify },
+  adminDb: { collection: mocks.db, collectionGroup: mocks.db, getAll: mocks.db, runTransaction: mocks.db, batch: mocks.db },
+  adminMessaging: null,
+}));
+vi.mock('firebase-admin/storage', () => ({ getStorage: mocks.storage }));
+vi.mock('@/lib/server/rateLimit', () => ({
+  consumeRateLimit: async () => ({ allowed: true }), applyRateLimitHeaders: () => {}, getRequestIp: () => '127.0.0.1',
+}));
+vi.mock('@/lib/server/loginAttemptLockout', () => ({
+  getLoginAttemptStatus: async () => ({ locked: false }), getLoginAttemptLockoutError: async () => null,
+}));
+beforeEach(() => {
+  vi.clearAllMocks();
+  for (const flag of ['CASHFLOW_SHADOW_ENABLED', 'CASHFLOW_CANDIDATES_ENABLED', 'CASHFLOW_CACHE_TRACK_WRITES']) vi.stubEnv(flag, '1');
+  vi.stubEnv('CASHFLOW_SHADOW_EMAILS', 'audit-synthetic@example.test');
+  mocks.verify.mockRejectedValue(new Error('Synthetic invalid token'));
+  mocks.db.mockImplementation(() => { throw new Error('AUDIT_DATABASE_ACCESS_BEFORE_AUTH'); });
+  mocks.storage.mockImplementation(() => { throw new Error('AUDIT_STORAGE_ACCESS_BEFORE_AUTH'); });
+});
+describe.each(matrix)('%s %s %s', (file, path, method) => {
+  it.each(['missing', 'invalid'])('rejects %s credentials before reading application data', async (kind) => {
+    const route = await import(/* @vite-ignore */ file);
+    const request = new NextRequest('http://localhost'+path.replace(/\[[^\]]+\]/g,'synthetic-id'), {
+      method,
+      headers: kind === 'invalid' ? { Authorization: 'Bearer synthetic-invalid-token' } : {},
+      ...(method === 'GET' ? {} : { body: JSON.stringify(path.startsWith('/api/cashflow/') ? {
+        version: CASHFLOW_SHADOW_VERSION, asOfMs: Date.now(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        inputHash: 'a'.repeat(64), itemsHash: 'b'.repeat(64), monthsHash: 'c'.repeat(64),
+        options: { scopeFilter: 'combined', productFilter: 'all', tipsterMode: false, showPastYears: true, intelligentPredictionEnabled: false, contractNumberQuery: '' },
+      } : {}) }),
+    });
+    const response = await route[method](request, { params: Promise.resolve({ slug: 'synthetic-id', postId: 'synthetic-id', commentId: 'synthetic-id' }) });
+    expect([401,403,404]).toContain(response.status);
+    expect(mocks.db).not.toHaveBeenCalled();
+    expect(mocks.storage).not.toHaveBeenCalled();
+  });
+});

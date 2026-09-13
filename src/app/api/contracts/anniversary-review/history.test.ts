@@ -5,7 +5,7 @@ import { appendReviewHistory, readReviewHistory, reviewDto, type ReviewMutation 
 type Data = Record<string, unknown>;
 type Snapshot = { id: string | undefined; exists: boolean; data: () => Data | undefined };
 type Query = { where: (field: string, operator: string, value: number) => Query; limit: (value: number) => Query; get: () => Promise<{ docs: Snapshot[] }> };
-type Ref = { path: string; doc: (id: string) => Ref; collection: (id: string) => Ref; get: () => Promise<Snapshot>; orderBy: () => Query };
+type Ref = { firestore: Firestore; path: string; doc: (id: string) => Ref; collection: (id: string) => Ref; get: () => Promise<Snapshot>; orderBy: () => Query };
 type Transaction = { get: (ref: Ref) => Promise<Snapshot>; set: (ref: Ref, data: Data, options?: { merge: boolean }) => unknown };
 function memoryDatabase() {
   const docs = new Map<string, Data>();
@@ -13,7 +13,7 @@ function memoryDatabase() {
   let failCommit = false;
   let queue = Promise.resolve();
   const ref = (path: string): Ref => ({
-    path, doc: (id: string) => ref(`${path}/${id}`), collection: (id: string) => ref(`${path}/${id}`),
+    firestore: db, path, doc: (id: string) => ref(`${path}/${id}`), collection: (id: string) => ref(`${path}/${id}`),
     get: async () => snapshot(path),
     orderBy: () => {
       let before = Infinity; let limit = Infinity;

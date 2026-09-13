@@ -14,7 +14,8 @@ import {
 
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
@@ -174,7 +175,7 @@ const resolveAccountSetupMfaErrorMessage = (error: unknown, fallback: string): s
     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
   }
   if (code === "auth/unverified-email") {
-    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
+    return "Nejdřív potvrď e-mail odkazem ze schránky a potom znovu spusť nastavení 2FA.";
   }
   if (code === "auth/user-not-found") {
     return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
@@ -842,9 +843,11 @@ export function useAccountSetupFlow({
 
       const credential = EmailAuthProvider.credential(activeUserEmail, currentPassword);
       await reauthenticateWithCredential(activeUser, credential);
-      if (!activeUser.emailVerified) {
-        setInfo("Potvrzuji e-mail pro zapnutí 2FA.");
-        await confirmEmailForMfaEnrollment(activeUser);
+      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
+        setMfaPassword("");
+        clearMfaDraft();
+        setInfo(MFA_VERIFICATION_SENT_MESSAGE);
+        return;
       }
       const enrollmentUser = auth.currentUser ?? activeUser;
       const session = await multiFactor(enrollmentUser).getSession();

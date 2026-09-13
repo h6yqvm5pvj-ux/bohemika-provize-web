@@ -59,17 +59,17 @@ export function ExpectedPayoutSection({
       : copy.currentMonth;
 
   return (
-    <section className={`${styles.card} ${styles.dark} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
+    <section className={`${styles.card} ${styles.dark} ${styles.payout} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
       {!loading && <Image src="/images/money-wallet.png" alt="" width={1268} height={1241} aria-hidden="true" className={`${styles.ghost} ${styles.walletGhost}`} />}
       <div className={styles.content}>
         <h2 className={styles.title}><span className={styles.icon}><WalletCards aria-hidden="true" /></span>{copy.title}</h2>
         {loading ? <div className="mt-5"><LoadingProgressPanel title={copy.loadingTitle} description={copy.loadingDescription} accentLabel={copy.loadingAccent} visual="money" /></div> : (
-          <div className={styles.moneyLayout}>
+          <div className={styles.payoutLayout}>
             <div>
               <p className={`${styles.label} ${styles.payoutPeriod}`}>{copy.netPayout} · {payoutPeriodLabel}</p>
               <p className={styles.amount}>{formatMoney(netAmount)}</p>
             </div>
-            <dl className={styles.breakdown}>
+            <dl className={styles.payoutBreakdown}>
               <div><dt>{copy.gross}</dt><dd>{formatMoney(safeGross)}</dd></div>
               <div><dt>{copy.stornoFund}</dt><dd>− {formatMoney(safeStorno)}</dd></div>
             </dl>

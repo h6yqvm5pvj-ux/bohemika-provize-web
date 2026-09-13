@@ -59,8 +59,9 @@ export function TeamLeaderboardSection({
 }: Props) {
   const copy = TEAM_LEADERBOARD_COPY[language];
   const visibleEntries = entries.slice(0, 10);
+  const leadingPremium = Math.max(0, ...visibleEntries.map(row => Number.isFinite(row.totalPremium) ? row.totalPremium : 0));
   return (
-    <section className={`${styles.card} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
+    <section className={`${styles.card} ${styles.leaderboard} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
       <h2 className={styles.title}><span className={styles.icon}><Trophy aria-hidden="true" /></span>{copy.title}</h2>
       <div className={styles.filters}>
         <div className={styles.chips} role="group" aria-label="Typ produktu">
@@ -75,13 +76,17 @@ export function TeamLeaderboardSection({
       </div>
       {loading ? <div className={`${styles.empty} ${styles.loading}`} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</div>
         : entries.length === 0 ? <p className={styles.empty}>{copy.empty}</p>
-        : <ol className={styles.rankList}>
-          {visibleEntries.map((row, index) => <li key={row.email} className={styles.rankRow}>
-            <span className={styles.rankBadge}>{index + 1}</span>
-            <div className="min-w-0"><div className={styles.rankName} title={row.name}>{row.name}</div><div className={styles.rankDetail}>{leaderboardLabel}</div></div>
-            <div className={styles.rankAmount}><small>{copy.premium} · {lbProductFilter === "life" ? "měsíčně" : "ročně"}</small><strong><AnimatedMoney value={row.totalPremium} /></strong></div>
-          </li>)}
-        </ol>}
+        : <>
+          <div className={styles.rankLegend}><span>{leaderboardLabel}</span><span>{copy.premium} · {lbProductFilter === "life" ? "měsíčně" : "ročně"}</span></div>
+          <ol className={styles.rankList}>
+            {visibleEntries.map((row, index) => <li key={row.email} className={styles.rankRow}>
+              <span className={styles.rankBadge}>{index + 1}</span>
+              <div className={styles.rankName} title={row.name}>{row.name}</div>
+              <div className={styles.rankAmount}><strong><AnimatedMoney value={row.totalPremium} /></strong></div>
+              <div className={styles.rankTrack} aria-hidden="true"><span style={{ width: `${leadingPremium > 0 && Number.isFinite(row.totalPremium) ? Math.max(0, row.totalPremium) / leadingPremium * 100 : 0}%` }} /></div>
+            </li>)}
+          </ol>
+        </>}
     </section>
   );
 }

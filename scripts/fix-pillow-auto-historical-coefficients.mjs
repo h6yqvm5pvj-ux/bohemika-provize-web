@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
@@ -514,7 +516,7 @@ async function commitBatches(db, updates) {
     inBatch += 1;
 
     if (inBatch >= BATCH_LIMIT) {
-      await batch.commit();
+      await trackCashflowScriptWrite(() => batch.commit(), db);
       committed += inBatch;
       batch = db.batch();
       inBatch = 0;
@@ -522,7 +524,7 @@ async function commitBatches(db, updates) {
   }
 
   if (inBatch > 0) {
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), db);
     committed += inBatch;
   }
 
@@ -530,6 +532,7 @@ async function commitBatches(db, updates) {
 }
 
 async function main() {
+  return withCashflowScriptMutation("script:fix-pillow-auto-historical-coefficients", async () => {
   const apply = hasArg("--apply");
   const credentials = loadCredentials();
   if (!credentials) throw new Error("Missing FIREBASE_ADMIN_* credentials.");
@@ -641,6 +644,7 @@ async function main() {
 
   const committed = await commitBatches(db, updates);
   console.log(`\nCommitted updates: ${committed}`);
+  });
 }
 
 main().catch((error) => {

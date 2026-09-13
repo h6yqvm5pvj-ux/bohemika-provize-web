@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -297,7 +298,7 @@ async function createUserFromRequest(
     batch.set(adminDb.collection("usersPrivate").doc(params.requestedCorporateEmail), privateProfile, {
       merge: false,
     });
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     return {
       email: params.requestedCorporateEmail,
@@ -810,6 +811,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/user-requests/route:PATCH", async () => {
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:user-requests:patch",
     limit: USER_REQUESTS_PATCH_LIMIT,
@@ -962,6 +964,7 @@ export async function PATCH(req: NextRequest) {
     }),
     ctx
   );
+  });
 }
 
 export async function PUT(req: NextRequest) {

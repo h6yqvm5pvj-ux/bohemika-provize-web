@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { contractNoteLocationRef } from "./contractNoteLocation";
 import { FieldValue } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 
@@ -120,16 +121,23 @@ const claimReminder = async (
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists) return null;
     const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+    const notesParent = ref.parent.parent;
+    if (!notesParent) return null;
+    const location = (await transaction.get(contractNoteLocationRef(notesParent))).data();
+    const currentData = location && typeof location.ownerEmail === "string" && typeof location.entryId === "string"
+      ? { ...data, ownerEmail: location.ownerEmail, entryId: location.entryId,
+          ...(location.ownerEmail !== data.ownerEmail ? { reminderRecipientEmail: location.ownerEmail } : {}) }
+      : data;
     const reminder = resolveContractNoteReminderCandidate({
       noteId: snapshot.id,
-      data,
+      data: currentData,
       nowMs,
     });
     if (!reminder) return null;
 
-    const contractRef = ref.parent.parent;
     const expectedContractPath = `users/${reminder.ownerEmail}/entries/${reminder.entryId}`;
-    if (!contractRef || contractRef.path !== expectedContractPath) {
+    const contractRef = location?.contractPath === expectedContractPath ? notesParent.firestore.doc(expectedContractPath) : notesParent;
+    if (contractRef.path !== expectedContractPath) {
       transaction.set(
         ref,
         {
@@ -142,7 +150,7 @@ const claimReminder = async (
       return null;
     }
     const contractSnapshot = await transaction.get(contractRef);
-    if (!contractSnapshot.exists) {
+    if (!contractSnapshot.exists || (contractSnapshot.data()?.contractNotesPath ?? contractRef.path) !== notesParent.path) {
       transaction.set(
         ref,
         {

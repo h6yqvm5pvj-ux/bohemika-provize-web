@@ -3,7 +3,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useSidebarPreference } from "./useSidebarPreference";
+import styles from "./appNavigation.module.css";
 import type { LucideIcon } from "lucide-react";
 import {
   Building2,
@@ -13,6 +16,11 @@ import {
   Home,
   IdCard,
   Lightbulb,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
   ReceiptText,
   Settings,
   ShieldCheck,
@@ -107,15 +115,6 @@ const TIPSTER_NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
 ];
 
-const NAV_ITEM_BASE =
-  "group relative flex items-center rounded-[18px] px-3 py-2.5 text-[15px] font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white";
-const NAV_LABEL_BASE = "flex w-full items-center gap-3";
-const NAV_ITEM_ACTIVE_CLASS =
-  "bg-[linear-gradient(135deg,#111827_0%,#211442_54%,#090d1c_100%)] text-white shadow-[0_14px_28px_rgba(18,12,43,0.28)] ring-1 ring-white/10";
-const NAV_ITEM_INACTIVE_CLASS =
-  "text-slate-600 hover:bg-white/80 hover:text-slate-950 hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]";
-const ACTIVE_NAV_RAIL_CLASS =
-  "bg-[linear-gradient(180deg,#a855f7_0%,#ec4899_100%)] shadow-[0_0_16px_rgba(168,85,247,0.55)]";
 const PREPARATION_SECTION_OWNER = "jakub.rauscher";
 const PREPARATION_GATED_NAV_KEYS = new Set<ActivePage>(["clients", "statements"]);
 
@@ -136,22 +135,6 @@ const buildNavigationItems = (
     ...item,
     label: navLabels[item.key],
   }));
-
-const renderNavIcon = (Icon: LucideIcon, isActive: boolean) => (
-  <span
-    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border transition ${
-      isActive
-        ? "border-white/20 bg-white/10 text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]"
-        : "border-slate-200/90 bg-white/90 text-slate-500 shadow-sm group-hover:border-fuchsia-200 group-hover:bg-fuchsia-50/80 group-hover:text-fuchsia-700"
-    }`}
-    aria-hidden="true"
-  >
-    <Icon
-      className={`h-[18px] w-[18px] ${isActive ? "text-white" : ""}`}
-      strokeWidth={2}
-    />
-  </span>
-);
 
 const shouldShowNavigationItem = (
   item: NavigationItem,
@@ -178,7 +161,7 @@ function NavigationList({
   canAccessAdminArea,
   timelineSetupGateActive,
   canAccessPreparationSections,
-  activeRailHeightClass,
+  collapsed = false,
   onNavigate,
   onBlockedPreparationClick,
 }: {
@@ -190,39 +173,46 @@ function NavigationList({
   canAccessAdminArea: boolean;
   timelineSetupGateActive: boolean;
   canAccessPreparationSections: boolean;
-  activeRailHeightClass: string;
+  collapsed?: boolean;
   onNavigate?: () => void;
   onBlockedPreparationClick: (item: NavigationItem) => void;
 }) {
+  const [tooltip, setTooltip] = useState<{ label: string; top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!tooltip) return;
+    const dismiss = () => setTooltip(null);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [tooltip]);
+  const showTooltip = (element: HTMLElement, label: string) => {
+    if (!collapsed) return;
+    const rect = element.getBoundingClientRect();
+    setTooltip({ label, top: rect.top + rect.height / 2, left: rect.right + 18 });
+  };
+  const visibleItems = items.filter((item) => shouldShowNavigationItem(item, {
+    hasTeam, hasTipsters, isAdminRequestsUser, canAccessAdminArea,
+  }));
   return (
-    <>
-      {items.map((item) => {
-        if (
-          !shouldShowNavigationItem(item, {
-            hasTeam,
-            hasTipsters,
-            isAdminRequestsUser,
-            canAccessAdminArea,
-          })
-        ) {
-          return null;
-        }
-
+    <div className={styles.navList} onScrollCapture={() => setTooltip(null)}>
+      {visibleItems.map((item) => {
         const isActive = active === item.key;
         const navDisabled = timelineSetupGateActive && item.key !== "settings";
         const isPreparationGated = PREPARATION_GATED_NAV_KEYS.has(item.key);
-        const stateClass = isActive ? NAV_ITEM_ACTIVE_CLASS : NAV_ITEM_INACTIVE_CLASS;
-        const activeRail = isActive ? (
-          <span
-            className={`absolute left-1.5 top-1/2 w-1 -translate-y-1/2 rounded-full ${activeRailHeightClass} ${ACTIVE_NAV_RAIL_CLASS}`}
-            aria-hidden="true"
-          />
-        ) : null;
+        const Icon = item.icon;
+        const groupStart = item.key === "calc" || item.key === "tools" ||
+          ((item.key === "admin" || item.key === "settings") &&
+            visibleItems[visibleItems.indexOf(item) - 1]?.key !== "admin");
+        const itemClass = `${styles.navItem} ${isActive ? styles.active : ""} ${groupStart ? styles.groupStart : ""}`;
         const content = (
-          <span className={NAV_LABEL_BASE}>
-            {renderNavIcon(item.icon, isActive)}
-            <span className="truncate">{item.label}</span>
-          </span>
+          <>
+            <span className={styles.navIcon}><Icon size={20} strokeWidth={1.8} aria-hidden="true" /></span>
+            <span className={styles.itemLabel}>{item.label}</span>
+            {isActive ? <span className={styles.activeDot} aria-hidden="true" /> : null}
+          </>
         );
 
         if (navDisabled) {
@@ -230,9 +220,9 @@ function NavigationList({
             <div
               key={item.key}
               aria-disabled="true"
-              className={`${NAV_ITEM_BASE} cursor-not-allowed opacity-50 ${stateClass}`}
+              className={`${itemClass} ${styles.disabled}`}
+              title={item.label}
             >
-              {activeRail}
               {content}
             </div>
           );
@@ -243,6 +233,13 @@ function NavigationList({
             key={item.key}
             href={item.href}
             prefetch={false}
+            aria-label={item.label}
+            aria-current={isActive ? "page" : undefined}
+            onMouseEnter={(event) => showTooltip(event.currentTarget, item.label)}
+            onMouseLeave={() => setTooltip(null)}
+            onFocus={(event) => showTooltip(event.currentTarget, item.label)}
+            onBlur={() => setTooltip(null)}
+            onKeyDown={(event) => { if (event.key === "Escape") setTooltip(null); }}
             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
               if (isPreparationGated && !canAccessPreparationSections) {
                 event.preventDefault();
@@ -252,14 +249,18 @@ function NavigationList({
               }
               onNavigate?.();
             }}
-            className={`${NAV_ITEM_BASE} ${stateClass}`}
+            className={itemClass}
           >
-            {activeRail}
             {content}
           </Link>
         );
       })}
-    </>
+      {collapsed && tooltip ? createPortal(
+        <span className={styles.tooltip} aria-hidden="true" style={{ top: tooltip.top, left: tooltip.left }}>
+          {tooltip.label}
+        </span>, document.body
+      ) : null}
+    </div>
   );
 }
 
@@ -295,7 +296,39 @@ export function AppNavigation({
         isTipsterAccount ? TIPSTER_NAV_ITEM_CONFIGS : NAV_ITEM_CONFIGS,
         navLabels
       );
-  const userInitial = userEmail.trim().charAt(0).toUpperCase() || "B";
+  const [collapsed, toggleCollapsed] = useSidebarPreference();
+  const mobileDialogRef = useRef<HTMLDivElement>(null);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
+  const closeMobileRef = useRef(onCloseMobileMenu);
+  useEffect(() => { closeMobileRef.current = onCloseMobileMenu; }, [onCloseMobileMenu]);
+  useEffect(() => {
+    if (!mobileMenuOpen || embedded) return;
+    const dialog = mobileDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeMobileRef.current(); }
+      if (event.key !== "Tab") return;
+      const controls = dialog?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+      if (!controls?.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const onResize = () => { if (desktop.matches) closeMobileRef.current(); };
+    onResize();
+    desktop.addEventListener("change", onResize);
+    document.addEventListener("keydown", onKeyDown);
+    const returnFocus = mobileToggleRef.current;
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      desktop.removeEventListener("change", onResize);
+      returnFocus?.focus();
+    };
+  }, [mobileMenuOpen, embedded]);
   const canAccessPreparationSections =
     canAccessPreparationSectionsForUser(userEmail);
   const BlockedPreparationIcon = blockedPreparationItem?.icon ?? ReceiptText;
@@ -311,35 +344,34 @@ export function AppNavigation({
   return (
     <>
       <aside
-        className={`hidden w-64 shrink-0 flex-col border-r border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_48%,#fff6fb_100%)] shadow-[10px_0_34px_rgba(15,23,42,0.08)] backdrop-blur-sm lg:flex ${shellFontClass}`}
+        className={`${styles.sidebar} ${shellFontClass}`}
+        data-collapsed={collapsed}
+        aria-label="Postranní panel"
       >
-        <div className="px-4 pb-3 pt-5">
-          <Link
-            href="/"
-            className="group flex items-center gap-3 rounded-[26px] border border-white/75 bg-white/80 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(15,23,42,0.11)]"
-          >
-            <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/80">
-              <Image
-                src="/icons/bohemika_logo.png"
-                alt="Bohemika logo"
-                width={52}
-                height={52}
-                className="h-9 w-auto"
-                priority
-              />
+        <div className={styles.brandRow}>
+          <Link href="/" className={styles.brand} aria-label="Bohemka.App – domů">
+            <span className={styles.brandLogo}>
+              <Image src="/icons/bohemika_logo.png" alt="" width={40} height={40} priority />
             </span>
-            <span className="min-w-0">
-              <span className="block truncate text-base font-bold tracking-tight text-slate-950">
-                Bohemka.App
-              </span>
-              <span className="mt-0.5 block truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                SmartApp
-              </span>
+            <span className={styles.brandCopy}>
+              <span className={styles.brandName}>Bohemka<span>.App</span></span>
+              <span className={styles.brandTagline}>Váš pracovní prostor</span>
             </span>
           </Link>
         </div>
-
-        <nav className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3 py-3 pr-2">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          className={styles.collapseButton}
+          aria-expanded={!collapsed}
+          aria-controls="desktop-navigation"
+          aria-label={collapsed ? "Rozbalit postranní panel" : "Sbalit postranní panel"}
+          title={collapsed ? "Rozbalit postranní panel" : "Sbalit postranní panel"}
+        >
+          {collapsed ? <PanelLeftOpen size={19} aria-hidden="true" /> : <PanelLeftClose size={19} aria-hidden="true" />}
+          <span className={styles.itemLabel}>Sbalit panel</span>
+        </button>
+        <nav id="desktop-navigation" aria-label="Hlavní navigace" className={styles.desktopNav}>
           <NavigationList
             active={active}
             items={navigationItems}
@@ -349,39 +381,24 @@ export function AppNavigation({
             canAccessAdminArea={canAccessAdminArea}
             timelineSetupGateActive={timelineSetupGateActive}
             canAccessPreparationSections={canAccessPreparationSections}
-            activeRailHeightClass="h-7"
+            collapsed={collapsed}
             onBlockedPreparationClick={setBlockedPreparationItem}
           />
         </nav>
-
-        <div className="mt-auto px-3 pb-4 pt-3">
-          <div className="overflow-hidden rounded-[24px] border border-white/75 bg-white/85 p-3 shadow-[0_16px_34px_rgba(15,23,42,0.1)]">
-            {hasUser ? (
-              <div className="mb-3 flex min-w-0 items-center gap-3">
-                <ProfileAvatar
-                  src={userAvatar}
-                  name={userEmail || userInitial}
-                  className="h-10 w-10 rounded-2xl text-[2.5rem] shadow-[0_10px_20px_rgba(45,26,98,0.28)]"
-                  sizes="40px"
-                />
-                <span className="min-w-0">
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Přihlášen
-                  </span>
-                  <span className="block truncate text-xs font-semibold text-slate-800">
-                    {userEmail}
-                  </span>
-                </span>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={onLogout}
-              className="w-full rounded-2xl bg-slate-950 px-3 py-2.5 text-xs font-bold text-white shadow-[0_12px_22px_rgba(15,23,42,0.18)] transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300/70 focus-visible:ring-offset-2"
-            >
-              {logoutLabel}
-            </button>
-          </div>
+        <div className={styles.footer}>
+          {hasUser ? (
+            <div className={styles.profile} title={userEmail}>
+              <ProfileAvatar src={userAvatar} name={userEmail} className="h-9 w-9 rounded-xl" sizes="36px" />
+              <span className={styles.profileCopy}>
+                <span className={styles.profileLabel}>Můj účet</span>
+                <span className={styles.profileEmail}>{userEmail}</span>
+              </span>
+            </div>
+          ) : null}
+          <button type="button" onClick={onLogout} className={styles.logout} aria-label={logoutLabel} title={collapsed ? logoutLabel : undefined}>
+            <LogOut size={19} aria-hidden="true" />
+            <span className={styles.itemLabel}>{logoutLabel}</span>
+          </button>
         </div>
       </aside>
 
@@ -394,7 +411,7 @@ export function AppNavigation({
           </header>
         ) : null}
         <header
-          className={`sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-900 bg-white px-3 py-2.5 lg:hidden ${shellFontClass}`}
+          className={`${styles.mobileHeader} ${shellFontClass}`}
         >
           <div className="flex min-w-0 items-center gap-2">
             <Image
@@ -421,9 +438,13 @@ export function AppNavigation({
             <button
               type="button"
               onClick={onToggleMobileMenu}
-              className="ui-btn-primary ui-focus inline-flex items-center gap-2 rounded-[18px] px-3 py-2 text-xs"
+              ref={mobileToggleRef}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-navigation"
+              aria-label="Otevřít menu"
+              className={styles.mobileMenuButton}
             >
-              <span className="text-base leading-none">☰</span>
+              <Menu size={20} aria-hidden="true" />
               <span className="hidden min-[390px]:inline">Menu</span>
             </button>
           </div>
@@ -431,34 +452,22 @@ export function AppNavigation({
 
         {mobileMenuOpen ? (
           <div className="fixed inset-0 z-[70] lg:hidden" data-pull-to-refresh="off">
+            <div className={styles.backdrop} onClick={onCloseMobileMenu} aria-hidden="true" />
             <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={onCloseMobileMenu}
-            />
-            <div
-              className={`relative h-full w-80 max-w-[88%] overflow-y-auto border-r border-slate-900 bg-white px-4 py-5 shadow-2xl ${shellFontClass}`}
+              className={`${styles.mobileDrawer} ${shellFontClass}`}
+              ref={mobileDialogRef}
+              id="mobile-navigation"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Hlavní menu"
             >
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Image
-                    src="/icons/bohemika_logo.png"
-                    alt="Bohemika logo"
-                    width={110}
-                    height={40}
-                    className="h-10 w-auto"
-                    priority
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={onCloseMobileMenu}
-                  className="ui-btn-primary ui-focus rounded-full px-3 py-1 text-xs"
-                >
-                  Zavřít
+              <div className={styles.mobileBrandRow}>
+                <span className={styles.brandName}>Bohemka<span>.App</span></span>
+                <button type="button" onClick={onCloseMobileMenu} className={styles.mobileMenuButton} aria-label="Zavřít menu">
+                  <X size={21} aria-hidden="true" />
                 </button>
               </div>
-
-              <nav className="space-y-2">
+              <nav aria-label="Mobilní navigace" className={styles.mobileNav}>
                 <NavigationList
                   active={active}
                   items={navigationItems}
@@ -468,27 +477,23 @@ export function AppNavigation({
                   canAccessAdminArea={canAccessAdminArea}
                   timelineSetupGateActive={timelineSetupGateActive}
                   canAccessPreparationSections={canAccessPreparationSections}
-                  activeRailHeightClass="h-6"
                   onNavigate={onCloseMobileMenu}
                   onBlockedPreparationClick={setBlockedPreparationItem}
                 />
               </nav>
 
-              <div className="mt-6 border-t border-slate-900 pt-4">
+              <div className={styles.footer}>
                 {hasUser ? (
-                  <div className="mb-3 text-[11px] text-slate-600">
-                    Přihlášen jako{" "}
-                    <span className="block truncate text-slate-900">
-                      {userEmail}
+                  <div className={styles.profile}>
+                    <ProfileAvatar src={userAvatar} name={userEmail} className="h-9 w-9 rounded-xl" sizes="36px" />
+                    <span className={styles.profileCopy}>
+                      <span className={styles.profileLabel}>Můj účet</span>
+                      <span className={styles.profileEmail}>{userEmail}</span>
                     </span>
                   </div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  className="ui-btn-primary ui-focus w-full rounded-xl py-2 text-xs"
-                >
-                  {logoutLabel}
+                <button type="button" onClick={onLogout} className={styles.logout}>
+                  <LogOut size={19} aria-hidden="true" />{logoutLabel}
                 </button>
               </div>
             </div>

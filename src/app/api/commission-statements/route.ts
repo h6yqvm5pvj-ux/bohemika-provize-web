@@ -1,3 +1,5 @@
+import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { createHash } from "node:crypto";
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -1364,7 +1366,8 @@ const findExistingStatementByBusinessIdentity = async ({
 
 const serializeStatementDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>,
-  includeHtml = false
+  includeHtml = false,
+  shape: "full" | "cashflow" = "full"
 ) => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
   const html = normalizeText(data.html, MAX_HTML_LENGTH);
@@ -1387,9 +1390,7 @@ const serializeStatementDoc = (
     normalizeNullableNumber(data.payoutTotal) ?? extractPayoutTotalFromStoredHtml(html);
   const paidContractNumbers = extractPaidContractNumbersFromStoredHtml(html);
   const paidCommissionKeys = extractPaidCommissionKeysFromStoredHtml(html);
-  const autoPremiumRows = autoPremiumRowsFromStatementData(data, html);
-
-  return {
+  const summary = {
     id: docSnap.id,
     fileName: normalizeText(data.fileName) ?? "Provizní výpis",
     statementNumber: normalizeText(data.statementNumber, 64),
@@ -1399,24 +1400,31 @@ const serializeStatementDoc = (
     periodStartMs,
     periodEndMs,
     statementDateMs,
-    statementChronologyMs,
     payoutMonthKey,
     paidContractNumbers,
     paidCommissionKeys,
-    autoPremiumRows,
-    commissionRowCount: normalizeNumber(data.commissionRowCount),
     commissionTotal: normalizeNumber(data.commissionTotal),
-    reserveFundTotal: normalizeNumber(data.reserveFundTotal),
     payoutTotal,
-    otherPaymentsCount: normalizeNumber(data.otherPaymentsCount),
     otherPaymentsTotal: normalizeNumber(data.otherPaymentsTotal),
-    managerAdvisorCount: normalizeNumber(data.managerAdvisorCount),
-    managerRowCount: normalizeNumber(data.managerRowCount),
     managerCommissionTotal: normalizeNumber(data.managerCommissionTotal),
-    stornoRowCount: normalizeNumber(data.stornoRowCount),
-    stornoTotal: normalizeNumber(data.stornoTotal),
     createdAtMs: toMillis(data.createdAtMs),
     updatedAtMs: toMillis(data.updatedAtMs),
+  };
+  // Cashflow still needs paid-contract/code matching from legacy HTML, but not
+  // premium-history rows or the potentially large processing report.
+  if (shape === "cashflow") return summary;
+
+  return {
+    ...summary,
+    statementChronologyMs,
+    autoPremiumRows: autoPremiumRowsFromStatementData(data, html),
+    commissionRowCount: normalizeNumber(data.commissionRowCount),
+    reserveFundTotal: normalizeNumber(data.reserveFundTotal),
+    otherPaymentsCount: normalizeNumber(data.otherPaymentsCount),
+    managerAdvisorCount: normalizeNumber(data.managerAdvisorCount),
+    managerRowCount: normalizeNumber(data.managerRowCount),
+    stornoRowCount: normalizeNumber(data.stornoRowCount),
+    stornoTotal: normalizeNumber(data.stornoTotal),
     processedAtMs: toMillis(data.processedAtMs),
     processedBy: normalizeText(data.processedBy, 180),
     processingResult:
@@ -1729,7 +1737,7 @@ const resetContractStatementDerivedFields = async ({
     patch.createdFromCommissionStatement = true;
   }
 
-  await ref.set(patch, { merge: true });
+  await trackCashflowWrite(() => ref.set(patch, { merge: true }));
 
   return {
     payoutRecordsRemoved: existingPayouts.length - keptPayouts.length,
@@ -3428,6 +3436,7 @@ const isoDateFromMs = (ms: number): string => new Date(ms).toISOString().slice(0
 type AccessibleContractResolution =
   | {
       status: "matched";
+      updateTime: FirebaseFirestore.Timestamp;
       ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
       ownerEmail: string;
       entryId: string;
@@ -3712,6 +3721,7 @@ const resolveAccessibleContract = async ({
 
     matches.push({
       status: "matched",
+      updateTime: snap.updateTime!,
       ref,
       ownerEmail,
       entryId: ref.id,
@@ -3746,31 +3756,24 @@ const processingPrivateCollection = (email: string, collection: string) =>
 const createProcessingBatchWriter = () => {
   let batch = adminDb!.batch();
   let ops = 0;
-
-  const set = (
-    ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>,
-    data: FirebaseFirestore.DocumentData,
-    options?: FirebaseFirestore.SetOptions
-  ) => {
-    if (options) {
-      batch.set(ref, data, options);
-    } else {
-      batch.set(ref, data);
-    }
-    ops += 1;
-  };
-
   const commit = async () => {
     if (ops === 0) return;
-    await batch.commit();
-    batch = adminDb!.batch();
-    ops = 0;
+    await trackCashflowWrite(() => batch.commit());
+    batch = adminDb!.batch(); ops = 0;
   };
-
-  return {
-    set,
-    commit,
+  const set = async (ref: FirebaseFirestore.DocumentReference, data: FirebaseFirestore.DocumentData, options?: FirebaseFirestore.SetOptions) => {
+    if (options) batch.set(ref, data, options); else batch.set(ref, data);
+    ops++;
+    if (ops >= 400) await commit();
   };
+  const updateContract = async (match: AccessibleContractMatch, patch: Record<string, unknown>, actorEmail: string) => {
+    batch.update(match.ref, withContractHistory(batch, match.ref, match.contract, patch, {
+      actorEmail, title: "Aktualizace údajů podle provizního výpisu",
+    }), { lastUpdateTime: match.updateTime });
+    ops += 4; // Contract, event and at most two older records.
+    if (ops >= 400) await commit();
+  };
+  return { set, updateContract, commit };
 };
 
 const processStatementWrites = async ({
@@ -3778,6 +3781,7 @@ const processStatementWrites = async ({
   docRef,
   html,
   ctxEmail,
+  actorEmail,
   teamEmails,
   statementNumber,
   statementPeriod,
@@ -3796,6 +3800,7 @@ const processStatementWrites = async ({
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
   html: string;
   ctxEmail: string;
+  actorEmail: string;
   teamEmails: string[];
   statementNumber: string | null;
   statementPeriod: string | null;
@@ -3887,6 +3892,7 @@ const processStatementWrites = async ({
           } else {
             resolution = {
               status: "matched",
+              updateTime: forcedSnap.updateTime!,
               ref: forcedContractRef,
               ownerEmail: forcedContractOwnerEmail,
               entryId: forcedContractEntryId ?? forcedContractRef.id,
@@ -3904,6 +3910,7 @@ const processStatementWrites = async ({
         });
       }
     } catch (error) {
+      markCashflowMutationIncomplete();
       result.errors.push(`Smlouva ${contractNumber}: nepodařilo se dohledat (${String(error)})`);
       continue;
     }
@@ -4250,7 +4257,7 @@ const processStatementWrites = async ({
       shouldApplyNeonRefreshStatementUpdate ||
       shouldApplyAutoInitialCommissionBaseUpdate
     ) {
-      batchWriter.set(resolution.ref, updatePayload, { merge: true });
+      await batchWriter.updateContract(resolution, updatePayload, actorEmail);
       touchedContractPaths.add(resolution.ref.path);
       result.contractsUpdated += 1;
       if (hasPayoutChanges) result.contractsWithPayoutChanges += 1;
@@ -4269,7 +4276,7 @@ const processStatementWrites = async ({
     for (const payout of incomingPayouts) {
       if (payout.status !== "difference" || payout.difference == null) continue;
       const repairId = compactHash(`${docId}:commission-difference:${resolution.ref.path}:${payout.key}`, 32);
-      batchWriter.set(
+      await batchWriter.set(
         processingPrivateCollection(ctxEmail, "accountingRepairDrafts").doc(repairId),
         {
           kind: "commission_difference",
@@ -4302,7 +4309,7 @@ const processStatementWrites = async ({
     for (const premium of actionablePremiumHistoryEntries) {
       const isLifeIncrease = premium.premiumKind === "life_increase";
       const repairId = compactHash(`${docId}:premium:${resolution.ref.path}:${premium.key}`, 32);
-      batchWriter.set(
+      await batchWriter.set(
         processingPrivateCollection(ctxEmail, "accountingRepairDrafts").doc(repairId),
         {
           kind: isLifeIncrease ? "life_premium_increase" : "auto_premium_change",
@@ -4334,7 +4341,7 @@ const processStatementWrites = async ({
       result.accountingRepairDrafts += 1;
 
       const taskId = compactHash(`${docId}:external-premium:${resolution.ref.path}:${premium.key}`, 32);
-      batchWriter.set(
+      await batchWriter.set(
         processingPrivateCollection(ctxEmail, "externalUpdateTasks").doc(taskId),
         {
           kind: isLifeIncrease ? "life_premium_increase_update" : "auto_premium_update",
@@ -4373,7 +4380,7 @@ const processStatementWrites = async ({
     }
   }
 
-  batchWriter.set(
+  await batchWriter.set(
     docRef,
     {
       autoPremiumRows,
@@ -4395,11 +4402,13 @@ const processStatementWrites = async ({
 const handleManualNeonRefreshConversion = async ({
   body,
   ctxEmail,
+  actorEmail,
   teamEmails,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
+  actorEmail: string;
   teamEmails: string[];
   withRateLimit: (response: NextResponse) => NextResponse;
 }) => {
@@ -4589,7 +4598,11 @@ const handleManualNeonRefreshConversion = async ({
     contractPatch.neonCoefficientSetOverrideAppliedBy = ctxEmail;
   }
 
-  await entryRef.set(contractPatch, { merge: true });
+  const batch = entryRef.firestore.batch();
+  batch.update(entryRef, withContractHistory(batch, entryRef, contract, contractPatch, {
+    actorEmail, title: "Převedeno na Refresh podle výpisu",
+  }), { lastUpdateTime: entrySnap.updateTime! });
+  await trackCashflowWrite(() => batch.commit());
 
   return withRateLimit(
     NextResponse.json({
@@ -4607,11 +4620,13 @@ const handleManualNeonRefreshConversion = async ({
 const handleSavedStatementReprocess = async ({
   body,
   ctxEmail,
+  actorEmail,
   teamEmails,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
+  actorEmail: string;
   teamEmails: string[];
   withRateLimit: (response: NextResponse) => NextResponse;
 }): Promise<NextResponse> => {
@@ -4696,6 +4711,7 @@ const handleSavedStatementReprocess = async ({
     docRef,
     html,
     ctxEmail,
+    actorEmail,
     teamEmails,
     statementNumber: normalizeText(data.statementNumber, 64),
     statementPeriod,
@@ -4720,11 +4736,13 @@ const handleSavedStatementReprocess = async ({
 const handleContractStatementRebuild = async ({
   body,
   ctxEmail,
+  actorEmail,
   teamEmails,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
+  actorEmail: string;
   teamEmails: string[];
   withRateLimit: (response: NextResponse) => NextResponse;
 }): Promise<NextResponse> => {
@@ -4816,6 +4834,7 @@ const handleContractStatementRebuild = async ({
       docRef: statement.ref,
       html: statement.html,
       ctxEmail,
+      actorEmail,
       teamEmails,
       statementNumber: statement.statementNumber,
       statementPeriod: statement.statementPeriod,
@@ -5001,15 +5020,38 @@ export async function GET(req: NextRequest) {
       req.nextUrl.searchParams.get("year"),
       req.nextUrl.searchParams.get("month")
     );
-    const snap = await statementCollection(ctx.email)
+    let listQuery = statementCollection(ctx.email)
       .orderBy("periodStartMs", "desc")
-      .limit(limit)
-      .get();
+      .limit(limit);
+    const cashflowShape = requestedShape === "cashflow";
+    if (cashflowShape) {
+      listQuery = listQuery.select(
+        "html", "fileName", "statementNumber", "statementDate", "period", "advisorNumber",
+        "periodStartMs", "periodEndMs", "statementDateMs", "payoutMonthKey", "payoutTotal",
+        "commissionTotal", "otherPaymentsTotal", "managerCommissionTotal",
+        "createdAtMs", "updatedAtMs", "processedAtMs"
+      );
+    }
+    const snap = await listQuery.get();
     const items = dedupeStatementSnapshots(snap.docs)
-      .map((docSnap) => serializeStatementDoc(docSnap, false))
+      .map((docSnap) => serializeStatementDoc(docSnap, false, cashflowShape ? "cashflow" : "full"))
       .filter((item) => !requestedMonthKey || item.payoutMonthKey === requestedMonthKey);
 
-    return withRateLimitHeaders(NextResponse.json({ ok: true, items }), ctx);
+    return withRateLimitHeaders(NextResponse.json({
+      ok: true,
+      items,
+      ...(cashflowShape ? {
+        // Count raw documents before deduplication. Reaching the limit cannot
+        // certify a complete input for shadow verification.
+        hasMore: snap.docs.length >= limit,
+        processingComplete: snap.docs.every((docSnap) => {
+          const data = docSnap.data();
+          const updatedAt = toMillis(data.updatedAtMs);
+          const processedAt = toMillis(data.processedAtMs);
+          return updatedAt != null && processedAt != null && processedAt >= updatedAt;
+        }),
+      } : {}),
+    }), ctx);
   } catch (error) {
     console.error("Commission statements GET failed:", error);
     return withRateLimitHeaders(
@@ -5023,6 +5065,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  return withCashflowMutation("app/api/commission-statements/route:POST", async () => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:commission-statements:post",
     limit: STATEMENTS_RATE_LIMIT,
@@ -5055,6 +5098,7 @@ export async function POST(req: NextRequest) {
       return await handleManualNeonRefreshConversion({
         body,
         ctxEmail: ctx.email,
+        actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
         withRateLimit,
       });
@@ -5073,6 +5117,7 @@ export async function POST(req: NextRequest) {
       return await handleSavedStatementReprocess({
         body,
         ctxEmail: ctx.email,
+        actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
         withRateLimit,
       });
@@ -5091,6 +5136,7 @@ export async function POST(req: NextRequest) {
       return await handleContractStatementRebuild({
         body,
         ctxEmail: ctx.email,
+        actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
         withRateLimit,
       });
@@ -5193,12 +5239,13 @@ export async function POST(req: NextRequest) {
       updatedAtMs: nowMs,
     };
 
-    await docRef.set(payload, { merge: true });
+    await trackCashflowWrite(() => docRef.set(payload, { merge: true }));
     const processingResult = await processStatementWrites({
       docId,
       docRef,
       html,
       ctxEmail: ctx.email,
+      actorEmail: ctx.actorEmail,
       teamEmails: ctx.teamEmails,
       statementNumber: payload.statementNumber,
       statementPeriod: period,
@@ -5225,4 +5272,5 @@ export async function POST(req: NextRequest) {
       )
     );
   }
+  });
 }

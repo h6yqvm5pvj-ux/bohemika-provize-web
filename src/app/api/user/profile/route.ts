@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -299,17 +300,22 @@ async function loadBestPublicProfile({
   const usersCol = adminDb.collection("users");
   let best: UserCandidate | null = null;
 
-  const directSnap = await usersCol.doc(email).get();
+  const emailCandidates = Array.from(
+    new Set([email, rawTokenEmail, rawTokenEmail.toLowerCase()].map((it) => it.trim()).filter(Boolean))
+  );
+  // Read independent candidates together, then keep the original merge order.
+  const [directSnap, emailSnaps, byUidSnap] = await Promise.all([
+    usersCol.doc(email).get(),
+    Promise.all(emailCandidates.map(candidateEmail =>
+      usersCol.where("email", "==", candidateEmail).limit(6).get()
+    )),
+    uid ? usersCol.where("userId", "==", uid).limit(6).get() : Promise.resolve(null),
+  ]);
   if (directSnap.exists) {
     const data = (directSnap.data() as Record<string, unknown> | undefined) ?? {};
     best = { docId: directSnap.id, data };
   }
-
-  const emailCandidates = Array.from(
-    new Set([email, rawTokenEmail, rawTokenEmail.toLowerCase()].map((it) => it.trim()).filter(Boolean))
-  );
-  for (const candidateEmail of emailCandidates) {
-    const snap = await usersCol.where("email", "==", candidateEmail).limit(6).get();
+  for (const snap of emailSnaps) {
     snap.docs.forEach((docSnap) => {
       const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
       const candidate = { docId: docSnap.id, data };
@@ -317,8 +323,7 @@ async function loadBestPublicProfile({
     });
   }
 
-  if (uid) {
-    const byUidSnap = await usersCol.where("userId", "==", uid).limit(6).get();
+  if (byUidSnap) {
     byUidSnap.docs.forEach((docSnap) => {
       const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
       const candidate = { docId: docSnap.id, data };
@@ -343,8 +348,8 @@ async function loadPrivateProfile({
   );
 
   let merged: Record<string, unknown> | null = null;
-  for (const docId of docIds) {
-    const snap = await privateCol.doc(docId).get();
+  const snapshots = await Promise.all(docIds.map(docId => privateCol.doc(docId).get()));
+  for (const snap of snapshots) {
     if (!snap.exists) continue;
     const data = (snap.data() as Record<string, unknown> | undefined) ?? {};
     merged = { ...(merged ?? {}), ...data };
@@ -358,6 +363,7 @@ async function getHasTeam(email: string): Promise<boolean> {
     .collection("users")
     .where("managerEmail", "==", email)
     .limit(1)
+    .select()
     .get();
   return !snap.empty;
 }
@@ -368,6 +374,7 @@ async function getHasTipsters(email: string): Promise<boolean> {
     .collection("users")
     .where("tipRecipientEmail", "==", email)
     .limit(6)
+    .select("accountType", "userRole")
     .get();
   return snap.docs.some((docSnap) => {
     const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
@@ -1133,6 +1140,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/user/profile/route:PATCH", async () => {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx && typeof ctx.error === "string") {
@@ -1263,7 +1271,7 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    await adminDb.collection("users").doc(email).set(patch, { merge: true });
+    await trackCashflowWrite(() => adminDb!.collection("users").doc(email).set(patch, { merge: true }));
 
     const res = NextResponse.json({ ok: true, email } satisfies ApiPatchSuccess);
     applyRateLimitHeaders(res.headers, rateLimit);
@@ -1275,4 +1283,5 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

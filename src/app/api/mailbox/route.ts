@@ -634,7 +634,10 @@ const cleanupDeletedMailboxAttachments = async (
 
 const getUnreadCount = async (email: string): Promise<number> => {
   const nowMs = Date.now();
-  const unreadSnap = await getMailboxCollection(email).where("read", "==", false).get();
+  const unreadSnap = await getMailboxCollection(email)
+    .where("read", "==", false)
+    .select("archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil")
+    .get();
   return unreadSnap.docs.filter((docSnap) => {
     const data = (docSnap.data() ?? {}) as Record<string, unknown>;
     const archivedAtMs =
@@ -680,8 +683,8 @@ export async function GET(req: NextRequest) {
       ? parseThreadLimit(req.nextUrl.searchParams.get("limit"))
       : parseLimit(req.nextUrl.searchParams.get("limit"));
 
-    const unreadCount = await getUnreadCount(ctx.email);
     if (countOnly) {
+      const unreadCount = await getUnreadCount(ctx.email);
       return withRateLimitHeaders(
         NextResponse.json({ ok: true, unreadCount }),
         ctx
@@ -700,27 +703,34 @@ export async function GET(req: NextRequest) {
         req.nextUrl.searchParams.get("cursorMs"),
         req.nextUrl.searchParams.get("cursorId")
       );
-      const page = await loadMailboxConversationPage({
-        email: ctx.email,
-        conversationId,
-        limit,
-        cursor,
-      });
-      page.items = await hydrateMailboxAvatars(page.items);
+      // History clients can omit the unrelated mailbox-wide count. Existing
+      // callers retain the full response unless they explicitly opt out.
+      const includeUnreadCount = req.nextUrl.searchParams.get("includeUnreadCount") !== "0";
+      const [unreadCount, page] = await Promise.all([
+        includeUnreadCount ? getUnreadCount(ctx.email) : Promise.resolve(undefined),
+        loadMailboxConversationPage({
+          email: ctx.email,
+          conversationId,
+          limit,
+          cursor,
+        }).then(async page => ({ ...page, items: await hydrateMailboxAvatars(page.items) })),
+      ]);
       return withRateLimitHeaders(
-        NextResponse.json({ ok: true, unreadCount, ...page }),
+        NextResponse.json({ ok: true, ...(unreadCount !== undefined ? { unreadCount } : {}), ...page }),
         ctx
       );
     }
 
-    const itemsSnap = await getMailboxCollection(ctx.email)
-      .orderBy("createdAtMs", "desc")
-      .limit(limit)
-      .get();
-
-    const items = await hydrateMailboxAvatars(
-      itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
-    );
+    const [unreadCount, items] = await Promise.all([
+      getUnreadCount(ctx.email),
+      getMailboxCollection(ctx.email)
+        .orderBy("createdAtMs", "desc")
+        .limit(limit)
+        .get()
+        .then(itemsSnap => hydrateMailboxAvatars(
+          itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
+        )),
+    ]);
 
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, unreadCount, items }),

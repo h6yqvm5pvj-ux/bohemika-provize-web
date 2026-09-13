@@ -38,7 +38,6 @@ import {
   TotpMultiFactorGenerator,
   signInWithCustomToken,
   type TotpSecret,
-  updatePassword,
 } from "firebase/auth";
 
 import { auth } from "../firebase";
@@ -54,7 +53,8 @@ import {
   readAdminImpersonationState,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
-import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
 import {
   createPasskeyForUser,
   deletePasskeyForUser,
@@ -101,7 +101,7 @@ import {
   type IntranetSectionKey,
   type NotificationSettings,
 } from "./notificationSettings";
-import { getPasswordPolicyFailure } from "./passwordPolicy";
+import { PasswordChangeDialog } from "./components/PasswordChangeDialog";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import {
   formatProfilePhoneInput,
@@ -721,7 +721,7 @@ const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
   }
   if (err?.code === "auth/unverified-email") {
-    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
+    return "Nejdřív potvrď e-mail odkazem ze schránky a potom znovu spusť nastavení 2FA.";
   }
   if (err?.code === "auth/too-many-requests") {
     return "Příliš mnoho pokusů. Zkus to prosím později.";
@@ -769,13 +769,6 @@ export default function SettingsPage() {
   const [appCacheStatus, setAppCacheStatus] = useState<InlineStatus | null>(null);
   const [, setMonthlyGoal] = useState<number>(0);
 
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordStatus, setPasswordStatus] = useState<
-    { type: "success" | "error"; message: string } | null
-  >(null);
-  const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [mfaPassword, setMfaPassword] = useState("");
   const [mfaStatus, setMfaStatus] = useState<InlineStatus | null>(null);
@@ -2758,73 +2751,6 @@ export default function SettingsPage() {
     void loadUserRequests();
   }, [isImpersonating, user, loadUserRequests, resetUserRequestForm]);
 
-  const handleChangePassword = async () => {
-    if (!user || !user.email) {
-      setPasswordStatus({
-        type: "error",
-        message: "Uživatel není přihlášen.",
-      });
-      return;
-    }
-
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordStatus({
-        type: "error",
-        message: "Vyplň původní heslo, nové heslo i potvrzení.",
-      });
-      return;
-    }
-
-    const passwordPolicyFailure = getPasswordPolicyFailure({
-      password: newPassword,
-      confirmPassword,
-      userFullName: fullName || profileDisplayName,
-      userEmail: user.email,
-    });
-    if (passwordPolicyFailure) {
-      setPasswordStatus({
-        type: "error",
-        message: passwordPolicyFailure,
-      });
-      return;
-    }
-
-    try {
-      setChangingPassword(true);
-      setPasswordStatus(null);
-
-      const credential = EmailAuthProvider.credential(
-        user.email,
-        currentPassword
-      );
-
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, newPassword);
-
-      setPasswordStatus({
-        type: "success",
-        message: "Heslo bylo úspěšně změněno.",
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setShowPasswordForm(false);
-    } catch (error: unknown) {
-      const err = error as { code?: string };
-      let message = "Změna hesla se nepovedla. Zkus to prosím znovu.";
-      if (err?.code === "auth/wrong-password") {
-        message = "Původní heslo není správné.";
-      } else if (err?.code === "auth/weak-password") {
-        message = "Nové heslo je příliš slabé.";
-      } else if (err?.code === "auth/too-many-requests") {
-        message = "Příliš mnoho pokusů. Zkus to prosím později.";
-      }
-      setPasswordStatus({ type: "error", message });
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
   const reauthenticateForMfaChange = async (
     targetUser: FirebaseUser | null
   ): Promise<boolean> => {
@@ -2922,12 +2848,12 @@ export default function SettingsPage() {
       const reauthenticated = await reauthenticateForMfaChange(activeUser);
       if (!reauthenticated) return;
 
-      if (!activeUser.emailVerified) {
-        setMfaStatus({
-          type: "info",
-          message: "Potvrzuji e-mail pro zapnutí 2FA.",
-        });
-        await confirmEmailForMfaEnrollment(activeUser);
+      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
+        setMfaPassword("");
+        setMfaEnrollmentSecret(null);
+        setMfaEnrollmentCode("");
+        setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
+        return;
       }
 
       const enrollmentUser = auth.currentUser ?? activeUser;
@@ -4133,18 +4059,14 @@ export default function SettingsPage() {
                 className={panelClass}
                 fieldClass={fieldClass}
                 userEmail={userEmail}
-                userFullName={fullName || profileDisplayName}
                 mfaEnabled={mfaEnabled}
                 mfaLastVerifiedAt={mfaLastVerifiedAt}
                 securityScoreLabel={securityScoreLabel}
                 securityScorePercent={securityScorePercent}
                 passkeySummary={passkeySummary}
-                showPasswordForm={showPasswordForm}
-                currentPassword={currentPassword}
-                newPassword={newPassword}
-                confirmPassword={confirmPassword}
-                changingPassword={changingPassword}
-                passwordStatus={passwordStatus}
+                passwordDialog={showPasswordForm && user ? (
+                  <PasswordChangeDialog key={user.uid} user={user} userFullName={fullName || profileDisplayName} onClose={() => setShowPasswordForm(false)} />
+                ) : null}
                 passkeySupported={passkeySupported}
                 passkeyPlatformAvailable={passkeyPlatformAvailable}
                 passkeyCredentials={passkeyCredentials}
@@ -4169,21 +4091,7 @@ export default function SettingsPage() {
                 mfaDisableConfirmOpen={mfaDisableConfirmOpen}
                 mfaTotpLabel={mfaTotpLabel}
                 mfaStatus={mfaStatus}
-                onShowPasswordForm={() => {
-                  setShowPasswordForm(true);
-                  setPasswordStatus(null);
-                }}
-                onCancelPasswordChange={() => {
-                  setShowPasswordForm(false);
-                  setCurrentPassword("");
-                  setNewPassword("");
-                  setConfirmPassword("");
-                  setPasswordStatus(null);
-                }}
-                onCurrentPasswordChange={setCurrentPassword}
-                onNewPasswordChange={setNewPassword}
-                onConfirmPasswordChange={setConfirmPassword}
-                onChangePassword={handleChangePassword}
+                onShowPasswordForm={() => setShowPasswordForm(true)}
                 onRefreshAccountSessions={() => loadAccountSessions(user)}
                 onRevokeOtherSessions={() => { setAccountSessionsStatus(null); setRevokeSessionsOpen(true); }}
                 onPasskeyNameChange={setPasskeyName}

@@ -1,0 +1,915 @@
+{
+  "success": true,
+  "numTotalTests": 1700,
+  "numPassedTests": 1700,
+  "numFailedTests": 0,
+  "numTotalTestSuites": 395,
+  "numPassedTestSuites": 395,
+  "cases": [
+    {
+      "file": "validation/work/src/lib/adminAccess.test.ts",
+      "status": "passed",
+      "tests": 11
+    },
+    {
+      "file": "validation/work/src/lib/adminImpersonationShared.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/appSession.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/lib/firebaseImageSources.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/lib/onlineCardAnalytics.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/onlineCardI18n.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/lib/onlineCardTracking.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/lib/profileAvatar.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/profileFields.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/serviceWorker.test.ts",
+      "status": "passed",
+      "tests": 17
+    },
+    {
+      "file": "validation/work/src/lib/travelInsurance.test.ts",
+      "status": "passed",
+      "tests": 16
+    },
+    {
+      "file": "validation/work/src/components/autoAnniversary.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/scripts/cashflow-worker/client.test.ts",
+      "status": "passed",
+      "tests": 29
+    },
+    {
+      "file": "validation/work/scripts/cashflow-worker/fixtures.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "validation/work/scripts/cashflow-worker/reference.test.ts",
+      "status": "passed",
+      "tests": 33
+    },
+    {
+      "file": "validation/work/scripts/cashflow-worker-ui/environment.test.tsx",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/scripts/cashflow-worker-ui/execution-audit.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/_klienti/clientCardData.test.ts",
+      "status": "passed",
+      "tests": 15
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementCardMath.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementContractMatching.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementDiscrepancies.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementLifeCardNotices.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementLifeCardPanels.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementLifeComparison.test.ts",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementLifePremiumBase.test.ts",
+      "status": "passed",
+      "tests": 24
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementLinksAndCalculator.test.tsx",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementParsing.test.ts",
+      "status": "passed",
+      "tests": 18
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementPreviewGrouping.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementStorno.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/statementSystemContracts.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/_provizni-vypisy/stornoInference.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/cashflow/buildCashflowView.test.ts",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "file": "validation/work/src/app/cashflow/cashflowModel.test.ts",
+      "status": "passed",
+      "tests": 34
+    },
+    {
+      "file": "validation/work/src/app/cashflow/cashflowWorker.client.test.ts",
+      "status": "passed",
+      "tests": 36
+    },
+    {
+      "file": "validation/work/src/app/cashflow/computeCashflow.test.ts",
+      "status": "passed",
+      "tests": 15
+    },
+    {
+      "file": "validation/work/src/app/cashflow/generator.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/cashflow/helpers.test.ts",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "file": "validation/work/src/app/cashflow/inheritedContracts.test.ts",
+      "status": "passed",
+      "tests": 17
+    },
+    {
+      "file": "validation/work/src/app/cashflow/loadingProgress.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/cashflow/monthSections.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/cashflow/page.loading.test.tsx",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/app/cashflow/page.statementScope.test.tsx",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "file": "validation/work/src/app/cashflow/reportCashflowShadow.test.ts",
+      "status": "passed",
+      "tests": 45
+    },
+    {
+      "file": "validation/work/src/app/cashflow/shadowDiagnosticProtocol.test.ts",
+      "status": "passed",
+      "tests": 22
+    },
+    {
+      "file": "validation/work/src/app/cashflow/shadowProtocol.test.ts",
+      "status": "passed",
+      "tests": 23
+    },
+    {
+      "file": "validation/work/src/app/cashflow/subscriptionCashflow.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/cashflow/useCashflowData.worker.test.tsx",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/cashflow/useCashflowView.test.tsx",
+      "status": "passed",
+      "tests": 27
+    },
+    {
+      "file": "validation/work/src/app/cashflow/yearChart.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/cuzk/cuzkResultData.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/home/productionPremiums.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/home/useHomeData.test.tsx",
+      "status": "passed",
+      "tests": 18
+    },
+    {
+      "file": "validation/work/src/app/intranet/wallPostPreview.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/intranet/wallPostRichText.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/intranet/wallSources.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/app/login/page.test.tsx",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/CalculatorContractDetailsSection.test.tsx",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/CalculatorInheritedContractSection.test.tsx",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/calculatorApi.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/calculatorPdfImport.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/clientNameMatching.test.ts",
+      "status": "passed",
+      "tests": 21
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/endorsementCalculation.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/useClientNameLookup.test.tsx",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/useContractSave.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/app/kalkulacka/usePdfDropzone.test.tsx",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/muj-tym/teamDashboard.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/adminImpersonation.test.ts",
+      "status": "passed",
+      "tests": 27
+    },
+    {
+      "file": "validation/work/src/app/lib/anniversaryPortfolio.test.ts",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/lib/autokukVehicle.test.ts",
+      "status": "passed",
+      "tests": 18
+    },
+    {
+      "file": "validation/work/src/app/lib/calculateCommission.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/lib/careerTimeline.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/clientCardPrivacy.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/lib/commissionAudit.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/lib/commissionPayoutRules.test.ts",
+      "status": "passed",
+      "tests": 20
+    },
+    {
+      "file": "validation/work/src/app/lib/commissionTotals.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/lib/contactDirectory.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/lib/contractLifecycle.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/lib/detectProductFromPdf.test.ts",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "file": "validation/work/src/app/lib/inheritedContracts.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/lib/originalContractReplacement.test.ts",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "file": "validation/work/src/app/lib/parseAllianzAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/parseConseqZenitPdf.test.ts",
+      "status": "passed",
+      "tests": 14
+    },
+    {
+      "file": "validation/work/src/app/lib/parseCppAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/parseCppBytexPdf.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/lib/parseCsobAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/lib/parseKooperativaAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/lib/parseKooperativaCestovkoPdf.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/lib/parseMaxdomovPdf.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/lib/parseNeonPdf.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/lib/parseSlaviaAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/lib/parseTerminationPolicyholderPdf.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/lib/parseUniqaAutoPdf.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/passkeys.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/tipContractCommission.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/posta/MailboxChatThread.test.tsx",
+      "status": "passed",
+      "tests": 16
+    },
+    {
+      "file": "validation/work/src/app/posta/MailboxGroupManager.test.tsx",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/posta/postaPresence.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/pomucky/toolHub.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/lib/server/appSessionSecurity.test.ts",
+      "status": "passed",
+      "tests": 42
+    },
+    {
+      "file": "validation/work/src/lib/server/autokuk.test.ts",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "file": "validation/work/src/lib/server/cashflowDiagnosticHttp.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/server/cashflowShadowBudget.test.ts",
+      "status": "passed",
+      "tests": 20
+    },
+    {
+      "file": "validation/work/src/lib/server/cashflowShadowInputs.test.ts",
+      "status": "passed",
+      "tests": 31
+    },
+    {
+      "file": "validation/work/src/lib/server/contractNoteReminderLogic.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/lib/server/contractPdfStorage.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/lib/server/mailboxAttachmentStorage.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/lib/server/mailboxConversation.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/server/mailboxEncryption.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/lib/server/onlineCardAnalytics.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/lib/server/onlineCardOfficePhoto.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/lib/server/productionShare.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/lib/server/profileAvatarUpload.security.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/lib/server/profileAvatarUpload.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/lib/server/pushTokens.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/lib/server/subscriptionExpiryNotifications.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/lib/server/teamOverviewReadModel.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/lib/server/userRequestScreenshot.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/components/search/globalSearchData.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/admin/zadosti/adminBroadcast.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/admin/zadosti/adminSecurity.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/admin/zadosti/adminSubscriptions.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/home/components/ProductionLoading.test.tsx",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/api/comfort-prices/route.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/api/commission-statements/cashflowResponse.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/api/commission-statements/premiumHistory.test.ts",
+      "status": "passed",
+      "tests": 21
+    },
+    {
+      "file": "validation/work/src/app/api/commission-statements/premiumHistoryStatements.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/api/commission-statements/statementChronologyGuards.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/api/commission-statements/statementIdentity.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/api/contacts/route.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/mailbox/mailboxLoading.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "validation/work/src/app/api/team-overview/teamGoals.test.ts",
+      "status": "passed",
+      "tests": 2
+    },
+    {
+      "file": "validation/work/src/app/lib/productFormulas/conseqzenit.test.ts",
+      "status": "passed",
+      "tests": 22
+    },
+    {
+      "file": "validation/work/src/app/lib/productFormulas/cppbytex.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/lib/productFormulas/domex.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/lib/productFormulas/domexNeuron.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/lib/productFormulas/neon.test.ts",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/pomucky/cestovni-pojisteni-cpp-vs-kooperativa/comparisonData.test.ts",
+      "status": "passed",
+      "tests": 23
+    },
+    {
+      "file": "validation/work/src/app/pomucky/hypoteka-vlastni-zdroje/mortgageMath.test.ts",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/pomucky/nahrada-smlouvy/replacementCalculation.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "validation/work/src/app/pomucky/proklepka-vozidla/page.test.tsx",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/pomucky/proklepka-vozidla/vehicleBrandLogo.test.ts",
+      "status": "passed",
+      "tests": 12
+    },
+    {
+      "file": "validation/work/src/app/pomucky/proklepka-vozidla/vehicleValueDisplay.test.ts",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/pomucky/projekce-vykonu/projectionLogic.test.ts",
+      "status": "passed",
+      "tests": 1
+    },
+    {
+      "file": "validation/work/src/app/pomucky/radar-vyroci/radarActivity.test.ts",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/pomucky/tipar/tipOfferCalculation.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/pomucky/vypoved-smlouvy/contractTerminationPrefill.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "validation/work/src/app/pomucky/vypoved-smlouvy/universalTermination.test.ts",
+      "status": "passed",
+      "tests": 43
+    },
+    {
+      "file": "validation/work/src/app/pomucky/zlato/goldModel.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/ContractAutoPremiumHistory.test.ts",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/ContractCommissionHistory.test.tsx",
+      "status": "passed",
+      "tests": 3
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/ContractCommissionSection.test.ts",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/allianzOdometerUpload.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/contractCommissionHistoryRules.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/contractDetailPdfReimport.test.ts",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/smlouvy/[id]/useContractDetails.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/cashflow/shadow/route.test.ts",
+      "status": "passed",
+      "tests": 23
+    },
+    {
+      "file": "validation/work/src/app/api/autokuk/vehicle/route.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/api/client-cards/[slug]/route.test.ts",
+      "status": "passed",
+      "tests": 29
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/anniversary-portfolio/route.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/anniversary-review/history.test.ts",
+      "status": "passed",
+      "tests": 17
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/anniversary-review/route.test.ts",
+      "status": "passed",
+      "tests": 21
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.access.test.ts",
+      "status": "passed",
+      "tests": 7
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.anniversaryPortfolio.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.createPayload.test.ts",
+      "status": "passed",
+      "tests": 45
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.duplicates.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.identity.test.ts",
+      "status": "passed",
+      "tests": 8
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.listFilters.test.ts",
+      "status": "passed",
+      "tests": 15
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.notifications.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.projectedSearch.test.ts",
+      "status": "passed",
+      "tests": 20
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.projectedSearchRoute.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.transfer.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/_lib/contractsApi.validation.test.ts",
+      "status": "passed",
+      "tests": 4
+    },
+    {
+      "file": "validation/work/src/app/api/contracts/notes/contractNotes.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/cuzk/search/route.test.ts",
+      "status": "passed",
+      "tests": 10
+    },
+    {
+      "file": "validation/work/src/app/api/intranet/wall/features.test.ts",
+      "status": "passed",
+      "tests": 17
+    },
+    {
+      "file": "validation/work/src/app/api/online-card/analytics/route.test.ts",
+      "status": "passed",
+      "tests": 9
+    },
+    {
+      "file": "validation/work/src/app/api/online-card/meeting-request/route.test.ts",
+      "status": "passed",
+      "tests": 6
+    },
+    {
+      "file": "validation/work/src/app/api/tip-payouts/list/homeResponse.test.ts",
+      "status": "passed",
+      "tests": 13
+    },
+    {
+      "file": "validation/work/src/app/api/user/profile/profilePatchAuthorization.test.ts",
+      "status": "passed",
+      "tests": 5
+    },
+    {
+      "file": "validation/work/src/app/api/user/profile/route.test.ts",
+      "status": "passed",
+      "tests": 12
+    }
+  ]
+}

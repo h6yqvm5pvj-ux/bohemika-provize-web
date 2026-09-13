@@ -74,9 +74,10 @@ import {
 } from "./postaHelpers";
 import { buildMailboxPreviewHtml } from "./postaPreview";
 import { formatMailboxPresence } from "./postaPresence";
+import { subscribeMailboxActivity, type MailboxActivity } from "./mailboxActivity";
 import type {
-  MailboxActivityResponse,
   MailboxAttachment,
+  MailboxAttachmentContent,
   MailboxComposeResponse,
   MailboxConversationResponse,
   MailboxDeleteResponse,
@@ -585,11 +586,9 @@ export default function PostaPage() {
   const [groupConversationError, setGroupConversationError] = useState<string | null>(null);
   const [groupManagerOpen, setGroupManagerOpen] = useState(false);
   const [groupMuteSaving, setGroupMuteSaving] = useState(false);
-  const [chatActivity, setChatActivity] = useState<{
-    lastActiveAtMs: number | null;
-    typing: boolean;
-    checkedAtMs: number;
-  }>({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
+  const [chatActivity, setChatActivity] = useState<MailboxActivity>({
+    lastActiveAtMs: null, typing: false, checkedAtMs: 0,
+  });
   const composeLookupSeq = useRef(0);
   const composeSearchCacheRef = useRef(new Map<string, RecipientOption[]>());
   const composeSearchAbortRef = useRef<AbortController | null>(null);
@@ -598,8 +597,8 @@ export default function PostaPage() {
   const mailboxLoadSequenceRef = useRef(0);
   const conversationLoadSequenceRef = useRef(0);
   const groupConversationLoadSequenceRef = useRef(0);
-  const attachmentBlobUrlCacheRef = useRef(new Map<string, string>());
-  const attachmentLoadPromiseRef = useRef(new Map<string, Promise<string>>());
+  const attachmentBlobUrlCacheRef = useRef(new Map<string, MailboxAttachmentContent>());
+  const attachmentLoadPromiseRef = useRef(new Map<string, Promise<MailboxAttachmentContent>>());
   const typingLastSentAtRef = useRef(0);
   const typingWasActiveRef = useRef(false);
   const typingIdleTimerRef = useRef<number | null>(null);
@@ -725,7 +724,7 @@ export default function PostaPage() {
       error: null,
     }));
 
-    const params = new URLSearchParams({ conversationId, limit: "30" });
+    const params = new URLSearchParams({ conversationId, limit: "30", includeUnreadCount: "0" });
     if (cursor) {
       params.set("cursorMs", String(cursor.createdAtMs));
       params.set("cursorId", cursor.id);
@@ -1349,12 +1348,12 @@ export default function PostaPage() {
   const loadChatAttachment = useCallback(async (
     messageId: string,
     attachment: MailboxAttachment
-  ): Promise<string> => {
-    if (!attachment.url.startsWith("/api/")) return attachment.url;
-    if (!user) throw new Error("Pro načtení přílohy se znovu přihlas.");
+  ): Promise<MailboxAttachmentContent> => {
     const cacheKey = `${messageId}:${attachment.id}`;
     const cached = attachmentBlobUrlCacheRef.current.get(cacheKey);
     if (cached) return cached;
+    if (!attachment.url.startsWith("/api/")) return { url: attachment.url };
+    if (!user) throw new Error("Pro načtení přílohy se znovu přihlas.");
     const pending = attachmentLoadPromiseRef.current.get(cacheKey);
     if (pending) return pending;
 
@@ -1370,14 +1369,16 @@ export default function PostaPage() {
         });
       }
       if (!response.ok) throw new Error("Přílohu se nepodařilo načíst.");
-      const objectUrl = URL.createObjectURL(await response.blob());
-      attachmentBlobUrlCacheRef.current.set(cacheKey, objectUrl);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const content = { url: objectUrl, blob };
+      attachmentBlobUrlCacheRef.current.set(cacheKey, content);
       previewAttachmentBlobUrlsRef.current.push(objectUrl);
       setPreviewAttachmentBlobUrls((current) => ({
         ...current,
         [attachment.id]: objectUrl,
       }));
-      return objectUrl;
+      return content;
     })().finally(() => {
       attachmentLoadPromiseRef.current.delete(cacheKey);
     });
@@ -1543,44 +1544,24 @@ export default function PostaPage() {
     }, [quickReplyEnabled, quickReplyIsGroup, quickReplyRecipient, user]
   );
 
+  const activityRecipientEmail = quickReplyEnabled && !quickReplyIsGroup
+    ? quickReplyRecipient?.email ?? null
+    : null;
+
   useEffect(() => {
-    if (!user || !quickReplyRecipient || !quickReplyEnabled || quickReplyIsGroup) {
+    if (!user || !activityRecipientEmail) {
       setChatActivity({ lastActiveAtMs: null, typing: false, checkedAtMs: 0 });
       return;
     }
-    let cancelled = false;
-    const loadActivity = async () => {
-      try {
-        const payload = await fetchAuthedJsonOrThrow<MailboxActivityResponse>(
-          user,
-          `/api/mailbox/activity?email=${encodeURIComponent(quickReplyRecipient.email)}`,
-          { method: "GET" }
-        );
-        if (cancelled) return;
-        setChatActivity({
-          lastActiveAtMs:
-            typeof payload.lastActiveAtMs === "number" && Number.isFinite(payload.lastActiveAtMs)
-              ? payload.lastActiveAtMs
-              : null,
-          typing: payload.typing === true,
-          checkedAtMs:
-            typeof payload.serverNowMs === "number" && Number.isFinite(payload.serverNowMs)
-              ? payload.serverNowMs
-              : Date.now(),
-        });
-      } catch {
-        if (!cancelled) {
-          setChatActivity((current) => ({ ...current, typing: false, checkedAtMs: Date.now() }));
-        }
-      }
-    };
-    void loadActivity();
-    const intervalId = window.setInterval(() => void loadActivity(), 4_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [quickReplyEnabled, quickReplyIsGroup, quickReplyRecipient, user]);
+    return subscribeMailboxActivity({
+      user,
+      recipientEmail: activityRecipientEmail,
+      onActivity: setChatActivity,
+      onError: () => {
+        setChatActivity((current) => ({ ...current, typing: false, checkedAtMs: Date.now() }));
+      },
+    });
+  }, [activityRecipientEmail, effectiveEmail, user]);
 
   useEffect(() => {
     return () => {

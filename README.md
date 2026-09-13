@@ -20,6 +20,12 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Authentication emails
+
+Authentication email verification and password resets use Firebase action links delivered through Resend.
+See [email setup and safe diagnostics](docs/auth-email-setup.md).
+New app emails open the [custom Czech account action page](docs/auth-email-action-page.md) on `bohemka.app`.
+
 ## Firestore rules tests
 
 Install Java 21 or newer and the Firebase CLI, then run `npm run test:rules`.
@@ -40,6 +46,16 @@ The `verify` command checks the active source against the prepared candidate.
 These commands use the configured Firebase Admin credentials and never modify
 application documents. Rollback uses the previous ruleset ID saved in `plan.json`;
 do not redeploy the website or Storage rules as part of a Firestore-only release.
+
+## Cashflow diagnostic pilot
+
+`npm run cashflow:pilot` runs a repeatable synthetic benchmark in the isolated
+`demo-bohemika-cashflow-pilot` project on the local Firestore emulator. It requires
+Java 21+ and the Firebase CLI, never loads production environment files, and writes
+aggregate results to `/tmp/bohemika-cashflow-pilot.json`. It checks reconstructed
+outputs and mutation/recovery behavior. It is not a browser or production latency
+benchmark and does not enable cached amounts in the UI. See
+[pilot scope and measurement details](docs/cashflow-pilot-2026-09-12.md).
 
 ## Server Rate Limiting
 

@@ -1,0 +1,534 @@
+[
+  {
+    "path": "/api/admin/broadcast-notification",
+    "method": "POST"
+  },
+  {
+    "path": "/api/admin/commission-statement-product-map",
+    "method": "GET"
+  },
+  {
+    "path": "/api/admin/commission-statement-product-map",
+    "method": "PUT"
+  },
+  {
+    "path": "/api/admin/data-health",
+    "method": "GET"
+  },
+  {
+    "path": "/api/admin/data-health",
+    "method": "POST"
+  },
+  {
+    "path": "/api/admin/data-health",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/admin/security",
+    "method": "GET"
+  },
+  {
+    "path": "/api/admin/subscriptions",
+    "method": "GET"
+  },
+  {
+    "path": "/api/admin/subscriptions",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/admin/users",
+    "method": "GET"
+  },
+  {
+    "path": "/api/admin/users",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/admin/users",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/admin/users/security",
+    "method": "POST"
+  },
+  {
+    "path": "/api/advisor-tips/by-user",
+    "method": "GET"
+  },
+  {
+    "path": "/api/advisor-tips",
+    "method": "GET"
+  },
+  {
+    "path": "/api/advisor-tips",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/ai-assistant",
+    "method": "POST"
+  },
+  {
+    "path": "/api/ares/detail",
+    "method": "GET"
+  },
+  {
+    "path": "/api/ares/search",
+    "method": "POST"
+  },
+  {
+    "path": "/api/auth/confirm-email-for-mfa",
+    "method": "POST"
+  },
+  {
+    "path": "/api/auth/email-verification-link",
+    "method": "POST"
+  },
+  {
+    "path": "/api/auth/mark-email-verified",
+    "method": "POST"
+  },
+  {
+    "path": "/api/auth/passkeys/credentials",
+    "method": "GET"
+  },
+  {
+    "path": "/api/auth/passkeys/credentials",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/auth/passkeys/credentials",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/auth/passkeys/registration",
+    "method": "POST"
+  },
+  {
+    "path": "/api/auth/passkeys/registration-options",
+    "method": "POST"
+  },
+  {
+    "path": "/api/autokuk/vehicle",
+    "method": "POST"
+  },
+  {
+    "path": "/api/cashflow/candidate-check",
+    "method": "POST"
+  },
+  {
+    "path": "/api/cashflow/shadow",
+    "method": "POST"
+  },
+  {
+    "path": "/api/client-cards/[slug]",
+    "method": "GET"
+  },
+  {
+    "path": "/api/client-cards/[slug]",
+    "method": "PUT"
+  },
+  {
+    "path": "/api/comfort-prices",
+    "method": "GET"
+  },
+  {
+    "path": "/api/commission-statements/product-map",
+    "method": "GET"
+  },
+  {
+    "path": "/api/commission-statements",
+    "method": "GET"
+  },
+  {
+    "path": "/api/commission-statements",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contacts",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contacts",
+    "method": "PUT"
+  },
+  {
+    "path": "/api/contracts/anniversary-portfolio",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/anniversary-review",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/anniversary-review",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contracts/attachment",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contracts/attachment",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/bulk-delete",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/contracts/detail",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/find",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/find",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contracts/history",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/list",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/notes",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/notes",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contracts/notes",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/contracts/notes",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/contracts/precheck",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/contracts",
+    "method": "POST"
+  },
+  {
+    "path": "/api/contracts",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/contracts/set-paid",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/contracts/sync-entry-index",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/contracts/transfer",
+    "method": "GET"
+  },
+  {
+    "path": "/api/contracts/transfer",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/contracts/update-fields",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/cuzk/search",
+    "method": "GET"
+  },
+  {
+    "path": "/api/documents/file",
+    "method": "GET"
+  },
+  {
+    "path": "/api/documents/manage",
+    "method": "GET"
+  },
+  {
+    "path": "/api/documents/manage",
+    "method": "POST"
+  },
+  {
+    "path": "/api/documents/manage",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/documents/manage",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/documents/neon",
+    "method": "GET"
+  },
+  {
+    "path": "/api/documents/notify",
+    "method": "POST"
+  },
+  {
+    "path": "/api/export-produkce/share",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/comments/[commentId]/like",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/comments",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/like",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/poll-vote",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/solution",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/[postId]/state",
+    "method": "POST"
+  },
+  {
+    "path": "/api/intranet/wall/attachment",
+    "method": "GET"
+  },
+  {
+    "path": "/api/intranet/wall",
+    "method": "GET"
+  },
+  {
+    "path": "/api/intranet/wall",
+    "method": "POST"
+  },
+  {
+    "path": "/api/mailbox/activity",
+    "method": "GET"
+  },
+  {
+    "path": "/api/mailbox/activity",
+    "method": "POST"
+  },
+  {
+    "path": "/api/mailbox/attachment",
+    "method": "GET"
+  },
+  {
+    "path": "/api/mailbox/compose",
+    "method": "POST"
+  },
+  {
+    "path": "/api/mailbox/conversation",
+    "method": "GET"
+  },
+  {
+    "path": "/api/mailbox/conversation",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/mailbox/message",
+    "method": "POST"
+  },
+  {
+    "path": "/api/mailbox/message",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/mailbox/message",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/mailbox",
+    "method": "GET"
+  },
+  {
+    "path": "/api/mailbox",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/mailbox",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/mailbox/shared-preview",
+    "method": "GET"
+  },
+  {
+    "path": "/api/mailbox/stream",
+    "method": "GET"
+  },
+  {
+    "path": "/api/manager-snapshot",
+    "method": "POST"
+  },
+  {
+    "path": "/api/plan-produkce/share",
+    "method": "POST"
+  },
+  {
+    "path": "/api/push/token",
+    "method": "POST"
+  },
+  {
+    "path": "/api/push/token",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/rsv/vehicle",
+    "method": "GET"
+  },
+  {
+    "path": "/api/subscription/me",
+    "method": "GET"
+  },
+  {
+    "path": "/api/subscription-payments/list",
+    "method": "GET"
+  },
+  {
+    "path": "/api/team-message",
+    "method": "POST"
+  },
+  {
+    "path": "/api/team-overview",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/team-overview",
+    "method": "GET"
+  },
+  {
+    "path": "/api/team-overview/weekly-report",
+    "method": "GET"
+  },
+  {
+    "path": "/api/test-push",
+    "method": "POST"
+  },
+  {
+    "path": "/api/tip-payouts/list",
+    "method": "GET"
+  },
+  {
+    "path": "/api/tips/bulk-delete",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/tips/detail",
+    "method": "GET"
+  },
+  {
+    "path": "/api/tips/detail",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/tipster-tips",
+    "method": "GET"
+  },
+  {
+    "path": "/api/tool-usage",
+    "method": "GET"
+  },
+  {
+    "path": "/api/tool-usage",
+    "method": "POST"
+  },
+  {
+    "path": "/api/user/create",
+    "method": "POST"
+  },
+  {
+    "path": "/api/user/lookup",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user/profile/avatar",
+    "method": "POST"
+  },
+  {
+    "path": "/api/user/profile/ico-lookup",
+    "method": "POST"
+  },
+  {
+    "path": "/api/user/profile",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user/profile",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/user/search",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user-requests/attachment",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user-requests",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user-requests",
+    "method": "POST"
+  },
+  {
+    "path": "/api/user-requests",
+    "method": "PATCH"
+  },
+  {
+    "path": "/api/user-requests",
+    "method": "PUT"
+  },
+  {
+    "path": "/api/user-requests",
+    "method": "DELETE"
+  },
+  {
+    "path": "/api/user-stats",
+    "method": "GET"
+  },
+  {
+    "path": "/api/user-stats",
+    "method": "POST"
+  },
+  {
+    "path": "/api/vehicle-market/autokelly-windshield",
+    "method": "POST"
+  },
+  {
+    "path": "/api/vehicle-market/sauto",
+    "method": "POST"
+  }
+]

@@ -86,8 +86,8 @@ function productMatchesCategory(
   product: Product | undefined,
   categories: Set<ProductCategory>
 ): boolean {
-  if (!product) return false;
   if (categories.size === 0) return true;
+  if (!product) return false;
   for (const cat of categories) {
     const list = PRODUCT_CATEGORY_MAP[cat];
     if (list.includes(product)) return true;
@@ -99,8 +99,8 @@ function productMatchesInstitution(
   product: Product | undefined,
   institutions: Set<Institution>
 ): boolean {
-  if (!product) return false;
   if (institutions.size === 0) return true;
+  if (!product) return false;
   const inst = productInstitutionId(product);
   if (!inst) return false;
   return institutions.has(inst);

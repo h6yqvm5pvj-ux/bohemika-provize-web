@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FileText, X } from "lucide-react";
 import {
   onAuthStateChanged,
@@ -39,6 +39,9 @@ import type {
   ScopeFilter,
 } from "./types";
 import { useCashflowData } from "./useCashflowData";
+import { useCashflowView } from "./useCashflowView";
+import type { CashflowViewOptions } from "./buildCashflowView";
+import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
 import { CashflowAccordion } from "./components/CashflowAccordion";
 import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
@@ -51,8 +54,22 @@ import introStyles from "./cashflowIntro.module.css";
 import { systemSansFont } from "@/lib/fonts";
 
 const cashflowFont = systemSansFont;
+const EMPTY_STATEMENTS: CashflowCommissionStatementSummary[] = [];
+const EMPTY_SEARCH_STATS = { itemCount: 0, contractCount: 0, summary: null };
 
 type AccountType = "advisor" | "tipster";
+type StatementPreviewScope = { identity: string | null };
+type StatementPreviewRequest = { controller: AbortController };
+type StatementPreviewState = {
+  scope: StatementPreviewScope;
+  request: StatementPreviewRequest | null;
+  statement: CashflowCommissionStatementDetail | null;
+  loadingId: string | null;
+  error: string | null;
+};
+const emptyStatementPreview = (identity: string | null): StatementPreviewState => ({
+  scope: { identity }, request: null, statement: null, loadingId: null, error: null,
+});
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -213,10 +230,34 @@ export default function CashflowPage() {
   const [predictionInfoOpen, setPredictionInfoOpen] = useState(false);
   const [cashflowHelpOpen, setCashflowHelpOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<MonthGroup | null>(null);
-  const [commissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
-  const [statementPreview, setStatementPreview] = useState<CashflowCommissionStatementDetail | null>(null);
-  const [statementPreviewLoadingId, setStatementPreviewLoadingId] = useState<string | null>(null);
-  const [statementPreviewError, setStatementPreviewError] = useState<string | null>(null);
+  const [loadedCommissionStatements, setCommissionStatements] = useState<CashflowCommissionStatementSummary[]>([]);
+  const [statementsDataEmail, setStatementsDataEmail] = useState<string | null>(null);
+  const statementScopeEmail = normalizeEmail(effectiveEmail || user?.email);
+  const commissionStatements = user && statementsDataEmail === statementScopeEmail
+    ? loadedCommissionStatements : EMPTY_STATEMENTS;
+  const [selectedMonthIdentity, setSelectedMonthIdentity] = useState<string | null>(null);
+  const [monthRequest, setMonthRequest] = useState<{
+    view: CashflowOverview; key: string; label: string; month: MonthGroup | null; error: string | null;
+  } | null>(null);
+  const [statementVerificationEmail, setStatementVerificationEmail] = useState<string | null>(null);
+  const statementScopeIdentity = user ? `${user.uid ?? user.email}|${statementScopeEmail}` : null;
+  const [statementPreviewState, setStatementPreviewState] = useState(() => emptyStatementPreview(statementScopeIdentity));
+  const previewScopeMatches = statementPreviewState.scope.identity === statementScopeIdentity;
+  if (!previewScopeMatches) setStatementPreviewState(emptyStatementPreview(statementScopeIdentity));
+  const previewScope = statementPreviewState.scope;
+  const previewWork = useRef<{ scope: StatementPreviewScope; request: StatementPreviewRequest | null } | null>(null);
+  const statementPreview = previewScopeMatches ? statementPreviewState.statement : null;
+  const statementPreviewLoadingId = previewScopeMatches ? statementPreviewState.loadingId : null;
+  const statementPreviewError = previewScopeMatches ? statementPreviewState.error : null;
+
+  useLayoutEffect(() => {
+    const work = { scope: previewScope, request: null as StatementPreviewRequest | null };
+    previewWork.current = work;
+    return () => {
+      work.request?.controller.abort();
+      if (previewWork.current === work) previewWork.current = null;
+    };
+  }, [previewScope]);
 
   const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>({});
 
@@ -298,41 +339,46 @@ export default function CashflowPage() {
   }, [effectiveEmail, user]);
 
   useEffect(() => {
+    setStatementVerificationEmail(null);
+    setCommissionStatements([]);
+    setStatementsDataEmail(null);
     if (!user) {
-      setCommissionStatements([]);
-      setStatementPreview(null);
-      setStatementPreviewError(null);
       return;
     }
 
     let cancelled = false;
+    const requestScopeEmail = effectiveEmail || effectiveUserEmail(user.email);
 
     const loadStatements = async () => {
       try {
         const token = await user.getIdToken();
-        const response = await fetch("/api/commission-statements?limit=240", {
+        const response = await fetch("/api/commission-statements?shape=cashflow&limit=240", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
           cache: "no-store",
         });
         const payload = (await response.json().catch(() => null)) as
-          | { ok?: boolean; items?: CashflowCommissionStatementSummary[]; error?: string }
+          | { ok?: boolean; items?: CashflowCommissionStatementSummary[]; error?: string; hasMore?: boolean; processingComplete?: boolean }
           | null;
         if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items)) {
           throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
         }
         if (!cancelled) {
           setCommissionStatements(dedupeCashflowCommissionStatements(payload.items));
-          setStatementPreviewError(null);
+          setStatementsDataEmail(normalizeEmail(requestScopeEmail));
+          setStatementVerificationEmail(
+            payload.hasMore === false && payload.processingComplete === true ? requestScopeEmail : null
+          );
+          setStatementPreviewState(previous => previous.scope === previewScope && !previous.request
+            ? { ...previous, error: null } : previous);
         }
       } catch (error) {
         if (cancelled) return;
         console.warn("Cashflow: uložené provizní výpisy se nepodařilo načíst.", error);
         setCommissionStatements([]);
-        setStatementPreviewError(
-          error instanceof Error ? error.message : "Provizní výpisy se nepodařilo načíst."
-        );
+        setStatementPreviewState(previous => previous.scope === previewScope && !previous.request
+          ? { ...previous, error: error instanceof Error ? error.message : "Provizní výpisy se nepodařilo načíst." } : previous);
       }
     };
 
@@ -341,7 +387,7 @@ export default function CashflowPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, effectiveEmail, previewScope]);
 
   const isTipsterMode = accountType === "tipster";
   const canViewSubscriptionCashflow =
@@ -358,53 +404,48 @@ export default function CashflowPage() {
   const {
     loading,
     ready: cashflowReady,
+    rawSnapshot,
+    calculationDeferred,
     cashflowItems,
     hasTeam,
     loadingProgress,
+    verificationInput,
   } = useCashflowData({
     userEmail: dataEmail,
     scopeFilter,
     productFilter,
     tipsterMode: isTipsterMode,
     enabled: cashflowDataEnabled,
+    deferCalculation: process.env.NEXT_PUBLIC_CASHFLOW_WORKER_ENABLED === "1",
   });
 
   const initialLoadingActive =
     !profileReady || (cashflowDataEnabled && (!cashflowReady || loading));
-  const [showInitialLoader, setShowInitialLoader] = useState(true);
-  const [initialLoaderCompleting, setInitialLoaderCompleting] = useState(false);
+
+  const calculationIdentity = user && dataEmail && effectiveEmail
+    ? `${user.uid ?? user.email}|${normalizeEmail(effectiveEmail)}|${normalizeEmail(dataEmail)}|${accountType}` : null;
+  const calculationDay = new Date().toDateString();
+  const workerDataset = useMemo<CashflowDataset | null>(() =>
+    calculationDeferred && rawSnapshot && cashflowDataEnabled
+      ? { snapshot: rawSnapshot, statements: commissionStatements, asOf: new Date() } : null,
+    // A later calendar day must not reuse yesterday's prediction horizon.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calculationDeferred, rawSnapshot, cashflowDataEnabled, commissionStatements, calculationDay, calculationIdentity]);
+  const workerOptions = useMemo<CashflowViewOptions>(() => ({
+    scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears,
+    intelligentPredictionEnabled, contractNumberQuery,
+  }), [scopeFilter, productFilter, isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery]);
+  const workerView = useCashflowView({
+    dataset: workerDataset, options: workerOptions, identity: calculationIdentity,
+    enabled: Boolean(calculationDeferred && cashflowDataEnabled),
+  });
+  const calculating = Boolean(calculationDeferred && workerView.pending);
 
   useEffect(() => {
-    let finishTimer: number | null = null;
-
-    if (initialLoadingActive) {
-      setShowInitialLoader(true);
-      setInitialLoaderCompleting(false);
-      return () => undefined;
-    }
-
-    if (profileLoadError || hasInternalProfile === false) {
-      setShowInitialLoader(false);
-      setInitialLoaderCompleting(false);
-      return () => undefined;
-    }
-
-    if (!showInitialLoader) {
-      return () => undefined;
-    }
-
-    setInitialLoaderCompleting(true);
-    finishTimer = window.setTimeout(() => {
-      setShowInitialLoader(false);
-      setInitialLoaderCompleting(false);
-    }, 760);
-
-    return () => {
-      if (finishTimer != null) {
-        window.clearTimeout(finishTimer);
-      }
-    };
-  }, [hasInternalProfile, initialLoadingActive, profileLoadError, showInitialLoader]);
+    setSelectedMonth(null);
+    setSelectedMonthIdentity(null);
+    setMonthRequest(null);
+  }, [calculationIdentity, rawSnapshot, workerDataset, workerOptions]);
 
   const contractNumberSearchActive = useMemo(
     () => normalizeContractNumberSearch(contractNumberQuery).length > 0,
@@ -432,7 +473,7 @@ export default function CashflowPage() {
     [cashflowItemsForReconciliation, contractNumberQuery]
   );
 
-  const contractSearchStats = useMemo(() => {
+  const inlineContractSearchStats = useMemo(() => {
     if (!contractNumberSearchActive) {
       return { itemCount: 0, contractCount: 0, summary: null };
     }
@@ -518,7 +559,7 @@ export default function CashflowPage() {
     [periodCashflowItems]
   );
 
-  const monthGroups = useMemo(
+  const inlineMonthGroups = useMemo(
     () =>
       applyStatementPayoutTotalsToMonths({
         monthGroups: predictedMonthGroups,
@@ -528,12 +569,77 @@ export default function CashflowPage() {
     [predictedMonthGroups, periodStatementsByMonthKey, useStatementPayoutTotals]
   );
 
+  const monthGroups = useMemo<MonthGroup[]>(() => calculationDeferred
+    ? (workerView.overview?.months ?? []).map(month => ({ ...month, items: [] }))
+    : inlineMonthGroups, [calculationDeferred, workerView.overview, inlineMonthGroups]);
+  const monthItemLabels = useMemo(() => calculationDeferred
+    ? Object.fromEntries((workerView.overview?.months ?? []).map(month => [month.key, month.itemCountLabel]))
+    : undefined, [calculationDeferred, workerView.overview]);
+  const contractSearchStats = calculationDeferred
+    ? workerView.overview?.contractSearchStats ?? EMPTY_SEARCH_STATS : inlineContractSearchStats;
+
   const yearGroups = useMemo(() => includeCurrentYear(groupMonthsByYear(monthGroups)), [monthGroups]);
 
+  useEffect(() => {
+    if (
+      process.env.NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED !== "1" || !user ||
+      loading || !cashflowReady || !verificationInput ||
+      statementVerificationEmail !== verificationInput.snapshot.email ||
+      verificationInput.snapshot.email !== normalizeEmail(user.email) ||
+      verificationInput.snapshot.email !== effectiveUserEmail(user.email)
+    ) return;
+    try {
+      if (sessionStorage.getItem("cashflow_shadow_opt_in") !== "1") return;
+    } catch { return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void import("./reportCashflowShadow").then(({ reportCashflowShadow }) =>
+        reportCashflowShadow({
+          user, ...verificationInput,
+          statements: commissionStatements, items: cashflowItems, months: monthGroups,
+          options: {
+            scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears,
+            intelligentPredictionEnabled, contractNumberQuery,
+          },
+          signal: controller.signal,
+        })
+      ).catch(() => undefined);
+    }, 1500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [
+    user, effectiveEmail, loading, cashflowReady, verificationInput, statementVerificationEmail,
+    commissionStatements, cashflowItems, monthGroups, scopeFilter, productFilter,
+    isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery,
+  ]);
+
   const selectedMonthForDisplay = useMemo(() => {
+    if (!cashflowDataEnabled || !profileReady || selectedMonthIdentity !== calculationIdentity) return null;
+    if (calculationDeferred) {
+      return monthRequest?.view === workerView.overview ? monthRequest?.month ?? null : null;
+    }
     if (!selectedMonth) return null;
-    return monthGroups.find((month) => month.key === selectedMonth.key) ?? selectedMonth;
-  }, [monthGroups, selectedMonth]);
+    return monthGroups.find((month) => month.key === selectedMonth.key) ?? null;
+  }, [cashflowDataEnabled, profileReady, selectedMonthIdentity, calculationIdentity,
+    calculationDeferred, monthRequest, workerView.overview, monthGroups, selectedMonth]);
+
+  const activeMonthRequest = cashflowDataEnabled && profileReady && calculationDeferred &&
+    monthRequest?.view === workerView.overview && selectedMonthIdentity === calculationIdentity ? monthRequest : null;
+  const closeMonth = () => { setSelectedMonth(null); setSelectedMonthIdentity(null); setMonthRequest(null); };
+  const selectMonth = (month: MonthGroup) => {
+    setSelectedMonthIdentity(calculationIdentity);
+    if (!calculationDeferred) { setSelectedMonth(month); return; }
+    const view = workerView.overview;
+    if (!view || calculating) return;
+    setMonthRequest({ view, key: month.key, label: month.label, month: null, error: null });
+    void workerView.loadMonth(month.key).then(detail => {
+      setMonthRequest(previous => previous?.view === view && previous.key === month.key
+        ? { ...previous, month: detail, error: detail ? null : "Detail měsíce již není v aktuálním výběru." } : previous);
+    }).catch(error => {
+      if (error?.name === "AbortError") return;
+      setMonthRequest(previous => previous?.view === view && previous.key === month.key
+        ? { ...previous, error: "Detail měsíce se nepodařilo načíst. Zavřete jej a zkuste to znovu." } : previous);
+    });
+  };
 
   const selectedMonthStatements = useMemo(
     () =>
@@ -579,13 +685,17 @@ export default function CashflowPage() {
   };
 
   const openStatementPreview = async (statement: CashflowCommissionStatementSummary) => {
-    if (!user) return;
-
-    setStatementPreviewError(null);
-    setStatementPreviewLoadingId(statement.id);
+    if (!user || !previewScope.identity || previewWork.current?.scope !== previewScope) return;
+    previewWork.current.request?.controller.abort();
+    const request: StatementPreviewRequest = { controller: new AbortController() };
+    previewWork.current.request = request;
+    const isCurrent = () => previewWork.current?.scope === previewScope && previewWork.current.request === request;
+    setStatementPreviewState(previous => previous.scope === previewScope
+      ? { ...previous, request, statement: null, loadingId: statement.id, error: null } : previous);
 
     try {
       const token = await user.getIdToken();
+      if (!isCurrent()) return;
       const response = await fetch(
         `/api/commission-statements?id=${encodeURIComponent(statement.id)}&includeHtml=1`,
         {
@@ -593,32 +703,41 @@ export default function CashflowPage() {
             Authorization: `Bearer ${token}`,
           },
           cache: "no-store",
+          signal: request.controller.signal,
         }
       );
       const payload = (await response.json().catch(() => null)) as
         | { ok?: boolean; item?: CashflowCommissionStatementDetail; error?: string }
         | null;
+      if (!isCurrent()) return;
       if (!response.ok || payload?.ok !== true || !payload.item?.html) {
         throw new Error(payload?.error || "Provizní výpis se nepodařilo otevřít.");
       }
-      setStatementPreview(payload.item);
+      const item = payload.item;
+      setStatementPreviewState(previous => previous.scope === previewScope && previous.request === request
+        ? { ...previous, statement: item, loadingId: null, error: null } : previous);
     } catch (error) {
+      if (!isCurrent()) return;
       console.warn("Cashflow: náhled provizního výpisu se nepodařilo otevřít.", error);
-      setStatementPreviewError(
-        error instanceof Error ? error.message : "Provizní výpis se nepodařilo otevřít."
-      );
-    } finally {
-      setStatementPreviewLoadingId(null);
+      setStatementPreviewState(previous => previous.scope === previewScope && previous.request === request
+        ? { ...previous, loadingId: null, error: error instanceof Error ? error.message : "Provizní výpis se nepodařilo otevřít." } : previous);
     }
+  };
+  const closeStatementPreview = () => {
+    if (previewWork.current?.scope !== previewScope) return;
+    previewWork.current.request?.controller.abort();
+    previewWork.current.request = null;
+    setStatementPreviewState(previous => previous.scope === previewScope
+      ? { ...previous, request: null, statement: null, loadingId: null, error: null } : previous);
   };
 
   return (
     <AppLayout active="cashflow">
-      <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-1 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
+      <div aria-busy={calculating} className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-1 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
         <div className="relative z-10 mx-auto w-full max-w-7xl space-y-3 px-2 sm:space-y-4 sm:px-4 lg:px-6">
-          {showInitialLoader ? (
+          {initialLoadingActive ? (
             <CashflowInitialLoader
-              completing={initialLoaderCompleting}
+              completing={false}
               tipsterMode={isTipsterMode}
               progress={profileReady ? loadingProgress.percent : 2}
               stageText={
@@ -631,6 +750,8 @@ export default function CashflowPage() {
               <div className={introStyles.heroReveal} style={introDelay(40)}>
                 <CashflowHeader
                   totalCashflow={totalCashflow}
+                  calculating={calculating}
+                  calculationFailed={Boolean(workerView.error)}
                   hasPaidMonthTotals={hasPaidMonthTotals}
                   forecastYears={CASHFLOW_FORECAST_YEARS}
                   intelligentPredictionEnabled={intelligentPredictionEnabled}
@@ -645,6 +766,8 @@ export default function CashflowPage() {
               {!isTipsterMode && hasInternalProfile === true && (
                 <div className={introStyles.filtersReveal} style={introDelay(170)}>
                   <CashflowFilters
+                    calculating={calculating}
+                    calculationFailed={Boolean(workerView.error)}
                     hasTeam={hasTeam}
                     scopeFilter={scopeFilter}
                     productFilter={productFilter}
@@ -672,7 +795,9 @@ export default function CashflowPage() {
                   </p>
                 ) : (
                   <>
-                    {monthGroups.length === 0 && (
+                    {calculating && <p role="status" className="mb-4 rounded-2xl bg-white/90 px-5 py-4 text-sm text-slate-600">Aktualizuji přehled…</p>}
+                    {workerView.error && <p role="alert" className="mb-4 rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">{workerView.error}</p>}
+                    {!calculating && !workerView.error && monthGroups.length === 0 && (
                       <p className="mb-4 rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
                         {contractNumberSearchActive
                           ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
@@ -681,13 +806,14 @@ export default function CashflowPage() {
                           : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
                       </p>
                     )}
-                    <CashflowAccordion
+                    {!calculating && !workerView.error && <CashflowAccordion
                       yearGroups={yearGroups}
                       expandedYears={displayedExpandedYears}
                       onToggleYear={toggleYear}
-                      onSelectMonth={setSelectedMonth}
+                      onSelectMonth={selectMonth}
+                      monthItemLabels={monthItemLabels}
                       tipsterMode={isTipsterMode}
-                    />
+                    />}
                   </>
                 )}
               </div>
@@ -707,16 +833,19 @@ export default function CashflowPage() {
 
         <CashflowMonthModal
           month={selectedMonthForDisplay}
+          loading={Boolean(activeMonthRequest && !activeMonthRequest.month && !activeMonthRequest.error)}
+          loadingLabel={activeMonthRequest?.label}
+          loadingError={activeMonthRequest?.error}
           statements={selectedMonthStatements}
           statementLoadingId={statementPreviewLoadingId}
-          onClose={() => setSelectedMonth(null)}
+          onClose={closeMonth}
           onOpenStatement={openStatementPreview}
           tipsterMode={isTipsterMode}
         />
 
         <CommissionStatementPreviewModal
           statement={statementPreview}
-          onClose={() => setStatementPreview(null)}
+          onClose={closeStatementPreview}
         />
 
         <IntelligentPredictionModal

@@ -1,0 +1,55 @@
+export type AuthEmailKind = "PASSWORD_RESET" | "VERIFY_EMAIL";
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+})[char]!);
+
+/** No recipient names, client data, remote images, fonts or tracking resources. */
+export function renderAuthEmail(kind: AuthEmailKind, actionUrl: string) {
+  const reset = kind === "PASSWORD_RESET";
+  const subject = reset ? "Obnovení hesla do BohemkaApp" : "Ověření e-mailu pro BohemkaApp";
+  const title = reset ? "Nastav si nové heslo" : "Potvrď svůj e-mail";
+  const button = reset ? "Nastavit nové heslo" : "Ověřit e-mail";
+  const intro = reset
+    ? "Obdrželi jsme žádost o obnovení hesla k tvému účtu v BohemkaApp. Nové heslo si nastavíš pomocí tlačítka níže."
+    : "Pro potvrzení své e-mailové adresy v BohemkaApp použij tlačítko níže.";
+  const next = reset
+    ? "Po nastavení nového hesla se vrať do aplikace a přihlas se."
+    : "Po ověření se vrať do aplikace. Pokud nastavuješ dvoufázové ověření (2FA), zadej znovu heslo a klikni na Zapnout 2FA.";
+  const validity = "Odkaz je jednorázový. Pokud jeho platnost vypršela, vyžádej si v aplikaci nový.";
+  const ignore = reset
+    ? "Pokud jsi o změnu hesla nežádal/a, tuto zprávu ignoruj. Samotným doručením e-mailu se heslo nezmění."
+    : "Pokud jsi o ověření e-mailu nežádal/a, tuto zprávu můžeš ignorovat.";
+  const href = escapeHtml(actionUrl);
+  const text = ["BohemkaApp", title, "Ahoj,", intro, `${button}:`, actionUrl, next, validity, ignore,
+    "Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.", "bohemka.app"].join("\n\n");
+  const html = `<!doctype html>
+<html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${subject}</title></head>
+<body style="margin:0;padding:0;background-color:#f3f1f8;color:#251d39;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${title} v BohemkaApp. ${validity}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f1f8;"><tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+<tr><td style="padding:26px 28px;background-color:#352058;border-radius:20px 20px 0 0;">
+<p style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">BohemkaApp<span style="color:#b9a4ed;">.</span></p>
+<p style="margin:7px 0 0;color:#ded4f2;font-size:12px;letter-spacing:1.2px;">ZABEZPEČENÍ ÚČTU</p>
+</td></tr>
+<tr><td style="padding:32px 28px;background-color:#ffffff;border-radius:0 0 20px 20px;">
+<h1 style="margin:0 0 24px;font-size:28px;line-height:1.2;letter-spacing:-0.7px;color:#251d39;">${title}</h1>
+<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#493f5b;">Ahoj,</p>
+<p style="margin:0 0 26px;font-size:16px;line-height:1.6;color:#493f5b;">${intro}</p>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" bgcolor="#6d3acb" style="border-radius:10px;mso-padding-alt:16px 24px;">
+<a href="${href}" style="display:inline-block;padding:16px 24px;border:1px solid #6d3acb;border-radius:10px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;line-height:1.3;">${button}</a>
+</td></tr></table>
+<p style="margin:26px 0 14px;font-size:14px;line-height:1.6;color:#493f5b;">${next}</p>
+<p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#746a83;">${validity}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #e9e3f1;padding-top:22px;">
+<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#746a83;">${ignore}</p>
+<p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#746a83;">Nefunguje tlačítko? Zkopíruj celý odkaz do prohlížeče:</p>
+<p style="margin:0;font-size:11px;line-height:1.7;word-break:break-all;overflow-wrap:anywhere;"><a href="${href}" style="color:#6d3acb;text-decoration:underline;word-break:break-all;">${href}</a></p>
+</td></tr></table>
+</td></tr>
+<tr><td align="center" style="padding:22px 20px;color:#81758e;font-size:11px;line-height:1.8;">Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.<br><span style="color:#635771;">bohemka.app</span></td></tr>
+</table></td></tr></table>
+</body></html>`;
+  return { subject, text, html };
+}

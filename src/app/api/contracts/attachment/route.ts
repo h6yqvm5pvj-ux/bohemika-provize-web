@@ -1,3 +1,5 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { Readable } from "node:stream";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -94,11 +96,13 @@ async function loadContractForAttachment({
   return {
     ok: true,
     entryRef,
+    entrySnap,
     contract,
   } as const;
 }
 
 export async function POST(req: NextRequest) {
+  return withCashflowMutation("app/api/contracts/attachment/route:POST", async () => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:attachment:post",
     limit: CONTRACT_ATTACHMENT_UPLOAD_RATE_LIMIT,
@@ -164,10 +168,13 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    await loaded.entryRef.update({
+    const batch = loaded.entryRef.firestore.batch();
+    batch.update(loaded.entryRef, withContractHistory(batch, loaded.entryRef, loaded.contract, {
       contractPdfAttachment: uploaded,
       contractPdfAttachmentUpdatedAt: FieldValue.serverTimestamp(),
-    });
+    }, { actorEmail: ctx.actorEmail, kind: "attachment", title: previousAttachment ? "Nahrazeno PDF smlouvy" : "Nahráno PDF smlouvy",
+      changes: [{ label: "Soubor", before: previousAttachment?.originalName ?? null, after: uploaded.originalName }] }), { lastUpdateTime: loaded.entrySnap.updateTime! });
+    await trackCashflowWrite(() => batch.commit());
   } catch (error) {
     if (uploaded) {
       try {
@@ -200,6 +207,7 @@ export async function POST(req: NextRequest) {
       attachment: toPublicContractPdfAttachment(uploaded),
     })
   );
+  });
 }
 
 export async function GET(req: NextRequest) {

@@ -1,0 +1,217 @@
+{
+  "scope": "Actual Next production home components; local synthetic pending/error/ready states, desktop and mobile. No application auth or live data.",
+  "productionChanged": false,
+  "realDataRead": false,
+  "externalRequestsBlocked": 0,
+  "apiRequestsBlocked": 0,
+  "browserErrors": [],
+  "probeHtmlStatus": 200,
+  "browserVersion": {
+    "protocolVersion": "1.3",
+    "product": "Chrome/152.0.7977.83",
+    "revision": "@79460ebecaa5625e57a5fb679a735659e73dc687",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "jsVersion": "15.2.124.21"
+  },
+  "checks": [
+    {
+      "width": 1440,
+      "team": true,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 1440,
+      "team": true,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 1440,
+      "team": true,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 1440,
+      "team": false,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 1440,
+      "team": false,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 1440,
+      "team": false,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 390,
+      "team": true,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 390,
+      "team": true,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 390,
+      "team": true,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 390,
+      "team": false,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 390,
+      "team": false,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 390,
+      "team": false,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 320,
+      "team": true,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 320,
+      "team": true,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 320,
+      "team": true,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "team",
+        "tip",
+        "total"
+      ]
+    },
+    {
+      "width": 320,
+      "team": false,
+      "phase": "pending",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 320,
+      "team": false,
+      "phase": "error",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    },
+    {
+      "width": 320,
+      "team": false,
+      "phase": "ready",
+      "passed": true,
+      "visibleCardTones": [
+        "own",
+        "tip"
+      ]
+    }
+  ],
+  "passed": true
+}

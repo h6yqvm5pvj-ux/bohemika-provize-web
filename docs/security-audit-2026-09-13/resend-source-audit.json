@@ -1,0 +1,44 @@
+{
+  "id": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+  "url": "bohemika-provize-mapbr82nk-jacobrausch989s-projects-909dd478.vercel.app",
+  "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+  "readyState": "READY",
+  "target": "production",
+  "regions": [
+    "fra1"
+  ],
+  "baselineDeploymentId": "dpl_BJsEiRgSqD2HBFhbeeZw2FLW7xMe",
+  "sourceFileCount": 1239,
+  "reviewedGeneratedTypeFile": "next-env.d.ts",
+  "addedFiles": [
+    "next-env.d.ts",
+    "src/app/api/admin/users/security/email.test.ts",
+    "src/app/api/auth/emailVerification.test.ts",
+    "src/app/api/auth/password-reset/route.test.ts",
+    "src/app/api/auth/password-reset/route.ts",
+    "src/app/lib/authEmailRequest.test.ts",
+    "src/app/lib/authEmailRequest.ts",
+    "src/app/lib/mfaEmailVerification.test.ts",
+    "src/components/account-setup/useAccountSetupFlow.email.test.tsx",
+    "src/lib/authEmailMessages.ts",
+    "src/lib/server/authEmailTemplate.ts",
+    "src/lib/server/firebaseAuthEmail.test.ts",
+    "src/lib/server/firebaseAuthEmail.ts"
+  ],
+  "removedFiles": [],
+  "changedFiles": [
+    "src/app/api/admin/users/security/route.ts",
+    "src/app/api/auth/confirm-email-for-mfa/route.ts",
+    "src/app/api/auth/email-verification-link/route.ts",
+    "src/app/lib/mfaEmailVerification.ts",
+    "src/app/login/page.test.tsx",
+    "src/app/login/page.tsx",
+    "src/app/nastaveni/components/AccountSecurityPanel.tsx",
+    "src/app/nastaveni/page.tsx",
+    "src/components/account-setup/AccountSetupWizard.tsx",
+    "src/components/account-setup/useAccountSetupFlow.ts"
+  ],
+  "localSourceMismatches": [],
+  "forbiddenDiagnosticPaths": [],
+  "passed": true
+}

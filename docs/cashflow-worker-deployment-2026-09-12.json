@@ -1,0 +1,473 @@
+{
+  "verifiedAtUtc": "2026-09-12T14:18:52.162435+00:00",
+  "promotion": {
+    "before": {
+      "id": "dpl_98QKyaT7qDVQxXNk8nahXtm2arRW",
+      "url": "bohemika-provize-mik5thk33-jacobrausch989s-projects-909dd478.vercel.app",
+      "readyState": "READY",
+      "target": "production"
+    },
+    "promotionExitCode": 0,
+    "after": {
+      "id": "dpl_CDRYn8XZqSMkvY1ZqhGfPAK9TWUa",
+      "url": "bohemika-provize-kvtyisu6i-jacobrausch989s-projects-909dd478.vercel.app",
+      "readyState": "READY",
+      "target": "production"
+    },
+    "promotedVerified": true
+  },
+  "domain": {
+    "alias": "bohemka.app",
+    "deploymentId": "dpl_CDRYn8XZqSMkvY1ZqhGfPAK9TWUa",
+    "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX"
+  },
+  "uploadAudit": {
+    "exitCode": 0,
+    "framework": {
+      "name": "Next.js",
+      "slug": "nextjs"
+    },
+    "fileCount": 1222,
+    "totalSize": 121121487,
+    "forbiddenPaths": [],
+    "passed": true
+  },
+  "runtimeRegions": [
+    "iad1"
+  ],
+  "sourceChecks": [
+    {
+      "path": "src/app/cashflow/cashflow.worker.ts",
+      "remoteSourceSha1Matches": true
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.test.ts",
+      "remoteSourceSha1Matches": true
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.ts",
+      "remoteSourceSha1Matches": true
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.types.ts",
+      "remoteSourceSha1Matches": true
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.worker.test.tsx",
+      "remoteSourceSha1Matches": true
+    }
+  ],
+  "stagedSmoke": {
+    "schema": "bohemika-shadow-smoke-v1",
+    "deployment": "https://bohemika-provize-kvtyisu6i-jacobrausch989s-projects-909dd478.vercel.app",
+    "authenticated": false,
+    "followedRedirects": false,
+    "passed": true,
+    "checks": [
+      {
+        "name": "worker_probe_absent",
+        "method": "GET",
+        "path": "/worker-build-probe",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3911.6
+      },
+      {
+        "name": "mailbox_history_requires_auth",
+        "method": "GET",
+        "path": "/api/mailbox?conversationId=diagnostic&includeUnreadCount=0&limit=30",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3582.0
+      },
+      {
+        "name": "contracts_search_requires_auth",
+        "method": "GET",
+        "path": "/api/contracts/list?q=diagnostic&limit=30",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 4059.7
+      },
+      {
+        "name": "temporary_region_probe_absent",
+        "method": "POST",
+        "path": "/api/internal-region-probe",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2778.6
+      },
+      {
+        "name": "login_html",
+        "method": "GET",
+        "path": "/login",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 4109.5
+      },
+      {
+        "name": "cashflow_login_redirect",
+        "method": "GET",
+        "path": "/cashflow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 307,
+        "contentType": "text/plain",
+        "cacheControl": "private, no-store, max-age=0, must-revalidate",
+        "location": "/login",
+        "elapsedMs": 2574.8
+      },
+      {
+        "name": "shadow_disabled",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 4110.5
+      },
+      {
+        "name": "shadow_disabled_invalid_json",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 2903.2
+      },
+      {
+        "name": "shadow_get_not_allowed",
+        "method": "GET",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 405,
+        "contentType": "other",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2832.1
+      },
+      {
+        "name": "contracts_require_auth",
+        "method": "GET",
+        "path": "/api/contracts/list",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2914.0
+      },
+      {
+        "name": "statements_require_auth",
+        "method": "GET",
+        "path": "/api/commission-statements?shape=cashflow&limit=1",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2966.2
+      }
+    ]
+  },
+  "productionSmoke": {
+    "schema": "bohemika-shadow-smoke-v1",
+    "deployment": "https://bohemka.app",
+    "authenticated": false,
+    "followedRedirects": false,
+    "passed": true,
+    "checks": [
+      {
+        "name": "worker_probe_absent",
+        "method": "GET",
+        "path": "/worker-build-probe",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 3854.5
+      },
+      {
+        "name": "mailbox_history_requires_auth",
+        "method": "GET",
+        "path": "/api/mailbox?conversationId=diagnostic&includeUnreadCount=0&limit=30",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 4085.9
+      },
+      {
+        "name": "contracts_search_requires_auth",
+        "method": "GET",
+        "path": "/api/contracts/list?q=diagnostic&limit=30",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2726.9
+      },
+      {
+        "name": "temporary_region_probe_absent",
+        "method": "POST",
+        "path": "/api/internal-region-probe",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2728.2
+      },
+      {
+        "name": "login_html",
+        "method": "GET",
+        "path": "/login",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "text/html",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2691.1
+      },
+      {
+        "name": "cashflow_login_redirect",
+        "method": "GET",
+        "path": "/cashflow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 307,
+        "contentType": "text/plain",
+        "cacheControl": "private, no-store, max-age=0, must-revalidate",
+        "location": "/login",
+        "elapsedMs": 2586.7
+      },
+      {
+        "name": "shadow_disabled",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 2787.3
+      },
+      {
+        "name": "shadow_disabled_invalid_json",
+        "method": "POST",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "cacheControl": "private, no-store",
+        "location": null,
+        "shadow": {
+          "ok": true,
+          "status": "skipped",
+          "reason": "disabled"
+        },
+        "elapsedMs": 2932.6
+      },
+      {
+        "name": "shadow_get_not_allowed",
+        "method": "GET",
+        "path": "/api/cashflow/shadow",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 405,
+        "contentType": "other",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2714.5
+      },
+      {
+        "name": "contracts_require_auth",
+        "method": "GET",
+        "path": "/api/contracts/list",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2757.7
+      },
+      {
+        "name": "statements_require_auth",
+        "method": "GET",
+        "path": "/api/commission-statements?shape=cashflow&limit=1",
+        "passed": true,
+        "failures": [],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 401,
+        "contentType": "application/json",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2699.4
+      }
+    ]
+  },
+  "productionWorkerFlag": {
+    "matchingEntries": [
+      {
+        "id": "fZegUELEegHjrOKJ",
+        "key": "NEXT_PUBLIC_CASHFLOW_WORKER_ENABLED",
+        "type": "encrypted",
+        "target": [
+          "production"
+        ],
+        "valueNotRead": true
+      }
+    ],
+    "setCommandSucceeded": true,
+    "setValue": "1"
+  },
+  "authenticatedBusinessFlowsTested": false,
+  "productionAuthenticatedWorkerRuntimeTested": false,
+  "businessDataReads": false,
+  "businessDataWrites": false,
+  "remoteWorkerArtifactProbe": {
+    "version": 1,
+    "deploymentId": "dpl_CDRYn8XZqSMkvY1ZqhGfPAK9TWUa",
+    "deployment": "https://bohemika-provize-kvtyisu6i-jacobrausch989s-projects-909dd478.vercel.app",
+    "appAuthenticated": false,
+    "cookiesSupplied": false,
+    "followedRedirects": false,
+    "passed": false,
+    "checks": [
+      {
+        "name": "workerBootstrap",
+        "method": "GET",
+        "path": "/_next/static/chunks/turbopack-worker-2ru9m5gbh1na6.js",
+        "passed": false,
+        "failures": [
+          "unexpected_http_status"
+        ],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/plain",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2577.7,
+        "localHashMatches": null
+      },
+      {
+        "name": "workerEntry",
+        "method": "GET",
+        "path": "/_next/static/chunks/1ck7ayn6q_5tn.js",
+        "passed": false,
+        "failures": [
+          "unexpected_http_status"
+        ],
+        "transportExitCode": 0,
+        "requestedHostVerified": true,
+        "httpStatus": 404,
+        "contentType": "text/plain",
+        "cacheControl": "public, max-age=0, must-revalidate",
+        "location": null,
+        "elapsedMs": 2577.1,
+        "localHashMatches": null
+      }
+    ],
+    "scope": "Two known static asset URLs only; not a remote authenticated application runtime test. Deployment source-tree metadata is not used as compiled-asset evidence."
+  },
+  "localNextProductionWorkerRuntimePassed": true,
+  "rollbackDeploymentId": "dpl_98QKyaT7qDVQxXNk8nahXtm2arRW"
+}

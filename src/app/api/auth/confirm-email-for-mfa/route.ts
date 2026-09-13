@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -26,7 +27,9 @@ function getBearerToken(req: Request): string | null {
 }
 
 const jsonError = (error: string, status: number) =>
-  NextResponse.json({ ok: false, error } satisfies ApiError, { status });
+  NextResponse.json({ ok: false, error } satisfies ApiError, {
+    status, headers: { "Cache-Control": "no-store" },
+  });
 
 export async function POST(req: Request) {
   try {
@@ -94,18 +97,20 @@ export async function POST(req: Request) {
     }
 
     if (!authUser.emailVerified) {
-      await adminAuth.updateUser(decoded.uid, { emailVerified: true });
+      const response = jsonError("Nejdřív potvrď e-mail odkazem doručeným do schránky.", 403);
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
     }
 
     const response = NextResponse.json({
       ok: true,
       emailVerified: true,
       alreadyVerified: authUser.emailVerified,
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
     applyRateLimitHeaders(response.headers, rateLimitResult);
     return response;
   } catch (error) {
-    console.error("confirm-email-for-mfa error", error);
+    console.error("confirm-email-for-mfa error", safeAuthEmailErrorCode(error));
     return jsonError("Nepodařilo se potvrdit e-mail pro zapnutí 2FA.", 500);
   }
 }

@@ -1,0 +1,38 @@
+{
+  "id": "dpl_HRwV453ULAdBoKExZWzXChZTBBPy",
+  "url": "bohemika-provize-dovpq01qn-jacobrausch989s-projects-909dd478.vercel.app",
+  "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+  "readyState": "READY",
+  "target": "production",
+  "regions": [
+    "fra1"
+  ],
+  "baselineDeploymentId": "dpl_FK81FV8LqN1GtKUuYeQdui8zuaC6",
+  "sourceFileCount": 1262,
+  "reviewedGeneratedTypeFile": "next-env.d.ts",
+  "addedFiles": [
+    "src/app/api/auth/password-change/route.test.ts",
+    "src/app/api/auth/password-change/route.ts",
+    "src/app/api/cron/password-change-notices/route.test.ts",
+    "src/app/api/cron/password-change-notices/route.ts",
+    "src/app/nastaveni/components/PasswordChangeDialog.tsx",
+    "src/app/nastaveni/components/passwordChange.module.css",
+    "src/app/nastaveni/usePasswordChange.test.tsx",
+    "src/app/nastaveni/usePasswordChange.ts",
+    "src/lib/server/passwordChange.test.ts",
+    "src/lib/server/passwordChange.ts",
+    "src/lib/server/passwordChangeEmail.test.ts",
+    "src/lib/server/passwordChangeEmail.ts",
+    "tests/firestore/passwordChange.test.ts"
+  ],
+  "removedFiles": [],
+  "changedFiles": [
+    "src/app/nastaveni/components/AccountSecurityPanel.tsx",
+    "src/app/nastaveni/page.tsx",
+    "src/lib/server/firebaseAuthEmail.ts",
+    "vercel.json"
+  ],
+  "localSourceMismatches": [],
+  "forbiddenDiagnosticPaths": [],
+  "passed": true
+}

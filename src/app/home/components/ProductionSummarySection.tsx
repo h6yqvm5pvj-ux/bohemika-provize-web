@@ -7,10 +7,6 @@ import {
   HeartPulse,
   ShieldCheck,
   Minus,
-  Tag,
-  UserRound,
-  UsersRound,
-  type LucideIcon,
 } from "lucide-react";
 import { type AppLanguage } from "@/lib/appLanguage";
 import { HelpDialog } from "@/components/HelpDialog";
@@ -24,6 +20,8 @@ import type { ProductionPremiums } from "../productionPremiums";
 type Props = {
   language: AppLanguage;
   loading: boolean;
+  tipSummaryLoading?: boolean;
+  tipSummaryError?: string | null;
   showTeamBox: boolean;
   showOnlyTeamProduction?: boolean;
   myPremiums: ProductionPremiums;
@@ -158,7 +156,6 @@ type ProductionColumnProps = {
   titleTop: string;
   titleBottom: string;
   description?: string;
-  icon: LucideIcon;
   countLabel: string;
   commissionLabel: string;
   previousMonthLabel: string;
@@ -166,6 +163,9 @@ type ProductionColumnProps = {
   amountValue: number;
   previousAmountValue: number;
   premiums?: ProductionPremiums;
+  amountPending?: boolean;
+  amountUnavailable?: boolean;
+  countUnavailable?: boolean;
 };
 
 type ProductionCard = ProductionColumnProps & {
@@ -177,7 +177,6 @@ function ProductionColumn({
   titleTop,
   titleBottom,
   description,
-  icon: Icon,
   countLabel,
   commissionLabel,
   previousMonthLabel,
@@ -185,22 +184,28 @@ function ProductionColumn({
   amountValue,
   previousAmountValue,
   premiums,
+  amountPending = false,
+  amountUnavailable = false,
+  countUnavailable = false,
 }: ProductionColumnProps) {
   return (
     <article className={styles.column} data-tone={tone}>
       <div className={styles.cardHeader}>
-        <span className={styles.cardIcon}><Icon size={18} strokeWidth={1.8} aria-hidden="true" /></span>
         <div className={styles.illustration}><ProductionIllustration tone={tone} /></div>
         <h2>{titleTop} {titleBottom}</h2>
       </div>
-      {description && <p className={styles.description}>{description}</p>}
       <div className={styles.commission}>
         <p className={styles.label}>{commissionLabel}</p>
-        <p className={styles.amount}><AnimatedMoney value={amountValue} /></p>
-        <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />
-      </div>
-      <div className={styles.contractCount}>
-        <span>{countLabel}</span><strong><AnimatedNumber value={countValue} /></strong>
+        <p className={styles.amount} aria-label={amountPending ? "Načítám TIP produkci" : amountUnavailable ? "Částka není k dispozici" : undefined}>
+          {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} />}</p>
+        <div className={styles.commissionFooter}>
+          {amountPending || amountUnavailable ? <p role="status" className="text-xs leading-relaxed text-slate-600">
+            {amountPending ? "Načítám TIP produkci…" : "TIP produkce není k dispozici."}
+          </p> : <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />}
+          <div className={styles.contractCount}>
+            <span>{countLabel}</span><strong>{countUnavailable ? "—" : <AnimatedNumber value={countValue} />}</strong>
+          </div>
+        </div>
       </div>
       {premiums && (
         <dl aria-label="Pojistné sjednaných smluv" className={styles.premiums}>
@@ -214,6 +219,7 @@ function ProductionColumn({
           </div>
         </dl>
       )}
+      {description && <p className={styles.description}>{description}</p>}
     </article>
   );
 }
@@ -221,6 +227,8 @@ function ProductionColumn({
 export function ProductionSummarySection({
   language,
   loading,
+  tipSummaryLoading = false,
+  tipSummaryError = null,
   showTeamBox,
   showOnlyTeamProduction = false,
   myPremiums,
@@ -246,14 +254,13 @@ export function ProductionSummarySection({
   const containerShellClass = `${styles.shell} ${isLiteUI ? "" : styles.elevated}`;
   // Karta tipařské produkce má být viditelná už od první tipařské smlouvy,
   // i kdyby její provize byla zatím nulová.
-  const hasTipContract = myTipContractsCount > 0;
+  const hasTipContract = myTipContractsCount > 0 || tipSummaryLoading || Boolean(tipSummaryError);
   const ownCard: ProductionCard = {
     id: "own",
     tone: "own",
     titleTop: copy.cards.own.titleTop,
     titleBottom: copy.cards.own.titleBottom,
     description: copy.cards.own.description,
-    icon: UserRound,
     countLabel: copy.cards.own.countLabel,
     commissionLabel: copy.commission,
     previousMonthLabel: copy.previousMonth,
@@ -268,7 +275,6 @@ export function ProductionSummarySection({
     titleTop: copy.cards.team.titleTop,
     titleBottom: copy.cards.team.titleBottom,
     description: copy.cards.team.description,
-    icon: UsersRound,
     countLabel: copy.cards.team.countLabel,
     commissionLabel: copy.commission,
     previousMonthLabel: copy.previousMonth,
@@ -283,13 +289,15 @@ export function ProductionSummarySection({
     titleTop: copy.cards.tip.titleTop,
     titleBottom: copy.cards.tip.titleBottom,
     description: copy.cards.tip.description,
-    icon: Tag,
     countLabel: copy.cards.tip.countLabel,
     commissionLabel: copy.commission,
     previousMonthLabel: copy.previousMonth,
     countValue: myTipContractsCount,
     amountValue: myTipImmediateSum,
     previousAmountValue: myTipImmediatePrevSum,
+    amountPending: tipSummaryLoading,
+    amountUnavailable: Boolean(tipSummaryError),
+    countUnavailable: tipSummaryLoading || Boolean(tipSummaryError),
   };
   const totalCard: ProductionCard = {
     id: "total",
@@ -297,13 +305,14 @@ export function ProductionSummarySection({
     titleTop: copy.cards.total.titleTop,
     titleBottom: copy.cards.total.titleBottom,
     description: copy.cards.total.description,
-    icon: BarChart3,
     countLabel: copy.cards.total.countLabel,
     commissionLabel: copy.commission,
     previousMonthLabel: copy.previousMonth,
     countValue: totalContractsCount,
     amountValue: totalWithTeam,
     previousAmountValue: totalPrevWithTeam,
+    amountPending: tipSummaryLoading,
+    amountUnavailable: Boolean(tipSummaryError),
     premiums: {
       lifeMonthly: myPremiums.lifeMonthly + teamPremiums.lifeMonthly,
       otherAnnual: myPremiums.otherAnnual + teamPremiums.otherAnnual,
@@ -452,6 +461,7 @@ export function ProductionSummarySection({
           description={showOnlyTeamProduction ? "Připravuji přehled týmových smluv a provizí." : copy.loadingDescription}
           accentLabel={copy.loadingAccent} visual="production" /></div>
       ) : <>
+        {!showOnlyTeamProduction && tipSummaryError && <p role="alert" className="px-5 py-3 text-sm text-amber-900">{tipSummaryError}</p>}
         <div className={styles.mobile}>
           <div ref={mobileCarouselRef} onScroll={handleMobileCarouselScroll} className={styles.carousel}>
             <div className={styles.track}>

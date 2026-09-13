@@ -4,6 +4,7 @@ import {
   APP_SESSION_COOKIE_NAME,
 } from "@/lib/appSession";
 import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
+import { AUTH_EMAIL_ACTION_PATH } from "@/lib/authEmailAction";
 
 const CONNECT_SRC = [
   "'self'",
@@ -314,14 +315,16 @@ export async function proxy(req: NextRequest) {
     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
   }
 
-  if (isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
+  const isEmailAction = pathname === AUTH_EMAIL_ACTION_PATH || pathname === `${AUTH_EMAIL_ACTION_PATH}/`;
+  if (isEmailAction) res.headers.set("Referrer-Policy", "no-referrer");
+  if (isEmailAction || isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
     res.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     res.headers.set("Pragma", "no-cache");
     res.headers.set("Expires", "0");
     res.headers.set("Vary", "Authorization, Cookie");
   }
 
-  if (isSearchIndexExcludedPath(pathname)) {
+  if (isEmailAction || isSearchIndexExcludedPath(pathname)) {
     res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   }
 

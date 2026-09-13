@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getContractTerminationContext, setContractTerminationIdentity } from "@/app/lib/contractTerminationPrivacy";
 
 import {
   consumeContractTerminationPrefill,
@@ -11,7 +12,10 @@ import {
 } from "./contractTerminationPrefill";
 
 describe("contractTerminationPrefill", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    setContractTerminationIdentity(null);
+    vi.unstubAllGlobals();
+  });
 
   it("normalizuje podporované názvy pojišťoven", () => {
     expect(normalizeTerminationPrefillInsurer("ČPP")).toBe("ČPP");
@@ -139,7 +143,7 @@ describe("contractTerminationPrefill", () => {
     ).toBeNull();
   });
 
-  it("přenese předvyplnění jednorázově přes session storage", () => {
+  it("přenese předvyplnění jednorázově v paměti přihlášeného účtu", () => {
     const entries = new Map<string, string>();
     vi.stubGlobal("window", {
       crypto: {
@@ -163,9 +167,12 @@ describe("contractTerminationPrefill", () => {
     });
     expect(payload).not.toBeNull();
 
-    const key = storeContractTerminationPrefill(payload!);
+    setContractTerminationIdentity("test-advisor");
+    const context = getContractTerminationContext()!;
+    const key = storeContractTerminationPrefill(payload!, context);
     expect(key).toBe("123e4567-e89b-12d3-a456-426614174000");
-    expect(consumeContractTerminationPrefill(key)).toEqual(payload);
-    expect(consumeContractTerminationPrefill(key)).toBeNull();
+    expect(entries.size).toBe(0);
+    expect(consumeContractTerminationPrefill(key, context)).toEqual(payload);
+    expect(consumeContractTerminationPrefill(key, context)).toBeNull();
   });
 });

@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "scope": "Local production build with intercepted synthetic Firebase responses; all other external requests blocked.",
+  "results": [
+    {
+      "name": "reset-desktop",
+      "width": 1000,
+      "clean": true,
+      "fits": true,
+      "privateTextAbsent": true
+    },
+    {
+      "name": "reset-mobile",
+      "width": 390,
+      "clean": true,
+      "fits": true,
+      "privateTextAbsent": true
+    },
+    {
+      "name": "password-success",
+      "passed": true
+    },
+    {
+      "name": "verify-mobile",
+      "width": 390,
+      "clean": true,
+      "fits": true,
+      "privateTextAbsent": true
+    },
+    {
+      "name": "verification-success",
+      "passed": true
+    },
+    {
+      "name": "expired-mobile",
+      "width": 390,
+      "clean": true,
+      "fits": true,
+      "privateTextAbsent": true
+    },
+    {
+      "name": "invalid-mobile",
+      "width": 390,
+      "clean": true,
+      "fits": true,
+      "privateTextAbsent": true
+    }
+  ],
+  "syntheticApiRequests": 8,
+  "blockedExternal": 0
+}

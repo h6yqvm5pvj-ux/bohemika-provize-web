@@ -35,8 +35,10 @@ export function isAnniversarySoon(
   const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const next = nextAnniversaryDate(start, now);
-  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  const daysLeft = Math.ceil(diffDays);
+  // Count calendar days; a daylight-saving transition must not turn day 90 into day 91.
+  const diffDays = (Date.UTC(next.getFullYear(), next.getMonth(), next.getDate()) -
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / (1000 * 60 * 60 * 24);
+  const daysLeft = diffDays;
   const anniversaryNumber = next.getFullYear() - start.getFullYear();
   const isRealAnniversary = anniversaryNumber >= 1;
   const soon = diffDays <= windowDays && diffDays >= 0 && isRealAnniversary;

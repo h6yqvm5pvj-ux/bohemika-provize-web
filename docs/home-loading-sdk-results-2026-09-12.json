@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "numTotalTests": 2,
+  "numPassedTests": 2,
+  "numFailedTests": 0,
+  "numTotalTestSuites": 2,
+  "numPassedTestSuites": 2,
+  "cases": [
+    {
+      "file": "work/tests/firestore/tipPayoutHome.test.ts",
+      "status": "passed",
+      "tests": 2
+    }
+  ]
+}

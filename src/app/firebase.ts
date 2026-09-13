@@ -7,7 +7,6 @@ import {
   inMemoryPersistence,
   type Auth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 import { firebaseApp } from "./firebase-app";
 
 function createClientAuth(): Auth {
@@ -34,4 +33,3 @@ function createClientAuth(): Auth {
 }
 
 export const auth = createClientAuth();
-export const db = getFirestore(firebaseApp);

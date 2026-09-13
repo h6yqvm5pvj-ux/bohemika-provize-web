@@ -1,0 +1,1551 @@
+diff --git a/src/app/api/tip-payouts/list/homeResponse.test.ts b/src/app/api/tip-payouts/list/homeResponse.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/tip-payouts/list/homeResponse.test.ts
+@@ -0,0 +1,221 @@
++import { createHash } from "node:crypto";
++import { NextRequest } from "next/server";
++import { Timestamp } from "firebase-admin/firestore";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  verify: vi.fn(), setup: vi.fn(), lockout: vi.fn(), impersonation: vi.fn(), rate: vi.fn(),
++  reads: vi.fn(), records: new Map<string, Record<string, unknown>>(), failBounded: false,
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => {
++  const ms = (value: unknown): number => {
++    if (value instanceof Date) return value.getTime();
++    if (typeof value === "number") return value;
++    if (typeof value === "string") return new Date(value).getTime();
++    const timestamp = value as { toMillis?: () => number } | null;
++    return timestamp?.toMillis?.() ?? Number.NaN;
++  };
++  const query = (fields?: string[], limit = 100, from?: Date, cursor?: [Date, string]) => ({
++    orderBy: () => query(fields, limit, from, cursor),
++    where: (_field: string, _operator: string, value: Date) => query(fields, limit, value, cursor),
++    limit: (value: number) => query(fields, value, from, cursor),
++    select: (...value: string[]) => query(value, limit, from, cursor),
++    startAfter: (date: Date, id: string) => query(fields, limit, from, [date, id]),
++    get: async () => {
++      mocks.reads({ kind: "payout", fields, limit, from, cursor });
++      if (from && mocks.failBounded) throw new Error("Synthetic query failure");
++      const rows = [...mocks.records.entries()]
++        .filter(([, row]) => Object.hasOwn(row, "payoutDate"))
++        .sort(([leftId, left], [rightId, right]) => ms(right.payoutDate) - ms(left.payoutDate) || rightId.localeCompare(leftId))
++        .filter(([id, row]) => (!from || ms(row.payoutDate) >= from.getTime()) &&
++          (!cursor || ms(row.payoutDate) < cursor[0].getTime() || (ms(row.payoutDate) === cursor[0].getTime() && id < cursor[1])))
++        .slice(0, limit);
++      const docs = rows.map(([id, raw]) => ({
++        id,
++        data: () => fields ? Object.fromEntries(Object.entries(raw).filter(([key]) => fields.includes(key))) : raw,
++      }));
++      return { docs, empty: docs.length === 0 };
++    },
++  });
++  return {
++    adminAuth: { verifyIdToken: mocks.verify },
++    adminDb: {
++      collection: (name: string) => ({
++        doc: (id: string) => ({
++          get: async () => { mocks.reads({ kind: "profile", id }); return { id, exists: true, data: () => ({ fullName: "Synthetic Source" }) }; },
++          collection: (child: string) => {
++            if (name === "users" && child === "tipPayouts") return query();
++            if (name === "users" && child === "entries") return {
++              doc: (entry: string) => ({ get: async () => {
++                mocks.reads({ kind: "entry", id, entry });
++                return { data: () => ({ clientName: "Synthetic Client" }) };
++              } }),
++            };
++            throw new Error("Unexpected collection in synthetic test");
++          },
++        }),
++      }),
++    },
++  };
++});
++vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorSetupError: mocks.setup }));
++vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: mocks.lockout }));
++vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: mocks.impersonation }));
++vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rate, applyRateLimitHeaders: () => {} }));
++
++import { GET } from "./route";
++
++const from = Date.UTC(2026, 7, 1);
++const monthStart = Date.UTC(2026, 8, 1);
++const to = Date.UTC(2026, 9, 1);
++const compactKeys = ["id", "payoutDate", "amount", "sourceToken", "sourceContractSignedDate"];
++type Row = { id: string; payoutDate: number | null; amount: number; sourceToken: string | null; sourceContractSignedDate: number | null };
++const params = (home: boolean, overrides: Record<string, string> = {}) => new URLSearchParams({
++  limit: "100", payoutFrom: String(from),
++  ...(home ? { shape: "home", productionFrom: String(from), productionTo: String(to) } : {}), ...overrides,
++});
++const request = (query: URLSearchParams, authorized = true) => new NextRequest(`https://example.test/api/tip-payouts/list?${query}`, {
++  headers: authorized ? { authorization: "Bearer synthetic-token" } : {},
++});
++const read = async (query: URLSearchParams) => {
++  const response = await GET(request(query));
++  expect(response.status).toBe(200);
++  return await response.json() as { payouts: Row[]; hasMore: boolean; nextCursorToken: string | null };
++};
++const inPeriod = (row: Row) => {
++  const date = row.sourceContractSignedDate ?? row.payoutDate;
++  return date != null && date >= from && date < to;
++};
++const totals = (rows: Row[]) => {
++  let current = 0;
++  let previous = 0;
++  const contracts = new Set<string>();
++  for (const row of rows) {
++    const date = row.sourceContractSignedDate ?? row.payoutDate;
++    if (date == null || date < from || date >= to || !(row.amount > 0)) continue;
++    if (date < monthStart) previous += row.amount;
++    else {
++      current += row.amount;
++      contracts.add(row.sourceToken?.trim() || `payout:${row.id.trim() || String(row.payoutDate ?? "")}`);
++    }
++  }
++  return { current, previous, contracts: contracts.size };
++};
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  mocks.records.clear();
++  mocks.failBounded = false;
++  mocks.verify.mockResolvedValue({ email: "advisor@example.test", uid: "synthetic-uid" });
++  mocks.setup.mockResolvedValue(null);
++  mocks.lockout.mockResolvedValue(null);
++  mocks.impersonation.mockResolvedValue({ ok: true });
++  mocks.rate.mockResolvedValue({ allowed: true });
++});
++
++describe("home TIP response projection", () => {
++  it("preserves current/previous sums, source deduplication and signed-date precedence", async () => {
++    const rows = [
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: new Date(from), amount: 20, sourceKey: "same" },
++      { payoutDate: new Date(to), sourceContractSignedDate: Timestamp.fromMillis(monthStart), amount: 1.25, sourceKey: "same" },
++      { payoutDate: new Date(to), sourceContractSignedDate: monthStart, amount: 2.25, sourceKey: "same" },
++      { payoutDate: new Date(to), sourceContractSignedDate: new Date(monthStart).toISOString(), amount: 3.25, sourceKey: "other" },
++      { payoutDate: new Date(monthStart), amount: 4.25 },
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: "invalid", amount: 5.25 },
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: null, amount: 6.25 },
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: new Date(from - 1), amount: 900 },
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: new Date(to), amount: 900 },
++      { payoutDate: new Date(monthStart), sourceContractSignedDate: new Date(monthStart), amount: -1 },
++      // Existing payoutFrom selection is intentionally preserved, even though
++      // the source signing date would otherwise fall into the production range.
++      { payoutDate: new Date(from - 1), sourceContractSignedDate: new Date(monthStart), amount: 900 },
++    ];
++    rows.forEach((row, index) => mocks.records.set(`row-${index}`, row));
++    const full = await read(params(false));
++    const home = await read(params(true));
++    expect(home.payouts).toEqual(full.payouts.filter(inPeriod).map(row => Object.fromEntries(compactKeys.map(key => [key, row[key as keyof Row]]))));
++    expect(totals(home.payouts)).toEqual(totals(full.payouts));
++    expect(totals(home.payouts)).toEqual({ current: 22.5, previous: 20, contracts: 5 });
++    expect(home.payouts.find(row => row.id === "row-1")?.sourceToken).toBe(createHash("sha256").update("same").digest("hex").slice(0, 24));
++    expect(home.payouts.some(row => row.id === "row-10")).toBe(false);
++  });
++
++  it("keeps a scanned cursor when a whole page is outside the production period", async () => {
++    mocks.records.set("outside", { payoutDate: new Date(to), sourceContractSignedDate: new Date(from - 1), amount: 50 });
++    mocks.records.set("inside", { payoutDate: new Date(monthStart), amount: 75 });
++    const first = await read(params(true, { limit: "1" }));
++    expect(first.payouts).toEqual([]);
++    expect(first.hasMore).toBe(true);
++    expect(first.nextCursorToken).toBeTruthy();
++    const second = await read(params(true, { limit: "1", cursor: first.nextCursorToken! }));
++    expect(second.payouts.map(row => row.id)).toEqual(["inside"]);
++    expect(second.hasMore).toBe(false);
++    expect(second.nextCursorToken).toBeNull();
++  });
++
++  it("retains the same query failure fallback and filters its unbounded selection afterward", async () => {
++    mocks.failBounded = true;
++    mocks.records.set("legacy", { payoutDate: new Date(from - 1), sourceContractSignedDate: new Date(monthStart), amount: 35 });
++    const full = await read(params(false));
++    const home = await read(params(true));
++    expect(totals(home.payouts)).toEqual(totals(full.payouts));
++    expect(home.payouts[0].amount).toBe(35);
++    const queries = mocks.reads.mock.calls.map(([entry]) => entry).filter(entry => entry.kind === "payout");
++    expect(queries.map(query => Boolean(query.from))).toEqual([true, false, true, false]);
++    expect(queries[3].fields).toEqual(["payoutDate", "amount", "sourceKey", "sourceContractSignedDate"]);
++  });
++
++  it("reduces synthetic response bytes and enrichment reads without reducing payout-document reads", async () => {
++    for (let index = 0; index < 100; index++) {
++      mocks.records.set(`payout-${String(index).padStart(3, "0")}`, {
++        payoutDate: new Date(monthStart + index), sourceContractSignedDate: new Date(monthStart),
++        amount: 1.25, sourceKey: `source-${index}`, sourceOwnerEmail: "source@example.test", sourceEntryId: `entry-${index}`,
++        note: "Synthetic unused note ".repeat(40), productKey: "cppAuto", frequencyRaw: "annual", tipsterPercent: 10,
++      });
++    }
++    const full = await read(params(false));
++    const fullReads = mocks.reads.mock.calls.map(([entry]) => entry);
++    mocks.reads.mockClear();
++    const home = await read(params(true));
++    const homeReads = mocks.reads.mock.calls.map(([entry]) => entry);
++    expect(home.payouts).toHaveLength(full.payouts.length);
++    expect(totals(home.payouts)).toEqual(totals(full.payouts));
++    expect(fullReads.filter(entry => entry.kind === "payout")).toHaveLength(1);
++    expect(homeReads.filter(entry => entry.kind === "payout")).toHaveLength(1);
++    expect(fullReads.filter(entry => entry.kind === "entry")).toHaveLength(100);
++    expect(fullReads.filter(entry => entry.kind === "profile")).toHaveLength(2);
++    expect(homeReads.filter(entry => entry.kind === "entry")).toHaveLength(0);
++    expect(homeReads.filter(entry => entry.kind === "profile")).toHaveLength(1);
++    const evidence = {
++      rows: home.payouts.length,
++      fullBytes: Buffer.byteLength(JSON.stringify(full)), homeBytes: Buffer.byteLength(JSON.stringify(home)),
++      payoutQueryCalls: { full: 1, home: 1 }, enrichmentDocumentReads: { full: 101, home: 0 },
++    };
++    expect(evidence.homeBytes).toBeLessThan(evidence.fullBytes / 3);
++    console.info("Synthetic TIP projection evidence (not production latency):", JSON.stringify(evidence));
++  });
++
++  it.each<Record<string, string>>([
++    { productionFrom: "" }, { productionTo: "" }, { productionFrom: "NaN" },
++    { productionFrom: "1.5" }, { productionTo: String(from) },
++    { productionTo: String(from + 94 * 86_400_000) }, { productionTo: "9007199254740991" },
++  ])("rejects invalid home bounds %j before any payout query", async overrides => {
++    expect((await GET(request(params(true, overrides)))).status).toBe(400);
++    expect(mocks.reads.mock.calls.some(([entry]) => entry.kind === "payout")).toBe(false);
++  });
++
++  it("does not apply home validation to the existing full list", async () => {
++    expect((await GET(request(params(false, { productionFrom: "invalid", shape: "other" })))).status).toBe(200);
++  });
++
++  it("keeps authentication, impersonation and rate-limit guards before payout reads", async () => {
++    expect((await GET(request(params(true), false))).status).toBe(401);
++    expect(mocks.reads).not.toHaveBeenCalled();
++    mocks.impersonation.mockResolvedValueOnce({ ok: false, status: 403, error: "Synthetic scope denied" });
++    expect((await GET(request(params(true)))).status).toBe(403);
++    expect(mocks.reads).not.toHaveBeenCalled();
++    mocks.rate.mockResolvedValueOnce({ allowed: false });
++    expect((await GET(request(params(true)))).status).toBe(429);
++    expect(mocks.reads.mock.calls.some(([entry]) => entry.kind === "payout")).toBe(false);
++  });
++});
+diff --git a/src/app/api/tip-payouts/list/route.ts b/src/app/api/tip-payouts/list/route.ts
+--- a/src/app/api/tip-payouts/list/route.ts
++++ b/src/app/api/tip-payouts/list/route.ts
+@@ -18,6 +18,7 @@
+ const TIP_PAYOUTS_RATE_LIMIT_WINDOW_MS = 60_000;
+ const PAGE_SIZE_DEFAULT = 100;
+ const PAGE_SIZE_MAX = 200;
++const HOME_PERIOD_MAX_MS = 93 * 24 * 60 * 60 * 1000;
+ 
+ type FirestoreTimestamp = {
+   seconds: number;
+@@ -43,11 +44,15 @@
+ 
+ type TipPayoutsListResponse = {
+   ok: true;
+-  payouts: TipPayoutListItem[];
++  payouts: TipPayoutListItem[] | HomeTipPayoutListItem[];
+   hasMore: boolean;
+   nextCursor: number | null;
+   nextCursorToken: string | null;
+ };
++
++type HomeTipPayoutListItem = Pick<TipPayoutListItem,
++  "id" | "payoutDate" | "amount" | "sourceToken" | "sourceContractSignedDate"
++>;
+ 
+ type CursorTokenPayload = {
+   ts: number;
+@@ -415,6 +420,22 @@
+     }
+ 
+     const search = req.nextUrl.searchParams;
++    const homeShape = search.get("shape") === "home";
++    const productionFrom = Number(search.get("productionFrom"));
++    const productionTo = Number(search.get("productionTo"));
++    if (homeShape && (
++      !search.get("productionFrom")?.trim() || !search.get("productionTo")?.trim() ||
++      !Number.isSafeInteger(productionFrom) || !Number.isSafeInteger(productionTo) ||
++      !Number.isFinite(new Date(productionFrom).getTime()) || !Number.isFinite(new Date(productionTo).getTime()) ||
++      productionTo <= productionFrom || productionTo - productionFrom > HOME_PERIOD_MAX_MS
++    )) {
++      const response = NextResponse.json(
++        { ok: false, error: "Chybí platné období TIP přehledu." } satisfies TipPayoutsErrorResponse,
++        { status: 400 }
++      );
++      applyRateLimitHeaders(response.headers, rateLimitResult);
++      return response;
++    }
+     const rawLimit = Number(search.get("limit"));
+     const pageSize =
+       Number.isFinite(rawLimit) && rawLimit > 0
+@@ -441,7 +462,10 @@
+       if (cursor) {
+         query = query.startAfter(new Date(cursor.ts), cursor.id);
+       }
+-      return query.limit(pageSize + 1);
++      const pageQuery = query.limit(pageSize + 1);
++      return homeShape
++        ? pageQuery.select("payoutDate", "amount", "sourceKey", "sourceContractSignedDate")
++        : pageQuery;
+     };
+ 
+     const readSnapshot = async (ownerDocId: string, usePayoutFrom: boolean) => {
+@@ -498,9 +522,30 @@
+         adviserEmail: normalizeEmail(raw.adviserEmail) || null,
+       };
+     });
+-    const fallbackClientNames = await loadFallbackClientNames(payoutRows);
+-    const fallbackSourceOwnerNames = await loadFallbackSourceOwnerNames(payoutRows);
+-    const payouts: TipPayoutListItem[] = payoutRows.map((row) => {
++    let payouts: TipPayoutListItem[] | HomeTipPayoutListItem[];
++    if (homeShape) {
++      // Preserve the existing payoutFrom query/fallback selection. These bounds
++      // only filter that selection by the home calculation's production date.
++      // Pagination always advances across scanned documents, including an empty
++      // filtered page; cashflow's full list remains unchanged.
++      payouts = payoutRows.filter((row) => {
++        const signedTs = typeof row.sourceContractSignedDate === "number" && Number.isFinite(row.sourceContractSignedDate)
++          ? row.sourceContractSignedDate : null;
++        const payoutTs = typeof row.payoutDate === "number" && Number.isFinite(row.payoutDate)
++          ? row.payoutDate : null;
++        const productionTs = signedTs ?? payoutTs;
++        return productionTs != null && productionTs >= productionFrom && productionTs < productionTo;
++      }).map((row) => ({
++        id: row.id,
++        payoutDate: row.payoutDate,
++        amount: row.amount,
++        sourceToken: row.sourceToken,
++        sourceContractSignedDate: row.sourceContractSignedDate,
++      }));
++    } else {
++      const fallbackClientNames = await loadFallbackClientNames(payoutRows);
++      const fallbackSourceOwnerNames = await loadFallbackSourceOwnerNames(payoutRows);
++      payouts = payoutRows.map((row) => {
+       const key = sourceEntryKey(row.sourceOwnerEmail, row.sourceEntryId);
+       const sourceOwnerEmail = row.sourceOwnerEmail || row.adviserEmail;
+       return {
+@@ -520,7 +565,8 @@
+         sourceContractSignedDate: row.sourceContractSignedDate,
+         adviserEmail: row.adviserEmail,
+       };
+-    });
++      });
++    }
+ 
+     const lastDoc = docs[docs.length - 1] ?? null;
+     const lastRaw = (lastDoc?.data() ?? {}) as Record<string, unknown>;
+diff --git a/src/app/home/components/MonthlyGoalSection.tsx b/src/app/home/components/MonthlyGoalSection.tsx
+--- a/src/app/home/components/MonthlyGoalSection.tsx
++++ b/src/app/home/components/MonthlyGoalSection.tsx
+@@ -13,6 +13,7 @@
+   progress: number;
+   progressTone: string;
+   loading: boolean;
++  unavailable?: boolean;
+   isLiteUI: boolean;
+   onSaveGoal: (value: number) => Promise<void>;
+ };
+@@ -57,6 +58,7 @@
+   monthlyGoal,
+   progress,
+   loading,
++  unavailable = false,
+   isLiteUI,
+   onSaveGoal,
+ }: Props) {
+@@ -148,11 +150,12 @@
+           <p className={styles.amount}>{goalDisplayValue}</p>
+           <div className={styles.goalPercent}>
+             <span className={styles.label}>{copy.completed}</span>
+-            {loading ? <span className={styles.loading} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span> : <strong>{progressLabel} %</strong>}
++            {loading ? <span className={styles.loading} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span>
++              : unavailable ? <span role="status">Plnění není k dispozici</span> : <strong>{progressLabel} %</strong>}
+           </div>
+         </div>
+-        <div className={styles.progress} data-complete={rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loading ? undefined : progressForBar} aria-valuetext={loading ? copy.loading : `${progressLabel} %`}>
+-          <div className={styles.progressFill} style={{ width: `${loading ? 0 : progressForBar}%` }} />
++        <div className={styles.progress} data-complete={!loading && !unavailable && rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loading || unavailable ? undefined : progressForBar} aria-valuetext={loading ? copy.loading : unavailable ? "Plnění není k dispozici" : `${progressLabel} %`}>
++          <div className={styles.progressFill} style={{ width: `${loading || unavailable ? 0 : progressForBar}%` }} />
+         </div>
+         <div className={styles.scale}><span>0 %</span><span>100 %</span></div>
+       </div>
+diff --git a/src/app/home/components/ProductionLoading.test.tsx b/src/app/home/components/ProductionLoading.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/app/home/components/ProductionLoading.test.tsx
+@@ -0,0 +1,98 @@
++// @vitest-environment happy-dom
++
++import { act } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++vi.mock("./AnimatedNumbers", () => ({
++  AnimatedMoney: ({ value }: { value: number }) => <span data-money={value}>{value}</span>,
++  AnimatedNumber: ({ value }: { value: number }) => <span data-count={value}>{value}</span>,
++}));
++vi.mock("./ProductionIllustration", () => ({ ProductionIllustration: () => null }));
++vi.mock("next/image", () => ({ default: () => null }));
++import { ProductionSummarySection } from "./ProductionSummarySection";
++import { MonthlyGoalSection } from "./MonthlyGoalSection";
++
++const production = {
++  language: "cs" as const, loading: false, showTeamBox: true,
++  myPremiums: { lifeMonthly: 10, otherAnnual: 20 }, teamPremiums: { lifeMonthly: 30, otherAnnual: 40 },
++  myContractsCount: 1, myImmediateSum: 111, myImmediatePrevSum: 100,
++  myTipContractsCount: 2, myTipImmediateSum: 333, myTipImmediatePrevSum: 300,
++  teamContractsCount: 3, teamImmediateSum: 222, teamImmediatePrevSum: 200,
++  totalContractsCount: 4, totalWithTeam: 666, totalPrevWithTeam: 600, isLiteUI: true,
++};
++const goal = { language: "cs" as const, monthlyGoal: 1000, progress: 66.6, progressTone: "", loading: false, isLiteUI: true, onSaveGoal: async () => {} };
++
++describe("production UI with an unfinished TIP summary", () => {
++  let root: Root;
++  let container: HTMLDivElement;
++  const cards = (tone: string) => Array.from(container.querySelectorAll(`article[data-tone="${tone}"]`));
++  beforeEach(() => {
++    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++    container = document.createElement("div");
++    root = createRoot(container);
++  });
++  afterEach(async () => {
++    await act(async () => root.unmount());
++    vi.unstubAllGlobals();
++  });
++
++  it("shows finished own/team amounts while hiding pending TIP/combined amounts and trends", async () => {
++    await act(async () => root.render(<ProductionSummarySection {...production} tipSummaryLoading />));
++    expect(cards("own").every(card => card.querySelector('[data-money="111"]'))).toBe(true);
++    expect(cards("team").every(card => card.querySelector('[data-money="222"]'))).toBe(true);
++    for (const tone of ["tip", "total"]) {
++      expect(cards(tone).length).toBeGreaterThan(0);
++      expect(cards(tone).every(card => card.textContent?.includes("Načítám TIP produkci"))).toBe(true);
++      expect(cards(tone).every(card => !card.querySelector('[data-money="333"], [data-money="666"]'))).toBe(true);
++      expect(cards(tone).every(card => !card.textContent?.includes("vs. min. měsíc"))).toBe(true);
++    }
++    expect(cards("tip").every(card => !card.querySelector("[data-count]"))).toBe(true);
++    expect(cards("total").every(card => card.querySelector('[data-count="4"]'))).toBe(true);
++  });
++
++  it("shows an unavailable TIP/combined result without hiding completed regular production", async () => {
++    await act(async () => root.render(<ProductionSummarySection {...production} tipSummaryError="TIP není dostupný. Obnovte stránku." />));
++    expect(container.querySelector('[role="alert"]')?.textContent).toContain("TIP není dostupný");
++    expect(cards("own")[0].querySelector('[data-money="111"]')).not.toBeNull();
++    expect(cards("team")[0].querySelector('[data-money="222"]')).not.toBeNull();
++    expect(cards("tip")[0].querySelector('[data-money="333"]')).toBeNull();
++    expect(cards("total")[0].querySelector('[data-money="666"]')).toBeNull();
++    expect(cards("total")[0].textContent).toContain("TIP produkce není k dispozici");
++  });
++
++  it("returns the exact final amounts and trends when TIP completes", async () => {
++    await act(async () => root.render(<ProductionSummarySection {...production} />));
++    expect(cards("tip")[0].querySelector('[data-money="333"]')).not.toBeNull();
++    expect(cards("total")[0].querySelector('[data-money="666"]')).not.toBeNull();
++    expect(cards("total")[0].textContent).toContain("vs. min. měsíc");
++  });
++
++  it("shows pending TIP existence for a solo advisor, then removes the card after a confirmed empty result", async () => {
++    await act(async () => root.render(<ProductionSummarySection {...production} showTeamBox={false} myTipContractsCount={0} tipSummaryLoading />));
++    expect(cards("tip").length).toBeGreaterThan(0);
++    expect(cards("own")[0].querySelector('[data-money="111"]')).not.toBeNull();
++    await act(async () => root.render(<ProductionSummarySection {...production} showTeamBox={false} myTipContractsCount={0} />));
++    expect(cards("tip")).toHaveLength(0);
++    expect(cards("total")).toHaveLength(0);
++  });
++
++  it("leaves a team-only card fully usable while TIP is pending", async () => {
++    await act(async () => root.render(<ProductionSummarySection {...production} showOnlyTeamProduction tipSummaryLoading />));
++    expect(cards("team")[0].querySelector('[data-money="222"]')).not.toBeNull();
++    expect(cards("tip")).toHaveLength(0);
++    expect(cards("total")).toHaveLength(0);
++    expect(container.textContent).not.toContain("Načítám TIP");
++  });
++
++  it.each(["pending", "unavailable"])("does not expose a final percentage or progress value while %s", async state => {
++    await act(async () => root.render(<MonthlyGoalSection {...goal} loading={state === "pending"} unavailable={state === "unavailable"} />));
++    const bar = container.querySelector('[role="progressbar"]')!;
++    expect(bar.getAttribute("aria-valuenow")).toBeNull();
++    expect(bar.getAttribute("data-complete")).toBe("false");
++    expect(container.textContent).not.toContain("66,6 %");
++    expect(container.querySelector('[role="status"]')).not.toBeNull();
++    await act(async () => root.render(<MonthlyGoalSection {...goal} />));
++    expect(bar.getAttribute("aria-valuenow")).toBe("66.6");
++    expect(container.textContent).toContain("66,6 %");
++  });
++});
+diff --git a/src/app/home/components/ProductionSummarySection.tsx b/src/app/home/components/ProductionSummarySection.tsx
+--- a/src/app/home/components/ProductionSummarySection.tsx
++++ b/src/app/home/components/ProductionSummarySection.tsx
+@@ -24,6 +24,8 @@
+ type Props = {
+   language: AppLanguage;
+   loading: boolean;
++  tipSummaryLoading?: boolean;
++  tipSummaryError?: string | null;
+   showTeamBox: boolean;
+   showOnlyTeamProduction?: boolean;
+   myPremiums: ProductionPremiums;
+@@ -166,6 +168,9 @@
+   amountValue: number;
+   previousAmountValue: number;
+   premiums?: ProductionPremiums;
++  amountPending?: boolean;
++  amountUnavailable?: boolean;
++  countUnavailable?: boolean;
+ };
+ 
+ type ProductionCard = ProductionColumnProps & {
+@@ -185,6 +190,9 @@
+   amountValue,
+   previousAmountValue,
+   premiums,
++  amountPending = false,
++  amountUnavailable = false,
++  countUnavailable = false,
+ }: ProductionColumnProps) {
+   return (
+     <article className={styles.column} data-tone={tone}>
+@@ -196,11 +204,14 @@
+       {description && <p className={styles.description}>{description}</p>}
+       <div className={styles.commission}>
+         <p className={styles.label}>{commissionLabel}</p>
+-        <p className={styles.amount}><AnimatedMoney value={amountValue} /></p>
+-        <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />
++        <p className={styles.amount} aria-label={amountPending ? "Načítám TIP produkci" : amountUnavailable ? "Částka není k dispozici" : undefined}>
++          {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} />}</p>
++        {amountPending || amountUnavailable ? <p role="status" className="text-xs leading-relaxed text-slate-600">
++          {amountPending ? "Načítám TIP produkci…" : "TIP produkce není k dispozici."}
++        </p> : <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />}
+       </div>
+       <div className={styles.contractCount}>
+-        <span>{countLabel}</span><strong><AnimatedNumber value={countValue} /></strong>
++        <span>{countLabel}</span><strong>{countUnavailable ? "—" : <AnimatedNumber value={countValue} />}</strong>
+       </div>
+       {premiums && (
+         <dl aria-label="Pojistné sjednaných smluv" className={styles.premiums}>
+@@ -221,6 +232,8 @@
+ export function ProductionSummarySection({
+   language,
+   loading,
++  tipSummaryLoading = false,
++  tipSummaryError = null,
+   showTeamBox,
+   showOnlyTeamProduction = false,
+   myPremiums,
+@@ -246,7 +259,7 @@
+   const containerShellClass = `${styles.shell} ${isLiteUI ? "" : styles.elevated}`;
+   // Karta tipařské produkce má být viditelná už od první tipařské smlouvy,
+   // i kdyby její provize byla zatím nulová.
+-  const hasTipContract = myTipContractsCount > 0;
++  const hasTipContract = myTipContractsCount > 0 || tipSummaryLoading || Boolean(tipSummaryError);
+   const ownCard: ProductionCard = {
+     id: "own",
+     tone: "own",
+@@ -290,6 +303,9 @@
+     countValue: myTipContractsCount,
+     amountValue: myTipImmediateSum,
+     previousAmountValue: myTipImmediatePrevSum,
++    amountPending: tipSummaryLoading,
++    amountUnavailable: Boolean(tipSummaryError),
++    countUnavailable: tipSummaryLoading || Boolean(tipSummaryError),
+   };
+   const totalCard: ProductionCard = {
+     id: "total",
+@@ -304,6 +320,8 @@
+     countValue: totalContractsCount,
+     amountValue: totalWithTeam,
+     previousAmountValue: totalPrevWithTeam,
++    amountPending: tipSummaryLoading,
++    amountUnavailable: Boolean(tipSummaryError),
+     premiums: {
+       lifeMonthly: myPremiums.lifeMonthly + teamPremiums.lifeMonthly,
+       otherAnnual: myPremiums.otherAnnual + teamPremiums.otherAnnual,
+@@ -452,6 +470,7 @@
+           description={showOnlyTeamProduction ? "Připravuji přehled týmových smluv a provizí." : copy.loadingDescription}
+           accentLabel={copy.loadingAccent} visual="production" /></div>
+       ) : <>
++        {!showOnlyTeamProduction && tipSummaryError && <p role="alert" className="px-5 py-3 text-sm text-amber-900">{tipSummaryError}</p>}
+         <div className={styles.mobile}>
+           <div ref={mobileCarouselRef} onScroll={handleMobileCarouselScroll} className={styles.carousel}>
+             <div className={styles.track}>
+diff --git a/src/app/home/useHomeData.test.tsx b/src/app/home/useHomeData.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/app/home/useHomeData.test.tsx
+@@ -0,0 +1,300 @@
++// @vitest-environment happy-dom
++
++import { act, StrictMode, useLayoutEffect } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  user: { uid: "advisor-uid", getIdToken: vi.fn() },
++  profile: vi.fn(), read: vi.fn(), write: vi.fn(), clear: vi.fn(),
++}));
++vi.mock("@/app/firebase", () => ({ auth: { get currentUser() { return mocks.user; } } }));
++vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profile }));
++vi.mock("./homeCacheStorage", () => ({
++  readPersistedHomeCache: mocks.read, writePersistedHomeCache: mocks.write, clearPersistedHomeCache: mocks.clear,
++}));
++import { invalidateHomeCache, useHomeData, type EntryDoc } from "./useHomeData";
++
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  let reject!: (reason: unknown) => void;
++  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
++  return { promise, resolve, reject };
++}
++const day = (month: number, date = 10) => new Date(2026, month, date).getTime();
++const entry = (id: string, month: number, amount: number, owner = "advisor@example.test"): EntryDoc => ({
++  id, userEmail: owner, contractSignedDate: day(month), productKey: "cppAuto", inputAmount: 1000, frequencyRaw: "annual",
++  items: [{ code: "A101", amount, title: "Synthetic commission" }],
++  managerOverrides: [{ email: "advisor@example.test", items: [{ code: "A101", amount, title: "Synthetic override" }] }],
++});
++const own = [entry("own-current", 8, 100), entry("own-previous", 7, 50),
++  { ...entry("inherited", 8, 999), acquisitionType: "inherited" as const }];
++const team = [entry("team-current", 8, 200, "team@example.test"), entry("team-previous", 7, 75, "team@example.test")];
++const contracts = (items: EntryDoc[], hasTeam = true) => Response.json({ ok: true, contracts: items, hasTeam, hasMore: false });
++const tips = (payouts: unknown[] = [], extra: Record<string, unknown> = {}) => Response.json({ ok: true, payouts, hasMore: false, ...extra });
++const currentTips = () => tips([
++  { id: "one", sourceToken: "same-contract", sourceContractSignedDate: day(8), payoutDate: day(9), amount: 30 },
++  { id: "two", sourceToken: "same-contract", sourceContractSignedDate: day(8), payoutDate: day(8), amount: 20 },
++  { id: "previous", sourceToken: "previous", sourceContractSignedDate: day(7), payoutDate: day(8), amount: 40 },
++  { id: "fallback", payoutDate: day(8), amount: 10 },
++  { id: "old-signed", sourceContractSignedDate: day(6), payoutDate: day(8), amount: 999 },
++  { id: "future", sourceContractSignedDate: day(9, 1), payoutDate: day(8), amount: 999 },
++  { id: "negative", payoutDate: day(8), amount: -10 },
++]);
++
++describe("home summaries independent of TIP completion", () => {
++  let root: Root | null;
++  let props: Parameters<typeof useHomeData>[0];
++  let latest: ReturnType<typeof useHomeData>;
++  let calls: Array<{ url: URL; signal: AbortSignal | null; job: ReturnType<typeof deferred<Response>> }>;
++  let onCommit: (() => void) | undefined;
++  function Harness(input: typeof props) {
++    const result = useHomeData(input);
++    useLayoutEffect(() => { latest = result; onCommit?.(); });
++    return null;
++  }
++  const render = async (next = props, strict = false) => {
++    props = next;
++    await act(async () => root!.render(strict ? <StrictMode><Harness {...props} /></StrictMode> : <Harness {...props} />));
++  };
++  const tipCalls = () => calls.filter(call => call.url.pathname.includes("tip-payouts"));
++  const contractCalls = (scope: string) => calls.filter(call => call.url.searchParams.get("scope") === scope);
++  const settleSummaries = async () => {
++    await act(async () => {
++      contractCalls("my")[0].job.resolve(contracts(own));
++      contractCalls("team")[0].job.resolve(contracts(team));
++    });
++  };
++  beforeEach(() => {
++    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++    vi.useFakeTimers({ toFake: ["Date"] });
++    vi.setSystemTime(new Date(2026, 8, 12, 12));
++    mocks.user.uid = "advisor-uid";
++    mocks.user.getIdToken.mockReset().mockResolvedValue("synthetic-token");
++    mocks.profile.mockReset().mockResolvedValue({ ok: true, profile: { monthlyGoal: 1000 } });
++    mocks.read.mockReset().mockReturnValue(null);
++    mocks.write.mockReset();
++    invalidateHomeCache("advisor@example.test");
++    invalidateHomeCache("other@example.test");
++    calls = [];
++    onCommit = undefined;
++    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async (input, init) => {
++      const job = deferred<Response>();
++      calls.push({ url: new URL(String(input), "https://example.test"), signal: init?.signal ?? null, job });
++      // Keep resolving cancelled transports to test the hook's own fences.
++      return job.promise;
++    }));
++    vi.spyOn(console, "error").mockImplementation(() => {});
++    props = { email: "advisor@example.test", loadPersonalHistory: false, teamHistoryMonths: 0, initialHasTeam: true };
++    root = createRoot(document.createElement("div"));
++  });
++  afterEach(async () => {
++    if (root) await act(async () => root!.unmount());
++    vi.useRealTimers();
++    vi.restoreAllMocks();
++    vi.unstubAllGlobals();
++  });
++
++  it("publishes own/team totals and starts history while TIP is stalled, caching only the complete result", async () => {
++    await render({ ...props, loadPersonalHistory: true, teamHistoryMonths: 6 });
++    expect(calls).toHaveLength(3);
++    await settleSummaries();
++    expect(latest).toMatchObject({ summaryLoading: false, loading: false, tipSummaryLoading: true,
++      historyLoading: true, myContractsCount: 1, myImmediateSum: 100, myImmediatePrevSum: 50,
++      teamContractsCount: 1, teamImmediateSum: 200, teamImmediatePrevSum: 75 });
++    expect(contractCalls("my")).toHaveLength(2);
++    expect(mocks.write).not.toHaveBeenCalled();
++    await act(async () => contractCalls("my")[1].job.resolve(contracts([...own, entry("historic", 4, 25)])));
++    expect(contractCalls("team")).toHaveLength(2);
++    await act(async () => contractCalls("team")[1].job.resolve(contracts(team)));
++    expect(latest.historyLoading).toBe(false);
++    expect(latest.myEntries.some(item => item.id === "historic")).toBe(true);
++    expect(latest.teamEntries).toHaveLength(2);
++    expect(latest.tipSummaryLoading).toBe(true);
++    expect(mocks.write).not.toHaveBeenCalled();
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    expect(latest).toMatchObject({ tipSummaryLoading: false, tipSummaryError: null,
++      myTipContractsCount: 2, myTipImmediateSum: 60, myTipImmediatePrevSum: 40 });
++    expect(mocks.write).toHaveBeenCalledTimes(1);
++    expect(mocks.write.mock.calls[0][0]).toContain("v6-complete-tip-production|advisor-uid|advisor@example.test|");
++    expect(mocks.write.mock.calls[0][1]).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60 });
++    const query = tipCalls()[0].url.searchParams;
++    expect(Object.fromEntries(query)).toEqual({ limit: "100", shape: "home", payoutFrom: String(day(7, 1)),
++      productionFrom: String(day(7, 1)), productionTo: String(day(9, 1)) });
++  });
++
++  it("keeps complete own/team/history usable when TIP fails and never persists a fake zero", async () => {
++    await render();
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(Response.json({ ok: false, error: "Unavailable" }, { status: 503 })));
++    expect(latest).toMatchObject({ summaryLoading: false, historyLoading: false, tipSummaryLoading: false,
++      myImmediateSum: 100, teamImmediateSum: 200 });
++    expect(latest.tipSummaryError).toContain("TIP produkci se nepodařilo načíst");
++    expect(mocks.write).not.toHaveBeenCalled();
++    // Re-mounting cannot seed from an incomplete in-memory cache either.
++    await act(async () => root!.unmount());
++    root = createRoot(document.createElement("div"));
++    await render();
++    expect(latest.summaryLoading).toBe(true);
++    expect(latest.myImmediateSum).toBe(0);
++  });
++
++  it("continues through an empty projected TIP page and preserves signing-date precedence", async () => {
++    await render();
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(tips([], { hasMore: true, nextCursorToken: "scanned-next" })));
++    expect(tipCalls()).toHaveLength(2);
++    expect(tipCalls()[1].url.searchParams.get("cursor")).toBe("scanned-next");
++    expect(latest.tipSummaryLoading).toBe(true);
++    await act(async () => tipCalls()[1].job.resolve(currentTips()));
++    expect(latest.myTipImmediateSum).toBe(60);
++    expect(latest.myTipImmediatePrevSum).toBe(40);
++  });
++
++  it.each(["missing", "repeat", "cap"])("reports incomplete TIP pagination (%s) without writing full cache", async failure => {
++    await render();
++    await settleSummaries();
++    if (failure === "missing") {
++      await act(async () => tipCalls()[0].job.resolve(tips([], { hasMore: true })));
++    } else {
++      const count = failure === "cap" ? 60 : 2;
++      for (let index = 0; index < count; index++) {
++        await act(async () => tipCalls()[index].job.resolve(tips([], {
++          hasMore: true, nextCursorToken: failure === "repeat" ? "same" : `page-${index}`,
++        })));
++      }
++    }
++    expect(latest.tipSummaryError).not.toBeNull();
++    expect(latest.tipSummaryLoading).toBe(false);
++    expect(mocks.write).not.toHaveBeenCalled();
++  });
++
++  it.each(["email", "uid", "logout"])("hides the previous account on the first commit and ignores its late TIP after changing %s", async changed => {
++    await render();
++    await settleSummaries();
++    const oldTip = tipCalls()[0];
++    onCommit = () => {
++      expect(latest.myImmediateSum).toBe(0);
++      expect(latest.teamEntries).toEqual([]);
++      expect(latest.myTipImmediateSum).toBe(0);
++    };
++    if (changed === "uid") mocks.user.uid = "new-uid";
++    await render({ ...props, email: changed === "logout" ? null : changed === "email" ? "other@example.test" : props.email });
++    onCommit = undefined;
++    expect(oldTip.signal?.aborted).toBe(true);
++    await act(async () => oldTip.job.resolve(currentTips()));
++    expect(latest.myTipImmediateSum).toBe(0);
++    expect(mocks.write).not.toHaveBeenCalled();
++    if (changed === "logout") expect(latest.tipSummaryLoading).toBe(false);
++  });
++
++  it("prevents a cancelled history request from writing either cache or old entries", async () => {
++    await render({ ...props, loadPersonalHistory: true });
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    const oldHistory = contractCalls("my")[1];
++    await render({ ...props, email: "other@example.test" });
++    await act(async () => oldHistory.job.resolve(contracts([entry("old-private", 4, 999)])));
++    expect(latest.myEntries).toEqual([]);
++    expect(mocks.write).not.toHaveBeenCalled();
++    expect(oldHistory.signal?.aborted).toBe(true);
++  });
++
++  it("restores the same complete cache immediately but does not share it across UIDs", async () => {
++    await render();
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    await act(async () => root!.unmount());
++    root = createRoot(document.createElement("div"));
++    await render();
++    expect(latest).toMatchObject({ summaryLoading: false, historyLoading: false, tipSummaryLoading: false,
++      myImmediateSum: 100, myTipImmediateSum: 60, teamImmediateSum: 200 });
++    mocks.user.uid = "different-uid";
++    await render();
++    expect(latest.myImmediateSum).toBe(0);
++    expect(latest.summaryLoading).toBe(true);
++  });
++
++  it.each(["tip-first", "regular-first"])("never publishes mixed cached/fresh totals during a %s refresh", async order => {
++    await render();
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    await act(async () => root!.unmount());
++    root = createRoot(document.createElement("div"));
++    await render();
++    const freshRegular = async () => {
++      await act(async () => {
++        contractCalls("my")[1].job.resolve(contracts([entry("fresh-own", 8, 500)]));
++        contractCalls("team")[1].job.resolve(contracts([entry("fresh-team", 8, 600, "team@example.test")]));
++      });
++    };
++    const freshTip = async () => {
++      await act(async () => tipCalls()[1].job.resolve(tips([{ id: "fresh-tip", payoutDate: day(8), amount: 900 }])));
++    };
++    expect(latest).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60, tipSummaryLoading: false });
++    if (order === "tip-first") {
++      await freshTip();
++      // Keep the entire complete cached summary until regular data is ready.
++      expect(latest).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60, tipSummaryLoading: false });
++      await freshRegular();
++    } else {
++      await freshRegular();
++      expect(latest).toMatchObject({ myImmediateSum: 500, teamImmediateSum: 600, tipSummaryLoading: true });
++      expect(mocks.write).toHaveBeenCalledTimes(1);
++      await freshTip();
++    }
++    expect(latest).toMatchObject({ myImmediateSum: 500, teamImmediateSum: 600, myTipImmediateSum: 900, tipSummaryLoading: false });
++    expect(mocks.write).toHaveBeenCalledTimes(2);
++  });
++
++  it.each(["success", "failure"])("finishes loading when TIP settles with %s before regular production fails", async outcome => {
++    await render();
++    await act(async () => {
++      if (outcome === "success") tipCalls()[0].job.resolve(currentTips());
++      else tipCalls()[0].job.reject(new Error("TIP unavailable"));
++    });
++    await act(async () => contractCalls("my")[0].job.resolve(Response.json({ ok: false }, { status: 503 })));
++    expect(latest.summaryLoading).toBe(false);
++    expect(latest.tipSummaryLoading).toBe(false);
++    expect(latest.tipSummaryError).not.toBeNull();
++    expect(mocks.write).not.toHaveBeenCalled();
++  });
++
++  it("ignores a range-only completion when auth changes before the next React render", async () => {
++    await render();
++    await settleSummaries();
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    await render({ ...props, teamHistoryMonths: 6 });
++    const oldRange = contractCalls("team")[1];
++    mocks.user.uid = "other-uid";
++    await act(async () => oldRange.job.resolve(contracts([entry("private-old-range", 4, 999)])));
++    expect(latest.teamEntries.some(item => item.id === "private-old-range")).toBe(false);
++    mocks.user.uid = "advisor-uid";
++    await render({ ...props, teamHistoryMonths: 0 });
++    await render({ ...props, teamHistoryMonths: 6 });
++    expect(contractCalls("team")).toHaveLength(3); // No cancelled range cache was populated.
++  });
++
++  it("does not apply a late cached-profile result after logout or start requests for it", async () => {
++    const profile = deferred<unknown>();
++    mocks.profile.mockReturnValue(profile.promise);
++    await render();
++    await render({ ...props, email: null });
++    await act(async () => profile.resolve({ ok: true, profile: { monthlyGoal: 999 } }));
++    expect(calls).toHaveLength(0);
++    expect(latest.userMeta).toBeNull();
++    expect(mocks.write).not.toHaveBeenCalled();
++  });
++
++  it("leaves no stale results or cache writes after unmount and StrictMode replay", async () => {
++    await render(props, true);
++    // StrictMode's cancelled profile continuation never starts a request.
++    expect(tipCalls()).toHaveLength(1);
++    await settleSummaries();
++    await act(async () => root!.unmount());
++    root = null;
++    await act(async () => tipCalls()[0].job.resolve(currentTips()));
++    expect(tipCalls()[0].signal?.aborted).toBe(true);
++    expect(mocks.write).not.toHaveBeenCalled();
++  });
++});
+diff --git a/src/app/home/useHomeData.ts b/src/app/home/useHomeData.ts
+--- a/src/app/home/useHomeData.ts
++++ b/src/app/home/useHomeData.ts
+@@ -1,5 +1,5 @@
+ import { isInheritedContract } from "@/app/lib/inheritedContracts";
+-import { useEffect, useRef, useState } from "react";
++import { useEffect, useLayoutEffect, useRef, useState } from "react";
+ 
+ import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
+ 
+@@ -99,6 +99,8 @@
+   teamImmediateSum: number;
+   teamImmediatePrevSum: number;
+   summaryLoading: boolean;
++  tipSummaryLoading: boolean;
++  tipSummaryError: string | null;
+   historyLoading: boolean;
+   loading: boolean;
+ };
+@@ -141,6 +143,7 @@
+   nextCursorToken?: string | null;
+   nextCursor?: number | null;
+ };
++type TipSummary = { tipContractsCount: number; tipImmediateSum: number; tipImmediatePrevSum: number };
+ 
+ type UserProfileApiResponse = {
+   ok?: boolean;
+@@ -153,7 +156,8 @@
+ };
+ 
+ const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
+-const HOME_CACHE_VERSION = "v5-production-premiums";
++// v5 could persist an apparent TIP zero after a failed request.
++const HOME_CACHE_VERSION = "v6-complete-tip-production";
+ const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
+ const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+ const teamHistoryRangeCache = new Map<
+@@ -196,14 +200,15 @@
+ const normalizeTeamHistoryMonths = (months: number): number =>
+   Math.max(0, Math.min(12, Math.floor(months)));
+ 
+-const teamHistoryRangeCacheKey = (email: string, months: number): string => {
++const teamHistoryRangeCacheKey = (email: string, months: number, uid: string): string => {
+   const now = new Date();
+-  return `${email.toLowerCase()}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
++  return `${email.toLowerCase()}|${uid}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
+ };
+ 
+ const fetchTeamHistoryRange = async (
+   email: string,
+-  months: number
++  months: number,
++  signal: AbortSignal
+ ): Promise<EntryDoc[]> => {
+   const currentUser = auth.currentUser;
+   if (!currentUser) throw new Error("Nejsi přihlášený.");
+@@ -226,6 +231,7 @@
+   let pages = 0;
+ 
+   while (hasMore && pages < 60) {
++    if (signal.aborted) throw new DOMException("Home request cancelled", "AbortError");
+     const params = new URLSearchParams({
+       scope: "team",
+       shape: "home",
+@@ -238,6 +244,7 @@
+       fetch(`/api/contracts/list?${params.toString()}`, {
+         headers: { Authorization: `Bearer ${token}` },
+         cache: "no-store",
++        signal,
+       });
+ 
+     let response = await requestWithToken(bearerToken);
+@@ -317,10 +324,43 @@
+   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
+   const [teamImmediatePrevSum, setTeamImmediatePrevSum] = useState(0);
+   const [summaryLoading, setSummaryLoading] = useState(true);
++  const [tipSummaryLoading, setTipSummaryLoading] = useState(true);
++  const [tipSummaryError, setTipSummaryError] = useState<string | null>(null);
+   const [historyLoading, setHistoryLoading] = useState(true);
+   const [loading, setLoading] = useState(true);
+   const baseLoadKeyRef = useRef<string | null>(null);
+   const baseLoadCompletedRef = useRef(false);
++  const uid = auth.currentUser?.uid ?? "";
++  const identity = email ? `${uid}|${email.toLowerCase()}` : null;
++  const [stateIdentity, setStateIdentity] = useState(identity);
++  const activeIdentity = useRef<string | null>(null);
++  if (stateIdentity !== identity) {
++    setStateIdentity(identity);
++    setUserMeta(null);
++    setMyEntries([]);
++    setTeamEntries([]);
++    setHasTeam(false);
++    setMyPremiums({ lifeMonthly: 0, otherAnnual: 0 });
++    setTeamPremiums({ lifeMonthly: 0, otherAnnual: 0 });
++    setMyContractsCount(0);
++    setMyImmediateSum(0);
++    setMyImmediatePrevSum(0);
++    setMyTipContractsCount(0);
++    setMyTipImmediateSum(0);
++    setMyTipImmediatePrevSum(0);
++    setTeamContractsCount(0);
++    setTeamImmediateSum(0);
++    setTeamImmediatePrevSum(0);
++    setSummaryLoading(Boolean(identity));
++    setTipSummaryLoading(Boolean(identity));
++    setTipSummaryError(null);
++    setHistoryLoading(Boolean(identity));
++    setLoading(Boolean(identity));
++  }
++  useLayoutEffect(() => {
++    activeIdentity.current = identity;
++    return () => { if (activeIdentity.current === identity) activeIdentity.current = null; };
++  }, [identity]);
+ 
+   useEffect(() => {
+     if (!email) {
+@@ -329,7 +369,7 @@
+       return;
+     }
+ 
+-    const baseLoadKey = `${email}|${initialHasTeam ? "team" : "solo"}|${
++    const baseLoadKey = `${identity}|${initialHasTeam ? "team" : "solo"}|${
+       loadPersonalHistory ? "history" : "summary"
+     }|${reloadKey}`;
+     const rangeOnlyChange =
+@@ -337,8 +377,10 @@
+ 
+     if (rangeOnlyChange) {
+       let rangeCancelled = false;
++      const rangeController = new AbortController();
++      const rangeIsCurrent = () => !rangeCancelled && activeIdentity.current === identity && (auth.currentUser?.uid ?? "") === uid;
+       const safeMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
+-      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths);
++      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths, uid);
+       const cached = teamHistoryRangeCache.get(cacheKey);
+ 
+       if (cached && Date.now() - cached.ts < TEAM_HISTORY_CACHE_TTL_MS) {
+@@ -346,18 +388,19 @@
+         setHistoryLoading(false);
+         return () => {
+           rangeCancelled = true;
++          rangeController.abort();
+         };
+       }
+ 
+       setHistoryLoading(true);
+-      void fetchTeamHistoryRange(email, safeMonths)
++      void fetchTeamHistoryRange(email, safeMonths, rangeController.signal)
+         .then((entries) => {
+-          if (rangeCancelled) return;
++          if (!rangeIsCurrent()) return;
+           teamHistoryRangeCache.set(cacheKey, { ts: Date.now(), entries });
+           setTeamEntries(entries);
+         })
+         .catch((error) => {
+-          if (rangeCancelled) return;
++          if (!rangeIsCurrent()) return;
+           if ((error as { status?: number } | null)?.status === 403) {
+             setTeamEntries([]);
+           } else {
+@@ -365,20 +408,26 @@
+           }
+         })
+         .finally(() => {
+-          if (!rangeCancelled) setHistoryLoading(false);
++          if (rangeIsCurrent()) setHistoryLoading(false);
+         });
+ 
+       return () => {
+         rangeCancelled = true;
++        rangeController.abort();
+       };
+     }
+ 
+     baseLoadKeyRef.current = baseLoadKey;
+     baseLoadCompletedRef.current = false;
+     let cancelled = false;
++    const controller = new AbortController();
++    let tipUpdatesAllowed = true;
++    let tipSettled = false;
++    const isCurrent = () => !cancelled && activeIdentity.current === identity && (auth.currentUser?.uid ?? "") === uid;
++    const assertCurrent = () => { if (!isCurrent()) throw new DOMException("Home request cancelled", "AbortError"); };
+ 
+     const applyCachedHomeState = (payload: HomeCachePayload) => {
+-      if (cancelled) return;
++      if (!isCurrent()) return;
+       setUserMeta(payload.userMeta);
+       setMyEntries(payload.myEntries);
+       setTeamEntries(payload.teamEntries);
+@@ -394,6 +443,8 @@
+       setTeamContractsCount(payload.teamContractsCount);
+       setTeamImmediateSum(payload.teamImmediateSum);
+       setTeamImmediatePrevSum(payload.teamImmediatePrevSum ?? 0);
++      setTipSummaryLoading(false);
++      setTipSummaryError(null);
+     };
+ 
+     const load = async () => {
+@@ -404,13 +455,15 @@
+ 
+       const loadViaContractsApi = async (
+         cacheKey: string
+-      ): Promise<HomeCachePayload> => {
++      ): Promise<HomeCachePayload | null> => {
++        assertCurrent();
+         const currentUser = auth.currentUser;
+         if (!currentUser) {
+           throw new Error("Nejsi přihlášený.");
+         }
+ 
+         let bearerToken = await currentUser.getIdToken();
++        assertCurrent();
+         const now = new Date();
+         const currentMonth = now.getMonth();
+         const currentYear = now.getFullYear();
+@@ -434,6 +487,7 @@
+           cursor?: string | null,
+           signedFromMs?: number
+         ): Promise<ContractsApiResponse> => {
++          assertCurrent();
+           const params = new URLSearchParams({ scope, limit: "50" });
+           params.set("shape", "home");
+           if (Number.isFinite(signedFromMs)) {
+@@ -445,6 +499,7 @@
+             fetch(`/api/contracts/list?${params.toString()}`, {
+               headers: { Authorization: `Bearer ${token}` },
+               cache: "no-store",
++              signal: controller.signal,
+             });
+ 
+           let res = await requestWithToken(bearerToken);
+@@ -454,6 +509,7 @@
+           }
+ 
+           const data = (await res.json()) as ContractsApiResponse;
++          assertCurrent();
+           if (!res.ok || data.ok === false) {
+             const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
+               status?: number;
+@@ -467,14 +523,16 @@
+         const requestTipPayouts = async (
+           cursor?: string | null
+         ): Promise<TipPayoutsApiResponse> => {
+-          const params = new URLSearchParams({ limit: "100" });
+-          params.set("payoutFrom", String(summaryRangeStartMs));
++          assertCurrent();
++          const params = new URLSearchParams({ limit: "100", shape: "home", payoutFrom: String(summaryRangeStartMs),
++            productionFrom: String(summaryRangeStartMs), productionTo: String(nextMonthStart.getTime()) });
+           if (cursor) params.set("cursor", cursor);
+ 
+           const requestWithToken = async (token: string) =>
+             fetch(`/api/tip-payouts/list?${params.toString()}`, {
+               headers: { Authorization: `Bearer ${token}` },
+               cache: "no-store",
++              signal: controller.signal,
+             });
+ 
+           let res = await requestWithToken(bearerToken);
+@@ -484,7 +542,8 @@
+           }
+ 
+           const data = (await res.json()) as TipPayoutsApiResponse;
+-          if (!res.ok || data.ok === false) {
++          assertCurrent();
++          if (!res.ok || data.ok !== true || !Array.isArray(data.payouts) || typeof data.hasMore !== "boolean") {
+             const err = new Error(
+               data.error || "Nepodařilo se načíst TIP výplaty."
+             ) as Error & { status?: number };
+@@ -494,23 +553,19 @@
+           return data;
+         };
+ 
+-        const collectTipSummaryForRecentMonths = async (): Promise<{
+-          tipContractsCount: number;
+-          tipImmediateSum: number;
+-          tipImmediatePrevSum: number;
+-        }> => {
++        const collectTipSummaryForRecentMonths = async (): Promise<TipSummary> => {
+           const tipSourcesInCurrentMonth = new Set<string>();
+           let tipImmediateSum = 0;
+           let tipImmediatePrevSum = 0;
+           let cursor: string | null = null;
+           let hasMore = true;
+           let pages = 0;
++          const seenCursors = new Set<string>();
+ 
+           while (hasMore && pages < 60) {
+             const response = await requestTipPayouts(cursor);
+             pages += 1;
+             const chunk = Array.isArray(response.payouts) ? response.payouts : [];
+-            if (chunk.length === 0) break;
+ 
+             chunk.forEach((item) => {
+               const signedTs =
+@@ -557,8 +612,11 @@
+               response.nextCursorToken,
+               response.nextCursor
+             );
+-            hasMore = Boolean(response.hasMore) && Boolean(cursor);
+-          }
++            hasMore = response.hasMore === true;
++            if (hasMore && (!cursor || seenCursors.has(cursor))) throw new Error("Neúplné stránkování TIP produkce.");
++            if (cursor) seenCursors.add(cursor);
++          }
++          if (hasMore) throw new Error("Načtení TIP produkce není úplné.");
+ 
+           return {
+             tipContractsCount: tipSourcesInCurrentMonth.size,
+@@ -567,19 +625,36 @@
+           };
+         };
+ 
+-        const tipSummaryPromise = collectTipSummaryForRecentMonths().catch(
+-          (tipErr) => {
+-            console.warn(
+-              "[home] načtení TIP výplat selhalo, pokračuji bez nich.",
+-              tipErr
+-            );
+-            return {
+-              tipContractsCount: 0,
+-              tipImmediateSum: 0,
+-              tipImmediatePrevSum: 0,
+-            };
+-          }
+-        );
++        let freshSummaryReady = false;
++        let stagedTipSummary: TipSummary | null = null;
++        const publishTipState = () => {
++          if (!isCurrent() || !tipUpdatesAllowed) return;
++          if (!tipSettled) {
++            setTipSummaryLoading(true);
++            setTipSummaryError(null);
++          } else if (stagedTipSummary) {
++            setMyTipContractsCount(stagedTipSummary.tipContractsCount);
++            setMyTipImmediateSum(stagedTipSummary.tipImmediateSum);
++            setMyTipImmediatePrevSum(stagedTipSummary.tipImmediatePrevSum);
++            setTipSummaryLoading(false);
++            setTipSummaryError(null);
++          } else {
++            setTipSummaryLoading(false);
++            setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
++          }
++        };
++        // A seeded result stays coherent until the fresh regular summary is
++        // ready. Never combine a new TIP amount with cached own/team amounts.
++        const tipSummaryPromise = collectTipSummaryForRecentMonths().then(value => {
++          tipSettled = true;
++          stagedTipSummary = value;
++          if (freshSummaryReady) publishTipState();
++          return value;
++        }, () => {
++          tipSettled = true;
++          if (freshSummaryReady) publishTipState();
++          return null;
++        });
+ 
+         type ScopeCollection = {
+           entries: EntryDoc[];
+@@ -772,24 +847,22 @@
+         );
+         const ownPremiums = summarizeProductionPremiums(ownSummaryResult.entries, monthStart, nextMonthStart);
+         const teamPremiums = summarizeProductionPremiums(teamSummaryEntries, monthStart, nextMonthStart);
+-        const tipSummary = await tipSummaryPromise;
+-
+-        if (!cancelled) {
++        if (isCurrent()) {
++          freshSummaryReady = true;
+           setHasTeam(hasTeamValue);
+           setMyPremiums(ownPremiums);
+           setTeamPremiums(teamPremiums);
+           setMyContractsCount(ownMonth.count);
+           setMyImmediateSum(ownMonth.immediate);
+           setMyImmediatePrevSum(ownPrevMonth.immediate);
+-          setMyTipContractsCount(tipSummary.tipContractsCount);
+-          setMyTipImmediateSum(tipSummary.tipImmediateSum);
+-          setMyTipImmediatePrevSum(tipSummary.tipImmediatePrevSum);
+           setTeamContractsCount(teamMonth.count);
+           setTeamImmediateSum(teamMonth.immediate);
+           setTeamImmediatePrevSum(teamPrevMonth.immediate);
+           setSummaryLoading(false);
+           setLoading(false);
+-        }
++          publishTipState();
++        }
++        assertCurrent();
+ 
+         // Fáze 2: historie pro graf/leaderboard (může doběhnout později)
+         const ownHistoryResult =
+@@ -820,13 +893,29 @@
+             })
+           : teamSummaryEntries;
+ 
++        assertCurrent();
++        const ownHistoryEntries = loadPersonalHistory ? ownHistoryResult.entries : [];
++        setMyEntries(ownHistoryEntries);
++        setTeamEntries(filteredTeamEntries);
++        setHasTeam(hasTeamValue);
++        setHistoryLoading(false);
++        teamHistoryRangeCache.set(
++          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths, uid),
++          { ts: Date.now(), entries: filteredTeamEntries }
++        );
++        // History and regular production are usable while TIP is still loading.
++        // Only the complete result may become the shared/persisted home cache.
++        const tipSummary = await tipSummaryPromise;
++        assertCurrent();
++        if (!tipSummary) return null;
++
+         const payload: HomeCachePayload = {
+           userMeta: {
+             position,
+             commissionMode: myMode,
+             monthlyGoal: monthlyGoal ?? null,
+           },
+-          myEntries: loadPersonalHistory ? ownHistoryResult.entries : [],
++          myEntries: ownHistoryEntries,
+           teamEntries: filteredTeamEntries,
+           hasTeam: hasTeamValue,
+           myPremiums: ownPremiums,
+@@ -842,18 +931,6 @@
+           teamImmediatePrevSum: teamPrevMonth.immediate,
+         };
+ 
+-        teamHistoryRangeCache.set(
+-          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths),
+-          { ts: Date.now(), entries: payload.teamEntries }
+-        );
+-
+-        if (!cancelled) {
+-          setMyEntries(payload.myEntries);
+-          setTeamEntries(payload.teamEntries);
+-          setHasTeam(payload.hasTeam);
+-          setHistoryLoading(false);
+-        }
+-
+         homeDataCache[cacheKey] = {
+           ts: Date.now(),
+           payload,
+@@ -869,7 +946,7 @@
+         const forceReload = reloadKey > 0;
+ 
+         const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
+-        const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
++        const cacheKey = `${HOME_CACHE_VERSION}|${uid}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
+         const cached = homeDataCache[cacheKey];
+         if (cached?.payload) {
+           fallbackPayload = cached.payload;
+@@ -897,6 +974,8 @@
+           setLoading(true);
+           setSummaryLoading(true);
+           setHistoryLoading(true);
++          setTipSummaryLoading(true);
++          setTipSummaryError(null);
+         } else {
+           setLoading(false);
+           setSummaryLoading(false);
+@@ -935,7 +1014,8 @@
+           }
+         }
+ 
+-        if (!cancelled) {
++        assertCurrent();
++        if (isCurrent()) {
+           setUserMeta({
+             position,
+             commissionMode: myMode,
+@@ -943,20 +1023,26 @@
+           });
+         }
+         const payload = await loadViaContractsApi(cacheKey);
+-        if (!cancelled) {
++        if (isCurrent() && payload) {
+           applyCachedHomeState(payload);
+           setSummaryLoading(false);
+           setHistoryLoading(false);
+         }
+       } catch (e) {
++        if (!isCurrent()) return;
++        tipUpdatesAllowed = false;
++        controller.abort();
+         console.error("Chyba při načítání produkce:", e);
+-        if (!cancelled && fallbackPayload) {
++        if (fallbackPayload) {
+           applyCachedHomeState(fallbackPayload);
+           setSummaryLoading(false);
+           setHistoryLoading(false);
++        } else {
++          setTipSummaryLoading(false);
++          setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
+         }
+       } finally {
+-        if (!cancelled) {
++        if (isCurrent()) {
+           baseLoadCompletedRef.current = true;
+           setLoading(false);
+           setSummaryLoading(false);
+@@ -968,8 +1054,9 @@
+     void load();
+     return () => {
+       cancelled = true;
++      controller.abort();
+     };
+-  }, [email, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
++  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
+ 
+   return {
+     userMeta,
+@@ -989,6 +1076,8 @@
+     teamImmediateSum,
+     teamImmediatePrevSum,
+     summaryLoading,
++    tipSummaryLoading,
++    tipSummaryError,
+     historyLoading,
+     loading,
+   };
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -614,6 +614,8 @@
+     teamImmediateSum,
+     teamImmediatePrevSum,
+     summaryLoading,
++    tipSummaryLoading,
++    tipSummaryError,
+     historyLoading,
+   } = useHomeData({
+     email: advisorDataEmail,
+@@ -1097,7 +1099,7 @@
+ 
+   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
+   const showTeamBox = hasTeam;
+-  const hasTipContract = myTipContractsCount > 0;
++  const hasTipContract = myTipContractsCount > 0 || tipSummaryLoading || Boolean(tipSummaryError);
+   // Poradce bez týmu potřebuje plnou šířku až ve chvíli, kdy vedle vlastní
+   // produkce zobrazujeme také samostatnou kartu tipařské produkce.
+   const shouldExpandProductionSummary =
+@@ -1140,6 +1142,7 @@
+   const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
+   const homeRefreshBusy =
+     summaryLoading ||
++    tipSummaryLoading ||
+     historyLoading ||
+     expectedPayoutLoading ||
+     goldLoading;
+@@ -1206,6 +1209,8 @@
+           <ProductionSummarySection
+             language={language}
+             loading={summaryLoading}
++            tipSummaryLoading={tipSummaryLoading}
++            tipSummaryError={tipSummaryError}
+             showTeamBox={showTeamBox}
+             showOnlyTeamProduction={showOnlyTeamProduction}
+             myPremiums={myPremiums}
+@@ -1233,7 +1238,8 @@
+             monthlyGoal={monthlyGoal}
+             progress={progress}
+             progressTone={progressTone}
+-            loading={summaryLoading}
++            loading={summaryLoading || (showTeamBox && tipSummaryLoading)}
++            unavailable={showTeamBox && Boolean(tipSummaryError)}
+             isLiteUI={isLiteUI}
+             onSaveGoal={saveMonthlyGoal}
+           />
+diff --git a/tests/firestore/tipPayoutHome.test.ts b/tests/firestore/tipPayoutHome.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/firestore/tipPayoutHome.test.ts
+@@ -0,0 +1,111 @@
++import { Firestore, Timestamp } from "firebase-admin/firestore";
++import { NextRequest } from "next/server";
++import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
++
++const state = vi.hoisted(() => ({ db: null as import("firebase-admin/firestore").Firestore | null }));
++const email = "tip-home-sdk@example.test";
++vi.mock("@/lib/server/firebaseAdmin", () => ({
++  get adminDb() { return state.db; },
++  adminAuth: { verifyIdToken: async () => ({ email: "tip-home-sdk@example.test", uid: "synthetic-tip-home" }) },
++}));
++vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorSetupError: async () => null }));
++vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: async () => null }));
++vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: async () => ({ ok: true }) }));
++vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: async () => ({ allowed: true }), applyRateLimitHeaders: () => {} }));
++
++import { GET } from "../../src/app/api/tip-payouts/list/route";
++
++const from = Date.UTC(2026, 7, 1);
++const current = Date.UTC(2026, 8, 1);
++const to = Date.UTC(2026, 9, 1);
++const read = async (home: boolean, limit = 1, cursor?: string) => {
++  const query = new URLSearchParams({ payoutFrom: String(from), limit: String(limit),
++    ...(home ? { shape: "home", productionFrom: String(from), productionTo: String(to) } : {}),
++  });
++  if (cursor) query.set("cursor", cursor);
++  const response = await GET(new NextRequest(`https://example.test/api/tip-payouts/list?${query}`, {
++    headers: { authorization: "Bearer synthetic-tip-home" },
++  }));
++  expect(response.status).toBe(200);
++  return response.json() as Promise<{
++    payouts: Array<{ id: string; amount: number; payoutDate: number | null; sourceContractSignedDate: number | null; sourceToken: string | null }>;
++    hasMore: boolean;
++    nextCursorToken: string | null;
++  }>;
++};
++
++beforeAll(() => {
++  if (!/^(127\.0\.0\.1|localhost):\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? "")) {
++    throw new Error("TIP home SDK tests require a local Firestore emulator; live Firestore is forbidden.");
++  }
++  state.db = new Firestore({ projectId: "demo-bohemika-rules" });
++});
++beforeEach(async () => {
++  await state.db!.collection("users").doc(email).set({ email, fullName: "Synthetic TIP Home" });
++});
++afterEach(async () => {
++  if (state.db) await state.db.recursiveDelete(state.db.collection("users").doc(email));
++});
++afterAll(async () => { if (state.db) await state.db.terminate(); });
++
++describe("home TIP projection with the real Firestore SDK", () => {
++  it("keeps payout ordering and cursors across an empty production page with the selected fields", async () => {
++    const payouts = state.db!.collection("users").doc(email).collection("tipPayouts");
++    const common = { amount: 25.5, sourceKey: "synthetic-source", note: "synthetic unused field".repeat(500), clientName: "Synthetic Client", sourceOwnerName: "Synthetic Owner" };
++    const batch = state.db!.batch();
++    batch.set(payouts.doc("z-outside"), { ...common, payoutDate: new Date(to), sourceContractSignedDate: new Date(from - 1) });
++    batch.set(payouts.doc("b-inside"), { ...common, payoutDate: new Date(current), sourceContractSignedDate: new Date(current) });
++    batch.set(payouts.doc("a-inside"), { ...common, payoutDate: new Date(current), sourceContractSignedDate: null });
++    batch.set(payouts.doc("missing-payout"), { ...common, sourceContractSignedDate: new Date(current) });
++    batch.set(payouts.doc("before-payout-window"), { ...common, payoutDate: new Date(from - 1), sourceContractSignedDate: new Date(current) });
++    await batch.commit();
++
++    const projected = await payouts.orderBy("payoutDate", "desc")
++      .where("payoutDate", ">=", new Date(from))
++      .select("payoutDate", "amount", "sourceKey", "sourceContractSignedDate").get();
++    expect(projected.docs).toHaveLength(3);
++    expect(projected.docs.every(doc => !Object.hasOwn(doc.data(), "note") && !Object.hasOwn(doc.data(), "clientName"))).toBe(true);
++
++    const first = await read(true);
++    expect(first.payouts).toEqual([]);
++    expect(first.hasMore).toBe(true);
++    expect(first.nextCursorToken).toBeTruthy();
++    const second = await read(true, 1, first.nextCursorToken!);
++    expect(second.payouts.map(row => row.id)).toEqual(["b-inside"]);
++    expect(second.hasMore).toBe(true);
++    const third = await read(true, 1, second.nextCursorToken!);
++    expect(third.payouts.map(row => row.id)).toEqual(["a-inside"]);
++    expect(third.hasMore).toBe(false);
++    expect(third.nextCursorToken).toBeNull();
++    const full = await read(false, 100);
++    expect(full.payouts.map(row => row.id)).toEqual(["z-outside", "b-inside", "a-inside"]);
++    expect([...second.payouts, ...third.payouts].reduce((sum, row) => sum + row.amount, 0)).toBe(51);
++  });
++
++  it("preserves mixed legacy source date representations and exact month boundaries", async () => {
++    const payouts = state.db!.collection("users").doc(email).collection("tipPayouts");
++    const dates: unknown[] = [
++      Timestamp.fromMillis(from), current, new Date(current).toISOString(), null,
++      "invalid", new Date(from - 1), new Date(to),
++    ];
++    const batch = state.db!.batch();
++    dates.forEach((sourceDate, index) => batch.set(payouts.doc(`legacy-${index}`), {
++      payoutDate: new Date(current), sourceContractSignedDate: sourceDate,
++      amount: index + 0.25, sourceKey: `synthetic-${index}`,
++      clientName: "Synthetic Client", sourceOwnerName: "Synthetic Owner",
++    }));
++    batch.set(payouts.doc("legacy-missing-source-date"), { payoutDate: new Date(current), amount: 10.25 });
++    await batch.commit();
++    const full = await read(false, 100);
++    const home = await read(true, 100);
++    const expected = full.payouts.filter(row => {
++      const production = row.sourceContractSignedDate ?? row.payoutDate;
++      return production != null && production >= from && production < to;
++    }).map(row => ({
++      id: row.id, payoutDate: row.payoutDate, amount: row.amount,
++      sourceToken: row.sourceToken, sourceContractSignedDate: row.sourceContractSignedDate,
++    }));
++    expect(home.payouts).toEqual(expected);
++    expect(home.payouts).toHaveLength(6);
++  });
++});

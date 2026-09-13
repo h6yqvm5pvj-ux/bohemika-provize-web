@@ -13,6 +13,7 @@ type Props = {
   progress: number;
   progressTone: string;
   loading: boolean;
+  unavailable?: boolean;
   isLiteUI: boolean;
   onSaveGoal: (value: number) => Promise<void>;
 };
@@ -57,6 +58,7 @@ export function MonthlyGoalSection({
   monthlyGoal,
   progress,
   loading,
+  unavailable = false,
   isLiteUI,
   onSaveGoal,
 }: Props) {
@@ -111,7 +113,7 @@ export function MonthlyGoalSection({
   };
 
   return (
-    <section className={`monthly-goal-card ${styles.card} ${isLiteUI ? "" : styles.elevated}`}>
+    <section className={`monthly-goal-card ${styles.card} ${styles.goal} ${isLiteUI ? "" : styles.elevated}`}>
       <Image src="/icons/cilmesice.webp" alt="" width={3000} height={3000} quality={100} aria-hidden="true" className={`${styles.ghost} ${styles.goalGhost}`} />
       {editOpen && createPortal(
         <div className={styles.modalBackdrop}>
@@ -142,19 +144,21 @@ export function MonthlyGoalSection({
       <div className={styles.content}>
         <div className={styles.goalHeader}>
           <h2 className={styles.title}><span className={styles.icon}><Target aria-hidden="true" /></span>{copy.monthlyGoal}</h2>
-          <button type="button" onClick={() => setEditOpen(true)} className={styles.button}><Pencil size={12} aria-hidden="true" />{copy.editGoal}</button>
+          <button type="button" onClick={() => setEditOpen(true)} className={styles.goalEdit} aria-label={copy.editGoal} title={copy.editGoal} aria-haspopup="dialog" aria-expanded={editOpen}>
+            <Pencil size={15} aria-hidden="true" />
+          </button>
         </div>
         <div className={styles.goalNumbers}>
           <p className={styles.amount}>{goalDisplayValue}</p>
-          <div className={styles.goalPercent}>
+          <div className={styles.goalPercent} data-complete={!loading && !unavailable && rawProgress >= 100}>
             <span className={styles.label}>{copy.completed}</span>
-            {loading ? <span className={styles.loading} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span> : <strong>{progressLabel} %</strong>}
+            {loading ? <span className={styles.loading} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span>
+              : unavailable ? <span role="status">Plnění není k dispozici</span> : <strong>{progressLabel} %</strong>}
           </div>
         </div>
-        <div className={styles.progress} data-complete={rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loading ? undefined : progressForBar} aria-valuetext={loading ? copy.loading : `${progressLabel} %`}>
-          <div className={styles.progressFill} style={{ width: `${loading ? 0 : progressForBar}%` }} />
+        <div className={styles.progress} data-complete={!loading && !unavailable && rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loading || unavailable ? undefined : progressForBar} aria-valuetext={loading ? copy.loading : unavailable ? "Plnění není k dispozici" : `${progressLabel} %`}>
+          <div className={styles.progressFill} style={{ width: `${loading || unavailable ? 0 : progressForBar}%` }} />
         </div>
-        <div className={styles.scale}><span>0 %</span><span>100 %</span></div>
       </div>
     </section>
   );

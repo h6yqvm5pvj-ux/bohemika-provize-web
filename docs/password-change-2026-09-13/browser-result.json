@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "scope": "Actual Firebase client SDK and dialog; synthetic intercepted Firebase/API responses; no external connections or real account mutations.",
+  "results": [
+    {
+      "name": "email-confirmation-and-wrong-code",
+      "passed": true
+    },
+    {
+      "name": "firebase-sdk-totp-reauthentication",
+      "passed": true
+    },
+    {
+      "name": "expired-code-clears-secrets",
+      "passed": true
+    }
+  ],
+  "apiRequests": 39,
+  "blockedExternal": 0
+}

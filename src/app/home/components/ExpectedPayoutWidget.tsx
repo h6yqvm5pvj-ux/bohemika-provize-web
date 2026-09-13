@@ -65,7 +65,7 @@ export function ExpectedPayoutWidget({
       setCommissionStatementsReady(false);
       try {
         const token = await user.getIdToken();
-        const response = await fetch("/api/commission-statements?limit=240", {
+        const response = await fetch("/api/commission-statements?shape=cashflow&limit=240", {
           headers: {
             Authorization: `Bearer ${token}`,
           },

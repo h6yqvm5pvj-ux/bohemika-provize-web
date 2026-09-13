@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import {
   Apple,
@@ -25,7 +25,6 @@ import {
 
 import type { PasskeyCredentialSummary } from "@/app/lib/passkeys";
 import { formatDateTime } from "../subscriptionSettings";
-import { getPasswordPolicyChecks } from "../passwordPolicy";
 
 const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
   "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
@@ -58,18 +57,12 @@ type AccountSecurityPanelProps = {
   className: string;
   fieldClass: string;
   userEmail: string;
-  userFullName: string;
   mfaEnabled: boolean;
   securityScoreLabel: string;
   securityScorePercent: number;
   passkeySummary: string;
   mfaLastVerifiedAt: string | null;
-  showPasswordForm: boolean;
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-  changingPassword: boolean;
-  passwordStatus: InlineStatus | null;
+  passwordDialog: ReactNode;
   passkeySupported: boolean;
   passkeyPlatformAvailable: boolean;
   passkeyCredentials: PasskeyCredentialSummary[];
@@ -95,11 +88,6 @@ type AccountSecurityPanelProps = {
   mfaTotpLabel: string | null;
   mfaStatus: InlineStatus | null;
   onShowPasswordForm: () => void;
-  onCancelPasswordChange: () => void;
-  onCurrentPasswordChange: (value: string) => void;
-  onNewPasswordChange: (value: string) => void;
-  onConfirmPasswordChange: (value: string) => void;
-  onChangePassword: () => void | Promise<void>;
   onRefreshAccountSessions: () => void | Promise<void>;
   onRevokeOtherSessions: () => void | Promise<void>;
   onPasskeyNameChange: (value: string) => void;
@@ -130,18 +118,12 @@ export function AccountSecurityPanel({
   className,
   fieldClass,
   userEmail,
-  userFullName,
   mfaEnabled,
   securityScoreLabel,
   securityScorePercent,
   passkeySummary,
   mfaLastVerifiedAt,
-  showPasswordForm,
-  currentPassword,
-  newPassword,
-  confirmPassword,
-  changingPassword,
-  passwordStatus,
+  passwordDialog,
   passkeySupported,
   passkeyPlatformAvailable,
   passkeyCredentials,
@@ -167,11 +149,6 @@ export function AccountSecurityPanel({
   mfaTotpLabel,
   mfaStatus,
   onShowPasswordForm,
-  onCancelPasswordChange,
-  onCurrentPasswordChange,
-  onNewPasswordChange,
-  onConfirmPasswordChange,
-  onChangePassword,
   onRefreshAccountSessions,
   onRevokeOtherSessions,
   onPasskeyNameChange,
@@ -198,20 +175,7 @@ export function AccountSecurityPanel({
   const [mfaReauthDigits, setMfaReauthDigits] = useState<string[]>(() =>
     Array.from({ length: MFA_CODE_LENGTH }, () => "")
   );
-  const passwordPolicyChecks = useMemo(
-    () =>
-      getPasswordPolicyChecks({
-        password: newPassword,
-        confirmPassword,
-        userFullName,
-        userEmail,
-      }),
-    [confirmPassword, newPassword, userEmail, userFullName]
-  );
-  const passwordInputTouched = newPassword.length > 0 || confirmPassword.length > 0;
-  const passwordPolicyPassed = passwordPolicyChecks.every((check) => check.passed);
-  const passwordSubmitDisabled =
-    changingPassword || currentPassword.length === 0 || !passwordPolicyPassed;
+
   const activeAccountSessions = accountSessions.filter((session) => session.status === "active");
   const historicalAccountSessions = accountSessions.filter(
     (session) => session.status !== "active"
@@ -394,9 +358,7 @@ export function AccountSecurityPanel({
                   <KeyRound size={12} strokeWidth={2} className="text-slate-500" aria-hidden="true" />
                   <span>Změna hesla</span>
                 </div>
-                {!showPasswordForm && (
-                  <span className="text-xs text-slate-500">Ověření původním heslem</span>
-                )}
+                <span className="text-xs text-slate-500">{mfaEnabled ? "Heslo a kód z Authenticatoru" : "Heslo a potvrzení e-mailem"}</span>
               </div>
 
               <button
@@ -408,13 +370,7 @@ export function AccountSecurityPanel({
                 Změnit heslo
               </button>
 
-              {passwordStatus && !showPasswordForm ? (
-                <div
-                  className={`mt-2 rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(passwordStatus)}`}
-                >
-                  {passwordStatus.message}
-                </div>
-              ) : null}
+
             </div>
           </div>
 
@@ -660,6 +616,10 @@ export function AccountSecurityPanel({
           <div className="space-y-3 px-3.5 py-4 sm:px-5 sm:py-5">
             {!mfaEnabled && !mfaEnrollmentSecretKey && (
               <>
+                <p className="text-xs leading-relaxed text-slate-500">
+                  Pokud ještě nemáš ověřený e-mail, pošleme ti odkaz do schránky.
+                  Po jeho potvrzení se vrať a znovu klikni na Zapnout 2FA.
+                </p>
                 <input
                   type="password"
                   autoComplete="current-password"
@@ -945,154 +905,7 @@ export function AccountSecurityPanel({
         </div>
       </div>
       </div>
-      {showPasswordForm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            aria-label="Zavřít změnu hesla"
-            onClick={changingPassword ? undefined : onCancelPasswordChange}
-          />
-          <form
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="change-password-title"
-            className="relative z-10 max-h-[calc(100dvh-1rem)] w-full max-w-xl overflow-y-auto rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:rounded-[30px]"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!passwordSubmitDisabled) void onChangePassword();
-            }}
-          >
-            <div className="settings-password-modal-hero relative overflow-hidden bg-[#0b0717] px-4 py-4 text-white sm:px-5">
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#0b0717_0%,#7c3aed_56%,#c084fc_100%)]" />
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(124,58,237,0.22)_0%,rgba(11,7,23,0)_46%,rgba(168,85,247,0.16)_100%)]" />
-              <div className="relative z-10 flex items-start justify-between gap-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white text-slate-950">
-                    <KeyRound size={18} strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-violet-100/70">
-                      Změna hesla
-                    </p>
-                    <h3 id="change-password-title" className="mt-1 text-xl font-black text-white">
-                      Nastavit nové heslo
-                    </h3>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-violet-100/75">
-                      Změnu potvrdíš původním heslem. Nové heslo musí splnit bezpečnostní zásady.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onCancelPasswordChange}
-                  disabled={changingPassword}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Zavřít změnu hesla"
-                >
-                  <X size={16} strokeWidth={2.2} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
-              <div className="space-y-3">
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  className={fieldClass}
-                  placeholder="Původní heslo"
-                  value={currentPassword}
-                  onChange={(event) => onCurrentPasswordChange(event.target.value)}
-                  disabled={changingPassword}
-                />
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  className={fieldClass}
-                  placeholder="Nové heslo"
-                  value={newPassword}
-                  onChange={(event) => onNewPasswordChange(event.target.value)}
-                  disabled={changingPassword}
-                />
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  className={fieldClass}
-                  placeholder="Potvrď nové heslo"
-                  value={confirmPassword}
-                  onChange={(event) => onConfirmPasswordChange(event.target.value)}
-                  disabled={changingPassword}
-                />
-              </div>
-
-              <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-3">
-                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-                  Zásady bezpečného hesla
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {passwordPolicyChecks.map((check) => {
-                    const failed = passwordInputTouched && !check.passed;
-                    return (
-                      <div
-                        key={check.id}
-                        className={`flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold ${
-                          check.passed
-                            ? "border-violet-200 bg-violet-50 text-violet-800"
-                            : failed
-                              ? "border-rose-200 bg-rose-50 text-rose-700"
-                              : "border-slate-200 bg-white text-slate-600"
-                        }`}
-                      >
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
-                            check.passed
-                              ? "bg-violet-700 text-white"
-                              : failed
-                                ? "bg-rose-100 text-rose-700"
-                                : "bg-slate-100 text-slate-400"
-                          }`}
-                          aria-hidden="true"
-                        >
-                          {check.passed ? "✓" : "•"}
-                        </span>
-                        <span>{check.label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {passwordStatus ? (
-                <div
-                  className={`rounded-2xl border px-3 py-2 text-xs font-semibold ${statusClass(passwordStatus)}`}
-                >
-                  {passwordStatus.message}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
-              <button
-                type="button"
-                onClick={onCancelPasswordChange}
-                disabled={changingPassword}
-                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Zrušit
-              </button>
-              <button
-                type="submit"
-                disabled={passwordSubmitDisabled}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-violet-700 bg-violet-700 px-5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <KeyRound size={15} strokeWidth={2.2} aria-hidden="true" />
-                {changingPassword ? "Měním heslo..." : "Potvrdit změnu"}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
+      {passwordDialog}
       {sessionHistoryOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
           <button

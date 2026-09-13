@@ -1,0 +1,11 @@
+diff --git a/vercel.json b/vercel.json
+--- a/vercel.json
++++ b/vercel.json
+@@ -1,4 +1,7 @@
+ {
++  "regions": [
++    "fra1"
++  ],
+   "crons": [
+     {
+       "path": "/api/cron/contract-lifecycle",

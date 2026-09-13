@@ -1,0 +1,17 @@
+**Navazující změna doručování:** místní aplikace přešla na Firebase jednorázové odkazy doručované přes Resend. Ochrana proti obcházení ověření zůstává; aktuální stav je v [návodu k e-mailům](../auth-email-setup.md). Níže je zachován průběh původní opravy a diagnostiky přímého odesílání z Firebase.
+
+# Oprava ověření e-mailu a zapojení odesílání
+
+Nález 1 je opraven v místním projektu. Původní cesta pro zapnutí 2FA už nemůže nastavit `emailVerified: true`. Nový tok odesílá skutečný Firebase ověřovací e-mail a čeká na potvrzení ve schránce. Obnova hesla v administraci byla převedena z nenastaveného vlastního SMTP na Firebase; veřejné přihlášení nadále používá Firebase SDK a nyní správně rozlišuje stav žádosti a chyby.
+
+Ověření: 2 064 aplikačních testů v 205 souborech prošlo; z toho 32 nových regresních scénářů pro ověřování e-mailu, reset hesla a bezpečnost API. Kontrola typů prošla. Testy blokovaly externí síťová spojení, neobsahovaly produkční přístupové údaje a žádný e-mail neodeslaly. Test průvodce účtem ověřuje, že neověřenému účtu nevznikne 2FA tajemství; po potvrzení z Firebase se obnoví token a nastavení pokračuje.
+
+Samostatná diagnostika pro požadovanou opravu Firebase pouze přečetla projektovou konfiguraci a ověřila přístup serverového klíče k veřejné konfiguraci. Přihlašování e-mailem, výchozí odesílání Googlu, výchozí stránka pro potvrzení a ochrana proti zjišťování existence účtů jsou zapnuté. Konfigurace se neměnila; uživatelské účty, databáze ani úložiště se nečetly. Zobrazeny byly pouze stavové příznaky, bez adres a tajných hodnot.
+
+Po následném výslovném souhlasu uživatele byla 13. 9. 2026 v 10:24 CEST odeslána právě jedna žádost o obnovu hesla na jím určenou adresu. Použila se opravená funkce `sendFirebaseAuthEmail`; Firebase vrátil HTTP 200. Nebyl proveden automatický opakovaný pokus. Adresa ani obsah odpovědi poskytovatele nebyly uloženy do tohoto protokolu. Doručení do schránky čeká na potvrzení příjemcem a příčina dříve nedoručených resetů není tímto prokázána. Změny aplikace nejsou nasazené. Dříve nastavené příznaky ověření nebyly hromadně přepsány.
+
+Podrobnosti a diagnostické příkazy: [nastavení e-mailů](../auth-email-setup.md). Původní důkazový soubor zůstává historickým záznamem stavu před opravou.
+
+**Navazující kontrola nedoručení:** uživatel zprávu nenašel ani ve webmailu, ani ve Spamu. Přečten byl pouze jím určený testovací účet; existuje, je aktivní a používá heslo. Byla potvrzena také shoda číselného ID projektu odesílacího klíče a Firebase Admin. Veřejný MX směřuje na FORPSI. Activity logging je vypnuté; dostupný servisní účet nemá oprávnění číst metadata cloudových logů (HTTP 403). Další e-mail, změna účtu, konfigurace nebo oprávnění neproběhly. Příčina nedoručení není prokázaná; čeká se na kontrolu antispamu a případně dohledání zprávy u poskytovatele pošty.
+
+**Upřesnění uživatele:** nedoručování je dlouhodobé a týkalo se i historických pokusů na Seznam.cz. Šetření proto pokračuje směrem k odesílání z Firebase, nikoli pouze antispamu FORPSI. Další kontrola konfigurace nenašla základní chybu odesílatele, Reply-to, vlastní domény nebo tenantů. Přesná příčina není prokázaná; pro zvolené přímé doručování Googlu je připraven [požadavek na dohledání u podpory Firebase](./firebase-email-support-request.md). Nikam nebyl odeslán. Změny kódu řeší bezpečnost a zapojení volání, ale doručování zatím nelze označit za opravené.

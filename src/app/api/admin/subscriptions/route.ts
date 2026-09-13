@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -249,7 +250,7 @@ async function syncPaidSubscriptionProfileFromPayments(
 
   const latest = paidPayments[0];
   if (latest) {
-    await target.privateRef.set(
+    await trackCashflowWrite(() => target.privateRef.set(
       {
         subscriptionStatus: "active",
         subscriptionPlan: latest.plan,
@@ -260,11 +261,11 @@ async function syncPaidSubscriptionProfileFromPayments(
         subscriptionUpdatedByEmail: adminEmail,
       },
       { merge: true }
-    );
+    ));
     return { revokeSessions: false };
   }
 
-  await target.privateRef.set(
+  await trackCashflowWrite(() => target.privateRef.set(
     {
       subscriptionStatus: FieldValue.delete(),
       subscriptionPlan: FieldValue.delete(),
@@ -275,7 +276,7 @@ async function syncPaidSubscriptionProfileFromPayments(
       subscriptionUpdatedByEmail: adminEmail,
     },
     { merge: true }
-  );
+  ));
 
   return { revokeSessions: Boolean(target.userId) };
 }
@@ -596,6 +597,7 @@ function parsePatchPayload(body: unknown): AdminPatchPayload | { error: string }
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/admin/subscriptions/route:PATCH", async () => {
   try {
     const auth = await getAdminAuthContext(req, {
       minimumRole: "owner",
@@ -623,7 +625,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (parsed.action === "setUnpaid") {
-      await target.privateRef.set(
+      await trackCashflowWrite(() => target.privateRef.set(
         {
           subscriptionStatus: "unpaid",
           subscriptionBlockedReason: parsed.note ?? "Označeno administrátorem.",
@@ -631,7 +633,7 @@ export async function PATCH(req: NextRequest) {
           subscriptionUpdatedByEmail: auth.adminEmail,
         },
         { merge: true }
-      );
+      ));
 
       if (target.userId) {
         await adminAuth.revokeRefreshTokens(target.userId).catch((error) => {
@@ -654,7 +656,7 @@ export async function PATCH(req: NextRequest) {
         );
       }
 
-      await paymentRef.set(
+      await trackCashflowWrite(() => paymentRef.set(
         {
           plan: parsed.plan,
           amountCzk: parsed.amountCzk,
@@ -665,7 +667,7 @@ export async function PATCH(req: NextRequest) {
           updatedByEmail: auth.adminEmail,
         },
         { merge: true }
-      );
+      ));
 
       const syncResult = await syncPaidSubscriptionProfileFromPayments(
         target,
@@ -692,7 +694,7 @@ export async function PATCH(req: NextRequest) {
         );
       }
 
-      await paymentRef.delete();
+      await trackCashflowWrite(() => paymentRef.delete());
 
       const syncResult = await syncPaidSubscriptionProfileFromPayments(
         target,
@@ -711,7 +713,7 @@ export async function PATCH(req: NextRequest) {
     const periodFrom = parsed.periodFrom && isIsoDay(parsed.periodFrom) ? parsed.periodFrom : todayIso;
 
     if (parsed.plan === "unlimited") {
-      await target.privateRef.set(
+      await trackCashflowWrite(() => target.privateRef.set(
         {
           subscriptionStatus: "active",
           subscriptionPlan: "unlimited",
@@ -722,7 +724,7 @@ export async function PATCH(req: NextRequest) {
           subscriptionUpdatedByEmail: auth.adminEmail,
         },
         { merge: true }
-      );
+      ));
 
       return NextResponse.json({ ok: true });
     }
@@ -766,7 +768,7 @@ export async function PATCH(req: NextRequest) {
       },
       { merge: false }
     );
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -776,4 +778,5 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

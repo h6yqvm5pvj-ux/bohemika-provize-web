@@ -221,3 +221,18 @@ describe("existing data isolation", () => {
     }
   });
 });
+
+
+describe("contract history is accessible only through the authorized server API", () => {
+  it("denies direct reads, creation, changes and deletion even for the contract owner", async () => {
+    await seed(`users/${EMAIL}`, profile);
+    await seed(`users/${EMAIL}/entries/history-contract`, { userEmail: EMAIL, contractHistoryId: "history-1" });
+    const path = "contractHistories/history-1/events/event-1";
+    await seed(path, { title: "Historical change", actorEmail: OTHER });
+    const event = doc(actor(), path);
+    await assertFails(getDoc(event));
+    await assertFails(setDoc(doc(actor(), "contractHistories/history-1/events/forged"), { title: "Forged" }));
+    await assertFails(updateDoc(event, { title: "Rewritten" }));
+    await assertFails(deleteDoc(event));
+  });
+});

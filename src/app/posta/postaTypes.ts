@@ -131,6 +131,12 @@ export type MailboxAttachment = {
   sizeBytes: number;
 };
 
+// Client-only content fetched through the authenticated attachment endpoint.
+export type MailboxAttachmentContent = {
+  url: string;
+  blob?: Blob;
+};
+
 export type MailboxReaction = {
   emoji: string;
   userEmails: string[];

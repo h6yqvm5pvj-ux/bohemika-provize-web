@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
 import { fileURLToPath } from "node:url";
@@ -75,7 +77,7 @@ const commitPlanned = async (planned) => {
     inBatch += 1;
 
     if (inBatch >= BATCH_LIMIT) {
-      await batch.commit();
+      await trackCashflowScriptWrite(() => batch.commit(), adminDb);
       written += inBatch;
       batch = adminDb.batch();
       inBatch = 0;
@@ -83,7 +85,7 @@ const commitPlanned = async (planned) => {
   }
 
   if (inBatch > 0) {
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), adminDb);
     written += inBatch;
   }
 
@@ -91,6 +93,7 @@ const commitPlanned = async (planned) => {
 };
 
 const main = async () => {
+  return withCashflowScriptMutation("script:backfill-contract-list-index-fields", async () => {
   if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
 
   const write = hasArg("--write") || hasArg("--apply");
@@ -191,6 +194,7 @@ const main = async () => {
       "\n[dry-run] Nic nezapsáno. Pro zápis spusť: node scripts/backfill-contract-list-index-fields.mjs --write"
     );
   }
+  });
 };
 
 main().catch((error) => {

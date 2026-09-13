@@ -1,0 +1,498 @@
+--- /dev/null
++++ b/src/lib/authEmailAction.ts
+@@ -0,0 +1,24 @@
++export const AUTH_EMAIL_ACTION_PATH = "/ucet/akce";
++export type AuthEmailAction = { mode: "resetPassword" | "verifyEmail"; code: string };
++
++/** Ignore any supplied API key, email or redirect; the app uses its own Firebase project. */
++export function parseAuthEmailAction(search: string, hash: string): AuthEmailAction | null {
++  const query = new URLSearchParams(search);
++  const fragment = new URLSearchParams(hash.replace(/^#/, ""));
++  const hasFragment = fragment.has("mode") || fragment.has("oobCode");
++  if (hasFragment && (query.has("mode") || query.has("oobCode"))) return null;
++  const params = hasFragment ? fragment : query;
++  const mode = params.get("mode");
++  const code = params.get("oobCode");
++  if (params.getAll("mode").length !== 1 || params.getAll("oobCode").length !== 1 ||
++      (mode !== "resetPassword" && mode !== "verifyEmail") ||
++      !code || code.length > 2048 || /[\s\u0000-\u001f\u007f]/.test(code)) return null;
++  return { mode, code };
++}
++
++/** A fragment is not sent in HTTP requests or Referer headers. Never persist the code. */
++export function createAuthEmailActionUrl(action: AuthEmailAction): string {
++  const url = new URL(AUTH_EMAIL_ACTION_PATH, "https://bohemka.app");
++  url.hash = new URLSearchParams({ mode: action.mode, oobCode: action.code, lang: "cs" }).toString();
++  return url.toString();
++}
+--- a/src/lib/server/firebaseAuthEmail.ts
++++ b/src/lib/server/firebaseAuthEmail.ts
+@@ -2,6 +2,7 @@
+ import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+ import { adminAuth } from "@/lib/server/firebaseAdmin";
+ import { renderAuthEmail } from "@/lib/server/authEmailTemplate";
++import { createAuthEmailActionUrl } from "@/lib/authEmailAction";
+ 
+ type FirebaseEmailRequest = {
+   requestType: "PASSWORD_RESET" | "VERIFY_EMAIL";
+@@ -42,14 +43,14 @@
+     const rawLink = request.requestType === "PASSWORD_RESET"
+       ? await adminAuth!.generatePasswordResetLink(email)
+       : await adminAuth!.generateEmailVerificationLink(email);
+-    // No request-supplied redirect or action URL. Keep Firebase's configured handler.
++    // Firebase still creates and validates the code. Only the UI is hosted in our app.
+     link = new URL(rawLink);
+     const mode = request.requestType === "PASSWORD_RESET" ? "resetPassword" : "verifyEmail";
+     if (link.protocol !== "https:" || link.username || link.password ||
+         link.searchParams.get("mode") !== mode || !link.searchParams.get("oobCode")) {
+       throw new FirebaseAuthEmailError("auth/configuration-not-found");
+     }
+-    link.searchParams.set("lang", "cs");
++    link = new URL(createAuthEmailActionUrl({ mode, code: link.searchParams.get("oobCode")! }));
+   } catch (error) {
+     const code = (error as { code?: unknown } | null)?.code;
+     throw new FirebaseAuthEmailError(code === "auth/user-not-found" ? code : safeAuthEmailErrorCode(error));
+--- /dev/null
++++ b/src/app/ucet/akce/page.tsx
+@@ -0,0 +1,16 @@
++import type { Metadata, Viewport } from "next";
++import { AuthEmailActionPage } from "./AuthEmailActionPage";
++
++export const dynamic = "force-dynamic";
++export const metadata: Metadata = {
++  title: "Potvrzení účtu | Bohemka.App",
++  referrer: "no-referrer",
++  robots: { index: false, follow: false, nocache: true },
++};
++export const viewport: Viewport = {
++  width: "device-width", initialScale: 1, maximumScale: 5, userScalable: true, themeColor: "#0b0717",
++};
++
++export default function Page() {
++  return <AuthEmailActionPage />;
++}
+--- /dev/null
++++ b/src/app/ucet/akce/AuthEmailActionPage.tsx
+@@ -0,0 +1,162 @@
++"use client";
++
++import { useEffect, useRef, useState, type FormEvent } from "react";
++import { ActionCodeOperation, applyActionCode, checkActionCode, confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
++import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, MailCheck, ShieldCheck, TriangleAlert } from "lucide-react";
++import { auth } from "@/app/firebase";
++import { AUTH_EMAIL_ACTION_PATH, parseAuthEmailAction, type AuthEmailAction } from "@/lib/authEmailAction";
++import styles from "./authEmailAction.module.css";
++
++type Problem = "invalid" | "expired" | "unavailable";
++type Screen = "checking" | "verify" | "reset" | "verified" | "reset-done" | Problem;
++const problems: Record<Problem, { title: string; description: string }> = {
++  invalid: { title: "Odkaz už není platný", description: "Odkaz je neúplný, už byl použitý nebo jeho platnost vypršela." },
++  expired: { title: "Platnost odkazu vypršela", description: "Pro ochranu účtu mají tyto odkazy omezenou platnost. Vyžádej si nový e-mail a použij nejnovější odkaz." },
++  unavailable: { title: "Odkaz se nepodařilo ověřit", description: "Spojení se službou je momentálně nedostupné. Zkus ověření znovu za chvíli." },
++};
++function problemFrom(error: unknown): Problem {
++  const code = (error as { code?: unknown } | null)?.code;
++  if (code === "auth/expired-action-code") return "expired";
++  if (["auth/invalid-action-code", "auth/user-disabled", "auth/user-not-found"].includes(String(code))) return "invalid";
++  return "unavailable";
++}
++
++async function inspectAction(action: AuthEmailAction): Promise<"reset" | "verify"> {
++  if (action.mode === "resetPassword") {
++    await verifyPasswordResetCode(auth, action.code);
++    return "reset";
++  }
++  const info = await checkActionCode(auth, action.code);
++  if (info.operation !== ActionCodeOperation.VERIFY_EMAIL) throw { code: "auth/invalid-action-code" };
++  return "verify";
++}
++
++export function AuthEmailActionPage() {
++  const [screen, setScreen] = useState<Screen>("checking");
++  const [password, setPassword] = useState("");
++  const [confirmation, setConfirmation] = useState("");
++  const [visible, setVisible] = useState(false);
++  const [busy, setBusy] = useState(false);
++  const [formError, setFormError] = useState("");
++  const action = useRef<AuthEmailAction | null | undefined>(undefined);
++  const inspection = useRef<Promise<"reset" | "verify"> | null>(null);
++  const inFlight = useRef(false);
++
++  useEffect(() => {
++    // Opening another email in the same tab may be a fragment-only navigation.
++    // Reload to give the new code its own lifecycle, including any pending writes.
++    const openNewLink = () => { if (window.location.hash) window.location.reload(); };
++    window.addEventListener("hashchange", openNewLink);
++    return () => window.removeEventListener("hashchange", openNewLink);
++  }, []);
++
++  useEffect(() => {
++    let active = true;
++    if (action.current === undefined) {
++      action.current = parseAuthEmailAction(window.location.search, window.location.hash);
++      // Remove codes, foreign redirects and other supplied parameters from this history entry.
++      window.history.replaceState(window.history.state, "", AUTH_EMAIL_ACTION_PATH);
++    }
++    if (!action.current) { setScreen("invalid"); return; }
++    inspection.current ??= inspectAction(action.current);
++    void inspection.current.then(
++      (next) => { if (active) setScreen(next); },
++      (error: unknown) => { if (active) setScreen(problemFrom(error)); },
++    );
++    return () => { active = false; };
++  }, []);
++
++  async function retryInspection() {
++    if (!action.current || inFlight.current) return;
++    inFlight.current = true;
++    setScreen("checking");
++    try { setScreen(await inspectAction(action.current)); }
++    catch (error) { setScreen(problemFrom(error)); }
++    finally { inFlight.current = false; }
++  }
++
++  async function submit(event: FormEvent) {
++    event.preventDefault();
++    if (inFlight.current || !action.current || (screen !== "reset" && screen !== "verify")) return;
++    setFormError("");
++    if (screen === "reset") {
++      if (password.length < 8) { setFormError("Nové heslo musí mít alespoň 8 znaků."); return; }
++      if (password !== confirmation) { setFormError("Hesla se neshodují. Zkontroluj obě pole."); return; }
++    }
++    inFlight.current = true;
++    setBusy(true);
++    try {
++      if (screen === "reset") {
++        await confirmPasswordReset(auth, action.current.code, password);
++        setScreen("reset-done");
++      } else {
++        await applyActionCode(auth, action.current.code);
++        setScreen("verified");
++      }
++      action.current = null;
++      setPassword(""); setConfirmation("");
++    } catch (error) {
++      const code = (error as { code?: unknown } | null)?.code;
++      if (code === "auth/weak-password" || code === "auth/password-does-not-meet-requirements") {
++        setFormError("Heslo nesplňuje požadavky účtu. Použij delší heslo s velkými i malými písmeny, číslem a symbolem.");
++      } else if (problemFrom(error) === "unavailable") {
++        setFormError("Změnu se nepodařilo potvrdit. Zkontroluj připojení a zkus to za chvíli znovu.");
++      } else {
++        setScreen(problemFrom(error));
++        action.current = null;
++        setPassword(""); setConfirmation("");
++      }
++    } finally { inFlight.current = false; setBusy(false); }
++  }
++
++  const success = screen === "verified" || screen === "reset-done";
++  const problem = screen === "invalid" || screen === "expired" || screen === "unavailable" ? problems[screen] : null;
++  const title = problem?.title ?? ({ checking: "Kontroluji odkaz…", verify: "Potvrď svůj e-mail", reset: "Nastav si nové heslo", verified: "E-mail je ověřený", "reset-done": "Nové heslo je nastavené" } as const)[screen as "checking" | "verify" | "reset" | "verified" | "reset-done"];
++  const Icon = screen === "checking" ? LoaderCircle : success ? Check : problem ? TriangleAlert : screen === "verify" ? MailCheck : KeyRound;
++
++  return (
++    <main className={styles.page}>
++      <div className={styles.wrap}>
++        <header className={styles.brand}>
++          <span className={styles.eyebrow}><ShieldCheck size={15} aria-hidden="true" /> Tvůj účet</span>
++          <a href="/login" className={styles.wordmark}>Bohemka.App</a>
++        </header>
++        <section className={styles.card} aria-labelledby="action-title" aria-busy={screen === "checking" || busy}>
++          <div className={`${styles.icon} ${success ? styles.successIcon : ""}`}><Icon size={28} aria-hidden="true" className={screen === "checking" ? styles.spin : undefined} /></div>
++          <div aria-live="polite" aria-atomic="true">
++            <h1 id="action-title">{title}</h1>
++            {screen === "checking" && <p className={styles.description}>Chvilku strpení, ověřujeme platnost odkazu.</p>}
++            {screen === "verify" && <p className={styles.description}>Potvrď, že máš přístup k této e-mailové schránce. Pak můžeš pokračovat v nastavení účtu.</p>}
++            {screen === "reset" && <p className={styles.description}>Zvol nové heslo pro svůj účet. Pro kontrolu ho zadej ještě jednou.</p>}
++            {screen === "verified" && <p className={styles.description}>Děkujeme za potvrzení. Vrať se do původní záložky aplikace a pokračuj v nastavení. Pokud už ji nemáš otevřenou, přihlas se.</p>}
++            {screen === "reset-done" && <p className={styles.description}>Heslo jsme úspěšně změnili. Teď se můžeš přihlásit novým heslem.</p>}
++            {problem && <p className={styles.description}>{problem.description}</p>}
++          </div>
++          {(screen === "reset" || screen === "verify") && <form onSubmit={(event) => void submit(event)} className={styles.form}>
++            {screen === "reset" && <>
++              <div className={styles.field}>
++                <label htmlFor="new-password">Nové heslo</label>
++                <div className={styles.inputWrap}>
++                  <input id="new-password" name="new-password" type={visible ? "text" : "password"} autoComplete="new-password" required minLength={8} maxLength={4096} value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} aria-describedby="password-help form-error" />
++                  <button type="button" className={styles.reveal} aria-label={visible ? "Skrýt hesla" : "Zobrazit hesla"} aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={19} /> : <Eye size={19} />}</button>
++                </div>
++                <p id="password-help" className={styles.hint}>Alespoň 8 znaků. Doporučujeme delší, jedinečné heslo.</p>
++              </div>
++              <div className={styles.field}>
++                <label htmlFor="confirm-password">Nové heslo znovu</label>
++                <input id="confirm-password" name="confirm-password" type={visible ? "text" : "password"} autoComplete="new-password" required minLength={8} maxLength={4096} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} disabled={busy} aria-describedby="form-error" />
++              </div>
++            </>}
++            <div id="form-error" role="alert">{formError && <p className={styles.error}>{formError}</p>}</div>
++            <button className={styles.primary} type="submit" disabled={busy}>{busy ? <><LoaderCircle size={18} className={styles.spin} /> {screen === "reset" ? "Ukládám heslo…" : "Potvrzuji…"}</> : <>{screen === "reset" ? "Uložit nové heslo" : "Potvrdit e-mail"}<ArrowRight size={18} /></>}</button>
++          </form>}
++          {screen === "unavailable" && <button type="button" className={styles.primary} onClick={() => void retryInspection()}>Zkusit znovu</button>}
++          {(screen === "invalid" || screen === "expired") && <p className={styles.help}>Nový odkaz pro obnovu hesla získáš přes „Zapomenuté heslo?“ na přihlašovací stránce. Ověřovací e-mail si můžeš poslat znovu po přihlášení v nastavení účtu.</p>}
++          {screen !== "checking" && <a href="/login" className={success ? styles.primary : styles.back}>{success ? "Přejít k přihlášení" : "Zpět na přihlášení"}{success && <ArrowRight size={18} aria-hidden="true" />}</a>}
++          <noscript>Pro potvrzení e-mailu nebo nastavení hesla zapni JavaScript v prohlížeči.</noscript>
++        </section>
++        <p className={styles.footer}><ShieldCheck size={14} aria-hidden="true" /> Bezpečné nastavení účtu Bohemka.App</p>
++      </div>
++    </main>
++  );
++}
+--- /dev/null
++++ b/src/app/ucet/akce/authEmailAction.module.css
+@@ -0,0 +1,34 @@
++.page { min-height: 100dvh; display: grid; place-items: center; padding: 40px 20px; color: #f8f5ff; background: radial-gradient(ellipse at 75% 15%, #49227655, transparent 55%), linear-gradient(135deg, #080513, #130923 48%, #25134a); font-family: var(--font-geist-mono, ui-monospace), monospace; }
++.wrap { width: 100%; max-width: 480px; }
++.brand { display: flex; flex-direction: column; align-items: center; gap: 18px; margin-bottom: 30px; }
++.eyebrow { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #c4b5fd40; border-radius: 30px; padding: 7px 13px; color: #e6d9ff; font-size: 11px; text-transform: uppercase; letter-spacing: .14em; background: #ffffff08; }
++.wordmark { color: white; text-decoration: none; font-size: clamp(32px, 8vw, 48px); font-weight: 600; letter-spacing: -.05em; line-height: 1.15; }
++.card { position: relative; overflow: hidden; padding: 32px; border-radius: 28px; border: 1px solid #c4b5fd40; background: linear-gradient(135deg, #2d1643, #100b21 80%); box-shadow: 0 24px 68px #14091c70; }
++.card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #cb85ff, #8f44e8); }
++.icon { width: 60px; height: 60px; display: grid; place-items: center; margin-bottom: 24px; border-radius: 18px; color: #d5b4ff; background: #b27fff15; border: 1px solid #c4b5fd30; }
++.successIcon { color: #a7f3d0; background: #34d39915; border-color: #34d39940; }
++.card h1 { margin: 0; font-size: clamp(23px, 5.6vw, 28px); font-weight: 600; letter-spacing: -.035em; line-height: 1.3; }
++.description { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 15px; line-height: 1.75; color: #d4c9e3; margin: 14px 0 24px; }
++.form { display: grid; gap: 18px; }
++.field { display: grid; gap: 8px; }
++.field label { font-size: 12px; font-weight: 600; color: #e4d4fa; }
++.field input { box-sizing: border-box; width: 100%; min-width: 0; height: 50px; border: 1px solid #c4b5fd40; border-radius: 13px; color: white; background: #ffffff09; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 16px; padding: 12px 14px; outline: none; }
++.field input:focus { border-color: #d8b4fe; box-shadow: 0 0 0 3px #c084fc25; }
++.field input:disabled { opacity: .6; }
++.inputWrap { position: relative; }
++.inputWrap input { padding-right: 54px; }
++.reveal { position: absolute; right: 4px; top: 3px; width: 44px; height: 44px; display: grid; place-items: center; color: #d4c9e3; cursor: pointer; border: 0; background: transparent; border-radius: 10px; }
++.hint, .help { font-family: ui-sans-serif, system-ui, sans-serif; color: #bcb0d0; font-size: 12px; line-height: 1.65; margin: 0; }
++.help { margin-bottom: 24px; font-size: 14px; }
++.primary { box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 50px; padding: 13px 15px; border-radius: 14px; border: 1px solid #e9d5ff40; background: linear-gradient(135deg, #ad50ed, #7c3aed 55%, #4338ca); color: #fff; text-decoration: none; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; line-height: 1.5; box-shadow: 0 10px 25px #7c3aed25; transition: filter .15s; }
++.primary:hover { filter: brightness(1.12); }
++.primary:disabled { opacity: .6; cursor: wait; }
++.back { display: block; margin-top: 24px; color: #d4c9e3; text-align: center; text-decoration: underline; text-underline-offset: 4px; font-size: 12px; }
++.back:hover { color: #fff; }
++.error { margin: 0; color: #ffe4e6; background: #fb718516; border: 1px solid #fda4af55; border-radius: 12px; padding: 12px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; line-height: 1.6; }
++.footer { display: flex; justify-content: center; align-items: center; gap: 7px; color: #b0a2c3; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; margin: 24px 0 0; }
++.spin { animation: spin 1.3s linear infinite; }
++.page a:focus-visible, .page button:focus-visible { outline: 2px solid #e9d5ff; outline-offset: 4px; }
++@keyframes spin { to { transform: rotate(360deg); } }
++@media (max-width: 400px) { .page { padding: 28px 16px; } .card { padding: 26px 22px; } }
++@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .primary { transition: none; } }
+--- a/src/proxy.ts
++++ b/src/proxy.ts
+@@ -4,6 +4,7 @@
+   APP_SESSION_COOKIE_NAME,
+ } from "@/lib/appSession";
+ import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
++import { AUTH_EMAIL_ACTION_PATH } from "@/lib/authEmailAction";
+ 
+ const CONNECT_SRC = [
+   "'self'",
+@@ -314,14 +315,16 @@
+     res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
+   }
+ 
+-  if (isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
++  const isEmailAction = pathname === AUTH_EMAIL_ACTION_PATH || pathname === `${AUTH_EMAIL_ACTION_PATH}/`;
++  if (isEmailAction) res.headers.set("Referrer-Policy", "no-referrer");
++  if (isEmailAction || isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
+     res.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+     res.headers.set("Pragma", "no-cache");
+     res.headers.set("Expires", "0");
+     res.headers.set("Vary", "Authorization, Cookie");
+   }
+ 
+-  if (isSearchIndexExcludedPath(pathname)) {
++  if (isEmailAction || isSearchIndexExcludedPath(pathname)) {
+     res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+   }
+ 
+--- /dev/null
++++ b/src/lib/authEmailAction.test.ts
+@@ -0,0 +1,25 @@
++import { describe, expect, it } from "vitest";
++import { AUTH_EMAIL_ACTION_PATH, createAuthEmailActionUrl, parseAuthEmailAction } from "./authEmailAction";
++
++describe("email action link boundary", () => {
++  it.each(["verifyEmail", "resetPassword"] as const)("keeps %s codes out of HTTP URLs and roundtrips them", (mode) => {
++    const action = { mode, code: "synthetic_one-time-code" };
++    const url = new URL(createAuthEmailActionUrl(action));
++    expect(url.origin + url.pathname).toBe("https://bohemka.app" + AUTH_EMAIL_ACTION_PATH);
++    expect(url.search).toBe("");
++    expect(parseAuthEmailAction(url.search, url.hash)).toEqual(action);
++  });
++  it("accepts Firebase query format but does not trust a supplied project or redirect", () => {
++    expect(parseAuthEmailAction("?mode=verifyEmail&oobCode=synthetic&apiKey=foreign&continueUrl=https://outside.example.test", "")).toEqual({ mode: "verifyEmail", code: "synthetic" });
++  });
++  it.each([
++    ["", ""], ["?mode=recoverEmail&oobCode=synthetic", ""],
++    ["?mode=verifyEmail&mode=resetPassword&oobCode=synthetic", ""],
++    ["?mode=verifyEmail&oobCode=first&oobCode=second", ""],
++    ["?mode=verifyEmail&oobCode=first", "#mode=resetPassword&oobCode=second"],
++    ["", "#mode=verifyEmail&oobCode="], ["", "#mode=verifyEmail&oobCode=with%0Anewline"],
++    ["", "#mode=verifyEmail&oobCode=" + "x".repeat(2049)],
++  ])("rejects ambiguous or malformed parameters", (search, hash) => {
++    expect(parseAuthEmailAction(search, hash)).toBeNull();
++  });
++});
+--- a/src/lib/server/firebaseAuthEmail.test.ts
++++ b/src/lib/server/firebaseAuthEmail.test.ts
+@@ -35,6 +35,9 @@
+     expect(body.from).toBe("BohemkaApp <noreply@example.test>");
+     expect(body.text).toContain("lang=cs");
+     expect(body.text).toContain("synthetic-code");
++    expect(body.text).toContain("https://bohemka.app/ucet/akce#mode=");
++    expect(body.text).not.toContain("synthetic.firebaseapp.com");
++    expect(body.text).not.toContain("apiKey=");
+     expect(body.html).toContain("&amp;oobCode=");
+     expect(JSON.stringify(body)).not.toContain("re_synthetic_key");
+     expect(body).not.toHaveProperty("cc");
+--- /dev/null
++++ b/src/app/ucet/akce/AuthEmailActionPage.test.tsx
+@@ -0,0 +1,128 @@
++// @vitest-environment happy-dom
++import { StrictMode, act } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({ auth: {}, check: vi.fn(), apply: vi.fn(), inspectReset: vi.fn(), reset: vi.fn() }));
++vi.mock("@/app/firebase", () => ({ auth: mocks.auth }));
++vi.mock("firebase/auth", () => ({
++  ActionCodeOperation: { VERIFY_EMAIL: "VERIFY_EMAIL" },
++  checkActionCode: mocks.check, applyActionCode: mocks.apply,
++  verifyPasswordResetCode: mocks.inspectReset, confirmPasswordReset: mocks.reset,
++}));
++import { AuthEmailActionPage } from "./AuthEmailActionPage";
++
++describe("custom email action page", () => {
++  let root: Root;
++  let container: HTMLDivElement;
++  beforeEach(() => {
++    vi.resetAllMocks();
++    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++    window.history.replaceState(null, "", "/ucet/akce");
++    mocks.check.mockResolvedValue({ operation: "VERIFY_EMAIL", data: { email: "private@example.test" } });
++    mocks.inspectReset.mockResolvedValue("private@example.test");
++    mocks.apply.mockResolvedValue(undefined); mocks.reset.mockResolvedValue(undefined);
++    container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container);
++  });
++  afterEach(async () => {
++    await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();
++  });
++  async function mount(parameters = "#mode=verifyEmail&oobCode=synthetic-code") {
++    window.history.replaceState(null, "", "/ucet/akce" + parameters);
++    await act(async () => root.render(<StrictMode><AuthEmailActionPage /></StrictMode>));
++  }
++  async function submit() {
++    await act(async () => { container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
++  }
++  async function input(selector: string, value: string) {
++    await act(async () => {
++      const field = container.querySelector<HTMLInputElement>(selector)!;
++      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
++      field.dispatchEvent(new Event("input", { bubbles: true }));
++    });
++  }
++  async function passwords(first = "Synthetic-password-1!", second = first) {
++    await input("#new-password", first); await input("#confirm-password", second);
++  }
++
++  it("does not consume verification on page load, even in StrictMode; removes secret parameters", async () => {
++    await mount("#mode=verifyEmail&oobCode=synthetic-code&continueUrl=https://outside.example.test&apiKey=foreign");
++    expect(mocks.check).toHaveBeenCalledExactlyOnceWith(mocks.auth, "synthetic-code");
++    expect(mocks.apply).not.toHaveBeenCalled();
++    expect(window.location.search + window.location.hash).toBe("");
++    expect(container.innerHTML).not.toMatch(/synthetic-code|private@example|outside.example|foreign/);
++    expect([...container.querySelectorAll("a")].every((a) => a.getAttribute("href") === "/login")).toBe(true);
++    await submit();
++    expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(mocks.auth, "synthetic-code");
++    expect(container.textContent).toContain("E-mail je ověřený");
++    expect(container.querySelector("form")).toBeNull();
++  });
++  it("rejects a missing link without contacting Firebase", async () => {
++    await mount("");
++    expect(container.textContent).toContain("Odkaz už není platný");
++    expect(mocks.check).not.toHaveBeenCalled(); expect(mocks.inspectReset).not.toHaveBeenCalled();
++  });
++  it("starts a fresh lifecycle for another email link opened in the same tab", async () => {
++    await mount();
++    const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
++    window.history.replaceState(null, "", "/ucet/akce#mode=resetPassword&oobCode=another-code");
++    await act(async () => { window.dispatchEvent(new Event("hashchange")); });
++    expect(reload).toHaveBeenCalledOnce();
++    expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.reset).not.toHaveBeenCalled();
++  });
++  it("rejects a code for a different action without applying it", async () => {
++    mocks.check.mockResolvedValue({ operation: "RECOVER_EMAIL" });
++    await mount();
++    expect(container.textContent).toContain("Odkaz už není platný");
++    expect(mocks.apply).not.toHaveBeenCalled();
++  });
++  it.each(["auth/expired-action-code", "auth/invalid-action-code", "auth/user-disabled"])("shows a safe explanation for %s", async (code) => {
++    mocks.inspectReset.mockRejectedValue({ code, message: "secret synthetic-code private@example.test" });
++    await mount("#mode=resetPassword&oobCode=synthetic-code");
++    expect(container.textContent).toContain(code === "auth/expired-action-code" ? "Platnost odkazu vypršela" : "Odkaz už není platný");
++    expect(container.textContent).not.toMatch(/secret|synthetic-code|private@example/);
++    expect(container.querySelector("input")).toBeNull(); expect(mocks.reset).not.toHaveBeenCalled();
++  });
++  it("only resets after matching passwords, then clears the form without signing in", async () => {
++    await mount("?mode=resetPassword&oobCode=synthetic-code&continueUrl=//outside.example.test");
++    expect(mocks.inspectReset).toHaveBeenCalledExactlyOnceWith(mocks.auth, "synthetic-code");
++    expect(mocks.reset).not.toHaveBeenCalled();
++    await passwords("short"); await submit(); expect(mocks.reset).not.toHaveBeenCalled();
++    await passwords("Synthetic-password-1!", "Different-password-1!"); await submit();
++    expect(container.textContent).toContain("Hesla se neshodují"); expect(mocks.reset).not.toHaveBeenCalled();
++    await passwords(); await submit();
++    expect(mocks.reset).toHaveBeenCalledExactlyOnceWith(mocks.auth, "synthetic-code", "Synthetic-password-1!");
++    expect(container.textContent).toContain("Nové heslo je nastavené");
++    expect(container.querySelector("input")).toBeNull();
++    expect(window.location.pathname).toBe("/ucet/akce"); expect(window.location.hash + window.location.search).toBe("");
++  });
++  it("prevents duplicate password writes while the first is pending", async () => {
++    let finish!: () => void;
++    mocks.reset.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
++    await mount("#mode=resetPassword&oobCode=synthetic-code"); await passwords();
++    await submit(); await submit();
++    expect(mocks.reset).toHaveBeenCalledTimes(1);
++    expect(container.querySelector<HTMLButtonElement>("button[type=submit]")!.disabled).toBe(true);
++    await act(async () => finish());
++  });
++  it("allows a stronger password after a policy error without displaying raw errors", async () => {
++    mocks.reset.mockRejectedValueOnce({ code: "auth/password-does-not-meet-requirements", message: "private secret" });
++    await mount("#mode=resetPassword&oobCode=synthetic-code"); await passwords(); await submit();
++    expect(container.textContent).toContain("Heslo nesplňuje požadavky účtu");
++    expect(container.textContent).not.toContain("private secret");
++    await passwords("Longer-synthetic-password-2!"); await submit();
++    expect(container.textContent).toContain("Nové heslo je nastavené");
++  });
++  it("handles a code expiring between validation and confirmation", async () => {
++    await mount(); mocks.apply.mockRejectedValue({ code: "auth/expired-action-code" });
++    await submit();
++    expect(container.textContent).toContain("Platnost odkazu vypršela"); expect(container.querySelector("form")).toBeNull();
++  });
++  it("offers an explicit retry after inspection network failure", async () => {
++    mocks.check.mockRejectedValueOnce({ code: "auth/network-request-failed" }); await mount();
++    expect(container.textContent).toContain("Odkaz se nepodařilo ověřit");
++    const button = [...container.querySelectorAll("button")].find((b) => b.textContent === "Zkusit znovu")!;
++    await act(async () => button.click());
++    expect(container.textContent).toContain("Potvrď svůj e-mail"); expect(mocks.apply).not.toHaveBeenCalled();
++  });
++});
+--- /dev/null
++++ b/src/lib/server/authEmailActionProxy.test.ts
+@@ -0,0 +1,20 @@
++import { NextRequest } from "next/server";
++import { afterEach, describe, expect, it, vi } from "vitest";
++const verify = vi.hoisted(() => vi.fn());
++vi.mock("@/lib/server/activeAppSession", () => ({ verifyActiveAppSession: verify }));
++import { proxy } from "@/proxy";
++
++afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
++describe("public email action page privacy", () => {
++  it.each(["0", "1"])("loads without a session and prevents caching, indexing and referrer leakage with strict CSP %s", async (strict) => {
++    vi.stubEnv("CSP_STRICT_ENFORCE", strict);
++    const response = await proxy(new NextRequest("https://bohemka.app/ucet/akce?mode=verifyEmail&oobCode=synthetic"));
++    expect(verify).not.toHaveBeenCalled();
++    expect(response.headers.get("x-middleware-next")).toBe("1");
++    expect(response.headers.get("location")).toBeNull();
++    expect(response.headers.get("cache-control")).toContain("no-store");
++    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
++    expect(response.headers.get("x-robots-tag")).toContain("noindex");
++    expect(response.headers.get("x-frame-options")).toBe("DENY");
++  });
++});

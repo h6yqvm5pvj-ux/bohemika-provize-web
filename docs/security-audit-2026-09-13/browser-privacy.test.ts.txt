@@ -1,0 +1,54 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clearServerSession, resolveSafeLoginNextPath } from '@/app/lib/authSession';
+import { normalizeContractTerminationPrefill, storeContractTerminationPrefill, consumeContractTerminationPrefill } from '@/app/pomucky/vypoved-smlouvy/contractTerminationPrefill';
+function storage() {
+  const entries = new Map<string,string>();
+  return { get length() { return entries.size; }, key: (i:number) => [...entries.keys()][i] ?? null,
+    getItem: (k:string) => entries.get(k) ?? null, setItem: (k:string,v:string) => entries.set(k,v), removeItem: (k:string) => entries.delete(k),
+  };
+}
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+describe('local audit: login redirects', () => {
+  it.each(['/smlouvy', '//outside.example.test', 'https://outside.example.test'])(
+    'keeps ordinary destinations on the application origin: %s', (next) => {
+      vi.stubGlobal('window', { location: { search: '?'+new URLSearchParams({ next }) } });
+      const destination = new URL(resolveSafeLoginNextPath(), 'https://application.example.test/login');
+      expect(destination.origin).toBe('https://application.example.test');
+    });
+  // Reproduction assertions deliberately document the current unsafe result.
+  it.each(['/'+String.fromCharCode(92)+'outside.example.test', '/'+String.fromCharCode(9)+'/outside.example.test'])(
+    'CONFIRMED FINDING: URL normalization turns the accepted next value into an external destination (%j)', (next) => {
+      vi.stubGlobal('window', { location: { search: '?'+new URLSearchParams({ next }) } });
+      const accepted = resolveSafeLoginNextPath();
+      const destination = new URL(accepted, 'https://application.example.test/login');
+      expect(accepted).toBe(next);
+      expect(destination.origin).toBe('https://outside.example.test');
+    });
+});
+describe('local audit: private contract prefill lifetime', () => {
+  function seed() {
+    const sessionStorage=storage();
+    vi.stubGlobal('window', { sessionStorage, localStorage: storage(), crypto: { randomUUID: () => 'audit-synthetic-prefill-0001' } });
+    const payload=normalizeContractTerminationPrefill({ sourcePath: '/smlouvy/synthetic-id', contractNumber: 'SYNTHETIC-001', policyholderName: 'SYNTHETIC CLIENT', personalId: 'SYNTHETIC-ID', address: 'SYNTHETIC ADDRESS', insurer: 'Allianz', insuranceType: 'nonLife', reason: 'periodEnd' })!;
+    return { key: storeContractTerminationPrefill(payload)!, payload, sessionStorage };
+  }
+  it('consumes a prefill only once', () => {
+    const {key,payload}=seed();
+    expect(consumeContractTerminationPrefill(key)).toEqual(payload);
+    expect(consumeContractTerminationPrefill(key)).toBeNull();
+  });
+  it('refuses to consume a prefill after thirty minutes', () => {
+    vi.useFakeTimers(); const {key}=seed(); vi.advanceTimersByTime(30*60*1000+1);
+    expect(consumeContractTerminationPrefill(key)).toBeNull();
+  });
+  it('CONFIRMED FINDING: unconsumed client details survive successful application logout', async () => {
+    const {key,payload,sessionStorage}=seed();
+    const fetchMock=vi.fn().mockResolvedValue(new Response('{}', {status:200}));
+    vi.stubGlobal('fetch',fetchMock);
+    await clearServerSession();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/session', expect.objectContaining({method:'DELETE'}));
+    expect(sessionStorage.length).toBe(1);
+    // No owner identity is accepted or checked by the consumer in the next login.
+    expect(consumeContractTerminationPrefill(key)).toEqual(payload);
+  });
+});

@@ -1,0 +1,974 @@
+{
+  "pageSourceFiles": 88,
+  "apiRouteFiles": 105,
+  "scopeNote": "Static inventory of page source files and directly referenced API paths; inherited loaders and dynamic paths require the accompanying source review. Underscore directories are private source modules, not public routes.",
+  "pages": [
+    {
+      "file": "src/app/_klienti/[slug]/page.tsx",
+      "route": "/_klienti/[slug]",
+      "privateSourceDirectory": true,
+      "apiPathsInFile": [
+        "/api/client-cards/",
+        "/api/contracts/list",
+        "/api/cuzk/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/_klienti/page.tsx",
+      "route": "/_klienti",
+      "privateSourceDirectory": true,
+      "apiPathsInFile": [
+        "/api/contracts/list"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/_provizni-vypisy/page.tsx",
+      "route": "/_provizni-vypisy",
+      "privateSourceDirectory": true,
+      "apiPathsInFile": [
+        "/api/commission-statements",
+        "/api/commission-statements/product-map",
+        "/api/contracts/update-fields"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 8
+    },
+    {
+      "file": "src/app/admin/data-health/page.tsx",
+      "route": "/admin/data-health",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/admin/data-health"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/admin/provizni-vypisy/produktova-mapa/page.tsx",
+      "route": "/admin/provizni-vypisy/produktova-mapa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/admin/commission-statement-product-map"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/admin/zadosti/page.tsx",
+      "route": "/admin/zadosti",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/admin/users",
+        "/api/admin/users/security",
+        "/api/contracts/transfer",
+        "/api/team-overview",
+        "/api/user-requests",
+        "/api/user-requests/attachment",
+        "/api/user/create",
+        "/api/user/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/cashflow/page.tsx",
+      "route": "/cashflow",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/commission-statements"
+      ],
+      "sharedLoaders": [
+        "AppLayout",
+        "useCashflowData",
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 2
+    },
+    {
+      "file": "src/app/cuzk/page.tsx",
+      "route": "/cuzk",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/cuzk/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/embed/pojisteni-vozidla/page.tsx",
+      "route": "/embed/pojisteni-vozidla",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/embed/schuzka/[slug]/page.tsx",
+      "route": "/embed/schuzka/[slug]",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/embed/zivotni-pojisteni/page.tsx",
+      "route": "/embed/zivotni-pojisteni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/embed/zlato/page.tsx",
+      "route": "/embed/zlato",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/gold"
+      ],
+      "sharedLoaders": [],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/intranet/page.tsx",
+      "route": "/intranet",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/intranet/wall",
+        "/api/intranet/wall/"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/jakubrauscher/page.tsx",
+      "route": "/jakubrauscher",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/kalkulacka/page.tsx",
+      "route": "/kalkulacka",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/advisor-tips/by-user",
+        "/api/contracts",
+        "/api/contracts/bulk-delete",
+        "/api/contracts/find",
+        "/api/contracts/precheck",
+        "/api/documents/neon",
+        "/api/team-overview",
+        "/api/user/lookup",
+        "/api/user/profile",
+        "/api/user/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/klienti/[slug]/page.tsx",
+      "route": "/klienti/[slug]",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/klienti/page.tsx",
+      "route": "/klienti",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/login/page.tsx",
+      "route": "/login",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/auth/login-attempts",
+        "/api/user/profile"
+      ],
+      "sharedLoaders": [
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/muj-tym/page.tsx",
+      "route": "/muj-tym",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/team-overview",
+        "/api/team-overview/teamGoals",
+        "/api/team-overview/teamOverview",
+        "/api/team-overview/weekly-report"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/muj-tym/sin-slavy/page.tsx",
+      "route": "/muj-tym/sin-slavy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/team-overview"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/muj-tym/tydenni-report/page.tsx",
+      "route": "/muj-tym/tydenni-report",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/team-overview/weekly-report"
+      ],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/nastaveni/page.tsx",
+      "route": "/nastaveni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/auth/sessions",
+        "/api/online-card/office-photo",
+        "/api/push/token",
+        "/api/subscription/me",
+        "/api/team-overview",
+        "/api/test-push",
+        "/api/user-requests",
+        "/api/user-requests/attachment",
+        "/api/user/profile",
+        "/api/user/profile/avatar"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/page.tsx",
+      "route": "/",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/gold",
+        "/api/mailbox"
+      ],
+      "sharedLoaders": [
+        "AppLayout",
+        "useHomeData",
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/ares/page.tsx",
+      "route": "/pomucky/ares",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/argumenty/page.tsx",
+      "route": "/pomucky/argumenty",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/cestovni-pojisteni-cpp-vs-kooperativa/page.tsx",
+      "route": "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/data-o-vozidle/page.tsx",
+      "route": "/pomucky/data-o-vozidle",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/allianz/page.tsx",
+      "route": "/pomucky/dokumenty/auto/allianz",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/cpp/page.tsx",
+      "route": "/pomucky/dokumenty/auto/cpp",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/csob/page.tsx",
+      "route": "/pomucky/dokumenty/auto/csob",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/kooperativa/page.tsx",
+      "route": "/pomucky/dokumenty/auto/kooperativa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/page.tsx",
+      "route": "/pomucky/dokumenty/auto",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/pillow/page.tsx",
+      "route": "/pomucky/dokumenty/auto/pillow",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/slavia/page.tsx",
+      "route": "/pomucky/dokumenty/auto/slavia",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/uniqa/page.tsx",
+      "route": "/pomucky/dokumenty/auto/uniqa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/allianz/page.tsx",
+      "route": "/pomucky/dokumenty/majetek/allianz",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/cpp/page.tsx",
+      "route": "/pomucky/dokumenty/majetek/cpp",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/kooperativa/page.tsx",
+      "route": "/pomucky/dokumenty/majetek/kooperativa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/maxima/page.tsx",
+      "route": "/pomucky/dokumenty/majetek/maxima",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/page.tsx",
+      "route": "/pomucky/dokumenty/majetek",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/pillow/page.tsx",
+      "route": "/pomucky/dokumenty/majetek/pillow",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/page.tsx",
+      "route": "/pomucky/dokumenty",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/allianz/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni/allianz",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/cpp/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni/cpp",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/documents/manage",
+        "/api/documents/notify"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/kooperativa/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni/kooperativa",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/maxima/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni/maxima",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/pillow/page.tsx",
+      "route": "/pomucky/dokumenty/zivotni-pojisteni/pillow",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/export-produkce/page.tsx",
+      "route": "/pomucky/export-produkce",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/contracts/list",
+        "/api/export-produkce/share",
+        "/api/team-overview",
+        "/api/user/lookup",
+        "/api/user/profile",
+        "/api/user/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 3
+    },
+    {
+      "file": "src/app/pomucky/hypoteka-vlastni-zdroje/page.tsx",
+      "route": "/pomucky/hypoteka-vlastni-zdroje",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/invalidita/page.tsx",
+      "route": "/pomucky/invalidita",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/jak-stiham-vypoved-smlouvy/page.tsx",
+      "route": "/pomucky/jak-stiham-vypoved-smlouvy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/karta-klienta/page.tsx",
+      "route": "/pomucky/karta-klienta",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/naceneni-celniho-skla/page.tsx",
+      "route": "/pomucky/naceneni-celniho-skla",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/vehicle-market/autokelly-windshield"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/naceneni-vozidla/page.tsx",
+      "route": "/pomucky/naceneni-vozidla",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/vehicle-market/sauto"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/nahrada-smlouvy/page.tsx",
+      "route": "/pomucky/nahrada-smlouvy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/nastaveni-zivotniho-pojisteni/page.tsx",
+      "route": "/pomucky/nastaveni-zivotniho-pojisteni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout",
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/neon-life-vs-metlife-oneguard/page.tsx",
+      "route": "/pomucky/neon-life-vs-metlife-oneguard",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/page.tsx",
+      "route": "/pomucky",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/tool-usage"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/plan-produkce/page.tsx",
+      "route": "/pomucky/plan-produkce",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/plan-produkce/share",
+        "/api/user/lookup",
+        "/api/user/profile",
+        "/api/user/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/pracovni-neschopenka/page.tsx",
+      "route": "/pomucky/pracovni-neschopenka",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/projekce-vykonu/page.tsx",
+      "route": "/pomucky/projekce-vykonu",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/user/profile"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/proklepka-vozidla/page.tsx",
+      "route": "/pomucky/proklepka-vozidla",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/autokuk/vehicle",
+        "/api/vehicle-market/sauto"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/radar-vyroci/page.tsx",
+      "route": "/pomucky/radar-vyroci",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/contracts/anniversary-review"
+      ],
+      "sharedLoaders": [
+        "AppLayout",
+        "loadAnniversaryPortfolio"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/skolici-materialy/page.tsx",
+      "route": "/pomucky/skolici-materialy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-pracovni-neschopnosti/page.tsx",
+      "route": "/pomucky/srovnavac-pracovni-neschopnosti",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx",
+      "route": "/pomucky/srovnavac-trvalych-nasledku",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/statistika/page.tsx",
+      "route": "/pomucky/statistika",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/user-stats"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/struktura/page.tsx",
+      "route": "/pomucky/struktura",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/team-overview"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/tipar/page.tsx",
+      "route": "/pomucky/tipar",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/user/profile"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/tvorba/page.tsx",
+      "route": "/pomucky/tvorba",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/ai-assistant",
+        "/api/user/profile"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/vypoved-smlouvy/page.tsx",
+      "route": "/pomucky/vypoved-smlouvy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout",
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/zaznam/page.tsx",
+      "route": "/pomucky/zaznam",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/zaznam/vysledky/page.tsx",
+      "route": "/pomucky/zaznam/vysledky",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/zaznam/vysledky-auto/page.tsx",
+      "route": "/pomucky/zaznam/vysledky-auto",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/pomucky/zlato/page.tsx",
+      "route": "/pomucky/zlato",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/comfort-prices",
+        "/api/gold"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/pomucky/zprava-tymu/page.tsx",
+      "route": "/pomucky/zprava-tymu",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/team-message",
+        "/api/team-overview"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/posta/page.tsx",
+      "route": "/posta",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/mailbox",
+        "/api/mailbox/activity",
+        "/api/mailbox/compose",
+        "/api/mailbox/conversation",
+        "/api/mailbox/message",
+        "/api/mailbox/shared-preview",
+        "/api/mailbox/stream",
+        "/api/user/search"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 4
+    },
+    {
+      "file": "src/app/provizni-vypisy/page.tsx",
+      "route": "/provizni-vypisy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/smlouvy/[id]/page.tsx",
+      "route": "/smlouvy/[id]",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/commission-statements",
+        "/api/contracts/attachment",
+        "/api/contracts/bulk-delete",
+        "/api/contracts/detail",
+        "/api/contracts/notes",
+        "/api/contracts/notes/contractNotes",
+        "/api/contracts/set-paid",
+        "/api/contracts/transfer",
+        "/api/contracts/update-fields"
+      ],
+      "sharedLoaders": [],
+      "directFetchCalls": 3
+    },
+    {
+      "file": "src/app/smlouvy/page.tsx",
+      "route": "/smlouvy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/contracts/bulk-delete",
+        "/api/contracts/list",
+        "/api/contracts/set-paid",
+        "/api/contracts/transfer"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 4
+    },
+    {
+      "file": "src/app/tipy/[id]/page.tsx",
+      "route": "/tipy/[id]",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/advisor-tips",
+        "/api/tips/detail"
+      ],
+      "sharedLoaders": [
+        "AppLayout"
+      ],
+      "directFetchCalls": 1
+    },
+    {
+      "file": "src/app/tipy/page.tsx",
+      "route": "/tipy",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [
+        "/api/advisor-tips",
+        "/api/tips/bulk-delete",
+        "/api/tipster-tips"
+      ],
+      "sharedLoaders": [
+        "AppLayout",
+        "getUserProfileCached"
+      ],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/vizitka/[slug]/cestovni-pojisteni/page.tsx",
+      "route": "/vizitka/[slug]/cestovni-pojisteni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/vizitka/[slug]/page.tsx",
+      "route": "/vizitka/[slug]",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/vizitka/[slug]/pojisteni-vozidla/page.tsx",
+      "route": "/vizitka/[slug]/pojisteni-vozidla",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/vizitka/[slug]/zivotni-pojisteni/page.tsx",
+      "route": "/vizitka/[slug]/zivotni-pojisteni",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    },
+    {
+      "file": "src/app/vizitka/[slug]/zlato/page.tsx",
+      "route": "/vizitka/[slug]/zlato",
+      "privateSourceDirectory": false,
+      "apiPathsInFile": [],
+      "sharedLoaders": [],
+      "directFetchCalls": 0
+    }
+  ]
+}

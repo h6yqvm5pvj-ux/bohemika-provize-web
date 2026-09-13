@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:rules": "firebase emulators:exec --only firestore --project demo-bohemika-rules --config firebase.rules-test.json \"vitest run --config vitest.rules.config.ts\"",
+    "cashflow:pilot": "firebase emulators:exec --only firestore --project demo-bohemika-cashflow-pilot --config firebase.rules-test.json \"node scripts/cashflow-pilot.mjs --output=/tmp/bohemika-cashflow-pilot.json\"",
     "test:watch": "vitest",
     "mailbox:encrypt-legacy": "node --experimental-strip-types scripts/migrate-mailbox-encryption.mjs",
     "assets:optimize-icons": "node scripts/optimize-public-icons.mjs",

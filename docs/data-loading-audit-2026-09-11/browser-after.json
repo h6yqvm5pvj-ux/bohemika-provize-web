@@ -1,0 +1,118 @@
+[
+  {
+    "width": 1440,
+    "status": 200,
+    "scriptBytes": 612104,
+    "scriptEncodedBytes": 184695,
+    "domContentLoadedMs": 312,
+    "scripts": [
+      {
+        "path": "/_next/static/chunks/webpack-38f3bc9b5d50c502.js",
+        "decodedBytes": 7763,
+        "encodedBytes": 3977
+      },
+      {
+        "path": "/_next/static/chunks/main-app-e44fdd896c2fb83a.js",
+        "decodedBytes": 529,
+        "encodedBytes": 529
+      },
+      {
+        "path": "/_next/static/chunks/app/layout-c14407b02bf564d2.js",
+        "decodedBytes": 2687,
+        "encodedBytes": 1244
+      },
+      {
+        "path": "/_next/static/chunks/84c12632-72bb2c340da27f64.js",
+        "decodedBytes": 89615,
+        "encodedBytes": 26005
+      },
+      {
+        "path": "/_next/static/chunks/3794-a6cbe3f16d804637.js",
+        "decodedBytes": 241388,
+        "encodedBytes": 65714
+      },
+      {
+        "path": "/_next/static/chunks/4bd1b696-8a4ab4fdf0ae305a.js",
+        "decodedBytes": 201060,
+        "encodedBytes": 63303
+      },
+      {
+        "path": "/_next/static/chunks/5663-165dc444fa0e0b56.js",
+        "decodedBytes": 30701,
+        "encodedBytes": 10343
+      },
+      {
+        "path": "/_next/static/chunks/7117-fe5cccfb626e8865.js",
+        "decodedBytes": 11108,
+        "encodedBytes": 4176
+      },
+      {
+        "path": "/_next/static/chunks/app/login/page-fc2f89980f05a7e2.js",
+        "decodedBytes": 27253,
+        "encodedBytes": 9404
+      }
+    ],
+    "horizontalOverflow": false,
+    "protectedRedirect": "/login",
+    "unauthenticatedApi": 401,
+    "pageErrors": []
+  },
+  {
+    "width": 390,
+    "status": 200,
+    "scriptBytes": 612104,
+    "scriptEncodedBytes": 184695,
+    "domContentLoadedMs": 69,
+    "scripts": [
+      {
+        "path": "/_next/static/chunks/webpack-38f3bc9b5d50c502.js",
+        "decodedBytes": 7763,
+        "encodedBytes": 3977
+      },
+      {
+        "path": "/_next/static/chunks/4bd1b696-8a4ab4fdf0ae305a.js",
+        "decodedBytes": 201060,
+        "encodedBytes": 63303
+      },
+      {
+        "path": "/_next/static/chunks/main-app-e44fdd896c2fb83a.js",
+        "decodedBytes": 529,
+        "encodedBytes": 529
+      },
+      {
+        "path": "/_next/static/chunks/app/layout-c14407b02bf564d2.js",
+        "decodedBytes": 2687,
+        "encodedBytes": 1244
+      },
+      {
+        "path": "/_next/static/chunks/5663-165dc444fa0e0b56.js",
+        "decodedBytes": 30701,
+        "encodedBytes": 10343
+      },
+      {
+        "path": "/_next/static/chunks/84c12632-72bb2c340da27f64.js",
+        "decodedBytes": 89615,
+        "encodedBytes": 26005
+      },
+      {
+        "path": "/_next/static/chunks/3794-a6cbe3f16d804637.js",
+        "decodedBytes": 241388,
+        "encodedBytes": 65714
+      },
+      {
+        "path": "/_next/static/chunks/7117-fe5cccfb626e8865.js",
+        "decodedBytes": 11108,
+        "encodedBytes": 4176
+      },
+      {
+        "path": "/_next/static/chunks/app/login/page-fc2f89980f05a7e2.js",
+        "decodedBytes": 27253,
+        "encodedBytes": 9404
+      }
+    ],
+    "horizontalOverflow": false,
+    "protectedRedirect": "/login",
+    "unauthenticatedApi": 401,
+    "pageErrors": []
+  }
+]

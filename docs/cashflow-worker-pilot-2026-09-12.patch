@@ -1,0 +1,1777 @@
+diff --git a/scripts/cashflow-worker/browser.ts b/scripts/cashflow-worker/browser.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/browser.ts
+@@ -0,0 +1,157 @@
++import { createCashflowWorkerClient, type CashflowWorkerInput, type CashflowWorkerResult } from "./client";
++import { makeWorkerFixture, WORKER_FILTER_CASES, type WorkerFixture } from "./fixtures";
++import { runReference, runReferenceItems, runReferenceView, runCandidate } from "./reference";
++import { calibrateCpu } from "./calibration";
++
++const asOf = new Date("2026-09-12T12:00:00.000Z");
++let fixture: WorkerFixture;
++let referenceItems: CashflowWorkerResult["items"];
++let client = newClient();
++const tasks: { start: number; duration: number }[] = [];
++const observer = new PerformanceObserver(list => {
++  for (const entry of list.getEntries()) tasks.push({ start: entry.startTime, duration: entry.duration });
++});
++if (PerformanceObserver.supportedEntryTypes.includes("longtask")) observer.observe({ type: "longtask", buffered: true });
++const nextFrame = () => new Promise<number>(resolve => requestAnimationFrame(resolve));
++const pauseFrame = async () => { await nextFrame(); await nextFrame(); };
++function newClient(url = "/worker.js", timeoutMs = 30_000, allowFallback = false) {
++  return createCashflowWorkerClient({
++    createWorker: () => new Worker(url, { type: "module" }),
++    fallback: input => {
++      if (!allowFallback) throw new Error("Measured worker path failed");
++      return runReference(input.snapshot, input.statements, input.options, input.asOf);
++    },
++    timeoutMs,
++  });
++}
++function inputFor(caseId: string): CashflowWorkerInput {
++  const selected = WORKER_FILTER_CASES.find(item => item.id === caseId);
++  if (!selected) throw new Error("Unknown synthetic filter");
++  return { ...fixture, options: { ...selected.options }, asOf };
++}
++function canonical(value: unknown): string {
++  if (value instanceof Date) return `date:${value.toISOString()}`;
++  if (value === undefined) return "undefined";
++  if (value === null) return "null";
++  if (typeof value === "number") {
++    if (!Number.isFinite(value)) throw new Error("Non-finite synthetic result");
++    return `number:${Object.is(value, -0) ? "-0" : value}`;
++  }
++  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
++  if (typeof value === "object") return `{${Object.entries(value).sort(([a],[b]) => a.localeCompare(b))
++    .map(([key,item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(",")}}`;
++  return `${typeof value}:${JSON.stringify(value)}`;
++}
++async function fingerprint(value: unknown) {
++  const bytes = new TextEncoder().encode(canonical(value));
++  const hash = await crypto.subtle.digest("SHA-256", bytes);
++  return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2,"0")).join("");
++}
++function reference(input: CashflowWorkerInput, viewOnly: boolean) {
++  return viewOnly
++    ? { items: referenceItems, months: runReferenceView(referenceItems, input.statements, input.options, asOf) }
++    : runReference(input.snapshot, input.statements, input.options, asOf);
++}
++async function prepare(count: number) {
++  client.dispose();
++  client = newClient();
++  fixture = makeWorkerFixture(count, asOf);
++  const input = inputFor("combined");
++  referenceItems = runReferenceItems(input.snapshot, input.options, asOf);
++  // Warm initialization is separate from steady-state filter timings.
++  const started = performance.now();
++  const result = await client.run(input);
++  const firstWorkerRoundtripMs = performance.now() - started;
++  const expected = runReference(input.snapshot, input.statements, input.options, asOf);
++  if (canonical(result) !== canonical(expected)) throw new Error("Initial worker mismatch");
++  await pauseFrame();
++  return { contracts: count, items: result.items.length, months: result.months.length, firstWorkerRoundtripMs,
++    inputJsonBytes: new TextEncoder().encode(JSON.stringify(input)).length,
++    resultJsonBytes: new TextEncoder().encode(JSON.stringify(result)).length };
++}
++async function verify(caseId: string) {
++  const input = inputFor(caseId);
++  const before = canonical(input);
++  const expected = runReference(input.snapshot, input.statements, input.options, asOf);
++  const candidate = runCandidate(input.snapshot, input.statements, input.options, asOf);
++  const result = await client.run(input);
++  const matched = canonical(expected) === canonical(candidate) && canonical(expected) === canonical(result);
++  const inputUnchanged = canonical(input) === before;
++  if (!matched || !inputUnchanged) throw new Error(`Synthetic mismatch: ${caseId}`);
++  return { caseId, matched, inputUnchanged, items: result.items.length, months: result.months.length,
++    fingerprint: await fingerprint(result) };
++}
++async function measure(mode: "main" | "worker", caseId: string, viewOnly: boolean) {
++  const input = inputFor(caseId);
++  if (viewOnly && !["search", "prediction", "history", "combined"].includes(caseId)) throw new Error("Invalid view-only scenario");
++  await pauseFrame();
++  tasks.length = 0;
++  const frameGaps: number[] = [];
++  let active = true;
++  let lastFrame = performance.now();
++  function frame(now: number) {
++    frameGaps.push(now - lastFrame);
++    lastFrame = now;
++    if (active) requestAnimationFrame(frame);
++  }
++  requestAnimationFrame(frame);
++  const started = performance.now();
++  const timer = new Promise<number>(resolve => setTimeout(() => resolve(performance.now() - started), 0));
++  const result = mode === "main" ? reference(input, viewOnly) : await client.run(input);
++  const finished = performance.now();
++  const timerDelayMs = await timer;
++  await pauseFrame();
++  active = false;
++  const longTasks = tasks.filter(task => task.start < finished && task.start + task.duration > started);
++  return { mode, caseId, viewOnly, work: mode === "worker" ? "full-compute-and-view" : viewOnly ? "view-from-cached-items-without-React-memoization" : "full-reference-compute-and-view", elapsedMs: finished - started, timerDelayMs,
++    maxFrameGapMs: Math.max(0, ...frameGaps), longTaskCount: longTasks.length,
++    maxLongTaskMs: Math.max(0, ...longTasks.map(task => task.duration)),
++    items: result.items.length, months: result.months.length };
++}
++async function controls() {
++  const input = inputFor("combined");
++  const first = client.run(input).then(() => false, error => error.name === "AbortError");
++  const second = client.run(inputFor("life"));
++  const newest = await second;
++  const newestExpected = runReference(fixture.snapshot, fixture.statements, inputFor("life").options, asOf);
++  const latestOnly = await first && canonical(newest) === canonical(newestExpected);
++  const disposed = newClient();
++  const pending = disposed.run(input).then(() => false, error => error.name === "AbortError");
++  disposed.dispose();
++  const disposeAborted = await pending;
++  const disposeRejectsNew = await disposed.run(input).then(() => false, error => error.name === "AbortError");
++  const checks: Record<string, boolean> = { latestOnly, disposeAborted, disposeRejectsNew };
++  for (const [name, url, timeoutMs] of [["crashFallback", "/worker-error.js", 5000], ["timeoutFallback", "/worker-silent.js", 20]] as const) {
++    const broken = newClient(url, timeoutMs, true);
++    const result = await broken.run(input);
++    checks[name] = canonical(result) === canonical(runReference(input.snapshot, input.statements, input.options, asOf));
++    broken.dispose();
++  }
++  const unavailable = createCashflowWorkerClient({createWorker: () => { throw new Error("Synthetic unavailable"); },
++    fallback: value => runReference(value.snapshot,value.statements,value.options,value.asOf)});
++  checks.unavailableFallback = canonical(await unavailable.run(input)) === canonical(runReference(input.snapshot,input.statements,input.options,asOf));
++  unavailable.dispose();
++  if (Object.values(checks).some(value => !value)) throw new Error("Browser lifecycle check failed");
++  return checks;
++}
++async function calibration() {
++  const worker = new Worker("/worker.js", { type: "module" });
++  const main: number[] = [], background: number[] = [];
++  try {
++    for (let index = 0; index < 5; index += 1) {
++      const result = calibrateCpu();
++      const remote = await new Promise<{ elapsedMs: number; checksum: number }>((resolve, reject) => {
++        const timer = setTimeout(() => reject(new Error("Calibration timeout")), 10_000);
++        worker.onmessage = event => { clearTimeout(timer); resolve(event.data.calibration); };
++        worker.onerror = () => { clearTimeout(timer); reject(new Error("Calibration failed")); };
++        worker.postMessage({id:index,kind:"calibrate"});
++      });
++      if (result.checksum !== remote.checksum) throw new Error("Calibration checksum mismatch");
++      if (index > 0) { main.push(result.elapsedMs); background.push(remote.elapsedMs); }
++    }
++  } finally { worker.terminate(); }
++  return { mainMs: main, workerMs: background };
++}
++Object.assign(window, { workerBenchmark: { prepare, verify, measure, controls, calibration,
++  cases: WORKER_FILTER_CASES.map(({id,label}) => ({id,label})),
++  dispose: () => { client.dispose(); observer.disconnect(); } } });
+diff --git a/scripts/cashflow-worker/calibration.ts b/scripts/cashflow-worker/calibration.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/calibration.ts
+@@ -0,0 +1,9 @@
++/** Synthetic CPU probe only, independent of business data. */
++export function calibrateCpu() {
++  const started = performance.now();
++  let checksum = 0;
++  for (let index = 0; index < 30_000_000; index += 1) {
++    checksum = (Math.imul(checksum ^ index, 1664525) + 1013904223) | 0;
++  }
++  return { elapsedMs: performance.now() - started, checksum };
++}
+diff --git a/scripts/cashflow-worker/client.test.ts b/scripts/cashflow-worker/client.test.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/client.test.ts
+@@ -0,0 +1,248 @@
++import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
++import {
++  createCashflowWorkerClient,
++  type CashflowWorkerInput,
++  type CashflowWorkerPort,
++  type CashflowWorkerResult,
++} from "./client";
++
++function fakeWorker() {
++  const listeners = new Map<string, Set<(event: unknown) => void>>();
++  return {
++    postMessage: vi.fn(),
++    terminate: vi.fn(),
++    addEventListener: vi.fn((name: string, listener: (event: unknown) => void) => {
++      const current = listeners.get(name) ?? new Set();
++      current.add(listener);
++      listeners.set(name, current);
++    }),
++    removeEventListener: vi.fn((name: string, listener: (event: unknown) => void) => {
++      listeners.get(name)?.delete(listener);
++    }),
++    emit(name: string, data?: unknown) {
++      const event = { data, preventDefault: vi.fn() };
++      [...(listeners.get(name) ?? [])].forEach(listener => listener(event));
++      return event;
++    },
++  };
++}
++
++const input = (): CashflowWorkerInput => ({
++  snapshot: {
++    email: "advisor@example.test", myPosition: null, myCommissionMode: null,
++    hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
++  },
++  statements: [],
++  options: {
++    scopeFilter: "combined", productFilter: "all", tipsterMode: false,
++    showPastYears: false, intelligentPredictionEnabled: false, contractNumberQuery: "",
++  },
++  asOf: new Date("2026-09-12T12:00:00Z"),
++});
++const result = (): CashflowWorkerResult => ({ items: [], months: [] });
++
++function fixture(timeoutMs?: number) {
++  const worker = fakeWorker();
++  const createWorker = vi.fn(() => worker as unknown as CashflowWorkerPort);
++  const fallback = vi.fn<(input: CashflowWorkerInput) => CashflowWorkerResult>(() => result());
++  const client = createCashflowWorkerClient({ createWorker, fallback, timeoutMs });
++  return { worker, createWorker, fallback, client };
++}
++
++beforeEach(() => vi.useFakeTimers());
++afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
++
++describe("cashflow worker benchmark client", () => {
++  it("starts lazily, transfers the supplied context and preserves structured Date results", async () => {
++    expectTypeOf<Worker>().toExtend<CashflowWorkerPort>();
++    const { worker, createWorker, fallback, client } = fixture();
++    expect(createWorker).not.toHaveBeenCalled();
++    const args = input();
++    const before = structuredClone(args);
++    const pending = client.run(args);
++    expect(worker.postMessage).toHaveBeenCalledWith({ id: 1, input: args });
++    const output = result();
++    output.items.push({ id: "item", amount: 125, productKey: "cppAuto", date: args.asOf,
++      ownerEmail: args.snapshot.email, entryId: "entry" });
++    worker.emit("message", { id: 1, ok: true, result: output });
++    expect(await pending).toBe(output);
++    expect(output.items[0].date).toBeInstanceOf(Date);
++    expect(args).toEqual(before);
++    expect(fallback).not.toHaveBeenCalled();
++    expect(vi.getTimerCount()).toBe(0);
++    const next = client.run(args);
++    worker.emit("message", { id: 2, ok: true, result: output });
++    expect(await next).toBe(output);
++    expect(createWorker).toHaveBeenCalledTimes(1);
++    client.dispose();
++  });
++
++  it("rejects superseded work and ignores its later successes and failures", async () => {
++    const { worker, fallback, client } = fixture();
++    const first = client.run(input());
++    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
++    const second = client.run(input());
++    await rejected;
++    const resolved = vi.fn();
++    void second.then(resolved);
++    worker.emit("message", { id: 1, ok: true, result: result() });
++    worker.emit("message", { id: 1, ok: false });
++    await Promise.resolve();
++    expect(resolved).not.toHaveBeenCalled();
++    expect(fallback).not.toHaveBeenCalled();
++    const output = result();
++    worker.emit("message", { id: 2, ok: true, result: output });
++    expect(await second).toBe(output);
++    expect(worker.terminate).not.toHaveBeenCalled();
++    client.dispose();
++  });
++
++  it.each(["error", "messageerror", "reported", "malformed"])("falls back only for the current request after %s and retires the failed worker", async kind => {
++    const { worker, createWorker, fallback, client } = fixture();
++    const first = client.run(input());
++    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
++    const currentInput = input();
++    currentInput.options.productFilter = "life";
++    const latest = client.run(currentInput);
++    await rejected;
++    if (kind === "reported") worker.emit("message", { id: 2, ok: false });
++    else if (kind === "malformed") worker.emit("message", { id: 2, ok: true, result: { items: "bad", months: [] } });
++    else expect(worker.emit(kind).preventDefault).toHaveBeenCalledOnce();
++    expect(await latest).toEqual(result());
++    expect(fallback).toHaveBeenCalledExactlyOnceWith(currentInput);
++    expect(worker.terminate).toHaveBeenCalledTimes(1);
++    expect(worker.removeEventListener).toHaveBeenCalledTimes(3);
++    expect(vi.getTimerCount()).toBe(0);
++    worker.emit("message", { id: 2, ok: true, result: result() });
++    expect(fallback).toHaveBeenCalledTimes(1);
++    expect(await client.run(input())).toEqual(result());
++    expect(fallback).toHaveBeenCalledTimes(2);
++    expect(createWorker).toHaveBeenCalledTimes(1);
++    client.dispose();
++    expect(worker.terminate).toHaveBeenCalledTimes(1);
++  });
++
++  it("uses the default 30-second timeout and clears it after fallback", async () => {
++    const { client, fallback, worker } = fixture();
++    const pending = client.run(input());
++    vi.advanceTimersByTime(29_999);
++    expect(fallback).not.toHaveBeenCalled();
++    vi.advanceTimersByTime(1);
++    expect(await pending).toEqual(result());
++    expect(fallback).toHaveBeenCalledTimes(1);
++    expect(worker.terminate).toHaveBeenCalledTimes(1);
++    expect(vi.getTimerCount()).toBe(0);
++    client.dispose();
++  });
++
++  it.each([null, [], "Private payload", {}, { id: "1" }, { id: 0 }, { id: 1.5 }, { id: 2 }])("falls back promptly for an invalid response without a valid request identity: %j", message => {
++    const { client, worker, fallback } = fixture();
++    const args = input();
++    const pending = client.run(args);
++    worker.emit("message", message);
++    expect(fallback).toHaveBeenCalledExactlyOnceWith(args);
++    expect(worker.terminate).toHaveBeenCalledTimes(1);
++    expect(vi.getTimerCount()).toBe(0);
++    client.dispose();
++    return expect(pending).resolves.toEqual(result());
++  });
++
++  it("replaces the timeout together with the request", async () => {
++    const { client, fallback } = fixture(100);
++    const first = client.run(input());
++    const rejected = expect(first).rejects.toMatchObject({ name: "AbortError" });
++    vi.advanceTimersByTime(90);
++    const currentInput = input();
++    const latest = client.run(currentInput);
++    await rejected;
++    vi.advanceTimersByTime(10);
++    expect(fallback).not.toHaveBeenCalled();
++    vi.advanceTimersByTime(90);
++    expect(await latest).toEqual(result());
++    expect(fallback).toHaveBeenCalledExactlyOnceWith(currentInput);
++    client.dispose();
++  });
++
++  it.each(["factory", "postMessage", "listener"])("uses the synchronous fallback when %s throws, without exposing error contents", async kind => {
++    const { worker, createWorker, fallback, client } = fixture();
++    const fail = () => { throw new Error("Private financial payload"); };
++    if (kind === "factory") createWorker.mockImplementation(fail);
++    if (kind === "postMessage") worker.postMessage.mockImplementation(fail);
++    if (kind === "listener") worker.addEventListener.mockImplementation(fail);
++    const args = input();
++    expect(await client.run(args)).toEqual(result());
++    expect(fallback).toHaveBeenCalledExactlyOnceWith(args);
++    expect(worker.terminate).toHaveBeenCalledTimes(kind === "factory" ? 0 : 1);
++    client.dispose();
++  });
++
++  it("sanitizes a failing fallback and leaves no pending timer", async () => {
++    const { client, worker, fallback } = fixture();
++    fallback.mockImplementation(() => { throw new Error("Private financial payload"); });
++    const pending = client.run(input());
++    const rejected = expect(pending).rejects.toThrow("Cashflow calculation failed");
++    worker.emit("error");
++    await rejected;
++    expect(vi.getTimerCount()).toBe(0);
++    client.dispose();
++  });
++
++  it("disposes pending work, removes listeners, terminates once and rejects future runs", async () => {
++    const { client, worker, fallback, createWorker } = fixture();
++    const pending = client.run(input());
++    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
++    client.dispose();
++    client.dispose();
++    await rejected;
++    worker.emit("message", { id: 1, ok: true, result: result() });
++    worker.emit("error");
++    vi.advanceTimersByTime(60_000);
++    expect(fallback).not.toHaveBeenCalled();
++    expect(worker.terminate).toHaveBeenCalledTimes(1);
++    expect(worker.removeEventListener).toHaveBeenCalledTimes(3);
++    expect(vi.getTimerCount()).toBe(0);
++    await expect(client.run(input())).rejects.toMatchObject({ name: "AbortError" });
++    expect(createWorker).toHaveBeenCalledTimes(1);
++  });
++
++  it("can be disposed before the first run without constructing a worker", async () => {
++    const { client, createWorker, fallback } = fixture();
++    client.dispose();
++    await expect(client.run(input())).rejects.toMatchObject({ name: "AbortError" });
++    expect(createWorker).not.toHaveBeenCalled();
++    expect(fallback).not.toHaveBeenCalled();
++  });
++
++  it("does not let a reentrant disposal inside fallback settle an obsolete request", async () => {
++    const { client, worker, fallback } = fixture();
++    fallback.mockImplementation(() => { client.dispose(); return result(); });
++    const pending = client.run(input());
++    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
++    worker.emit("error");
++    await rejected;
++    expect(vi.getTimerCount()).toBe(0);
++  });
++
++  it("does not let a reentrant newer fallback be overwritten by an older result", async () => {
++    const { client, worker, fallback } = fixture();
++    const newerResult = result();
++    const olderResult = result();
++    let newer: Promise<CashflowWorkerResult> | undefined;
++    fallback.mockImplementationOnce(() => {
++      newer = client.run(input());
++      return olderResult;
++    }).mockReturnValue(newerResult);
++    const pending = client.run(input());
++    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
++    worker.emit("error");
++    await rejected;
++    expect(await newer).toBe(newerResult);
++    expect(fallback).toHaveBeenCalledTimes(2);
++    expect(vi.getTimerCount()).toBe(0);
++    client.dispose();
++  });
++
++  it.each([0, -1, NaN, Infinity, 2_147_483_648])("rejects invalid timeout %s before starting any work", timeoutMs => {
++    expect(() => fixture(timeoutMs)).toThrow(RangeError);
++  });
++});
+diff --git a/scripts/cashflow-worker/client.ts b/scripts/cashflow-worker/client.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/client.ts
+@@ -0,0 +1,144 @@
++import type { CashflowSnapshot } from "../../src/app/cashflow/computeCashflow";
++import type { CashflowViewOptions } from "../../src/app/cashflow/buildCashflowView";
++import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } from "../../src/app/cashflow/types";
++
++export type CashflowWorkerInput = {
++  snapshot: CashflowSnapshot;
++  statements: CashflowCommissionStatementSummary[];
++  options: CashflowViewOptions;
++  asOf: Date;
++};
++export type CashflowWorkerResult = { items: CashflowItem[]; months: MonthGroup[] };
++export type CashflowWorkerPort = Pick<Worker, "postMessage" | "addEventListener" | "removeEventListener" | "terminate">;
++export type CashflowWorkerClient = {
++  run(input: CashflowWorkerInput): Promise<CashflowWorkerResult>;
++  dispose(): void;
++};
++
++type PendingRequest = {
++  id: number;
++  input: CashflowWorkerInput;
++  resolve: (result: CashflowWorkerResult) => void;
++  reject: (error: Error) => void;
++  timer: ReturnType<typeof setTimeout>;
++};
++
++/** Benchmark-only client. The owner must keep each submitted input immutable. */
++export function createCashflowWorkerClient({ createWorker, fallback, timeoutMs = 30_000 }: {
++  createWorker: () => CashflowWorkerPort;
++  fallback: (input: CashflowWorkerInput) => CashflowWorkerResult;
++  timeoutMs?: number;
++}): CashflowWorkerClient {
++  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
++    throw new RangeError("Invalid worker timeout");
++  }
++  let worker: CashflowWorkerPort | null = null;
++  let workerFailed = false;
++  let disposed = false;
++  let sequence = 0;
++  let pending: PendingRequest | null = null;
++
++  const clear = (request: PendingRequest) => {
++    clearTimeout(request.timer);
++    if (pending === request) pending = null;
++  };
++  const abortPending = () => {
++    if (!pending) return;
++    const request = pending;
++    clear(request);
++    request.reject(new DOMException("Cashflow request was cancelled", "AbortError"));
++  };
++  const stopWorker = () => {
++    const previous = worker;
++    worker = null;
++    if (!previous) return;
++    // Cleanup failures must not prevent cancellation or the reference fallback.
++    try { previous.removeEventListener("message", onMessage); } catch { /* Best effort. */ }
++    try { previous.removeEventListener("error", onFailure); } catch { /* Best effort. */ }
++    try { previous.removeEventListener("messageerror", onFailure); } catch { /* Best effort. */ }
++    try { previous.terminate(); } catch { /* Best effort. */ }
++  };
++  const runFallback = () => {
++    const request = pending;
++    if (!request || disposed) return;
++    clearTimeout(request.timer);
++    try {
++      const result = fallback(request.input);
++      // A reentrant run/dispose from the injected fallback also invalidates it.
++      if (pending !== request || disposed) return;
++      clear(request);
++      request.resolve(result);
++    } catch {
++      if (pending !== request || disposed) return;
++      clear(request);
++      request.reject(new Error("Cashflow calculation failed"));
++    }
++  };
++  function onFailure(event?: Event) {
++    // Suppress the browser's default logging of an uncaught worker error.
++    event?.preventDefault?.();
++    if (disposed || workerFailed) return;
++    workerFailed = true;
++    stopWorker();
++    runFallback();
++  }
++  function onMessage(event: MessageEvent<unknown>) {
++    if (disposed || workerFailed || !pending) return;
++    const data = event.data;
++    if (!data || typeof data !== "object" || Array.isArray(data)) {
++      onFailure();
++      return;
++    }
++    const message = data as Record<string, unknown>;
++    if (typeof message.id !== "number" || !Number.isSafeInteger(message.id) ||
++      message.id <= 0 || message.id > pending.id) {
++      onFailure();
++      return;
++    }
++    if (message.id < pending.id) return;
++    const result = message.result;
++    if (message.ok !== true || !result || typeof result !== "object" ||
++      !Array.isArray((result as CashflowWorkerResult).items) ||
++      !Array.isArray((result as CashflowWorkerResult).months)) {
++      onFailure();
++      return;
++    }
++    const request = pending;
++    clear(request);
++    request.resolve(result as CashflowWorkerResult);
++  }
++
++  return {
++    run(input) {
++      if (disposed) return Promise.reject(new DOMException("Cashflow client was disposed", "AbortError"));
++      abortPending();
++      return new Promise<CashflowWorkerResult>((resolve, reject) => {
++        const id = ++sequence;
++        pending = { id, input, resolve, reject, timer: setTimeout(() => {
++          if (pending?.id === id) onFailure();
++        }, timeoutMs) };
++        if (workerFailed) {
++          runFallback();
++          return;
++        }
++        try {
++          if (!worker) {
++            worker = createWorker();
++            worker.addEventListener("message", onMessage);
++            worker.addEventListener("error", onFailure);
++            worker.addEventListener("messageerror", onFailure);
++          }
++          worker.postMessage({ id, input });
++        } catch {
++          onFailure();
++        }
++      });
++    },
++    dispose() {
++      if (disposed) return;
++      disposed = true;
++      abortPending();
++      stopWorker();
++    },
++  };
++}
+diff --git a/scripts/cashflow-worker/fixtures.test.ts b/scripts/cashflow-worker/fixtures.test.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/fixtures.test.ts
+@@ -0,0 +1,78 @@
++import { describe, expect, it } from "vitest";
++import { computeCashflow } from "../../src/app/cashflow/computeCashflow";
++import { buildCashflowView } from "../../src/app/cashflow/buildCashflowView";
++import { makeWorkerFixture, WORKER_FILTER_CASES } from "./fixtures";
++
++const asOf = new Date(2026, 8, 12, 12);
++
++describe("synthetic browser cashflow fixtures", () => {
++  it.each([30, 300, 1000])("generates a finite own/team portfolio with %i contracts", contractCount => {
++    const { snapshot, statements } = makeWorkerFixture(contractCount, asOf);
++    expect(snapshot.ownEntries.length + snapshot.teamEntriesRaw.length).toBe(contractCount);
++    expect(snapshot.ownEntries.length).toBeGreaterThan(0);
++    expect(snapshot.teamEntriesRaw.length).toBeGreaterThan(0);
++    const items = computeCashflow(snapshot, { ...WORKER_FILTER_CASES[0].options, asOf });
++    expect(items.length).toBeGreaterThan(contractCount);
++    expect(items.every(item => Number.isFinite(item.amount) && Number.isFinite(item.date.getTime()))).toBe(true);
++    expect(items.some(item => item.source === "manager")).toBe(true);
++    expect(items.some(item => item.isTipPayout)).toBe(true);
++    expect(items.some(item => item.productKey === "neon")).toBe(true);
++    expect(items.some(item => item.productKey === "cppAuto")).toBe(true);
++    const months = buildCashflowView(items, statements, WORKER_FILTER_CASES[0].options, asOf);
++    expect(months.length).toBeGreaterThan(0);
++    expect(months.every(month => Number.isFinite(month.total))).toBe(true);
++  });
++
++  it("is deterministic, independent between calls and contains only synthetic email addresses", () => {
++    const first = makeWorkerFixture(30, asOf);
++    const second = makeWorkerFixture(30, asOf);
++    expect(first).toEqual(second);
++    const emails: string[] = [];
++    const visit = (value: unknown) => {
++      if (typeof value === "string" && value.includes("@")) emails.push(value);
++      else if (Array.isArray(value)) value.forEach(visit);
++      else if (value && typeof value === "object") Object.values(value).forEach(visit);
++    };
++    visit(first);
++    expect(emails.length).toBeGreaterThan(0);
++    expect(emails.every(email => /^[a-z0-9.-]+@example\.test$/.test(email))).toBe(true);
++    expect(first.snapshot.subscriptionPayments).toEqual([]);
++    first.snapshot.ownEntries[0].items![0].amount = -1;
++    first.statements[0].paidContractNumbers.push("mutated");
++    expect(second).toEqual(makeWorkerFixture(30, asOf));
++  });
++
++  it("exercises distinct results for every advertised filter case", () => {
++    const { snapshot, statements } = makeWorkerFixture(30, asOf);
++    const views = new Map(WORKER_FILTER_CASES.map(({ id, options }) => {
++      const items = computeCashflow(snapshot, { ...options, asOf });
++      return [id, buildCashflowView(items, statements, options, asOf)];
++    }));
++    const results = [...views.values()];
++    expect(results.every(months => months.length > 0)).toBe(true);
++    expect(new Set(results.map(months => JSON.stringify(months))).size).toBe(WORKER_FILTER_CASES.length);
++    expect(views.get("team")!.flatMap(month => month.items).every(item => item.source === "manager")).toBe(true);
++    expect(views.get("tip")!.flatMap(month => month.items).every(item => item.isTipPayout)).toBe(true);
++    expect(views.get("search")!.flatMap(month => month.items).every(item => item.contractNumber === "100000")).toBe(true);
++    expect(views.get("history")!.some(month => month.year < asOf.getFullYear())).toBe(true);
++    expect(views.get("prediction")!.flatMap(month => month.items).some(item => item.predictionAdjustment)).toBe(true);
++  });
++
++  it("scales statements and their matched contract sets without exceeding the fixture portfolio", () => {
++    const sizes = [30, 300, 1000].map(count => makeWorkerFixture(count, asOf));
++    expect(sizes.map(fixture => fixture.statements.length)).toEqual([3, 8, 24]);
++    for (const { snapshot, statements } of sizes) {
++      const numbers = new Set([...snapshot.ownEntries, ...snapshot.teamEntriesRaw].map(entry => entry.contractNumber));
++      expect(statements.every(statement => statement.paidContractNumbers.every(number => numbers.has(number)))).toBe(true);
++      expect(statements.every(statement => statement.statementDateMs! < asOf.getTime())).toBe(true);
++    }
++  });
++
++  it.each([0, -1, 1.5, 1001, Number.NaN, Number.POSITIVE_INFINITY])("rejects unsupported contract count %s", count => {
++    expect(() => makeWorkerFixture(count, asOf)).toThrow("Synthetic fixtures require");
++  });
++
++  it("rejects an invalid date", () => {
++    expect(() => makeWorkerFixture(30, new Date(Number.NaN))).toThrow("Synthetic fixtures require");
++  });
++});
+diff --git a/scripts/cashflow-worker/fixtures.ts b/scripts/cashflow-worker/fixtures.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/fixtures.ts
+@@ -0,0 +1,162 @@
++import type { CashflowSnapshot } from "../../src/app/cashflow/computeCashflow";
++import type { CashflowViewOptions } from "../../src/app/cashflow/buildCashflowView";
++import type {
++  CashflowCommissionStatementSummary,
++  EntryDoc,
++} from "../../src/app/cashflow/types";
++import type { PaymentFrequency, Product } from "../../src/app/types/domain";
++
++export type WorkerFixture = {
++  snapshot: CashflowSnapshot;
++  statements: CashflowCommissionStatementSummary[];
++};
++
++export type WorkerFilterCase = {
++  id: string;
++  label: string;
++  options: CashflowViewOptions;
++};
++
++const defaultOptions: CashflowViewOptions = {
++  scopeFilter: "combined",
++  productFilter: "all",
++  tipsterMode: false,
++  showPastYears: false,
++  intelligentPredictionEnabled: false,
++  contractNumberQuery: "",
++};
++
++export const WORKER_FILTER_CASES: readonly WorkerFilterCase[] = [
++  { id: "combined", label: "Vlastní a týmové smlouvy", options: { ...defaultOptions } },
++  { id: "own", label: "Pouze vlastní smlouvy", options: { ...defaultOptions, scopeFilter: "own" } },
++  { id: "team", label: "Pouze týmové smlouvy", options: { ...defaultOptions, scopeFilter: "team" } },
++  { id: "auto", label: "Pojištění vozidel", options: { ...defaultOptions, productFilter: "auto" } },
++  { id: "life", label: "Životní pojištění", options: { ...defaultOptions, productFilter: "life" } },
++  { id: "tip", label: "Pouze TIP provize", options: { ...defaultOptions, productFilter: "tip" } },
++  { id: "history", label: "Včetně minulých let", options: { ...defaultOptions, showPastYears: true } },
++  { id: "prediction", label: "Inteligentní predikce", options: { ...defaultOptions, intelligentPredictionEnabled: true } },
++  { id: "search", label: "Vyhledání smlouvy 100000", options: { ...defaultOptions, contractNumberQuery: "100000" } },
++];
++
++const products: readonly Product[] = ["cppAuto", "kooperativaAuto", "pillowAuto", "neon", "flexi"];
++const frequencies: readonly PaymentFrequency[] = ["monthly", "quarterly", "semiannual", "annual"];
++const ownerEmail = "advisor@example.test";
++
++const isoDay = (date: Date): string =>
++  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
++
++/**
++ * Synthetic browser-only inputs. Same count/asOf/local time zone produces the
++ * same portfolio without clock reads, randomness, network access or credentials.
++ * contractCount counts contracts; TIP payouts and statements are additional.
++ */
++export function makeWorkerFixture(contractCount: number, asOf: Date): WorkerFixture {
++  if (!Number.isInteger(contractCount) || contractCount < 1 || contractCount > 1000 ||
++    !(asOf instanceof Date) || !Number.isFinite(asOf.getTime())) {
++    throw new Error("Synthetic fixtures require 1–1000 contracts and a valid asOf date.");
++  }
++
++  const snapshot: CashflowSnapshot = {
++    email: ownerEmail,
++    myPosition: "manazer8",
++    myCommissionMode: "standard",
++    hasAnyTeam: contractCount >= 4,
++    ownEntries: [],
++    teamEntriesRaw: [],
++    tipPayouts: [],
++    // Subscriptions require a production owner identity in the shared calculator.
++    // This fixture keeps every identity synthetic and does not bypass that rule.
++    subscriptionPayments: [],
++  };
++  const contracts: EntryDoc[] = [];
++
++  for (let index = 0; index < contractCount; index++) {
++    const team = index % 4 === 3;
++    const productKey = products[index % products.length];
++    const life = productKey === "neon" || productKey === "flexi";
++    const startDate = new Date(asOf.getFullYear(), asOf.getMonth() - 1 - index % 36, 1 + index % 27);
++    const immediateAmount = life ? 1200 + index % 80 * 12 : 120 + index % 80 * 3;
++    const items = life
++      ? [
++          { code: "A101", title: "Okamžitá provize", amount: immediateAmount },
++          { code: "B101-B104", title: "Následná provize (2.–5. rok)", amount: 30 + index % 10 },
++          { code: "B201-B206", title: "Pečovatelská provize (5.–10. rok)", amount: 15 + index % 5 },
++        ]
++      : [{ code: "A101", title: "Okamžitá provize", amount: immediateAmount }];
++    const entry: EntryDoc = {
++      id: `contract-${String(index).padStart(4, "0")}`,
++      userEmail: team ? `member-${Math.floor(index / 4) % 8}@example.test` : ownerEmail,
++      productKey,
++      frequencyRaw: frequencies[(index + Math.floor(index / products.length)) % frequencies.length],
++      contractNumber: String(100000 + index),
++      clientName: `Syntetický klient ${index + 1}`,
++      contractSignedDate: new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() - 3),
++      policyStartDate: startDate,
++      position: "poradce3",
++      ownerCurrentPosition: "poradce3",
++      commissionMode: "standard",
++      status: "active",
++      inputAmount: life ? 1000 + index % 40 * 25 : 6000 + index % 80 * 100,
++      items,
++      total: items.reduce((sum, item) => sum + item.amount, 0),
++    };
++    if (team) {
++      const overrideItems = items.map(item => ({ ...item, amount: Math.round(item.amount * 0.2 * 100) / 100 }));
++      entry.managerOverrides = [{
++        email: ownerEmail,
++        position: "manazer8",
++        commissionMode: "standard",
++        items: overrideItems,
++        total: overrideItems.reduce((sum, item) => sum + item.amount, 0),
++      }];
++    }
++    (team ? snapshot.teamEntriesRaw : snapshot.ownEntries).push(entry);
++    contracts.push(entry);
++  }
++
++  snapshot.tipPayouts = Array.from({ length: Math.max(3, Math.ceil(contractCount / 25)) }, (_, index) => ({
++    id: `tip-${index}`,
++    payoutDate: new Date(asOf.getFullYear(), asOf.getMonth() + index % 6, 25).getTime(),
++    amount: 150 + index % 20 * 15,
++    clientName: `Syntetický TIP ${index + 1}`,
++    sourceOwnerEmail: `member-${index % 8}@example.test`,
++    productKey: products[index % products.length],
++  }));
++
++  const statementCount = Math.max(3, Math.min(24, Math.ceil(contractCount / 40)));
++  const paidContractsPerStatement = Math.min(contractCount, 30, Math.max(2, Math.ceil(contractCount / 30)));
++  const statements = Array.from({ length: statementCount }, (_, index): CashflowCommissionStatementSummary => {
++    const date = new Date(asOf.getFullYear(), asOf.getMonth() - index - 1, 24);
++    const paidEntries = Array.from({ length: paidContractsPerStatement }, (_, row) => contracts[(row * 7 + index) % contracts.length]);
++    const commissionTotal = paidEntries.reduce((sum, entry) => sum + (
++      entry.managerOverrides?.[0]?.items[0]?.amount ?? entry.items?.[0]?.amount ?? 0
++    ), 0);
++    return {
++      id: `statement-${index}`,
++      fileName: `synthetic-statement-${index}.html`,
++      statementNumber: `SYN-${index + 1}`,
++      statementDate: `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`,
++      period: `${date.getMonth() + 1}/${date.getFullYear()}`,
++      advisorNumber: "synthetic",
++      periodStartMs: new Date(date.getFullYear(), date.getMonth(), 1).getTime(),
++      periodEndMs: new Date(date.getFullYear(), date.getMonth() + 1, 0).getTime(),
++      statementDateMs: date.getTime(),
++      // Same unpadded month key as the current cashflow view regression fixtures.
++      payoutMonthKey: `${date.getFullYear()}-${date.getMonth() + 1}`,
++      paidContractNumbers: paidEntries.map(entry => entry.contractNumber!),
++      paidCommissionKeys: paidEntries.map(entry => `${entry.contractNumber}:A101`),
++      commissionTotal,
++      payoutTotal: commissionTotal,
++      otherPaymentsTotal: 0,
++      managerCommissionTotal: 0,
++      createdAtMs: date.getTime(),
++      updatedAtMs: date.getTime(),
++    };
++  });
++
++  // Keep date strings represented too, as real API inputs contain both formats.
++  snapshot.ownEntries.forEach((entry, index) => {
++    if (index % 3 === 0) entry.policyStartDate = isoDay(entry.policyStartDate as Date);
++  });
++  return { snapshot, statements };
++}
+diff --git a/scripts/cashflow-worker/generate-reference.mjs b/scripts/cashflow-worker/generate-reference.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/generate-reference.mjs
+@@ -0,0 +1,172 @@
++// Local, repeatable extraction from the immutable production export. No app edits.
++import { createHash } from "node:crypto";
++import { readFileSync, writeFileSync } from "node:fs";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++import ts from "typescript";
++
++const directory = path.dirname(fileURLToPath(import.meta.url));
++export const defaultBase = path.resolve(directory, "../../../base");
++const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
++const text = (node, source) => printer.printNode(ts.EmitHint.Unspecified, node, source);
++const assert = (condition, message) => { if (!condition) throw new Error(message); };
++const identifiers = node => {
++  const names = new Set();
++  const visit = child => { if (ts.isIdentifier(child)) names.add(child.text); ts.forEachChild(child, visit); };
++  visit(node);
++  return names;
++};
++const declarations = statements => {
++  const result = new Map();
++  for (const statement of statements) {
++    if (ts.isVariableStatement(statement)) {
++      for (const declaration of statement.declarationList.declarations) {
++        if (ts.isIdentifier(declaration.name)) result.set(declaration.name.text, { node: declaration, statement });
++      }
++    } else if ((ts.isTypeAliasDeclaration(statement) || ts.isFunctionDeclaration(statement)) && statement.name) {
++      result.set(statement.name.text, { node: statement, statement });
++    }
++  }
++  return result;
++};
++const dependencies = (roots, available, boundary = new Set()) => {
++  const selected = new Set();
++  const visit = node => {
++    for (const name of identifiers(node)) {
++      if (boundary.has(name)) continue;
++      const found = available.get(name);
++      if (found && !selected.has(found.statement)) {
++        selected.add(found.statement);
++        visit(found.node);
++      }
++    }
++  };
++  roots.forEach(visit);
++  return selected;
++};
++
++export function generateReference(baseDirectory = defaultBase) {
++  const readSource = relative => {
++    const name = path.join(baseDirectory, relative);
++    const sourceText = readFileSync(name, "utf8");
++    return ts.createSourceFile(name, sourceText, ts.ScriptTarget.Latest, true, relative.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
++  };
++  const hook = readSource("src/app/cashflow/useCashflowData.ts");
++  const page = readSource("src/app/cashflow/page.tsx");
++  const hookFunction = hook.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "useCashflowData");
++  const pageFunction = page.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "CashflowPage");
++  assert(hookFunction?.body && pageFunction?.body, "Production hook/page declaration changed");
++
++  const hookMemos = hookFunction.body.statements.flatMap(statement => ts.isVariableStatement(statement)
++    ? [...statement.declarationList.declarations].filter(declaration =>
++      ts.isObjectBindingPattern(declaration.name) && declaration.name.elements.some(item => item.name.getText(hook) === "cashflowItems"))
++    : []);
++  assert(hookMemos.length === 1, "Expected one cashflow calculation binding");
++  const memo = hookMemos[0].initializer;
++  assert(memo && ts.isCallExpression(memo) && memo.expression.getText(hook) === "useMemo", "Calculation must remain a useMemo callback");
++  const callback = memo.arguments[0];
++  assert(ts.isArrowFunction(callback) && ts.isBlock(callback.body), "Expected a block calculation callback");
++  let clocksRemoved = 0;
++  let debugRemoved = 0;
++  const bodyStatements = callback.body.statements.filter(statement => {
++    if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1) {
++      const declaration = statement.declarationList.declarations[0];
++      if (ts.isIdentifier(declaration.name) && declaration.name.text === "asOf") {
++        assert(declaration.initializer && ts.isNewExpression(declaration.initializer) && declaration.initializer.expression.getText(hook) === "Date" && declaration.initializer.arguments?.length === 0, "Unexpected hook clock");
++        clocksRemoved += 1;
++        return false;
++      }
++    }
++    if (ts.isIfStatement(statement) && statement.expression.getText(hook) === 'process.env.NODE_ENV !== "production"') {
++      assert(statement.thenStatement.getText(hook).includes('console.info("[cashflow-debug]"'), "Unexpected non-production branch");
++      debugRemoved += 1;
++      return false;
++    }
++    return true;
++  });
++  assert(clocksRemoved === 1 && debugRemoved === 1, "Expected exactly one captured clock and one debug-only block");
++  const hookBody = ts.factory.updateBlock(callback.body, bodyStatements);
++  const hookSupport = dependencies([hookBody], declarations(hook.statements));
++
++  const pageDeclarations = declarations(pageFunction.body.statements);
++  const monthGroups = pageDeclarations.get("monthGroups");
++  assert(monthGroups, "Missing page monthGroups");
++  const boundary = new Set([
++    "cashflowItems", "commissionStatements", "scopeFilter", "productFilter", "isTipsterMode",
++    "showPastYears", "intelligentPredictionEnabled", "contractNumberQuery",
++  ]);
++  const pageSupport = dependencies([monthGroups.node], pageDeclarations, boundary);
++  pageSupport.add(monthGroups.statement);
++  const pageStatements = pageFunction.body.statements.filter(statement => pageSupport.has(statement));
++  const transformations = { hookClock: clocksRemoved, debugOnlyBlock: debugRemoved, useMemo: 0, pastFilters: 0, statementPastFilter: 0, predictionClock: 0 };
++  const rewritePage = context => {
++    const visit = node => {
++      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
++        const name = node.expression.text;
++        if (name === "useMemo") {
++          assert(node.arguments.length === 2 && ts.isArrowFunction(node.arguments[0]), "Unexpected page memo");
++          transformations.useMemo += 1;
++          return ts.factory.createCallExpression(ts.factory.createParenthesizedExpression(ts.visitNode(node.arguments[0], visit)), undefined, []);
++        }
++        if (name === "filterPastItems" || name === "filterPastStatementMonths") {
++          assert(node.arguments.length === 2, "Unexpected page period filter clock");
++          if (name === "filterPastItems") transformations.pastFilters += 1;
++          else transformations.statementPastFilter += 1;
++          return ts.factory.updateCallExpression(node, node.expression, node.typeArguments, [...node.arguments, ts.factory.createIdentifier("asOf")]);
++        }
++        if (name === "applyIntelligentCashflowPrediction") {
++          const argument = node.arguments[0];
++          assert(node.arguments.length === 1 && ts.isObjectLiteralExpression(argument) && !argument.properties.some(item => item.name?.getText(page) === "today"), "Unexpected page prediction clock");
++          transformations.predictionClock += 1;
++          return ts.factory.updateCallExpression(node, node.expression, node.typeArguments, [ts.factory.updateObjectLiteralExpression(argument, [...argument.properties, ts.factory.createPropertyAssignment("today", ts.factory.createIdentifier("asOf"))])]);
++        }
++      }
++      return ts.visitEachChild(node, visit, context);
++    };
++    return node => ts.visitNode(node, visit);
++  };
++  const transformed = ts.transform(ts.factory.createBlock(pageStatements), [rewritePage]);
++  const pageBody = transformed.transformed[0];
++  assert(transformations.useMemo === 10 && transformations.pastFilters === 2 && transformations.statementPastFilter === 1 && transformations.predictionClock === 1, "Page calculation graph/clock changed; review before regenerating");
++
++  const hookNames = new Set([...identifiers(hookBody), ...[...hookSupport].flatMap(node => [...identifiers(node)])]);
++  const pageNames = identifiers(pageBody);
++  pageNames.add("MonthGroup");
++  const imports = new Map();
++  for (const [source, names] of [[hook, hookNames], [page, pageNames]]) {
++    for (const statement of source.statements) {
++      if (!ts.isImportDeclaration(statement) || !statement.importClause?.namedBindings || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
++      let moduleName = statement.moduleSpecifier.text;
++      if (moduleName.startsWith(".")) moduleName = `@/${path.relative(path.join(baseDirectory, "src"), path.resolve(path.dirname(source.fileName), moduleName)).split(path.sep).join("/")}`;
++      for (const specifier of statement.importClause.namedBindings.elements) {
++        if (!names.has(specifier.name.text)) continue;
++        const value = { moduleName, imported: specifier.propertyName?.text ?? specifier.name.text, local: specifier.name.text, typeOnly: statement.importClause.isTypeOnly || specifier.isTypeOnly };
++        const prior = imports.get(value.local);
++        assert(!prior || JSON.stringify(prior) === JSON.stringify(value), `Ambiguous extracted import ${value.local}`);
++        imports.set(value.local, value);
++      }
++    }
++  }
++  assert(!["useMemo", "useEffect", "useState", "auth"].some(name => imports.has(name)), "Reference must not import React state or Firebase");
++  const groupedImports = new Map();
++  for (const item of imports.values()) {
++    const specifier = `${item.typeOnly ? "type " : ""}${item.imported}${item.imported !== item.local ? ` as ${item.local}` : ""}`;
++    groupedImports.set(item.moduleName, [...(groupedImports.get(item.moduleName) ?? []), specifier]);
++  }
++  const provenance = {
++    sources: Object.fromEntries(["src/app/cashflow/useCashflowData.ts", "src/app/cashflow/page.tsx", "src/app/cashflow/generator.ts", "src/app/cashflow/helpers.ts"].map(name => [name, createHash("sha256").update(readFileSync(path.join(baseDirectory, name))).digest("hex")])),
++    transformations,
++    note: "Production calculation callbacks extracted with TypeScript AST; common business helpers remain shared. asOf freezes only ambient clocks. React memoization and rendering are outside this reference.",
++  };
++  const output = `// Generated by generate-reference.mjs from immutable base; do not hand edit.\n// Local benchmark only. No app source, authentication, networking or payload logging.\n${[...groupedImports].map(([name, specs]) => `import { ${specs.join(", ")} } from ${JSON.stringify(name)};`).join("\n")}\nimport { computeCashflow, type CashflowSnapshot } from "@/app/cashflow/computeCashflow";\nimport { buildCashflowView, type CashflowViewOptions } from "@/app/cashflow/buildCashflowView";\n\nexport const REFERENCE_PROVENANCE = ${JSON.stringify(provenance, null, 2)} as const;\n\n${hook.statements.filter(statement => hookSupport.has(statement)).map(statement => text(statement, hook)).join("\n\n")}\n\nexport function runReferenceItems(snapshot: CashflowSnapshot, options: CashflowViewOptions, asOf: Date): CashflowItem[] {\n  const { scopeFilter, productFilter, tipsterMode } = options;\n  const enabled = true;\n  const snapshotMatchesCurrentUser = true;\n  const result = (() => ${text(hookBody, hook)})();\n  return result.cashflowItems;\n}\n\nexport function runReferenceView(cashflowItems: CashflowItem[], commissionStatements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): MonthGroup[] {\n  const { scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery } = options;\n${pageBody.statements.map(statement => text(statement, page)).join("\n")}\n  return monthGroups;\n}\n\nexport function runReference(snapshot: CashflowSnapshot, statements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): { items: CashflowItem[]; months: MonthGroup[] } {\n  const items = runReferenceItems(snapshot, options, asOf);\n  return { items, months: runReferenceView(items, statements, options, asOf) };\n}\n\nexport function runCandidate(snapshot: CashflowSnapshot, statements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): { items: CashflowItem[]; months: MonthGroup[] } {\n  const items = computeCashflow(snapshot, { ...options, asOf });\n  return { items, months: buildCashflowView(items, statements, options, asOf) };\n}\n`;
++  transformed.dispose();
++  return output;
++}
++
++if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
++  const target = path.join(directory, "reference.ts");
++  const output = generateReference();
++  if (process.argv.includes("--check")) assert(readFileSync(target, "utf8") === output, "Reference differs from immutable source extraction");
++  else writeFileSync(target, output);
++  process.stdout.write(process.argv.includes("--check") ? "Reference matches immutable AST extraction.\n" : "Reference generated from immutable source AST.\n");
++}
+diff --git a/scripts/cashflow-worker/reference.test.ts b/scripts/cashflow-worker/reference.test.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/reference.test.ts
+@@ -0,0 +1,88 @@
++import { createHash } from "node:crypto";
++import { readFileSync } from "node:fs";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++import { afterEach, describe, expect, it, vi } from "vitest";
++import * as computation from "../../src/app/cashflow/computeCashflow";
++import * as view from "../../src/app/cashflow/buildCashflowView";
++import * as generator from "../../src/app/cashflow/generator";
++import { cashflowCanonicalJson } from "../../src/app/cashflow/shadowProtocol";
++import { defaultBase, generateReference } from "./generate-reference.mjs";
++import { makeWorkerFixture, WORKER_FILTER_CASES } from "./fixtures";
++import {
++  REFERENCE_PROVENANCE, runCandidate, runReference, runReferenceItems, runReferenceView,
++} from "./reference";
++
++const asOf = new Date(2026, 8, 12, 12);
++const digest = (value: unknown) => createHash("sha256").update(cashflowCanonicalJson(value)).digest("hex");
++afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
++
++describe("independent production cashflow benchmark reference", () => {
++  it("is exactly reproducible from the immutable hook/page AST", () => {
++    const source = readFileSync(new URL("./reference.ts", import.meta.url), "utf8");
++    expect(digest(source)).toBe(digest(generateReference(defaultBase)));
++    for (const [relative, expected] of Object.entries(REFERENCE_PROVENANCE.sources)) {
++      const base = readFileSync(path.join(defaultBase, relative));
++      const work = readFileSync(path.resolve(fileURLToPath(new URL("../..", import.meta.url)), relative));
++      expect(createHash("sha256").update(base).digest("hex")).toBe(expected);
++      expect(createHash("sha256").update(work).digest("hex")).toBe(expected);
++    }
++  });
++
++  it("does not call either candidate composition function", () => {
++    const compute = vi.spyOn(computation, "computeCashflow").mockImplementation(() => { throw new Error("Candidate sentinel"); });
++    const build = vi.spyOn(view, "buildCashflowView").mockImplementation(() => { throw new Error("Candidate view sentinel"); });
++    const fixture = makeWorkerFixture(30, asOf);
++    expect(runReference(fixture.snapshot, fixture.statements, WORKER_FILTER_CASES[0].options, asOf).items.length).toBeGreaterThan(0);
++    expect(compute).not.toHaveBeenCalled();
++    expect(build).not.toHaveBeenCalled();
++    expect(() => runCandidate(fixture.snapshot, fixture.statements, WORKER_FILTER_CASES[0].options, asOf)).toThrow("Candidate sentinel");
++  });
++
++  for (const count of [30, 300, 1000]) {
++    it.each(WORKER_FILTER_CASES)(`matches the full item/month fingerprint for ${count} contracts and $id`, ({ options }) => {
++      const fixture = makeWorkerFixture(count, asOf);
++      const before = digest(fixture);
++      const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
++      const candidate = runCandidate(fixture.snapshot, fixture.statements, options, asOf);
++      expect(reference.items.length).toBeGreaterThan(0);
++      expect(reference.months.length).toBeGreaterThan(0);
++      // Fingerprints avoid dumping portfolios into failed-test logs.
++      expect(digest(candidate)).toBe(digest(reference));
++      expect(digest(fixture)).toBe(before);
++    });
++  }
++
++  it("reuses generated items when only search, history or prediction changes", () => {
++    const fixture = makeWorkerFixture(30, asOf);
++    const generate = vi.spyOn(generator, "generateCashflow");
++    const items = runReferenceItems(fixture.snapshot, WORKER_FILTER_CASES[0].options, asOf);
++    for (const selected of WORKER_FILTER_CASES.filter(item => ["search", "history", "prediction"].includes(item.id))) {
++      const months = runReferenceView(items, fixture.statements, selected.options, asOf);
++      expect(digest(months)).toBe(digest(view.buildCashflowView(items, fixture.statements, selected.options, asOf)));
++    }
++    expect(generate).toHaveBeenCalledTimes(1);
++  });
++
++  it("freezes the captured clock without depending on the test process date", () => {
++    const fixture = makeWorkerFixture(30, asOf);
++    const options = WORKER_FILTER_CASES.find(item => item.id === "prediction")!.options;
++    vi.useFakeTimers();
++    vi.setSystemTime(asOf);
++    const baseline = digest(runReference(fixture.snapshot, fixture.statements, options, asOf));
++    vi.setSystemTime(new Date(2036, 0, 1));
++    expect(digest(runReference(fixture.snapshot, fixture.statements, options, asOf))).toBe(baseline);
++  });
++
++  it("preserves Date fields through structured cloning of input and complete output", () => {
++    const fixture = makeWorkerFixture(30, asOf);
++    const options = WORKER_FILTER_CASES[0].options;
++    const expected = runReference(fixture.snapshot, fixture.statements, options, asOf);
++    const copy = structuredClone({ ...fixture, options, asOf });
++    const actual = structuredClone(runCandidate(copy.snapshot, copy.statements, copy.options, copy.asOf));
++    expect(digest(actual)).toBe(digest(expected));
++    expect(actual.items[0].date).toBeInstanceOf(Date);
++    expect(actual.months[0].items[0].date).toBeInstanceOf(Date);
++    expect(typeof JSON.parse(JSON.stringify(actual)).items[0].date).toBe("string");
++  });
++});
+diff --git a/scripts/cashflow-worker/reference.ts b/scripts/cashflow-worker/reference.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/reference.ts
+@@ -0,0 +1,460 @@
++// Generated by generate-reference.mjs from immutable base; do not hand edit.
++// Local benchmark only. No app source, authentication, networking or payload logging.
++import { isInheritedContract } from "@/app/lib/inheritedContracts";
++import { type CommissionMode, type PaymentFrequency, type Position, type Product } from "@/app/types/domain";
++import { totalWithMultipliers } from "@/app/lib/commissionTotals";
++import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
++import { generateCashflow } from "@/app/cashflow/generator";
++import { CASHFLOW_FORECAST_YEARS, matchesProductFilter, stripTotalRows, applyStatementMissingPayoutShifts, applyStatementPayoutTotalsToMonths, applyIntelligentCashflowPrediction, filterItemsByContractNumber, filterPastItems, filterPastStatementMonths, groupItemsByMonth, normalizeContractNumberSearch, statementMonthKey } from "@/app/cashflow/helpers";
++import { addSubscriptionMonths, formatSubscriptionIsoDay, isCashflowSubscriptionPlan, isSubscriptionCashflowOwner, parseSubscriptionIsoDay, subscriptionIntervalMonths, subscriptionPeriodUntilIso, subscriptionPlanLabel, type CashflowSubscriptionPlan } from "@/app/cashflow/subscriptionCashflow";
++import { type CashflowItem, type EntryDoc, type CashflowCommissionStatementSummary, type MonthGroup } from "@/app/cashflow/types";
++import { computeCashflow, type CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import { buildCashflowView, type CashflowViewOptions } from "@/app/cashflow/buildCashflowView";
++
++export const REFERENCE_PROVENANCE = {
++  "sources": {
++    "src/app/cashflow/useCashflowData.ts": "88bc2ad8abda64a58f4ff938b048d9923d77d215f78ea175e503586479795b08",
++    "src/app/cashflow/page.tsx": "8f58ec356baeb91830fd577d5c56416e54651d4f2e5189a67a89f00e1b20f669",
++    "src/app/cashflow/generator.ts": "73ed58b96ee45ce71902dd26f122e76bfc7757d2a8337b71ba6e276e05ee814c",
++    "src/app/cashflow/helpers.ts": "2cb0237b2081b20085547237ff21b1decd2345a35d7859485b232164aa6abad3"
++  },
++  "transformations": {
++    "hookClock": 1,
++    "debugOnlyBlock": 1,
++    "useMemo": 10,
++    "pastFilters": 2,
++    "statementPastFilter": 1,
++    "predictionClock": 1
++  },
++  "note": "Production calculation callbacks extracted with TypeScript AST; common business helpers remain shared. asOf freezes only ambient clocks. React memoization and rendering are outside this reference."
++} as const;
++
++type SubscriptionPaymentApiItem = {
++    id?: string;
++    userEmail?: string | null;
++    userName?: string | null;
++    plan?: CashflowSubscriptionPlan | string | null;
++    amountCzk?: number | null;
++    periodFrom?: string | null;
++    periodUntil?: string | null;
++    createdAtMs?: number | null;
++    paymentDateMs?: number | null;
++    note?: string | null;
++};
++
++const SUBSCRIPTION_FORECAST_YEARS = 10;
++
++const normalizeEmail = (value: string | null | undefined): string => (value ?? "").trim().toLowerCase();
++
++const nameFromEmail = (email: string | null | undefined): string | null => {
++    const normalized = normalizeEmail(email);
++    if (!normalized)
++        return null;
++    const local = normalized.split("@")[0] ?? "";
++    const parts = local.split(/[.\-_]+/).filter(Boolean);
++    if (parts.length === 0)
++        return null;
++    return parts
++        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
++        .join(" ");
++};
++
++type NormalizedSubscriptionPayment = {
++    sourceId: string;
++    plan: CashflowSubscriptionPlan;
++    amount: number;
++    paymentDate: Date;
++    anchorDate: Date;
++    userEmail: string | null;
++    userName: string;
++    periodFrom: string | null;
++    periodUntil: string | null;
++    note: string | null;
++};
++
++const subscriptionOccurrenceKey = (userKey: string, plan: CashflowSubscriptionPlan, periodFrom: string): string => `${userKey}|${plan}|${periodFrom}`;
++
++const validTimestampDate = (value: unknown): Date | null => {
++    if (typeof value !== "number" || !Number.isFinite(value))
++        return null;
++    const date = new Date(value);
++    return Number.isNaN(date.getTime()) ? null : date;
++};
++
++const normalizeSubscriptionPaymentForCashflow = (payment: SubscriptionPaymentApiItem, index: number): NormalizedSubscriptionPayment | null => {
++    const plan = isCashflowSubscriptionPlan(payment.plan) ? payment.plan : null;
++    if (!plan)
++        return null;
++    const amount = typeof payment.amountCzk === "number" && Number.isFinite(payment.amountCzk)
++        ? payment.amountCzk
++        : 0;
++    if (!(amount > 0))
++        return null;
++    const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom);
++    const paymentDate = validTimestampDate(payment.paymentDateMs) ??
++        validTimestampDate(payment.createdAtMs) ??
++        periodFromDate;
++    if (!paymentDate)
++        return null;
++    const anchorDate = periodFromDate ?? paymentDate;
++    const periodFrom = periodFromDate ? formatSubscriptionIsoDay(periodFromDate) : null;
++    const periodUntil = typeof payment.periodUntil === "string" && payment.periodUntil.trim()
++        ? payment.periodUntil.trim()
++        : null;
++    const userEmail = normalizeEmail(payment.userEmail) || null;
++    const userName = typeof payment.userName === "string" && payment.userName.trim()
++        ? payment.userName.trim()
++        : nameFromEmail(userEmail) ?? userEmail ?? "Uživatel";
++    const sourceId = String(payment.id ?? "").trim() ||
++        `subscription-${userEmail ?? "user"}-${anchorDate.getTime()}-${index}`;
++    const note = typeof payment.note === "string" && payment.note.trim()
++        ? payment.note.trim()
++        : null;
++    return {
++        sourceId,
++        plan,
++        amount,
++        paymentDate,
++        anchorDate,
++        userEmail,
++        userName,
++        periodFrom,
++        periodUntil,
++        note,
++    };
++};
++
++export function runReferenceItems(snapshot: CashflowSnapshot, options: CashflowViewOptions, asOf: Date): CashflowItem[] {
++  const { scopeFilter, productFilter, tipsterMode } = options;
++  const enabled = true;
++  const snapshotMatchesCurrentUser = true;
++  const result = (() => {
++    if (!enabled || !snapshot || !snapshotMatchesCurrentUser) {
++        return { cashflowItems: [] as CashflowItem[], verificationInput: null };
++    }
++    const email = snapshot.email;
++    const entryWasTransferred = (entry: EntryDoc): boolean => {
++        if (isInheritedContract(entry))
++            return true;
++        const originalOwner = normalizeEmail(entry.originalAdviserEmail);
++        const currentOwner = normalizeEmail(entry.servicingOwnerEmail ?? entry.commissionOwnerEmail ?? entry.userEmail);
++        return Boolean(originalOwner && currentOwner && originalOwner !== currentOwner);
++    };
++    const transferredContractPosition = (entry: EntryDoc): Position | null => (entry.originalPosition as Position | null | undefined) ??
++        (entry.position as Position | null | undefined) ??
++        null;
++    const predictionModeForEntry = (entry: EntryDoc, source: "own" | "manager"): CommissionMode => source === "manager" && matchesProductFilter(entry.productKey, "life")
++        ? "standard"
++        : (entryWasTransferred(entry)
++            ? (entry.commissionMode as CommissionMode | null | undefined) ??
++                (entry.mode as CommissionMode | null | undefined)
++            : snapshot.myCommissionMode) ??
++            (entry.commissionMode as CommissionMode | null | undefined) ??
++            (entry.mode as CommissionMode | null | undefined) ??
++            "standard";
++    const currentOwnerPosition = (entry: EntryDoc): Position | null => (entry.ownerCurrentPosition as Position | null | undefined) ??
++        (entry.effectivePosition as Position | null | undefined) ??
++        (entry.timelinePosition as Position | null | undefined) ??
++        (entry.position as Position | null | undefined) ??
++        null;
++    const allEntriesByKey = new Map<string, EntryDoc>();
++    const pushEntry = (entry: EntryDoc) => {
++        const ownerEmail = normalizeEmail(entry.userEmail);
++        const docId = String(entry.id ?? "").trim();
++        if (!ownerEmail || !docId)
++            return;
++        const key = `${ownerEmail}___${docId}`;
++        if (allEntriesByKey.has(key))
++            return;
++        allEntriesByKey.set(key, {
++            ...(entry as any),
++            id: docId,
++            userEmail: ownerEmail,
++        });
++    };
++    snapshot.ownEntries.forEach(pushEntry);
++    snapshot.teamEntriesRaw.forEach(pushEntry);
++    const allEntries = Array.from(allEntriesByKey.values());
++    const ownEntries = allEntries
++        .filter((entry) => (entry.userEmail ?? "").toLowerCase() === email)
++        .map((entry) => ({
++        ...entry,
++        source: "own" as const,
++        predictionPosition: (entryWasTransferred(entry)
++            ? transferredContractPosition(entry)
++            : snapshot.myPosition) ??
++            (entry.effectivePosition as Position | null | undefined) ??
++            (entry.timelinePosition as Position | null | undefined) ??
++            (entry.position as Position | null | undefined) ??
++            null,
++        predictionBaselinePosition: null,
++        predictionCommissionMode: predictionModeForEntry(entry, "own"),
++    }));
++    const teamRaw = snapshot.teamEntriesRaw;
++    const overrides: EntryDoc[] = [];
++    if (teamRaw.length > 0) {
++        for (const entry of teamRaw) {
++            const storedOverride = (entry.managerOverrides as EntryDoc["managerOverrides"])?.find((override) => (override.email ?? "").toLowerCase() === email) ?? null;
++            if (!storedOverride)
++                continue;
++            const storedOverrideItems = stripTotalRows(storedOverride.items ?? []);
++            const storedOverrideTotal = computeLegacyFrequencyOverrideTotal({
++                productKey: (entry.productKey as Product | null | undefined) ?? null,
++                frequencyRaw: (entry.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
++                items: storedOverrideItems,
++                fallbackTotal: totalWithMultipliers(storedOverrideItems),
++            });
++            if (storedOverrideItems.length === 0 || storedOverrideTotal <= 0)
++                continue;
++            const storedOverridePosition = (storedOverride.position as Position | null | undefined) ??
++                (entry.managerPositionSnapshot as Position | null | undefined) ??
++                null;
++            overrides.push({
++                ...entry,
++                originalEntryId: entry.id,
++                id: `${entry.id}-override`,
++                items: storedOverrideItems,
++                total: storedOverrideTotal,
++                source: "manager",
++                position: storedOverridePosition ?? null,
++                predictionPosition: snapshot.myPosition ?? storedOverridePosition ?? null,
++                predictionBaselinePosition: currentOwnerPosition(entry),
++                predictionCommissionMode: predictionModeForEntry(entry, "manager"),
++                managerPositionSnapshot: storedOverridePosition ?? null,
++                managerModeSnapshot: (storedOverride.commissionMode as EntryDoc["managerModeSnapshot"]) ??
++                    (entry.managerModeSnapshot as EntryDoc["managerModeSnapshot"]) ??
++                    null,
++                clientName: entry.clientName ?? null,
++            });
++        }
++    }
++    let entriesForCashflow: EntryDoc[] = [];
++    if (scopeFilter === "own") {
++        entriesForCashflow = ownEntries;
++    }
++    else if (scopeFilter === "team") {
++        entriesForCashflow = overrides;
++    }
++    else {
++        entriesForCashflow = [...ownEntries, ...overrides];
++    }
++    if (tipsterMode || productFilter === "tip") {
++        entriesForCashflow = [];
++    }
++    else if (productFilter !== "all") {
++        entriesForCashflow = entriesForCashflow.filter((entry) => {
++            return matchesProductFilter(entry.productKey, productFilter);
++        });
++    }
++    const generatedCashflow = generateCashflow(entriesForCashflow, CASHFLOW_FORECAST_YEARS, email, asOf);
++    const includeTipPayouts = tipsterMode ||
++        productFilter === "tip" ||
++        (productFilter === "all" && scopeFilter !== "team");
++    const tipCashflowItems: CashflowItem[] = includeTipPayouts
++        ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
++            const payoutTs = typeof payout.payoutDate === "number" && Number.isFinite(payout.payoutDate)
++                ? payout.payoutDate
++                : null;
++            if (payoutTs == null)
++                return acc;
++            const payoutDate = new Date(payoutTs);
++            if (Number.isNaN(payoutDate.getTime()))
++                return acc;
++            const amount = typeof payout.amount === "number" && Number.isFinite(payout.amount)
++                ? payout.amount
++                : 0;
++            if (!(amount > 0))
++                return acc;
++            const productKey = typeof payout.productKey === "string" && payout.productKey.trim()
++                ? (payout.productKey as Product)
++                : "unknown";
++            const tipSourceAdviserEmail = normalizeEmail(payout.sourceOwnerEmail ?? payout.adviserEmail) || null;
++            const tipSourceAdviserName = typeof payout.sourceOwnerName === "string" && payout.sourceOwnerName.trim()
++                ? payout.sourceOwnerName.trim()
++                : nameFromEmail(tipSourceAdviserEmail);
++            const clientName = typeof payout.clientName === "string" && payout.clientName.trim()
++                ? payout.clientName.trim()
++                : null;
++            const note = typeof payout.note === "string" && payout.note.trim()
++                ? payout.note.trim()
++                : "TIP provize";
++            const id = String(payout.id ?? "").trim() || `tip-${payoutTs}-${index}`;
++            acc.push({
++                id: `tip-${id}`,
++                date: payoutDate,
++                amount,
++                productKey,
++                note,
++                frequency: (payout.frequencyRaw as PaymentFrequency | null | undefined) ?? null,
++                source: "own",
++                contractNumber: null,
++                clientName,
++                ownerEmail: null,
++                entryId: null,
++                isTipPayout: true,
++                tipSourceAdviserEmail,
++                tipSourceAdviserName,
++            });
++            return acc;
++        }, [])
++        : [];
++    const includeSubscriptionPayments = isSubscriptionCashflowOwner(email) &&
++        !tipsterMode &&
++        scopeFilter !== "team" &&
++        (productFilter === "all" || productFilter === "subscription");
++    const subscriptionCashflowItems: CashflowItem[] = includeSubscriptionPayments
++        ? (() => {
++            const normalizedPayments = snapshot.subscriptionPayments
++                .map((payment, index) => normalizeSubscriptionPaymentForCashflow(payment, index))
++                .filter((payment): payment is NormalizedSubscriptionPayment => Boolean(payment));
++            const actualOccurrenceKeys = new Set<string>();
++            const latestPaymentByUser = new Map<string, NormalizedSubscriptionPayment>();
++            const items: CashflowItem[] = [];
++            normalizedPayments.forEach((payment) => {
++                const userKey = payment.userEmail ?? payment.sourceId;
++                const actualPeriodFrom = payment.periodFrom ?? formatSubscriptionIsoDay(payment.anchorDate);
++                actualOccurrenceKeys.add(subscriptionOccurrenceKey(userKey, payment.plan, actualPeriodFrom));
++                const existingLatest = latestPaymentByUser.get(userKey);
++                if (!existingLatest ||
++                    payment.anchorDate.getTime() > existingLatest.anchorDate.getTime() ||
++                    (payment.anchorDate.getTime() === existingLatest.anchorDate.getTime() &&
++                        payment.paymentDate.getTime() > existingLatest.paymentDate.getTime())) {
++                    latestPaymentByUser.set(userKey, payment);
++                }
++                const periodLabel = payment.periodFrom && payment.periodUntil
++                    ? ` (${payment.periodFrom} - ${payment.periodUntil})`
++                    : "";
++                const note = payment.note ??
++                    `${subscriptionPlanLabel(payment.plan)} předplatné${periodLabel}`;
++                items.push({
++                    id: `subscription-${payment.sourceId}`,
++                    date: payment.paymentDate,
++                    amount: payment.amount,
++                    productKey: "subscription",
++                    note,
++                    frequency: null,
++                    source: "own",
++                    contractNumber: null,
++                    clientName: payment.userName,
++                    ownerEmail: null,
++                    entryId: null,
++                    commissionLabel: "Platba předplatného",
++                    isSubscriptionPayment: true,
++                    subscriptionPlan: payment.plan,
++                    subscriptionUserEmail: payment.userEmail,
++                    subscriptionUserName: payment.userName,
++                    subscriptionPeriodFrom: payment.periodFrom,
++                    subscriptionPeriodUntil: payment.periodUntil,
++                    payoutStatus: "paid",
++                });
++            });
++            const forecastHorizonEnd = new Date(asOf);
++            forecastHorizonEnd.setFullYear(forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS);
++            latestPaymentByUser.forEach((payment, userKey) => {
++                const intervalMonths = subscriptionIntervalMonths(payment.plan);
++                let occurrenceDate = addSubscriptionMonths(payment.anchorDate, intervalMonths);
++                for (let guard = 0; guard < SUBSCRIPTION_FORECAST_YEARS * 12; guard += 1) {
++                    if (occurrenceDate > forecastHorizonEnd)
++                        break;
++                    const periodFrom = formatSubscriptionIsoDay(occurrenceDate);
++                    const occurrenceKey = subscriptionOccurrenceKey(userKey, payment.plan, periodFrom);
++                    const periodUntil = subscriptionPeriodUntilIso(occurrenceDate, payment.plan);
++                    if (!actualOccurrenceKeys.has(occurrenceKey)) {
++                        items.push({
++                            id: `subscription-${payment.sourceId}-forecast-${periodFrom}`,
++                            date: occurrenceDate,
++                            amount: payment.amount,
++                            productKey: "subscription",
++                            note: `${subscriptionPlanLabel(payment.plan)} předplatné (${periodFrom} - ${periodUntil})`,
++                            frequency: null,
++                            source: "own",
++                            contractNumber: null,
++                            clientName: payment.userName,
++                            ownerEmail: null,
++                            entryId: null,
++                            commissionLabel: "Platba předplatného",
++                            isSubscriptionPayment: true,
++                            subscriptionPlan: payment.plan,
++                            subscriptionUserEmail: payment.userEmail,
++                            subscriptionUserName: payment.userName,
++                            subscriptionPeriodFrom: periodFrom,
++                            subscriptionPeriodUntil: periodUntil,
++                            payoutStatus: "predicted",
++                        });
++                    }
++                    occurrenceDate = addSubscriptionMonths(occurrenceDate, intervalMonths);
++                }
++            });
++            return items;
++        })()
++        : [];
++    const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems].sort((a, b) => a.date.getTime() - b.date.getTime());
++    return { cashflowItems: cashflow, verificationInput: { snapshot, asOf } };
++})();
++  return result.cashflowItems;
++}
++
++export function runReferenceView(cashflowItems: CashflowItem[], commissionStatements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): MonthGroup[] {
++  const { scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery } = options;
++const contractNumberSearchActive = (() => normalizeContractNumberSearch(contractNumberQuery).length > 0)();
++const useStatementPayoutTotals = !isTipsterMode &&
++    !contractNumberSearchActive &&
++    scopeFilter === "combined" &&
++    productFilter === "all";
++// Výpisy musí posouvat nevyplacené položky ještě před filtrem minulosti,
++// jinak by starší nevyplacená provize zmizela místo přesunu dopředu.
++const cashflowItemsForReconciliation = (() => useStatementPayoutTotals || contractNumberSearchActive
++    ? cashflowItems
++    : filterPastItems(cashflowItems, showPastYears, asOf))();
++const filteredCashflowItems = (() => filterItemsByContractNumber(cashflowItemsForReconciliation, contractNumberQuery))();
++const statementsByMonthKey = (() => {
++    const map: Record<string, CashflowCommissionStatementSummary[]> = {};
++    commissionStatements.forEach((statement) => {
++        const key = statementMonthKey(statement);
++        if (!key)
++            return;
++        map[key] = [...(map[key] ?? []), statement];
++    });
++    Object.values(map).forEach((items) => {
++        items.sort((a, b) => {
++            const aDate = a.statementDate ?? a.fileName;
++            const bDate = b.statementDate ?? b.fileName;
++            return aDate.localeCompare(bDate, "cs");
++        });
++    });
++    return map;
++})();
++const periodStatementsByMonthKey = (() => contractNumberSearchActive
++    ? statementsByMonthKey
++    : filterPastStatementMonths(statementsByMonthKey, showPastYears, asOf))();
++const reconciledCashflowItems = (() => applyStatementMissingPayoutShifts({
++    cashflowItems: filteredCashflowItems,
++    statementsByMonthKey,
++    enabled: useStatementPayoutTotals,
++}))();
++const predictionCashflowItems = (() => applyIntelligentCashflowPrediction({
++    cashflowItems: reconciledCashflowItems,
++    enabled: intelligentPredictionEnabled && !isTipsterMode,
++    today: asOf
++}))();
++const periodCashflowItems = (() => contractNumberSearchActive
++    ? predictionCashflowItems
++    : filterPastItems(predictionCashflowItems, showPastYears, asOf))();
++const predictedMonthGroups = (() => groupItemsByMonth(periodCashflowItems))();
++const monthGroups = (() => applyStatementPayoutTotalsToMonths({
++    monthGroups: predictedMonthGroups,
++    statementsByMonthKey: periodStatementsByMonthKey,
++    enabled: useStatementPayoutTotals,
++}))();
++  return monthGroups;
++}
++
++export function runReference(snapshot: CashflowSnapshot, statements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): { items: CashflowItem[]; months: MonthGroup[] } {
++  const items = runReferenceItems(snapshot, options, asOf);
++  return { items, months: runReferenceView(items, statements, options, asOf) };
++}
++
++export function runCandidate(snapshot: CashflowSnapshot, statements: CashflowCommissionStatementSummary[], options: CashflowViewOptions, asOf: Date): { items: CashflowItem[]; months: MonthGroup[] } {
++  const items = computeCashflow(snapshot, { ...options, asOf });
++  return { items, months: buildCashflowView(items, statements, options, asOf) };
++}
+diff --git a/scripts/cashflow-worker/run.mjs b/scripts/cashflow-worker/run.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/run.mjs
+@@ -0,0 +1,168 @@
++/** Local synthetic browser benchmark. Never connects to the deployed app or DB. */
++import assert from "node:assert/strict";
++import { createRequire } from "node:module";
++import { fileURLToPath } from "node:url";
++import { dirname, resolve, join } from "node:path";
++import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { createServer } from "node:http";
++import { spawn } from "node:child_process";
++import { setTimeout as delay } from "node:timers/promises";
++
++const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
++const directory = join(root, "scripts/cashflow-worker");
++const require = createRequire(import.meta.url);
++const esbuild = require(process.env.CASHFLOW_ESBUILD_PATH || "/Users/jakubrauscher/.npm/_npx/67eb4586ca667318/node_modules/esbuild");
++const chrome = process.env.CASHFLOW_CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
++const output = process.env.CASHFLOW_WORKER_OUTPUT || join(directory, "results.json");
++const buildOnly = process.argv.includes("--build-only");
++const quick = process.argv.includes("--quick");
++const buildDirectory = await mkdtemp(join(tmpdir(), "bohemika-worker-bundle-"));
++const build = await esbuild.build({
++  absWorkingDir: root, entryPoints: [join(directory,"browser.ts"),join(directory,"worker.ts")],
++  outdir: buildDirectory, bundle:true, format:"esm", platform:"browser", target:"chrome120",
++  minify:true, sourcemap:false, metafile:true, tsconfig:join(root,"tsconfig.json"),
++  define:{"process.env.NODE_ENV":"\"production\""}, logLevel:"silent",
++});
++const imports = Object.keys(build.metafile.inputs);
++assert(!imports.some(name => /(?:firebase-admin|firebase\/app|firebase\/auth|firebaseAdmin|\/api\/)/.test(name)), "Unexpected service dependency in browser bundle");
++const browserBundle=await readFile(join(buildDirectory,"browser.js"));
++const workerBundle=await readFile(join(buildDirectory,"worker.js"));
++const buildAudit={browserBytes:browserBundle.length,workerBytes:workerBundle.length,inputs:imports,externalImports:Object.values(build.metafile.outputs).flatMap(item=>item.imports).filter(item=>item.external)};
++assert(buildAudit.externalImports.length===0,"Unexpected external bundle import");
++if(buildOnly){
++  console.log(JSON.stringify({buildPassed:true,browserBytes:browserBundle.length,workerBytes:workerBundle.length,inputFiles:imports.length}));
++  await rm(buildDirectory,{recursive:true,force:true});
++  process.exit(0);
++}
++
++class Cdp {
++  constructor(socket){
++    this.socket=socket;this.next=1;this.pending=new Map();this.listeners=[];
++    socket.addEventListener("message",event=>{
++      const message=JSON.parse(event.data);
++      if(message.id){const request=this.pending.get(message.id);if(!request)return;this.pending.delete(message.id);clearTimeout(request.timeout);if(message.error)request.reject(new Error(message.error.message));else request.resolve(message.result);}
++      else for(const listener of this.listeners) listener(message);
++    });
++  }
++  send(method,params={},sessionId){
++    const id=this.next++;
++    return new Promise((resolve,reject)=>{
++      const timeout=setTimeout(()=>{this.pending.delete(id);reject(new Error(`CDP timeout: ${method}`));},60000);
++      this.pending.set(id,{resolve,reject,timeout});
++      this.socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));
++    });
++  }
++  close(){for(const request of this.pending.values()){clearTimeout(request.timeout);request.reject(new Error("CDP closed"));}this.pending.clear();this.socket.close();}
++}
++const profile=await mkdtemp(join(tmpdir(),"bohemika-worker-chrome-"));
++let browserProcess,cdp,server,sessionId;
++const pageErrors=[];
++const requests=[];
++let blockedExternalRequests=0;
++const report={startedAt:new Date().toISOString(),baselineDeploymentId:"dpl_98QKyaT7qDVQxXNk8nahXtm2arRW",synthetic:true,benchmarkScope:"isolated calculation pipeline, not an authenticated React page",productionChanged:false,businessDataRead:false,businessDataWrites:false,build:buildAudit,calibration:[],preparations:[],correctness:[],limitations:["View-only main reference reuses generated items but does not reproduce every React useMemo cache; worker currently recomputes and returns the full result.","No application DOM rendering, authenticated flow, real account, real phone, memory-pressure or battery test.","CPU throttling is measured separately for main and worker; it must not be assumed equivalent to a real phone."],lifecycle:null,trials:[],summary:[]};
++async function save(){await mkdir(dirname(output),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+"\n");}
++async function evaluate(expression){
++  const response=await cdp.send("Runtime.evaluate",{expression,awaitPromise:true,returnByValue:true},sessionId);
++  if(response.exceptionDetails)throw new Error(response.exceptionDetails.exception?.description || "Browser evaluation failed");
++  return response.result.value;
++}
++const median=values=>{const s=[...values].sort((a,b)=>a-b);return s.length%2?s[(s.length-1)/2]:(s[s.length/2-1]+s[s.length/2])/2;};
++const round=value=>Math.round(value*100)/100;
++try{
++  server=createServer((req,res)=>{
++    const url=new URL(req.url,"http://127.0.0.1");requests.push(url.pathname);
++    res.setHeader("Cache-Control","no-store");
++    res.setHeader("Content-Security-Policy","default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'none'; style-src 'unsafe-inline'; img-src 'none'");
++    if(url.pathname==="/"){
++      res.setHeader("Content-Type","text/html; charset=utf-8");
++      res.end('<!doctype html><html lang="cs"><meta charset="utf-8"><title>Lokální měření cashflow</title><style>body{font:18px system-ui;padding:3rem;background:#f4f6fa;color:#172f45}.dot{display:inline-block;width:18px;height:18px;background:#187952;border-radius:50%;animation:pulse 1s infinite alternate}@keyframes pulse{to{transform:translateX(80px)}}code{font-size:14px}</style><h1>Měření výpočtů cashflow</h1><p>Pouze syntetická data v místním prohlížeči.</p><p class="dot"></p><script type="module" src="/browser.js"></script></html>');
++    }else if(url.pathname==="/browser.js"||url.pathname==="/worker.js"){
++      res.setHeader("Content-Type","text/javascript");res.end(url.pathname==="/browser.js"?browserBundle:workerBundle);
++    }else if(url.pathname==="/worker-error.js"){
++      res.setHeader("Content-Type","text/javascript");res.end('self.onmessage=()=>{throw new Error("synthetic_worker_failure")}');
++    }else if(url.pathname==="/worker-silent.js"){
++      res.setHeader("Content-Type","text/javascript");res.end('self.onmessage=()=>{}');
++    }else{res.statusCode=url.pathname==="/favicon.ico"?204:404;res.end();}
++  });
++  await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(0,"127.0.0.1",resolve);});
++  const origin=`http://127.0.0.1:${server.address().port}`;
++  browserProcess=spawn(chrome,["--headless=new","--remote-debugging-port=0","--remote-debugging-address=127.0.0.1",`--user-data-dir=${profile}`,"--no-first-run","--no-default-browser-check","--disable-background-networking","--disable-component-update","--disable-sync","--disable-extensions","--disable-breakpad","--disable-crash-reporter","--no-proxy-server","about:blank"],{stdio:"ignore"});
++  let portData;
++  for(let attempt=0;attempt<100;attempt++){try{portData=await readFile(join(profile,"DevToolsActivePort"),"utf8");break;}catch{if(browserProcess.exitCode!==null)throw new Error("Temporary Chrome process exited");await delay(100);}}
++  assert(portData,"Chrome debugging port unavailable");
++  const [port,path]=portData.trim().split("\n");
++  const socket=new WebSocket(`ws://127.0.0.1:${port}${path}`);
++  await new Promise((resolve,reject)=>{socket.addEventListener("open",resolve,{once:true});socket.addEventListener("error",reject,{once:true});});
++  cdp=new Cdp(socket);
++  report.browserVersion=await cdp.send("Browser.getVersion");
++  const {targetId}=await cdp.send("Target.createTarget",{url:"about:blank"});
++  ({sessionId}=await cdp.send("Target.attachToTarget",{targetId,flatten:true}));
++  cdp.listeners.push(message=>{
++    if(message.sessionId!==sessionId)return;
++    if(message.method==="Runtime.exceptionThrown")pageErrors.push("uncaught_browser_exception");
++    if(message.method==="Fetch.requestPaused"){
++      const permitted=new URL(message.params.request.url).origin===origin;
++      if(!permitted)blockedExternalRequests++;
++      cdp.send(permitted?"Fetch.continueRequest":"Fetch.failRequest",permitted?{requestId:message.params.requestId}:{requestId:message.params.requestId,errorReason:"BlockedByClient"},sessionId).catch(()=>{});
++    }
++  });
++  await cdp.send("Page.enable",{},sessionId);
++  await cdp.send("Runtime.enable",{},sessionId);
++  await cdp.send("Fetch.enable",{patterns:[{urlPattern:"*",requestStage:"Request"}]},sessionId);
++  await cdp.send("Emulation.setTimezoneOverride",{timezoneId:"Europe/Prague"},sessionId);
++  await cdp.send("Page.navigate",{url:origin},sessionId);
++  for(let attempt=0;attempt<100;attempt++){if(await evaluate("!!window.workerBenchmark"))break;await delay(100);}
++  assert(await evaluate("!!window.workerBenchmark"),"Benchmark script not initialized");
++  report.browserEnvironment=await evaluate("({timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,userAgent:navigator.userAgent,longTaskSupported:PerformanceObserver.supportedEntryTypes.includes('longtask')})");
++  const cases=await evaluate("window.workerBenchmark.cases");
++  for(const count of (quick?[30]:[30,300,1000])){
++    const prep=await evaluate(`window.workerBenchmark.prepare(${count})`);
++    report.preparations.push({cpuRate:1,...prep});
++    for(const selected of cases){const verified=await evaluate(`window.workerBenchmark.verify(${JSON.stringify(selected.id)})`);report.correctness.push({contracts:count,...verified});}
++    console.log(JSON.stringify({phase:"correctness",contracts:count,cases:cases.length,passed:true,items:prep.items}));
++    await save();
++  }
++  report.lifecycle=await evaluate("window.workerBenchmark.controls()");
++  assert(Object.values(report.lifecycle).every(Boolean),"Lifecycle checks failed");
++  console.log(JSON.stringify({phase:"lifecycle",checks:report.lifecycle}));
++  for(const cpuRate of (quick?[1]:[1,4])){
++    await cdp.send("Emulation.setCPUThrottlingRate",{rate:cpuRate},sessionId);
++    report.calibration.push({cpuRate,...await evaluate("window.workerBenchmark.calibration()")});
++    for(const count of (quick?[30]:[30,300,1000])){
++      report.preparations.push({cpuRate,...await evaluate(`window.workerBenchmark.prepare(${count})`)});
++      for(const scenario of [{caseId:"combined",viewOnly:false},{caseId:"auto",viewOnly:false},{caseId:"search",viewOnly:true},{caseId:"prediction",viewOnly:true}]){
++        for(let repeat=0;repeat<(quick?2:5);repeat++){
++          for(const mode of (repeat%2?["worker","main"]:["main","worker"])){
++            const row=await evaluate(`window.workerBenchmark.measure(${JSON.stringify(mode)},${JSON.stringify(scenario.caseId)},${scenario.viewOnly})`);
++            report.trials.push({cpuRate,contracts:count,repeat,...row});
++          }
++        }
++      }
++      console.log(JSON.stringify({phase:"timings",cpuRate,contracts:count,completedTrials:report.trials.length}));
++      await save();
++    }
++  }
++  for(const rate of [...new Set(report.trials.map(r=>r.cpuRate))])for(const count of [...new Set(report.trials.map(r=>r.contracts))])for(const caseId of ["combined","auto","search","prediction"])for(const mode of ["main","worker"]){
++    const rows=report.trials.filter(r=>r.cpuRate===rate&&r.contracts===count&&r.caseId===caseId&&r.mode===mode);
++    if(!rows.length)continue;
++    report.summary.push({cpuRate:rate,contracts:count,caseId,mode,samples:rows.length,medianElapsedMs:round(median(rows.map(r=>r.elapsedMs))),medianTimerDelayMs:round(median(rows.map(r=>r.timerDelayMs))),medianMaxFrameGapMs:round(median(rows.map(r=>r.maxFrameGapMs))),trialsWithLongTasks:rows.filter(r=>r.longTaskCount>0).length,maxLongTaskMs:round(Math.max(...rows.map(r=>r.maxLongTaskMs)))});
++  }
++  report.cpuCalibrationSummary=report.calibration.map(r=>({cpuRate:r.cpuRate,medianMainMs:round(median(r.mainMs)),medianWorkerMs:round(median(r.workerMs))}));
++  report.network={localOnly:true,blockedExternalRequests,requestedPaths:[...new Set(requests)]};
++  report.pageErrors=pageErrors;
++  assert(blockedExternalRequests===0,"Unexpected external request attempted");
++  assert(pageErrors.length===0,"Uncaught browser exception");
++  report.passed=true;
++  report.completedAt=new Date().toISOString();
++  await save();
++  console.log(JSON.stringify({phase:"complete",passed:true,correctnessCases:report.correctness.length,lifecycleChecks:Object.keys(report.lifecycle).length,trials:report.trials.length,cpuCalibration:report.cpuCalibrationSummary,output}));
++}catch(error){
++  report.passed=false;report.failure=String(error?.message||"Local benchmark failed");await save();console.error(JSON.stringify({phase:"failed",reason:report.failure}));process.exitCode=1;
++}finally{
++  if(cdp){try{await cdp.send("Browser.close");}catch{}cdp.close();}
++  if(browserProcess&&browserProcess.exitCode===null){browserProcess.kill("SIGTERM");await Promise.race([new Promise(resolve=>browserProcess.once("exit",resolve)),delay(2000)]);if(browserProcess.exitCode===null)browserProcess.kill("SIGKILL");}
++  if(server)await new Promise(resolve=>server.close(resolve));
++  await rm(profile,{recursive:true,force:true,maxRetries:4,retryDelay:100});
++  await rm(buildDirectory,{recursive:true,force:true});
++}
+diff --git a/scripts/cashflow-worker/tsconfig.json b/scripts/cashflow-worker/tsconfig.json
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/tsconfig.json
+@@ -0,0 +1,6 @@
++{
++  "extends": "../../tsconfig.json",
++  "compilerOptions": { "incremental": false, "types": ["node"] },
++  "include": ["./*.ts", "../../src/types/**/*.d.ts"],
++  "exclude": []
++}
+diff --git a/scripts/cashflow-worker/worker.ts b/scripts/cashflow-worker/worker.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/cashflow-worker/worker.ts
+@@ -0,0 +1,25 @@
++import { computeCashflow } from "../../src/app/cashflow/computeCashflow";
++import { buildCashflowView } from "../../src/app/cashflow/buildCashflowView";
++import type { CashflowWorkerInput } from "./client";
++import { calibrateCpu } from "./calibration";
++
++// Benchmark only. No fetch, storage, credentials, or application route.
++const scope = globalThis as unknown as {
++  onmessage: ((event: MessageEvent) => void) | null;
++  postMessage: (message: unknown) => void;
++};
++scope.onmessage = (event: MessageEvent) => {
++  const request = event.data as { id: number; input: CashflowWorkerInput; kind?: string };
++  if (request.kind === "calibrate") {
++    scope.postMessage({ id: request.id, calibration: calibrateCpu() });
++    return;
++  }
++  try {
++    const { snapshot, statements, options, asOf } = request.input;
++    const items = computeCashflow(snapshot, { ...options, asOf });
++    const months = buildCashflowView(items, statements, options, asOf);
++    scope.postMessage({ id: request.id, ok: true, result: { items, months } });
++  } catch {
++    scope.postMessage({ id: request.id, ok: false });
++  }
++};

@@ -1,0 +1,100 @@
+{
+  "root": "/private/tmp/bohemika-password-change-20260913-74u9mxsn",
+  "baselineDeploymentId": "dpl_FK81FV8LqN1GtKUuYeQdui8zuaC6",
+  "sourceFiles": [
+    "src/lib/server/firebaseAuthEmail.ts",
+    "src/lib/server/passwordChange.ts",
+    "src/lib/server/passwordChangeEmail.ts",
+    "src/app/api/auth/password-change/route.ts",
+    "src/app/api/cron/password-change-notices/route.ts",
+    "src/app/nastaveni/usePasswordChange.ts",
+    "src/app/nastaveni/components/PasswordChangeDialog.tsx",
+    "src/app/nastaveni/components/passwordChange.module.css",
+    "vercel.json",
+    "src/app/nastaveni/page.tsx",
+    "src/app/nastaveni/components/AccountSecurityPanel.tsx"
+  ],
+  "testFiles": [
+    "src/lib/server/passwordChange.test.ts",
+    "src/app/nastaveni/usePasswordChange.test.tsx",
+    "src/app/api/auth/password-change/route.test.ts",
+    "src/lib/server/firebaseAuthEmail.test.ts",
+    "src/lib/server/passwordChangeEmail.test.ts",
+    "src/app/api/cron/password-change-notices/route.test.ts",
+    "tests/firestore/passwordChange.test.ts"
+  ],
+  "files": [
+    {
+      "path": "src/lib/server/firebaseAuthEmail.ts",
+      "sha256": "1f066fd08ab8d887c82069af51ba84f895b537160147b079af834f2ced805d0d"
+    },
+    {
+      "path": "src/lib/server/passwordChange.ts",
+      "sha256": "f2223b79f50c855c7a2cb6acf7d57b8d258a184210f58c1649fe499d1b7a5e8d"
+    },
+    {
+      "path": "src/lib/server/passwordChangeEmail.ts",
+      "sha256": "c61a2c171e59557b998d54ee0478ddca96c749a5cef568f8a42bb4ca180b6489"
+    },
+    {
+      "path": "src/app/api/auth/password-change/route.ts",
+      "sha256": "b49fa30f4013dd8e57220790c6df5dbabc292cbd6eb410584efc044ab8c53fc5"
+    },
+    {
+      "path": "src/app/api/cron/password-change-notices/route.ts",
+      "sha256": "3f724f24716df05a745389329c6e833d34ecb2423e04b2f6043da9e4caa0a2b6"
+    },
+    {
+      "path": "src/app/nastaveni/usePasswordChange.ts",
+      "sha256": "59f3554603aae493014734b9a6850d100550aee9984d717e1ad6e967a2e23ca8"
+    },
+    {
+      "path": "src/app/nastaveni/components/PasswordChangeDialog.tsx",
+      "sha256": "8cf5d307b89a809062900f4ecd06caa681c3fc447c909c1be1eaa9fda4c70a82"
+    },
+    {
+      "path": "src/app/nastaveni/components/passwordChange.module.css",
+      "sha256": "98477bad932790a450a96e6c32183a42c9099499b0c338ad2a6ec741be0c043e"
+    },
+    {
+      "path": "vercel.json",
+      "sha256": "d50d5eb1cea92f7024aa8304aaab094631057aff1bf5c6431cc635099fb0a0ed"
+    },
+    {
+      "path": "src/app/nastaveni/page.tsx",
+      "sha256": "ca2fa6f88ea089d90c27609808be94aa8569340735936d132ca2de58a9f7881a"
+    },
+    {
+      "path": "src/app/nastaveni/components/AccountSecurityPanel.tsx",
+      "sha256": "51e028e3120826bc7de1e4c9fd5c945b680ee278c8f3625b05a67bfe04dd5d2e"
+    },
+    {
+      "path": "src/lib/server/passwordChange.test.ts",
+      "sha256": "ae612e5a7a6a2144f9dd784145691ee13d9a4baf373b899ca73730befcbe1bae"
+    },
+    {
+      "path": "src/app/nastaveni/usePasswordChange.test.tsx",
+      "sha256": "b403f0c1c22e7b98bb9b7dea298c37dc12d033a06b8558c0edff5b30b51559f7"
+    },
+    {
+      "path": "src/app/api/auth/password-change/route.test.ts",
+      "sha256": "108081d9e0579305aeaf1853ff951cd2cd2120ffc328842581a184f97b308c0b"
+    },
+    {
+      "path": "src/lib/server/firebaseAuthEmail.test.ts",
+      "sha256": "d8b9427bab47417c48c50e945c412fef40ee5681efc9ee6397080a851bcbd2d1"
+    },
+    {
+      "path": "src/lib/server/passwordChangeEmail.test.ts",
+      "sha256": "4fdb5ff1aebaa1574877350ffa1d0cd6c884957365457d125e59c43e4059b886"
+    },
+    {
+      "path": "src/app/api/cron/password-change-notices/route.test.ts",
+      "sha256": "7ea2d66fa1ea05f7d0824978e629ff57249ef0f3bc5c53b2762252a8b56c89c0"
+    },
+    {
+      "path": "tests/firestore/passwordChange.test.ts",
+      "sha256": "22af713e59cfc2a2890f4b6182aba00652ea2b0a20a56843bef9945e218a9b05"
+    }
+  ]
+}

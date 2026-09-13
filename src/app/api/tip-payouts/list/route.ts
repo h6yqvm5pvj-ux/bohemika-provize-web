@@ -18,6 +18,7 @@ const TIP_PAYOUTS_RATE_LIMIT = 180;
 const TIP_PAYOUTS_RATE_LIMIT_WINDOW_MS = 60_000;
 const PAGE_SIZE_DEFAULT = 100;
 const PAGE_SIZE_MAX = 200;
+const HOME_PERIOD_MAX_MS = 93 * 24 * 60 * 60 * 1000;
 
 type FirestoreTimestamp = {
   seconds: number;
@@ -43,11 +44,15 @@ type TipPayoutListItem = {
 
 type TipPayoutsListResponse = {
   ok: true;
-  payouts: TipPayoutListItem[];
+  payouts: TipPayoutListItem[] | HomeTipPayoutListItem[];
   hasMore: boolean;
   nextCursor: number | null;
   nextCursorToken: string | null;
 };
+
+type HomeTipPayoutListItem = Pick<TipPayoutListItem,
+  "id" | "payoutDate" | "amount" | "sourceToken" | "sourceContractSignedDate"
+>;
 
 type CursorTokenPayload = {
   ts: number;
@@ -415,6 +420,22 @@ export async function GET(req: NextRequest) {
     }
 
     const search = req.nextUrl.searchParams;
+    const homeShape = search.get("shape") === "home";
+    const productionFrom = Number(search.get("productionFrom"));
+    const productionTo = Number(search.get("productionTo"));
+    if (homeShape && (
+      !search.get("productionFrom")?.trim() || !search.get("productionTo")?.trim() ||
+      !Number.isSafeInteger(productionFrom) || !Number.isSafeInteger(productionTo) ||
+      !Number.isFinite(new Date(productionFrom).getTime()) || !Number.isFinite(new Date(productionTo).getTime()) ||
+      productionTo <= productionFrom || productionTo - productionFrom > HOME_PERIOD_MAX_MS
+    )) {
+      const response = NextResponse.json(
+        { ok: false, error: "Chybí platné období TIP přehledu." } satisfies TipPayoutsErrorResponse,
+        { status: 400 }
+      );
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
     const rawLimit = Number(search.get("limit"));
     const pageSize =
       Number.isFinite(rawLimit) && rawLimit > 0
@@ -441,7 +462,10 @@ export async function GET(req: NextRequest) {
       if (cursor) {
         query = query.startAfter(new Date(cursor.ts), cursor.id);
       }
-      return query.limit(pageSize + 1);
+      const pageQuery = query.limit(pageSize + 1);
+      return homeShape
+        ? pageQuery.select("payoutDate", "amount", "sourceKey", "sourceContractSignedDate")
+        : pageQuery;
     };
 
     const readSnapshot = async (ownerDocId: string, usePayoutFrom: boolean) => {
@@ -498,9 +522,30 @@ export async function GET(req: NextRequest) {
         adviserEmail: normalizeEmail(raw.adviserEmail) || null,
       };
     });
-    const fallbackClientNames = await loadFallbackClientNames(payoutRows);
-    const fallbackSourceOwnerNames = await loadFallbackSourceOwnerNames(payoutRows);
-    const payouts: TipPayoutListItem[] = payoutRows.map((row) => {
+    let payouts: TipPayoutListItem[] | HomeTipPayoutListItem[];
+    if (homeShape) {
+      // Preserve the existing payoutFrom query/fallback selection. These bounds
+      // only filter that selection by the home calculation's production date.
+      // Pagination always advances across scanned documents, including an empty
+      // filtered page; cashflow's full list remains unchanged.
+      payouts = payoutRows.filter((row) => {
+        const signedTs = typeof row.sourceContractSignedDate === "number" && Number.isFinite(row.sourceContractSignedDate)
+          ? row.sourceContractSignedDate : null;
+        const payoutTs = typeof row.payoutDate === "number" && Number.isFinite(row.payoutDate)
+          ? row.payoutDate : null;
+        const productionTs = signedTs ?? payoutTs;
+        return productionTs != null && productionTs >= productionFrom && productionTs < productionTo;
+      }).map((row) => ({
+        id: row.id,
+        payoutDate: row.payoutDate,
+        amount: row.amount,
+        sourceToken: row.sourceToken,
+        sourceContractSignedDate: row.sourceContractSignedDate,
+      }));
+    } else {
+      const fallbackClientNames = await loadFallbackClientNames(payoutRows);
+      const fallbackSourceOwnerNames = await loadFallbackSourceOwnerNames(payoutRows);
+      payouts = payoutRows.map((row) => {
       const key = sourceEntryKey(row.sourceOwnerEmail, row.sourceEntryId);
       const sourceOwnerEmail = row.sourceOwnerEmail || row.adviserEmail;
       return {
@@ -520,7 +565,8 @@ export async function GET(req: NextRequest) {
         sourceContractSignedDate: row.sourceContractSignedDate,
         adviserEmail: row.adviserEmail,
       };
-    });
+      });
+    }
 
     const lastDoc = docs[docs.length - 1] ?? null;
     const lastRaw = (lastDoc?.data() ?? {}) as Record<string, unknown>;

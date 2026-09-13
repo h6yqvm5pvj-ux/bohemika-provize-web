@@ -1,5 +1,5 @@
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
 
@@ -99,6 +99,8 @@ export type HomeDataState = {
   teamImmediateSum: number;
   teamImmediatePrevSum: number;
   summaryLoading: boolean;
+  tipSummaryLoading: boolean;
+  tipSummaryError: string | null;
   historyLoading: boolean;
   loading: boolean;
 };
@@ -141,6 +143,7 @@ type TipPayoutsApiResponse = {
   nextCursorToken?: string | null;
   nextCursor?: number | null;
 };
+type TipSummary = { tipContractsCount: number; tipImmediateSum: number; tipImmediatePrevSum: number };
 
 type UserProfileApiResponse = {
   ok?: boolean;
@@ -153,7 +156,8 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-const HOME_CACHE_VERSION = "v5-production-premiums";
+// v5 could persist an apparent TIP zero after a failed request.
+const HOME_CACHE_VERSION = "v6-complete-tip-production";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamHistoryRangeCache = new Map<
@@ -196,14 +200,15 @@ const normalizeCursorToken = (
 const normalizeTeamHistoryMonths = (months: number): number =>
   Math.max(0, Math.min(12, Math.floor(months)));
 
-const teamHistoryRangeCacheKey = (email: string, months: number): string => {
+const teamHistoryRangeCacheKey = (email: string, months: number, uid: string): string => {
   const now = new Date();
-  return `${email.toLowerCase()}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
+  return `${email.toLowerCase()}|${uid}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
 };
 
 const fetchTeamHistoryRange = async (
   email: string,
-  months: number
+  months: number,
+  signal: AbortSignal
 ): Promise<EntryDoc[]> => {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error("Nejsi přihlášený.");
@@ -226,6 +231,7 @@ const fetchTeamHistoryRange = async (
   let pages = 0;
 
   while (hasMore && pages < 60) {
+    if (signal.aborted) throw new DOMException("Home request cancelled", "AbortError");
     const params = new URLSearchParams({
       scope: "team",
       shape: "home",
@@ -238,6 +244,7 @@ const fetchTeamHistoryRange = async (
       fetch(`/api/contracts/list?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
+        signal,
       });
 
     let response = await requestWithToken(bearerToken);
@@ -317,10 +324,43 @@ export function useHomeData({
   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
   const [teamImmediatePrevSum, setTeamImmediatePrevSum] = useState(0);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [tipSummaryLoading, setTipSummaryLoading] = useState(true);
+  const [tipSummaryError, setTipSummaryError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const baseLoadKeyRef = useRef<string | null>(null);
   const baseLoadCompletedRef = useRef(false);
+  const uid = auth.currentUser?.uid ?? "";
+  const identity = email ? `${uid}|${email.toLowerCase()}` : null;
+  const [stateIdentity, setStateIdentity] = useState(identity);
+  const activeIdentity = useRef<string | null>(null);
+  if (stateIdentity !== identity) {
+    setStateIdentity(identity);
+    setUserMeta(null);
+    setMyEntries([]);
+    setTeamEntries([]);
+    setHasTeam(false);
+    setMyPremiums({ lifeMonthly: 0, otherAnnual: 0 });
+    setTeamPremiums({ lifeMonthly: 0, otherAnnual: 0 });
+    setMyContractsCount(0);
+    setMyImmediateSum(0);
+    setMyImmediatePrevSum(0);
+    setMyTipContractsCount(0);
+    setMyTipImmediateSum(0);
+    setMyTipImmediatePrevSum(0);
+    setTeamContractsCount(0);
+    setTeamImmediateSum(0);
+    setTeamImmediatePrevSum(0);
+    setSummaryLoading(Boolean(identity));
+    setTipSummaryLoading(Boolean(identity));
+    setTipSummaryError(null);
+    setHistoryLoading(Boolean(identity));
+    setLoading(Boolean(identity));
+  }
+  useLayoutEffect(() => {
+    activeIdentity.current = identity;
+    return () => { if (activeIdentity.current === identity) activeIdentity.current = null; };
+  }, [identity]);
 
   useEffect(() => {
     if (!email) {
@@ -329,7 +369,7 @@ export function useHomeData({
       return;
     }
 
-    const baseLoadKey = `${email}|${initialHasTeam ? "team" : "solo"}|${
+    const baseLoadKey = `${identity}|${initialHasTeam ? "team" : "solo"}|${
       loadPersonalHistory ? "history" : "summary"
     }|${reloadKey}`;
     const rangeOnlyChange =
@@ -337,8 +377,10 @@ export function useHomeData({
 
     if (rangeOnlyChange) {
       let rangeCancelled = false;
+      const rangeController = new AbortController();
+      const rangeIsCurrent = () => !rangeCancelled && activeIdentity.current === identity && (auth.currentUser?.uid ?? "") === uid;
       const safeMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
-      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths);
+      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths, uid);
       const cached = teamHistoryRangeCache.get(cacheKey);
 
       if (cached && Date.now() - cached.ts < TEAM_HISTORY_CACHE_TTL_MS) {
@@ -346,18 +388,19 @@ export function useHomeData({
         setHistoryLoading(false);
         return () => {
           rangeCancelled = true;
+          rangeController.abort();
         };
       }
 
       setHistoryLoading(true);
-      void fetchTeamHistoryRange(email, safeMonths)
+      void fetchTeamHistoryRange(email, safeMonths, rangeController.signal)
         .then((entries) => {
-          if (rangeCancelled) return;
+          if (!rangeIsCurrent()) return;
           teamHistoryRangeCache.set(cacheKey, { ts: Date.now(), entries });
           setTeamEntries(entries);
         })
         .catch((error) => {
-          if (rangeCancelled) return;
+          if (!rangeIsCurrent()) return;
           if ((error as { status?: number } | null)?.status === 403) {
             setTeamEntries([]);
           } else {
@@ -365,20 +408,26 @@ export function useHomeData({
           }
         })
         .finally(() => {
-          if (!rangeCancelled) setHistoryLoading(false);
+          if (rangeIsCurrent()) setHistoryLoading(false);
         });
 
       return () => {
         rangeCancelled = true;
+        rangeController.abort();
       };
     }
 
     baseLoadKeyRef.current = baseLoadKey;
     baseLoadCompletedRef.current = false;
     let cancelled = false;
+    const controller = new AbortController();
+    let tipUpdatesAllowed = true;
+    let tipSettled = false;
+    const isCurrent = () => !cancelled && activeIdentity.current === identity && (auth.currentUser?.uid ?? "") === uid;
+    const assertCurrent = () => { if (!isCurrent()) throw new DOMException("Home request cancelled", "AbortError"); };
 
     const applyCachedHomeState = (payload: HomeCachePayload) => {
-      if (cancelled) return;
+      if (!isCurrent()) return;
       setUserMeta(payload.userMeta);
       setMyEntries(payload.myEntries);
       setTeamEntries(payload.teamEntries);
@@ -394,6 +443,8 @@ export function useHomeData({
       setTeamContractsCount(payload.teamContractsCount);
       setTeamImmediateSum(payload.teamImmediateSum);
       setTeamImmediatePrevSum(payload.teamImmediatePrevSum ?? 0);
+      setTipSummaryLoading(false);
+      setTipSummaryError(null);
     };
 
     const load = async () => {
@@ -404,13 +455,15 @@ export function useHomeData({
 
       const loadViaContractsApi = async (
         cacheKey: string
-      ): Promise<HomeCachePayload> => {
+      ): Promise<HomeCachePayload | null> => {
+        assertCurrent();
         const currentUser = auth.currentUser;
         if (!currentUser) {
           throw new Error("Nejsi přihlášený.");
         }
 
         let bearerToken = await currentUser.getIdToken();
+        assertCurrent();
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -434,6 +487,7 @@ export function useHomeData({
           cursor?: string | null,
           signedFromMs?: number
         ): Promise<ContractsApiResponse> => {
+          assertCurrent();
           const params = new URLSearchParams({ scope, limit: "50" });
           params.set("shape", "home");
           if (Number.isFinite(signedFromMs)) {
@@ -445,6 +499,7 @@ export function useHomeData({
             fetch(`/api/contracts/list?${params.toString()}`, {
               headers: { Authorization: `Bearer ${token}` },
               cache: "no-store",
+              signal: controller.signal,
             });
 
           let res = await requestWithToken(bearerToken);
@@ -454,6 +509,7 @@ export function useHomeData({
           }
 
           const data = (await res.json()) as ContractsApiResponse;
+          assertCurrent();
           if (!res.ok || data.ok === false) {
             const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
               status?: number;
@@ -467,14 +523,16 @@ export function useHomeData({
         const requestTipPayouts = async (
           cursor?: string | null
         ): Promise<TipPayoutsApiResponse> => {
-          const params = new URLSearchParams({ limit: "100" });
-          params.set("payoutFrom", String(summaryRangeStartMs));
+          assertCurrent();
+          const params = new URLSearchParams({ limit: "100", shape: "home", payoutFrom: String(summaryRangeStartMs),
+            productionFrom: String(summaryRangeStartMs), productionTo: String(nextMonthStart.getTime()) });
           if (cursor) params.set("cursor", cursor);
 
           const requestWithToken = async (token: string) =>
             fetch(`/api/tip-payouts/list?${params.toString()}`, {
               headers: { Authorization: `Bearer ${token}` },
               cache: "no-store",
+              signal: controller.signal,
             });
 
           let res = await requestWithToken(bearerToken);
@@ -484,7 +542,8 @@ export function useHomeData({
           }
 
           const data = (await res.json()) as TipPayoutsApiResponse;
-          if (!res.ok || data.ok === false) {
+          assertCurrent();
+          if (!res.ok || data.ok !== true || !Array.isArray(data.payouts) || typeof data.hasMore !== "boolean") {
             const err = new Error(
               data.error || "Nepodařilo se načíst TIP výplaty."
             ) as Error & { status?: number };
@@ -494,23 +553,19 @@ export function useHomeData({
           return data;
         };
 
-        const collectTipSummaryForRecentMonths = async (): Promise<{
-          tipContractsCount: number;
-          tipImmediateSum: number;
-          tipImmediatePrevSum: number;
-        }> => {
+        const collectTipSummaryForRecentMonths = async (): Promise<TipSummary> => {
           const tipSourcesInCurrentMonth = new Set<string>();
           let tipImmediateSum = 0;
           let tipImmediatePrevSum = 0;
           let cursor: string | null = null;
           let hasMore = true;
           let pages = 0;
+          const seenCursors = new Set<string>();
 
           while (hasMore && pages < 60) {
             const response = await requestTipPayouts(cursor);
             pages += 1;
             const chunk = Array.isArray(response.payouts) ? response.payouts : [];
-            if (chunk.length === 0) break;
 
             chunk.forEach((item) => {
               const signedTs =
@@ -557,8 +612,11 @@ export function useHomeData({
               response.nextCursorToken,
               response.nextCursor
             );
-            hasMore = Boolean(response.hasMore) && Boolean(cursor);
+            hasMore = response.hasMore === true;
+            if (hasMore && (!cursor || seenCursors.has(cursor))) throw new Error("Neúplné stránkování TIP produkce.");
+            if (cursor) seenCursors.add(cursor);
           }
+          if (hasMore) throw new Error("Načtení TIP produkce není úplné.");
 
           return {
             tipContractsCount: tipSourcesInCurrentMonth.size,
@@ -567,19 +625,36 @@ export function useHomeData({
           };
         };
 
-        const tipSummaryPromise = collectTipSummaryForRecentMonths().catch(
-          (tipErr) => {
-            console.warn(
-              "[home] načtení TIP výplat selhalo, pokračuji bez nich.",
-              tipErr
-            );
-            return {
-              tipContractsCount: 0,
-              tipImmediateSum: 0,
-              tipImmediatePrevSum: 0,
-            };
+        let freshSummaryReady = false;
+        let stagedTipSummary: TipSummary | null = null;
+        const publishTipState = () => {
+          if (!isCurrent() || !tipUpdatesAllowed) return;
+          if (!tipSettled) {
+            setTipSummaryLoading(true);
+            setTipSummaryError(null);
+          } else if (stagedTipSummary) {
+            setMyTipContractsCount(stagedTipSummary.tipContractsCount);
+            setMyTipImmediateSum(stagedTipSummary.tipImmediateSum);
+            setMyTipImmediatePrevSum(stagedTipSummary.tipImmediatePrevSum);
+            setTipSummaryLoading(false);
+            setTipSummaryError(null);
+          } else {
+            setTipSummaryLoading(false);
+            setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
           }
-        );
+        };
+        // A seeded result stays coherent until the fresh regular summary is
+        // ready. Never combine a new TIP amount with cached own/team amounts.
+        const tipSummaryPromise = collectTipSummaryForRecentMonths().then(value => {
+          tipSettled = true;
+          stagedTipSummary = value;
+          if (freshSummaryReady) publishTipState();
+          return value;
+        }, () => {
+          tipSettled = true;
+          if (freshSummaryReady) publishTipState();
+          return null;
+        });
 
         type ScopeCollection = {
           entries: EntryDoc[];
@@ -772,24 +847,22 @@ export function useHomeData({
         );
         const ownPremiums = summarizeProductionPremiums(ownSummaryResult.entries, monthStart, nextMonthStart);
         const teamPremiums = summarizeProductionPremiums(teamSummaryEntries, monthStart, nextMonthStart);
-        const tipSummary = await tipSummaryPromise;
-
-        if (!cancelled) {
+        if (isCurrent()) {
+          freshSummaryReady = true;
           setHasTeam(hasTeamValue);
           setMyPremiums(ownPremiums);
           setTeamPremiums(teamPremiums);
           setMyContractsCount(ownMonth.count);
           setMyImmediateSum(ownMonth.immediate);
           setMyImmediatePrevSum(ownPrevMonth.immediate);
-          setMyTipContractsCount(tipSummary.tipContractsCount);
-          setMyTipImmediateSum(tipSummary.tipImmediateSum);
-          setMyTipImmediatePrevSum(tipSummary.tipImmediatePrevSum);
           setTeamContractsCount(teamMonth.count);
           setTeamImmediateSum(teamMonth.immediate);
           setTeamImmediatePrevSum(teamPrevMonth.immediate);
           setSummaryLoading(false);
           setLoading(false);
+          publishTipState();
         }
+        assertCurrent();
 
         // Fáze 2: historie pro graf/leaderboard (může doběhnout později)
         const ownHistoryResult =
@@ -820,13 +893,29 @@ export function useHomeData({
             })
           : teamSummaryEntries;
 
+        assertCurrent();
+        const ownHistoryEntries = loadPersonalHistory ? ownHistoryResult.entries : [];
+        setMyEntries(ownHistoryEntries);
+        setTeamEntries(filteredTeamEntries);
+        setHasTeam(hasTeamValue);
+        setHistoryLoading(false);
+        teamHistoryRangeCache.set(
+          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths, uid),
+          { ts: Date.now(), entries: filteredTeamEntries }
+        );
+        // History and regular production are usable while TIP is still loading.
+        // Only the complete result may become the shared/persisted home cache.
+        const tipSummary = await tipSummaryPromise;
+        assertCurrent();
+        if (!tipSummary) return null;
+
         const payload: HomeCachePayload = {
           userMeta: {
             position,
             commissionMode: myMode,
             monthlyGoal: monthlyGoal ?? null,
           },
-          myEntries: loadPersonalHistory ? ownHistoryResult.entries : [],
+          myEntries: ownHistoryEntries,
           teamEntries: filteredTeamEntries,
           hasTeam: hasTeamValue,
           myPremiums: ownPremiums,
@@ -841,18 +930,6 @@ export function useHomeData({
           teamImmediateSum: teamMonth.immediate,
           teamImmediatePrevSum: teamPrevMonth.immediate,
         };
-
-        teamHistoryRangeCache.set(
-          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths),
-          { ts: Date.now(), entries: payload.teamEntries }
-        );
-
-        if (!cancelled) {
-          setMyEntries(payload.myEntries);
-          setTeamEntries(payload.teamEntries);
-          setHasTeam(payload.hasTeam);
-          setHistoryLoading(false);
-        }
 
         homeDataCache[cacheKey] = {
           ts: Date.now(),
@@ -869,7 +946,7 @@ export function useHomeData({
         const forceReload = reloadKey > 0;
 
         const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
-        const cacheKey = `${HOME_CACHE_VERSION}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
+        const cacheKey = `${HOME_CACHE_VERSION}|${uid}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
         const cached = homeDataCache[cacheKey];
         if (cached?.payload) {
           fallbackPayload = cached.payload;
@@ -897,6 +974,8 @@ export function useHomeData({
           setLoading(true);
           setSummaryLoading(true);
           setHistoryLoading(true);
+          setTipSummaryLoading(true);
+          setTipSummaryError(null);
         } else {
           setLoading(false);
           setSummaryLoading(false);
@@ -935,7 +1014,8 @@ export function useHomeData({
           }
         }
 
-        if (!cancelled) {
+        assertCurrent();
+        if (isCurrent()) {
           setUserMeta({
             position,
             commissionMode: myMode,
@@ -943,20 +1023,26 @@ export function useHomeData({
           });
         }
         const payload = await loadViaContractsApi(cacheKey);
-        if (!cancelled) {
+        if (isCurrent() && payload) {
           applyCachedHomeState(payload);
           setSummaryLoading(false);
           setHistoryLoading(false);
         }
       } catch (e) {
+        if (!isCurrent()) return;
+        tipUpdatesAllowed = false;
+        controller.abort();
         console.error("Chyba při načítání produkce:", e);
-        if (!cancelled && fallbackPayload) {
+        if (fallbackPayload) {
           applyCachedHomeState(fallbackPayload);
           setSummaryLoading(false);
           setHistoryLoading(false);
+        } else {
+          setTipSummaryLoading(false);
+          setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
         }
       } finally {
-        if (!cancelled) {
+        if (isCurrent()) {
           baseLoadCompletedRef.current = true;
           setLoading(false);
           setSummaryLoading(false);
@@ -968,8 +1054,9 @@ export function useHomeData({
     void load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [email, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
+  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
 
   return {
     userMeta,
@@ -989,6 +1076,8 @@ export function useHomeData({
     teamImmediateSum,
     teamImmediatePrevSum,
     summaryLoading,
+    tipSummaryLoading,
+    tipSummaryError,
     historyLoading,
     loading,
   };

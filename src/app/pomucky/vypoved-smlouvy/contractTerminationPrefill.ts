@@ -4,6 +4,11 @@ import {
   productInstitutionLabel,
 } from "@/app/lib/productCatalog";
 import type { Product } from "@/app/types/domain";
+import {
+  consumePrivateContractTerminationPrefill,
+  storePrivateContractTerminationPrefill,
+  type ContractTerminationContext,
+} from "@/app/lib/contractTerminationPrivacy";
 import type {
   InsuranceType,
   TerminationReason,
@@ -41,9 +46,6 @@ export type ContractTerminationPrefill = {
   reason: TerminationReason | null;
 };
 
-const STORAGE_PREFIX = "bohemika:contract-termination-prefill:";
-const MAX_PREFILL_AGE_MS = 30 * 60 * 1000;
-const PREFILL_KEY_RE = /^[a-zA-Z0-9-]{8,80}$/;
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TERMINATION_REASONS = new Set<TerminationReason>([
   "anniversary",
@@ -193,51 +195,15 @@ export function getContractTerminationPdfFieldDefaults(
 
 export function storeContractTerminationPrefill(
   value: ContractTerminationPrefill,
+  context: ContractTerminationContext,
 ): string | null {
-  if (typeof window === "undefined") return null;
   const payload = normalizeContractTerminationPrefill(value);
-  if (!payload) return null;
-
-  const key =
-    typeof window.crypto?.randomUUID === "function"
-      ? window.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-  try {
-    window.sessionStorage.setItem(
-      `${STORAGE_PREFIX}${key}`,
-      JSON.stringify({ version: 1, createdAtMs: Date.now(), payload }),
-    );
-    return key;
-  } catch {
-    return null;
-  }
+  return payload ? storePrivateContractTerminationPrefill(payload, context) : null;
 }
 
 export function consumeContractTerminationPrefill(
   key: string | null,
+  context: ContractTerminationContext,
 ): ContractTerminationPrefill | null {
-  if (typeof window === "undefined" || !key || !PREFILL_KEY_RE.test(key)) {
-    return null;
-  }
-
-  try {
-    const storageKey = `${STORAGE_PREFIX}${key}`;
-    const serialized = window.sessionStorage.getItem(storageKey);
-    window.sessionStorage.removeItem(storageKey);
-    if (!serialized) return null;
-
-    const stored = JSON.parse(serialized) as Record<string, unknown>;
-    const createdAtMs =
-      typeof stored.createdAtMs === "number" ? stored.createdAtMs : 0;
-    if (
-      stored.version !== 1 ||
-      !Number.isFinite(createdAtMs) ||
-      Date.now() - createdAtMs > MAX_PREFILL_AGE_MS
-    ) {
-      return null;
-    }
-    return normalizeContractTerminationPrefill(stored.payload);
-  } catch {
-    return null;
-  }
+  return consumePrivateContractTerminationPrefill(key, context);
 }

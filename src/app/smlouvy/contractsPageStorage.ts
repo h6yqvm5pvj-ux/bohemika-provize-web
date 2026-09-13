@@ -2,6 +2,7 @@ import {
   parseCommissionAuditCodeFilter,
   parseCommissionAuditMode,
 } from "@/app/lib/commissionAudit";
+import { normalizeCareerPositions } from "@/app/lib/careerPositions";
 import { CATEGORY_DEFS, INSTITUTION_DEFS } from "./contractsPageFilters";
 import type {
   ContractsApiResponse,
@@ -128,6 +129,7 @@ export function readContractsViewState(
             INSTITUTION_DEFS.some((d) => d.id === v)
           )
         : [],
+      selectedPositions: normalizeCareerPositions(parsed.selectedPositions),
       selectedSubordinates: Array.isArray(parsed.selectedSubordinates)
         ? Array.from(
             new Set(

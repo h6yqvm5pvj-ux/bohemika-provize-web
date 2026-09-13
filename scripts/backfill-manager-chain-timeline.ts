@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
+
 import { loadEnvConfig } from "@next/env";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, type DocumentReference } from "firebase-admin/firestore";
@@ -978,6 +980,7 @@ function collectSubordinates(
 }
 
 async function main() {
+  return withCashflowScriptMutation("script:backfill-manager-chain-timeline", async () => {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
   const contractFilter = new Set(
@@ -1211,7 +1214,7 @@ async function main() {
 
     opsInBatch += 1;
     if (opsInBatch >= 400) {
-      await batch.commit();
+      await trackCashflowScriptWrite(() => batch.commit(), db);
       committed += opsInBatch;
       batch = db.batch();
       opsInBatch = 0;
@@ -1219,11 +1222,12 @@ async function main() {
   }
 
   if (opsInBatch > 0) {
-    await batch.commit();
+    await trackCashflowScriptWrite(() => batch.commit(), db);
     committed += opsInBatch;
   }
 
   console.log(`Applied updates: ${committed}`);
+  });
 }
 
 main().catch((error) => {

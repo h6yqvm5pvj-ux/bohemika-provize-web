@@ -16,37 +16,33 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
-  ArrowDownUp,
+  ArrowUpRight,
   ArrowRightLeft,
-  BadgeCheck,
-  Banknote,
   BriefcaseBusiness,
-  Building2,
   CalendarDays,
   Car,
   Check,
-  ChevronDown,
   Clock,
   CircleDollarSign,
   Copy,
   ExternalLink,
   HeartPulse,
   Home,
-  ListFilter,
   Plane,
   PencilLine,
-  RefreshCw,
   ReceiptText,
   Search,
-  ShieldCheck,
   SlidersHorizontal,
   UserRound,
-  UserSearch,
   UsersRound,
-  WalletCards,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import cardStyles from "./contractCards.module.css";
+import { filterDisplayedContracts, isRefreshContract, contractOwnerEmail } from "./contractsPageFiltering";
+import { ContractFiltersDialog } from "./ContractFiltersDialog";
+import { normalizeCareerPositions } from "@/app/lib/careerPositions";
+import { contractFilterCount } from "./contractFilterSelection";
 import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
 
 import { auth } from "../firebase";
@@ -79,10 +75,8 @@ import {
 import {
   commissionAuditSummaryForContract,
   isCommissionAuditFilterActive,
-  parseCommissionAuditCodeFilter,
 } from "@/app/lib/commissionAudit";
 import {
-  institutionLogoFrameClass,
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
 import {
@@ -94,9 +88,6 @@ import {
 } from "@/app/lib/contractAnniversary";
 import {
   CATEGORY_DEFS,
-  INSTITUTION_DEFS,
-  INSTITUTION_LOGO_BY_ID,
-  productMatchesFilters,
 } from "./contractsPageFilters";
 import {
   commissionAuditCompactLabel,
@@ -135,62 +126,6 @@ import type {
   Institution,
   ProductCategory,
 } from "./contractsPageTypes";
-
-const COMMISSION_AUDIT_MODE_DEFS: {
-  id: Exclude<CommissionAuditFilterMode, "off">;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  tone: string;
-}[] = [
-  {
-    id: "overdue",
-    label: "Nevyplacené",
-    description: "Provize po termínu za posledních 180 dní bez zapsané platby.",
-    icon: AlertCircle,
-    tone: "border-rose-200 bg-rose-50 text-rose-700",
-  },
-  {
-    id: "upcoming",
-    label: "Blíží se",
-    description: "Provize s očekávanou výplatou do 90 dní.",
-    icon: Clock,
-    tone: "border-sky-200 bg-sky-50 text-sky-700",
-  },
-  {
-    id: "difference",
-    label: "Rozdíl",
-    description: "Vyplacená částka se liší od očekávané.",
-    icon: CircleDollarSign,
-    tone: "border-amber-200 bg-amber-50 text-amber-700",
-  },
-  {
-    id: "career_mismatch",
-    label: "Jiný kariérní stupeň",
-    description: "Vyplaceno na jiném stupni bez pozdější opravy přes storno a správnou platbu.",
-    icon: BriefcaseBusiness,
-    tone: "border-violet-200 bg-violet-50 text-violet-700",
-  },
-  {
-    id: "all",
-    label: "Vše k provizím",
-    description: "Nevyplacené, blížící se, rozdílové i kariérní položky.",
-    icon: WalletCards,
-    tone: "border-slate-200 bg-slate-100 text-slate-700",
-  },
-];
-
-const COMMISSION_AUDIT_CODE_DEFS: {
-  id: CommissionAuditFilterCode;
-  label: string;
-}[] = [
-  { id: "all", label: "Všechny kódy" },
-  { id: "a101", label: "A101-A112" },
-  { id: "b0301", label: "B0301 / B301" },
-  { id: "b36", label: "B36 / B036 / B3601" },
-  { id: "b48", label: "B48 / B048 / B4801" },
-  { id: "subsequent", label: "Následné B101-B112" },
-];
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const CONTRACT_SEARCH_DEBOUNCE_MS = 280;
@@ -244,17 +179,6 @@ const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
   comfort: CircleDollarSign,
   business: BriefcaseBusiness,
   foreigners: UsersRound,
-};
-
-const CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
-  pension: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  life: "border-rose-200 bg-rose-50 text-rose-700",
-  auto: "border-sky-200 bg-sky-50 text-sky-700",
-  property: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  travel: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  comfort: "border-amber-200 bg-amber-50 text-amber-700",
-  business: "border-violet-200 bg-violet-50 text-violet-700",
-  foreigners: "border-teal-200 bg-teal-50 text-teal-700",
 };
 
 const CONTRACT_CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
@@ -393,35 +317,33 @@ function institutionLabelForProduct(product?: Product | null): string | null {
   return productInstitutionLabel(product, null);
 }
 
-function ContractInstitutionGhostLogo({
+function ContractInstitutionLogo({
   product,
 }: {
   product?: Product | null;
 }) {
   const institution = product ? PRODUCT_CATALOG[product] : null;
-  if (!institution) return null;
-
-  const frameClass =
-    institution.institutionId === "slavia"
-      ? "h-14 w-14"
-      : institution.institutionId === "uniqa" ||
-          institution.institutionId === "csob"
-        ? "h-14 w-20"
-        : "h-14 w-18";
+  if (!institution) {
+    return (
+      <span className={cardStyles.logo} aria-hidden="true">
+        <ReceiptText size={22} strokeWidth={1.5} className="text-slate-400" />
+      </span>
+    );
+  }
 
   return (
     <span
       aria-hidden="true"
-      className={`relative flex shrink-0 items-center justify-center overflow-hidden grayscale opacity-[0.3] transition-opacity duration-200 group-hover:opacity-[0.55] ${frameClass}`}
+      className={cardStyles.logo}
     >
       <Image
         src={institution.institutionLogo}
         alt=""
         fill
-        sizes="40px"
+        sizes="50px"
         className={`${institutionLogoImageClass(
           institution.institutionId
-        )} h-full w-full`}
+        )} ${cardStyles.logoImage}`}
       />
     </span>
   );
@@ -449,22 +371,11 @@ function ContractCategoryIcon({
       role="img"
       aria-label={`Kategorie: ${label}`}
       title={label}
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${tone}`}
+      className={`${cardStyles.categoryIcon} ${tone}`}
     >
       <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
     </span>
   );
-}
-
-function institutionMonogram(label: string): string {
-  const chunks = label
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (chunks.length === 0) return "?";
-  if (chunks.length === 1) return chunks[0].slice(0, 3).toUpperCase();
-  return `${chunks[0][0] ?? ""}${chunks[1][0] ?? ""}`.toUpperCase();
 }
 
 function isManagerPosition(pos: Position | null): boolean {
@@ -542,38 +453,6 @@ function isContractDozita(
   return contractLifecycleStatus(contract) === "dozita";
 }
 
-function isRefreshContract(contract: ContractDoc | null | undefined): boolean {
-  if (!contract) return false;
-  if (contract.isRefresh === true) return true;
-  if ((contract as DisplayedContract).groupedHasRefresh === true) return true;
-  if (
-    typeof contract.refreshOriginalContractNumber === "string" &&
-    contract.refreshOriginalContractNumber.trim().length > 0
-  ) {
-    return true;
-  }
-  return Boolean(contract.refreshCommissionBase);
-}
-
-function contractOwnerEmail(
-  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null })
-): string {
-  return normalizeEmail(
-    ((contract as { adviserEmail?: string | null }).adviserEmail ??
-      contract.userEmail ??
-      null) as string | null
-  );
-}
-
-function contractMatchesSelectedSubordinates(
-  contract: ContractDoc | (ContractDoc & { adviserEmail?: string | null }),
-  selectedSubordinates: Set<string>
-): boolean {
-  if (selectedSubordinates.size === 0) return true;
-  const ownerEmail = contractOwnerEmail(contract);
-  return ownerEmail.length > 0 && selectedSubordinates.has(ownerEmail);
-}
-
 function getOldestContractDate(contracts: ContractDoc[]): Date | null {
   if (contracts.length === 0) return null;
   let oldest: Date | null = null;
@@ -599,6 +478,7 @@ function ContractsPageContent() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
+  const [availablePositions, setAvailablePositions] = useState<Position[]>([]);
   const teamUsersRef = useRef<AppUser[]>([]);
 
   const [myContracts, setMyContracts] = useState<ContractDoc[]>([]);
@@ -649,8 +529,8 @@ function ContractsPageContent() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<ProductCategory>>(new Set());
   const [selectedInstitutions, setSelectedInstitutions] = useState<Set<Institution>>(new Set());
+  const [selectedPositions, setSelectedPositions] = useState<Set<Position>>(new Set());
   const [selectedSubordinates, setSelectedSubordinates] = useState<Set<string>>(new Set());
-  const [subordinateSearchText, setSubordinateSearchText] = useState("");
   const [listMicroAnimating, setListMicroAnimating] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
   const [searchProgressVisible, setSearchProgressVisible] = useState(false);
@@ -672,6 +552,7 @@ function ContractsPageContent() {
     scrollY: 0,
     viewportHeight: 0,
     listTop: 0,
+    rowHeight: CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT,
   });
   const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
@@ -683,7 +564,7 @@ function ContractsPageContent() {
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
   const anniversaryModeActive =
-    filterMode === "anniversary" && !hasImmediateSearchQuery;
+    filterMode === "anniversary";
   const selectedCategoryList = useMemo(
     () => Array.from(selectedCategories).sort(),
     [selectedCategories]
@@ -691,6 +572,10 @@ function ContractsPageContent() {
   const selectedInstitutionList = useMemo(
     () => Array.from(selectedInstitutions).sort(),
     [selectedInstitutions]
+  );
+  const selectedPositionList = useMemo(
+    () => Array.from(selectedPositions).sort(),
+    [selectedPositions]
   );
   const selectedSubordinateList = useMemo(
     () => Array.from(selectedSubordinates).sort(),
@@ -725,6 +610,9 @@ function ContractsPageContent() {
     teamUsersRef.current = [];
     setSelectedKeys(new Set());
     setSelectedSubordinates(new Set());
+    setSelectedPositions(new Set());
+    setAvailablePositions([]);
+    setFilterModalOpen(false);
     setSelectMode(false);
     setShowTeam(false);
     setContractDetailWindow(null);
@@ -742,6 +630,7 @@ function ContractsPageContent() {
     commissionAuditActive ||
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
+    selectedPositionList.length > 0 ||
     (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
   const activeListFilters = useMemo<ContractsListFilters>(
     () => ({
@@ -756,6 +645,7 @@ function ContractsPageContent() {
       commissionAuditCodeFilter,
       selectedCategories: selectedCategoryList,
       selectedInstitutions: selectedInstitutionList,
+      selectedPositions: selectedPositionList,
       selectedSubordinates: selectedSubordinateList,
     }),
     [
@@ -770,6 +660,7 @@ function ContractsPageContent() {
       commissionAuditCodeFilter,
       selectedCategoryList,
       selectedInstitutionList,
+      selectedPositionList,
       selectedSubordinateList,
     ]
   );
@@ -844,6 +735,9 @@ function ContractsPageContent() {
         }
         if (filters.selectedInstitutions.length > 0) {
           params.set("institutions", filters.selectedInstitutions.join(","));
+        }
+        if (filters.selectedPositions.length > 0) {
+          params.set("positions", filters.selectedPositions.join(","));
         }
         if (scope === "team" && filters.selectedSubordinates.length > 0) {
           params.set("subordinates", filters.selectedSubordinates.join(","));
@@ -935,7 +829,9 @@ function ContractsPageContent() {
     [normalizedUserEmail, user]
   );
 
-  const applyTransferAccessPayload = useCallback((data: ContractsApiResponse) => {
+  const applyContractsMetadata = useCallback((data: ContractsApiResponse) => {
+    if (data.availablePositions) setAvailablePositions(normalizeCareerPositions(data.availablePositions));
+    if (data.position !== undefined) setCurrentUserPosition(data.position);
     if (typeof data.canTransferContracts === "boolean") {
       setCanTransferContracts(data.canTransferContracts);
     }
@@ -969,7 +865,7 @@ function ContractsPageContent() {
         filters,
         signal,
       });
-      applyTransferAccessPayload(data);
+      applyContractsMetadata(data);
       const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -987,7 +883,7 @@ function ContractsPageContent() {
 
       return { list, oldest, hasMore };
     },
-    [apiFetchContracts, applyTransferAccessPayload, normalizedUserEmail, user]
+    [apiFetchContracts, applyContractsMetadata, normalizedUserEmail, user]
   );
 
   const fetchTeamPage = useCallback(
@@ -1017,7 +913,7 @@ function ContractsPageContent() {
         filters,
         signal,
       });
-      applyTransferAccessPayload(data);
+      applyContractsMetadata(data);
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -1035,12 +931,12 @@ function ContractsPageContent() {
 
       return { list, oldest, hasMore };
     },
-    [apiFetchContracts, applyTransferAccessPayload]
+    [apiFetchContracts, applyContractsMetadata]
   );
 
   const applyContractsPayload = useCallback(
     (email: string, data: ContractsApiResponse) => {
-      applyTransferAccessPayload(data);
+      applyContractsMetadata(data);
       const myList = (data.contracts as ContractDoc[]) ?? [];
       const teamList =
         (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
@@ -1066,6 +962,7 @@ function ContractsPageContent() {
       writeContractsCache({
         userEmail: email,
         position: data.position ?? null,
+        availablePositions: normalizeCareerPositions(data.availablePositions),
         myContracts: myList,
         teamContracts: teamList,
         savedAt: Date.now(),
@@ -1076,7 +973,7 @@ function ContractsPageContent() {
         teamEmails,
       });
     },
-    [applyTransferAccessPayload]
+    [applyContractsMetadata]
   );
 
   const refreshContracts = useCallback(
@@ -1177,6 +1074,7 @@ function ContractsPageContent() {
         setMyContracts(cached.myContracts ?? []);
         setTeamContracts(cached.teamContracts ?? []);
         setCurrentUserPosition(cached.position ?? null);
+        setAvailablePositions(normalizeCareerPositions(cached.availablePositions ?? [cached.position]));
         setMyHasMore(cached.myHasMore ?? true);
         setTeamHasMore(cached.teamHasMore ?? true);
         setMyCursorDate(normalizeCursorToken(cached.myCursorDate));
@@ -1382,50 +1280,6 @@ function ContractsPageContent() {
       });
   }, [canShowTeamToggle, teamContracts]);
 
-  const subordinateSearchQuery = useMemo(
-    () => normalizeSearchValue(subordinateSearchText),
-    [subordinateSearchText]
-  );
-
-  const selectedSubordinateOptions = useMemo(() => {
-    if (selectedSubordinates.size === 0) return [] as { email: string; label: string }[];
-    const knownByEmail = new Map(
-      subordinateFilterOptions.map((member) => [member.email, member] as const)
-    );
-
-    return Array.from(selectedSubordinates)
-      .map((email) => knownByEmail.get(email) ?? { email, label: adviserLabelForEmail(email) })
-      .sort((a, b) => {
-        const labelCompare = a.label.localeCompare(b.label, "cs", {
-          sensitivity: "base",
-        });
-        if (labelCompare !== 0) return labelCompare;
-        return a.email.localeCompare(b.email, "cs", { sensitivity: "base" });
-      });
-  }, [selectedSubordinates, subordinateFilterOptions]);
-
-  const searchableSubordinateOptions = useMemo(() => {
-    if (!canShowTeamToggle) return [] as { email: string; label: string }[];
-    if (!subordinateSearchQuery) return subordinateFilterOptions;
-
-    return subordinateFilterOptions
-      .filter((member) => {
-        const name = normalizeSearchValue(member.label);
-        const email = normalizeSearchValue(member.email);
-        return name.includes(subordinateSearchQuery) || email.includes(subordinateSearchQuery);
-      });
-  }, [canShowTeamToggle, subordinateFilterOptions, subordinateSearchQuery]);
-  const showSubordinateBulkToggle = subordinateFilterOptions.length > 8;
-  const selectedSearchableSubordinateCount = searchableSubordinateOptions.filter((member) =>
-    selectedSubordinates.has(member.email)
-  ).length;
-  const allSearchableSubordinatesSelected =
-    searchableSubordinateOptions.length > 0 &&
-    selectedSearchableSubordinateCount === searchableSubordinateOptions.length;
-  const subordinateBulkScopeLabel = subordinateSearchQuery
-    ? `${searchableSubordinateOptions.length} nalezených`
-    : `${subordinateFilterOptions.length} podřízených`;
-
   const displayedContracts = useMemo(() => {
     const base = (
       showTeam && canShowTeamToggle ? teamContracts : myContracts
@@ -1583,138 +1437,11 @@ function ContractsPageContent() {
       });
   }, [showTeam, canShowTeamToggle, teamContracts, myContracts]);
 
-  const filteredContracts = useMemo(() => {
-    const q = normalizeSearchValue(searchText);
-    const qContract = normalizeContractNumberForSearch(searchText);
-    const anniversaryOnly = filterMode === "anniversary" && q.length === 0;
-    let base = displayedContracts;
-    const teamScopeActive = showTeam && canShowTeamToggle;
-
-    if (teamScopeActive && selectedSubordinates.size > 0) {
-      base = base.filter((c) =>
-        contractMatchesSelectedSubordinates(c, selectedSubordinates)
-      );
-    }
-
-    if (q) {
-      base = base.filter((c) => {
-        const clientTokens =
-          c.searchClientTokens && c.searchClientTokens.length > 0
-            ? c.searchClientTokens
-            : [normalizeSearchValue(c.clientName)];
-        const contractTokens =
-          c.searchContractTokens && c.searchContractTokens.length > 0
-            ? c.searchContractTokens
-            : [normalizeSearchValue(c.contractNumber)];
-        const compactContractTokens =
-          c.searchContractCompactTokens && c.searchContractCompactTokens.length > 0
-            ? c.searchContractCompactTokens
-            : [normalizeContractNumberForSearch(c.contractNumber)];
-        return (
-          clientTokens.some((value) => value.includes(q)) ||
-          contractTokens.some((value) => value.includes(q)) ||
-          (qContract.length > 0 &&
-            compactContractTokens.some((value) => value.includes(qContract)))
-        );
-      });
-    }
-
-    if (showUnpaidOnly) {
-      base = base.filter(
-        (c) => c.paid !== true && !isContractStorno(c) && !isContractDozita(c)
-      );
-    }
-
-    if (showRefreshOnly) {
-      base = base.filter((c) => isRefreshContract(c));
-    }
-
-    if (showActiveOnly) {
-      base = base.filter(
-        (c) => contractLifecycleStatus(c as ContractDoc) === "active"
-      );
-    } else if (showStornoOnly || showMaturedOnly) {
-      base = base.filter((c) => {
-        const lifecycleStatus = contractLifecycleStatus(c as ContractDoc);
-        return (
-          (showStornoOnly && lifecycleStatus === "storno") ||
-          (showMaturedOnly && lifecycleStatus === "dozita")
-        );
-      });
-    }
-
-    if (commissionAuditActive) {
-      const now = new Date();
-      base = base.filter(
-        (c) =>
-          commissionAuditSummaryForContract(c, {
-            mode: commissionAuditMode,
-            codeFilter: commissionAuditCodeFilter,
-            viewerEmail: contractOwnerEmail(c),
-            now,
-          }).items.length > 0
-      );
-    }
-
-    if (anniversaryOnly) {
-      const enriched = base
-        .map((c) => {
-          const product = (c as any).productKey as Product | undefined;
-          if (
-            isContractStorno(c as ContractDoc) ||
-            isContractDozita(c as ContractDoc) ||
-            !shouldTrackAnniversary(product)
-          ) {
-            return { contract: c, next: undefined, soon: false };
-          }
-          const start = getAnniversaryStartDate(c);
-          const info = isAnniversarySoon(start);
-          return { contract: c, next: info.next, soon: info.soon };
-        })
-        .filter(
-          (item) =>
-            item.soon &&
-            productMatchesFilters(
-              (item.contract as any).productKey as Product | undefined,
-              selectedCategories,
-              selectedInstitutions
-            )
-        )
-        .sort(
-          (a, b) =>
-            (a.next?.getTime() ?? Number.POSITIVE_INFINITY) -
-            (b.next?.getTime() ?? Number.POSITIVE_INFINITY)
-        )
-        .map((item) => item.contract);
-
-      return enriched;
-    }
-
-    return base.filter((c) =>
-      productMatchesFilters(
-        c.productKey as Product | undefined,
-        selectedCategories,
-        selectedInstitutions
-      )
-    );
-  }, [
+  const filteredContracts = useMemo(() => filterDisplayedContracts(
     displayedContracts,
-    showTeam,
-    canShowTeamToggle,
-    selectedSubordinates,
-    searchText,
-    showUnpaidOnly,
-    showRefreshOnly,
-    showActiveOnly,
-    showStornoOnly,
-    showMaturedOnly,
-    commissionAuditActive,
-    commissionAuditMode,
-    commissionAuditCodeFilter,
-    filterMode,
-    selectedCategories,
-    selectedInstitutions,
-  ]);
+    { ...activeListFilters, query: searchText },
+    showTeam && canShowTeamToggle
+  ), [displayedContracts, activeListFilters, searchText, showTeam, canShowTeamToggle]);
 
   const effectiveFilteredContracts = filteredContracts;
 
@@ -1734,26 +1461,27 @@ function ContractsPageContent() {
     }
 
     const rows = total;
+    const rowHeight = contractsWindowMetrics.rowHeight;
     const relativeTop = contractsWindowMetrics.scrollY - contractsWindowMetrics.listTop;
     const startRow = Math.max(
       0,
-      Math.floor(relativeTop / CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT) -
+      Math.floor(relativeTop / rowHeight) -
         CONTRACT_LIST_OVERSCAN_ROWS
     );
     const endRow = Math.min(
       rows - 1,
       Math.ceil(
         (relativeTop + contractsWindowMetrics.viewportHeight) /
-          CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
+          rowHeight
       ) + CONTRACT_LIST_OVERSCAN_ROWS
     );
 
     const startIndex = startRow;
     const endExclusive = Math.min(total, endRow + 1);
-    const topPadding = startRow * CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT;
+    const topPadding = startRow * rowHeight;
     const bottomPadding = Math.max(
       0,
-      (rows - endRow - 1) * CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT
+      (rows - endRow - 1) * rowHeight
     );
 
     return {
@@ -1781,6 +1509,7 @@ function ContractsPageContent() {
         commissionAuditCodeFilter,
         categories: Array.from(selectedCategories).sort(),
         institutions: Array.from(selectedInstitutions).sort(),
+        positions: Array.from(selectedPositions).sort(),
         subordinates: Array.from(selectedSubordinates).sort(),
       }),
     [
@@ -1796,6 +1525,7 @@ function ContractsPageContent() {
       commissionAuditCodeFilter,
       selectedCategories,
       selectedInstitutions,
+      selectedPositions,
       selectedSubordinates,
     ]
   );
@@ -1821,6 +1551,22 @@ function ContractsPageContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     let rafId: number | null = null;
+    let rowHeight = CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT;
+    let listWidth = 0;
+
+    const measureRow = () => {
+      const list = contractsListRef.current;
+      if (!list) return;
+      const heights = Array.from(list.querySelectorAll<HTMLButtonElement>(":scope > button"))
+        .slice(0, 12)
+        .map((row) => row.getBoundingClientRect().height)
+        .filter((height) => height > 0)
+        .sort((a, b) => a - b);
+      if (heights.length === 0) return;
+      const gap = Number.parseFloat(window.getComputedStyle(list).rowGap) || 0;
+      rowHeight = heights[Math.floor(heights.length / 2)] + gap;
+      listWidth = list.clientWidth;
+    };
 
     const syncMetrics = () => {
       const listTop = contractsListRef.current
@@ -1830,6 +1576,7 @@ function ContractsPageContent() {
         scrollY: window.scrollY,
         viewportHeight: window.innerHeight,
         listTop,
+        rowHeight,
       });
     };
 
@@ -1841,18 +1588,29 @@ function ContractsPageContent() {
       });
     };
 
+    // Re-measure when the card layout changes, keeping the estimate stable while scrolling.
+    const onResize = () => {
+      measureRow();
+      onWindowChange();
+    };
+    const resizeObserver = new ResizeObserver(() => {
+      if (contractsListRef.current?.clientWidth !== listWidth) onResize();
+    });
+    if (contractsListRef.current) resizeObserver.observe(contractsListRef.current);
+    measureRow();
     syncMetrics();
     window.addEventListener("scroll", onWindowChange, { passive: true });
-    window.addEventListener("resize", onWindowChange);
+    window.addEventListener("resize", onResize);
 
     return () => {
       if (rafId != null) {
         window.cancelAnimationFrame(rafId);
       }
+      resizeObserver.disconnect();
       window.removeEventListener("scroll", onWindowChange);
-      window.removeEventListener("resize", onWindowChange);
+      window.removeEventListener("resize", onResize);
     };
-  }, [effectiveFilteredContracts.length, showTeam, filterMode]);
+  }, [effectiveFilteredContracts.length, showTeam, filterMode, selectMode, commissionAuditActive]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore) return;
@@ -1999,6 +1757,7 @@ function ContractsPageContent() {
       commissionAuditCodeFilter,
       selectedCategories: Array.from(selectedCategories),
       selectedInstitutions: Array.from(selectedInstitutions),
+      selectedPositions: Array.from(selectedPositions),
       selectedSubordinates: Array.from(selectedSubordinates),
       scrollY: typeof window !== "undefined" ? window.scrollY : 0,
     });
@@ -2016,6 +1775,7 @@ function ContractsPageContent() {
     commissionAuditCodeFilter,
     selectedCategories,
     selectedInstitutions,
+    selectedPositions,
     selectedSubordinates,
   ]);
 
@@ -2142,28 +1902,6 @@ function ContractsPageContent() {
     []
   );
 
-  const applyCommissionAuditMode = useCallback(
-    (nextMode: CommissionAuditFilterMode) => {
-      if (nextMode !== "off") {
-        setCommissionAuditFilterPending(true);
-      }
-      startFilterTransition(() => setCommissionAuditMode(nextMode));
-    },
-    [startFilterTransition]
-  );
-
-  const changeCommissionAuditCodeFilter = useCallback(
-    (value: string) => {
-      if (commissionAuditMode !== "off") {
-        setCommissionAuditFilterPending(true);
-      }
-      startFilterTransition(() =>
-        setCommissionAuditCodeFilter(parseCommissionAuditCodeFilter(value))
-      );
-    },
-    [commissionAuditMode, startFilterTransition]
-  );
-
   useEffect(() => {
     if (!shouldRestoreView) return;
     if (!normalizedUserEmail) return;
@@ -2183,6 +1921,7 @@ function ContractsPageContent() {
     setCommissionAuditCodeFilter(saved.commissionAuditCodeFilter);
     setSelectedCategories(new Set(saved.selectedCategories));
     setSelectedInstitutions(new Set(saved.selectedInstitutions));
+    setSelectedPositions(new Set(saved.selectedPositions));
     setSelectedSubordinates(restoredSubordinates);
     pendingScrollRestoreRef.current = saved.scrollY;
   }, [shouldRestoreView, normalizedUserEmail]);
@@ -2205,12 +1944,6 @@ function ContractsPageContent() {
   }, [loading, loadingMore, hasMoreActive, effectiveFilteredContracts.length]);
 
   useEffect(() => {
-    if (!filterModalOpen) {
-      setSubordinateSearchText("");
-    }
-  }, [filterModalOpen]);
-
-  useEffect(() => {
     setSelectedKeys(new Set());
     setSelectMode(false);
   }, [
@@ -2226,6 +1959,7 @@ function ContractsPageContent() {
     commissionAuditCodeFilter,
     selectedCategoryList,
     selectedInstitutionList,
+    selectedPositionList,
     selectedSubordinateList,
   ]);
 
@@ -2235,14 +1969,10 @@ function ContractsPageContent() {
 
   const hasTeamContracts =
     teamContracts.length > 0 && canShowTeamToggle;
-  const advancedFilterCount =
-    selectedCategoryList.length +
-    selectedInstitutionList.length +
-    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0) +
-    (showActiveOnly ? 1 : 0) +
-    (showStornoOnly ? 1 : 0) +
-    (showMaturedOnly ? 1 : 0) +
-    (commissionAuditActive ? 1 : 0);
+  const currentFilterSelection = { ...activeListFilters,
+    selectedSubordinates: showTeam && canShowTeamToggle ? selectedSubordinateList : [],
+  };
+  const advancedFilterCount = contractFilterCount(currentFilterSelection);
 
   const toggleSelect = (key: string) => {
     setSelectedKeys((prev) => {
@@ -2477,35 +2207,6 @@ function ContractsPageContent() {
     }
   };
 
-  const quickFilterActiveCount =
-    (filterMode === "anniversary" ? 1 : 0) +
-    (showUnpaidOnly ? 1 : 0) +
-    (showRefreshOnly ? 1 : 0) +
-    (showActiveOnly ? 1 : 0) +
-    (showStornoOnly ? 1 : 0) +
-    (showMaturedOnly ? 1 : 0);
-  const commissionFilterCount = commissionAuditActive
-    ? 1 + (commissionAuditCodeFilter !== "all" ? 1 : 0)
-    : 0;
-  const modalActiveFilterCount =
-    quickFilterActiveCount +
-    commissionFilterCount +
-    selectedCategoryList.length +
-    selectedInstitutionList.length +
-    (showTeam && canShowTeamToggle ? selectedSubordinateList.length : 0);
-  const commissionAuditSelectedLabel =
-    commissionAuditMode === "off"
-      ? "Vypnuto"
-      : COMMISSION_AUDIT_MODE_DEFS.find((item) => item.id === commissionAuditMode)?.label ??
-        "Zapnuto";
-  const filterCardBaseClass =
-    "group relative flex min-h-[52px] w-full items-center gap-2.5 rounded-[16px] border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_18px_rgba(15,23,42,0.07)]";
-  const inactiveFilterCardClass =
-    "border-slate-200 bg-white text-slate-700 hover:border-slate-300";
-  const activeFilterCardClass =
-    "border-violet-700 bg-white text-slate-950 ring-2 ring-violet-200 shadow-[0_16px_30px_rgba(109,40,217,0.12)]";
-  const activeFilterIconClass =
-    "border-violet-700 bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white";
   const activePurpleButtonClass =
     "border-transparent bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white";
 
@@ -2542,6 +2243,9 @@ function ContractsPageContent() {
                           onClick={() => {
                             setShowTeam(false);
                             setSelectedSubordinates(new Set());
+    setSelectedPositions(new Set());
+    setAvailablePositions([]);
+    setFilterModalOpen(false);
                           }}
                           className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
                             !showTeam
@@ -2818,7 +2522,7 @@ function ContractsPageContent() {
               )}
             </div>
           ) : (
-            <div className="mt-4 space-y-3">
+            <div className={`${cardStyles.list} mt-4 space-y-3`}>
               {serverFilterActive && loadingMore && (
                 <div className="ui-card ui-card-quiet flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-xs text-slate-700">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
@@ -2835,12 +2539,12 @@ function ContractsPageContent() {
                   {bulkSuccess}
                 </div>
               )}
-              <div className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.04)] lg:grid lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
-                <span>Smlouva</span>
-                <span>Datum</span>
+              <div className={cardStyles.columns} aria-hidden="true">
+                <span>Klient / smlouva</span>
+                <span>Sjednáno</span>
                 <span>Pojistné</span>
                 <span>Stav</span>
-                <span className="text-right">Akce</span>
+                <span />
               </div>
               <div
                 ref={contractsListRef}
@@ -2860,9 +2564,6 @@ function ContractsPageContent() {
                 const signedStr = signed
                   ? signed.toLocaleDateString("cs-CZ")
                   : "—";
-                const transferEffectiveDate = toDate(
-                  c.transferEffectiveDate ?? c.transferAt ?? null
-                );
                 const policyStart = getAnniversaryStartDate(c);
                 const anniversaryInfo = shouldTrackAnniversary(
                   c.productKey as Product | undefined
@@ -2887,20 +2588,6 @@ function ContractsPageContent() {
                     ? cleanDisplayName(c.adviserName) || adviserNameFromEmail(ownerEmail)
                     : "";
                 const inherited = isInheritedContract(c);
-                const originalAdviserEmail =
-                  normalizeEmail(c.originalAdviserEmail) || (inherited ? "" : ownerEmail);
-                const originalAdviserName = cleanDisplayName(c.originalAdviserName) ||
-                  (originalAdviserEmail ? adviserNameFromEmail(originalAdviserEmail) : "Neuvedený");
-                const servicingAdviserName = ownerEmail
-                  ? cleanDisplayName(c.servicingOwnerName) ||
-                    cleanDisplayName(c.adviserName) ||
-                    adviserNameFromEmail(ownerEmail)
-                  : "";
-                const wasTransferred = inherited || Boolean(
-                  originalAdviserEmail &&
-                    ownerEmail &&
-                    originalAdviserEmail !== ownerEmail
-                );
                 const premiumDisplay = premiumDisplayForContract(c as ContractDoc);
                 const isEndorsement = c.entryType === "endorsement";
                 const hasOriginalReplacement = isRefreshContract(c as ContractDoc);
@@ -2938,87 +2625,63 @@ function ContractsPageContent() {
                 const commissionAuditTone = primaryCommissionAuditItem
                   ? commissionAuditToneClasses(primaryCommissionAuditItem)
                   : null;
-                const compactRowToneClass = isStorno
-                  ? "border-amber-200/80 bg-amber-50/70"
-                  : isDozita
-                    ? "border-sky-200/80 bg-sky-50/70"
-                    : c.paid
-                      ? "border-slate-200 bg-white"
-                      : "border-rose-200/85 bg-rose-50/60";
-
                   const CompactContent = (
                     <article
-                      className={`relative isolate overflow-hidden rounded-[18px] border px-3 py-2.5 text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.05)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] sm:rounded-2xl sm:py-3 ${
-                        compactRowToneClass
-                      } ${isSelected ? "ring-2 ring-violet-200" : ""}`}
-                      style={{
-                        contentVisibility: "auto",
-                        containIntrinsicSize: "84px",
-                      }}
+                      className={cardStyles.card}
+                      data-selected={isSelected}
+                      data-selection-mode={selectMode}
                     >
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1.5 lg:grid-cols-[minmax(0,1.28fr)_96px_122px_minmax(280px,1.1fr)_auto] lg:items-center lg:gap-3">
-                        <div className="order-1 flex min-w-0 items-start gap-2 lg:order-none lg:gap-3">
+                      <div className={cardStyles.grid}>
+                        <div className={cardStyles.identity}>
                           {selectMode ? (
-                            <span
-                              className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-black lg:h-6 lg:w-6 lg:text-xs ${
-                                isSelected
-                                  ? "border-violet-700 bg-violet-700 text-white [&_*]:!text-white"
-                                  : "border-slate-300 bg-white text-slate-400"
-                              }`}
-                              aria-hidden="true"
-                            >
-                              ✓
+                            <span className={cardStyles.selection} aria-hidden="true">
+                              <Check size={13} strokeWidth={2.5} />
                             </span>
                           ) : null}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 items-center gap-1.5 lg:flex-wrap">
+                          <ContractInstitutionLogo
+                            product={c.productKey as Product | undefined}
+                          />
+                          <div className={cardStyles.identityText}>
+                            <div className={cardStyles.client} title={c.clientName || "Klient neuveden"}>
+                              {c.clientName || "Klient neuveden"}
+                            </div>
+                            <div className={cardStyles.product}>
                               <ContractCategoryIcon
                                 product={c.productKey as Product | undefined}
                               />
-                              {institutionLabel ? (
-                                <span className="inline-flex shrink-0 items-center rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-slate-700 lg:rounded-lg lg:px-2 lg:text-[10px]">
-                                  {institutionLabel}
-                                </span>
-                              ) : null}
-                              <span className="min-w-0 truncate text-[15px] font-bold leading-tight text-slate-950 lg:text-base">
+                              <span
+                                className={cardStyles.productName}
+                                title={[institutionLabel, displayProductName].filter(Boolean).join(" · ")}
+                              >
+                                {institutionLabel ? <>{institutionLabel} · </> : null}
                                 {displayProductName}
                               </span>
-                              {inherited && (
-                                <span className="shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Převzatá</span>
-                              )}
+                            </div>
+                            <div className={cardStyles.metadata}>
+                              <span className={cardStyles.number} title={`Číslo smlouvy: ${c.contractNumber ?? "—"}`}>
+                                č. {c.contractNumber ?? "—"}
+                              </span>
+                              {inherited ? (
+                                <span className={cardStyles.tag}>Převzatá</span>
+                              ) : null}
                               {isEndorsement ? (
-                                <span className="hidden shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 sm:inline-flex">
-                                  Dodatek
-                                </span>
+                                <span className={cardStyles.tag} data-tone="neutral">Dodatek</span>
                               ) : null}
                               {hasOriginalReplacement ? (
-                                <span className="hidden shrink-0 items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 sm:inline-flex">
-                                  {originalReplacementBadgeLabel}
-                                </span>
+                                <span className={cardStyles.tag}>{originalReplacementBadgeLabel}</span>
                               ) : null}
                               {groupedEndorsementCount > 0 ? (
-                                <span className="hidden shrink-0 items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 sm:inline-flex">
+                                <span className={cardStyles.tag} data-tone="neutral">
                                   {groupedEndorsementCount}× změna
                                 </span>
                               ) : null}
-                            </div>
-                            <div className="mt-0.5 flex min-w-0 items-center gap-x-2 overflow-hidden text-[12px] leading-tight text-slate-600 lg:mt-1 lg:flex-wrap lg:gap-x-3 lg:gap-y-1 lg:text-xs">
-                              <span className="min-w-0 truncate font-semibold text-slate-800">
-                                {c.clientName || "Klient neuveden"}
-                              </span>
-                              <span className="max-w-[42vw] shrink-0 truncate whitespace-nowrap lg:max-w-none">č. {c.contractNumber ?? "—"}</span>
-                              {wasTransferred ? (
-                                <span className="hidden font-semibold text-violet-700 sm:inline">
-                                  Správce: {servicingAdviserName} · sjednal: {originalAdviserName}
-                                  {transferEffectiveDate
-                                    ? ` · od ${transferEffectiveDate.toLocaleDateString("cs-CZ")}`
-                                    : ""}
+                              {adviserName ? (
+                                <span className={cardStyles.adviser} title={`Poradce: ${adviserName}`}>
+                                  {adviserName}
                                 </span>
-                              ) : adviserName ? (
-                                <span className="hidden sm:inline">{adviserName}</span>
                               ) : null}
                               {anniversaryInfo.soon ? (
-                                <span className="hidden font-semibold text-rose-700 sm:inline">
+                                <span className={cardStyles.anniversary}>
                                   {anniversaryInfo.daysLeft != null
                                     ? `${
                                         anniversaryInfo.anniversaryNumber
@@ -3032,29 +2695,23 @@ function ContractsPageContent() {
                           </div>
                         </div>
 
-                        <div className="order-3 col-start-1 row-start-2 min-w-0 self-end lg:order-none lg:col-auto lg:row-auto">
-                          <div className="hidden text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:block">
-                            Datum
-                          </div>
-                          <div className="inline-flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500 lg:block lg:text-sm lg:text-slate-800">
-                            <CalendarDays size={12} strokeWidth={2.2} className="shrink-0 lg:hidden" aria-hidden="true" />
-                            <span className="truncate">{signedStr}</span>
-                          </div>
+                        <div className={cardStyles.date}>
+                          <CalendarDays size={12} strokeWidth={1.8} aria-hidden="true" />
+                          <span className="sr-only">Sjednáno </span>
+                          <span>{signedStr}</span>
                         </div>
 
-                        <div className="order-2 col-start-2 row-start-1 text-right lg:order-none lg:col-auto lg:row-auto lg:text-left">
-                          <div className="hidden text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 lg:block">
-                            Pojistné
-                          </div>
-                          <div className="whitespace-nowrap text-[15px] font-black leading-none text-slate-950 lg:text-base lg:leading-normal">
+                        <div className={cardStyles.premium}>
+                          <span className="sr-only">Pojistné </span>
+                          <div className={cardStyles.amount}>
                             {formatMoney(premiumDisplay.amount)}
                           </div>
-                          <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-500 lg:mt-0 lg:text-[10px]">
+                          <div className={cardStyles.cadence}>
                             {premiumDisplay.cadenceLabel ?? "Částka"}
                           </div>
                           {isEndorsement && premiumDelta != null ? (
                             <div
-                              className={`text-[10px] font-semibold lg:text-[11px] ${
+                              className={`text-[11px] font-medium ${
                                 premiumDelta >= 0 ? "text-emerald-700" : "text-rose-700"
                               }`}
                             >
@@ -3064,77 +2721,41 @@ function ContractsPageContent() {
                           ) : null}
                         </div>
 
-                        <div className="order-4 col-start-2 row-start-2 justify-self-end lg:order-none lg:col-auto lg:row-auto lg:justify-self-auto">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold leading-5 lg:gap-1.5 lg:px-2.5 lg:py-1 lg:text-xs ${statusBadge.compactClass}`}
-                          >
+                        <div className={cardStyles.status}>
+                          <span className={`${cardStyles.statusBadge} ${statusBadge.compactClass}`}>
                             <span
-                              className={`h-1.5 w-1.5 rounded-full lg:h-2 lg:w-2 ${statusBadge.compactDotClass}`}
+                              className={`${cardStyles.statusDot} ${statusBadge.compactDotClass}`}
                               aria-hidden="true"
                             />
                             {statusBadge.label}
                           </span>
-                          {primaryCommissionAuditItem && commissionAuditTone ? (
-                            <div
-                              className={`mt-1.5 hidden w-full max-w-full items-start gap-1.5 rounded-2xl border px-2.5 py-1 text-[11px] font-bold leading-snug lg:flex ${commissionAuditTone.compact}`}
-                              title={`${commissionAuditCompactLabel(primaryCommissionAuditItem)} · ${commissionAuditTimingLabel(primaryCommissionAuditItem)} · ${formatCommissionAuditDate(
-                                primaryCommissionAuditItem.expectedDateMs
-                              )}`}
-                            >
-                              <Clock size={12} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
-                              <span className="min-w-0 flex-1 whitespace-normal break-words">
-                                <span>{commissionAuditCompactLabel(primaryCommissionAuditItem)}</span>
-                                <span className="mx-1">·</span>
-                                <span>{commissionAuditTimingLabel(primaryCommissionAuditItem)}</span>
-                                {commissionAuditSummary &&
-                                commissionAuditSummary.items.length > 1 ? (
-                                  <span>
-                                    {" "}
-                                    · +{commissionAuditSummary.items.length - 1}
-                                  </span>
-                                ) : null}
-                              </span>
-                            </div>
-                          ) : null}
                         </div>
+
+                        {!selectMode ? (
+                          <span className={cardStyles.action} title="Otevřít detail smlouvy">
+                            <ArrowUpRight size={17} strokeWidth={1.8} aria-hidden="true" />
+                            <span className="sr-only">Detail smlouvy</span>
+                          </span>
+                        ) : null}
 
                         {primaryCommissionAuditItem && commissionAuditTone ? (
                           <div
-                            className={`order-5 col-span-2 mt-0.5 flex max-w-full items-start gap-1.5 rounded-xl border px-2 py-1 text-[10px] font-bold leading-snug lg:hidden ${commissionAuditTone.compact}`}
+                            className={`${cardStyles.audit} flex min-w-0 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${commissionAuditTone.compact}`}
                             title={`${commissionAuditCompactLabel(primaryCommissionAuditItem)} · ${commissionAuditTimingLabel(primaryCommissionAuditItem)} · ${formatCommissionAuditDate(
                               primaryCommissionAuditItem.expectedDateMs
                             )}`}
                           >
-                            <Clock size={11} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
-                            <span className="min-w-0 flex-1 truncate">
+                            <Clock size={12} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 whitespace-normal break-words">
                               <span>{commissionAuditCompactLabel(primaryCommissionAuditItem)}</span>
                               <span className="mx-1">·</span>
                               <span>{commissionAuditTimingLabel(primaryCommissionAuditItem)}</span>
-                              {commissionAuditSummary &&
-                              commissionAuditSummary.items.length > 1 ? (
-                                <span>
-                                  {" "}
-                                  · +{commissionAuditSummary.items.length - 1}
-                                </span>
+                              {commissionAuditSummary && commissionAuditSummary.items.length > 1 ? (
+                                <span> · +{commissionAuditSummary.items.length - 1}</span>
                               ) : null}
                             </span>
                           </div>
                         ) : null}
-
-                        <div className="order-6 hidden items-center justify-start lg:order-none lg:flex lg:justify-end">
-                          {!selectMode ? (
-                            <span className="relative inline-flex items-center">
-                              <span className="absolute right-[calc(100%+0.5rem)] top-1/2 -translate-y-1/2">
-                                <ContractInstitutionGhostLogo
-                                  product={c.productKey as Product | undefined}
-                                />
-                              </span>
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-slate-400 group-hover:text-slate-950">
-                                Detail ↗
-                              </span>
-                            </span>
-                          ) : null}
-                        </div>
                       </div>
                     </article>
                   );
@@ -3144,10 +2765,11 @@ function ContractsPageContent() {
                   key={c.id}
                   type="button"
                   onClick={() => toggleSelect(selectionKey)}
+                  aria-pressed={isSelected}
                   onContextMenu={(event) =>
                     openContractContextMenu(event, c as ContractDoc, slug)
                   }
-                  className="block group h-full w-full text-left"
+                  className={cardStyles.cardButton}
                 >
                   {CompactContent}
                 </button>
@@ -3161,7 +2783,7 @@ function ContractsPageContent() {
                   onContextMenu={(event) =>
                     openContractContextMenu(event, c as ContractDoc, slug)
                   }
-                  className="block group h-full w-full text-left"
+                  className={cardStyles.cardButton}
                 >
                   {CompactContent}
                 </button>
@@ -3202,798 +2824,32 @@ function ContractsPageContent() {
       </div>
 
       {filterModalOpen && (
-        <div className="fixed inset-0 z-[80] flex items-start justify-center px-3 py-4 sm:items-center sm:px-5 sm:py-6">
-          <div
-            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
-            onClick={() => setFilterModalOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Filtry smluv"
-            className="relative flex max-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-[28px] border border-white/70 bg-slate-50 shadow-[0_38px_110px_rgba(2,6,23,0.38)]"
-          >
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] border border-slate-200 bg-slate-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.2)]">
-                  <SlidersHorizontal size={19} strokeWidth={2.2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-xl font-black tracking-tight text-slate-950">
-                      Filtry smluv
-                    </h3>
-                    <span className="inline-flex h-6 items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 text-[11px] font-black uppercase tracking-[0.1em] text-slate-600">
-                      {modalActiveFilterCount === 0
-                        ? "Bez filtrů"
-                        : `${modalActiveFilterCount} aktivní`}
-                    </span>
-                  </div>
-                  <p className="mt-1 max-w-2xl text-sm font-medium leading-snug text-slate-500">
-                    Přesné zúžení smluv podle režimu, provizní kontroly, produktu,
-                    instituce a podřízených.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFilterModalOpen(false)}
-                className="ui-focus inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[16px] border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
-                aria-label="Zavřít filtry"
-              >
-                <X size={16} strokeWidth={2.2} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div
-              className={`grid min-h-0 flex-1 grid-cols-1 ${
-                canShowTeamToggle
-                  ? "lg:grid-cols-[minmax(0,1fr)_340px]"
-                  : "lg:grid-cols-1"
-              }`}
-            >
-              <div className="contracts-filter-scrollbar min-h-0 overflow-y-scroll px-3 py-3 sm:px-4 sm:py-4">
-                <div className="space-y-3">
-                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="mb-2.5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
-                          <ListFilter size={15} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-black text-slate-950">
-                            Režim a stav smluv
-                          </h4>
-                          <p className="text-xs font-medium text-slate-500">
-                            Nejčastější zúžení seznamu smluv.
-                          </p>
-                        </div>
-                      </div>
-                      {quickFilterActiveCount > 0 && (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
-                          {quickFilterActiveCount} aktivní
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          startFilterTransition(() => setFilterMode("latest"))
-                        }
-                        className={`${filterCardBaseClass} ${
-                          filterMode === "latest"
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            filterMode === "latest"
-                              ? activeFilterIconClass
-                              : "border-slate-200 bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          <ArrowDownUp size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Nejnovější</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              filterMode === "latest" ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Standardní řazení podle posledních smluv.
-                          </span>
-                        </span>
-                        {filterMode === "latest" && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          startFilterTransition(() => setFilterMode("anniversary"))
-                        }
-                        className={`${filterCardBaseClass} ${
-                          filterMode === "anniversary"
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            filterMode === "anniversary"
-                              ? activeFilterIconClass
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          <CalendarDays size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Výročí</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              filterMode === "anniversary" ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Smlouvy s blížícím se výročím.
-                          </span>
-                        </span>
-                        {filterMode === "anniversary" && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextActive = !showActiveOnly;
-                          setShowActiveOnly(nextActive);
-                          if (nextActive) {
-                            setShowStornoOnly(false);
-                            setShowMaturedOnly(false);
-                          }
-                        }}
-                        className={`${filterCardBaseClass} ${
-                          showActiveOnly
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            showActiveOnly
-                              ? activeFilterIconClass
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          <ShieldCheck size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Aktivní smlouvy</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              showActiveOnly ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Bez stornovaných a dožitých smluv.
-                          </span>
-                        </span>
-                        {showActiveOnly && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowUnpaidOnly((prev) => !prev)}
-                        className={`${filterCardBaseClass} ${
-                          showUnpaidOnly
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            showUnpaidOnly
-                              ? activeFilterIconClass
-                              : "border-rose-200 bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          <AlertCircle size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Nezaplacené</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              showUnpaidOnly ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Jen smlouvy bez označené úhrady.
-                          </span>
-                        </span>
-                        {showUnpaidOnly && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowRefreshOnly((prev) => !prev)}
-                        className={`${filterCardBaseClass} ${
-                          showRefreshOnly
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            showRefreshOnly
-                              ? activeFilterIconClass
-                              : "border-sky-200 bg-sky-50 text-sky-700"
-                          }`}
-                        >
-                          <RefreshCw size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Refresh/Náhrada</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              showRefreshOnly ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Jen náhrady a refresh smlouvy.
-                          </span>
-                        </span>
-                        {showRefreshOnly && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowActiveOnly(false);
-                          setShowMaturedOnly((prev) => !prev);
-                        }}
-                        className={`${filterCardBaseClass} ${
-                          showMaturedOnly
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            showMaturedOnly
-                              ? activeFilterIconClass
-                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          <BadgeCheck size={16} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Dožité</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              showMaturedOnly ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Smlouvy po dni pojištění do.
-                          </span>
-                        </span>
-                        {showMaturedOnly && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowActiveOnly(false);
-                          setShowStornoOnly((prev) => !prev);
-                        }}
-                        className={`${filterCardBaseClass} ${
-                          showStornoOnly
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                        }`}
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            showStornoOnly
-                              ? activeFilterIconClass
-                              : "border-rose-200 bg-rose-50 text-rose-700"
-                          }`}
-                        >
-                          <X size={16} strokeWidth={2.3} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Stornované</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              showStornoOnly ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Smlouvy označené jako storno.
-                          </span>
-                        </span>
-                        {showStornoOnly && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                      </button>
-                    </div>
-                  </section>
-
-                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="mb-2.5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-amber-200 bg-amber-50 text-amber-700">
-                          <Banknote size={15} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-black text-slate-950">
-                            Kontrola provizí
-                          </h4>
-                          <p className="text-xs font-medium text-slate-500">
-                            Aktuálně: {commissionAuditSelectedLabel}
-                          </p>
-                        </div>
-                      </div>
-                      {commissionFilterCount > 0 && (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700">
-                          {commissionFilterCount} aktivní
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => applyCommissionAuditMode("off")}
-                        className={`${filterCardBaseClass} ${
-                        commissionAuditMode === "off"
-                            ? activeFilterCardClass
-                            : inactiveFilterCardClass
-                      }`}
-                    >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                            commissionAuditMode === "off"
-                              ? activeFilterIconClass
-                              : "border-slate-200 bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          <BadgeCheck size={16} strokeWidth={2.1} aria-hidden="true" />
-                      </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-black">Vypnuto</span>
-                          <span
-                            className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                              commissionAuditMode === "off" ? "text-slate-600" : "text-slate-500"
-                            }`}
-                          >
-                            Bez provizní kontroly.
-                          </span>
-                        </span>
-                        {commissionAuditMode === "off" && (
-                          <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                        )}
-                    </button>
-                    {COMMISSION_AUDIT_MODE_DEFS.map((item) => {
-                      const active = commissionAuditMode === item.id;
-                        const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => applyCommissionAuditMode(item.id)}
-                            className={`${filterCardBaseClass} ${
-                            active
-                                ? activeFilterCardClass
-                                : inactiveFilterCardClass
-                          }`}
-                        >
-                            <span
-                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                                active
-                                  ? activeFilterIconClass
-                                  : item.tone
-                              }`}
-                            >
-                              <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-black">
-                              {item.label}
-                            </span>
-                            <span
-                                className={`mt-0.5 block text-[11px] font-semibold leading-snug ${
-                                active ? "text-slate-600" : "text-slate-500"
-                              }`}
-                            >
-                              {item.description}
-                            </span>
-                          </span>
-                            {active && (
-                              <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                            )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                    <label className="mt-3 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
-                      Kód provize
-                    </label>
-                    <div className="relative mt-2">
-                      <select
-                        value={commissionAuditCodeFilter}
-                        onChange={(event) =>
-                          changeCommissionAuditCodeFilter(event.target.value)
-                        }
-                        className="h-10 w-full appearance-none rounded-[16px] border border-slate-200 bg-slate-50 px-3.5 pr-10 text-sm font-black text-slate-950 outline-none transition focus:border-slate-950 focus:bg-white focus:ring-2 focus:ring-slate-950/10"
-                      >
-                        {COMMISSION_AUDIT_CODE_DEFS.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.label}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown
-                        size={15}
-                        strokeWidth={2.2}
-                        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-hidden="true"
-                      />
-                    </div>
-                  </section>
-
-                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="mb-2.5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
-                          <ReceiptText size={15} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-black text-slate-950">Produkty</h4>
-                          <p className="text-xs font-medium text-slate-500">
-                            Kategorie produktů napříč institucemi.
-                          </p>
-                        </div>
-                      </div>
-                      {selectedCategoryList.length > 0 && (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
-                          {selectedCategoryList.length} vybráno
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {CATEGORY_DEFS.map((cat) => {
-                      const active = selectedCategories.has(cat.id);
-                        const Icon = CATEGORY_ICON_BY_ID[cat.id];
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() =>
-                            setSelectedCategories((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(cat.id)) {
-                                next.delete(cat.id);
-                              } else {
-                                next.add(cat.id);
-                              }
-                              return next;
-                            })
-                          }
-                            className={`${filterCardBaseClass} items-center ${
-                            active
-                                ? activeFilterCardClass
-                                : inactiveFilterCardClass
-                          }`}
-                        >
-                          <span
-                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[13px] border ${
-                              active
-                                  ? activeFilterIconClass
-                                  : CATEGORY_TONE_BY_ID[cat.id]
-                            }`}
-                          >
-                              <Icon size={16} strokeWidth={2.1} aria-hidden="true" />
-                          </span>
-                            <span className="min-w-0 flex-1 truncate text-sm font-black">
-                              {cat.label}
-                          </span>
-                            {active && (
-                              <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                            )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  </section>
-
-                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                    <div className="mb-2.5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
-                          <Building2 size={15} strokeWidth={2.1} aria-hidden="true" />
-                        </span>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-black text-slate-950">Instituce</h4>
-                          <p className="text-xs font-medium text-slate-500">
-                            Pojišťovny a produktoví partneři.
-                          </p>
-                        </div>
-                      </div>
-                      {selectedInstitutionList.length > 0 && (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-700">
-                          {selectedInstitutionList.length} vybráno
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {INSTITUTION_DEFS.map((inst) => {
-                      const active = selectedInstitutions.has(inst.id);
-                      const logoSrc = INSTITUTION_LOGO_BY_ID[inst.id];
-                      return (
-                        <button
-                          key={inst.id}
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() =>
-                            setSelectedInstitutions((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(inst.id)) {
-                                next.delete(inst.id);
-                              } else {
-                                next.add(inst.id);
-                              }
-                              return next;
-                            })
-                          }
-                          className={`ui-focus group flex min-h-[56px] items-center justify-between gap-3 rounded-[16px] border px-3 py-2 text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_18px_rgba(15,23,42,0.07)] ${
-                            active
-                              ? activeFilterCardClass
-                              : "border-slate-200 bg-white text-slate-900 hover:border-slate-300"
-                          }`}
-                        >
-                          <span className="flex min-w-0 items-center gap-3">
-                              <span
-                              className={`flex h-10 w-[92px] shrink-0 items-center justify-center rounded-[14px] border bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] ${
-                                  active
-                                    ? "border-violet-700 bg-violet-50 text-violet-900"
-                                    : "border-slate-200 bg-white text-slate-700"
-                                }`}
-                              >
-                                <span
-                                  className={`relative flex shrink-0 items-center justify-center overflow-hidden ${institutionLogoFrameClass(
-                                    inst.id,
-                                  "compact"
-                                  )}`}
-                                >
-                                  {logoSrc ? (
-                                    <Image
-                                      src={logoSrc}
-                                      alt={`${inst.label} logo`}
-                                    width={64}
-                                    height={36}
-                                      className={`${institutionLogoImageClass(inst.id)} h-full w-full`}
-                                    />
-                                  ) : (
-                                    <span className="text-sm font-black tracking-wide text-slate-700">
-                                      {institutionMonogram(inst.label)}
-                                    </span>
-                                  )}
-                                </span>
-                              </span>
-
-                            <span className="truncate text-sm font-black leading-tight">
-                                {inst.label}
-                              </span>
-                          </span>
-
-                          {active ? (
-                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${activeFilterIconClass}`}>
-                              <Check size={15} strokeWidth={2.6} aria-hidden="true" />
-                            </span>
-                          ) : (
-                            <span className="h-5 w-5 shrink-0 rounded-full border border-slate-200 bg-white transition group-hover:border-slate-300" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  </section>
-              </div>
-              </div>
-
-              {canShowTeamToggle && (
-                <aside className="contracts-filter-scrollbar min-h-0 overflow-y-scroll border-t border-slate-200 bg-white px-4 py-4 sm:px-5 lg:border-l lg:border-t-0">
-                  <div className="mb-3 flex items-start gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px] border border-slate-200 bg-slate-100 text-slate-700">
-                      <UserSearch size={15} strokeWidth={2.1} aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-black text-slate-950">Podřízení</h4>
-                      <p className="text-xs font-medium leading-snug text-slate-500">
-                        Filtrování týmových smluv podle poradce.
-                      </p>
-                    </div>
-                  </div>
-
-                  {subordinateFilterOptions.length === 0 ? (
-                    <p className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-                      Zatím nejsou dostupní žádní podřízení pro filtrování.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      <label className="flex h-11 items-center gap-2 rounded-[17px] border border-slate-200 bg-slate-50 px-3 transition focus-within:border-slate-950 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-950/10">
-                        <Search size={15} strokeWidth={2.1} className="text-slate-400" aria-hidden="true" />
-                        <input
-                          type="text"
-                          value={subordinateSearchText}
-                          onChange={(event) => setSubordinateSearchText(event.target.value)}
-                          aria-label="Hledat podřízeného"
-                          placeholder="Hledat podřízeného (jméno nebo e-mail)"
-                          className="w-full bg-transparent text-xs font-semibold text-slate-900 placeholder:text-slate-400 outline-none"
-                        />
-                      </label>
-
-                      {selectedSubordinateOptions.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {selectedSubordinateOptions.map((member) => (
-                            <button
-                              key={`selected-${member.email}`}
-                              type="button"
-                              onClick={() =>
-                                setSelectedSubordinates((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(member.email);
-                                  return next;
-                                })
-                              }
-                              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-700 bg-violet-700 px-3 py-1.5 text-xs font-bold text-white shadow-[0_8px_18px_rgba(109,40,217,0.18)] [&_*]:!text-white"
-                            >
-                              <span className="truncate">{member.label}</span>
-                              <X size={12} strokeWidth={2.4} aria-hidden="true" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {showSubordinateBulkToggle && searchableSubordinateOptions.length > 0 && (
-                        <label className="flex min-h-10 items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-white">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={allSearchableSubordinatesSelected}
-                              onChange={() => {
-                                if (!allSearchableSubordinatesSelected) {
-                                  setShowTeam(true);
-                                }
-                                setSelectedSubordinates((prev) => {
-                                  const next = new Set(prev);
-                                  for (const member of searchableSubordinateOptions) {
-                                    if (allSearchableSubordinatesSelected) {
-                                      next.delete(member.email);
-                                    } else {
-                                      next.add(member.email);
-                                    }
-                                  }
-                                  return next;
-                                });
-                              }}
-                              className="h-4 w-4 shrink-0 accent-violet-700"
-                            />
-                            <span className="truncate">
-                              {allSearchableSubordinatesSelected ? "Zrušit vše" : "Vybrat vše"}
-                            </span>
-                          </span>
-                          <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-500">
-                            {selectedSearchableSubordinateCount}/{subordinateBulkScopeLabel}
-                          </span>
-                        </label>
-                      )}
-
-                      {searchableSubordinateOptions.length === 0 ? (
-                        <p className="rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-600">
-                          Pro zadaný výraz jsme nikoho nenašli.
-                        </p>
-                      ) : (
-                        <div className="contracts-filter-scrollbar max-h-[52vh] space-y-2 overflow-y-scroll pr-1">
-                          {searchableSubordinateOptions.map((member) => {
-                            const active = selectedSubordinates.has(member.email);
-                            return (
-                              <button
-                                key={member.email}
-                                type="button"
-                                onClick={() => {
-                                  if (!active) setShowTeam(true);
-                                  setSelectedSubordinates((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(member.email)) {
-                                      next.delete(member.email);
-                                    } else {
-                                      next.add(member.email);
-                                    }
-                                    return next;
-                                  });
-                                }}
-                                className={`flex w-full items-center justify-between gap-3 rounded-[18px] border px-3 py-2.5 text-left transition ${
-                                  active
-                                      ? "border-violet-700 bg-white text-slate-950 ring-2 ring-violet-200"
-                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                                }`}
-                              >
-                                <span className="min-w-0">
-                                  <span className="block truncate text-sm font-black">
-                                    {member.label}
-                                  </span>
-                                  <span
-                                    className={`block truncate text-[11px] font-semibold ${
-                                      active ? "text-slate-600" : "text-slate-500"
-                                    }`}
-                                  >
-                                    {member.email}
-                                  </span>
-                                </span>
-                                {active && (
-                                  <Check size={15} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </aside>
-              )}
-            </div>
-
-            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 text-sm sm:px-6">
-              <button
-                type="button"
-                onClick={() => {
-                  startFilterTransition(() => {
-                    setFilterMode("latest");
-                    setShowUnpaidOnly(false);
-                    setShowRefreshOnly(false);
-                    setShowActiveOnly(false);
-                    setShowStornoOnly(false);
-                    setShowMaturedOnly(false);
-                    setCommissionAuditMode("off");
-                    setCommissionAuditCodeFilter("all");
-                    setSelectedCategories(new Set());
-                    setSelectedInstitutions(new Set());
-                    setSelectedSubordinates(new Set());
-                  });
-                }}
-                className="ui-focus inline-flex h-11 items-center gap-2 rounded-[17px] border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
-              >
-                <X size={15} strokeWidth={2.3} aria-hidden="true" />
-                Vymazat filtry
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedSubordinates.size > 0) setShowTeam(true);
-                  setFilterModalOpen(false);
-                }}
-                className="ui-focus inline-flex h-11 items-center gap-2 rounded-[17px] border border-violet-700 bg-violet-700 px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 [&_*]:!text-white"
-              >
-                <Check size={16} strokeWidth={2.5} aria-hidden="true" />
-                Použít
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContractFiltersDialog
+          value={currentFilterSelection}
+          advisers={subordinateFilterOptions}
+          availablePositions={availablePositions}
+          canShowTeam={canShowTeamToggle}
+          onClose={() => setFilterModalOpen(false)}
+          onApply={(next) => {
+            setFilterModalOpen(false);
+            if (next.commissionAuditMode !== "off") setCommissionAuditFilterPending(true);
+            startFilterTransition(() => {
+              setFilterMode(next.filterMode);
+              setShowUnpaidOnly(next.showUnpaidOnly);
+              setShowRefreshOnly(next.showRefreshOnly);
+              setShowActiveOnly(next.showActiveOnly);
+              setShowStornoOnly(next.showStornoOnly);
+              setShowMaturedOnly(next.showMaturedOnly);
+              setCommissionAuditMode(next.commissionAuditMode);
+              setCommissionAuditCodeFilter(next.commissionAuditCodeFilter);
+              setSelectedCategories(new Set(next.selectedCategories));
+              setSelectedInstitutions(new Set(next.selectedInstitutions));
+              setSelectedPositions(new Set(next.selectedPositions));
+              setSelectedSubordinates(new Set(next.selectedSubordinates));
+              if (next.selectedSubordinates.length > 0) setShowTeam(true);
+            });
+          }}
+        />
       )}
       {transferModalOpen ? (
         <div

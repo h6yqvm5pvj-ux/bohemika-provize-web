@@ -11,11 +11,12 @@ import {
   type MultiFactorResolver,
   signInWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail,
   TotpMultiFactorGenerator,
   type User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "../firebase";
+import { PASSWORD_RESET_REQUESTED_MESSAGE, resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+import { requestPasswordResetEmail } from "@/app/lib/authEmailRequest";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
@@ -158,34 +159,6 @@ function buildLoginAttemptMessage(payload: LoginAttemptResponse | null): string 
   return "Nesprávný e-mail nebo heslo.";
 }
 
-function resolvePasswordResetErrorMessage(error: unknown): string {
-  const code = (error as { code?: string })?.code;
-  if (code === "auth/user-not-found") {
-    return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
-  }
-  if (code === "auth/invalid-email") {
-    return "Zadej platný e-mail.";
-  }
-  if (code === "auth/operation-not-allowed") {
-    return "Firebase Authentication nemá zapnuté přihlašování přes e-mail a heslo.";
-  }
-  if (code === "auth/too-many-requests") {
-    return "Firebase dočasně blokuje další odesílání kvůli příliš mnoha pokusům. Zkus to později.";
-  }
-  if (code === "auth/network-request-failed") {
-    return "Síťová chyba při komunikaci s Firebase.";
-  }
-  if (code === "auth/unauthorized-continue-uri") {
-    return "Doména není povolená ve Firebase Authentication > Settings > Authorized domains.";
-  }
-  if (code === "auth/invalid-continue-uri" || code === "auth/missing-continue-uri") {
-    return "Návratová URL pro Firebase e-mail není správně nastavená.";
-  }
-  if (code) {
-    return `Firebase vrátil chybu ${code}.`;
-  }
-  return "Nepodařilo se odeslat odkaz pro obnovení.";
-}
 
 async function postLoginAttempt(
   action: LoginAttemptAction,
@@ -225,6 +198,8 @@ export default function LoginPage() {
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const resetInFlight = useRef(false);
   const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(null);
   const [mfaDigits, setMfaDigits] = useState<string[]>(createEmptyMfaDigits);
   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
@@ -568,6 +543,7 @@ export default function LoginPage() {
   };
 
   const handleReset = async () => {
+    if (resetInFlight.current) return;
     setError(null);
     setResetStatus(null);
     const trimmedEmail = email.trim().toLowerCase();
@@ -575,13 +551,17 @@ export default function LoginPage() {
       setResetStatus("Zadej e-mail, kam ti máme poslat odkaz na nové heslo.");
       return;
     }
+    resetInFlight.current = true;
+    setResetBusy(true);
     try {
-      auth.languageCode = "cs";
-      await sendPasswordResetEmail(auth, trimmedEmail);
-      setResetStatus("Poslal jsem odkaz pro obnovení hesla na zadaný e-mail.");
-    } catch (err: any) {
-      logAuthIssue("handleReset", err);
-      setResetStatus(resolvePasswordResetErrorMessage(err));
+      await requestPasswordResetEmail(trimmedEmail);
+      setResetStatus(PASSWORD_RESET_REQUESTED_MESSAGE);
+    } catch (err: unknown) {
+      console.warn("[AuthEmail] password-reset:", safeAuthEmailErrorCode(err));
+      setError(resolveAuthEmailErrorMessage(err, "Nepodařilo se vyžádat obnovení hesla. Zkus to znovu nebo kontaktuj podporu."));
+    } finally {
+      resetInFlight.current = false;
+      setResetBusy(false);
     }
   };
 
@@ -711,10 +691,10 @@ export default function LoginPage() {
                       <button
                         type="button"
                         onClick={handleReset}
-                        disabled={loading}
+                        disabled={loading || resetBusy}
                         className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
                       >
-                        Zapomenuté heslo?
+                        {resetBusy ? "Odesílám žádost…" : "Zapomenuté heslo?"}
                       </button>
                     </div>
                   </div>

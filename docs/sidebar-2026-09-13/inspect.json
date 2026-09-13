@@ -1,0 +1,14 @@
+{
+  "id": "dpl_FK81FV8LqN1GtKUuYeQdui8zuaC6",
+  "url": "bohemika-provize-o2z5ksydu-jacobrausch989s-projects-909dd478.vercel.app",
+  "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+  "readyState": "READY",
+  "target": "production",
+  "regions": [
+    "fra1"
+  ],
+  "emailEnvKeysPresent": [
+    "RESEND_API_KEY",
+    "AUTH_EMAIL_FROM"
+  ]
+}

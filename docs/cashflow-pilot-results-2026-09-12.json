@@ -1,0 +1,232 @@
+{
+  "schema": "cashflow-synthetic-pilot-v1",
+  "generatedAt": "2026-09-12T08:11:42.726Z",
+  "environment": "local-firestore-emulator",
+  "project": "demo-bohemika-cashflow-pilot",
+  "timeZone": "Europe/Prague",
+  "nodeVersion": "v24.11.0",
+  "scope": "Synthetic source collection read + shared compute/view versus diagnostic candidate read/parse; excludes production loaders, authorization, WAN and browser rendering.",
+  "measurementNotes": "First calculation runs after seeding in this process; it is not a cold-process measurement. Source-plus-compute/view includes capturing the revision before the source query. Hash comparisons occur outside timed samples. No timing thresholds are asserted.",
+  "samples": 5,
+  "scenarios": [
+    {
+      "scenario": "small",
+      "asOfMs": 1789200697705,
+      "contractCount": 12,
+      "ownContracts": 9,
+      "teamContracts": 3,
+      "tips": 3,
+      "statements": 2,
+      "sourceDocuments": 18,
+      "sourceJsonBytes": 7429,
+      "wireBytes": 593583,
+      "items": 259,
+      "monthItems": 259,
+      "months": 46,
+      "withinCurrentDiagnosticBudget": true,
+      "firstCalculationMs": {
+        "revisionReadMs": 3.265457999999853,
+        "sourceReadMs": 7.614749999999958,
+        "computeMs": 2.716000000000122,
+        "viewMs": 1.9227499999999509,
+        "sourceAndComputeViewMs": 15.54099999999994,
+        "serializeMs": 6.952790999999934
+      },
+      "publishMs": 28.850832999999966,
+      "repeated": {
+        "revisionReadMs": {
+          "samples": 5,
+          "medianMs": 2.8261660000000575,
+          "p95Ms": 3.2554580000000897
+        },
+        "sourceReadMs": {
+          "samples": 5,
+          "medianMs": 4.574624999999969,
+          "p95Ms": 5.11179200000015
+        },
+        "computeMs": {
+          "samples": 5,
+          "medianMs": 0.7108330000000933,
+          "p95Ms": 0.9149580000000697
+        },
+        "viewMs": {
+          "samples": 5,
+          "medianMs": 0.4401660000000902,
+          "p95Ms": 0.5165000000001783
+        },
+        "sourceAndComputeViewMs": {
+          "samples": 5,
+          "medianMs": 8.761458000000175,
+          "p95Ms": 9.541625000000067
+        },
+        "serializeMs": {
+          "samples": 5,
+          "medianMs": 5.070416000000023,
+          "p95Ms": 5.377958000000035
+        },
+        "candidateReadAndParseMs": {
+          "samples": 5,
+          "medianMs": 32.202541999999994,
+          "p95Ms": 35.56524999999988
+        }
+      },
+      "verifiedSamples": 5,
+      "outputHashMatch": true,
+      "consistency": {
+        "activeWriteBlocked": true,
+        "completedWriteInvalidated": true,
+        "changedAmountAndDateVerified": true,
+        "rebuildMatched": true,
+        "partialBatchFailureBlocked": true,
+        "repairedBeforeRecovery": true,
+        "recoveredResultMatched": true
+      }
+    },
+    {
+      "scenario": "medium",
+      "asOfMs": 1789200698328,
+      "contractCount": 60,
+      "ownContracts": 45,
+      "teamContracts": 15,
+      "tips": 3,
+      "statements": 2,
+      "sourceDocuments": 66,
+      "sourceJsonBytes": 30761,
+      "wireBytes": 2936437,
+      "items": 1283,
+      "monthItems": 1283,
+      "months": 46,
+      "withinCurrentDiagnosticBudget": true,
+      "firstCalculationMs": {
+        "revisionReadMs": 2.079833000000008,
+        "sourceReadMs": 7.4492089999998825,
+        "computeMs": 3.116999999999962,
+        "viewMs": 2.3374579999999696,
+        "sourceAndComputeViewMs": 14.988125000000082,
+        "serializeMs": 24.901165999999876
+      },
+      "publishMs": 62.86570800000004,
+      "repeated": {
+        "revisionReadMs": {
+          "samples": 5,
+          "medianMs": 2.7159999999998945,
+          "p95Ms": 2.8596670000001723
+        },
+        "sourceReadMs": {
+          "samples": 5,
+          "medianMs": 4.822041999999783,
+          "p95Ms": 5.263625000000047
+        },
+        "computeMs": {
+          "samples": 5,
+          "medianMs": 3.0357500000000073,
+          "p95Ms": 3.2725410000000466
+        },
+        "viewMs": {
+          "samples": 5,
+          "medianMs": 2.097707999999784,
+          "p95Ms": 2.26037499999984
+        },
+        "sourceAndComputeViewMs": {
+          "samples": 5,
+          "medianMs": 12.167417000000114,
+          "p95Ms": 12.80862500000012
+        },
+        "serializeMs": {
+          "samples": 5,
+          "medianMs": 21.182791999999836,
+          "p95Ms": 22.618417000000136
+        },
+        "candidateReadAndParseMs": {
+          "samples": 5,
+          "medianMs": 85.20908400000008,
+          "p95Ms": 86.18620899999996
+        }
+      },
+      "verifiedSamples": 5,
+      "outputHashMatch": true,
+      "consistency": {
+        "activeWriteBlocked": true,
+        "completedWriteInvalidated": true,
+        "changedAmountAndDateVerified": true,
+        "rebuildMatched": true,
+        "partialBatchFailureBlocked": true,
+        "repairedBeforeRecovery": true,
+        "recoveredResultMatched": true
+      }
+    },
+    {
+      "scenario": "large",
+      "asOfMs": 1789200699831,
+      "contractCount": 132,
+      "ownContracts": 99,
+      "teamContracts": 33,
+      "tips": 3,
+      "statements": 2,
+      "sourceDocuments": 138,
+      "sourceJsonBytes": 65815,
+      "wireBytes": 6456915,
+      "items": 2819,
+      "monthItems": 2819,
+      "months": 46,
+      "withinCurrentDiagnosticBudget": true,
+      "firstCalculationMs": {
+        "revisionReadMs": 1.9574170000000777,
+        "sourceReadMs": 6.876250000000255,
+        "computeMs": 5.481707999999799,
+        "viewMs": 5.393584000000374,
+        "sourceAndComputeViewMs": 19.711874999999964,
+        "serializeMs": 46.45425000000023
+      },
+      "publishMs": 110.956459,
+      "repeated": {
+        "revisionReadMs": {
+          "samples": 5,
+          "medianMs": 2.815708000000086,
+          "p95Ms": 2.8736250000001746
+        },
+        "sourceReadMs": {
+          "samples": 5,
+          "medianMs": 5.527082999999948,
+          "p95Ms": 5.859792000000198
+        },
+        "computeMs": {
+          "samples": 5,
+          "medianMs": 5.7468330000001515,
+          "p95Ms": 6.75262500000008
+        },
+        "viewMs": {
+          "samples": 5,
+          "medianMs": 5.504125000000386,
+          "p95Ms": 5.956040999999459
+        },
+        "sourceAndComputeViewMs": {
+          "samples": 5,
+          "medianMs": 19.731707999999344,
+          "p95Ms": 21.17570799999976
+        },
+        "serializeMs": {
+          "samples": 5,
+          "medianMs": 44.722541999999976,
+          "p95Ms": 45.795750000000226
+        },
+        "candidateReadAndParseMs": {
+          "samples": 5,
+          "medianMs": 164.31937500000004,
+          "p95Ms": 188.6308339999996
+        }
+      },
+      "verifiedSamples": 5,
+      "outputHashMatch": true,
+      "consistency": {
+        "activeWriteBlocked": true,
+        "completedWriteInvalidated": true,
+        "changedAmountAndDateVerified": true,
+        "rebuildMatched": true,
+        "partialBatchFailureBlocked": true,
+        "repairedBeforeRecovery": true,
+        "recoveredResultMatched": true
+      }
+    }
+  ]
+}

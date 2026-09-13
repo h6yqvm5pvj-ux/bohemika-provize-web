@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
     profile: vi.fn(),
     signOut: vi.fn(),
     mfaPing: vi.fn(),
+    resetEmail: vi.fn(),
   };
 });
 
@@ -35,7 +36,6 @@ vi.mock("firebase/auth", () => ({
   },
   signInWithEmailAndPassword: mocks.password,
   signOut: mocks.signOut,
-  sendPasswordResetEmail: vi.fn(),
   FactorId: { TOTP: "totp" },
   TotpMultiFactorGenerator: {
     assertionForSignIn: (uid: string, code: string) => ({ uid, code }),
@@ -52,6 +52,7 @@ vi.mock("@/app/lib/passkeys", () => ({
 }));
 vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profile }));
 vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.mfaPing }));
+vi.mock("@/app/lib/authEmailRequest", () => ({ requestPasswordResetEmail: mocks.resetEmail }));
 
 import LoginPage from "./page";
 
@@ -83,6 +84,7 @@ describe("login verification boundary", () => {
     mocks.profile.mockReset().mockResolvedValue({ hasProfile: false });
     mocks.signOut.mockImplementation(async () => { mocks.auth.currentUser = null; });
     mocks.mfaPing.mockResolvedValue({ ok: true });
+    mocks.resetEmail.mockReset().mockResolvedValue(undefined);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ ok: true }));
@@ -139,6 +141,51 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(0);
     expect(mocks.router.replace).not.toHaveBeenCalled();
   };
+
+  const requestPasswordReset = async () => {
+    const button = Array.from(container.querySelectorAll("button")).find(
+      (element) => element.textContent === "Zapomenuté heslo?"
+    );
+    expect(button).toBeDefined();
+    await act(async () => button!.click());
+  };
+
+  it("requests a reset email through the server without revealing account existence", async () => {
+    await changeInput("#login-email", " Fresh@Example.Test ");
+    await requestPasswordReset();
+    expect(mocks.resetEmail).toHaveBeenCalledExactlyOnceWith("fresh@example.test");
+    expect(container.textContent).toContain("Pokud k tomuto e-mailu existuje účet");
+    expectNotLoggedIn();
+  });
+
+  it("uses the generic reset confirmation for an unknown address", async () => {
+    await changeInput("#login-email", "unknown@example.test");
+    await requestPasswordReset();
+    expect(container.textContent).toContain("Pokud k tomuto e-mailu existuje účet");
+    expect(container.textContent).not.toContain("neexistuje");
+  });
+
+  it("shows a failed email request as an error, without leaking provider details", async () => {
+    mocks.resetEmail.mockRejectedValue({ code: "auth/operation-not-allowed", message: "private@example.test secret-token" });
+    await changeInput("#login-email", "fresh@example.test");
+    await requestPasswordReset();
+    expect(container.textContent).toContain("Odesílání e-mailů není pro aplikaci povolené");
+    expect(container.textContent).not.toContain("Pokud k tomuto e-mailu existuje účet");
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/private@|secret-token/);
+  });
+
+  it("disables repeated reset requests while the server is processing one", async () => {
+    const delivery = deferred<void>();
+    mocks.resetEmail.mockReturnValue(delivery.promise);
+    await changeInput("#login-email", "fresh@example.test");
+    await requestPasswordReset();
+    const button = Array.from(container.querySelectorAll("button")).find((element) => element.textContent === "Odesílám žádost…")!;
+    expect(button.disabled).toBe(true);
+    await act(async () => button.click());
+    expect(mocks.resetEmail).toHaveBeenCalledOnce();
+    await act(async () => delivery.resolve());
+    expect(button.disabled).toBe(false);
+  });
 
   it("does not turn a persisted Firebase user into a new app session on mount", async () => {
     await restoreCachedUser();

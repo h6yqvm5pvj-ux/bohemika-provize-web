@@ -16,6 +16,9 @@ import { formatCashflowGroupCount } from "../cashflowLabels";
 
 type CashflowMonthModalProps = {
   month: MonthGroup | null;
+  loading?: boolean;
+  loadingLabel?: string;
+  loadingError?: string | null;
   statements?: CashflowCommissionStatementSummary[];
   statementLoadingId?: string | null;
   onClose: () => void;
@@ -88,13 +91,25 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
 
 export function CashflowMonthModal({
   month,
+  loading = false,
+  loadingLabel,
+  loadingError,
   statements = [],
   statementLoadingId = null,
   onClose,
   onOpenStatement,
   tipsterMode = false,
 }: CashflowMonthModalProps) {
-  if (!month) return null;
+  if (!month) {
+    if (!loading && !loadingError) return null;
+    return <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#08030f]/78 px-4 backdrop-blur-[7px]" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-busy={loading} aria-label={loadingLabel ?? "Detail měsíce"} className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl" onClick={event => event.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-4"><h2 className="font-semibold">{loadingLabel ?? "Detail měsíce"}</h2>
+          <button type="button" onClick={onClose} aria-label="Zavřít detail měsíce" className="rounded-lg p-2"><X size={20} /></button></div>
+        {loadingError ? <p role="alert">{loadingError}</p> : <p role="status" className="flex items-center gap-2"><Loader2 size={18} className="animate-spin" />Načítám detail měsíce…</p>}
+      </div>
+    </div>;
+  }
 
   const sortedItems = sortCashflowItemsForDisplay(month.items);
   const displayGroups = buildCashflowDisplayGroups(sortedItems);

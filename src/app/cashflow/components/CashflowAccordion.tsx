@@ -13,6 +13,7 @@ type CashflowAccordionProps = {
   onToggleYear: (year: number) => void;
   onSelectMonth: (month: MonthGroup) => void;
   tipsterMode?: boolean;
+  monthItemLabels?: Record<string, string>;
 };
 
 function formatItemCount(count: number, singular: string, few: string, many: string): string {
@@ -27,6 +28,7 @@ export function CashflowAccordion({
   onToggleYear,
   onSelectMonth,
   tipsterMode = false,
+  monthItemLabels,
 }: CashflowAccordionProps) {
   const now = new Date();
 
@@ -99,7 +101,7 @@ export function CashflowAccordion({
                           </span>
                           <span className={`${styles.monthAmount} ${month && month.total < 0 ? styles.negativeAmount : ""}`}>{month ? formatMoney(month.total) : "—"}</span>
                           <span className={styles.monthCardBottom}>
-                            <span>{month ? formatCashflowItemCount(month.items) : "Bez dat ve výběru"}
+                            <span>{month ? monthItemLabels?.[month.key] ?? formatCashflowItemCount(month.items) : "Bez dat ve výběru"}
                               {past && month && <span> · Uplynulý</span>}
                               {current && <span className={styles.currentMonthText}> · Tento měsíc</span>}
                             </span>

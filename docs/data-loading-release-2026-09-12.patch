@@ -1,0 +1,923 @@
+diff --git a/src/app/api/contracts/_lib/contractsApi.projectedSearch.test.ts b/src/app/api/contracts/_lib/contractsApi.projectedSearch.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.projectedSearch.test.ts
+@@ -0,0 +1,170 @@
++import { Timestamp, type Firestore } from "firebase-admin/firestore";
++import { describe, expect, it, vi } from "vitest";
++import { parseContractListFilters } from "./contractsApi.listFilters";
++import {
++  canUseProjectedContractSearch, readProjectedContractSearchPage,
++} from "./contractsApi.projectedSearch";
++import type { ContractDoc } from "./contractsApi.types";
++
++const ownerEmail = "owner@example.test";
++const filters = (values: Record<string, string> = {}) => parseContractListFilters(
++  new URLSearchParams({ q: "novak", ...values }),
++);
++type Entry = { id: string; data: ContractDoc };
++const entry = (id: string, data: Partial<ContractDoc> = {}): Entry => ({
++  id, data: { clientName: "Jan Novák", productKey: "neon", contractSignedDate: new Date("2026-09-10"), ...data },
++});
++
++function database(entries: Entry[], options: {
++  hydrationError?: Error;
++  queryError?: Error;
++  missingReadTime?: boolean;
++  missingDocument?: boolean;
++  afterProjection?: () => void;
++} = {}) {
++  const readTime = Timestamp.fromMillis(Date.parse("2026-09-12T12:00:00Z"));
++  const state = { projectedFields: [] as string[], hydrated: [] as string[], bytes: 0 };
++  let atReadTime: Entry[] = [];
++  const doc = (item: Entry, projection?: string[]) => ({
++    id: item.id, ref: { path: `users/${ownerEmail}/entries/${item.id}` },
++    exists: !options.missingDocument,
++    data: () => projection ? Object.fromEntries(projection
++      .filter(field => Object.hasOwn(item.data, field))
++      .map(field => [field, item.data[field as keyof ContractDoc]])) : item.data,
++  });
++  const get = vi.fn(async () => {
++    if (options.queryError) throw options.queryError;
++    atReadTime = entries.map(item => ({ id: item.id, data: { ...item.data } }));
++    const docs = [...atReadTime].sort((a, b) => a.id < b.id ? -1 : 1)
++      .map(item => doc(item, state.projectedFields));
++    state.bytes = Buffer.byteLength(JSON.stringify(docs.map(item => item.data())));
++    options.afterProjection?.();
++    return { docs, readTime: options.missingReadTime ? undefined : readTime };
++  });
++  const runTransaction = vi.fn(async (work: (transaction: unknown) => Promise<unknown>, transactionOptions: unknown) => {
++    expect(transactionOptions).toEqual({ readOnly: true, readTime });
++    if (options.hydrationError) throw options.hydrationError;
++    return work({ getAll: async (...refs: Array<{ path: string }>) => {
++      state.hydrated = refs.map(ref => ref.path.split("/").at(-1)!);
++      // Return reverse order to ensure the original page ordering is preserved.
++      return [...state.hydrated].reverse().map(id => doc(atReadTime.find(item => item.id === id)!));
++    } });
++  });
++  const db = {
++    collection: (name: string) => {
++      expect(name).toBe("users");
++      return { doc: (owner: string) => {
++        expect(owner).toBe(ownerEmail);
++        return { collection: (nested: string) => {
++          expect(nested).toBe("entries");
++          return { select: (...fields: string[]) => {
++            state.projectedFields = fields;
++            return { get };
++          } };
++        } };
++      } };
++    },
++    runTransaction,
++  } as unknown as Firestore;
++  return { db, state, get, runTransaction };
++}
++
++describe("projected legacy contract search", () => {
++  it("scans only search/date fields and fetches complete documents only for the page plus one", async () => {
++    const entries = Array.from({ length: 300 }, (_, index) => entry(String(index).padStart(3, "0"), {
++      clientName: index < 296 ? "Someone else" : "Žaneta Nováková",
++      items: [{ title: "Commission", amount: 1234.56, code: "A1" }],
++      note: "x".repeat(20_000),
++    } as Partial<ContractDoc>));
++    const { db, state } = database(entries);
++    const page = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 2 });
++    expect(page?.map(doc => doc.id)).toEqual(["299", "298", "297"]);
++    expect(page?.[0].data()).toEqual(entries[299].data);
++    expect(state.hydrated).toEqual(["299", "298", "297"]);
++    expect(state.projectedFields).toEqual(["clientName", "contractNumber", "contractSignedDate", "createdAt", "productKey"]);
++    expect(state.bytes).toBeLessThan(100_000);
++    expect(Buffer.byteLength(JSON.stringify(entries))).toBeGreaterThan(6_000_000);
++  });
++
++  it("finds legacy compact contract numbers and Czech substrings without any stored search keys", async () => {
++    const { db } = database([
++      entry("name", { clientName: "Žaneta Nováková" }),
++      entry("number", { clientName: "Other", contractNumber: "AB 12/34" }),
++      entry("outside", { clientName: "Different", contractNumber: "ZZ999" }),
++    ]);
++    for (const [q, expected] of [["aneta", "name"], ["ab1234", "number"], ["12/34", "number"]]) {
++      const page = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters({ q }), cursor: null, pageSize: 30 });
++      expect(page?.map(doc => doc.id)).toEqual([expected]);
++    }
++  });
++
++  it("preserves the date/ID cursor across equal timestamps and historical createdAt fallback", async () => {
++    const ts = Date.parse("2026-09-10");
++    const { db } = database([
++      entry("c"), entry("b"), entry("a"),
++      entry("legacy", { contractSignedDate: null, createdAt: "2026-09-09" }),
++      entry("backfilled", { contractSignedDate: "2020-01-01", createdAt: "2026-09-12" }),
++    ]);
++    const first = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 2 });
++    expect(first?.map(doc => doc.id)).toEqual(["c", "b", "a"]);
++    const second = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: { ts, key: `${ownerEmail}___b` }, pageSize: 2 });
++    expect(second?.map(doc => doc.id)).toEqual(["a", "legacy", "backfilled"]);
++    const oldCursor = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: { ts, key: null }, pageSize: 2 });
++    expect(oldCursor?.map(doc => doc.id)).toEqual(["legacy", "backfilled"]);
++  });
++
++  it("keeps undated matches after dated rows and honors signedFrom without substituting creation time", async () => {
++    const { db } = database([
++      entry("undated", { contractSignedDate: null }),
++      entry("created", { contractSignedDate: null, createdAt: "2026-09-09" }),
++      entry("old-signed", { contractSignedDate: "2020-01-01", createdAt: "2026-09-12" }),
++      entry("missing-name", { clientName: null }),
++      entry("missing-product", { productKey: undefined }),
++    ]);
++    const page = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 30 });
++    expect(page?.map(doc => doc.id)).toEqual(["created", "old-signed", "undated"]);
++    const recent = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters({ signedFrom: "2026-09-01" }), cursor: null, pageSize: 30 });
++    expect(recent?.map(doc => doc.id)).toEqual(["created"]);
++  });
++
++  it("returns a genuine empty result without hydrating documents", async () => {
++    const { db, runTransaction } = database([entry("other", { clientName: "Someone else" })]);
++    expect(await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 30 })).toEqual([]);
++    expect(runTransaction).not.toHaveBeenCalled();
++  });
++
++  it("uses the first query readTime when a contract changes during hydration", async () => {
++    const entries = [entry("a", { total: 10 })];
++    const original = { ...entries[0].data };
++    const { db, runTransaction } = database(entries, {
++      afterProjection: () => { entries[0].data = { clientName: "Other", total: 99 }; },
++    });
++    const page = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 30 });
++    expect(page?.[0].data()).toEqual(original);
++    expect(runTransaction).toHaveBeenCalledOnce();
++  });
++
++  it.each(["activeOnly", "unpaidOnly", "refreshOnly", "stornoOnly", "maturedOnly", "categories", "institutions", "commissionAudit", "mode"])("leaves the full-document path for %s filters", async key => {
++    const value = ({ categories: "auto", institutions: "cpp", commissionAudit: "difference", mode: "anniversary" } as Record<string, string>)[key] ?? "1";
++    const selected = filters({ [key]: value });
++    const { db, get } = database([]);
++    expect(canUseProjectedContractSearch(selected)).toBe(false);
++    expect(await readProjectedContractSearchPage({ db, ownerEmail, filters: selected, cursor: null, pageSize: 30 })).toBeNull();
++    expect(get).not.toHaveBeenCalled();
++  });
++
++  it("does not project an unfiltered list", () => {
++    expect(canUseProjectedContractSearch(undefined)).toBe(false);
++    expect(canUseProjectedContractSearch(filters({ q: "" }))).toBe(false);
++  });
++
++  it.each(["expired-read-time", "query-error", "missing-read-time", "missing-document"])("propagates %s for the caller's complete fallback", async failure => {
++    const { db } = database([entry("a")], {
++      hydrationError: failure === "expired-read-time" ? new Error("read time is too old") : undefined,
++      queryError: failure === "query-error" ? new Error("query unavailable") : undefined,
++      missingReadTime: failure === "missing-read-time",
++      missingDocument: failure === "missing-document",
++    });
++    await expect(readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: null, pageSize: 30 })).rejects.toThrow();
++  });
++});
+diff --git a/src/app/api/contracts/_lib/contractsApi.projectedSearch.ts b/src/app/api/contracts/_lib/contractsApi.projectedSearch.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.projectedSearch.ts
+@@ -0,0 +1,75 @@
++import type { DocumentSnapshot, Firestore } from "firebase-admin/firestore";
++import {
++  contractMatchesListFilters,
++  contractSortDate,
++  hasContractListClientFilters,
++} from "./contractsApi.listFilters";
++import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
++
++export const CONTRACT_SEARCH_PROJECTION = [
++  "clientName", "contractNumber", "contractSignedDate", "createdAt", "productKey",
++] as const;
++
++/** Also retain productKey: the existing list filter rejects missing products. */
++export function canUseProjectedContractSearch(filters?: ContractListFilters): boolean {
++  if (!filters?.query.trim()) return false;
++  return !hasContractListClientFilters({ ...filters, query: "" });
++}
++
++/**
++ * Preserve the complete legacy scan, but hydrate only the requested page.
++ * No search-index completeness assumption, cache, writes or new index needed.
++ * Additional filters keep their existing full-document path.
++ */
++export async function readProjectedContractSearchPage({
++  db, ownerEmail, filters, cursor, pageSize,
++}: {
++  db: Firestore;
++  ownerEmail: string;
++  filters: ContractListFilters;
++  cursor: { ts: number; key: string | null } | null;
++  pageSize: number;
++}): Promise<DocumentSnapshot[] | null> {
++  if (!canUseProjectedContractSearch(filters)) return null;
++  const size = Math.floor(pageSize);
++  if (!Number.isFinite(size) || size < 1 || size > 100) {
++    throw new Error("Invalid projected search page size");
++  }
++  const snapshot = await db.collection("users").doc(ownerEmail)
++    .collection("entries").select(...CONTRACT_SEARCH_PROJECTION).get();
++  const candidates = snapshot.docs.map(doc => {
++    const data = doc.data() as ContractDoc;
++    return {
++      doc, data,
++      ts: contractSortDate(data)?.getTime() ?? null,
++      key: `${ownerEmail.trim().toLowerCase()}___${doc.id}`,
++    };
++  }).filter(item => {
++    if (cursor?.ts) {
++      if (item.ts === null || item.ts > cursor.ts) return false;
++      if (item.ts === cursor.ts && (!cursor.key || item.key >= cursor.key)) return false;
++    }
++    return contractMatchesListFilters(item.data, filters, ownerEmail);
++  }).sort((left, right) => {
++    if (left.ts === null && right.ts === null) return 0;
++    if (left.ts === null) return 1;
++    if (right.ts === null) return -1;
++    return right.ts - left.ts || (left.key === right.key ? 0 : left.key > right.key ? -1 : 1);
++  }).slice(0, size + 1);
++
++  if (candidates.length === 0) return [];
++  if (!snapshot.readTime) throw new Error("Projected search snapshot has no read time");
++
++  // Use the ordinary query's current read time, not a separate/latest read.
++  // A concurrent edit or deletion cannot mix two versions of the portfolio.
++  const hydrated = await db.runTransaction(
++    transaction => transaction.getAll(...candidates.map(item => item.doc.ref)),
++    { readOnly: true, readTime: snapshot.readTime },
++  );
++  const byPath = new Map(hydrated.map(doc => [doc.ref.path, doc]));
++  return candidates.map(item => {
++    const doc = byPath.get(item.doc.ref.path);
++    if (!doc?.exists) throw new Error("Projected search snapshot is incomplete");
++    return doc;
++  });
++}
+diff --git a/src/app/api/contracts/_lib/contractsApi.projectedSearchRoute.test.ts b/src/app/api/contracts/_lib/contractsApi.projectedSearchRoute.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.projectedSearchRoute.test.ts
+@@ -0,0 +1,93 @@
++import { NextRequest, NextResponse } from "next/server";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  guard: vi.fn(), collection: vi.fn(), fullRead: vi.fn(), projected: vi.fn(),
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => ({
++  adminDb: { collection: mocks.collection }, adminAuth: null, adminMessaging: null, adminStorage: null,
++}));
++vi.mock("@/lib/server/apiEntryGuard", () => ({
++  requireAuthedRateLimited: mocks.guard,
++  withRateLimitHeaders: (response: Response) => response,
++}));
++vi.mock("./contractsApi.projectedSearch", () => ({ readProjectedContractSearchPage: mocks.projected }));
++
++const email = "owner@example.test";
++const ts = Date.parse("2026-09-10");
++const doc = (id: string) => ({ id, data: () => ({
++  clientName: "X test", productKey: "neon", contractSignedDate: new Date(ts), total: 42, items: [],
++}) });
++const request = () => new NextRequest("https://example.test/api/contracts/list?scope=own&q=x&limit=1");
++
++beforeEach(() => {
++  vi.resetModules();
++  vi.resetAllMocks();
++  mocks.guard.mockResolvedValue({ ok: true, ctx: {
++    email, uid: "uid", decoded: { email }, isImpersonating: false,
++    actorEmail: email, actorUid: "uid", impersonation: null,
++  } });
++  mocks.fullRead.mockResolvedValue({ docs: [doc("a")] });
++  mocks.collection.mockImplementation((name: string) => {
++    if (name === "usersPrivate") return { doc: () => ({ get: async () => ({
++      exists: true, data: () => ({ subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" }),
++    }) }) };
++    if (name === "users") return {
++      get: async () => {
++        const docs = [{ id: email, data: () => ({ email, position: "poradce3", commissionMode: "standard", accountType: "advisor" }) }];
++        return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };
++      },
++      doc: (owner: string) => {
++        expect(owner).toBe(email);
++        return { collection: (nested: string) => {
++          expect(nested).toBe("entries");
++          return { get: mocks.fullRead };
++        } };
++      },
++    };
++    throw new Error(`Unexpected collection ${name}`);
++  });
++});
++
++describe("contract search projection integration", () => {
++  it("authenticates before projected or full contract reads", async () => {
++    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
++    const { handleContractsList } = await import("./contractsApi");
++    expect((await handleContractsList(request())).status).toBe(401);
++    expect(mocks.projected).not.toHaveBeenCalled();
++    expect(mocks.fullRead).not.toHaveBeenCalled();
++  });
++
++  it("uses the same serializer and next cursor for a projected page plus one", async () => {
++    mocks.projected.mockResolvedValue([doc("b"), doc("a")]);
++    const { handleContractsList } = await import("./contractsApi");
++    const response = await handleContractsList(request());
++    expect(response.status).toBe(200);
++    expect(await response.json()).toMatchObject({
++      ok: true, hasMore: true, nextCursor: ts,
++      nextCursorToken: `${ts}::${encodeURIComponent(`${email}___b`)}`,
++      contracts: [{ id: "b", total: 42, adviserEmail: email }],
++    });
++    expect(mocks.projected).toHaveBeenCalledWith(expect.objectContaining({ ownerEmail: email, pageSize: 1, cursor: null }));
++    expect(mocks.fullRead).not.toHaveBeenCalled();
++  });
++
++  it("accepts a complete zero-match scan without rereading full documents", async () => {
++    mocks.projected.mockResolvedValue([]);
++    const { handleContractsList } = await import("./contractsApi");
++    expect(await (await handleContractsList(request())).json()).toMatchObject({
++      ok: true, contracts: [], hasMore: false, nextCursor: null, nextCursorToken: null,
++    });
++    expect(mocks.fullRead).not.toHaveBeenCalled();
++  });
++
++  it.each(["expired-read-time", "unsupported-filter"])("keeps the original complete fallback on %s", async failure => {
++    if (failure === "expired-read-time") mocks.projected.mockRejectedValue(new Error("read time is too old"));
++    else mocks.projected.mockResolvedValue(null);
++    const { handleContractsList } = await import("./contractsApi");
++    const response = await handleContractsList(request());
++    expect(response.status).toBe(200);
++    expect(await response.json()).toMatchObject({ ok: true, contracts: [{ id: "a", total: 42 }], hasMore: false });
++    expect(mocks.fullRead).toHaveBeenCalledOnce();
++  });
++});
+diff --git a/src/app/api/contracts/_lib/contractsApi.ts b/src/app/api/contracts/_lib/contractsApi.ts
+--- a/src/app/api/contracts/_lib/contractsApi.ts
++++ b/src/app/api/contracts/_lib/contractsApi.ts
+@@ -94,6 +94,7 @@
+   isValidContractNumber,
+   validateContractCoreInvariants,
+ } from "./contractsApi.validation";
++import { readProjectedContractSearchPage } from "./contractsApi.projectedSearch";
+ import {
+   buildContractListIndexedQueryClauses,
+   contractListIndexFieldsForContract,
+@@ -3521,6 +3522,22 @@
+       }
+     }
+ 
++    if (filters) {
++      try {
++        const pageDocs = await readProjectedContractSearchPage({
++          db, ownerEmail, filters, cursor, pageSize,
++        });
++        if (pageDocs !== null) {
++          pageDocs.forEach(doc => pushOwnerDoc(doc.id, doc.data() as ContractDoc));
++          return buildPage();
++        }
++      } catch {
++        // Keep the original complete read if projection/snapshot hydration fails.
++        collected.length = 0;
++        seen.clear();
++      }
++    }
++
+     const ownerSnap = await db.collection("users").doc(ownerEmail).collection("entries").get();
+ 
+     ownerSnap.docs.forEach((doc) => {
+diff --git a/src/app/api/mailbox/mailboxLoading.test.ts b/src/app/api/mailbox/mailboxLoading.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/app/api/mailbox/mailboxLoading.test.ts
+@@ -0,0 +1,182 @@
++import { NextRequest, NextResponse } from "next/server";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  guard: vi.fn(),
++  records: new Map<string, Record<string, unknown>>(),
++  reads: [] as { path: string; unread: boolean; pinned?: boolean; fields?: string[] }[],
++  unreadGate: null as Promise<void> | null,
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => {
++  const collection = (path: string) => ({
++    doc: (id: string) => ({ collection: (name: string) => collection(`${path}/${id}/${name}`) }),
++    ...query(path),
++  });
++  function query(path: string, unread = false, fields?: string[], limit = 180, pinned = false, cursor?: [number, string]) {
++    return {
++      where: (key: string, _operator: string, value: unknown) => query(path, key === "read" && value === false, fields, limit, key === "pinnedAtMs", cursor),
++      select: (...selected: string[]) => query(path, unread, selected, limit, pinned, cursor),
++      orderBy: () => query(path, unread, fields, limit, pinned, cursor),
++      limit: (n: number) => query(path, unread, fields, n, pinned, cursor),
++      startAfter: (createdAtMs: number, id: string) => query(path, unread, fields, limit, pinned, [createdAtMs, id]),
++      get: async () => {
++        mocks.reads.push({ path, unread, ...(pinned ? { pinned } : {}), fields });
++        if (unread) await mocks.unreadGate;
++        const docs = [...mocks.records.entries()]
++          .filter(([, data]) => (!unread || data.read === false) && (!pinned || Number(data.pinnedAtMs) > 0))
++          .filter(([id, data]) => !cursor || Number(data.createdAtMs) < cursor[0] || (Number(data.createdAtMs) === cursor[0] && id < cursor[1]))
++          .sort(([aId, a], [bId, b]) => Number(b.createdAtMs ?? 0) - Number(a.createdAtMs ?? 0) || bId.localeCompare(aId))
++          .slice(0, limit)
++          .map(([id, data]) => ({
++            id,
++            data: () => fields ? Object.fromEntries(Object.entries(data).filter(([key]) => fields.includes(key))) : data,
++          }));
++        return { docs, empty: docs.length === 0, size: docs.length };
++      },
++    };
++  }
++  return { adminDb: { collection } };
++});
++vi.mock("@/lib/server/apiEntryGuard", () => ({
++  requireAdvisorAuthedRateLimited: mocks.guard,
++  withRateLimitHeaders: (response: NextResponse) => response,
++}));
++vi.mock("@/lib/server/userProfileAvatars", () => ({ loadProfileAvatarsByEmail: vi.fn().mockResolvedValue({}) }));
++
++import { GET } from "./route";
++import { mailboxConversationId } from "@/lib/server/mailboxConversation";
++
++const now = Date.UTC(2026, 8, 11, 12);
++const request = (query = "") => new NextRequest(`https://example.test/api/mailbox?${query}`);
++beforeEach(() => {
++  vi.clearAllMocks();
++  vi.spyOn(Date, "now").mockReturnValue(now);
++  mocks.records.clear();
++  mocks.reads.length = 0;
++  mocks.unreadGate = null;
++  mocks.guard.mockResolvedValue({ ok: true, ctx: { email: "advisor@example.test" } });
++});
++afterEach(() => vi.restoreAllMocks());
++
++describe("mailbox loading", () => {
++  it("counts unread items using only state fields, retaining archive and snooze fallbacks", async () => {
++    const rows = [
++      { read: false },
++      { read: false, archivedAtMs: now - 1000 },
++      { read: false, archivedAt: new Date(now - 1000) },
++      { read: false, snoozedUntilMs: now + 1000 },
++      { read: false, snoozedUntil: new Date(now + 1000) },
++      { read: false, snoozedUntilMs: now - 1000 },
++      { read: false, snoozedUntil: new Date(now) },
++      { read: true },
++      { read: false, archivedAtMs: NaN, archivedAt: new Date(now - 1000) },
++      { read: false, snoozedUntilMs: NaN, snoozedUntil: new Date(now + 1000) },
++    ];
++    rows.forEach((data, index) => mocks.records.set(String(index), { ...data, body: "large unused body".repeat(1000) }));
++    const response = await GET(request("countOnly=1"));
++    expect(await response.json()).toEqual({ ok: true, unreadCount: 3 });
++    expect(mocks.reads).toEqual([{
++      path: "usersPrivate/advisor@example.test/mailbox", unread: true,
++      fields: ["archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil"],
++    }]);
++  });
++
++  it("loads the message list while the unread query is still pending", async () => {
++    mocks.records.set("message-1", { read: false, title: "Test", body: "Full message", createdAtMs: now });
++    let release!: () => void;
++    mocks.unreadGate = new Promise(resolve => { release = resolve; });
++    const pending = GET(request());
++    try {
++      await vi.waitFor(() => expect(mocks.reads).toHaveLength(2));
++    } finally { release(); }
++    const response = await pending;
++    expect(response.status).toBe(200);
++    expect(await response.json()).toMatchObject({
++      ok: true, unreadCount: 1, items: [{ id: "message-1", title: "Test", body: "Full message" }],
++    });
++    expect(mocks.reads[1].fields).toBeUndefined();
++  });
++
++  it("omits the unused unread scan for an opted-out history request while retaining legacy messages and pins", async () => {
++    const email = "advisor@example.test";
++    const conversationId = mailboxConversationId(email, "colleague@example.test");
++    const legacyMetadata = { senderEmail: " COLLEAGUE@EXAMPLE.TEST ", recipientEmail: email };
++    mocks.records.set("legacy", { type: "direct_message", createdAtMs: now, body: "Legacy body", metadata: legacyMetadata, read: false, pinnedAtMs: now });
++    mocks.records.set("stored", { type: "direct_message", createdAtMs: now - 1, body: "Stored body", metadata: { conversationId }, read: false });
++    mocks.records.set("unrelated", { type: "generic", createdAtMs: now + 1, read: false, body: "Other unread message" });
++    mocks.records.set("old-pin", { type: "direct_message", createdAtMs: now - 2, pinnedAtMs: now, metadata: legacyMetadata });
++    const response = await GET(request(`conversationId=${conversationId}&limit=2&includeUnreadCount=0`));
++    const data = await response.json();
++    expect(response.status).toBe(200);
++    expect(data).not.toHaveProperty("unreadCount");
++    expect(data.items.map((item: { id: string }) => item.id)).toEqual(["legacy", "stored", "old-pin"]);
++    expect(data.items[0]).toMatchObject({ body: "Legacy body", metadata: { conversationId } });
++    expect(data.nextCursor).toEqual({ createdAtMs: now - 1, id: "stored" });
++    expect(data.hasMore).toBe(true);
++    expect(mocks.reads).toHaveLength(2);
++    expect(mocks.reads.every(read => !read.unread && read.path === `usersPrivate/${email}/mailbox`)).toBe(true);
++    expect(mocks.reads[1].pinned).toBe(true);
++  });
++
++  it("preserves exact timestamp and document ID pagination when the count is omitted", async () => {
++    const conversationId = mailboxConversationId("advisor@example.test", "colleague@example.test");
++    for (const id of ["a", "b", "c", "d"]) {
++      mocks.records.set(id, { type: "direct_message", createdAtMs: now, metadata: { conversationId } });
++    }
++    const response = await GET(request(`conversationId=${conversationId}&limit=2&cursorMs=${now}&cursorId=c&includeUnreadCount=0`));
++    const data = await response.json();
++    expect(data.items.map((item: { id: string }) => item.id)).toEqual(["b", "a"]);
++    expect(data.nextCursor).toEqual({ createdAtMs: now, id: "a" });
++    expect(mocks.reads).toHaveLength(1);
++    expect(mocks.reads[0]).toMatchObject({ unread: false });
++  });
++
++  it.each(["", "&includeUnreadCount=1", "&includeUnreadCount=false"])("retains history count for existing callers (%s)", async suffix => {
++    const conversationId = mailboxConversationId("advisor@example.test", "colleague@example.test");
++    mocks.records.set("unread", { read: false });
++    const response = await GET(request(`conversationId=${conversationId}&limit=2${suffix}`));
++    expect(await response.json()).toMatchObject({ ok: true, unreadCount: 1, items: [] });
++    expect(mocks.reads.filter(read => read.unread)).toHaveLength(1);
++  });
++
++  it.each(["includeUnreadCount=0", "countOnly=1&includeUnreadCount=0"])("retains unread count outside history requests (%s)", async query => {
++    mocks.records.set("unread", { read: false });
++    expect(await (await GET(request(query))).json()).toMatchObject({ ok: true, unreadCount: 1 });
++    expect(mocks.reads.filter(read => read.unread)).toHaveLength(1);
++  });
++
++  it("loads history while the unread query is pending for a caller that requires both", async () => {
++    const conversationId = mailboxConversationId("advisor@example.test", "colleague@example.test");
++    let release!: () => void;
++    mocks.unreadGate = new Promise(resolve => { release = resolve; });
++    const pending = GET(request(`conversationId=${conversationId}&limit=2`));
++    try {
++      await vi.waitFor(() => expect(mocks.reads.some(read => !read.unread)).toBe(true));
++    } finally { release(); }
++    expect((await pending).status).toBe(200);
++  });
++
++  it("rejects invalid conversation IDs without querying messages", async () => {
++    expect((await GET(request("conversationId=invalid/id"))).status).toBe(400);
++    expect(mocks.reads).toEqual([]);
++  });
++
++  it("rejects unauthenticated reads before accessing mailbox data", async () => {
++    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
++    expect((await GET(request())).status).toBe(401);
++    expect(mocks.reads).toEqual([]);
++  });
++
++  it("reports an unread-query failure instead of returning a misleading partial success", async () => {
++    const log = vi.spyOn(console, "error").mockImplementation(() => {});
++    let reject!: (error: Error) => void;
++    mocks.unreadGate = new Promise((_, rejectRead) => { reject = rejectRead; });
++    const pending = GET(request());
++    await vi.waitFor(() => expect(mocks.reads).toHaveLength(2));
++    reject(new Error("database unavailable"));
++    const response = await pending;
++    expect(response.status).toBe(500);
++    expect(await response.json()).toMatchObject({ ok: false });
++    log.mockRestore();
++  });
++});
+diff --git a/src/app/api/mailbox/route.ts b/src/app/api/mailbox/route.ts
+--- a/src/app/api/mailbox/route.ts
++++ b/src/app/api/mailbox/route.ts
+@@ -634,7 +634,10 @@
+ 
+ const getUnreadCount = async (email: string): Promise<number> => {
+   const nowMs = Date.now();
+-  const unreadSnap = await getMailboxCollection(email).where("read", "==", false).get();
++  const unreadSnap = await getMailboxCollection(email)
++    .where("read", "==", false)
++    .select("archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil")
++    .get();
+   return unreadSnap.docs.filter((docSnap) => {
+     const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+     const archivedAtMs =
+@@ -680,8 +683,8 @@
+       ? parseThreadLimit(req.nextUrl.searchParams.get("limit"))
+       : parseLimit(req.nextUrl.searchParams.get("limit"));
+ 
+-    const unreadCount = await getUnreadCount(ctx.email);
+     if (countOnly) {
++      const unreadCount = await getUnreadCount(ctx.email);
+       return withRateLimitHeaders(
+         NextResponse.json({ ok: true, unreadCount }),
+         ctx
+@@ -700,27 +703,34 @@
+         req.nextUrl.searchParams.get("cursorMs"),
+         req.nextUrl.searchParams.get("cursorId")
+       );
+-      const page = await loadMailboxConversationPage({
+-        email: ctx.email,
+-        conversationId,
+-        limit,
+-        cursor,
+-      });
+-      page.items = await hydrateMailboxAvatars(page.items);
++      // History clients can omit the unrelated mailbox-wide count. Existing
++      // callers retain the full response unless they explicitly opt out.
++      const includeUnreadCount = req.nextUrl.searchParams.get("includeUnreadCount") !== "0";
++      const [unreadCount, page] = await Promise.all([
++        includeUnreadCount ? getUnreadCount(ctx.email) : Promise.resolve(undefined),
++        loadMailboxConversationPage({
++          email: ctx.email,
++          conversationId,
++          limit,
++          cursor,
++        }).then(async page => ({ ...page, items: await hydrateMailboxAvatars(page.items) })),
++      ]);
+       return withRateLimitHeaders(
+-        NextResponse.json({ ok: true, unreadCount, ...page }),
++        NextResponse.json({ ok: true, ...(unreadCount !== undefined ? { unreadCount } : {}), ...page }),
+         ctx
+       );
+     }
+ 
+-    const itemsSnap = await getMailboxCollection(ctx.email)
+-      .orderBy("createdAtMs", "desc")
+-      .limit(limit)
+-      .get();
+-
+-    const items = await hydrateMailboxAvatars(
+-      itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
+-    );
++    const [unreadCount, items] = await Promise.all([
++      getUnreadCount(ctx.email),
++      getMailboxCollection(ctx.email)
++        .orderBy("createdAtMs", "desc")
++        .limit(limit)
++        .get()
++        .then(itemsSnap => hydrateMailboxAvatars(
++          itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
++        )),
++    ]);
+ 
+     return withRateLimitHeaders(
+       NextResponse.json({ ok: true, unreadCount, items }),
+diff --git a/src/app/cashflow/page.loading.test.tsx b/src/app/cashflow/page.loading.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/app/cashflow/page.loading.test.tsx
+@@ -0,0 +1,124 @@
++// @vitest-environment happy-dom
++
++import { act, type ReactNode } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  user: { email: "advisor@example.test", getIdToken: vi.fn().mockResolvedValue("test-token") },
++  profile: vi.fn(),
++  cashflow: vi.fn(),
++}));
++
++vi.mock("@/components/AppLayout", () => ({
++  AppLayout: ({ children }: { children: ReactNode }) => <main>{children}</main>,
++}));
++vi.mock("../firebase", () => ({ auth: { currentUser: mocks.user } }));
++vi.mock("firebase/auth", () => ({
++  onAuthStateChanged: (_auth: unknown, callback: (user: typeof mocks.user) => void) => {
++    callback(mocks.user);
++    return () => {};
++  },
++}));
++vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profile }));
++vi.mock("./useCashflowData", () => ({ useCashflowData: mocks.cashflow }));
++
++import CashflowPage from "./page";
++import type { useCashflowData } from "./useCashflowData";
++
++describe("cashflow initial loading", () => {
++  let container: HTMLDivElement;
++  let root: Root;
++  let cashflow: ReturnType<typeof useCashflowData>;
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    vi.useFakeTimers();
++    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true, items: [] })));
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED", "0");
++    localStorage.clear();
++    sessionStorage.clear();
++    mocks.profile.mockResolvedValue({ hasProfile: true, profile: { accountType: "advisor" } });
++    cashflow = {
++      loading: true,
++      ready: false,
++      cashflowItems: [],
++      verificationInput: null,
++      hasTeam: false,
++      loadingProgress: { percent: 50, label: "Načítám smlouvy", detail: null },
++    };
++    mocks.cashflow.mockImplementation(() => cashflow);
++    container = document.createElement("div");
++    document.body.appendChild(container);
++    root = createRoot(container);
++  });
++
++  afterEach(async () => {
++    await act(async () => root.unmount());
++    container.remove();
++    vi.useRealTimers();
++    vi.restoreAllMocks();
++    vi.unstubAllGlobals();
++    vi.unstubAllEnvs();
++  });
++
++  const render = () => act(async () => root.render(<CashflowPage />));
++  const loader = () => container.querySelector('[role="progressbar"]');
++  const readyContent = () => container.textContent?.includes("Zatím nemáš žádné smlouvy");
++
++  it("shows ready content without advancing timers, and hides it again during a reload", async () => {
++    await render();
++    expect(loader()).not.toBeNull();
++    expect(readyContent()).toBe(false);
++
++    cashflow.ready = true;
++    await render();
++    expect(loader()).not.toBeNull();
++
++    cashflow.loading = false;
++    await render();
++    expect(loader()).toBeNull();
++    expect(readyContent()).toBe(true);
++
++    cashflow.loading = true;
++    await render();
++    expect(loader()).not.toBeNull();
++    expect(readyContent()).toBe(false);
++  });
++
++  it("waits for the profile even when cashflow is already cached and ready", async () => {
++    let resolveProfile!: (value: { hasProfile: boolean }) => void;
++    mocks.profile.mockReturnValue(new Promise((resolve) => { resolveProfile = resolve; }));
++    cashflow.ready = true;
++    cashflow.loading = false;
++    await render();
++    expect(loader()).not.toBeNull();
++    expect(readyContent()).toBe(false);
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
++
++    await act(async () => resolveProfile({ hasProfile: true }));
++    expect(loader()).toBeNull();
++    expect(readyContent()).toBe(true);
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: true }));
++  });
++
++  it("shows the account setup message when there is no internal profile", async () => {
++    mocks.profile.mockResolvedValue({ hasProfile: false });
++    await render();
++    expect(loader()).toBeNull();
++    expect(container.textContent).toContain("Nejdřív dokonči nastavení účtu.");
++    expect(readyContent()).toBe(false);
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
++  });
++
++  it("shows a profile failure instead of keeping the loading screen", async () => {
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    mocks.profile.mockRejectedValue(new Error("synthetic profile failure"));
++    await render();
++    expect(loader()).toBeNull();
++    expect(container.textContent).toContain("Nepodařilo se načíst profil uživatele.");
++    expect(readyContent()).toBe(false);
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
++  });
++});
+diff --git a/src/app/cashflow/page.tsx b/src/app/cashflow/page.tsx
+--- a/src/app/cashflow/page.tsx
++++ b/src/app/cashflow/page.tsx
+@@ -378,40 +378,6 @@
+ 
+   const initialLoadingActive =
+     !profileReady || (cashflowDataEnabled && (!cashflowReady || loading));
+-  const [showInitialLoader, setShowInitialLoader] = useState(true);
+-  const [initialLoaderCompleting, setInitialLoaderCompleting] = useState(false);
+-
+-  useEffect(() => {
+-    let finishTimer: number | null = null;
+-
+-    if (initialLoadingActive) {
+-      setShowInitialLoader(true);
+-      setInitialLoaderCompleting(false);
+-      return () => undefined;
+-    }
+-
+-    if (profileLoadError || hasInternalProfile === false) {
+-      setShowInitialLoader(false);
+-      setInitialLoaderCompleting(false);
+-      return () => undefined;
+-    }
+-
+-    if (!showInitialLoader) {
+-      return () => undefined;
+-    }
+-
+-    setInitialLoaderCompleting(true);
+-    finishTimer = window.setTimeout(() => {
+-      setShowInitialLoader(false);
+-      setInitialLoaderCompleting(false);
+-    }, 760);
+-
+-    return () => {
+-      if (finishTimer != null) {
+-        window.clearTimeout(finishTimer);
+-      }
+-    };
+-  }, [hasInternalProfile, initialLoadingActive, profileLoadError, showInitialLoader]);
+ 
+   const contractNumberSearchActive = useMemo(
+     () => normalizeContractNumberSearch(contractNumberQuery).length > 0,
+@@ -649,9 +615,9 @@
+     <AppLayout active="cashflow">
+       <div className={`${cashflowFont.className} ${introStyles.pageEnter} relative w-full overflow-visible px-1 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
+         <div className="relative z-10 mx-auto w-full max-w-7xl space-y-3 px-2 sm:space-y-4 sm:px-4 lg:px-6">
+-          {showInitialLoader ? (
++          {initialLoadingActive ? (
+             <CashflowInitialLoader
+-              completing={initialLoaderCompleting}
++              completing={false}
+               tipsterMode={isTipsterMode}
+               progress={profileReady ? loadingProgress.percent : 2}
+               stageText={
+diff --git a/src/app/posta/page.tsx b/src/app/posta/page.tsx
+--- a/src/app/posta/page.tsx
++++ b/src/app/posta/page.tsx
+@@ -725,7 +725,7 @@
+       error: null,
+     }));
+ 
+-    const params = new URLSearchParams({ conversationId, limit: "30" });
++    const params = new URLSearchParams({ conversationId, limit: "30", includeUnreadCount: "0" });
+     if (cursor) {
+       params.set("cursorMs", String(cursor.createdAtMs));
+       params.set("cursorId", cursor.id);
+diff --git a/tests/firestore/projectedContractSearch.test.ts b/tests/firestore/projectedContractSearch.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/firestore/projectedContractSearch.test.ts
+@@ -0,0 +1,55 @@
++import { Firestore } from "firebase-admin/firestore";
++import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
++import { parseContractListFilters } from "../../src/app/api/contracts/_lib/contractsApi.listFilters";
++import {
++  CONTRACT_SEARCH_PROJECTION, readProjectedContractSearchPage,
++} from "../../src/app/api/contracts/_lib/contractsApi.projectedSearch";
++
++const ownerEmail = "projected-search-sdk@example.test";
++let db: Firestore;
++beforeAll(() => {
++  if (!/^(127\.0\.0\.1|localhost):\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST ?? "")) {
++    throw new Error("This test requires a local Firestore emulator");
++  }
++  db = new Firestore({ projectId: "demo-bohemika-rules" });
++});
++afterEach(async () => {
++  vi.restoreAllMocks();
++  if (db) await db.recursiveDelete(db.collection("users").doc(ownerEmail));
++});
++afterAll(async () => { if (db) await db.terminate(); });
++
++describe("projected contract search with the real Firestore SDK", () => {
++  it("omits bulky fields from the scan and keeps legacy matches and exact page order", async () => {
++    const entries = db.collection("users").doc(ownerEmail).collection("entries");
++    const data = {
++      clientName: "Žaneta Nováková", productKey: "neon", contractSignedDate: new Date("2026-09-10"),
++      total: 1234.56, note: "x".repeat(100_000),
++    };
++    await Promise.all([entries.doc("a").set(data), entries.doc("b").set(data), entries.doc("other").set({ ...data, clientName: "Other" })]);
++    const projected = await entries.select(...CONTRACT_SEARCH_PROJECTION).get();
++    expect(projected.docs).toHaveLength(3);
++    expect(projected.docs.every(doc => !Object.hasOwn(doc.data(), "note") && !Object.hasOwn(doc.data(), "total"))).toBe(true);
++    const page = await readProjectedContractSearchPage({
++      db, ownerEmail, filters: parseContractListFilters(new URLSearchParams({ q: "novak" })), cursor: null, pageSize: 1,
++    });
++    expect(page?.map(doc => doc.id)).toEqual(["b", "a"]);
++    expect(page?.[0].data()).toMatchObject({ total: 1234.56, note: data.note });
++  });
++
++  it("hydrates the original snapshot when a contract changes after the projected query", async () => {
++    const ref = db.collection("users").doc(ownerEmail).collection("entries").doc("changed");
++    await ref.set({ clientName: "Jan Novák", productKey: "neon", contractSignedDate: new Date("2026-09-10"), total: 10 });
++    const original = db.runTransaction.bind(db);
++    vi.spyOn(db, "runTransaction").mockImplementationOnce(async (work, options) => {
++      expect(options).toMatchObject({ readOnly: true, readTime: expect.anything() });
++      await ref.update({ clientName: "Other", total: 99 });
++      return original(work, options);
++    });
++    const page = await readProjectedContractSearchPage({
++      db, ownerEmail, filters: parseContractListFilters(new URLSearchParams({ q: "novak" })), cursor: null, pageSize: 30,
++    });
++    expect(page?.[0].data()).toMatchObject({ clientName: "Jan Novák", total: 10 });
++    expect((await ref.get()).data()).toMatchObject({ clientName: "Other", total: 99 });
++  });
++});
+diff --git a/vitest.rules.config.ts b/vitest.rules.config.ts
+--- a/vitest.rules.config.ts
++++ b/vitest.rules.config.ts
+@@ -1,3 +1,4 @@
++import { fileURLToPath } from "node:url";
+ import { defineConfig } from "vitest/config";
+ 
+ export default defineConfig({
+@@ -7,4 +8,7 @@
+     hookTimeout: 60_000,
+     testTimeout: 15_000,
+   },
++  resolve: {
++    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
++  },
+ });

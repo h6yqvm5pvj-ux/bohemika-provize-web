@@ -1,0 +1,172 @@
+{
+  "baselineDeploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+  "root": "/private/tmp/bohemika-auth-action-20260913-67i23x8v",
+  "sourceFiles": [
+    "src/lib/authEmailAction.ts",
+    "src/lib/server/firebaseAuthEmail.ts",
+    "src/app/ucet/akce/page.tsx",
+    "src/app/ucet/akce/AuthEmailActionPage.tsx",
+    "src/app/ucet/akce/authEmailAction.module.css",
+    "src/proxy.ts"
+  ],
+  "testFiles": [
+    "src/lib/authEmailAction.test.ts",
+    "src/lib/server/firebaseAuthEmail.test.ts",
+    "src/app/ucet/akce/AuthEmailActionPage.test.tsx",
+    "src/lib/server/authEmailActionProxy.test.ts"
+  ],
+  "files": [
+    {
+      "path": "src/lib/authEmailAction.ts",
+      "sha256": "eb39c92bff62763182a5d0e4c782addb26cf6166e20da549221ad05f633635ac"
+    },
+    {
+      "path": "src/lib/server/firebaseAuthEmail.ts",
+      "sha256": "cb6dc200c016eea9c9ddbd3a57996d4aba47ca4bc69b2f048d00f7727fab718d"
+    },
+    {
+      "path": "src/app/ucet/akce/page.tsx",
+      "sha256": "913d032e1c835c028168850b12ee078538fbc21e2202bd6d30edad04ffc8e081"
+    },
+    {
+      "path": "src/app/ucet/akce/AuthEmailActionPage.tsx",
+      "sha256": "6117fa802e48778a7ba8cba1f6ab508040582095d17a2389b1752d0754f09fc0"
+    },
+    {
+      "path": "src/app/ucet/akce/authEmailAction.module.css",
+      "sha256": "19f23a436c20de6b4105913853d6657f30bc3d892d0ddddb73dde2fdedc3c643"
+    },
+    {
+      "path": "src/proxy.ts",
+      "sha256": "b823cd4635f88196f89085ed2358075eacf421270864146565ade5efc8c98007"
+    },
+    {
+      "path": "src/lib/authEmailAction.test.ts",
+      "sha256": "ccc5549fa8680d32e4fbe1f8da5fac2832ca4ca84707174e8aa897a500d88ebd"
+    },
+    {
+      "path": "src/lib/server/firebaseAuthEmail.test.ts",
+      "sha256": "d8b9427bab47417c48c50e945c412fef40ee5681efc9ee6397080a851bcbd2d1"
+    },
+    {
+      "path": "src/app/ucet/akce/AuthEmailActionPage.test.tsx",
+      "sha256": "19028dbdd137b746df1516475cbe96d1107a5be5fcf1b23aa4a0615974eeebde"
+    },
+    {
+      "path": "src/lib/server/authEmailActionProxy.test.ts",
+      "sha256": "40c749f9508be56396b16615961dcdd49af8ea79352946a5e07f6f1c8d4700ba"
+    }
+  ],
+  "status": "deployed_and_verified",
+  "checks": {
+    "focusedTests": 41,
+    "types": true,
+    "lint": true,
+    "productionBuild": true,
+    "firebaseAuthEmulator": {
+      "emulatorOnly": true,
+      "externalNetworkBlocked": true,
+      "checks": [
+        "verification applied only with valid code; consumed code rejected",
+        "reset consumed once; old password rejected; new password signs in"
+      ],
+      "passed": true
+    },
+    "browser": {
+      "passed": true,
+      "scope": "Local production build with intercepted synthetic Firebase responses; all other external requests blocked.",
+      "results": [
+        {
+          "name": "reset-desktop",
+          "width": 1000,
+          "clean": true,
+          "fits": true,
+          "privateTextAbsent": true
+        },
+        {
+          "name": "reset-mobile",
+          "width": 390,
+          "clean": true,
+          "fits": true,
+          "privateTextAbsent": true
+        },
+        {
+          "name": "password-success",
+          "passed": true
+        },
+        {
+          "name": "verify-mobile",
+          "width": 390,
+          "clean": true,
+          "fits": true,
+          "privateTextAbsent": true
+        },
+        {
+          "name": "verification-success",
+          "passed": true
+        },
+        {
+          "name": "expired-mobile",
+          "width": 390,
+          "clean": true,
+          "fits": true,
+          "privateTextAbsent": true
+        },
+        {
+          "name": "invalid-mobile",
+          "width": 390,
+          "clean": true,
+          "fits": true,
+          "privateTextAbsent": true
+        }
+      ],
+      "syntheticApiRequests": 8,
+      "blockedExternal": 0
+    },
+    "tests": 1792,
+    "testFiles": 191,
+    "proxyBuildRegistration": true,
+    "imageRuntimeCheck": true,
+    "stagedSmokeChecks": 9,
+    "liveSmokeChecks": 9
+  },
+  "productionChanged": true,
+  "realEmailsSent": 0,
+  "realAccountsChanged": false,
+  "deployment": {
+    "id": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+    "url": "bohemika-provize-d3qr12vya-jacobrausch989s-projects-909dd478.vercel.app",
+    "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX",
+    "readyState": "READY",
+    "target": "production",
+    "regions": [
+      "fra1"
+    ],
+    "emailEnvKeysPresent": [
+      "RESEND_API_KEY",
+      "AUTH_EMAIL_FROM"
+    ]
+  },
+  "promotion": {
+    "verifiedAtUtc": "2026-09-13T11:07:38.490913+00:00",
+    "before": {
+      "alias": "bohemka.app",
+      "deploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+      "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX"
+    },
+    "promotionExitCode": 0,
+    "after": {
+      "alias": "bohemka.app",
+      "deploymentId": "dpl_48bcUawQaeF8e24MPLf5q6qQr9nz",
+      "projectId": "prj_Q5WIKCG3Z1bmWpDwizl1Pp4VLJgX"
+    },
+    "regions": [
+      "fra1"
+    ],
+    "rollbackDeploymentId": "dpl_BnVBDfhDSDL3a74cLu1zg1h5xPut",
+    "promotedVerified": true
+  },
+  "sourceAudit": "auth-action-source-audit.json",
+  "stageSmoke": "auth-action-stage-smoke.json",
+  "liveSmoke": "auth-action-live-smoke.json"
+}

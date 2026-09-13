@@ -1,16 +1,45 @@
 import { clearLegacyClientCards } from "./clientCardPrivacy";
+import { clearContractTerminationPrefills } from "./contractTerminationPrivacy";
+
+function hasUnsafeLoginPathCharacters(value: string): boolean {
+  // URL parsers turn backslashes into slashes and strip some ASCII controls.
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x5c || code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+function normalizeLoginNextPath(value: string | null, origin: string): string | null {
+  if (!value || hasUnsafeLoginPathCharacters(value)) return null;
+  const path = value.trim();
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  try {
+    const url = new URL(path, origin);
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (
+      url.origin !== origin ||
+      // Removing dot segments can produce //host even from a /safe/..//host input.
+      url.pathname.startsWith("//") || decodedPath.startsWith("//") ||
+      hasUnsafeLoginPathCharacters(decodedPath) ||
+      decodedPath.replace(/\/+$/, "").toLowerCase() === "/login"
+    ) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
 
 export function resolveSafeLoginNextPath(defaultPath = "/"): string {
-  if (typeof window === "undefined") return defaultPath;
   try {
+    // On the server only rooted local fallbacks are allowed; no URL is requested.
+    const origin = typeof window === "undefined" ? "https://login.invalid" : window.location.origin;
+    const fallback = normalizeLoginNextPath(defaultPath, origin) ?? "/";
+    if (typeof window === "undefined") return fallback;
     const rawNext = new URLSearchParams(window.location.search).get("next");
-    if (!rawNext) return defaultPath;
-    const next = rawNext.trim();
-    if (!next.startsWith("/") || next.startsWith("//")) return defaultPath;
-    if (next === "/login" || next.startsWith("/login?")) return defaultPath;
-    return next;
+    return normalizeLoginNextPath(rawNext, origin) ?? fallback;
   } catch {
-    return defaultPath;
+    return "/";
   }
 }
 
@@ -45,6 +74,7 @@ export async function createServerSessionFromToken(
 }
 
 export async function clearServerSession(): Promise<void> {
+  clearContractTerminationPrefills();
   clearLegacyClientCards();
   const response = await fetch("/api/auth/session", {
     method: "DELETE",

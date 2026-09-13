@@ -1,3 +1,5 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { toDate } from "@/app/lib/formatters";
@@ -77,13 +79,14 @@ export type ReviewMutation = {
 };
 
 export async function appendReviewHistory(db: Firestore, mutation: ReviewMutation, actorEmail: string) {
+  return withCashflowMutation("app/api/contracts/anniversary-review/history:appendReviewHistory", async () => {
   const ref = db.collection(REVIEWS_COLLECTION).doc(reviewDocId(mutation.ownerEmail, mutation.entryId));
   const contractRef = db.collection("users").doc(mutation.ownerEmail).collection("entries").doc(mutation.entryId);
   const eventId = mutation.requestId ?? randomUUID();
   const newHistoryId = randomUUID();
   const fingerprint = createHash("sha256").update(JSON.stringify({ ...mutation, requestId: undefined, actorEmail })).digest("hex");
 
-  return db.runTransaction(async tx => {
+  return trackCashflowWrite(() => db.runTransaction(async tx => {
     const [snapshot, contract] = await Promise.all([tx.get(ref), tx.get(contractRef)]);
     if (!contract.exists) throw new ReviewMutationError("Smlouva nebyla nalezena. Obnov Radar.", 404);
     const current = snapshot.data() ?? {};
@@ -162,6 +165,18 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
     };
     tx.set(eventRef, { ...event, fingerprint });
     tx.set(ref, next, { merge: true });
+    const outcomeLabels: Record<string, string> = { reached: "Kontaktován", no_answer: "Nezastižen", meeting: "Domluvena schůzka", ignore: "Nekontaktovat" };
+    const kindLabels: Record<string, string> = { contact: "Kontakt s klientem", completed: "Výročí dokončeno", reopened: "Výročí vráceno k řešení", reviewed: "Výročí zkontrolováno", note: "Poznámka k výročí" };
+    tx.set(contractRef, withContractHistory(tx, contractRef, contract.data() ?? {}, {}, {
+      actorEmail, kind: "review", title: kindLabels[kind] ?? "Úprava výročí", atMs: event.createdAtMs,
+      changes: [
+        { label: "Výročí", before: null, after: occurrenceKey || null },
+        ...(next.contactOutcome !== current.contactOutcome ? [{ label: "Výsledek kontaktu", before: outcomeLabels[String(current.contactOutcome)] ?? null, after: outcomeLabels[String(next.contactOutcome)] ?? null }] : []),
+        ...(next.note !== current.note ? [{ label: "Poznámka", before: text(current.note), after: text(next.note) }] : []),
+        ...(next.meetingAt !== current.meetingAt ? [{ label: "Schůzka", before: text(current.meetingAt), after: text(next.meetingAt) }] : []),
+      ],
+    }), { merge: true });
     return reviewDto(next);
+  }), db);
   });
 }

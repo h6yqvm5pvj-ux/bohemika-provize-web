@@ -1,3 +1,7 @@
+import { heldCareerPositions } from "@/app/lib/careerPositions";
+import { readFilteredContractPage } from "./contractsApi.filteredPage";
+import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { isInheritedContract, inheritedCommissionResult, withInheritedCommissionItems } from "@/app/lib/inheritedContracts";
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
@@ -94,6 +98,7 @@ import {
   isValidContractNumber,
   validateContractCoreInvariants,
 } from "./contractsApi.validation";
+import { readProjectedContractSearchPage } from "./contractsApi.projectedSearch";
 import {
   buildContractListIndexedQueryClauses,
   contractListIndexFieldsForContract,
@@ -202,7 +207,8 @@ const CONTRACTS_FIND_BULK_MAX_ITEMS = 1000;
 const CONTRACTS_FIND_BULK_WORKER_COUNT = 8;
 const UPDATE_FIELDS_MAX_ENTRY_IDS = 50;
 const TRANSFER_MAX_SELECTIONS = 50;
-const TRANSFER_MAX_RESOLVED_ENTRIES = 65;
+// Up to 11 writes per entry including legacy audit migration, plus request metadata.
+const TRANSFER_MAX_RESOLVED_ENTRIES = 40;
 const CONTRACT_TRANSFER_REQUESTS_COLLECTION = "contractTransferRequests";
 const CONTRACT_TRANSFER_REQUEST_LIST_LIMIT = 200;
 const USER_TREE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -2108,7 +2114,7 @@ const deleteTipPayoutDocsForSource = async ({
     existingSnap.docs.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     if (existingSnap.size < TIP_PAYOUTS_BATCH_LIMIT) break;
   }
@@ -2225,14 +2231,14 @@ const syncTipPayoutDocsForEntry = async ({
     opsInBatch += 1;
 
     if (opsInBatch >= TIP_PAYOUTS_BATCH_LIMIT) {
-      await batch.commit();
+      await trackCashflowWrite(() => batch.commit());
       batch = adminDb.batch();
       opsInBatch = 0;
     }
   }
 
   if (opsInBatch > 0) {
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
   }
 };
 
@@ -3267,6 +3273,23 @@ async function fetchContractsForOwners(
     return itemKey < cursorKey;
   };
 
+  // Complete filtering for combinations, including matches beyond indexed query limits.
+  if (filters && hasContractListClientFilters({ ...filters, query: "" })) {
+    const matches = await readFilteredContractPage({ db, owners, filters, cursor, pageSize });
+    const list = matches.slice(0, pageSize).map(({ doc, ownerEmail }) => toContractListResponseItem({
+      docId: doc.id, ownerEmail, data: doc.data() as ContractDoc, shape: responseShape,
+      adviserName: ownerNames?.get(ownerEmail) ?? null,
+      ownerContext: ownerContexts?.get(ownerEmail) ?? null,
+    }));
+    const last = list.at(-1);
+    const date = last ? contractSortDate(last) : null;
+    return {
+      list, hasMore: matches.length > pageSize,
+      nextCursor: date?.getTime() ?? null,
+      nextCursorToken: date && last ? encodeCursorToken(date.getTime(), responseCursorKey(last)) : null,
+    };
+  }
+
   const searchLookup =
     filters && cursor == null
       ? contractSearchLookupKeys(filters.query)
@@ -3516,6 +3539,22 @@ async function fetchContractsForOwners(
           "GET /api/contracts/list: optimized single-owner query failed, falling back to full scan.",
           err
         );
+        collected.length = 0;
+        seen.clear();
+      }
+    }
+
+    if (filters) {
+      try {
+        const pageDocs = await readProjectedContractSearchPage({
+          db, ownerEmail, filters, cursor, pageSize,
+        });
+        if (pageDocs !== null) {
+          pageDocs.forEach(doc => pushOwnerDoc(doc.id, doc.data() as ContractDoc));
+          return buildPage();
+        }
+      } catch {
+        // Keep the original complete read if projection/snapshot hydration fails.
         collected.length = 0;
         seen.clear();
       }
@@ -3777,15 +3816,17 @@ const loadUserSubscriptionStatus = async ({
   email,
   rawTokenEmail,
   uid,
+  freshCashflowContext = false,
 }: {
   email: string;
   rawTokenEmail: string;
   uid: string;
+  freshCashflowContext?: boolean;
 }): Promise<CachedSubscriptionAccess | null> => {
   if (!adminDb) return null;
 
   const cacheKey = normalizeEmail(email || rawTokenEmail || uid);
-  if (cacheKey) {
+  if (cacheKey && !freshCashflowContext) {
     const cached = readCachedSubscriptionStatus(cacheKey);
     if (cached !== undefined) {
       return cached;
@@ -3820,7 +3861,7 @@ const loadUserSubscriptionStatus = async ({
       paidUntil: privateSnapshot.paidUntil,
       effectiveState: evaluated.state,
     };
-    if (cacheKey) {
+    if (cacheKey && !freshCashflowContext) {
       writeCachedSubscriptionStatus(cacheKey, resolved);
     }
     return resolved;
@@ -3868,7 +3909,7 @@ const loadUserSubscriptionStatus = async ({
         }).state,
       } satisfies CachedSubscriptionAccess)
     : null;
-  if (cacheKey) {
+  if (cacheKey && !freshCashflowContext) {
     writeCachedSubscriptionStatus(cacheKey, resolved);
   }
   return resolved;
@@ -3886,6 +3927,7 @@ async function getAuthContext(
   const {
     requireKnownUser = false,
     requireActiveSubscription = false,
+    freshCashflowContext = false,
   } = options;
 
   if (!adminDb) {
@@ -3897,7 +3939,9 @@ async function getAuthContext(
   }
   const rawTokenEmail = identity.rawTokenEmail;
 
-  const { users, childrenByManager } = await getCachedUserTree();
+  const { users, childrenByManager } = freshCashflowContext
+    ? await buildUserTree()
+    : await getCachedUserTree();
   const me = users.find((u) => u.email === email) ?? null;
   if (requireKnownUser && !me) {
     return { error: "Uživatel nemá interní profil v systému.", status: 403 } as const;
@@ -3908,6 +3952,7 @@ async function getAuthContext(
       email,
       rawTokenEmail,
       uid: identity.uid,
+      freshCashflowContext,
     });
     if (subscriptionAccess?.effectiveState === "blocked") {
       if (subscriptionAccess.status === "unpaid") {
@@ -3967,7 +4012,8 @@ export async function requireContractsEntryGuard(
     namespace: string;
     limit: number;
     windowMs: number;
-  }
+  },
+  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
 ): Promise<ContractsEntryGuardResult> {
   const guard = await requireAuthedRateLimited(req, {
     ...rateLimit,
@@ -3992,6 +4038,7 @@ export async function requireContractsEntryGuard(
     {
       requireKnownUser: true,
       requireActiveSubscription: true,
+      freshCashflowContext: options.freshCashflowContext,
     }
   );
   if ("error" in authCtx) {
@@ -4079,13 +4126,14 @@ const contractTransferAccessForContext = ({
 
 export async function handleContractsGet(
   req: NextRequest,
-  mode: ContractsGetMode = "auto"
+  mode: ContractsGetMode = "auto",
+  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
 ) {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:get",
     limit: CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
-  });
+  }, options);
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
@@ -4389,6 +4437,7 @@ export async function handleContractsGet(
   const teamNextCursorToken = teamRes?.nextCursorToken;
 
   const response: ContractsResponse = {
+    availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
     ok: true,
     scope: scopeParam,
     position,
@@ -4763,6 +4812,7 @@ export async function handleContractsFindBulk(req: NextRequest) {
 }
 
 export async function handleContractsPrecheck(req: NextRequest) {
+  return withCashflowMutation("contracts:handleContractsPrecheck", async () => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:precheck",
     limit: CONTRACTS_GET_RATE_LIMIT,
@@ -4891,7 +4941,7 @@ export async function handleContractsPrecheck(req: NextRequest) {
 
     if (backfillOps > 0) {
       try {
-        await backfillBatch.commit();
+        await trackCashflowWrite(() => backfillBatch.commit());
       } catch (backfillErr) {
         console.warn("GET /api/contracts/precheck: duplicateLookupKey backfill selhal:", backfillErr);
       }
@@ -4906,9 +4956,11 @@ export async function handleContractsPrecheck(req: NextRequest) {
     similarContracts,
   };
   return withRateLimit(NextResponse.json(response));
+  });
 }
 
 export async function handleContractsCreate(req: NextRequest) {
+  return withCashflowMutation("contracts:handleContractsCreate", async () => {
   let withRateLimit: ((response: NextResponse) => NextResponse) | null = null;
   try {
     const guard = await requireContractsEntryGuard(req, {
@@ -5638,7 +5690,7 @@ export async function handleContractsCreate(req: NextRequest) {
           createdAt: new Date(),
         };
 
-        await db.runTransaction(async (tx) => {
+        await trackCashflowWrite(() => db.runTransaction(async (tx) => {
           const claimSnap = await tx.get(claimRef);
           let refreshOriginalSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null = null;
           for (const duplicateRef of duplicateGuardRefs) {
@@ -5733,7 +5785,7 @@ export async function handleContractsCreate(req: NextRequest) {
             tx.create(claimRef, claimPayload);
           }
 
-          tx.create(createdRef, trustedPayload);
+          tx.create(createdRef, withContractHistory(tx, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
 
           const contractRefPayload = contractRefFromData({
             ownerEmail: targetOwnerEmail,
@@ -5760,7 +5812,7 @@ export async function handleContractsCreate(req: NextRequest) {
             });
             tx.set(
               refreshOriginalRef,
-              {
+              withContractHistory(tx, refreshOriginalRef, refreshOriginalData, {
                 ...(originalAlreadyStorno
                   ? {}
                   : {
@@ -5777,14 +5829,14 @@ export async function handleContractsCreate(req: NextRequest) {
                 refreshReplacedByEntryId: createdRef.id,
                 refreshReplacedByOwnerEmail: targetOwnerEmail,
                 refreshReplacedBySignedDate: trustedPayload.contractSignedDate,
-              },
+              }, { actorEmail, title: "Nahrazeno navazující smlouvou" }),
               { merge: true }
             );
           }
-        });
+        }));
       } else {
-        await createdRef.create(trustedPayload);
         const batch = db.batch();
+        batch.create(createdRef, withContractHistory(batch, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
         applyContractRefToBatch({
           batch,
           ownerEmail: targetOwnerEmail,
@@ -5792,7 +5844,7 @@ export async function handleContractsCreate(req: NextRequest) {
           contractNumber: trustedPayload.contractNumber,
           productKey: trustedPayload.productKey,
         });
-        await batch.commit();
+        await trackCashflowWrite(() => batch.commit());
       }
 
       try {
@@ -5811,6 +5863,7 @@ export async function handleContractsCreate(req: NextRequest) {
           entryData: trustedPayload,
         });
       } catch (tipSyncErr) {
+        markCashflowMutationIncomplete();
         console.warn(
           "POST /api/contracts create: TIP payout sync selhal:",
           tipSyncErr
@@ -5833,6 +5886,7 @@ export async function handleContractsCreate(req: NextRequest) {
             });
           }
         } catch (refreshTipSyncErr) {
+          markCashflowMutationIncomplete();
           console.warn(
             "POST /api/contracts create: TIP payout sync původní refresh smlouvy selhal:",
             refreshTipSyncErr
@@ -5933,6 +5987,7 @@ export async function handleContractsCreate(req: NextRequest) {
     );
     return withRateLimit ? withRateLimit(response) : response;
   }
+  });
 }
 
 type ResolvedTransferEntry = {
@@ -6199,7 +6254,7 @@ async function executeApprovedContractTransfer({
     )
   );
 
-  await db.runTransaction(async (tx) => {
+  await trackCashflowWrite(() => db.runTransaction(async (tx) => {
     const [
       requestSnap,
       currentSourceSnaps,
@@ -6285,7 +6340,15 @@ async function executeApprovedContractTransfer({
         reason,
       });
 
-      tx.create(destinationRefs[index]!, nextData);
+      tx.create(destinationRefs[index]!, withContractHistory(tx, resolved.ref, currentData, {
+        ...nextData, contractNotesPath: currentData.contractNotesPath ?? resolved.ref.path,
+      }, {
+        actorEmail, kind: "transfer", title: "Změna správce smlouvy", atMs: transferredAt.getTime(),
+        changes: [
+          { label: "Správce", before: resolved.ownerEmail, after: toOwnerEmail },
+          ...(nextData.transferEffectiveDate ? [{ label: "Účinnost převodu", before: null, after: String(nextData.transferEffectiveDate) }] : []),
+        ],
+      }));
       tx.delete(resolved.ref);
       tx.delete(oldContractRefs[index]!);
       const contractRefPayload = contractRefFromData({
@@ -6355,7 +6418,7 @@ async function executeApprovedContractTransfer({
       },
       { merge: true }
     );
-  });
+  }));
 
   try {
     await markTeamOverviewOwnersDirty([
@@ -6382,6 +6445,7 @@ export async function handleContractsPatch(
   req: NextRequest,
   forcedAction?: ContractsPatchAction
 ) {
+  return withCashflowMutation("contracts:handleContractsPatch", async () => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:patch",
     limit: CONTRACTS_MUTATION_RATE_LIMIT,
@@ -6834,7 +6898,7 @@ export async function handleContractsPatch(
         )
       );
 
-      await db.runTransaction(async (tx) => {
+      await trackCashflowWrite(() => db.runTransaction(async (tx) => {
         const [
           currentSourceSnaps,
           destinationSnaps,
@@ -6910,7 +6974,15 @@ export async function handleContractsPatch(
             reason,
           });
 
-          tx.create(destinationRefs[index]!, nextData);
+          tx.create(destinationRefs[index]!, withContractHistory(tx, resolved.ref, currentData, {
+            ...nextData, contractNotesPath: currentData.contractNotesPath ?? resolved.ref.path,
+          }, {
+            actorEmail: ctx.actorEmail, kind: "transfer", title: "Změna správce smlouvy", atMs: transferredAt.getTime(),
+            changes: [
+              { label: "Správce", before: resolved.ownerEmail, after: toOwnerEmail },
+              ...(nextData.transferEffectiveDate ? [{ label: "Účinnost převodu", before: null, after: String(nextData.transferEffectiveDate) }] : []),
+            ],
+          }));
           tx.delete(resolved.ref);
           tx.delete(oldContractRefs[index]!);
           const contractRefPayload = contractRefFromData({
@@ -6958,7 +7030,7 @@ export async function handleContractsPatch(
             { merge: true }
           );
         });
-      });
+      }));
 
       try {
         await markTeamOverviewOwnersDirty([
@@ -7079,7 +7151,7 @@ export async function handleContractsPatch(
           productKey: null,
         });
       }
-      await batch.commit();
+      await trackCashflowWrite(() => batch.commit());
 
       try {
         await markTeamOverviewOwnersDirty([ownerEmail]);
@@ -7337,7 +7409,10 @@ export async function handleContractsPatch(
             { status: 400 }
           );
         }
-        await ref.set(finalUpdatePayload, { merge: true });
+        if (!currentSnap.exists) continue;
+        const historyBatch = ref.firestore.batch();
+        historyBatch.update(ref, withContractHistory(historyBatch, ref, currentData, finalUpdatePayload, { actorEmail: ctx.actorEmail, title: "Aktualizace stavu z extranetu ČPP" }), { lastUpdateTime: currentSnap.updateTime! });
+        await trackCashflowWrite(() => historyBatch.commit());
         updated += 1;
       }
 
@@ -7351,6 +7426,7 @@ export async function handleContractsPatch(
             entryData: syncedSnap.data() as ContractDoc,
           });
         } catch (tipSyncErr) {
+          markCashflowMutationIncomplete();
           console.warn(
             "PATCH /api/contracts syncCppStatus: TIP payout sync selhal:",
             tipSyncErr
@@ -7545,7 +7621,7 @@ export async function handleContractsPatch(
         })
       );
 
-      batch.update(ref, updatePayload);
+      batch.update(ref, withContractHistory(batch, ref, currentData, updatePayload, { actorEmail: ctx.actorEmail }), { lastUpdateTime: entrySnaps[idx]!.updateTime! });
       const hasContractNumberUpdate = Object.prototype.hasOwnProperty.call(
         payload,
         "contractNumber"
@@ -7561,7 +7637,14 @@ export async function handleContractsPatch(
         productKey: (currentData.productKey as Product | undefined) ?? null,
       });
     });
-    await batch.commit();
+    try {
+      await trackCashflowWrite(() => batch.commit());
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
+        return withRateLimit(NextResponse.json({ ok: false, error: "Smlouva se mezitím změnila. Obnov detail a zkus uložení znovu." }, { status: 409 }));
+      }
+      throw error;
+    }
     try {
       await markTeamOverviewOwnersDirty([ownerEmail]);
     } catch (markErr) {
@@ -7581,6 +7664,7 @@ export async function handleContractsPatch(
           entryData: syncedSnap.data() as ContractDoc,
         });
       } catch (tipSyncErr) {
+        markCashflowMutationIncomplete();
         console.warn(
           "PATCH /api/contracts updateFields: TIP payout sync selhal:",
           tipSyncErr
@@ -7613,18 +7697,18 @@ export async function handleContractsPatch(
       .collection("entries")
       .doc(entryId);
     if (!entryRef) continue;
-    const entrySnap = await entryRef?.get();
-    if (!entrySnap?.exists) continue;
-    const currentData = (entrySnap?.data() ?? {}) as ContractDoc;
-
-    await entryRef.set(
-      {
+    const changed = await trackCashflowWrite(() => entryRef.firestore.runTransaction(async tx => {
+      const snap = await tx.get(entryRef);
+      if (!snap.exists) return false;
+      const currentData = (snap.data() ?? {}) as ContractDoc;
+      tx.update(entryRef, withContractHistory(tx, entryRef, currentData, {
         paid,
         userEmail: normalizeEmail(currentData.userEmail) || owner,
         ...contractListIndexFieldsForContract(currentData),
-      },
-      { merge: true }
-    );
+      }, { actorEmail: ctx.actorEmail, title: paid ? "Označeno jako zaplacené" : "Zrušeno označení zaplaceno" }));
+      return true;
+    }));
+    if (!changed) continue;
     updated += 1;
     updatedRefs.push({ owner, entryId });
   }
@@ -7644,6 +7728,7 @@ export async function handleContractsPatch(
         entryData: syncedSnap.data() as ContractDoc,
       });
     } catch (tipSyncErr) {
+      markCashflowMutationIncomplete();
       console.warn(
         "PATCH /api/contracts setPaid: TIP payout sync selhal:",
         tipSyncErr
@@ -7652,9 +7737,11 @@ export async function handleContractsPatch(
   }
 
   return withRateLimit(NextResponse.json({ ok: true, updated }));
+  });
 }
 
 export async function handleContractsDelete(req: NextRequest) {
+  return withCashflowMutation("contracts:handleContractsDelete", async () => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:delete",
     limit: CONTRACTS_MUTATION_RATE_LIMIT,
@@ -7697,7 +7784,7 @@ export async function handleContractsDelete(req: NextRequest) {
 
   const commitBatch = async () => {
     if (opsInBatch === 0) return;
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
     batch = db.batch();
     opsInBatch = 0;
   };
@@ -7739,6 +7826,7 @@ export async function handleContractsDelete(req: NextRequest) {
         }
       }
     } catch (tipReadErr) {
+      markCashflowMutationIncomplete();
       console.warn(
         "DELETE /api/contracts: načtení TIP metadata selhalo:",
         tipReadErr
@@ -7787,6 +7875,7 @@ export async function handleContractsDelete(req: NextRequest) {
         sourceKey,
       });
     } catch (tipDeleteErr) {
+      markCashflowMutationIncomplete();
       console.warn(
         "DELETE /api/contracts: TIP payout cleanup selhal:",
         tipDeleteErr
@@ -7806,10 +7895,14 @@ export async function handleContractsDelete(req: NextRequest) {
   }
 
   return withRateLimit(NextResponse.json({ ok: true, deleted }));
+  });
 }
 
-export async function handleContractsList(req: NextRequest) {
-  return handleContractsGet(req, "list");
+export async function handleContractsList(
+  req: NextRequest,
+  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+) {
+  return handleContractsGet(req, "list", options);
 }
 
 export async function handleContractDetail(req: NextRequest) {
@@ -7910,6 +8003,7 @@ export async function processScheduledContractTransfers({
   now?: Date;
   limit?: number;
 } = {}) {
+  return withCashflowMutation("contracts:processScheduledContractTransfers", async () => {
   if (!adminDb) throw new Error("Missing Firebase Admin configuration.");
 
   const today = pragueIsoDay(now);
@@ -7964,6 +8058,7 @@ export async function processScheduledContractTransfers({
       });
       result.completed += 1;
     } catch (error) {
+      markCashflowMutationIncomplete();
       const message =
         error instanceof Error && error.message.trim()
           ? error.message.trim()
@@ -7982,6 +8077,7 @@ export async function processScheduledContractTransfers({
   }
 
   return result;
+  });
 }
 
 export async function handleContractsTransfer(req: NextRequest) {

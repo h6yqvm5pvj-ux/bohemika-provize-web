@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import nodemailer from "nodemailer";
+import { sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
+import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
 import {
@@ -9,9 +10,9 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
-const PASSWORD_RESET_SUBJECT = "Obnovení hesla";
 
 type AdminUserSecurityAction =
   | "sendPasswordReset"
@@ -37,75 +38,6 @@ function normalizeAction(value: unknown): AdminUserSecurityAction | null {
   return SECURITY_ACTIONS.has(raw as AdminUserSecurityAction)
     ? (raw as AdminUserSecurityAction)
     : null;
-}
-
-function htmlEscape(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-async function sendPasswordResetEmail(email: string) {
-  if (!adminAuth) {
-    throw new Error("Firebase Admin Auth není nakonfigurovaný.");
-  }
-
-  const smtpUser = process.env.SMTP_USER?.trim();
-  const smtpPass = process.env.SMTP_PASS?.trim();
-  const smtpFrom = process.env.SMTP_FROM?.trim() || smtpUser || undefined;
-  const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.forpsi.com";
-  const smtpPortRaw = process.env.SMTP_PORT?.trim() || "587";
-  const smtpPort = Number(smtpPortRaw);
-
-  if (!smtpUser || !smtpPass || !smtpFrom) {
-    throw new Error("SMTP není správně nakonfigurované.");
-  }
-  if (!Number.isFinite(smtpPort) || smtpPort <= 0) {
-    throw new Error("Neplatná konfigurace SMTP portu.");
-  }
-
-  const actionContinueUrl = process.env.PASSWORD_RESET_CONTINUE_URL?.trim();
-  const actionCodeSettings = actionContinueUrl
-    ? { url: actionContinueUrl, handleCodeInApp: false }
-    : undefined;
-  const link = await adminAuth.generatePasswordResetLink(email, actionCodeSettings);
-  const escapedLink = htmlEscape(link);
-
-  const transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass,
-    },
-  });
-
-  const textBody = [
-    "Ahoj,",
-    "",
-    "pro obnovení hesla klikni na tento odkaz:",
-    link,
-    "",
-    "Pokud jsi o obnovení hesla nežádal(a), tento e-mail ignoruj.",
-  ].join("\n");
-  const htmlBody = [
-    "<p>Ahoj,</p>",
-    "<p>pro obnovení hesla klikni na tento odkaz:</p>",
-    `<p><a href="${escapedLink}">${escapedLink}</a></p>`,
-    "<p>Pokud jsi o obnovení hesla nežádal(a), tento e-mail ignoruj.</p>",
-  ].join("");
-
-  await transporter.sendMail({
-    from: smtpFrom,
-    to: email,
-    subject: process.env.PASSWORD_RESET_SUBJECT?.trim() || PASSWORD_RESET_SUBJECT,
-    text: textBody,
-    html: htmlBody,
-  });
 }
 
 export async function POST(req: NextRequest) {
@@ -169,7 +101,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "sendPasswordReset") {
-      await sendPasswordResetEmail(targetEmail);
+      try {
+        await sendFirebaseAuthEmail({ requestType: "PASSWORD_RESET", email: targetEmail });
+      } catch (error) {
+        console.error("[AuthEmail] admin password-reset:", safeAuthEmailErrorCode(error));
+        return NextResponse.json({
+          ok: false, error: resolveAuthEmailErrorMessage(error, "E-mail pro obnovení hesla se nepodařilo odeslat."),
+        }, { status: 503, headers: { "Cache-Control": "no-store" } });
+      }
       return NextResponse.json({
         ok: true,
         action,

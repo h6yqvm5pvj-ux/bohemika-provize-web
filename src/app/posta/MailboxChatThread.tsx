@@ -36,11 +36,14 @@ import {
   parseMailboxAttachments,
   parseMailboxReactions,
 } from "./postaHelpers";
-import type { MailboxAttachment, MailboxItem } from "./postaTypes";
+import type { MailboxAttachment, MailboxAttachmentContent, MailboxItem } from "./postaTypes";
 import styles from "./mailboxChat.module.css";
 import { canGroupMailboxMessages } from "./postaMessageGrouping";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { PdfDocumentPreview } from "@/components/PdfDocumentPreview";
+
+type AttachmentPreview = MailboxAttachment & { pdfData?: Uint8Array };
 
 const openPopoverBelow = (button: HTMLElement): boolean => {
   let parent = button.parentElement;
@@ -120,8 +123,8 @@ function LazyMailboxAttachment({
   sent: boolean;
   deliveryStatus: MailboxItem["clientDeliveryStatus"];
   bareImage?: boolean;
-  onLoad?: (messageId: string, attachment: MailboxAttachment) => Promise<string>;
-  onPreview: (attachment: MailboxAttachment) => void;
+  onLoad?: (messageId: string, attachment: MailboxAttachment) => Promise<MailboxAttachmentContent>;
+  onPreview: (attachment: AttachmentPreview) => void;
 }) {
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const [resolvedUrl, setResolvedUrl] = useState(
@@ -131,21 +134,24 @@ function LazyMailboxAttachment({
     resolvedUrl ? "ready" : "idle"
   );
   const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null);
-  const loadingPromiseRef = useRef<Promise<string> | null>(null);
+  const loadedContentRef = useRef<MailboxAttachmentContent | null>(null);
+  const loadingPromiseRef = useRef<Promise<MailboxAttachmentContent> | null>(null);
   const image = isImageAttachment(file.name, file.contentType);
   const pdf = isPdfAttachment(file.name, file.contentType);
 
-  const ensureLoaded = useCallback(async (): Promise<string> => {
-    if (resolvedUrl) return resolvedUrl;
-    if (!file.url || !file.url.startsWith("/api/") || !onLoad) return "";
+  const ensureLoaded = useCallback(async (): Promise<MailboxAttachmentContent> => {
+    if (loadedContentRef.current) return loadedContentRef.current;
+    if (resolvedUrl && !pdf) return { url: resolvedUrl };
+    if (!file.url || !onLoad) return { url: resolvedUrl };
     if (loadingPromiseRef.current) return loadingPromiseRef.current;
     setLoadState("loading");
     const pending = onLoad(messageId, file)
-      .then((url) => {
-        if (!url) throw new Error("Přílohu se nepodařilo načíst.");
-        setResolvedUrl(url);
+      .then((content) => {
+        if (!content.url) throw new Error("Přílohu se nepodařilo načíst.");
+        loadedContentRef.current = content;
+        setResolvedUrl(content.url);
         setLoadState("ready");
-        return url;
+        return content;
       })
       .catch((error) => {
         setLoadState("error");
@@ -156,7 +162,7 @@ function LazyMailboxAttachment({
       });
     loadingPromiseRef.current = pending;
     return pending;
-  }, [file, messageId, onLoad, resolvedUrl]);
+  }, [file, messageId, onLoad, pdf, resolvedUrl]);
 
   useEffect(() => {
     const element = cardRef.current;
@@ -185,12 +191,17 @@ function LazyMailboxAttachment({
 
   const openAttachment = async () => {
     try {
-      const url = await ensureLoaded();
+      const { url, blob } = await ensureLoaded();
       if (!url) return;
-      const resolved = { ...file, url };
+      // Reuse the authenticated response bytes, never navigate an iframe or
+      // fetch a blob URL again (which also fails in iOS WebKit).
+      if (pdf && !blob) throw new Error("PDF se nepodařilo načíst.");
+      const pdfData = pdf && blob ? new Uint8Array(await blob.arrayBuffer()) : undefined;
+      const resolved = { ...file, url, pdfData };
       if (image || pdf) onPreview(resolved);
       else window.open(url, "_blank", "noopener,noreferrer");
     } catch {
+      setLoadState("error");
       // Chybový stav je zobrazen přímo na kartě a další kliknutí načtení zopakuje.
     }
   };
@@ -332,7 +343,7 @@ export function MailboxChatThread({
   hasOlderMessages?: boolean;
   loadingOlderMessages?: boolean;
   onLoadOlderMessages?: () => Promise<void>;
-  onLoadAttachment?: (messageId: string, attachment: MailboxAttachment) => Promise<string>;
+  onLoadAttachment?: (messageId: string, attachment: MailboxAttachment) => Promise<MailboxAttachmentContent>;
   onTogglePin?: (messageId: string, pinned: boolean) => Promise<void>;
   onSetReminder?: (messageId: string, remindAtMs: number | null) => Promise<void>;
 }) {
@@ -344,7 +355,7 @@ export function MailboxChatThread({
   const previousFirstMessageIdRef = useRef<string | null>(null);
   const previousLastMessageIdRef = useRef<string | null>(null);
   const loadingOlderRequestRef = useRef(false);
-  const [attachmentPreview, setAttachmentPreview] = useState<MailboxAttachment | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
   const [popoverBelow, setPopoverBelow] = useState(false);
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
@@ -1075,12 +1086,16 @@ export function MailboxChatThread({
                 sizes="100vw"
                 className="object-contain"
               />
+            ) : attachmentPreview.pdfData ? (
+              <div className="h-full overflow-y-auto bg-slate-100 p-3 sm:p-4">
+                <PdfDocumentPreview
+                  key={attachmentPreview.url}
+                  pdfData={attachmentPreview.pdfData}
+                  name={attachmentPreview.name}
+                />
+              </div>
             ) : (
-              <iframe
-                src={attachmentPreview.url}
-                title={`Náhled ${attachmentPreview.name}`}
-                className="h-full w-full bg-white"
-              />
+              <p role="alert" className="p-6 text-center text-sm text-white">Náhled přílohy není dostupný. Soubor si můžeš stáhnout.</p>
             )}
           </div>
         </section>

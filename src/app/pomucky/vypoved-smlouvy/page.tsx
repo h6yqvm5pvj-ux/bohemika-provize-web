@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
+import { ContractTerminationSession } from "@/components/ContractTerminationSession";
+import type { ContractTerminationContext } from "@/app/lib/contractTerminationPrivacy";
 import {
   type SecureDocumentId,
   useSecureDocumentBlob,
@@ -1809,7 +1811,7 @@ function OnlineFormPanel({
   );
 }
 
-function ContractTerminationPageContent() {
+function ContractTerminationPageContent({ context }: { context: ContractTerminationContext }) {
   const searchParams = useSearchParams();
   const embedded = searchParams.get("embedded") === "1";
   const [step, setStep] = useState(0);
@@ -1840,7 +1842,7 @@ function ContractTerminationPageContent() {
     const prefillKey = url.searchParams.get("prefill");
     let prefill = consumedContractPrefillRef.current;
     if (!prefill && prefillKey) {
-      prefill = consumeContractTerminationPrefill(prefillKey);
+      prefill = consumeContractTerminationPrefill(prefillKey, context);
       consumedContractPrefillRef.current = prefill;
     }
     if (prefillKey) {
@@ -1889,7 +1891,7 @@ function ContractTerminationPageContent() {
       );
     }, 0);
     return () => window.clearTimeout(applyTimer);
-  }, []);
+  }, [context]);
 
   const formSteps = useMemo<Array<{ id: StepId; label: string }>>(
     () => [
@@ -4087,7 +4089,13 @@ function LifeInsurancePdfPreview({
 export default function ContractTerminationPage() {
   return (
     <Suspense fallback={null}>
-      <ContractTerminationPageContent />
+      <ContractTerminationSession fallback={
+        <AppLayout active="tools">
+          <p className="px-4 py-8 text-sm text-slate-600">Ověřuji přihlášení…</p>
+        </AppLayout>
+      }>
+        {(context) => <ContractTerminationPageContent context={context} />}
+      </ContractTerminationSession>
     </Suspense>
   );
 }

@@ -1,0 +1,389 @@
+.list {
+  container-type: inline-size;
+}
+
+.columns,
+.grid {
+  grid-template-columns: minmax(0, 1fr) 106px 136px 140px 36px;
+  align-items: center;
+  column-gap: 24px;
+}
+
+.columns {
+  display: grid;
+  padding: 0 20px 0 86px;
+  color: #7a8395;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.columns > :nth-child(3) {
+  text-align: right;
+}
+
+.cardButton {
+  display: block;
+  width: 100%;
+  border-radius: 16px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.cardButton:focus-visible {
+  outline: 3px solid #a78bfa;
+  outline-offset: 3px;
+}
+
+.card {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 57px;
+  position: relative;
+  min-height: 84px;
+  padding: 13px 20px;
+  border: 1px solid #e5e8ef;
+  border-radius: 16px;
+  background: #fff;
+  color: #1e2435;
+  box-shadow: 0 2px 4px rgb(30 36 53 / 2%);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.cardButton:hover .card {
+  border-color: #cfc5e4;
+  box-shadow: 0 5px 18px rgb(65 45 95 / 7%);
+}
+
+.card[data-selected="true"] {
+  border-color: #a78bfa;
+  background: #faf8ff;
+  box-shadow: 0 0 0 1px #a78bfa;
+}
+
+.grid {
+  display: grid;
+}
+
+.identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.selection {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5d9e2;
+  border-radius: 6px;
+  background: #fff;
+  color: transparent;
+}
+
+.card[data-selected="true"] .selection {
+  border-color: #7c3aed;
+  background: #7c3aed;
+  color: #fff;
+}
+
+.logo {
+  position: relative;
+  display: flex;
+  width: 50px;
+  height: 48px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #edf0f5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.logoImage {
+  padding: 5px;
+  object-fit: contain;
+}
+
+.identityText {
+  min-width: 0;
+  flex: 1;
+}
+
+.client {
+  overflow: hidden;
+  color: #252638;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  color: #647084;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.productName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryIcon {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+
+.metadata {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  margin-top: 3px;
+  color: #778195;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.number {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tag {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #f3effc;
+  color: #79639f;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.tag[data-tone="neutral"] {
+  background: #f1f4f8;
+  color: #647084;
+}
+
+.adviser {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anniversary {
+  color: #be5466;
+}
+
+.date {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  color: #657084;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.date svg {
+  display: none;
+}
+
+.premium {
+  min-width: 0;
+  text-align: right;
+}
+
+.amount {
+  color: #252638;
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 22px;
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cadence {
+  margin-top: 1px;
+  color: #778195;
+  font-size: 11px;
+  line-height: 16px;
+  text-transform: lowercase;
+}
+
+.status {
+  min-width: 0;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #eaedf3;
+  border-radius: 10px;
+  background: #fafbfc;
+  color: #9298a8;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.cardButton:hover .action,
+.cardButton:focus-visible .action {
+  border-color: #ddd3f1;
+  background: #f4effc;
+  color: #7c3aed;
+}
+
+.audit {
+  grid-column: 1 / -1;
+  margin: 10px 0 0 64px;
+}
+
+@container (max-width: 900px) {
+  .columns,
+  .grid {
+    column-gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 90px 108px 110px 34px;
+  }
+}
+
+@container (max-width: 760px) {
+  .columns {
+    display: none;
+  }
+
+  .card {
+    padding: 14px;
+    contain-intrinsic-block-size: auto 95px;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "identity premium" "date status";
+    gap: 12px 10px;
+  }
+
+  .identity {
+    grid-area: identity;
+    gap: 9px;
+  }
+
+  .logo {
+    width: 38px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .logoImage {
+    padding: 4px;
+  }
+
+  .selection {
+    width: 18px;
+    height: 18px;
+  }
+
+  .card[data-selection-mode="true"] .logo {
+    display: none;
+  }
+
+  .client {
+    font-size: 14px;
+  }
+
+  .product {
+    font-size: 11px;
+  }
+
+  .date {
+    grid-area: date;
+    font-size: 11px;
+  }
+
+  .date svg {
+    display: block;
+    color: #9ba3b1;
+  }
+
+  .premium {
+    grid-area: premium;
+    align-self: start;
+  }
+
+  .amount {
+    font-size: 16px;
+  }
+
+  .status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .statusBadge {
+    padding: 2px 7px;
+    font-size: 10px;
+    line-height: 17px;
+  }
+
+  .action {
+    display: none;
+  }
+
+  .audit {
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .action {
+    transition: none;
+  }
+}

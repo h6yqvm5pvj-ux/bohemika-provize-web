@@ -1,0 +1,1468 @@
+--- /dev/null
++++ b/src/lib/authEmailMessages.ts
+@@ -0,0 +1,35 @@
++const EMAIL_ERROR_MESSAGES: Record<string, string> = {
++  "auth/invalid-email": "Zadej platný e-mail.",
++  "auth/too-many-requests": "Příliš mnoho žádostí o e-mail. Počkej několik minut a zkus to znovu.",
++  "auth/quota-exceeded": "Odesílání e-mailů je dočasně vyčerpané. Zkus to později nebo kontaktuj podporu.",
++  "auth/network-request-failed": "E-mail se nepodařilo vyžádat kvůli připojení. Zkontroluj síť a zkus to znovu.",
++  "auth/operation-not-allowed": "Odesílání e-mailů není pro aplikaci povolené. Kontaktuj podporu.",
++  "auth/invalid-api-key": "Odesílání e-mailů není správně nastavené. Kontaktuj podporu.",
++  "auth/app-not-authorized": "Odesílání e-mailů není pro tuto aplikaci povolené. Kontaktuj podporu.",
++  "auth/configuration-not-found": "Odesílání e-mailů není správně nastavené. Kontaktuj podporu.",
++  "auth/unauthorized-continue-uri": "Odkaz v e-mailu není správně nastavený. Kontaktuj podporu.",
++  "auth/invalid-continue-uri": "Odkaz v e-mailu není správně nastavený. Kontaktuj podporu.",
++  "auth/missing-continue-uri": "Odkaz v e-mailu není správně nastavený. Kontaktuj podporu.",
++  "auth/user-token-expired": "Přihlas se znovu a potom znovu požádej o ověřovací e-mail.",
++  "auth/invalid-user-token": "Přihlas se znovu a potom znovu požádej o ověřovací e-mail.",
++  "auth/user-disabled": "Účet je deaktivovaný. Kontaktuj podporu.",
++};
++
++export const PASSWORD_RESET_REQUESTED_MESSAGE =
++  "Pokud k tomuto e-mailu existuje účet, přijde ti odkaz pro obnovení hesla. Zkontroluj i spam. Doručení může trvat několik minut.";
++
++export const MFA_VERIFICATION_SENT_MESSAGE =
++  "Ověřovací e-mail byl vyžádán. Otevři odkaz ve schránce (zkontroluj i spam), vrať se sem, zadej heslo a znovu klikni na Zapnout 2FA. Doručení může trvat několik minut.";
++
++export function resolveAuthEmailErrorMessage(error: unknown, fallback: string): string {
++  const code = (error as { code?: unknown } | null)?.code;
++  return typeof code === "string" ? EMAIL_ERROR_MESSAGES[code] ?? fallback : fallback;
++}
++
++// Log only known identifiers; SDK/SMTP messages may contain recipients or tokens.
++export function safeAuthEmailErrorCode(error: unknown): string {
++  const code = (error as { code?: unknown } | null)?.code;
++  return typeof code === "string" && Object.hasOwn(EMAIL_ERROR_MESSAGES, code)
++    ? code
++    : "auth/email-request-failed";
++}
+--- /dev/null
++++ b/src/lib/server/authEmailTemplate.ts
+@@ -0,0 +1,55 @@
++export type AuthEmailKind = "PASSWORD_RESET" | "VERIFY_EMAIL";
++
++const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({
++  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
++})[char]!);
++
++/** No recipient names, client data, remote images, fonts or tracking resources. */
++export function renderAuthEmail(kind: AuthEmailKind, actionUrl: string) {
++  const reset = kind === "PASSWORD_RESET";
++  const subject = reset ? "Obnovení hesla do BohemkaApp" : "Ověření e-mailu pro BohemkaApp";
++  const title = reset ? "Nastav si nové heslo" : "Potvrď svůj e-mail";
++  const button = reset ? "Nastavit nové heslo" : "Ověřit e-mail";
++  const intro = reset
++    ? "Obdrželi jsme žádost o obnovení hesla k tvému účtu v BohemkaApp. Nové heslo si nastavíš pomocí tlačítka níže."
++    : "Pro potvrzení své e-mailové adresy v BohemkaApp použij tlačítko níže.";
++  const next = reset
++    ? "Po nastavení nového hesla se vrať do aplikace a přihlas se."
++    : "Po ověření se vrať do aplikace. Pokud nastavuješ dvoufázové ověření (2FA), zadej znovu heslo a klikni na Zapnout 2FA.";
++  const validity = "Odkaz je jednorázový. Pokud jeho platnost vypršela, vyžádej si v aplikaci nový.";
++  const ignore = reset
++    ? "Pokud jsi o změnu hesla nežádal/a, tuto zprávu ignoruj. Samotným doručením e-mailu se heslo nezmění."
++    : "Pokud jsi o ověření e-mailu nežádal/a, tuto zprávu můžeš ignorovat.";
++  const href = escapeHtml(actionUrl);
++  const text = ["BohemkaApp", title, "Ahoj,", intro, `${button}:`, actionUrl, next, validity, ignore,
++    "Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.", "bohemka.app"].join("\n\n");
++  const html = `<!doctype html>
++<html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>${subject}</title></head>
++<body style="margin:0;padding:0;background-color:#f3f1f8;color:#251d39;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
++<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${title} v BohemkaApp. ${validity}</div>
++<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f1f8;"><tr><td align="center" style="padding:32px 16px;">
++<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
++<tr><td style="padding:26px 28px;background-color:#352058;border-radius:20px 20px 0 0;">
++<p style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">BohemkaApp<span style="color:#b9a4ed;">.</span></p>
++<p style="margin:7px 0 0;color:#ded4f2;font-size:12px;letter-spacing:1.2px;">ZABEZPEČENÍ ÚČTU</p>
++</td></tr>
++<tr><td style="padding:32px 28px;background-color:#ffffff;border-radius:0 0 20px 20px;">
++<h1 style="margin:0 0 24px;font-size:28px;line-height:1.2;letter-spacing:-0.7px;color:#251d39;">${title}</h1>
++<p style="margin:0 0 12px;font-size:16px;line-height:1.6;color:#493f5b;">Ahoj,</p>
++<p style="margin:0 0 26px;font-size:16px;line-height:1.6;color:#493f5b;">${intro}</p>
++<table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" bgcolor="#6d3acb" style="border-radius:10px;mso-padding-alt:16px 24px;">
++<a href="${href}" style="display:inline-block;padding:16px 24px;border:1px solid #6d3acb;border-radius:10px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;line-height:1.3;">${button}</a>
++</td></tr></table>
++<p style="margin:26px 0 14px;font-size:14px;line-height:1.6;color:#493f5b;">${next}</p>
++<p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#746a83;">${validity}</p>
++<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="border-top:1px solid #e9e3f1;padding-top:22px;">
++<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#746a83;">${ignore}</p>
++<p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#746a83;">Nefunguje tlačítko? Zkopíruj celý odkaz do prohlížeče:</p>
++<p style="margin:0;font-size:11px;line-height:1.7;word-break:break-all;overflow-wrap:anywhere;"><a href="${href}" style="color:#6d3acb;text-decoration:underline;word-break:break-all;">${href}</a></p>
++</td></tr></table>
++</td></tr>
++<tr><td align="center" style="padding:22px 20px;color:#81758e;font-size:11px;line-height:1.8;">Automatická zpráva z BohemkaApp. Na tento e-mail neodpovídej.<br><span style="color:#635771;">bohemka.app</span></td></tr>
++</table></td></tr></table>
++</body></html>`;
++  return { subject, text, html };
++}
+--- /dev/null
++++ b/src/lib/server/firebaseAuthEmail.ts
+@@ -0,0 +1,84 @@
++import { randomUUID } from "node:crypto";
++import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
++import { adminAuth } from "@/lib/server/firebaseAdmin";
++import { renderAuthEmail } from "@/lib/server/authEmailTemplate";
++
++type FirebaseEmailRequest = {
++  requestType: "PASSWORD_RESET" | "VERIFY_EMAIL";
++  // Verification callers must obtain this from the authenticated account, never a request body.
++  email: string;
++};
++
++export class FirebaseAuthEmailError extends Error {
++  constructor(readonly code: string) {
++    super(resolveAuthEmailErrorMessage({ code }, "Nepodařilo se odeslat e-mail. Zkus to znovu nebo kontaktuj podporu."));
++    this.name = "FirebaseAuthEmailError";
++  }
++}
++
++export function isAuthEmailAddress(email: string): boolean {
++  return email.length <= 254 && /^[^\s@<>,;"\\]+@[^\s@<>,;"\\]+\.[^\s@<>,;"\\]+$/.test(email);
++}
++
++/** Server-only settings. No NEXT_PUBLIC key or fallback to Google's failing delivery. */
++export function requireAuthEmailConfig(): { apiKey: string; from: string } {
++  const apiKey = process.env.RESEND_API_KEY?.trim() ?? "";
++  const from = process.env.AUTH_EMAIL_FROM?.trim() ?? "";
++  const address = /^[^<>\r\n]+<([^<>]+)>$/.exec(from)?.[1] ?? from;
++  if (!adminAuth || !/^re_[a-zA-Z0-9_-]+$/.test(apiKey) || /[\r\n]/.test(from) || !isAuthEmailAddress(address)) {
++    throw new FirebaseAuthEmailError("auth/configuration-not-found");
++  }
++  return { apiKey, from };
++}
++
++/** Firebase owns the action code and its validation; Resend only delivers the email. */
++export async function sendFirebaseAuthEmail(request: FirebaseEmailRequest): Promise<void> {
++  const { apiKey, from } = requireAuthEmailConfig();
++  const email = request.email.trim().toLowerCase();
++  if (!isAuthEmailAddress(email)) throw new FirebaseAuthEmailError("auth/invalid-email");
++
++  let link: URL;
++  try {
++    const rawLink = request.requestType === "PASSWORD_RESET"
++      ? await adminAuth!.generatePasswordResetLink(email)
++      : await adminAuth!.generateEmailVerificationLink(email);
++    // No request-supplied redirect or action URL. Keep Firebase's configured handler.
++    link = new URL(rawLink);
++    const mode = request.requestType === "PASSWORD_RESET" ? "resetPassword" : "verifyEmail";
++    if (link.protocol !== "https:" || link.username || link.password ||
++        link.searchParams.get("mode") !== mode || !link.searchParams.get("oobCode")) {
++      throw new FirebaseAuthEmailError("auth/configuration-not-found");
++    }
++    link.searchParams.set("lang", "cs");
++  } catch (error) {
++    const code = (error as { code?: unknown } | null)?.code;
++    throw new FirebaseAuthEmailError(code === "auth/user-not-found" ? code : safeAuthEmailErrorCode(error));
++  }
++
++  const message = renderAuthEmail(request.requestType, link.toString());
++
++  let response: Response;
++  try {
++    response = await fetch("https://api.resend.com/emails", {
++      method: "POST",
++      headers: {
++        Authorization: `Bearer ${apiKey}`,
++        "Content-Type": "application/json",
++        "Idempotency-Key": randomUUID(),
++      },
++      body: JSON.stringify({
++        from, to: [email], ...message,
++      }),
++      cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15_000),
++    });
++  } catch {
++    throw new FirebaseAuthEmailError("auth/network-request-failed");
++  }
++  // Provider bodies can contain recipients or action links. Never log or forward them.
++  if (!response.ok) {
++    const code = response.status === 429 ? "auth/too-many-requests"
++      : response.status === 401 || response.status === 403 ? "auth/configuration-not-found"
++      : "auth/email-request-failed";
++    throw new FirebaseAuthEmailError(code);
++  }
++}
+--- /dev/null
++++ b/src/app/lib/authEmailRequest.ts
+@@ -0,0 +1,36 @@
++import type { User } from "firebase/auth";
++import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
++
++async function requestEmail(path: string, options: { email?: string; token?: string }) {
++  let response: Response;
++  try {
++    response = await fetch(path, {
++      method: "POST",
++      headers: {
++        "Content-Type": "application/json",
++        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
++      },
++      body: JSON.stringify(options.email ? { email: options.email } : {}),
++      credentials: "omit", cache: "no-store", redirect: "error",
++      signal: AbortSignal.timeout(30_000),
++    });
++  } catch {
++    throw Object.assign(new Error("Žádost o e-mail se nepodařila."), { code: "auth/network-request-failed" });
++  }
++  const payload = await response.json().catch(() => null);
++  if (!response.ok || payload?.ok !== true) {
++    const code = response.status === 429 ? "auth/too-many-requests"
++      : response.status === 401 ? "auth/invalid-user-token" : safeAuthEmailErrorCode(payload);
++    throw Object.assign(new Error(resolveAuthEmailErrorMessage({ code }, "Nepodařilo se vyžádat e-mail.")), { code });
++  }
++  return payload as { ok: true; alreadyVerified?: boolean };
++}
++
++export async function requestPasswordResetEmail(email: string): Promise<void> {
++  await requestEmail("/api/auth/password-reset", { email });
++}
++
++export async function requestVerificationEmail(user: User): Promise<boolean> {
++  const result = await requestEmail("/api/auth/email-verification-link", { token: await user.getIdToken() });
++  return result.alreadyVerified === true;
++}
+--- a/src/app/lib/mfaEmailVerification.ts
++++ b/src/app/lib/mfaEmailVerification.ts
+@@ -1,27 +1,27 @@
+ import type { User as FirebaseUser } from "firebase/auth";
++import { requestVerificationEmail } from "./authEmailRequest";
++import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+ 
+-type ConfirmEmailForMfaResponse = {
+-  ok?: boolean;
+-  error?: string;
+-};
+-
+-export async function confirmEmailForMfaEnrollment(user: FirebaseUser): Promise<void> {
+-  const token = await user.getIdToken(true);
+-  const response = await fetch("/api/auth/confirm-email-for-mfa", {
+-    method: "POST",
+-    headers: {
+-      Authorization: `Bearer ${token}`,
+-      "Content-Type": "application/json",
+-    },
+-    cache: "no-store",
+-  });
+-  const payload = (await response
+-    .json()
+-    .catch(() => null)) as ConfirmEmailForMfaResponse | null;
+-  if (!response.ok) {
+-    throw new Error(
+-      payload?.error || `Nepodařilo se potvrdit e-mail pro zapnutí 2FA (HTTP ${response.status}).`
+-    );
++/** False means the user must open the inbox link before enrollment can continue. */
++export async function ensureEmailVerifiedForMfaEnrollment(user: FirebaseUser): Promise<boolean> {
++  try {
++    // The confirmation usually happens in another tab, so never trust cached state.
++    await user.reload();
++    if (user.emailVerified) {
++      await user.getIdToken(true);
++      return true;
++    }
++    const alreadyVerified = await requestVerificationEmail(user);
++    if (alreadyVerified) {
++      await user.reload();
++      if (user.emailVerified) {
++        await user.getIdToken(true);
++        return true;
++      }
++    }
++    return false;
++  } catch (error) {
++    console.warn("[AuthEmail] verification:", safeAuthEmailErrorCode(error));
++    throw new Error(resolveAuthEmailErrorMessage(error, "Nepodařilo se vyžádat ověřovací e-mail. Zkus to znovu nebo kontaktuj podporu."));
+   }
+-  await user.reload();
+ }
+--- a/src/app/login/page.tsx
++++ b/src/app/login/page.tsx
+@@ -11,11 +11,12 @@
+   type MultiFactorResolver,
+   signInWithEmailAndPassword,
+   signOut,
+-  sendPasswordResetEmail,
+   TotpMultiFactorGenerator,
+   type User as FirebaseUser,
+ } from "firebase/auth";
+ import { auth } from "../firebase";
++import { PASSWORD_RESET_REQUESTED_MESSAGE, resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
++import { requestPasswordResetEmail } from "@/app/lib/authEmailRequest";
+ import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+ import { getUserProfileCached } from "@/app/lib/userProfileCache";
+ import {
+@@ -158,34 +159,6 @@
+   return "Nesprávný e-mail nebo heslo.";
+ }
+ 
+-function resolvePasswordResetErrorMessage(error: unknown): string {
+-  const code = (error as { code?: string })?.code;
+-  if (code === "auth/user-not-found") {
+-    return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
+-  }
+-  if (code === "auth/invalid-email") {
+-    return "Zadej platný e-mail.";
+-  }
+-  if (code === "auth/operation-not-allowed") {
+-    return "Firebase Authentication nemá zapnuté přihlašování přes e-mail a heslo.";
+-  }
+-  if (code === "auth/too-many-requests") {
+-    return "Firebase dočasně blokuje další odesílání kvůli příliš mnoha pokusům. Zkus to později.";
+-  }
+-  if (code === "auth/network-request-failed") {
+-    return "Síťová chyba při komunikaci s Firebase.";
+-  }
+-  if (code === "auth/unauthorized-continue-uri") {
+-    return "Doména není povolená ve Firebase Authentication > Settings > Authorized domains.";
+-  }
+-  if (code === "auth/invalid-continue-uri" || code === "auth/missing-continue-uri") {
+-    return "Návratová URL pro Firebase e-mail není správně nastavená.";
+-  }
+-  if (code) {
+-    return `Firebase vrátil chybu ${code}.`;
+-  }
+-  return "Nepodařilo se odeslat odkaz pro obnovení.";
+-}
+ 
+ async function postLoginAttempt(
+   action: LoginAttemptAction,
+@@ -225,6 +198,8 @@
+   const [passkeySupported, setPasskeySupported] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+   const [resetStatus, setResetStatus] = useState<string | null>(null);
++  const [resetBusy, setResetBusy] = useState(false);
++  const resetInFlight = useRef(false);
+   const [mfaResolver, setMfaResolver] = useState<MultiFactorResolver | null>(null);
+   const [mfaDigits, setMfaDigits] = useState<string[]>(createEmptyMfaDigits);
+   const [mfaHintUid, setMfaHintUid] = useState<string | null>(null);
+@@ -568,6 +543,7 @@
+   };
+ 
+   const handleReset = async () => {
++    if (resetInFlight.current) return;
+     setError(null);
+     setResetStatus(null);
+     const trimmedEmail = email.trim().toLowerCase();
+@@ -575,13 +551,17 @@
+       setResetStatus("Zadej e-mail, kam ti máme poslat odkaz na nové heslo.");
+       return;
+     }
++    resetInFlight.current = true;
++    setResetBusy(true);
+     try {
+-      auth.languageCode = "cs";
+-      await sendPasswordResetEmail(auth, trimmedEmail);
+-      setResetStatus("Poslal jsem odkaz pro obnovení hesla na zadaný e-mail.");
+-    } catch (err: any) {
+-      logAuthIssue("handleReset", err);
+-      setResetStatus(resolvePasswordResetErrorMessage(err));
++      await requestPasswordResetEmail(trimmedEmail);
++      setResetStatus(PASSWORD_RESET_REQUESTED_MESSAGE);
++    } catch (err: unknown) {
++      console.warn("[AuthEmail] password-reset:", safeAuthEmailErrorCode(err));
++      setError(resolveAuthEmailErrorMessage(err, "Nepodařilo se vyžádat obnovení hesla. Zkus to znovu nebo kontaktuj podporu."));
++    } finally {
++      resetInFlight.current = false;
++      setResetBusy(false);
+     }
+   };
+ 
+@@ -711,10 +691,10 @@
+                       <button
+                         type="button"
+                         onClick={handleReset}
+-                        disabled={loading}
++                        disabled={loading || resetBusy}
+                         className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
+                       >
+-                        Zapomenuté heslo?
++                        {resetBusy ? "Odesílám žádost…" : "Zapomenuté heslo?"}
+                       </button>
+                     </div>
+                   </div>
+--- /dev/null
++++ b/src/app/api/auth/password-reset/route.ts
+@@ -0,0 +1,87 @@
++import { after, NextResponse } from "next/server";
++import { PASSWORD_RESET_REQUESTED_MESSAGE, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
++import { adminAuth } from "@/lib/server/firebaseAdmin";
++import { isAuthEmailAddress, requireAuthEmailConfig, sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
++import { applyRateLimitHeaders, consumeRateLimit, getRequestIp } from "@/lib/server/rateLimit";
++
++export const runtime = "nodejs";
++export const maxDuration = 60;
++
++const json = (body: unknown, status = 200) => NextResponse.json(body, {
++  status, headers: { "Cache-Control": "no-store" },
++});
++
++// Enforce the limit while streaming; Content-Length may be absent or forged.
++async function readEmail(req: Request): Promise<string | null> {
++  if (!req.body) return null;
++  const reader = req.body.getReader();
++  const chunks: Uint8Array[] = [];
++  let length = 0;
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      length += value.byteLength;
++      if (length > 2048) { await reader.cancel(); return null; }
++      chunks.push(value);
++    }
++    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
++    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
++    return isAuthEmailAddress(email) ? email : null;
++  } catch { return null; }
++  finally { reader.releaseLock(); }
++}
++
++export async function POST(req: Request) {
++  try {
++    const origin = req.headers.get("origin");
++    if ((origin && origin !== new URL(req.url).origin) || req.headers.get("sec-fetch-site") === "cross-site") {
++      return json({ ok: false, error: "Požadavek není povolený." }, 403);
++    }
++    if (req.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") {
++      return json({ ok: false, error: "Požadavek musí obsahovat JSON." }, 415);
++    }
++
++    const ipLimit = await consumeRateLimit({
++      namespace: "api:password-reset:ip", key: getRequestIp(req), limit: 10, windowMs: 15 * 60_000,
++    });
++    if (!ipLimit.allowed) {
++      const unavailable = ipLimit.store === "unavailable";
++      const response = json({ ok: false, code: unavailable ? "auth/email-request-failed" : "auth/too-many-requests" }, unavailable ? 503 : 429);
++      applyRateLimitHeaders(response.headers, ipLimit);
++      return response;
++    }
++    const email = await readEmail(req);
++    if (!email) return json({ ok: false, code: "auth/invalid-email" }, 400);
++
++    // Report missing service settings before acceptance, independent of the account.
++    requireAuthEmailConfig();
++    const recipientLimit = await consumeRateLimit({
++      namespace: "api:password-reset:recipient", key: email, limit: 3, windowMs: 15 * 60_000,
++    });
++    if (recipientLimit.store === "unavailable") {
++      return json({ ok: false, code: "auth/email-request-failed" }, 503);
++    }
++
++    if (recipientLimit.allowed) {
++      // Account lookup and delivery happen AFTER the response: status, body and
++      // response time cannot reveal existence, disabled status or provider failures.
++      // Next/Vercel keeps this callback alive; do not replace it with a detached promise.
++      after(async () => {
++        try {
++          const user = await adminAuth!.getUserByEmail(email);
++          if (user.disabled || !user.providerData.some((provider) => provider.providerId === "password")) return;
++          await sendFirebaseAuthEmail({ requestType: "PASSWORD_RESET", email });
++        } catch (error) {
++          if ((error as { code?: unknown } | null)?.code === "auth/user-not-found") return;
++          console.error("[AuthEmail] password-reset delivery:", safeAuthEmailErrorCode(error));
++        }
++      });
++    }
++    // Recipient limits do not expose other people's request history in headers.
++    return json({ ok: true, message: PASSWORD_RESET_REQUESTED_MESSAGE });
++  } catch (error) {
++    console.error("[AuthEmail] password-reset request:", safeAuthEmailErrorCode(error));
++    return json({ ok: false, code: safeAuthEmailErrorCode(error) }, 503);
++  }
++}
+--- a/src/app/api/auth/confirm-email-for-mfa/route.ts
++++ b/src/app/api/auth/confirm-email-for-mfa/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ 
+ import { adminAuth } from "@/lib/server/firebaseAdmin";
++import { safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+ import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+ import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
+ 
+@@ -26,7 +27,9 @@
+ }
+ 
+ const jsonError = (error: string, status: number) =>
+-  NextResponse.json({ ok: false, error } satisfies ApiError, { status });
++  NextResponse.json({ ok: false, error } satisfies ApiError, {
++    status, headers: { "Cache-Control": "no-store" },
++  });
+ 
+ export async function POST(req: Request) {
+   try {
+@@ -94,18 +97,20 @@
+     }
+ 
+     if (!authUser.emailVerified) {
+-      await adminAuth.updateUser(decoded.uid, { emailVerified: true });
++      const response = jsonError("Nejdřív potvrď e-mail odkazem doručeným do schránky.", 403);
++      applyRateLimitHeaders(response.headers, rateLimitResult);
++      return response;
+     }
+ 
+     const response = NextResponse.json({
+       ok: true,
+       emailVerified: true,
+       alreadyVerified: authUser.emailVerified,
+-    });
++    }, { headers: { "Cache-Control": "no-store" } });
+     applyRateLimitHeaders(response.headers, rateLimitResult);
+     return response;
+   } catch (error) {
+-    console.error("confirm-email-for-mfa error", error);
++    console.error("confirm-email-for-mfa error", safeAuthEmailErrorCode(error));
+     return jsonError("Nepodařilo se potvrdit e-mail pro zapnutí 2FA.", 500);
+   }
+ }
+--- a/src/app/api/auth/email-verification-link/route.ts
++++ b/src/app/api/auth/email-verification-link/route.ts
+@@ -1,28 +1,20 @@
+ import { NextResponse } from "next/server";
+-import nodemailer from "nodemailer";
++import { FirebaseAuthEmailError, sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
++import { safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+ import { adminAuth } from "@/lib/server/firebaseAdmin";
+ import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
+ import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
+ 
+ export const runtime = "nodejs";
++export const maxDuration = 60;
+ const EMAIL_VERIFICATION_RATE_LIMIT = 3;
+ const EMAIL_VERIFICATION_RATE_LIMIT_WINDOW_MS = 60_000;
+-const DEFAULT_EMAIL_VERIFICATION_SUBJECT = "Ověření e-mailu";
+ 
+ function getBearerToken(req: Request): string | null {
+   const authHeader = req.headers.get("authorization") ?? "";
+   if (!authHeader.toLowerCase().startsWith("bearer ")) return null;
+   const token = authHeader.slice(7).trim();
+   return token || null;
+-}
+-
+-function htmlEscape(value: string): string {
+-  return value
+-    .replace(/&/g, "&amp;")
+-    .replace(/</g, "&lt;")
+-    .replace(/>/g, "&gt;")
+-    .replace(/"/g, "&quot;")
+-    .replace(/'/g, "&#39;");
+ }
+ 
+ export async function POST(req: Request) {
+@@ -68,9 +60,6 @@
+       response.headers.set("Retry-After", String(lockout.retryAfterSeconds));
+       return response;
+     }
+-    if (decoded.email_verified === true) {
+-      return NextResponse.json({ ok: true, alreadyVerified: true });
+-    }
+ 
+     const rateLimitResult = await consumeRateLimit({
+       namespace: "api:email-verification-link:post",
+@@ -87,78 +76,28 @@
+       return response;
+     }
+ 
+-    const smtpUser = process.env.SMTP_USER?.trim();
+-    const smtpPass = process.env.SMTP_PASS?.trim();
+-    const smtpFrom = process.env.SMTP_FROM?.trim() || smtpUser || undefined;
+-    const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.forpsi.com";
+-    const smtpPortRaw = process.env.SMTP_PORT?.trim() || "587";
+-    const smtpPort = Number(smtpPortRaw);
+-
+-    if (!smtpUser || !smtpPass || !smtpFrom) {
++    const authUser = await adminAuth.getUser(decoded.uid);
++    if (authUser.disabled || authUser.email?.trim().toLowerCase() !== email) {
+       return NextResponse.json(
+-        { ok: false, error: "SMTP není správně nakonfigurované." },
+-        { status: 500 }
++        { ok: false, error: "Účet není dostupný. Přihlas se znovu." },
++        { status: 403, headers: { "Cache-Control": "no-store" } }
+       );
+     }
+-    if (!Number.isFinite(smtpPort) || smtpPort <= 0) {
+-      return NextResponse.json(
+-        { ok: false, error: "Neplatná konfigurace SMTP portu." },
+-        { status: 500 }
+-      );
++    if (authUser.emailVerified) {
++      return NextResponse.json({ ok: true, alreadyVerified: true }, {
++        headers: { "Cache-Control": "no-store" },
++      });
+     }
++    await sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email });
+ 
+-    const actionContinueUrl = process.env.EMAIL_VERIFICATION_CONTINUE_URL?.trim();
+-    const actionCodeSettings = actionContinueUrl
+-      ? { url: actionContinueUrl, handleCodeInApp: false }
+-      : undefined;
+-
+-    const link = await adminAuth.generateEmailVerificationLink(
+-      email,
+-      actionCodeSettings
+-    );
+-
+-    const transporter = nodemailer.createTransport({
+-      host: smtpHost,
+-      port: smtpPort,
+-      secure: smtpPort === 465,
+-      auth: {
+-        user: smtpUser,
+-        pass: smtpPass,
+-      },
+-    });
+-
+-    const escapedLink = htmlEscape(link);
+-    const textBody = [
+-      "Ahoj,",
+-      "",
+-      "pro ověření e-mailu klikni na tento odkaz:",
+-      link,
+-      "",
+-      "Pokud jsi o ověření nežádal(a), tento e-mail ignoruj.",
+-    ].join("\n");
+-    const htmlBody = [
+-      "<p>Ahoj,</p>",
+-      "<p>pro ověření e-mailu klikni na tento odkaz:</p>",
+-      `<p><a href="${escapedLink}">${escapedLink}</a></p>`,
+-      "<p>Pokud jsi o ověření nežádal(a), tento e-mail ignoruj.</p>",
+-    ].join("");
+-
+-    await transporter.sendMail({
+-      from: smtpFrom,
+-      to: email,
+-      subject: process.env.EMAIL_VERIFICATION_SUBJECT?.trim() || DEFAULT_EMAIL_VERIFICATION_SUBJECT,
+-      text: textBody,
+-      html: htmlBody,
+-    });
+-
+-    const response = NextResponse.json({ ok: true, sent: true });
++    const response = NextResponse.json({ ok: true, sent: true }, { headers: { "Cache-Control": "no-store" } });
+     applyRateLimitHeaders(response.headers, rateLimitResult);
+     return response;
+   } catch (error) {
+-    console.error("email-verification-link error", error);
++    console.error("email-verification-link error", safeAuthEmailErrorCode(error));
+     return NextResponse.json(
+-      { ok: false, error: "Nepodařilo se odeslat ověřovací e-mail." },
+-      { status: 500 }
++      { ok: false, code: safeAuthEmailErrorCode(error), error: error instanceof FirebaseAuthEmailError ? error.message : "Nepodařilo se odeslat ověřovací e-mail." },
++      { status: 503, headers: { "Cache-Control": "no-store" } }
+     );
+   }
+ }
+--- a/src/app/api/admin/users/security/route.ts
++++ b/src/app/api/admin/users/security/route.ts
+@@ -1,5 +1,6 @@
+ import { NextResponse, type NextRequest } from "next/server";
+-import nodemailer from "nodemailer";
++import { sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
++import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
+ 
+ import { adminAuth } from "@/lib/server/firebaseAdmin";
+ import {
+@@ -9,9 +10,9 @@
+ 
+ export const runtime = "nodejs";
+ export const dynamic = "force-dynamic";
++export const maxDuration = 60;
+ 
+ const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
+-const PASSWORD_RESET_SUBJECT = "Obnovení hesla";
+ 
+ type AdminUserSecurityAction =
+   | "sendPasswordReset"
+@@ -37,75 +38,6 @@
+   return SECURITY_ACTIONS.has(raw as AdminUserSecurityAction)
+     ? (raw as AdminUserSecurityAction)
+     : null;
+-}
+-
+-function htmlEscape(value: string): string {
+-  return value
+-    .replace(/&/g, "&amp;")
+-    .replace(/</g, "&lt;")
+-    .replace(/>/g, "&gt;")
+-    .replace(/"/g, "&quot;")
+-    .replace(/'/g, "&#39;");
+-}
+-
+-async function sendPasswordResetEmail(email: string) {
+-  if (!adminAuth) {
+-    throw new Error("Firebase Admin Auth není nakonfigurovaný.");
+-  }
+-
+-  const smtpUser = process.env.SMTP_USER?.trim();
+-  const smtpPass = process.env.SMTP_PASS?.trim();
+-  const smtpFrom = process.env.SMTP_FROM?.trim() || smtpUser || undefined;
+-  const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.forpsi.com";
+-  const smtpPortRaw = process.env.SMTP_PORT?.trim() || "587";
+-  const smtpPort = Number(smtpPortRaw);
+-
+-  if (!smtpUser || !smtpPass || !smtpFrom) {
+-    throw new Error("SMTP není správně nakonfigurované.");
+-  }
+-  if (!Number.isFinite(smtpPort) || smtpPort <= 0) {
+-    throw new Error("Neplatná konfigurace SMTP portu.");
+-  }
+-
+-  const actionContinueUrl = process.env.PASSWORD_RESET_CONTINUE_URL?.trim();
+-  const actionCodeSettings = actionContinueUrl
+-    ? { url: actionContinueUrl, handleCodeInApp: false }
+-    : undefined;
+-  const link = await adminAuth.generatePasswordResetLink(email, actionCodeSettings);
+-  const escapedLink = htmlEscape(link);
+-
+-  const transporter = nodemailer.createTransport({
+-    host: smtpHost,
+-    port: smtpPort,
+-    secure: smtpPort === 465,
+-    auth: {
+-      user: smtpUser,
+-      pass: smtpPass,
+-    },
+-  });
+-
+-  const textBody = [
+-    "Ahoj,",
+-    "",
+-    "pro obnovení hesla klikni na tento odkaz:",
+-    link,
+-    "",
+-    "Pokud jsi o obnovení hesla nežádal(a), tento e-mail ignoruj.",
+-  ].join("\n");
+-  const htmlBody = [
+-    "<p>Ahoj,</p>",
+-    "<p>pro obnovení hesla klikni na tento odkaz:</p>",
+-    `<p><a href="${escapedLink}">${escapedLink}</a></p>`,
+-    "<p>Pokud jsi o obnovení hesla nežádal(a), tento e-mail ignoruj.</p>",
+-  ].join("");
+-
+-  await transporter.sendMail({
+-    from: smtpFrom,
+-    to: email,
+-    subject: process.env.PASSWORD_RESET_SUBJECT?.trim() || PASSWORD_RESET_SUBJECT,
+-    text: textBody,
+-    html: htmlBody,
+-  });
+ }
+ 
+ export async function POST(req: NextRequest) {
+@@ -169,7 +101,14 @@
+     }
+ 
+     if (action === "sendPasswordReset") {
+-      await sendPasswordResetEmail(targetEmail);
++      try {
++        await sendFirebaseAuthEmail({ requestType: "PASSWORD_RESET", email: targetEmail });
++      } catch (error) {
++        console.error("[AuthEmail] admin password-reset:", safeAuthEmailErrorCode(error));
++        return NextResponse.json({
++          ok: false, error: resolveAuthEmailErrorMessage(error, "E-mail pro obnovení hesla se nepodařilo odeslat."),
++        }, { status: 503, headers: { "Cache-Control": "no-store" } });
++      }
+       return NextResponse.json({
+         ok: true,
+         action,
+--- a/src/components/account-setup/useAccountSetupFlow.ts
++++ b/src/components/account-setup/useAccountSetupFlow.ts
+@@ -14,7 +14,8 @@
+ 
+ import { auth } from "@/app/firebase-auth";
+ import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+-import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
++import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
++import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
+ import * as userProfileCache from "@/app/lib/userProfileCache";
+ import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
+ import type { Position } from "@/app/types/domain";
+@@ -174,7 +175,7 @@
+     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
+   }
+   if (code === "auth/unverified-email") {
+-    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
++    return "Nejdřív potvrď e-mail odkazem ze schránky a potom znovu spusť nastavení 2FA.";
+   }
+   if (code === "auth/user-not-found") {
+     return "Účet s tímto e-mailem neexistuje ve Firebase Authentication.";
+@@ -842,9 +843,11 @@
+ 
+       const credential = EmailAuthProvider.credential(activeUserEmail, currentPassword);
+       await reauthenticateWithCredential(activeUser, credential);
+-      if (!activeUser.emailVerified) {
+-        setInfo("Potvrzuji e-mail pro zapnutí 2FA.");
+-        await confirmEmailForMfaEnrollment(activeUser);
++      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
++        setMfaPassword("");
++        clearMfaDraft();
++        setInfo(MFA_VERIFICATION_SENT_MESSAGE);
++        return;
+       }
+       const enrollmentUser = auth.currentUser ?? activeUser;
+       const session = await multiFactor(enrollmentUser).getSession();
+--- a/src/components/account-setup/AccountSetupWizard.tsx
++++ b/src/components/account-setup/AccountSetupWizard.tsx
+@@ -855,8 +855,9 @@
+                   {!mfaEnabled && !mfaSecretKey ? (
+                     <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
+                       <p className="text-sm leading-relaxed text-violet-100/68">
+-                        Nejdřív potvrď aktuální heslo. Potom se zobrazí QR kód pro
+-                        přidání účtu do aplikace s ověřovacími kódy.
++                        Nejdřív potvrď aktuální heslo. Pokud ještě nemáš ověřený
++                        e-mail, pošleme ti odkaz do schránky. Po jeho potvrzení
++                        znovu klikni na Zapnout 2FA a zobrazí se QR kód.
+                       </p>
+                       <label className="mt-3 block space-y-2">
+                         <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-violet-200/78">
+--- a/src/app/nastaveni/page.tsx
++++ b/src/app/nastaveni/page.tsx
+@@ -54,7 +54,8 @@
+   readAdminImpersonationState,
+   type AdminImpersonationState,
+ } from "@/app/lib/adminImpersonation";
+-import { confirmEmailForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
++import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
++import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
+ import {
+   createPasskeyForUser,
+   deletePasskeyForUser,
+@@ -721,7 +722,7 @@
+     return "Pro tuto změnu je potřeba znovu ověřit heslo.";
+   }
+   if (err?.code === "auth/unverified-email") {
+-    return "E-mail se nepodařilo automaticky potvrdit pro zapnutí 2FA. Zadej heslo znovu a spusť 2FA ještě jednou.";
++    return "Nejdřív potvrď e-mail odkazem ze schránky a potom znovu spusť nastavení 2FA.";
+   }
+   if (err?.code === "auth/too-many-requests") {
+     return "Příliš mnoho pokusů. Zkus to prosím později.";
+@@ -2922,12 +2923,12 @@
+       const reauthenticated = await reauthenticateForMfaChange(activeUser);
+       if (!reauthenticated) return;
+ 
+-      if (!activeUser.emailVerified) {
+-        setMfaStatus({
+-          type: "info",
+-          message: "Potvrzuji e-mail pro zapnutí 2FA.",
+-        });
+-        await confirmEmailForMfaEnrollment(activeUser);
++      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
++        setMfaPassword("");
++        setMfaEnrollmentSecret(null);
++        setMfaEnrollmentCode("");
++        setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
++        return;
+       }
+ 
+       const enrollmentUser = auth.currentUser ?? activeUser;
+--- a/src/app/nastaveni/components/AccountSecurityPanel.tsx
++++ b/src/app/nastaveni/components/AccountSecurityPanel.tsx
+@@ -660,6 +660,10 @@
+           <div className="space-y-3 px-3.5 py-4 sm:px-5 sm:py-5">
+             {!mfaEnabled && !mfaEnrollmentSecretKey && (
+               <>
++                <p className="text-xs leading-relaxed text-slate-500">
++                  Pokud ještě nemáš ověřený e-mail, pošleme ti odkaz do schránky.
++                  Po jeho potvrzení se vrať a znovu klikni na Zapnout 2FA.
++                </p>
+                 <input
+                   type="password"
+                   autoComplete="current-password"
+--- /dev/null
++++ b/src/lib/server/firebaseAuthEmail.test.ts
+@@ -0,0 +1,82 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({ generatePasswordResetLink: vi.fn(), generateEmailVerificationLink: vi.fn() }));
++vi.mock("@/lib/server/firebaseAdmin", () => ({ adminAuth: mocks }));
++import { sendFirebaseAuthEmail } from "./firebaseAuthEmail";
++
++const email = "synthetic@example.test";
++const actionLink = (mode: string) => `https://synthetic.firebaseapp.com/__/auth/action?mode=${mode}&oobCode=synthetic-code&apiKey=public-test-key`;
++
++describe("Firebase action links delivered exclusively through Resend", () => {
++  const fetchMock = vi.fn<typeof fetch>();
++  beforeEach(() => {
++    vi.resetAllMocks();
++    vi.stubEnv("RESEND_API_KEY", "re_synthetic_key");
++    vi.stubEnv("AUTH_EMAIL_FROM", "BohemkaApp <noreply@example.test>");
++    vi.stubGlobal("fetch", fetchMock);
++    fetchMock.mockResolvedValue(Response.json({ id: "synthetic-message" }));
++    mocks.generatePasswordResetLink.mockResolvedValue(actionLink("resetPassword"));
++    mocks.generateEmailVerificationLink.mockResolvedValue(actionLink("verifyEmail"));
++  });
++  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
++
++  it.each(["PASSWORD_RESET", "VERIFY_EMAIL"] as const)("delivers %s in Czech without returning its secret", async (requestType) => {
++    expect(await sendFirebaseAuthEmail({ requestType, email })).toBeUndefined();
++    const selected = requestType === "PASSWORD_RESET" ? mocks.generatePasswordResetLink : mocks.generateEmailVerificationLink;
++    const other = requestType === "PASSWORD_RESET" ? mocks.generateEmailVerificationLink : mocks.generatePasswordResetLink;
++    expect(selected).toHaveBeenCalledExactlyOnceWith(email);
++    expect(other).not.toHaveBeenCalled();
++    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("https://api.resend.com/emails", expect.objectContaining({
++      method: "POST", cache: "no-store", redirect: "error",
++      headers: expect.objectContaining({ Authorization: "Bearer re_synthetic_key", "Idempotency-Key": expect.any(String) }),
++    }));
++    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
++    expect(body.to).toEqual([email]);
++    expect(body.from).toBe("BohemkaApp <noreply@example.test>");
++    expect(body.text).toContain("lang=cs");
++    expect(body.text).toContain("synthetic-code");
++    expect(body.html).toContain("&amp;oobCode=");
++    expect(JSON.stringify(body)).not.toContain("re_synthetic_key");
++    expect(body).not.toHaveProperty("cc");
++    expect(body).not.toHaveProperty("bcc");
++  });
++  it.each([
++    ["RESEND_API_KEY", ""], ["RESEND_API_KEY", "invalid\nkey"],
++    ["AUTH_EMAIL_FROM", ""], ["AUTH_EMAIL_FROM", "sender@example.test\nBcc: other@example.test"],
++  ])("fails before generating a link when %s is invalid", async (name, value) => {
++    vi.stubEnv(name, value);
++    await expect(sendFirebaseAuthEmail({ requestType: "PASSWORD_RESET", email })).rejects.toMatchObject({ code: "auth/configuration-not-found" });
++    expect(fetchMock).not.toHaveBeenCalled();
++    expect(mocks.generatePasswordResetLink).not.toHaveBeenCalled();
++  });
++  it("rejects a recipient list before generation", async () => {
++    await expect(sendFirebaseAuthEmail({ requestType: "PASSWORD_RESET", email: "one@example.test,two@example.test" })).rejects.toMatchObject({ code: "auth/invalid-email" });
++    expect(mocks.generatePasswordResetLink).not.toHaveBeenCalled();
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++  it.each([401, 403, 429, 500])("sanitizes Resend failure %i without reading its body", async (status) => {
++    const response = Response.json({ message: `${email} synthetic-code re_synthetic_key` }, { status });
++    const read = vi.spyOn(response, "json");
++    fetchMock.mockResolvedValue(response);
++    const error = await sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email }).catch((e: Error) => e);
++    expect(error).toBeInstanceOf(Error);
++    expect(String(error)).not.toMatch(/synthetic|example.test/);
++    expect(read).not.toHaveBeenCalled();
++  });
++  it("sanitizes network errors without retrying a potentially sent message", async () => {
++    fetchMock.mockRejectedValue(new Error("request contains re_synthetic_key synthetic-code"));
++    await expect(sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email })).rejects.toMatchObject({ code: "auth/network-request-failed" });
++    expect(fetchMock).toHaveBeenCalledOnce();
++  });
++  it("sanitizes Firebase errors and never delivers a failed action", async () => {
++    mocks.generateEmailVerificationLink.mockRejectedValue(new Error(`${email} synthetic-code`));
++    const error = await sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email }).catch((e: Error) => e);
++    expect(String(error)).not.toMatch(/synthetic|example.test/);
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++  it.each(["http://example.test/?mode=verifyEmail&oobCode=code", "javascript:alert(1)", actionLink("resetPassword")])("rejects an invalid verification action URL", async (url) => {
++    mocks.generateEmailVerificationLink.mockResolvedValue(url);
++    await expect(sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email })).rejects.toMatchObject({ code: "auth/configuration-not-found" });
++    expect(fetchMock).not.toHaveBeenCalled();
++  });
++});
+--- /dev/null
++++ b/src/app/lib/authEmailRequest.test.ts
+@@ -0,0 +1,37 @@
++import type { User } from "firebase/auth";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { requestPasswordResetEmail, requestVerificationEmail } from "./authEmailRequest";
++
++describe("browser auth email requests", () => {
++  const fetchMock = vi.fn<typeof fetch>();
++  beforeEach(() => { fetchMock.mockReset().mockResolvedValue(Response.json({ ok: true })); vi.stubGlobal("fetch", fetchMock); });
++  afterEach(() => { vi.unstubAllGlobals(); });
++  it("sends reset requests only to the local server", async () => {
++    await requestPasswordResetEmail("synthetic@example.test");
++    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/auth/password-reset", expect.objectContaining({
++      method: "POST", body: JSON.stringify({ email: "synthetic@example.test" }), redirect: "error", credentials: "omit",
++      headers: { "Content-Type": "application/json" },
++    }));
++  });
++  it("sends an owner token for verification without supplying a recipient", async () => {
++    const user = { getIdToken: vi.fn().mockResolvedValue("synthetic-token"), email: "synthetic@example.test" };
++    expect(await requestVerificationEmail(user as unknown as User)).toBe(false);
++    expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/api/auth/email-verification-link", expect.objectContaining({
++      body: "{}", headers: { "Content-Type": "application/json", Authorization: "Bearer synthetic-token" }, redirect: "error",
++    }));
++  });
++  it.each([400, 401, 429, 503])("does not leak server error text for status %i", async (status) => {
++    fetchMock.mockResolvedValue(Response.json({ ok: false, error: "private-token recipient@example.test", code: "private-token" }, { status }));
++    const error = await requestPasswordResetEmail("synthetic@example.test").catch((e: Error) => e);
++    expect(error).toBeInstanceOf(Error);
++    expect(String(error)).not.toMatch(/private-token|recipient@/);
++  });
++  it("sanitizes network failures", async () => {
++    fetchMock.mockRejectedValue(new Error("private-token"));
++    await expect(requestPasswordResetEmail("synthetic@example.test")).rejects.toMatchObject({ code: "auth/network-request-failed" });
++  });
++  it("does not accept a non-JSON success response", async () => {
++    fetchMock.mockResolvedValue(new Response("<html>login</html>"));
++    await expect(requestPasswordResetEmail("synthetic@example.test")).rejects.toThrow();
++  });
++});
+--- /dev/null
++++ b/src/app/lib/mfaEmailVerification.test.ts
+@@ -0,0 +1,71 @@
++import type { User } from "firebase/auth";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const send = vi.hoisted(() => vi.fn());
++vi.mock("./authEmailRequest", () => ({ requestVerificationEmail: send }));
++import { ensureEmailVerifiedForMfaEnrollment } from "./mfaEmailVerification";
++
++describe("MFA requires inbox verification", () => {
++  const makeUser = (emailVerified = false) => ({
++    emailVerified,
++    reload: vi.fn().mockResolvedValue(undefined),
++    getIdToken: vi.fn().mockResolvedValue("synthetic-token"),
++  });
++  beforeEach(() => {
++    send.mockReset().mockResolvedValue(false);
++    vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Unexpected API bypass"); }));
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++  });
++  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
++
++  it("requests server delivery and stops enrollment while unverified", async () => {
++    const user = makeUser();
++    expect(await ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).toBe(false);
++    expect(send).toHaveBeenCalledExactlyOnceWith(user);
++    expect(user.emailVerified).toBe(false);
++    expect(fetch).not.toHaveBeenCalled();
++  });
++
++  it("recognizes verification in another tab and refreshes claims before proceeding", async () => {
++    const user = makeUser();
++    user.reload.mockImplementation(async () => { user.emailVerified = true; });
++    expect(await ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).toBe(true);
++    expect(user.getIdToken).toHaveBeenCalledExactlyOnceWith(true);
++    expect(send).not.toHaveBeenCalled();
++  });
++
++  it("does not trust a stale verified flag after Firebase reload", async () => {
++    const user = makeUser(true);
++    user.reload.mockImplementation(async () => { user.emailVerified = false; });
++    expect(await ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).toBe(false);
++    expect(send).toHaveBeenCalledOnce();
++  });
++
++  it("fails closed when refreshing the verified token fails", async () => {
++    const user = makeUser(true);
++    user.getIdToken.mockRejectedValue({ code: "auth/user-token-expired" });
++    await expect(ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).rejects.toThrow("Přihlas se znovu");
++    expect(send).not.toHaveBeenCalled();
++  });
++
++  it("shows delivery errors without logging tokens or addresses", async () => {
++    send.mockRejectedValue({ code: "auth/too-many-requests", message: "synthetic@example.test token=private" });
++    await expect(ensureEmailVerifiedForMfaEnrollment(makeUser() as unknown as User)).rejects.toThrow("Příliš mnoho žádostí");
++    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/synthetic@|private/);
++  });
++
++  it("does not treat a delivery API acknowledgement as verified Firebase claims", async () => {
++    send.mockResolvedValue(true);
++    const user = makeUser();
++    expect(await ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).toBe(false);
++    expect(user.reload).toHaveBeenCalledTimes(2);
++    expect(user.getIdToken).not.toHaveBeenCalled();
++  });
++
++  it("refreshes Firebase claims when verification completes during the request", async () => {
++    const user = makeUser();
++    send.mockImplementation(async () => { user.emailVerified = true; return true; });
++    expect(await ensureEmailVerifiedForMfaEnrollment(user as unknown as User)).toBe(true);
++    expect(user.getIdToken).toHaveBeenCalledExactlyOnceWith(true);
++  });
++});
+--- a/src/app/login/page.test.tsx
++++ b/src/app/login/page.test.tsx
+@@ -21,6 +21,7 @@
+     profile: vi.fn(),
+     signOut: vi.fn(),
+     mfaPing: vi.fn(),
++    resetEmail: vi.fn(),
+   };
+ });
+ 
+@@ -35,7 +36,6 @@
+   },
+   signInWithEmailAndPassword: mocks.password,
+   signOut: mocks.signOut,
+-  sendPasswordResetEmail: vi.fn(),
+   FactorId: { TOTP: "totp" },
+   TotpMultiFactorGenerator: {
+     assertionForSignIn: (uid: string, code: string) => ({ uid, code }),
+@@ -52,6 +52,7 @@
+ }));
+ vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profile }));
+ vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.mfaPing }));
++vi.mock("@/app/lib/authEmailRequest", () => ({ requestPasswordResetEmail: mocks.resetEmail }));
+ 
+ import LoginPage from "./page";
+ 
+@@ -83,6 +84,7 @@
+     mocks.profile.mockReset().mockResolvedValue({ hasProfile: false });
+     mocks.signOut.mockImplementation(async () => { mocks.auth.currentUser = null; });
+     mocks.mfaPing.mockResolvedValue({ ok: true });
++    mocks.resetEmail.mockReset().mockResolvedValue(undefined);
+     vi.spyOn(console, "error").mockImplementation(() => {});
+     vi.spyOn(console, "warn").mockImplementation(() => {});
+     fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ ok: true }));
+@@ -140,6 +142,51 @@
+     expect(mocks.router.replace).not.toHaveBeenCalled();
+   };
+ 
++  const requestPasswordReset = async () => {
++    const button = Array.from(container.querySelectorAll("button")).find(
++      (element) => element.textContent === "Zapomenuté heslo?"
++    );
++    expect(button).toBeDefined();
++    await act(async () => button!.click());
++  };
++
++  it("requests a reset email through the server without revealing account existence", async () => {
++    await changeInput("#login-email", " Fresh@Example.Test ");
++    await requestPasswordReset();
++    expect(mocks.resetEmail).toHaveBeenCalledExactlyOnceWith("fresh@example.test");
++    expect(container.textContent).toContain("Pokud k tomuto e-mailu existuje účet");
++    expectNotLoggedIn();
++  });
++
++  it("uses the generic reset confirmation for an unknown address", async () => {
++    await changeInput("#login-email", "unknown@example.test");
++    await requestPasswordReset();
++    expect(container.textContent).toContain("Pokud k tomuto e-mailu existuje účet");
++    expect(container.textContent).not.toContain("neexistuje");
++  });
++
++  it("shows a failed email request as an error, without leaking provider details", async () => {
++    mocks.resetEmail.mockRejectedValue({ code: "auth/operation-not-allowed", message: "private@example.test secret-token" });
++    await changeInput("#login-email", "fresh@example.test");
++    await requestPasswordReset();
++    expect(container.textContent).toContain("Odesílání e-mailů není pro aplikaci povolené");
++    expect(container.textContent).not.toContain("Pokud k tomuto e-mailu existuje účet");
++    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/private@|secret-token/);
++  });
++
++  it("disables repeated reset requests while the server is processing one", async () => {
++    const delivery = deferred<void>();
++    mocks.resetEmail.mockReturnValue(delivery.promise);
++    await changeInput("#login-email", "fresh@example.test");
++    await requestPasswordReset();
++    const button = Array.from(container.querySelectorAll("button")).find((element) => element.textContent === "Odesílám žádost…")!;
++    expect(button.disabled).toBe(true);
++    await act(async () => button.click());
++    expect(mocks.resetEmail).toHaveBeenCalledOnce();
++    await act(async () => delivery.resolve());
++    expect(button.disabled).toBe(false);
++  });
++
+   it("does not turn a persisted Firebase user into a new app session on mount", async () => {
+     await restoreCachedUser();
+     expectNotLoggedIn();
+--- /dev/null
++++ b/src/app/api/auth/password-reset/route.test.ts
+@@ -0,0 +1,98 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  after: vi.fn(), getUserByEmail: vi.fn(), send: vi.fn(), config: vi.fn(), rateLimit: vi.fn(),
++}));
++vi.mock("next/server", async (importOriginal) => ({ ...await importOriginal<typeof import("next/server")>(), after: mocks.after }));
++vi.mock("@/lib/server/firebaseAdmin", () => ({ adminAuth: { getUserByEmail: mocks.getUserByEmail } }));
++vi.mock("@/lib/server/firebaseAuthEmail", async (importOriginal) => ({
++  ...await importOriginal<typeof import("@/lib/server/firebaseAuthEmail")>(),
++  sendFirebaseAuthEmail: mocks.send, requireAuthEmailConfig: mocks.config,
++}));
++vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rateLimit, getRequestIp: () => "192.0.2.1", applyRateLimitHeaders: vi.fn() }));
++import { POST } from "./route";
++
++const allowed = { allowed: true, store: "firestore" };
++const user = { disabled: false, providerData: [{ providerId: "password" }] };
++const request = (body: unknown = { email: "synthetic@example.test" }, headers: Record<string, string> = {}) => new Request("https://example.test/api/auth/password-reset", {
++  method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
++});
++const deliver = async () => { for (const [callback] of mocks.after.mock.calls) await callback(); };
++
++describe("public password reset privacy and abuse limits", () => {
++  beforeEach(() => {
++    vi.resetAllMocks();
++    mocks.rateLimit.mockResolvedValue(allowed);
++    mocks.getUserByEmail.mockResolvedValue(user);
++    mocks.send.mockResolvedValue(undefined);
++    vi.spyOn(console, "error").mockImplementation(() => {});
++  });
++  afterEach(() => { vi.restoreAllMocks(); });
++
++  it("accepts before account lookup or delivery and ignores injected redirects and recipients", async () => {
++    const result = await POST(request({ email: " Synthetic@Example.Test ", to: "other@example.test", continueUrl: "https://evil.test" }));
++    expect(result.status).toBe(200);
++    expect(await result.json()).toMatchObject({ ok: true });
++    expect(result.headers.get("cache-control")).toBe("no-store");
++    expect(mocks.getUserByEmail).not.toHaveBeenCalled();
++    expect(mocks.send).not.toHaveBeenCalled();
++    await deliver();
++    expect(mocks.getUserByEmail).toHaveBeenCalledExactlyOnceWith("synthetic@example.test");
++    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ requestType: "PASSWORD_RESET", email: "synthetic@example.test" });
++  });
++  it.each(["missing", "disabled", "federated", "delivery-failure"])("returns the same acceptance for %s as for an active account", async (scenario) => {
++    const expected = await (await POST(request())).text();
++    mocks.after.mockClear();
++    if (scenario === "missing") mocks.getUserByEmail.mockRejectedValue({ code: "auth/user-not-found" });
++    if (scenario === "disabled") mocks.getUserByEmail.mockResolvedValue({ ...user, disabled: true });
++    if (scenario === "federated") mocks.getUserByEmail.mockResolvedValue({ ...user, providerData: [{ providerId: "google.com" }] });
++    if (scenario === "delivery-failure") mocks.send.mockRejectedValue(new Error("synthetic@example.test private-action-link"));
++    const result = await POST(request());
++    expect(result.status).toBe(200);
++    expect(await result.text()).toBe(expected);
++    expect(mocks.getUserByEmail).not.toHaveBeenCalled();
++    await deliver();
++    if (scenario !== "delivery-failure") expect(mocks.send).not.toHaveBeenCalled();
++    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toMatch(/synthetic@|private-action/);
++  });
++  it("enforces a shared IP limit before body parsing and account access", async () => {
++    mocks.rateLimit.mockResolvedValue({ ...allowed, allowed: false });
++    expect((await POST(request())).status).toBe(429);
++    expect(mocks.rateLimit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: "192.0.2.1", limit: 10 }));
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++  it("silently suppresses a rate-limited recipient without revealing request history", async () => {
++    const expected = await (await POST(request())).text();
++    mocks.after.mockClear();
++    mocks.rateLimit.mockResolvedValueOnce(allowed).mockResolvedValueOnce({ ...allowed, allowed: false });
++    const result = await POST(request());
++    expect(result.status).toBe(200);
++    expect(await result.text()).toBe(expected);
++    expect(result.headers.has("X-RateLimit-Remaining")).toBe(false);
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++  it("fails closed when shared limits are unavailable", async () => {
++    mocks.rateLimit.mockResolvedValue({ allowed: false, store: "unavailable" });
++    expect((await POST(request())).status).toBe(503);
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++  it("reports missing configuration for all recipients before accepting", async () => {
++    mocks.config.mockImplementation(() => { throw { code: "auth/configuration-not-found", message: "private-secret" }; });
++    const result = await POST(request());
++    expect(result.status).toBe(503);
++    expect(await result.text()).not.toContain("private-secret");
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++  it.each([null, {}, { email: ["one@example.test", "two@example.test"] }, { email: "one@example.test,two@example.test" }, { email: "x".repeat(3000) }])("rejects an invalid or oversized body without generating a link", async (body) => {
++    expect((await POST(request(body))).status).toBe(400);
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++  it.each([
++    [{ origin: "https://evil.test" }, 403],
++    [{ "sec-fetch-site": "cross-site" }, 403],
++    [{ "Content-Type": "text/plain" }, 415],
++  ] as const)("blocks cross-site or form requests", async (headers, status) => {
++    expect((await POST(request(undefined, headers))).status).toBe(status);
++    expect(mocks.after).not.toHaveBeenCalled();
++  });
++});
+--- /dev/null
++++ b/src/app/api/auth/emailVerification.test.ts
+@@ -0,0 +1,83 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  verifyIdToken: vi.fn(), getUser: vi.fn(), updateUser: vi.fn(),
++  lockout: vi.fn(), rateLimit: vi.fn(), send: vi.fn(),
++}));
++vi.mock("@/lib/server/firebaseAdmin", () => ({ adminAuth: mocks }));
++vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: mocks.lockout }));
++vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rateLimit, applyRateLimitHeaders: vi.fn() }));
++vi.mock("@/lib/server/firebaseAuthEmail", () => ({ sendFirebaseAuthEmail: mocks.send, FirebaseAuthEmailError: class extends Error {} }));
++
++import { POST as confirm } from "./confirm-email-for-mfa/route";
++import { POST as send } from "./email-verification-link/route";
++
++const user = { uid: "synthetic-user", email: "synthetic@example.test", emailVerified: false, disabled: false };
++function request(token: string | null = "test-token") {
++  return new Request("http://localhost/api/auth/email-verification", {
++    method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {},
++    body: JSON.stringify({ emailVerified: true, email: "different@example.test" }),
++  });
++}
++
++describe("email verification API security", () => {
++  beforeEach(() => {
++    vi.resetAllMocks();
++    mocks.verifyIdToken.mockResolvedValue({ uid: user.uid, email: user.email, auth_time: Date.now() / 1000 });
++    mocks.getUser.mockResolvedValue({ ...user });
++    mocks.lockout.mockResolvedValue(null);
++    mocks.rateLimit.mockResolvedValue({ allowed: true });
++    mocks.send.mockResolvedValue(undefined);
++    vi.spyOn(console, "error").mockImplementation(() => {});
++  });
++  afterEach(() => { expect(mocks.updateUser).not.toHaveBeenCalled(); vi.restoreAllMocks(); });
++
++  it("rejects the original bypass even with recent login and a forged body", async () => {
++    const result = await confirm(request());
++    expect(result.status).toBe(403);
++    expect(await result.json()).toMatchObject({ ok: false });
++    expect(result.headers.get("Cache-Control")).toBe("no-store");
++    expect(mocks.verifyIdToken).toHaveBeenCalledExactlyOnceWith("test-token", true);
++  });
++  it("only acknowledges an account already verified in Firebase", async () => {
++    mocks.getUser.mockResolvedValue({ ...user, emailVerified: true });
++    const result = await confirm(request());
++    expect(await result.json()).toEqual({ ok: true, emailVerified: true, alreadyVerified: true });
++  });
++  it.each([confirm, send])("requires a valid bearer before account access", async (route) => {
++    expect((await route(request(null))).status).toBe(401);
++    mocks.verifyIdToken.mockRejectedValue(new Error("invalid"));
++    expect((await route(request())).status).toBe(401);
++    expect(mocks.getUser).not.toHaveBeenCalled();
++    expect(mocks.send).not.toHaveBeenCalled();
++  });
++  it.each([{ disabled: true }, { email: "changed@example.test" }])("blocks disabled or mismatched accounts: %j", async (change) => {
++    mocks.getUser.mockResolvedValue({ ...user, ...change });
++    expect((await confirm(request())).status).toBe(403);
++    expect((await send(request())).status).toBe(403);
++    expect(mocks.send).not.toHaveBeenCalled();
++  });
++  it("sends only to the authenticated owner, ignoring a supplied recipient", async () => {
++    const result = await send(request());
++    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ requestType: "VERIFY_EMAIL", email: user.email });
++    expect(await result.json()).toEqual({ ok: true, sent: true });
++    expect(user.emailVerified).toBe(false);
++  });
++  it("does not resend to an already verified account", async () => {
++    mocks.getUser.mockResolvedValue({ ...user, emailVerified: true });
++    expect(await (await send(request())).json()).toEqual({ ok: true, alreadyVerified: true });
++    expect(mocks.send).not.toHaveBeenCalled();
++  });
++  it("enforces the resend rate limit", async () => {
++    mocks.rateLimit.mockResolvedValue({ allowed: false });
++    expect((await send(request())).status).toBe(429);
++    expect(mocks.send).not.toHaveBeenCalled();
++  });
++  it("does not report success or expose details on delivery failure", async () => {
++    mocks.send.mockRejectedValue(new Error("synthetic@example.test token=private"));
++    const result = await send(request());
++    expect(result.status).toBe(503);
++    expect(await result.text()).not.toMatch(/synthetic@|private/);
++    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toMatch(/synthetic@|private/);
++  });
++});
+--- /dev/null
++++ b/src/app/api/admin/users/security/email.test.ts
+@@ -0,0 +1,41 @@
++import { NextRequest, NextResponse } from "next/server";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({ context: vi.fn(), getUserByEmail: vi.fn(), send: vi.fn() }));
++vi.mock("@/lib/server/adminAuth", () => ({ getAdminAuthContext: mocks.context, adminAuthErrorResponse: () => NextResponse.json({ ok: false }, { status: 403 }) }));
++vi.mock("@/lib/server/firebaseAdmin", () => ({ adminAuth: { getUserByEmail: mocks.getUserByEmail } }));
++vi.mock("@/lib/server/firebaseAuthEmail", () => ({ sendFirebaseAuthEmail: mocks.send }));
++import { POST } from "./route";
++
++const request = () => new NextRequest("http://localhost/api/admin/users/security", {
++  method: "POST", body: JSON.stringify({ action: "sendPasswordReset", targetEmail: "synthetic@example.test" }),
++});
++describe("admin password reset email", () => {
++  beforeEach(() => {
++    vi.resetAllMocks();
++    mocks.context.mockResolvedValue({ adminUid: "synthetic-admin" });
++    mocks.getUserByEmail.mockResolvedValue({ uid: "synthetic-user" });
++    mocks.send.mockResolvedValue(undefined);
++    vi.spyOn(console, "error").mockImplementation(() => {});
++  });
++  afterEach(() => { vi.restoreAllMocks(); });
++  it("requests delivery of the selected account's Firebase action link", async () => {
++    const result = await POST(request());
++    expect(result.status).toBe(200);
++    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ requestType: "PASSWORD_RESET", email: "synthetic@example.test" });
++    expect(await result.json()).toMatchObject({ ok: true });
++  });
++  it("does not send or read users when the caller is not an admin", async () => {
++    mocks.context.mockResolvedValue({ error: "forbidden" });
++    expect((await POST(request())).status).toBe(403);
++    expect(mocks.getUserByEmail).not.toHaveBeenCalled();
++    expect(mocks.send).not.toHaveBeenCalled();
++  });
++  it("reports delivery failure without leaking recipients or tokens", async () => {
++    mocks.send.mockRejectedValue(new Error("recipient@example.test token=private"));
++    const result = await POST(request());
++    expect(result.status).toBe(503);
++    expect(await result.text()).not.toMatch(/recipient@|private/);
++    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toMatch(/recipient@|private/);
++  });
++});
+--- /dev/null
++++ b/src/components/account-setup/useAccountSetupFlow.email.test.tsx
+@@ -0,0 +1,82 @@
++// @vitest-environment happy-dom
++import { act, useEffect } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import type { User } from "firebase/auth";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++
++const mocks = vi.hoisted(() => ({
++  auth: { currentUser: null as User | null, languageCode: "" },
++  send: vi.fn(), session: vi.fn(), secret: vi.fn(), reauthenticate: vi.fn(),
++}));
++vi.mock("@/app/firebase-auth", () => ({ auth: mocks.auth }));
++vi.mock("@/app/lib/authEmailRequest", () => ({ requestVerificationEmail: mocks.send }));
++vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: vi.fn() }));
++vi.mock("@/app/lib/userProfileCache", () => ({ invalidateUserProfileCache: vi.fn() }));
++vi.mock("@/components/profile/useAresIcoLookup", () => ({ useAresIcoLookup: () => ({ status: "idle" }) }));
++vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,test" } }));
++vi.mock("firebase/auth", () => ({
++  EmailAuthProvider: { credential: () => ({}) },
++  FactorId: { TOTP: "totp" },
++  multiFactor: () => ({ enrolledFactors: [], getSession: mocks.session }),
++  reauthenticateWithCredential: mocks.reauthenticate,
++  TotpMultiFactorGenerator: { generateSecret: mocks.secret },
++}));
++import { useAccountSetupFlow } from "./useAccountSetupFlow";
++
++describe("onboarding waits for the inbox before generating a 2FA secret", () => {
++  let root: Root;
++  let container: HTMLDivElement;
++  let flow: ReturnType<typeof useAccountSetupFlow>;
++  let user: { email: string; emailVerified: boolean; reload: ReturnType<typeof vi.fn>; getIdToken: ReturnType<typeof vi.fn> };
++  function Harness() {
++    const currentFlow = useAccountSetupFlow({
++      user: user as unknown as User, loadingProfile: true, accountType: "advisor",
++      subscriptionAccessState: "active", formatIsoDayLabel: () => "", onInternalProfileReady: () => {},
++    });
++    useEffect(() => { flow = currentFlow; }, [currentFlow]);
++    return null;
++  }
++  beforeEach(async () => {
++    vi.resetAllMocks();
++    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++    vi.spyOn(console, "warn").mockImplementation(() => {});
++    user = { email: "synthetic@example.test", emailVerified: false, reload: vi.fn().mockResolvedValue(undefined), getIdToken: vi.fn().mockResolvedValue("synthetic-token") };
++    mocks.auth.currentUser = user as unknown as User;
++    mocks.session.mockResolvedValue("synthetic-session");
++    mocks.secret.mockResolvedValue({ secretKey: "synthetic-secret", generateQrCodeUrl: () => "otpauth://synthetic" });
++    container = document.createElement("div");
++    root = createRoot(container);
++    await act(async () => root.render(<Harness />));
++    await act(async () => flow.syncFromProfileData({ phoneNumber: "777123456", ico: "12345678", positionTimeline: [{ position: "poradce1", validFrom: "2026-01-01" }] }, { accountType: "advisor", hasInternalProfile: true }));
++    await act(async () => flow.openSecuritySetup());
++  });
++  afterEach(async () => { await act(async () => root.unmount()); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
++
++  const start = async () => {
++    await act(async () => flow.onMfaPasswordChange("synthetic-password"));
++    await act(async () => flow.onPrimaryAction());
++  };
++  it("stops after sending, then continues only once Firebase confirms verification", async () => {
++    await start();
++    expect(mocks.send).toHaveBeenCalledOnce();
++    expect(mocks.session).not.toHaveBeenCalled();
++    expect(mocks.secret).not.toHaveBeenCalled();
++    expect(flow.info).toContain("Otevři odkaz ve schránce");
++    expect(flow.mfaPassword).toBe("");
++    expect(flow.mfaSecretKey).toBeNull();
++
++    user.emailVerified = true;
++    await start();
++    expect(user.getIdToken).toHaveBeenCalledWith(true);
++    expect(mocks.send).toHaveBeenCalledOnce();
++    expect(mocks.secret).toHaveBeenCalledExactlyOnceWith("synthetic-session");
++    expect(flow.mfaSecretKey).toBe("synthetic-secret");
++  });
++  it("keeps 2FA disabled and displays an email failure", async () => {
++    mocks.send.mockRejectedValue({ code: "auth/too-many-requests" });
++    await start();
++    expect(flow.error).toContain("Příliš mnoho žádostí");
++    expect(flow.info).toBeNull();
++    expect(mocks.secret).not.toHaveBeenCalled();
++  });
++});

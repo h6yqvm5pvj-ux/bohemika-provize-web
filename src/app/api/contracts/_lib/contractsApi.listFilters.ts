@@ -1,3 +1,4 @@
+import { CAREER_POSITIONS } from "@/app/lib/careerPositions";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import type { ContractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
@@ -259,6 +260,7 @@ export const parseContractListFilters = (
       search.get("institutions"),
       CONTRACT_LIST_INSTITUTION_SET
     ),
+    positions: parseCsvSet(search.get("positions"), new Set(CAREER_POSITIONS)),
     signedFrom,
   };
 };
@@ -278,7 +280,8 @@ export const hasContractListClientFilters = (
     codeFilter: filters.commissionAuditCodeFilter,
   }) ||
   filters.categories.size > 0 ||
-  filters.institutions.size > 0;
+  filters.institutions.size > 0 ||
+  filters.positions.size > 0;
 
 export const hasContractListFilters = (filters: ContractListFilters): boolean =>
   hasContractListClientFilters(filters) || filters.signedFrom != null;
@@ -399,8 +402,8 @@ export function productMatchesListCategory(
   product: Product | undefined,
   categories: Set<ContractListProductCategory>
 ): boolean {
-  if (!product) return false;
   if (categories.size === 0) return true;
+  if (!product) return false;
   for (const category of categories) {
     if (CONTRACT_LIST_PRODUCT_CATEGORY_MAP[category].includes(product)) {
       return true;
@@ -413,8 +416,8 @@ export function productMatchesListInstitution(
   product: Product | undefined,
   institutions: Set<ProductInstitutionId>
 ): boolean {
-  if (!product) return false;
   if (institutions.size === 0) return true;
+  if (!product) return false;
   const institution = productInstitutionId(product);
   return institution != null && institutions.has(institution);
 }
@@ -439,7 +442,8 @@ export function isAnniversarySoonForList(
   const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const next = nextAnniversaryDate(start, now);
-  const diffDays = (next.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  const diffDays = (Date.UTC(next.getFullYear(), next.getMonth(), next.getDate()) -
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / (1000 * 60 * 60 * 24);
   const anniversaryNumber = next.getFullYear() - start.getFullYear();
   return (
     anniversaryNumber >= 1 &&
@@ -487,6 +491,7 @@ export function contractMatchesListFilters(
   }
 
   if (!contractMatchesListSearch(contract, filters.query)) return false;
+  if (filters.positions.size > 0 && (!contract.position || !filters.positions.has(contract.position))) return false;
 
   if (filters.refreshOnly && !contractMatchesRefreshFilter(contract)) {
     return false;

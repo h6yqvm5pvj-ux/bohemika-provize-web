@@ -219,7 +219,7 @@ describe("MailboxChatThread", () => {
         messages={[lazy]}
         hasOlderMessages
         onLoadOlderMessages={async () => undefined}
-        onLoadAttachment={async () => "blob:private-image"}
+        onLoadAttachment={async () => ({ url: "blob:private-image" })}
       />
     );
 

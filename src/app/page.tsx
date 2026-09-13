@@ -2,6 +2,7 @@
 "use client";
 
 import homeWidgetStyles from "./home/components/homeWidgets.module.css";
+import { QuickActionsContent } from "./home/components/QuickActionsContent";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
@@ -546,8 +547,6 @@ export default function HomePage() {
   const [homeWidgets, setHomeWidgets] = useState<HomeWidgets>(HOME_WIDGETS_DEFAULT);
   const [widgetPanelOpen, setWidgetPanelOpen] = useState(false);
   const [quickActions, setQuickActions] = useState<QuickAction[]>([]);
-  const [qaPickerOpen, setQaPickerOpen] = useState(false);
-  const qaButtonRef = useRef<HTMLButtonElement | null>(null);
   const [homeLayout, setHomeLayout] = useState<HomeSection[]>(HOME_LAYOUT_DEFAULT);
   const [draggingSection, setDraggingSection] = useState<HomeSection | null>(null);
   const [hoverSection, setHoverSection] = useState<HomeSection | null>(null);
@@ -614,6 +613,8 @@ export default function HomePage() {
     teamImmediateSum,
     teamImmediatePrevSum,
     summaryLoading,
+    tipSummaryLoading,
+    tipSummaryError,
     historyLoading,
   } = useHomeData({
     email: advisorDataEmail,
@@ -1097,7 +1098,7 @@ export default function HomePage() {
 
   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
   const showTeamBox = hasTeam;
-  const hasTipContract = myTipContractsCount > 0;
+  const hasTipContract = myTipContractsCount > 0 || tipSummaryLoading || Boolean(tipSummaryError);
   // Poradce bez týmu potřebuje plnou šířku až ve chvíli, kdy vedle vlastní
   // produkce zobrazujeme také samostatnou kartu tipařské produkce.
   const shouldExpandProductionSummary =
@@ -1140,6 +1141,7 @@ export default function HomePage() {
   const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
   const homeRefreshBusy =
     summaryLoading ||
+    tipSummaryLoading ||
     historyLoading ||
     expectedPayoutLoading ||
     goldLoading;
@@ -1206,6 +1208,8 @@ export default function HomePage() {
           <ProductionSummarySection
             language={language}
             loading={summaryLoading}
+            tipSummaryLoading={tipSummaryLoading}
+            tipSummaryError={tipSummaryError}
             showTeamBox={showTeamBox}
             showOnlyTeamProduction={showOnlyTeamProduction}
             myPremiums={myPremiums}
@@ -1233,7 +1237,8 @@ export default function HomePage() {
             monthlyGoal={monthlyGoal}
             progress={progress}
             progressTone={progressTone}
-            loading={summaryLoading}
+            loading={summaryLoading || (showTeamBox && tipSummaryLoading)}
+            unavailable={showTeamBox && Boolean(tipSummaryError)}
             isLiteUI={isLiteUI}
             onSaveGoal={saveMonthlyGoal}
           />
@@ -1282,100 +1287,13 @@ export default function HomePage() {
             onDragOver={(e) => handleSectionDragOver(e, id)}
             onDragEnd={handleSectionDragEnd}
           >
-            <div className={homeWidgetStyles.quickHeader}>
-              <div className="min-w-0">
-                <h2 className={homeWidgetStyles.title}>
-                  <span className={homeWidgetStyles.icon}>
-                    <Zap className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0">{copy.quickActions.title}</span>
-                </h2>
-              </div>
-              <div className="relative z-30">
-                <button
-                  type="button"
-                  ref={qaButtonRef}
-                  onClick={() => setQaPickerOpen((v) => !v)}
-                  className={homeWidgetStyles.button}
-                  aria-expanded={qaPickerOpen}
-                >
-                  {copy.quickActions.add}
-                </button>
-                {qaPickerOpen && (
-                  <div
-                    className="absolute right-0 top-full z-50 mt-2 max-h-[320px] w-72 max-w-[calc(100vw-64px)] space-y-2 overflow-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                        {copy.quickActions.pickerTitle}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setQaPickerOpen(false)}
-                        className="text-[12px] text-slate-500 hover:text-slate-900"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    {availableQA.length === 0 ? (
-                      <p className="text-xs text-slate-600">{copy.quickActions.allAdded}</p>
-                    ) : (
-                      availableQA.map((opt) => {
-                        const actionText = resolveQuickActionText(opt, language);
-                        return (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={() => {
-                              persistQuickActions((prev) => [...prev, opt]);
-                              setQaPickerOpen(false);
-                            }}
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 transition hover:bg-white"
-                          >
-                            <div className="font-semibold">{actionText.title}</div>
-                            <div className="text-[11px] text-slate-500">
-                              {actionText.category ?? copy.quickActions.categoryFallback}
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {quickActions.length === 0 ? (
-              <p className={homeWidgetStyles.quickEmpty}>
-                {copy.quickActions.empty}
-              </p>
-            ) : (
-              <div className={homeWidgetStyles.quickList}>
-                {quickActions.map((qa) => {
-                  const actionText = resolveQuickActionText(qa, language);
-                  return (
-                    <div
-                      key={qa.key}
-                      className={homeWidgetStyles.quickChip}
-                    >
-                      <Link href={qa.href} className="transition">
-                        {actionText.title}
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          persistQuickActions((prev) => prev.filter((item) => item.key !== qa.key))
-                        }
-                        className="text-xs transition"
-                        aria-label={`${copy.quickActions.removeAriaPrefix} ${actionText.title}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <QuickActionsContent
+              actions={quickActions.map(action => ({ ...action, ...resolveQuickActionText(action, language) }))}
+              availableActions={availableQA.map(action => ({ ...action, ...resolveQuickActionText(action, language) }))}
+              copy={copy.quickActions}
+              onAdd={action => persistQuickActions(prev => [...prev, action])}
+              onRemove={key => persistQuickActions(prev => prev.filter(action => action.key !== key))}
+            />
           </section>
         );
       case "chart":

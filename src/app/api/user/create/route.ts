@@ -1,3 +1,4 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -203,6 +204,7 @@ function mapAuthCreateError(error: unknown): { message: string; status: number }
 }
 
 export async function POST(req: NextRequest) {
+  return withCashflowMutation("app/api/user/create/route:POST", async () => {
   const ctx = await getAccountCreatorAuthContext(req, {
     actionLabel: "vytváření uživatelů",
   });
@@ -362,7 +364,7 @@ export async function POST(req: NextRequest) {
     batch.set(adminDb.collection("usersPrivate").doc(parsed.email), privateProfile, {
       merge: false,
     });
-    await batch.commit();
+    await trackCashflowWrite(() => batch.commit());
 
     const res = NextResponse.json({
       ok: true,
@@ -389,4 +391,5 @@ export async function POST(req: NextRequest) {
     applyRateLimitHeaders(res.headers, rateLimit);
     return res;
   }
+  });
 }

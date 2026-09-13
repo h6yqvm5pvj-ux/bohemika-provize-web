@@ -1,3 +1,5 @@
+import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -13,6 +15,18 @@ import {
   isSafeContractNoteId,
   normalizeContractNoteMutation,
 } from "./contractNotes";
+
+const reminderLabel = (value: unknown): string | null => typeof value === "number" && Number.isFinite(value)
+  ? new Date(value).toLocaleString("cs-CZ", { timeZone: "Europe/Prague" }) : null;
+const commitNotes = async (batch: FirebaseFirestore.WriteBatch, withRateLimit: (response: NextResponse) => NextResponse) => {
+  try { await trackCashflowWrite(() => batch.commit()); return null; }
+  catch (error) {
+    if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Smlouva se mezitím změnila. Obnov detail a zkus uložení znovu." }, { status: 409 }));
+    }
+    throw error;
+  }
+};
 
 const CONTRACT_NOTES_COLLECTION = "contractNotes";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -181,8 +195,11 @@ const authorizeContract = async ({
     ok: true as const,
     contract,
     contractRef,
-    notesRef: contractRef.collection(CONTRACT_NOTES_COLLECTION),
-    actorEmail: guard.ctx.email,
+    contractSnap,
+    notesRef: (typeof contract.contractNotesPath === "string" && /^users\/[^/]+\/entries\/[^/]+$/.test(contract.contractNotesPath)
+      ? adminDb.doc(contract.contractNotesPath) : contractRef).collection(CONTRACT_NOTES_COLLECTION),
+    actorEmail: guard.ctx.actorEmail,
+    reminderRecipientEmail: guard.ctx.email,
     withRateLimit: guard.withRateLimit,
   };
 };
@@ -220,6 +237,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  return withCashflowMutation("app/api/contracts/notes/route:POST", async () => {
   const body = await readJsonBody(req);
   if (!body) {
     return NextResponse.json(
@@ -260,7 +278,7 @@ export async function POST(req: NextRequest) {
     reminderEnabled: normalized.value.reminderEnabled,
     reminderAtMs: normalized.value.reminderAtMs,
     ...(normalized.value.reminderEnabled
-      ? { reminderRecipientEmail: access.actorEmail }
+      ? { reminderRecipientEmail: access.reminderRecipientEmail }
       : {}),
     createdByEmail: access.actorEmail,
     updatedByEmail: access.actorEmail,
@@ -269,14 +287,26 @@ export async function POST(req: NextRequest) {
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  await noteRef.set(data);
+  const batch = adminDb!.batch();
+  batch.create(noteRef, data);
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, {}, {
+    actorEmail: access.actorEmail, kind: "note", title: "Přidána poznámka",
+    changes: [
+      { label: "Poznámka", before: null, after: normalized.value.text },
+      { label: "Připomínka", before: null, after: reminderLabel(normalized.value.reminderAtMs) },
+    ],
+  }), { lastUpdateTime: access.contractSnap.updateTime! });
+  const conflict = await commitNotes(batch, access.withRateLimit);
+  if (conflict) return conflict;
 
   return access.withRateLimit(
     NextResponse.json({ ok: true, note: noteDto(noteRef.id, data) })
   );
+  });
 }
 
 export async function PATCH(req: NextRequest) {
+  return withCashflowMutation("app/api/contracts/notes/route:PATCH", async () => {
   const body = await readJsonBody(req);
   if (!body) {
     return NextResponse.json(
@@ -340,7 +370,7 @@ export async function PATCH(req: NextRequest) {
     reminderEnabled: normalized.value.reminderEnabled,
     reminderAtMs: normalized.value.reminderAtMs,
     reminderRecipientEmail: normalized.value.reminderEnabled
-      ? access.actorEmail
+      ? access.reminderRecipientEmail
       : FieldValue.delete(),
     reminderLastSentForAtMs: FieldValue.delete(),
     reminderSentAtMs: FieldValue.delete(),
@@ -361,8 +391,15 @@ export async function PATCH(req: NextRequest) {
   };
   const batch = adminDb!.batch();
   batch.set(noteRef, updateData, { merge: true });
-  if (noteId === "legacy") batch.update(access.contractRef, { note: "" });
-  await batch.commit();
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, noteId === "legacy" ? { note: "" } : {}, {
+    actorEmail: access.actorEmail, kind: "note", title: "Upravena poznámka",
+    changes: [
+      { label: "Poznámka", before: String(existingData.text ?? legacyText), after: normalized.value.text },
+      { label: "Připomínka", before: reminderLabel(existingData.reminderAtMs), after: reminderLabel(normalized.value.reminderAtMs) },
+    ].filter(change => change.before !== change.after),
+  }), { lastUpdateTime: access.contractSnap.updateTime! });
+  const conflict = await commitNotes(batch, access.withRateLimit);
+  if (conflict) return conflict;
 
   return access.withRateLimit(
     NextResponse.json({
@@ -374,9 +411,11 @@ export async function PATCH(req: NextRequest) {
       }),
     })
   );
+  });
 }
 
 export async function DELETE(req: NextRequest) {
+  return withCashflowMutation("app/api/contracts/notes/route:DELETE", async () => {
   const body = await readJsonBody(req);
   if (!body) {
     return NextResponse.json(
@@ -409,8 +448,13 @@ export async function DELETE(req: NextRequest) {
 
   const batch = adminDb!.batch();
   if (noteSnap.exists) batch.delete(noteRef);
-  if (noteId === "legacy") batch.update(access.contractRef, { note: "" });
-  await batch.commit();
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, noteId === "legacy" ? { note: "" } : {}, {
+    actorEmail: access.actorEmail, kind: "note", title: "Odstraněna poznámka",
+    changes: [{ label: "Poznámka", before: String(noteSnap.data()?.text ?? access.contract.note ?? ""), after: null }],
+  }), { lastUpdateTime: access.contractSnap.updateTime! });
+  const conflict = await commitNotes(batch, access.withRateLimit);
+  if (conflict) return conflict;
 
   return access.withRateLimit(NextResponse.json({ ok: true, deleted: noteId }));
+  });
 }
