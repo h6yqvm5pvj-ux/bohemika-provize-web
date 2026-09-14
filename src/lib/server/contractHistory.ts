@@ -1,10 +1,11 @@
+import { writeClientContractLink } from "./clientContractIndex";
 import { randomUUID } from "node:crypto";
 import { FieldPath, type DocumentReference } from "firebase-admin/firestore";
 import { contractHistoryChanges, legacyContractHistory, type ContractHistoryEvent } from "@/app/lib/contractHistory";
 import { contractNoteLocationRef } from "./contractNoteLocation";
 
 export const CONTRACT_HISTORIES_COLLECTION = "contractHistories";
-type Writer = { set(ref: DocumentReference, data: Record<string, unknown>): unknown };
+type Writer = { set(ref: DocumentReference, data: Record<string, unknown>): unknown; delete(ref: DocumentReference): unknown };
 type EventInput = Partial<Pick<ContractHistoryEvent, "title" | "kind" | "changes" | "atMs">> & { actorEmail: string | null };
 const safeId = (id: unknown): id is string => typeof id === "string" && /^[\w-]{1,100}$/.test(id);
 
@@ -12,6 +13,7 @@ const safeId = (id: unknown): id is string => typeof id === "string" && /^[\w-]{
  * caller must guard the source snapshot with lastUpdateTime (including deletes
  * on transfer), so concurrent edits cannot fork or overwrite the history. */
 export function withContractHistory(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>, input: EventInput): Record<string, unknown> {
+  writeClientContractLink(writer, ref, before, patch, input.kind === "transfer");
   const changes = input.changes ?? contractHistoryChanges(before, patch);
   if (!changes.length && !input.kind) return patch;
   const hasHistory = safeId(before.contractHistoryId);

@@ -1,5 +1,6 @@
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { savePremiumBaseResolution, PremiumBaseResolutionError } from "@/lib/server/premiumBaseResolution";
 import { createHash } from "node:crypto";
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -3770,7 +3771,7 @@ const createProcessingBatchWriter = () => {
     batch.update(match.ref, withContractHistory(batch, match.ref, match.contract, patch, {
       actorEmail, title: "Aktualizace údajů podle provizního výpisu",
     }), { lastUpdateTime: match.updateTime });
-    ops += 4; // Contract, event and at most two older records.
+    ops += 5; // Contract, client link, event and at most two older records.
     if (ops >= 400) await commit();
   };
   return { set, updateContract, commit };
@@ -5093,6 +5094,21 @@ export async function POST(req: NextRequest) {
   }
 
   const action = normalizeText(body.action, 80);
+  if (action === "resolve-premium-base") {
+    if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json({ ok: false, error: "Nemáš oprávnění upravovat základnu." }, { status: 403 }));
+    try {
+      const result = await savePremiumBaseResolution(adminDb, {
+        body, viewerEmail: ctx.email, actorEmail: ctx.actorEmail, teamEmails: ctx.teamEmails,
+        canManageContractsAsAdmin: ctx.canManageContractsAsAdmin,
+        parseRows: extractAutoPremiumRowsFromStoredHtml,
+      });
+      return withRateLimit(NextResponse.json(result));
+    } catch (error) {
+      return withRateLimit(NextResponse.json({ ok: false,
+        error: error instanceof PremiumBaseResolutionError ? error.message : "Potvrzení základny se nepodařilo uložit." },
+      { status: error instanceof PremiumBaseResolutionError ? error.status : 500 }));
+    }
+  }
   if (action === "convert-neon-refresh-from-statement") {
     try {
       return await handleManualNeonRefreshConversion({

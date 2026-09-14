@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { premiumBaseSourceKey, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 
 import {
   annualPremiumFromStoredHistoryEntry,
@@ -21,6 +22,16 @@ const statementContext = {
   statementChronologyMs: Date.UTC(2021, 4, 31),
   nowMs: Date.UTC(2026, 7, 1),
   writtenBy: "vojtech.mahr@bohemika.eu",
+};
+
+const confirmedEntry = (input: Parameters<typeof premiumHistoryEntryFromStatementRow>[0]) => {
+  const source = { ...input.row, statementId: input.statementId, statementNumber: input.statementNumber,
+    statementPeriod: input.statementPeriod, statementDate: input.statementDate, statementOwnerEmail: input.writtenBy };
+  const confirmation: PremiumBaseResolution = { ...source, key: premiumBaseSourceKey(source, input.contract),
+    productKey: input.contract.productKey!, frequencyRaw: input.contract.frequencyRaw as PremiumBaseResolution["frequencyRaw"],
+    period: "payment", confirmedAtMs: input.nowMs, confirmedBy: input.writtenBy, writtenBy: input.writtenBy,
+    statementChronologyMs: input.statementChronologyMs, payoutMonthKey: input.payoutMonthKey };
+  return premiumHistoryEntryFromStatementRow({ ...input, contract: { ...input.contract, premiumStatementBaseResolutions: [confirmation] } });
 };
 
 const autoContract = (
@@ -196,7 +207,7 @@ describe("premium statement history", () => {
   });
 
   it("keeps CPP Auto initial statement base as the payment base for semiannual contracts", () => {
-    const initial = premiumHistoryEntryFromStatementRow({
+    const initial = confirmedEntry({
       row: {
         premiumKind: "auto_initial",
         rowId: "kuzelova-a-row",
@@ -234,7 +245,7 @@ describe("premium statement history", () => {
     });
   });
 
-  it("keeps CPP Auto statement base unchanged when contract frequency is missing", () => {
+  it("does not invent an annual premium when contract frequency is missing", () => {
     const initial = premiumHistoryEntryFromStatementRow({
       row: {
         premiumKind: "auto_initial",
@@ -264,17 +275,11 @@ describe("premium statement history", () => {
       allowCurrentPremiumFallback: false,
     });
 
-    expect(initial).toMatchObject({
-      premiumKind: "auto_initial",
-      basePremiumPeriod: "payment",
-      anniversaryDate: "2020-07-29",
-      newPremium: 10709,
-      newAnnualPremium: 10709,
-    });
+    expect(initial).toBeNull();
   });
 
   it("detects a delayed CPP Auto anniversary payout from the commission code", () => {
-    const change = premiumHistoryEntryFromStatementRow({
+    const change = confirmedEntry({
       row: {
         premiumKind: "auto_change",
         rowId: "339307",
@@ -340,7 +345,7 @@ describe("premium statement history", () => {
       writtenAtMs: 1,
       writtenBy: "jakub.rauscher@bohemika.eu",
     };
-    const change = premiumHistoryEntryFromStatementRow({
+    const change = confirmedEntry({
       row: {
         premiumKind: "auto_change",
         rowId: "416477",
@@ -457,7 +462,7 @@ describe("premium statement history", () => {
   });
 
   it("ignores a CPP Auto semiannual B row that is only the second installment", () => {
-    const change = premiumHistoryEntryFromStatementRow({
+    const change = confirmedEntry({
       row: {
         premiumKind: "auto_change",
         rowId: "semiannual-b102-row",
@@ -489,7 +494,7 @@ describe("premium statement history", () => {
   });
 
   it("maps a CPP Auto semiannual B103 row to the second anniversary", () => {
-    const change = premiumHistoryEntryFromStatementRow({
+    const change = confirmedEntry({
       row: {
         premiumKind: "auto_change",
         rowId: "semiannual-b103-row",

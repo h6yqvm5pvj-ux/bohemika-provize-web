@@ -2,22 +2,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams } from "next/navigation";
-import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
+import { useParams, useSearchParams } from "next/navigation";
+import type { User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
-  ArrowLeft,
+  ArrowUpRight,
+  ChevronRight,
+  History,
+  LayoutGrid,
   Archive,
   CalendarDays,
   ChevronDown,
-  ExternalLink,
   FileText,
   Home,
   IdCard,
   MapPin,
+  LoaderCircle,
+  LockKeyhole,
+  X,
   Pencil,
   Plus,
   Save,
@@ -26,7 +30,6 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   PRODUCT_CATALOG,
@@ -41,12 +44,18 @@ import {
   type InstitutionLogoKey,
 } from "@/app/lib/institutionLogoDisplay";
 import type { Product } from "@/app/types/domain";
-import {
-  TEST_CLIENT_NAME,
-  TEST_CLIENT_SLUG,
-  canAccessClientCards,
-  isTestClientName,
-} from "../clientAccess";
+import { ClientSession } from "../ClientSession";
+import { ClientDetailLoader } from "../ClientDetailLoader";
+import { ClientNotesSection } from "../ClientNotesSection";
+import { ClientProfileHeader } from "../ClientProfileHeader";
+import styles from "../clientCard.module.css";
+import { ClientLinkIndicator } from "../ClientLinkIndicator";
+import { clientScopeQuery, readClientScope, selectClientContracts, type ClientScopeSelection } from "../clientScope";
+import { buildClientDirectory } from "../clientDirectory";
+import { isClientCardSlug } from "../clientIdentity";
+import { loadClientContracts } from "../loadClientContracts";
+import { loadSharedClientContracts } from "../loadSharedClientContracts";
+import type { SharedClientContractsResponse, SharedContractSummary } from "../sharedClientContracts";
 import {
   createEmptyClientCard,
   MAX_CLIENT_IDENTITY_DOCUMENTS,
@@ -56,9 +65,6 @@ import {
   type IdentityDocumentType,
 } from "../clientCardData";
 import {
-  bestClientAddress,
-  bestClientEmail,
-  bestClientPhone,
   clientContractProductLabel,
   clientContractStatusLabel,
   collectAddressSuggestions,
@@ -66,9 +72,10 @@ import {
   formatDate,
   parseBirthNumberDate,
   splitClientContracts,
+  contractConcludingAdviserEmail,
   uniqueContracts,
+  type ClientAdviser,
   type ClientContractItem,
-  type ClientContractsResponse,
 } from "../clientCardHelpers";
 
 type CuzkSuggestion = {
@@ -192,37 +199,6 @@ function identityDocumentExpiryWarning(validTo: string): {
   return null;
 }
 
-async function loadMartinContracts(user: FirebaseUser): Promise<ClientContractItem[]> {
-  const params = new URLSearchParams({
-    scope: "my",
-    q: TEST_CLIENT_NAME,
-    limit: "50",
-  });
-
-  const ownPayload = (await fetchAuthedJsonOrThrow(
-    user,
-    `/api/contracts/list?${params.toString()}`
-  )) as ClientContractsResponse;
-
-  let teamContracts: ClientContractItem[] = [];
-  const teamParams = new URLSearchParams(params);
-  teamParams.set("scope", "team");
-
-  try {
-    const teamPayload = (await fetchAuthedJsonOrThrow(
-      user,
-      `/api/contracts/list?${teamParams.toString()}`
-    )) as ClientContractsResponse;
-    teamContracts = teamPayload.contracts ?? [];
-  } catch {
-    teamContracts = [];
-  }
-
-  return uniqueContracts([...(ownPayload.contracts ?? []), ...teamContracts]).filter(
-    (contract) => isTestClientName(contract.clientName)
-  );
-}
-
 function normalizeSuggestion(value: CuzkSuggestion | string): string {
   if (typeof value === "string") return value.trim();
   return String(value.adresa ?? value.text ?? value.label ?? "").trim();
@@ -246,8 +222,8 @@ function Field({
   disabled?: boolean;
 }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>
         {label}
       </span>
       <input
@@ -255,15 +231,11 @@ function Field({
         autoComplete="off"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
+        placeholder={disabled ? "Nevyplněno" : placeholder}
         disabled={disabled}
-        className={`h-12 w-full rounded-2xl border px-3.5 text-sm font-semibold outline-none transition placeholder:text-slate-400 sm:text-base ${
-          disabled
-            ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-700"
-            : "border-slate-200 bg-white text-slate-950 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"
-        }`}
+        className={styles.fieldInput}
       />
-      {helper ? <span className="block text-xs font-semibold text-slate-500">{helper}</span> : null}
+      {helper ? <span className={styles.fieldHelp}>{helper}</span> : null}
     </label>
   );
 }
@@ -289,39 +261,41 @@ function AddressField({
 
   useEffect(() => {
     const query = value.trim();
-    if (disabled || !user || query.length < 3) {
+    if (disabled || !focused || !user || query.length < 3) {
       setRemoteSuggestions([]);
       setLoading(false);
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
+    setLoading(true);
+    setRemoteSuggestions([]);
     const timeout = window.setTimeout(async () => {
-      setLoading(true);
       try {
         const params = new URLSearchParams({ action: "suggest", q: query });
         const payload = (await fetchAuthedJsonOrThrow(
           user,
-          `/api/cuzk/search?${params.toString()}`
+          `/api/cuzk/search?${params.toString()}`,
+          { signal: controller.signal },
         )) as { suggestions?: Array<CuzkSuggestion | string> };
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const next = (payload.suggestions ?? [])
           .map(normalizeSuggestion)
           .filter(Boolean)
           .slice(0, 6);
         setRemoteSuggestions(next);
       } catch {
-        if (!cancelled) setRemoteSuggestions([]);
+        if (!controller.signal.aborted) setRemoteSuggestions([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 260);
 
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [disabled, user, value]);
+  }, [disabled, focused, user, value]);
 
   const suggestions = useMemo(() => {
     const seen = new Set<string>();
@@ -334,7 +308,7 @@ function AddressField({
 
   return (
     <div className="relative space-y-1">
-      <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
+      <span className={styles.fieldLabel}>
         {label}
       </span>
       <div className="relative">
@@ -348,17 +322,16 @@ function AddressField({
             if (!disabled) setFocused(true);
           }}
           onBlur={() => window.setTimeout(() => setFocused(false), 120)}
-          placeholder="Začni psát adresu..."
+          aria-label={label}
+          aria-busy={loading}
+          placeholder={disabled ? "Nevyplněno" : "Začni psát adresu..."}
           disabled={disabled}
-          className={`h-12 w-full rounded-2xl border pl-10 pr-3.5 text-sm font-semibold outline-none transition placeholder:text-slate-400 sm:text-base ${
-            disabled
-              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-700"
-              : "border-slate-200 bg-white text-slate-950 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"
-          }`}
+          className={styles.fieldInput} style={{ paddingLeft: 38, paddingRight: 40 }}
         />
+        {loading && !disabled && <LoaderCircle aria-hidden="true" className="absolute right-4 top-4 h-4 w-4 animate-spin text-violet-600 motion-reduce:animate-none" />}
       </div>
-      <span className="block text-xs font-semibold text-slate-500">
-        {loading ? "Našeptávám adresu..." : "Našeptávač bere adresy ze smluv a RÚIAN."}
+      <span role="status" className={styles.fieldHelp}>
+        {!disabled && (loading ? "Našeptávám adresu…" : "Vyber adresu z nabídky.")}
       </span>
       {!disabled && focused && suggestions.length > 0 ? (
         <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.16)]">
@@ -433,10 +406,10 @@ function IdentityDocumentsSection({
   };
 
   return (
-    <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.07)]">
-      <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className={styles.panel}>
+      <div className={styles.panelHeader}>
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+          <span className={styles.sectionIcon}>
             <IdCard className="h-5 w-5" />
           </span>
           <div>
@@ -462,7 +435,7 @@ function IdentityDocumentsSection({
       </div>
 
       {documents.length > 0 ? (
-        <div className="space-y-3 p-4">
+        <div className={styles.documentList}>
           {documents.map((document, index) => {
             const meta = identityDocumentTypeMeta(document.type);
             const expiryWarning = identityDocumentExpiryWarning(document.validTo);
@@ -470,13 +443,7 @@ function IdentityDocumentsSection({
             return (
               <div
                 key={document.id}
-                className={`overflow-hidden rounded-[20px] border bg-slate-50 ${
-                  expiryWarning?.tone === "expired"
-                    ? "border-rose-300"
-                    : expiryWarning?.tone === "warning"
-                      ? "border-amber-300"
-                      : "border-slate-200"
-                }`}
+                className={styles.document} data-warning={expiryWarning?.tone}
               >
                 <div
                   className={`flex flex-col gap-3 bg-white px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between ${
@@ -565,8 +532,8 @@ function IdentityDocumentsSection({
                     ) : null}
 
                     <div className="grid gap-3 p-3.5 md:grid-cols-2 xl:grid-cols-3">
-                      <label className="block space-y-1">
-                        <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
+                      <label className={styles.field}>
+                        <span className={styles.fieldLabel}>
                           Typ dokladu
                         </span>
                         <select
@@ -721,10 +688,6 @@ function contractLogo(contract: ClientContractItem): {
   };
 }
 
-function adviserEmail(contract: ClientContractItem): string {
-  return (contract.adviserEmail ?? contract.userEmail ?? "").trim().toLowerCase();
-}
-
 function adviserNameFromEmail(email: string): string {
   if (!email) return "Neuvedeno";
   const beforeAt = email.split("@")[0] ?? "";
@@ -737,223 +700,106 @@ function adviserNameFromEmail(email: string): string {
 
 function ContractCard({ contract }: { contract: ClientContractItem }) {
   const [expanded, setExpanded] = useState(false);
-  const [note, setNote] = useState("");
-  const [noteVisibility, setNoteVisibility] = useState<"public" | "private">("private");
   const logo = contractLogo(contract);
-  const signerEmail = adviserEmail(contract);
-  const logoFrameClass = institutionLogoFrameClass(logo.logoKey, "compact");
-  const logoImageClass = institutionLogoImageClass(logo.logoKey);
+  const signerEmail = contractConcludingAdviserEmail(contract);
+  const adviser = contract.originalAdviserName ||
+    (signerEmail === (contract.adviserEmail || contract.userEmail) ? contract.adviserName : null) ||
+    adviserNameFromEmail(signerEmail);
+  const title = clientContractProductLabel(contract);
+  const status = clientContractStatusLabel(contract);
 
-  return (
-    <article
-      className={`overflow-hidden rounded-2xl border bg-slate-50 transition ${
-        expanded ? "border-violet-200 bg-white" : "border-slate-200 hover:border-violet-200"
-      }`}
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((current) => !current)}
-        className="flex w-full flex-col gap-3 px-3.5 py-3.5 text-left"
-        aria-expanded={expanded}
-      >
-        <span className="flex min-w-0 items-start gap-3">
-          <span className="inline-flex h-12 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 shadow-sm">
-            <span className={`relative block ${logoFrameClass}`}>
-              <Image
-                src={logo.src}
-                alt={`${logo.alt} logo`}
-                fill
-                sizes="64px"
-                className={logoImageClass}
-              />
-            </span>
-          </span>
-          <span className="min-w-0">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold text-slate-950">
-                {clientContractProductLabel(contract)}
-              </span>
-              <span className="rounded-full border border-violet-100 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                {clientContractStatusLabel(contract)}
-              </span>
-            </span>
-            <span className="mt-1 block truncate text-sm text-slate-600">
-              Číslo smlouvy:{" "}
-              <span className="font-semibold text-slate-900">
-                {contract.contractNumber?.trim() || "—"}
-              </span>
-            </span>
-            <span className="mt-1 block text-xs font-medium text-slate-500">
-              Sjednáno {formatDate(contract.contractSignedDate)} · Počátek {formatDate(contract.policyStartDate)}
-            </span>
-          </span>
+  return <article className={styles.contract}>
+    <div className={styles.contractTop}>
+      <span className={styles.contractLogo}>
+        <span className={`relative block ${institutionLogoFrameClass(logo.logoKey, "compact")}`}>
+          <Image src={logo.src} alt={`${logo.alt} logo`} fill sizes="48px" className={institutionLogoImageClass(logo.logoKey)} />
         </span>
-        <span className="inline-flex w-fit shrink-0 items-center gap-2 self-end rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800">
-          Detail
-          <ChevronDown
-            className={`h-3.5 w-3.5 transition ${expanded ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
-
-      {expanded ? (
-        <div className="border-t border-slate-100 bg-white px-4 pb-4 pt-1">
-          <div className="grid gap-3 py-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Sjednal
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-950">
-                {adviserNameFromEmail(signerEmail)}
-              </div>
-              <div className="mt-0.5 break-words text-xs font-medium text-slate-500">
-                {signerEmail || "E-mail není dostupný"}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Datum sjednání
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-950">
-                {formatDate(contract.contractSignedDate)}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Počátek smlouvy
-              </div>
-              <div className="mt-1 text-sm font-bold text-slate-950">
-                {formatDate(contract.policyStartDate)}
-              </div>
-            </div>
-          </div>
-
-          <label className="block space-y-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
-              Poznámka
-            </span>
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Doplň poznámku ke smlouvě..."
-              rows={3}
-              className="w-full resize-none rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10"
-            />
-          </label>
-
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 p-1">
-              {(["private", "public"] as const).map((visibility) => (
-                <button
-                  key={visibility}
-                  type="button"
-                  onClick={() => setNoteVisibility(visibility)}
-                  className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                    noteVisibility === visibility
-                      ? "bg-violet-600 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-950"
-                  }`}
-                >
-                  {visibility === "private" ? "Neveřejná" : "Veřejná"}
-                </button>
-              ))}
-            </div>
-            <Link
-              href={contractDetailHref(contract)}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_12px_28px_rgba(124,58,237,0.28)] transition hover:bg-violet-700"
-            >
-              Zobrazit smlouvu
-              <ExternalLink className="h-4 w-4" />
-            </Link>
-          </div>
+      </span>
+      <div className={styles.contractInfo}>
+        <div className={styles.contractHeading}>
+          <Link href={contractDetailHref(contract)} className={styles.contractTitle}>{title}</Link>
+          <span className={styles.status} data-archived={status !== "Aktivní"}>{status}</span>
         </div>
-      ) : null}
-    </article>
-  );
+        <span className={styles.contractNumber}>č. {contract.contractNumber?.trim() || "Neuvedeno"}</span>
+        <div className={styles.contractMeta}>
+          <span><CalendarDays size={12} aria-hidden="true" />Počátek {formatDate(contract.policyStartDate)}</span>
+          <span><UserRound size={12} aria-hidden="true" />{adviser}</span>
+        </div>
+      </div>
+      <div className={styles.contractActions}>
+        <Link href={contractDetailHref(contract)} className={styles.iconButton} title="Otevřít smlouvu" aria-label={`Otevřít smlouvu ${title} ${contract.contractNumber || ""}`}><ArrowUpRight size={17} aria-hidden="true" /></Link>
+        <button type="button" onClick={() => setExpanded(value => !value)} className={styles.iconButton}
+          title={expanded ? "Skrýt podrobnosti" : "Rychlý náhled"} aria-label={`${expanded ? "Skrýt podrobnosti" : "Rychlý náhled"}: ${title}`} aria-expanded={expanded}>
+          <ChevronDown size={15} className={expanded ? "rotate-180" : ""} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+    {expanded && <div className={styles.contractDetails}>
+      <strong>{contract.clientName}</strong>
+      <div className="mt-1 flex flex-wrap gap-x-3 break-words">
+        {contract.clientPhone && <span>{contract.clientPhone}</span>}
+        {contract.clientEmail && <span>{contract.clientEmail}</span>}
+        {contract.clientAddress && <span>{contract.clientAddress}</span>}
+      </div>
+      <dl>
+        <div><dt>Sjednal</dt><dd>{adviser}<br />{signerEmail || "E-mail není dostupný"}</dd></div>
+        <div><dt>Datum sjednání</dt><dd>{formatDate(contract.contractSignedDate)}</dd></div>
+      </dl>
+      <Link href={contractDetailHref(contract)} className={styles.button}>Zobrazit smlouvu<ClientLinkIndicator kind="open" /></Link>
+    </div>}
+  </article>;
 }
 
-function ContractList({
-  title,
-  icon,
-  contracts,
-  emptyText,
-}: {
-  title: string;
-  icon: ReactNode;
-  contracts: ClientContractItem[];
-  emptyText: string;
-}) {
-  return (
-    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-        <h2 className="inline-flex items-center gap-2 text-xl font-bold tracking-tight text-slate-950">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
-            {icon}
-          </span>
-          {title}
-        </h2>
-        <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
-          {contracts.length}
-        </span>
-      </div>
+function RestrictedContractCard({ summary }: { summary: SharedContractSummary }) {
+  const logo = contractLogo({ id: "", productKey: summary.productKey });
+  return <article aria-label="Smlouva jiného poradce" className={styles.restricted}>
+    <span className={styles.contractLogo}>
+      <span className={`relative block ${institutionLogoFrameClass(logo.logoKey, "compact")}`}><Image src={logo.src} alt={`${logo.alt} logo`} fill sizes="48px" className={institutionLogoImageClass(logo.logoKey)} /></span>
+    </span>
+    <div className="min-w-0 flex-1">
+      <h3>{clientContractProductLabel({ id: "", productKey: summary.productKey })}</h3>
+      <p>Sjednal <strong className="font-medium">{summary.adviserName}</strong></p>
+      <span className={styles.restrictedBadge}><LockKeyhole size={11} aria-hidden="true" />Pouze přehled</span>
+    </div>
+  </article>;
+}
 
-      {contracts.length > 0 ? (
-        <div className="grid gap-3 p-4 lg:grid-cols-2">
-          {contracts.map((contract) => (
-            <ContractCard
-              key={`${contract.adviserEmail ?? contract.userEmail ?? "owner"}-${contract.id}`}
-              contract={contract}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-500">
-          {emptyText}
-        </div>
-      )}
-    </section>
-  );
+function ContractList({ title, icon, contracts, emptyText }: {
+  title: string; icon: ReactNode; contracts: ClientContractItem[]; emptyText: string;
+}) {
+  return <section className={styles.panel}>
+    <div className={styles.panelHeader}>
+      <div className={styles.sectionTitle}>
+        <span className={styles.sectionIcon} data-tone={title === "Aktivní smlouvy" ? "green" : undefined}>{icon}</span>
+        <div><h2>{title}</h2><p>Přehled sjednaných produktů</p></div>
+      </div>
+      <span className={styles.count}>{contracts.length}</span>
+    </div>
+    {contracts.length ? <div className={styles.contractList}>
+      {contracts.map(contract => <ContractCard key={`${contract.adviserEmail ?? contract.userEmail ?? "owner"}-${contract.id}`} contract={contract} />)}
+    </div> : <div className={styles.empty}>{emptyText}</div>}
+  </section>;
 }
 
 export default function ClientCardPage() {
   const params = useParams<{ slug: string }>();
   const slug = typeof params?.slug === "string" ? params.slug : "";
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    // Clear the editor before a browser history snapshot is frozen. A restored
-    // page must initialize authentication again instead of showing old data.
-    const onPageHide = () => flushSync(() => setUser(null));
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) window.location.reload();
-    };
-    window.addEventListener("pagehide", onPageHide);
-    window.addEventListener("pageshow", onPageShow);
-    return () => {
-      unsubscribe();
-      window.removeEventListener("pagehide", onPageHide);
-      window.removeEventListener("pageshow", onPageShow);
-    };
-  }, []);
-
-  if (!user || !canAccessClientCards(user.email)) {
-    return (
-      <AppLayout active="clients">
-        <p className="px-4 py-8 text-sm text-slate-600">
-          {user ? "Klientská karta není pro tento účet dostupná." : "Ověřuji přihlášení…"}
-        </p>
-      </AppLayout>
-    );
-  }
-
-  // Remount on account changes so neither loaded data nor unsaved fields from
-  // the previous account can survive in the next user's editor.
-  return <ClientCardEditor key={`${user.uid}:${slug}`} user={user} slug={slug} />;
+  const searchParams = useSearchParams();
+  const linkedNoteId = searchParams.get("noteId") ?? "";
+  const selection = searchParams.has("scope") ? readClientScope(searchParams) : null;
+  const query = selection ? clientScopeQuery(selection) : "";
+  return <ClientSession>{(user) => <ClientCardEditor key={`${user.uid}:${slug}:${query}:${linkedNoteId}`} user={user} slug={slug} query={query} />}</ClientSession>;
 }
 
-function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) {
+function ClientCardEditor({ user, slug, query }: { user: FirebaseUser; slug: string; query: string }) {
+  const selection = useMemo<ClientScopeSelection | null>(() => query ? readClientScope(new URLSearchParams(query)) : null, [query]);
+  const backHref = query ? `/klienti?${query}` : "/klienti";
+  const [loadedContracts, setLoadedContracts] = useState(0);
   const [contracts, setContracts] = useState<ClientContractItem[]>([]);
+  const [sharedContracts, setSharedContracts] = useState<SharedClientContractsResponse | null>(null);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [sharedError, setSharedError] = useState(false);
+  const [sharedReload, setSharedReload] = useState(0);
   const [loading, setLoading] = useState(true);
   const [cardLoaded, setCardLoaded] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -961,7 +807,10 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
   const [reloadVersion, setReloadVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const [clientName, setClientName] = useState(TEST_CLIENT_NAME);
+  const [clientName, setClientName] = useState("");
+  const [tab, setTab] = useState<"overview" | "details">("overview");
+  const [notFound, setNotFound] = useState(!isClientCardSlug(slug));
+  const savedCard = useRef<ClientCardDraft | null>(null);
   const [birthNumber, setBirthNumber] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
@@ -995,47 +844,73 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
   }, []);
 
   useEffect(() => {
-    if (slug !== TEST_CLIENT_SLUG) return;
-    let cancelled = false;
-
+    if (!isClientCardSlug(slug)) return;
+    const controller = new AbortController();
     const load = async () => {
       setLoading(true);
+      setLoadedContracts(0);
       setCardLoaded(false);
       setError(null);
+      let teamAdvisers: ClientAdviser[] = [];
       const [cardResult, contractsResult] = await Promise.allSettled([
-        fetchAuthedJsonOrThrow<ClientCardResponse>(user, `/api/client-cards/${encodeURIComponent(slug)}`),
-        loadMartinContracts(user),
+        fetchAuthedJsonOrThrow<ClientCardResponse>(user, `/api/client-cards/${encodeURIComponent(slug)}`, { signal: controller.signal }),
+        loadClientContracts(user, controller.signal, setLoadedContracts, (advisers) => { teamAdvisers = advisers; }, { slug, selection }),
       ]);
-      if (cancelled) return;
-      const items = contractsResult.status === "fulfilled" ? contractsResult.value : [];
-      setContracts(items);
-      if (cardResult.status === "fulfilled") {
+      if (controller.signal.aborted) return;
+      const portfolio = contractsResult.status === "fulfilled" ? contractsResult.value : [];
+      const scoped = selection ? selectClientContracts(portfolio, user.email ?? "", selection, teamAdvisers) : portfolio;
+      const client = buildClientDirectory(scoped).find((item) => item.slug === slug);
+      setContracts(client?.contracts ?? []);
+      if (cardResult.status === "fulfilled" && contractsResult.status === "fulfilled") {
         const payload = cardResult.value;
-        const initialCard = payload.card ?? {
-          ...createEmptyClientCard(TEST_CLIENT_NAME),
-          permanentAddress: bestClientAddress(items),
-          phone: bestClientPhone(items),
-          email: bestClientEmail(items),
-        };
-        applyCard(initialCard);
-        setRevision(payload.revision);
-        setCardLoaded(true);
-        if (contractsResult.status === "rejected") setError("Smlouvy klienta se nepodařilo načíst.");
+        if (!client && !payload.card) {
+          setNotFound(true);
+        } else {
+          const initialCard = payload.card ?? {
+            ...createEmptyClientCard(client!.name),
+            permanentAddress: client!.address,
+            phone: client!.phone,
+            email: client!.email,
+          };
+          savedCard.current = initialCard;
+          applyCard(initialCard);
+          setRevision(payload.revision);
+          setCardLoaded(true);
+        }
       } else {
-        setError("Klientskou kartu se nepodařilo načíst. Úpravy budou dostupné po úspěšném načtení.");
+        setError("Klientskou kartu a smlouvy se nepodařilo načíst. Zkus to prosím znovu.");
       }
       setLoading(false);
     };
-
     void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug, user, applyCard, reloadVersion]);
+    return () => controller.abort();
+  }, [slug, user, applyCard, reloadVersion, selection]);
 
+  useEffect(() => {
+    setSharedContracts(null);
+    setSharedError(false);
+    if (!cardLoaded || !contracts.length) { setSharedLoading(false); return; }
+    const controller = new AbortController();
+    setSharedLoading(true);
+    void loadSharedClientContracts(user, slug, query, controller.signal, setSharedContracts)
+      .catch(() => { if (!controller.signal.aborted) { setSharedContracts(null); setSharedError(true); } })
+      .finally(() => { if (!controller.signal.aborted) setSharedLoading(false); });
+    return () => controller.abort();
+  }, [user, slug, query, cardLoaded, contracts, reloadVersion, sharedReload]);
+
+  useEffect(() => {
+    if (!isEditingClient) return;
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", preventLoss);
+    return () => window.removeEventListener("beforeunload", preventLoss);
+  }, [isEditingClient]);
+
+  const directoryClient = useMemo(() => buildClientDirectory(contracts)[0], [contracts]);
   const addressSuggestions = useMemo(() => collectAddressSuggestions(contracts), [contracts]);
-  const splitContracts = useMemo(() => splitClientContracts(contracts), [contracts]);
-  const canEditFields = isEditingClient && !saving;
+  const accessibleContracts = useMemo(() => uniqueContracts([...contracts, ...(sharedContracts?.contracts ?? [])]), [contracts, sharedContracts]);
+  const splitContracts = useMemo(() => splitClientContracts(accessibleContracts), [accessibleContracts]);
+  const totalContracts = accessibleContracts.length + (sharedContracts?.summaries.length ?? 0);
+  const canEditFields = cardLoaded && !loading && isEditingClient && !saving;
 
   const handleBirthNumberChange = (value: string) => {
     if (!canEditFields) return;
@@ -1074,6 +949,7 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
     if (!isEditingClient) {
       setSaveStatus(null);
       setIsEditingClient(true);
+      setTab("details");
       return;
     }
 
@@ -1098,7 +974,7 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
         `/api/client-cards/${encodeURIComponent(slug)}`,
         { method: "PUT", body: JSON.stringify({ card, expectedRevision: revision }) },
       );
-      if (saved.card) applyCard(saved.card);
+      if (saved.card) { applyCard(saved.card); savedCard.current = saved.card; }
       setRevision(saved.revision);
       setIsEditingClient(false);
       setSaveStatus({ tone: "success", message: "Změny uloženy." });
@@ -1113,7 +989,7 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
     }
   };
 
-  if (slug !== TEST_CLIENT_SLUG) {
+  if (notFound) {
     return (
       <AppLayout active="clients">
         <div className="w-full bg-white px-4 py-8">
@@ -1121,13 +997,13 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
             <IdCard className="mx-auto h-8 w-8 text-slate-400" />
             <h1 className="mt-3 text-2xl font-bold text-slate-950">Karta není dostupná</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Testovací karta je zatím zapnutá pouze pro klienta Martin Březina.
+              Klienta se nepodařilo najít ve smlouvách ani v uložených kartách.
             </p>
             <Link
-              href="/klienti"
+              href={backHref}
               className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ClientLinkIndicator kind="back" />
               Zpět na klienty
             </Link>
           </div>
@@ -1138,80 +1014,39 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
 
   return (
     <AppLayout active="clients">
-      <div className="w-full bg-slate-50 px-2 pb-10 pt-4 sm:px-4">
-        <div className="mx-auto max-w-6xl space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href="/klienti"
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Zpět na klienty
-            </Link>
-            <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-violet-700 shadow-sm">
-              <IdCard className="h-3.5 w-3.5" />
-              Testovací karta
-            </span>
-          </div>
+      <div className={styles.page}>
+        <div className={styles.container}>
+          <nav aria-label="Drobečková navigace" className={styles.breadcrumb}>
+            <Link href={backHref}><ClientLinkIndicator kind="back" />Klienti</Link>
+            <ChevronRight size={12} aria-hidden="true" />
+            <span>Karta klienta</span>
+          </nav>
 
-          <header>
-            <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.12)]">
-              <div className="bg-gradient-to-r from-violet-950 via-violet-700 to-purple-500 px-6 py-6 text-white sm:px-7">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-violet-50">
-                    <IdCard className="h-3.5 w-3.5" />
-                    Náhled klienta
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleEditToggle}
-                    disabled={!cardLoaded || saving}
-                    className={`inline-flex w-fit items-center justify-center gap-2 rounded-full border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                      isEditingClient
-                        ? "border-white bg-white text-violet-800 shadow-[0_12px_28px_rgba(15,23,42,0.18)] hover:bg-violet-50"
-                        : "border-white/25 bg-white/10 text-white hover:bg-white/20"
-                    }`}
-                  >
-                    {isEditingClient ? (
-                      <Save className="h-3.5 w-3.5" />
-                    ) : (
-                      <Pencil className="h-3.5 w-3.5" />
-                    )}
-                    {saving ? "Ukládám…" : isEditingClient ? "Uložit změny" : "Upravit"}
-                  </button>
-                </div>
-                <h1 className="mt-4 text-3xl font-bold tracking-tight !text-white sm:text-4xl">
-                  {clientName || TEST_CLIENT_NAME}
-                </h1>
-                {saveStatus ? (
-                  <p
-                    role="status"
-                    className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
-                      saveStatus.tone === "success"
-                        ? "border-emerald-200/60 bg-emerald-400/15 text-emerald-50"
-                        : "border-rose-200/70 bg-rose-400/20 text-rose-50"
-                    }`}
-                  >
-                    {saveStatus.message}
-                  </p>
-                ) : null}
-                {saveStatus?.conflict ? (
-                  <button
-                    type="button"
-                    className="mt-3 block text-sm font-semibold underline"
-                    onClick={() => {
-                      if (!window.confirm("Zahodit neuložené změny v tomto okně a načíst aktuální uloženou kartu?")) return;
-                      setIsEditingClient(false);
-                      setSaveStatus(null);
-                      setReloadVersion((current) => current + 1);
-                    }}
-                  >
-                    Načíst uloženou verzi
-                  </button>
-                ) : null}
-              </div>
-            </section>
-          </header>
+          {loading ? <ClientDetailLoader loadedContracts={loadedContracts} /> : <ClientProfileHeader
+            name={clientName} phone={phone} email={email} address={permanentAddress}
+            total={sharedError ? accessibleContracts.length : totalContracts}
+            active={splitContracts.active.length} archived={splitContracts.archived.length}
+            totalLoading={sharedLoading} totalIncomplete={sharedError}
+            actions={<>
+              {isEditingClient && <button type="button" disabled={saving} onClick={() => {
+                if (savedCard.current) applyCard(savedCard.current);
+                setIsEditingClient(false); setSaveStatus(null);
+              }} className={styles.button}><X size={15} aria-hidden="true" />Zrušit</button>}
+              <button type="button" onClick={handleEditToggle} disabled={!cardLoaded || saving} aria-busy={saving}
+                className={isEditingClient ? styles.primaryButton : styles.button}>
+                {saving ? <LoaderCircle size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  : isEditingClient ? <Save size={15} aria-hidden="true" /> : <Pencil size={14} aria-hidden="true" />}
+                {saving ? "Ukládám…" : isEditingClient ? "Uložit změny" : "Upravit údaje"}
+              </button>
+            </>}
+            status={saveStatus ? <div role="status" className={styles.saveMessage} data-error={saveStatus.tone === "error"}>
+              {saveStatus.message}
+              {saveStatus.conflict && <button type="button" onClick={() => {
+                if (!window.confirm("Zahodit neuložené změny v tomto okně a načíst aktuální uloženou kartu?")) return;
+                setIsEditingClient(false); setSaveStatus(null); setReloadVersion(current => current + 1);
+              }}>Načíst uloženou verzi</button>}
+            </div> : saving ? <p role="status" className={styles.saveMessage}>Ukládám změny klientské karty…</p> : undefined}
+          />}
 
           {error ? (
             <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -1224,15 +1059,36 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
             </div>
           ) : null}
 
-          {loading ? (
-            <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-              Načítám klientskou kartu a smlouvy...
-            </p>
-          ) : null}
+          {cardLoaded && <>
+          <div className={styles.tabBar}>
+          <div role="tablist" aria-label="Obsah klientské karty" className={styles.tabs}>
+            {(["overview", "details"] as const).map((value) => <button key={value} type="button" role="tab" id={`client-tab-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} aria-controls={`client-panel-${value}`} onClick={() => setTab(value)} onKeyDown={(event) => {
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              const next = event.key === "Home" ? "overview" : event.key === "End" ? "details" : value === "overview" ? "details" : "overview";
+              setTab(next);
+              document.getElementById(`client-tab-${next}`)?.focus();
+            }} className={styles.tab}>
+              {value === "overview" ? <LayoutGrid size={14} aria-hidden="true" /> : <UserRound size={14} aria-hidden="true" />}
+              {value === "overview" ? "Přehled a smlouvy" : "Osobní údaje"}
+            </button>)}
+          </div>
+          <a href="#client-notes" className={styles.historyLink} onClick={event => {
+            event.preventDefault(); setTab("overview");
+            requestAnimationFrame(() => document.getElementById("client-notes")?.scrollIntoView({ block: "start" }));
+          }}><History size={14} aria-hidden="true" />Historie jednání<ArrowUpRight size={13} aria-hidden="true" /></a>
+          </div>
 
-          <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+          {directoryClient && (directoryClient.aliases.length > 1 || directoryClient.contactConflicts.length > 0) && <section className={styles.notice} data-tone={directoryClient.contactConflicts.length ? "warning" : "info"}>
+            <h2 className="text-sm font-semibold text-slate-900">{directoryClient.contactConflicts.length ? "Ověřit údaje klienta" : "Zápisy jména ve smlouvách"}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{directoryClient.contactConflicts.length ? `Ve smlouvách se liší ${directoryClient.contactConflicts.join(", ")}. Ověř, zda jde o stejnou osobu. Jednotlivé údaje najdeš po rozkliknutí smlouvy.` : "Tyto zápisy se zobrazují ve společné kartě. Původní jména ve smlouvách zůstávají zachována."}</p>
+            <div className="mt-3 flex flex-wrap gap-2">{directoryClient.aliases.map((name) => <span key={name} className="max-w-full break-words rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-xs font-medium text-slate-700">{name}</span>)}</div>
+          </section>}
+
+          <div role="tabpanel" id="client-panel-details" aria-labelledby="client-tab-details" hidden={tab !== "details"} className={styles.detailsGrid}>
+          <section className={`${styles.panel} ${styles.personalFields}`}>
+            <div className={styles.panelHeader}>
+              <span className={styles.sectionIcon}>
                 <UserRound className="h-5 w-5" />
               </span>
               <div>
@@ -1243,12 +1099,12 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
               </div>
             </div>
 
-            <div className="grid gap-3 p-4 md:grid-cols-2">
+            <div className={styles.fields}>
               <Field
                 label="Jméno a příjmení / název firmy"
                 value={clientName}
                 onChange={setClientName}
-                placeholder="Martin Březina"
+                placeholder="Jméno a příjmení"
                 disabled={!canEditFields}
               />
               <Field
@@ -1313,9 +1169,9 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
             onUpdate={handleUpdateIdentityDocument}
           />
 
-          <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.07)]">
-            <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+          <section className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <span className={styles.sectionIcon}>
                 <Home className="h-5 w-5" />
               </span>
               <div>
@@ -1325,7 +1181,7 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
                 </p>
               </div>
             </div>
-            <div className="grid gap-3 p-4 md:grid-cols-2">
+            <div className={styles.addressFields}>
               <AddressField
                 label="Trvalá adresa"
                 value={permanentAddress}
@@ -1345,7 +1201,10 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
             </div>
           </section>
 
-          <div className="space-y-4">
+          </div>
+          <div role="tabpanel" id="client-panel-overview" aria-labelledby="client-tab-overview" hidden={tab !== "overview"}>
+          <div className={styles.overview}>
+          <div className={styles.portfolio}>
             <ContractList
               title="Aktivní smlouvy"
               icon={<FileText className="h-5 w-5 text-emerald-700" />}
@@ -1353,35 +1212,22 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
               emptyText="Klient zatím nemá aktivní smlouvy."
             />
 
-            <button
-              type="button"
-              onClick={() => setShowArchivedContracts((current) => !current)}
-              className="flex w-full items-center justify-between gap-4 rounded-[24px] border border-slate-200 bg-white px-5 py-4 text-left shadow-[0_12px_34px_rgba(15,23,42,0.06)] transition hover:border-violet-200 hover:bg-violet-50/40"
-              aria-expanded={showArchivedContracts}
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                  <Archive className="h-5 w-5" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-lg font-bold tracking-tight text-slate-950">
-                    Archivované smlouvy
-                  </span>
-                  <span className="block text-sm font-medium text-slate-500">
-                    Dožité a stornované smlouvy se zobrazí až po rozkliknutí.
-                  </span>
-                </span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-2">
-                <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
-                  {splitContracts.archived.length}
-                </span>
-                <ChevronDown
-                  className={`h-5 w-5 text-slate-500 transition ${
-                    showArchivedContracts ? "rotate-180" : ""
-                  }`}
-                />
-              </span>
+            {(sharedLoading || sharedError || sharedContracts?.matchingAvailable === false || Boolean(sharedContracts?.summaries.length)) && <section aria-label="Další smlouvy klienta" className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div><h2 className="text-lg font-bold text-slate-900">Smlouvy dalších poradců</h2><p className="mt-1 text-xs text-slate-500">Přehled produktů sjednaných mimo tvou strukturu.</p></div>
+                <LockKeyhole className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+              </div>
+              {sharedLoading && <p role="status" className="flex items-center gap-2 px-5 py-4 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-violet-500 motion-reduce:animate-none" aria-hidden="true" />{sharedContracts?.indexing ? "Propojuji starší smlouvy dalších poradců…" : "Načítám další smlouvy klienta…"}</p>}
+              {sharedError && <div role="alert" className="px-5 py-4 text-sm text-slate-600">Další smlouvy se nepodařilo načíst. <button type="button" className="font-semibold text-violet-700 underline" onClick={() => setSharedReload(value => value + 1)}>Zkusit znovu</button></div>}
+              {sharedContracts?.matchingAvailable === false && <p className="px-5 py-4 text-sm leading-6 text-slate-500">Pro propojení s dalšími poradci musí být ve smlouvách shodné jméno a telefon nebo e-mail. U těchto smluv kontakt zatím chybí.</p>}
+              {Boolean(sharedContracts?.summaries.length) && <div className={styles.contractList}>{sharedContracts!.summaries.map(summary => <RestrictedContractCard key={summary.shareId} summary={summary} />)}</div>}
+            </section>}
+
+            <button type="button" onClick={() => setShowArchivedContracts(current => !current)} className={styles.archive} aria-expanded={showArchivedContracts}>
+              <span className={styles.sectionIcon}><Archive size={17} aria-hidden="true" /></span>
+              <span className={styles.archiveText}><strong>Archivované smlouvy</strong><small>Dožité a stornované smlouvy</small></span>
+              <span className={styles.count}>{splitContracts.archived.length}</span>
+              <ChevronDown size={15} className={`text-purple-300 ${showArchivedContracts ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {showArchivedContracts ? (
@@ -1393,6 +1239,12 @@ function ClientCardEditor({ user, slug }: { user: FirebaseUser; slug: string }) 
               />
             ) : null}
           </div>
+          <aside className={styles.activity} aria-label="Jednání s klientem">
+            <ClientNotesSection user={user} slug={slug} clientName={savedCard.current?.clientName || clientName} />
+          </aside>
+          </div>
+          </div>
+          </>}
 
         </div>
       </div>

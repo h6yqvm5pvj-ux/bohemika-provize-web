@@ -6,6 +6,7 @@ import { Activity, Baby, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Cir
 import { institutionLogoImageClass } from "@/app/lib/institutionLogoDisplay";
 import type { ComparisonRow } from "./comparisonData";
 import { ComparisonDocuments } from "./ComparisonDocuments";
+import { ComparisonExport } from "./ComparisonExport";
 import styles from "./comparison.module.css";
 
 const GROUPS = [
@@ -77,7 +78,7 @@ export function LifeInsuranceComparison({ rows }: { rows: ComparisonRow[] }) {
         </div>
       </header>
 
-      <div className={styles.productsHeading}><p>Porovnávané produkty</p><ComparisonDocuments /></div>
+      <div className={styles.productsHeading}><p>Porovnávané produkty</p><div className={styles.documentActions}><ComparisonDocuments /><ComparisonExport rows={rows} visibleRows={visibleRows} filterLabel={[GROUPS.find(item => item.id === group)?.label, query.trim() ? `Hledání: ${query.trim().slice(0, 120)}` : ""].filter(Boolean).join(" · ")} /></div></div>
       <div className={styles.productCards}><ProductCard product="neon" /><span className={styles.versus} aria-hidden="true">vs.</span><ProductCard product="metlife" /></div>
 
       <section className={styles.explorer} aria-label="Porovnání pojistných podmínek">

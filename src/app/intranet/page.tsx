@@ -848,8 +848,9 @@ function PdfAttachmentThumbnail({
         });
         const pdfjs = await import("pdfjs-dist");
         if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+          // Bundle the browser worker as an asset even though PDF.js is external on the server.
           pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-            "pdfjs-dist/build/pdf.worker.min.mjs",
+            "../../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
             import.meta.url
           ).toString();
         }

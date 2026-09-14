@@ -23,8 +23,14 @@ import {
   type ContractDoc,
 } from "./contractDetailTypes";
 import { ContractSectionHeading } from "./ContractDetailUi";
+import { resolveAutoPremiumBasis, premiumBaseSourceKey, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
+import { PremiumBaseReview, type PremiumBaseReviewItem, type ResolvePremiumBase } from "./PremiumBaseReview";
 
 type ContractAutoPremiumHistoryProps = {
+  viewerEmail?: string;
+  baseResolutions?: PremiumBaseResolution[] | null;
+  onResolveBase?: ResolvePremiumBase;
+  onOpenStatement?: (id: string) => void;
   product: Product | undefined;
   contractNumber?: string | null;
   policyStartDate?: ContractDoc["policyStartDate"];
@@ -440,32 +446,6 @@ const premiumStatus = (
   };
 };
 
-const statementBasePeriodForAutoProduct = (
-  product: Product | null | undefined
-): "annual" | "payment" | null => {
-  if (!isAutoProduct(product)) return null;
-  return isAnnualAutoPayoutProduct(product) ? "annual" : "payment";
-};
-
-const annualPremiumFromStatementBase = (
-  basePremium: number,
-  product: Product | null | undefined,
-  paymentFrequency: PaymentFrequency | null | undefined
-): { annualPremium: number; basePremiumPeriod: "annual" | "payment" | null } => {
-  const base = Math.round(basePremium * 100) / 100;
-  const basePremiumPeriod = statementBasePeriodForAutoProduct(product);
-  if (basePremiumPeriod === "payment") {
-    return {
-      annualPremium: Math.round(base * paymentsPerYear(paymentFrequency) * 100) / 100,
-      basePremiumPeriod,
-    };
-  }
-  return {
-    annualPremium: base,
-    basePremiumPeriod,
-  };
-};
-
 const statusLabel = (status: PremiumChangeStatus): string => {
   switch (status) {
     case "initial":
@@ -534,6 +514,8 @@ const buildPremiumHistoryRows = ({
   paymentFrequency,
   systemAnnualPremium,
   statements,
+  baseResolutions,
+  viewerEmail,
 }: {
   contractNumber: string;
   policyStartDate: ContractDoc["policyStartDate"];
@@ -541,6 +523,8 @@ const buildPremiumHistoryRows = ({
   paymentFrequency: PaymentFrequency | null | undefined;
   systemAnnualPremium: number;
   statements: ContractCommissionStatementSummary[];
+  baseResolutions?: PremiumBaseResolution[] | null;
+  viewerEmail?: string;
 }): PremiumHistoryRow[] => {
   const systemPolicyStart = toDate(policyStartDate);
   const normalizedContractNumber = normalizeContractNumber(contractNumber);
@@ -566,12 +550,14 @@ const buildPremiumHistoryRows = ({
       const anniversaryDate = addYearsClamped(policyStart, anniversaryNumber);
       if (!anniversaryDate) continue;
 
-      const { annualPremium, basePremiumPeriod } = annualPremiumFromStatementBase(
-        row.basePremium,
-        statementProduct,
-        paymentFrequency
-      );
-      const { status, difference } = premiumStatus(annualPremium, systemAnnualPremium);
+      const source = { ...row, statementId: statement.id, statementNumber: statement.statementNumber,
+        statementPeriod: statement.period, statementDate: statement.statementDate, statementOwnerEmail: viewerEmail };
+      const basisContract = { productKey: statementProduct, frequencyRaw: paymentFrequency, premiumStatementBaseResolutions: baseResolutions };
+      const basis = resolveAutoPremiumBasis(source, basisContract);
+      if (basis.status !== "resolved") continue;
+      const { annualPremium, period: basePremiumPeriod } = basis;
+      const previousAnnualPremium = previousConfirmedAutoAnnualPremium(source, basisContract);
+      const { status, difference } = premiumStatus(annualPremium, previousAnnualPremium ?? systemAnnualPremium);
       if (status === "same") continue;
       const key = [
         statement.id,
@@ -607,7 +593,7 @@ const buildPremiumHistoryRows = ({
         previousPremium: null,
         basePremium: annualPremium,
         difference,
-        previousAnnualPremium: null,
+        previousAnnualPremium,
         newAnnualPremium: annualPremium,
         differenceAnnual: difference,
         basePremiumPeriod,
@@ -752,6 +738,10 @@ const shouldSuppressDetectedPremiumRow = (
 };
 
 export function ContractAutoPremiumHistory({
+  viewerEmail,
+  baseResolutions,
+  onResolveBase,
+  onOpenStatement,
   product,
   contractNumber,
   policyStartDate,
@@ -769,6 +759,23 @@ export function ContractAutoPremiumHistory({
   const showAutoStatementScan = isAutoProduct(product);
   const normalizedContractNumber = normalizeContractNumber(contractNumber);
   const policyStart = toDate(policyStartDate);
+  const frequency = contractPaymentFrequency ?? paymentFrequency;
+  const needsRowConfirmation = showAutoStatementScan && !isAnnualAutoPayoutProduct(product) && frequency !== "annual";
+  const reviews: PremiumBaseReviewItem[] = needsRowConfirmation ? statements.flatMap(statement =>
+    (statement.autoPremiumRows ?? []).filter(row => normalizeContractNumber(row.contractNumber) === normalizedContractNumber && (!row.productKey || row.productKey === product)).map(row => {
+      const source = { ...row, statementId: statement.id, statementNumber: statement.statementNumber,
+        statementPeriod: statement.period, statementDate: statement.statementDate, statementOwnerEmail: viewerEmail };
+      return { source, basis: resolveAutoPremiumBasis(source, { productKey: product, frequencyRaw: frequency, premiumStatementBaseResolutions: baseResolutions }) };
+    })) : [];
+  const uniqueReviews = [...new Map(reviews.map(item => [item.basis.status === "invalid" ? `${item.source.statementId}:${item.source.rowId}:${item.source.commissionCode}` : item.basis.key, item])).values()];
+  const confirmedKeys = new Set(uniqueReviews.flatMap(item => item.basis.status === "resolved" ? [item.basis.key] : []));
+  const activeBaseResolutions = (baseResolutions ?? []).filter(item => confirmedKeys.has(item.key) ||
+    (item.statementOwnerEmail && item.statementOwnerEmail !== viewerEmail && item.productKey === product &&
+      item.frequencyRaw === frequency && item.key === premiumBaseSourceKey(item, item)));
+  const activeKeys = new Set(activeBaseResolutions.map(item => item.key));
+  const verifiedHistory = needsRowConfirmation ? (storedHistory ?? []).filter(entry =>
+    !entry.statementId || (entry.basePremiumResolutionKey && activeKeys.has(entry.basePremiumResolutionKey))) : storedHistory;
+  const hasUnconfirmed = uniqueReviews.some(item => item.basis.status !== "resolved") || (needsRowConfirmation && (verifiedHistory?.length ?? 0) < (storedHistory?.length ?? 0));
   const detectedRows = showAutoStatementScan && normalizedContractNumber
     ? buildPremiumHistoryRows({
         contractNumber: normalizedContractNumber,
@@ -777,10 +784,12 @@ export function ContractAutoPremiumHistory({
         paymentFrequency: contractPaymentFrequency ?? paymentFrequency,
         systemAnnualPremium,
         statements,
+        baseResolutions: activeBaseResolutions,
+        viewerEmail,
       })
     : [];
   const storedRows = buildStoredPremiumHistoryRows(
-    storedHistory,
+    verifiedHistory,
     paymentFrequency,
     product
   );
@@ -805,7 +814,7 @@ export function ContractAutoPremiumHistory({
     (a, b) => a.anniversaryDate.getTime() - b.anniversaryDate.getTime()
   );
   const storedInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
-    storedHistory,
+    verifiedHistory,
     paymentFrequency,
     product
   );
@@ -825,7 +834,7 @@ export function ContractAutoPremiumHistory({
       signedAnnualPremiumMatchesStatementChange({
         signedAnnualPremium,
         statementInitialAnnualPremium: resolvedStatementInitialAnnualPremium,
-        history: storedHistory,
+        history: verifiedHistory,
         paymentFrequency,
         product,
       }),
@@ -875,7 +884,7 @@ export function ContractAutoPremiumHistory({
               {rows.length > 0 ? "Aktuálně" : "Stav z výpisů"}
             </div>
             <div className="mt-0.5 text-base font-black tracking-tight text-slate-950 sm:text-lg">
-              {rows.length > 0 ? annualPremiumLabel(latestAnnualPremium) : "Beze změn"}
+              {hasUnconfirmed ? "Čeká na ověření" : rows.length > 0 ? annualPremiumLabel(latestAnnualPremium) : "Beze změn"}
             </div>
             <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
               Poslední známé roční pojistné
@@ -895,13 +904,15 @@ export function ContractAutoPremiumHistory({
                     : "text-rose-700"
               }`}
             >
-              {rows.length > 0 && totalAnnualChange != null
+              {!hasUnconfirmed && rows.length > 0 && totalAnnualChange != null
                 ? signedAnnualMoneyLabel(totalAnnualChange)
                 : "—"}
             </div>
           </div>
         </div>
       </div>
+
+      {!loading && <PremiumBaseReview items={uniqueReviews} onResolve={onResolveBase} onOpenStatement={onOpenStatement} />}
 
       {showAutoStatementScan && loading ? (
         <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
@@ -917,7 +928,7 @@ export function ContractAutoPremiumHistory({
         </div>
       ) : rows.length === 0 ? (
         <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
-          Zatím žádný provizní výpis neobsahuje změnu pojistného.
+          {hasUnconfirmed ? "Změnu pojistného zobrazíme po ověření období základny." : "Zatím žádný provizní výpis neobsahuje změnu pojistného."}
         </div>
       ) : (
         <div className="border-t border-slate-200">

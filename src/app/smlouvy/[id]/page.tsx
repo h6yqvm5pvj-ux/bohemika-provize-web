@@ -1867,6 +1867,26 @@ export default function ContractDetailPage() {
     return payload.contract;
   }, [entryId, ownerEmail, requestContractsApi]);
 
+  const handleResolvePremiumBase = useCallback(async (
+    source: import("@/app/lib/autoPremiumBasis").PremiumBaseSource,
+    period: import("@/app/lib/autoPremiumBasis").PremiumBasePeriod,
+  ) => {
+    if (!canManageContract || !ownerEmail || !entryId || !contract) throw new Error("Nemáš oprávnění upravovat smlouvu.");
+    await requestContractsApi<ContractsApiResponseBase>("/api/commission-statements", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "resolve-premium-base", ownerEmail, entryId, period,
+        contractNumber: contract.contractNumber, frequencyRaw: contract.frequencyRaw,
+        statementId: source.statementId, rowId: source.rowId, commissionCode: source.commissionCode,
+        source: source.source, basePremium: source.basePremium }),
+    });
+    await refreshContractDetail();
+    try {
+      sessionStorage.removeItem("contracts_cache_v3");
+      localStorage.setItem("contracts_last_updated", String(Date.now()));
+      window.dispatchEvent(new Event("contracts:updated"));
+    } catch { /* Cache invalidation is best effort. */ }
+  }, [canManageContract, ownerEmail, entryId, contract, requestContractsApi, refreshContractDetail]);
+
   const handleRebuildContractFromStatements = useCallback(async () => {
     const contractNumber = String(contract?.contractNumber ?? "").trim();
     if (!canManageContract || !ownerEmail || !entryId || !contractNumber) return;
@@ -6585,6 +6605,10 @@ export default function ContractDetailPage() {
               />
 
               <ContractAutoPremiumHistory
+                viewerEmail={normalizedViewerEmail ?? undefined}
+                baseResolutions={contract?.premiumStatementBaseResolutions}
+                onResolveBase={canManageContract ? handleResolvePremiumBase : undefined}
+                onOpenStatement={handleOpenCommissionStatementPreview}
                 product={prod}
                 contractNumber={contract?.contractNumber ?? null}
                 policyStartDate={contract?.policyStartDate ?? null}

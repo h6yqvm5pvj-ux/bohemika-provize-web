@@ -1,5 +1,6 @@
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { fillClientCardEmailFromUploadedPdf, type ClientCardEmailImportStatus } from "@/lib/server/clientCardEmailImport";
 import { Readable } from "node:stream";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -27,6 +28,7 @@ import type { ContractDoc, ErrorResponse } from "../_lib/contractsApi.types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const CONTRACT_ATTACHMENT_UPLOAD_RATE_LIMIT = 20;
 const CONTRACT_ATTACHMENT_DOWNLOAD_RATE_LIMIT = 120;
@@ -201,10 +203,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let clientCardEmail: ClientCardEmailImportStatus | "unavailable" = "skipped";
+  if (loaded.contract.productKey === "cppAuto" && ctx.email === ownerEmail && !ctx.isImpersonating) {
+    try {
+      clientCardEmail = await fillClientCardEmailFromUploadedPdf(loaded.entryRef.firestore, { email: ctx.email, uid: ctx.uid }, entryId, uploaded.sha256);
+    } catch {
+      // The PDF is already saved. Contact enrichment must not turn a completed
+      // upload into an error or expose PDF contents through an error message.
+      clientCardEmail = "unavailable";
+    }
+  }
+
   return withRateLimit(
     NextResponse.json({
       ok: true,
       attachment: toPublicContractPdfAttachment(uploaded),
+      clientCardEmail,
     })
   );
   });

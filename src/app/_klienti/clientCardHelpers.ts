@@ -4,6 +4,12 @@ import type { Product } from "@/app/types/domain";
 
 export type ClientContractItem = {
   id: string;
+  clientSlug?: string;
+  entryType?: string | null;
+  adviserName?: string | null;
+  originalAdviserEmail?: string | null;
+  originalAdviserName?: string | null;
+  acquisitionType?: string | null;
   adviserEmail?: string | null;
   userEmail?: string | null;
   clientName?: string | null;
@@ -30,7 +36,16 @@ export type ClientContractsResponse = {
   ok?: boolean;
   contracts?: ClientContractItem[];
   teamContracts?: ClientContractItem[];
+  hasTeam?: boolean;
+  teamAdvisers?: ClientAdviser[];
+  hasMore?: boolean;
+  nextCursorToken?: string | null;
 };
+
+export type ClientAdviser = { email: string; name: string | null };
+
+export const contractConcludingAdviserEmail = (contract: ClientContractItem): string =>
+  (contract.originalAdviserEmail?.trim() || (contract.acquisitionType === "inherited" ? "" : contract.userEmail?.trim() || contractOwnerEmail(contract))).toLowerCase();
 
 export const toDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -106,11 +121,7 @@ export const uniqueContracts = (contracts: ClientContractItem[]): ClientContract
 
 export const bestClientAddress = (contracts: ClientContractItem[]): string => {
   for (const contract of contracts) {
-    const address =
-      contract.clientAddress?.trim() ||
-      contract.domexDetail?.address?.trim() ||
-      contract.maxdomovDetail?.address?.trim() ||
-      "";
+    const address = contract.clientAddress?.trim() || "";
     if (address) return address;
   }
   return "";

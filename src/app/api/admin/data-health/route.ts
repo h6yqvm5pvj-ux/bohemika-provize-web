@@ -1,3 +1,4 @@
+import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -2223,6 +2224,7 @@ export async function DELETE(req: NextRequest) {
   const batch = db.batch();
   batch.delete(entryRef);
   batch.delete(contractRef);
+  batch.delete(clientContractLinkRef(db, ownerEmail, entryId));
   if (shouldDeleteClaim) batch.delete(claimRef);
   if (replacementClaimPayload) {
     batch.set(

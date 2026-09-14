@@ -1,3 +1,4 @@
+import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
@@ -727,6 +728,9 @@ const filterStatementDerivedContractDataForViewer = ({
     premiumStatementHistory: Array.isArray(contract.premiumStatementHistory)
       ? contract.premiumStatementHistory.filter(canViewRecord)
       : [],
+    premiumStatementBaseResolutions: Array.isArray(contract.premiumStatementBaseResolutions)
+      ? contract.premiumStatementBaseResolutions.filter(canViewRecord)
+      : [],
     // Souhrn může zahrnovat i skryté manažerské zápisy, proto jej neposíláme.
     commissionStornoSummary: null,
   };
@@ -774,6 +778,33 @@ const toContractListResponseItem = ({
       clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
+    };
+  }
+
+  if (shape === "clientDirectory") {
+    const normalizedOwner = normalizeEmail(ownerEmail);
+    return {
+      id: docId,
+      adviserEmail: normalizedOwner,
+      adviserName: normalizedAdviserName,
+      acquisitionType: data.acquisitionType ?? null,
+      originalAdviserEmail: originalAdviserEmailForContract(data, normalizedOwner),
+      originalAdviserName: normalizeOptionalDisplayName(data.originalAdviserName) ?? null,
+      userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
+      entryType: data.entryType ?? null,
+      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientEmail: data.clientEmail ?? null,
+      clientPhone: data.clientPhone ?? null,
+      clientAddress: data.clientAddress ?? null,
+      contractNumber: data.contractNumber ?? null,
+      productKey: data.productKey,
+      status: data.status ?? null,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      createdAt: toMillis(data.createdAt),
+      policyStartDate: toMillis(data.policyStartDate),
+      policyEndDate: toMillis(data.policyEndDate),
+      durationYears: data.durationYears ?? null,
+      durationMonths: data.durationMonths ?? null,
     };
   }
 
@@ -4325,7 +4356,9 @@ export async function handleContractsGet(
   const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
   const shapeParam = search.get("shape");
   const responseShape: ContractListResponseShape =
-    shapeParam === "clientNames"
+    shapeParam === "clientDirectory"
+      ? "clientDirectory"
+      : shapeParam === "clientNames"
       ? "clientNames"
       : shapeParam === "contractList"
       ? "contractList"
@@ -4444,6 +4477,10 @@ export async function handleContractsGet(
     commissionMode: ctx.commissionMode,
     hasTeam: teamEmails.length > 0,
     teamEmails,
+    teamAdvisers: responseShape === "clientDirectory"
+      ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
+        .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
+      : undefined,
     canTransferContracts,
     transferTargets,
     contracts: visibleContracts,
@@ -7838,7 +7875,8 @@ export async function handleContractsDelete(req: NextRequest) {
 
     batch.delete(entryRef);
     batch.delete(contractRef);
-    opsInBatch += 2;
+    batch.delete(clientContractLinkRef(db, owner, entryId));
+    opsInBatch += 3;
     deleted += 1;
     dirtyOwners.add(owner);
 

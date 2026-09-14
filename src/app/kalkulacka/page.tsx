@@ -1144,7 +1144,8 @@ export default function CalculatorPage() {
   ): boolean => {
     const coefficientValidityError = productCoefficientValidityError(
       targetProduct,
-      signedDateIsoRaw
+      signedDateIsoRaw,
+      isInheritedContractMode ? "inherited" : null
     );
     if (coefficientValidityError) {
       setSaveMessage(coefficientValidityError);

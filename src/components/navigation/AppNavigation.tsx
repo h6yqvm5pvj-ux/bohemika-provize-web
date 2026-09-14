@@ -116,7 +116,7 @@ const TIPSTER_NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
 ];
 
 const PREPARATION_SECTION_OWNER = "jakub.rauscher";
-const PREPARATION_GATED_NAV_KEYS = new Set<ActivePage>(["clients", "statements"]);
+const PREPARATION_GATED_NAV_KEYS = new Set<ActivePage>(["statements"]);
 
 const normalizeUserIdentifier = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();

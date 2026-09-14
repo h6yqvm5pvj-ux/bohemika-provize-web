@@ -105,9 +105,11 @@ describe("collapsible application navigation", () => {
     expect(sidebar().querySelectorAll("nav a").length).toBe(0);
   });
 
-  it("retains the preparation gate and logout action when collapsed", async () => {
+  it("opens clients for advisers, retains the statements gate and logout action", async () => {
     await render(); await click(toggle());
     await click(sidebar().querySelector('a[href="/klienti"]'));
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    await click(sidebar().querySelector('a[href="/provizni-vypisy"]'));
     expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Sekce je v přípravě");
     await click(sidebar().querySelector('button[aria-label="Odhlásit se"]'));
     expect(props.onLogout).toHaveBeenCalledOnce();

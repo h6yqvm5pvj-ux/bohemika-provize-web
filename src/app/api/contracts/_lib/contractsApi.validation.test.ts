@@ -14,6 +14,27 @@ const baseContract: ContractDoc = {
 };
 
 describe("contracts API validation", () => {
+  const inheritedCpp: ContractDoc = {
+    ...baseContract, productKey: "cppAuto", acquisitionType: "inherited",
+    contractSignedDate: new Date("2015-01-01"), policyStartDate: new Date("2015-02-01"),
+  };
+
+  it("allows editing an inherited ČPP Auto contract from 2015", () => {
+    expect(validateContractCoreInvariants(inheritedCpp, { clientName: "Petr Novak" })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2015-01-31") })).toEqual({ ok: true });
+  });
+
+  it("rejects moving an inherited ČPP Auto contract before 2015", () => {
+    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2014-12-31") }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("01. 01. 2015") });
+  });
+
+  it("uses the stored acquisition type when validating a date edit", () => {
+    expect(validateContractCoreInvariants({ ...inheritedCpp, acquisitionType: null }, {
+      acquisitionType: "inherited", contractSignedDate: new Date("2015-01-01"),
+    })).toMatchObject({ ok: false, error: expect.stringContaining("01. 01. 2018") });
+  });
+
   it("allows future storno dates after the policy start date", () => {
     const result = validateContractCoreInvariants(baseContract, {
       status: "storno",

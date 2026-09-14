@@ -1230,7 +1230,8 @@ export const normalizeCreateEntryPayload = ({
   }
   const coefficientValidityError = productCoefficientValidityError(
     productParsed.value,
-    toIsoDay(signedDateParsed.value)
+    toIsoDay(signedDateParsed.value),
+    inherited ? "inherited" : null
   );
   if (coefficientValidityError) {
     return { ok: false, error: coefficientValidityError };

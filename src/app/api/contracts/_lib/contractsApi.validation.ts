@@ -119,7 +119,8 @@ export const validateContractCoreInvariants = (
     }
     const coefficientValidityError = productCoefficientValidityError(
       existing.productKey,
-      toIsoDay(finalSignedDate)
+      toIsoDay(finalSignedDate),
+      existing.acquisitionType
     );
     if (coefficientValidityError) {
       return { ok: false, error: coefficientValidityError };

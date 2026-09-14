@@ -27,17 +27,18 @@ describe("inherited commission entitlement", () => {
     expect(inheritedCommissionResult(result)).toEqual(result);
   });
 
-  it("uses the original position in the existing product formula", () => {
+  it.each(["2015-01-01", "2024-05-01"])("uses the original position and only subsequent commissions for a policy from %s", (contractSignedDateIso) => {
     const calculate = (position: "poradce4" | "manazer8") => {
       const result = calculateCommission({ productKey: "cppAuto", position, inputAmount: 2000,
-        frequencyRaw: "quarterly", contractSignedDateIso: "2024-05-01", commissionMode: "standard",
+        frequencyRaw: "quarterly", contractSignedDateIso, commissionMode: "standard",
         durationYears: null, durationMonths: null, maxCizinKomplexVariant: null,
         comfortPayment: null, comfortGradual: null, comfortTargetAmount: null });
       expect(result).not.toBeNull();
       return inheritedCommissionResult(result!);
     };
     const original = calculate("poradce4");
-    expect(original.total).toBeGreaterThan(0);
+    expect(original.items).toEqual([{ title: "🔁 Následná provize", amount: 208, code: "B101", excludeFromTotal: false }]);
+    expect(original.total).toBe(208);
     expect(original.items[0].amount).not.toBe(calculate("manazer8").items[0].amount);
   });
 

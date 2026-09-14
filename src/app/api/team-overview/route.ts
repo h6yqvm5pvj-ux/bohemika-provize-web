@@ -1794,7 +1794,7 @@ async function transferOwnerEntriesToSuccessor({
         ...nextData, contractNotesPath: entryData.contractNotesPath ?? entrySnap.ref.path,
       }, { actorEmail, kind: "transfer", title: "Převod při ukončení spolupráce", atMs: now.getTime(),
         changes: [{ label: "Správce", before: fromOwnerEmail, after: toOwnerEmail }] }));
-      ops += 4; // Audit, legacy migration and the stable notes location.
+      ops += 6; // Audit, legacy migration, notes location and both client links.
       ops += 1;
 
       batch.delete(entrySnap.ref, { lastUpdateTime: entrySnap.updateTime });

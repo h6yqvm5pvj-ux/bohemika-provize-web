@@ -1,5 +1,7 @@
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import styles from "./comparison.module.css";
+import { reportBlocks, reportDetailBlocks, type ComparisonReportRow } from "./comparisonReportContent";
+import { IN_SITU_CONTENT, IN_SITU_DESCRIPTION, IN_SITU_TITLE } from "./inSituContent";
 import {
   Activity,
   Baby,
@@ -42,10 +44,10 @@ const ROW_CONTENT: RowContent[] = [
           <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Úrazové pojištění
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Úraz – neúrazový děj
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Rozhoduje, jestli definice úrazu zahrnuje i působení vlastní tělesné síly
           závislé na vůli pojištěného.
         </p>
@@ -62,7 +64,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Plní
         </span>
@@ -76,7 +78,7 @@ const ROW_CONTENT: RowContent[] = [
         <blockquote className="mt-3 border-l-2 border-emerald-400 pl-3 text-sm leading-5 text-emerald-950/80">
           „…vlastní tělesné síly závislé i nezávislé na vůli pojištěného…“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Zvedání těžkého břemene může při splnění ostatních podmínek spadat pod
@@ -87,7 +89,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Neplní
         </span>
@@ -101,7 +103,7 @@ const ROW_CONTENT: RowContent[] = [
         <blockquote className="mt-3 border-l-2 border-rose-400 pl-3 text-sm leading-5 text-rose-950/80">
           „…vlastní tělesné síly nezávisle na vůli pojištěného…“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             U neúrazového děje se na vlastní tělesnou sílu závislou na vůli
@@ -119,10 +121,10 @@ const ROW_CONTENT: RowContent[] = [
           <ShieldPlus className="h-3.5 w-3.5" aria-hidden="true" />
           Neživotní připojištění
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Obecné výluky
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Pojistná událost v případě neživotního pojištění nenastává v následujících
           případech.
         </p>
@@ -140,7 +142,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Plní
         </span>
@@ -155,7 +157,7 @@ const ROW_CONTENT: RowContent[] = [
           „…v čekací době vznikne nějaké onemocnění nebo budou diagnostikovány jeho
           příznaky, plnění … bude poskytnuto.“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Týká se například pracovní neschopnosti, hospitalizace a invalidity.
@@ -165,7 +167,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Výluka
         </span>
@@ -180,7 +182,7 @@ const ROW_CONTENT: RowContent[] = [
         <blockquote className="mt-3 border-l-2 border-rose-400 pl-3 text-sm leading-5 text-rose-950/80">
           „…a/nebo u něj v tomto období nebo <mark className="rounded bg-rose-200 px-1 font-bold text-rose-950">v období čekací doby byly přítomny či diagnostikovány jejich příznaky</mark>.“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             Diagnostikované či přítomné příznaky v čekací době se do výluky také
@@ -198,10 +200,10 @@ const ROW_CONTENT: RowContent[] = [
           <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Invalidita
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Čekací doba a první příznaky nemoci
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Rozhoduje, zda byla nemoc diagnostikována nebo se její příznaky projevily
           během čekací doby.
         </p>
@@ -211,13 +213,13 @@ const ROW_CONTENT: RowContent[] = [
             <span>Hlavní rozdíl</span>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2 text-center">
-            <div className="rounded-lg border border-emerald-200 bg-white px-2 py-2">
+            <div className={`rounded-lg border border-emerald-200 ${styles.detailSurface} px-2 py-2`}>
               <span className="block text-sm font-semibold text-emerald-700">Nemoc 0 · Úraz 0</span>
               <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-900/70">
                 měsíců · ČPP
               </span>
             </div>
-            <div className="rounded-lg border border-rose-200 bg-white px-2 py-2">
+            <div className={`rounded-lg border border-rose-200 ${styles.detailSurface} px-2 py-2`}>
               <span className="block text-sm font-semibold text-rose-700">Nemoc 2 · Úraz 0</span>
               <span className="text-[10px] font-bold uppercase tracking-wide text-rose-900/70">
                 měsíce · MetLife
@@ -229,7 +231,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Nemoc 0 · Úraz 0 měsíců
         </span>
@@ -240,7 +242,7 @@ const ROW_CONTENT: RowContent[] = [
           U NEON Life je čekací doba pro invaliditu z důvodu nemoci i úrazu
           nastavena na 0 měsíců.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Nevzniká dvouměsíční čekací období, během kterého by diagnóza nebo první
@@ -251,7 +253,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Nemoc 2 · Úraz 0 měsíců
         </span>
@@ -266,7 +268,7 @@ const ROW_CONTENT: RowContent[] = [
         <blockquote className="mt-3 border-l-2 border-rose-400 pl-3 text-sm leading-5 text-rose-950/80">
           „…nemoc, která vedla k invaliditě, <mark className="rounded bg-rose-200 px-1 font-bold text-rose-950">nebyla diagnostikována, nebo se její příznaky neprojevily v čekací době</mark>.“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             U invalidity následkem nemoci nebude plnění poskytnuto, pokud byla nemoc
@@ -285,10 +287,10 @@ const ROW_CONTENT: RowContent[] = [
           <Hand className="h-3.5 w-3.5" aria-hidden="true" />
           Dlouhodobá péče
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Snížená soběstačnost
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání stupňů závislosti na péči jiné osoby, při kterých vzniká nárok
           na pojistné plnění.
         </p>
@@ -305,7 +307,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           II.–IV. stupeň
         </span>
@@ -321,7 +323,7 @@ const ROW_CONTENT: RowContent[] = [
           {["II.", "III.", "IV."].map((degree) => (
             <div
               key={degree}
-              className="rounded-xl border border-emerald-200 bg-white/80 px-2 py-2.5"
+              className={`rounded-xl border border-emerald-200 ${styles.detailSurface} px-2 py-2.5`}
             >
               <CheckCircle2 className="mx-auto h-4 w-4 text-emerald-600" aria-hidden="true" />
               <span className="mt-1 block text-sm font-semibold text-emerald-950">
@@ -334,7 +336,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           III.–IV. stupeň
         </span>
@@ -346,14 +348,14 @@ const ROW_CONTENT: RowContent[] = [
           snížené soběstačnosti ve III. nebo IV. stupni závislosti.
         </p>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl border border-rose-200 bg-white/80 px-2 py-2.5">
+          <div className={`rounded-xl border border-rose-200 ${styles.detailSurface} px-2 py-2.5`}>
             <CircleX className="mx-auto h-4 w-4 text-rose-600" aria-hidden="true" />
             <span className="mt-1 block text-sm font-semibold text-rose-950">II.</span>
           </div>
           {["III.", "IV."].map((degree) => (
             <div
               key={degree}
-              className="rounded-xl border border-emerald-200 bg-white/80 px-2 py-2.5"
+              className={`rounded-xl border border-emerald-200 ${styles.detailSurface} px-2 py-2.5`}
             >
               <CheckCircle2 className="mx-auto h-4 w-4 text-emerald-600" aria-hidden="true" />
               <span className="mt-1 block text-sm font-semibold text-emerald-950">
@@ -373,10 +375,10 @@ const ROW_CONTENT: RowContent[] = [
           <Baby className="h-3.5 w-3.5" aria-hidden="true" />
           Pojištění dítěte
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Invalidita a závislost na péči
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání krytých stupňů invalidity dítěte a závislosti na péči jiné osoby.
         </p>
         <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/75 p-3">
@@ -393,11 +395,11 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <Baby className="h-3.5 w-3.5" aria-hidden="true" />
           Pojištění dítěte
         </span>
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 p-3">
+        <div className={`mt-4 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3`}>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-950">
             <ShieldPlus className="h-4 w-4 text-emerald-600" aria-hidden="true" />
             Invalidita
@@ -419,7 +421,7 @@ const ROW_CONTENT: RowContent[] = [
             ))}
           </div>
         </div>
-        <div className="mt-3 rounded-xl border border-emerald-200 bg-white/80 p-3">
+        <div className={`mt-3 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3`}>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-950">
             <Hand className="h-4 w-4 text-emerald-600" aria-hidden="true" />
             Závislost na péči
@@ -445,11 +447,11 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Baby className="h-3.5 w-3.5" aria-hidden="true" />
           Pojištění dítěte
         </span>
-        <div className="mt-4 rounded-xl border border-rose-200 bg-white/85 p-3">
+        <div className={`mt-4 rounded-xl border border-rose-200 ${styles.detailSurface} p-3`}>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-rose-950">
             <ShieldPlus className="h-4 w-4 text-rose-600" aria-hidden="true" />
             Invalidita
@@ -477,7 +479,7 @@ const ROW_CONTENT: RowContent[] = [
             </div>
           </div>
         </div>
-        <div className="mt-3 rounded-xl border border-sky-200 bg-white/85 p-3">
+        <div className={`mt-3 rounded-xl border border-sky-200 ${styles.detailSurface} p-3`}>
           <h3 className="flex items-center gap-2 text-sm font-semibold text-sky-950">
             <Hand className="h-4 w-4 text-sky-600" aria-hidden="true" />
             Závislost na péči
@@ -518,11 +520,11 @@ const ROW_CONTENT: RowContent[] = [
           <Baby className="h-3.5 w-3.5" aria-hidden="true" />
           Invalidita a závislost · dítě
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Stethoscope className="h-5 w-5 shrink-0 text-cyan-600" aria-hidden="true" />
           Povinnosti plynoucí z pojištění
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Jaké dokumenty je nutné předložit při uplatnění nároku na pojistné plnění.
         </p>
         <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/75 p-3">
@@ -539,7 +541,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Tři možné způsoby doložení
         </span>
@@ -563,7 +565,7 @@ const ROW_CONTENT: RowContent[] = [
           ].map(([number, text]) => (
             <div
               key={number}
-              className="flex gap-3 rounded-xl border border-emerald-200 bg-white/85 p-3 text-sm font-medium leading-5 text-emerald-950/80"
+              className={`flex gap-3 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-medium leading-5 text-emerald-950/80`}
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-semibold text-white">
                 {number}
@@ -578,7 +580,7 @@ const ROW_CONTENT: RowContent[] = [
             <span>Mezera v systému u I. a II. stupně</span>
           </div>
           <div className="mt-3 space-y-2">
-            <div className="rounded-lg border border-violet-200 bg-white/85 p-3">
+            <div className={`rounded-lg border border-violet-200 ${styles.detailSurface} p-3`}>
               <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
                 Uznání ≠ výplata
               </span>
@@ -587,7 +589,7 @@ const ROW_CONTENT: RowContent[] = [
                 důchod. Obecně musí být splněna také potřebná doba pojištění.
               </p>
             </div>
-            <div className="rounded-lg border border-violet-200 bg-white/85 p-3">
+            <div className={`rounded-lg border border-violet-200 ${styles.detailSurface} p-3`}>
               <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
                 Invalidita z mládí
               </span>
@@ -596,7 +598,7 @@ const ROW_CONTENT: RowContent[] = [
                 invaliditě III. stupně, která vznikla před dosažením 18 let.
               </p>
             </div>
-            <div className="rounded-lg border border-violet-200 bg-white/85 p-3">
+            <div className={`rounded-lg border border-violet-200 ${styles.detailSurface} p-3`}>
               <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
                 Budoucí starobní důchod
               </span>
@@ -616,9 +618,9 @@ const ROW_CONTENT: RowContent[] = [
             </span>
           </div>
         </div>
-        <div className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-          <div className="flex gap-2 text-xs font-bold leading-5 text-slate-700">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+        <div className={`mt-3 rounded-xl border border-slate-200 ${styles.detailSurface} p-3`}>
+          <div className={`flex gap-2 text-xs font-bold leading-5 ${styles.detailText}`}>
+            <Info className={`mt-0.5 h-4 w-4 shrink-0 ${styles.detailText}`} aria-hidden="true" />
             <div>
               <span className="block">
                 Příspěvek na péči a další veřejné dávky jsou samostatné systémy s
@@ -650,7 +652,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Požadované dokumenty
         </span>
@@ -665,7 +667,7 @@ const ROW_CONTENT: RowContent[] = [
           ].map((text, index) => (
             <div
               key={text}
-              className="flex gap-3 rounded-xl border border-sky-200 bg-white/85 p-3 text-sm font-medium leading-5 text-sky-950/80"
+              className={`flex gap-3 rounded-xl border border-sky-200 ${styles.detailSurface} p-3 text-sm font-medium leading-5 text-sky-950/80`}
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white">
                 {index + 1}
@@ -692,10 +694,10 @@ const ROW_CONTENT: RowContent[] = [
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Závažná onemocnění
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Rozsah diagnóz a rakovina in-situ
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           U obou produktů musí zdravotní stav přesně odpovídat definici konkrétní
           diagnózy uvedené v pojistných podmínkách.
         </p>
@@ -715,7 +717,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           In-situ zahrnuto
         </span>
@@ -726,7 +728,7 @@ const ROW_CONTENT: RowContent[] = [
           Pro vznik nároku na plnění musí diagnóza odpovídat definici uvedené v
           pojistných podmínkách NEON Life.
         </p>
-        <section className="mt-4 rounded-xl border border-emerald-200 bg-white/80 p-3">
+        <section className={`mt-4 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3`}>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
             <h4 className="text-sm font-semibold text-emerald-950">
@@ -742,7 +744,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Širší seznam diagnóz
         </span>
@@ -761,14 +763,14 @@ const ROW_CONTENT: RowContent[] = [
               Rakovina ve formě in-situ
             </h4>
           </div>
-          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+          <span className={styles.statusBadge} data-tone="caution">
             <CircleX className="h-3 w-3" aria-hidden="true" />
             Výluka v základním krytí
           </span>
           <blockquote className="mt-2 border-l-2 border-rose-400 pl-3 text-sm font-semibold leading-5 text-rose-950/85">
             „Nádory klasifikované jako pre-maligní či <mark className="rounded bg-rose-200 px-1 font-semibold text-rose-950">in situ</mark>.“
           </blockquote>
-          <div className="mt-3 flex gap-2 rounded-lg border border-emerald-200 bg-white/90 p-3 text-sm font-semibold leading-5 text-emerald-950">
+          <div className={`mt-3 flex gap-2 rounded-lg border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
             <span>
               Krytí je možné sjednat samostatným připojištěním
@@ -788,10 +790,10 @@ const ROW_CONTENT: RowContent[] = [
           <Venus className="h-3.5 w-3.5" aria-hidden="true" />
           Závažná onemocnění
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Závažná ženská onemocnění
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Produkty zařazují krytí ženských onemocnění do rozdílně pojmenovaných
           skupin pojištění.
         </p>
@@ -809,7 +811,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Lze pojistit
         </span>
@@ -820,7 +822,7 @@ const ROW_CONTENT: RowContent[] = [
           Závažná ženská onemocnění lze u NEON Life pojistit v rámci připojištění
           závažných onemocnění a poranění.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>Krytí je součástí této skupiny připojištění.</span>
         </div>
@@ -828,7 +830,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
           Vyjmenované onemocnění
         </span>
@@ -864,10 +866,10 @@ const ROW_CONTENT: RowContent[] = [
           <Mars className="h-3.5 w-3.5" aria-hidden="true" />
           Závažná onemocnění
         </span>
-        <h2 className="mt-3 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 text-lg font-semibold leading-tight ${styles.detailText}`}>
           Závažná mužská onemocnění
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Produkty zařazují krytí mužských onemocnění do rozdílně pojmenovaných
           skupin pojištění.
         </p>
@@ -885,7 +887,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Lze pojistit
         </span>
@@ -896,7 +898,7 @@ const ROW_CONTENT: RowContent[] = [
           Závažná mužská onemocnění lze u NEON Life pojistit v rámci připojištění
           závažných onemocnění a poranění.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/75 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>Krytí je součástí této skupiny připojištění.</span>
         </div>
@@ -904,7 +906,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
           Vyjmenované onemocnění
         </span>
@@ -940,11 +942,11 @@ const ROW_CONTENT: RowContent[] = [
           <Venus className="h-3.5 w-3.5" aria-hidden="true" />
           Pro ženy
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Baby className="h-5 w-5 shrink-0 text-pink-600" aria-hidden="true" />
           Asistovaná reprodukce
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání věku, při jehož dosažení pojištění asistované reprodukce zaniká.
         </p>
         <div className="mt-4 rounded-xl border border-pink-100 bg-pink-50/75 p-3">
@@ -960,7 +962,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
           Do 45 let
         </span>
@@ -970,13 +972,13 @@ const ROW_CONTENT: RowContent[] = [
         <p className="mt-2 text-sm font-medium leading-6 text-emerald-950/75">
           Pojištění zaniká dnem, kdy pojištěná dosáhne věku 45 let.
         </p>
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 px-4 py-3 text-center">
+        <div className={`mt-4 rounded-xl border border-emerald-200 ${styles.detailSurface} px-4 py-3 text-center`}>
           <span className="block text-3xl font-semibold text-emerald-700">45</span>
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-950/65">
             let
           </span>
         </div>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             NEON Life nemá uvedené omezení spojené s umělým přerušením těhotenství
@@ -987,7 +989,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
           Do 40 let
         </span>
@@ -997,13 +999,13 @@ const ROW_CONTENT: RowContent[] = [
         <p className="mt-2 text-sm font-medium leading-6 text-rose-950/75">
           Pojištění zaniká dnem, kdy pojištěná dosáhne věku 40 let.
         </p>
-        <div className="mt-4 rounded-xl border border-rose-200 bg-white/80 px-4 py-3 text-center">
+        <div className={`mt-4 rounded-xl border border-rose-200 ${styles.detailSurface} px-4 py-3 text-center`}>
           <span className="block text-3xl font-semibold text-rose-700">40</span>
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-rose-950/65">
             let
           </span>
         </div>
-        <section className="mt-4 rounded-xl border border-rose-200 bg-white/80 p-3">
+        <section className={`mt-4 rounded-xl border border-rose-200 ${styles.detailSurface} p-3`}>
           <div className="flex items-center gap-2">
             <CircleX className="h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <h4 className="text-sm font-semibold text-rose-950">
@@ -1031,11 +1033,11 @@ const ROW_CONTENT: RowContent[] = [
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Pracovní neschopnost
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Baby className="h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
           Těhotenství a porod
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání maximální doby plnění za pracovní neschopnost související s
           těhotenstvím, porodem a jejich komplikacemi.
         </p>
@@ -1053,7 +1055,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
           Až 90 dní
         </span>
@@ -1064,13 +1066,13 @@ const ROW_CONTENT: RowContent[] = [
           Za pracovní neschopnost v souvislosti s těhotenstvím a porodem poskytuje
           NEON Life plnění nejvýše za 90 dní pro každé těhotenství.
         </p>
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 px-4 py-3 text-center">
+        <div className={`mt-4 rounded-xl border border-emerald-200 ${styles.detailSurface} px-4 py-3 text-center`}>
           <span className="block text-3xl font-semibold text-emerald-700">90</span>
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-950/65">
             dní bez nutné hospitalizace
           </span>
         </div>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>Pro plnění až 90 dní není stanovena podmínka hospitalizace.</span>
         </div>
@@ -1078,7 +1080,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
           30 dní · až 90 dní
         </span>
@@ -1091,20 +1093,20 @@ const ROW_CONTENT: RowContent[] = [
           potratu poskytne OneGuard plnění nejvýše za 30 dní pro každé těhotenství.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-          <div className="rounded-xl border border-rose-200 bg-white/80 px-3 py-3">
+          <div className={`rounded-xl border border-rose-200 ${styles.detailSurface} px-3 py-3`}>
             <span className="block text-2xl font-semibold text-rose-700">30</span>
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-rose-950/65">
               dní standardně
             </span>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-white/80 px-3 py-3">
+          <div className={`rounded-xl border border-amber-200 ${styles.detailSurface} px-3 py-3`}>
             <span className="block text-2xl font-semibold text-amber-700">90</span>
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-amber-950/65">
               dní při hospitalizaci
             </span>
           </div>
         </div>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <Hospital className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             Prodloužení na 90 dní vyžaduje souvislou hospitalizaci alespoň 3 dny.
@@ -1123,11 +1125,11 @@ const ROW_CONTENT: RowContent[] = [
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Pracovní neschopnost
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Scissors className="h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
           Krácení při souběhu pojištění
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání možnosti snížit plnění, pokud pojištěný čerpá dávku také z
           obdobného pojištění u jiné pojišťovny.
         </p>
@@ -1145,7 +1147,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <Coins className="h-3.5 w-3.5" aria-hidden="true" />
           Limit 2 000 Kč denně
         </span>
@@ -1156,7 +1158,7 @@ const ROW_CONTENT: RowContent[] = [
           NEON Life má limit pro případné krácení pojistného plnění nastaven na
           2 000 Kč denní dávky.
         </p>
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 px-4 py-3 text-center">
+        <div className={`mt-4 rounded-xl border border-emerald-200 ${styles.detailSurface} px-4 py-3 text-center`}>
           <span className="block text-3xl font-semibold text-emerald-700">2 000 Kč</span>
           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-950/65">
             denní dávka
@@ -1166,7 +1168,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
           Možnost krácení
         </span>
@@ -1178,7 +1180,7 @@ const ROW_CONTENT: RowContent[] = [
           pojistnou událost obdržel plnění od ostatních pojišťoven z obdobného typu
           pojištění.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             Souběžně vyplacené plnění z obdobného pojištění může ovlivnit výslednou
@@ -1196,11 +1198,11 @@ const ROW_CONTENT: RowContent[] = [
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Pracovní neschopnost
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <PowerOff className="h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
           Zánik vyčerpáním limitu
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Co se stane s pojištěním po vyplacení maximálního plnění z jedné pojistné
           události.
         </p>
@@ -1218,7 +1220,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
           Nezaniká
         </span>
@@ -1229,7 +1231,7 @@ const ROW_CONTENT: RowContent[] = [
           Pojištění pracovní neschopnosti maximální výplatou z jedné pojistné
           události nezaniká.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>Vyčerpání limitu jedné události samo o sobě pojištění neukončí.</span>
         </div>
@@ -1237,7 +1239,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <PowerOff className="h-3.5 w-3.5" aria-hidden="true" />
           Zaniká
         </span>
@@ -1248,7 +1250,7 @@ const ROW_CONTENT: RowContent[] = [
           Pojištění pracovní neschopnosti maximální výplatou z jedné pojistné
           události zaniká.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>Po vyčerpání maximální výplaty z jedné události pojištění končí.</span>
         </div>
@@ -1263,11 +1265,11 @@ const ROW_CONTENT: RowContent[] = [
           <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
           Pracovní neschopnost
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Bone className="h-5 w-5 shrink-0 text-violet-600" aria-hidden="true" />
           Páteř a diagnózy M
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání omezení plnění u ploténkového syndromu, funkční bolesti a
           dorzopatií bez objektivního nálezu.
         </p>
@@ -1285,7 +1287,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Bez omezení diagnóz M
         </span>
@@ -1295,7 +1297,7 @@ const ROW_CONTENT: RowContent[] = [
         <p className="mt-2 text-sm font-medium leading-6 text-emerald-950/75">
           NEON Life nemá uvedené omezení diagnóz M pro pracovní neschopnost.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Není zde stanovena stejná podmínka objektivního postižení míchy,
@@ -1306,7 +1308,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Výluka
         </span>
@@ -1318,14 +1320,14 @@ const ROW_CONTENT: RowContent[] = [
           částečně v souvislosti s následujícími obtížemi:
         </p>
         <ul className="mt-3 space-y-2 text-sm font-semibold leading-5 text-rose-950/85">
-          <li className="flex gap-2 rounded-lg border border-rose-200 bg-white/80 p-2.5">
+          <li className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-2.5`}>
             <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               Náhlý ploténkový páteřní syndrom bez objektivního postižení míchy
               a/nebo míšních kořenů.
             </span>
           </li>
-          <li className="flex gap-2 rounded-lg border border-rose-200 bg-white/80 p-2.5">
+          <li className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-2.5`}>
             <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               Jakákoli funkční bolest a/nebo dorzopatie bez objektivního
@@ -1344,11 +1346,11 @@ const ROW_CONTENT: RowContent[] = [
           <Hospital className="h-3.5 w-3.5" aria-hidden="true" />
           Hospitalizace
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Baby className="h-5 w-5 shrink-0 text-cyan-600" aria-hidden="true" />
           Hospitalizace dítěte
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Porovnání omezení plnění při hospitalizaci dítěte v souvislosti s
           vrozenými vadami a potížemi, které z nich vyplývají.
         </p>
@@ -1366,7 +1368,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
           Bez tohoto omezení
         </span>
@@ -1377,7 +1379,7 @@ const ROW_CONTENT: RowContent[] = [
           NEON Life nemá uvedené omezení hospitalizace dítěte v souvislosti s
           vrozenými vadami podle věku při diagnóze nebo projevu příznaků.
         </p>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Není zde stanovena stejná hranice prvních 3 let života ani podmínka
@@ -1388,7 +1390,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Výluka
         </span>
@@ -1400,7 +1402,7 @@ const ROW_CONTENT: RowContent[] = [
           jakýmikoli vrozenými vadami a potížemi, které z nich vyplývají, pokud:
         </p>
         <ul className="mt-3 space-y-2 text-sm font-semibold leading-5 text-rose-950/85">
-          <li className="flex gap-2 rounded-lg border border-rose-200 bg-white/80 p-2.5">
+          <li className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-2.5`}>
             <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               byly diagnostikovány nebo se jejich příznaky projevily
@@ -1409,7 +1411,7 @@ const ROW_CONTENT: RowContent[] = [
               </mark>
             </span>
           </li>
-          <li className="flex gap-2 rounded-lg border border-rose-200 bg-white/80 p-2.5">
+          <li className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-2.5`}>
             <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               nebo byly diagnostikovány či se jejich příznaky projevily
@@ -1430,11 +1432,11 @@ const ROW_CONTENT: RowContent[] = [
           <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Úrazové pojištění
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <ShieldPlus className="h-5 w-5 shrink-0 text-orange-600" aria-hidden="true" />
           Trvalé následky úrazu
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Rozsah krytí závisí na tom, jak pojistné podmínky definují samotný úraz.
           Tato definice nemusí odpovídat medicínskému označení úrazu.
         </p>
@@ -1452,7 +1454,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <ShieldPlus className="h-3.5 w-3.5" aria-hidden="true" />
           Úraz PLUS
         </span>
@@ -1467,7 +1469,7 @@ const ROW_CONTENT: RowContent[] = [
           „…neočekávané a náhlé působení vlastní tělesné síly závislé i nezávislé na
           vůli pojištěného nebo zevních sil nezávislých na vůli pojištěného…“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>
             Definice může zahrnout i děj vyvolaný vlastní tělesnou silou závislou na
@@ -1478,7 +1480,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Úraz pojištěného
         </span>
@@ -1493,7 +1495,7 @@ const ROW_CONTENT: RowContent[] = [
           „…působení zevních sil nebo vlastní tělesné síly nezávisle na vůli
           pojištěného…“
         </blockquote>
-        <div className="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-rose-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-rose-950`}>
           <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           <span>
             Vlastní tělesná síla závislá na vůli pojištěného není v definici úrazu
@@ -1511,11 +1513,11 @@ const ROW_CONTENT: RowContent[] = [
           <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
           Trvalé následky
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <ChartNoAxesColumn className="h-5 w-5 shrink-0 text-orange-600" aria-hidden="true" />
           Progresivní plnění
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Oba produkty nabízejí až 10× progresi, ale násobení pojistné částky
           spouštějí od jiného procenta rozsahu trvalých následků.
         </p>
@@ -1533,9 +1535,9 @@ const ROW_CONTENT: RowContent[] = [
             ].map(([range, neon, oneGuard]) => (
               <div
                 key={range}
-                className="grid grid-cols-[0.8fr_1fr_1fr] items-center gap-1.5 rounded-lg border border-orange-100 bg-white/85 px-2 py-2 text-center text-[11px] font-semibold"
+                className={`grid grid-cols-[0.8fr_1fr_1fr] items-center gap-1.5 rounded-lg border border-orange-100 ${styles.detailSurface} px-2 py-2 text-center text-[11px] font-semibold`}
               >
-                <span className="text-slate-700">{range}</span>
+                <span className={`${styles.detailText}`}>{range}</span>
                 <span className="rounded-md bg-emerald-100 px-1.5 py-1 text-emerald-800">
                   {neon}
                 </span>
@@ -1551,7 +1553,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLife: (
       <article className={styles.valueCard} data-tone="positive">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="positive">
           <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
           10× progrese
         </span>
@@ -1573,7 +1575,7 @@ const ROW_CONTENT: RowContent[] = [
           ].map(([range, multiplier]) => (
             <div
               key={range}
-              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white/80 px-3 py-2"
+              className={`flex items-center justify-between gap-3 rounded-lg border border-emerald-200 ${styles.detailSurface} px-3 py-2`}
             >
               <span className="text-emerald-950/75">{range}</span>
               <span className="rounded-md bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800">
@@ -1582,7 +1584,7 @@ const ROW_CONTENT: RowContent[] = [
             </div>
           ))}
         </div>
-        <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-emerald-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-emerald-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-emerald-950`}>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
           <span>Maximální 10× násobek se uplatní už při rozsahu nad 90 %.</span>
         </div>
@@ -1590,7 +1592,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
           10× progrese
         </span>
@@ -1613,7 +1615,7 @@ const ROW_CONTENT: RowContent[] = [
           ].map(([range, multiplier]) => (
             <div
               key={range}
-              className="flex items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/80 px-3 py-2"
+              className={`flex items-center justify-between gap-3 rounded-lg border border-sky-200 ${styles.detailSurface} px-3 py-2`}
             >
               <span className="text-sky-950/75">{range}</span>
               <span className="rounded-md bg-sky-100 px-2 py-0.5 font-semibold text-sky-800">
@@ -1622,7 +1624,7 @@ const ROW_CONTENT: RowContent[] = [
             </div>
           ))}
         </div>
-        <div className="mt-4 flex gap-2 rounded-xl border border-sky-200 bg-white/80 p-3 text-sm font-semibold leading-5 text-sky-950">
+        <div className={`mt-4 flex gap-2 rounded-xl border border-sky-200 ${styles.detailSurface} p-3 text-sm font-semibold leading-5 text-sky-950`}>
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />
           <span>Maximální 10× násobek se uplatní až při rozsahu 100 %.</span>
         </div>
@@ -1637,22 +1639,22 @@ const ROW_CONTENT: RowContent[] = [
           <Hand className="h-3.5 w-3.5" aria-hidden="true" />
           Úrazové pojištění
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Hand className="h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
           Horní končetiny
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Výluka pro pojištění trvalých následků a poranění horních končetin.
         </p>
       </div>
     ),
     neonLifeTone: "neutral",
     neonLife: (
-      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-center">
+      <div className={`flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 ${styles.detailSurface} p-5 text-center`}>
         <div>
-          <PowerOff className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-slate-700">Není v nabídce</p>
-          <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+          <PowerOff className={`mx-auto h-6 w-6 ${styles.detailText}`} aria-hidden="true" />
+          <p className={`mt-3 text-sm font-semibold ${styles.detailText}`}>Není v nabídce</p>
+          <p className={`mt-1 text-xs font-medium leading-5 ${styles.detailText}`}>
             ČPP toto připojištění nenabízí.
           </p>
         </div>
@@ -1660,7 +1662,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="caution">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="caution">
           <CircleX className="h-3.5 w-3.5" aria-hidden="true" />
           Na co se pojištění nevztahuje
         </span>
@@ -1668,7 +1670,7 @@ const ROW_CONTENT: RowContent[] = [
           Onemocnění vzniklé následkem úrazu
         </h3>
         <div className="mt-4 space-y-2">
-          <div className="flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-bold leading-5 text-rose-950">
+          <div className={`flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-bold leading-5 text-rose-950`}>
             <Hand className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-600">
@@ -1677,7 +1679,7 @@ const ROW_CONTENT: RowContent[] = [
               Trvalé následky horních končetin
             </span>
           </div>
-          <div className="flex gap-2 rounded-xl border border-rose-200 bg-white/80 p-3 text-sm font-bold leading-5 text-rose-950">
+          <div className={`flex gap-2 rounded-xl border border-rose-200 ${styles.detailSurface} p-3 text-sm font-bold leading-5 text-rose-950`}>
             <Hand className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-600">
@@ -1697,7 +1699,7 @@ const ROW_CONTENT: RowContent[] = [
             Další výluky pro Skupinu 2
           </div>
           <div className="mt-3 space-y-2">
-            <div className="flex gap-2 rounded-lg border border-rose-200 bg-white/85 p-3 text-sm font-medium leading-5 text-rose-950/85">
+            <div className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-3 text-sm font-medium leading-5 text-rose-950/85`}>
               <Bone className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
               <span>
                 <strong className="text-rose-950">Zlomeniny:</strong> pojistná událost
@@ -1706,7 +1708,7 @@ const ROW_CONTENT: RowContent[] = [
                 ani v případě únavových zlomenin.
               </span>
             </div>
-            <div className="flex gap-2 rounded-lg border border-rose-200 bg-white/85 p-3 text-sm font-medium leading-5 text-rose-950/85">
+            <div className={`flex gap-2 rounded-lg border border-rose-200 ${styles.detailSurface} p-3 text-sm font-medium leading-5 text-rose-950/85`}>
               <Activity className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
               <span>
                 <strong className="text-rose-950">Distenze:</strong> pojistná událost
@@ -1733,11 +1735,11 @@ const ROW_CONTENT: RowContent[] = [
           <Hand className="h-3.5 w-3.5" aria-hidden="true" />
           Horní končetiny · Skupina 3
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Scissors className="h-5 w-5 shrink-0 text-sky-600" aria-hidden="true" />
           Syndrom karpálního tunelu
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Nemoc horních končetin označovaná také jako syndrom zúžení nebo léze
           středního nervu.
         </p>
@@ -1745,11 +1747,11 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLifeTone: "neutral",
     neonLife: (
-      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-center">
+      <div className={`flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 ${styles.detailSurface} p-5 text-center`}>
         <div>
-          <PowerOff className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-slate-700">Není v nabídce</p>
-          <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+          <PowerOff className={`mx-auto h-6 w-6 ${styles.detailText}`} aria-hidden="true" />
+          <p className={`mt-3 text-sm font-semibold ${styles.detailText}`}>Není v nabídce</p>
+          <p className={`mt-1 text-xs font-medium leading-5 ${styles.detailText}`}>
             ČPP toto připojištění nenabízí.
           </p>
         </div>
@@ -1757,7 +1759,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
           Skupina 3 · Nemoci horních končetin
         </span>
@@ -1769,13 +1771,13 @@ const ROW_CONTENT: RowContent[] = [
           léčbu.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-          <div className="rounded-xl border border-sky-200 bg-white/85 p-3">
+          <div className={`rounded-xl border border-sky-200 ${styles.detailSurface} p-3`}>
             <span className="block text-2xl font-semibold text-sky-700">25 %</span>
             <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-sky-950/60">
               z pojistné částky
             </span>
           </div>
-          <div className="rounded-xl border border-sky-200 bg-white/85 p-3">
+          <div className={`rounded-xl border border-sky-200 ${styles.detailSurface} p-3`}>
             <span className="block text-2xl font-semibold text-sky-700">1×</span>
             <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-sky-950/60">
               maximální plnění
@@ -1800,11 +1802,11 @@ const ROW_CONTENT: RowContent[] = [
           <Hand className="h-3.5 w-3.5" aria-hidden="true" />
           Horní končetiny · Skupina 3
         </span>
-        <h2 className="mt-3 flex items-center gap-2 text-lg font-semibold leading-tight text-slate-950">
+        <h2 className={`mt-3 flex items-center gap-2 text-lg font-semibold leading-tight ${styles.detailText}`}>
           <Activity className="h-5 w-5 shrink-0 text-indigo-600" aria-hidden="true" />
           Tenisový loket
         </h2>
-        <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+        <p className={`mt-2 text-sm font-medium leading-6 ${styles.detailText}`}>
           Radiální neboli laterální epikondylitida, v podmínkách popsaná jako zánět
           zevního hrbolu pažní kosti.
         </p>
@@ -1812,11 +1814,11 @@ const ROW_CONTENT: RowContent[] = [
     ),
     neonLifeTone: "neutral",
     neonLife: (
-      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-center">
+      <div className={`flex min-h-32 items-center justify-center rounded-2xl border border-dashed border-slate-300 ${styles.detailSurface} p-5 text-center`}>
         <div>
-          <PowerOff className="mx-auto h-6 w-6 text-slate-400" aria-hidden="true" />
-          <p className="mt-3 text-sm font-semibold text-slate-700">Není v nabídce</p>
-          <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+          <PowerOff className={`mx-auto h-6 w-6 ${styles.detailText}`} aria-hidden="true" />
+          <p className={`mt-3 text-sm font-semibold ${styles.detailText}`}>Není v nabídce</p>
+          <p className={`mt-1 text-xs font-medium leading-5 ${styles.detailText}`}>
             ČPP toto připojištění nenabízí.
           </p>
         </div>
@@ -1824,7 +1826,7 @@ const ROW_CONTENT: RowContent[] = [
     ),
     oneGuard: (
       <article className={styles.valueCard} data-tone="info">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+        <span className={styles.statusBadge} data-tone="info">
           <Activity className="h-3.5 w-3.5" aria-hidden="true" />
           Skupina 3 · Nemoci horních končetin
         </span>
@@ -1835,13 +1837,13 @@ const ROW_CONTENT: RowContent[] = [
           Pojištění se vztahuje na tenisový loket vyžadující chirurgickou léčbu.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-          <div className="rounded-xl border border-indigo-200 bg-white/85 p-3">
+          <div className={`rounded-xl border border-indigo-200 ${styles.detailSurface} p-3`}>
             <span className="block text-2xl font-semibold text-indigo-700">25 %</span>
             <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-indigo-950/60">
               z pojistné částky
             </span>
           </div>
-          <div className="rounded-xl border border-indigo-200 bg-white/85 p-3">
+          <div className={`rounded-xl border border-indigo-200 ${styles.detailSurface} p-3`}>
             <span className="block text-2xl font-semibold text-indigo-700">1×</span>
             <span className="mt-1 block text-[10px] font-bold uppercase tracking-[0.08em] text-indigo-950/60">
               maximální plnění
@@ -1916,6 +1918,7 @@ function productSummary(node: ReactNode) {
 }
 
 export type ComparisonRow = RowContent & {
+  report: ComparisonReportRow;
   group: string;
   title: string;
   searchText: string;
@@ -1930,6 +1933,22 @@ function keyedContent(node: ReactNode, key: string): ReactNode {
 
 export const COMPARISON_ROWS: ComparisonRow[] = ROW_CONTENT.map(row => ({
   ...row,
+  report: {
+    id: row.id,
+    title: childText(row.topic, "h2"),
+    topic: reportDetailBlocks(row.topic),
+    neon: { summary: productSummary(row.neonLife), blocks: reportDetailBlocks(row.neonLife) },
+    metlife: { summary: productSummary(row.oneGuard), blocks: reportDetailBlocks(row.oneGuard) },
+    appendix: row.id === "zavazna-onemocneni" ? [
+      { text: IN_SITU_TITLE, kind: "heading" },
+      { text: IN_SITU_DESCRIPTION, kind: "body" },
+      ...reportBlocks(IN_SITU_CONTENT),
+    ] : row.id === "trvale-nasledky-progresivni-plneni" ? [{
+      text: "Otevřít interaktivní srovnání progresivního plnění",
+      kind: "body",
+      href: "/pomucky/srovnavac-trvalych-nasledku?preset=neon-oneguard-10x",
+    }] : [],
+  },
   topic: keyedContent(row.topic, `${row.id}:topic`),
   neonLife: keyedContent(row.neonLife, `${row.id}:neon`),
   oneGuard: keyedContent(row.oneGuard, `${row.id}:oneguard`),

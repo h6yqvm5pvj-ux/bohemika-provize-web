@@ -17,6 +17,7 @@ const email = "owner@example.test";
 const ts = Date.parse("2026-09-10");
 const doc = (id: string) => ({ id, data: () => ({
   clientName: "X test", productKey: "neon", contractSignedDate: new Date(ts), total: 42, items: [],
+  clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", note: "Private note",
 }) });
 const request = () => new NextRequest("https://example.test/api/contracts/list?scope=own&q=x&limit=1");
 
@@ -79,6 +80,19 @@ describe("contract search projection integration", () => {
       ok: true, contracts: [], hasMore: false, nextCursor: null, nextCursorToken: null,
     });
     expect(mocks.fullRead).not.toHaveBeenCalled();
+  });
+
+  it("provides a slim client directory shape with contacts and lifecycle data", async () => {
+    mocks.projected.mockResolvedValue([doc("a")]);
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest(`${request().url}&shape=clientDirectory`));
+    const payload = await response.json();
+    expect(payload.contracts[0]).toMatchObject({ id: "a", clientName: "X test", clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", productKey: "neon", contractSignedDate: ts });
+    expect(payload.contracts[0]).not.toHaveProperty("note");
+    expect(payload.contracts[0]).not.toHaveProperty("total");
+    expect(payload.contracts[0]).not.toHaveProperty("items");
+    expect(payload.contracts[0].originalAdviserEmail).toBe(email);
+    expect(payload.teamAdvisers).toEqual([]);
   });
 
   it.each(["expired-read-time", "unsupported-filter"])("keeps the original complete fallback on %s", async failure => {

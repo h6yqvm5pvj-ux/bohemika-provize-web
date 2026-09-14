@@ -56,6 +56,9 @@ export type ContractCommissionStornoSummary = {
 };
 
 export type ContractAutoPremiumStatementHistoryEntry = {
+  basePremiumResolutionKey?: string;
+  sourceBasePremium?: number;
+  paymentFrequencyAtImport?: string | null;
   key?: string | null;
   premiumKind?: "auto_change" | "life_increase" | string | null;
   statementId?: string | null;
@@ -214,6 +217,7 @@ export type ContractDoc = {
   items?: CommissionResultItemDTO[];
   commissionPayouts?: ContractCommissionPayout[] | null;
   commissionStornoSummary?: ContractCommissionStornoSummary | null;
+  premiumStatementBaseResolutions?: import("@/app/lib/autoPremiumBasis").PremiumBaseResolution[] | null;
   premiumStatementHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;
   premiumUpdatedFromStatementAtMs?: number | null;
   premiumUpdatedFromStatementChronologyMs?: number | null;

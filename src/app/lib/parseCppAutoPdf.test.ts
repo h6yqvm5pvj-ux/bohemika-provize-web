@@ -98,4 +98,35 @@ describe("parseCppAutoPdf", () => {
       ]),
     ).toBe("87654321");
   });
+
+  it("returns the email from the CPP policyholder E-mail field, excluding the adviser and vehicle operator", async () => {
+    pdfState.pages = [[
+      { str: "ZPROSTŘEDKOVATEL", x: 45, y: 640 },
+      { str: "E-mail: poradce@example.test", x: 45, y: 625, width: 160 },
+      { str: "POJISTNÍK", x: 45, y: 600 },
+      { str: "Jméno:", x: 45, y: 585, width: 30 },
+      { str: "Petr", x: 80, y: 585, width: 20 },
+      { str: "Přijmení:", x: 120, y: 585, width: 40 },
+      { str: "Novák", x: 165, y: 585, width: 30 },
+      { str: "E-mail:", x: 45, y: 565, width: 30 },
+      { str: "PETR@EXAMPLE.TEST", x: 80, y: 565, width: 100 },
+      { str: "Telefon: 777123456", x: 260, y: 565, width: 100 },
+      { str: "PROVOZOVATEL", x: 45, y: 540, width: 80 },
+      { str: "E-mail: provozovatel@example.test", x: 45, y: 525, width: 180 },
+    ]];
+    await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({ clientName: "Petr Novák", clientEmail: "petr@example.test" });
+  });
+
+  it("does not fill the email if it belongs only to the adviser", async () => {
+    pdfState.pages = [[
+      { str: "POJISTNÍK", x: 45, y: 600 },
+      { str: "Jméno:", x: 45, y: 585, width: 30 },
+      { str: "Petr", x: 80, y: 585, width: 20 },
+      { str: "Příjmení:", x: 120, y: 585, width: 40 },
+      { str: "Novák", x: 165, y: 585, width: 30 },
+      { str: "ZPROSTŘEDKOVATEL", x: 45, y: 565 },
+      { str: "E-mail: poradce@example.test", x: 45, y: 545, width: 150 },
+    ]];
+    expect((await parseCppAutoPdf(makePdfFile())).clientEmail).toBeUndefined();
+  });
 });

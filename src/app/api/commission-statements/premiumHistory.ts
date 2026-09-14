@@ -13,6 +13,7 @@ import {
   isAutoSubsequentCommissionCode,
 } from "@/app/lib/productFormulas/autoCommission";
 import { commissionStatementIdentityKey } from "./statementIdentity";
+import { resolveAutoPremiumBasis, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
 const LEGACY_STATEMENT_CREATED_CONTRACT_WINDOW_MS = 15 * 60 * 1000;
@@ -31,6 +32,7 @@ export type PremiumStatementRow = {
 };
 
 export type PremiumHistoryContract = {
+  premiumStatementBaseResolutions?: PremiumBaseResolution[] | null;
   productKey?: Product | null;
   frequencyRaw?: string | null;
   inputAmount?: number | null;
@@ -49,6 +51,9 @@ export type PremiumHistoryContract = {
 };
 
 export type PremiumStatementHistoryEntry = {
+  sourceBasePremium?: number;
+  paymentFrequencyAtImport?: string | null;
+  basePremiumResolutionKey?: string;
   key: string;
   premiumKind: PremiumStatementRow["premiumKind"];
   statementId: string;
@@ -423,6 +428,18 @@ export const premiumHistoryEntryFromStatementRow = ({
   }
   if (row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
 
+  const autoSource = { ...row, statementId, statementNumber, statementPeriod, statementDate, statementOwnerEmail: writtenBy };
+  const autoBasis = isAutoProduct(contract.productKey) ? resolveAutoPremiumBasis(autoSource, contract) : null;
+  // A commission base does not declare its unit. Similarity to an old premium
+  // cannot tell an annual amount from a payment after a large price increase.
+  if (autoBasis && autoBasis.status !== "resolved") return null;
+  const resolvedAutoBasis = autoBasis?.status === "resolved" ? autoBasis : null;
+  const sourceMetadata = resolvedAutoBasis ? {
+    sourceBasePremium: row.basePremium,
+    paymentFrequencyAtImport: contract.frequencyRaw ?? null,
+    basePremiumResolutionKey: resolvedAutoBasis.key,
+  } : {};
+
   if (row.premiumKind === "auto_initial") {
     const policyStartMs =
       toMillis(contract.policyStartDate) ??
@@ -431,8 +448,8 @@ export const premiumHistoryEntryFromStatementRow = ({
       periodEndMs ??
       statementChronologyMs ??
       nowMs;
-    const basePremiumPeriod = nonLifePremiumStatementBasePeriod(row, contract);
-    const annualPremium = statementAnnualBase(row, contract);
+    const basePremiumPeriod = resolvedAutoBasis?.period ?? nonLifePremiumStatementBasePeriod(row, contract);
+    const annualPremium = resolvedAutoBasis?.annualPremium ?? statementAnnualBase(row, contract);
     const paymentPremium =
       basePremiumPeriod === "annual"
         ? Math.round((annualPremium / contractPaymentPeriodsPerYear(contract)) * 100) / 100
@@ -440,6 +457,7 @@ export const premiumHistoryEntryFromStatementRow = ({
     if (annualPremium <= 0 || paymentPremium <= 0) return null;
 
     return {
+      ...sourceMetadata,
       key: compactHash(
         [
           statementId,
@@ -502,9 +520,9 @@ export const premiumHistoryEntryFromStatementRow = ({
   const anniversaryDateMs = addUtcYearsClamped(policyStartMs, anniversaryNumber);
   if (anniversaryDateMs == null) return null;
 
-  const basePremiumPeriod = nonLifePremiumStatementBasePeriod(row, contract);
-  const annualPremium = statementAnnualBase(row, contract);
-  const previousAnnualPremium = autoPremiumBeforeStatement(
+  const basePremiumPeriod = resolvedAutoBasis?.period ?? nonLifePremiumStatementBasePeriod(row, contract);
+  const annualPremium = resolvedAutoBasis?.annualPremium ?? statementAnnualBase(row, contract);
+  const previousAnnualPremium = (resolvedAutoBasis ? previousConfirmedAutoAnnualPremium(autoSource, contract) : null) ?? autoPremiumBeforeStatement(
     contract,
     anniversaryDateMs,
     { allowCurrentFallback: allowCurrentPremiumFallback }
@@ -528,6 +546,7 @@ export const premiumHistoryEntryFromStatementRow = ({
       : Math.round((paymentPremium - previousPaymentPremium) * 100) / 100;
 
   return {
+    ...sourceMetadata,
     key: compactHash(
       [
         statementId,
@@ -734,3 +753,35 @@ export const mergePremiumHistoryRecords = (
     .slice(-maxCount);
   return { merged, added, existingCount, updatedExisting };
 };
+
+/** Rebuild only rows backed by an explicit confirmation. Payouts, the original
+ * contract premium and other advisers' statement records are preserved. */
+export function confirmedPremiumHistoryPatch(
+  contract: PremiumHistoryContract,
+  confirmation: PremiumBaseResolution,
+  nowMs: number,
+) {
+  const resolutions = [...(contract.premiumStatementBaseResolutions ?? []).filter(item => item.key !== confirmation.key), confirmation];
+  const own = resolutions.filter(item => item.writtenBy === confirmation.writtenBy &&
+    item.frequencyRaw === contract.frequencyRaw && item.productKey === contract.productKey);
+  const matches = (entry: PremiumStatementHistoryEntry, source: PremiumBaseResolution) =>
+    entry.writtenBy === source.writtenBy && entry.source === source.source &&
+    entry.rowId === source.rowId && entry.productCode === source.productCode &&
+    normalizeCommissionCodeKey(entry.commissionCode) === normalizeCommissionCodeKey(source.commissionCode) &&
+    commissionStatementIdentityKey(entry) === commissionStatementIdentityKey(source);
+  const kept = contractPremiumHistoryArray(contract).filter(entry => !own.some(source => matches(entry, source)));
+  const working: PremiumHistoryContract = { ...contract, premiumStatementBaseResolutions: resolutions, premiumStatementHistory: kept };
+  for (const source of own.sort((a, b) => (a.statementChronologyMs ?? 0) - (b.statementChronologyMs ?? 0))) {
+    const entry = premiumHistoryEntryFromStatementRow({
+      row: { ...source, premiumKind: /^A/i.test(source.commissionCode) ? "auto_initial" : "auto_change",
+        signedAt: source.signedAt ?? null, validFrom: source.validFrom ?? null },
+      contract: working, statementId: source.statementId!, statementNumber: source.statementNumber ?? null,
+      statementPeriod: source.statementPeriod ?? null, statementDate: source.statementDate ?? null,
+      statementChronologyMs: source.statementChronologyMs, payoutMonthKey: source.payoutMonthKey,
+      periodEndMs: null, nowMs, writtenBy: source.writtenBy,
+    });
+    if (entry) working.premiumStatementHistory = [...(working.premiumStatementHistory ?? []), entry];
+  }
+  return { premiumStatementBaseResolutions: resolutions,
+    premiumStatementHistory: mergePremiumHistoryRecords([], contractPremiumHistoryArray(working), 120).merged };
+}

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { runContractNoteReminders } from "@/lib/server/contractNoteReminders";
+import { runClientNoteReminders } from "@/lib/server/clientNoteReminders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized cron request." }, { status: 401 });
   }
   try {
-    return NextResponse.json(await runContractNoteReminders(req));
+    const [contracts, clients] = await Promise.allSettled([
+      runContractNoteReminders(req), runClientNoteReminders(),
+    ]);
+    if (contracts.status === "rejected" || clients.status === "rejected") {
+      return NextResponse.json({ ok: false, error: "Některé připomínky se nepodařilo zpracovat." }, { status: 500 });
+    }
+    return NextResponse.json({ ...contracts.value, clientNotes: clients.value });
   } catch (error) {
     console.error("Contract note reminders cron failed:", error);
     return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyClientCard, MAX_CLIENT_CARD_REQUEST_BYTES } from "@/app/_klienti/clientCardData";
 import { CLIENT_CARD_PILOT_OWNER_EMAIL, TEST_CLIENT_SLUG } from "@/app/_klienti/clientAccess";
+import { clientSlugForName } from "@/app/_klienti/clientIdentity";
 
 const mocks = vi.hoisted(() => ({
   requireAdvisor: vi.fn(),
@@ -69,8 +70,7 @@ describe("client card authorization and persistence", () => {
   });
 
   it.each([
-    { ...owner, email: "other@bohemika.eu" },
-    { ...owner, email: "jakub.rauscher@example.org" },
+    { ...owner, email: "" },
     { ...owner, isImpersonating: true },
   ])("rejects an unauthorized account or impersonation: %j", async (ctx) => {
     mocks.requireAdvisor.mockResolvedValue({ ok: true, ctx });
@@ -90,10 +90,18 @@ describe("client card authorization and persistence", () => {
     }));
   });
 
-  it("rejects client slugs outside the pilot for reads and writes", async () => {
+  it("rejects malformed client slugs for reads and writes", async () => {
     expect((await GET(request(), context("other-client"))).status).toBe(404);
     expect((await PUT(request("PUT", { card, expectedRevision: 0 }), context("other-client"))).status).toBe(404);
     expect(mocks.collection).not.toHaveBeenCalled();
+  });
+
+  it("persists titled and untitled clients under the same stable card ID", async () => {
+    const slug = clientSlugForName("Bc. Petr Novák")!;
+    expect(slug).toBe(clientSlugForName("Petr Novák"));
+    expect((await GET(request(), context(slug))).status).toBe(200);
+    expect((await PUT(request("PUT", { card, expectedRevision: 0 }), context(slug))).status).toBe(200);
+    expect(mocks.write).toHaveBeenCalledWith(`clientCardsPrivate/owner-uid/cards/${slug}`, expect.objectContaining({ ownerUid: owner.uid }));
   });
 
   it("returns an empty card in the authenticated UID's namespace", async () => {
@@ -107,7 +115,7 @@ describe("client card authorization and persistence", () => {
     mocks.get.mockImplementation(async (path: string) => ({ data: () => path.includes("/owner-uid/")
       ? { ownerUid: owner.uid, card, revision: 1 } : undefined }));
     expect((await (await GET(request(), context())).json()).card).toEqual(card);
-    mocks.requireAdvisor.mockResolvedValue({ ok: true, ctx: { ...owner, uid: "replacement-uid" } });
+    mocks.requireAdvisor.mockResolvedValue({ ok: true, ctx: { ...owner, uid: "replacement-uid", email: "other@example.test" } });
     expect(await (await GET(request(), context())).json()).toEqual({ ok: true, card: null, revision: 0 });
   });
 

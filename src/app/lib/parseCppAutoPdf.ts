@@ -1,11 +1,13 @@
 // src/app/lib/parseCppAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { extractClientEmailFromPdfLines } from "./extractClientEmailFromPdf";
 
 export type CppAutoPdfResult = {
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
   personalId?: string | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
@@ -522,6 +524,11 @@ export async function parseCppAutoPdf(file: File): Promise<CppAutoPdfResult> {
     pageOne.match(/Prijmeni:\s*([^\n]+)/i)?.[1]?.trim();
   if (!result.clientName && (firstName || lastName)) {
     result.clientName = [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+  }
+
+  if (result.clientName) {
+    const contact = extractClientEmailFromPdfLines(layoutLines, result.clientName);
+    if (contact.status === "found") result.clientEmail = contact.email;
   }
 
   // Počátek pojištění

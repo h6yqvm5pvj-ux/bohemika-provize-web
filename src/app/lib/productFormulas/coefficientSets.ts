@@ -144,17 +144,27 @@ export const productSupportsCoefficientSetOverride = (
 ): boolean => candidateCoefficientSetsForProduct(product).length > 0;
 
 export const minimumSupportedContractSignedDateForProduct = (
-  product: Product | null | undefined
-): string | null => (product ? PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM[product] ?? null : null);
+  product: Product | null | undefined,
+  acquisitionType?: "inherited" | null
+): string | null => {
+  // Older ČPP Auto policies can be taken over for subsequent commissions.
+  // Keep the ordinary-contract coefficient boundary unchanged.
+  if (product === "cppAuto" && acquisitionType === "inherited") return "2015-01-01";
+  return product ? PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM[product] ?? null : null;
+};
 
 export const productCoefficientValidityError = (
   product: Product | null | undefined,
-  contractSignedDateIso: string | null | undefined
+  contractSignedDateIso: string | null | undefined,
+  acquisitionType?: "inherited" | null
 ): string | null => {
-  const minimumDate = minimumSupportedContractSignedDateForProduct(product);
+  const minimumDate = minimumSupportedContractSignedDateForProduct(product, acquisitionType);
   const signedDate = typeof contractSignedDateIso === "string" ? contractSignedDateIso.trim() : "";
   if (!minimumDate || !/^\d{4}-\d{2}-\d{2}$/.test(signedDate)) return null;
   if (signedDate >= minimumDate) return null;
+  if (product === "cppAuto" && acquisitionType === "inherited") {
+    return `Převzatou smlouvu ČPP Auto lze uložit s datem sjednání od ${formatIsoDayForCoefficientMessage(minimumDate)}.`;
+  }
 
   return `Smlouvu nelze uložit, protože pro datum sjednání ${formatIsoDayForCoefficientMessage(
     signedDate

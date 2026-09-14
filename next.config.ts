@@ -38,6 +38,9 @@ const staticImageCacheHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // PDF text extraction runs in Node after an attachment upload. Keep the
+  // native PDF.js loader and its worker together in the deployed function.
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
   images: {
     minimumCacheTTL: 60 * 60 * 24 * 7,
     qualities: [70, 75, 100],
@@ -47,6 +50,11 @@ const nextConfig: NextConfig = {
     ),
   },
   outputFileTracingIncludes: {
+    "/api/contracts/attachment": [
+      "./node_modules/pdfjs-dist/package.json",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/@napi-rs/canvas*/**/*",
+    ],
     "/api/documents/file": ["./private/dokumenty/**/*"],
     "/api/documents/neon": ["./private/dokumenty/**/*"],
     "/api/admin/data-health": ["./firestore.rules"],

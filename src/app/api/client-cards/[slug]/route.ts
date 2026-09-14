@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
-import { canAccessClientCards, TEST_CLIENT_SLUG } from "@/app/_klienti/clientAccess";
+import { canAccessClientCards } from "@/app/_klienti/clientAccess";
+import { isClientCardSlug } from "@/app/_klienti/clientIdentity";
 import {
   MAX_CLIENT_CARD_REQUEST_BYTES,
   parseClientCardDraft,
@@ -39,7 +40,7 @@ async function authorize(req: NextRequest, context: RouteContext) {
     return { ok: false as const, response: errorResponse(403, "Nemáš oprávnění ke klientským kartám.") };
   }
   const { slug } = await context.params;
-  if (slug !== TEST_CLIENT_SLUG) {
+  if (!isClientCardSlug(slug)) {
     return { ok: false as const, response: errorResponse(404, "Karta klienta nebyla nalezena.") };
   }
   if (!adminDb) {

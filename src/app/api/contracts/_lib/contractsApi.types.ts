@@ -189,6 +189,7 @@ export type ContractDoc = {
     updatedAtMs?: number | null;
     updatedBy?: string | null;
   } | null;
+  premiumStatementBaseResolutions?: import("@/app/lib/autoPremiumBasis").PremiumBaseResolution[] | null;
   premiumStatementHistory?: {
     key?: string | null;
     premiumKind?: "auto_change" | "life_increase" | string | null;
@@ -513,6 +514,7 @@ export type ContractDetailResponse = {
 };
 
 export type ContractsResponse = {
+  teamAdvisers?: { email: string; name: string | null }[];
   availablePositions?: Position[];
   ok: true;
   scope: "my" | "team";
@@ -588,6 +590,7 @@ export type ContractListResponseShape =
   | "full"
   | "home"
   | "clientNames"
+  | "clientDirectory"
   | "contractList"
   | "cashflow";
 export type ContractListProductCategory =
