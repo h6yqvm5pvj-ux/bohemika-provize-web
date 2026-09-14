@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   UsersRound,
   Wrench,
+  Trophy,
 } from "lucide-react";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { COMMISSION_STATEMENTS_ENABLED } from "@/app/_provizni-vypisy/statementFeature";
@@ -40,6 +41,7 @@ export type ActivePage =
   | "cashflow"
   | "statements"
   | "team"
+  | "hall"
   | "tools"
   | "tips"
   | "settings"
@@ -87,6 +89,7 @@ interface AppNavigationProps {
 const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "home", href: "/", icon: Home },
   { key: "team", href: "/muj-tym", icon: UsersRound },
+  { key: "hall", href: "/sin-slavy", icon: Trophy },
   { key: "intranet", href: "/intranet", icon: Building2 },
   { key: "calc", href: "/kalkulacka", icon: Calculator },
   ...(CLIENT_CARDS_ENABLED
@@ -111,6 +114,7 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
 
 const TIPSTER_NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "home", href: "/", icon: Home },
+  { key: "hall", href: "/sin-slavy", icon: Trophy },
   { key: "tips", href: "/tipy", icon: Lightbulb },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
 ];

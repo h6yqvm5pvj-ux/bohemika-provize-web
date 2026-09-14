@@ -73,6 +73,7 @@ const APP_LAYOUT_COPY: Record<
       cashflow: "Provizní kalendář",
       statements: "Provizní výpisy",
       team: "Můj tým",
+      hall: "Síň slávy",
       tools: "Pomůcky",
       tips: "Tipy",
       settings: "Nastavení",
@@ -160,7 +161,7 @@ export function AppLayout({
     pathname === "/klienti" ||
     pathname.startsWith("/klienti/") ||
     pathname === "/provizni-vypisy";
-  const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
+  const isTipsterAllowedRoute = pathname === "/" || pathname === "/sin-slavy" || isTipsRoute || isCashflowRoute;
   const pageHasCustomToolsBackButton =
     pathname === "/pomucky/projekce-vykonu" ||
     pathname === "/pomucky/srovnavac-trvalych-nasledku";

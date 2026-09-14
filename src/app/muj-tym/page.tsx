@@ -8,6 +8,8 @@ import {
   ArrowUpRight,
   BarChart3,
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Mail,
   MessageSquare,
@@ -16,6 +18,7 @@ import {
   PhoneCall,
   Search,
   Trophy,
+  UsersRound,
   X,
 } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
@@ -39,7 +42,7 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import { type Position } from "@/app/types/domain";
-import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
+import styles from "./team.module.css";
 import introStyles from "../cashflow/cashflowIntro.module.css";
 import { TeamOverviewLoader } from "./TeamOverviewLoader";
 import { TeamSummaryDashboard } from "./TeamSummaryDashboard";
@@ -559,7 +562,6 @@ type WeeklyTeamReportApiResponse = {
 } & Record<string, unknown>;
 
 const TEAM_CACHE_TTL_MS = 60 * 1000;
-const TEAM_MIN_LOADING_MS = 1800;
 const teamDataCache: Record<string, { ts: number; payload: TeamCachePayload }> = {};
 const WEEKLY_REPORT_SEEN_PREFIX = "bohemika:weekly-team-report-modal";
 
@@ -672,6 +674,7 @@ export default function TeamPage() {
   const [authReady, setAuthReady] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
+  const [membersExpanded, setMembersExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(16);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
@@ -800,7 +803,6 @@ export default function TeamPage() {
 
   useEffect(() => {
     let cancelled = false;
-    let finishLoadingTimer: number | null = null;
 
     const loadTeam = async () => {
       if (!authReady) return;
@@ -841,7 +843,6 @@ export default function TeamPage() {
       }
 
       setLoading(true);
-      const loadingStartedAt = Date.now();
       setContractsLoaded(false);
       setContractsError(false);
       try {
@@ -1017,15 +1018,6 @@ export default function TeamPage() {
             },
           };
         }
-        const elapsed = Date.now() - loadingStartedAt;
-        const remaining = Math.max(0, TEAM_MIN_LOADING_MS - elapsed);
-        if (remaining > 0) {
-          finishLoadingTimer = window.setTimeout(() => {
-            if (cancelled) return;
-            setLoading(false);
-          }, remaining);
-          return;
-        }
         if (!cancelled) {
           setLoading(false);
         }
@@ -1035,9 +1027,6 @@ export default function TeamPage() {
     void loadTeam();
     return () => {
       cancelled = true;
-      if (finishLoadingTimer != null) {
-        window.clearTimeout(finishLoadingTimer);
-      }
     };
     // only depends on signed-in user; selection should not retrigger fetch
   }, [authReady, userEmail, cacheKey, refreshNonce]);
@@ -2220,11 +2209,30 @@ export default function TeamPage() {
   return (
     <AppLayout active="team">
       <div
-        className={`${introStyles.pageEnter} team-panel-root w-full max-w-6xl space-y-6 rounded-[34px] bg-[linear-gradient(180deg,#fbfaff_0%,#ffffff_46%,#fbfaff_100%)] px-1 py-1 text-slate-900 sm:px-2 sm:py-2`}
+        className={`${introStyles.pageEnter} ${styles.page}`}
       >
         {!loading && (
-          <header className="team-panel-header flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <SplitTitle text="Můj tým" className="team-panel-title !text-slate-900" />
+          <header className={styles.header}>
+            <div>
+              <div className={styles.eyebrow}><UsersRound size={14} aria-hidden="true" /> Společně k výsledkům</div>
+              <h1 className={styles.title}>Můj tým<span className="text-violet-400">.</span></h1>
+              <p className={styles.description}>Tvoji lidé, společné cíle a výsledky na jednom místě.</p>
+            </div>
+            {showTeamSidebar ? (
+              <nav className={styles.headerActions} aria-label="Týmové nástroje">
+                <Link href="/pomucky/struktura" className={styles.action}>
+                  <Network size={15} aria-hidden="true" /> Struktura
+                </Link>
+                <Link href="/sin-slavy" className={styles.action}>
+                  <Trophy size={15} aria-hidden="true" /> Síň slávy
+                </Link>
+                {canSendTeamMessage ? (
+                  <Link href="/pomucky/zprava-tymu" className={styles.primaryAction}>
+                    <MessageSquare size={15} aria-hidden="true" /> Zpráva týmu
+                  </Link>
+                ) : null}
+              </nav>
+            ) : null}
           </header>
         )}
 
@@ -2234,34 +2242,58 @@ export default function TeamPage() {
           <TeamOverviewLoader progress={clampedLoadingProgress} />
         ) : members.length === 0 ? (
           <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
-            <p className="text-sm text-slate-600">Nemáš nastavené žádné podřízené.</p>
+            <div className={styles.empty}>
+              <UsersRound size={30} aria-hidden="true" />
+              <strong>Tady bude tvůj tým</strong>
+              Jakmile budeš mít přiřazené podřízené, uvidíš tu jejich aktivitu, cíle i výsledky.
+            </div>
           </div>
         ) : (
           <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
             <div
-              className={`team-panel-layout grid grid-cols-1 gap-4 ${
-                showTeamSidebar ? "lg:grid-cols-[340px_minmax(0,1fr)] lg:items-stretch" : ""
-              }`}
+              className={`${styles.layout} ${showTeamSidebar ? styles.withSidebar : ""}`}
             >
               {showTeamSidebar ? (
-		              <aside className="ui-card team-panel-sidebar relative h-full overflow-hidden rounded-3xl border border-violet-100/90 bg-white p-3 shadow-[0_18px_48px_rgba(76,29,149,0.08)]">
-		                <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
-                <div className="team-sidebar-content flex h-full flex-col gap-3">
-	                  <div className="team-panel-search flex min-w-0 sm:min-w-[220px] items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2 shadow-[0_6px_14px_rgba(76,29,149,0.05)]">
-	                    <Search className="h-4 w-4 text-violet-500" aria-hidden="true" />
+		              <aside className={styles.sidebar} aria-label="Členové týmu">
+		                <div className={styles.sidebarHeading}>
+                    <h2>Členové týmu</h2>
+                    <div className={styles.memberHeadingActions}>
+                      <span className={styles.count}>{members.length}</span>
+                      <button
+                        type="button"
+                        className={styles.membersToggle}
+                        aria-label={membersExpanded ? "Skrýt seznam členů" : "Zobrazit členy týmu"}
+                        aria-expanded={membersExpanded}
+                        aria-controls="team-members-content"
+                        onClick={() => setMembersExpanded((expanded) => !expanded)}
+                      >
+                        {membersExpanded ? "Skrýt" : "Zobrazit"}
+                        <ChevronDown size={15} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                <div id="team-members-content" className={styles.sidebarContent} data-expanded={membersExpanded}>
+	                  <div className={styles.search}>
+	                    <Search size={15} className="shrink-0" aria-hidden="true" />
                     <input
                       type="text"
-                      placeholder="Jméno nebo e-mail"
+                      placeholder="Najít člena týmu…"
+                      aria-label="Hledat člena podle jména nebo e-mailu"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-500"
+                      className="w-full"
                     />
+                    {search ? (
+                      <button type="button" onClick={() => setSearch("")} aria-label="Vymazat hledání">
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    ) : null}
                   </div>
 
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortKey)}
-		                    className="team-panel-sort w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition hover:bg-violet-50/50 focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+		                    className={styles.sort} aria-label="Seřadit členy týmu"
                   >
                     {SORT_OPTIONS.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -2269,34 +2301,6 @@ export default function TeamPage() {
                       </option>
                     ))}
                   </select>
-
-	                  <div className="team-panel-actions grid grid-cols-1 gap-2">
-                    <Link
-                      href="/pomucky/struktura"
-	                      className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.10)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
-                    >
-                      <Network size={14} strokeWidth={2} aria-hidden="true" />
-                      Struktura
-                    </Link>
-                    {canSendTeamMessage ? (
-                      <Link
-                        href="/pomucky/zprava-tymu"
-	                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50"
-                      >
-                        <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
-                        Zpráva týmu
-                      </Link>
-	                    ) : null}
-	                    {showManagerTeamTools ? (
-	                      <Link
-                        href="/muj-tym/sin-slavy"
-	                        className="ui-focus inline-flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-800 shadow-[0_10px_24px_rgba(76,29,149,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-50"
-                      >
-                        <Trophy size={14} strokeWidth={2} aria-hidden="true" />
-                        Síň slávy
-                      </Link>
-                    ) : null}
-                  </div>
 
                   <button
                     type="button"
@@ -2314,43 +2318,30 @@ export default function TeamPage() {
                         }, 0);
                       }
                     }}
-                    className={[
-                      "ui-focus relative flex w-full items-center gap-3 overflow-hidden rounded-xl border px-3 py-3 text-left transition",
-                      selectedEmail == null
-                        ? "border-violet-300 bg-violet-50/80 text-violet-950 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
-                        : "border-violet-100 bg-white text-slate-800 hover:border-violet-200 hover:bg-violet-50/40",
-                    ].join(" ")}
+                    className={styles.overviewButton}
+                    aria-pressed={selectedEmail == null}
                   >
-                    {selectedEmail == null ? (
-                      <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
-                    ) : null}
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
-                      <BarChart3 className="h-4.5 w-4.5" strokeWidth={2.2} aria-hidden="true" />
+                    <span className={styles.overviewIcon}>
+                      <BarChart3 size={18} aria-hidden="true" />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold">Přehled celého týmu</span>
-                      <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">
-                        Výsledky a očekávaný vývoj
-                      </span>
+                    <span className={styles.overviewCopy}>
+                      <strong>Přehled celého týmu</strong>
+                      <small>Výsledky a společné cíle</small>
                     </span>
-                    <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700">
-                      {teamDashboardSummary.advisors}
-                    </span>
+                    <ChevronRight size={15} aria-hidden="true" />
                   </button>
 
-		                  <div className="team-member-section space-y-2 border-t border-violet-100 pt-3">
-	                    <div className="flex items-center justify-between">
-	                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{teamListTitle}</div>
-	                      <span className="rounded-full border border-violet-100 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700">
-                        {filteredMembers.length} osob
-                      </span>
+                  <div className={styles.memberSection}>
+                    <div className={styles.memberHeading}>
+                      <span>{teamListTitle}</span>
+                      <span>{filteredMembers.length}</span>
                     </div>
                     <div
                       ref={membersListRef}
-	                      className="team-member-list grid grid-cols-1 gap-2 max-h-[58vh] overflow-auto pr-1 lg:max-h-none lg:overflow-visible"
+	                      className={styles.memberList}
                     >
                       {filteredMembers.length === 0 && (
-	                        <div className="col-span-full rounded-2xl border border-violet-100 bg-violet-50/50 px-3 py-2 text-sm text-slate-500">
+	                        <div className={styles.empty}>
                           Pro zadané vyhledávání nejsou žádní členové.
                         </div>
                       )}
@@ -2381,47 +2372,29 @@ export default function TeamPage() {
 	                                }, 0);
 	                              }
 	                            }}
-	                            className={[
-	                              "team-member-card relative w-full min-h-[54px] overflow-hidden rounded-xl border px-2.5 py-2 text-left transition",
-	                              isSelected
-	                                ? "border-violet-300 bg-violet-50/70 text-slate-900 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
-	                                : "border-violet-100 bg-white text-slate-900 hover:border-violet-200 hover:bg-violet-50/40",
-	                            ].join(" ")}
+                            type="button"
+                            className={styles.member}
+                            aria-pressed={isSelected}
                           >
-                            {isSelected ? (
-	                              <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
-                            ) : null}
-                            <div className="flex w-full items-center gap-2">
+                            <span className={styles.memberAvatar}>
                               <ProfileAvatar
                                 src={m.profileAvatar}
                                 name={m.name}
                                 alt=""
-                                className={[
-                                  "h-8 w-8 rounded-full border text-[2rem]",
-                                  isSelected
-	                                    ? "border-violet-300 shadow-[0_0_0_1px_rgba(109,40,217,0.20)]"
-	                                    : "border-violet-100",
-                                ].join(" ")}
-                                fallbackClassName="bg-violet-100 text-violet-700"
-                                sizes="32px"
+                                className="h-9 w-9 rounded-full text-[2.25rem]"
+                                fallbackClassName="bg-violet-50 text-violet-400"
+                                sizes="36px"
                               />
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-center justify-between gap-2">
-	                                  <div className="team-member-name min-w-0 truncate text-[13px] font-semibold leading-tight">
-                                    {m.name}
-                                  </div>
-                                  <span
-	                                    className={`team-member-status inline-flex shrink-0 items-center justify-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] ${last.className}`}
-                                    aria-label={last.title}
-                                    title={last.title}
-                                  >
-                                    <span className={`h-1.5 w-1.5 rounded-full ${last.dotClassName}`} />
-                                    {last.statusLabel}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+                              <span className={last.dotClassName} title={last.title} aria-label={last.title} />
+                            </span>
+                            <span className={styles.memberCopy}>
+                              <span className={styles.memberName}>{m.name}</span>
+                              <span className={styles.memberRole}>
+                                {memberRoleLabel(m)}
+                                {" · "}{last.statusLabel}
+                              </span>
+                            </span>
+                            <ChevronRight size={14} className={styles.memberChevron} aria-hidden="true" />
                           </button>
                         );
                       })}
@@ -2439,7 +2412,7 @@ export default function TeamPage() {
               </aside>
               ) : null}
 
-		              <div ref={teamDetailRef} className="team-detail-shell relative">
+		              <div ref={teamDetailRef} className={`${styles.detailShell} relative`}>
 		                  {selected ? (
 	                    <section className="team-detail-panel overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
 		                      <div className="team-detail-hero relative overflow-hidden border-b border-violet-200/30 bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-4 py-4 !text-white sm:px-5">

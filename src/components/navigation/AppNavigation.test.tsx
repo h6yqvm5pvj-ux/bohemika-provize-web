@@ -15,7 +15,7 @@ type Props = ComponentProps<typeof AppNavigation>;
 const labels: Props["navLabels"] = {
   home: "Domů", intranet: "Intranet", calc: "Přidat smlouvu", clients: "Klienti",
   contracts: "Smlouvy", cashflow: "Provizní kalendář", statements: "Provizní výpisy",
-  team: "Můj tým", tools: "Pomůcky", tips: "Tipy", settings: "Nastavení", admin: "Admin",
+  team: "Můj tým", hall: "Síň slávy", tools: "Pomůcky", tips: "Tipy", settings: "Nastavení", admin: "Admin",
 };
 const storageKey = "bohemka.sidebar.collapsed";
 let root: Root;
@@ -94,13 +94,14 @@ describe("collapsible application navigation", () => {
     await render({ hasTipsters: false }); await click(toggle());
     expect(sidebar().querySelector('a[href="/admin/zadosti"]')).toBeNull();
     expect(sidebar().querySelector('a[href="/tipy"]')).toBeNull();
+    expect(sidebar().querySelector('a[href="/sin-slavy"]')).not.toBeNull();
     await render({ canAccessAdminArea: true });
     expect(sidebar().querySelector('a[href="/admin/zadosti"]')).not.toBeNull();
     await render({ timelineSetupGateActive: true });
     expect(sidebar().querySelector('a[href="/smlouvy"]')).toBeNull();
     expect(sidebar().querySelector('a[href="/nastaveni"]')).not.toBeNull();
     await render({ timelineSetupGateActive: false, isTipsterAccount: true });
-    expect([...sidebar().querySelectorAll('nav a')].map(a => a.getAttribute("href"))).toEqual(["/", "/tipy", "/cashflow"]);
+    expect([...sidebar().querySelectorAll('nav a')].map(a => a.getAttribute("href"))).toEqual(["/", "/sin-slavy", "/tipy", "/cashflow"]);
     await render({ isProfilePending: true });
     expect(sidebar().querySelectorAll("nav a").length).toBe(0);
   });

@@ -56,7 +56,7 @@ import {
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import { AppLayout } from "@/components/AppLayout";
-import { HelpDialog } from "@/components/HelpDialog";
+import { CalculatorHelpDialog } from "./CalculatorHelpDialog";
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
@@ -8656,124 +8656,13 @@ export default function CalculatorPage() {
         onSelectProduct={selectProduct}
       />
 
-      <HelpDialog
+      <CalculatorHelpDialog
         isOpen={addContractHelpOpen}
         onClose={() => setAddContractHelpOpen(false)}
-        title={
-          hasSelectedProduct
-            ? `Nápověda k produktu ${currentProduct.label}`
-            : "Nápověda k přidání smlouvy"
-        }
-        description={
-          showNeonAddContractHelp
-            ? "Doporučený postup pro nahrání PDF, kontrolu údajů a práci s Refreshem nebo Změnou."
-            : showReplacementAddContractHelp
-              ? "Doporučený postup pro nahrání PDF, kontrolu údajů a práci s Náhradou."
-            : "Doporučený postup pro nahrání PDF, kontrolu údajů a uložení smlouvy jako sepsané."
-        }
-      >
-        <div className="space-y-5 text-sm leading-6 text-slate-700">
-          <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-violet-950">
-            <p className="font-semibold">Doporučený postup</p>
-            <p className="mt-1">
-              Když máš smlouvu v PDF, nahraj ji hned na začátku. PDF se po
-              uložení přiloží k detailu smlouvy a ve většině případů se z něj
-              automaticky propíšou potřebná data.
-            </p>
-          </div>
-
-          <section>
-            <h3 className="text-base font-bold text-slate-950">Originální PDF vs. sken</h3>
-            <p className="mt-1">
-              Automatické načítání dat aktuálně funguje hlavně u originálních
-              PDF smluv. U skenů nebo fotek smluv, což bývá časté u starších
-              smluv, může systém PDF přiložit, ale údaje bude většinou potřeba
-              doplnit ručně.
-            </p>
-          </section>
-
-          <section>
-            <h3 className="text-base font-bold text-slate-950">Když se něco nenačte</h3>
-            <p className="mt-1">
-              Může se stát, že aplikace některou informaci z PDF nedohledá,
-              nerozpozná produkt nebo si nebude jistá konkrétním údajem. V tom
-              případě pole doplň ručně podle smlouvy.
-            </p>
-          </section>
-
-          <section>
-            <h3 className="text-base font-bold text-slate-950">Smlouva z TIPU</h3>
-            <p className="mt-1">
-              Sjednal jsi smlouvu na základě tipu? Klikni na Smlouva z TIPU a
-              zadej firemní e-mail nebo jméno tipaře. Tipař může, ale nemusí být
-              v systému Bohemka.App.
-            </p>
-            <p className="mt-2">
-              Potom nastav procenta pro tipaře a potvrď. Tipařská část se ti
-              automaticky odečte ze vznikové provize.
-            </p>
-          </section>
-
-          {showNeonAddContractHelp && (
-            <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-950">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">
-                ČPP ŽP NEON
-              </p>
-              <div className="mt-3 space-y-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-950">Refresh smlouvy</h3>
-                  <p className="mt-1">
-                    Správného výpočtu provize lze dosáhnout pouze tehdy, když je
-                    v systému uložená původní smlouva. Pokud původní smlouva v
-                    systému není, smlouvu lze uložit i tak, ale je potřeba
-                    zaškrtnout možnost Původní smlouva není v systému.
-                  </p>
-                  <p className="mt-2">
-                    Po následném nahrání provizního výpisu se taková smlouva
-                    automaticky aktualizuje podle údajů z výpisu.
-                  </p>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-bold text-slate-950">Změna smlouvy</h3>
-                  <p className="mt-1">
-                    U změny zadej nové celkové pojistné ze smlouvy, ne jen rozdíl
-                    oproti původní částce. Systém nové pojistné porovná s
-                    pojistným z původní smlouvy.
-                  </p>
-                  <p className="mt-2">
-                    Podle výsledku porovnání dojde buď k ponížení provize, nebo
-                    k vyplacení provize za navýšení.
-                  </p>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {showReplacementAddContractHelp && (
-            <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sky-950">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-700">
-                Náhrada smlouvy
-              </p>
-              <p className="mt-2">
-                V případě náhrady můžeš zadat číslo původní smlouvy. Pokud se
-                původní smlouva najde v systému, při uložení nové smlouvy se
-                automaticky označí jako stornovaná k datu počátku nové smlouvy.
-              </p>
-            </section>
-          )}
-
-          <section>
-            <h3 className="text-base font-bold text-slate-950">Kontrola před uložením</h3>
-            <p className="mt-1">
-              Před kliknutím na tlačítko Uložit jako sepsáno vždy zkontroluj
-              hlavně produkt, jméno klienta, číslo smlouvy, datum uzavření,
-              pojistné, frekvenci platby, pozici a režim provize. Uložením se
-              smlouva začne používat v produkci, výplatách a dalších přehledech.
-            </p>
-          </section>
-        </div>
-      </HelpDialog>
+        productLabel={hasSelectedProduct ? currentProduct.label : undefined}
+        showNeonHelp={showNeonAddContractHelp}
+        showReplacementHelp={showReplacementAddContractHelp}
+      />
 
       <div className={hasSelectedProduct ? formStyles.pageContent : "w-full max-w-6xl space-y-6"}>
         {/* Header */}

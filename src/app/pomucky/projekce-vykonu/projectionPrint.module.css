@@ -1,0 +1,60 @@
+.report { display: none; }
+
+@page projection {
+  size: A4 portrait;
+  margin: 13mm 12mm;
+}
+
+@media print {
+  :global(html:has([data-projection-print])) { min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
+  :global(body:has(> [data-projection-print])) { margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
+  :global(body:has(> [data-projection-print]) > :not([data-projection-print])) { display: none !important; }
+  .report { display: block !important; page: projection; width: 186mm; margin: 0; padding: 0; color: #25382d; background: white; font: 9pt/1.45 Arial, Helvetica, sans-serif; font-variant-numeric: tabular-nums; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .report *, .report *::before, .report *::after { box-sizing: border-box; box-shadow: none !important; text-shadow: none !important; animation: none !important; transition: none !important; }
+  .report h1, .report h2, .report h3, .report p, .report dl, .report dd { margin: 0; }
+  .report h1 { font-size: 24pt; font-weight: 650; letter-spacing: -.8pt; margin: 2mm 0; color: #174b3c; }
+  .report h2 { font-size: 11pt; font-weight: 650; margin-bottom: 2mm; break-after: avoid; }
+  .report h3 { font-size: 9pt; font-weight: 650; margin-bottom: 1.5mm; break-after: avoid; }
+  .header { display: flex; align-items: flex-end; justify-content: space-between; gap: 8mm; padding-bottom: 4mm; border-bottom: 1pt solid #bfd0c4; }
+  .brand { color: #52765e; font-size: 7pt; font-weight: 650; letter-spacing: 1pt; }
+  .header > span { font-size: 9pt; white-space: nowrap; }
+  .header p:last-child { color: #637368; font-size: 8pt; }
+  .report .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5mm; margin: 5mm 0; }
+  .metrics > div { border-left: 2pt solid #89b49a; padding-left: 3mm; }
+  .metrics dt { font-size: 7pt; color: #607565; margin-bottom: 1mm; }
+  .metrics dd { font-size: 16pt; font-weight: 650; color: #174b3c; overflow-wrap: anywhere; }
+  .chartSection { break-inside: avoid; margin-bottom: 4mm; }
+  .legend { display: flex; gap: 5mm; font-size: 7pt; color: #126e56; }
+  .legend > span:last-child:not(:first-child) { color: #806796; }
+  .chartSection > div:last-child { margin: 2mm 0 0; overflow: visible; }
+  .chartSection svg { display: block; width: 100%; height: auto; }
+  .chartSection svg + div { margin-top: -2mm; }
+  .chartSection button { font-family: inherit; font-size: 7pt; min-height: 5mm; padding: 1mm 0; border: 0; background: transparent; box-shadow: none; }
+  .report table { width: 100%; border-collapse: collapse; font-size: 8pt; line-height: 1.4; }
+  .report caption { text-align: left; font-size: 7pt; color: #6f7b71; margin-bottom: 1.5mm; }
+  .report th, .report td { text-align: right; padding: 1.5mm 1.4mm; border-bottom: .5pt solid #dde4dc; }
+  .report td { white-space: nowrap; }
+  .report th:first-child { text-align: left; }
+  .report th { font-weight: 500; }
+  .report thead { display: table-header-group; background: #eef3ec; color: #435b49; }
+  .report tfoot { display: table-row-group; background: #eef3ec; font-weight: 650; }
+  .report tfoot th { font-weight: 650; }
+  .report tr { break-inside: avoid; }
+  .report th small { display: block; font-size: 6.5pt; font-weight: 400; color: #66786b; }
+  .annualSection { break-inside: avoid; }
+  .annualTable { font-size: 7.5pt !important; }
+  .annualTable th, .annualTable td { padding-block: 1.1mm; }
+  .annualTable thead th:nth-child(2), .annualTable tbody td:nth-child(2) { text-align: left; }
+  .annualTable tr[data-selected=true] { color: #174b3c; background: #f4f8f1; }
+  .report .caption { color: #627367; font-size: 7pt; line-height: 1.5; margin: 2mm 0; }
+  .report .goal { font-size: 8pt; border-top: 1pt solid #cbd8c9; padding-top: 3mm; margin-top: 3mm; }
+  .detailPage { break-before: page; }
+  .detailHeader { border-bottom: 1pt solid #bfd0c4; padding-bottom: 3mm; margin-bottom: 4mm; }
+  .detailHeader h2 { font-size: 15pt; margin: 2mm 0 0; }
+  .planInputs { margin-bottom: 5mm; }
+  .report .assumptions { font-size: 7.5pt; color: #5c7161; margin-bottom: 2mm; break-after: avoid; }
+  .productionTable th:first-child { width: 40%; overflow-wrap: anywhere; }
+  .monthSection { break-inside: avoid; margin: 5mm 0; }
+  .notes { font-size: 7pt; color: #68796c; break-inside: avoid; border-top: 1pt solid #cbd8c9; padding-top: 3mm; }
+  .notes p { margin: 1.5mm 0; }
+}

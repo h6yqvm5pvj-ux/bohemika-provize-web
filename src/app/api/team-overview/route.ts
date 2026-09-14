@@ -23,7 +23,7 @@ import {
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
 import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
-import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError, getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
@@ -53,6 +53,8 @@ import type {
   TipStats,
 } from "./teamOverview.types";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { buildHallRankingsForPeriods, hallDayKey, hallParticipantId, hallPeriodRanges, HALL_PERIOD_MONTHS, type HallPeriodResult, type HallProductionEntry } from "@/lib/server/hallOfFame";
+import type { HallOfFameResponse, HallPeriod } from "@/app/sin-slavy/hallOfFame.types";
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -716,7 +718,7 @@ function buildContractRefPayload({
   };
 }
 
-async function getAuthContext(req: NextRequest): Promise<{
+async function getAuthContext(req: NextRequest, options?: { allowTipster?: boolean }): Promise<{
   email: string;
   uid: string;
   actorEmail: string;
@@ -785,7 +787,7 @@ async function getAuthContext(req: NextRequest): Promise<{
     effectiveClaims = {};
   }
 
-  const setupError = await getAdvisorAccessError({ email, uid });
+  const setupError = await (options?.allowTipster ? getAdvisorSetupError : getAdvisorAccessError)({ email, uid });
   if (setupError) {
     throw Object.assign(new Error(setupError.error), {
       status: setupError.status,
@@ -2919,9 +2921,56 @@ export async function PATCH(req: NextRequest) {
   });
 }
 
+// The shared cache contains only public rankings for all periods, never requester identity.
+type GlobalHallCache = { periods: Record<HallPeriod, HallPeriodResult>; updatedAtMs: number; day: string };
+let hallCache: GlobalHallCache | null = null;
+let hallInFlight: { day: string; promise: Promise<GlobalHallCache> } | null = null;
+
+async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
+  const now = new Date();
+  const day = hallDayKey(now);
+  if (hallCache?.day === day && now.getTime() - hallCache.updatedAtMs < 60_000) return hallCache;
+  if (hallInFlight?.day === day) return hallInFlight.promise;
+  const promise = (async () => {
+    if (!adminDb) throw new Error("Firebase Admin credentials are not configured.");
+    const users = await adminDb.collection("users")
+      .select("fullName", "name", "profileAvatar", "accountType", "userRole", "position", "positionTimeline")
+      .get();
+    const members = users.docs.map(candidateFromDoc)
+      .filter((member): member is TeamMember => Boolean(member && member.email.includes("@")));
+    const owners = [...new Set(members.map((member) => member.email))];
+    const ownerSet = new Set(owners);
+    const entries: HallProductionEntry[] = [];
+    const yearStart = hallPeriodRanges(now).year.startDate;
+    // Monthly team read models retain category detail only for the current month.
+    // Use the original signing dates for accurate historical periods as well.
+    for (let i = 0; i < owners.length; i += FIRESTORE_IN_LIMIT) {
+      const snap = await adminDb.collectionGroup("entries").where("userEmail", "in", owners.slice(i, i + FIRESTORE_IN_LIMIT)).get();
+      for (const doc of snap.docs) {
+        const data = doc.data() as Record<string, unknown>;
+        if (isInheritedContract(data)) continue;
+        const signed = toDate(data.contractSignedDate ?? data.createdAt);
+        if (!signed) continue;
+        const signedDate = hallDayKey(signed);
+        if (signedDate < yearStart || signedDate > day) continue;
+        const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? doc.ref.parent.parent?.id);
+        if (!ownerSet.has(ownerEmail)) continue;
+        const category = categorizeProduct(data.productKey as Product | undefined);
+        entries.push({ id: doc.id, ownerEmail, category, signedDate, annualPremium: annualPremiumFromEntry(data, category) });
+      }
+    }
+    const result = { periods: buildHallRankingsForPeriods(members, entries, now), updatedAtMs: now.getTime(), day };
+    hallCache = result;
+    return result;
+  })();
+  hallInFlight = { day, promise };
+  try { return await promise; } finally { if (hallInFlight?.promise === promise) hallInFlight = null; }
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const authCtx = await getAuthContext(req);
+    const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
+    const authCtx = await getAuthContext(req, { allowTipster: action === "hallOfFame" });
     const { email } = authCtx;
 
     const rateLimitResult = await consumeRateLimit({
@@ -2942,7 +2991,25 @@ export async function GET(req: NextRequest) {
       return response;
     }
 
-    const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
+    if (action === "hallOfFame") {
+      const period = req.nextUrl.searchParams.get("period") ?? "month";
+      if (!Object.hasOwn(HALL_PERIOD_MONTHS, period)) {
+        const response = NextResponse.json({ ok: false, error: "Neplatné období síně slávy." }, { status: 400 });
+        applyRateLimitHeaders(response.headers, rateLimitResult);
+        return response;
+      }
+      const hall = await loadGlobalHallOfFame();
+      const response = NextResponse.json({
+        ok: true,
+        ...hall.periods[period as HallPeriod],
+        updatedAtMs: hall.updatedAtMs,
+        currentUserId: hallParticipantId(email),
+      } satisfies HallOfFameResponse);
+      response.headers.set("Cache-Control", "private, no-store");
+      applyRateLimitHeaders(response.headers, rateLimitResult);
+      return response;
+    }
+
     if (action === "endCollaborationRequests") {
       if (!isEndCollaborationApprover(email, authCtx.effectiveClaims)) {
         return NextResponse.json(

@@ -3,14 +3,18 @@
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
+  ArrowRightLeft,
+  Calculator,
   CalendarRange,
-  CircleDollarSign,
+  Check,
+  ChevronDown,
   Coins,
+  FileText,
   Info,
+  Play,
   ReceiptText,
   RefreshCcw,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -19,7 +23,9 @@ import {
   PAYMENT_FREQUENCIES,
   calculateReplacement,
   type PaymentFrequency,
+  type ReplacementCalculation,
 } from "./replacementCalculation";
+import styles from "./replacement.module.css";
 
 const pageFont = systemSansFont;
 
@@ -102,6 +108,8 @@ const parseAmount = (value: string): number | null => {
 const frequencyLabel = (frequency: PaymentFrequency): string =>
   PAYMENT_FREQUENCIES.find((item) => item.id === frequency)?.label ?? "Roční";
 
+const percentFormatter = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 });
+
 function FrequencyPicker({
   name,
   value,
@@ -112,28 +120,21 @@ function FrequencyPicker({
   onChange: (value: PaymentFrequency) => void;
 }) {
   return (
-    <fieldset>
-      <legend className="text-sm font-bold text-slate-800">Frekvence placení</legend>
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-        {PAYMENT_FREQUENCIES.map((frequency) => {
-          const active = value === frequency.id;
-          return (
-            <button
-              key={frequency.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onChange(frequency.id)}
-              className={`min-h-10 rounded-xl border px-2 py-2 text-xs font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200 ${
-                active
-                  ? "border-violet-600 bg-violet-600 text-white shadow-[0_8px_18px_rgba(124,58,237,0.22)]"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50"
-              }`}
+    <fieldset className={styles.frequency}>
+      <legend>Frekvence placení</legend>
+      <div className={styles.frequencyOptions}>
+        {PAYMENT_FREQUENCIES.map((frequency) => (
+          <label key={frequency.id}>
+            <input
+              type="radio"
               name={name}
-            >
-              {frequency.label}
-            </button>
-          );
-        })}
+              value={frequency.id}
+              checked={value === frequency.id}
+              onChange={() => onChange(frequency.id)}
+            />
+            <span>{frequency.label}</span>
+          </label>
+        ))}
       </div>
     </fieldset>
   );
@@ -144,6 +145,7 @@ function ContractCard({
   date,
   premium,
   frequency,
+  dateError,
   onDateChange,
   onPremiumChange,
   onFrequencyChange,
@@ -152,78 +154,177 @@ function ContractCard({
   date: string;
   premium: string;
   frequency: PaymentFrequency;
+  dateError?: string;
   onDateChange: (value: string) => void;
   onPremiumChange: (value: string) => void;
   onFrequencyChange: (value: PaymentFrequency) => void;
 }) {
   const original = kind === "original";
-  const title = original ? "Původní smlouva" : "Nová smlouva";
-  const description = original
-    ? "Z této smlouvy se vypočítá nevyčerpané pojistné."
-    : "Na její první pojistné se převede zůstatek."
-  const accent = original ? "text-slate-700" : "text-violet-700";
+  const invalidPremium = premium.trim() !== "" && parseAmount(premium) === null;
 
   return (
-    <section className="rounded-[28px] border border-white/90 bg-white/95 p-5 shadow-[0_20px_50px_rgba(15,23,42,0.09)] sm:p-6">
-      <div className="flex items-start gap-3">
-        <span
-          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-            original ? "bg-slate-100 text-slate-700" : "bg-violet-100 text-violet-700"
-          }`}
-        >
-          {original ? (
-            <ReceiptText className="h-5 w-5" strokeWidth={2.2} />
-          ) : (
-            <ShieldCheck className="h-5 w-5" strokeWidth={2.2} />
-          )}
+    <section className={styles.contract} data-kind={kind} aria-labelledby={`${kind}-heading`}>
+      <header className={styles.contractHeader}>
+        <span className={styles.contractIcon}>
+          {original ? <ReceiptText size={21} aria-hidden="true" /> : <ShieldCheck size={21} aria-hidden="true" />}
         </span>
         <div>
-          <p className={`text-[10px] font-black uppercase tracking-[0.16em] ${accent}`}>
-            {original ? "Krok 1" : "Krok 2"}
-          </p>
-          <h2 className="mt-0.5 text-xl font-black tracking-[-0.02em] text-slate-950">
-            {title}
-          </h2>
-          <p className="mt-1 text-sm leading-5 text-slate-600">{description}</p>
+          <p className={styles.eyebrow}>{original ? "Krok 01 · Odkud" : "Krok 02 · Kam"}</p>
+          <h2 id={`${kind}-heading`}>{original ? "Původní smlouva" : "Nová smlouva"}</h2>
         </div>
-      </div>
+      </header>
+      <p className={styles.contractDescription}>
+        {original ? "Pojistné, ze kterého se převede zůstatek." : "Pojistné, na které se zůstatek započítá."}
+      </p>
 
-      <div className="mt-5 space-y-4">
-        <label className="block">
-          <span className="text-sm font-bold text-slate-800">Datum počátku</span>
+      <div className={styles.fields}>
+        <div className={styles.field}>
+          <label htmlFor={`${kind}-date`}>Datum počátku</label>
           <input
+            id={`${kind}-date`}
             type="date"
             value={date}
+            aria-invalid={Boolean(dateError)}
+            aria-describedby={dateError ? `${kind}-date-error` : undefined}
             onChange={(event) => onDateChange(event.target.value)}
-            className="mt-2 h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-base font-bold text-slate-950 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-200/75"
           />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-bold text-slate-800">Pojistné za jednu platbu</span>
-          <span className="relative mt-2 block">
+          {dateError && <p className={styles.fieldError} id={`${kind}-date-error`}>{dateError}</p>}
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`${kind}-premium`}>Pojistné za jednu platbu</label>
+          <div className={styles.amountInput}>
             <input
+              id={`${kind}-premium`}
               type="text"
               inputMode="decimal"
               autoComplete="off"
               value={premium}
+              aria-invalid={invalidPremium}
+              aria-describedby={invalidPremium ? `${kind}-premium-error` : undefined}
               onChange={(event) => onPremiumChange(event.target.value)}
-              placeholder={original ? "např. 18 158" : "např. 13 383"}
-              className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 pr-12 text-base font-bold text-slate-950 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-200/75"
+              placeholder={original ? "18 158" : "13 383"}
             />
-            <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-black text-slate-500">
-              Kč
-            </span>
-          </span>
-        </label>
-
-        <FrequencyPicker
-          name={`${kind}-frequency`}
-          value={frequency}
-          onChange={onFrequencyChange}
-        />
+            <span aria-hidden="true">Kč</span>
+          </div>
+          {invalidPremium && (
+            <p className={styles.fieldError} id={`${kind}-premium-error`}>Zadej částku větší než 0 Kč.</p>
+          )}
+        </div>
+        <FrequencyPicker name={`${kind}-frequency`} value={frequency} onChange={onFrequencyChange} />
+      </div>
+      <div className={styles.contractFooter}>
+        <span className={styles.smallDot} aria-hidden="true" />
+        {frequencyLabel(frequency)} platba
+        <span>{frequency === "monthly" ? "každý měsíc"
+          : frequency === "quarterly" ? "každé 3 měsíce"
+            : frequency === "semiannual" ? "každých 6 měsíců" : "každých 12 měsíců"}</span>
       </div>
     </section>
+  );
+}
+
+function CalculationDetails({
+  result,
+  form,
+  originalPremium,
+  referenceDate,
+}: {
+  result: ReplacementCalculation;
+  form: FormState;
+  originalPremium: number;
+  referenceDate: string;
+}) {
+  const elapsedSharePercent = (1 - result.unusedShare) * 100;
+  const unusedPercent = percentFormatter.format(result.unusedShare * 100);
+
+  return (
+    <div className={styles.detailsGrid}>
+      <section className={styles.detailCard} aria-labelledby="distribution-heading">
+        <header className={styles.detailHeader}>
+          <span className={styles.detailIcon}><Coins size={19} aria-hidden="true" /></span>
+          <div>
+            <h2 id="distribution-heading">Rozdělení původní platby</h2>
+            <p>Zaplacené pojistné {formatMoney(originalPremium)}</p>
+          </div>
+        </header>
+        <div className={styles.distributionValues}>
+          <div>
+            <p><span className={styles.usedDot} />Zúčtováno</p>
+            <strong>{formatMoney(originalPremium - result.transferredPremium)}</strong>
+            <span>{result.nominalElapsedDays} modelových dní</span>
+          </div>
+          <div>
+            <p><span className={styles.transferDot} />Převádí se</p>
+            <strong>{formatMoney(result.transferredPremium)}</strong>
+            <span>{result.nominalPeriodDays - result.nominalElapsedDays} modelových dní</span>
+          </div>
+        </div>
+        <div
+          className={styles.distributionBar}
+          role="img"
+          aria-label={`${percentFormatter.format(elapsedSharePercent)} procent zúčtováno a ${unusedPercent} procent převedeno`}
+        >
+          <span style={{ width: `${elapsedSharePercent}%` }} />
+          <span style={{ width: `${result.unusedShare * 100}%` }} />
+        </div>
+        <div className={styles.periodDates}>
+          <p>Počátek období<strong>{formatDate(result.paidPeriodStartDate)}</strong></p>
+          <p>Datum náhrady<strong>{formatDate(form.replacementStartDate)}</strong></p>
+          <p>Původní konec<strong>{formatDate(result.paidPeriodEndDate)}</strong></p>
+        </div>
+        <details className={styles.methodology}>
+          <summary>Jak se převod počítá <ChevronDown size={15} aria-hidden="true" /></summary>
+          <p>
+            Z aktuálně zaplaceného období bylo vyčerpáno {result.nominalElapsedDays} z {result.nominalPeriodDays} modelových dní.
+            Nevyčerpaných {unusedPercent} % původní platby se převede na novou smlouvu.
+          </p>
+          <div className={styles.formula}>
+            {formatMoney(originalPremium)} × {unusedPercent} % ≈ <strong>{formatMoney(result.transferredPremium)}</strong>
+          </div>
+          <p>Převod se počítá z přesného podílu a zaokrouhluje na celé koruny.</p>
+        </details>
+      </section>
+
+      <section className={styles.detailCard} aria-labelledby="payment-heading">
+        <header className={styles.detailHeader}>
+          <span className={styles.detailIcon}><CalendarRange size={19} aria-hidden="true" /></span>
+          <div>
+            <h2 id="payment-heading">Nový platební cyklus</h2>
+            <p>Nejbližší pravidelné platby k {formatDate(referenceDate)}</p>
+          </div>
+        </header>
+        <div className={styles.paymentDates}>
+          <div>
+            <span>Další platba původně</span>
+            <strong>{formatDate(result.originalNextPaymentDate)}</strong>
+            <p>{frequencyLabel(form.originalFrequency)} platba</p>
+          </div>
+          <ArrowRight size={20} aria-hidden="true" />
+          <div>
+            <span>Další platba nově</span>
+            <strong>{formatDate(result.replacementNextPaymentDate)}</strong>
+            <p>{frequencyLabel(form.replacementFrequency)} platba</p>
+          </div>
+        </div>
+        <p className={styles.paymentShift} data-earlier={result.paymentShiftDays < 0}>
+          <CalendarRange size={16} aria-hidden="true" />
+          {result.paymentShiftDays > 0
+            ? `Další platba o ${result.paymentShiftDays} ${dayCountLabel(result.paymentShiftDays)} později`
+            : result.paymentShiftDays < 0
+              ? `Další platba o ${Math.abs(result.paymentShiftDays)} ${dayCountLabel(result.paymentShiftDays)} dříve`
+              : "Termín další platby se nemění"}
+        </p>
+        <p className={styles.paymentExplanation}>
+          {result.balanceType === "surcharge" ? (
+            <>Doplatek <strong>{formatMoney(result.balance)}</strong> spolu s převodem pokryje první platbu nové smlouvy.</>
+          ) : result.balanceType === "overpayment" ? (
+            <>Převod pokryje první platbu nové smlouvy a klientovi zbývá <strong>{formatMoney(Math.abs(result.balance))}</strong>.</>
+          ) : (
+            <>Převod přesně pokryje první platbu nové smlouvy.</>
+          )}
+        </p>
+      </section>
+    </div>
   );
 }
 
@@ -232,16 +333,15 @@ export default function ContractReplacementPage() {
   const [referenceDate] = useState(getPragueTodayIso);
   const originalPremium = parseAmount(form.originalPremium);
   const replacementPremium = parseAmount(form.replacementPremium);
-  const hasAllInputs =
-    Boolean(form.originalStartDate) &&
-    Boolean(form.replacementStartDate) &&
-    originalPremium !== null &&
-    replacementPremium !== null;
+  const originalComplete = Boolean(form.originalStartDate) && originalPremium !== null;
+  const replacementComplete = Boolean(form.replacementStartDate) && replacementPremium !== null;
+  const hasAllInputs = originalComplete && replacementComplete;
+  const hasChanges = Object.keys(EMPTY_FORM).some(
+    (key) => form[key as keyof FormState] !== EMPTY_FORM[key as keyof FormState]
+  );
 
   const result = useMemo(() => {
-    if (!hasAllInputs || originalPremium === null || replacementPremium === null) {
-      return null;
-    }
+    if (!hasAllInputs || originalPremium === null || replacementPremium === null) return null;
     return calculateReplacement({
       originalStartDate: form.originalStartDate,
       replacementStartDate: form.replacementStartDate,
@@ -252,427 +352,129 @@ export default function ContractReplacementPage() {
       replacementFrequency: form.replacementFrequency,
     });
   }, [form, hasAllInputs, originalPremium, referenceDate, replacementPremium]);
-  const elapsedSharePercent = result?.ok ? (1 - result.unusedShare) * 100 : 0;
 
   const setField = <Key extends keyof FormState>(key: Key, value: FormState[Key]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
+  const datesReversed = Boolean(form.originalStartDate && form.replacementStartDate)
+    && form.replacementStartDate < form.originalStartDate;
+  const balanceLabel = result?.ok
+    ? result.balanceType === "surcharge" ? "Klient doplatí"
+      : result.balanceType === "overpayment" ? "Klientovi zbývá" : "Pojistné je vyrovnané"
+    : "Výsledek náhrady";
 
   return (
     <AppLayout active="tools">
-      <main className={`${pageFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="mx-auto max-w-6xl space-y-5 px-1 sm:px-2 lg:px-3">
-          <section className="relative overflow-hidden rounded-[34px] border border-white/80 bg-[linear-gradient(135deg,#ffffff_0%,#f5f3ff_48%,#ecfeff_100%)] px-5 py-7 shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:px-8 sm:py-9">
-            <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-violet-300/25 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-cyan-300/25 blur-3xl" />
-            <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/85 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-violet-800">
-                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2.2} />
-                  Kalkulačka převodu pojistného
-                </span>
-                <h1 className="mt-5 text-4xl font-black tracking-[-0.04em] text-slate-950 sm:text-5xl">
-                  Náhrada smlouvy
-                </h1>
-                <p className="mt-4 max-w-2xl text-base font-medium leading-7 text-slate-600 sm:text-lg">
-                  Spočítej, kolik nevyčerpaného pojistného se převede z původní
-                  smlouvy a zda na nové smlouvě vznikne přeplatek, nebo doplatek.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setForm(EXAMPLE_FORM)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-violet-200 bg-white px-4 py-2 text-sm font-black text-violet-800 shadow-sm transition hover:border-violet-400 hover:bg-violet-50"
-                >
-                  <CircleDollarSign className="h-4 w-4" />
-                  Načíst vzorový příklad
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setForm(EMPTY_FORM)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  Vymazat
-                </button>
-              </div>
+      <div className={`${pageFont.className} ${styles.page}`}>
+        <div className={styles.container}>
+          <header className={styles.hero}>
+            <div>
+              <p className={styles.eyebrow}><ArrowRightLeft size={14} aria-hidden="true" /> Kalkulačka převodu pojistného</p>
+              <h1>Náhrada smlouvy<span className={styles.titleDot}>.</span></h1>
+              <p className={styles.intro}>
+                Ze staré smlouvy na novou. Přehledně zjisti, kolik pojistného se převede a kolik klient doplatí.
+              </p>
             </div>
-          </section>
+            <div className={styles.heroFlow} aria-hidden="true">
+              <div><FileText size={22} /><span>Původní smlouva</span></div>
+              <span className={styles.flowArrow}><ArrowRight size={20} /></span>
+              <div><ShieldCheck size={22} /><span>Nová smlouva</span></div>
+            </div>
+          </header>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-            <ContractCard
-              kind="original"
-              date={form.originalStartDate}
-              premium={form.originalPremium}
-              frequency={form.originalFrequency}
-              onDateChange={(value) => setField("originalStartDate", value)}
-              onPremiumChange={(value) => setField("originalPremium", value)}
-              onFrequencyChange={(value) => setField("originalFrequency", value)}
-            />
-
-            <span className="mx-auto inline-flex h-11 w-11 rotate-90 items-center justify-center rounded-full bg-violet-600 text-white shadow-[0_12px_28px_rgba(124,58,237,0.3)] lg:rotate-0">
-              <ArrowRight className="h-5 w-5" strokeWidth={2.4} />
-            </span>
-
-            <ContractCard
-              kind="replacement"
-              date={form.replacementStartDate}
-              premium={form.replacementPremium}
-              frequency={form.replacementFrequency}
-              onDateChange={(value) => setField("replacementStartDate", value)}
-              onPremiumChange={(value) => setField("replacementPremium", value)}
-              onFrequencyChange={(value) => setField("replacementFrequency", value)}
-            />
+          <div className={styles.toolbar}>
+            <p><span className={styles.liveDot} aria-hidden="true" />Výpočet se aktualizuje automaticky</p>
+            <div className={styles.actions}>
+              <button type="button" className={styles.exampleButton} onClick={() => setForm(EXAMPLE_FORM)}>
+                <Play size={14} aria-hidden="true" /> Vzorový příklad
+              </button>
+              <button type="button" className={styles.resetButton} disabled={!hasChanges} onClick={() => setForm(EMPTY_FORM)}>
+                <RefreshCcw size={14} aria-hidden="true" /> Vymazat
+              </button>
+            </div>
           </div>
 
-          {!hasAllInputs ? (
-            <section className="rounded-[28px] border border-dashed border-violet-200 bg-white/85 px-6 py-9 text-center shadow-[0_16px_44px_rgba(88,28,135,0.07)]">
-              <Coins className="mx-auto h-8 w-8 text-violet-500" strokeWidth={1.9} />
-              <h2 className="mt-3 text-lg font-black text-slate-950">Doplň údaje obou smluv</h2>
-              <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-slate-600">
-                Po zadání obou dat, pojistného a frekvence placení se výsledek
-                zobrazí automaticky.
-              </p>
-            </section>
-          ) : result && !result.ok ? (
-            <section className="rounded-[26px] border border-amber-200 bg-amber-50 px-5 py-5 text-amber-950 shadow-[0_16px_40px_rgba(146,64,14,0.08)]">
-              <h2 className="font-black">Zkontroluj zadané údaje</h2>
-              <p className="mt-1 text-sm leading-6">
-                {result.error === "replacement-before-original"
-                  ? "Počátek nové smlouvy nemůže být před počátkem původní smlouvy."
-                  : "Datum nebo pojistné není zadané ve správném formátu."}
-              </p>
-            </section>
-          ) : result?.ok ? (
-            <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 sm:px-7">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">
-                    Souhrn kalkulace
-                  </p>
-                  <h2 className="mt-0.5 text-xl font-black text-slate-950">Výsledek náhrady</h2>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-black ${
-                    result.balanceType === "surcharge"
-                      ? "bg-amber-100 text-amber-800"
-                      : result.balanceType === "overpayment"
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-slate-100 text-slate-700"
-                  }`}
-                >
-                  {result.balanceType === "surcharge"
-                    ? "Vzniká doplatek"
-                    : result.balanceType === "overpayment"
-                      ? "Vzniká přeplatek"
-                      : "Pojistné je vyrovnané"}
-                </span>
+          <div className={styles.workspace}>
+            <div className={styles.contracts}>
+              <ContractCard
+                kind="original"
+                date={form.originalStartDate}
+                premium={form.originalPremium}
+                frequency={form.originalFrequency}
+                onDateChange={(value) => setField("originalStartDate", value)}
+                onPremiumChange={(value) => setField("originalPremium", value)}
+                onFrequencyChange={(value) => setField("originalFrequency", value)}
+              />
+              <span className={styles.contractArrow} aria-hidden="true"><ArrowRight size={17} /></span>
+              <ContractCard
+                kind="replacement"
+                date={form.replacementStartDate}
+                premium={form.replacementPremium}
+                frequency={form.replacementFrequency}
+                dateError={datesReversed ? "Nová smlouva nemůže začít před původní." : undefined}
+                onDateChange={(value) => setField("replacementStartDate", value)}
+                onPremiumChange={(value) => setField("replacementPremium", value)}
+                onFrequencyChange={(value) => setField("replacementFrequency", value)}
+              />
+            </div>
+
+            <section className={styles.summary} aria-labelledby="result-heading">
+              <header className={styles.summaryHeader}>
+                <Calculator size={18} aria-hidden="true" />
+                <h2 id="result-heading">Souhrn náhrady</h2>
+                <span className={styles.summaryStatus}>{result?.ok ? "Spočítáno" : "Náhled"}</span>
+              </header>
+              <div className={styles.summaryLines}>
+                <div><span>Nové pojistné</span><strong>{replacementPremium !== null ? formatMoney(Math.round(replacementPremium)) : "— Kč"}</strong></div>
+                <div className={styles.transferLine}><span><span aria-hidden="true">−</span> Převod z původní smlouvy</span><strong>{result?.ok ? formatMoney(result.transferredPremium) : "— Kč"}</strong></div>
               </div>
-
-              <div className="p-5 sm:p-7">
-                <div className="grid grid-cols-1 gap-2 rounded-[22px] bg-slate-50 p-2 md:grid-cols-3 lg:grid-cols-[1fr_28px_1fr_28px_1.08fr] lg:items-stretch">
-                  <div className="rounded-[18px] border border-slate-200 bg-white p-4 sm:p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">
-                      Nové pojistné
-                    </p>
-                    <p className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl">
-                      {formatMoney(result.replacementPremium)}
-                    </p>
-                    <p className="mt-1.5 text-xs font-semibold text-slate-500">
-                      {frequencyLabel(form.replacementFrequency)} platba
-                    </p>
+              <div className={styles.balance} data-tone={result?.ok ? result.balanceType : "empty"}>
+                <div className={styles.balanceLabel}><span>{balanceLabel}</span>{result?.ok && <Check size={17} aria-hidden="true" />}</div>
+                <p className={styles.balanceAmount}>{result?.ok ? formatMoney(Math.abs(result.balance)) : <><span>—</span> Kč</>}</p>
+                <p className={styles.balanceCaption}>
+                  {result?.ok ? "Po započtení nevyčerpaného pojistného" : "Doplň údaje smluv a zjisti výslednou částku."}
+                </p>
+              </div>
+              <div className={styles.summaryBottom}>
+                {result?.ok ? (
+                  <div className={styles.transferNote}>
+                    <span><ArrowRightLeft size={17} aria-hidden="true" /></span>
+                    <p>Převede se <strong>{percentFormatter.format(result.unusedShare * 100)} %</strong> z poslední platby původní smlouvy.</p>
                   </div>
-
-                  <span
-                    className="hidden items-center justify-center text-xl font-semibold text-slate-300 lg:flex"
-                    aria-hidden="true"
-                  >
-                    −
-                  </span>
-
-                  <div className="rounded-[18px] border border-violet-200 bg-white p-4 sm:p-5">
-                    <p className="text-xs font-black uppercase tracking-[0.1em] text-violet-600">
-                      Převede se
-                    </p>
-                    <p className="mt-2 text-2xl font-black tracking-[-0.03em] text-violet-950 sm:text-3xl">
-                      {formatMoney(result.transferredPremium)}
-                    </p>
-                    <p className="mt-1.5 text-xs font-semibold text-violet-600">
-                      {new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(
-                        result.unusedShare * 100
-                      )} % z poslední platby
-                    </p>
+                ) : result && !result.ok ? (
+                  <div className={styles.resultError} role="alert">
+                    <Info size={17} aria-hidden="true" />
+                    <p><strong>Zkontroluj zadané údaje</strong>{result.error === "replacement-before-original"
+                      ? "Počátek nové smlouvy musí být stejný nebo pozdější než počátek původní."
+                      : "Datum nebo pojistné není ve správném formátu."}</p>
                   </div>
-
-                  <span
-                    className="hidden items-center justify-center text-xl font-semibold text-slate-300 lg:flex"
-                    aria-hidden="true"
-                  >
-                    =
-                  </span>
-
-                  <div
-                    className={`rounded-[18px] border p-4 sm:p-5 ${
-                      result.balanceType === "surcharge"
-                        ? "border-amber-300 bg-amber-50"
-                        : result.balanceType === "overpayment"
-                          ? "border-emerald-300 bg-emerald-50"
-                          : "border-slate-300 bg-white"
-                    }`}
-                  >
-                    <p
-                      className={`text-xs font-black uppercase tracking-[0.1em] ${
-                        result.balanceType === "surcharge"
-                          ? "text-amber-800"
-                          : result.balanceType === "overpayment"
-                            ? "text-emerald-800"
-                            : "text-slate-600"
-                      }`}
-                    >
-                      {result.balanceType === "surcharge"
-                        ? "Klient doplatí"
-                        : result.balanceType === "overpayment"
-                          ? "Klientovi zbývá"
-                          : "Vyrovnáno"}
-                    </p>
-                    <p className="mt-2 text-2xl font-black tracking-[-0.03em] text-slate-950 sm:text-3xl">
-                      {formatMoney(Math.abs(result.balance))}
-                    </p>
-                    <p className="mt-1.5 text-xs font-semibold text-slate-500">
-                      Po započtení převodu
-                    </p>
+                ) : (
+                  <div className={styles.checklist}>
+                    <p>Pro výpočet potřebuješ</p>
+                    <div data-complete={originalComplete}><span>{originalComplete ? <Check size={12} aria-hidden="true" /> : "1"}</span>Údaje původní smlouvy</div>
+                    <div data-complete={replacementComplete}><span>{replacementComplete ? <Check size={12} aria-hidden="true" /> : "2"}</span>Údaje nové smlouvy</div>
                   </div>
-                </div>
-
-                <div className="mt-5 rounded-[20px] border border-violet-200 bg-violet-50/60 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-700 shadow-sm">
-                        <CalendarRange className="h-5 w-5" strokeWidth={2.2} />
-                      </span>
-                      <div>
-                        <p className="font-black text-slate-950">Nový platební cyklus</p>
-                        <p className="mt-0.5 text-sm leading-5 text-slate-600">
-                          Nejbližší termíny pravidelných plateb k dnešnímu dni{" "}
-                          {formatDate(referenceDate)}.
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-black ${
-                        result.paymentShiftDays > 0
-                          ? "bg-violet-100 text-violet-800"
-                          : result.paymentShiftDays < 0
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-slate-100 text-slate-700"
-                      }`}
-                    >
-                      {result.paymentShiftDays > 0
-                        ? `o ${result.paymentShiftDays} ${dayCountLabel(result.paymentShiftDays)} později`
-                        : result.paymentShiftDays < 0
-                          ? `o ${Math.abs(result.paymentShiftDays)} ${dayCountLabel(result.paymentShiftDays)} dříve`
-                          : "ve stejný den"}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-                        Další platba původně
-                      </p>
-                      <p className="mt-1 text-lg font-black text-slate-900">
-                        {formatDate(result.originalNextPaymentDate)}
-                      </p>
-                      <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                        {frequencyLabel(form.originalFrequency)} platba
-                      </p>
-                    </div>
-                    <ArrowRight
-                      className="mx-auto h-5 w-5 rotate-90 text-violet-500 sm:rotate-0"
-                      aria-hidden="true"
-                    />
-                    <div className="rounded-2xl border border-violet-200 bg-white px-4 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-violet-600">
-                        Další platba nově
-                      </p>
-                      <p className="mt-1 text-lg font-black text-violet-950">
-                        {formatDate(result.replacementNextPaymentDate)}
-                      </p>
-                      <p className="mt-0.5 text-xs font-semibold text-violet-600">
-                        {frequencyLabel(form.replacementFrequency)} platba
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    {result.balanceType === "surcharge" ? (
-                      <>
-                        Doplatek{" "}
-                        <strong className="font-black text-slate-950">
-                          {formatMoney(Math.abs(result.balance))}
-                        </strong>{" "}
-                        spolu s převodem pokryje první{" "}
-                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
-                        nové smlouvy.
-                      </>
-                    ) : result.balanceType === "overpayment" ? (
-                      <>
-                        Převod pokryje první{" "}
-                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
-                        nové smlouvy a klientovi zbývá{" "}
-                        <strong className="font-black text-slate-950">
-                          {formatMoney(Math.abs(result.balance))}
-                        </strong>
-                        .
-                      </>
-                    ) : (
-                      <>
-                        Převod přesně pokryje první{" "}
-                        {frequencyLabel(form.replacementFrequency).toLocaleLowerCase("cs-CZ")} platbu
-                        nové smlouvy.
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                <div className="mt-5">
-                  <div className="rounded-[18px] border border-slate-200 p-4 sm:p-5">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-black text-slate-900">Rozdělení původní platby</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Celkem {formatMoney(originalPremium ?? 0)}
-                        </p>
-                      </div>
-                      <p className="text-xs font-semibold text-slate-500">
-                        {result.nominalElapsedDays} dní vyčerpáno ·{" "}
-                        {result.nominalPeriodDays - result.nominalElapsedDays} dní zbývá
-                      </p>
-                    </div>
-
-                    <div className="mt-4">
-                      <div
-                        className="relative flex h-2.5 rounded-full bg-slate-100"
-                        role="img"
-                        aria-label={`${new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(
-                          elapsedSharePercent
-                        )} procent zúčtováno a ${new Intl.NumberFormat("cs-CZ", {
-                          maximumFractionDigits: 1,
-                        }).format(result.unusedShare * 100)} procent převedeno`}
-                      >
-                        <span
-                          className="rounded-l-full bg-slate-300"
-                          style={{ width: `${elapsedSharePercent}%` }}
-                        />
-                        <span className="flex-1 rounded-r-full bg-violet-500" />
-                        <span
-                          className="absolute -bottom-1 -top-1 w-0.5 -translate-x-1/2 rounded-full bg-violet-800 ring-2 ring-white"
-                          style={{ left: `${elapsedSharePercent}%` }}
-                          aria-hidden="true"
-                        />
-                        <span
-                          className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-700 ring-2 ring-white"
-                          style={{ left: `${elapsedSharePercent}%` }}
-                          aria-hidden="true"
-                        />
-                      </div>
-
-                      <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-bold leading-4 text-slate-500 sm:hidden">
-                        <p>
-                          Počátek
-                          <strong className="block text-[10px] text-slate-700">
-                            {formatDate(result.paidPeriodStartDate)}
-                          </strong>
-                        </p>
-                        <p className="text-center text-violet-600">
-                          Náhrada
-                          <strong className="block text-[10px] text-violet-800">
-                            {formatDate(form.replacementStartDate)}
-                          </strong>
-                        </p>
-                        <p className="text-right">
-                          Původní konec
-                          <strong className="block text-[10px] text-slate-700">
-                            {formatDate(result.paidPeriodEndDate)}
-                          </strong>
-                        </p>
-                      </div>
-
-                      <div className="relative mt-2 hidden h-10 text-[9px] font-bold leading-4 text-slate-500 sm:block">
-                        <p className="absolute left-0 top-0 text-left">
-                          Počátek období
-                          <strong className="block text-[10px] text-slate-700">
-                            {formatDate(result.paidPeriodStartDate)}
-                          </strong>
-                        </p>
-                        <p
-                          className="absolute top-0 -translate-x-1/2 text-center text-violet-600"
-                          style={{
-                            left: `clamp(3.5rem, ${elapsedSharePercent}%, calc(100% - 3.5rem))`,
-                          }}
-                        >
-                          Počátek náhrady
-                          <strong className="block text-[10px] text-violet-800">
-                            {formatDate(form.replacementStartDate)}
-                          </strong>
-                        </p>
-                        <p className="absolute right-0 top-0 text-right">
-                          Původní konec období
-                          <strong className="block text-[10px] text-slate-700">
-                            {formatDate(result.paidPeriodEndDate)}
-                          </strong>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500">Zúčtováno</p>
-                        <p className="mt-0.5 font-black text-slate-800">
-                          {formatMoney((originalPremium ?? 0) - result.transferredPremium)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-semibold text-violet-600">Převádí se</p>
-                        <p className="mt-0.5 font-black text-violet-800">
-                          {formatMoney(result.transferredPremium)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                <div className="mt-5 border-t border-slate-200 pt-4 text-sm leading-6 text-slate-600">
-                  <p className="font-black text-slate-800">Jak jsme k výsledku došli</p>
-                  <p className="mt-1">
-                    Z posledního{" "}
-                    {frequencyLabel(form.originalFrequency).toLocaleLowerCase("cs-CZ")}ho
-                    pojistného bylo vyčerpáno {result.nominalElapsedDays} z{" "}
-                    {result.nominalPeriodDays} modelových dní. Nevyčerpaná část je proto{" "}
-                    {formatMoney(originalPremium ?? 0)} ×{" "}
-                    {new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(
-                      result.unusedShare * 100
-                    )} % = {formatMoney(result.transferredPremium)} po zaokrouhlení.
-                  </p>
-                </div>
+                )}
               </div>
             </section>
-          ) : null}
+          </div>
 
-          <aside className="flex items-start gap-3 rounded-[24px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm leading-6 text-amber-950 shadow-[0_14px_34px_rgba(146,64,14,0.08)]">
-            <Info className="mt-0.5 h-5 w-5 shrink-0" strokeWidth={2.1} />
-            <p>
-              Kalkulačka používá model pojistných měsíců po 30 dnech, který odpovídá
-              uvedenému vzorovému příkladu. Výsledek je orientační — konkrétní pojišťovna
-              může použít jinou metodiku nebo zaokrouhlení. Před sdělením finální částky
-              klientovi ji ověř v podmínkách pojišťovny.
-            </p>
+          <p className={styles.screenReaderOnly} role="status" aria-atomic="true">
+            {result?.ok ? `${balanceLabel}: ${formatMoney(Math.abs(result.balance))}. Převádí se ${formatMoney(result.transferredPremium)}.` : "Pro výpočet doplň platné údaje obou smluv."}
+          </p>
+
+          {result?.ok && originalPremium !== null && (
+            <CalculationDetails result={result} form={form} originalPremium={originalPremium} referenceDate={referenceDate} />
+          )}
+
+          <aside className={styles.notice}>
+            <Info size={17} aria-hidden="true" />
+            <p><strong>Orientační výpočet.</strong> Počítáme s pojistnými měsíci po 30 dnech.
+              Konkrétní pojišťovna může použít jinou metodiku nebo zaokrouhlení.
+              Finální částku pro klienta ověř v jejích podmínkách.</p>
           </aside>
         </div>
-      </main>
+      </div>
     </AppLayout>
   );
 }

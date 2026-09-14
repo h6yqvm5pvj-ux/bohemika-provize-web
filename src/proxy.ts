@@ -133,6 +133,7 @@ function isServerProtectedPagePath(pathname: string): boolean {
     pathname.startsWith("/kalkulacka") ||
     pathname.startsWith("/klienti") ||
     pathname.startsWith("/muj-tym") ||
+    pathname === "/sin-slavy" ||
     pathname.startsWith("/nastaveni") ||
     pathname.startsWith("/pomucky") ||
     pathname.startsWith("/posta") ||

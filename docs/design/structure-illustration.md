@@ -1,0 +1,9 @@
+# Struktura: 3D ilustrace
+
+Vygenerováno vestavěným nástrojem imagegen. Ilustrace je dekorativní; skutečné vztahy členů zobrazuje interaktivní mapa a seznam.
+
+Výsledný asset: `public/illustrations/team/structure-3d.webp`. Optimalizováno na šířku 1100 px, WebP, kvalita 88, se zachovanou průhledností.
+
+## Finální zadání
+
+Use case: stylized-concept. Asset type: premium web application header illustration, transparent cutout. Primary request: a beautifully crafted professional 3D illustration of a connected team, for a Czech financial advisor's organization chart page. Subject: five polished sculptural miniature profile busts on floating thick rounded-square ivory ceramic cards, connected by elegant thin lavender tubes in a tidy organizational hierarchy, central leader slightly taller, small two subtle lavender spherical accents. The people are abstract gender-neutral smooth head-and-shoulders silhouettes, no faces, no cartoon facial features. Materials: satin porcelain, frosted lilac glass, refined matte lavender, warm ivory, subtle brushed silver. Color palette matching the app: off-white, soft lavender #a582c8, muted violet #7953b3, a very subtle warm champagne accent. Composition: compact centered landscape arrangement at a sophisticated three-quarter isometric view, generous clear margin around the whole sculpture, nothing cropped, designed to occupy the right half of a dashboard header, absolutely no text or numbers, no interface screenshot. Lighting: soft large studio softbox from upper left, beautiful ambient occlusion and delicate contact shadows, high-end product visualization, restrained luxurious calm aesthetic. Background: genuinely transparent alpha; retain subtle grounding shadows. Avoid: bright neon, excessive sparkles, childish toys, logos, watermark, typography, glossy plastic, clutter. Deliver a crisp high quality standalone illustration.

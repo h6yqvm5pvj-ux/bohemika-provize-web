@@ -83,7 +83,6 @@ const TIP_PAYOUTS_PAGE_LIMIT = 100;
 const TIP_PAYOUTS_MAX_PAGES = 200;
 const SUBSCRIPTION_PAYMENTS_PAGE_LIMIT = 5000;
 const CONTRACTS_CACHE_TTL_MS = 5 * 60 * 1000;
-const CASHFLOW_MIN_LOADING_MS = 250;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 type SnapshotMode = "standard" | "tipster";
 type SnapshotProgressListener = (progress: CashflowLoadingProgress) => void;
@@ -658,7 +657,6 @@ export function useCashflowData({
   );
 
   useEffect(() => {
-    let finishLoadingTimer: number | null = null;
     if (!enabled || !userEmail) {
       setSnapshot(null);
       setHasTeam(false);
@@ -687,7 +685,6 @@ export function useCashflowData({
         delete contractsSnapshotCache[cacheKey];
       }
       const hasCachedPayload = Boolean(cached?.payload);
-      const loadingStartedAt = hasCachedPayload ? 0 : Date.now();
       if (cached?.payload) {
         setSnapshot(cached.payload);
         setHasTeam(cached.payload.hasAnyTeam);
@@ -730,19 +727,6 @@ export function useCashflowData({
         setReady(true);
       } finally {
         if (cancelled) return;
-        if (hasCachedPayload) {
-          setLoading(false);
-          return;
-        }
-        const elapsed = Date.now() - loadingStartedAt;
-        const remaining = Math.max(0, CASHFLOW_MIN_LOADING_MS - elapsed);
-        if (remaining > 0) {
-          finishLoadingTimer = window.setTimeout(() => {
-            if (cancelled) return;
-            setLoading(false);
-          }, remaining);
-          return;
-        }
         setLoading(false);
       }
     };
@@ -750,9 +734,6 @@ export function useCashflowData({
     void load();
     return () => {
       cancelled = true;
-      if (finishLoadingTimer != null) {
-        window.clearTimeout(finishLoadingTimer);
-      }
     };
   }, [userEmail, enabled, snapshotMode, reloadKey]);
 

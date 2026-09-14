@@ -68,7 +68,7 @@ describe("actual cashflow data hook worker boundary", () => {
   const render = (overrides: Partial<HookParams> = {}) => act(async () => {
     root.render(<Probe userEmail={email} scopeFilter="combined" productFilter="all" {...overrides} />);
   });
-  const finishLoading = () => act(async () => { await vi.advanceTimersByTimeAsync(250); });
+  const finishLoading = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
   const expectNoSnapshot = () => {
     expect(latest.rawSnapshot).toBeNull();
     expect(latest.calculationDeferred).toBe(false);
@@ -140,8 +140,8 @@ describe("actual cashflow data hook worker boundary", () => {
       expect(latest.loading).toBe(true);
       expect(latest.ready).toBe(false);
       expectNoSnapshot();
-      await act(async () => { await vi.advanceTimersByTimeAsync(249); });
-      expect(latest.loading).toBe(true);
+      await finishLoading();
+      expect(latest.loading).toBe(false);
       expect(latest.ready).toBe(true);
       const snapshot = latest.rawSnapshot!;
       expect(snapshot.ownEntries.length).toBe(150);
@@ -156,9 +156,6 @@ describe("actual cashflow data hook worker boundary", () => {
       expect(contractUrls).toHaveLength(3);
       expect(contractUrls.some(url => url.searchParams.get("cursor") === "100")).toBe(true);
       expect(contractUrls.every(url => url.searchParams.get("shape") === "cashflow")).toBe(true);
-      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(latest.loading).toBe(false);
-      expect(latest.ready).toBe(true);
     },
   );
 
