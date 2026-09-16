@@ -57,4 +57,11 @@ describe("calculator client name matching", () => {
     expect(match("ABC", ["ABC Servis s.r.o."])[0].kind).toBe("prefix");
     expect(match("李 明", ["李 明"])[0].kind).toBe("exact");
   });
+  it("supports initials with a sufficiently specific second word, while keeping alternatives", () => {
+    expect(match("J Novák", ["Jan Novák", "Jiří Novák", "Petr Novák"]).map(item => item.name)).toEqual(["Jan Novák", "Jiří Novák"]);
+    expect(match("J N", ["Jan Novák"])).toEqual([]);
+  });
+  it("ranks complete surname words before longer prefix matches", () => {
+    expect(match("Novak", ["Anna Nováková", "Jan Novák", "Petr Novákovský"])[0]).toEqual({ name: "Jan Novák", kind: "prefix" });
+  });
 });

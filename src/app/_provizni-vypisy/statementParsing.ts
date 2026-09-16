@@ -643,15 +643,18 @@ const classifyLifeSplitCommissionCode = (
 
 const lifeSplitAnnualPremiumBase = (
   rows: ReadonlyArray<Pick<CommissionRow, "type" | "base">>
-): number =>
-  // Investment components (e.g. A201) have their own base. Only commission
-  // codes supported by the life calculator can supply its premium base.
-  rows.find(
-    (row) =>
-      Number.isFinite(row.base) &&
-      row.base > 0 &&
-      classifyLifeSplitCommissionCode(row.type).kind !== "unknown"
-  )?.base ?? 0;
+): number => {
+  // A small B1 base does not identify an investment component. Keep all
+  // supported rows, but do not promote an arbitrary row's base to the whole
+  // contract when the statement contains different bases.
+  const supported = rows.filter(row => Number.isFinite(row.base) && row.base > 0 &&
+    classifyLifeSplitCommissionCode(row.type).kind !== "unknown");
+  const initial = supported.filter(row => isNeonInitialCommissionCode(row.type));
+  const candidates = initial.length > 0 ? initial : supported;
+  const first = candidates[0]?.base;
+  if (first == null || candidates.some(row => Math.abs(row.base - first) > 0.01)) return 0;
+  return first;
+};
 
 const classifyGeneralCommissionCode = (
   product: string,

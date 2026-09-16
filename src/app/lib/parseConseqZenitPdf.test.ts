@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PdfOcrPage } from "./pdfOcr";
 import { conseqZenitMaturityDate, parseConseqZenitPages, parseConseqZenitPdf } from "./parseConseqZenitPdf";
 import { detectProductFromPdf } from "./detectProductFromPdf";
-import { parseContractPdfByProduct, buildPdfImportIssueMessage } from "../kalkulacka/calculatorPdfImport";
+import { parseContractPdfByProduct, buildPdfImportIssueMessage, detectProductFromPdfLazy } from "../kalkulacka/calculatorPdfImport";
 
 const state = vi.hoisted(() => ({ pages: [] as PdfOcrPage[], ocr: vi.fn() }));
 vi.mock("./pdfOcr", () => ({ extractOcrLinesFromPdf: state.ocr }));
@@ -53,6 +53,14 @@ const fixture = (): PdfOcrPage[] => [
 ];
 
 describe("CONSEQ Zenit PDF parser", () => {
+  it("recognizes an OCR Q/O confusion only together with Zenit and preserves identifiers", () => {
+    const pages = fixture();
+    pages[0].text = pages[0].text.replace("Conseq", "CONSEO");
+    expect(parseConseqZenitPages(pages, true)).toMatchObject({ productDetected: true, contractNumber: "9512345678", amount: 1700 });
+    expect(parseConseqZenitPages(pages, false).productDetected).toBe(false);
+    pages[0].text = pages[0].text.replace("Zenit", "Another product");
+    expect(parseConseqZenitPages(pages, true).productDetected).toBe(false);
+  });
   beforeEach(() => { state.pages = fixture(); state.ocr.mockReset(); });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -112,6 +120,74 @@ describe("CONSEQ Zenit PDF parser", () => {
     await expect(parseConseqZenitPdf(file)).resolves.toMatchObject({ amount: 1700, policyEndDate: "2040-04-12", ocrTextUsed: true });
     expect(state.ocr).toHaveBeenCalledOnce();
     expect(onOcrStart).toHaveBeenCalledOnce();
+  });
+
+  it("keeps product detection and native PDF parsing available with OCR disabled", async () => {
+    vi.stubGlobal("document", {});
+    const file = new File(["native"], "statement-contract.pdf");
+    const options = { allowOcr: false, onOcrStart: vi.fn() };
+    await expect(detectProductFromPdfLazy(file, options)).resolves.toMatchObject({ product: "conseqzenit" });
+    await expect(parseContractPdfByProduct("conseqzenit", file, options)).resolves.toMatchObject({
+      contractNumber: "9512345678", clientName: "Jan Novák", amount: 1700,
+      policyStartDate: "2025-01-01", policyEndDate: "2040-04-12", ocrTextUsed: false,
+    });
+    expect(state.ocr).not.toHaveBeenCalled();
+    expect(options.onOcrStart).not.toHaveBeenCalled();
+  });
+
+  it("does not start OCR to detect a scanned contract when disabled", async () => {
+    vi.stubGlobal("document", {});
+    state.pages = [page([]), page([])];
+    const onOcrStart = vi.fn();
+    await expect(detectProductFromPdfLazy(new File(["scan"], "scan.pdf"), {
+      allowOcr: false, onOcrStart,
+    })).resolves.toBeNull();
+    expect(state.ocr).not.toHaveBeenCalled();
+    expect(onOcrStart).not.toHaveBeenCalled();
+  });
+
+  it("returns the fields readable in an incomplete PDF without an OCR fallback", async () => {
+    vi.stubGlobal("document", {});
+    state.pages[1].words = state.pages[1].words.filter((item) => item.text !== "1 700 Kč");
+    const onOcrStart = vi.fn();
+    await expect(parseContractPdfByProduct("conseqzenit", new File(["partial"], "partial.pdf"), {
+      allowOcr: false, onOcrStart,
+    })).resolves.toMatchObject({ contractNumber: "9512345678", clientName: "Jan Novák", amount: null, ocrTextUsed: false });
+    expect(state.ocr).not.toHaveBeenCalled();
+    expect(onOcrStart).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("isolates cached OCR and text-only results (OCR first: %s)", async (ocrFirst) => {
+    vi.stubGlobal("document", {});
+    state.pages = [page([]), page([])];
+    const pages = fixture();
+    state.ocr.mockResolvedValue({ pages, text: pages.map((item) => item.text).join("\n"), lines: [] });
+    const file = new File(["scan"], "reused-scan.pdf");
+    for (const allowOcr of [ocrFirst, !ocrFirst]) {
+      await expect(parseContractPdfByProduct("conseqzenit", file, { allowOcr })).resolves.toMatchObject({
+        amount: allowOcr ? 1700 : null, ocrTextUsed: allowOcr,
+      });
+    }
+    await expect(parseConseqZenitPdf(file)).resolves.toMatchObject({ amount: 1700, ocrTextUsed: true });
+    expect(state.ocr).toHaveBeenCalledOnce();
+  });
+
+  it("does not join an ongoing OCR operation when a text-only parse is requested", async () => {
+    vi.stubGlobal("document", {});
+    state.pages = [page([]), page([])];
+    const pages = fixture();
+    const ocrResult = { pages, text: pages.map((item) => item.text).join("\n"), lines: [] };
+    let finishOcr!: (value: typeof ocrResult) => void;
+    state.ocr.mockReturnValue(new Promise<typeof ocrResult>((resolve) => { finishOcr = resolve; }));
+    const file = new File(["scan"], "concurrent-scan.pdf");
+    const pendingOcr = parseConseqZenitPdf(file);
+    await vi.waitFor(() => expect(state.ocr).toHaveBeenCalledOnce());
+    // Text parsing must complete without waiting for the active OCR operation.
+    const textOnly = await parseConseqZenitPdf(file, { allowOcr: false });
+    expect(textOnly).toMatchObject({ amount: null, ocrTextUsed: false });
+    finishOcr(ocrResult);
+    await expect(pendingOcr).resolves.toMatchObject({ amount: 1700, ocrTextUsed: true });
+    expect(state.ocr).toHaveBeenCalledOnce();
   });
 
   it.each([

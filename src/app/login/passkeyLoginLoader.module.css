@@ -28,6 +28,9 @@
 .dots i { width: 4px; height: 4px; border-radius: 50%; background: #c19aec; animation: dotPulse 1.4s ease-in-out infinite; }
 .dots i:nth-child(2) { animation-delay: .16s; }
 .dots i:nth-child(3) { animation-delay: .32s; }
+.cancel { margin-top: 20px; min-height: 40px; padding: 8px 16px; border: 1px solid #d4b7ff50; border-radius: 12px; color: #e4d2ff; font-size: 12px; cursor: pointer; }
+.cancel:hover { background: #c99cff23; }
+.cancel:focus-visible { outline: 2px solid #d0adff; outline-offset: 4px; }
 
 @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }

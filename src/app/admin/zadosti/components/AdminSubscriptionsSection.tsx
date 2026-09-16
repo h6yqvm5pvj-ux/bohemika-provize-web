@@ -1,5 +1,7 @@
 "use client";
 
+import adminStyles from "../adminConsole.module.css";
+
 import {
   Check,
   Clock3,
@@ -63,30 +65,30 @@ export function AdminSubscriptionsSection({
       <div className={classes.topBar} />
       <div className="mb-4">
         <span className={classes.badge}>Fakturace</span>
-        <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
+        <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] text-slate-900 sm:text-2xl">
           <Landmark
             size={20}
             strokeWidth={2}
-            className="!text-violet-100"
+            className="text-slate-600"
             aria-hidden="true"
           />
           <span>Správa předplatného</span>
         </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
           Přidej platbu nebo nastav neomezený tarif, zkontroluj historii a případně účet
           označ jako nezaplacený.
         </p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className={classes.panel}>
           <span className={classes.topBar} />
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold !text-white">
+            <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
               <Inbox
                 size={14}
                 strokeWidth={2.1}
-                className="!text-violet-100"
+                className="text-slate-600"
                 aria-hidden="true"
               />
               Adresář předplatného
@@ -95,7 +97,7 @@ export function AdminSubscriptionsSection({
               type="button"
               onClick={() => void controller.loadDirectory()}
               disabled={controller.directoryLoading}
-              className="inline-flex items-center gap-1 rounded-lg border border-white/16 bg-white/[0.07] px-2.5 py-1.5 text-xs font-semibold !text-violet-100 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw size={13} strokeWidth={2.2} aria-hidden="true" />
               Obnovit
@@ -103,75 +105,75 @@ export function AdminSubscriptionsSection({
           </div>
 
           <div className="mb-3 grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-white/14 bg-white/[0.07] px-2.5 py-2 shadow-[0_12px_28px_rgba(7,6,25,0.2)]">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 shadow-sm">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Celkem
                 </div>
                 <Inbox
                   size={14}
                   strokeWidth={2.1}
-                  className="!text-violet-100/70"
+                  className="text-slate-600"
                   aria-hidden="true"
                 />
               </div>
-              <div className="mt-1.5 text-xl font-bold !text-white">
+              <div className="mt-1.5 text-xl font-bold text-slate-900">
                 {controller.directoryStats.total}
               </div>
             </div>
-            <div className="rounded-xl border border-rose-700 bg-rose-600 px-2.5 py-2 shadow-[0_8px_18px_rgba(225,29,72,0.3)]">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-100">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
                   Po splatnosti
                 </div>
                 <Clock3
                   size={14}
                   strokeWidth={2.1}
-                  className="text-rose-100"
+                  className="text-rose-700"
                   aria-hidden="true"
                 />
               </div>
-              <div className="mt-1.5 text-xl font-bold text-white">
+              <div className="mt-1.5 text-xl font-bold text-slate-900">
                 {controller.directoryStats.overdue}
               </div>
             </div>
-            <div className="rounded-xl border border-orange-700 bg-orange-500 px-2.5 py-2 shadow-[0_8px_18px_rgba(249,115,22,0.3)]">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-50">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
                   Brzy končí
                 </div>
                 <RefreshCcw
                   size={14}
                   strokeWidth={2.1}
-                  className="text-orange-50"
+                  className="text-amber-800"
                   aria-hidden="true"
                 />
               </div>
-              <div className="mt-1.5 text-xl font-bold text-white">
+              <div className="mt-1.5 text-xl font-bold text-slate-900">
                 {controller.directoryStats.dueSoon}
               </div>
             </div>
-            <div className="rounded-xl border border-violet-500 bg-violet-500 px-2.5 py-2 shadow-[0_8px_18px_rgba(124,58,237,0.32)]">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                   Aktivní
                 </div>
                 <Check
                   size={14}
                   strokeWidth={2.4}
-                  className="text-violet-50"
+                  className="text-slate-600"
                   aria-hidden="true"
                 />
               </div>
-              <div className="mt-1.5 text-xl font-bold text-white">
+              <div className="mt-1.5 text-xl font-bold text-slate-900">
                 {controller.directoryStats.active}
               </div>
             </div>
           </div>
 
           <div
-            className="mb-3 inline-flex w-full rounded-2xl border border-white/14 bg-white/[0.06] p-1 shadow-[0_12px_28px_rgba(7,6,25,0.18)]"
-            role="tablist"
+            className="mb-3 inline-flex w-full rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm"
+            role="group"
             aria-label="Filtr předplatného"
           >
             {SUBSCRIPTION_DIRECTORY_FILTERS.map((filterOption) => {
@@ -180,11 +182,12 @@ export function AdminSubscriptionsSection({
                 <button
                   key={filterOption.id}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => controller.setDirectoryFilter(filterOption.id)}
                   className={`inline-flex flex-1 items-center justify-center gap-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold transition ${
                     active
-                      ? "admin-on-violet border border-violet-300/35 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] !text-white shadow-[0_10px_18px_rgba(124,58,237,0.28)]"
-                      : "border border-transparent !text-violet-100/66 hover:!text-white"
+                      ? adminStyles.segmentActive
+                      : "border border-transparent text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   {filterOption.id === "all" ? (
@@ -209,7 +212,8 @@ export function AdminSubscriptionsSection({
             />
             <input
               type="search"
-              className={`${classes.field} pl-9`}
+              aria-label="Hledat uživatele v předplatném"
+              className={`${classes.field} ${adminStyles.fieldWithIcon}`}
               value={controller.directorySearch}
               onChange={(event) => controller.setDirectorySearch(event.target.value)}
               placeholder="Hledat uživatele..."
@@ -224,11 +228,11 @@ export function AdminSubscriptionsSection({
 
           <div className="max-h-[620px] space-y-2 overflow-y-auto pr-1">
             {controller.directoryLoading ? (
-              <div className="rounded-xl border border-white/14 bg-white/[0.05] px-3 py-5 text-center text-xs !text-violet-100/72">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs text-slate-600">
                 Načítám seznam uživatelů…
               </div>
             ) : controller.filteredDirectoryRows.length === 0 ? (
-              <div className="rounded-xl border border-white/14 bg-white/[0.05] px-3 py-5 text-center text-xs !text-violet-100/72">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs text-slate-600">
                 Žádní uživatelé pro zvolený filtr.
               </div>
             ) : (
@@ -258,8 +262,8 @@ export function AdminSubscriptionsSection({
                     onClick={() => controller.selectUser(row.email)}
                     className={`relative w-full overflow-hidden rounded-2xl border px-3 py-2.5 text-left transition ${
                       selected
-                        ? "border-violet-300/45 bg-violet-400/14 !text-white shadow-[0_14px_30px_rgba(124,58,237,0.18)]"
-                        : "border-white/12 bg-white/[0.055] !text-white hover:border-violet-300/30 hover:bg-white/[0.08]"
+                        ? "border-violet-300/45 bg-violet-400/14 text-slate-900 shadow-[0_14px_30px_rgba(124,58,237,0.18)]"
+                        : "border-slate-200 bg-slate-50 text-slate-900 hover:border-violet-300/30 hover:bg-slate-50"
                     }`}
                   >
                     {selected ? (
@@ -269,8 +273,8 @@ export function AdminSubscriptionsSection({
                       <span
                         className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
                           selected
-                            ? "border-violet-300/45 bg-violet-400/16 !text-violet-100"
-                            : "border-white/14 bg-white/[0.07] !text-violet-100/78"
+                            ? "border-violet-300/45 bg-violet-400/16 text-slate-600"
+                            : "border-slate-200 bg-slate-50 text-slate-600"
                         }`}
                       >
                         {avatarInitial}
@@ -279,7 +283,7 @@ export function AdminSubscriptionsSection({
                         <div className="truncate text-sm font-semibold">{title}</div>
                         <div
                           className={`truncate text-xs ${
-                            selected ? "!text-violet-100/72" : "!text-violet-100/54"
+                            selected ? "text-slate-600" : "text-slate-600"
                           }`}
                         >
                           {row.email}
@@ -296,7 +300,7 @@ export function AdminSubscriptionsSection({
                             {planLabel}
                           </span>
                           {dueSoonLabel ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-600 bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
                               <Clock3 size={10} strokeWidth={2.4} aria-hidden="true" />
                               {dueSoonLabel}
                             </span>
@@ -311,23 +315,23 @@ export function AdminSubscriptionsSection({
           </div>
         </aside>
 
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           <div className={classes.panel}>
             <span className={classes.topBar} />
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.2em] !text-violet-200/70">
+                <div className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
                   <UserCheck2 size={12} strokeWidth={2.2} aria-hidden="true" />
                   Detail
                 </div>
-                <div className="mt-1 text-2xl font-bold leading-tight !text-white sm:text-3xl">
+                <div className="mt-1 break-words text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                   {controller.data?.user?.fullName ||
                     controller.data?.user?.email ||
                     (controller.lookupEmail
                       ? nameFromEmail(controller.lookupEmail)
                       : "Vyber uživatele")}
                 </div>
-                <p className="mt-1 text-sm !text-violet-100/58">
+                <p className="mt-1 break-all text-sm text-slate-600">
                   {controller.data?.user?.email ||
                     controller.lookupEmail ||
                     "Klikni vlevo na uživatele."}
@@ -352,7 +356,7 @@ export function AdminSubscriptionsSection({
                   })}
                 </span>
               ) : (
-                <span className="rounded-full border border-white/14 bg-white/[0.07] px-3 py-1 text-xs font-semibold !text-violet-100/72">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
                   Bez výběru
                 </span>
               )}
@@ -427,7 +431,7 @@ export function AdminSubscriptionsSection({
                 type="button"
                 onClick={() => void controller.setUnpaid()}
                 disabled={controller.lookupLoading}
-                className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-500/80 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(225,29,72,0.3)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${adminStyles.button} ${adminStyles.destructiveButton}`}
               >
                 <X size={14} strokeWidth={2.4} aria-hidden="true" />
                 Označit nezaplaceno
@@ -438,9 +442,9 @@ export function AdminSubscriptionsSection({
               <p
                 className={`text-xs font-medium lg:col-span-2 ${
                   controller.lookupStatus.type === "success"
-                    ? "!text-violet-100"
+                    ? "text-slate-600"
                     : controller.lookupStatus.type === "info"
-                      ? "!text-violet-100/78"
+                      ? "text-slate-600"
                       : "text-rose-700"
                 }`}
               >
@@ -456,23 +460,23 @@ export function AdminSubscriptionsSection({
           </div>
 
           {controller.data?.subscription ? (
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               <div className={classes.softPanel}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold !text-white">
+                    <p className="text-sm font-semibold text-slate-900">
                       {controller.data.user?.fullName ||
                         controller.data.user?.email ||
                         "Uživatel"}
                     </p>
-                    <p className="text-xs !text-violet-100/58">
+                    <p className="text-xs text-slate-600">
                       {controller.data.user?.email || "—"}
                     </p>
                   </div>
                   <span
                     className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
                       controller.data.subscription.effectiveState === "active"
-                        ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                        ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                         : controller.data.subscription.effectiveState === "grace"
                           ? "border-amber-200 bg-amber-50 text-amber-700"
                           : controller.data.subscription.status === "unpaid"
@@ -489,13 +493,13 @@ export function AdminSubscriptionsSection({
                           : "Blokováno"}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 text-xs !text-violet-100/72 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] !text-violet-200/60">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                       <Landmark size={11} strokeWidth={2.2} aria-hidden="true" />
                       Tarif
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {controller.data.subscription.plan &&
                       controller.data.subscription.plan in SUBSCRIPTION_PLAN_LABELS
                         ? SUBSCRIPTION_PLAN_LABELS[
@@ -504,21 +508,21 @@ export function AdminSubscriptionsSection({
                         : "—"}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] !text-violet-200/60">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                       <Clock3 size={11} strokeWidth={2.2} aria-hidden="true" />
                       Od
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {formatIsoDay(controller.data.subscription.paidFrom)}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] !text-violet-200/60">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                       <Clock3 size={11} strokeWidth={2.2} aria-hidden="true" />
                       Do
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {controller.data.subscription.plan === "unlimited"
                         ? "Neomezeně"
                         : formatIsoDay(controller.data.subscription.paidUntil)}
@@ -528,24 +532,24 @@ export function AdminSubscriptionsSection({
               </div>
 
               <div className={classes.softPanel}>
-                <h3 className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold !text-white">
+                <h3 className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
                   <RefreshCcw
                     size={14}
                     strokeWidth={2.1}
-                    className="!text-violet-100"
+                    className="text-slate-600"
                     aria-hidden="true"
                   />
                   Historie plateb
                 </h3>
                 {(controller.data.payments ?? []).length === 0 ? (
-                  <div className="rounded-xl border border-white/12 bg-white/[0.055] px-3 py-3 text-sm !text-violet-100/72">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
                     Zatím bez plateb.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-xs !text-violet-100/78">
+                    <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
                       <thead>
-                        <tr className="border-b border-white/10 text-[10px] uppercase tracking-[0.12em] !text-violet-200/60">
+                        <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.12em] text-slate-500">
                           <th className="px-2 py-2">Tarif</th>
                           <th className="px-2 py-2">Částka</th>
                           <th className="px-2 py-2">Období</th>
@@ -567,9 +571,9 @@ export function AdminSubscriptionsSection({
                           return (
                             <tr
                               key={payment.id}
-                              className="border-b border-white/8 align-top"
+                              className="border-b border-slate-200 align-top"
                             >
-                              <td className="px-2 py-2 font-semibold !text-white">
+                              <td className="px-2 py-2 font-semibold text-slate-900">
                                 {isEditing ? (
                                   <select
                                     className={classes.historyField}

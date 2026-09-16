@@ -19,12 +19,12 @@ import {
 } from "@/app/api/contracts/_lib/contractsApi";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import {
-  hasSmallLifeSubsequentBase,
   isFirstYearAutoACommissionPayout,
   isLifeSubsequentCommissionPayout,
   lifeRiskAnnualPremiumBase,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
+  neonRefreshRiskAnnualPremiumBase,
 } from "@/app/lib/commissionPayoutRules";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
@@ -62,6 +62,7 @@ import {
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { adminRoleAtLeast } from "@/lib/adminAccess";
 import {
   annualPremiumFromStoredHistoryEntry,
   autoContractWasCreatedFromCommissionStatement,
@@ -283,6 +284,7 @@ const LIFE_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
   CPP_NEON: "neon",
   CPP_NEONRF: "neon",
   CPP_NRF_LF: "neon",
+  CPP_NRF_IN: "neon",
   KOOP_FLEXI: "flexi",
   BHMK_PILLOW_UR_NM: "pillowInjury",
 };
@@ -2187,12 +2189,6 @@ const expectedPayoutAmountForRow = (
   row: CommissionStatementPayoutRow,
   viewerEmail: string | null | undefined
 ): number | null => {
-  if (hasSmallLifeSubsequentBase({
-    product: contract.productKey,
-    commissionCode: row.commissionCode,
-    statementAnnualBase: row.baseAmount,
-    riskAnnualBase: lifeRiskAnnualPremiumBase(contract),
-  })) return null;
   // A201 in ČPP ŽP NEON is the investment-life component. It intentionally
   // uses a different premium base than A101, so it must not be compared with
   // the regular immediate commission calculated for the contract.
@@ -2386,23 +2382,9 @@ type NeonRefreshStatementBaseUpdate = {
 
 const statementAnnualBaseForNeonRefresh = (
   payoutRows: CommissionStatementPayoutRow[]
-): number | null => {
-  const bases = payoutRows
-    .filter((row) => {
-      if (row.source !== "own") return false;
-      return isNeonInitialCommissionCode(row.commissionCode);
-    })
-    .map((row) => finiteMoneyOrNull(row.baseAmount))
-    .filter((base): base is number => base != null && base > 0);
-
-  if (bases.length === 0) return null;
-  const first = bases[0];
-  const hasConflictingBase = bases.some(
-    (base) => Math.abs(base - first) > PREMIUM_CHANGE_TOLERANCE
-  );
-  if (hasConflictingBase) return null;
-  return first;
-};
+): number | null => neonRefreshRiskAnnualPremiumBase(
+  payoutRows.filter((row) => row.source === "own" && row.status === "paid")
+);
 
 const buildNeonRefreshStatementBaseUpdate = ({
   contract,
@@ -3205,18 +3187,6 @@ const payoutRecordDetail = ({
   viewerEmail: string | null | undefined;
 }): string => {
   const code = normalizeCommissionCodeKey(row.commissionCode) || "položka";
-  if (hasSmallLifeSubsequentBase({
-    product: contract.productKey,
-    commissionCode: row.commissionCode,
-    statementAnnualBase: row.baseAmount,
-    riskAnnualBase: lifeRiskAnnualPremiumBase(contract),
-  })) {
-    return [
-      `${code}: investiční složka, ${status === "storno" ? "odúčtováno" : "vyplaceno"} ${formatMoneyDetail(signedAmount)}. Základna výpisu ${formatMoneyDetail(row.baseAmount)}.`,
-      `Základna je pod 25 % rizikové základny ${formatMoneyDetail(lifeRiskAnnualPremiumBase(contract))}; pojistné ani provize se nesrovnává.`,
-      correctionInfo?.detail,
-    ].filter(Boolean).join(" ");
-  }
   const statementCareer = statementCareerPositionFromValue(row.career);
   const referencePosition =
     row.source === "manager"
@@ -3311,6 +3281,11 @@ const filterDuplicateStatementPayoutRowsForContract = (
   const keptRowsByGroupKey = new Map<string, Set<string>>();
   for (const [groupKey, group] of groupedRows.entries()) {
     if (group.length < 2) continue;
+    // Different B1 bases may be separate payouts or a firm's base error.
+    // Agreement with the expected amount is not evidence of duplication.
+    if (group.some(row => isLifeSubsequentCommissionPayout({
+      product: contract.productKey, commissionCode: row.commissionCode,
+    })) && new Set(group.map(row => finiteMoneyOrNull(row.baseAmount))).size > 1) continue;
 
     const matchingRows = group.filter((row) => {
       const expectedAmount = expectedPayoutAmountForRow(contract, row, viewerEmail);
@@ -3774,7 +3749,12 @@ const createProcessingBatchWriter = () => {
     ops += 5; // Contract, client link, event and at most two older records.
     if (ops >= 400) await commit();
   };
-  return { set, updateContract, commit };
+  const updateDocument = async (snapshot: FirebaseFirestore.DocumentSnapshot, data: FirebaseFirestore.DocumentData) => {
+    batch.update(snapshot.ref, data, { lastUpdateTime: snapshot.updateTime! });
+    ops++;
+    if (ops >= 400) await commit();
+  };
+  return { set, updateContract, updateDocument, commit };
 };
 
 const processStatementWrites = async ({
@@ -3796,6 +3776,7 @@ const processStatementWrites = async ({
   forcedContractRef,
   forcedContractOwnerEmail,
   forcedContractEntryId,
+  canManageContractsAsAdmin = false,
 }: {
   docId: string;
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -3815,6 +3796,7 @@ const processStatementWrites = async ({
   forcedContractRef?: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData> | null;
   forcedContractOwnerEmail?: string | null;
   forcedContractEntryId?: string | null;
+  canManageContractsAsAdmin?: boolean;
 }): Promise<ProcessingResult> => {
   const result = emptyProcessingResult();
   const normalizedOnlyContractNumber = normalizeContractNumber(onlyContractNumber);
@@ -3882,6 +3864,7 @@ const processStatementWrites = async ({
           if (forcedContractNumber !== contractNumber) {
             resolution = { status: "skipped", contractNumber };
           } else if (
+            !canManageContractsAsAdmin &&
             !hasContractAccess({
               viewerEmail: ctxEmail,
               teamEmails,
@@ -3971,18 +3954,37 @@ const processStatementWrites = async ({
       (existingNeonRefreshCalculationMonthlyBase != null
         ? Math.round(existingNeonRefreshCalculationMonthlyBase * 12 * 100) / 100
         : null);
-    const shouldApplyNeonRefreshStatementUpdate =
+    const canApplyNeonRefreshStatementUpdate =
       neonRefreshStatementUpdate != null &&
       statementChronologyCanOverwrite(
         statementChronologyMs,
         refreshStatementResolvedChronologyMs(contract)
-      ) &&
+      );
+    const shouldApplyNeonRefreshStatementUpdate =
+      canApplyNeonRefreshStatementUpdate &&
       (contract.commissionBaseSource !== "commission_statement" ||
         existingNeonRefreshStatementAnnualBase == null ||
         Math.abs(
           existingNeonRefreshStatementAnnualBase -
             neonRefreshStatementUpdate.statementAnnualPremiumBase
         ) > MONEY_MATCH_TOLERANCE);
+    const shouldRecalculateNeonRefreshStatementAmounts =
+      shouldApplyNeonRefreshStatementUpdate &&
+      (existingNeonRefreshCalculationMonthlyBase == null ||
+        Math.abs(existingNeonRefreshCalculationMonthlyBase - neonRefreshStatementUpdate.statementMonthlyPremiumBase) > MONEY_MATCH_TOLERANCE ||
+        Math.abs(normalizeNumber(contract.total) - neonRefreshStatementUpdate.total) > MONEY_MATCH_TOLERANCE ||
+        JSON.stringify(contract.items) !== JSON.stringify(neonRefreshStatementUpdate.items));
+    // Equal amounts still confirm the base at the newer statement date. Keep
+    // this provenance separate from recalculation so an older upload cannot
+    // overwrite a base that a newer statement has already confirmed.
+    const shouldRecordNeonRefreshStatementConfirmation =
+      canApplyNeonRefreshStatementUpdate &&
+      (shouldApplyNeonRefreshStatementUpdate ||
+        contract.refreshStatementResolvedStatementId !== docId ||
+        contract.refreshStatementResolvedStatementNumber !== statementNumber ||
+        contract.refreshStatementResolvedStatementPeriod !== statementPeriod ||
+        contract.refreshStatementResolvedStatementDate !== statementDate ||
+        contract.refreshStatementResolvedStatementChronologyMs !== statementChronologyMs);
     const existingPremiumHistory = contractPremiumHistoryArray(contract);
     const existingPremiumKeys = new Set(existingPremiumHistory.map((entry) => entry.key));
     const canApplyPremiumToCurrentContract = canApplyPremiumStatementToCurrentContractRecord(
@@ -4198,22 +4200,27 @@ const processStatementWrites = async ({
       };
     }
     if (neonRefreshStatementUpdate && shouldApplyNeonRefreshStatementUpdate) {
-      updatePayload.calculationInputAmount =
-        neonRefreshStatementUpdate.statementMonthlyPremiumBase;
+      // Backfilling the source of an already identical calculation must not
+      // round or otherwise rewrite existing manager commissions.
+      if (shouldRecalculateNeonRefreshStatementAmounts) {
+        updatePayload.calculationInputAmount = neonRefreshStatementUpdate.statementMonthlyPremiumBase;
+        updatePayload.items = neonRefreshStatementUpdate.items;
+        updatePayload.result = {
+          items: neonRefreshStatementUpdate.items,
+          total: neonRefreshStatementUpdate.total,
+        };
+        updatePayload.total = neonRefreshStatementUpdate.total;
+        updatePayload.managerOverrides = neonRefreshStatementUpdate.managerOverrides;
+      }
       updatePayload.refreshCommissionBase =
         neonRefreshStatementCommissionBase ?? null;
-      updatePayload.items = neonRefreshStatementUpdate.items;
-      updatePayload.result = {
-        items: neonRefreshStatementUpdate.items,
-        total: neonRefreshStatementUpdate.total,
-      };
-      updatePayload.total = neonRefreshStatementUpdate.total;
-      updatePayload.managerOverrides = neonRefreshStatementUpdate.managerOverrides;
       updatePayload.requiresStatementRefresh = false;
       updatePayload.commissionCalculationStatus = neonRefreshMissingOriginal
         ? "statement_resolved_refresh_missing_original"
         : "statement_resolved_refresh_base";
       updatePayload.commissionBaseSource = "commission_statement";
+    }
+    if (shouldRecordNeonRefreshStatementConfirmation) {
       updatePayload.refreshStatementResolvedAtMs = nowMs;
       updatePayload.refreshStatementResolvedStatementId = docId;
       updatePayload.refreshStatementResolvedStatementNumber = statementNumber;
@@ -4256,6 +4263,7 @@ const processStatementWrites = async ({
       hasExternalLinkPatch ||
       canApplyCoefficientSetOverride ||
       shouldApplyNeonRefreshStatementUpdate ||
+      shouldRecordNeonRefreshStatementConfirmation ||
       shouldApplyAutoInitialCommissionBaseUpdate
     ) {
       await batchWriter.updateContract(resolution, updatePayload, actorEmail);
@@ -4275,8 +4283,24 @@ const processStatementWrites = async ({
     }
 
     for (const payout of incomingPayouts) {
-      if (payout.status !== "difference" || payout.difference == null) continue;
       const repairId = compactHash(`${docId}:commission-difference:${resolution.ref.path}:${payout.key}`, 32);
+      if (payout.status !== "difference" || payout.difference == null) {
+        const previous = contractPayoutArray(contract).find(item => item.key === payout.key);
+        if (payout.status === "paid" && previous?.status === "difference") {
+          const draft = await processingPrivateCollection(ctxEmail, "accountingRepairDrafts").doc(repairId).get();
+          if (draft.exists && draft.data()?.status === "draft" &&
+              draft.data()?.kind === "commission_difference" &&
+              draft.data()?.entryPath === resolution.ref.path && draft.data()?.statementId === docId) {
+            await batchWriter.updateDocument(draft, {
+              status: "resolved", resolvedAtMs: nowMs, resolvedBy: actorEmail,
+              resolutionReason: "statement_reprocessed_without_difference",
+              resolvedExpectedAmount: payout.expectedAmount,
+              resolvedDifference: payout.difference,
+            });
+          }
+        }
+        continue;
+      }
       await batchWriter.set(
         processingPrivateCollection(ctxEmail, "accountingRepairDrafts").doc(repairId),
         {
@@ -4405,12 +4429,14 @@ const handleManualNeonRefreshConversion = async ({
   ctxEmail,
   actorEmail,
   teamEmails,
+  canManageContractsAsAdmin,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
   actorEmail: string;
   teamEmails: string[];
+  canManageContractsAsAdmin: boolean;
   withRateLimit: (response: NextResponse) => NextResponse;
 }) => {
   const statementId = safeStatementId(normalizeText(body.statementId, 80));
@@ -4418,7 +4444,7 @@ const handleManualNeonRefreshConversion = async ({
   const entryId = normalizeText(body.entryId, 180);
   const contractNumber = normalizeContractNumber(normalizeText(body.contractNumber, 80));
 
-  if (!statementId || !ownerEmail || !entryId || entryId.includes("/") || !contractNumber) {
+  if ((body.statementId != null && !statementId) || !ownerEmail || !entryId || entryId.includes("/") || !contractNumber) {
     return withRateLimit(
       NextResponse.json(
         { ok: false, error: "Chybí údaje pro převod smlouvy na REFRESH." },
@@ -4427,22 +4453,42 @@ const handleManualNeonRefreshConversion = async ({
     );
   }
 
-  const statementSnap = await statementCollection(ctxEmail).doc(statementId).get();
-  if (!statementSnap.exists) {
-    return withRateLimit(
-      NextResponse.json({ ok: false, error: "Zpracovaný výpis nebyl nalezen." }, { status: 404 })
-    );
+  // A preview can supply its original HTML without processing the statement.
+  // Saved statements always use the server's copy in the represented account.
+  let statementData: Record<string, unknown>;
+  if (statementId) {
+    const statementSnap = await statementCollection(ctxEmail).doc(statementId).get();
+    if (!statementSnap.exists) {
+      return withRateLimit(
+        NextResponse.json({ ok: false, error: "Zpracovaný výpis nebyl nalezen." }, { status: 404 })
+      );
+    }
+    statementData = statementSnap.data() ?? {};
+  } else {
+    const header = body.header && typeof body.header === "object"
+      ? body.header as StatementHeaderPayload : {};
+    const period = normalizeText(header.period, 80);
+    statementData = {
+      html: body.html,
+      period,
+      statementNumber: normalizeText(header.statementNumber, 64),
+      statementDate: normalizeText(header.statementDate, 32),
+      ...parsePeriodRange(period),
+    };
   }
-
-  const statementData = statementSnap.data() ?? {};
-  const html = normalizeText(statementData.html, MAX_HTML_LENGTH);
+  const html = normalizeText(statementData.html, MAX_HTML_LENGTH + 1);
   if (!html) {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "U zpracovaného výpisu chybí uložený HTML obsah." },
+        { ok: false, error: "Chybí HTML obsah výpisu pro převod na REFRESH." },
         { status: 400 }
       )
     );
+  }
+  if (html.length > MAX_HTML_LENGTH) {
+    return withRateLimit(NextResponse.json(
+      { ok: false, error: "HTML výpis je příliš velký pro přímé zpracování." }, { status: 413 }
+    ));
   }
 
   const entryRef = adminDb!
@@ -4458,7 +4504,7 @@ const handleManualNeonRefreshConversion = async ({
   }
 
   const contract = (entrySnap.data() ?? {}) as ContractDoc;
-  if (!hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })) {
+  if (!canManageContractsAsAdmin && !hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Nemáš oprávnění upravit tuto smlouvu." }, { status: 403 })
     );
@@ -4481,10 +4527,17 @@ const handleManualNeonRefreshConversion = async ({
       )
     );
   }
+  if (contract.isRefresh === true) {
+    return withRateLimit(NextResponse.json(
+      { ok: false, error: "Smlouva už je vedená jako REFRESH. Obnov náhled výpisu." }, { status: 409 }
+    ));
+  }
 
   const payoutRows = extractCommissionPayoutRowsFromStoredHtml(html).filter(
     (row) =>
       row.status !== "storno" &&
+      row.source === "own" &&
+      isNeonRefreshStatementProductCode(row.productCode) &&
       normalizeContractNumber(row.contractNumber) === contractNumber
   );
   const hasNrfRow = payoutRows.some((row) =>
@@ -4496,7 +4549,7 @@ const handleManualNeonRefreshConversion = async ({
         {
           ok: false,
           error:
-            "Ve výpisu pro tuto smlouvu není produktový kód REFRESH (CPP_NRF_LF nebo CPP_NEONRF).",
+            "Ve výpisu pro tuto smlouvu není produktový kód REFRESH (CPP_NRF_LF, CPP_NRF_IN nebo CPP_NEONRF).",
         },
         { status: 400 }
       )
@@ -4513,7 +4566,7 @@ const handleManualNeonRefreshConversion = async ({
   if (!refreshUpdate) {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Nepodařilo se přepočítat REFRESH základnu podle výpisu." },
+        { ok: false, error: "Nepodařilo se přepočítat REFRESH. Výpis musí obsahovat jednoznačnou rizikovou základnu A101/B0301 a smlouva platné parametry výpočtu." },
         { status: 400 }
       )
     );
@@ -4526,6 +4579,18 @@ const handleManualNeonRefreshConversion = async ({
   const policyStartMs = toMillis(contract.policyStartDate);
   const statementPeriod = normalizeText(statementData.period, 80);
   const statementNumber = normalizeText(statementData.statementNumber, 64);
+  const incomingChronologyMs = statementChronologyMsFromParts({
+    statementDate: normalizeText(statementData.statementDate, 32),
+    statementPeriod,
+    periodEndMs: toMillis(statementData.periodEndMs),
+    periodStartMs: toMillis(statementData.periodStartMs),
+  });
+  if (!statementChronologyCanOverwrite(incomingChronologyMs, refreshStatementResolvedChronologyMs(contract)) ||
+      !statementChronologyCanOverwrite(incomingChronologyMs, coefficientSetOverrideStatementChronologyMs(contract))) {
+    return withRateLimit(NextResponse.json(
+      { ok: false, error: "Smlouva už používá novější výpis. Použij jej i pro převod na REFRESH." }, { status: 409 }
+    ));
+  }
   const refreshCommissionBase = {
     productKey: "neon",
     method: "cpp_neon_statement_manual_refresh_conversion",
@@ -4558,15 +4623,11 @@ const handleManualNeonRefreshConversion = async ({
     commissionBaseSource: "commission_statement",
     refreshStatementResolvedAtMs: nowMs,
     refreshStatementResolvedStatementId: statementId,
+    refreshStatementResolvedSourceHash: createHash("sha256").update(html).digest("hex"),
     refreshStatementResolvedStatementNumber: statementNumber,
     refreshStatementResolvedStatementPeriod: statementPeriod,
     refreshStatementResolvedStatementDate: normalizeText(statementData.statementDate, 32),
-    refreshStatementResolvedStatementChronologyMs: statementChronologyMsFromParts({
-      statementDate: normalizeText(statementData.statementDate, 32),
-      statementPeriod,
-      periodEndMs: toMillis(statementData.periodEndMs),
-      periodStartMs: toMillis(statementData.periodStartMs),
-    }),
+    refreshStatementResolvedStatementChronologyMs: incomingChronologyMs,
     updatedAt: new Date(nowMs),
   };
 
@@ -4739,12 +4800,14 @@ const handleContractStatementRebuild = async ({
   ctxEmail,
   actorEmail,
   teamEmails,
+  canManageContractsAsAdmin,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
   actorEmail: string;
   teamEmails: string[];
+  canManageContractsAsAdmin: boolean;
   withRateLimit: (response: NextResponse) => NextResponse;
 }): Promise<NextResponse> => {
   const ownerEmail = normalizeEmail(body.ownerEmail);
@@ -4778,7 +4841,10 @@ const handleContractStatementRebuild = async ({
       )
     );
   }
-  if (!hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })) {
+  if (
+    !canManageContractsAsAdmin &&
+    !hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })
+  ) {
     return withRateLimit(
       NextResponse.json(
         { ok: false, error: "Nemáš oprávnění přepočítat tuto smlouvu." },
@@ -4848,6 +4914,7 @@ const handleContractStatementRebuild = async ({
       forcedContractRef: entryRef,
       forcedContractOwnerEmail: ownerEmail,
       forcedContractEntryId: entryId,
+      canManageContractsAsAdmin,
     });
     addProcessingResult(processingResult, result);
     processedStatements += 1;
@@ -5110,12 +5177,17 @@ export async function POST(req: NextRequest) {
     }
   }
   if (action === "convert-neon-refresh-from-statement") {
+    if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json(
+      { ok: false, error: "Nemáš oprávnění upravovat základnu." }, { status: 403 }
+    ));
     try {
       return await handleManualNeonRefreshConversion({
         body,
         ctxEmail: ctx.email,
         actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
+        canManageContractsAsAdmin:
+          ctx.canManageContractsAsAdmin || adminRoleAtLeast(ctx.impersonation?.actorRole, "admin"),
         withRateLimit,
       });
     } catch (error) {
@@ -5154,6 +5226,11 @@ export async function POST(req: NextRequest) {
         ctxEmail: ctx.email,
         actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
+        // Impersonation keeps the adviser's statement scope, while the verified
+        // actor retains administrator authority for this explicit contract rebuild.
+        canManageContractsAsAdmin:
+          ctx.canManageContractsAsAdmin ||
+          adminRoleAtLeast(ctx.impersonation?.actorRole, "admin"),
         withRateLimit,
       });
     } catch (error) {

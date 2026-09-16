@@ -55,6 +55,51 @@ type CredentialRenameResponse = {
   credential: PasskeyCredentialSummary;
 };
 
+export type PasskeySignInStage = "preparation" | "verification" | "session";
+export const PASSKEY_REQUEST_TIMEOUT_MS = 15_000;
+const PASSKEY_PROMPT_TIMEOUT_MS = 60_000;
+
+function passkeyTimeoutError(): Error {
+  return Object.assign(new Error("Přihlášení trvá příliš dlouho. Zkontroluj připojení a zkus to znovu."), { code: "auth/timeout" });
+}
+
+// Aborting must settle the caller even if a browser/API promise ignores its
+// signal. A late response must never continue to the next sign-in step.
+function runPasskeyStep<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  signal?: AbortSignal | null,
+  timeoutMs = PASSKEY_REQUEST_TIMEOUT_MS,
+  onAbort?: () => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const controller = new AbortController();
+    let settled = false;
+    const finish = (settle: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      settle();
+    };
+    const abort = (reason: unknown) => {
+      if (settled) return;
+      finish(() => {
+        controller.abort(reason);
+        onAbort?.();
+        reject(reason);
+      });
+    };
+    const cancel = () => abort(signal?.reason ?? new DOMException("Cancelled", "AbortError"));
+    const timer = setTimeout(() => abort(passkeyTimeoutError()), timeoutMs);
+    signal?.addEventListener("abort", cancel, { once: true });
+    Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      return operation(controller.signal);
+    }).then(value => finish(() => resolve(value)), error => finish(() => reject(error)));
+  });
+}
+
 let passkeyBrowserRuntimePromise:
   | Promise<typeof import("@simplewebauthn/browser")>
   | null = null;
@@ -63,7 +108,10 @@ function loadPasskeyBrowserRuntime(): Promise<
   typeof import("@simplewebauthn/browser")
 > {
   if (!passkeyBrowserRuntimePromise) {
-    passkeyBrowserRuntimePromise = import("@simplewebauthn/browser");
+    passkeyBrowserRuntimePromise = import("@simplewebauthn/browser").catch(error => {
+      passkeyBrowserRuntimePromise = null;
+      throw error;
+    });
   }
   return passkeyBrowserRuntimePromise;
 }
@@ -84,16 +132,22 @@ async function fetchJsonOrThrow<T>(
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(input, {
-    ...(init ?? {}),
-    headers,
-    cache: init?.cache ?? "no-store",
-  });
-  const payload = await parseJsonSafe(response);
-  if (!response.ok) {
-    throw new Error(payload?.error || `HTTP ${response.status}`);
-  }
-  return payload as T;
+  return runPasskeyStep(async signal => {
+    let response: Response;
+    try {
+      response = await fetch(input, {
+        ...(init ?? {}), headers, signal,
+        cache: init?.cache ?? "no-store",
+      });
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      throw Object.assign(new Error("Server přihlášení není dostupný. Zkontroluj připojení a zkus to znovu."), { code: "auth/network-request-failed", cause: error });
+    }
+    const payload = await parseJsonSafe(response);
+    if (!response.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
+    if (payload?.ok !== true) throw new Error("Server vrátil neplatnou odpověď přihlášení. Zkus to znovu.");
+    return payload as T;
+  }, init?.signal);
 }
 
 export async function getPasskeyAvailability(): Promise<{
@@ -103,6 +157,9 @@ export async function getPasskeyAvailability(): Promise<{
   if (typeof window === "undefined" || typeof window.PublicKeyCredential !== "function") {
     return { supported: false, platformAvailable: false };
   }
+
+  // Fetch the small browser runtime before the click where possible.
+  void loadPasskeyBrowserRuntime().catch(() => {});
 
   const platformAvailable =
     typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable ===
@@ -119,6 +176,9 @@ export function resolvePasskeyErrorMessage(
   fallback: string
 ): string {
   const err = error as { name?: string; message?: string };
+  if (err?.name === "AbortError") {
+    return "Přihlášení přístupovým klíčem bylo zrušeno.";
+  }
   if (err?.name === "NotAllowedError") {
     return "Ověření bylo zrušené nebo vypršel časový limit.";
   }
@@ -163,25 +223,36 @@ export async function createPasskeyForUser(
   return finishPayload.credential;
 }
 
-export async function signInWithPasskey(): Promise<UserCredential> {
+export async function signInWithPasskey({ signal, onStage }: {
+  signal?: AbortSignal;
+  onStage?: (stage: PasskeySignInStage) => void;
+} = {}): Promise<UserCredential> {
+  signal?.throwIfAborted();
+  onStage?.("preparation");
   const optionsPayload = await fetchJsonOrThrow<AuthenticationOptionsResponse>(
     "/api/auth/passkeys/authentication-options",
-    { method: "POST", body: JSON.stringify({}) }
+    { method: "POST", body: JSON.stringify({}), signal }
   );
 
-  const { startAuthentication } = await loadPasskeyBrowserRuntime();
-  const assertion = await startAuthentication({
+  const { startAuthentication, WebAuthnAbortService } = await runPasskeyStep(() => loadPasskeyBrowserRuntime(), signal);
+  signal?.throwIfAborted();
+  onStage?.("verification");
+  const assertion = await runPasskeyStep(() => startAuthentication({
     optionsJSON: optionsPayload.options,
-  });
+  }), signal, PASSKEY_PROMPT_TIMEOUT_MS, () => WebAuthnAbortService.cancelCeremony());
 
+  signal?.throwIfAborted();
+  onStage?.("session");
   const finishPayload = await fetchJsonOrThrow<AuthenticationFinishResponse>(
     "/api/auth/passkeys/authentication",
     {
       method: "POST",
       body: JSON.stringify({ response: assertion }),
+      signal,
     }
   );
 
+  signal?.throwIfAborted();
   return signInWithCustomToken(auth, finishPayload.customToken);
 }
 

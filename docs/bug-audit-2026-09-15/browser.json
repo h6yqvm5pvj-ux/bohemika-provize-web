@@ -1,0 +1,66 @@
+{
+  "browser": "152.0.7977.83",
+  "sourceEvidence": [
+    {
+      "file": "src/app/kalkulacka/page.tsx",
+      "name": "handleNeonDocumentAction",
+      "line": 1719,
+      "sha256": "b6851aff48d21484c359c01be83747fdfb3606c230d640b7c63c7981a39e96d8"
+    },
+    {
+      "file": "src/app/pomucky/plan-produkce/page.tsx",
+      "name": "handleOpenPreviewInNewTab",
+      "line": 824,
+      "sha256": "d9c19dd2ac6ff9a1de7dc0cc3c919834ea4d9dbc4cebcff84fee3a0771540380"
+    },
+    {
+      "file": "src/app/pomucky/vypoved-smlouvy/page.tsx",
+      "name": "openUploadPage",
+      "line": 3333,
+      "sha256": "8adea7a58207709c341eab1bcbd08c635c380a1d66eba882c2c86662ccfb653b"
+    }
+  ],
+  "cases": [
+    {
+      "name": "neon",
+      "originalUrl": "http://127.0.0.1:3000/__audit_neon",
+      "newTabUrl": "about:blank",
+      "state": {
+        "blobRequests": 0,
+        "error": "Prohlížeč zablokoval otevření nové karty s PDF."
+      },
+      "errors": []
+    },
+    {
+      "name": "plan",
+      "originalUrl": "http://127.0.0.1:3000/__audit_plan",
+      "newTabUrl": "blob:http://127.0.0.1:3000/40ed22a6-c172-49b5-856b-1c2cc2476c6d",
+      "state": {
+        "error": "Prohlížeč zablokoval otevření nového panelu s náhledem."
+      },
+      "errors": []
+    },
+    {
+      "name": "upload",
+      "originalUrl": "http://127.0.0.1:3000/__audit_upload_target",
+      "newTabUrl": "http://127.0.0.1:3000/__audit_upload_target",
+      "state": null,
+      "errors": []
+    }
+  ],
+  "localHttp": [
+    {
+      "path": "/provize/bytexprovize.pdf",
+      "status": 404
+    },
+    {
+      "path": "/provize/csobauto.jpg",
+      "status": 200
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "viewport": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no\"/>"
+    }
+  ]
+}

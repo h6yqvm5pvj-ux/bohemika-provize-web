@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { User } from "firebase/auth";
 import { ADMIN_IMPERSONATION_HEADER } from "@/lib/adminImpersonationShared";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import type { ContractsApiResponse } from "./calculatorApi";
-import { clientNameExactKey, createClientNameIndex, matchClientName } from "./clientNameMatching";
+import { createClientNameIndex, matchClientName } from "./clientNameMatching";
 
 export type ClientNameLookupStatus = "idle" | "loading" | "ready" | "error";
 type LookupState = { contextKey: string; names: string[]; status: ClientNameLookupStatus };
@@ -21,13 +20,14 @@ export function useClientNameLookup({
 }) {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<LookupState>({ contextKey: "", names: [], status: "idle" });
-  const contextKey = JSON.stringify([user?.uid, ownerEmail, isSavingForSubordinate, impersonatedUserEmail, revision]);
+  const contextKey = JSON.stringify([user?.uid, ownerEmail, isSavingForSubordinate, impersonatedUserEmail]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const names = new Map<string, string>();
-    const publish = (status: ClientNameLookupStatus) => {
-      if (!controller.signal.aborted) setState({ contextKey, names: [...names.values()], status });
+    const publish = (status: ClientNameLookupStatus, names?: string[]) => {
+      if (!controller.signal.aborted) setState(previous => ({ contextKey, status,
+        names: names ?? (previous.contextKey === contextKey ? previous.names : []),
+      }));
     };
     if (!user || !ownerEmail) {
       publish("idle");
@@ -37,48 +37,32 @@ export function useClientNameLookup({
 
     const load = async () => {
       try {
-        let cursor: string | null = null;
-        const seenCursors = new Set<string>();
-        do {
-          controller.signal.throwIfAborted();
-          const params = new URLSearchParams({
-            scope: isSavingForSubordinate ? "team" : "my", limit: "50", shape: "clientNames",
-          });
-          if (isSavingForSubordinate) params.set("subordinates", ownerEmail);
-          if (cursor) params.set("cursor", cursor);
-          const payload = await fetchAuthedJsonOrThrow<ContractsApiResponse>(user, `/api/contracts/list?${params}`, {
-            signal: controller.signal,
-            // Pin every page to the same viewing identity, even if impersonation changes mid-request.
-            headers: { [ADMIN_IMPERSONATION_HEADER]: impersonatedUserEmail },
-          });
-          controller.signal.throwIfAborted();
-          if (!payload || payload.ok === false || !Array.isArray(payload.contracts)) throw new Error("Invalid client name response");
-          for (const contract of payload.contracts) {
-            const name = contract.clientName?.trim();
-            if (name && !names.has(clientNameExactKey(name))) names.set(clientNameExactKey(name), name);
-          }
-          if (!payload.hasMore) {
-            publish("ready");
-            return;
-          }
-          const nextCursor = payload.nextCursorToken;
-          if (!nextCursor || seenCursors.has(nextCursor)) throw new Error("Incomplete client name pagination");
-          seenCursors.add(nextCursor);
-          cursor = nextCursor;
-          publish("loading");
-        } while (!controller.signal.aborted);
+        const params = new URLSearchParams({ ownerEmail });
+        const payload = await fetchAuthedJsonOrThrow<{ ok?: boolean; names?: string[] }>(user, `/api/contracts/client-names?${params}`, {
+          signal: controller.signal,
+          headers: { [ADMIN_IMPERSONATION_HEADER]: impersonatedUserEmail },
+        });
+        controller.signal.throwIfAborted();
+        if (!payload?.ok || !Array.isArray(payload.names) || payload.names.some(name => typeof name !== "string")) {
+          throw new Error("Invalid client name response");
+        }
+        publish("ready", payload.names);
       } catch {
         publish("error");
       }
     };
     void load();
     return () => controller.abort();
-  }, [user, ownerEmail, isSavingForSubordinate, impersonatedUserEmail, contextKey]);
+  }, [user, ownerEmail, impersonatedUserEmail, contextKey, revision]);
 
   useEffect(() => {
-    const refresh = () => setRevision((value) => value + 1);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setRevision((value) => value + 1), 200);
+    };
     window.addEventListener("contracts:updated", refresh);
-    return () => window.removeEventListener("contracts:updated", refresh);
+    return () => { clearTimeout(timer); window.removeEventListener("contracts:updated", refresh); };
   }, []);
 
   // Do not expose the old owner's names even during the render before the effect runs.

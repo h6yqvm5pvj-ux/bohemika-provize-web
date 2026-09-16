@@ -18,10 +18,33 @@ export const baseCommissionCodeForPayoutComparison = (
 const NEON_REFRESH_STATEMENT_PRODUCT_CODES = new Set([
   "CPP_NEONRF",
   "CPP_NRF_LF",
+  "CPP_NRF_IN",
 ]);
 
 export const isNeonRefreshStatementProductCode = (value: unknown): boolean =>
   NEON_REFRESH_STATEMENT_PRODUCT_CODES.has(normalizedCommissionCode(value));
+
+/** REFRESH uses the risk A101/B0301 base. A201 and subsequent investment
+ * commissions must never supply it, even when they are the only rows present.
+ * Allow the same 12 Kč annual rounding tolerance as statement reconciliation.
+ */
+export const neonRefreshRiskAnnualPremiumBase = (
+  rows: ReadonlyArray<{ commissionCode: unknown; baseAmount: unknown }>
+): number | null => {
+  const bases = rows
+    .map((row) => ({
+      code: baseCommissionCodeForPayoutComparison(row.commissionCode),
+      base: Math.round(Number(row.baseAmount) * 100) / 100,
+    }))
+    .filter(({ code, base }) => ["A101", "B0301"].includes(code) && Number.isFinite(base) && base > 0)
+    // The browser and server can parse rows in different orders. Prefer A101
+    // and resolve harmless rounding differences deterministically.
+    .sort((a, b) => a.code.localeCompare(b.code) || a.base - b.base)
+    .map(({ base }) => base);
+  const first = bases[0];
+  if (first == null || bases.some((base) => Math.abs(base - first) > 12)) return null;
+  return first;
+};
 
 /**
  * Only the initial A commission for auto insurance can safely compare the
@@ -60,8 +83,6 @@ export const isNeonInvestmentLifeA201Payout = ({
   return comparableCode === "A201";
 };
 
-export const LIFE_SUBSEQUENT_MIN_BASE_RATIO = 0.25;
-
 export const isLifeSubsequentCommissionPayout = ({
   product,
   commissionCode,
@@ -85,53 +106,4 @@ export const lifeRiskAnnualPremiumBase = (contract: {
   const monthly = positiveAmount(contract?.refreshCommissionBase?.calculationMonthlyPremium) ??
     positiveAmount(contract?.calculationInputAmount) ?? positiveAmount(contract?.inputAmount);
   return monthly == null ? null : Math.round(monthly * 12 * 100) / 100;
-};
-
-/** B1 codes are shared by risk and investment components. A much smaller
- * annual base is excluded from risk comparisons, without asserting its type.
- * The 25% boundary is inclusive for comparisons; missing bases never exclude.
- */
-export const hasSmallLifeSubsequentBase = ({
-  product,
-  commissionCode,
-  statementAnnualBase,
-  riskAnnualBase,
-}: {
-  product: Product | null | undefined;
-  commissionCode: unknown;
-  statementAnnualBase: unknown;
-  riskAnnualBase: unknown;
-}): boolean => {
-  if (!isLifeSubsequentCommissionPayout({ product, commissionCode })) return false;
-  const statementBase = positiveAmount(statementAnnualBase);
-  const riskBase = positiveAmount(riskAnnualBase);
-  return statementBase != null && riskBase != null &&
-    statementBase < riskBase * LIFE_SUBSEQUENT_MIN_BASE_RATIO;
-};
-
-export const payoutHasSmallLifeSubsequentBase = ({
-  product,
-  payout,
-  riskAnnualBase,
-}: {
-  product: Product | null | undefined;
-  payout: {
-    code?: string | null;
-    statementBaseAmount?: number | null;
-    systemBaseAmount?: number | null;
-    detail?: string | null;
-  };
-  riskAnnualBase?: number | null;
-}): boolean => {
-  // Older records stored the statement base only in this generated detail.
-  // Do not infer a premium base from the paid/expected commission ratio.
-  const legacyBase = payout.detail?.match(/Základna výpisu\s+(\d[\d\s.,]*)\s*Kč/i)?.[1];
-  const statementBase = payout.statementBaseAmount ??
-    (legacyBase ? Number(legacyBase.replace(/\s/g, "").replace(",", ".")) : null);
-  return hasSmallLifeSubsequentBase({
-    product,
-    commissionCode: payout.code,
-    statementAnnualBase: statementBase,
-    riskAnnualBase: payout.systemBaseAmount ?? riskAnnualBase,
-  });
 };

@@ -1,61 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, Inbox, Landmark, Link2, Megaphone, ShieldCheck, UserPlus, UserRound } from "lucide-react";
-import { SectionNavigation, SectionNavigationIcon, sectionNavigationItemClass } from "@/components/navigation/SectionNavigation";
+import { useEffect, useRef } from "react";
+import { ADMIN_SECTIONS, type AdminPage, type AdminSection } from "../../components/adminSections";
+import styles from "../adminConsole.module.css";
 
-const SECTIONS = [
-  { id: "requests", label: "Žádosti", icon: Inbox },
-  { id: "createUser", label: "Přidat uživatele", icon: UserPlus },
-  { id: "users", label: "Uživatelé", icon: UserRound },
-  { id: "broadcasts", label: "Notifikace", icon: Megaphone },
-  { id: "subscriptions", label: "Předplatné", icon: Landmark },
-  { id: "security", label: "Zabezpečení", icon: ShieldCheck },
-] as const;
-
-const LINKS = [
-  { href: "/admin/provizni-vypisy/produktova-mapa", label: "Mapa výpisů", icon: Link2 },
-  { href: "/admin/data-health", label: "Data Health", icon: AlertTriangle },
-] as const;
-
-export type AdminSection = (typeof SECTIONS)[number]["id"];
+export type { AdminSection } from "../../components/adminSections";
 
 type AdminNavigationProps = {
-  activeSection: AdminSection;
-  onSectionChange: (section: AdminSection) => void;
+  activeSection: AdminPage;
+  onSectionChange?: (section: AdminSection) => void;
   isAllowedAdmin: boolean;
   canCreateUsers: boolean;
   isOwnerAdmin: boolean;
+  pendingCount?: number;
 };
 
-export function AdminNavigation({ activeSection, onSectionChange, isAllowedAdmin, canCreateUsers, isOwnerAdmin }: AdminNavigationProps) {
-  const sections = SECTIONS.filter((section) => section.id === "createUser" ? canCreateUsers
+export function AdminNavigation({ activeSection, onSectionChange, isAllowedAdmin, canCreateUsers, isOwnerAdmin, pendingCount }: AdminNavigationProps) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = ref.current;
+    if (!nav) return;
+    const revealActiveSection = () => {
+      const item = nav.querySelector<HTMLElement>('[data-active="true"]');
+      if (item && nav.scrollWidth > nav.clientWidth) {
+        nav.scrollLeft += item.getBoundingClientRect().left - nav.getBoundingClientRect().left - 6;
+      }
+    };
+    revealActiveSection();
+    const observer = new ResizeObserver(revealActiveSection);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [activeSection, isAllowedAdmin, canCreateUsers, isOwnerAdmin]);
+  const sections = ADMIN_SECTIONS.filter(section => section.id === "createUser" ? canCreateUsers
     : section.id === "subscriptions" ? isOwnerAdmin : isAllowedAdmin);
-
   return (
-    <SectionNavigation activeKey={activeSection} label="Sekce administrace" className="mb-5">
-      {sections.map((section) => {
+    <nav ref={ref} className={styles.navigation} aria-label="Sekce administrace">
+      {sections.map(section => {
         const active = section.id === activeSection;
-        return (
-          <button
-            key={section.id}
-            type="button"
-            data-active={active}
-            aria-pressed={active}
-            onClick={() => onSectionChange(section.id)}
-            className={sectionNavigationItemClass(active)}
-          >
-            <SectionNavigationIcon icon={section.icon} active={active} />
-            {section.label}
-          </button>
+        const Icon = section.icon;
+        const content = <><Icon className={styles.navIcon} aria-hidden="true" /><span>{section.label}</span>{section.id === "requests" && Boolean(pendingCount) ? <span className={styles.navCount}>{pendingCount}</span> : null}</>;
+        return "href" in section || !onSectionChange ? (
+          <Link key={section.id} href={"href" in section ? section.href : `/admin/zadosti?section=${section.id}`} data-active={active} aria-current={active ? "page" : undefined} className={styles.navItem}>{content}</Link>
+        ) : (
+          <button key={section.id} type="button" data-active={active} aria-pressed={active} onClick={() => onSectionChange(section.id)} className={styles.navItem}>{content}</button>
         );
       })}
-      {isAllowedAdmin && LINKS.map((link) => (
-        <Link key={link.href} href={link.href} className={sectionNavigationItemClass(false)}>
-          <SectionNavigationIcon icon={link.icon} />
-          {link.label}
-        </Link>
-      ))}
-    </SectionNavigation>
+    </nav>
   );
 }

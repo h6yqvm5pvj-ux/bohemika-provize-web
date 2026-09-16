@@ -7,6 +7,8 @@ import { RecordIllustration } from "../RecordIllustration";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
+import { MeetingRecordSession } from "../MeetingRecordSession";
+import { readMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 
 type Insurer =
   | "cpp"
@@ -318,6 +320,10 @@ function buildProductRecommendations(
 }
 
 export default function CarResultsPage() {
+  return <MeetingRecordSession>{(owner) => <CarResults owner={owner} />}</MeetingRecordSession>;
+}
+
+function CarResults({ owner }: { owner: MeetingRecordContext }) {
   const [data, setData] = useState<CarResultsInput | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -339,19 +345,13 @@ export default function CarResultsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem("carRecord.resultsInput");
-      if (!raw) {
-        setLoaded(true);
-        return;
-      }
-      const parsed = JSON.parse(raw) as CarResultsInput;
-      setData(parsed);
+      setData(readMeetingRecord<CarResultsInput>("carResults", owner));
     } catch (e) {
       console.error("Chyba při načítání výsledků vozidel:", e);
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [owner]);
 
   const recs = buildRecommendations(data, currentInsurer);
   const productRecs = buildProductRecommendations(

@@ -5,6 +5,7 @@ import styles from "./record.module.css";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { readMeetingRecord, writeMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 import {
   Accessibility,
   AlertTriangle,
@@ -115,12 +116,10 @@ function getBenefitCardIcon(title: string): React.ReactNode {
   return <Shield className="h-4 w-4" />;
 }
 
-const LIFE_RECORD_DRAFT_KEY = "lifeRecordFormDraft";
-const LIFE_RECORD_DRAFT_TTL_MS = 20 * 60 * 1000;
 const SEGMENTED_CONTROL_CLASS =
   "inline-flex flex-wrap gap-1 rounded-full border border-violet-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] p-1 text-[11px] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(88,28,135,0.12)] sm:text-xs";
 
-export function LifeRecordForm() {
+export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
   const router = useRouter();
 
   // --------------------------------------------------
@@ -338,16 +337,8 @@ export function LifeRecordForm() {
     let frameId: number | null = null;
 
     try {
-      const raw = window.localStorage.getItem(LIFE_RECORD_DRAFT_KEY);
-      if (!raw) return;
-
-      const draft = JSON.parse(raw) as any;
-      if (!draft || typeof draft !== "object") return;
-      const savedAt = typeof draft.savedAt === "number" ? draft.savedAt : 0;
-      if (!savedAt || Date.now() - savedAt > LIFE_RECORD_DRAFT_TTL_MS) {
-        window.localStorage.removeItem(LIFE_RECORD_DRAFT_KEY);
-        return;
-      }
+      const draft = readMeetingRecord<any>("lifeDraft", owner);
+      if (!draft) return;
 
       frameId = window.requestAnimationFrame(() => {
         if (typeof draft.deathOn === "boolean") {
@@ -659,7 +650,7 @@ export function LifeRecordForm() {
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, []);
+  }, [owner]);
 
   // --------------------------------------------------
   // INPUT HELPERY
@@ -1545,14 +1536,8 @@ export function LifeRecordForm() {
         specialAidAmount,
         healthSocialOn,
       };
-      window.localStorage.setItem(
-        LIFE_RECORD_DRAFT_KEY,
-        JSON.stringify(draft)
-      );
-      window.localStorage.setItem(
-        "lifeRecordResultInput",
-        JSON.stringify(payload)
-      );
+      if (!writeMeetingRecord("lifeDraft", draft, owner)) return;
+      if (!writeMeetingRecord("lifeResults", payload, owner)) return;
     }
 
     router.push("/pomucky/zaznam/vysledky");

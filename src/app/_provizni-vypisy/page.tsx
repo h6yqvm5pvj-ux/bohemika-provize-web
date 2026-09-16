@@ -32,9 +32,11 @@ import {
 } from "lucide-react";
 
 import { isAutoProduct } from "@/app/lib/productCatalog";
-import { hasSmallLifeSubsequentBase, isNeonRefreshStatementProductCode, payoutHasSmallLifeSubsequentBase } from "@/app/lib/commissionPayoutRules";
-import { lifeSplitComparisonScope } from "./statementLifeComparison";
-import { LifeSmallBaseNotice } from "./statementLifeCardNotices";
+import { isStatementBatchQueueProduct, isStatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
+import { isNeonRefreshStatementProductCode, isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import { neonRefreshBaseReview, neonRefreshBaseStatus } from "./statementRefreshBaseReview";
+import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase } from "./statementRefreshConversion";
+import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
@@ -84,7 +86,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { saveContractEntry } from "../kalkulacka/useContractSave";
 import {
   CppAutoBatchQueue,
-  cppAutoBatchQueueAmount,
+  statementBatchQueueContractEntry,
   cppAutoBatchQueueItemFromPrefill,
   cppAutoBatchQueueItemKey,
   validateCppAutoBatchQueueItem,
@@ -160,6 +162,8 @@ import {
   AcceleratedB36WarningNotice,
   LifeClientCardCommissionNotice,
   LifeCoefficientOverrideNotice,
+  NeonRefreshBaseNotice,
+  LifeCommissionBaseDifferenceNotice,
   LifePremiumBaseNotice,
   LifePremiumIncreaseNotice,
   lifePremiumBaseNoticeKind,
@@ -339,8 +343,6 @@ type StatementProductMapResponse = {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
-const STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE =
-  "bohemka:statement-cpp-a101-queue-add";
 
 type StatementContractSavedMessage = {
   type:
@@ -353,30 +355,6 @@ type StatementContractSavedMessage = {
   entryId?: string | null;
   savedAtMs?: number | null;
 };
-
-type StatementCppA101QueueAddMessage = {
-  type: typeof STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE;
-  product: Extract<Product, "cppAuto" | "domex">;
-  contractNumber: string;
-  clientName: string;
-  contractSignedDate: string;
-  policyStartDate: string;
-  amountText: string;
-  frequency: PaymentFrequency;
-  stornoDate: string;
-  pdfFile?: File | null;
-};
-
-const isPaymentFrequency = (value: unknown): value is PaymentFrequency =>
-  value === "monthly" ||
-  value === "quarterly" ||
-  value === "semiannual" ||
-  value === "annual";
-
-const isCppA101QueueProduct = (
-  value: unknown
-): value is Extract<Product, "cppAuto" | "domex"> =>
-  value === "cppAuto" || value === "domex";
 
 const isStatementContractSavedMessage = (
   value: unknown
@@ -399,24 +377,6 @@ const isStatementContractSaveCompletedMessage = (
     record.type === STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE &&
     typeof record.contractNumber === "string" &&
     normalizeContractNumberForMatch(record.contractNumber).length > 0
-  );
-};
-
-const isStatementCppA101QueueAddMessage = (
-  value: unknown
-): value is StatementCppA101QueueAddMessage => {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    record.type === STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE &&
-    isCppA101QueueProduct(record.product) &&
-    typeof record.contractNumber === "string" &&
-    typeof record.clientName === "string" &&
-    typeof record.contractSignedDate === "string" &&
-    typeof record.policyStartDate === "string" &&
-    typeof record.amountText === "string" &&
-    typeof record.stornoDate === "string" &&
-    isPaymentFrequency(record.frequency)
   );
 };
 
@@ -1826,30 +1786,25 @@ const matchedSystemContractForManagerCommissionRow = (
   });
 };
 
-const lifePremiumBaseComparisonForContract = (
+const lifePremiumBaseComparisonsForContract = (
   contract: LifeSplitContractPreview,
   systemContract: MatchedSystemContract | null
-): PremiumBaseComparison | null => {
-  if (!systemContract || contract.annualPremium <= 0) return null;
-
+): PremiumBaseComparison[] => {
+  if (!systemContract) return [];
+  if (neonRefreshBaseStatus(systemContract) === "waiting") return [];
   const hasLifePremiumIncrease = rowsByKind(contract, "increase").length > 0;
-  if (hasLifePremiumIncrease) {
-    const annualDelta = Math.abs(systemContractAnnualPremiumDelta(systemContract) ?? 0);
-    if (annualDelta <= ANNUAL_PREMIUM_TOLERANCE) return null;
-    return premiumBaseComparisonForAnnualStatementBase({
-      key: "life-premium-increase-base",
-      label: "Základna navýšení",
-      statementAnnualPremium: contract.annualPremium,
-      systemContract,
-      systemMonthlyPremiumOverride: annualDelta / 12,
-    });
-  }
+  const annualDelta = Math.abs(systemContractAnnualPremiumDelta(systemContract) ?? 0);
+  if (hasLifePremiumIncrease && annualDelta <= ANNUAL_PREMIUM_TOLERANCE) return [];
 
-  return premiumBaseComparisonForAnnualStatementBase({
-    key: "life-premium-base",
-    label: "Základna pojistného",
-    statementAnnualPremium: contract.annualPremium,
-    systemContract,
+  return lifeSplitBaseComparisonSources(contract).flatMap(({ key, label, base }) => {
+    const comparison = premiumBaseComparisonForAnnualStatementBase({
+      key,
+      label: hasLifePremiumIncrease ? "Základna navýšení" : label,
+      statementAnnualPremium: base,
+      systemContract,
+      ...(hasLifePremiumIncrease ? { systemMonthlyPremiumOverride: annualDelta / 12 } : {}),
+    });
+    return comparison ? [comparison] : [];
   });
 };
 
@@ -1970,14 +1925,7 @@ const systemCurrentPremiumPaymentBase = (
 const isNeonRefreshMissingOriginalInSystem = (
   systemContract: MatchedSystemContract | null
 ): boolean =>
-  systemContract?.productKey === "neon" &&
-  systemContract?.isRefresh === true &&
-  systemContract.commissionBaseSource !== "commission_statement" &&
-  systemContract.commissionCalculationStatus !==
-    "statement_resolved_refresh_missing_original" &&
-  (systemContract.refreshOriginalMissingInSystem === true ||
-    systemContract.requiresStatementRefresh === true ||
-    systemContract.commissionCalculationStatus === "provisional_refresh_missing_original");
+  neonRefreshBaseStatus(systemContract) === "waiting";
 
 const isoDayFromSystemDate = (
   value: number | string | Date | null | undefined
@@ -3114,10 +3062,7 @@ const lifeSplitContractUncertaintyCount = (
   const matchScope = lifeSplitContractMatchScope(statementReviewContract);
   const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
   const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
-  const { contract: reviewContract } = lifeSplitComparisonScope(
-    statementReviewContract,
-    systemContractAnnualPremiumBase(systemContract)
-  );
+  const reviewContract = statementReviewContract;
   const expectedProductKey = resolveStatementProduct(reviewContract.productCode).productKey;
   let count = 0;
 
@@ -3137,6 +3082,12 @@ const lifeSplitContractUncertaintyCount = (
     !hasLifePremiumIncrease
   ) {
     count += 1;
+  }
+  if (!tipOnlyContract && !hasLifePremiumIncrease && reviewContract.annualPremium <= 0) {
+    count += lifeSplitBaseComparisonSources(reviewContract).filter(source => {
+      const mismatch = annualPremiumBaseMismatch(source.base, systemContract);
+      return mismatch && !mismatch.explainedByEndorsement;
+    }).length;
   }
   if (systemContract) {
     count += buildLifeSplitAmountComparisons(reviewContract, systemContract, statementPeriod).filter(
@@ -3374,10 +3325,10 @@ const comparisonStatus = (
 ): CommissionAmountComparisonStatus => {
   const difference = statementAmount - expectedAmount;
   if (Math.abs(difference) <= tolerance) return "ok";
-  if (statementAmount <= tolerance && expectedAmount > tolerance) {
+  if (!hasStatementAmountForComparison(statementAmount) && hasStatementAmountForComparison(expectedAmount)) {
     return "missing_statement";
   }
-  if (expectedAmount <= tolerance && statementAmount > tolerance) {
+  if (!hasStatementAmountForComparison(expectedAmount) && hasStatementAmountForComparison(statementAmount)) {
     return "missing_expected";
   }
   return "diff";
@@ -3426,11 +3377,6 @@ const paidPayoutRecordsForRows = (
   rows: CommissionRow[]
 ): ContractCommissionPayoutRecord[] =>
   (systemContract.commissionPayouts ?? []).filter((payout) => {
-    if (payoutHasSmallLifeSubsequentBase({
-      product: systemContract.productKey,
-      payout,
-      riskAnnualBase: systemContractAnnualPremiumBase(systemContract),
-    })) return false;
     const amount = Number(payout.amount);
     return (
       Number.isFinite(amount) &&
@@ -3513,7 +3459,7 @@ const buildLifeSplitAmountComparisons = (
   systemContract: MatchedSystemContract,
   statementPeriod?: string | null
 ): CommissionAmountComparison[] => {
-  const { contract } = lifeSplitComparisonScope(sourceContract, systemContractAnnualPremiumBase(systemContract));
+  const contract = sourceContract;
   if (isNeonRefreshMissingOriginalInSystem(systemContract)) return [];
   const coefficientOverride = lifeCoefficientOverrideInfo(contract, systemContract);
   const items = coefficientOverride?.items ?? systemContract.items ?? [];
@@ -3524,26 +3470,34 @@ const buildLifeSplitAmountComparisons = (
   const b3601Rows = rowsByKind(contract, "b3601");
   const b4801Rows = rowsByKind(contract, "b4801");
   const increaseRows = rowsByKind(contract, "increase");
-  const careRows = rowsByKind(contract, "care");
   const hasA101InStatement = a101Rows.length > 0;
   const hasB0301InStatement = b0301Rows.length > 0;
   const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
   const hasB36HalfInHistory = hasHistoricalB36HalfPayout(systemContract);
-  const subsequentRows = rowsByKind(contract, "subsequent");
-  const subsequentStatementAmount = sumRows(subsequentRows);
   const subsequentExpectedPerPeriod = expectedAmountFromItems(
     items,
-    (title) =>
-      title.includes("nasledna") &&
-      (title.includes("2 5") || title.includes("2 5 rok"))
+    (title) => title.includes("nasledna") && (title.includes("2 5") || title.includes("2 5 rok"))
   );
-  const subsequentBundleInfo = subsequentPayoutBundleInfo({
-    rows: subsequentRows,
-    statementAmount: subsequentStatementAmount,
-    expectedPerPeriod: subsequentExpectedPerPeriod,
-    systemContract,
-    statementPeriod,
+  const subsequentParts = lifeSplitCommissionGroups(contract, "subsequent").map(({ code, rows }) => {
+    const statementAmount = sumRows(rows);
+    const bundle = subsequentPayoutBundleInfo({
+      rows, statementAmount, expectedPerPeriod: subsequentExpectedPerPeriod, systemContract, statementPeriod,
+    });
+    return {
+      key: `subsequent-${code}`, label: bundle ? `${code} (${bundle.periods} období)` : code,
+      requiredNow: false, hasStatementRows: hasRowsForAmountComparison(rows), statementAmount,
+      expectedAmount: bundle?.expectedAmount ?? subsequentExpectedPerPeriod, detailLines: bundle?.detailLines,
+    };
   });
+  const careExpectedPerPeriod = expectedAmountFromItems(
+    items,
+    (title) => title.includes("pecovatelska") || (title.includes("nasledna") && title.includes("5 10"))
+  );
+  const careParts = lifeSplitCommissionGroups(contract, "care").map(({ code, rows }) => ({
+    key: `care-${code}`, label: code, requiredNow: false,
+    hasStatementRows: hasRowsForAmountComparison(rows), statementAmount: sumRows(rows),
+    expectedAmount: careExpectedPerPeriod,
+  }));
   const expectedB36HalfAmount = expectedAmountFromItems(
     items,
     (title) => title.includes("50") && (title.includes("b36") || title.includes("b3601"))
@@ -3632,30 +3586,8 @@ const buildLifeSplitAmountComparisons = (
       statementAmount: sumRows(increaseRows),
       expectedAmount: expectedPremiumIncreaseAmountFromItems(items, increaseRows),
     },
-    {
-      key: "subsequent",
-      label: subsequentBundleInfo
-        ? `B101-B104 (${subsequentBundleInfo.periods} období)`
-        : "B101-B104",
-      requiredNow: false,
-      hasStatementRows: hasRowsForAmountComparison(subsequentRows),
-      statementAmount: subsequentStatementAmount,
-      expectedAmount: subsequentBundleInfo?.expectedAmount ?? subsequentExpectedPerPeriod,
-      detailLines: subsequentBundleInfo?.detailLines,
-    },
-    {
-      key: "care",
-      label: "B201-B206",
-      requiredNow: false,
-      hasStatementRows: hasRowsForAmountComparison(careRows),
-      statementAmount: sumRows(careRows),
-      expectedAmount: expectedAmountFromItems(
-        items,
-        (title) =>
-          title.includes("pecovatelska") ||
-          (title.includes("nasledna") && title.includes("5 10"))
-      ),
-    },
+    ...subsequentParts,
+    ...careParts,
   ];
 
   return statementParts
@@ -4166,16 +4098,6 @@ const managerCommissionStatementBasePeriod = (
     systemFrequency: systemContract?.frequencyRaw,
   });
 
-const managerRowHasSmallLifeBase = (
-  row: ManagerCommissionRow,
-  systemContract: MatchedSystemContract | null
-): boolean => hasSmallLifeSubsequentBase({
-  product: resolveStatementProduct(row.product).productKey,
-  commissionCode: row.type,
-  statementAnnualBase: row.base,
-  riskAnnualBase: systemContractAnnualPremiumBase(systemContract),
-});
-
 const managerCommissionPremiumBaseMismatch = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null
@@ -4184,7 +4106,6 @@ const managerCommissionPremiumBaseMismatch = (
   systemLabel: string;
   differenceLabel: string;
 } | null => {
-  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (usesIndependentStatementCommissionBase(row.product)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
@@ -4227,7 +4148,6 @@ const managerCommissionBaseComparison = (
   systemContract: MatchedSystemContract | null,
   currentUserEmail: string | null | undefined
 ): PremiumBaseComparison | null => {
-  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (usesIndependentStatementCommissionBase(row.product)) return null;
   if (managerCommissionPaymentBundleInfo(row, systemContract, currentUserEmail)) return null;
   const statementBase = Number(row.base);
@@ -4325,7 +4245,6 @@ const buildManagerCommissionAmountComparison = (
   systemContract: MatchedSystemContract | null,
   currentUserEmail: string | null | undefined
 ): CommissionAmountComparison | null => {
-  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (row.isStorno || row.commission < 0) return null;
   if (!systemContract) return null;
 
@@ -4555,7 +4474,6 @@ const managerCareerPositionDiscrepancyIssue = ({
   systemContract: MatchedSystemContract | null;
   currentUserEmail: string | null | undefined;
 }): StatementDiscrepancyIssue | null => {
-  if (managerRowHasSmallLifeBase(row, systemContract)) return null;
   if (!systemContract) return null;
 
   const career = statementCareerPositionFromValue(row.career);
@@ -4710,10 +4628,7 @@ const buildStatementDiscrepancyIssues = (
     const matchScope = lifeSplitContractMatchScope(statementReviewContract);
     const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
     const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
-    const { contract: reviewContract } = lifeSplitComparisonScope(
-      statementReviewContract,
-      systemContractAnnualPremiumBase(systemContract)
-    );
+    const reviewContract = statementReviewContract;
     const expectedProductKey = productMeta.productKey;
 
     addIssue(
@@ -4768,14 +4683,8 @@ const buildStatementDiscrepancyIssues = (
     const premiumMismatch = !tipOnlyContract && reviewContract.rows.length > 0
       ? annualPremiumBaseMismatch(reviewContract.annualPremium, systemContract)
       : null;
-    const isRefreshMissingOriginal = isNeonRefreshMissingOriginalInSystem(systemContract);
-    if (
-      premiumMismatch &&
-      !premiumMismatch.explainedByEndorsement &&
-      !hasLifePremiumIncrease &&
-      isRefreshMissingOriginal
-    ) {
-      const statementMonthlyPremium = premiumMismatch.statementAnnualPremium / 12;
+    const refreshReview = !tipOnlyContract ? neonRefreshBaseReview(systemContract, reviewContract.rows) : null;
+    if (refreshReview && refreshReview.status !== "confirmed") {
       addIssue({
         key: discrepancyIssueKey(statementKey, "life-refresh-missing-original", contract.contractNumber),
         statementKey,
@@ -4786,17 +4695,13 @@ const buildStatementDiscrepancyIssues = (
         contractNumber: contract.contractNumber,
         client: contract.client || systemContract?.clientName || "—",
         product: productLabel,
-        title: "REFRESH bez původní smlouvy v systému",
+        title: refreshReview.label,
         details: [
-          `Výpis počítá se základnou ${formatWholeMoney(premiumMismatch.statementAnnualPremium)} Kč ročně (${formatWholeMoney(statementMonthlyPremium)} Kč měsíčně).`,
-          `Smlouva je uložená jako REFRESH bez původní smlouvy v systému, takže základna v kalkulačce je jen orientační.`,
-          "Při zápisu výpisu je potřeba použít základnu a schéma z výpisu jako autoritu.",
+          refreshReview.status === "waiting" ? "Provizní základna zatím není doložená; rozdíl proti předběžnému výpočtu nevyhodnocujeme jako chybu." : "Základna je vypočtená z původní smlouvy a čeká na ověření výpisem.",
+          refreshReview.statementRiskAnnual != null ? `Výpis obsahuje rizikovou A101/B0301 se základnou ${formatWholeMoney(refreshReview.statementRiskAnnual)} Kč ročně. Potvrzení se uloží při zpracování výpisu.` : "K potvrzení je potřeba riziková A101/B0301. A201 ani samotná B101 základnu refreshe nepotvrzují.",
         ],
-        statementAmount: premiumMismatch.statementAnnualPremium,
-        expectedAmount: premiumMismatch.systemAnnualPremium,
-        difference: premiumMismatch.difference,
       });
-    } else if (premiumMismatch && !premiumMismatch.explainedByEndorsement && !hasLifePremiumIncrease) {
+    } else if (!refreshReview && premiumMismatch && !premiumMismatch.explainedByEndorsement && !hasLifePremiumIncrease) {
       const statementMonthlyPremium = premiumMismatch.statementAnnualPremium / 12;
       const monthlyDifference = statementMonthlyPremium - premiumMismatch.systemMonthlyPremium;
       addIssue({
@@ -4819,6 +4724,27 @@ const buildStatementDiscrepancyIssues = (
         expectedAmount: premiumMismatch.systemAnnualPremium,
         difference: premiumMismatch.difference,
       });
+    }
+
+    if (!tipOnlyContract && !hasLifePremiumIncrease && refreshReview?.status !== "waiting" && (reviewContract.annualPremium <= 0 || refreshReview)) {
+      for (const source of lifeSplitBaseComparisonSources(reviewContract)) {
+        const mismatch = annualPremiumBaseMismatch(source.base, systemContract);
+        if (!mismatch || mismatch.explainedByEndorsement) continue;
+        addIssue({
+          key: discrepancyIssueKey(statementKey, "life-premium-row", contract.contractNumber, source.key),
+          statementKey, source: "auto", severity: "warning", category, scope: matchScope,
+          contractNumber: contract.contractNumber,
+          client: contract.client || systemContract?.clientName || "—", product: productLabel,
+          title: `${source.label}: rozdíl základny ve výpisu`,
+          details: [
+            `Základna této položky: ${formatWholeMoney(source.base)} Kč ročně.`,
+            `Systém: ${formatWholeMoney(mismatch.systemAnnualPremium)} Kč ročně.`,
+            "Rozdíl se vztahuje ke konkrétní položce provize, neurčuje základnu celé smlouvy.",
+          ],
+          statementAmount: source.base, expectedAmount: mismatch.systemAnnualPremium,
+          difference: mismatch.difference,
+        });
+      }
     }
 
     if (systemContract) {
@@ -4851,7 +4777,7 @@ const buildStatementDiscrepancyIssues = (
       }
     }
 
-    const missingB36Warning = tipOnlyContract
+    const missingB36Warning = tipOnlyContract || refreshReview?.status === "waiting"
       ? null
       : missingAcceleratedB36Warning(
           reviewContract.rows,
@@ -4874,7 +4800,8 @@ const buildStatementDiscrepancyIssues = (
       });
     }
 
-    const unknownRows = rowsByKind(reviewContract, "unknown");
+    const unknownRows = rowsByKind(reviewContract, "unknown").filter(row =>
+      !isNeonInvestmentLifeA201Payout({product: productMeta.productKey, commissionCode: row.type}));
     if (unknownRows.length > 0) {
       const unknownCodes = [...new Set(unknownRows.map((row) => row.type || "bez kódu"))];
       addIssue({
@@ -5255,6 +5182,8 @@ const collectPostProcessingNeonRefreshPromptTargets = ({
     const statementLabel = statementDiscrepancyLabel(statement);
     for (const contract of statement.lifeSplitContracts) {
       if (!isNeonRefreshStatementProductCode(contract.productCode)) continue;
+      const riskAnnualBase = statementNeonRefreshRiskAnnualBase(contract.rows);
+      if (riskAnnualBase == null) continue;
 
       const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber);
       const systemContract = matchedSystemContractForLifeSplit(contract, match);
@@ -5283,7 +5212,7 @@ const collectPostProcessingNeonRefreshPromptTargets = ({
         statementLabel,
         client: contract.client || systemContract.clientName || "—",
         productCode: contract.productCode,
-        statementAnnualPremium: contract.annualPremium,
+        statementAnnualPremium: riskAnnualBase,
         systemAnnualPremium,
         systemMonthlyPremium:
           systemAnnualPremium == null ? null : Math.round((systemAnnualPremium / 12) * 100) / 100,
@@ -5326,7 +5255,6 @@ function LifeSplitContractCard({
 }) {
   const {
     total,
-    monthlyPremium,
     tipCommission: tip,
     hasPremiumIncrease: hasLifePremiumIncrease,
     premiumIncreaseAnnualBase: lifeIncreaseAnnualPremium,
@@ -5359,21 +5287,17 @@ function LifeSplitContractCard({
     deductionRows
   );
   const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
-  const { contract: reviewContract, excludedRows: differentBaseRows } = lifeSplitComparisonScope(
-    statementReviewContract,
-    systemContractAnnualPremiumBase(systemContract)
-  );
+  const reviewContract = statementReviewContract;
+  const refreshBaseReview = !tipOnlyContract ? neonRefreshBaseReview(systemContract, reviewContract.rows) : null;
   const reviewA101Rows = rowsByKind(reviewContract, "a101");
   const reviewB0301Rows = rowsByKind(reviewContract, "b0301");
   const hasHistoricalB0301 = hasHistoricalB0301Payout(systemContract);
-  const status = differentBaseRows.length > 0 && reviewContract.rows.length === 0 && reviewContract.b36Payments.length === 0
-    ? { label: "Investiční složka", tone: "info" as const }
-    : statusForContract(reviewContract, systemContract);
+  const status = statusForContract(reviewContract, systemContract);
   const missingClientCardCommissionWarning =
     reviewA101Rows.length > 0 && reviewB0301Rows.length === 0 && !hasHistoricalB0301;
   const deferredClientCardCommission =
     reviewA101Rows.length === 0 && reviewB0301Rows.length > 0;
-  const missingB36Warning = tipOnlyContract
+  const missingB36Warning = tipOnlyContract || refreshBaseReview?.status === "waiting"
     ? null
     : missingAcceleratedB36Warning(
         reviewContract.rows,
@@ -5383,10 +5307,14 @@ function LifeSplitContractCard({
   const amountComparisons = systemContract
     ? buildLifeSplitAmountComparisons(reviewContract, systemContract, statementPeriod)
     : [];
-  const lifePremiumBaseComparison =
-    systemContract && !tipOnlyContract
-      ? lifePremiumBaseComparisonForContract(reviewContract, systemContract)
-      : null;
+  const lifePremiumBaseComparisons = !tipOnlyContract
+    ? lifePremiumBaseComparisonsForContract(reviewContract, systemContract)
+    : [];
+  const refreshBaseDifferences = refreshBaseReview && !hasLifePremiumIncrease
+    ? lifePremiumBaseComparisons.filter(comparison =>
+        Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE &&
+        !annualPremiumBaseMismatch(comparison.statementAnnualPremiumBase, systemContract)?.explainedByEndorsement)
+    : [];
   const coefficientOverride = systemContract
     ? lifeCoefficientOverrideInfo(reviewContract, systemContract)
     : null;
@@ -5428,7 +5356,7 @@ function LifeSplitContractCard({
     premiumBaseExplainedByEndorsement?.annualPremiumDelta
   );
   const premiumBaseNotice = lifePremiumBaseNoticeKind({
-    hasPremiumMismatch: Boolean(premiumBaseMismatch),
+    hasPremiumMismatch: Boolean(premiumBaseMismatch) && !refreshBaseReview,
     isRefreshMissingOriginal,
     hasPremiumIncrease: hasLifePremiumIncrease,
     hasEndorsement: Boolean(premiumBaseExplainedByEndorsement),
@@ -5463,21 +5391,23 @@ function LifeSplitContractCard({
       onConvertNeonRefresh
   );
   const canConvertStatementRefresh = Boolean(
-    shouldShowStatementRefreshConversion && statementId
+    shouldShowStatementRefreshConversion && (statementId || statementKey)
   );
+  const refreshRiskAnnualBase = statementNeonRefreshRiskAnnualBase(reviewContract.rows);
   const handleConvertStatementRefresh = async () => {
-    if (!statementId || !systemContract || !onConvertNeonRefresh) return;
+    if (!canConvertStatementRefresh || refreshRiskAnnualBase == null || !systemContract || !onConvertNeonRefresh || refreshConversionState.status === "saving") return;
     setRefreshConversionState({ status: "saving", message: null });
 
     try {
       await onConvertNeonRefresh({
         statementId,
+        statementKey,
         contract: systemContract,
         contractNumber: contract.contractNumber,
       });
       setRefreshConversionState({
         status: "success",
-        message: "Smlouva byla převedena na REFRESH podle výpisu.",
+        message: "Smlouva je označená jako REFRESH a provize jsou přepočítané z rizikové základny výpisu.",
       });
     } catch (conversionError) {
       setRefreshConversionState({
@@ -5542,6 +5472,16 @@ function LifeSplitContractCard({
               scope={matchScope}
               presentation={systemMatchPresentation}
             />
+            {refreshBaseReview && (
+              <span className={detailStyles.badge} data-tone={refreshBaseReview.status === "confirmed" ? "ok" : "info"}>
+                {refreshBaseReview.label}
+              </span>
+            )}
+            {refreshBaseDifferences.length > 0 && (
+              <span className={detailStyles.badge} data-tone="warn">
+                Rozdíl základny: {[...new Set(refreshBaseDifferences.map(item => item.label.replace(/^Základna /, "")))].join(", ")}
+              </span>
+            )}
             {correctionLabel && (
               <span className={detailStyles.badge} data-tone="warn">
                 {correctionLabel}
@@ -5618,16 +5558,16 @@ function LifeSplitContractCard({
           )}
 
           <LifeSplitCardMetadata
-            contract={reviewContract.annualPremium > 0 ? reviewContract : contract}
-            monthlyPremium={reviewContract.annualPremium > 0 ? reviewContract.annualPremium / 12 : monthlyPremium}
+            contract={reviewContract}
+            monthlyPremium={reviewContract.annualPremium > 0 ? reviewContract.annualPremium / 12 : null}
           />
-          <LifeSmallBaseNotice rows={differentBaseRows} riskAnnualBase={systemContractAnnualPremiumBase(systemContract)} />
 
           <StatementRefreshConversionPanel
             showConversion={shouldShowStatementRefreshConversion}
             state={refreshConversionState}
             statementId={statementId}
-            canConvert={canConvertStatementRefresh}
+            riskAnnualBase={refreshRiskAnnualBase}
+            canConvert={canConvertStatementRefresh && refreshRiskAnnualBase != null}
             onConvert={() => {
               void handleConvertStatementRefresh();
             }}
@@ -5648,6 +5588,8 @@ function LifeSplitContractCard({
             annualPremiumIncrease={hasLifePremiumIncrease ? lifeIncreaseAnnualPremium : null}
           />
           <LifeCoefficientOverrideNotice override={coefficientOverride} />
+          <NeonRefreshBaseNotice review={refreshBaseReview} />
+          <LifeCommissionBaseDifferenceNotice differences={refreshBaseDifferences} />
           <LifePremiumBaseNotice
             kind={premiumBaseNotice}
             mismatch={premiumBaseMismatch}
@@ -5670,15 +5612,13 @@ function LifeSplitContractCard({
 
           <AmountComparisonPanel
             comparisons={amountComparisons}
-            baseComparisons={lifePremiumBaseComparison ? [lifePremiumBaseComparison] : []}
+            baseComparisons={lifePremiumBaseComparisons}
           />
 
           <AcceleratedB36WarningNotice warning={missingB36Warning} />
 
           <LifeSplitCommissionTable
-            rows={contract.rows.map((row) => differentBaseRows.includes(row)
-              ? { ...row, lifeSplitLabel: "Investiční složka" }
-              : row)}
+            rows={contract.rows}
             b36Payments={contract.b36Payments}
             b36HalfLabel={b36HalfLabel}
             pairedB36PaymentIndexes={pairedB36PaymentIndexes}
@@ -5809,7 +5749,7 @@ function OtherProductContractCard({
       : null;
   const cppA101BatchQueueEligible =
     match?.status === "not_found" &&
-    isCppA101QueueProduct(calculatorPrefill?.product) &&
+    isStatementBatchQueueProduct(calculatorPrefill?.product) &&
     otherProductContractHasA101Commission(reviewContract);
   const calculatorPrefillWithCppA101Queue =
     calculatorPrefill && cppA101BatchQueueEligible
@@ -6456,7 +6396,7 @@ function ManagerCommissionRowCard({
   const matchNotice = managerCommissionMatchNotice(match);
   const managerCareerCheck = matchedContract
     ? statementCareerMismatch(
-        rowItems.filter((item) => !managerRowHasSmallLifeBase(item, matchedContract)),
+        rowItems,
         managerOverrideForViewer(matchedContract, currentUserEmail)?.position
       )
     : null;
@@ -6640,10 +6580,6 @@ function ManagerCommissionRowCard({
         </div>
       </div>
 
-      <LifeSmallBaseNotice
-        rows={rowItems.filter((item) => managerRowHasSmallLifeBase(item, matchedContract))}
-        riskAnnualBase={systemContractAnnualPremiumBase(matchedContract)}
-      />
       {(rowComparisons.length > 0 || rowBaseComparisons.length > 0) && (
         <AmountComparisonPanel
           comparisons={rowComparisons}
@@ -7200,7 +7136,7 @@ function StatementPreview({
       ? cppAutoBatchQueueItemKey({ product: productKey, contractNumber })
       : "";
     if (!queueItemKey || !queuedCppA101ContractKeys.has(queueItemKey)) return true;
-    if (!isCppA101QueueProduct(productKey)) return true;
+    if (!isStatementBatchQueueProduct(productKey)) return true;
     if (!otherProductContractHasA101Commission(contract)) return true;
 
     return !isUnpairedContractMatch(
@@ -7743,6 +7679,7 @@ export default function CommissionStatementsPage() {
 
   const convertNeonRefreshFromStatement = async ({
     statementId,
+    statementKey,
     contract,
     contractNumber,
   }: ManualNeonRefreshConversionTarget): Promise<ManualNeonRefreshConversionResponse> => {
@@ -7752,9 +7689,10 @@ export default function CommissionStatementsPage() {
 
     const ownerEmail = normalizeEmailForComparison(contract.adviserEmail);
     const entryId = normalizeText(contract.id);
-    if (!ownerEmail || !entryId || !statementId) {
-      throw new Error("Spárovaná smlouva nemá dostatek údajů pro převod na REFRESH.");
-    }
+    const requestBody = buildNeonRefreshConversionRequest(
+      { statementId, statementKey, contract, contractNumber },
+      statementFilesForProcessing
+    );
 
     const sendRequest = async (token: string) =>
       fetch("/api/commission-statements", {
@@ -7763,13 +7701,7 @@ export default function CommissionStatementsPage() {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          action: "convert-neon-refresh-from-statement",
-          statementId,
-          ownerEmail,
-          entryId,
-          contractNumber,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
     let token = await user.getIdToken();
@@ -8068,12 +8000,12 @@ export default function CommissionStatementsPage() {
   useEffect(() => {
     const handleCppA101QueueAdd = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
-      if (!isStatementCppA101QueueAddMessage(event.data)) return;
+      if (!isStatementBatchQueueAddMessage(event.data)) return;
 
       const prefill = calculatorPrefillPanel;
       if (
         !prefill ||
-        !isCppA101QueueProduct(prefill.product) ||
+        !isStatementBatchQueueProduct(prefill.product) ||
         prefill.product !== event.data.product ||
         !prefill.cppA101QueueEligible
       ) {
@@ -8730,51 +8662,11 @@ export default function CommissionStatementsPage() {
     const savedBatchItems: SavedBatchItem[] = [];
     let nextIndex = 0;
     const saveOne = async (item: CppAutoBatchQueueItem): Promise<SavedBatchItem> => {
-      const amount = cppAutoBatchQueueAmount(item.amountText);
-      const sourceRecordedAtMs = item.queuedAtMs;
       try {
         const saved = await saveContractEntry({
           user,
           ownerEmail: effectiveUserEmail,
-          entry: {
-            productKey: item.product,
-            entryType: "contract",
-            commissionMode: null,
-            inputAmount: amount,
-            effectiveInputAmount: amount,
-            frequencyRaw: item.frequency,
-            clientName: item.clientName.trim(),
-            contractSignedDate: item.contractSignedDate.trim(),
-            policyStartDate: item.policyStartDate.trim(),
-            policyEndDate: null,
-            status: item.stornoDate.trim() ? "storno" : "active",
-            stornoDate: item.stornoDate.trim() || null,
-            durationYears: null,
-            durationMonths: null,
-            maxCizinKomplexVariant: null,
-            contractNumber: item.contractNumber.trim(),
-            tipContractTipsterEmail: null,
-            tipContractTipsterPercent: null,
-            tipContractSourceTipId: null,
-            tipContractSourceTipTitle: null,
-            tipContractSourceTipProductLabel: null,
-            tipContractSourceTipClientName: null,
-            tipContractSourceTipCreatedAtMs: null,
-            paid: false,
-            isRefresh: false,
-            refreshOriginalContractNumber: null,
-            refreshOriginalMissingInSystem: false,
-            requiresStatementRefresh: false,
-            commissionCalculationStatus: null,
-            commissionBaseSource: null,
-            premiumUpdatedFromStatementAtMs: sourceRecordedAtMs,
-            premiumUpdatedFromStatementChronologyMs: item.statementChronologyMs,
-            premiumUpdatedFromStatementId: item.statementId,
-            createdFromCommissionStatement: true,
-            createdFromCommissionStatementAtMs: sourceRecordedAtMs,
-            createdFromCommissionStatementChronologyMs: item.statementChronologyMs,
-            createdFromCommissionStatementId: item.statementId,
-          },
+          entry: statementBatchQueueContractEntry(item),
           fallbackError: "Smlouvu se nepodařilo uložit.",
           pdfFile: item.pdfFile,
         });

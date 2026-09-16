@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, RotateCcw } from "lucide-react";
 
 import { formatWholeMoney } from "./statementParsing";
+import { lifeSplitBaseComparisonSources } from "./statementLifeComparison";
 import styles from "./statementContractDetail.module.css";
 import type { LifeSplitContractPreview } from "./statementTypes";
 
@@ -11,14 +12,16 @@ export type StatementRefreshConversionStatus = "idle" | "saving" | "success" | "
 export const statementRefreshConversionMessage = ({
   message,
   statementId,
+  riskAnnualBase,
 }: {
   message: string | null;
   statementId: string | null | undefined;
+  riskAnnualBase: number | null;
 }): string =>
   message ??
-  (statementId
-    ? "V systému zatím není vedená jako REFRESH. Ruční převod nastaví REFRESH režim a převezme výpisovou základnu z řádku NRF, aby očekávané provize odpovídaly výpisu."
-    : "V systému zatím není vedená jako REFRESH. Nejdřív zpracuj výpis, aby měl uložené ID, potom půjde smlouvu ručně převést podle řádku NRF.");
+  (riskAnnualBase == null
+    ? "Výpis neobsahuje jednoznačnou rizikovou základnu A101/B0301. Přepočet není dostupný."
+    : `Označí smlouvu jako REFRESH a přepočítá provize z rizikové základny ${formatWholeMoney(riskAnnualBase)} Kč ročně. Investiční složka se do základny nezahrnuje.${statementId ? "" : " Provize z výpisu se zapíšou až při jeho zpracování."}`);
 
 export function LifeSplitCardMetadata({
   contract,
@@ -27,6 +30,10 @@ export function LifeSplitCardMetadata({
   contract: LifeSplitContractPreview;
   monthlyPremium: number | null;
 }) {
+  const baseSources = lifeSplitBaseComparisonSources(contract);
+  const hasDifferentBases = baseSources.length > 1;
+  const baseLabel = baseSources.length === 1 && baseSources[0].label !== "Základna pojistného"
+    ? `${baseSources[0].label} ročně` : "Roční základna ve výpisu";
   return (
     <div className={styles.metadata}>
       <div>
@@ -39,14 +46,14 @@ export function LifeSplitCardMetadata({
       </div>
       <div>
         <div>
-          Roční základna
+          {baseLabel}
         </div>
         <div>
-          {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : "—"}
+          {contract.annualPremium > 0 ? `${formatWholeMoney(contract.annualPremium)} Kč` : hasDifferentBases ? "Různé podle položek" : "—"}
         </div>
       </div>
       <div>
-        <div>Měsíčně</div>
+        <div>Přepočet na měsíc</div>
         <div>
           {monthlyPremium === null ? "—" : `${formatWholeMoney(monthlyPremium)} Kč`}
         </div>
@@ -59,12 +66,14 @@ export function StatementRefreshConversionPanel({
   showConversion,
   state,
   statementId,
+  riskAnnualBase,
   canConvert,
   onConvert,
 }: {
   showConversion: boolean;
   state: { status: StatementRefreshConversionStatus; message: string | null };
   statementId: string | null | undefined;
+  riskAnnualBase: number | null;
   canConvert: boolean;
   onConvert: () => void;
 }) {
@@ -85,6 +94,7 @@ export function StatementRefreshConversionPanel({
 
   return (
     <div
+      role="status"
       className={`mt-3 flex flex-col gap-3 rounded-xl border px-3 py-3 text-sm sm:flex-row sm:items-start sm:justify-between ${className}`}
     >
       <div className="flex min-w-0 items-start gap-2">
@@ -96,7 +106,7 @@ export function StatementRefreshConversionPanel({
         <div>
           <div className="font-bold">Výpis označuje smlouvu jako REFRESH</div>
           <div className={`mt-0.5 font-medium ${messageClassName}`}>
-            {statementRefreshConversionMessage({ message: state.message, statementId })}
+            {statementRefreshConversionMessage({ message: state.message, statementId, riskAnnualBase })}
           </div>
         </div>
       </div>
@@ -112,7 +122,7 @@ export function StatementRefreshConversionPanel({
           ) : (
             <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
           )}
-          {statementId ? "Převést na REFRESH" : "Nejdřív zpracovat výpis"}
+          {state.status === "saving" ? "Přepočítávám…" : "Označit REFRESH a přepočítat"}
         </button>
       )}
     </div>

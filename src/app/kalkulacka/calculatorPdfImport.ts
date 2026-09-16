@@ -8,6 +8,7 @@ import { allowedFrequencies } from "./calculatorHelpers";
 export type ParsedContractPdf = Record<string, any>;
 
 type PdfParserOptions = {
+  allowOcr?: boolean;
   onOcrStart?: () => void;
   onOcrProgress?: (progress: PdfOcrProgress) => void;
 };

@@ -14,6 +14,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
+import { MeetingRecordSession } from "../MeetingRecordSession";
+import { readMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 import {
   PRODUCT_CAPABILITIES,
   type CapabilityEntry,
@@ -32,9 +34,6 @@ type LifeResultInput = {
   isContractTerminationDueToNewOne?: boolean;
   selectedBenefits?: SelectedBenefit[];
 };
-
-const LIFE_RECORD_RESULT_INPUT_KEY = "lifeRecordResultInput";
-const LIFE_RECORD_RESULT_INPUT_TTL_MS = 20 * 60 * 1000;
 
 type SelectedBenefit =
   | {
@@ -605,6 +604,10 @@ function ProductRecommendationCard({
 }
 
 export default function RecordResultsPage() {
+  return <MeetingRecordSession>{(owner) => <RecordResults owner={owner} />}</MeetingRecordSession>;
+}
+
+function RecordResults({ owner }: { owner: MeetingRecordContext }) {
   const router = useRouter();
   const [lines, setLines] = useState<string[] | null>(null);
   const [additional, setAdditional] = useState<string[] | null>(null);
@@ -627,8 +630,8 @@ export default function RecordResultsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const raw = window.localStorage.getItem(LIFE_RECORD_RESULT_INPUT_KEY);
-    if (!raw) {
+    const data = readMeetingRecord<LifeResultInput>("lifeResults", owner);
+    if (!data) {
       setLines([...MANDATORY_IMPACT_TEXTS]);
       setAdditional([]);
       setProductRecs([]);
@@ -636,15 +639,6 @@ export default function RecordResultsPage() {
     }
 
     try {
-      const data: LifeResultInput = JSON.parse(raw);
-      const savedAt = typeof data.savedAt === "number" ? data.savedAt : 0;
-      if (!savedAt || Date.now() - savedAt > LIFE_RECORD_RESULT_INPUT_TTL_MS) {
-        window.localStorage.removeItem(LIFE_RECORD_RESULT_INPUT_KEY);
-        setLines([...MANDATORY_IMPACT_TEXTS]);
-        setAdditional([]);
-        setProductRecs([]);
-        return;
-      }
       const recs: string[] = [...MANDATORY_IMPACT_TEXTS];
       const extras: string[] = [];
 
@@ -796,7 +790,7 @@ export default function RecordResultsPage() {
       setAdditional([]);
       setProductRecs([]);
     }
-  }, []);
+  }, [owner]);
 
   const additionalLines = additional ?? [];
   const additionalCount = 1 + additionalLines.length;

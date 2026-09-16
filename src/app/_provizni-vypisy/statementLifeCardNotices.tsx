@@ -1,7 +1,7 @@
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import type { RefreshBaseReview } from "./statementRefreshBaseReview";
 
 import { coefficientSetLabel } from "@/app/lib/productFormulas/coefficientSets";
-import { LIFE_SUBSEQUENT_MIN_BASE_RATIO } from "@/app/lib/commissionPayoutRules";
 import { formatWholeMoney } from "./statementParsing";
 import type {
   CoefficientOverrideInfo,
@@ -14,21 +14,46 @@ export type LifePremiumBaseNoticeKind =
   | "endorsement"
   | null;
 
-export function LifeSmallBaseNotice({ rows, riskAnnualBase }: {
-  rows: Array<{ type: string; base: number }>;
-  riskAnnualBase: number | null;
-}) {
-  if (rows.length === 0 || riskAnnualBase == null) return null;
-  const labels = [...new Set(rows.map((row) => `${row.type}: ${formatWholeMoney(row.base)} Kč`))];
-  return (
-    <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-      <div className="font-bold">Investiční složka</div>
+export function NeonRefreshBaseNotice({review}: {review: RefreshBaseReview}) {
+  if (!review) return null;
+  const confirmed = review.status === "confirmed";
+  const Icon = confirmed ? CheckCircle2 : Info;
+  return <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${confirmed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
+    <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    <div>
+      <div className="font-bold">{review.label}</div>
       <div className="mt-0.5 font-medium">
-        {labels.join(", ")} ročně. Základna je pod {LIFE_SUBSEQUENT_MIN_BASE_RATIO * 100} % rizikové základny {formatWholeMoney(riskAnnualBase)} Kč ročně.
-        {" "}Podle této základny řádky označujeme jako investiční složku a nezahrnujeme je do kontroly pojistného ani provize; vyplacené částky zůstávají ve výpisu.
+        {confirmed ? <>
+          Riziková základna{review.annual != null ? ` ${formatWholeMoney(review.annual)} Kč ročně` : ""} je potvrzená položkou A101/B0301
+          {review.statementNumber ? ` z výpisu ${review.statementNumber}` : " z výpisu"}{review.statementDate ? ` ze dne ${review.statementDate}` : ""}.
+          {" "}Případný rozdíl u následné provize kontrolujeme samostatně podle jejího kódu.
+        </> : review.status === "calculated" ? <>
+          Základna{review.annual != null ? ` ${formatWholeMoney(review.annual)} Kč ročně` : ""} je vypočtená z původní smlouvy. Čeká na ověření rizikovou položkou A101/B0301 z výpisu.
+        </> : <>
+          Základna tohoto refreshe zatím není doložená. Částky provizí zůstávají ve výpisu; kontrolu proti předběžnému výpočtu zatím nevyhodnocujeme jako chybu.
+        </>}
+        {!confirmed && (review.statementRiskAnnual != null ? <>
+          {" "}Tento výpis obsahuje rizikovou základnu {formatWholeMoney(review.statementRiskAnnual)} Kč ročně. Potvrzení se uloží při zpracování výpisu.
+        </> : <>
+          {" "}Pro potvrzení potřebujeme výpis s rizikovou A101/B0301. A201 ani samotná B101 základnu refreshe nepotvrzují.
+        </>)}
       </div>
     </div>
-  );
+  </div>;
+}
+
+export function LifeCommissionBaseDifferenceNotice({differences}: {differences: {label: string; statementAnnualPremiumBase: number; systemAnnualPremiumBase: number}[]}) {
+  if (differences.length === 0) return null;
+  return <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    <div>
+      <div className="font-bold">Rozdíl základny u konkrétní provize</div>
+      {differences.map((difference,index) => <div key={index} className="mt-0.5 font-medium">
+        {difference.label}: výpis {formatWholeMoney(difference.statementAnnualPremiumBase)} Kč ročně, výpočet smlouvy {formatWholeMoney(difference.systemAnnualPremiumBase)} Kč ročně.
+      </div>)}
+      <div className="mt-1">Tento rozdíl je potřeba ověřit u dané položky. Sám o sobě není důvodem ke změně rizikové základny celé smlouvy.</div>
+    </div>
+  </div>;
 }
 
 export type LifePremiumBaseMismatchNotice = {

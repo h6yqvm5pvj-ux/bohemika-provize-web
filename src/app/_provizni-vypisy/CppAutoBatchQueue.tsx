@@ -12,7 +12,9 @@ import {
   X,
 } from "lucide-react";
 
-import type { PaymentFrequency, Product } from "@/app/types/domain";
+import type { PaymentFrequency } from "@/app/types/domain";
+import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
+import { isStatementBatchQueueProduct, type StatementBatchQueueProduct } from "@/app/lib/statementBatchQueue";
 
 import type { StatementCalculatorPrefill } from "./statementPresentation";
 
@@ -25,7 +27,7 @@ export type CppAutoBatchQueueStatus =
 
 export type CppAutoBatchQueueItem = {
   id: string;
-  product: Extract<Product, "cppAuto" | "domex">;
+  product: StatementBatchQueueProduct;
   sourceProductCode: string;
   statementId: string | null;
   statementNumber: string | null;
@@ -75,12 +77,15 @@ export const cppAutoBatchQueueItemKey = (
 export const cppAutoBatchQueueItemFromPrefill = (
   prefill: StatementCalculatorPrefill
 ): CppAutoBatchQueueItem => {
+  if (!isStatementBatchQueueProduct(prefill.product)) {
+    throw new Error("Tento produkt nelze přidat do fronty smluv z výpisu.");
+  }
   const queuedAtMs = Date.now();
   const contractKey = cppAutoBatchQueueItemKey(prefill) || `without-number-${queuedAtMs}`;
 
   return {
-    id: `cpp-a101:${contractKey}:${queuedAtMs}`,
-    product: prefill.product === "domex" ? "domex" : "cppAuto",
+    id: `statement-a101:${contractKey}:${queuedAtMs}`,
+    product: prefill.product,
     sourceProductCode: prefill.sourceProductCode,
     statementId: prefill.statementId,
     statementNumber: prefill.statementNumber,
@@ -98,6 +103,50 @@ export const cppAutoBatchQueueItemFromPrefill = (
     pdfFile: null,
     status: "ready",
     message: null,
+  };
+};
+
+export const statementBatchQueueContractEntry = (item: CppAutoBatchQueueItem): Record<string, unknown> => {
+  const amount = cppAutoBatchQueueAmount(item.amountText);
+  const sourceRecordedAtMs = item.queuedAtMs;
+  return {
+    productKey: item.product,
+    entryType: "contract",
+    commissionMode: null,
+    inputAmount: amount,
+    effectiveInputAmount: amount,
+    frequencyRaw: item.frequency,
+    clientName: item.clientName.trim(),
+    contractSignedDate: item.contractSignedDate.trim(),
+    policyStartDate: item.policyStartDate.trim(),
+    policyEndDate: null,
+    status: item.stornoDate.trim() ? "storno" : "active",
+    stornoDate: item.stornoDate.trim() || null,
+    durationYears: null,
+    durationMonths: null,
+    maxCizinKomplexVariant: null,
+    contractNumber: item.contractNumber.trim(),
+    tipContractTipsterEmail: null,
+    tipContractTipsterPercent: null,
+    tipContractSourceTipId: null,
+    tipContractSourceTipTitle: null,
+    tipContractSourceTipProductLabel: null,
+    tipContractSourceTipClientName: null,
+    tipContractSourceTipCreatedAtMs: null,
+    paid: false,
+    isRefresh: false,
+    refreshOriginalContractNumber: null,
+    refreshOriginalMissingInSystem: false,
+    requiresStatementRefresh: false,
+    commissionCalculationStatus: null,
+    commissionBaseSource: null,
+    premiumUpdatedFromStatementAtMs: sourceRecordedAtMs,
+    premiumUpdatedFromStatementChronologyMs: item.statementChronologyMs,
+    premiumUpdatedFromStatementId: item.statementId,
+    createdFromCommissionStatement: true,
+    createdFromCommissionStatementAtMs: sourceRecordedAtMs,
+    createdFromCommissionStatementChronologyMs: item.statementChronologyMs,
+    createdFromCommissionStatementId: item.statementId,
   };
 };
 
@@ -215,7 +264,7 @@ export function CppAutoBatchQueue({
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-800">
               <Upload className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </span>
-            <h2 className="text-base font-black text-slate-950">Fronta ČPP Auto a DOMEX · A101</h2>
+            <h2 className="text-base font-black text-slate-950">Fronta smluv · A101</h2>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
               {pendingCount} {pendingCount === 1 ? "smlouva" : "smluv"}
             </span>
@@ -289,7 +338,7 @@ export function CppAutoBatchQueue({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-black text-slate-950">
-                      {item.product === "domex" ? "ČPP DOMEX" : "ČPP Auto"} · {item.sourceProductCode || "A101"}
+                      {PRODUCT_CATALOG[item.product].label} · {item.sourceProductCode || "A101"}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${status.className}`}>
                       {item.status === "saving" && (

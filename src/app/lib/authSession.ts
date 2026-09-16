@@ -1,5 +1,6 @@
 import { clearLegacyClientCards } from "./clientCardPrivacy";
 import { clearContractTerminationPrefills } from "./contractTerminationPrivacy";
+import { clearMeetingRecords } from "./meetingRecordPrivacy";
 
 function hasUnsafeLoginPathCharacters(value: string): boolean {
   // URL parsers turn backslashes into slashes and strip some ASCII controls.
@@ -74,6 +75,7 @@ export async function createServerSessionFromToken(
 }
 
 export async function clearServerSession(): Promise<void> {
+  clearMeetingRecords();
   clearContractTerminationPrefills();
   clearLegacyClientCards();
   const response = await fetch("/api/auth/session", {

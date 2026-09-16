@@ -109,32 +109,32 @@ export const getSubscriptionStatePillClass = (row: {
   subscription?: { effectiveState?: string; status?: string };
 }) => {
   if (row.subscription?.effectiveState === "active") {
-    return "border-violet-500 bg-violet-500 text-white";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
   if (row.subscription?.effectiveState === "grace") {
-    return "border-amber-600 bg-amber-500 text-slate-950";
+    return "border-amber-200 bg-amber-50 text-amber-800";
   }
   if (row.subscription?.status === "unpaid") {
-    return "border-rose-600 bg-rose-500 text-white";
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
-  return "border-slate-700 bg-slate-600 text-white";
+  return "border-slate-200 bg-slate-100 text-slate-600";
 };
 
 export const getSubscriptionPlanPillClass = (plan: unknown): string => {
   const normalized = typeof plan === "string" ? plan.trim().toLowerCase() : "";
   if (normalized === "unlimited") {
-    return "border-amber-600 bg-amber-400 text-amber-950";
+    return "border-amber-200 bg-amber-50 text-amber-800";
   }
   if (normalized === "monthly") {
-    return "border-sky-600 bg-sky-500 text-white";
+    return "border-sky-200 bg-sky-50 text-sky-700";
   }
   if (normalized === "semiannual") {
-    return "border-indigo-600 bg-indigo-500 text-white";
+    return "border-indigo-200 bg-indigo-50 text-indigo-700";
   }
   if (normalized === "yearly") {
-    return "border-cyan-600 bg-cyan-500 text-white";
+    return "border-cyan-200 bg-cyan-50 text-cyan-700";
   }
-  return "border-slate-600 bg-slate-500 text-white";
+  return "border-slate-200 bg-slate-50 text-slate-600";
 };
 
 export const formatDaysUntilDue = (days: number | null | undefined): string => {

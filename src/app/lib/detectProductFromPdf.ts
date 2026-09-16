@@ -498,6 +498,18 @@ export async function detectProductFromPdf(file: File, options: ConseqZenitPdfOp
   }
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  try {
+    return await detectProductInDocument(doc, file, options);
+  } finally {
+    await doc.destroy();
+  }
+}
+
+async function detectProductInDocument(
+  doc: import("pdfjs-dist/legacy/build/pdf.mjs").PDFDocumentProxy,
+  file: File,
+  options: ConseqZenitPdfOptions,
+): Promise<PdfProductDetection | null> {
   if (doc.numPages < 1) return null;
 
   const pageTextByNumber = new Map<number, { strict: string; loose: string }>();
@@ -606,7 +618,7 @@ export async function detectProductFromPdf(file: File, options: ConseqZenitPdfOp
     };
   }
 
-  if (typeof document !== "undefined" && [...pageTextByNumber.values()].every((page) => page.strict.length < 80)) {
+  if (options.allowOcr !== false && typeof document !== "undefined" && [...pageTextByNumber.values()].every((page) => page.strict.length < 80)) {
     const { parseConseqZenitPdf } = await import("./parseConseqZenitPdf");
     const scanned = await parseConseqZenitPdf(file, options);
     if (scanned.productDetected) {

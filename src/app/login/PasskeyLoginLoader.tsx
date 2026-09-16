@@ -1,11 +1,13 @@
 import { Fingerprint, KeyRound } from "lucide-react";
+import type { PasskeySignInStage } from "@/app/lib/passkeys";
 
 import styles from "./passkeyLoginLoader.module.css";
 
-export type PasskeyLoginStage = "verification" | "session";
+export type PasskeyLoginStage = PasskeySignInStage;
 
-export function PasskeyLoginLoader({ stage }: { stage: PasskeyLoginStage }) {
+export function PasskeyLoginLoader({ stage, onCancel }: { stage: PasskeyLoginStage; onCancel?: () => void }) {
   const verifying = stage === "verification";
+  const preparing = stage === "preparation";
 
   return (
     <div className={styles.loader} role="status" aria-live="polite" aria-atomic="true">
@@ -21,13 +23,16 @@ export function PasskeyLoginLoader({ stage }: { stage: PasskeyLoginStage }) {
         </span>
       </div>
       <p className={styles.eyebrow}>Přístupový klíč</p>
-      <h2 className={styles.title}>{verifying ? "Ověřuji přihlášení" : "Dokončuji přihlášení"}</h2>
+      <h2 className={styles.title}>{preparing ? "Připravuji přihlášení" : verifying ? "Ověřuji přihlášení" : "Dokončuji přihlášení"}</h2>
       <p className={styles.description}>
-        {verifying
+        {preparing
+          ? "Spojuji se se serverem. Výzva k ověření se zobrazí za chvíli."
+          : verifying
           ? "Potvrď přihlášení otiskem prstu, Face ID nebo PINem svého zařízení."
           : "Chvilku strpení, připravuji tvůj účet."}
       </p>
       <span className={styles.dots} aria-hidden="true"><i /><i /><i /></span>
+      {onCancel && <button type="button" className={styles.cancel} onClick={onCancel}>Zrušit přihlášení</button>}
     </div>
   );
 }

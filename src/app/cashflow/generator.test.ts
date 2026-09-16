@@ -4,7 +4,7 @@ import { generateCashflow } from "./generator";
 import type { EntryDoc } from "./types";
 
 describe("generateCashflow", () => {
-  it.each([600, 19_884])("matches a B101 payout to risk cashflow only for a comparable base (%s CZK)", (statementBaseAmount) => {
+  it.each([600, 19_884])("matches a B101 payout to cashflow regardless of base size (%s CZK)", (statementBaseAmount) => {
     const smallBase = statementBaseAmount === 600;
     const entry: EntryDoc = {
       id: "life-base",
@@ -22,9 +22,9 @@ describe("generateCashflow", () => {
     const items = generateCashflow([entry]);
     const payouts = items.filter((item) => item.commissionPayoutKey === "b101");
     expect(payouts).toHaveLength(1);
-    expect(payouts[0].isStatementOnly === true).toBe(smallBase);
+    expect(payouts[0].isStatementOnly === true).toBe(false);
     expect(payouts[0].amount).toBe(smallBase ? 2.38 : 78.74);
-    if (smallBase) expect(payouts[0].commissionLabel).toBe("Investiční složka");
+    expect(payouts[0].commissionLabel).not.toBe("Investiční složka");
   });
 
   it("keeps the paid auto commission, shows the storno payout, and stops future projections", () => {

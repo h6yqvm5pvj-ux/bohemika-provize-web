@@ -13,6 +13,7 @@ import { formatMoney } from "@/app/lib/formatters";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import type { HallCategory, HallOfFameResponse, HallPeriod, HallRow } from "./hallOfFame.types";
 import styles from "./hallOfFame.module.css";
+import { HallOfFameLoader } from "./HallOfFameLoader";
 
 const CATEGORIES = [
   { key: "life", label: "Životní pojištění", icon: ShieldCheck },
@@ -156,7 +157,7 @@ export default function HallOfFamePage() {
         </div>
 
         {loading ? (
-          <div className={styles.loading} role="status" aria-label="Načítám síň slávy"><div className={styles.skeletonPodium} aria-hidden="true"><span /><span /><span /></div><p>Chystáme stupně vítězů…</p></div>
+          <HallOfFameLoader />
         ) : error ? (
           <div className={styles.state} role="alert"><Trophy size={32} strokeWidth={1.4} aria-hidden="true" /><h2>{error}</h2><p>Zkus to prosím ještě jednou.</p><button type="button" onClick={() => setRetry((value) => value + 1)}>Zkusit znovu</button></div>
         ) : !authUser ? (

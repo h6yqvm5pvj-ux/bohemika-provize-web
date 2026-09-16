@@ -72,6 +72,8 @@ const PASSWORD_ATTEMPT_ERROR_CODES = new Set<string>([
 ]);
 
 const logAuthIssue = (context: string, error: unknown) => {
+  const name = (error as { name?: string })?.name;
+  if (name === "AbortError" || name === "NotAllowedError") return;
   const code = (error as { code?: string })?.code;
   if (typeof code === "string" && EXPECTED_LOGIN_ERROR_CODES.has(code)) {
     console.warn(`[Login] ${context}: ${code}`);
@@ -175,6 +177,7 @@ async function postLoginAttempt(
     headers,
     cache: "no-store",
     body: JSON.stringify({ action, email }),
+    signal: AbortSignal.timeout(15_000),
   });
   const payload = (await response.json().catch(() => null)) as LoginAttemptResponse | null;
   if (payload && typeof payload === "object") return payload;
@@ -208,7 +211,13 @@ export default function LoginPage() {
   const [rememberThisDevice, setRememberThisDevice] = useState(false);
   const loginRememberThisDeviceRef = useRef(false);
   const loginAttemptInFlightRef = useRef(false);
+  const passkeyAttemptRef = useRef<AbortController | null>(null);
   const mfaInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  useEffect(() => () => {
+    passkeyAttemptRef.current?.abort();
+    passkeyAttemptRef.current = null;
+  }, []);
 
   const clearMfaState = () => {
     setMfaResolver(null);
@@ -519,12 +528,20 @@ export default function LoginPage() {
     setError(null);
     setResetStatus(null);
     loginRememberThisDeviceRef.current = rememberThisDevice;
-    setPasskeyStage("verification");
+    const attempt = new AbortController();
+    passkeyAttemptRef.current = attempt;
+    setPasskeyStage("preparation");
     setLoading(true);
     clearMfaState();
 
     try {
-      const credential = await signInWithPasskey();
+      const credential = await signInWithPasskey({
+        signal: attempt.signal,
+        onStage: stage => {
+          if (passkeyAttemptRef.current === attempt && !attempt.signal.aborted) setPasskeyStage(stage);
+        },
+      });
+      attempt.signal.throwIfAborted();
       setPasskeyStage("session");
       await completeLogin(credential.user);
     } catch (error) {
@@ -537,6 +554,7 @@ export default function LoginPage() {
       );
       setLoading(false);
     } finally {
+      if (passkeyAttemptRef.current === attempt) passkeyAttemptRef.current = null;
       loginAttemptInFlightRef.current = false;
       setPasskeyStage(null);
     }
@@ -845,7 +863,7 @@ export default function LoginPage() {
                 </div>
               ) : null}
             </form>
-            {passkeyStage && <PasskeyLoginLoader stage={passkeyStage} />}
+            {passkeyStage && <PasskeyLoginLoader stage={passkeyStage} onCancel={passkeyStage === "session" ? undefined : () => passkeyAttemptRef.current?.abort()} />}
           </section>
         </div>
       </div>

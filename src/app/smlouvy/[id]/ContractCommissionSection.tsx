@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { AlertTriangle, ChevronDown, Coins, Info, X } from "lucide-react";
 
-import { baseCommissionCodeForPayoutComparison, payoutHasSmallLifeSubsequentBase } from "@/app/lib/commissionPayoutRules";
+import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -44,7 +44,6 @@ type ContractCommissionSectionProps = {
   adviserItems: CommissionResultItemDTO[];
   commissionWarning?: string | null;
   commissionPayouts?: ContractCommissionPayout[] | null;
-  riskAnnualBase?: number | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
   contractDurationYears?: number | null;
@@ -657,7 +656,6 @@ export function ContractCommissionSection({
   adviserItems,
   commissionWarning = null,
   commissionPayouts = [],
-  riskAnnualBase = null,
   viewerEmail = null,
   contractOwnerEmail = null,
   contractDurationYears = null,
@@ -670,9 +668,7 @@ export function ContractCommissionSection({
   onToggleAdvisorDetails,
   onOpenNeonImmediateBreakdown,
 }: ContractCommissionSectionProps) {
-  const normalizedCommissionPayouts = (commissionPayouts ?? []).filter(
-    (payout) => !payoutHasSmallLifeSubsequentBase({ product, payout, riskAnnualBase })
-  );
+  const normalizedCommissionPayouts = commissionPayouts ?? [];
   const normalizedViewerEmail = normalizeEmail(viewerEmail);
   const normalizedOwnerEmail = normalizeEmail(contractOwnerEmail);
   const trimmedCommissionWarning = commissionWarning?.trim() || null;

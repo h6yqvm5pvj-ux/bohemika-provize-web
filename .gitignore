@@ -35,6 +35,9 @@ firestore-debug.log*
 .tmp/*-backup-*.json
 /.tmp/
 
+# Private production audits contain client and commission data.
+/docs/commission-review-*/
+
 # env files (can opt-in for committing if needed)
 .env*
 

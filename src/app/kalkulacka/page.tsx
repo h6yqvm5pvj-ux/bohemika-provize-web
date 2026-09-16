@@ -34,6 +34,7 @@ import {
   productCoefficientValidityError,
 } from "../lib/productFormulas";
 import { calculateCommission } from "../lib/calculateCommission";
+import { isStatementBatchQueueProduct, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
 import {
   calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
@@ -468,8 +469,6 @@ const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
 const STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE = "bohemka:statement-contract-saved";
 const STATEMENT_CONTRACT_SAVE_COMPLETED_MESSAGE_TYPE =
   "bohemka:statement-contract-save-completed";
-const STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE =
-  "bohemka:statement-cpp-a101-queue-add";
 type StatementPremiumSource = {
   statementId: string | null;
   statementChronologyMs: number | null;
@@ -564,24 +563,14 @@ const notifyStatementParentCppA101QueueAdd = ({
   frequency,
   stornoDate,
   pdfFile,
-}: {
-  product: "cppAuto" | "domex";
-  contractNumber: string;
-  clientName: string;
-  contractSignedDate: string;
-  policyStartDate: string;
-  amountText: string;
-  frequency: PaymentFrequency;
-  stornoDate: string;
-  pdfFile: File | null;
-}) => {
+}: Omit<StatementBatchQueueAddMessage, "type">) => {
   if (typeof window === "undefined" || window.parent === window) return;
   const params = new URLSearchParams(window.location.search);
   if (params.get("prefill") !== "commission-statement") return;
 
   window.parent.postMessage(
     {
-      type: STATEMENT_CPP_A101_QUEUE_ADD_MESSAGE_TYPE,
+      type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE,
       product,
       contractNumber,
       clientName,
@@ -3155,12 +3144,16 @@ export default function CalculatorPage() {
     try {
       const detected = await withPdfImportTimeout(
         detectProductFromPdfLazy(file, {
+          allowOcr: !statementEmbedMode,
           onOcrStart: () => {
             ocrActive = true;
             if (isCurrentPdfImport()) setPdfImportStatus("PDF je sken. Rozpoznávám produkt a údaje přes OCR…");
           },
           onOcrProgress: (progress) => {
-            if (isCurrentPdfImport()) setPdfImportStatus(`Rozpoznávám sken: strana ${progress.page}/${progress.totalPages} (${Math.round(progress.progress * 100)} %)…`);
+            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
+            setPdfImportStatus(progress.page > 0
+              ? `Rozpoznávám sken: strana ${progress.page}/${progress.totalPages} (${Math.round(progress.progress * 100)} %)…`
+              : "Připravuji rozpoznávání skenu…");
           },
         }),
         PDF_PRODUCT_DETECTION_TIMEOUT_MS,
@@ -3314,6 +3307,7 @@ export default function CalculatorPage() {
 
       const parsed = await withPdfImportTimeout(
         parseContractPdfByProduct(importProduct, file, {
+          allowOcr: !statementEmbedMode,
           onOcrStart: () => {
             ocrActive = true;
             if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
@@ -4391,6 +4385,7 @@ export default function CalculatorPage() {
         try {
           let batchOcrActive = false;
           const batchOcrOptions = {
+            allowOcr: !statementEmbedMode,
             onOcrStart: () => {
               batchOcrActive = true;
               setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}: čtu sken přes OCR…`);
@@ -5959,7 +5954,7 @@ export default function CalculatorPage() {
 
   const handleAddCppA101ToStatementQueue = () => {
     if (
-      (product !== "cppAuto" && product !== "domex") ||
+      !isStatementBatchQueueProduct(product) ||
       !statementEmbedMode ||
       !statementEmbedParentAvailable ||
       !statementCppA101QueueEligible
@@ -9085,7 +9080,7 @@ export default function CalculatorPage() {
               statementEmbedParentAvailable &&
               statementCppA101QueueEligible &&
               isAddContractMode &&
-              (product === "cppAuto" || product === "domex") &&
+              isStatementBatchQueueProduct(product) &&
               !tipsterModeEnabled &&
               !originalReplacementWorkflowActive &&
               !endorsementDraft &&

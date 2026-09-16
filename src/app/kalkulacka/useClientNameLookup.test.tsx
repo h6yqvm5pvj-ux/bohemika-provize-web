@@ -19,7 +19,7 @@ describe("client name directory loading", () => {
     return null;
   }
   const payload = (names: string[], extra: Record<string, unknown> = {}) => Response.json({
-    ok: true, contracts: names.map((clientName) => ({ clientName })), hasMore: false, ...extra,
+    ok: true, names, ...extra,
   });
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -33,16 +33,16 @@ describe("client name directory loading", () => {
     vi.clearAllMocks();
   });
 
-  it("continues beyond the former 40-page cutoff to find an older exact name", async () => {
-    request.mockImplementation(async (input) => {
-      const page = Number(new URL(String(input), "https://bohemka.app").searchParams.get("cursor") || "0");
-      return page === 41 ? payload(["Jan Buček"])
-        : payload(["Jan Bučka"], { hasMore: true, nextCursorToken: String(page + 1) });
-    });
+  it("loads a large directory in one request and searches keystrokes locally", async () => {
+    request.mockResolvedValue(payload([...Array.from({ length: 2500 }, (_, i) => `Klient Test${i}`), "Jan Buček"]));
     await act(async () => root.render(<Harness {...defaultProps} />));
-    expect(request).toHaveBeenCalledTimes(42);
+    expect(request).toHaveBeenCalledOnce();
     expect(latest.status).toBe("ready");
     expect(latest.matches).toEqual([{ name: "Jan Buček", kind: "exact" }]);
+    await act(async () => root.render(<Harness {...defaultProps} query="Bucek Jan" />));
+    expect(request).toHaveBeenCalledOnce();
+    expect(latest.matches).toEqual([{ name: "Jan Buček", kind: "reordered" }]);
+    expect(String(request.mock.calls[0][0])).toContain("/api/contracts/client-names?");
   });
 
   it("does not report no match while the directory is loading", async () => {
@@ -55,8 +55,8 @@ describe("client name directory loading", () => {
     expect(latest.matches[0].kind).toBe("exact");
   });
 
-  it.each([null, "same-cursor"])("reports incomplete pagination and allows retry (cursor: %s)", async (cursor) => {
-    request.mockImplementation(async () => payload(["Jan Bučka"], { hasMore: true, nextCursorToken: cursor }));
+  it.each([null, [42]])("rejects an incomplete or malformed response and allows retry", async (names) => {
+    request.mockResolvedValue(Response.json({ ok: true, names }));
     await act(async () => root.render(<Harness {...defaultProps} />));
     expect(latest.status).toBe("error");
     request.mockResolvedValue(payload(["Jan Buček"]));
@@ -66,19 +66,17 @@ describe("client name directory loading", () => {
   });
 
   it("clears the old owner's matches immediately and ignores a late response after switching", async () => {
-    request.mockResolvedValueOnce(payload(["Jan Buček"], { hasMore: true, nextCursorToken: "next" }));
     let resolveOld!: (response: Response) => void;
     request.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
     await act(async () => root.render(<Harness {...defaultProps} />));
-    expect(latest.matches[0].kind).toBe("exact");
-    const oldSignal = request.mock.calls[1][1]!.signal!;
+    expect(latest.status).toBe("loading");
+    const oldSignal = request.mock.calls[0][1]!.signal!;
     request.mockResolvedValue(payload([]));
     await act(async () => root.render(<Harness {...defaultProps} ownerEmail="other@example.test" isSavingForSubordinate />));
     expect(oldSignal.aborted).toBe(true);
     expect(latest.matches).toEqual([]);
     const lastUrl = new URL(String(request.mock.lastCall![0]), "https://bohemka.app");
-    expect(lastUrl.searchParams.get("scope")).toBe("team");
-    expect(lastUrl.searchParams.get("subordinates")).toBe("other@example.test");
+    expect(lastUrl.searchParams.get("ownerEmail")).toBe("other@example.test");
     await act(async () => resolveOld(payload(["Jan Buček"])));
     expect(latest.matches).toEqual([]);
     expect(latest.status).toBe("ready");
@@ -89,7 +87,13 @@ describe("client name directory loading", () => {
     await act(async () => root.render(<Harness {...defaultProps} impersonatedUserEmail="owner@example.test" />));
     expect(new Headers(request.mock.lastCall![1]!.headers).get(ADMIN_IMPERSONATION_HEADER)).toBe("owner@example.test");
     request.mockResolvedValue(payload(["Jan Buček"]));
-    await act(async () => window.dispatchEvent(new Event("contracts:updated")));
+    await act(async () => {
+      window.dispatchEvent(new Event("contracts:updated"));
+      window.dispatchEvent(new Event("contracts:updated"));
+      window.dispatchEvent(new Event("contracts:updated"));
+      await new Promise(resolve => setTimeout(resolve, 230));
+    });
+    expect(request).toHaveBeenCalledTimes(2);
     expect(latest.matches[0].kind).toBe("exact");
     expect(new Headers(request.mock.lastCall![1]!.headers).get(ADMIN_IMPERSONATION_HEADER)).toBe("owner@example.test");
   });

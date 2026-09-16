@@ -16,6 +16,7 @@ export type ConseqZenitPdfResult = {
 };
 
 export type ConseqZenitPdfOptions = {
+  allowOcr?: boolean;
   onOcrStart?: () => void;
   onOcrProgress?: (progress: PdfOcrProgress) => void;
 };
@@ -130,7 +131,9 @@ export function parseConseqZenitPages(pages: PdfOcrPage[], ocrTextUsed = false):
     return match ? Number(match[1]) : null;
   });
   return {
-    productDetected: text.includes("conseq") && text.includes("zenit"),
+    // OCR can lose the small tail of Q; require the separate Zenit name too.
+    productDetected: (text.includes("conseq") && text.includes("zenit")) ||
+      (ocrTextUsed && /\bconseo\b/.test(text) && /\bzenit\b/.test(text)),
     contractNumber: readField(rows, /cislo smlouvy\s*:?/, (value) => value.match(/^\s*(\d{6,14})\b/)?.[1] ?? null),
     clientName: readField(parties, /jmeno a prijm\w*(?:\s*,?\s*titul)?\s*:?/, parseName),
     // Identify the DPS contribution independently of OCR errors in "(Kč)".
@@ -149,9 +152,12 @@ export function parseConseqZenitPages(pages: PdfOcrPage[], ocrTextUsed = false):
   };
 }
 
-const cache = new WeakMap<File, Promise<ConseqZenitPdfResult>>();
+// Keep OCR-derived values out of text-only imports, including concurrent reads.
+const ocrCache = new WeakMap<File, Promise<ConseqZenitPdfResult>>();
+const textCache = new WeakMap<File, Promise<ConseqZenitPdfResult>>();
 
 export function parseConseqZenitPdf(file: File, options: ConseqZenitPdfOptions = {}): Promise<ConseqZenitPdfResult> {
+  const cache = options.allowOcr === false ? textCache : ocrCache;
   const existing = cache.get(file);
   if (existing) return existing;
   const pending = readPdf(file, options).catch((error) => { cache.delete(file); throw error; });
@@ -181,7 +187,7 @@ async function readPdf(file: File, options: ConseqZenitPdfOptions): Promise<Cons
   }
   const parsed = parseConseqZenitPages(pages);
   if (parsed.clientName && parsed.amount != null && parsed.policyEndDate && parsed.policyStartDate && parsed.contractSignedDate && parsed.contractNumber) return parsed;
-  if (typeof document === "undefined") return parsed;
+  if (options.allowOcr === false || typeof document === "undefined") return parsed;
   options.onOcrStart?.();
   const { extractOcrLinesFromPdf } = await import("./pdfOcr");
   // The signature protocol and the DPS form precede the contractual terms.

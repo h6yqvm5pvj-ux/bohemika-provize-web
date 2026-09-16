@@ -5,6 +5,7 @@ import {
 } from "@/lib/appSession";
 import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
 import { AUTH_EMAIL_ACTION_PATH } from "@/lib/authEmailAction";
+import { OCR_WORKER_CSP } from "@/lib/ocrWorkerPolicy";
 
 const CONNECT_SRC = [
   "'self'",
@@ -306,7 +307,9 @@ export async function proxy(req: NextRequest) {
     res.headers.set("X-Frame-Options", "DENY");
   }
 
-  if (isVigModelEmbed) {
+  if (pathname === "/ocr/worker.min.js") {
+    res.headers.set("Content-Security-Policy", OCR_WORKER_CSP);
+  } else if (isVigModelEmbed) {
     // The supplied standalone renderer is sandboxed by its parent iframe and uses inline GLSL/WebGL code.
     res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors, frameSrc));
   } else if (process.env.CSP_STRICT_ENFORCE === "1") {

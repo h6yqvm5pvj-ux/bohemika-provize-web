@@ -133,7 +133,7 @@ describe("admin broadcast rules", () => {
         options,
         groupCounts,
       })
-    ).toBe("Všichni s aktivním push tokenem");
+    ).toBe("Uživatelé se zapnutými upozorněními");
     expect(
       resolveAdminBroadcastRecipientLabel({
         mode: "group",

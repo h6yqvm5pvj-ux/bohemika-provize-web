@@ -501,7 +501,8 @@ export type MatchedSystemContract = {
 };
 
 export type ManualNeonRefreshConversionTarget = {
-  statementId: string;
+  statementId?: string | null;
+  statementKey?: string;
   contract: MatchedSystemContract;
   contractNumber: string;
 };

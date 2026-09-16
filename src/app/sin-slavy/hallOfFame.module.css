@@ -131,13 +131,36 @@
 .state button, .state a, .noResults button { margin-top: 5px; padding: 10px 15px; border: 1px solid #ddcbe9; border-radius: 9px; color: #9770ad; background: #fff; font-size: 12px; }
 .emptyMedal { display: grid; place-items: center; width: 75px; height: 75px; margin-bottom: 9px; border: 1px solid #e8d6ad; border-radius: 23px; background: linear-gradient(135deg, #fff, #f3e7cc); box-shadow: 0 4px 0 #e8d8b8, 0 12px 26px #ac884815; color: #b69961; }
 .noResults { border: 0; border-radius: 0; padding: 45px 20px; }
-.loading { padding: 30px; color: #ad94bc; text-align: center; font-size: 12px; }
-.skeletonPodium { display: flex; align-items: flex-end; justify-content: center; gap: 18px; margin-bottom: 24px; }
-.skeletonPodium span { width: 28%; height: 210px; border-radius: 20px; background: linear-gradient(100deg, #f5f0f9, #faf7fd, #f5f0f9); background-size: 200%; animation: shimmer 1.8s ease-in-out infinite; }
-.skeletonPodium span:nth-child(2) { height: 240px; }
-.skeletonPodium span:last-child { height: 195px; }
+.loading { display: flex; flex-direction: column; align-items: center; min-height: 370px; overflow: hidden; padding: 21px 20px 32px; border: 1px solid #eee7f3; border-radius: 24px; background: radial-gradient(ellipse at 50% 25%, #f3ebfa95, transparent 60%), linear-gradient(145deg, #fefcff, #fff 65%, #fdfaf5); text-align: center; }
+.loadingScene { position: relative; width: 288px; max-width: 100%; height: 208px; flex-shrink: 0; }
+.loadingHalo { position: absolute; top: 15px; left: calc(50% - 88px); width: 176px; height: 176px; border-radius: 50%; background: radial-gradient(circle, #f3e4bd70, #e9dcf760 55%, transparent 72%); }
+.loadingOrbit { position: absolute; top: 13px; left: calc(50% - 86px); width: 172px; height: 172px; border: 1px solid #e8ddf27a; border-radius: 50%; }
+.loadingOrbit::after { content: ""; position: absolute; inset: -15px; border: 1px dashed #e7ddec9c; border-radius: 50%; }
+.loadingSparkle, .loadingSparkleSmall { position: absolute; z-index: 2; top: 53px; left: calc(50% - 102px); color: #ba944f; fill: #f5e8c7; }
+.loadingSparkleSmall { top: 105px; left: calc(50% + 91px); color: #a282bc; fill: #eadef4; }
+.loadingPodium { position: absolute; z-index: 1; left: 50%; bottom: 12px; display: flex; align-items: flex-end; gap: 5px; width: 186px; height: 72px; transform: translateX(-50%); }
+.loadingPodium::after { content: ""; position: absolute; z-index: -1; inset: auto -17px -6px; height: 18px; border-radius: 50%; background: #a185ba20; filter: blur(7px); }
+.loadingPodium > span { display: flex; align-items: center; justify-content: center; width: 58px; height: 48px; padding-top: 5px; border: 1px solid #dbcee8; border-radius: 8px 8px 5px 5px; background: linear-gradient(110deg, #f1eaf8, #e5d8f0); box-shadow: inset 0 5px 0 #fbf8ffb0, inset -5px 0 0 #b59ac319; color: #9d81b4; font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.loadingPodium > [data-place="1"] { width: 60px; height: 72px; border-color: #e3d0a6; background: linear-gradient(110deg, #f9edd1, #efdcaf); box-shadow: inset 0 5px 0 #fffaf0bf, inset -5px 0 0 #cba55b14; color: #ac8849; }
+.loadingPodium > [data-place="3"] { height: 37px; border-color: #e8d8d0; background: linear-gradient(110deg, #f8eee9, #efdfd6); box-shadow: inset 0 5px 0 #fffaf7bf, inset -5px 0 0 #c69f8914; color: #b1907f; }
+.loadingTrophy { position: absolute; z-index: 2; top: -4px; left: calc(50% - 72px); width: 144px; height: 144px; transform: translateY(-4px) rotate(-3deg); filter: drop-shadow(0 8px 8px #93734914); }
+.loadingTrophy > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.loadingEyebrow { margin-top: 4px; color: #947746; font-size: 9px; font-weight: 650; letter-spacing: .18em; text-transform: uppercase; }
+.loading h2 { margin-top: 9px; color: #60456f; font-size: clamp(20px, 2.4vw, 24px); font-weight: 650; line-height: 1.35; letter-spacing: -.035em; text-wrap: balance; }
+.loading p { margin-top: 8px; color: #8b7498; font-size: 12px; line-height: 1.7; text-wrap: balance; }
+.loadingTrack { width: 112px; height: 3px; overflow: hidden; margin-top: 22px; border-radius: 8px; background: #ede4f4; }
+.loadingTrack > span { display: block; width: 40%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #cbb1de, #a680c1, #d7bc84); transform: translateX(75%); }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-@keyframes shimmer { 0%, 100% { background-position: 0%; } 50% { background-position: 100%; } }
+@media (prefers-reduced-motion: no-preference) {
+  .loadingTrophy { animation: loadingFloat 3.6s ease-in-out infinite; }
+  .loadingSparkle, .loadingSparkleSmall { animation: loadingTwinkle 2.8s ease-in-out infinite; }
+  .loadingSparkleSmall { animation-delay: -.9s; }
+  .loadingTrack > span { animation: loadingTravel 2s ease-in-out infinite; }
+}
+@keyframes loadingFloat { 0%, 100% { transform: translateY(-4px) rotate(-3deg); } 50% { transform: translateY(-12px) rotate(3deg); } }
+@keyframes loadingTwinkle { 0%, 100% { opacity: .4; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.12); } }
+@keyframes loadingTravel { from { transform: translateX(-110%); } to { transform: translateX(360%); } }
+:global(:root[data-motion="off"]) .loading * { animation: none !important; }
 @media (min-width: 1600px) { .winnerAmount { font-size: 24px; } }
 @media (max-width: 1100px) {
   .heroArt { right: -3px; width: 270px; }

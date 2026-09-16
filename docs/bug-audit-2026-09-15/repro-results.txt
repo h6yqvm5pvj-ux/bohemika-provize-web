@@ -1,0 +1,20 @@
+
+ RUN  v4.1.10 /Users/jakubrauscher/bohemika-provize-web
+
+stdout | .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > turns the birth date of a child born in May 2014 into May 1914
+{"bug":"child-birth-date","inputPrefix":"140515","actual":"1914-05-15","expected":"2014-05-15"}
+
+ ✓ .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > turns the birth date of a child born in May 2014 into May 1914 2ms
+stdout | .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > drops a current business property contract from every hall category
+{"bug":"business-hall-omission","suppliedContracts":["cppsimplex","domex"],"actual":{"id":"bc94a57bfacaf626bf177ade","name":"Testovací poradce","profileAvatar":"","contracts":1,"annualPremium":12000,"rank":1,"leaderRatioPct":100},"expected":{"contracts":2,"annualPremium":24000}}
+
+stdout | .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > leaves all three shared meeting-record keys in browser storage after logout
+{"bug":"meeting-input-survives-logout","retainedKeys":["carRecord.resultsInput","lifeRecordFormDraft","lifeRecordResultInput"]}
+
+ ✓ .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > drops a current business property contract from every hall category 129ms
+ ✓ .tmp/bug-audit-2026-09-15/repro.test.ts > audit evidence: current incorrect behavior > leaves all three shared meeting-record keys in browser storage after logout 1ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  13:08:44
+   Duration  240ms (transform 74ms, setup 0ms, import 53ms, tests 132ms, environment 0ms)

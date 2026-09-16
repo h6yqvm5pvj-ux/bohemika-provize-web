@@ -86,7 +86,7 @@ export function CalculatorContractDetailsSection({
   const showSuggestions = !exactMatch && clientSuggestionsOpen && clientNameMatches.length > 0;
   const activeIndex = activeSuggestion?.query === clientName
     ? clientNameMatches.findIndex((match) => match.name === activeSuggestion.name)
-    : -1;
+    : clientLookupStatus === "ready" && clientNameMatches.length === 1 && clientNameMatches[0].kind !== "similar" ? 0 : -1;
   const sourceLabel = clientNameSource === "pdf" ? "Jméno načteno z PDF. "
     : clientNameSource === "statement" ? "Jméno načteno z výpisu. " : "";
   const hasNameQuery = clientName.trim().length >= 2;
@@ -130,11 +130,14 @@ export function CalculatorContractDetailsSection({
                 setActiveSuggestion(null);
                 onClientNameChange(event.target.value);
               }}
-              placeholder="Např. Jan Novák"
+              placeholder="Jméno, příjmení nebo např. J Novák"
               autoComplete="off"
+              autoCapitalize="words"
+              spellCheck={false}
               onFocus={onClientNameFocus}
               onBlur={onClientNameBlur}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
                 if (event.key === "Escape") {
                   setActiveSuggestion(null);
                   onClientNameBlur();
@@ -166,7 +169,9 @@ export function CalculatorContractDetailsSection({
             )}
             {showSuggestions && (
               <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-violet-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-2xl">
-                <div className="border-b border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">Vyber jméno ze systému</div>
+                <div className="border-b border-violet-100 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+                  {clientNameMatches.length === 1 && activeIndex === 0 ? "Enter vloží jméno" : "Vyber jméno · ↑ ↓ a Enter"}
+                </div>
                 <div id={listId} role="listbox" aria-label="Nalezená jména klientů">
                 {clientNameMatches.map(({ name, kind }, index) => (
                   <button

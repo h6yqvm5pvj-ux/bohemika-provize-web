@@ -30,6 +30,8 @@ import { PropertyRecordForm } from "./PropertyRecordForm";
 import { LiabilityRecordForm } from "./LiabilityRecordForm";
 import { TravelRecordForm } from "./TravelRecordForm";
 import { BusinessRecordForm } from "./BusinessRecordForm";
+import { MeetingRecordSession } from "./MeetingRecordSession";
+import type { MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 
 const INSURANCE_TYPE_ICONS: Record<RecordInsuranceType, LucideIcon> = {
   life: HeartPulse,
@@ -41,6 +43,10 @@ const INSURANCE_TYPE_ICONS: Record<RecordInsuranceType, LucideIcon> = {
 };
 
 export default function RecordOfMeetingPage() {
+  return <MeetingRecordSession>{(owner) => <RecordOfMeeting owner={owner} />}</MeetingRecordSession>;
+}
+
+function RecordOfMeeting({ owner }: { owner: MeetingRecordContext }) {
   const [selectedType, setSelectedType] =
     useState<RecordInsuranceType>("life");
 
@@ -76,8 +82,8 @@ export default function RecordOfMeetingPage() {
         </div>
 
         <section id="record-form" className={styles.form} aria-label={RECORD_INSURANCE_TYPES.find((type) => type.id === selectedType)?.title}>
-          {selectedType === "life" && <LifeRecordForm />}
-          {selectedType === "car" && <CarRecordForm />}
+          {selectedType === "life" && <LifeRecordForm owner={owner} />}
+          {selectedType === "car" && <CarRecordForm owner={owner} />}
           {selectedType === "property" && <PropertyRecordForm />}
           {selectedType === "liability" && <LiabilityRecordForm />}
           {selectedType === "business" && <BusinessRecordForm />}

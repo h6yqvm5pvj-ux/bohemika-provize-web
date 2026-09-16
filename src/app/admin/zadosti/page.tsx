@@ -38,6 +38,8 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import Image from "next/image";
 
 import adminStyles from "./adminConsole.module.css";
+import { AdminPageHeader } from "../components/AdminPageHeader";
+import { ADMIN_SECTIONS } from "../components/adminSections";
 
 import { AppLayout } from "@/components/AppLayout";
 import { auth } from "@/app/firebase";
@@ -1725,34 +1727,43 @@ export default function AdminRequestsPage() {
     loadAdminUsersRows,
   ]);
 
-  const fieldClass =
-    "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.04)] outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10";
-  const createUserFieldClass =
-    "w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 shadow-[0_6px_16px_rgba(15,23,42,0.04)] outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 [caret-color:#7c3aed]";
-  const createUserLabelClass =
-    "text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600";
-  const adminDarkSectionClass =
-    "relative overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_100%_0%,rgba(237,233,254,0.78),transparent_25%),linear-gradient(180deg,#ffffff_0%,#faf9ff_100%)] px-4 py-4 text-slate-900 shadow-[0_20px_60px_rgba(76,29,149,0.09)] sm:rounded-[28px] sm:px-6 sm:py-5";
-  const adminDarkTopBarClass =
-    "pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#7c3aed_0%,#a855f7_50%,#c084fc_100%)]";
-  const adminDarkBadgeClass =
-    "mb-3 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700";
-  const adminDarkPanelClass =
-    "relative rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.06)]";
-  const adminDarkSoftPanelClass =
-    "rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 shadow-[0_8px_22px_rgba(15,23,42,0.04)]";
-  const adminDarkMetricClass =
-    "rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.05)]";
-  const adminDarkSubtleButtonClass =
-    "inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-60";
-  const adminDarkPrimaryButtonClass =
-    "admin-on-violet inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold !text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60";
-  const subscriptionHistoryFieldClass =
-    "h-9 w-full min-w-[116px] rounded-xl border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:cursor-not-allowed disabled:opacity-60";
-  const subscriptionHistoryIconButtonClass =
-    "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-55";
-  const subscriptionHistoryDangerButtonClass =
-    "inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300/30 bg-rose-500/12 text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-55";
+  const handleAdminSectionChange = useCallback((section: AdminSection) => {
+    setActiveAdminSection(section);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("section") !== section) {
+      url.searchParams.set("section", section);
+      window.history.pushState(window.history.state, "", url);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !canAccessAdminPanel) return;
+    const syncSection = () => {
+      const requested = new URLSearchParams(window.location.search).get("section") ?? "requests";
+      const section = ADMIN_SECTIONS.find(item => item.id === requested && !("href" in item));
+      if (!section) return;
+      const allowed = section.id === "createUser" ? canCreateUsers : section.id === "subscriptions" ? isOwnerAdmin : isAllowedAdmin;
+      if (allowed) setActiveAdminSection(section.id as AdminSection);
+    };
+    syncSection();
+    window.addEventListener("popstate", syncSection);
+    return () => window.removeEventListener("popstate", syncSection);
+  }, [authReady, canAccessAdminPanel, canCreateUsers, isAllowedAdmin, isOwnerAdmin]);
+
+  const fieldClass = adminStyles.field;
+  const createUserFieldClass = adminStyles.field;
+  const createUserLabelClass = adminStyles.label;
+  const adminSectionClass = adminStyles.section;
+  const adminTopBarClass = adminStyles.topBar;
+  const adminBadgeClass = adminStyles.badge;
+  const adminPanelClass = adminStyles.panel;
+  const adminSoftPanelClass = adminStyles.softPanel;
+  const adminMetricClass = adminStyles.metric;
+  const adminSubtleButtonClass = adminStyles.button;
+  const adminPrimaryButtonClass = adminStyles.primaryButton;
+  const subscriptionHistoryFieldClass = `${adminStyles.field} ${adminStyles.historyField}`;
+  const subscriptionHistoryIconButtonClass = adminStyles.iconButton;
+  const subscriptionHistoryDangerButtonClass = adminStyles.dangerButton;
   const selectedAdminUser = adminUsersEditingEmail
     ? adminUsersRows.find((row) => row.email === adminUsersEditingEmail) ?? null
     : null;
@@ -1902,7 +1913,7 @@ export default function AdminRequestsPage() {
           <div className="admin-create-success-stage relative flex min-h-[260px] flex-col items-center justify-center px-4 text-center">
             <span className="admin-create-success-aura absolute inset-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full" />
             <span className="admin-create-success-orbit absolute left-1/2 top-1/2 h-[210px] w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-full" />
-            <span className="admin-create-success-check relative mb-5 inline-flex h-24 w-24 items-center justify-center rounded-full !text-violet-100">
+            <span className="admin-create-success-check relative mb-5 inline-flex h-24 w-24 items-center justify-center rounded-full text-slate-600">
               <Check size={52} strokeWidth={2.7} aria-hidden="true" />
             </span>
             <p className="admin-create-success-kicker text-[12px] font-semibold uppercase tracking-[0.32em]">
@@ -2025,28 +2036,28 @@ export default function AdminRequestsPage() {
               void handleSaveAdminUser(selectedAdminUser);
             }}
           >
-            <span className={adminDarkTopBarClass} />
+            <span className={adminTopBarClass} />
             <div className="grid gap-0 lg:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.55fr)]">
-              <aside className="relative overflow-hidden bg-slate-950 px-5 py-5 !text-white sm:px-6">
+              <aside className="relative overflow-hidden bg-violet-50 px-5 py-5 text-slate-900 sm:px-6">
                 <button
                   type="button"
                   onClick={handleCancelAdminUserEdit}
-                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/14 bg-white/[0.08] text-white transition hover:bg-white/[0.14]"
+                  className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-900 transition hover:bg-slate-50"
                   aria-label="Zavřít detail"
                 >
                   <X size={16} strokeWidth={2.2} aria-hidden="true" />
                 </button>
 
                 <div className="pr-10">
-                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/18 bg-white text-xl font-bold text-slate-950">
+                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-bold text-slate-950">
                     {(selectedAdminUser.fullName || selectedAdminUser.email).charAt(0).toUpperCase()}
                   </span>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
                         selectedAdminUserMissingItems.length === 0
-                          ? "border-violet-200/55 bg-violet-300/18 !text-violet-50"
-                          : "border-amber-200/55 bg-amber-300/18 !text-amber-50"
+                          ? "border-violet-200/55 bg-violet-300/18 text-slate-600"
+                          : "border-amber-200/55 bg-amber-300/18 text-amber-800"
                       }`}
                     >
                       {selectedAdminUserMissingItems.length === 0 ? (
@@ -2058,20 +2069,20 @@ export default function AdminRequestsPage() {
                         ? "OK"
                         : `K doplnění ${selectedAdminUserMissingItems.length}`}
                     </span>
-                    <span className="rounded-full border border-white/22 bg-white/[0.13] px-2.5 py-1 text-xs font-semibold !text-white">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-900">
                       {formatAccountTypeLabel(adminUsersEditAccountType || selectedAdminUser.accountType)}
                     </span>
                     {adminUsersEditSpecialist ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200/55 bg-cyan-300/18 px-2.5 py-1 text-xs font-semibold !text-cyan-50">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200/55 bg-cyan-300/18 px-2.5 py-1 text-xs font-semibold text-cyan-800">
                         <ShieldCheck size={13} strokeWidth={2.4} aria-hidden="true" />
                         Specialista
                       </span>
                     ) : null}
                   </div>
-                  <h2 className="mt-4 break-words text-2xl font-bold leading-tight text-white">
+                  <h2 className="mt-4 break-words text-2xl font-bold leading-tight text-slate-900">
                     {selectedAdminUser.fullName || nameFromEmail(selectedAdminUser.email)}
                   </h2>
-                  <p className="mt-1 break-all text-sm font-semibold !text-slate-100">
+                  <p className="mt-1 break-all text-sm font-semibold text-slate-600">
                     {selectedAdminUser.email}
                   </p>
                 </div>
@@ -2081,42 +2092,42 @@ export default function AdminRequestsPage() {
                     selectedAdminUserMissingItems.map((item) => (
                       <div
                         key={item.key}
-                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200/40 bg-amber-300/16 px-3 py-2 text-sm font-semibold !text-amber-50"
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200/40 bg-amber-300/16 px-3 py-2 text-sm font-semibold text-amber-800"
                       >
                         <span>{item.label}</span>
-                        <span className="rounded-full bg-amber-100/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] !text-amber-50">
+                        <span className="rounded-full bg-amber-100/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-800">
                           Chybí
                         </span>
                       </div>
                     ))
                   ) : (
-                    <div className="flex items-center gap-2 rounded-2xl border border-violet-200/40 bg-violet-300/16 px-3 py-3 text-sm font-semibold !text-violet-50">
+                    <div className="flex items-center gap-2 rounded-2xl border border-violet-200/40 bg-violet-300/16 px-3 py-3 text-sm font-semibold text-slate-600">
                       <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
                       Profil má vyplněné hlavní údaje.
                     </div>
                   )}
                 </div>
 
-                <div className="mt-5 grid gap-2 text-xs !text-slate-100">
-                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-2">
-                    <span className="block font-semibold uppercase tracking-[0.14em] !text-slate-200">
-                      Auth
+                <div className="mt-5 grid gap-2 text-xs text-slate-600">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      Stav účtu
                     </span>
-                    <span className="mt-1 block font-semibold !text-white">
+                    <span className="mt-1 block font-semibold text-slate-900">
                       {selectedAdminUser.disabled ? "Deaktivovaný" : "Aktivní"} ·{" "}
                       {selectedAdminUser.emailVerified ? "E-mail ověřen" : "E-mail neověřen"}
                     </span>
                   </div>
-                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold uppercase tracking-[0.14em] !text-slate-200">
+                      <span className="font-semibold uppercase tracking-[0.14em] text-slate-600">
                         2FA
                       </span>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
                           selectedAdminUserMfaEnabled
-                            ? "border-violet-200/55 bg-violet-300/18 !text-violet-50"
-                            : "border-rose-200/55 bg-rose-300/18 !text-rose-50"
+                            ? "border-violet-200/55 bg-violet-300/18 text-slate-600"
+                            : "border-rose-200/55 bg-rose-300/18 text-rose-800"
                         }`}
                       >
                         {selectedAdminUserMfaEnabled ? (
@@ -2132,7 +2143,7 @@ export default function AdminRequestsPage() {
                         {selectedAdminUserMfaFactors.map((factor) => (
                           <span
                             key={factor.uid}
-                            className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-white/[0.13] px-2 py-0.5 text-[11px] font-semibold !text-white"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-900"
                             title={
                               factor.enrollmentTime
                                 ? `Zapsáno: ${formatAuthDateTime(factor.enrollmentTime)}`
@@ -2145,13 +2156,13 @@ export default function AdminRequestsPage() {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-2 text-[11px] leading-relaxed !text-slate-200">
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
                         Uživatel si při dalším vstupu do aplikace nastaví nové 2FA.
                       </p>
                     )}
                   </div>
-                  <div className="rounded-2xl border border-white/16 bg-white/[0.1] px-3 py-3">
-                    <span className="block font-semibold uppercase tracking-[0.14em] !text-slate-200">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <span className="block font-semibold uppercase tracking-[0.14em] text-slate-600">
                       Bezpečnostní akce
                     </span>
                     <div className="mt-3 grid gap-2">
@@ -2164,7 +2175,7 @@ export default function AdminRequestsPage() {
                           )
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-white/22 bg-white/[0.14] px-3 py-2 text-xs font-semibold !text-white transition hover:bg-white/[0.2] disabled:cursor-not-allowed disabled:opacity-75"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserResetPasswordKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2179,7 +2190,7 @@ export default function AdminRequestsPage() {
                           void handleAdminUserSecurityAction(selectedAdminUser, "resetMfa")
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-200/45 bg-amber-300/18 px-3 py-2 text-xs font-semibold !text-amber-50 transition hover:bg-amber-300/24 disabled:cursor-not-allowed disabled:opacity-75"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-amber-200/45 bg-amber-300/18 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserResetMfaKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2200,7 +2211,7 @@ export default function AdminRequestsPage() {
                             )
                           }
                           disabled={Boolean(adminUserSecurityBusyKey)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-sky-200/45 bg-sky-300/18 px-3 py-2 text-xs font-semibold !text-sky-50 transition hover:bg-sky-300/24 disabled:cursor-not-allowed disabled:opacity-75"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-sky-200/45 bg-sky-300/18 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:bg-sky-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                         >
                           {adminUserSecurityBusyKey === selectedAdminUserVerifyEmailKey ? (
                             <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2219,7 +2230,7 @@ export default function AdminRequestsPage() {
                           )
                         }
                         disabled={Boolean(adminUserSecurityBusyKey)}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200/45 bg-rose-300/18 px-3 py-2 text-xs font-semibold !text-rose-50 transition hover:bg-rose-300/24 disabled:cursor-not-allowed disabled:opacity-75"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200/45 bg-rose-300/18 px-3 py-2 text-xs font-semibold text-rose-800 transition hover:bg-rose-300/24 disabled:cursor-not-allowed disabled:opacity-75"
                       >
                         {adminUserSecurityBusyKey === selectedAdminUserRevokeSessionsKey ? (
                           <Loader2 size={13} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -2421,7 +2432,7 @@ export default function AdminRequestsPage() {
                       value: adminUsersEditSpecialist ? "Ano" : "Ne",
                     },
                     {
-                      label: "Dokončení setupu",
+                      label: "Úvodní nastavení",
                       value: formatAuthDateTime(selectedAdminUser.accountSetupCompletedAt),
                     },
                     {
@@ -2615,44 +2626,21 @@ export default function AdminRequestsPage() {
           </form>
         </div>
       ) : null}
-      <div className={`${adminStyles.console} w-full max-w-[1200px] space-y-6 px-2 pb-8 sm:px-4`}>
-        <section className={adminDarkSectionClass}>
-          <div className={adminDarkTopBarClass} />
-
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <span className={adminDarkBadgeClass}>
-                Řídicí panel
-              </span>
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                Admin
-              </h1>
-            </div>
-            {isAllowedAdmin && activeAdminSection === "requests" ? (
-              <button
-                type="button"
-                onClick={() => void refreshAllRequests()}
-                disabled={
-                  loading || userRequestsLoading || contractTransferRequestsLoading
-                }
-                className={adminDarkSubtleButtonClass}
-              >
-                <RefreshCcw size={15} strokeWidth={2.2} aria-hidden="true" />
-                Obnovit
-              </button>
-            ) : null}
-          </div>
-
-          {canAccessAdminPanel ? (
-            <AdminNavigation
-              activeSection={activeAdminSection}
-              onSectionChange={setActiveAdminSection}
-              isAllowedAdmin={isAllowedAdmin}
-              canCreateUsers={canCreateUsers}
-              isOwnerAdmin={isOwnerAdmin}
-            />
-          ) : null}
-
+      <div className={adminStyles.console}>
+        <AdminPageHeader
+          page={activeAdminSection}
+          meta={<><span>{currentUser?.email}</span><span>{isOwnerAdmin ? "Vlastník aplikace" : isAllowedAdmin ? "Administrátor" : "Správa uživatelů"}</span></>}
+          actions={isAllowedAdmin && activeAdminSection === "requests" ? (
+            <button type="button" onClick={() => void refreshAllRequests()} disabled={loading || userRequestsLoading || contractTransferRequestsLoading} className={adminSubtleButtonClass}>
+              <RefreshCcw size={15} strokeWidth={2} aria-hidden="true" /> Obnovit přehled
+            </button>
+          ) : undefined}
+        />
+        {canAccessAdminPanel ? (
+          <AdminNavigation activeSection={activeAdminSection} onSectionChange={handleAdminSectionChange} isAllowedAdmin={isAllowedAdmin} canCreateUsers={canCreateUsers} isOwnerAdmin={isOwnerAdmin} pendingCount={pendingUnifiedCount} />
+        ) : null}
+        {!canAccessAdminPanel || activeAdminSection === "requests" ? (
+        <section className={adminSectionClass}>
           {!canAccessAdminPanel ? (
             <div className="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
               Tato sekce je dostupná pouze pro účty s rolí owner, admin nebo accountCreator.
@@ -2661,24 +2649,24 @@ export default function AdminRequestsPage() {
             <>
               {isAllowedAdmin && activeAdminSection === "requests" ? (
                 <div className="space-y-4">
-                  <aside className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.25fr_repeat(4,minmax(0,1fr))]">
-                    <div className="admin-on-violet overflow-hidden rounded-[24px] border border-violet-300/30 bg-[linear-gradient(145deg,#5b21b6_0%,#7c3aed_56%,#a855f7_100%)] p-4 text-white shadow-[0_22px_48px_rgba(109,40,217,0.28)]">
-                      <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-100/80">
+                  <aside className={adminStyles.requestStats}>
+                    <div className={`${adminStyles.requestLead} admin-on-violet`}>
+                      <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">
                         <Inbox size={13} strokeWidth={2.2} aria-hidden="true" />
                         Žádosti
                       </div>
                       <div className="mt-3 flex items-end justify-between gap-3">
                         <div>
                           <div className="text-4xl font-bold leading-none">{pendingUnifiedCount}</div>
-                          <div className="mt-1 text-xs font-medium text-violet-100">čeká na akci</div>
+                          <div className="mt-1 text-xs font-medium text-slate-600">čeká na akci</div>
                         </div>
-                        <div className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+                        <div className="rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-xs font-semibold ">
                           {pendingUnifiedCount}/{totalRequestsCount}
                         </div>
                       </div>
                     </div>
                     <div className="contents">
-                      <div className={adminDarkMetricClass}>
+                      <div className={adminMetricClass}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             <Inbox size={13} strokeWidth={2.2} aria-hidden="true" />
@@ -2687,7 +2675,7 @@ export default function AdminRequestsPage() {
                           <span className="text-xl font-black text-slate-950">{totalRequestsCount}</span>
                         </div>
                       </div>
-                      <div className={adminDarkMetricClass}>
+                      <div className={adminMetricClass}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             <Clock3 size={13} strokeWidth={2.2} aria-hidden="true" />
@@ -2696,7 +2684,7 @@ export default function AdminRequestsPage() {
                           <span className="text-xl font-black text-slate-950">{pendingUnifiedCount}</span>
                         </div>
                       </div>
-                      <div className={adminDarkMetricClass}>
+                      <div className={adminMetricClass}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                             <UserCheck2 size={13} strokeWidth={2.2} aria-hidden="true" />
@@ -2709,7 +2697,7 @@ export default function AdminRequestsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700">
                             <AlertTriangle size={13} strokeWidth={2.2} aria-hidden="true" />
-                            Po SLA
+                            Po termínu
                           </span>
                           <span className="text-xl font-bold text-rose-900">{overdueUrgentCount}</span>
                         </div>
@@ -2717,7 +2705,7 @@ export default function AdminRequestsPage() {
                     </div>
                   </aside>
 
-                  <div className={`min-w-0 ${adminDarkPanelClass}`}>
+                  <div className={`min-w-0 ${adminPanelClass}`}>
                   <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                       <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-700">
@@ -2728,7 +2716,7 @@ export default function AdminRequestsPage() {
                       </h2>
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-                      <div className="inline-flex items-center justify-center gap-2 rounded-full border border-violet-200 bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(124,58,237,0.24)]">
+                      <div className="inline-flex items-center justify-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700">
                         <Clock3 size={15} strokeWidth={2.2} aria-hidden="true" />
                         {pendingUnifiedCount} čeká
                       </div>
@@ -2794,12 +2782,12 @@ export default function AdminRequestsPage() {
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Hledat podle jména, e-mailu nebo textu"
-                        className={`${createUserFieldClass} pl-10`}
+                        className={`${createUserFieldClass} ${adminStyles.fieldWithIcon}`}
                       />
                     </label>
                     <div className="grid grid-cols-2 gap-2 sm:min-w-[280px]">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                        SLA
+                        Lhůta
                         <span className="ml-2 font-semibold text-slate-900">hlídané</span>
                       </div>
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
@@ -2810,7 +2798,7 @@ export default function AdminRequestsPage() {
                   </div>
 
                   {actionMessage ? (
-                    <div className="mb-3 rounded-2xl border border-violet-300/30 bg-violet-400/12 px-4 py-3 text-sm !text-violet-100">
+                    <div className="mb-3 rounded-2xl border border-violet-300/30 bg-violet-400/12 px-4 py-3 text-sm text-slate-600">
                       {actionMessage}
                     </div>
                   ) : null}
@@ -2831,18 +2819,18 @@ export default function AdminRequestsPage() {
                   ) : null}
 
                   {loading || userRequestsLoading || contractTransferRequestsLoading ? (
-                    <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-4 py-8 text-center text-sm !text-violet-100/72">
-                      <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-3 py-1">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                      <div className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1">
                         <RefreshCcw size={14} strokeWidth={2.2} className="animate-spin" />
                         Načítám žádosti...
                       </div>
                     </div>
                   ) : visibleUnifiedRequests.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/18 bg-white/[0.05] px-4 py-9 text-center text-sm !text-violet-100/72">
-                      <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] !text-violet-100">
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-9 text-center text-sm text-slate-600">
+                      <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-600">
                         <Inbox size={18} strokeWidth={2.1} aria-hidden="true" />
                       </div>
-                      <p className="font-medium !text-violet-100">
+                      <p className="font-medium text-slate-600">
                         {search.trim()
                           ? "Pro zadaný filtr nebyla nalezena žádná žádost."
                           : requestQueueView === "pending"
@@ -2890,14 +2878,14 @@ export default function AdminRequestsPage() {
                               <div className="px-4 py-4">
                                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                   <div className="min-w-0 space-y-1 pl-1">
-                                    <div className="inline-flex max-w-full items-center gap-2 text-base font-semibold !text-white">
+                                    <div className="inline-flex max-w-full items-center gap-2 text-base font-semibold text-slate-900">
                                       <UserCheck2 size={16} strokeWidth={2.2} aria-hidden="true" />
-                                      <span className="truncate !text-white">{request.targetName}</span>
+                                      <span className="truncate text-slate-900">{request.targetName}</span>
                                     </div>
-                                    <div className="truncate text-sm !text-violet-100/58">{request.targetEmail}</div>
+                                    <div className="truncate text-sm text-slate-600">{request.targetEmail}</div>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className="inline-flex items-center rounded-full border border-violet-300/30 bg-violet-400/12 px-2.5 py-1 text-[11px] font-semibold !text-violet-100">
+                                    <span className="inline-flex items-center rounded-full border border-violet-300/30 bg-violet-400/12 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                       Ukončení spolupráce
                                     </span>
                                     <span
@@ -2910,13 +2898,13 @@ export default function AdminRequestsPage() {
 
                                 <div className="grid gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3 [&_.font-medium]:!text-slate-900 [&_span]:break-words">
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Žádá
                                     </span>
                                     <span className="font-medium text-slate-900">{request.requestedByEmail}</span>
                                   </div>
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Převod na
                                     </span>
                                     <span className="font-medium text-slate-900">
@@ -2924,7 +2912,7 @@ export default function AdminRequestsPage() {
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Rozsah
                                     </span>
                                     <span className="font-medium text-slate-900">
@@ -2932,7 +2920,7 @@ export default function AdminRequestsPage() {
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Vytvořeno
                                     </span>
                                     <span className="font-medium text-slate-900">
@@ -2940,7 +2928,7 @@ export default function AdminRequestsPage() {
                                     </span>
                                   </div>
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Rozhodnuto
                                     </span>
                                     <span className="font-medium text-slate-900">
@@ -2949,7 +2937,7 @@ export default function AdminRequestsPage() {
                                   </div>
                                   {waitInfo.waiting ? (
                                     <div>
-                                      <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                      <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                         Čeká
                                       </span>
                                       <span className="font-medium text-slate-900">
@@ -2975,7 +2963,7 @@ export default function AdminRequestsPage() {
                                     type="button"
                                     onClick={() => void handleDecision(request.id, "approve")}
                                     disabled={!pending || busy}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-violet-700 bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(124,58,237,0.22)] transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className={adminPrimaryButtonClass}
                                   >
                                     <Check size={14} strokeWidth={2.3} aria-hidden="true" />
                                     Schválit
@@ -3121,7 +3109,7 @@ export default function AdminRequestsPage() {
                                           void handleContractTransferDecision(request, "approve")
                                         }
                                         disabled={busy}
-                                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-700 bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(124,58,237,0.22)] transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className={adminPrimaryButtonClass}
                                       >
                                         <Check size={14} strokeWidth={2.3} aria-hidden="true" />
                                         {busy ? "Zpracovávám…" : "Schválit"}
@@ -3182,13 +3170,13 @@ export default function AdminRequestsPage() {
                             <div className="px-4 py-4">
                             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                               <div className="min-w-0 space-y-1 pl-1">
-                                <div className="truncate text-base font-semibold !text-white">
+                                <div className="truncate text-base font-semibold text-slate-900">
                                   {userRequestSubjectLabel[request.subject]}
                                 </div>
-                                <div className="truncate text-sm !text-violet-100/58">{request.requesterEmail}</div>
+                                <div className="truncate text-sm text-slate-600">{request.requesterEmail}</div>
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex items-center rounded-full border border-violet-300/30 bg-violet-400/12 px-2.5 py-1 text-[11px] font-semibold !text-violet-100">
+                                <span className="inline-flex items-center rounded-full border border-violet-300/30 bg-violet-400/12 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
                                   Uživatelská žádost
                                 </span>
                                 <span
@@ -3201,7 +3189,7 @@ export default function AdminRequestsPage() {
 
                             <div className="grid gap-x-5 gap-y-2 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3 [&_.font-medium]:!text-slate-900 [&_span]:break-words">
                               <div>
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   Priorita
                                 </span>
                                 <span className="font-medium text-slate-900">
@@ -3210,8 +3198,8 @@ export default function AdminRequestsPage() {
                               </div>
                               {slaInfo.waiting ? (
                                 <div>
-                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
-                                    Čeká / SLA
+                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    Čekání / lhůta
                                   </span>
                                   <span
                                     className={`font-medium ${
@@ -3225,7 +3213,7 @@ export default function AdminRequestsPage() {
                                 </div>
                               ) : null}
                               <div>
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   Firemní e-mail
                                 </span>
                                 <span className="font-medium text-slate-900">
@@ -3234,7 +3222,7 @@ export default function AdminRequestsPage() {
                               </div>
                               {request.requestedUserDraft?.fullName ? (
                                 <div>
-                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                     Jméno
                                   </span>
                                   <span className="font-medium text-slate-900">
@@ -3244,7 +3232,7 @@ export default function AdminRequestsPage() {
                               ) : null}
                               {request.requestedUserDraft?.agencyNumber ? (
                                 <div>
-                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                     Agenturní číslo
                                   </span>
                                   <span className="font-medium text-slate-900">
@@ -3255,7 +3243,7 @@ export default function AdminRequestsPage() {
                               {request.subject === "userCreation" ? (
                                 request.requestedUserDraft?.position ? (
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Pozice
                                     </span>
                                     <span className="font-medium text-slate-900">
@@ -3266,17 +3254,17 @@ export default function AdminRequestsPage() {
                                   </div>
                                 ) : (
                                   <div>
-                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                    <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                       Kariéra
                                     </span>
                                     <span className="font-medium text-slate-900">
-                                      doplní uživatel ve stepperu
+                                      doplní uživatel při prvním přihlášení
                                     </span>
                                   </div>
                                 )
                               ) : null}
                               <div>
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   Režim
                                 </span>
                                 <span className="font-medium text-slate-900">
@@ -3289,7 +3277,7 @@ export default function AdminRequestsPage() {
                               </div>
                               {request.requestedUserDraft?.managerEmail ? (
                                 <div>
-                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                     Nadřízený
                                   </span>
                                   <span className="font-medium text-slate-900">
@@ -3298,7 +3286,7 @@ export default function AdminRequestsPage() {
                                 </div>
                               ) : null}
                               <div>
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   Vytvořeno
                                 </span>
                                 <span className="font-medium text-slate-900">
@@ -3306,7 +3294,7 @@ export default function AdminRequestsPage() {
                                 </span>
                               </div>
                               <div>
-                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                   Rozhodnuto
                                 </span>
                                 <span className="font-medium text-slate-900">
@@ -3315,7 +3303,7 @@ export default function AdminRequestsPage() {
                               </div>
                               {request.createdUserEmail ? (
                                 <div>
-                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-300">
+                                  <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                                     Vytvořený účet
                                   </span>
                                   <span className="font-medium text-slate-900">
@@ -3325,7 +3313,7 @@ export default function AdminRequestsPage() {
                               ) : null}
                             </div>
 
-                            <div className="mt-3 rounded-xl border border-white/12 bg-white/[0.055] px-3 py-2 text-sm !text-violet-100/82">
+                            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                               {request.message}
                             </div>
 
@@ -3360,9 +3348,9 @@ export default function AdminRequestsPage() {
                             ) : null}
 
                             {pending ? (
-                              <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+                              <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
                                 {isUserCreation ? (
-                                  <div className="space-y-1.5 rounded-xl border border-white/12 bg-white/[0.055] px-3 py-3">
+                                  <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                                     <label className="text-xs font-semibold uppercase tracking-wide text-violet-700">
                                       Dočasné heslo (povinné pro akceptaci)
                                     </label>
@@ -3383,7 +3371,7 @@ export default function AdminRequestsPage() {
                                       <button
                                         type="button"
                                         onClick={() => handleGenerateRequestPassword(request.id)}
-                                        className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] !text-violet-100 transition hover:bg-white/[0.12]"
+                                        className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-50"
                                         title="Vygenerovat heslo"
                                         aria-label="Vygenerovat heslo"
                                       >
@@ -3393,7 +3381,7 @@ export default function AdminRequestsPage() {
                                         type="button"
                                         onClick={() => void handleCopyRequestPassword(request.id)}
                                         disabled={!passwordDraft.trim()}
-                                        className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] !text-violet-100 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                         title="Zkopírovat heslo"
                                         aria-label="Zkopírovat heslo"
                                       >
@@ -3420,7 +3408,7 @@ export default function AdminRequestsPage() {
                                     type="button"
                                     onClick={() => void handleUserRequestDecision(request, "accepted")}
                                     disabled={busy}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-violet-700 bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_rgba(124,58,237,0.22)] transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className={adminPrimaryButtonClass}
                                   >
                                     <Check size={14} strokeWidth={2.3} aria-hidden="true" />
                                     Akceptovat
@@ -3448,7 +3436,7 @@ export default function AdminRequestsPage() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="mt-3 rounded-xl border border-white/12 bg-white/[0.055] px-3 py-2 text-xs !text-violet-100/78">
+                              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                                 {request.status === "needsInfo"
                                   ? "Požadované doplnění: "
                                   : "Zpětná vazba: "}
@@ -3468,33 +3456,34 @@ export default function AdminRequestsPage() {
             </>
           )}
         </section>
+        ) : null}
 
         {canCreateUsers && activeAdminSection === "createUser" ? (
-          <section className={adminDarkSectionClass}>
-            <div className={adminDarkTopBarClass} />
+          <section className={adminSectionClass}>
+            <div className={adminTopBarClass} />
             <div className="relative mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <span className={adminDarkBadgeClass}>
+                <span className={adminBadgeClass}>
                   <ShieldCheck size={13} strokeWidth={2.2} aria-hidden="true" />
                   Správa účtů
                 </span>
-                <h2 className="inline-flex items-center gap-2 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
-                  <UserPlus size={20} strokeWidth={2.2} className="!text-violet-100" aria-hidden="true" />
+                <h2 className="inline-flex items-center gap-2 text-xl font-bold tracking-[-0.02em] text-slate-900 sm:text-2xl">
+                  <UserPlus size={20} strokeWidth={2.2} className="text-slate-600" aria-hidden="true" />
                   <span>Přidat uživatele</span>
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
                   Účet vznikne bez výchozí pozice. Kariérní historii si poradce doplní
-                  v úvodním stepperu při prvním přihlášení.
+                  při prvním přihlášení.
                 </p>
               </div>
-              <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-3 py-2 text-xs font-semibold !text-violet-100">
+              <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-3 py-2 text-xs font-semibold text-slate-600">
                 <BriefcaseBusiness size={15} strokeWidth={2.2} aria-hidden="true" />
-                Kariéra ve stepperu
+                Pozici vyplní kolega
               </div>
             </div>
 
             <form
-              className={`${adminDarkPanelClass} grid gap-4 md:grid-cols-2 xl:grid-cols-3`}
+              className={`${adminPanelClass} grid gap-4 md:grid-cols-2 xl:grid-cols-3`}
               onSubmit={(event) => {
                 event.preventDefault();
                 void handleCreateUser();
@@ -3566,18 +3555,18 @@ export default function AdminRequestsPage() {
                         }}
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           active
-                            ? "border-violet-200/60 bg-violet-400/22 !text-white shadow-[0_16px_34px_rgba(124,58,237,0.26)]"
-                            : "border-white/14 bg-white/[0.04] !text-violet-100 hover:border-violet-300/42 hover:bg-white/[0.08]"
+                            ? "border-violet-200 bg-violet-50 text-slate-900"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:border-violet-300/42 hover:bg-slate-50"
                         }`}
                         role="radio"
                         aria-checked={active}
                       >
-                        <span className={`flex items-center gap-2 text-sm font-semibold ${active ? "!text-white" : "!text-violet-100"}`}>
+                        <span className={`flex items-center gap-2 text-sm font-semibold ${active ? "text-slate-900" : "text-slate-600"}`}>
                           <span
                             className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border ${
                               active
-                                ? "border-violet-100/45 bg-white/14 !text-white"
-                                : "border-white/14 bg-white/[0.05] !text-violet-100"
+                                ? "border-violet-100/45 bg-white/14 text-slate-900"
+                                : "border-slate-200 bg-slate-50 text-slate-600"
                             }`}
                           >
                             {type.id === "advisor" ? (
@@ -3590,7 +3579,7 @@ export default function AdminRequestsPage() {
                         </span>
                         <span
                           className={`mt-1 block text-xs leading-relaxed ${
-                            active ? "!text-violet-50/76" : "!text-violet-100/58"
+                            active ? "text-slate-600" : "text-slate-600"
                           }`}
                         >
                           {type.description}
@@ -3618,7 +3607,7 @@ export default function AdminRequestsPage() {
                   <button
                     type="button"
                     onClick={handleGenerateNewUserPassword}
-                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] text-violet-100 transition hover:bg-white/[0.12]"
+                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-50"
                     title="Vygenerovat heslo"
                     aria-label="Vygenerovat heslo"
                   >
@@ -3628,7 +3617,7 @@ export default function AdminRequestsPage() {
                     type="button"
                     onClick={() => void handleCopyNewUserPassword()}
                     disabled={!newUserPassword}
-                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/16 bg-white/[0.07] text-violet-100 transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     title="Zkopírovat heslo"
                     aria-label="Zkopírovat heslo"
                   >
@@ -3655,7 +3644,7 @@ export default function AdminRequestsPage() {
                     aria-expanded={newUserManagerSuggestionsOpen && !newUserManagerEmail}
                     aria-controls="new-user-manager-suggestions"
                     autoComplete="off"
-                    className={`${createUserFieldClass} pl-9 pr-10`}
+                    className={`${createUserFieldClass} ${adminStyles.fieldWithIcon} ${adminStyles.fieldWithEndAction}`}
                     value={newUserManagerQuery}
                     onFocus={() => {
                       if (newUserManagerQuery.trim().length >= 2 && !newUserManagerEmail) {
@@ -3781,7 +3770,7 @@ export default function AdminRequestsPage() {
                       Režim provizí
                     </label>
                     <div
-                      className="inline-flex w-full rounded-2xl border border-white/14 bg-slate-950/28 p-1"
+                      className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-50 p-1"
                       role="radiogroup"
                       aria-label="Režim provizí nového uživatele"
                     >
@@ -3795,16 +3784,16 @@ export default function AdminRequestsPage() {
                             onClick={() => setNewUserMode(m.id)}
                             className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
                               active
-                                ? "admin-on-violet bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] !text-white shadow-[0_10px_22px_rgba(124,58,237,0.28)]"
-                                : "border border-transparent !text-violet-100/66 hover:!text-white"
+                                ? adminStyles.segmentActive
+                                : "border border-transparent text-slate-600 hover:text-slate-900"
                             }`}
                             role="radio"
                             aria-checked={active}
                           >
                             {isAccelerated ? (
-                              <Zap size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-amber-600"} aria-hidden="true" />
+                              <Zap size={14} strokeWidth={2.2} className={active ? "text-slate-900" : "text-amber-600"} aria-hidden="true" />
                             ) : (
-                              <Snail size={14} strokeWidth={2.2} className={active ? "!text-white" : "text-violet-100/58"} aria-hidden="true" />
+                              <Snail size={14} strokeWidth={2.2} className={active ? "text-slate-900" : "text-slate-600"} aria-hidden="true" />
                             )}
                             {m.label}
                           </button>
@@ -3813,11 +3802,11 @@ export default function AdminRequestsPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 rounded-2xl border border-violet-300/25 bg-violet-400/10 px-4 py-3 text-sm leading-relaxed !text-violet-50/88">
-                    <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 !text-violet-100" strokeWidth={2.2} aria-hidden="true" />
+                  <div className="flex items-start gap-3 rounded-2xl border border-violet-300/25 bg-violet-400/10 px-4 py-3 text-sm leading-relaxed text-slate-600">
+                    <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" strokeWidth={2.2} aria-hidden="true" />
                     <div>
-                      <p className="font-semibold !text-white">Kariéra se nezadává při založení</p>
-                      <p className="mt-0.5 !text-violet-50/72">
+                      <p className="font-semibold text-slate-900">Kariéra se nezadává při založení</p>
+                      <p className="mt-0.5 text-slate-600">
                         Poradce po prvním přihlášení vyplní historii pozic v onboardingovém
                         stepperu.
                       </p>
@@ -3835,23 +3824,23 @@ export default function AdminRequestsPage() {
                   <p
                     className={`text-xs font-medium ${
                       createUserStatus.type === "success"
-                        ? "!text-violet-100"
+                        ? "text-slate-600"
                         : createUserStatus.type === "info"
-                          ? "!text-violet-100"
+                          ? "text-slate-600"
                           : "text-rose-700"
                     }`}
                   >
                     {createUserStatus.message}
                   </p>
                 ) : (
-                  <span className="text-xs !text-violet-100/58">
+                  <span className="text-xs text-slate-600">
                     Nový účet se po vytvoření může rovnou přihlásit do aplikace.
                   </span>
                 )}
                 <button
                   type="submit"
                   disabled={createUserBusy}
-                  className={adminDarkPrimaryButtonClass}
+                  className={adminPrimaryButtonClass}
                 >
                   <UserPlus size={15} strokeWidth={2.2} aria-hidden="true" />
                   {createUserBusy ? "Vytvářím..." : "Vytvořit uživatele"}
@@ -3865,30 +3854,30 @@ export default function AdminRequestsPage() {
           <AdminBroadcastSection
             controller={adminBroadcast}
             classes={{
-              section: adminDarkSectionClass,
-              topBar: adminDarkTopBarClass,
-              badge: adminDarkBadgeClass,
-              panel: adminDarkPanelClass,
+              section: adminSectionClass,
+              topBar: adminTopBarClass,
+              badge: adminBadgeClass,
+              panel: adminPanelClass,
               field: createUserFieldClass,
               label: createUserLabelClass,
-              primaryButton: adminDarkPrimaryButtonClass,
+              primaryButton: adminPrimaryButtonClass,
             }}
           />
         ) : null}
         {isAllowedAdmin && activeAdminSection === "users" ? (
-          <section className={adminDarkSectionClass}>
-            <div className={adminDarkTopBarClass} />
+          <section className={adminSectionClass}>
+            <div className={adminTopBarClass} />
 
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <span className={adminDarkBadgeClass}>
+                <span className={adminBadgeClass}>
                   Správa účtů
                 </span>
-                <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
-                  <UserCheck2 size={20} strokeWidth={2.1} className="!text-violet-100" aria-hidden="true" />
+                <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] text-slate-900 sm:text-2xl">
+                  <UserCheck2 size={20} strokeWidth={2.1} className="text-slate-600" aria-hidden="true" />
                   <span>Uživatelé</span>
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
                   Karty zvýrazňují hlavně chybějící údaje. Kliknutím otevřeš detail a editaci.
                 </p>
               </div>
@@ -3896,7 +3885,7 @@ export default function AdminRequestsPage() {
                 type="button"
                 onClick={() => void loadAdminUsersRows()}
                 disabled={adminUsersLoading}
-                className={adminDarkSubtleButtonClass}
+                className={adminSubtleButtonClass}
               >
                 {adminUsersLoading ? (
                   <Loader2 size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
@@ -3908,23 +3897,23 @@ export default function AdminRequestsPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <div className={adminDarkMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+              <div className={adminMetricClass}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Celkem
                 </div>
-                <div className="mt-2 text-2xl font-bold !text-white">{adminUsersStats.total}</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.total}</div>
               </div>
-              <div className={adminDarkMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+              <div className={adminMetricClass}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   OK
                 </div>
-                <div className="mt-2 text-2xl font-bold !text-white">{adminUsersStats.complete}</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.complete}</div>
               </div>
-              <div className="rounded-2xl border border-amber-700 bg-amber-500 px-3 py-3 shadow-[0_10px_22px_rgba(245,158,11,0.24)]">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-50">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
                   K doplnění
                 </div>
-                <div className="mt-2 text-2xl font-bold text-white">{adminUsersStats.incomplete}</div>
+                <div className="mt-2 text-2xl font-bold text-amber-900">{adminUsersStats.incomplete}</div>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
@@ -3932,11 +3921,11 @@ export default function AdminRequestsPage() {
                 </div>
                 <div className="mt-2 text-2xl font-bold text-amber-900">{adminUsersStats.missingProfile}</div>
               </div>
-              <div className={adminDarkMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+              <div className={adminMetricClass}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                   Deaktivovaní
                 </div>
-                <div className="mt-2 text-2xl font-bold !text-white">{adminUsersStats.disabled}</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.disabled}</div>
               </div>
             </div>
 
@@ -3954,7 +3943,7 @@ export default function AdminRequestsPage() {
                   />
                   <input
                     type="search"
-                    className={`${createUserFieldClass} pl-9`}
+                    className={`${createUserFieldClass} ${adminStyles.fieldWithIcon}`}
                     value={adminUsersSearch}
                     onChange={(event) => setAdminUsersSearch(event.target.value)}
                     placeholder="Hledat jméno, e-mail, IČO, telefon nebo agenturní číslo…"
@@ -3987,12 +3976,12 @@ export default function AdminRequestsPage() {
                       onClick={() => setAdminUsersAccountFilter(option.id)}
                       className={`rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
                         active
-                          ? "bg-violet-600 text-white shadow-sm"
+                          ? adminStyles.segmentActive
                           : "text-slate-500 hover:bg-violet-50 hover:text-violet-700"
                       }`}
                     >
                       <span className="block truncate">{option.label}</span>
-                      <span className={`mt-0.5 block text-[10px] ${active ? "text-violet-100" : "text-slate-400"}`}>
+                      <span className={`mt-0.5 block text-[10px] ${active ? "text-slate-600" : "text-slate-400"}`}>
                         {option.count}
                       </span>
                     </button>
@@ -4004,7 +3993,7 @@ export default function AdminRequestsPage() {
                 <div
                   className={`mt-3 rounded-xl border px-3 py-2 text-sm ${
                     adminUsersStatus.type === "success"
-                      ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                      ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                     : adminUsersStatus.type === "info"
                         ? "border-sky-200 bg-sky-50 text-sky-700"
                         : "border-rose-200 bg-rose-50 text-rose-700"
@@ -4023,11 +4012,11 @@ export default function AdminRequestsPage() {
 
             <div className="mt-3 grid max-h-[640px] grid-cols-1 gap-2 overflow-y-auto pr-1">
               {adminUsersLoading ? (
-                <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-4 py-8 text-center text-sm !text-violet-100/72">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
                   Načítám uživatele…
                 </div>
               ) : filteredAdminUsersRows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/18 bg-white/[0.05] px-4 py-9 text-center text-sm !text-violet-100/72">
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-9 text-center text-sm text-slate-600">
                   Pro zadaný filtr nejsou žádní uživatelé.
                 </div>
               ) : (
@@ -4084,7 +4073,7 @@ export default function AdminRequestsPage() {
                           <span
                             className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
                               complete
-                                ? "border-violet-300/35 bg-violet-400/14 !text-violet-100"
+                                ? "border-violet-300/35 bg-violet-400/14 text-slate-600"
                                 : "border-amber-200 bg-amber-50 text-amber-700"
                             }`}
                           >
@@ -4092,7 +4081,7 @@ export default function AdminRequestsPage() {
                           </span>
                           <div className="min-w-0">
                             <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="min-w-0 max-w-full truncate text-sm font-bold !text-white">
+                              <span className="min-w-0 max-w-full truncate text-sm font-bold text-slate-900">
                                 {title}
                               </span>
                               <span
@@ -4100,7 +4089,7 @@ export default function AdminRequestsPage() {
                                   row.accountType === "tipster"
                                     ? "border-violet-200 bg-violet-50 text-violet-700"
                                     : row.accountType === "advisor"
-                                      ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                                      ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                                       : "border-slate-200 bg-slate-50 text-slate-600"
                                 }`}
                               >
@@ -4118,7 +4107,7 @@ export default function AdminRequestsPage() {
                                 </span>
                               ) : null}
                             </div>
-                            <div className="truncate text-xs !text-violet-100/58">{row.email}</div>
+                            <div className="truncate text-xs text-slate-600">{row.email}</div>
                           </div>
                         </div>
 
@@ -4141,7 +4130,7 @@ export default function AdminRequestsPage() {
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
                               complete
-                                ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                                ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                                 : "border-amber-200 bg-amber-50 text-amber-800"
                             }`}
                           >
@@ -4152,7 +4141,7 @@ export default function AdminRequestsPage() {
                             )}
                             {complete ? "OK" : `K doplnění ${missingItems.length}`}
                           </span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/14 bg-white/[0.07] px-3 py-1.5 text-xs font-semibold !text-violet-100/78 transition group-hover:border-violet-300/35 group-hover:!text-white">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition group-hover:border-violet-300/35 group-hover:text-slate-900">
                             <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
                             Detail
                           </span>
@@ -4199,7 +4188,7 @@ export default function AdminRequestsPage() {
 
                       <div className="hidden">
                         {complete ? (
-                          <div className="inline-flex items-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-400/12 px-3 py-2 text-sm font-semibold !text-violet-100">
+                          <div className="inline-flex items-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-400/12 px-3 py-2 text-sm font-semibold text-slate-600">
                             <CheckCircle2 size={15} strokeWidth={2.4} aria-hidden="true" />
                             Hlavní profilové údaje jsou vyplněné.
                           </div>
@@ -4219,35 +4208,35 @@ export default function AdminRequestsPage() {
                       </div>
 
                       <div className="hidden grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                        <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             IČO
                           </span>
-                          <span className="mt-0.5 block font-semibold !text-white">
+                          <span className="mt-0.5 block font-semibold text-slate-900">
                             {row.ico || "—"}
                           </span>
                         </div>
-                        <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             Agenturní číslo
                           </span>
-                          <span className="mt-0.5 block font-semibold !text-white">
+                          <span className="mt-0.5 block font-semibold text-slate-900">
                             {row.agencyNumber || "—"}
                           </span>
                         </div>
-                        <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             Telefon
                           </span>
-                          <span className="mt-0.5 block font-semibold !text-white">
+                          <span className="mt-0.5 block font-semibold text-slate-900">
                             {row.phoneNumber || "—"}
                           </span>
                         </div>
-                        <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                             Přihlášení
                           </span>
-                          <span className="mt-0.5 block font-semibold !text-white">
+                          <span className="mt-0.5 block font-semibold text-slate-900">
                             {formatAuthDateTime(row.lastSignInAt)}
                           </span>
                         </div>
@@ -4285,31 +4274,29 @@ export default function AdminRequestsPage() {
 
               return (
                 <section className="overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
-                  <div className="admin-on-violet relative overflow-hidden bg-[linear-gradient(135deg,#2e1065_0%,#6d28d9_52%,#a855f7_100%)] px-5 py-5 text-white">
-                    <span className="pointer-events-none absolute -right-16 -top-24 h-44 w-44 rounded-full bg-white/20 blur-3xl" />
-                    <span className="pointer-events-none absolute -bottom-24 -left-16 h-40 w-40 rounded-full bg-fuchsia-300/20 blur-3xl" />
+                  <div className={adminStyles.profileHeader}>
                     <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-                      <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 text-2xl font-black shadow-[0_14px_30px_rgba(30,10,70,0.24)]">
+                      <span className={adminStyles.profileAvatar}>
                         {avatarInitial}
                       </span>
                       <div className="min-w-0">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-100/80">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-600">
                           Profil uživatele
                         </div>
-                        <h3 className="mt-1 break-words text-3xl font-black leading-tight text-white">
+                        <h3 className="mt-1 break-words text-2xl font-bold leading-tight text-slate-900">
                           {title}
                         </h3>
-                        <p className="mt-1 break-all text-sm text-violet-100/85">{row.email}</p>
+                        <p className="mt-1 break-all text-sm text-slate-600">{row.email}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
                             {formatAccountTypeLabel(row.accountType)}
                           </span>
                           {row.position ? (
-                            <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
                               {formatPositionLabel(row.position)}
                             </span>
                           ) : null}
-                          <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
                             {row.disabled ? "Deaktivovaný" : "Aktivní účet"}
                           </span>
                         </div>
@@ -4337,7 +4324,7 @@ export default function AdminRequestsPage() {
                         <button
                           type="submit"
                           disabled={adminUsersSavingEmail === row.email}
-                          className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          className={adminPrimaryButtonClass}
                         >
                           {adminUsersSavingEmail === row.email ? (
                             <Loader2 size={15} className="animate-spin" aria-hidden="true" />
@@ -4668,7 +4655,7 @@ export default function AdminRequestsPage() {
                           icon: Zap,
                         },
                         {
-                          label: "Dokončení setupu",
+                          label: "Úvodní nastavení",
                           value: formatAuthDateTime(row.accountSetupCompletedAt),
                           icon: CheckCircle2,
                         },
@@ -4740,14 +4727,14 @@ export default function AdminRequestsPage() {
           <AdminSubscriptionsSection
             controller={adminSubscriptions}
             classes={{
-              section: adminDarkSectionClass,
-              topBar: adminDarkTopBarClass,
-              badge: adminDarkBadgeClass,
-              panel: adminDarkPanelClass,
-              softPanel: adminDarkSoftPanelClass,
+              section: adminSectionClass,
+              topBar: adminTopBarClass,
+              badge: adminBadgeClass,
+              panel: adminPanelClass,
+              softPanel: adminSoftPanelClass,
               field: createUserFieldClass,
               label: createUserLabelClass,
-              primaryButton: adminDarkPrimaryButtonClass,
+              primaryButton: adminPrimaryButtonClass,
               historyField: subscriptionHistoryFieldClass,
               historyIconButton: subscriptionHistoryIconButtonClass,
               historyDangerButton: subscriptionHistoryDangerButtonClass,
@@ -4765,12 +4752,12 @@ export default function AdminRequestsPage() {
             onFilterChange={adminSecurity.setFilter}
             onSearchChange={adminSecurity.setSearch}
             classes={{
-              section: adminDarkSectionClass,
-              topBar: adminDarkTopBarClass,
-              badge: adminDarkBadgeClass,
-              softPanel: adminDarkSoftPanelClass,
-              metric: adminDarkMetricClass,
-              subtleButton: adminDarkSubtleButtonClass,
+              section: adminSectionClass,
+              topBar: adminTopBarClass,
+              badge: adminBadgeClass,
+              softPanel: adminSoftPanelClass,
+              metric: adminMetricClass,
+              subtleButton: adminSubtleButtonClass,
               field: createUserFieldClass,
             }}
           />

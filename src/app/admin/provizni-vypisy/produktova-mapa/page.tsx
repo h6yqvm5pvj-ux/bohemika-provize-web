@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import {
-  ArrowLeft,
   Loader2,
   Plus,
   RotateCcw,
@@ -29,6 +27,9 @@ import {
 } from "@/app/_provizni-vypisy/statementProductMap";
 import type { Product } from "@/app/types/domain";
 import { AppLayout } from "@/components/AppLayout";
+import { AdminPageHeader } from "@/app/admin/components/AdminPageHeader";
+import { AdminRouteNavigation } from "@/app/admin/components/AdminRouteNavigation";
+import adminStyles from "@/app/admin/zadosti/adminConsole.module.css";
 
 type ProductMapResponse = {
   ok: true;
@@ -255,31 +256,12 @@ export default function AdminStatementProductMapPage() {
 
   return (
     <AppLayout active="admin">
-      <div className="w-full max-w-[1680px] space-y-6">
-        <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <Link
-              href="/admin/zadosti"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              <ArrowLeft className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              Admin
-            </Link>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-              Produktová mapa výpisů
-            </h1>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-              <span>Řádků: {entries.length}</span>
-              <span>Upraveno: {formatDateTime(updatedAtMs)}</span>
-              <span>Admin: {updatedBy ?? user?.email ?? "—"}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className={adminStyles.console}>
+        <AdminPageHeader page="productMap" meta={<><span>{entries.length} produktových kódů</span><span>Poslední úprava: {formatDateTime(updatedAtMs)}</span><span>{updatedBy ?? user?.email}</span></>} actions={<>
             <button
               type="button"
               onClick={addEntry}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className={adminStyles.button}
             >
               <Plus className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
               Přidat kód
@@ -288,7 +270,7 @@ export default function AdminStatementProductMapPage() {
               type="button"
               onClick={() => void loadMap()}
               disabled={!user || loading || saving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className={adminStyles.button}
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
@@ -301,7 +283,7 @@ export default function AdminStatementProductMapPage() {
               type="button"
               onClick={() => void saveMap()}
               disabled={!user || loading || saving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-950 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+              className={adminStyles.primaryButton}
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
@@ -310,10 +292,10 @@ export default function AdminStatementProductMapPage() {
               )}
               Uložit mapu
             </button>
-          </div>
-        </div>
+</>} />
+        <AdminRouteNavigation user={user} page="productMap" />
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section className={adminStyles.section}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-violet-100 bg-violet-50 text-violet-700">
@@ -324,22 +306,23 @@ export default function AdminStatementProductMapPage() {
                   Mapa produktových kódů z provizního výpisu
                 </h2>
                 <p className="text-sm text-slate-600">
-                  Admin změny se použijí při novém načtení provizního výpisu.
+                  Změny se použijí při příštím zpracování výpisu. Tabulku můžeš posouvat do stran.
                 </p>
               </div>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-              <label className="flex min-w-[260px] items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+              <label className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
                 <Search className="h-4 w-4 text-slate-400" strokeWidth={2.2} aria-hidden="true" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Hledat kód, název, produkt..."
+                  placeholder="Hledat kód, název, produkt…" aria-label="Hledat produktový kód"
                   className="w-full bg-transparent text-sm font-semibold outline-none placeholder:text-slate-400"
                 />
               </label>
               <select
+                aria-label="Kategorie produktu"
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none"
@@ -365,8 +348,8 @@ export default function AdminStatementProductMapPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-            <table className="min-w-[1320px] w-full border-collapse text-left text-sm">
+          <div className={`${adminStyles.tablePanel} ${adminStyles.mapScroll} mt-4`} role="region" aria-label="Produktová mapa – posuvná tabulka" tabIndex={0}>
+            <table className={adminStyles.mapTable}>
               <thead className="bg-slate-50 text-[11px] font-bold uppercase text-slate-500">
                 <tr>
                   <th className="w-[150px] px-3 py-3">Kód z výpisu</th>
@@ -412,22 +395,24 @@ export default function AdminStatementProductMapPage() {
                     <tr key={entry.localId} className="align-top hover:bg-slate-50/60">
                       <td className="px-3 py-3">
                         <input
+                          aria-label={`Kód produktu ${entry.code}`}
                           value={entry.code}
                           onChange={(event) =>
                             patchEntry(entry.localId, {
                               code: normalizeStatementProductMapCode(event.target.value),
                             })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 font-mono text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         />
                       </td>
                       <td className="px-3 py-3">
                         <input
+                          aria-label={`Název produktu ${entry.code}`}
                           value={entry.label ?? ""}
                           onChange={(event) =>
                             patchEntry(entry.localId, { label: event.target.value })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         />
                       </td>
                       <td className="px-3 py-3">
@@ -438,7 +423,7 @@ export default function AdminStatementProductMapPage() {
                               productKey: (event.target.value || null) as Product | null,
                             })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         >
                           <option value="">Bez vazby</option>
                           {PRODUCT_OPTIONS.map((product) => (
@@ -456,7 +441,7 @@ export default function AdminStatementProductMapPage() {
                               category: event.target.value as StatementProductMapEntry["category"],
                             })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         >
                           {STATEMENT_PRODUCT_CATEGORY_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -473,7 +458,7 @@ export default function AdminStatementProductMapPage() {
                               baseRule: event.target.value as StatementProductBaseRule,
                             })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         >
                           {STATEMENT_PRODUCT_BASE_RULE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -516,7 +501,7 @@ export default function AdminStatementProductMapPage() {
                           onChange={(event) =>
                             patchEntry(entry.localId, { note: event.target.value })
                           }
-                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          className={adminStyles.field}
                         />
                       </td>
                       <td className="px-3 py-3">

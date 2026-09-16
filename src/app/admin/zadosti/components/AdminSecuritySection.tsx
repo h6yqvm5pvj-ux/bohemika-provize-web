@@ -1,5 +1,7 @@
 "use client";
 
+import adminStyles from "../adminConsole.module.css";
+
 import { useMemo } from "react";
 import {
   Check,
@@ -72,17 +74,17 @@ export function AdminSecuritySection({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <span className={classes.badge}>Zabezpečení</span>
-          <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
+          <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] text-slate-900 sm:text-2xl">
             <ShieldCheck
               size={20}
               strokeWidth={2}
-              className="!text-violet-100"
+              className="text-slate-600"
               aria-hidden="true"
             />
             <span>2FA přehled uživatelů</span>
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
-            Přehled čte aktivní druhé faktory přímo z Firebase Auth.
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Zjisti, kdo má zapnuté dvoufázové ověření (2FA) a ověřený e-mail.
           </p>
         </div>
         <button
@@ -99,67 +101,67 @@ export function AdminSecuritySection({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className={classes.metric}>
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Celkem
             </div>
             <Inbox
               size={15}
               strokeWidth={2.1}
-              className="!text-violet-100/70"
+              className="text-slate-600"
               aria-hidden="true"
             />
           </div>
-          <div className="mt-2 text-2xl font-bold !text-white">{stats.total}</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{stats.total}</div>
         </div>
         <div className={classes.metric}>
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               2FA aktivní
             </div>
             <ShieldCheck
               size={15}
               strokeWidth={2.2}
-              className="!text-violet-100"
+              className="text-slate-600"
               aria-hidden="true"
             />
           </div>
-          <div className="mt-2 text-2xl font-bold !text-white">{stats.mfaEnabled}</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{stats.mfaEnabled}</div>
         </div>
-        <div className="rounded-2xl border border-rose-700 bg-rose-600 px-3 py-3 shadow-[0_10px_22px_rgba(225,29,72,0.28)]">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3">
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-50">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
               Bez 2FA
             </div>
             <ShieldAlert
               size={15}
               strokeWidth={2.2}
-              className="text-rose-50"
+              className="text-rose-700"
               aria-hidden="true"
             />
           </div>
-          <div className="mt-2 text-2xl font-bold text-white">{stats.mfaMissing}</div>
+          <div className="mt-2 text-2xl font-bold text-rose-800">{stats.mfaMissing}</div>
         </div>
         <div className={classes.metric}>
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/78">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Ověřený e-mail
             </div>
             <Check
               size={15}
               strokeWidth={2.3}
-              className="!text-violet-100"
+              className="text-slate-600"
               aria-hidden="true"
             />
           </div>
-          <div className="mt-2 text-2xl font-bold !text-white">{stats.emailVerified}</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{stats.emailVerified}</div>
         </div>
       </div>
 
       <div className={`mt-4 ${classes.softPanel}`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div
-            className="inline-flex w-full rounded-2xl border border-white/14 bg-white/[0.06] p-1 shadow-[0_12px_28px_rgba(7,6,25,0.18)] lg:w-auto"
-            role="tablist"
+            className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm lg:w-auto"
+            role="group"
             aria-label="Filtr zabezpečení"
           >
             {ADMIN_SECURITY_FILTERS.map((filterOption) => {
@@ -168,11 +170,12 @@ export function AdminSecuritySection({
                 <button
                   key={filterOption.id}
                   type="button"
+                  aria-pressed={active}
                   onClick={() => onFilterChange(filterOption.id)}
                   className={`inline-flex flex-1 items-center justify-center gap-1 rounded-xl px-3 py-1.5 text-xs font-semibold transition lg:flex-none ${
                     active
-                      ? "border border-violet-300/35 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] !text-white shadow-[0_10px_18px_rgba(124,58,237,0.28)]"
-                      : "border border-transparent !text-violet-100/66 hover:!text-white"
+                      ? adminStyles.segmentActive
+                      : "border border-transparent text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   {filterOption.id === "enabled" ? (
@@ -197,7 +200,8 @@ export function AdminSecuritySection({
             />
             <input
               type="search"
-              className={`${classes.field} pl-9`}
+              aria-label="Hledat uživatele v zabezpečení"
+              className={`${classes.field} ${adminStyles.fieldWithIcon}`}
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Hledat jméno, e-mail nebo pozici..."
@@ -214,11 +218,11 @@ export function AdminSecuritySection({
 
       <div className="mt-4 space-y-2">
         {loading ? (
-          <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-4 py-8 text-center text-sm !text-violet-100/72">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
             Načítám zabezpečení uživatelů…
           </div>
         ) : filteredRows.length === 0 ? (
-          <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-4 py-8 text-center text-sm !text-violet-100/72">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
             Pro zvolený filtr nejsou žádní uživatelé.
           </div>
         ) : (
@@ -234,7 +238,7 @@ export function AdminSecuritySection({
             return (
               <div
                 key={row.uid}
-                className="relative overflow-hidden rounded-3xl border border-white/12 bg-white/[0.07] p-4 shadow-[0_16px_34px_rgba(7,6,25,0.22)]"
+                className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 p-4 shadow-sm"
               >
                 <span
                   className={`pointer-events-none absolute inset-x-0 top-0 h-1 ${
@@ -246,7 +250,7 @@ export function AdminSecuritySection({
                     <span
                       className={`mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${
                         mfaEnabled
-                          ? "border-violet-300/35 bg-violet-400/14 !text-violet-100"
+                          ? "border-violet-300/35 bg-violet-400/14 text-slate-600"
                           : "border-rose-200 bg-rose-50 text-rose-700"
                       }`}
                     >
@@ -254,7 +258,7 @@ export function AdminSecuritySection({
                     </span>
                     <div className="min-w-0">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <span className="min-w-0 max-w-full truncate text-lg font-bold !text-white">
+                        <span className="min-w-0 max-w-full truncate text-lg font-bold text-slate-900">
                           {title}
                         </span>
                         <span
@@ -262,7 +266,7 @@ export function AdminSecuritySection({
                             row.accountType === "tipster"
                               ? "border-violet-200 bg-violet-50 text-violet-700"
                               : row.accountType === "advisor"
-                                ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                                ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                                 : "border-slate-200 bg-slate-50 text-slate-600"
                           }`}
                         >
@@ -274,7 +278,7 @@ export function AdminSecuritySection({
                           </span>
                         ) : null}
                       </div>
-                      <div className="truncate text-sm !text-violet-100/58">
+                      <div className="truncate text-sm text-slate-600">
                         {row.email}
                       </div>
                       {row.disabled ? (
@@ -291,7 +295,7 @@ export function AdminSecuritySection({
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${
                         mfaEnabled
-                          ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                          ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                           : "border-rose-200 bg-rose-50 text-rose-700"
                       }`}
                     >
@@ -319,28 +323,28 @@ export function AdminSecuritySection({
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-2 text-xs !text-violet-100/72 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                <div className="mt-4 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Vytvořen
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {formatAuthDateTime(row.createdAt)}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Poslední přihlášení
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {formatAuthDateTime(row.lastSignInAt)}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                       Druhé faktory
                     </div>
-                    <div className="mt-1 font-semibold !text-white">
+                    <div className="mt-1 font-semibold text-slate-900">
                       {row.mfa.factorCount > 0
                         ? `${row.mfa.factorCount} aktivní`
                         : "Žádný"}
@@ -353,7 +357,7 @@ export function AdminSecuritySection({
                     {row.mfa.factors.map((factor) => (
                       <span
                         key={factor.uid}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/30 bg-violet-400/12 px-3 py-1 text-xs font-semibold !text-violet-100"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/30 bg-violet-400/12 px-3 py-1 text-xs font-semibold text-slate-600"
                         title={
                           factor.enrollmentTime
                             ? `Zapsáno: ${formatAuthDateTime(factor.enrollmentTime)}`

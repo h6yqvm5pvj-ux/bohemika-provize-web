@@ -207,6 +207,18 @@ describe("commission statement parsing helpers", () => {
     expect(INVESTMENT_SECTION_PRODUCT_CODES.has("COLOS_NEMO")).toBe(true);
   });
 
+  it("keeps the investment variant of NEON REFRESH in life insurance with separate A201 commissions", () => {
+    expect(resolveStatementProduct("CPP_NRF_IN")).toMatchObject({
+      productKey: "neon",
+      category: "life",
+      usesAnnualPremiumBase: true,
+    });
+    expect(isLifeSplitProductCode("CPP_NRF_IN")).toBe(true);
+    expect(isInvestmentSectionProductCode("CPP_NRF_IN")).toBe(false);
+    expect(classifyLifeSplitCommissionCode("A101").kind).toBe("a101");
+    expect(classifyLifeSplitCommissionCode("A201").kind).toBe("unknown");
+  });
+
   it("maps statement product aliases into product categories", () => {
     expect(resolveStatementProduct("CPP_DOMEX+")).toMatchObject({
       productKey: "domex",

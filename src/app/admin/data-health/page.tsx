@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Database,
   ExternalLink,
@@ -27,6 +26,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { AppLayout } from "@/components/AppLayout";
+import { AdminPageHeader } from "@/app/admin/components/AdminPageHeader";
+import { AdminRouteNavigation } from "@/app/admin/components/AdminRouteNavigation";
+import adminStyles from "@/app/admin/zadosti/adminConsole.module.css";
 
 type HealthCheckSeverity = "ok" | "info" | "warning" | "critical";
 type HealthCheckStatus = "pass" | "warn" | "fail";
@@ -179,8 +181,8 @@ const loadingChecks: Array<{
   barClass: string;
 }> = [
   {
-    label: "contractRefs",
-    detail: "kontrola vazeb",
+    label: "Vazby smluv",
+    detail: "propojení záznamů",
     Icon: Link2Off,
     iconClass: "border-cyan-300/30 bg-cyan-300/10 text-cyan-200",
     barClass: "from-cyan-300 via-sky-300 to-cyan-200",
@@ -193,7 +195,7 @@ const loadingChecks: Array<{
     barClass: "from-amber-300 via-orange-300 to-amber-200",
   },
   {
-    label: "managerChain",
+    label: "Nadřízení",
     detail: "nadřízení",
     Icon: UsersRound,
     iconClass: "border-violet-300/30 bg-violet-300/10 text-violet-200",
@@ -207,7 +209,7 @@ const loadingChecks: Array<{
     barClass: "from-emerald-300 via-teal-300 to-emerald-200",
   },
   {
-    label: "Rules",
+    label: "Produkty",
     detail: "produkty",
     Icon: GitCompareArrows,
     iconClass: "border-rose-300/30 bg-rose-300/10 text-rose-200",
@@ -215,7 +217,7 @@ const loadingChecks: Array<{
   },
   {
     label: "Součty",
-    detail: "read modely",
+    detail: "týmové výsledky",
     Icon: Database,
     iconClass: "border-slate-300/30 bg-white/10 text-slate-100",
     barClass: "from-slate-200 via-white to-slate-300",
@@ -287,190 +289,18 @@ const formatMetaValue = (
 };
 
 function DataHealthLoading({ compact = false }: { compact?: boolean }) {
-  if (compact) {
-    return (
-      <div
-        className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 text-white shadow-sm"
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-      >
-        <style>{`
-          @keyframes data-health-meter {
-            0% { transform: translateX(-120%); }
-            55% { transform: translateX(55%); }
-            100% { transform: translateX(130%); }
-          }
-
-          .data-health-meter {
-            animation: data-health-meter 1.45s ease-in-out infinite;
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .data-health-meter {
-              animation: none;
-              transform: translateX(0);
-            }
-          }
-        `}</style>
-        <div className="grid gap-3 px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <div className="text-sm font-bold">Obnovuju diagnostiku</div>
-              <div className="text-xs font-semibold text-slate-300">
-                Skenuju nejčerstvější stav dat.
-              </div>
-            </div>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <span className="data-health-meter block h-full w-1/2 rounded-full bg-gradient-to-r from-cyan-300 via-white to-emerald-300" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <section
-      className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <style>{`
-        @keyframes data-health-scan {
-          0% { transform: translateY(-80%); opacity: 0; }
-          18% { opacity: 1; }
-          72% { opacity: 1; }
-          100% { transform: translateY(170%); opacity: 0; }
-        }
-
-        @keyframes data-health-meter {
-          0% { transform: translateX(-120%); }
-          55% { transform: translateX(55%); }
-          100% { transform: translateX(130%); }
-        }
-
-        @keyframes data-health-glow {
-          0%, 100% { opacity: 0.55; transform: scale(0.96); }
-          50% { opacity: 1; transform: scale(1); }
-        }
-
-        .data-health-grid {
-          background-image:
-            linear-gradient(rgba(148, 163, 184, 0.13) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(148, 163, 184, 0.13) 1px, transparent 1px);
-          background-size: 28px 28px;
-        }
-
-        .data-health-scan {
-          animation: data-health-scan 1.9s ease-in-out infinite;
-        }
-
-        .data-health-meter {
-          animation: data-health-meter 1.55s ease-in-out infinite;
-        }
-
-        .data-health-glow {
-          animation: data-health-glow 1.4s ease-in-out infinite;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .data-health-scan,
-          .data-health-meter,
-          .data-health-glow {
-            animation: none;
-            transform: none;
-          }
-        }
-      `}</style>
-
-      <div className="relative overflow-hidden border-b border-slate-200 bg-slate-950 px-4 py-5 text-white sm:px-5">
-        <div className="data-health-grid absolute inset-0 opacity-70" aria-hidden="true" />
-        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent" aria-hidden="true" />
-
-        <div className="relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <span className="data-health-glow inline-flex h-11 w-11 items-center justify-center rounded-lg border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">
-                <Activity className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <div className="text-base font-bold">Spouštím datovou diagnostiku</div>
-                <div className="mt-1 text-sm font-semibold text-slate-300">
-                  Prověřuju smlouvy, indexy, provize a týmové součty.
-                </div>
-              </div>
-            </div>
-
-            <div className="relative mt-5 h-36 overflow-hidden rounded-lg border border-white/10 bg-slate-900/80">
-              <div className="data-health-grid absolute inset-0 opacity-60" aria-hidden="true" />
-              <div
-                className="data-health-scan absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-cyan-300/0 via-cyan-300/30 to-cyan-300/0"
-                aria-hidden="true"
-              />
-              <div className="relative grid h-full content-center gap-3 p-4">
-                {[0, 1, 2, 3].map((line) => (
-                  <div key={line} className="grid grid-cols-[5rem_minmax(0,1fr)_3rem] items-center gap-3">
-                    <span className="h-2 rounded-full bg-white/15" />
-                    <span className="h-2 overflow-hidden rounded-full bg-white/10">
-                      <span
-                        className="data-health-meter block h-full w-2/5 rounded-full bg-gradient-to-r from-cyan-300 via-white to-emerald-300"
-                        style={{ animationDelay: `${line * 130}ms` }}
-                      />
-                    </span>
-                    <span className="h-2 rounded-full bg-white/15" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            {loadingChecks.slice(0, 4).map(({ label, detail, Icon, iconClass }, index) => (
-              <div
-                key={label}
-                className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2"
-                style={{ animationDelay: `${index * 110}ms` }}
-              >
-                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${iconClass}`}>
-                  <Icon className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-bold">{label}</div>
-                  <div className="truncate text-xs font-semibold text-slate-300">{detail}</div>
-                </div>
-                <span className="ml-auto h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_16px_rgba(110,231,183,0.8)]" />
-              </div>
-            ))}
-          </div>
-        </div>
+    <section className={compact ? adminStyles.softPanel : adminStyles.section} role="status" aria-live="polite" aria-busy="true">
+      <div className="flex items-center gap-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-violet-50 text-violet-600"><Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /></span>
+        <div><h2 className="text-base font-semibold">{compact ? "Obnovuji výsledky kontroly" : "Procházím data aplikace"}</h2><p className="mt-1 text-sm text-slate-500">Prověřuji smlouvy, provize a jejich vzájemné vazby.</p></div>
       </div>
-
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-        {loadingChecks.map(({ label, detail, Icon, barClass }, index) => (
-          <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-white">
-                <Icon className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-slate-950">{label}</div>
-                <div className="truncate text-xs font-semibold text-slate-500">{detail}</div>
-              </div>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-              <span
-                className={`data-health-meter block h-full w-2/3 rounded-full bg-gradient-to-r ${barClass}`}
-                style={{ animationDelay: `${index * 120}ms` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      <div className={adminStyles.loadingTrack}><span className={adminStyles.loadingFill} /></div>
+      {!compact ? <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {loadingChecks.map(({label, detail, Icon}) => <div key={label} className={adminStyles.softPanel}>
+          <div className="flex items-center gap-3"><Icon className="h-5 w-5 text-violet-400" aria-hidden="true" /><div><div className="text-sm font-semibold text-slate-700">{label}</div><div className="mt-1 text-xs text-slate-500">{detail}</div></div></div>
+        </div>)}
+      </div> : null}
     </section>
   );
 }
@@ -496,7 +326,7 @@ function StatTile({
           : "border-slate-200 bg-slate-50 text-slate-700";
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className={adminStyles.metric}>
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
           {label}
@@ -613,7 +443,7 @@ function CheckCard({
   };
 
   return (
-    <article className={`rounded-lg border bg-white p-4 ${severity.borderClass}`}>
+    <article className={`${adminStyles.healthCard} border bg-white ${severity.borderClass}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${severity.iconClass}`}>
@@ -886,7 +716,7 @@ export default function AdminDataHealthPage() {
     return [
       ["Uživatelé", data.scanned.users],
       ["Smlouvy", data.scanned.entries],
-      ["contractRefs", data.scanned.contractRefs],
+      ["Vazby smluv", data.scanned.contractRefs],
       ["Výpisy", data.scanned.commissionStatements],
       ["Týmové součty", data.scanned.teamOverviewTotals],
     ] as Array<[string, number | null]>;
@@ -894,32 +724,12 @@ export default function AdminDataHealthPage() {
 
   return (
     <AppLayout active="admin">
-      <div className="w-full max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <Link
-              href="/admin/zadosti"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              <ArrowLeft className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              Admin
-            </Link>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-              Data Health
-            </h1>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600">
-              <span>
-                Vygenerováno: {data ? formatDateTime(data.generatedAtMs) : "—"}
-              </span>
-              <span>Trvání: {data ? formatDuration(data.durationMs) : "—"}</span>
-              <span>Admin: {data?.generatedBy ?? user?.email ?? "—"}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className={adminStyles.console}>
+        <AdminPageHeader page="dataHealth" meta={<><span>Poslední kontrola: {data ? formatDateTime(data.generatedAtMs) : "—"}</span><span>Doba kontroly: {data ? formatDuration(data.durationMs) : "—"}</span></>} actions={<>
             <label className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
               <Database className="h-4 w-4 text-slate-500" strokeWidth={2.2} aria-hidden="true" />
               <select
+                aria-label="Počet záznamů ke kontrole"
                 value={scanLimit}
                 onChange={(event) => setScanLimit(Number(event.target.value))}
                 className="bg-transparent text-sm font-semibold text-slate-800 outline-none"
@@ -935,17 +745,17 @@ export default function AdminDataHealthPage() {
               type="button"
               onClick={() => void loadData()}
               disabled={!user || loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-950 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+              className={adminStyles.primaryButton}
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
               ) : (
                 <RefreshCw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
               )}
-              {loading ? "Kontroluju" : "Refresh"}
+              {loading ? "Kontroluji data…" : "Spustit kontrolu"}
             </button>
-          </div>
-        </div>
+</>} />
+        <AdminRouteNavigation user={user} page="dataHealth" />
 
         {error ? (
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -1003,7 +813,7 @@ export default function AdminDataHealthPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className={adminStyles.healthCards}>
               {data.checks.map((check) => (
                 <CheckCard
                   key={check.key}

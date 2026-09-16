@@ -5,6 +5,7 @@ import styles from "./record.module.css";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { writeMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 
 type Mode = "srovnavac" | "portal";
 
@@ -138,7 +139,7 @@ function PillPicker({ value, options, onChange }: PillPickerProps) {
   );
 }
 
-export function CarRecordForm() {
+export function CarRecordForm({ owner }: { owner: MeetingRecordContext }) {
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>("srovnavac");
@@ -219,10 +220,7 @@ export function CarRecordForm() {
         discountCppProfi,
         discountUniqaNonOemGlass,
       };
-      window.localStorage.setItem(
-        "carRecord.resultsInput",
-        JSON.stringify(payload)
-      );
+      if (!writeMeetingRecord("carResults", payload, owner)) return;
     }
     router.push("/pomucky/zaznam/vysledky-auto");
   };

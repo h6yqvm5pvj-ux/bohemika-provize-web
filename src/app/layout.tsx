@@ -3,6 +3,7 @@ import "./globals.css";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
 import { ClientCardPrivacyCleanup } from "@/components/ClientCardPrivacyCleanup";
 import { ContractTerminationPrivacyCleanup } from "@/components/ContractTerminationPrivacyCleanup";
+import { MeetingRecordPrivacyCleanup } from "@/components/MeetingRecordPrivacyCleanup";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://bohemka.app"),
@@ -47,6 +48,7 @@ export default function RootLayout({
       <body className="antialiased">
         <ClientCardPrivacyCleanup />
         <ContractTerminationPrivacyCleanup />
+        <MeetingRecordPrivacyCleanup />
         <PwaBootstrap />
         {children}
       </body>

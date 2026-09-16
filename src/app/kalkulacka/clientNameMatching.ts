@@ -83,7 +83,9 @@ function matchKind(query: ReturnType<typeof nameParts>, candidate: ReturnType<ty
     // Company word order matters; do not apply person-name typo/reordering rules.
     return q.every((token, index) => c[index]?.startsWith(token)) ? "prefix" : null;
   }
-  if (distinctTokenMatch(q, c, (left, right) => left === right || (left.length >= 2 && right.startsWith(left)))) return "prefix";
+  const allowInitial = q.length >= 2 && q.some(token => token.length >= 3);
+  if (distinctTokenMatch(q, c, (left, right) => left === right ||
+      ((left.length >= 2 || (allowInitial && left.length === 1)) && right.startsWith(left)))) return "prefix";
   if (q.length < 2 || q.length !== c.length) return null;
   const remaining = [...c];
   const unmatched = q.filter((token) => {
@@ -102,10 +104,13 @@ export function matchClientName(queryText: string, index: ReturnType<typeof crea
   const priority: Record<ClientNameMatchKind, number> = { exact: 0, normalized: 1, reordered: 2, prefix: 3, similar: 4 };
   const matches = index.flatMap((candidate) => {
     const kind = matchKind(query, candidate);
-    return kind ? [{ name: candidate.name, kind }] : [];
-  }).sort((left, right) => priority[left.kind] - priority[right.kind] || left.name.localeCompare(right.name, "cs-CZ"));
+    const completeWords = query.tokens.filter(token => candidate.tokens.includes(token)).length;
+    return kind ? [{ name: candidate.name, kind, completeWords }] : [];
+  }).sort((left, right) => priority[left.kind] - priority[right.kind] ||
+    right.completeWords - left.completeWords || left.name.localeCompare(right.name, "cs-CZ"));
   // A full-name match should not be diluted by unrelated partial/fuzzy suggestions.
   const fullMatches = matches.filter((match) => priority[match.kind] <= 2);
   const exactMatches = fullMatches.filter((match) => match.kind === "exact");
-  return (exactMatches.length ? exactMatches : fullMatches.length ? fullMatches : matches).slice(0, limit);
+  return (exactMatches.length ? exactMatches : fullMatches.length ? fullMatches : matches)
+    .slice(0, limit).map(({ name, kind }) => ({ name, kind }));
 }

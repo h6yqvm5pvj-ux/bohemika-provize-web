@@ -210,7 +210,7 @@ export const resolveAdminBroadcastRecipientLabel = ({
   options: AdminBroadcastRecipientOption[];
   groupCounts: AdminBroadcastGroupCounts;
 }): string => {
-  if (mode === "all") return "Všichni s aktivním push tokenem";
+  if (mode === "all") return "Uživatelé se zapnutými upozorněními";
   if (mode === "group") {
     const groupLabel =
       ADMIN_BROADCAST_GROUPS.find((candidate) => candidate.id === group)?.label ??

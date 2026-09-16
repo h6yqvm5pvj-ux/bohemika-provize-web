@@ -135,4 +135,19 @@ describe("client name field", () => {
     await act(async () => root.render(<Harness initialName="Petr Novotný" status="ready" />));
     expect(container.textContent).toContain("Přesná shoda jména v systému nenalezena.");
   });
+  it("confirms one clear prefix match with Enter without requiring an arrow key", async () => {
+    await act(async () => root.render(<Harness initialName="Ivan Bu" source={null} />));
+    expect(container.textContent).toContain("Enter vloží jméno");
+    await key("Enter");
+    expect(selected).toHaveBeenCalledExactlyOnceWith("Ivan Buček");
+  });
+  it.each(["Jan Bucekk", "Bucek Jan"])("requires an explicit selection for a typo or ambiguous name: %s", async initialName => {
+    await act(async () => root.render(<Harness initialName={initialName} />));
+    await key("Enter"); expect(selected).not.toHaveBeenCalled();
+  });
+  it("does not select a name while an input method is composing", async () => {
+    await act(async () => root.render(<Harness initialName="Ivan Bu" />));
+    await act(async () => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true })));
+    expect(selected).not.toHaveBeenCalled();
+  });
 });

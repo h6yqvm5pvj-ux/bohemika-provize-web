@@ -1,5 +1,7 @@
 "use client";
 
+import adminStyles from "../adminConsole.module.css";
+
 import {
   BellRing,
   Clock3,
@@ -43,20 +45,20 @@ export function AdminBroadcastSection({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <span className={classes.badge}>Hromadné upozornění</span>
-          <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] !text-white sm:text-2xl">
+          <h2 className="inline-flex items-center gap-1.5 text-xl font-bold tracking-[-0.02em] text-slate-900 sm:text-2xl">
             <Megaphone
               size={20}
               strokeWidth={2.1}
-              className="!text-violet-100"
+              className="text-slate-600"
               aria-hidden="true"
             />
             <span>Notifikace</span>
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed !text-violet-100/70">
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
             Push zpráva se odešle na aktivní zařízení a kliknutí otevře vybranou stránku.
           </p>
         </div>
-        <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-3 py-2 text-xs font-semibold !text-violet-100">
+        <div className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-3 py-2 text-xs font-semibold text-slate-600">
           <BellRing size={15} strokeWidth={2.2} aria-hidden="true" />
           Web push
         </div>
@@ -72,13 +74,13 @@ export function AdminBroadcastSection({
           return (
             <div
               key={item.label}
-              className="min-w-0 rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2.5 shadow-[0_12px_28px_rgba(7,6,25,0.16)]"
+              className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 shadow-sm"
             >
-              <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] !text-violet-200/62">
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">
                 <Icon size={12} strokeWidth={2.2} aria-hidden="true" />
                 {item.label}
               </div>
-              <div className="truncate text-sm font-semibold !text-white">{item.value}</div>
+              <div className="truncate text-sm font-semibold text-slate-900">{item.value}</div>
             </div>
           );
         })}
@@ -92,15 +94,15 @@ export function AdminBroadcastSection({
         }}
       >
         <div className="space-y-3">
-          <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-4 shadow-[0_14px_34px_rgba(7,6,25,0.2)]">
+          <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="inline-flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold text-slate-600 ring-1 ring-violet-200/20">
                   1
                 </span>
                 <span className={classes.label}>Obsah zprávy</span>
               </div>
-              <span className="text-[11px] font-semibold !text-violet-100/56">
+              <span className="text-[11px] font-semibold text-slate-600">
                 {controller.title.length}/80 · {controller.message.length}/220
               </span>
             </div>
@@ -125,7 +127,7 @@ export function AdminBroadcastSection({
                       className={`inline-flex h-9 items-center justify-center rounded-xl border text-lg transition ${
                         controller.emoji === emoji
                           ? "border-violet-200 bg-violet-400/24 shadow-[0_8px_18px_rgba(124,58,237,0.18)]"
-                          : "border-white/12 bg-white/[0.055] hover:bg-white/[0.1]"
+                          : "border-slate-200 bg-slate-50 hover:bg-slate-50"
                       }`}
                       aria-label={`Vybrat emoji ${emoji}`}
                     >
@@ -164,16 +166,16 @@ export function AdminBroadcastSection({
           </div>
 
           <div className="grid gap-3 2xl:grid-cols-3">
-            <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3.5 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="inline-flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold text-slate-600 ring-1 ring-violet-200/20">
                     2
                   </span>
                   <span className={classes.label}>Příjemci</span>
                 </div>
                 {controller.recipientMode === "single" ? (
-                  <span className="text-[11px] font-semibold !text-violet-100/58">
+                  <span className="text-[11px] font-semibold text-slate-600">
                     {controller.usersLoading
                       ? "Načítám..."
                       : `${controller.recipientOptions.length} účtů`}
@@ -181,7 +183,7 @@ export function AdminBroadcastSection({
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-3 rounded-2xl border border-white/12 bg-white/[0.06] p-1">
+              <div className="grid grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1">
                 {[
                   { id: "all" as const, label: "Všem" },
                   { id: "group" as const, label: "Skupina" },
@@ -190,11 +192,12 @@ export function AdminBroadcastSection({
                   <button
                     key={mode.id}
                     type="button"
+                    aria-pressed={controller.recipientMode === mode.id}
                     onClick={() => controller.updateRecipientMode(mode.id)}
                     className={`min-h-10 rounded-xl px-2 text-[13px] font-semibold transition ${
                       controller.recipientMode === mode.id
-                        ? "admin-on-violet bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)]"
-                        : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        ? adminStyles.segmentActive
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
                     {mode.label}
@@ -244,16 +247,16 @@ export function AdminBroadcastSection({
                     )}
                   </select>
                 ) : (
-                  <div className="min-h-[46px] rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2 text-sm font-semibold leading-relaxed !text-violet-100/72">
-                    Všichni uživatelé s aktivním push tokenem.
+                  <div className="min-h-[46px] rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold leading-relaxed text-slate-600">
+                    Všichni uživatelé se zapnutými upozorněními.
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3.5 shadow-sm">
               <div className="mb-3 inline-flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold text-slate-600 ring-1 ring-violet-200/20">
                   3
                 </span>
                 <span className={classes.label}>Po kliknutí</span>
@@ -301,20 +304,20 @@ export function AdminBroadcastSection({
               </div>
             </div>
 
-            <div className="rounded-[22px] border border-white/12 bg-white/[0.055] p-3.5 shadow-[0_14px_34px_rgba(7,6,25,0.18)]">
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3.5 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="inline-flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold !text-violet-100 ring-1 ring-violet-200/20">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-violet-400/18 text-xs font-bold text-slate-600 ring-1 ring-violet-200/20">
                     4
                   </span>
                   <span className={classes.label}>Odeslání</span>
                 </div>
-                <span className="text-[11px] font-semibold !text-violet-100/58">
+                <span className="text-[11px] font-semibold text-slate-600">
                   {controller.deliveryMode === "scheduled" ? "Fronta" : "Ihned"}
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 rounded-2xl border border-white/12 bg-white/[0.06] p-1">
+              <div className="grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
                 {[
                   { id: "now" as const, label: "Hned" },
                   { id: "scheduled" as const, label: "Naplánovat" },
@@ -325,8 +328,8 @@ export function AdminBroadcastSection({
                     onClick={() => controller.updateDeliveryMode(mode.id)}
                     className={`min-h-10 rounded-xl px-2 text-sm font-semibold transition ${
                       controller.deliveryMode === mode.id
-                        ? "admin-on-violet bg-[linear-gradient(135deg,#6d28d9_0%,#8b5cf6_100%)] !text-white shadow-[0_8px_18px_rgba(109,40,217,0.26)]"
-                        : "!text-violet-100/72 hover:bg-white/[0.08] hover:!text-white"
+                        ? adminStyles.segmentActive
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                     }`}
                   >
                     {mode.label}
@@ -345,7 +348,7 @@ export function AdminBroadcastSection({
             </div>
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-[22px] border border-amber-300/30 bg-amber-300/10 px-3.5 py-3 shadow-[0_12px_28px_rgba(7,6,25,0.16)]">
+          <label className="flex cursor-pointer items-start gap-3 rounded-[22px] border border-amber-300/30 bg-amber-300/10 px-3.5 py-3 shadow-sm">
             <input
               type="checkbox"
               checked={controller.confirmed}
@@ -360,7 +363,7 @@ export function AdminBroadcastSection({
                     ? "Potvrzuji odeslání pouze vybranému uživateli."
                     : controller.recipientMode === "group"
                       ? "Potvrzuji odeslání vybrané skupině."
-                      : "Potvrzuji odeslání všem uživatelům s aktivním push tokenem."}
+                      : "Potvrzuji odeslání všem uživatelům se zapnutými upozorněními."}
               </span>
               <span className="mt-1 block text-xs leading-relaxed text-amber-700">
                 Respektuje se vypnutý push kanál v nastavení uživatele.
@@ -372,7 +375,7 @@ export function AdminBroadcastSection({
             <div
               className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${
                 controller.status.type === "success"
-                  ? "border-violet-300/30 bg-violet-400/12 !text-violet-100"
+                  ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
                   : controller.status.type === "info"
                     ? "border-sky-200 bg-sky-50 text-sky-700"
                     : "border-rose-200 bg-rose-50 text-rose-700"
@@ -382,12 +385,12 @@ export function AdminBroadcastSection({
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-3 rounded-[22px] border border-white/10 bg-slate-950/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] !text-violet-200/58">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                 Připravený cíl
               </span>
-              <span className="mt-0.5 block truncate text-sm font-semibold !text-violet-50">
+              <span className="mt-0.5 block truncate text-sm font-semibold text-slate-600">
                 {controller.effectiveTargetPath}
               </span>
             </div>
@@ -419,26 +422,26 @@ export function AdminBroadcastSection({
           </div>
         </div>
 
-        <aside className="self-start rounded-[24px] border border-white/14 bg-white/[0.07] p-4 shadow-[0_16px_38px_rgba(7,6,25,0.22)] xl:sticky xl:top-4">
+        <aside className="self-start rounded-[24px] border border-slate-200 bg-slate-50 p-4 shadow-sm xl:sticky xl:top-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] !text-violet-200/78">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
               Náhled
             </span>
-            <span className="rounded-full border border-white/12 bg-white/[0.06] px-2 py-1 text-[10px] font-semibold !text-violet-100/70">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600">
               Web push
             </span>
           </div>
-          <div className="rounded-[22px] border border-white/16 bg-slate-950/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <div className="rounded-[22px] border border-slate-200 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
             <div className="flex items-start gap-3">
               <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl text-slate-950">
                 {controller.emoji || "📣"}
               </span>
               <div className="min-w-0">
-                <div className="text-sm font-bold !text-white">
+                <div className="text-sm font-bold text-slate-900">
                   {controller.emoji ? `${controller.emoji} ` : ""}
                   {controller.titleTrimmed || "Nadpis notifikace"}
                 </div>
-                <p className="mt-1 break-words text-sm leading-relaxed !text-violet-100/78">
+                <p className="mt-1 break-words text-sm leading-relaxed text-slate-600">
                   {controller.messageTrimmed || "Text notifikace se zobrazí tady."}
                 </p>
               </div>
@@ -466,13 +469,13 @@ export function AdminBroadcastSection({
             ].map((item) => (
               <div
                 key={item.label}
-                className="rounded-2xl border border-white/12 bg-white/[0.055] px-3 py-2"
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2"
               >
-                <span className="block font-semibold uppercase tracking-[0.14em] !text-violet-200/60">
+                <span className="block font-semibold uppercase tracking-[0.14em] text-slate-500">
                   {item.label}
                 </span>
                 <span
-                  className={`mt-0.5 block font-semibold !text-white ${item.valueClassName}`}
+                  className={`mt-0.5 block font-semibold text-slate-900 ${item.valueClassName}`}
                 >
                   {item.value}
                 </span>

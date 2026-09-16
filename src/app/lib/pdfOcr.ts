@@ -1,3 +1,5 @@
+import type { Worker } from "tesseract.js";
+
 export type PdfOcrProgress = {
   page: number;
   totalPages: number;
@@ -22,6 +24,7 @@ export type PdfOcrOptions = {
   languages?: string | string[];
   onProgress?: (progress: PdfOcrProgress) => void;
   removeTableLines?: boolean;
+  signal?: AbortSignal;
 };
 
 // Remove long table borders before OCR, preserving the text inside each cell.
@@ -67,6 +70,10 @@ function removeTableLines(context: CanvasRenderingContext2D, width: number, heig
 const DEFAULT_OCR_LANGUAGES = "ces+eng";
 const DEFAULT_OCR_SCALE = 2.6;
 const DEFAULT_MAX_PAGES = 12;
+const MAX_CANVAS_PIXELS = 4_000_000;
+const MAX_CANVAS_SIDE = 4096;
+const OCR_TIMEOUT_MS = 90_000;
+const WORKER_START_TIMEOUT_MS = 30_000;
 
 const normalizeOcrLine = (line: string) =>
   line
@@ -99,41 +106,66 @@ export async function extractOcrLinesFromPdf(
     throw new Error("OCR PDF import je dostupný pouze v prohlížeči.");
   }
 
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const { createWorker, PSM } = await import("tesseract.js");
-
-  if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-  const totalPages = Math.min(doc.numPages, options.maxPages ?? DEFAULT_MAX_PAGES);
-  const scale = options.scale ?? DEFAULT_OCR_SCALE;
-  const languages = ocrLanguagesToTesseractValue(options.languages ?? DEFAULT_OCR_LANGUAGES);
-
-  let activePage = 0;
-  const worker = await createWorker(languages, 1, {
-    workerPath: "/ocr/worker.min.js",
-    corePath: "/ocr/tesseract-core-lstm.wasm.js",
-    langPath: "/ocr/lang",
-    workerBlobURL: false,
-    logger: (message) => {
-      reportProgress(options.onProgress, {
-        page: activePage,
-        totalPages,
-        status: message.status,
-        progress: message.progress,
-      });
-    },
-  });
-
+  let finished = false;
+  let worker: Worker | null = null;
+  let loadingTask: import("pdfjs-dist/legacy/build/pdf.mjs").PDFDocumentLoadingTask | null = null;
+  let rejectFailure!: (error: Error) => void;
+  const failure = new Promise<never>((_, reject) => { rejectFailure = reject; });
+  // Errors from worker startup can arrive before createWorker's promise settles.
+  void failure.catch(() => {});
+  const wait = <T,>(task: Promise<T>): Promise<T> => Promise.race([task, failure]);
+  const timeout = () => {
+    const error = new Error("Rozpoznávání skenu trvalo příliš dlouho. Zkus menší nebo čitelnější PDF.");
+    error.name = "PdfImportTimeoutError";
+    rejectFailure(error);
+  };
+  const abort = () => rejectFailure(new DOMException("Rozpoznávání skenu bylo zrušeno.", "AbortError"));
+  const timeoutId = setTimeout(timeout, OCR_TIMEOUT_MS);
+  let startupTimer: ReturnType<typeof setTimeout> | undefined;
+  options.signal?.addEventListener("abort", abort, { once: true });
   try {
-    await worker.setParameters({
+    if (options.signal?.aborted) throw new DOMException("Rozpoznávání skenu bylo zrušeno.", "AbortError");
+    const buffer = await wait(file.arrayBuffer());
+    const [pdfjsLib, { createWorker, PSM }] = await wait(Promise.all([
+      import("pdfjs-dist/legacy/build/pdf.mjs"), import("tesseract.js"),
+    ]));
+    if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    }
+    loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+    const doc = await wait(loadingTask.promise);
+    const maxPages = Number.isFinite(options.maxPages) ? Math.max(1, Math.floor(options.maxPages!)) : DEFAULT_MAX_PAGES;
+    const totalPages = Math.min(doc.numPages, maxPages);
+    const requestedScale = Number.isFinite(options.scale) && options.scale! > 0 ? options.scale! : DEFAULT_OCR_SCALE;
+    const languages = ocrLanguagesToTesseractValue(options.languages ?? DEFAULT_OCR_LANGUAGES);
+    let activePage = 0;
+    startupTimer = setTimeout(timeout, WORKER_START_TIMEOUT_MS);
+    const pendingWorker = createWorker(languages, 1, {
+      // Bust cached worker responses carrying the old CSP that blocked WebAssembly.
+      workerPath: "/ocr/worker.min.js?v=7.0.0-ocr2",
+      // Let Tesseract select scalar, SIMD or relaxed SIMD for this browser.
+      corePath: "/ocr",
+      langPath: "/ocr/lang",
+      workerBlobURL: false,
+      errorHandler: () => rejectFailure(new Error("Rozpoznávání skenu se nepodařilo spustit nebo dokončit. Zkus PDF načíst znovu.")),
+      logger: (message) => {
+        if (!finished) reportProgress(options.onProgress, {
+          page: activePage, totalPages, status: message.status, progress: message.progress,
+        });
+      },
+    }).then(async (created) => {
+      // An aborted startup must not leave a worker running if it finishes later.
+      if (finished) await created.terminate();
+      else worker = created;
+      return created;
+    });
+    worker = await wait(pendingWorker);
+    clearTimeout(startupTimer);
+    await wait(worker.setParameters({
       preserve_interword_spaces: "1",
       tessedit_pageseg_mode: options.removeTableLines ? PSM.AUTO : PSM.SINGLE_BLOCK,
       user_defined_dpi: "300",
-    });
+    }));
 
     const pageTexts: string[] = [];
     const pages: PdfOcrPage[] = [];
@@ -146,36 +178,42 @@ export async function extractOcrLinesFromPdf(
         progress: 0,
       });
 
-      const page = await doc.getPage(pageNumber);
+      const page = await wait(doc.getPage(pageNumber));
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(requestedScale, Math.sqrt(MAX_CANVAS_PIXELS / (base.width * base.height)), MAX_CANVAS_SIDE / base.width, MAX_CANVAS_SIDE / base.height);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
-      canvas.width = Math.ceil(viewport.width);
-      canvas.height = Math.ceil(viewport.height);
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) {
-        throw new Error("Nepodařilo se připravit canvas pro OCR.");
-      }
+      try {
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          throw new Error("Nepodařilo se připravit canvas pro OCR.");
+        }
 
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
-      if (options.removeTableLines) removeTableLines(context, canvas.width, canvas.height);
-      const {
-        data: { text, blocks },
-      } = await worker.recognize(canvas, {}, { text: true, blocks: true });
-      pageTexts.push(text ?? "");
-      pages.push({
-        text: text ?? "",
-        words: (blocks ?? []).flatMap((block) => block.paragraphs.flatMap((paragraph) =>
-          paragraph.lines.flatMap((line) => line.words.map((word) => ({
-            text: word.text,
-            x: word.bbox.x0 / scale,
-            y: word.bbox.y0 / scale,
-            width: (word.bbox.x1 - word.bbox.x0) / scale,
-            height: (word.bbox.y1 - word.bbox.y0) / scale,
-          })))
-        )),
-      });
-      canvas.width = 0;
-      canvas.height = 0;
+        await wait(page.render({ canvas, canvasContext: context, viewport }).promise);
+        if (options.removeTableLines) removeTableLines(context, canvas.width, canvas.height);
+        const {
+          data: { text, blocks },
+        } = await wait(worker.recognize(canvas, {}, { text: true, blocks: true }));
+        pageTexts.push(text ?? "");
+        pages.push({
+          text: text ?? "",
+          words: (blocks ?? []).flatMap((block) => block.paragraphs.flatMap((paragraph) =>
+            paragraph.lines.flatMap((line) => line.words.map((word) => ({
+              text: word.text,
+              x: word.bbox.x0 / scale,
+              y: word.bbox.y0 / scale,
+              width: (word.bbox.x1 - word.bbox.x0) / scale,
+              height: (word.bbox.y1 - word.bbox.y0) / scale,
+            })))
+          )),
+        });
+      } finally {
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
+      }
     }
 
     const text = pageTexts.join("\n");
@@ -186,7 +224,11 @@ export async function extractOcrLinesFromPdf(
 
     return { text, lines, pages };
   } finally {
-    await worker.terminate();
-    await doc.destroy();
+    finished = true;
+    clearTimeout(timeoutId);
+    clearTimeout(startupTimer);
+    options.signal?.removeEventListener("abort", abort);
+    try { await worker?.terminate(); }
+    finally { await loadingTask?.destroy(); }
   }
 }

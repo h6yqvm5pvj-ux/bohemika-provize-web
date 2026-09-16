@@ -230,6 +230,14 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     isLifeSplit: true,
   }),
   defaultEntry({
+    code: "CPP_NRF_IN",
+    productKey: "neon",
+    label: "ČPP ŽP NEON RF",
+    baseRule: "annual",
+    isLifeSplit: true,
+    note: "Investiční varianta životního pojištění REFRESH. Rizikovou základnu určují A101/B0301; investiční provize A201 se posuzuje samostatně.",
+  }),
+  defaultEntry({
     code: "CPP_N_RISK",
     productKey: "neon",
     label: "ČPP ŽP NEON RISK",

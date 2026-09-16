@@ -1,0 +1,34 @@
+{
+  "date": "2026-09-15",
+  "commit": "0229c2b546112c9c17b9147da5a08028f1154432",
+  "scope": "local working tree; synthetic API and browser reproductions; local HTTP",
+  "tests": {
+    "command": "npm test -- --reporter=dot",
+    "filesPassed": 253,
+    "testsPassed": 2562,
+    "exitCode": 0
+  },
+  "typescript": {
+    "command": "npx tsc --noEmit --incremental false",
+    "exitCode": 0
+  },
+  "lint": {
+    "command": "npm run lint -- --format json --output-file /tmp/bohemika-bug-audit-lint.json",
+    "errors": 0,
+    "warnings": 4,
+    "exitCode": 0
+  },
+  "evidenceTests": {
+    "testsPassed": 3,
+    "assertionsCapture": "incorrect current behavior, not desired behavior"
+  },
+  "sourceHashes": {
+    "src/app/_klienti/clientCardHelpers.ts": "4b45f15e9533835d8bb0b0cafd1f8a02df8db6beb16ada9a4ec5913e24f06349",
+    "src/lib/server/hallOfFame.ts": "45ceea7d91ddee92e2bc876118c4afa190ea8ea3bab757e8844b3ed281764496",
+    "src/app/api/team-overview/route.ts": "34b7fc4674ccd18af00b497d1841c38e88df12bf4cc4eeb03528e94101a1be8d",
+    "src/app/lib/authSession.ts": "864b1b58363c053420608ce0508518a2f5b3d36c863e4192839e30bc4c9d4d0c",
+    "src/app/pomucky/zaznam/CarRecordForm.tsx": "c105094087421b09ba097653cd2cdb2dc5d15b131bac6a38249332187692d8f7",
+    "src/app/pomucky/zaznam/vysledky-auto/page.tsx": "ab5fb58e75d608afaf995f0bed2b2be8bfb0ce0a3a065d7e8163cfc5f1692d5a",
+    "src/app/layout.tsx": "bf227d12bd8a49d01a43411aa2bbacaf53935241cd3115f3d1e0ef3b3e13a249"
+  }
+}

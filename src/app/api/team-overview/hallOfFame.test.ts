@@ -34,6 +34,35 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("global hall API access and periods", () => {
+  it("includes all business products in property totals and ranks, respecting payment frequency and periods", async () => {
+    mocks.group.mockResolvedValue({ docs: [
+      contract("property-a", "a@example.test", "2026-09-01", 12000, { productKey: "domex" }),
+      contract("simplex-a", "a@example.test", "2026-09-02", 1000, { productKey: "cppsimplex", frequencyRaw: "monthly" }),
+      contract("pmop-b", "other-team@example.test", "2026-09-03", 15000, { productKey: "kooppmop" }),
+      contract("pprs-b", "other-team@example.test", "2026-09-04", 3000, { productKey: "cppPPRs", frequencyRaw: "quarterly" }),
+      contract("pprbez-a", "a@example.test", "2026-07-01", 5000, { productKey: "cppPPRbez", frequencyRaw: "semiannual" }),
+      contract("inherited", "other-team@example.test", "2026-09-02", 999999, { productKey: "cppsimplex", acquisitionType: "inherited" }),
+      contract("future", "other-team@example.test", "2026-09-15", 999999, { productKey: "cppsimplex" }),
+    ] });
+    const { GET } = await import("./route");
+    const month = await (await GET(request())).json();
+    expect(month.rankings.property).toEqual([
+      expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 1 }),
+      expect.objectContaining({ name: "Anna", annualPremium: 24000, contracts: 2, rank: 2 }),
+    ]);
+    for (const period of ["3months", "6months", "year"]) {
+      const body = await (await GET(request(`hallOfFame&period=${period}`))).json();
+      expect(body.rankings.property).toEqual([
+        expect.objectContaining({ name: "Anna", annualPremium: 34000, contracts: 3, rank: 1 }),
+        expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 2 }),
+      ]);
+      expect(body.rankings.life).toEqual([]);
+      expect(body.rankings.auto).toEqual([]);
+      expect(body.rankings.gold).toEqual([]);
+    }
+    expect(mocks.group).toHaveBeenCalledOnce();
+  });
+
   it("lets an ordinary adviser see another team's result and keeps cached requester identity separate", async () => {
     const { GET } = await import("./route");
     const response = await GET(request());

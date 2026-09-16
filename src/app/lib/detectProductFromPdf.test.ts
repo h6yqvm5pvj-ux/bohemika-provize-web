@@ -13,12 +13,14 @@ type MockPdfItem =
 
 const pdfState = vi.hoisted(() => ({
   pages: [] as MockPdfItem[][],
+  destroy: vi.fn(),
 }));
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   GlobalWorkerOptions: {},
   getDocument: vi.fn(() => ({
     promise: Promise.resolve({
+      destroy: pdfState.destroy,
       get numPages() {
         return pdfState.pages.length;
       },
@@ -54,6 +56,13 @@ describe("detectProductFromPdf", () => {
   });
   beforeEach(() => {
     pdfState.pages = [];
+    pdfState.destroy.mockClear();
+  });
+
+  it("releases the PDF document when no product matches", async () => {
+    pdfState.pages = [["Unknown product"]];
+    expect(await detectProductFromPdf(makePdfFile())).toBeNull();
+    expect(pdfState.destroy).toHaveBeenCalledOnce();
   });
 
   it("detects NEON from first page text", async () => {
@@ -68,6 +77,7 @@ describe("detectProductFromPdf", () => {
       product: "neon",
       confidence: "high",
     });
+    expect(pdfState.destroy).toHaveBeenCalledOnce();
   });
 
   it("detects NEON RISK as the NEON product", async () => {

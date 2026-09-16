@@ -198,7 +198,7 @@ describe("login verification boundary", () => {
     mocks.passkey.mockReturnValue(verification.promise);
     await enterPassword();
     await startPasskey();
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("Ověřuji přihlášení");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Připravuji přihlášení");
     expect(container.querySelector("form")?.hasAttribute("inert")).toBe(true);
     await restoreCachedUser();
     await submit();
@@ -227,6 +227,26 @@ describe("login verification boundary", () => {
     await startPasskey();
     expect(sessionPosts()).toHaveLength(1);
     expect(mocks.router.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the user cancel waiting for passkey and return to the login form", async () => {
+    mocks.passkey.mockImplementation(({ signal, onStage }) => {
+      onStage("verification");
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    });
+    await startPasskey();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Ověřuji přihlášení");
+    const cancel = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Zrušit přihlášení");
+    expect(cancel).toBeDefined();
+    await act(async () => cancel!.click());
+    expect(mocks.passkey.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(console.error).not.toHaveBeenCalled();
+    expectNotLoggedIn();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector("form")?.hasAttribute("inert")).toBe(false);
+    mocks.passkey.mockResolvedValueOnce({ user: freshUser });
+    await startPasskey();
+    expect(sessionPosts()).toHaveLength(1);
   });
 
   it("waits for the server session and preserves the trusted-device choice", async () => {

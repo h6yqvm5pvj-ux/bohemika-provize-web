@@ -1,0 +1,66 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { parseBirthNumberDate } from "@/app/_klienti/clientCardHelpers";
+import { clearServerSession } from "@/app/lib/authSession";
+
+const mocks = vi.hoisted(() => ({ verify: vi.fn(), users: vi.fn(), group: vi.fn() }));
+vi.mock("@/lib/server/firebaseAdmin", () => ({
+  adminAuth: { verifyIdToken: mocks.verify },
+  adminDb: {
+    collection: () => ({ select: () => ({ get: mocks.users }) }),
+    collectionGroup: () => ({ where: () => ({ get: mocks.group }) }),
+  },
+}));
+vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorAccessError: vi.fn().mockResolvedValue(null), getAdvisorSetupError: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: vi.fn().mockResolvedValue({ allowed: true }), applyRateLimitHeaders: vi.fn() }));
+vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: vi.fn().mockResolvedValue(null) }));
+vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: vi.fn().mockResolvedValue({ ok: true, impersonation: null }) }));
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+// These assertions capture current defects as evidence, not desired behavior.
+describe("audit evidence: current incorrect behavior", () => {
+  it("turns the birth date of a child born in May 2014 into May 1914", () => {
+    expect(parseBirthNumberDate("140515")).toBe("1914-05-15");
+    expect(parseBirthNumberDate("145515")).toBe("1914-05-15");
+    expect(parseBirthNumberDate("850101")).toBe("1985-01-01");
+    console.log(JSON.stringify({ bug: "child-birth-date", inputPrefix: "140515", actual: parseBirthNumberDate("140515"), expected: "2014-05-15" }));
+  });
+
+  it("drops a current business property contract from every hall category", async () => {
+    const owner = "advisor@example.test";
+    mocks.verify.mockResolvedValue({ email: owner, uid: "audit-advisor" });
+    mocks.users.mockResolvedValue({ docs: [{ id: owner, exists: true, data: () => ({ fullName: "Testovací poradce", position: "poradce3" }) }] });
+    const contract = (id: string, productKey: string) => ({ id, ref: { parent: { parent: { id: owner } } }, data: () => ({ userEmail: owner, productKey, inputAmount: 12000, frequencyRaw: "annual", contractSignedDate: "2026-09-01" }) });
+    mocks.group.mockResolvedValue({ docs: [contract("business", "cppsimplex"), contract("property-control", "domex")] });
+    const { GET } = await import("@/app/api/team-overview/route");
+    const response = await GET(new NextRequest("https://example.test/api/team-overview?action=hallOfFame", { headers: { Authorization: "Bearer synthetic" } }));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rankings.property[0]).toMatchObject({ contracts: 1, annualPremium: 12000 });
+    expect(Object.values(body.rankings).flat()).toHaveLength(1);
+    console.log(JSON.stringify({ bug: "business-hall-omission", suppliedContracts: ["cppsimplex", "domex"], actual: body.rankings.property[0], expected: { contracts: 2, annualPremium: 24000 } }));
+  });
+
+  it("leaves all three shared meeting-record keys in browser storage after logout", async () => {
+    const values = new Map<string, string>();
+    const storage = { get length() { return values.size; }, key: (index: number) => [...values.keys()][index] ?? null,
+      getItem: (key: string) => values.get(key) ?? null, removeItem: (key: string) => { values.delete(key); },
+      setItem: (key: string, value: string) => { values.set(key, value); } };
+    vi.stubGlobal("window", { localStorage: storage, sessionStorage: storage });
+    const fetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetch);
+    const keys = ["carRecord.resultsInput", "lifeRecordFormDraft", "lifeRecordResultInput"];
+    keys.forEach(key => storage.setItem(key, JSON.stringify({ synthetic: true, savedAt: Date.now() })));
+    await clearServerSession();
+    expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.objectContaining({ method: "DELETE" }));
+    expect(keys.every(key => storage.getItem(key) !== null)).toBe(true);
+    console.log(JSON.stringify({ bug: "meeting-input-survives-logout", retainedKeys: keys.filter(key => storage.getItem(key) !== null) }));
+  });
+});

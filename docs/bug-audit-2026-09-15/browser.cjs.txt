@@ -1,0 +1,96 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+const { createHash } = require('node:crypto');
+const { chromium } = require('../contract-filter-check/tools/node_modules/playwright');
+const out = path.join(process.cwd(), '.tmp/bug-audit-2026-09-15');
+const sourceEvidence = [];
+function handler(file, name) {
+  const code = fs.readFileSync(file, 'utf8');
+  const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let found;
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === name) found = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.ok(found, name);
+  sourceEvidence.push({ file, name, line: source.getLineAndCharacterOfPosition(found.getStart(source)).line + 1, sha256: createHash('sha256').update(code).digest('hex') });
+  return ts.transpileModule('const ' + found.getText(source) + ';', { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext } }).outputText;
+}
+const neon = handler('src/app/kalkulacka/page.tsx', 'handleNeonDocumentAction');
+const plan = handler('src/app/pomucky/plan-produkce/page.tsx', 'handleOpenPreviewInNewTab');
+const upload = handler('src/app/pomucky/vypoved-smlouvy/page.tsx', 'openUploadPage');
+const pages = {
+  '/__audit_neon': `<button id="run">Otevřít PDF</button><output id="error"></output><script>
+    window.audit = {blobRequests:0}; const user = {uid:'synthetic'}; const neonTermsPreviewUrl='/__fake_document'; const neonPeriod='2024';
+    const setNeonPreviewError = text => { window.audit.error=text; document.querySelector('output').textContent=text; };
+    const setNeonDocAction = () => {};
+    const requestBlobWithAuth = async () => { window.audit.blobRequests++; return new Response(new Blob(['synthetic'],{type:'application/pdf'})); };
+    ${neon}
+    document.querySelector('#run').onclick=()=>handleNeonDocumentAction('open');
+  </script>`,
+  '/__audit_plan': `<button id="run">Otevřít plán</button><output></output><script>
+    window.audit={};const previewHtml='<h1>Testovací plán</h1>';const setErrorText=text=>{ window.audit.error=text;document.querySelector('output').textContent=text; };
+    ${plan}
+    document.querySelector('#run').onclick=handleOpenPreviewInNewTab;
+  </script>`,
+  '/__audit_upload': `<button id="run">Nahrát výpověď</button><script>
+    const config={uploadUrl:'http://127.0.0.1:3000/__audit_upload_target'};
+    ${upload}
+    document.querySelector('#run').onclick=openUploadPage;
+  </script>`,
+  '/__audit_upload_target': '<h1>Místní náhrada stránky pro nahrání</h1>',
+};
+
+(async()=>{
+  const browser = await chromium.launch({ executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless:true, args:['--disable-background-networking','--no-first-run'] });
+  const result = { browser: await browser.version(), sourceEvidence, cases: [] };
+  try {
+    for (const name of ['neon','plan','upload']) {
+      const context = await browser.newContext({ viewport:{width:1000,height:700}, serviceWorkers:'block' });
+      await context.route('**/*', async route => {
+        const content = pages[new URL(route.request().url()).pathname];
+        if (content) await route.fulfill({ status:200, contentType:'text/html; charset=utf-8', body:'<!doctype html><html lang="cs"><meta charset="utf-8"><body>'+content+'</body></html>' });
+        else await route.abort();
+      });
+      const page = await context.newPage();
+      const errors = []; page.on('pageerror', e=>errors.push(e.message));
+      await page.goto('http://127.0.0.1:3000/__audit_'+name);
+      const newPage = context.waitForEvent('page');
+      await page.locator('#run').click();
+      const popup = await newPage;
+      if (name === 'upload') {
+        await page.waitForURL('**/__audit_upload_target');
+        await popup.waitForURL('**/__audit_upload_target');
+      } else if (name === 'plan') {
+        await popup.getByRole('heading', {name:'Testovací plán'}).waitFor();
+      }
+      const state = await page.evaluate(()=>window.audit ?? null);
+      const evidence = { name, originalUrl:page.url(), newTabUrl:popup.url(), state, errors };
+      if (name === 'neon') { assert.equal(state.blobRequests,0); assert.equal(popup.url(),'about:blank'); assert.match(state.error,/zablokoval/); }
+      if (name === 'plan') { assert.match(state.error,/zablokoval/); assert.match(popup.url(),/^blob:/); }
+      if (name === 'upload') assert.equal(page.url(),popup.url());
+      assert.equal(errors.length,0);
+      await page.screenshot({path:path.join(out,name+'.png')});
+      result.cases.push(evidence);
+      await context.close();
+    }
+    // Real local HTTP only: no login, no application data or external hosts.
+    const http = await browser.newContext();
+    result.localHttp = [];
+    for (const pathname of ['/provize/bytexprovize.pdf', '/provize/csobauto.jpg', '/login']) {
+      const response = await http.request.get('http://127.0.0.1:3000'+pathname, {timeout:30000});
+      const item = {path:pathname,status:response.status()};
+      if (pathname==='/login') {
+        const html = await response.text();
+        item.viewport = html.match(/<meta name="viewport"[^>]*>/)?.[0] ?? null;
+      }
+      result.localHttp.push(item);
+    }
+    await http.close();
+    fs.writeFileSync(path.join(out,'browser.json'),JSON.stringify(result,null,2));
+    console.log(JSON.stringify(result,null,2));
+  } finally { await browser.close(); }
+})().catch(error=>{ console.error(error);process.exitCode=1; });
