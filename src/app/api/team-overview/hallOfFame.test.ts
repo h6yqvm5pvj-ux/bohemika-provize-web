@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hallParticipantId } from "@/lib/server/hallOfFame";
 
-const mocks = vi.hoisted(() => ({ verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn() }));
+const mocks = vi.hoisted(() => ({ verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn(), impersonation: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verify },
   adminDb: {
@@ -13,7 +13,7 @@ vi.mock("@/lib/server/firebaseAdmin", () => ({
 vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorAccessError: mocks.access, getAdvisorSetupError: mocks.setup }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rate, applyRateLimitHeaders: vi.fn() }));
 vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: vi.fn().mockResolvedValue(null) }));
-vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: vi.fn().mockResolvedValue({ ok: true, impersonation: null }) }));
+vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: mocks.impersonation }));
 
 const request = (action = "hallOfFame", token: string | null = "test-token") => new NextRequest(`https://example.test/api/team-overview?action=${action}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
 const profile = (email: string, name: string) => ({ id: email, exists: true, data: () => ({ fullName: name, position: "poradce3", phoneNumber: "private-phone", managerEmail: "private-manager" }) });
@@ -27,6 +27,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-09-14T10:00:00Z"));
   mocks.verify.mockResolvedValue({ email: "a@example.test", uid: "ordinary-advisor" });
   mocks.access.mockResolvedValue(null); mocks.setup.mockResolvedValue(null);
+  mocks.impersonation.mockResolvedValue({ ok: true, impersonation: null });
   mocks.rate.mockResolvedValue({ allowed: true });
   mocks.users.mockResolvedValue({ docs: [profile("a@example.test", "Anna"), profile("other-team@example.test", "Boris")] });
   mocks.group.mockResolvedValue({ docs: [contract("a", "a@example.test", "2026-09-01", 1000), contract("b", "other-team@example.test", "2026-09-12", 9000)] });
@@ -81,18 +82,36 @@ describe("global hall API access and periods", () => {
     expect(mocks.users).toHaveBeenCalledTimes(1);
     expect(mocks.group).toHaveBeenCalledTimes(1);
   });
-  it("allows tipsters into the hall without granting them access to team details", async () => {
+  it("rejects tipsters from the hall and team details before loading rankings", async () => {
     mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });
     const { GET } = await import("./route");
-    expect((await GET(request())).status).toBe(200);
-    expect(mocks.setup).toHaveBeenCalledOnce();
-    expect(mocks.access).not.toHaveBeenCalled();
-    expect((await GET(request("members"))).status).toBe(403);
+    expect((await GET(request())).status).toBe(403);
+    expect(mocks.setup).not.toHaveBeenCalled();
     expect(mocks.access).toHaveBeenCalledOnce();
+    expect(mocks.users).not.toHaveBeenCalled();
+    expect(mocks.group).not.toHaveBeenCalled();
+    expect((await GET(request("members"))).status).toBe(403);
+    expect(mocks.access).toHaveBeenCalledTimes(2);
+  });
+  it("does not expose previously cached rankings to a tipster", async () => {
+    const { GET } = await import("./route");
+    expect((await GET(request())).status).toBe(200);
+    mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });
+    expect((await GET(request())).status).toBe(403);
+    expect(mocks.users).toHaveBeenCalledOnce();
+  });
+  it("checks the tipster's access when an administrator is viewing their account", async () => {
+    mocks.verify.mockResolvedValue({ email: "admin@example.test", uid: "admin-user", admin: true });
+    mocks.impersonation.mockResolvedValue({ ok: true, impersonation: { targetEmail: "tipster@example.test", targetUid: "tipster-user" } });
+    mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });
+    const { GET } = await import("./route");
+    expect((await GET(request())).status).toBe(403);
+    expect(mocks.access).toHaveBeenCalledWith({ email: "tipster@example.test", uid: "tipster-user" });
+    expect(mocks.users).not.toHaveBeenCalled();
   });
   it.each(["missing", "invalid", "setup", "rate"])("rejects %s access before loading global data", async (kind) => {
     if (kind === "invalid") mocks.verify.mockRejectedValue(new Error("Invalid token"));
-    if (kind === "setup") mocks.setup.mockResolvedValue({ status: 403, error: "Dokonči profil", missing: ["phoneNumber"] });
+    if (kind === "setup") mocks.access.mockResolvedValue({ status: 403, error: "Dokonči profil", missing: ["phoneNumber"] });
     if (kind === "rate") mocks.rate.mockResolvedValue({ allowed: false });
     const { GET } = await import("./route");
     const response = await GET(request("hallOfFame", kind === "missing" ? null : "test-token"));

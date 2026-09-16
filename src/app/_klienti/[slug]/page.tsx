@@ -8,6 +8,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import type { User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowUpRight,
   ChevronRight,
   History,
@@ -45,6 +46,7 @@ import {
 } from "@/app/lib/institutionLogoDisplay";
 import type { Product } from "@/app/types/domain";
 import { ClientSession } from "../ClientSession";
+import { contractReturnHrefFromClientCard } from "../clientAccess";
 import { ClientDetailLoader } from "../ClientDetailLoader";
 import { ClientNotesSection } from "../ClientNotesSection";
 import { ClientProfileHeader } from "../ClientProfileHeader";
@@ -788,10 +790,11 @@ export default function ClientCardPage() {
   const linkedNoteId = searchParams.get("noteId") ?? "";
   const selection = searchParams.has("scope") ? readClientScope(searchParams) : null;
   const query = selection ? clientScopeQuery(selection) : "";
-  return <ClientSession>{(user) => <ClientCardEditor key={`${user.uid}:${slug}:${query}:${linkedNoteId}`} user={user} slug={slug} query={query} />}</ClientSession>;
+  const returnContractHref = contractReturnHrefFromClientCard(searchParams);
+  return <ClientSession>{(user) => <ClientCardEditor key={`${user.uid}:${slug}:${query}:${linkedNoteId}`} user={user} slug={slug} query={query} returnContractHref={returnContractHref} />}</ClientSession>;
 }
 
-function ClientCardEditor({ user, slug, query }: { user: FirebaseUser; slug: string; query: string }) {
+function ClientCardEditor({ user, slug, query, returnContractHref }: { user: FirebaseUser; slug: string; query: string; returnContractHref: string | null }) {
   const selection = useMemo<ClientScopeSelection | null>(() => query ? readClientScope(new URLSearchParams(query)) : null, [query]);
   const backHref = query ? `/klienti?${query}` : "/klienti";
   const [loadedContracts, setLoadedContracts] = useState(0);
@@ -1000,11 +1003,11 @@ function ClientCardEditor({ user, slug, query }: { user: FirebaseUser; slug: str
               Klienta se nepodařilo najít ve smlouvách ani v uložených kartách.
             </p>
             <Link
-              href={backHref}
+              href={returnContractHref ?? backHref}
               className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
             >
               <ClientLinkIndicator kind="back" />
-              Zpět na klienty
+              {returnContractHref ? "Zpět na smlouvu" : "Zpět na klienty"}
             </Link>
           </div>
         </div>
@@ -1016,11 +1019,18 @@ function ClientCardEditor({ user, slug, query }: { user: FirebaseUser; slug: str
     <AppLayout active="clients">
       <div className={styles.page}>
         <div className={styles.container}>
-          <nav aria-label="Drobečková navigace" className={styles.breadcrumb}>
-            <Link href={backHref}><ClientLinkIndicator kind="back" />Klienti</Link>
-            <ChevronRight size={12} aria-hidden="true" />
-            <span>Karta klienta</span>
-          </nav>
+          <div className={styles.topbar}>
+            <nav aria-label="Drobečková navigace" className={styles.breadcrumb}>
+              <Link href={backHref}><ClientLinkIndicator kind="back" />Klienti</Link>
+              <ChevronRight size={12} aria-hidden="true" />
+              <span>Karta klienta</span>
+            </nav>
+            {returnContractHref && (
+              <Link href={returnContractHref} className={styles.button}>
+                <ArrowLeft size={15} aria-hidden="true" />Zpět na smlouvu
+              </Link>
+            )}
+          </div>
 
           {loading ? <ClientDetailLoader loadedContracts={loadedContracts} /> : <ClientProfileHeader
             name={clientName} phone={phone} email={email} address={permanentAddress}

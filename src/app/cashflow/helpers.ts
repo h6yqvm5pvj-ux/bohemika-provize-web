@@ -832,7 +832,7 @@ const buildLifeReviewCashflowItems = (
               label: `Život revize +${formatMoney(monthlyDelta)}/měs.`,
               reason:
                 candidate.product === "neon"
-                  ? "Predikovaná revize životní smlouvy počítá ČPP NEON podle refresh základny a aktuální pozice při úpravě."
+                  ? "Predikovaná revize životní smlouvy počítá ČPP Životní pojištění NEON podle refresh základny a aktuální pozice při úpravě."
                   : "Predikovaná revize životní smlouvy počítá provizi pouze z navýšení měsíčního pojistného a aktuální pozice při úpravě.",
               premiumDeltaMonthly: monthlyDelta,
               calculationMonthlyPremium,

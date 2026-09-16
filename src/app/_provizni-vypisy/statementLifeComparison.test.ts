@@ -16,7 +16,7 @@ const row = (type: string, base: number, commission = 2.90): CommissionRow => ({
   client: "Testovací klient", detailUrl: null, role: "Z",
 });
 const contract = (rows: CommissionRow[]): LifeSplitContractPreview => ({
-  productCode: "CPP_NEON", productLabel: "ČPP ŽP NEON", contractNumber: "test", client: "Testovací klient",
+  productCode: "CPP_NEON", productLabel: "ČPP Životní pojištění NEON", contractNumber: "test", client: "Testovací klient",
   signedAt: "13.11.2019", validFrom: "01.01.2020", rows, b36Payments: [], annualPremium: lifeSplitAnnualPremiumBase(rows),
 });
 const screenshotRows = [row("B104", 732, 2.90), row("B103", 11268, 44.62), row("B102", 12000, 47.52), row("B101", 12000, 47.52)];

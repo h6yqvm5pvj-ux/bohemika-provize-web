@@ -30,7 +30,7 @@ describe("statement card math", () => {
   it("summarizes life split commissions, TIP and premium increases", () => {
     const summary = lifeSplitCardSummary({
       productCode: "CPP_NRF_LF",
-      productLabel: "ČPP ŽP NEON",
+      productLabel: "ČPP Životní pojištění NEON",
       contractNumber: "1234/AB",
       client: "Jana Nováková",
       signedAt: "01. 01. 2026",

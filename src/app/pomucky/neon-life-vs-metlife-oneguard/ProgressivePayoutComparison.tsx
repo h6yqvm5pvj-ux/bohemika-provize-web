@@ -56,7 +56,7 @@ export function ProgressivePayoutComparison() {
                   <div className="min-w-0">
                     <p>Progresivní plnění 10×</p>
                     <h2 id="progressive-payout-modal-title">
-                      ČPP NEON vs. MetLife OneGuard
+                      ČPP Životní pojištění NEON vs. MetLife OneGuard
                     </h2>
                   </div>
                   <button
@@ -69,7 +69,7 @@ export function ProgressivePayoutComparison() {
                 </header>
                 <iframe
                   src={COMPARISON_URL}
-                  title="Srovnání progresivního plnění ČPP NEON a MetLife OneGuard"
+                  title="Srovnání progresivního plnění ČPP Životní pojištění NEON a MetLife OneGuard"
                 />
               </div>
             </div>,

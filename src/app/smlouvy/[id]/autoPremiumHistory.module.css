@@ -1,0 +1,102 @@
+.panel { border: 1px solid #e2e5ee; border-radius: 18px; background: #fff; box-shadow: 0 3px 14px rgb(33 25 50 / 3%); }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; }
+.summary { display: grid; grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1.2fr) minmax(0, .9fr); align-items: center; gap: 18px; padding: 22px; border-block: 1px solid #eeeaf4; background: #fbf9fd; }
+.summary > div { min-width: 0; }
+.label { display: block; margin-bottom: 5px; color: #8b8197; font-size: 10px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
+.startAmount, .currentAmount, .changeAmount, .previousAmount, .newAmount, .differenceAmount { display: block; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.startAmount { color: #5d586a; font-size: 1.1rem; font-weight: 600; }
+.currentAmount { color: #65368f; font-size: 1.45rem; font-weight: 750; letter-spacing: -.025em; }
+.changeAmount { font-size: 1.1rem; font-weight: 650; }
+.caption { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: #928a9d; font-size: 11px; line-height: 1.5; }
+.caption svg { flex-shrink: 0; }
+.connector { display: flex; justify-content: center; color: #b9a4cf; }
+.summaryChange { padding-left: 20px; border-left: 1px solid #e5ddef; }
+.timeline { list-style: none; margin: 0; padding: 6px 22px; }
+.event { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); column-gap: 16px; padding: 22px 0; }
+.event:not(:last-child)::after { content: ""; position: absolute; z-index: 0; left: 16px; top: 52px; bottom: -22px; width: 2px; background: #f0ebf5; }
+.marker { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; color: #8e72aa; background: #f3edf9; box-shadow: 0 0 0 5px #fff; }
+.marker[data-status="decreased"] { color: #b06b85; background: #fbf0f4; }
+.marker[data-status="increased"] { color: #3f927c; background: #edf8f3; }
+.eventContent { min-width: 0; }
+.event + .event .eventContent::before { content: ""; position: absolute; top: 0; left: 50px; right: 0; border-top: 1px solid #eeedf2; }
+.eventTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.eventHeading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+.eventHeading h4 { margin: 0; color: #383045; font-size: 1rem; font-weight: 700; line-height: 1.6; }
+.eventDate { display: inline-flex; align-items: center; gap: 5px; color: #8a8195; font-size: 11px; }
+.eventDate svg { flex-shrink: 0; }
+.eventStatus { color: #8b779d; font-size: 11px; }
+.eventStatus[data-status="decreased"] { color: #a15e79; }
+.eventStatus[data-status="increased"] { color: #39826c; }
+.sourceButton { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 6px; min-height: 30px; padding: 5px 9px; border: 1px solid #e7e0ed; border-radius: 7px; color: #806496; background: #fff; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; }
+.sourceButton:hover { border-color: #cbb6dd; background: #faf7fd; color: #6c3799; }
+.sourceButton:focus-visible, .closeButton:focus-visible, .openStatement:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 3px; }
+.eventAmounts { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1.15fr) minmax(0, .95fr); align-items: center; gap: 14px; }
+.eventAmounts .label { margin-bottom: 3px; font-size: 9px; }
+.previousAmount { color: #8c8398; font-size: 1rem; font-weight: 500; }
+.newAmount { color: #292135; font-size: 1.1rem; font-weight: 650; }
+.differenceAmount { font-size: 1rem; font-weight: 650; }
+.amountArrow { color: #c3b4d1; margin-top: 14px; }
+.eventDifference { padding-left: 18px; border-left: 1px solid #eeeaf3; }
+.message { display: flex; align-items: center; gap: 12px; padding: 22px; color: #82778e; font-size: .95rem; line-height: 1.6; }
+.message[data-error="true"] { color: #9a6620; }
+.emptyIcon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; color: #a089b6; background: #f6f2fa; }
+.spinner { flex-shrink: 0; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.sourceDialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; padding: 0; overflow-y: auto; border: 1px solid #e5deed; border-radius: 20px; color: #35293f; background: #fff; box-shadow: 0 24px 80px rgb(25 12 43 / 24%); }
+.sourceDialog::backdrop { background: rgb(22 15 33 / 45%); backdrop-filter: blur(4px); }
+.dialogHeading { display: flex; align-items: flex-start; gap: 12px; padding: 24px; border-bottom: 1px solid #ece6f2; background: #fbf9fd; }
+.documentIcon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 42px; height: 48px; border: 1px solid #e7dcef; border-radius: 10px; color: #8a59ac; background: #f3eafa; }
+.dialogHeading > div { min-width: 0; }
+.dialogHeading h3 { margin: 0; color: #3e2950; font-size: 16px; font-weight: 700; }
+.dialogHeading p { margin-top: 6px; color: #8f7e9d; font-size: 12px; line-height: 1.6; }
+.closeButton { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 30px; height: 30px; margin-left: auto; border-radius: 8px; color: #8c7a9b; cursor: pointer; }
+.closeButton:hover { background: #f0e8f7; color: #633586; }
+.sourceDetails { margin: 0; padding: 12px 24px; }
+.sourceDetails > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 11px 0; }
+.sourceDetails > div + div { border-top: 1px solid #f1edf4; }
+.sourceDetails dt { color: #928399; font-size: 12px; }
+.sourceDetails dd { margin: 0; color: #493654; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.sourceNote { padding: 0 24px 16px; color: #8a7c95; font-size: 12px; line-height: 1.6; }
+.dialogFooter { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px; border-top: 1px solid #eee7f4; }
+.openStatement { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 12px; border-radius: 8px; color: #fff; background: #7943b4; font-size: 12px; font-weight: 600; cursor: pointer; }
+.openStatement:hover { background: #68369c; }
+
+@media (max-width: 767px) {
+  .summary { grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1.2fr); gap: 14px; }
+  .summaryChange { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 0 0; border-left: 0; border-top: 1px solid #e9e0f1; }
+  .summaryChange .label { margin: 0; }
+  .eventAmounts { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); gap: 8px; }
+  .eventDifference { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 6px; padding: 10px 0 0; border-left: 0; border-top: 1px solid #f0ebf4; }
+}
+
+@media (max-width: 479px) {
+  .heading { padding: 16px 14px; gap: 8px; }
+  .summary { padding: 18px 14px; gap: 10px; }
+  .currentAmount { font-size: 1.2rem; }
+  .startAmount, .changeAmount { font-size: 1rem; }
+  .timeline { padding: 0 14px; }
+  .event { grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; padding: 18px 0; }
+  .marker { width: 26px; height: 26px; }
+  .marker svg { width: 15px; height: 15px; }
+  .event:not(:last-child)::after { left: 12px; top: 44px; bottom: -18px; }
+  .event + .event .eventContent::before { left: 36px; }
+  .eventHeading { gap: 3px 8px; }
+  .eventDate { font-size: 10px; }
+  .eventStatus { width: 100%; font-size: 10px; }
+  .sourceButton { padding: 5px 7px; }
+  .eventTop { gap: 6px; margin-bottom: 12px; }
+  .previousAmount, .newAmount, .differenceAmount { font-size: .95rem; }
+  .message { padding: 18px 14px; }
+  .dialogHeading { padding: 18px 16px; gap: 10px; }
+  .dialogHeading h3 { font-size: 15px; }
+  .documentIcon { width: 34px; height: 40px; }
+  .sourceDetails { padding: 8px 16px; }
+  .sourceDetails > div { grid-template-columns: 95px minmax(0, 1fr); }
+  .dialogFooter { padding: 14px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sourceButton { transition: none; }
+  .spinner { animation: none; }
+}

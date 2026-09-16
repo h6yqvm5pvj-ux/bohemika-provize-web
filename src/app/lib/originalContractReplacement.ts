@@ -11,7 +11,7 @@ type OriginalContractReplacementCapability = {
 export const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES = [
   {
     product: "neon",
-    productLabel: "ČPP ŽP NEON",
+    productLabel: "ČPP Životní pojištění NEON",
     workflowLabel: "Refresh",
     canSaveUnlinkedOriginal: false,
     stornoTiming: "policyStart",
@@ -43,7 +43,7 @@ export const ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS =
   ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES.map(({ product }) => product);
 
 export const ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL =
-  "ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto";
+  "ČPP Životní pojištění NEON, DOMEX, ČPP Auto a Allianz Auto";
 
 const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITY_MAP = new Map<
   Product,

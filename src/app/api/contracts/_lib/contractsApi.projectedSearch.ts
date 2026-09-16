@@ -5,6 +5,7 @@ import {
   hasContractListClientFilters,
 } from "./contractsApi.listFilters";
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
+import { prepareContractSearch } from "@/app/lib/contractSearch";
 
 export const CONTRACT_SEARCH_PROJECTION = [
   "clientName", "contractNumber", "contractSignedDate", "createdAt", "productKey",
@@ -37,6 +38,7 @@ export async function readProjectedContractSearchPage({
   }
   const snapshot = await db.collection("users").doc(ownerEmail)
     .collection("entries").select(...CONTRACT_SEARCH_PROJECTION).get();
+  const search = prepareContractSearch(filters.query);
   const candidates = snapshot.docs.map(doc => {
     const data = doc.data() as ContractDoc;
     return {
@@ -49,7 +51,7 @@ export async function readProjectedContractSearchPage({
       if (item.ts === null || item.ts > cursor.ts) return false;
       if (item.ts === cursor.ts && (!cursor.key || item.key >= cursor.key)) return false;
     }
-    return contractMatchesListFilters(item.data, filters, ownerEmail);
+    return contractMatchesListFilters(item.data, filters, ownerEmail, search);
   }).sort((left, right) => {
     if (left.ts === null && right.ts === null) return 0;
     if (left.ts === null) return 1;

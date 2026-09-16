@@ -5,12 +5,15 @@ import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ContractHistoryDialog } from "./ContractHistoryDialog";
+import { ContractSectionToggle } from "./ContractSectionToggle";
+import { ContractManagementDialog } from "./ContractManagementDialog";
 import { ContractDetailLoader } from "./ContractDetailLoader";
 import actionStyles from "./contractDetailActions.module.css";
+import detailStyles from "./contractDetail.module.css";
+import noteStyles from "./contractNotes.module.css";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  ArrowRightLeft,
   AlertTriangle,
   BellRing,
   CalendarDays,
@@ -30,8 +33,6 @@ import {
   Package,
   PencilLine,
   Plus,
-  RotateCcw,
-  Search,
   Settings2,
   StickyNote,
   Tag,
@@ -47,6 +48,8 @@ import {
 } from "firebase/auth";
 import {
   isLifeProduct,
+  productInstitutionId,
+  productInstitutionLabel,
   productInstitutionLogo,
 } from "@/app/lib/productCatalog";
 import {
@@ -295,13 +298,6 @@ const formatReminderDate = (value: number): string =>
 
 const noteCountLabel = (count: number): string =>
   count === 1 ? "1 poznámka" : count >= 2 && count <= 4 ? `${count} poznámky` : `${count} poznámek`;
-
-const normalizeTransferSearch = (value: string): string =>
-  value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 
 const transferTargetLabel = (target: ContractTransferTarget): string =>
   target.name?.trim() || nameFromEmail(target.email) || target.email;
@@ -571,12 +567,8 @@ export default function ContractDetailPage() {
   const [paidError, setPaidError] = useState<string | null>(null);
   const [updatingStorno, setUpdatingStorno] = useState(false);
   const [stornoError, setStornoError] = useState<string | null>(null);
-  const [stornoDateInput, setStornoDateInput] = useState("");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showStornoModal, setShowStornoModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showManagementModal, setShowManagementModal] = useState(false);
-  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showTerminationReasonModal, setShowTerminationReasonModal] =
     useState(false);
   const [showUniqaTerminationModal, setShowUniqaTerminationModal] =
@@ -593,12 +585,6 @@ export default function ContractDetailPage() {
     useState(false);
   const [canTransferContracts, setCanTransferContracts] = useState(false);
   const [transferTargets, setTransferTargets] = useState<ContractTransferTarget[]>([]);
-  const [transferTargetEmail, setTransferTargetEmail] = useState("");
-  const [transferTargetQuery, setTransferTargetQuery] = useState("");
-  const [transferTargetSearchOpen, setTransferTargetSearchOpen] = useState(false);
-  const [transferEffectiveDate, setTransferEffectiveDate] = useState(() =>
-    localIsoDay()
-  );
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [allianzPortalAction, setAllianzPortalAction] =
@@ -694,10 +680,6 @@ export default function ContractDetailPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setShowDeleteModal(false);
-        setShowStornoModal(false);
-        setShowManagementModal(false);
-        setShowTransferModal(false);
         setShowTerminationReasonModal(false);
         closeUniqaTerminationModal();
         setSelectedTerminationReason(null);
@@ -713,10 +695,6 @@ export default function ContractDetailPage() {
       }
     };
     if (
-      showDeleteModal ||
-      showStornoModal ||
-      showManagementModal ||
-      showTransferModal ||
       showTerminationReasonModal ||
       showUniqaTerminationModal ||
       showAllianzPortalModal ||
@@ -734,10 +712,6 @@ export default function ContractDetailPage() {
       window.removeEventListener("keydown", onKey);
     };
   }, [
-    showDeleteModal,
-    showStornoModal,
-    showManagementModal,
-    showTransferModal,
     showTerminationReasonModal,
     showUniqaTerminationModal,
     showAllianzPortalModal,
@@ -847,7 +821,7 @@ export default function ContractDetailPage() {
         if (cancelled) return;
         const notes = Array.isArray(payload.notes) ? payload.notes : [];
         setContractNotes(notes);
-        if (notes.length > 0 || linkedNoteId) setNoteExpanded(true);
+        if (linkedNoteId) setNoteExpanded(true);
       } catch (error) {
         if (cancelled) return;
         console.error("Načtení poznámek ke smlouvě selhalo:", error);
@@ -898,15 +872,6 @@ export default function ContractDetailPage() {
   useEffect(() => {
     preloadFormulaModule(contract?.productKey ?? null);
   }, [contract?.productKey]);
-
-  useEffect(() => {
-    const existing = toDateInputValue(contract?.stornoDate ?? null);
-    if (existing) {
-      setStornoDateInput(existing);
-      return;
-    }
-    setStornoDateInput(toDateInputValue(new Date()) ?? "");
-  }, [contract?.stornoDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1478,6 +1443,13 @@ export default function ContractDetailPage() {
     null;
   const prod = contract?.productKey as Product | undefined;
   const institutionLogo = productInstitutionLogo(prod);
+  const institutionLabel = productInstitutionLabel(prod);
+  const fullProductLabel = productLabel(prod);
+  const headerProductLabel =
+    institutionLogo && institutionLabel &&
+    fullProductLabel.toLowerCase().startsWith(`${institutionLabel.toLowerCase()} `)
+      ? fullProductLabel.slice(institutionLabel.length).trim()
+      : fullProductLabel;
   const tipContractLifeProduct = isLifeProduct(prod ?? null);
   const tipContractBaseText = tipContractLifeProduct
     ? "Tipař má nárok pouze na podíl z provize A101."
@@ -4012,6 +3984,7 @@ export default function ContractDetailPage() {
   };
 
   const handleStartNewNote = () => {
+    setNoteExpanded(true);
     setNoteEditorId("new");
     setNoteDraft("");
     setNoteReminderEnabled(false);
@@ -4165,12 +4138,12 @@ export default function ContractDetailPage() {
     }
   };
 
-  const handleSetStorno = async () => {
-    if (!ownerEmail || !entryId || !canSetStorno) return;
+  const handleSetStorno = async (stornoDateInput: string): Promise<boolean> => {
+    if (!ownerEmail || !entryId || !canSetStorno) return false;
     const parsed = stornoDateInput ? new Date(stornoDateInput) : null;
     if (!parsed || Number.isNaN(parsed.getTime())) {
       setStornoError("Zadej platné datum storna.");
-      return;
+      return false;
     }
     const minimumStornoDate =
       toDate(contract?.policyStartDate ?? null) ??
@@ -4186,7 +4159,7 @@ export default function ContractDetailPage() {
           minimumStornoDate
         )}).`
       );
-      return;
+      return false;
     }
 
     setUpdatingStorno(true);
@@ -4222,7 +4195,6 @@ export default function ContractDetailPage() {
       setContractTimeline((prev) =>
         prev.map((entry) => ({ ...entry, status: "storno", stornoDate: parsed }))
       );
-      setShowStornoModal(false);
 
       if (typeof window !== "undefined") {
         try {
@@ -4235,6 +4207,7 @@ export default function ContractDetailPage() {
       }
 
       pushToast("Smlouva byla označena jako storno.", "success");
+      return true;
     } catch (e) {
       console.error("Chyba při ukládání storna:", e);
       const message =
@@ -4243,13 +4216,14 @@ export default function ContractDetailPage() {
           : "Nepodařilo se uložit storno. Zkus to prosím znovu.";
       setStornoError(message);
       pushToast(message, "error");
+      return false;
     } finally {
       setUpdatingStorno(false);
     }
   };
 
-  const handleClearStorno = async () => {
-    if (!ownerEmail || !entryId || !canSetStorno) return;
+  const handleClearStorno = async (): Promise<boolean> => {
+    if (!ownerEmail || !entryId || !canSetStorno) return false;
 
     setUpdatingStorno(true);
     setStornoError(null);
@@ -4284,7 +4258,6 @@ export default function ContractDetailPage() {
       setContractTimeline((prev) =>
         prev.map((entry) => ({ ...entry, status: "active", stornoDate: null }))
       );
-      setShowStornoModal(false);
 
       if (typeof window !== "undefined") {
         try {
@@ -4297,10 +4270,12 @@ export default function ContractDetailPage() {
       }
 
       pushToast("Storno bylo zrušeno.", "success");
+      return true;
     } catch (e) {
       console.error("Chyba při rušení storna:", e);
       setStornoError("Nepodařilo se zrušit storno. Zkus to prosím znovu.");
       pushToast("Nepodařilo se zrušit storno. Zkus to prosím znovu.", "error");
+      return false;
     } finally {
       setUpdatingStorno(false);
     }
@@ -4424,10 +4399,10 @@ export default function ContractDetailPage() {
   ]);
 
   // mazání smlouvy
-  const handleDelete = async () => {
+  const handleDelete = async (): Promise<boolean> => {
     if (!ownerEmail || !entryId || !canDelete) {
       setDeleteError("Nemáš oprávnění tuto smlouvu smazat.");
-      return;
+      return false;
     }
     setDeleting(true);
     setDeleteError(null);
@@ -4442,9 +4417,9 @@ export default function ContractDetailPage() {
           entries: [{ ownerEmail, entryId }],
         }),
       });
-      setShowDeleteModal(false);
       pushToast("Smlouva byla smazána.", "success");
       window.location.href = "/smlouvy";
+      return true;
     } catch (e) {
       console.error("Chyba při mazání smlouvy:", e);
       setDeleteError(
@@ -4452,19 +4427,21 @@ export default function ContractDetailPage() {
       );
       pushToast("Smlouvu se nepodařilo smazat. Zkus to prosím znovu.", "error");
       setDeleting(false);
+      return false;
     }
   };
 
-  const handleRequestTransfer = async () => {
+  const handleRequestTransfer = async (transferTargetEmail: string, transferEffectiveDate: string): Promise<boolean> => {
     if (
       !ownerEmail ||
       !entryId ||
       !transferTargetEmail ||
       !transferEffectiveDate ||
-      !canManageContract
+      !canRequestTransfer ||
+      !eligibleTransferTargets.some(target => target.email === transferTargetEmail)
     ) {
       setTransferError("Vyber nového správce a datum účinnosti převodu.");
-      return;
+      return false;
     }
 
     setSubmittingTransfer(true);
@@ -4489,16 +4466,11 @@ export default function ContractDetailPage() {
         ? transferTargetLabel(selectedTarget)
         : transferTargetEmail;
       const contractCount = Math.max(1, Number(payload.contractCount) || 1);
-      setShowTransferModal(false);
-      setShowManagementModal(false);
-      setTransferTargetEmail("");
-      setTransferTargetQuery("");
-      setTransferTargetSearchOpen(false);
-      setTransferEffectiveDate(localIsoDay());
       pushToast(
         `Žádost o převod ${contractCount === 1 ? "smlouvy" : `${contractCount} smluv`} na ${selectedLabel} byla odeslána administrátorovi.`,
         "success"
       );
+      return true;
     } catch (error) {
       console.error("Chyba při odesílání žádosti o převod smlouvy:", error);
       setTransferError(
@@ -4506,6 +4478,7 @@ export default function ContractDetailPage() {
           ? error.message
           : "Žádost o převod se nepodařilo odeslat."
       );
+      return false;
     } finally {
       setSubmittingTransfer(false);
     }
@@ -4669,15 +4642,6 @@ export default function ContractDetailPage() {
   const eligibleTransferTargets = transferTargets.filter(
     (target) => target.email !== normalizeEmail(ownerEmail)
   );
-  const normalizedTransferTargetQuery = normalizeTransferSearch(transferTargetQuery);
-  const matchingTransferTargets = eligibleTransferTargets
-    .filter((target) => {
-      if (!normalizedTransferTargetQuery) return true;
-      return normalizeTransferSearch(
-        `${transferTargetLabel(target)} ${target.email}`
-      ).includes(normalizedTransferTargetQuery);
-    })
-    .slice(0, 8);
   const canRequestTransfer =
     canManageContract &&
     canTransferContracts &&
@@ -4744,7 +4708,11 @@ export default function ContractDetailPage() {
     contract?.transferEffectiveDate ?? contract?.transferAt ?? null
   );
   const clientCardHref = CLIENT_CARDS_ENABLED
-    ? clientCardHrefForName(contract?.clientName ?? null)
+    ? clientCardHrefForName(contract?.clientName ?? null, {
+        ownerEmail,
+        entryId,
+        fromList: searchParams?.get("from") === "list",
+      })
     : null;
   const terminationDefaults = resolveContractTerminationProductDefaults(prod);
   const terminationInsurer = terminationDefaults.insurer;
@@ -4997,9 +4965,7 @@ export default function ContractDetailPage() {
       setUnauthorized(true);
       setContract(null);
       setError("Nemáš oprávnění tuto smlouvu zobrazit.");
-      setShowDeleteModal(false);
       setShowManagementModal(false);
-      setShowTransferModal(false);
       router.replace(backToContractsHref);
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
@@ -5011,14 +4977,8 @@ export default function ContractDetailPage() {
     "rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3";
   const successPanelClass =
     "rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.08)]";
-  const noteCardClass =
-    "rounded-[20px] border border-slate-300 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]";
   const ghostButtonClass =
     "rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
-  const contractActionMenuItemClass =
-    "group flex min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md";
-  const contractActionMenuIconClass =
-    "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-white shadow-sm transition group-hover:scale-105";
   const saveButtonClass =
     "inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm sm:text-base font-semibold font-mono tracking-tight text-white transition hover:bg-black disabled:opacity-60";
   const inputClass =
@@ -5028,10 +4988,8 @@ export default function ContractDetailPage() {
   const metaLabelClass = "text-xs uppercase tracking-[0.18em] text-slate-600";
   const keyValueLabelClass = "text-base text-slate-600";
   const keyValueValueClass = "text-base font-semibold text-right text-slate-900";
-  const contractOverviewRowClass =
-    "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 py-1.5 sm:grid-cols-[12rem_minmax(0,1fr)]";
-  const contractOverviewValueClass =
-    "text-base font-semibold text-right text-slate-950 sm:text-left";
+  const contractOverviewRowClass = detailStyles.overviewRow;
+  const contractOverviewValueClass = detailStyles.overviewValue;
   const statusErrorClass = "px-1 text-sm text-slate-700";
   const statusSuccessClass = "px-1 text-sm text-slate-900";
   const sectionPanelClass = "space-y-3 px-1 py-1";
@@ -5386,14 +5344,13 @@ export default function ContractDetailPage() {
     );
   }
 
-  const notePreviewText = contractNotes[0]?.text ?? "";
   const activeNoteReminderCount = contractNotes.filter(
     (note) => note.reminderEnabled && note.reminderAtMs != null
   ).length;
   const noteContentId = "contract-note-content";
 
   return (
-    <main className="relative min-h-screen overflow-hidden font-mono text-slate-900">
+    <main className="relative min-h-screen overflow-x-clip font-mono text-slate-900">
       <div className="fixed inset-0 -z-10 bg-white" />
       <div className="fixed inset-0 -z-10 bg-slate-50" />
 
@@ -5404,554 +5361,231 @@ export default function ContractDetailPage() {
           <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            <header className="relative isolate z-30 px-1 py-1">
-              {institutionLogo ? (
-                <div
-                  className="pointer-events-none absolute right-0 top-[-0.8rem] z-0 h-[120px] w-[230px] select-none overflow-hidden opacity-[0.075] mix-blend-multiply [mask-image:linear-gradient(to_left,black_58%,transparent_100%)] sm:right-1 sm:top-[-1.4rem] sm:h-[170px] sm:w-[420px]"
-                  aria-hidden="true"
-                >
-                  <Image
-                    src={institutionLogo}
-                    alt=""
-                    fill
-                    sizes="(min-width: 640px) 420px, 230px"
-                    className="object-contain object-right [filter:grayscale(1)_contrast(0.78)]"
-                  />
-                </div>
-              ) : null}
-
-              <div className="relative z-10 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0">
-                {!isEmbedded && (
-                  <Link
-                    href={backToContractsHref}
-                    className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white"
+            {!isEmbedded && (
+              <Link
+                href={backToContractsHref}
+                className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white"
+              >
+                <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
+                <span>Zpět na smlouvy</span>
+              </Link>
+            )}
+            <header className={detailStyles.header}>
+              <div className={detailStyles.headerMain}>
+                <div className={detailStyles.headerMeta}>
+                  <button
+                    type="button"
+                    className={detailStyles.headerNumber}
+                    onClick={() => copyContractActionValue(contract?.contractNumber, "Číslo smlouvy")}
+                    disabled={!contract?.contractNumber?.trim()}
+                    title="Zkopírovat číslo smlouvy"
+                    aria-label={`Zkopírovat číslo smlouvy ${contract?.contractNumber?.trim() || ""}`}
                   >
-                    <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
-                    <span>Zpět na smlouvy</span>
-                  </Link>
-                )}
-                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                    <FileText size={14} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Smlouva č.</span>
+                    <strong>{contract?.contractNumber?.trim() || "Neuvedeno"}</strong>
+                  </button>
                   {contractIsInherited && (
-                    <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                    <span className={detailStyles.headerTag}>
                       Převzatá
                     </span>
                   )}
                   {isEndorsement && (
-                    <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+                    <span className={detailStyles.headerTag}>
                       Dodatek
                     </span>
                   )}
                   {isRefreshContract && !isNeonRefreshContract && (
-                    <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+                    <span className={detailStyles.headerTag}>
                       {originalReplacementLabelText}
                     </span>
                   )}
                   <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-1 py-0.5 pr-2 text-xs font-semibold leading-none tracking-[0.01em] ${contractLifecycleBadgeStyle.wrapper}`}
+                    className={`${detailStyles.headerStatus} ${contractLifecycleBadgeStyle.wrapper}`}
                   >
                     <span
-                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ring-1 ring-white/45 ${contractLifecycleBadgeStyle.iconWrap}`}
+                      className={`${detailStyles.headerStatusIcon} ${contractLifecycleBadgeStyle.iconWrap}`}
                     >
                       {contractLifecycleBadgeStyle.icon}
                     </span>
                     <span>{contractLifecycleBadgeText}</span>
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[2rem] font-black leading-none tracking-tight text-slate-950 sm:text-[2.5rem]">
-                  <h1 className="text-[2rem] font-black leading-none tracking-tight text-slate-950 sm:text-[2.5rem]">
-                    {contract?.contractNumber?.trim()
-                      ? contract.contractNumber.trim()
-                      : "Číslo smlouvy není uvedené"}
+
+                <div className={detailStyles.headerIdentity}>
+                  <h1 className={detailStyles.headerName}>
+                    {clientCardHref ? (
+                      <Link
+                        href={clientCardHref}
+                        target={isEmbedded ? "_top" : undefined}
+                        className={detailStyles.headerClientLink}
+                        title="Otevřít kartu klienta"
+                      >
+                        {contract?.clientName?.trim()}
+                      </Link>
+                    ) : contract?.clientName?.trim() || "Klient není uvedený"}
                   </h1>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span className="inline-flex items-center gap-2">
-                      <UserRound
-                        size={26}
-                        strokeWidth={2.1}
-                        className="text-violet-700"
-                        aria-hidden="true"
-                      />
-                      {contract?.clientName ?? "—"}
-                    </span>
-                    <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:inline-block" />
-                    <span className="inline-flex items-center gap-2">
-                      <Package
-                        size={26}
-                        strokeWidth={2.1}
-                        className="text-violet-700"
-                        aria-hidden="true"
-                      />
-                      {productLabel(prod)}
-                      <Image
-                        src={productIcon(prod)}
-                        alt="Produkt"
-                        width={40}
-                        height={40}
-                        className="h-9 w-auto flex-shrink-0 sm:h-10"
-                      />
-                    </span>
-                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {canManageContract && (
-                  <button
-                    type="button"
-                    onClick={handleTogglePaid}
-                    disabled={updatingPaid}
-                    className={actionStyles.payment}
-                    data-paid={contract?.paid === true}
-                    aria-pressed={contract?.paid === true}
-                    title={contract?.paid ? "Označit jako nezaplacené" : "Označit jako zaplacené"}
-                  >
-                    {updatingPaid ? <Spinner className="h-4 w-4" /> : <span className={actionStyles.paymentDot} aria-hidden="true" />}
-                    <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
-                  </button>
-                )}
+                <div className={detailStyles.headerActions}>
+                  {canManageContract && (
+                    <button
+                      type="button"
+                      onClick={handleTogglePaid}
+                      disabled={updatingPaid}
+                      className={`${actionStyles.payment} ${detailStyles.headerPayment}`}
+                      data-paid={contract?.paid === true}
+                      aria-pressed={contract?.paid === true}
+                      title={contract?.paid ? "Označit jako nezaplacené" : "Označit jako zaplacené"}
+                    >
+                      {updatingPaid ? <Spinner className="h-4 w-4" /> : <span className={actionStyles.paymentDot} data-payment-dot aria-hidden="true" />}
+                      <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
+                    </button>
+                  )}
 
-                {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
+                  {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={handleContractPdfButtonClick}
+                        disabled={contractPdfLoading}
+                        aria-expanded={
+                          contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
+                        }
+                        className={`${actionStyles.button} ${detailStyles.headerPrimary}`}
+                      >
+                        <Eye size={14} strokeWidth={2} aria-hidden="true" />
+                        <span>
+                          {openContractPdfExternally ? "Otevřít smlouvu" : "Zobrazit smlouvu"}
+                        </span>
+                        {contractPdfOptions.length > 1 && (
+                          <ChevronDown
+                            size={15}
+                            strokeWidth={2}
+                            className={`transition ${
+                              showContractPdfOptions ? "rotate-180" : ""
+                            }`}
+                            aria-hidden="true"
+                          />
+                        )}
+                      </button>
+                      {showContractPdfOptions && contractPdfOptions.length > 1 && (
+                        <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
+                          {contractPdfOptions.map((option) => (
+                            <button
+                              key={option.entryId}
+                              type="button"
+                              onClick={() => openContractPdfOption(option)}
+                              className="block w-full border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50"
+                            >
+                              <span className="flex items-center justify-between gap-3">
+                                <span className="text-sm font-semibold text-slate-900">
+                                  {option.label}
+                                </span>
+                                {option.isCurrent && (
+                                  <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Aktuální
+                                  </span>
+                                )}
+                              </span>
+                              <span className="mt-1 block truncate text-xs text-slate-600">
+                                {option.meta}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {[
+                    { label: "ExtraNet", href: cppExtranetDetailUrl },
+                    { label: "Maxx", href: maxxContractDetailUrl },
+                  ].map(({ label, href }) => href && (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Otevřít smlouvu v ${label}`}
+                      onClick={() => {
+                        setShowContractPdfOptions(false);
+                        setShowContractActionsMenu(false);
+                      }}
+                      className={`${actionStyles.button} ${detailStyles.headerSecondary}`}
+                    >
+                      <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>{label}</span>
+                    </a>
+                  ))}
+
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={handleContractPdfButtonClick}
-                      disabled={contractPdfLoading}
-                      aria-expanded={
-                        contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
-                      }
-                      className={`${actionStyles.button} ${actionStyles.primary}`}
+                      onClick={() => {
+                        setShowContractPdfOptions(false);
+                        setShowContractActionsMenu((current) => !current);
+                      }}
+                      aria-controls="contract-actions-menu"
+                      data-contract-menu
+                      aria-expanded={showContractActionsMenu}
+                      className={`${actionStyles.button} ${detailStyles.mobileMenu} ${detailStyles.headerSecondary}`}
                     >
-                      <Eye size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>
-                        {openContractPdfExternally ? "Otevřít smlouvu" : "Zobrazit smlouvu"}
-                      </span>
-                      {contractPdfOptions.length > 1 && (
-                        <ChevronDown
-                          size={15}
-                          strokeWidth={2}
-                          className={`transition ${
-                            showContractPdfOptions ? "rotate-180" : ""
-                          }`}
-                          aria-hidden="true"
-                        />
-                      )}
+                      <Menu size={14} strokeWidth={2.2} aria-hidden="true" />
+                      <span>Menu</span>
+                      <ChevronDown
+                        size={14}
+                        strokeWidth={2.2}
+                        className={`transition-transform ${
+                          showContractActionsMenu ? "rotate-180" : ""
+                        }`}
+                        aria-hidden="true"
+                      />
                     </button>
-                    {showContractPdfOptions && contractPdfOptions.length > 1 && (
-                      <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
-                        {contractPdfOptions.map((option) => (
-                          <button
-                            key={option.entryId}
-                            type="button"
-                            onClick={() => openContractPdfOption(option)}
-                            className="block w-full border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50"
-                          >
-                            <span className="flex items-center justify-between gap-3">
-                              <span className="text-sm font-semibold text-slate-900">
-                                {option.label}
-                              </span>
-                              {option.isCurrent && (
-                                <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                                  Aktuální
-                                </span>
-                              )}
-                            </span>
-                            <span className="mt-1 block truncate text-xs text-slate-600">
-                              {option.meta}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                )}
 
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowContractPdfOptions(false);
-                      setShowContractActionsMenu((current) => !current);
-                    }}
-                    aria-controls="contract-actions-menu"
-                    data-contract-menu
-                    aria-expanded={showContractActionsMenu}
-                    className={actionStyles.button}
-                  >
-                    <Menu size={14} strokeWidth={2.2} aria-hidden="true" />
-                    <span>Menu</span>
-                    <ChevronDown
-                      size={14}
-                      strokeWidth={2.2}
-                      className={`transition-transform ${
-                        showContractActionsMenu ? "rotate-180" : ""
-                      }`}
-                      aria-hidden="true"
-                    />
-                  </button>
-
-                  {showContractActionsMenu && (
+                  {canManageContract && editMode && (
                     <>
                       <button
                         type="button"
-                        className="fixed inset-0 z-30 bg-slate-950/10 backdrop-blur-[1px]"
-                        aria-label="Zavřít nabídku akcí"
-                        onClick={() => setShowContractActionsMenu(false)}
-                      />
-                      <div
-                        id="contract-actions-menu"
-                        role="dialog"
-                        aria-label="Nabídka akcí smlouvy"
-                        className="fixed inset-x-4 top-24 z-40 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[24px] border border-slate-200 bg-white p-2 text-left shadow-[0_28px_80px_rgba(15,23,42,0.3)] sm:absolute sm:inset-x-auto sm:left-0 sm:right-auto sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-3rem))]"
+                        onClick={handleSaveDetails}
+                        disabled={savingDetails}
+                        className={`${saveButtonClass} ${detailStyles.headerPrimary}`}
                       >
-                        <div className="relative overflow-hidden rounded-[18px] bg-[linear-gradient(135deg,#020617_0%,#312e81_58%,#6d28d9_100%)] px-4 py-3.5 text-white">
-                          <div
-                            className="pointer-events-none absolute -right-8 -top-12 h-28 w-28 rounded-full bg-fuchsia-400/25 blur-2xl"
-                            aria-hidden="true"
-                          />
-                          <div className="relative flex items-start justify-between gap-4">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/10 shadow-inner">
-                                <Menu size={19} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <div className="min-w-0">
-                                <div className="font-mono text-base font-black tracking-tight">
-                                  Akce smlouvy
-                                </div>
-                                <div className="mt-0.5 truncate text-xs font-medium text-violet-100">
-                                  {contract?.contractNumber || "Vyber požadovanou akci"}
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
-                              aria-label="Zavřít nabídku akcí"
-                            >
-                              <X size={15} strokeWidth={2.3} aria-hidden="true" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-2 p-2 sm:grid-cols-2">
-                          {canManageContract && !editMode && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowContractActionsMenu(false);
-                                setDetailsSaved(false);
-                                setEditMode(true);
-                              }}
-                              className={`${contractActionMenuItemClass} border-violet-100 bg-violet-50/70 hover:border-violet-200 hover:bg-violet-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-violet-200 text-violet-700`}>
-                                <PencilLine size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Upravit údaje
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Klient, data a parametry smlouvy
-                                </span>
-                              </span>
-                            </button>
-                          )}
-
-                          <button type="button" onClick={() => { setShowContractActionsMenu(false); setShowHistoryModal(true); }}
-                            className={`${contractActionMenuItemClass} border-violet-100 bg-violet-50/70 hover:border-violet-200 hover:bg-violet-50`}>
-                            <span className={`${contractActionMenuIconClass} border-violet-200 text-violet-700`}><History size={18} strokeWidth={2.2} aria-hidden="true" /></span>
-                            <span className="min-w-0"><span className="block text-sm font-black text-slate-950">Historie a správa</span><span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">Změny, převody a správce smlouvy</span></span>
-                          </button>
-
-                          {canOpenContractManagement && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowContractActionsMenu(false);
-                                setDeleteError(null);
-                                setStornoError(null);
-                                setTransferError(null);
-                                setShowManagementModal(true);
-                              }}
-                              className={`${contractActionMenuItemClass} border-slate-200 bg-slate-100/80 hover:border-slate-300 hover:bg-slate-100`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-slate-300 text-slate-950`}>
-                                <Settings2 size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Další akce smlouvy
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Storno, převod nebo odstranění
-                                </span>
-                              </span>
-                            </button>
-                          )}
-
-                          {clientCardHref && (
-                            <Link
-                              href={clientCardHref}
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className={`${contractActionMenuItemClass} border-sky-100 bg-sky-50/80 hover:border-sky-200 hover:bg-sky-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-sky-200 text-sky-700`}>
-                                <IdCard size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Karta klienta
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Profil a historie klienta
-                                </span>
-                              </span>
-                            </Link>
-                          )}
-
-                          {showTerminationAction && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowContractActionsMenu(false);
-                                if (prod === "uniqaAuto") {
-                                  void handleOpenUniqaTerminationModal();
-                                  return;
-                                }
-                                setSelectedTerminationReason(null);
-                                setShowTerminationReasonModal(true);
-                              }}
-                              className={`${contractActionMenuItemClass} border-amber-100 bg-amber-50/80 hover:border-amber-200 hover:bg-amber-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-amber-200 text-amber-700`}>
-                                <FileSignature size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Vytvořit výpověď
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Připravit ukončení smlouvy
-                                </span>
-                              </span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowContractActionsMenu(false);
-                              setShowProductPanel(true);
-                            }}
-                            className={`${contractActionMenuItemClass} border-fuchsia-100 bg-fuchsia-50/70 hover:border-fuchsia-200 hover:bg-fuchsia-50`}
-                          >
-                            <span className={`${contractActionMenuIconClass} border-fuchsia-200 text-fuchsia-700`}>
-                              <Package size={18} strokeWidth={2.2} aria-hidden="true" />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-sm font-black text-slate-950">
-                                Detail produktu
-                              </span>
-                              <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                Uložené parametry pojištění
-                              </span>
-                            </span>
-                          </button>
-
-                          {prod === "allianzAuto" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowContractActionsMenu(false);
-                                  handleAllianzPortalActionClick("odometerUpload");
-                                }}
-                                className={`${contractActionMenuItemClass} border-cyan-100 bg-cyan-50/80 hover:border-cyan-200 hover:bg-cyan-50`}
-                              >
-                                <span className={`${contractActionMenuIconClass} border-cyan-200 text-cyan-700`}>
-                                  <Gauge size={18} strokeWidth={2.2} aria-hidden="true" />
-                                </span>
-                                <span className="min-w-0">
-                                  <span className="block text-sm font-black text-slate-950">
-                                    Nahrát tachometr
-                                  </span>
-                                  <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                    Otevřít službu Allianz
-                                  </span>
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowContractActionsMenu(false);
-                                  handleAllianzPortalActionClick("paymentCheck");
-                                }}
-                                className={`${contractActionMenuItemClass} border-emerald-100 bg-emerald-50/80 hover:border-emerald-200 hover:bg-emerald-50`}
-                              >
-                                <span className={`${contractActionMenuIconClass} border-emerald-200 text-emerald-700`}>
-                                  <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                                </span>
-                                <span className="min-w-0">
-                                  <span className="block text-sm font-black text-slate-950">
-                                    Ověřit zaplacení
-                                  </span>
-                                  <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                    Kontrola platby u Allianz
-                                  </span>
-                                </span>
-                              </button>
-                            </>
-                          )}
-
-                          {prod === "kooperativaAuto" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShowContractActionsMenu(false);
-                                handleKooperativaStatusCheckClick();
-                              }}
-                              className={`${contractActionMenuItemClass} border-emerald-100 bg-emerald-50/80 hover:border-emerald-200 hover:bg-emerald-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-emerald-200 text-emerald-700`}>
-                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Ověření stavu smlouvy
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Kontrola smlouvy u Kooperativy
-                                </span>
-                              </span>
-                            </button>
-                          )}
-
-                          {prod === "slaviaauto" && (
-                            <a
-                              href={SLAVIA_CONTRACT_VERIFICATION_URL}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className={`${contractActionMenuItemClass} border-indigo-100 bg-indigo-50/80 hover:border-indigo-200 hover:bg-indigo-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-indigo-200 text-indigo-700`}>
-                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Ověřit smlouvu
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Kontrola smlouvy u Slavie
-                                </span>
-                              </span>
-                            </a>
-                          )}
-
-                          {isAutoProduct(prod) && (
-                            <Link
-                              href={vehicleCheckHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className={`${contractActionMenuItemClass} border-orange-100 bg-orange-50/80 hover:border-orange-200 hover:bg-orange-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-orange-200 text-orange-700`}>
-                                <CarFront size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Proklepka vozidla
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Historie a údaje vozidla
-                                </span>
-                              </span>
-                            </Link>
-                          )}
-
-                          {maxxContractDetailUrl && (
-                            <a
-                              href={maxxContractDetailUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className={`${contractActionMenuItemClass} border-rose-100 bg-rose-50/70 hover:border-rose-200 hover:bg-rose-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-rose-200 text-rose-700`}>
-                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Otevřít v MAXX
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Detail v systému pojišťovny
-                                </span>
-                              </span>
-                            </a>
-                          )}
-
-                          {cppExtranetDetailUrl && (
-                            <a
-                              href={cppExtranetDetailUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() => setShowContractActionsMenu(false)}
-                              className={`${contractActionMenuItemClass} border-teal-100 bg-teal-50/80 hover:border-teal-200 hover:bg-teal-50`}
-                            >
-                              <span className={`${contractActionMenuIconClass} border-teal-200 text-teal-700`}>
-                                <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="block text-sm font-black text-slate-950">
-                                  Otevřít extranet
-                                </span>
-                                <span className="mt-0.5 block text-[11px] font-medium leading-snug text-slate-600">
-                                  Přímý vstup do pojišťovny
-                                </span>
-                              </span>
-                            </a>
-                          )}
-                        </div>
-
-                        <div className="px-3 pb-2 text-[10px] font-semibold text-slate-400">
-                          Dostupné akce se řídí produktem a tvým oprávněním.
-                        </div>
-                      </div>
+                        {savingDetails && (
+                          <Spinner className="h-3.5 w-3.5 border-black/35 border-t-black" />
+                        )}
+                        <span>{savingDetails ? "Ukládám…" : "Uložit změny"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetEditFields();
+                          setEditMode(false);
+                        }}
+                        disabled={savingDetails}
+                        className={`${ghostButtonClass} ${detailStyles.headerSecondary}`}
+                      >
+                        Zrušit
+                      </button>
                     </>
                   )}
                 </div>
-
-                {canManageContract && editMode && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleSaveDetails}
-                      disabled={savingDetails}
-                      className={saveButtonClass}
-                    >
-                      {savingDetails && (
-                        <Spinner className="h-3.5 w-3.5 border-black/35 border-t-black" />
-                      )}
-                      <span>{savingDetails ? "Ukládám…" : "Uložit změny"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetEditFields();
-                        setEditMode(false);
-                      }}
-                      disabled={savingDetails}
-                      className={ghostButtonClass}
-                    >
-                      Zrušit
-                    </button>
-                  </>
-                )}
               </div>
+
+              <div className={detailStyles.headerBrand} data-institution={productInstitutionId(prod)}>
+                {institutionLogo && (
+                  <div className={detailStyles.headerLogo}>
+                    <Image
+                      src={institutionLogo}
+                      alt={institutionLabel || "Logo instituce"}
+                      fill
+                      sizes="(max-width: 639px) 90px, 180px"
+                      className={detailStyles.headerLogoImage}
+                    />
+                  </div>
+                )}
+                <p className={detailStyles.headerProduct}>{headerProductLabel}</p>
               </div>
             </header>
 
@@ -5973,7 +5607,258 @@ export default function ContractDetailPage() {
                 {error}
               </div>
             ) : contract ? (
-              <>
+              <div className={detailStyles.layout}>
+                <aside
+                  id="contract-actions-menu"
+                  aria-label="Akce smlouvy"
+                  className={detailStyles.sidebar}
+                  data-expanded={showContractActionsMenu}
+                >
+                  <div className={detailStyles.sidebarHeading}>
+                    <span>Práce se smlouvou</span>
+                    <Settings2 size={15} strokeWidth={1.8} aria-hidden="true" />
+                  </div>
+                  <div className={detailStyles.actionList}>
+                    {isAutoProduct(prod) && (
+                      <Link
+                        href={vehicleCheckHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowContractActionsMenu(false)}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <CarFront size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Proklepka vozidla
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Historie a údaje vozidla
+                          </span>
+                        </span>
+                      </Link>
+                    )}
+
+                    {canManageContract && !editMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowContractActionsMenu(false);
+                          setDetailsSaved(false);
+                          setEditMode(true);
+                        }}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <PencilLine size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Upravit údaje
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Klient, data a parametry smlouvy
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    <button type="button" data-contract-menu onClick={() => { setShowContractActionsMenu(false); setShowHistoryModal(true); }}
+                      className={detailStyles.action}>
+                      <span className={detailStyles.actionIcon}><History size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+                      <span className="min-w-0"><span className={detailStyles.actionTitle}>Historie a správa</span><span className={detailStyles.actionDescription}>Změny, převody a správce smlouvy</span></span>
+                    </button>
+
+                    {canOpenContractManagement && (
+                      <button
+                        type="button"
+                        data-contract-management
+                        onClick={() => {
+                          setShowContractActionsMenu(false);
+                          setDeleteError(null);
+                          setStornoError(null);
+                          setTransferError(null);
+                          setShowManagementModal(true);
+                        }}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <Settings2 size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Další akce smlouvy
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Storno, převod nebo odstranění
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    {showTerminationAction && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowContractActionsMenu(false);
+                          if (prod === "uniqaAuto") {
+                            void handleOpenUniqaTerminationModal();
+                            return;
+                          }
+                          setSelectedTerminationReason(null);
+                          setShowTerminationReasonModal(true);
+                        }}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <FileSignature size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Vytvořit výpověď
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Připravit ukončení smlouvy
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowContractActionsMenu(false);
+                        setShowProductPanel(true);
+                      }}
+                      className={detailStyles.action}
+                    >
+                      <span className={detailStyles.actionIcon}>
+                        <Package size={18} strokeWidth={2.2} aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className={detailStyles.actionTitle}>
+                          Detail produktu
+                        </span>
+                        <span className={detailStyles.actionDescription}>
+                          Uložené parametry pojištění
+                        </span>
+                      </span>
+                    </button>
+
+                    {prod === "allianzAuto" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowContractActionsMenu(false);
+                            handleAllianzPortalActionClick("odometerUpload");
+                          }}
+                          className={detailStyles.action}
+                        >
+                          <span className={detailStyles.actionIcon}>
+                            <Gauge size={18} strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className={detailStyles.actionTitle}>
+                              Nahrát tachometr
+                            </span>
+                            <span className={detailStyles.actionDescription}>
+                              Otevřít službu Allianz
+                            </span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowContractActionsMenu(false);
+                            handleAllianzPortalActionClick("paymentCheck");
+                          }}
+                          className={detailStyles.action}
+                        >
+                          <span className={detailStyles.actionIcon}>
+                            <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className={detailStyles.actionTitle}>
+                              Ověřit zaplacení
+                            </span>
+                            <span className={detailStyles.actionDescription}>
+                              Kontrola platby u Allianz
+                            </span>
+                          </span>
+                        </button>
+                      </>
+                    )}
+
+                    {prod === "kooperativaAuto" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowContractActionsMenu(false);
+                          handleKooperativaStatusCheckClick();
+                        }}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Ověření stavu smlouvy
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Kontrola smlouvy u Kooperativy
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    {prod === "slaviaauto" && (
+                      <a
+                        href={SLAVIA_CONTRACT_VERIFICATION_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowContractActionsMenu(false)}
+                        className={detailStyles.action}
+                      >
+                        <span className={detailStyles.actionIcon}>
+                          <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className={detailStyles.actionTitle}>
+                            Ověřit smlouvu
+                          </span>
+                          <span className={detailStyles.actionDescription}>
+                            Kontrola smlouvy u Slavie
+                          </span>
+                        </span>
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      className={detailStyles.action}
+                      onClick={() => {
+                        setShowContractActionsMenu(false);
+                        setNoteExpanded(true);
+                        requestAnimationFrame(() => {
+                          const notes = document.getElementById("contract-notes");
+                          notes?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+                          notes?.querySelector("button")?.focus({ preventScroll: true });
+                        });
+                      }}
+                    >
+                      <span className={detailStyles.actionIcon}><StickyNote size={18} strokeWidth={2} aria-hidden="true" /></span>
+                      <span className="min-w-0">
+                        <span className={detailStyles.actionTitle}>Poznámky a připomínky</span>
+                        <span className={detailStyles.actionDescription}>{contractNotes.length > 0 ? noteCountLabel(contractNotes.length) : "Přidat poznámku ke smlouvě"}</span>
+                      </span>
+                    </button>
+                  </div>
+                </aside>
+                <div className={detailStyles.content}>
                 {editMode && (
                   <section className={`${surfaceCardClass} grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]`}>
                     <div className="space-y-2.5">
@@ -6039,10 +5924,10 @@ export default function ContractDetailPage() {
                     {paidError}
                   </div>
                 )}
-                <div className="space-y-5">
-                <section className="border-t border-slate-200 pt-5 sm:pt-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2">
-                  <div className="min-w-0 md:pr-10">
+                <div className={detailStyles.sections}>
+                <section>
+                  <div className={detailStyles.overview}>
+                  <div className="min-w-0">
                     <ContractSectionHeading
                       icon={<FileText size={17} strokeWidth={2.2} aria-hidden="true" />}
                       className="mb-2"
@@ -6127,90 +6012,6 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
-                      {hasTipContract && (
-                        <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(160deg,#fff7ff_0%,#f6f3ff_100%)] px-3 py-3 shadow-[0_8px_20px_rgba(147,51,234,0.1)]">
-                          <div className="flex items-center justify-between gap-3">
-                            <dt className="inline-flex items-center gap-2 text-base font-semibold text-fuchsia-900">
-                              <Tag size={15} strokeWidth={2} aria-hidden="true" />
-                              <span>Smlouva z TIPU</span>
-                            </dt>
-                            <span className="inline-flex items-center rounded-full border border-fuchsia-300 bg-fuchsia-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-fuchsia-800">
-                              {tipContractTipsterPercent} % tipař
-                            </span>
-                          </div>
-
-                          <dd className="mt-2 space-y-2 text-sm text-slate-700">
-                            <p className="leading-snug">{tipContractSourceLabel}</p>
-                            {hasTipContractSource && (
-                              <div className="rounded-xl border border-fuchsia-200 bg-white/75 px-3 py-2">
-                                <div className="flex items-start gap-2">
-                                  <Tag
-                                    size={15}
-                                    className="mt-0.5 text-fuchsia-700"
-                                    strokeWidth={2}
-                                    aria-hidden="true"
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="font-semibold text-fuchsia-950">
-                                      Vybraný TIP
-                                    </p>
-                                    <p className="mt-0.5 leading-snug text-slate-800">
-                                      {tipContractSourceProductLabel || "Tip"}
-                                      {tipContractSourceClientName
-                                        ? ` • ${tipContractSourceClientName}`
-                                        : ""}
-                                    </p>
-                                    {tipContractSourceCreatedAtMs != null && (
-                                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
-                                        <CalendarDays
-                                          size={13}
-                                          strokeWidth={2}
-                                          aria-hidden="true"
-                                        />
-                                        Vytvořeno {formatDate(tipContractSourceCreatedAtMs)}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            <p className="text-xs text-fuchsia-800/90">
-                              {tipContractBaseText}
-                            </p>
-
-                            {tipContractImmediateGross != null &&
-                              tipContractTipsterAmount != null &&
-                              tipContractImmediateNet != null && (
-                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                                      {tipContractGrossLabel}
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                      {formatMoney(tipContractImmediateGross)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                                      Tipař
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-fuchsia-900">
-                                      {formatMoney(tipContractTipsterAmount)}
-                                    </p>
-                                  </div>
-                                  <div className="rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-center">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
-                                      {tipContractNetLabel}
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-900">
-                                      {formatMoney(tipContractImmediateNet)}
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
-                          </dd>
-                        </div>
-                      )}
                       {isNeonRefreshContract && (
                         <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3">
                           <div className="flex justify-between gap-2">
@@ -6354,7 +6155,7 @@ export default function ContractDetailPage() {
                   </div>
 
                   {/* DATA SMLOUVY */}
-                  <div className="mt-6 min-w-0 border-t border-slate-200 pt-6 md:mt-0 md:border-l md:border-t-0 md:pl-10 md:pt-0">
+                  <div className={detailStyles.dates}>
                     <ContractSectionHeading
                       icon={<CalendarDays size={17} strokeWidth={2.2} aria-hidden="true" />}
                       className="mb-2"
@@ -6457,6 +6258,92 @@ export default function ContractDetailPage() {
                 </dl>
               </div>
               </div>
+              <dl>
+                      {hasTipContract && (
+                        <div className={detailStyles.tip}>
+                          <div className="flex items-center justify-between gap-3">
+                            <dt className="inline-flex items-center gap-2 text-base font-semibold text-fuchsia-900">
+                              <Tag size={15} strokeWidth={2} aria-hidden="true" />
+                              <span>Smlouva z TIPU</span>
+                            </dt>
+                            <span className={detailStyles.tipBadge}>
+                              {tipContractTipsterPercent} % tipař
+                            </span>
+                          </div>
+
+                          <dd className="mt-2 space-y-2 text-sm text-slate-700">
+                            <p className="leading-snug">{tipContractSourceLabel}</p>
+                            {hasTipContractSource && (
+                              <div className={detailStyles.tipSource}>
+                                <div className="flex items-start gap-2">
+                                  <Tag
+                                    size={15}
+                                    className="mt-0.5 text-fuchsia-700"
+                                    strokeWidth={2}
+                                    aria-hidden="true"
+                                  />
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-fuchsia-950">
+                                      Vybraný TIP
+                                    </p>
+                                    <p className="mt-0.5 leading-snug text-slate-800">
+                                      {tipContractSourceProductLabel || "Tip"}
+                                      {tipContractSourceClientName
+                                        ? ` • ${tipContractSourceClientName}`
+                                        : ""}
+                                    </p>
+                                    {tipContractSourceCreatedAtMs != null && (
+                                      <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
+                                        <CalendarDays
+                                          size={13}
+                                          strokeWidth={2}
+                                          aria-hidden="true"
+                                        />
+                                        Vytvořeno {formatDate(tipContractSourceCreatedAtMs)}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-xs text-fuchsia-800/90">
+                              {tipContractBaseText}
+                            </p>
+
+                            {tipContractImmediateGross != null &&
+                              tipContractTipsterAmount != null &&
+                              tipContractImmediateNet != null && (
+                                <div className={detailStyles.tipAmounts}>
+                                  <div className={detailStyles.tipAmount}>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      {tipContractGrossLabel}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                                      {formatMoney(tipContractImmediateGross)}
+                                    </p>
+                                  </div>
+                                  <div className={detailStyles.tipAmount}>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      Tipař
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-fuchsia-900">
+                                      {formatMoney(tipContractTipsterAmount)}
+                                    </p>
+                                  </div>
+                                  <div className={detailStyles.tipAmount}>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-700">
+                                      {tipContractNetLabel}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                                      {formatMoney(tipContractImmediateNet)}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                          </dd>
+                        </div>
+                      )}
+              </dl>
             </section>
 
             {showTimelineSection && (
@@ -6576,7 +6463,7 @@ export default function ContractDetailPage() {
               </section>
             )}
 
-            <div className="space-y-5">
+            <div className={detailStyles.sections}>
               <ContractCommissionSection
                 product={prod}
                 isOwnContract={isOwnContract}
@@ -6637,338 +6524,181 @@ export default function ContractDetailPage() {
               />
 
               {/* POZNÁMKY A PŘIPOMÍNKY */}
-              <section id="contract-notes" className={`${noteCardClass} space-y-3`}>
-                <button
-                  type="button"
-                  aria-controls={noteContentId}
-                  aria-expanded={noteExpanded}
-                  onClick={() => setNoteExpanded((value) => !value)}
-                  className="flex w-full items-center justify-between gap-3 text-left"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="min-w-0">
-                      <ContractSectionHeading
-                        icon={<StickyNote size={17} strokeWidth={2.2} aria-hidden="true" />}
-                      >
-                        Poznámky a připomínky
-                      </ContractSectionHeading>
-                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-                        {notesLoading
-                          ? "Načítám poznámky…"
-                          : contractNotes.length > 0
-                            ? `${noteCountLabel(contractNotes.length)} · ${notePreviewText}`
-                            : "Bez poznámek"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
+              <section id="contract-notes" className={noteStyles.panel} aria-label="Poznámky a připomínky">
+                <div className={noteStyles.heading}>
+                  <ContractSectionToggle
+                    title="Poznámky a připomínky"
+                    icon={<StickyNote size={17} strokeWidth={2} />}
+                    count={notesLoading ? "Načítám…" : noteCountLabel(contractNotes.length)}
+                    expanded={noteExpanded}
+                    contentId={noteContentId}
+                    onToggle={() => setNoteExpanded(value => !value)}
+                  />
+                  <div className={noteStyles.headingActions}>
                     {activeNoteReminderCount > 0 && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
-                        <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
-                        {activeNoteReminderCount}
+                      <span className={noteStyles.reminderCount} title="Aktivní připomínky" aria-label={`Aktivní připomínky: ${activeNoteReminderCount}`}>
+                        <BellRing size={13} strokeWidth={1.8} aria-hidden="true" />{activeNoteReminderCount}
                       </span>
                     )}
-                    {noteSaved && (
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                        Uloženo
-                      </span>
-                    )}
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700">
-                      <ChevronDown
-                        size={16}
-                        strokeWidth={2.2}
-                        aria-hidden="true"
-                        className={`transition-transform ${
-                          noteExpanded ? "rotate-180" : ""
-                        }`}
-                      />
-                    </span>
-                  </div>
-                </button>
-
-                {noteExpanded && (
-                  <div id={noteContentId} className="space-y-3 border-t border-slate-200 pt-3">
-                    {noteError && (
-                      <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
-                        {noteError}
-                      </p>
-                    )}
-
+                    {noteSaved && <span className={noteStyles.saved} role="status">Uloženo</span>}
                     {canManageContract && noteEditorId === null && (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleStartNewNote}
-                          className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
-                        >
-                          <Plus size={16} strokeWidth={2.4} aria-hidden="true" />
-                          Přidat poznámku
-                        </button>
-                      </div>
+                      <button type="button" onClick={handleStartNewNote} className={noteStyles.addButton}>
+                        <Plus size={15} strokeWidth={2} aria-hidden="true" />Přidat poznámku
+                      </button>
                     )}
+                  </div>
+                </div>
+
+                  <div id={noteContentId} className={noteStyles.content} hidden={!noteExpanded}>
+                    {noteError && <p className={noteStyles.error} role="alert">{noteError}</p>}
 
                     {canManageContract && noteEditorId !== null && (
-                      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.06)] sm:p-3.5">
-                        <div
-                          className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-300"
-                          aria-hidden="true"
-                        />
-                        <div className="mb-2.5 flex items-center justify-between gap-3 pt-0.5">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
-                              <PencilLine size={14} strokeWidth={2.3} aria-hidden="true" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-slate-950">
-                                {noteEditorId === "new" ? "Nová poznámka" : "Upravit poznámku"}
-                              </p>
-                              <p className="text-[11px] font-semibold text-slate-500">
-                                Interní informace k této smlouvě
-                              </p>
-                            </div>
+                      <div className={noteStyles.editor}>
+                        <div className={noteStyles.editorHeading}>
+                          <span className={noteStyles.editorIcon}><PencilLine size={17} strokeWidth={1.7} aria-hidden="true" /></span>
+                          <div>
+                            <p>{noteEditorId === "new" ? "Nová poznámka" : "Upravit poznámku"}</p>
+                            <span>Interní informace k této smlouvě</span>
                           </div>
-                          <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">
-                            {noteDraft.length}/2000
-                          </span>
+                          <span className={noteStyles.characterCount}>{noteDraft.length}/2000</span>
                         </div>
+                        <label htmlFor={`${noteContentId}-text`} className="sr-only">Text poznámky</label>
                         <textarea
+                          id={`${noteContentId}-text`}
                           value={noteDraft}
-                          onChange={(e) => {
-                            setNoteDraft(e.target.value);
-                            setNoteSaved(false);
-                          }}
+                          onChange={(e) => { setNoteDraft(e.target.value); setNoteSaved(false); }}
                           maxLength={2000}
-                          rows={2}
+                          rows={3}
                           autoFocus
-                          className="min-h-[76px] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                          className={noteStyles.textarea}
                           placeholder="Co je potřeba u této smlouvy zařídit?"
                         />
-
-                        <div className="mt-2.5 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <div className={noteStyles.editorToolbar}>
+                          <div className={noteStyles.reminderFields}>
                             <button
                               type="button"
                               aria-pressed={noteReminderEnabled}
                               onClick={() => {
                                 setNoteReminderEnabled((enabled) => {
                                   const next = !enabled;
-                                  if (next && !noteReminderDate) {
-                                    setNoteReminderDate(reminderDateAfterDays(7));
-                                  }
+                                  if (next && !noteReminderDate) setNoteReminderDate(reminderDateAfterDays(7));
                                   return next;
                                 });
                                 setNoteError(null);
                               }}
-                              className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-bold transition ${
-                                noteReminderEnabled
-                                  ? "border-violet-200 bg-violet-50 text-violet-800"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:text-violet-700"
-                              }`}
+                              className={noteStyles.reminderToggle}
                             >
-                              <BellRing size={14} strokeWidth={2.2} aria-hidden="true" />
+                              <BellRing size={14} strokeWidth={1.8} aria-hidden="true" />
                               Připomenout
-                              <span
-                                className={`relative inline-block h-5 w-9 shrink-0 overflow-hidden rounded-full transition ${
-                                  noteReminderEnabled ? "bg-violet-600" : "bg-slate-200"
-                                }`}
-                                aria-hidden="true"
-                              >
-                                <span
-                                  className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                                    noteReminderEnabled ? "translate-x-[18px]" : "translate-x-0.5"
-                                  }`}
-                                />
-                              </span>
+                              <span className={noteStyles.switch} aria-hidden="true"><span /></span>
                             </button>
-
                             {noteReminderEnabled && (
-                              <label className="flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-2.5 py-1.5">
-                                <CalendarDays
-                                  size={14}
-                                  strokeWidth={2.2}
-                                  aria-hidden="true"
-                                  className="text-violet-600"
-                                />
+                              <label className={noteStyles.dateField}>
+                                <CalendarDays size={14} strokeWidth={1.8} aria-hidden="true" />
                                 <span className="sr-only">Datum připomínky</span>
                                 <input
                                   type="date"
                                   min={localIsoDay()}
                                   value={noteReminderDate}
-                                  onChange={(event) => {
-                                    setNoteReminderDate(event.target.value);
-                                    setNoteError(null);
-                                  }}
-                                  className="bg-transparent text-xs font-bold text-slate-800 outline-none"
+                                  onChange={(event) => { setNoteReminderDate(event.target.value); setNoteError(null); }}
                                 />
                               </label>
                             )}
-
-                            {noteReminderEnabled && (
-                              <span className="text-[11px] font-semibold text-slate-500">
-                                Notifikace přijde přibližně v {formatReminderDeliveryTime(noteReminderDate)} a po kliknutí otevře detail smlouvy.
-                              </span>
-                            )}
                           </div>
-
-                          <div className="flex shrink-0 justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={resetNoteEditor}
-                              disabled={savingNote}
-                              className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-60"
-                            >
-                              Zrušit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleSaveNote}
-                              disabled={savingNote || !noteDraft.trim()}
-                              className="inline-flex min-w-[88px] items-center justify-center gap-2 rounded-xl bg-slate-950 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-                            >
-                              {savingNote && (
-                                <Spinner className="h-3.5 w-3.5 border-slate-500 border-t-white" />
-                              )}
-                              {savingNote ? "Ukládám…" : "Uložit"}
+                          <div className={noteStyles.editorActions}>
+                            <button type="button" onClick={resetNoteEditor} disabled={savingNote} className={noteStyles.cancelButton}>Zrušit</button>
+                            <button type="button" onClick={handleSaveNote} disabled={savingNote || !noteDraft.trim()} className={noteStyles.saveButton}>
+                              {savingNote && <Spinner className="h-3.5 w-3.5 border-violet-300 border-t-white" />}
+                              {savingNote ? "Ukládám…" : "Uložit poznámku"}
                             </button>
                           </div>
                         </div>
+                        {noteReminderEnabled && (
+                          <p className={noteStyles.deliveryHint}>
+                            Notifikace přijde přibližně v {formatReminderDeliveryTime(noteReminderDate)} a po kliknutí otevře detail smlouvy.
+                          </p>
+                        )}
                       </div>
                     )}
 
                     {notesLoading ? (
-                      <div className="space-y-2 py-2" aria-label="Načítání poznámek">
-                        <Skeleton className="h-4 w-1/3" />
-                        <Skeleton className="h-4 w-4/5" />
+                      <div className={noteStyles.loading} role="status" aria-label="Načítání poznámek">
+                        <Skeleton className="h-4 w-1/3" /><Skeleton className="h-4 w-4/5" />
                       </div>
                     ) : contractNotes.length === 0 && noteEditorId === null ? (
-                      <div className="py-2 text-center">
-                        <StickyNote
-                          size={22}
-                          strokeWidth={1.8}
-                          aria-hidden="true"
-                          className="mx-auto text-slate-300"
-                        />
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Zatím tu není žádná poznámka.
-                        </p>
+                      <div className={noteStyles.emptyState}>
+                        <span className={noteStyles.emptyIcon}><StickyNote size={26} strokeWidth={1.4} aria-hidden="true" /></span>
+                        <div><p>Zatím tu není žádná poznámka</p><span>Místo pro důležité informace, domluvy s klientem a připomínky.</span></div>
                       </div>
                     ) : contractNotes.length > 0 ? (
-                      <div className="divide-y divide-slate-200">
+                      <div className={noteStyles.list}>
                         {contractNotes.map((note) => {
                           const isLinkedNote = note.id === linkedNoteId;
                           const wasEdited = note.updatedAtMs - note.createdAtMs > 60_000;
-                          const reminderWasSent =
-                            !note.reminderEnabled && note.reminderLastSentForAtMs != null;
+                          const reminderWasSent = !note.reminderEnabled && note.reminderLastSentForAtMs != null;
                           return (
-                            <article
-                              key={note.id}
-                              className={`relative py-3 first:pt-1 last:pb-1 ${
-                                isLinkedNote
-                                  ? "-mx-2 rounded-xl bg-violet-50 px-2 ring-1 ring-violet-200"
-                                  : ""
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
-                                    <span>
-                                      {note.legacy
-                                        ? "Původní poznámka"
-                                        : `Přidáno ${formatNoteTimestamp(note.createdAtMs)}`}
-                                    </span>
-                                    {wasEdited && !note.legacy && (
-                                      <span>· Upraveno {formatNoteTimestamp(note.updatedAtMs)}</span>
-                                    )}
-                                    {isLinkedNote && (
-                                      <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                                        Otevřeno z notifikace
-                                      </span>
-                                    )}
+                            <article key={note.id} className={noteStyles.note} data-linked={isLinkedNote}>
+                              <span className={noteStyles.noteIcon} aria-hidden="true">
+                                {note.reminderEnabled ? <BellRing size={16} strokeWidth={1.6} /> : <StickyNote size={16} strokeWidth={1.6} />}
+                              </span>
+                              <div className={noteStyles.noteBody}>
+                                <div className={noteStyles.noteTop}>
+                                  <div className={noteStyles.metadata}>
+                                    <span>{note.legacy ? "Původní poznámka" : `Přidáno ${formatNoteTimestamp(note.createdAtMs)}`}</span>
+                                    {wasEdited && !note.legacy && <span>Upraveno {formatNoteTimestamp(note.updatedAtMs)}</span>}
+                                    {isLinkedNote && <span className={noteStyles.linkedLabel}>Otevřeno z notifikace</span>}
                                   </div>
-                                  <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-900">
-                                    {note.text}
-                                  </p>
-
-                                  {note.reminderEnabled && note.reminderAtMs != null ? (
-                                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">
-                                      <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
-                                      Připomenout {formatReminderDate(note.reminderAtMs)}
-                                    </span>
-                                  ) : reminderWasSent ? (
-                                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                      <BellRing size={13} strokeWidth={2.2} aria-hidden="true" />
-                                      Připomenuto {formatReminderDate(note.reminderLastSentForAtMs!)}
-                                    </span>
-                                  ) : null}
+                                  {canManageContract && noteDeleteConfirmId !== note.id && (
+                                    <div className={noteStyles.noteActions}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEditNote(note)}
+                                        disabled={savingNote || deletingNoteId !== null}
+                                        aria-label="Upravit poznámku"
+                                        title="Upravit poznámku"
+                                        className={noteStyles.iconButton}
+                                      ><PencilLine size={15} strokeWidth={1.8} aria-hidden="true" /></button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setNoteDeleteConfirmId(note.id); setNoteError(null); }}
+                                        disabled={savingNote || deletingNoteId !== null}
+                                        aria-label="Smazat poznámku"
+                                        title="Smazat poznámku"
+                                        className={`${noteStyles.iconButton} ${noteStyles.deleteIcon}`}
+                                      ><Trash2 size={15} strokeWidth={1.8} aria-hidden="true" /></button>
+                                    </div>
+                                  )}
                                 </div>
+                                <p className={noteStyles.noteText}>{note.text}</p>
+                                {note.reminderEnabled && note.reminderAtMs != null ? (
+                                  <span className={noteStyles.reminder}><BellRing size={13} strokeWidth={1.7} aria-hidden="true" />Připomenout {formatReminderDate(note.reminderAtMs)}</span>
+                                ) : reminderWasSent ? (
+                                  <span className={noteStyles.reminder} data-sent="true"><BellRing size={13} strokeWidth={1.7} aria-hidden="true" />Připomenuto {formatReminderDate(note.reminderLastSentForAtMs!)}</span>
+                                ) : null}
 
-                                {canManageContract && noteDeleteConfirmId !== note.id && (
-                                  <div className="flex shrink-0 items-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleEditNote(note)}
-                                      disabled={savingNote || deletingNoteId !== null}
-                                      aria-label="Upravit poznámku"
-                                      title="Upravit poznámku"
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-violet-50 hover:text-violet-700 disabled:opacity-40"
-                                    >
-                                      <PencilLine size={15} strokeWidth={2.2} aria-hidden="true" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setNoteDeleteConfirmId(note.id);
-                                        setNoteError(null);
-                                      }}
-                                      disabled={savingNote || deletingNoteId !== null}
-                                      aria-label="Smazat poznámku"
-                                      title="Smazat poznámku"
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
-                                    >
-                                      <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
+                                {canManageContract && noteDeleteConfirmId === note.id && (
+                                  <div className={noteStyles.deleteConfirmation}>
+                                    <span>Opravdu tuto poznámku smazat?</span>
+                                    <button type="button" onClick={() => setNoteDeleteConfirmId(null)} disabled={deletingNoteId === note.id} className={noteStyles.cancelButton}>Zrušit</button>
+                                    <button type="button" onClick={() => void handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className={noteStyles.deleteButton}>
+                                      {deletingNoteId === note.id && <Spinner className="h-3.5 w-3.5 border-rose-300 border-t-white" />}
+                                      Smazat
                                     </button>
                                   </div>
                                 )}
                               </div>
-
-                              {canManageContract && noteDeleteConfirmId === note.id && (
-                                <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-xl bg-rose-50 px-3 py-2">
-                                  <span className="mr-auto text-xs font-semibold text-rose-800">
-                                    Opravdu tuto poznámku smazat?
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setNoteDeleteConfirmId(null)}
-                                    disabled={deletingNoteId === note.id}
-                                    className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-50"
-                                  >
-                                    Zrušit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleDeleteNote(note.id)}
-                                    disabled={deletingNoteId === note.id}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50"
-                                  >
-                                    {deletingNoteId === note.id && (
-                                      <Spinner className="h-3.5 w-3.5 border-rose-300 border-t-white" />
-                                    )}
-                                    Smazat
-                                  </button>
-                                </div>
-                              )}
                             </article>
                           );
                         })}
                       </div>
                     ) : null}
                   </div>
-                )}
               </section>
             </div>
 
               </div>
-              </>
+                </div>
+              </div>
             ) : null}
             </div>
 
@@ -7076,7 +6806,7 @@ export default function ContractDetailPage() {
                   Rozpis okamžité provize
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  ČPP ŽP NEON • {positionLabel(neonImmediateBreakdown.position)}
+                  ČPP Životní pojištění NEON • {positionLabel(neonImmediateBreakdown.position)}
                 </p>
                 <p className="text-sm text-slate-600">
                   Režim:{" "}
@@ -7234,298 +6964,31 @@ export default function ContractDetailPage() {
       )}
 
       {canOpenContractManagement && showManagementModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít správu smlouvy"
-            onClick={() => setShowManagementModal(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="contract-management-title"
-            className="relative z-10 w-full max-w-lg rounded-[26px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/30 sm:p-7"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                  <Settings2 size={14} strokeWidth={2.2} aria-hidden="true" />
-                  Akce smlouvy
-                </div>
-                <h3
-                  id="contract-management-title"
-                  className="mt-3 text-xl font-semibold tracking-tight text-slate-950"
-                >
-                  Správa smlouvy
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Vyber, co chceš s touto smlouvou provést.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowManagementModal(false)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                aria-label="Zavřít správu smlouvy"
-              >
-                <X size={17} strokeWidth={2.3} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mt-5 grid gap-2.5">
-              {canSetStorno && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStornoError(null);
-                    setShowManagementModal(false);
-                    setShowDeleteModal(false);
-                    setShowStornoModal(true);
-                  }}
-                  disabled={updatingStorno}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3.5 text-left transition hover:border-amber-300 hover:bg-amber-100 disabled:opacity-60"
-                >
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-white text-amber-700">
-                    <AlertTriangle size={19} strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-amber-950">
-                      Storno
-                    </span>
-                    <span className="mt-0.5 block text-xs text-amber-800">
-                      {isStornoContract
-                        ? "Upravit datum nebo zrušit stávající storno."
-                        : "Nastavit datum storna smlouvy."}
-                    </span>
-                  </span>
-                </button>
-              )}
-
-              {canDelete && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteError(null);
-                    setShowManagementModal(false);
-                    setShowStornoModal(false);
-                    setShowDeleteModal(true);
-                  }}
-                  disabled={deleting}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-left transition hover:border-rose-300 hover:bg-rose-100 disabled:opacity-60"
-                >
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700">
-                    <Trash2 size={19} strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-rose-950">
-                      Smazání smlouvy
-                    </span>
-                    <span className="mt-0.5 block text-xs text-rose-800">
-                      Trvale odstranit smlouvu po dalším potvrzení.
-                    </span>
-                  </span>
-                </button>
-              )}
-
-              {canRequestTransfer && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTransferError(null);
-                    setTransferTargetEmail("");
-                    setTransferTargetQuery("");
-                    setTransferTargetSearchOpen(false);
-                    setTransferEffectiveDate(localIsoDay());
-                    setShowManagementModal(false);
-                    setShowTransferModal(true);
-                  }}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3.5 text-left transition hover:border-violet-300 hover:bg-violet-100"
-                >
-                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-white text-violet-700">
-                    <ArrowRightLeft size={19} strokeWidth={2.2} aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold text-violet-950">
-                      Převod smlouvy
-                    </span>
-                    <span className="mt-0.5 block text-xs text-violet-800">
-                      Odeslat administrátorovi žádost o změnu správce.
-                    </span>
-                  </span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {canRequestTransfer && showTransferModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít žádost o převod smlouvy"
-            disabled={submittingTransfer}
-            onClick={() => setShowTransferModal(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="contract-transfer-detail-title"
-            className="relative z-10 w-full max-w-lg rounded-[26px] border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/30 sm:p-7"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3
-                  id="contract-transfer-detail-title"
-                  className="text-xl font-semibold tracking-tight text-slate-950"
-                >
-                  Převod smlouvy
-                </h3>
-                <p className="mt-1 text-sm text-slate-600">
-                  Žádost se odešle administrátorovi ke schválení.
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={submittingTransfer}
-                onClick={() => setShowTransferModal(false)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:opacity-50"
-                aria-label="Zavřít žádost o převod smlouvy"
-              >
-                <X size={17} strokeWidth={2.3} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
-              Novému správci budou od data účinnosti náležet dosud nevyplacené a budoucí provize. Již vyplacené provize zůstávají beze změny.
-            </div>
-
-            <div className="relative mt-5">
-              <label
-                htmlFor="contract-detail-transfer-target"
-                className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"
-              >
-                Nový správce
-              </label>
-              <div className="relative">
-                <Search
-                  size={17}
-                  strokeWidth={2.2}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  id="contract-detail-transfer-target"
-                  type="search"
-                  role="combobox"
-                  autoComplete="off"
-                  aria-autocomplete="list"
-                  aria-expanded={transferTargetSearchOpen}
-                  aria-controls="contract-detail-transfer-results"
-                  value={transferTargetQuery}
-                  disabled={submittingTransfer}
-                  placeholder="Hledat podle jména nebo e-mailu"
-                  onFocus={() => setTransferTargetSearchOpen(true)}
-                  onBlur={() => setTransferTargetSearchOpen(false)}
-                  onChange={(event) => {
-                    setTransferTargetQuery(event.target.value);
-                    setTransferTargetEmail("");
-                    setTransferTargetSearchOpen(true);
-                  }}
-                  className="h-12 w-full rounded-2xl border border-slate-300 bg-white pl-10 pr-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:opacity-60"
-                />
-              </div>
-              {transferTargetSearchOpen && (
-                <div
-                  id="contract-detail-transfer-results"
-                  role="listbox"
-                  className="absolute inset-x-0 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_46px_rgba(15,23,42,0.18)]"
-                >
-                  {matchingTransferTargets.length ? (
-                    matchingTransferTargets.map((target) => {
-                      const label = transferTargetLabel(target);
-                      return (
-                        <button
-                          key={target.email}
-                          type="button"
-                          role="option"
-                          aria-selected={target.email === transferTargetEmail}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => {
-                            setTransferTargetEmail(target.email);
-                            setTransferTargetQuery(`${label} · ${target.email}`);
-                            setTransferTargetSearchOpen(false);
-                          }}
-                          className="flex w-full flex-col rounded-xl px-3 py-2 text-left transition hover:bg-violet-50"
-                        >
-                          <span className="text-sm font-semibold text-slate-950">{label}</span>
-                          <span className="text-xs text-slate-500">{target.email}</span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="px-3 py-4 text-center text-sm text-slate-500">
-                      Žádný poradce neodpovídá hledání.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4">
-              <label
-                htmlFor="contract-detail-transfer-date"
-                className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"
-              >
-                Datum účinnosti převodu
-              </label>
-              <input
-                id="contract-detail-transfer-date"
-                type="date"
-                value={transferEffectiveDate}
-                disabled={submittingTransfer}
-                onChange={(event) => setTransferEffectiveDate(event.target.value)}
-                className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:opacity-60"
-              />
-            </div>
-
-            {transferError && (
-              <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                {transferError}
-              </p>
-            )}
-
-            <div className="mt-5 flex justify-end gap-3 border-t border-slate-200 pt-4">
-              <button
-                type="button"
-                disabled={submittingTransfer}
-                onClick={() => setShowTransferModal(false)}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                disabled={
-                  submittingTransfer ||
-                  !transferTargetEmail ||
-                  !transferEffectiveDate
-                }
-                onClick={() => void handleRequestTransfer()}
-                className="inline-flex items-center gap-2 rounded-xl border border-violet-700 bg-violet-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(109,40,217,0.24)] transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {submittingTransfer ? (
-                  <Spinner className="h-4 w-4 border-violet-300 border-t-white" />
-                ) : (
-                  <ArrowRightLeft size={16} strokeWidth={2.2} aria-hidden="true" />
-                )}
-                <span>{submittingTransfer ? "Odesílám…" : "Odeslat žádost"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContractManagementDialog
+          contractNumber={contract?.contractNumber?.trim() || ""}
+          clientName={contract?.clientName?.trim() || ""}
+          productLabel={productLabel(prod)}
+          canSetStorno={canSetStorno}
+          canDelete={canDelete}
+          canRequestTransfer={canRequestTransfer}
+          isStorno={isStornoContract}
+          initialStornoDate={toDateInputValue(contract?.stornoDate ?? null) || localIsoDay()}
+          minimumStornoDate={stornoMinimumDateInput}
+          today={localIsoDay()}
+          transferTargets={eligibleTransferTargets}
+          busy={deleting || updatingStorno || submittingTransfer}
+          error={deleteError || stornoError || transferError}
+          onClearError={() => { setDeleteError(null); setStornoError(null); setTransferError(null); }}
+          onClose={() => setShowManagementModal(false)}
+          onConfirm={action => {
+            switch (action.kind) {
+              case "storno": return handleSetStorno(action.date);
+              case "restore": return handleClearStorno();
+              case "delete": return handleDelete();
+              case "transfer": return handleRequestTransfer(action.targetEmail, action.effectiveDate);
+            }
+          }}
+        />
       )}
 
       {showTerminationReasonModal &&
@@ -7543,7 +7006,7 @@ export default function ContractDetailPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="termination-reason-title"
-            className="relative z-10 w-full max-w-2xl overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]"
+            className="relative z-10 max-h-[calc(100dvh-3rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-[30px] border border-white/70 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]"
           >
             <div className="relative overflow-hidden border-b border-violet-100 bg-[linear-gradient(130deg,#ffffff_0%,#faf7ff_55%,#eee7ff_100%)] px-6 py-6 sm:px-7">
               <span className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-violet-300/25" />
@@ -7590,6 +7053,27 @@ export default function ContractDetailPage() {
             </div>
 
             <div className="px-6 py-5 sm:px-7">
+              {prod === "cppAuto" && (
+                <div
+                  role="note"
+                  aria-label="Výpověď ČPP Auto online"
+                  className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-300 border-l-4 bg-amber-50 p-4 text-amber-950"
+                >
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                    <FileSignature size={21} strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h4 className="text-base font-bold">ČPP Auto můžete vypovědět online</h4>
+                    <p className="mt-1.5 text-sm leading-6">
+                      Smlouvy ČPP Auto lze jednoduše vypovědět v portále{" "}
+                      <strong className="font-bold">ČPP SUS online</strong> v sekci{" "}
+                      <strong className="font-bold">ŽÁDANKY</strong>.
+                    </p>
+                    <p className="mt-1 text-sm font-bold leading-6">Lze využít i online podpis.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-2.5 sm:grid-cols-2">
                 {terminationReasonOptions.map((option) => {
                   const selected = selectedTerminationReason === option.id;
@@ -7831,111 +7315,6 @@ export default function ContractDetailPage() {
           </div>
         </div>
       ) : null}
-
-      {canSetStorno && showStornoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít potvrzení storna"
-            onClick={() => {
-              setStornoError(null);
-              setShowStornoModal(false);
-            }}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Potvrzení storna smlouvy"
-            className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-7 shadow-2xl shadow-slate-300/40"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                  {isStornoContract ? "Upravit storno smlouvy" : "Stornovat smlouvu?"}
-                </h3>
-                <p className="mt-1 text-base text-slate-700">
-                  Zadej datum storna a potvrď akci.
-                </p>
-                <p className="mt-1 text-sm font-medium text-slate-500">
-                  Datum storna si ověř v MAXXu nebo Extranetu u dané smlouvy.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setStornoError(null);
-                  setShowStornoModal(false);
-                }}
-                className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                aria-label="Zavřít"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Datum storna
-              </label>
-              <input
-                type="date"
-                value={stornoDateInput}
-                min={stornoMinimumDateInput ?? undefined}
-                onChange={(e) => setStornoDateInput(e.target.value)}
-                disabled={updatingStorno}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-mono text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-              />
-              {stornoMinimumDateInput ? (
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  Nejdříve možné datum: {formatDate(stornoMinimumDate)}
-                </p>
-              ) : null}
-            </div>
-
-            {stornoError && (
-              <p className="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                {stornoError}
-              </p>
-            )}
-
-            <div className="mt-5 flex justify-end gap-3">
-              {isStornoContract && (
-                <button
-                  type="button"
-                  onClick={() => void handleClearStorno()}
-                  disabled={updatingStorno}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-                >
-                  <RotateCcw size={15} strokeWidth={2.2} aria-hidden="true" />
-                  Zrušit storno
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setStornoError(null);
-                  setShowStornoModal(false);
-                }}
-                className={ghostButtonClass}
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={handleSetStorno}
-                disabled={updatingStorno}
-                className="inline-flex items-center gap-2 rounded-xl border border-amber-700 bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(180,83,9,0.25)] transition hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
-              >
-                {updatingStorno && (
-                  <Spinner className="h-5 w-5 border-amber-200/70 border-t-white" />
-                )}
-                <span>{isStornoContract ? "Uložit storno" : "Potvrdit storno"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showAllianzPortalModal && allianzPortalConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -8347,68 +7726,6 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {canDelete && showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít potvrzení mazání"
-            onClick={() => setShowDeleteModal(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Potvrzení smazání smlouvy"
-            className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-7 shadow-2xl shadow-slate-300/40"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-900">
-                  Opravdu smazat smlouvu?
-                </h3>
-                <p className="mt-1 text-base text-slate-700">
-                  Akce je nevratná. Potvrď prosím kliknutím na tlačítko Smazat.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDeleteModal(false)}
-                className="rounded-full px-2 text-slate-700 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                aria-label="Zavřít"
-              >
-                ×
-              </button>
-            </div>
-
-            {deleteError && (
-              <p className="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                {deleteError}
-              </p>
-            )}
-
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowDeleteModal(false)}
-                className={ghostButtonClass}
-              >
-                Zrušit
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="inline-flex items-center gap-2 rounded-xl border border-rose-700 bg-rose-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(190,24,93,0.28)] transition hover:bg-rose-800 focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
-              >
-                {deleting && (
-                  <Spinner className="h-5 w-5 border-rose-200/70 border-t-white" />
-                )}
-                <span>{deleting ? "Mažu…" : "Smazat"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

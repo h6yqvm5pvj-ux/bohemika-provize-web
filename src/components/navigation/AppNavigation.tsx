@@ -69,6 +69,7 @@ interface AppNavigationProps {
   navLabels: Record<ActivePage, string>;
   logoutLabel: string;
   hasUser: boolean;
+  intranetUnreadCount?: number | null;
   userEmail: string;
   userAvatar: string;
   hasTeam: boolean;
@@ -114,7 +115,6 @@ const NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
 
 const TIPSTER_NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "home", href: "/", icon: Home },
-  { key: "hall", href: "/sin-slavy", icon: Trophy },
   { key: "tips", href: "/tipy", icon: Lightbulb },
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
 ];
@@ -166,6 +166,7 @@ function NavigationList({
   timelineSetupGateActive,
   canAccessPreparationSections,
   collapsed = false,
+  intranetUnreadCount,
   onNavigate,
   onBlockedPreparationClick,
 }: {
@@ -178,6 +179,7 @@ function NavigationList({
   timelineSetupGateActive: boolean;
   canAccessPreparationSections: boolean;
   collapsed?: boolean;
+  intranetUnreadCount?: number | null;
   onNavigate?: () => void;
   onBlockedPreparationClick: (item: NavigationItem) => void;
 }) {
@@ -207,6 +209,9 @@ function NavigationList({
         const navDisabled = timelineSetupGateActive && item.key !== "settings";
         const isPreparationGated = PREPARATION_GATED_NAV_KEYS.has(item.key);
         const Icon = item.icon;
+        const unreadCount = item.key === "intranet" && Number.isSafeInteger(intranetUnreadCount) && (intranetUnreadCount ?? 0) > 0
+          ? intranetUnreadCount! : 0;
+        const accessibleLabel = unreadCount ? `${item.label} – nepřečtené příspěvky: ${unreadCount}` : item.label;
         const groupStart = item.key === "calc" || item.key === "tools" ||
           ((item.key === "admin" || item.key === "settings") &&
             visibleItems[visibleItems.indexOf(item) - 1]?.key !== "admin");
@@ -215,7 +220,8 @@ function NavigationList({
           <>
             <span className={styles.navIcon}><Icon size={20} strokeWidth={1.8} aria-hidden="true" /></span>
             <span className={styles.itemLabel}>{item.label}</span>
-            {isActive ? <span className={styles.activeDot} aria-hidden="true" /> : null}
+            {unreadCount ? <span className={styles.unreadBadge} aria-hidden="true">{unreadCount > 99 ? "99+" : unreadCount}</span>
+              : isActive ? <span className={styles.activeDot} aria-hidden="true" /> : null}
           </>
         );
 
@@ -237,11 +243,11 @@ function NavigationList({
             key={item.key}
             href={item.href}
             prefetch={false}
-            aria-label={item.label}
+            aria-label={accessibleLabel}
             aria-current={isActive ? "page" : undefined}
-            onMouseEnter={(event) => showTooltip(event.currentTarget, item.label)}
+            onMouseEnter={(event) => showTooltip(event.currentTarget, accessibleLabel)}
             onMouseLeave={() => setTooltip(null)}
-            onFocus={(event) => showTooltip(event.currentTarget, item.label)}
+            onFocus={(event) => showTooltip(event.currentTarget, accessibleLabel)}
             onBlur={() => setTooltip(null)}
             onKeyDown={(event) => { if (event.key === "Escape") setTooltip(null); }}
             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
@@ -276,6 +282,7 @@ export function AppNavigation({
   navLabels,
   logoutLabel,
   hasUser,
+  intranetUnreadCount,
   userEmail,
   userAvatar,
   hasTeam,
@@ -298,7 +305,7 @@ export function AppNavigation({
     ? []
     : buildNavigationItems(
         isTipsterAccount ? TIPSTER_NAV_ITEM_CONFIGS : NAV_ITEM_CONFIGS,
-        navLabels
+        isTipsterAccount ? { ...navLabels, home: "Můj přehled", tips: "Moje tipy", cashflow: "Moje odměny" } : navLabels
       );
   const [collapsed, toggleCollapsed] = useSidebarPreference();
   const mobileDialogRef = useRef<HTMLDivElement>(null);
@@ -350,6 +357,7 @@ export function AppNavigation({
       <aside
         className={`${styles.sidebar} ${shellFontClass}`}
         data-collapsed={collapsed}
+        data-account={isTipsterAccount ? "tipster" : "advisor"}
         aria-label="Postranní panel"
       >
         <div className={styles.brandRow}>
@@ -359,10 +367,11 @@ export function AppNavigation({
             </span>
             <span className={styles.brandCopy}>
               <span className={styles.brandName}>Bohemka<span>.App</span></span>
-              <span className={styles.brandTagline}>Váš pracovní prostor</span>
+              <span className={styles.brandTagline}>{isTipsterAccount ? "Váš tipařský prostor" : "Váš pracovní prostor"}</span>
             </span>
           </Link>
         </div>
+        {isTipsterAccount && !collapsed ? <div className={styles.tipsterBadge}><Lightbulb size={13} />TIPAŘSKÝ ÚČET</div> : null}
         <button
           type="button"
           onClick={toggleCollapsed}
@@ -386,6 +395,7 @@ export function AppNavigation({
             timelineSetupGateActive={timelineSetupGateActive}
             canAccessPreparationSections={canAccessPreparationSections}
             collapsed={collapsed}
+            intranetUnreadCount={hasUser ? intranetUnreadCount : null}
             onBlockedPreparationClick={setBlockedPreparationItem}
           />
         </nav>
@@ -482,6 +492,7 @@ export function AppNavigation({
                   timelineSetupGateActive={timelineSetupGateActive}
                   canAccessPreparationSections={canAccessPreparationSections}
                   onNavigate={onCloseMobileMenu}
+                  intranetUnreadCount={hasUser ? intranetUnreadCount : null}
                   onBlockedPreparationClick={setBlockedPreparationItem}
                 />
               </nav>

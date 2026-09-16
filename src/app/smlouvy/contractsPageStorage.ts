@@ -23,14 +23,10 @@ export const CONTRACT_LIST_OVERSCAN_ROWS = 3;
 export const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
-const stripDiacritics = (value: string): string =>
-  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-export const normalizeSearchValue = (value?: string | null): string =>
-  stripDiacritics((value ?? "").trim().toLowerCase());
-
-export const normalizeContractNumberForSearch = (value?: string | null): string =>
-  normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
+export {
+  normalizeContractSearchText as normalizeSearchValue,
+  compactContractSearchNumber as normalizeContractNumberForSearch,
+} from "@/app/lib/contractSearch";
 
 export const normalizeCursorToken = (value: unknown): string | null => {
   if (typeof value === "string") {

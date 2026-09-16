@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { ChevronDown, Eye, FileText, Info, RefreshCw } from "lucide-react";
+import { Fragment, useId, useState } from "react";
+import { ChevronDown, Eye, FileCheck2, FileStack, FileText, Info, LoaderCircle, RefreshCw, UserRound } from "lucide-react";
 
 import {
   isFirstYearAutoACommissionPayout,
@@ -12,7 +12,8 @@ import { HelpDialog } from "@/components/HelpDialog";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
 import { type ContractCommissionPayout } from "./contractDetailTypes";
 import { partitionSettledCommissionPayouts } from "./contractCommissionHistoryRules";
-import { ContractSectionHeading } from "./ContractDetailUi";
+import { ContractSectionToggle } from "./ContractSectionToggle";
+import styles from "./commissionHistory.module.css";
 
 type ContractCommissionHistoryProps = {
   product?: Product | null;
@@ -41,17 +42,6 @@ const statusLabel = (status: ContractCommissionPayout["status"]): string => {
       return "Storno";
     default:
       return "Vyplaceno";
-  }
-};
-
-const statusClass = (status: ContractCommissionPayout["status"]): string => {
-  switch (normalizeStatus(status)) {
-    case "difference":
-      return "border-rose-200 bg-rose-50 text-rose-800";
-    case "storno":
-      return "border-rose-200 bg-rose-50 text-rose-800";
-    default:
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
 };
 
@@ -425,7 +415,7 @@ export function ContractCommissionHistory({
   rebuildingFromStatements = false,
   canRebuildFromStatements = false,
 }: ContractCommissionHistoryProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showSettledCorrections, setShowSettledCorrections] = useState(false);
   const [selectedDifference, setSelectedDifference] =
     useState<SelectedDifference | null>(null);
@@ -452,378 +442,229 @@ export function ContractCommissionHistory({
     viewerEmail: normalizeEmail(viewerEmail),
     contractOwnerEmail: normalizeEmail(contractOwnerEmail),
   });
-  const contentId = "contract-commission-history-content";
-  const settledContentId = "contract-commission-history-settled";
+  const contentId = useId();
+  const settledContentId = useId();
 
   return (
-    <section className="rounded-2xl border border-slate-300/90 bg-white px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <ContractSectionHeading
-          icon={<FileText size={17} strokeWidth={2.2} aria-hidden="true" />}
-        >
-          Provizní výpisy u smlouvy
-        </ContractSectionHeading>
-        <div className="flex shrink-0 items-center gap-2">
+    <section className={styles.panel} aria-label="Provizní výpisy u smlouvy">
+      <div className={styles.heading}>
+        <ContractSectionToggle
+          title="Provizní výpisy u smlouvy"
+          icon={<FileText size={17} strokeWidth={2} />}
+          count={payoutCountLabel(allRows.length)}
+          expanded={isExpanded}
+          contentId={contentId}
+          onToggle={() => setIsExpanded(value => !value)}
+        />
+        <div className={styles.headingActions}>
           {canRebuildFromStatements && onRebuildFromStatements && (
             <button
               type="button"
               onClick={onRebuildFromStatements}
               disabled={rebuildingFromStatements}
-              className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"
+              className={styles.rebuildButton}
               title="Znovu složit provize a historii pojistného této smlouvy z uložených výpisů"
             >
-              <RefreshCw
-                size={13}
-                strokeWidth={2.2}
-                aria-hidden="true"
-                className={rebuildingFromStatements ? "animate-spin" : ""}
-              />
+              <RefreshCw size={14} strokeWidth={1.8} aria-hidden="true" className={rebuildingFromStatements ? styles.spinner : undefined} />
               <span>{rebuildingFromStatements ? "Přepočítávám" : "Přepočítat z výpisů"}</span>
             </button>
           )}
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-            {payoutCountLabel(allRows.length)}
-          </span>
-          <button
-            type="button"
-            aria-controls={contentId}
-            aria-expanded={isExpanded}
-            aria-label={
-              isExpanded
-                ? "Sbalit provizní výpisy u smlouvy"
-                : "Rozbalit provizní výpisy u smlouvy"
-            }
-            title={isExpanded ? "Sbalit" : "Rozbalit"}
-            onClick={() => setIsExpanded((value) => !value)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <ChevronDown
-              size={15}
-              strokeWidth={2.2}
-              aria-hidden="true"
-              className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
         </div>
       </div>
 
-      {isExpanded && (
-        <div id={contentId}>
+        <div id={contentId} hidden={!isExpanded}>
           {allRows.length === 0 ? (
-            <div className="mt-2.5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-600">
-              Zatím bez zapsaných provizních výpisů. Záznamy se zde objeví až po budoucím výsledném zápisu provizí.
+            <div className={styles.emptyState}>
+              <span className={styles.emptyIcon}><FileStack size={25} strokeWidth={1.4} aria-hidden="true" /></span>
+              <div>
+                <p>Zatím bez provizních výpisů</p>
+                <span>Záznamy se zde objeví po zápisu provizí z výpisu.</span>
+              </div>
             </div>
           ) : (
-            <div className="mt-2.5 space-y-2.5">
-              <div className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">
-                    Čistý výsledek výpisů
-                  </div>
-                  <div className="mt-0.5 text-xs font-semibold text-emerald-900/75">
+            <>
+              <div className={styles.summary}>
+                <span className={styles.summaryIcon}><FileCheck2 size={26} strokeWidth={1.4} aria-hidden="true" /></span>
+                <div className={styles.summaryText}>
+                  <span className={styles.label}>Čistý výsledek výpisů</span>
+                  <p>
                     Po započtení všech výplat a storen
-                    {settledCorrections.length > 0
-                      ? ` · ${correctionCountLabel(settledCorrections.length)}`
-                      : ""}
-                  </div>
+                    {settledCorrections.length > 0 ? ` · ${correctionCountLabel(settledCorrections.length)}` : ""}
+                  </p>
                 </div>
-                <div className="shrink-0 text-xl font-black text-emerald-800">
+                <strong className={styles.netTotal} data-tone={netTotal < 0 ? "negative" : netTotal > 0 ? "positive" : "neutral"}>
                   {formatMoney(netTotal)}
-                </div>
+                </strong>
               </div>
 
               {rows.length === 0 && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-600">
+                <p className={styles.settledMessage}>
                   Všechny pohyby byly vzájemně vyrovnány. Žádná provize nyní nezůstává aktivní.
-                </div>
+                </p>
               )}
 
-              {groups.map((group) => {
-                const groupTotal = group.rows.reduce(
-                  (sum, payout) => sum + (payout.amount ?? 0),
-                  0
-                );
+              <div className={styles.groups}>
+                {groups.map((group) => {
+                  const groupTotal = group.rows.reduce((sum, payout) => sum + (payout.amount ?? 0), 0);
+                  return (
+                    <div key={group.key} className={styles.group}>
+                      <div className={styles.groupHeading}>
+                        <span className={styles.authorIcon}><UserRound size={18} strokeWidth={1.6} aria-hidden="true" /></span>
+                        <div className={styles.author}>
+                          <h4>{group.label}</h4>
+                          <p>{group.detail}</p>
+                        </div>
+                        <div className={styles.groupSummary}>
+                          <strong>{formatMoney(groupTotal)}</strong>
+                          <span>{activePayoutCountLabel(group.rows.length)}</span>
+                        </div>
+                      </div>
 
-                return (
-                  <div
-                    key={group.key}
-                    className="overflow-hidden rounded-xl border border-slate-200 bg-white"
-                  >
-                <div className="flex flex-col gap-1 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-bold leading-snug text-slate-900">
-                      {group.label}
-                    </div>
-                    <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                      {group.detail}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-[13px] font-bold text-slate-950">
-                    {activePayoutCountLabel(group.rows.length)} · {formatMoney(groupTotal)}
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] table-fixed border-collapse text-[13px]">
-                    <colgroup>
-                      <col className="w-[31%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[17%]" />
-                      <col className="w-[16%]" />
-                      <col className="w-[20%]" />
-                    </colgroup>
-                    <thead>
-                      <tr className="border-b border-slate-100 bg-white text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                        <th className="px-3 py-1.5 text-left">Období</th>
-                        <th className="px-2 py-1.5 text-left">Položka</th>
-                        <th className="px-2 py-1.5 text-right">Částka</th>
-                        <th className="px-2 py-1.5 text-right">Stav</th>
-                        <th className="px-3 py-1.5 text-right">Náhled</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {group.rows.map((payout, index) => {
-                        const isExpectedInvestmentLifeA201 = isNeonInvestmentLifeA201Payout({
-                          product,
-                          commissionCode: payout.code,
-                        });
-                        const displayStatus = isExpectedInvestmentLifeA201 && normalizeStatus(payout.status) !== "storno"
-                          ? "paid"
-                          : payout.status;
-                        const isDifference =
-                          normalizeStatus(displayStatus) === "difference";
-                        const statementId = String(payout.statementId ?? "").trim();
-                        const canOpenStatement = Boolean(statementId && onOpenStatement);
-                        const isPreviewLoading = statementPreviewLoadingId === statementId;
-                        const itemLabel = payoutItemLabel(payout);
-                        const alertMessage = isExpectedInvestmentLifeA201
-                          ? null
-                          : payoutAlertMessage(payout, product);
-                        const rowKey =
-                          payout.key ??
-                          `${payout.statementId ?? "statement"}-${
-                            payout.code ?? payout.title ?? index
-                          }`;
-
-                        return (
-                          <Fragment key={rowKey}>
-                            <tr className="align-top">
-                              <td className="px-3 py-2">
-                                <div className="font-semibold leading-snug text-slate-900">
-                                  {payoutStatementLabel(payout)}
-                                </div>
-                                {payout.statementDate && (
-                                  <div className="mt-0.5 text-[11px] font-medium text-slate-500">
-                                    Vystaveno {payout.statementDate}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-2 py-2">
-                                <div className="break-words font-semibold leading-snug text-slate-800">
-                                  {itemLabel}
-                                </div>
-                              </td>
-                              <td className="whitespace-nowrap px-2 py-2 text-right font-bold text-slate-950">
-                                {formatMoney(payout.amount ?? 0)}
-                              </td>
-                              <td className="px-2 py-2 text-right">
-                                <span className="inline-flex items-center justify-end gap-1.5">
-                                  <span
-                                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(
-                                      displayStatus
-                                    )}`}
-                                  >
-                                    {statusLabel(displayStatus)}
-                                  </span>
-                                  {isDifference && alertMessage && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setSelectedDifference({
-                                          message: alertMessage,
-                                          itemLabel,
-                                          statementLabel: payoutStatementLabel(payout),
-                                        })
-                                      }
-                                      aria-label={`Zobrazit důvod rozdílu u položky ${itemLabel}`}
-                                      aria-haspopup="dialog"
-                                      title="Zobrazit důvod rozdílu"
-                                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-300"
-                                    >
-                                      <Info size={12} strokeWidth={2.4} aria-hidden="true" />
-                                    </button>
-                                  )}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-right">
-                                {canOpenStatement ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenStatement?.(statementId)}
-                                    disabled={isPreviewLoading}
-                                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-                                    title="Zobrazit provizní výpis"
-                                  >
-                                    <Eye size={12} strokeWidth={2.2} aria-hidden="true" />
-                                    <span>{isPreviewLoading ? "Načítám" : "Náhled"}</span>
-                                  </button>
-                                ) : (
-                                  <span className="text-xs font-medium text-slate-400">—</span>
-                                )}
-                              </td>
-                            </tr>
-                            {alertMessage && !isDifference && (
-                              <tr>
-                                <td colSpan={5} className="px-3 pb-2 pt-0">
-                                  <div
-                                    className={
-                                      alertMessage.tone === "warning"
-                                        ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
-                                        : "rounded-xl bg-rose-700 px-3 py-2 text-white shadow-[0_8px_18px_rgba(190,18,60,0.18)]"
-                                    }
-                                  >
-                                    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
-                                      <div className="min-w-0">
-                                        <div
-                                          className={`text-[10px] font-black uppercase tracking-[0.14em] ${
-                                            alertMessage.tone === "warning"
-                                              ? "text-amber-700"
-                                              : "text-white/70"
-                                          }`}
-                                        >
-                                          {alertMessage.title}
-                                        </div>
-                                        <p
-                                          className={`mt-0.5 text-xs font-semibold leading-normal ${
-                                            alertMessage.tone === "warning"
-                                              ? "text-amber-950"
-                                              : "text-white"
-                                          }`}
-                                        >
-                                          {alertMessage.body}
-                                        </p>
+                      <table className={styles.table} aria-label={group.label}>
+                        <colgroup><col style={{ width: "38%" }} /><col style={{ width: "12%" }} /><col style={{ width: "19%" }} /><col style={{ width: "17%" }} /><col style={{ width: "14%" }} /></colgroup>
+                        <thead>
+                          <tr>
+                            <th scope="col">Období výpisu</th>
+                            <th scope="col">Položka</th>
+                            <th scope="col" className={styles.alignRight}>Částka</th>
+                            <th scope="col" className={styles.alignRight}>Stav</th>
+                            <th scope="col" className={styles.alignRight}>Náhled</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.rows.map((payout, index) => {
+                            const isExpectedInvestmentLifeA201 = isNeonInvestmentLifeA201Payout({ product, commissionCode: payout.code });
+                            const displayStatus = isExpectedInvestmentLifeA201 && normalizeStatus(payout.status) !== "storno" ? "paid" : payout.status;
+                            const isDifference = normalizeStatus(displayStatus) === "difference";
+                            const statementId = String(payout.statementId ?? "").trim();
+                            const canOpenStatement = Boolean(statementId && onOpenStatement);
+                            const isPreviewLoading = statementPreviewLoadingId === statementId;
+                            const itemLabel = payoutItemLabel(payout);
+                            const alertMessage = isExpectedInvestmentLifeA201 ? null : payoutAlertMessage(payout, product);
+                            const rowKey = payout.key ?? `${payout.statementId ?? "statement"}-${payout.code ?? payout.title ?? index}`;
+                            return (
+                              <Fragment key={rowKey}>
+                                <tr className={styles.payoutRow}>
+                                  <td className={styles.periodCell}>
+                                    <div className={styles.period}>
+                                      <span className={styles.documentIcon}><FileText size={19} strokeWidth={1.5} aria-hidden="true" /></span>
+                                      <div>
+                                        <span className={styles.periodLabel}>{payoutStatementLabel(payout)}</span>
+                                        {payout.statementDate && <span className={styles.issueDate}>Vystaveno {payout.statementDate}</span>}
                                       </div>
                                     </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                  </div>
-                );
-              })}
+                                  </td>
+                                  <td className={styles.itemCell}><span className={styles.itemCode}>{itemLabel}</span></td>
+                                  <td className={styles.amountCell} data-negative={(payout.amount ?? 0) < 0}>{formatMoney(payout.amount ?? 0)}</td>
+                                  <td className={styles.statusCell}>
+                                    <span className={styles.statusGroup}>
+                                      <span className={styles.status} data-status={normalizeStatus(displayStatus)}>{statusLabel(displayStatus)}</span>
+                                      {isDifference && alertMessage && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedDifference({ message: alertMessage, itemLabel, statementLabel: payoutStatementLabel(payout) })}
+                                          aria-label={`Zobrazit důvod rozdílu u položky ${itemLabel}`}
+                                          aria-haspopup="dialog"
+                                          title="Zobrazit důvod rozdílu"
+                                          className={styles.differenceButton}
+                                        >
+                                          <Info size={14} strokeWidth={1.8} aria-hidden="true" />
+                                        </button>
+                                      )}
+                                    </span>
+                                  </td>
+                                  <td className={styles.previewCell}>
+                                    {canOpenStatement ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenStatement?.(statementId)}
+                                        disabled={isPreviewLoading}
+                                        className={styles.previewButton}
+                                        title="Zobrazit provizní výpis"
+                                        aria-label={`Náhled výpisu ${payoutStatementLabel(payout)}, položka ${itemLabel}`}
+                                        aria-busy={isPreviewLoading}
+                                      >
+                                        {isPreviewLoading ? <LoaderCircle size={14} className={styles.spinner} aria-hidden="true" /> : <Eye size={14} strokeWidth={1.8} aria-hidden="true" />}
+                                        <span>{isPreviewLoading ? "Načítám" : "Náhled"}</span>
+                                      </button>
+                                    ) : <span className={styles.unavailable} title="Výpis není připojen">—</span>}
+                                  </td>
+                                </tr>
+                                {alertMessage && !isDifference && (
+                                  <tr className={styles.alertRow}>
+                                    <td colSpan={5}>
+                                      <div className={styles.payoutAlert} data-tone={alertMessage.tone}>
+                                        <Info size={16} strokeWidth={1.8} aria-hidden="true" />
+                                        <div><strong>{alertMessage.title}</strong><p>{alertMessage.body}</p></div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
 
               {settledCorrections.length > 0 && (
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70">
+                <div className={styles.corrections}>
                   <button
                     type="button"
                     aria-controls={settledContentId}
                     aria-expanded={showSettledCorrections}
                     onClick={() => setShowSettledCorrections((value) => !value)}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-slate-100"
+                    className={styles.correctionsToggle}
                   >
-                    <span className="flex min-w-0 items-center gap-2.5">
-                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600">
-                        <RefreshCw size={15} strokeWidth={2.2} aria-hidden="true" />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-bold text-slate-900">
-                          Uzavřené opravy
-                        </span>
-                        <span className="mt-0.5 block text-[11px] font-semibold text-slate-500">
-                          {correctionCountLabel(settledCorrections.length)} · {settledCorrections.length * 2} pohyby · čistý dopad 0 Kč
-                        </span>
-                      </span>
+                    <span className={styles.correctionsIcon}><RefreshCw size={17} strokeWidth={1.7} aria-hidden="true" /></span>
+                    <span className={styles.correctionsTitle}>
+                      <strong>Uzavřené opravy</strong>
+                      <span>{correctionCountLabel(settledCorrections.length)} · {settledCorrections.length * 2} pohyby · čistý dopad 0 Kč</span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-2 text-xs font-bold text-slate-600">
-                      {showSettledCorrections ? "Skrýt" : "Zobrazit"}
-                      <ChevronDown
-                        size={15}
-                        strokeWidth={2.2}
-                        aria-hidden="true"
-                        className={`transition-transform ${
-                          showSettledCorrections ? "rotate-180" : ""
-                        }`}
-                      />
-                    </span>
+                    <ChevronDown size={16} aria-hidden="true" className={showSettledCorrections ? styles.chevronExpanded : undefined} />
                   </button>
-
                   {showSettledCorrections && (
-                    <div id={settledContentId} className="divide-y divide-slate-200 border-t border-slate-200 bg-white">
+                    <div id={settledContentId} className={styles.correctionsContent}>
                       {settledCorrections.map(({ payment, reversal }, index) => {
-                        const paymentStatementId = String(
-                          payment.statementId ?? ""
-                        ).trim();
-                        const reversalStatementId = String(
-                          reversal.statementId ?? ""
-                        ).trim();
-                        const correctionKey =
-                          `${payment.key ?? paymentStatementId ?? "payment"}-` +
-                          `${reversal.key ?? reversalStatementId ?? index}`;
-
+                        const paymentStatementId = String(payment.statementId ?? "").trim();
+                        const reversalStatementId = String(reversal.statementId ?? "").trim();
+                        const correctionKey = `${payment.key ?? paymentStatementId ?? "payment"}-${reversal.key ?? reversalStatementId ?? index}`;
                         return (
-                          <div key={correctionKey} className="px-3 py-2.5">
-                            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono text-xs font-bold text-slate-800">
-                                  {payoutItemLabel(payment)}
-                                </span>
-                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                                  Vyrovnáno
-                                </span>
-                              </div>
-                              <div className="text-xs font-bold text-slate-700">
-                                {formatMoney(payment.amount ?? 0)} + {formatMoney(reversal.amount ?? 0)} = 0 Kč
-                              </div>
+                          <div key={correctionKey} className={styles.correction}>
+                            <div className={styles.correctionHeading}>
+                              <span className={styles.itemCode}>{payoutItemLabel(payment)}</span>
+                              <span className={styles.status} data-status="paid">Vyrovnáno</span>
+                              <span className={styles.correctionMath}>{formatMoney(payment.amount ?? 0)} + {formatMoney(reversal.amount ?? 0)} = 0 Kč</span>
                             </div>
-
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className={styles.correctionEntries}>
                               {[
                                 { label: "Původní výplata", payout: payment, statementId: paymentStatementId },
                                 { label: "Následné storno", payout: reversal, statementId: reversalStatementId },
                               ].map((item) => {
-                                const canOpenStatement = Boolean(
-                                  item.statementId && onOpenStatement
-                                );
-                                const isPreviewLoading =
-                                  statementPreviewLoadingId === item.statementId;
-
+                                const canOpenStatement = Boolean(item.statementId && onOpenStatement);
+                                const isPreviewLoading = statementPreviewLoadingId === item.statementId;
                                 return (
-                                  <div
-                                    key={`${correctionKey}-${item.label}`}
-                                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
-                                  >
-                                    <div className="min-w-0">
-                                      <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
-                                        {item.label}
-                                      </div>
-                                      <div className="mt-0.5 truncate text-xs font-semibold text-slate-800">
-                                        {payoutStatementLabel(item.payout)} · {formatMoney(item.payout.amount ?? 0)}
-                                      </div>
+                                  <div key={`${correctionKey}-${item.label}`} className={styles.correctionEntry}>
+                                    <div>
+                                      <span className={styles.label}>{item.label}</span>
+                                      <p>{payoutStatementLabel(item.payout)}</p>
+                                      <strong>{formatMoney(item.payout.amount ?? 0)}</strong>
                                     </div>
                                     {canOpenStatement && (
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          onOpenStatement?.(item.statementId)
-                                        }
+                                        onClick={() => onOpenStatement?.(item.statementId)}
                                         disabled={isPreviewLoading}
-                                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                                        className={styles.previewButton}
                                         title={`Zobrazit výpis: ${item.label.toLowerCase()}`}
+                                        aria-label={`Náhled výpisu: ${item.label.toLowerCase()}, ${payoutStatementLabel(item.payout)}`}
+                                        aria-busy={isPreviewLoading}
                                       >
-                                        <Eye
-                                          size={12}
-                                          strokeWidth={2.2}
-                                          aria-hidden="true"
-                                        />
-                                        <span>
-                                          {isPreviewLoading ? "Načítám" : "Náhled"}
-                                        </span>
+                                        {isPreviewLoading ? <LoaderCircle size={14} className={styles.spinner} aria-hidden="true" /> : <Eye size={14} strokeWidth={1.8} aria-hidden="true" />}
+                                        <span>{isPreviewLoading ? "Načítám" : "Náhled"}</span>
                                       </button>
                                     )}
                                   </div>
@@ -837,10 +678,9 @@ export function ContractCommissionHistory({
                   )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
-      )}
 
       <HelpDialog
         isOpen={selectedDifference != null}

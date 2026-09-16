@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
-  test: { exclude: [...configDefaults.exclude, "tests/firestore/**"] },
+  test: { exclude: [...configDefaults.exclude, ".tmp/**", "tests/firestore/**"] },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

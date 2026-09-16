@@ -2189,7 +2189,7 @@ const expectedPayoutAmountForRow = (
   row: CommissionStatementPayoutRow,
   viewerEmail: string | null | undefined
 ): number | null => {
-  // A201 in ČPP ŽP NEON is the investment-life component. It intentionally
+  // A201 in ČPP Životní pojištění NEON is the investment-life component. It intentionally
   // uses a different premium base than A101, so it must not be compared with
   // the regular immediate commission calculated for the contract.
   if (
@@ -4522,7 +4522,7 @@ const handleManualNeonRefreshConversion = async ({
   if (contract.productKey !== "neon") {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Na REFRESH z výpisu lze převést jen smlouvu ČPP ŽP NEON." },
+        { ok: false, error: "Na REFRESH z výpisu lze převést jen smlouvu ČPP Životní pojištění NEON." },
         { status: 400 }
       )
     );

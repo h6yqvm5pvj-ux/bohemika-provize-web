@@ -100,14 +100,7 @@ export function CalculatorAmountAndActionsSection({
   const activeChangeContractActionButtonClass = `${styles.actionButton} ${styles.actionActive}`;
   const canUseOriginalReplacement = supportsOriginalContractReplacement(product);
   const canSaveUnlinkedOriginal = canSaveUnlinkedOriginalReplacement(product);
-  const originalReplacementButtonLabel =
-    product === "neon"
-      ? refreshOriginalOpen
-        ? "Refresh zapnutý"
-        : "Refresh smlouvy"
-      : refreshOriginalOpen
-        ? "Náhrada zapnutá"
-        : "Náhrada";
+  const originalReplacementButtonLabel = refreshOriginalOpen ? "Náhrada zapnutá" : "Náhrada";
   const replacementProductLabel = originalReplacementProductLabel(product);
   const replacementStornoDescription = originalReplacementStornoDescription(product);
 
@@ -217,7 +210,23 @@ export function CalculatorAmountAndActionsSection({
                 <Tag size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
                 Smlouva z TIPU
               </button>
-              {canUseOriginalReplacement && (
+              {product === "neon" ? (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={refreshOriginalOpen}
+                  onClick={onToggleRefreshOriginal}
+                  className={styles.refreshSwitch}
+                >
+                  <span>Je smlouva Refresh?</span>
+                  <span className={styles.refreshSwitchTrack} aria-hidden="true">
+                    <span className={styles.refreshSwitchThumb} />
+                  </span>
+                  <span className={styles.refreshSwitchValue} aria-hidden="true">
+                    {refreshOriginalOpen ? "Ano" : "Ne"}
+                  </span>
+                </button>
+              ) : canUseOriginalReplacement && (
                 <button
                   type="button"
                   onClick={onToggleRefreshOriginal}

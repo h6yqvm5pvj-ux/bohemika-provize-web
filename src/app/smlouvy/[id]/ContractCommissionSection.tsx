@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import Image from "next/image";
-import { AlertTriangle, ChevronDown, Coins, Info, X } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Info, Repeat2, X } from "lucide-react";
+import styles from "./contractCommission.module.css";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import {
@@ -13,7 +13,6 @@ import {
   cleanResultTitle,
   formatMoney,
   positionLabel,
-  resultIconForTitle,
 } from "./contractDetailHelpers";
 import {
   hasNeonImmediateCoefficient,
@@ -61,23 +60,16 @@ type ContractCommissionSectionProps = {
   ) => void;
 };
 
-const commissionPanelClass =
-  "rounded-[20px] border border-slate-300/90 bg-[linear-gradient(165deg,#ffffff_0%,#f8fafc_58%,#eef4ff_100%)] px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]";
-const commissionRowClass =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 rounded-xl border border-slate-200/90 bg-white/88 px-3 py-2.5 shadow-[0_6px_16px_rgba(15,23,42,0.035)] backdrop-blur-sm sm:items-center";
-const commissionTotalHighlightClass =
-  "mt-3 overflow-hidden rounded-2xl border border-slate-800/90 bg-[linear-gradient(135deg,#0b1328_0%,#0e1a3a_54%,#081124_100%)] px-3.5 py-2.5 text-white shadow-[0_16px_36px_rgba(2,6,23,0.38)]";
-const commissionTotalLineDarkClass =
-  "flex items-center justify-between gap-3";
-const commissionTotalLabelDarkClass =
-  "text-xs font-semibold uppercase tracking-[0.1em] text-slate-200/90";
-const commissionTotalValueDarkClass =
-  "text-xl font-bold tracking-tight text-emerald-300 sm:text-2xl";
+const commissionPanelClass = styles.panel;
+const commissionRowClass = styles.row;
+const commissionTotalHighlightClass = styles.total;
+const commissionTotalLineClass = styles.totalLine;
+const commissionTotalLabelClass = styles.totalLabel;
+const commissionTotalValueClass = styles.totalValue;
 const monoHeadingClass = "font-mono tracking-tight text-slate-900";
 const monoChipClass =
   "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
-const collapsibleButtonClass =
-  "flex h-10 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-semibold font-mono tracking-tight text-slate-900 transition hover:border-slate-400 hover:bg-slate-50";
+const collapsibleButtonClass = styles.toggle;
 const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
 const FULL_STORNO_OFFSET_TOLERANCE = 0.01;
 const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
@@ -724,7 +716,7 @@ export function ContractCommissionSection({
 
     return (
       <>
-        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutStatusClass(status)}`}>
+        <span className={`${styles.status} ${payoutStatusClass(status)}`}>
           {payoutStatusLabel(status, paidAmount)}
         </span>
         {stornoAmount !== null && (
@@ -807,8 +799,8 @@ export function ContractCommissionSection({
           className={`${commissionRowClass} cursor-pointer list-none transition hover:border-slate-400 hover:bg-slate-100 [&::-webkit-details-marker]:hidden`}
         >
           <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
-            <span className="relative h-[22px] w-[22px] flex-shrink-0">
-              <Image src="/icons/penize2.webp" alt="" fill className="object-contain" />
+            <span className={styles.icon}>
+              <Banknote size={18} strokeWidth={1.8} aria-hidden="true" />
             </span>
             <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
               <span>Okamžitá provize</span>
@@ -828,7 +820,7 @@ export function ContractCommissionSection({
           </span>
         </summary>
 
-        <div className="mt-2 space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+        <div className={styles.breakdown}>
           {commissionItems.map((part) => {
             const partNote = displayNoteForCommissionItem(part);
             const codes = payoutCodesForCommissionItem(part, product);
@@ -841,7 +833,7 @@ export function ContractCommissionSection({
             return (
               <div
                 key={part.title}
-                className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2 ${payoutRowClass(payoutState.status)}`}
+                className={`${styles.breakdownRow} ${payoutRowClass(payoutState.status)}`}
               >
                 <span className="min-w-0 text-sm font-medium text-slate-800">
                   <span>{cleanResultTitle(part.title)}</span>
@@ -876,7 +868,12 @@ export function ContractCommissionSection({
     key: string,
     payoutsForRows: ContractCommissionPayout[]
   ) => {
-    const icon = resultIconForTitle(item.title);
+    const normalizedTitle = cleanResultTitle(item.title).toLowerCase();
+    const RowIcon = normalizedTitle.includes("následná")
+      ? Repeat2
+      : normalizedTitle.includes("po ") || normalizedTitle.includes("rok")
+        ? CalendarDays
+        : Banknote;
     const clickable =
       product === "neon" &&
       isLegacyImmediateTotalTitle(item.title) &&
@@ -918,11 +915,9 @@ export function ContractCommissionSection({
             className={`${commissionRowClass} cursor-pointer list-none transition hover:border-slate-400 hover:bg-slate-100 [&::-webkit-details-marker]:hidden`}
           >
             <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
-              {icon && (
-                <span className="relative h-[22px] w-[22px] flex-shrink-0">
-                  <Image src={icon} alt="" fill className="object-contain" />
-                </span>
-              )}
+              <span className={styles.icon}>
+                <RowIcon size={18} strokeWidth={1.8} aria-hidden="true" />
+              </span>
               <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
                 <span>{cleanResultTitle(item.title)}</span>
                 <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
@@ -944,7 +939,7 @@ export function ContractCommissionSection({
             </span>
           </summary>
 
-          <div className="mt-2 space-y-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+          <div className={styles.breakdown}>
             {recurringInstallments.map((installment) => {
               const installmentTargets = payoutTargetsForInstallment(installment);
               const installmentState = payoutStatusForCodes(
@@ -956,7 +951,7 @@ export function ContractCommissionSection({
               return (
                 <div
                   key={installment.key}
-                  className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2 ${payoutRowClass(installmentState.status)}`}
+                  className={`${styles.breakdownRow} ${payoutRowClass(installmentState.status)}`}
                 >
                   <span className="min-w-0 text-sm font-medium text-slate-800">
                     <span>
@@ -985,11 +980,9 @@ export function ContractCommissionSection({
     const content = (
       <>
         <span className="flex min-w-0 items-start gap-2.5 text-sm font-medium text-slate-900 sm:items-center sm:text-base">
-          {icon && (
-            <span className="relative h-[22px] w-[22px] flex-shrink-0">
-              <Image src={icon} alt="" fill className="object-contain" />
-            </span>
-          )}
+          <span className={styles.icon}>
+            <RowIcon size={18} strokeWidth={1.8} aria-hidden="true" />
+          </span>
           <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
             <span>{cleanResultTitle(item.title)}</span>
             {itemNote && (
@@ -1055,6 +1048,10 @@ export function ContractCommissionSection({
 
     return (
       <>
+        <div className={styles.tableHeading} aria-hidden="true">
+          <span>Složka provize</span>
+          <span>Částka / stav</span>
+        </div>
         {hasSplitImmediate &&
           renderSplitImmediateGroup(
             splitImmediateItems,
@@ -1123,7 +1120,7 @@ export function ContractCommissionSection({
                     </h4>
 
                     <div className={commissionPanelClass}>
-                      <div className="space-y-1">
+                      <div className={styles.rows}>
                         {renderCommissionRows(
                           card.items,
                           card.position,
@@ -1137,23 +1134,23 @@ export function ContractCommissionSection({
                         <div className={commissionTotalHighlightClass}>
                           {isPaymentBasedProduct && card.totals ? (
                             <div className="w-full space-y-2">
-                              <div className={commissionTotalLineDarkClass}>
-                                <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
-                                <span className={commissionTotalValueDarkClass}>
+                              <div className={commissionTotalLineClass}>
+                                <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
+                                <span className={commissionTotalValueClass}>
                                   {formatMoney(card.totals.immediate)}
                                 </span>
                               </div>
-                              <div className={commissionTotalLineDarkClass}>
-                                <span className={commissionTotalLabelDarkClass}>Celkem následně ročně</span>
-                                <span className={commissionTotalValueDarkClass}>
+                              <div className={commissionTotalLineClass}>
+                                <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                                <span className={commissionTotalValueClass}>
                                   {formatMoney(card.totals.subsequent)}
                                 </span>
                               </div>
                             </div>
                           ) : (
-                            <div className={`${commissionTotalLineDarkClass} w-full`}>
-                              <span className={commissionTotalLabelDarkClass}>Celkem meziprovize</span>
-                              <span className={commissionTotalValueDarkClass}>
+                            <div className={`${commissionTotalLineClass} w-full`}>
+                              <span className={commissionTotalLabelClass}>Celkem meziprovize</span>
+                              <span className={commissionTotalValueClass}>
                                 {formatMoney(card.totalDisplay)}
                               </span>
                             </div>
@@ -1178,7 +1175,7 @@ export function ContractCommissionSection({
           </ContractSectionHeading>
           <div className={commissionPanelClass}>
             {renderCommissionWarning()}
-            <div className="space-y-1">
+            <div className={styles.rows}>
               {renderCommissionRows(
                 adviserItems,
                 adviserBreakdownPosition,
@@ -1192,23 +1189,23 @@ export function ContractCommissionSection({
               <div className={commissionTotalHighlightClass}>
                 {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
                   <div className="w-full space-y-2">
-                    <div className={commissionTotalLineDarkClass}>
-                      <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
-                      <span className={commissionTotalValueDarkClass}>
+                    <div className={commissionTotalLineClass}>
+                      <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
+                      <span className={commissionTotalValueClass}>
                         {formatMoney(paymentBasedAdviserTotals.immediate)}
                       </span>
                     </div>
-                    <div className={commissionTotalLineDarkClass}>
-                      <span className={commissionTotalLabelDarkClass}>Celkem následně ročně</span>
-                      <span className={commissionTotalValueDarkClass}>
+                    <div className={commissionTotalLineClass}>
+                      <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                      <span className={commissionTotalValueClass}>
                         {formatMoney(paymentBasedAdviserTotals.subsequent)}
                       </span>
                     </div>
                   </div>
                 ) : (
-                  <div className={`${commissionTotalLineDarkClass} w-full`}>
-                    <span className={commissionTotalLabelDarkClass}>Celkem</span>
-                    <span className={commissionTotalValueDarkClass}>
+                  <div className={`${commissionTotalLineClass} w-full`}>
+                    <span className={commissionTotalLabelClass}>Celkem</span>
+                    <span className={commissionTotalValueClass}>
                       {formatMoney(adviserTotalDisplay)}
                     </span>
                   </div>
@@ -1240,7 +1237,7 @@ export function ContractCommissionSection({
           {showAdvisorDetails && (
             <div className={commissionPanelClass}>
               {renderCommissionWarning()}
-              <div className="space-y-1">
+              <div className={styles.rows}>
                 {renderCommissionRows(
                   adviserItems,
                   adviserBreakdownPosition,
@@ -1254,23 +1251,23 @@ export function ContractCommissionSection({
                 <div className={commissionTotalHighlightClass}>
                   {isPaymentBasedProduct && paymentBasedAdviserTotals ? (
                     <div className="w-full space-y-2">
-                      <div className={commissionTotalLineDarkClass}>
-                        <span className={commissionTotalLabelDarkClass}>Celkem v 1. roce</span>
-                        <span className={commissionTotalValueDarkClass}>
+                      <div className={commissionTotalLineClass}>
+                        <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
+                        <span className={commissionTotalValueClass}>
                           {formatMoney(paymentBasedAdviserTotals.immediate)}
                         </span>
                       </div>
-                      <div className={commissionTotalLineDarkClass}>
-                        <span className={commissionTotalLabelDarkClass}>Celkem následně ročně</span>
-                        <span className={commissionTotalValueDarkClass}>
+                      <div className={commissionTotalLineClass}>
+                        <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                        <span className={commissionTotalValueClass}>
                           {formatMoney(paymentBasedAdviserTotals.subsequent)}
                         </span>
                       </div>
                     </div>
                   ) : (
-                    <div className={`${commissionTotalLineDarkClass} w-full`}>
-                      <span className={commissionTotalLabelDarkClass}>Celkem</span>
-                      <span className={commissionTotalValueDarkClass}>
+                    <div className={`${commissionTotalLineClass} w-full`}>
+                      <span className={commissionTotalLabelClass}>Celkem</span>
+                      <span className={commissionTotalValueClass}>
                         {formatMoney(adviserTotalDisplay)}
                       </span>
                     </div>

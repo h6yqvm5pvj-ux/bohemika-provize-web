@@ -1,6 +1,8 @@
 import type { DocumentSnapshot, Firestore, QuerySnapshot } from "firebase-admin/firestore";
 import { contractMatchesListFilters, contractSortDate } from "./contractsApi.listFilters";
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
+import { prepareContractSearch } from "@/app/lib/contractSearch";
+import { canUseProjectedContractSearch, CONTRACT_SEARCH_PROJECTION } from "./contractsApi.projectedSearch";
 
 // These fields cover search, lifecycle, anniversaries, products and replacements.
 // Commission checks use full records because their cashflow calculation needs the complete input.
@@ -18,11 +20,13 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
   pageSize: number;
 }): Promise<{ doc: DocumentSnapshot; ownerEmail: string }[]> {
   const project = filters.commissionAuditMode === "off";
+  const projection = canUseProjectedContractSearch(filters) ? CONTRACT_SEARCH_PROJECTION : CONTRACT_FILTER_PROJECTION;
+  const search = prepareContractSearch(filters.query);
   const snapshots: { ownerEmail: string; snapshot: QuerySnapshot }[] = [];
   for (let start = 0; start < owners.length; start += 10) {
     snapshots.push(...await Promise.all(owners.slice(start, start + 10).map(async ownerEmail => {
       const entries = db.collection("users").doc(ownerEmail).collection("entries");
-      const snapshot = await (project ? entries.select(...CONTRACT_FILTER_PROJECTION) : entries).get();
+      const snapshot = await (project ? entries.select(...projection) : entries).get();
       return { ownerEmail, snapshot };
     })));
   }
@@ -37,7 +41,7 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
       if (item.ts === null || item.ts > cursor.ts) return false;
       if (item.ts === cursor.ts && (!cursor.key || item.key >= cursor.key)) return false;
     }
-    return contractMatchesListFilters(item.data, filters, item.ownerEmail);
+    return contractMatchesListFilters(item.data, filters, item.ownerEmail, search);
   }).sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0) || (a.key === b.key ? 0 : a.key > b.key ? -1 : 1))
     .slice(0, pageSize + 1);
 

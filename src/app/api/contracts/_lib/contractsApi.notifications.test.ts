@@ -19,7 +19,7 @@ describe("contract activity notifications", () => {
     ).toEqual({
       kind: "new_contract",
       mailboxTitle: "Nová smlouva v týmu",
-      message: "🎉 Jakub Pokorný sepsal právě ČPP ŽP NEON za 2 013 Kč ❤️",
+      message: "🎉 Jakub Pokorný sepsal právě ČPP Životní pojištění NEON za 2 013 Kč ❤️",
       premiumIncreaseAmount: null,
     });
   });
@@ -41,7 +41,7 @@ describe("contract activity notifications", () => {
       kind: "contract_increase",
       mailboxTitle: "Navýšení smlouvy v týmu",
       message:
-        "📈 Jakub Pokorný navýšil pojistné o 326 Kč měsíčně – ČPP ŽP NEON ❤️",
+        "📈 Jakub Pokorný navýšil pojistné o 326 Kč měsíčně – ČPP Životní pojištění NEON ❤️",
       premiumIncreaseAmount: 326,
     });
   });

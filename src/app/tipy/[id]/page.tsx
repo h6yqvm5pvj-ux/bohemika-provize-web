@@ -1,15 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   AlertTriangle,
   ArrowLeft,
   Building2,
   Car,
-  ChevronDown,
+  CalendarDays,
+  Check,
+  CheckCheck,
+  Lightbulb,
+  MessageSquare,
+  Paperclip,
   Clock,
   CircleDollarSign,
   CircleX,
@@ -24,17 +29,19 @@ import {
   Package,
   Phone,
   RefreshCw,
-  Tag,
   Trash2,
   UserRound,
-  X,
 } from "lucide-react";
 
 import { auth } from "@/app/firebase";
-import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { fetchAuthedBlobOrThrow, fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { isLifeProduct } from "@/app/lib/productCatalog";
 import type { Product } from "@/app/types/domain";
 import { AppLayout } from "@/components/AppLayout";
+import { PdfDocumentPreview } from "@/components/PdfDocumentPreview";
+import { TipDialog } from "../TipDialog";
+import { notifyTipDetailParent } from "../tipDetailMessages";
+import styles from "./tipDetail.module.css";
 
 type AccountType = "advisor" | "tipster";
 type TipLifecycleStatus = "pending" | "contracted" | "failed";
@@ -54,6 +61,7 @@ type TipAttachment = {
 
 type PreviewAttachment = TipAttachment & {
   objectUrl: string;
+  pdfData?: Uint8Array;
 };
 
 type LinkedContractSummary = {
@@ -189,12 +197,6 @@ const formatFileSize = (bytes: number): string => {
   return `${mb.toFixed(mb >= 100 ? 0 : 1)} MB`;
 };
 
-const secondaryActionButtonClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-800 shadow-[0_8px_18px_rgba(124,58,237,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
-const dangerActionButtonClass =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 text-sm font-bold text-rose-700 shadow-[0_8px_18px_rgba(190,18,60,0.08)] transition hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
 const isImageAttachment = (attachment: TipAttachment): boolean => {
   const contentType = attachment.contentType.toLowerCase();
   if (contentType.startsWith("image/")) return true;
@@ -229,75 +231,6 @@ function StatusIcon({
   return <Clock className={className} />;
 }
 
-function StatusPicker({
-  status,
-  saving,
-  onChange,
-}: {
-  status: TipLifecycleStatus;
-  saving: boolean;
-  onChange: (status: TipLifecycleStatus) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const current = tipStatusMeta(status);
-
-  return (
-    <div
-      className="relative min-w-[190px] flex-1 sm:flex-none"
-      onBlur={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-        setOpen(false);
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        disabled={saving}
-        className="inline-flex h-10 w-full items-center justify-between gap-2 rounded-full border border-violet-500 bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-4 text-sm font-bold !text-white shadow-[0_10px_20px_rgba(124,58,237,0.26)] outline-none transition hover:-translate-y-0.5 hover:shadow-[0_14px_26px_rgba(124,58,237,0.32)] focus:border-violet-200 focus:ring-2 focus:ring-violet-300 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        <span className="inline-flex min-w-0 items-center gap-2 !text-white">
-          <StatusIcon status={status} className="h-4 w-4 shrink-0 !text-white" />
-          <span className="truncate !text-white">{current.label}</span>
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 !text-white transition ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open ? (
-        <div
-          role="listbox"
-          className="absolute right-0 z-40 mt-2 w-full min-w-[220px] overflow-hidden rounded-2xl border border-violet-100 bg-white p-1.5 shadow-[0_18px_38px_rgba(88,28,135,0.18)]"
-        >
-          {TIP_STATUS_OPTIONS.map((option) => {
-            const active = option.key === status;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => {
-                  setOpen(false);
-                  if (!active) onChange(option.key);
-                }}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
-                  active
-                    ? "bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_100%)] text-white"
-                    : "text-slate-800 hover:bg-violet-50 hover:text-violet-800"
-                }`}
-              >
-                <StatusIcon status={option.key} className="h-4 w-4 shrink-0" />
-                <span>{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function FieldIcon({ label }: { label: string }) {
   const normalized = normalize(label);
   if (normalized.includes("telefon")) return <Phone className="h-4 w-4" />;
@@ -315,234 +248,54 @@ function FieldIcon({ label }: { label: string }) {
   return <FileText className="h-4 w-4" />;
 }
 
-function DetailField({
-  field,
-  onOpenAres,
-}: {
+function DetailField({ field, onOpenAres }: {
   field: TipField;
   onOpenAres: (ico: string) => void;
 }) {
   const aresIco = getAresIcoFromField(field);
-
+  const label = normalize(field.label);
+  const href = label.includes("telefon") ? `tel:${field.value.replace(/[^+\d]/g, "")}`
+    : label.includes("mail") ? `mailto:${encodeURIComponent(field.value.trim())}` : null;
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-wrap items-start gap-3">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700">
-          <FieldIcon label={field.label} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            {field.label}
-          </p>
-          <p className="mt-1 whitespace-pre-wrap break-words text-base font-semibold text-slate-950">
-            {field.value}
-          </p>
-        </div>
-        {aresIco ? (
-          <button
-            type="button"
-            onClick={() => onOpenAres(aresIco)}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold uppercase tracking-[0.08em] text-emerald-800 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100"
-            title={`Otevřít ARES pro IČO ${aresIco}`}
-          >
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            ARES
-          </button>
-        ) : null}
+    <div className={styles.field}>
+      <span className={styles.fieldIcon}><FieldIcon label={field.label} /></span>
+      <div>
+        <dt>{field.label}</dt>
+        <dd>{href ? <a href={href}>{field.value}</a> : field.value}</dd>
+        {aresIco ? <button type="button" onClick={() => onOpenAres(aresIco)} className={styles.aresLink}>
+          Ověřit v ARES <ExternalLink size={12} />
+        </button> : null}
       </div>
     </div>
   );
 }
 
-function AttachmentCard({
-  attachment,
-  onOpen,
-  onDownload,
-}: {
+function AttachmentCard({ attachment, busy, onOpen, onDownload }: {
   attachment: TipAttachment;
+  busy: boolean;
   onOpen: (attachment: TipAttachment) => void;
   onDownload: (attachment: TipAttachment) => void;
 }) {
-  const isImage = isImageAttachment(attachment);
-
   return (
-    <article
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(attachment)}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        onOpen(attachment);
-      }}
-      className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.1)]"
-    >
-      {isImage ? (
-        <div className="flex h-44 items-center justify-center bg-slate-100 text-slate-500">
-          <ImageIcon className="h-12 w-12" />
-        </div>
-      ) : (
-        <div className="flex h-44 items-center justify-center bg-slate-100 text-slate-500">
-          <FileText className="h-12 w-12" />
-        </div>
-      )}
-      <div className="flex items-start justify-between gap-3 px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-950">{attachment.name}</p>
-          <p className="mt-1 text-xs text-slate-500">{formatFileSize(attachment.sizeBytes)}</p>
-        </div>
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDownload(attachment);
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition group-hover:border-slate-900 group-hover:bg-slate-900 group-hover:text-white"
-          aria-label={`Stáhnout ${attachment.name}`}
-        >
-          <Download className="h-4 w-4" />
-        </button>
-      </div>
+    <article className={styles.attachment}>
+      <span className={styles.fileIcon}>{isImageAttachment(attachment) ? <ImageIcon size={23} /> : <FileText size={23} />}</span>
+      <button type="button" onClick={() => onOpen(attachment)} disabled={busy} className={styles.fileName} aria-label={`Otevřít přílohu ${attachment.name}`}>
+        <strong>{attachment.name}</strong><span>{busy ? "Načítám soubor…" : formatFileSize(attachment.sizeBytes)}</span>
+      </button>
+      <button type="button" onClick={() => onDownload(attachment)} disabled={busy} className={styles.download} aria-label={`Stáhnout ${attachment.name}`}><Download size={17} /></button>
     </article>
   );
 }
 
-function AttachmentPreviewModal({
-  attachment,
-  onClose,
-  onDownload,
-}: {
-  attachment: PreviewAttachment;
-  onClose: () => void;
-  onDownload: (attachment: TipAttachment) => void;
-}) {
-  const isImage = isImageAttachment(attachment);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="attachment-preview-title"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-white/15 bg-white shadow-[0_28px_90px_rgba(0,0,0,0.42)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-700">
-              Náhled přílohy
-            </p>
-            <h2 id="attachment-preview-title" className="truncate text-lg font-bold text-slate-950">
-              {attachment.name}
-            </h2>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onDownload(attachment)}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
-            >
-              <Download className="h-4 w-4" />
-              Stáhnout
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              aria-label="Zavřít náhled"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 bg-slate-950">
-          {isImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={attachment.objectUrl}
-              alt={attachment.name}
-              className="mx-auto max-h-[78vh] w-full object-contain"
-            />
-          ) : (
-            <iframe
-              src={attachment.objectUrl}
-              title={attachment.name}
-              className="h-[78vh] w-full bg-white"
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AresToolModal({
-  ico,
-  onClose,
-}: {
-  ico: string;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-3 py-4 backdrop-blur-sm sm:px-5"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`ARES detail IČO ${ico}`}
-    >
-      <div className="flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">
-              Pomůcka ARES
-            </p>
-            <h2 className="truncate text-lg font-black text-slate-950">
-              IČO {ico}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-            aria-label="Zavřít ARES"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-        <iframe
-          src={`/pomucky/ares?ico=${encodeURIComponent(ico)}&embed=1`}
-          title={`ARES IČO ${ico}`}
-          className="min-h-0 flex-1 bg-slate-50"
-        />
-      </div>
-    </div>
-  );
-}
-
 function LoadingState() {
-  return (
-    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
-      <div className="h-4 w-28 animate-pulse rounded-full bg-slate-200" />
-      <div className="mt-4 h-10 w-2/3 animate-pulse rounded-2xl bg-slate-200" />
-      <div className="mt-8 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
-        ))}
-      </div>
-    </div>
-  );
+  return <div className={styles.loading} role="status"><RefreshCw size={24} className={styles.spinning} /><p>Načítám detail tipu…</p><div /><div /></div>;
 }
 
-function TipDetailContent() {
+function TipDetailContent({ embedded }: { embedded: boolean }) {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
-  const tipId = typeof rawId === "string" ? decodeURIComponent(rawId) : "";
+  const tipId = typeof rawId === "string" ? rawId : "";
 
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -556,6 +309,8 @@ function TipDetailContent() {
   const [previewAttachment, setPreviewAttachment] = useState<PreviewAttachment | null>(null);
   const previewAttachmentObjectUrlRef = useRef("");
   const [aresModalIco, setAresModalIco] = useState<string | null>(null);
+  const [loadingAttachmentId, setLoadingAttachmentId] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -627,23 +382,20 @@ function TipDetailContent() {
   }, [authReady, user, loadTip]);
 
   useEffect(() => {
-    if (!aresModalIco) return;
+    if (!embedded) return;
+    notifyTipDetailParent(tipId, "busy", savingStatus || deleting);
+  }, [embedded, tipId, savingStatus, deleting]);
 
-    const previousOverflow = document.body.style.overflow;
+  useEffect(() => {
+    if (!embedded) return;
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setAresModalIco(null);
-      }
+      if (event.key !== "Escape" || event.defaultPrevented || previewAttachment || aresModalIco || showDeleteConfirm || savingStatus || deleting) return;
+      event.preventDefault();
+      notifyTipDetailParent(tipId, "close");
     };
-
-    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onEscape);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onEscape);
-    };
-  }, [aresModalIco]);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [embedded, tipId, previewAttachment, aresModalIco, showDeleteConfirm, savingStatus, deleting]);
 
   const revokePreviewAttachmentObjectUrl = useCallback(() => {
     if (!previewAttachmentObjectUrlRef.current) return;
@@ -667,38 +419,28 @@ function TipDetailContent() {
     if (!currentUser) {
       throw new Error("Pro otevření přílohy je potřeba přihlášení.");
     }
-    const token = await currentUser.getIdToken();
-    const response = await fetch(attachment.url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      const message =
-        payload && typeof payload.error === "string"
-          ? payload.error
-          : "Přílohu se nepodařilo načíst.";
-      throw new Error(message);
-    }
-    return response.blob();
+    return fetchAuthedBlobOrThrow(currentUser, attachment.url);
   }, []);
 
   const handleOpenAttachment = useCallback(
     async (attachment: TipAttachment) => {
       setError(null);
+      setLoadingAttachmentId(attachment.id);
       try {
         const blob = await fetchAttachmentBlob(attachment);
+        const pdfData = /pdf/i.test(attachment.contentType) || /\.pdf$/i.test(attachment.name)
+          ? new Uint8Array(await blob.arrayBuffer()) : undefined;
         const objectUrl = URL.createObjectURL(blob);
         revokePreviewAttachmentObjectUrl();
         previewAttachmentObjectUrlRef.current = objectUrl;
         setPreviewAttachment({
           ...attachment,
           objectUrl,
+          pdfData,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Přílohu se nepodařilo otevřít.");
-      }
+      } finally { setLoadingAttachmentId(null); }
     },
     [fetchAttachmentBlob, revokePreviewAttachmentObjectUrl]
   );
@@ -706,6 +448,7 @@ function TipDetailContent() {
   const handleDownloadAttachment = useCallback(
     async (attachment: TipAttachment) => {
       setError(null);
+      setLoadingAttachmentId(attachment.id);
       try {
         const blob = await fetchAttachmentBlob(attachment);
         const objectUrl = URL.createObjectURL(blob);
@@ -718,7 +461,7 @@ function TipDetailContent() {
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Přílohu se nepodařilo stáhnout.");
-      }
+      } finally { setLoadingAttachmentId(null); }
     },
     [fetchAttachmentBlob]
   );
@@ -730,8 +473,9 @@ function TipDetailContent() {
 
   const handleSetStatus = async (status: TipLifecycleStatus) => {
     const currentUser = auth.currentUser;
-    if (!currentUser || accountType !== "advisor" || !tip) return;
+    if (!currentUser || accountType !== "advisor" || !tip || savingStatus || deleting) return;
     setSavingStatus(true);
+    setSuccess(null);
     setError(null);
     try {
       const payload = await fetchAuthedJsonOrThrow<TipStatusPatchResponse>(
@@ -744,6 +488,8 @@ function TipDetailContent() {
       );
       const nextStatus = normalizeTipStatus(payload.status ?? status);
       setTip((previous) => (previous ? { ...previous, status: nextStatus } : previous));
+      setSuccess("Stav tipu je uložený. Uvidí ho i tipař.");
+      if (embedded) notifyTipDetailParent(tipId, "changed");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Stav tipu se nepodařilo uložit.");
     } finally {
@@ -765,7 +511,8 @@ function TipDetailContent() {
           method: "DELETE",
         }
       );
-      router.push("/tipy");
+      if (embedded && window.parent !== window) notifyTipDetailParent(tipId, "deleted");
+      else router.push("/tipy");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tip se nepodařilo smazat.");
       setShowDeleteConfirm(false);
@@ -789,7 +536,7 @@ function TipDetailContent() {
     if (!ownerEmail || !entryId) return null;
     return `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}`;
   }, [tip?.linkedContractEntryId, tip?.linkedContractOwnerEmail]);
-  const hasLinkedContract = Boolean(linkedContractHref || tip?.linkedContractNumber);
+  const hasLinkedContract = Boolean(linkedContractHref || tip?.linkedContractNumber || tip?.linkedContract);
   const linkedContract = tip?.linkedContract ?? null;
   const linkedContractNumber =
     linkedContract?.number || tip?.linkedContractNumber || "";
@@ -809,298 +556,130 @@ function TipDetailContent() {
       : null;
   const showAdvisorLinkedContractData = isAdvisorMode;
 
+  const client = tip?.fields.find((field) => /jmeno|klient|nazev|ares/.test(normalize(field.label)))?.value || "Neuvedený klient";
+  const phone = tip?.fields.find((field) => /telefon/.test(normalize(field.label)))?.value;
+  const email = tip?.fields.find((field) => /e-mail|email/.test(normalize(field.label)))?.value;
+  const callTime = tip?.fields.filter((field) => /preferovany.*(?:cas|datum)/.test(normalize(field.label))).map((field) => field.value).join(" · ");
+  const notes = tip?.fields.filter((field) => /poznamka|popis|vzkaz/.test(normalize(field.label))) ?? [];
+  const detailFields = tip?.fields.filter((field) => !notes.includes(field)) ?? [];
+  const counterpartEmail = isAdvisorMode ? tip?.tipsterEmail : tip?.recipientEmail;
+  const busy = savingStatus || deleting || refreshing;
+
   return (
-    <div className="w-full bg-slate-50 px-3 py-6 text-slate-900 sm:px-4 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-7xl space-y-5">
-        {loading ? (
-          <LoadingState />
-        ) : error && !tip ? (
-          <section className="rounded-[28px] border border-rose-200 bg-white p-6 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
-            <Link
-              href="/tipy"
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Zpět na tipy
-            </Link>
-            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
+    <div className={`${styles.page} ${embedded ? styles.embedded : ""}`}>
+      {loading ? <LoadingState /> : !tip ? (
+        <section className={styles.errorState}>
+          <CircleX size={32} /><h1>Detail se nepodařilo načíst</h1>
+          <p role="alert">{error || "Tip nebyl nalezen."}</p>
+          {user ? <button type="button" onClick={handleRefresh} disabled={refreshing}><RefreshCw size={16} />Zkusit znovu</button> : null}
+          {!embedded ? <Link href="/tipy"><ArrowLeft size={16} />Zpět na tipy</Link> : null}
+        </section>
+      ) : (
+        <>
+          <div className={styles.topbar}>
+            {embedded ? <span className={styles.breadcrumb}><Lightbulb size={15} />{isAdvisorMode ? "Přijatá příležitost" : "Moje doporučení"}</span> : <Link href="/tipy" className={styles.back}><ArrowLeft size={16} />Zpět na tipy</Link>}
+            <button type="button" onClick={handleRefresh} disabled={busy || !user} className={styles.refresh}><RefreshCw size={14} className={refreshing ? styles.spinning : undefined} />Obnovit</button>
+          </div>
+
+          <header className={styles.hero}>
+            <div className={styles.heroMain}>
+              <span className={styles.productIcon}><ProductIcon product={`${tip.product} ${tip.productLabel}`} className="h-7 w-7" /></span>
+              <div className={styles.heroCopy}>
+                <p className={styles.eyebrow}>{tip.productLabel}</p>
+                <h1>{client}</h1>
+                <p className={styles.created}><Clock size={13} />Přijato {formatDateTime(tip.createdAtMs)}</p>
+              </div>
+              <span className={styles.badge} data-status={tipStatus}><StatusIcon status={tipStatus} />{statusMeta.label}</span>
             </div>
-          </section>
-        ) : tip ? (
-          <>
-            <section className="relative overflow-visible rounded-[34px] border border-violet-100 bg-[radial-gradient(900px_260px_at_8%_0%,rgba(168,85,247,0.16),transparent_58%),linear-gradient(135deg,#ffffff_0%,#faf7ff_48%,#f4efff_100%)] p-5 shadow-[0_22px_52px_rgba(88,28,135,0.14)] sm:p-7">
-              <div className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#6d28d9_0%,#a855f7_50%,#d8b4fe_100%)]" />
-              <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start 2xl:justify-between">
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href="/tipy"
-                    className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-4 py-2 text-sm font-semibold text-violet-800 shadow-[0_8px_18px_rgba(124,58,237,0.08)] transition hover:border-violet-300 hover:bg-white"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Zpět na tipy
-                  </Link>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-violet-200 bg-white/75 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-violet-700">
-                      {isAdvisorMode ? "Přijatý tip" : "Odeslaný tip"}
-                    </span>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/75 px-3 py-1 text-xs font-semibold text-violet-800">
-                      <ProductIcon product={`${tip.product} ${tip.productLabel}`} className="h-3.5 w-3.5" />
-                      {tip.productLabel}
-                    </span>
-                  </div>
-                  <h1 className="mt-4 max-w-4xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
-                    {tip.title || `Nový tip - ${tip.productLabel}`}
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-base leading-relaxed text-slate-600">
-                    Tip od <span className="font-bold text-slate-950">{counterpartValue}</span> •
-                    vytvořeno {formatDateTime(tip.createdAtMs)}
-                  </p>
-                </div>
-
-                <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap 2xl:w-auto 2xl:max-w-[520px] 2xl:justify-end">
-                  {isAdvisorMode ? (
-                    <StatusPicker
-                      status={tipStatus}
-                      saving={savingStatus}
-                      onChange={(nextStatus) => void handleSetStatus(nextStatus)}
-                    />
-                  ) : (
-                    <div className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-violet-500 bg-[linear-gradient(135deg,#7c3aed_0%,#a855f7_58%,#c084fc_100%)] px-4 text-sm font-bold text-white shadow-[0_10px_20px_rgba(124,58,237,0.26)]">
-                      <StatusIcon status={tipStatus} className="h-4 w-4 text-white" />
-                      {statusMeta.label}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    disabled={refreshing || !user}
-                    className={secondaryActionButtonClass}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                    Obnovit
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={deleting}
-                    className={dangerActionButtonClass}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Smazat tip
-                  </button>
-                </div>
+            <div className={styles.heroBottom}>
+              <p>Vše potřebné pro další krok na jednom místě.</p>
+              <div className={styles.contactActions}>
+                {phone ? <a href={`tel:${phone.replace(/[^+\d]/g, "")}`} className={styles.primaryAction}><Phone size={15} />Zavolat klientovi</a> : null}
+                {email ? <a href={`mailto:${encodeURIComponent(email.trim())}`} className={styles.secondaryAction}><Mail size={15} />Napsat e-mail</a> : null}
               </div>
-            </section>
+            </div>
+          </header>
 
-            {error ? (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {error}
-              </div>
-            ) : null}
+          {error ? <div className={styles.alert} role="alert"><AlertTriangle size={17} /><span>{error}</span></div> : null}
+          {success ? <div className={styles.success} role="status"><CheckCheck size={17} />{success}</div> : null}
 
-            {hasLinkedContract && (
-              <section className="rounded-[28px] border border-fuchsia-200 bg-[linear-gradient(160deg,#fff7ff_0%,#f6f3ff_100%)] p-5 shadow-[0_16px_38px_rgba(147,51,234,0.12)]">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-fuchsia-200 bg-white/80 text-fuchsia-700">
-                      <Tag className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fuchsia-700">
-                        Smlouva z TIPU
-                      </p>
-                      <h2 className="mt-1 text-xl font-bold text-fuchsia-950">
-                        Tip je napojený na smlouvu
-                        {linkedContractNumber ? ` ${linkedContractNumber}` : ""}.
-                      </h2>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {linkedContractTipBaseText}
-                      </p>
-                      <div
-                        className={`mt-4 grid gap-2 ${
-                          showAdvisorLinkedContractData ? "sm:grid-cols-3" : "sm:grid-cols-2"
-                        }`}
-                      >
-                        <div className="rounded-2xl border border-fuchsia-200 bg-white/75 px-4 py-3">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-fuchsia-700">
-                            Podíl tipaře
-                          </p>
-                          <p className="mt-1 text-lg font-black text-fuchsia-950">
-                            {linkedTipPercent != null ? `${linkedTipPercent} %` : "Neuvedeno"}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-fuchsia-200 bg-white/75 px-4 py-3">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-fuchsia-700">
-                            Provize tipaře
-                          </p>
-                          <p className="mt-1 text-lg font-black text-fuchsia-950">
-                            {formatMoney(linkedContract?.tipsterAmountFirstYear)}
-                          </p>
-                        </div>
-                        {showAdvisorLinkedContractData && (
-                          <div className="rounded-2xl border border-fuchsia-200 bg-white/75 px-4 py-3">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-fuchsia-700">
-                              {linkedContractGrossLabel}
-                            </p>
-                            <p className="mt-1 text-lg font-black text-slate-950">
-                              {formatMoney(linkedContract?.immediateGrossFirstYear)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {showAdvisorLinkedContractData && linkedContractHref && (
-                    <Link
-                      href={linkedContractHref}
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-[linear-gradient(135deg,#d946ef_0%,#9d22c9_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_10px_24px_rgba(217,70,239,0.25)] transition hover:-translate-y-0.5"
-                    >
-                      <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                      Otevřít smlouvu
-                    </Link>
-                  )}
-                </div>
-              </section>
-            )}
-
-            <main className="space-y-5">
-              <section className="rounded-[30px] border border-slate-200 bg-slate-50 p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] sm:p-6">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Formulář
-                  </p>
-                  <h2 className="mt-1 text-2xl font-bold text-slate-950">Údaje k tipu</h2>
-                </div>
-
-                {tip.fields.length > 0 ? (
-                  <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {tip.fields.map((field, index) => (
-                      <DetailField
-                        key={`${field.label}-${index}`}
-                        field={field}
-                        onOpenAres={setAresModalIco}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-600">
-                    Tip nemá uložené žádné položky formuláře.
-                  </div>
-                )}
+          <div className={styles.layout}>
+            <div className={styles.main}>
+              {callTime ? <div className={styles.callTime}><span><CalendarDays size={21} /></span><div><p>Ideální čas zavolat</p><strong>{callTime}</strong></div></div> : null}
+              <section className={styles.panel} aria-labelledby="tip-fields-title">
+                <div className={styles.sectionHeading}><span className={styles.sectionIcon}><UserRound size={18} /></span><div><h2 id="tip-fields-title">Klient a podklady</h2><p>Informace předané spolu s tipem.</p></div><span className={styles.count}>{detailFields.length}</span></div>
+                {detailFields.length ? <dl className={styles.fields}>{detailFields.map((field, index) => <DetailField key={`${field.label}-${index}`} field={field} onOpenAres={setAresModalIco} />)}</dl> : <p className={styles.empty}>K tipu zatím nejsou vyplněné další údaje.</p>}
+                {notes.length ? <div className={styles.notes}>{notes.map((note, index) => <div key={index}><span><MessageSquare size={15} />{note.label}</span><p>{note.value}</p></div>)}</div> : null}
+                {!tip.fields.length && tip.messageText ? <div className={styles.notes}><p>{tip.messageText}</p></div> : null}
               </section>
 
-              <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.06)] sm:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Přílohy
-                    </p>
-                    <h2 className="mt-1 text-2xl font-bold text-slate-950">
-                      Technický průkaz a soubory
-                    </h2>
-                  </div>
-                </div>
-
-                {tip.attachments.length > 0 ? (
-                  <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {tip.attachments.map((attachment) => (
-                      <AttachmentCard
-                        key={attachment.id}
-                        attachment={attachment}
-                        onOpen={handleOpenAttachment}
-                        onDownload={handleDownloadAttachment}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                    K tipu nejsou přiložené žádné soubory.
-                  </div>
-                )}
+              <section className={styles.panel} aria-labelledby="tip-files-title">
+                <div className={styles.sectionHeading}><span className={styles.sectionIcon}><Paperclip size={18} /></span><div><h2 id="tip-files-title">Přílohy k tipu</h2><p>Dokumenty a fotografie od tipaře.</p></div><span className={styles.count}>{tip.attachments.length}</span></div>
+                {tip.attachments.length ? <div className={styles.files}>{tip.attachments.map((attachment) => <AttachmentCard key={attachment.id} attachment={attachment} busy={loadingAttachmentId !== null} onOpen={handleOpenAttachment} onDownload={handleDownloadAttachment} />)}</div> : <div className={styles.emptyFiles}><FileText size={26} /><p>Všechno důležité je v údajích výše.<span>K tomuto tipu nejsou přiložené soubory.</span></p></div>}
               </section>
-            </main>
 
-            {previewAttachment ? (
-              <AttachmentPreviewModal
-                attachment={previewAttachment}
-                onClose={closeAttachmentPreview}
-                onDownload={handleDownloadAttachment}
-              />
-            ) : null}
-
-            {aresModalIco ? (
-              <AresToolModal
-                ico={aresModalIco}
-                onClose={() => setAresModalIco(null)}
-              />
-            ) : null}
-
-            {showDeleteConfirm ? (
-              <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="delete-tip-title"
-              >
-                <div className="w-full max-w-lg rounded-[28px] border border-rose-200 bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
-                  <div className="flex items-start gap-4">
-                    <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700">
-                      <AlertTriangle className="h-6 w-6" />
-                    </span>
-                    <div className="min-w-0">
-                      <h2 id="delete-tip-title" className="text-2xl font-bold text-slate-950">
-                        Smazat tip?
-                      </h2>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                        Tuhle akci nejde vrátit zpět. Tip se odstraní z tvého přehledu tipů.
-                      </p>
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                          Tip
-                        </p>
-                        <p className="mt-1 truncate text-base font-semibold text-slate-950">
-                          {tip.title || tip.productLabel}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={deleting}
-                      className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Zrušit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteTip()}
-                      disabled={deleting}
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-700 bg-rose-700 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(190,18,60,0.22)] transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {deleting ? "Mažu…" : "Smazat tip"}
-                    </button>
-                  </div>
+              {hasLinkedContract ? <section className={`${styles.panel} ${styles.contract}`} aria-labelledby="tip-contract-title">
+                <div className={styles.sectionHeading}><span className={styles.sectionIcon}><CheckCheck size={19} /></span><div><h2 id="tip-contract-title">Z tipu vznikla smlouva</h2><p>{linkedContractNumber || "Propojená smlouva"}</p></div></div>
+                <div className={styles.contractStats}>
+                  <div><span>Podíl tipaře</span><strong>{linkedTipPercent != null ? `${linkedTipPercent} %` : "Neuvedeno"}</strong></div>
+                  <div><span>Provize tipaře</span><strong>{formatMoney(linkedContract?.tipsterAmountFirstYear)}</strong></div>
+                  {showAdvisorLinkedContractData ? <div><span>{linkedContractGrossLabel}</span><strong>{formatMoney(linkedContract?.immediateGrossFirstYear)}</strong></div> : null}
                 </div>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+                <div className={styles.contractFooter}><p>{linkedContractTipBaseText}</p>{showAdvisorLinkedContractData && linkedContractHref ? <Link href={linkedContractHref} target={embedded ? "_blank" : undefined} rel={embedded ? "noopener noreferrer" : undefined}>Otevřít smlouvu<ExternalLink size={14} /></Link> : null}</div>
+              </section> : null}
+            </div>
+
+            <aside className={styles.sidebar}>
+              <section className={styles.statusPanel} aria-labelledby="tip-status-title">
+                <span className={styles.eyebrow}>JAK SI TIP VEDE</span><h2 id="tip-status-title">Stav příležitosti</h2>
+                <p>{isAdvisorMode ? "Udržuj tipaře v obraze. Změnu stavu uvidí i ve svém přehledu." : "Aktuální výsledek od poradce. O stav tvého tipu se postará on."}</p>
+                <div className={styles.statusOptions}>
+                  {TIP_STATUS_OPTIONS.map((option) => {
+                    const active = option.key === tipStatus;
+                    const description = option.key === "pending" ? "Kontakt čeká na zpracování" : option.key === "contracted" ? "Podařilo se uzavřít obchod" : "Tentokrát to nevyšlo";
+                    return isAdvisorMode ? <button key={option.key} type="button" data-status={option.key} aria-pressed={active} disabled={busy} onClick={() => { if (!active) void handleSetStatus(option.key); }}>
+                      <span className={styles.statusIcon}><StatusIcon status={option.key} /></span><span><strong>{option.label}</strong><small>{description}</small></span>{active ? <Check size={15} className={styles.selectedCheck} /> : null}
+                    </button> : active ? <div key={option.key} className={styles.currentStatus} data-status={option.key}><StatusIcon status={option.key} /><strong>{option.label}</strong></div> : null;
+                  })}
+                </div>
+                {savingStatus ? <span className={styles.saving} role="status"><RefreshCw size={13} className={styles.spinning} />Ukládám změnu…</span> : null}
+              </section>
+              <section className={styles.personPanel}>
+                <span className={styles.eyebrow}>{isAdvisorMode ? "KDO VÁS PROPOJIL" : "TVŮJ PORADCE"}</span>
+                <div className={styles.person}><span><UserRound size={22} /></span><div><h2>{counterpartValue}</h2><p>{isAdvisorMode ? "Tipař" : "Poradce"}</p></div></div>
+                {counterpartEmail ? <a href={`mailto:${encodeURIComponent(counterpartEmail)}`}><Mail size={14} /><span>{counterpartEmail}</span></a> : null}
+                <div className={styles.personNote}><Lightbulb size={15} /><p>{isAdvisorMode ? "Při prvním hovoru zmiň, kdo vás propojil. Známé jméno je dobrý začátek důvěry." : "S dotazy k průběhu se můžeš obrátit přímo na svého poradce."}</p></div>
+              </section>
+              <button type="button" className={styles.deleteLink} onClick={() => setShowDeleteConfirm(true)} disabled={busy}><Trash2 size={14} />Smazat tento tip</button>
+            </aside>
+          </div>
+
+          {previewAttachment ? <TipDialog title="Náhled přílohy" subtitle={previewAttachment.name} onClose={closeAttachmentPreview} actions={<button type="button" className={styles.previewDownload} onClick={() => void handleDownloadAttachment(previewAttachment)} disabled={loadingAttachmentId !== null}><Download size={16} />Stáhnout</button>}>
+            <div className={styles.previewBody}>
+              {isImageAttachment(previewAttachment) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewAttachment.objectUrl} alt={previewAttachment.name} className={styles.previewImage} />
+              ) : previewAttachment.pdfData ? <PdfDocumentPreview pdfData={previewAttachment.pdfData} name={previewAttachment.name} /> : <div className={styles.unsupported}><FileText size={36} /><h3>Náhled tohoto formátu není k dispozici</h3><p>Soubor si můžeš stáhnout a otevřít v příslušné aplikaci.</p><button type="button" onClick={() => void handleDownloadAttachment(previewAttachment)} className={styles.primaryAction}><Download size={16} />Stáhnout soubor</button></div>}
+            </div>
+          </TipDialog> : null}
+
+          {aresModalIco ? <TipDialog title="ARES" subtitle={`IČO ${aresModalIco}`} onClose={() => setAresModalIco(null)}><iframe src={`/pomucky/ares?ico=${encodeURIComponent(aresModalIco)}&embed=1`} title={`ARES IČO ${aresModalIco}`} className={styles.aresFrame} /></TipDialog> : null}
+
+          {showDeleteConfirm ? <TipDialog title="Smazat tip?" onClose={() => setShowDeleteConfirm(false)} busy={deleting} size="small">
+            <div className={styles.deleteConfirm}><span><Trash2 size={24} /></span><h3>{client}</h3><p>Tip se odstraní z tvého přehledu. Tuto akci nelze vrátit.</p><div><button type="button" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Ponechat tip</button><button type="button" onClick={() => void handleDeleteTip()} disabled={deleting} className={styles.confirmDelete}>{deleting ? "Mažu…" : "Smazat tip"}</button></div></div>
+          </TipDialog> : null}
+        </>
+      )}
     </div>
   );
 }
 
+function TipDetailPageContent() {
+  const searchParams = useSearchParams();
+  const embedded = searchParams?.get("embedded") === "1";
+  return <AppLayout active="tips" embedded={embedded}><TipDetailContent embedded={embedded} /></AppLayout>;
+}
+
 export default function TipDetailPage() {
-  return (
-    <AppLayout active="tips">
-      <TipDetailContent />
-    </AppLayout>
-  );
+  return <Suspense fallback={<LoadingState />}><TipDetailPageContent /></Suspense>;
 }

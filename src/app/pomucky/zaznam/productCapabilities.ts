@@ -61,7 +61,7 @@ export type CapabilityEntry = {
 
 export const PRODUCT_CAPABILITIES = {
   cppNeon: {
-    name: "ČPP NEON Life / Risk",
+    name: "ČPP Životní pojištění NEON Life / Risk",
     entries: <CapabilityEntry[]>[
       { key: "death" },
       { key: "terminal" },
@@ -137,7 +137,7 @@ export const PRODUCT_CAPABILITIES = {
   },
 
   kooperativaFlexi: {
-    name: "KOOPERATIVA FLEXI",
+    name: "Kooperativa Životní pojištění FLEXI",
     entries: <CapabilityEntry[]>[
       { key: "death" },
       { key: "invalidity" },

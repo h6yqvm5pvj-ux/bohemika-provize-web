@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { EmojiStyle, type EmojiClickData } from "emoji-picker-react";
 import {
   BarChart3,
+  ArrowUpRight,
   CheckCircle2,
   LayoutGrid,
   BookOpen,
@@ -26,6 +27,7 @@ import {
   Landmark,
   Link2,
   Loader2,
+  Maximize2,
   MessageSquare,
   Paperclip,
   Pencil,
@@ -39,6 +41,8 @@ import {
   Sparkles,
   TrendingUp,
   Trash2,
+  TriangleAlert,
+  UploadCloud,
   UserRound,
   Vote,
   Wrench,
@@ -56,6 +60,7 @@ import {
   fetchAuthedJsonOrThrow,
 } from "@/app/lib/authenticatedApi";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
+import { notifyIntranetUnreadChanged } from "./unreadEvents";
 import {
   INTRANET_SECTIONS,
   INTRANET_SECTION_LABEL_BY_KEY,
@@ -153,6 +158,7 @@ type WallPost = WallPersonalState & {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   pinned: boolean;
+  important: boolean;
   acceptedCommentId: string | null;
   readByDay: string | null;
   commentCount: number;
@@ -268,114 +274,60 @@ type PdfDocumentLike = {
 
 type SectionVisual = {
   icon: LucideIcon;
-  chipActive: string;
-  chipGlow: string;
   badge: string;
   rail: string;
-  avatarBg: string;
-  postAccent: string;
 };
 
 const SECTION_VISUALS: Record<IntranetSectionKey, SectionVisual> = {
   zivot: {
     icon: HeartPulse,
-    chipActive:
-      "border-rose-500 bg-[linear-gradient(135deg,#fb7185_0%,#e11d48_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(225,29,72,0.35)]",
     badge: "border-rose-200/80 bg-rose-50/80 text-rose-800",
     rail: "from-rose-500 via-pink-500 to-fuchsia-500",
-    avatarBg: "bg-rose-100 text-rose-700",
-    postAccent: "ring-rose-100/80",
   },
   majetek: {
     icon: Home,
-    chipActive:
-      "border-cyan-500 bg-[linear-gradient(135deg,#22d3ee_0%,#0e7490_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(8,145,178,0.3)]",
     badge: "border-cyan-200/80 bg-cyan-50/80 text-cyan-800",
     rail: "from-cyan-400 via-sky-500 to-blue-500",
-    avatarBg: "bg-cyan-100 text-cyan-800",
-    postAccent: "ring-cyan-100/80",
   },
   auto: {
     icon: CarFront,
-    chipActive:
-      "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#1d4ed8_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(29,78,216,0.35)]",
     badge: "border-blue-200/80 bg-blue-50/80 text-blue-800",
     rail: "from-blue-500 via-indigo-500 to-violet-500",
-    avatarBg: "bg-blue-100 text-blue-700",
-    postAccent: "ring-blue-100/80",
   },
   odpovednost: {
     icon: ShieldCheck,
-    chipActive:
-      "border-emerald-500 bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(4,120,87,0.35)]",
     badge: "border-emerald-200/80 bg-emerald-50/80 text-emerald-800",
     rail: "from-emerald-400 via-emerald-500 to-teal-500",
-    avatarBg: "bg-emerald-100 text-emerald-700",
-    postAccent: "ring-emerald-100/80",
   },
   cizinci: {
     icon: UserRound,
-    chipActive:
-      "border-indigo-500 bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(67,56,202,0.32)]",
     badge: "border-indigo-200/80 bg-indigo-50/80 text-indigo-800",
     rail: "from-indigo-400 via-indigo-500 to-blue-600",
-    avatarBg: "bg-indigo-100 text-indigo-700",
-    postAccent: "ring-indigo-100/80",
   },
   cestovko: {
     icon: Plane,
-    chipActive:
-      "border-sky-500 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(3,105,161,0.3)]",
     badge: "border-sky-200/80 bg-sky-50/80 text-sky-800",
     rail: "from-sky-400 via-sky-500 to-cyan-500",
-    avatarBg: "bg-sky-100 text-sky-700",
-    postAccent: "ring-sky-100/80",
   },
   investice: {
     icon: TrendingUp,
-    chipActive:
-      "border-amber-500 bg-[linear-gradient(135deg,#f59e0b_0%,#b45309_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(180,83,9,0.35)]",
     badge: "border-amber-200/80 bg-amber-50/80 text-amber-800",
     rail: "from-amber-400 via-orange-500 to-orange-600",
-    avatarBg: "bg-amber-100 text-amber-700",
-    postAccent: "ring-amber-100/80",
   },
   zlato: {
     icon: Landmark,
-    chipActive:
-      "border-yellow-500 bg-[linear-gradient(135deg,#facc15_0%,#ca8a04_100%)] text-slate-900",
-    chipGlow: "shadow-[0_16px_36px_rgba(202,138,4,0.35)]",
     badge: "border-yellow-200/80 bg-yellow-50/80 text-yellow-900",
     rail: "from-yellow-300 via-amber-400 to-orange-500",
-    avatarBg: "bg-yellow-100 text-amber-700",
-    postAccent: "ring-yellow-100/80",
   },
   obecne: {
     icon: Wrench,
-    chipActive:
-      "border-slate-700 bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(15,23,42,0.35)]",
     badge: "border-slate-200/80 bg-slate-100/80 text-slate-800",
     rail: "from-slate-500 via-slate-700 to-slate-900",
-    avatarBg: "bg-slate-200 text-slate-700",
-    postAccent: "ring-slate-200/80",
   },
   pomoc: {
     icon: CircleHelp,
-    chipActive:
-      "border-orange-500 bg-[linear-gradient(135deg,#fb923c_0%,#c2410c_100%)] text-white",
-    chipGlow: "shadow-[0_16px_36px_rgba(194,65,12,0.35)]",
     badge: "border-orange-200/80 bg-orange-50/80 text-orange-800",
     rail: "from-orange-400 via-orange-500 to-red-500",
-    avatarBg: "bg-orange-100 text-orange-700",
-    postAccent: "ring-orange-100/80",
   },
 };
 
@@ -637,6 +589,7 @@ const normalizeWallPosts = (rawPosts: WallPost[]): WallPost[] =>
       })),
     })),
     pinned: post.pinned === true,
+    important: post.important === true,
     readByDay:
       typeof post.readByDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(post.readByDay)
         ? post.readByDay
@@ -750,9 +703,10 @@ function AttachmentImagePreview({
       ref={previewRef}
       type="button"
       onClick={() => onOpen(attachment)}
-      className="group flex w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs font-semibold text-slate-600 shadow-[0_8px_22px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.1)]"
+      className={styles.imageAttachment}
+      aria-label={`Zvětšit obrázek ${attachment.name}`}
     >
-      <span className="flex h-44 w-full items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,#f8fafc_0%,#eef2f7_100%)]">
+      <span className={styles.imageThumbnail}>
         {previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -760,7 +714,7 @@ function AttachmentImagePreview({
             alt={`Náhled ${attachment.name}`}
             loading="lazy"
             decoding="async"
-            className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.02]"
+            className="h-full w-full object-contain"
           />
         ) : loading ? (
           <span className="inline-flex items-center gap-2 text-slate-500">
@@ -778,6 +732,7 @@ function AttachmentImagePreview({
             Připravuji náhled
           </span>
         )}
+        <span className={styles.imageExpand} aria-hidden="true"><Maximize2 size={15} /></span>
       </span>
       <span className="flex w-full min-w-0 items-center gap-2.5 border-t border-slate-200 px-3 py-2.5">
         <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-700 ring-1 ring-sky-100">
@@ -907,7 +862,7 @@ function PdfAttachmentThumbnail({
       ref={previewRef}
       type="button"
       onClick={() => onOpen(attachment)}
-      className="group relative flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 transition hover:border-slate-400 hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
+      className={styles.pdfThumbnail}
       aria-label={`Otevřít náhled přílohy ${attachment.name}`}
     >
       {preview ? (
@@ -957,46 +912,14 @@ function AttachmentDocumentPreviewCard({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+    <div className={styles.documentAttachment}>
       <PdfAttachmentThumbnail attachment={attachment} user={user} onOpen={onPreview} />
-      <div className="p-3">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700">
-            <FileText className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <button
-              type="button"
-              onClick={() => onPreview(attachment)}
-              className="block max-w-full truncate text-left text-xs font-bold text-slate-800 underline-offset-2 hover:underline"
-            >
-              {attachment.name}
-            </button>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500">
-              <span className="rounded-full border border-red-100 bg-red-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-red-700">
-                PDF
-              </span>
-              <span>{formatBytes(attachment.sizeBytes)}</span>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            onClick={() => onPreview(attachment)}
-            className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Náhled
-          </button>
-          <button
-            type="button"
-            onClick={() => onDownload(attachment)}
-            className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Stáhnout
-          </button>
+      <div className={styles.documentInfo}>
+        <div className={styles.documentMeta}><span>PDF</span>{formatBytes(attachment.sizeBytes)}</div>
+        <button type="button" onClick={() => onPreview(attachment)} className={styles.documentName} title={attachment.name}>{attachment.name}</button>
+        <div className={styles.documentActions}>
+          <button type="button" onClick={() => onPreview(attachment)}><FileText size={13} aria-hidden="true" />Náhled</button>
+          <button type="button" onClick={() => onDownload(attachment)}><Download size={13} aria-hidden="true" />Stáhnout</button>
         </div>
       </div>
     </div>
@@ -1193,6 +1116,7 @@ export default function IntranetPage() {
   const [text, setText] = useState("");
   const [postSection, setPostSection] = useState<IntranetSectionKey>("obecne");
   const [postPinned, setPostPinned] = useState(false);
+  const [postImportant, setPostImportant] = useState(false);
   const [postReadByDay, setPostReadByDay] = useState("");
   const [postSources, setPostSources] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
@@ -1239,6 +1163,7 @@ export default function IntranetPage() {
   const [deepLinkPostId, setDeepLinkPostId] = useState<string | null>(null);
 
   const readerDialogRef = useRef<HTMLDivElement | null>(null);
+  const postComposerRef = useRef<HTMLDivElement | null>(null);
   const readerTriggerRef = useRef<HTMLElement | null>(null);
   const readerPostId = readerPost?.id;
   useEffect(() => {
@@ -1267,6 +1192,7 @@ export default function IntranetPage() {
     setText("");
     setPostSection(selectedSection === "all" ? "obecne" : selectedSection);
     setPostPinned(false);
+    setPostImportant(false);
     setPostReadByDay("");
     setPostSources([]);
     setFiles([]);
@@ -1292,6 +1218,7 @@ export default function IntranetPage() {
     setText(post.text);
     setPostSection(post.section);
     setPostPinned(post.pinned);
+    setPostImportant(post.important);
     setPostReadByDay(post.readByDay ?? "");
     setPostSources(post.sources);
     setFiles([]);
@@ -1307,6 +1234,7 @@ export default function IntranetPage() {
   };
 
   const closePostModal = () => {
+    if (posting) return;
     setPostModalOpen(false);
     setEditingPost(null);
     setPostError(null);
@@ -1317,6 +1245,7 @@ export default function IntranetPage() {
     setPollQuestion("");
     setPollOptions(["", ""]);
     setPostPinned(false);
+    setPostImportant(false);
     setPostReadByDay("");
     setPostSources([]);
     setIsDraggingFiles(false);
@@ -1368,9 +1297,25 @@ export default function IntranetPage() {
   }, [deepLinkSection, deepLinkPostId]);
 
   useEffect(() => {
+    if (!postModalOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = requestAnimationFrame(() => postComposerRef.current?.querySelector<HTMLInputElement>('input[type="text"]')?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, [postModalOpen]);
+
+  useEffect(() => {
     if (!postModalOpen || attachmentPreview) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        if (posting) return;
+        if (emojiOpen) { setEmojiOpen(false); return; }
         setPostModalOpen(false);
         setEditingPost(null);
         setPostError(null);
@@ -1382,10 +1327,17 @@ export default function IntranetPage() {
         setPollOptions(["", ""]);
         setPostSources([]);
       }
+      if (event.key === "Tab") {
+        const controls = postComposerRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]):not([type="file"]), select:not([disabled]), [contenteditable="true"], a[href]');
+        const visible = Array.from(controls ?? []).filter(element => element.getClientRects().length > 0);
+        const first = visible[0], last = visible[visible.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [attachmentPreview, postModalOpen]);
+  }, [attachmentPreview, postModalOpen, posting, emojiOpen]);
 
   useEffect(() => {
     if (!sourcesModalPost) return;
@@ -1441,6 +1393,7 @@ export default function IntranetPage() {
       if (account !== accountRef.current) return;
       const field = action.field === "read" ? "readAtMs" : action.field;
       applyPostPatch(post.id, { [field]: payload.state[field] });
+      if (action.field === "read") notifyIntranetUnreadChanged(account);
     } catch (error) {
       if (account === accountRef.current) setPersonalErrors(previous => ({ ...previous, [post.id]: error instanceof Error ? error.message : "Změnu se nepodařilo uložit." }));
     } finally {
@@ -1633,8 +1586,6 @@ export default function IntranetPage() {
     () => selectedSection === "all" ? "Intranet" : INTRANET_SECTION_LABEL_BY_KEY.get(selectedSection) ?? selectedSection,
     [selectedSection]
   );
-  const currentSectionVisual = SECTION_VISUALS[selectedSection === "all" ? "obecne" : selectedSection];
-  const CurrentSectionIcon = selectedSection === "all" ? LayoutGrid : currentSectionVisual.icon;
 
   const selectedPostSectionVisual = SECTION_VISUALS[postSection];
   const SelectedPostIcon = selectedPostSectionVisual.icon;
@@ -1905,6 +1856,7 @@ export default function IntranetPage() {
       form.set("text", trimmedText.slice(0, MAX_TEXT_LEN));
       form.set("section", postSection);
       form.set("pinned", postPinned ? "1" : "0");
+      form.set("important", postImportant ? "1" : "0");
       form.set("sources", JSON.stringify(sourcesResult.sources));
       if (postReadByDay) form.set("readByDay", postReadByDay);
       files.forEach((file) => form.append("files", file));
@@ -1945,6 +1897,7 @@ export default function IntranetPage() {
         throw new Error(payload?.error || "Server nevrátil úspěšnou odpověď.");
       }
 
+      notifyIntranetUnreadChanged(effectiveEmail);
       setTitle("");
       setText("");
       setFiles([]);
@@ -1956,6 +1909,7 @@ export default function IntranetPage() {
       setPollOptions(["", ""]);
       setEmojiOpen(false);
       setPostPinned(false);
+      setPostImportant(false);
       setPostReadByDay("");
       setPostSources([]);
       setPostModalOpen(false);
@@ -1994,6 +1948,7 @@ export default function IntranetPage() {
       if (!payload?.ok) {
         throw new Error(payload?.error || "Smazání se nepodařilo.");
       }
+      notifyIntranetUnreadChanged(effectiveEmail);
       await loadPosts(user, selectedSection);
     } catch (error) {
       setPostsError(error instanceof Error ? error.message : "Nepodařilo se smazat příspěvek.");
@@ -2396,65 +2351,31 @@ export default function IntranetPage() {
 
   return (
     <AppLayout active="intranet">
-      <div className={`${wallFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className={styles.canvas} aria-hidden="true">
-          <span className={`${styles.orb} ${styles.orbA}`} />
-          <span className={`${styles.orb} ${styles.orbB}`} />
-          <span className={`${styles.orb} ${styles.orbC}`} />
-          <span className={styles.mesh} />
-          <span className={styles.grain} />
-        </div>
-
-        <div className="relative z-10 mx-auto max-w-7xl space-y-4">
-          <section className="px-1 py-1 sm:px-2 sm:py-2">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <div
-                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border shadow-[0_10px_24px_rgba(15,23,42,0.1)] ${currentSectionVisual.badge}`}
-                >
-                  <CurrentSectionIcon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="truncate text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-[2rem]">
-                    {currentSectionLabel}
-                  </h1>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (user) void loadPosts(user, selectedSection);
-                  }}
-                  className="group inline-flex h-11 items-center gap-2 rounded-full border border-white/90 bg-white/80 py-1.5 pl-1.5 pr-4 text-sm font-bold text-slate-700 shadow-[0_10px_26px_rgba(15,23,42,0.1)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
-                >
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200">
-                    <RefreshCw className="h-4 w-4 transition-transform duration-500 group-hover:rotate-180" />
-                  </span>
-                  Obnovit
-                </button>
-                <button
-                  type="button"
-                  onClick={openCreatePostModal}
-                  className="group inline-flex h-11 items-center gap-2 rounded-full border border-slate-900/90 bg-[linear-gradient(135deg,#0f172a_0%,#020617_100%)] py-1.5 pl-1.5 pr-4 text-sm font-bold text-white shadow-[0_12px_28px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.36)]"
-                >
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/15">
-                    <Plus className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" />
-                  </span>
-                  Přidat příspěvek
-                </button>
+      <div className={`${wallFont.className} ${styles.page}`}>
+        <div className={styles.content}>
+          <header className={styles.pageHeader}>
+            <div className={styles.heading}>
+              <span className={styles.headingIcon}><LayoutGrid size={24} aria-hidden="true" /></span>
+              <div>
+                <h1>Intranet</h1>
+                <p>Novinky, zkušenosti a odpovědi na jednom místě.</p>
               </div>
             </div>
-          </section>
+            <div className={styles.headerActions}>
+              <button type="button" onClick={() => { if (user) void loadPosts(user, selectedSection); }} disabled={loadingPosts} className={styles.secondaryButton}>
+                <RefreshCw size={16} className={loadingPosts ? "animate-spin" : ""} aria-hidden="true" />Obnovit
+              </button>
+              <button type="button" onClick={openCreatePostModal} className={styles.primaryButton}>
+                <Plus size={18} aria-hidden="true" />Přidat příspěvek
+              </button>
+            </div>
+          </header>
 
-          <nav
-            className="sticky top-2 z-30 rounded-[24px] border border-white/70 bg-white/82 shadow-[0_18px_44px_rgba(15,23,42,0.13)] backdrop-blur-xl"
-            aria-label="Sekce intranetu"
-          >
-            <div className="flex gap-2 overflow-x-auto px-2 py-2">
+          <div className={styles.filterPanel}>
+          <nav className={styles.categoryNav} aria-label="Sekce intranetu">
+            <div className={styles.categoryList}>
               <button type="button" onClick={() => { setSelectedSection("all"); setPendingFocusPostId(null); }} aria-pressed={selectedSection === "all"}
-                className={`${styles.sectionChip} inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold ${selectedSection === "all" ? "border-violet-300 bg-violet-100 text-violet-900" : "border-slate-300 bg-white text-slate-700"}`}><LayoutGrid size={16} aria-hidden="true" />Vše</button>
+                className={styles.categoryButton}><LayoutGrid size={16} aria-hidden="true" />Vše</button>
               {INTRANET_SECTIONS.map((section) => {
                 const visual = SECTION_VISUALS[section.key];
                 const SectionIcon = visual.icon;
@@ -2466,28 +2387,24 @@ export default function IntranetPage() {
                     type="button"
                     aria-pressed={isActive}
                     onClick={() => { setSelectedSection(section.key); setPendingFocusPostId(null); }}
-                    className={[
-                      styles.sectionChip,
-                      "inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold transition",
-                      isActive
-                        ? `${visual.chipActive} ${visual.chipGlow} ring-2 ring-white/80 ring-offset-2 ring-offset-white/60`
-                        : "border-slate-300/90 bg-white/88 text-slate-700 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white",
-                    ].join(" ")}
+                    className={styles.categoryButton}
                   >
-                    <SectionIcon className="h-4 w-4" />
+                    <SectionIcon size={16} aria-hidden="true" />
                     {section.label}
-                    {isActive ? (
-                      <span className="ml-1 rounded-full border border-white/40 bg-white/20 px-2 py-0.5 text-[11px] font-bold leading-none text-current">
-                        {postsHasMore ? `${visiblePosts.length}+` : visiblePosts.length}
-                      </span>
-                    ) : null}
                   </button>
                 );
               })}
             </div>
           </nav>
           <WallFeedFilters view={view} onViewChange={next => { setView(next); setPendingFocusPostId(null); }} search={searchInput} onSearchChange={value => { setSearchInput(value); setPendingFocusPostId(null); }} sectionLabel={selectedSection === "all" ? "ve všech kategoriích" : `v sekci ${currentSectionLabel}`} />
-          <p className="break-words px-2 text-xs text-slate-500">{selectedSection === "all" ? "Všechny kategorie" : currentSectionLabel}{searchQuery ? ` · Výsledky pro „${searchQuery}“` : ""}{view === "unread" ? " · Přečtení se zaznamená po otevření příspěvku nebo diskuse." : ""}</p>
+          </div>
+          <div className={styles.feedHeading}>
+            <div>
+              <h2>{searchQuery ? "Výsledky hledání" : view === "saved" ? "Uložené příspěvky" : view === "unread" ? "Nepřečtené příspěvky" : view === "following" ? "Sledované diskuse" : selectedSection === "all" ? "Novinky a diskuse" : currentSectionLabel}</h2>
+              <p>{searchQuery ? `Hledání „${searchQuery}“ · ` : ""}{selectedSection === "all" ? "Ze všech kategorií" : `Kategorie ${currentSectionLabel}`}{view === "unread" ? " · Přečtení se zaznamená po otevření příspěvku nebo diskuse." : ""}</p>
+            </div>
+            {!loadingPosts && !postsError && <span className={styles.feedCount}>{postsHasMore ? `${visiblePosts.length}+` : visiblePosts.length} {postsHasMore || visiblePosts.length === 0 || visiblePosts.length > 4 ? "příspěvků" : visiblePosts.length === 1 ? "příspěvek" : "příspěvky"}</span>}
+          </div>
 
           <section>
             {loadingPosts ? (
@@ -2504,8 +2421,8 @@ export default function IntranetPage() {
                 {postsError}
               </div>
             ) : visiblePosts.length === 0 ? (
-              <div className="rounded-[30px] border border-slate-200/80 bg-white/80 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">
-                <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_30px_rgba(16,185,129,0.2)]">
+              <div className={styles.emptyState}>
+                <div className={styles.emptyIcon}>
                   <Sparkles className="h-6 w-6" />
                 </div>
                 <h3 className="mt-4 text-2xl font-semibold text-slate-900">{searchQuery ? "Nic jsme nenašli" : view === "saved" ? "Zatím nemáš uložené příspěvky" : view === "unread" ? "Žádné nepřečtené příspěvky" : view === "following" ? "Zatím nesleduješ žádnou diskusi" : "Tahle sekce čeká na první zprávu"}</h3>
@@ -2518,7 +2435,7 @@ export default function IntranetPage() {
                   <button
                     type="button"
                     onClick={openCreatePostModal}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/70 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(16,185,129,0.28)] transition hover:-translate-y-0.5"
+                    className={styles.primaryButton}
                   >
                     <Plus className="h-4 w-4" />
                     Přidat první příspěvek
@@ -2527,7 +2444,7 @@ export default function IntranetPage() {
               </div>
             ) : (
               <div className="grid gap-3">
-                {visiblePosts.map((post, index) => {
+                {visiblePosts.map((post) => {
                   const visual = SECTION_VISUALS[post.section] ?? SECTION_VISUALS.obecne;
                   const SectionIcon = visual.icon;
                   const isDeletingThis = deletingPostId === post.id;
@@ -2537,7 +2454,6 @@ export default function IntranetPage() {
                   const isCommentPostingThis = commentPostingById[post.id] === true;
                   const imageAttachments = post.attachments.filter((attachment) => attachment.isImage);
                   const otherAttachments = post.attachments.filter((attachment) => !attachment.isImage);
-                  const hasAttachments = post.attachments.length > 0;
                   const isLongPost = shouldCollapseWallPostText(post.text);
                   const accepted = post.acceptedCommentId ? post.comments.flatMap(comment => [comment, ...comment.replies]).find(comment => comment.id === post.acceptedCommentId) : null;
 
@@ -2545,216 +2461,62 @@ export default function IntranetPage() {
                     <article
                       key={post.id}
                       data-post-id={post.id}
-                      ref={(node) => {
-                        postCardRefs.current[post.id] = node;
-                      }}
-                      className={`${styles.wallCard} relative overflow-hidden rounded-[24px] border border-white/75 bg-white/90 p-4 shadow-[0_16px_42px_rgba(15,23,42,0.12)] backdrop-blur-xl ring-1 sm:p-5 ${visual.postAccent} ${
-                        highlightPostId === post.id
-                          ? "ring-2 ring-emerald-300 shadow-[0_0_0_4px_rgba(16,185,129,0.14),0_24px_54px_rgba(15,23,42,0.16)]"
-                          : post.pinned
-                            ? "ring-2 ring-violet-200 shadow-[0_0_0_4px_rgba(124,58,237,0.08),0_24px_54px_rgba(15,23,42,0.16)]"
-                            : ""
-                      }`}
-                      style={{ animationDelay: `${Math.min(index * 50, 240)}ms` }}
+                      aria-label={post.title}
+                      ref={(node) => { postCardRefs.current[post.id] = node; }}
+                      className={`${styles.wallCard} ${post.pinned ? styles.pinnedCard : ""} ${post.important ? styles.importantCard : ""} ${highlightPostId === post.id ? styles.highlightedCard : ""}`}
                     >
-                      <div
-                        className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${visual.rail}`}
-                        aria-hidden="true"
-                      />
-
-                      <div
-                        className={
-                          hasAttachments
-                            ? "grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start"
-                            : ""
-                        }
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 pb-4">
-                        <div className="flex min-w-0 items-start gap-3.5">
-                          <ProfileAvatar
-                            src={post.author.profileAvatar}
-                            name={post.author.name}
-                            className="h-12 w-12 rounded-2xl text-5xl shadow-inner ring-1 ring-slate-200"
-                            sizes="48px"
-                          />
-
+                      <header className={styles.postHeader}>
+                        <div className={styles.author}>
+                          <ProfileAvatar src={post.author.profileAvatar} name={post.author.name} className={styles.avatar} sizes="40px" />
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={[
-                                  "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold",
-                                  visual.badge,
-                                ].join(" ")}
-                              >
-                                <SectionIcon className="h-3.5 w-3.5" />
-                                {post.sectionLabel}
-                              </span>
-                              <span className="truncate text-sm font-medium text-slate-600">
-                                od <strong className="text-slate-800">{post.author.name}</strong>
-                              </span>
+                            <div className={styles.authorName}>
+                              <strong>{post.author.name}</strong>
                               <SpecialistBadge specialist={post.author.specialist} />
-                              {post.readAtMs === null && <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">Nepřečtené</span>}
-                              {post.acceptedCommentId && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 size={12} aria-hidden="true" />Vyřešeno</span>}
-                              {post.pinned ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-bold text-violet-800">
-                                  <Pin className="h-3 w-3 fill-current" />
-                                  Připnuto
-                                </span>
-                              ) : null}
-                              {post.readByDay ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-                                  <CalendarClock className="h-3 w-3" />
-                                  Přečíst do {new Date(`${post.readByDay}T00:00:00`).toLocaleDateString("cs-CZ")}
-                                </span>
-                              ) : null}
                             </div>
-                            <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-500">
-                              <Clock3 className="h-3.5 w-3.5" />
-                              {formatDateTime(post.createdAtMs)}
+                            <div className={styles.postMeta}>
+                              <span className={`${styles.categoryBadge} ${visual.badge}`}><SectionIcon size={12} aria-hidden="true" />{post.sectionLabel}</span>
+                              <span>{formatDateTime(post.createdAtMs)}</span>
                             </div>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                          {canDeletePost(post) ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openEditPostModal(post)}
-                                disabled={!!deletingPostId}
-                                className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Upravit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => void handleDeletePost(post.id)}
-                                disabled={!!deletingPostId}
-                                className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {isDeletingThis ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                )}
-                                Smazat
-                              </button>
-                            </>
-                          ) : null}
+                        <div className={styles.postStatus}>
+                          {post.important && <span className={styles.importantBadge}><TriangleAlert size={14} aria-hidden="true" />Důležité</span>}
+                          {post.readAtMs === null && <span className={styles.unreadBadge}><span aria-hidden="true" />Nepřečtené</span>}
+                          {post.acceptedCommentId && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 size={13} aria-hidden="true" />Vyřešeno</span>}
+                          {post.pinned && <span className={styles.pinnedBadge}><Pin size={13} aria-hidden="true" />Připnuto</span>}
+                          {post.readByDay && <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-800"><CalendarClock size={13} aria-hidden="true" />Přečíst do {new Date(`${post.readByDay}T00:00:00`).toLocaleDateString("cs-CZ")}</span>}
+                          {canDeletePost(post) && <div className={styles.editActions}>
+                            <button type="button" onClick={() => openEditPostModal(post)} disabled={!!deletingPostId} className={styles.iconButton} title="Upravit příspěvek" aria-label="Upravit příspěvek"><Pencil size={15} aria-hidden="true" /></button>
+                            <button type="button" onClick={() => void handleDeletePost(post.id)} disabled={!!deletingPostId} className={`${styles.iconButton} ${styles.deleteButton}`} title="Smazat příspěvek" aria-label="Smazat příspěvek">
+                              {isDeletingThis ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />}
+                            </button>
+                          </div>}
                         </div>
-                          </div>
+                      </header>
 
-                          <div className="mt-5">
-                          <div className="min-w-0 max-w-5xl">
-                          <h3 className="text-2xl font-bold leading-[1.14] tracking-[-0.025em] text-slate-950 sm:text-[1.7rem]">
-                            <button type="button" onClick={event => openReader(post, event.currentTarget)} className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400" aria-label={`Otevřít příspěvek: ${post.title}`}>{post.title}</button>
+                      <div className={`${styles.postContent} ${imageAttachments.length ? styles.postContentWithImages : ""}`}>
+                        <div className={styles.postBody}>
+                          <h3 className={styles.postTitle}>
+                            <button type="button" onClick={event => openReader(post, event.currentTarget)} aria-label={`Otevřít příspěvek: ${post.title}`}>{post.title}</button>
                           </h3>
-                          {isLongPost ? (
-                            <div className="mt-3">
-                              <div className="relative overflow-hidden">
-                                <LinkedText
-                                  text={post.text}
-                                  className="line-clamp-[8] whitespace-pre-wrap text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-7 lg:text-[17px] lg:leading-8"
-                                />
-                                <div
-                                  className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white via-white/90 to-transparent"
-                                  aria-hidden="true"
-                                />
-                              </div>
-                              <div className="relative mt-1 flex items-center justify-center pt-2">
-                                <span
-                                  className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"
-                                  aria-hidden="true"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={event => openReader(post, event.currentTarget)}
-                                  aria-haspopup="dialog"
-                                  className="group/readmore relative inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 py-1.5 pl-2 pr-1.5 text-left text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.11)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_32px_rgba(15,23,42,0.16)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
-                                >
-                                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition group-hover/readmore:bg-slate-200 group-hover/readmore:text-slate-900">
-                                    <BookOpen className="h-4 w-4" />
-                                  </span>
-                                  <span className="px-0.5">
-                                    <span className="block text-sm font-bold leading-tight">
-                                      Číst celý příspěvek
-                                    </span>
-                                    <span className="hidden text-[10px] font-semibold leading-tight text-slate-500 sm:block">
-                                      {wallPostReadingMinutes(post.text)} min čtení
-                                    </span>
-                                  </span>
-                                  <span className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition group-hover/readmore:translate-y-0.5 group-hover/readmore:bg-slate-800">
-                                    <ChevronDown className="h-4 w-4" />
-                                  </span>
-                                </button>
-                              </div>
+                          <LinkedText text={post.text} className={`${styles.postText} ${isLongPost ? styles.postTextPreview : ""}`} />
+                          {isLongPost && <button type="button" onClick={event => openReader(post, event.currentTarget)} aria-haspopup="dialog" className={styles.readMore}>
+                            <BookOpen size={16} aria-hidden="true" />Číst celý příspěvek<ArrowUpRight size={15} aria-hidden="true" /><span>{wallPostReadingMinutes(post.text)} min čtení</span>
+                          </button>}
+                          {post.poll && <PollCard postId={post.id} poll={post.poll} votingOptionId={pollVotingByPostId[post.id]} error={pollErrorByPostId[post.id]} onVote={(targetPostId, optionId) => void handleVoteInPoll(targetPostId, optionId)} />}
+                          {otherAttachments.length > 0 && <section className={styles.attachments} aria-label="Přílohy příspěvku">
+                            <div className={styles.attachmentsLabel}><Paperclip size={14} aria-hidden="true" />Přílohy<span>{otherAttachments.length}</span></div>
+                            <div className={styles.attachmentGrid}>
+                              {otherAttachments.map(attachment => <AttachmentDocumentPreviewCard key={attachment.id} attachment={attachment} user={user} onPreview={item => void handleOpenAttachment(item)} onDownload={item => void handleDownloadAttachment(item)} />)}
                             </div>
-                          ) : (
-                            <LinkedText
-                              text={post.text}
-                              className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-7 lg:text-[17px] lg:leading-8"
-                            />
-                          )}
-
-                          {post.poll ? (
-                            <PollCard
-                              postId={post.id}
-                              poll={post.poll}
-                              votingOptionId={pollVotingByPostId[post.id]}
-                              error={pollErrorByPostId[post.id]}
-                              onVote={(targetPostId, optionId) =>
-                                void handleVoteInPoll(targetPostId, optionId)
-                              }
-                            />
-                          ) : null}
-                          </div>
-                          </div>
+                          </section>}
                         </div>
-
-                          {hasAttachments ? (
-                            <aside className="rounded-[18px] border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                              <div className="flex items-center justify-between gap-2 px-0.5 pb-2.5">
-                                <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
-                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm ring-1 ring-slate-200">
-                                    <Paperclip className="h-3.5 w-3.5" />
-                                  </span>
-                                  Přílohy
-                                </div>
-                                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500 shadow-sm">
-                                  {post.attachments.length}{" "}
-                                  {post.attachments.length === 1
-                                    ? "soubor"
-                                    : post.attachments.length <= 4
-                                      ? "soubory"
-                                      : "souborů"}
-                                </span>
-                              </div>
-
-                              <div className="grid grid-cols-1 items-start gap-2.5">
-                                {imageAttachments.map((attachment) => (
-                                  <AttachmentImagePreview
-                                    key={attachment.id}
-                                    attachment={attachment}
-                                    user={user}
-                                    onOpen={(item) => void handleOpenAttachment(item)}
-                                  />
-                                ))}
-                                {otherAttachments.map((attachment) => (
-                                  <AttachmentDocumentPreviewCard
-                                    key={attachment.id}
-                                    attachment={attachment}
-                                    user={user}
-                                    onPreview={(item) => void handleOpenAttachment(item)}
-                                    onDownload={(item) => void handleDownloadAttachment(item)}
-                                  />
-                                ))}
-                              </div>
-                            </aside>
-                          ) : null}
-                        </div>
+                        {imageAttachments.length > 0 && <section className={styles.postImages} aria-label="Obrázky příspěvku">
+                          <div className={styles.imageGallery}>
+                            {imageAttachments.map(attachment => <AttachmentImagePreview key={attachment.id} attachment={attachment} user={user} onOpen={item => void handleOpenAttachment(item)} />)}
+                          </div>
+                        </section>}
+                      </div>
 
                       {accepted && <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
                         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-emerald-800"><CheckCircle2 size={15} aria-hidden="true" /><strong>Vybrané řešení</strong><span>{accepted.author.name}</span><SpecialistBadge specialist={accepted.author.specialist} /></div>
@@ -2762,84 +2524,21 @@ export default function IntranetPage() {
                         <button type="button" onClick={() => jumpToSolution(post)} className="mt-2 text-xs font-semibold text-emerald-800 underline underline-offset-2">Přejít na odpověď</button>
                       </div>}
                       {personalErrors[post.id] && <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{personalErrors[post.id]}</p>}
-                      <div className="mt-5 border-t border-slate-200/80 pt-4">
-                        <div className="mb-3">{personalActions(post)}</div>
-                          <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-slate-200/90 bg-[linear-gradient(145deg,#f8fafc_0%,#ffffff_100%)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.05)]">
-                                {post.sources.length > 0 ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setSourcesModalPost(post)}
-                                    className="group inline-flex h-10 items-center gap-2 rounded-xl border border-transparent px-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
-                                  >
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100 text-sky-700 transition group-hover:bg-sky-200/70">
-                                      <Link2 className="h-3.5 w-3.5" />
-                                    </span>
-                                    Zdroje
-                                    <span className="inline-flex min-w-6 items-center justify-center rounded-lg bg-white px-1.5 py-1 text-[11px] font-bold leading-none text-sky-700 shadow-sm ring-1 ring-sky-100">
-                                      {post.sources.length}
-                                    </span>
-                                  </button>
-                                ) : null}
-
-                                <button
-                                  type="button"
-                                  onClick={() => void handleToggleLike(post.id)}
-                                  disabled={isLikingThis || !user}
-                                  className={`group inline-flex h-10 items-center gap-2 rounded-xl border px-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                    post.likedByMe
-                                      ? "border-rose-200 bg-rose-50 text-rose-700 shadow-[0_5px_14px_rgba(244,63,94,0.1)] hover:bg-rose-100"
-                                      : "border-transparent text-slate-700 hover:border-rose-100 hover:bg-rose-50/70 hover:text-rose-700"
-                                  }`}
-                                >
-                                  <span
-                                    className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition ${
-                                      post.likedByMe
-                                        ? "bg-rose-100 text-rose-600"
-                                        : "bg-slate-100 text-slate-500 group-hover:bg-rose-100 group-hover:text-rose-600"
-                                    }`}
-                                  >
-                                    {isLikingThis ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <Heart
-                                        className={`h-3.5 w-3.5 ${post.likedByMe ? "fill-current" : ""}`}
-                                      />
-                                    )}
-                                  </span>
-                                  <span>{post.likedByMe ? "Líbí se mi" : "Like"}</span>
-                                  <span className="inline-flex min-w-6 items-center justify-center rounded-lg bg-white px-1.5 py-1 text-[11px] font-bold leading-none text-current shadow-sm ring-1 ring-current/10">
-                                    {post.likeCount}
-                                  </span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleComments(post.id)}
-                                  className="group inline-flex h-10 items-center gap-2 rounded-xl border border-transparent px-2.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-100 hover:bg-indigo-50/70 hover:text-indigo-800"
-                                >
-                                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition group-hover:bg-indigo-100 group-hover:text-indigo-700">
-                                    <MessageSquare className="h-3.5 w-3.5" />
-                                  </span>
-                                  <span>{post.commentCount} komentářů</span>
-                                  {commentsExpanded ? (
-                                    <ChevronUp className="h-3.5 w-3.5 text-indigo-500" />
-                                  ) : (
-                                    <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition group-hover:text-indigo-500" />
-                                  )}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenCommentComposer(post.id)}
-                                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-700/80 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-3.5 text-sm font-bold text-white shadow-[0_8px_20px_rgba(5,150,105,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_11px_26px_rgba(5,150,105,0.3)] sm:ml-auto"
-                                >
-                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-white/15">
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </span>
-                                  Přidat komentář
-                                </button>
-                          </div>
+                      <footer className={styles.postFooter}>
+                        <div className={styles.socialActions}>
+                          <button type="button" onClick={() => void handleToggleLike(post.id)} disabled={isLikingThis || !user} aria-pressed={post.likedByMe} className={`${styles.quietButton} ${post.likedByMe ? styles.likedButton : ""}`}>
+                            {isLikingThis ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Heart size={16} className={post.likedByMe ? "fill-current" : ""} aria-hidden="true" />}
+                            Líbí se mi<span className={styles.actionCount}>{post.likeCount}</span>
+                          </button>
+                          <button type="button" onClick={() => handleToggleComments(post.id)} aria-expanded={commentsExpanded} className={styles.quietButton}>
+                            <MessageSquare size={16} aria-hidden="true" /><span>{post.commentCount} {post.commentCount === 1 ? "komentář" : post.commentCount > 1 && post.commentCount < 5 ? "komentáře" : "komentářů"}</span>
+                            {commentsExpanded ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+                          </button>
+                          <button type="button" onClick={() => handleOpenCommentComposer(post.id)} className={`${styles.quietButton} ${styles.commentButton}`}><Plus size={16} aria-hidden="true" />Přidat komentář</button>
+                          {post.sources.length > 0 && <button type="button" onClick={() => setSourcesModalPost(post)} className={styles.quietButton}><Link2 size={15} aria-hidden="true" />Zdroje<span className={styles.actionCount}>{post.sources.length}</span></button>}
                         </div>
+                        {personalActions(post)}
+                      </footer>
 
                       {commentsExpanded ? (
                         <div className="mt-3 rounded-2xl border border-slate-200/90 bg-[linear-gradient(150deg,rgba(248,250,252,0.95)_0%,rgba(255,255,255,0.95)_100%)] p-3">
@@ -3247,6 +2946,7 @@ export default function IntranetPage() {
 
             <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-6 sm:px-7 sm:py-8">
               <article className="mx-auto max-w-3xl">
+                {readerPost.important && <div className="mb-4"><span className={styles.importantBadge}><TriangleAlert size={15} aria-hidden="true" />Důležité</span></div>}
                 <h2
                   id="intranet-reader-title"
                   className="text-3xl font-black leading-[1.12] tracking-[-0.035em] text-slate-950 sm:text-4xl"
@@ -3443,659 +3143,136 @@ export default function IntranetPage() {
       ) : null}
 
       {postModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4">
-          <button
-            type="button"
-            className={`${styles.modalBackdrop} absolute inset-0 bg-slate-950/60 backdrop-blur-sm`}
-            onClick={closePostModal}
-            aria-label="Zavřít okno"
-          />
-
-          <div className={`${styles.modalPanel} relative z-10 w-full max-w-5xl overflow-hidden rounded-[32px] border border-white/80 bg-white/96 shadow-[0_34px_90px_rgba(2,6,23,0.48)] max-h-[92vh]`}>
-            <div className="grid max-h-[92vh] overflow-y-auto lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="p-4 sm:p-5 lg:p-6">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_24px_rgba(16,185,129,0.2)]">
-                      <PostModalIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold tracking-[-0.01em] text-slate-900">
-                        {isEditingPost ? "Upravit příspěvek" : "Přidat příspěvek"}
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        {isEditingPost ? "Uprav text, titulek nebo sekci." : "Sdílej update, otázku nebo tip."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={closePostModal}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                        Titulek
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {title.length}/{MAX_TITLE_LEN}
-                      </span>
-                    </div>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(event) => {
-                        setTitle(event.target.value.slice(0, MAX_TITLE_LEN));
-                        setPostError(null);
-                      }}
-                      placeholder="Nadpis příspěvku"
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                    />
-                  </label>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label htmlFor="intranet-post-text" className="text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                        Text
-                      </label>
-                      <span className="text-[11px] text-slate-400">
-                        {text.length}/{MAX_TEXT_LEN}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/85 p-1.5">
-                      <button
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={togglePostTextBold}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:bg-slate-100"
-                        title="Tučné písmo (⌘/Ctrl + B)"
-                        aria-label="Tučné písmo"
-                      >
-                        <span className="font-serif text-base font-bold">B</span>
-                        Tučně
-                      </button>
-                      <span className="hidden text-xs text-slate-500 sm:inline">
-                        Označ text a zvol Tučně.
-                      </span>
-                      <button
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => setEmojiOpen((prev) => !prev)}
-                        className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                        aria-expanded={emojiOpen}
-                        aria-controls="intranet-emoji-picker"
-                      >
-                        <Smile className="h-4 w-4" />
-                        Emoji
-                      </button>
-                    </div>
-                    <WallPostRichTextEditor
-                      id="intranet-post-text"
-                      ref={postTextEditorRef}
-                      value={text}
-                      maxLength={MAX_TEXT_LEN}
-                      onChange={(nextValue) => {
-                        setText(nextValue);
-                        setPostError(null);
-                      }}
-                      placeholder="Napiš text příspěvku..."
-                    />
-                  </div>
-
-                  {emojiOpen ? (
-                    <div
-                      id="intranet-emoji-picker"
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
-                    >
-                      <EmojiPicker
-                        onEmojiClick={handlePostEmojiClick}
-                        emojiStyle={EmojiStyle.NATIVE}
-                        lazyLoadEmojis
-                        searchPlaceholder="Hledat emoji"
-                        previewConfig={{ showPreview: false }}
-                        skinTonesDisabled
-                        width="100%"
-                        height={340}
-                      />
-                      <p className="px-1 pt-2 text-[11px] leading-4 text-slate-500">
-                        Kompletní Unicode emoji knihovna se na macOS zobrazí systémovým Apple vzhledem.
-                        Můžeš také použít systémový výběr klávesami ⌃⌘ Mezerník.
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <label className="block space-y-1.5">
-                    <span className="text-xs font-semibold uppercase tracking-[0.13em] text-slate-500">
-                      Sekce
-                    </span>
-                    <select
-                      value={postSection}
-                      onChange={(event) => setPostSection(event.target.value as IntranetSectionKey)}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                    >
-                      {INTRANET_SECTIONS.map((section) => (
-                        <option key={section.key} value={section.key}>
-                          {section.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="grid gap-3 rounded-2xl border border-violet-100 bg-[linear-gradient(145deg,#faf5ff_0%,#ffffff_100%)] p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                    <div>
-                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.13em] text-violet-800">
-                        <Pin className="h-3.5 w-3.5" />
-                        Důležitost příspěvku
-                      </div>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                        Připnuté příspěvky se v sekci zobrazí jako první.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={postPinned}
-                      onClick={() => setPostPinned((value) => !value)}
-                      className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
-                        postPinned
-                          ? "border-violet-700 bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.25)]"
-                          : "border-violet-200 bg-white text-violet-800 hover:bg-violet-50"
-                      }`}
-                    >
-                      <Pin className={`h-3.5 w-3.5 ${postPinned ? "fill-current" : ""}`} />
-                      {postPinned ? "Připnuto nahoře" : "Připnout nahoře"}
-                    </button>
-                    <label className="sm:col-span-2 block space-y-1.5 border-t border-violet-100 pt-3">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">
-                        <CalendarClock className="h-3.5 w-3.5" />
-                        Přečíst do (volitelné)
-                      </span>
-                      <input
-                        type="date"
-                        value={postReadByDay}
-                        onChange={(event) => setPostReadByDay(event.target.value)}
-                        className="w-full rounded-xl border border-violet-100 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
-                      />
-                    </label>
-                  </div>
-
-                  {!isEditingPost ? (
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.13em] text-emerald-700">
-                            <BarChart3 className="h-3.5 w-3.5" />
-                            Hlasování
-                          </div>
-                          <div className="mt-1 text-xs text-emerald-800/80">
-                            Jedna otázka, jedna volba na člověka.
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPollEnabled((prev) => !prev);
-                            setPostError(null);
-                          }}
-                          className={[
-                            "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
-                            pollEnabled
-                              ? "border-emerald-600 bg-emerald-600 text-white"
-                              : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50",
-                          ].join(" ")}
-                        >
-                          <Vote className="h-3.5 w-3.5" />
-                          {pollEnabled ? "Zapnuto" : "Přidat"}
-                        </button>
-                      </div>
-
-                      {pollEnabled ? (
-                        <div className="mt-3 space-y-2">
-                          <label className="block space-y-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
-                                Otázka
-                              </span>
-                              <span className="text-[11px] text-emerald-800/60">
-                                {pollQuestion.length}/{MAX_POLL_QUESTION_LEN}
-                              </span>
-                            </div>
-                            <input
-                              type="text"
-                              value={pollQuestion}
-                              onChange={(event) => {
-                                setPollQuestion(event.target.value.slice(0, MAX_POLL_QUESTION_LEN));
-                                setPostError(null);
-                              }}
-                              placeholder="Na co se chceš zeptat?"
-                              className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                            />
-                          </label>
-
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">
-                                Možnosti
-                              </span>
-                              <span className="text-[11px] text-emerald-800/60">
-                                {pollOptions.length}/{MAX_POLL_OPTIONS}
-                              </span>
-                            </div>
-
-                            {pollOptions.map((option, index) => (
-                              <div key={`poll-option-${index}`} className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={option}
-                                  onChange={(event) => updatePollOption(index, event.target.value)}
-                                  placeholder={`Možnost ${index + 1}`}
-                                  className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removePollOption(index)}
-                                  disabled={pollOptions.length <= MIN_POLL_OPTIONS}
-                                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label={`Odebrat možnost ${index + 1}`}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-
-                            <button
-                              type="button"
-                              onClick={addPollOption}
-                              disabled={pollOptions.length >= MAX_POLL_OPTIONS}
-                              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Přidat možnost
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : editingPost.poll ? (
-                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-xs font-semibold text-emerald-800">
-                      Tento příspěvek má anketu. Otázky a možnosti se po publikování nemění, aby výsledky zůstaly férové.
-                    </div>
-                  ) : null}
-
-                  {postError ? (
-                    <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-                      {postError}
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={handleSavePost}
-                    disabled={posting || !user}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700 bg-[linear-gradient(135deg,#16a34a_0%,#047857_100%)] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_42px_rgba(5,150,105,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(5,150,105,0.36)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    {isEditingPost ? "Uložit úpravy" : "Publikovat příspěvek"}
-                  </button>
-                </div>
+        <div className={styles.composerOverlay}>
+          <button type="button" className={`${styles.modalBackdrop} ${styles.composerBackdrop}`} onClick={closePostModal} aria-label="Zavřít okno" tabIndex={-1} />
+          <div ref={postComposerRef} role="dialog" aria-modal="true" aria-labelledby="intranet-composer-title" aria-describedby="intranet-composer-description" className={`${styles.modalPanel} ${styles.composer}`}>
+            <header className={styles.composerHeader}>
+              <span className={styles.composerHeaderIcon}><PostModalIcon size={23} aria-hidden="true" /></span>
+              <div>
+                <span className={styles.composerEyebrow}>INTRANET</span>
+                <h3 id="intranet-composer-title">{isEditingPost ? "Upravit příspěvek" : "Přidat příspěvek"}</h3>
+                <p id="intranet-composer-description">{isEditingPost ? "Dolaď obsah a nastavení příspěvku." : "Sdílej s kolegy novinky, zkušenosti nebo otázku."}</p>
               </div>
+              <button type="button" onClick={closePostModal} disabled={posting} className={styles.composerClose} aria-label="Zavřít editor příspěvku"><X size={20} aria-hidden="true" /></button>
+            </header>
 
-              <div className="border-t border-slate-200/80 bg-[linear-gradient(160deg,#f8fafc_0%,#eef6ff_100%)] p-4 sm:p-5 lg:border-l lg:border-t-0 lg:p-6">
-                <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-white/85 border-slate-300">
-                  <SelectedPostIcon className="h-3.5 w-3.5" />
-                  {INTRANET_SECTION_LABEL_BY_KEY.get(postSection) ?? postSection}
-                </div>
-
-                <h4 className="text-sm font-semibold uppercase tracking-[0.13em] text-slate-500">Přílohy</h4>
-
-                {isEditingPost ? (
-                  <>
-                    <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                      <input
-                        ref={replaceAttachmentInputRef}
-                        type="file"
-                        onChange={(event) => handleReplaceAttachmentFile(event.target.files)}
-                        className="hidden"
-                      />
-                      {editingPost.attachments.length > 0 ? (
-                        editingPost.attachments.map((attachment) => {
-                          const isRemoved = removedAttachmentIdSet.has(attachment.id);
-                          const replacementFile = replacementFilesByAttachmentId[attachment.id];
-                          const attachmentIsPdf = isPdfAttachment(attachment);
-                          const ExistingAttachmentIcon = attachment.isImage
-                            ? ImageIcon
-                            : attachmentIsPdf
-                              ? FileText
-                              : Paperclip;
-
-                          return (
-                            <div
-                              key={attachment.id}
-                              className={[
-                                "rounded-xl border p-2 text-xs transition",
-                                isRemoved
-                                  ? "border-amber-200 bg-amber-50/80"
-                                  : "border-slate-200 bg-white",
-                              ].join(" ")}
-                            >
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <div
-                                    className={[
-                                      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
-                                      attachmentIsPdf
-                                        ? "border-red-200 bg-red-50 text-red-700"
-                                        : "border-slate-200 bg-slate-50 text-slate-600",
-                                    ].join(" ")}
-                                  >
-                                    <ExistingAttachmentIcon className="h-4 w-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="truncate font-bold text-slate-800">
-                                      {attachment.name}
-                                    </div>
-                                    <div className="mt-0.5 text-[11px] font-medium text-slate-500">
-                                      {attachment.contentType} • {formatBytes(attachment.sizeBytes)}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                                  {!isRemoved ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleOpenAttachment(attachment)}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                                    >
-                                      <ExistingAttachmentIcon className="h-3.5 w-3.5" />
-                                      Náhled
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleReplaceAttachmentClick(attachment.id)}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100"
-                                  >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    {replacementFile ? "Změnit" : "Nahradit"}
-                                  </button>
-                                  {isRemoved ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUndoExistingAttachmentChange(attachment.id)}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                      Vrátit
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveExistingAttachment(attachment.id)}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                      Odebrat
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {replacementFile ? (
-                                <div className="mt-2 rounded-lg border border-sky-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-sky-700">
-                                  Nový soubor: {replacementFile.name} •{" "}
-                                  {formatBytes(replacementFile.size)}
-                                </div>
-                              ) : isRemoved ? (
-                                <div className="mt-2 rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-amber-700">
-                                  Příloha bude po uložení odebraná.
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="text-xs text-slate-500">Bez příloh.</div>
-                      )}
-                    </div>
-
-                    <div
-                      className={[
-                        styles.dropzone,
-                        isDraggingFiles ? styles.dropzoneActive : "",
-                        "mt-3 space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-3 transition",
-                      ].join(" ")}
-                      onDragEnter={handleDropZoneDragEnter}
-                      onDragOver={handleDropZoneDragOver}
-                      onDragLeave={handleDropZoneDragLeave}
-                      onDrop={handleDropZoneDrop}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={attachmentSlotsAvailable <= 0}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Paperclip className="h-3.5 w-3.5" />
-                          Dohrát přílohu
-                        </button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          onChange={(event) => handleFileAdd(event.target.files)}
-                          className="hidden"
-                        />
-                        <span className="text-xs text-slate-500">
-                          Volná místa: {attachmentSlotsAvailable}
-                        </span>
-                      </div>
-                      <div className={styles.dropzoneHint}>
-                        {attachmentSlotsAvailable <= 0
-                          ? `Limit ${MAX_FILES} příloh je vyčerpaný.`
-                          : isDraggingFiles
-                            ? "Pusť soubory sem a přidám je k přílohám."
-                            : "Přetáhni nové soubory sem nebo klikni na Dohrát přílohu."}
-                      </div>
-
-                      {files.length > 0 ? (
-                        <div className="space-y-2">
-                          {files.map((file, index) => {
-                            const key = filePreviewKey(file, index);
-                            const previewUrl = filePreviewUrls[key];
-                            const showPreview = isPreviewableImage(file) && !!previewUrl;
-
-                            return (
-                              <div key={key} className="rounded-xl border border-slate-300 bg-white p-2 text-xs">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate font-semibold text-slate-800">{file.name}</div>
-                                    <div className="text-slate-500">{formatBytes(file.size)}</div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveFile(index)}
-                                    className="rounded-lg border border-slate-300 p-1 text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-                                    aria-label={`Odebrat soubor ${file.name}`}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-
-                                {showPreview ? (
-                                  <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={previewUrl}
-                                      alt={`Náhled ${file.name}`}
-                                      className="h-32 w-full object-cover"
-                                    />
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-500">Zatím nejsou vybrané nové přílohy.</div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-1 text-xs text-slate-600">PNG/JPG/JPEG zobrazí náhled přímo ve formuláři.</p>
-
-                    <div
-                      className={[
-                        styles.dropzone,
-                        isDraggingFiles ? styles.dropzoneActive : "",
-                        "mt-3 space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white/80 p-3 transition",
-                      ].join(" ")}
-                      onDragEnter={handleDropZoneDragEnter}
-                      onDragOver={handleDropZoneDragOver}
-                      onDragLeave={handleDropZoneDragLeave}
-                      onDrop={handleDropZoneDrop}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-100"
-                        >
-                          <Paperclip className="h-3.5 w-3.5" />
-                          Přidat soubor
-                        </button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          onChange={(event) => handleFileAdd(event.target.files)}
-                          className="hidden"
-                        />
-                        <span className="text-xs text-slate-500">Max {MAX_FILES} souborů</span>
-                      </div>
-                      <div className={styles.dropzoneHint}>
-                        {isDraggingFiles
-                          ? "Pusť soubory sem a přidám je do příloh."
-                          : "Přetáhni soubory sem nebo klikni na Přidat soubor."}
-                      </div>
-
-                      {files.length > 0 ? (
-                        <div className="space-y-2">
-                          {files.map((file, index) => {
-                            const key = filePreviewKey(file, index);
-                            const previewUrl = filePreviewUrls[key];
-                            const showPreview = isPreviewableImage(file) && !!previewUrl;
-
-                            return (
-                              <div key={key} className="rounded-xl border border-slate-300 bg-white p-2 text-xs">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate font-semibold text-slate-800">{file.name}</div>
-                                    <div className="text-slate-500">{formatBytes(file.size)}</div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveFile(index)}
-                                    className="rounded-lg border border-slate-300 p-1 text-slate-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-                                    aria-label={`Odebrat soubor ${file.name}`}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-
-                                {showPreview ? (
-                                  <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={previewUrl}
-                                      alt={`Náhled ${file.name}`}
-                                      className="h-32 w-full object-cover"
-                                    />
-                                  </div>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-slate-500">Zatím bez příloh.</div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                <div className="mt-5 border-t border-slate-200 pt-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h4 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.13em] text-slate-500">
-                        <Link2 className="h-4 w-4" />
-                        Zdroje
-                      </h4>
-                      <p className="mt-1 text-xs leading-5 text-slate-600">
-                        Přidej odkazy, ze kterých příspěvek čerpá.
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
-                      {postSources.length}/{INTRANET_WALL_MAX_SOURCES}
-                    </span>
+            <div className={styles.composerScroll}>
+              <div className={styles.composerColumns}>
+                <div className={styles.composerMain}>
+                  <div className={styles.composerField}>
+                    <div className={styles.composerLabelRow}><label htmlFor="intranet-post-title">Titulek</label><span>{title.length}/{MAX_TITLE_LEN}</span></div>
+                    <input id="intranet-post-title" type="text" value={title} maxLength={MAX_TITLE_LEN} onChange={event => { setTitle(event.target.value.slice(0, MAX_TITLE_LEN)); setPostError(null); }} placeholder="Co by kolegové měli vědět?" className={`${styles.composerInput} ${styles.composerTitleInput}`} />
                   </div>
 
-                  {postSources.length > 0 ? (
-                    <div className="mt-3 space-y-2">
-                      {postSources.map((source, index) => (
-                        <div key={`post-source-${index}`} className="flex items-center gap-2">
-                          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-xs font-bold text-sky-700">
-                            {index + 1}
-                          </span>
-                          <input
-                            type="url"
-                            inputMode="url"
-                            autoComplete="url"
-                            value={source}
-                            maxLength={INTRANET_WALL_SOURCE_MAX_URL_LENGTH}
-                            onChange={(event) => updatePostSource(index, event.target.value)}
-                            placeholder="https://www.example.cz/clanek"
-                            aria-label={`Zdroj ${index + 1}`}
-                            className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePostSource(index)}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 transition hover:bg-red-100"
-                            aria-label={`Odebrat zdroj ${index + 1}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                  <div className={styles.composerField}>
+                    <div className={styles.composerLabelRow}><label htmlFor="intranet-post-text">Text příspěvku</label><span>{text.length}/{MAX_TEXT_LEN}</span></div>
+                    <div className={styles.composerEditor}>
+                      <div className={styles.composerToolbar}>
+                        <button type="button" onMouseDown={event => event.preventDefault()} onClick={togglePostTextBold} title="Tučné písmo (⌘/Ctrl + B)" aria-label="Tučné písmo"><strong className="font-serif text-base">B</strong>Tučně</button>
+                        <span>Označ text, který chceš zvýraznit.</span>
+                        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => setEmojiOpen(value => !value)} aria-expanded={emojiOpen} aria-controls="intranet-emoji-picker"><Smile size={16} aria-hidden="true" />Emoji</button>
+                      </div>
+                      <WallPostRichTextEditor id="intranet-post-text" ref={postTextEditorRef} value={text} maxLength={MAX_TEXT_LEN} onChange={value => { setText(value); setPostError(null); }} placeholder="Napiš, co chceš s ostatními sdílet…" />
                     </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white/70 px-3 py-2.5 text-xs text-slate-500">
-                      Zatím bez zdrojů.
-                    </div>
-                  )}
+                    {emojiOpen && <div id="intranet-emoji-picker" className={styles.composerEmoji}>
+                      <EmojiPicker onEmojiClick={handlePostEmojiClick} emojiStyle={EmojiStyle.NATIVE} lazyLoadEmojis searchPlaceholder="Hledat emoji" previewConfig={{ showPreview: false }} skinTonesDisabled width="100%" height={300} />
+                    </div>}
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={addPostSource}
-                    disabled={postSources.length >= INTRANET_WALL_MAX_SOURCES}
-                    className="mt-3 inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Přidat zdroj
-                  </button>
+                  <section className={styles.composerSection} aria-label="Zdroje příspěvku">
+                    <div className={styles.composerSectionHeading}>
+                      <h4><Link2 size={16} aria-hidden="true" />Zdroje<span>{postSources.length}/{INTRANET_WALL_MAX_SOURCES}</span></h4>
+                      <button type="button" onClick={addPostSource} disabled={postSources.length >= INTRANET_WALL_MAX_SOURCES} className={styles.composerTextButton}><Plus size={14} aria-hidden="true" />Přidat zdroj</button>
+                    </div>
+                    {postSources.length > 0 ? <div className={styles.composerStack}>
+                      {postSources.map((source, index) => <div key={`post-source-${index}`} className={styles.composerSourceRow}>
+                        <input type="url" inputMode="url" autoComplete="url" value={source} maxLength={INTRANET_WALL_SOURCE_MAX_URL_LENGTH} onChange={event => updatePostSource(index, event.target.value)} placeholder="https://www.example.cz/clanek" aria-label={`Zdroj ${index + 1}`} className={styles.composerInput} />
+                        <button type="button" onClick={() => removePostSource(index)} className={styles.composerRemove} aria-label={`Odebrat zdroj ${index + 1}`}><Trash2 size={15} aria-hidden="true" /></button>
+                      </div>)}
+                    </div> : <p className={styles.composerHint}>Připoj odkazy na podklady, ze kterých příspěvek čerpá.</p>}
+                  </section>
+
+                  {!isEditingPost ? <section className={styles.composerSection} aria-label="Hlasování">
+                    <div className={styles.composerSectionHeading}>
+                      <h4><BarChart3 size={16} aria-hidden="true" />Hlasování</h4>
+                      <button type="button" role="switch" aria-label="Přidat hlasování" aria-checked={pollEnabled} onClick={() => { setPollEnabled(value => !value); setPostError(null); }} className={styles.composerTextButton}><Vote size={15} aria-hidden="true" />{pollEnabled ? "Zapnuto" : "Přidat"}</button>
+                    </div>
+                    {pollEnabled ? <div className={styles.composerPoll}>
+                      <label className={styles.composerField}>Otázka<input type="text" value={pollQuestion} maxLength={MAX_POLL_QUESTION_LEN} onChange={event => { setPollQuestion(event.target.value); setPostError(null); }} placeholder="Na co se chceš zeptat?" className={styles.composerInput} /></label>
+                      <div className={styles.composerStack}>
+                        {pollOptions.map((option, index) => <div key={`poll-option-${index}`} className={styles.composerSourceRow}>
+                          <input type="text" value={option} maxLength={MAX_POLL_OPTION_LEN} onChange={event => updatePollOption(index, event.target.value)} placeholder={`Možnost ${index + 1}`} aria-label={`Možnost ${index + 1}`} className={styles.composerInput} />
+                          <button type="button" onClick={() => removePollOption(index)} disabled={pollOptions.length <= MIN_POLL_OPTIONS} className={styles.composerRemove} aria-label={`Odebrat možnost ${index + 1}`}><Trash2 size={15} aria-hidden="true" /></button>
+                        </div>)}
+                      </div>
+                      <button type="button" onClick={addPollOption} disabled={pollOptions.length >= MAX_POLL_OPTIONS} className={styles.composerTextButton}><Plus size={14} aria-hidden="true" />Přidat možnost</button>
+                    </div> : <p className={styles.composerHint}>Zapoj kolegy jednou otázkou s výběrem odpovědi.</p>}
+                  </section> : editingPost.poll ? <p className={styles.composerPollNote}><BarChart3 size={17} aria-hidden="true" />Příspěvek obsahuje hlasování. Otázku a možnosti po zveřejnění nelze měnit.</p> : null}
                 </div>
+
+                <aside className={styles.composerAside} aria-label="Nastavení příspěvku">
+                  <section className={styles.composerSettings}>
+                    <div className={styles.composerSectionHeading}><h4><SelectedPostIcon size={16} aria-hidden="true" />Publikování</h4></div>
+                    <div className={styles.composerField}><label htmlFor="intranet-post-section">Kategorie</label><select id="intranet-post-section" value={postSection} onChange={event => setPostSection(event.target.value as IntranetSectionKey)} className={styles.composerInput}>
+                      {INTRANET_SECTIONS.map(section => <option key={section.key} value={section.key}>{section.label}</option>)}
+                    </select></div>
+
+                    <button type="button" role="switch" aria-label="Označit jako důležité" aria-checked={postImportant} onClick={() => setPostImportant(value => !value)} className={styles.composerImportantToggle}>
+                      <TriangleAlert size={21} aria-hidden="true" /><span><strong>Důležité</strong><small>Výrazný odznak s výstrahou u příspěvku.</small></span><span className={styles.composerSwitch} aria-hidden="true" />
+                    </button>
+                    <button type="button" role="switch" aria-label="Připnout nahoře" aria-checked={postPinned} onClick={() => setPostPinned(value => !value)} className={styles.composerPinToggle}>
+                      <Pin size={17} aria-hidden="true" /><span><strong>Připnout nahoře</strong><small>Přednostní zobrazení v sekci.</small></span><span className={styles.composerSwitch} aria-hidden="true" />
+                    </button>
+                    <label className={styles.composerField}><span className={styles.composerOptionalLabel}><CalendarClock size={14} aria-hidden="true" />Přečíst do <small>volitelné</small></span><input type="date" value={postReadByDay} onChange={event => setPostReadByDay(event.target.value)} className={styles.composerInput} /></label>
+                  </section>
+
+                  <section className={styles.composerSection} aria-label="Přílohy příspěvku">
+                    <div className={styles.composerSectionHeading}><h4><Paperclip size={16} aria-hidden="true" />Přílohy<span>{pendingExistingAttachmentCount + files.length}/{MAX_FILES}</span></h4></div>
+                    <input ref={replaceAttachmentInputRef} type="file" onChange={event => handleReplaceAttachmentFile(event.target.files)} className="hidden" />
+                    {editingPost && editingPost.attachments.length > 0 && <div className={styles.composerStack}>
+                      {editingPost.attachments.map(attachment => {
+                        const isRemoved = removedAttachmentIdSet.has(attachment.id);
+                        const replacement = replacementFilesByAttachmentId[attachment.id];
+                        const AttachmentIcon = attachment.isImage ? ImageIcon : FileText;
+                        return <div key={attachment.id} className={styles.composerAttachment} data-removed={isRemoved}>
+                          <div className={styles.composerAttachmentInfo}><span className={styles.composerFileIcon}><AttachmentIcon size={18} aria-hidden="true" /></span><div><strong title={attachment.name}>{attachment.name}</strong><small>{attachment.isImage ? "Obrázek" : isPdfAttachment(attachment) ? "PDF" : "Soubor"} · {formatBytes(attachment.sizeBytes)}</small></div></div>
+                          <div className={styles.composerAttachmentActions}>
+                            {!isRemoved && <button type="button" onClick={() => void handleOpenAttachment(attachment)}><Maximize2 size={12} aria-hidden="true" />Náhled</button>}
+                            <button type="button" onClick={() => handleReplaceAttachmentClick(attachment.id)}><RefreshCw size={12} aria-hidden="true" />{replacement ? "Změnit" : "Nahradit"}</button>
+                            {isRemoved ? <button type="button" onClick={() => handleUndoExistingAttachmentChange(attachment.id)}><X size={12} aria-hidden="true" />Vrátit</button> : <button type="button" onClick={() => handleRemoveExistingAttachment(attachment.id)}><Trash2 size={12} aria-hidden="true" />Odebrat</button>}
+                          </div>
+                          {replacement ? <p className={styles.composerFileChange}>Nový soubor: {replacement.name} · {formatBytes(replacement.size)}</p> : isRemoved ? <p className={styles.composerFileChange}>Po uložení bude příloha odebraná.</p> : null}
+                        </div>;
+                      })}
+                    </div>}
+                    <div className={`${styles.composerDropzone} ${isDraggingFiles ? styles.composerDropzoneActive : ""}`} onDragEnter={handleDropZoneDragEnter} onDragOver={handleDropZoneDragOver} onDragLeave={handleDropZoneDragLeave} onDrop={handleDropZoneDrop}>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={attachmentSlotsAvailable <= 0} aria-label="Přidat soubor">
+                        <span><UploadCloud size={23} aria-hidden="true" /></span><strong>{isDraggingFiles ? "Pusť soubory sem" : "Přetáhni soubory nebo vyber"}</strong><small>{attachmentSlotsAvailable <= 0 ? `Limit ${MAX_FILES} příloh je vyčerpaný.` : "Obrázky, PDF a další dokumenty"}</small>
+                      </button>
+                      <input ref={fileInputRef} type="file" multiple onChange={event => handleFileAdd(event.target.files)} className="hidden" />
+                    </div>
+                    {files.length > 0 && <div className={styles.composerStack}>
+                      {files.map((file, index) => {
+                        const key = filePreviewKey(file, index);
+                        const previewUrl = filePreviewUrls[key];
+                        return <div key={key} className={styles.composerAttachment}>
+                          <div className={styles.composerAttachmentInfo}><span className={styles.composerFileIcon}>{isPreviewableImage(file) ? <ImageIcon size={18} aria-hidden="true" /> : <FileText size={18} aria-hidden="true" />}</span><div><strong title={file.name}>{file.name}</strong><small>{formatBytes(file.size)} · Nová příloha</small></div><button type="button" onClick={() => handleRemoveFile(index)} className={styles.composerRemove} aria-label={`Odebrat soubor ${file.name}`}><X size={15} aria-hidden="true" /></button></div>
+                          {isPreviewableImage(file) && previewUrl && <div className={styles.composerFilePreview}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={previewUrl} alt={`Náhled ${file.name}`} />
+                          </div>}
+                        </div>;
+                      })}
+                    </div>}
+                  </section>
+                </aside>
               </div>
             </div>
+
+            <footer className={styles.composerFooter}>
+              <div className={styles.composerFooterInfo}>{postError ? <p role="alert"><TriangleAlert size={16} aria-hidden="true" />{postError}</p> : <><span>{INTRANET_SECTION_LABEL_BY_KEY.get(postSection)}</span>{postImportant && <span className={styles.importantBadge}><TriangleAlert size={13} aria-hidden="true" />Důležité</span>}{postPinned && <span><Pin size={13} aria-hidden="true" />Připnuto</span>}</>}</div>
+              <div className={styles.composerFooterActions}><button type="button" onClick={closePostModal} disabled={posting} className={styles.secondaryButton}>Zrušit</button><button type="button" onClick={() => void handleSavePost()} disabled={posting || !user} className={styles.primaryButton}>{posting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}{posting ? "Ukládám…" : isEditingPost ? "Uložit úpravy" : "Publikovat příspěvek"}</button></div>
+            </footer>
           </div>
         </div>
       ) : null}

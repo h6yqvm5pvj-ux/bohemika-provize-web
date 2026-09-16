@@ -239,6 +239,44 @@ describe("statement contract detail frame policy", () => {
   });
 });
 
+describe("tip detail and ARES frame policy", () => {
+  const paths = ["/tipy/test-tip?embedded=1", "/pomucky/ares?ico=12345678&embed=1"];
+
+  it.each(["0", "1"])("allows embedded tip views only inside the same app with strict enforcement %s", async (strict) => {
+    vi.stubEnv("CSP_STRICT_ENFORCE", strict);
+    const cookie = await issue();
+    for (const path of paths) {
+      const response = await middleware(request(path, cookie.value));
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+      expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+      if (strict === "0") expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
+      expect(response.headers.get("Cache-Control")).toContain("private, no-store");
+    }
+  });
+
+  it("keeps regular pages and unrelated embedded routes protected from framing", async () => {
+    const cookie = await issue();
+    for (const path of ["/tipy", "/tipy/test-tip", "/tipy?embedded=1", "/tipy/test-tip/other?embedded=1", "/pomucky/ares", "/pomucky/ares-other?embed=1", "/sin-slavy?embedded=1"]) {
+      const response = await middleware(request(path, cookie.value));
+      expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+      expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+    }
+  });
+
+  it.each(["missing", "revoked"])("requires an active session for both embedded views (%s)", async (kind) => {
+    const cookie = await issue();
+    if (kind === "revoked") mocks.store.get(sessionPath("current"))!.revokedAtMs = nowMs;
+    for (const path of paths) {
+      const response = await middleware(request(path, kind === "missing" ? undefined : cookie.value));
+      expect(response.status).toBe(307);
+      expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+      expect(new URL(response.headers.get("location")!).searchParams.get("next")).toBe(path);
+      expect(response.headers.get("x-middleware-next")).toBeNull();
+    }
+  });
+});
+
 describe("fresh reauthentication for signing out other devices", () => {
   it("cannot turn a bearer token without a matching cookie into a new session", async () => {
     for (const action of ["prepareRevokeOthers", "revokeOthers"]) {

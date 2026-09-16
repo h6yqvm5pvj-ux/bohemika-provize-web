@@ -124,6 +124,7 @@ type WallPost = WallPersonalState & {
   createdAtMs: number | null;
   updatedAtMs: number | null;
   pinned: boolean;
+  important: boolean;
   acceptedCommentId: string | null;
   readByDay: string | null;
   commentCount: number;
@@ -914,6 +915,7 @@ function mapPostFromDoc(
     createdAtMs: toMillis(raw.createdAt),
     updatedAtMs: toMillis(raw.updatedAt),
     pinned: raw.pinned === true,
+    important: raw.important === true,
     readByDay: (() => {
       const value = normalizeText(raw.readByDay);
       return isIsoDay(value) ? value : null;
@@ -1127,6 +1129,7 @@ export async function POST(req: NextRequest) {
   const section = parseSection(sectionInput) ?? "obecne";
   const pollEnabled = normalizeText(form.get("pollEnabled")) === "1";
   const pinned = normalizeText(form.get("pinned")) === "1";
+  const important = normalizeText(form.get("important")) === "1";
   const readByDayRaw = normalizeText(form.get("readByDay"));
   const readByDay = readByDayRaw || null;
   const pollQuestion = normalizeText(form.get("pollQuestion")).slice(0, POLL_QUESTION_MAX_LEN);
@@ -1307,6 +1310,7 @@ export async function POST(req: NextRequest) {
       likeCount: 0,
       likedByEmails: [],
       pinned,
+      important,
       readByDay,
       createdAt: timestamp,
       updatedAt: timestamp,

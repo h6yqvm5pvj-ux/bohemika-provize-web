@@ -340,7 +340,7 @@ function buildRecommendation(
   const texts: string[] = [];
 
   selected.forEach((benefit) => {
-    // Speciální případ: Kooperativa FLEXI umí u PN od 15. dne zpětně jen pro úraz.
+    // Speciální případ: Kooperativa Životní pojištění FLEXI umí u PN od 15. dne zpětně jen pro úraz.
     if (
       productKey === "kooperativaFlexi" &&
       benefit.key === "sickLeave" &&
@@ -747,11 +747,11 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
 
       const productTexts = [
         {
-          label: "ČPP NEON Life / Risk",
+          label: "ČPP Životní pojištění NEON Life / Risk",
           text: buildRecommendation("cppNeon", selectedBenefits),
         },
         {
-          label: "KOOPERATIVA FLEXI",
+          label: "Kooperativa Životní pojištění FLEXI",
           text: buildRecommendation("kooperativaFlexi", selectedBenefits),
         },
         {

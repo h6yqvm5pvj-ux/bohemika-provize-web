@@ -128,7 +128,7 @@ import type {
 } from "./contractsPageTypes";
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
-const CONTRACT_SEARCH_DEBOUNCE_MS = 280;
+const CONTRACT_SEARCH_DEBOUNCE_MS = 200;
 const CONTRACT_SEARCH_CACHE_TTL_MS = 60_000;
 const CONTRACT_SEARCH_CACHE_MAX_ENTRIES = 24;
 const GOLD_PRODUCT: Product = "comfortcc";
@@ -472,6 +472,7 @@ function ContractsPageContent() {
   const pendingScrollRestoreRef = useRef<number | null>(null);
   const refreshInFlightRef = useRef<{
     scopeEmail: string;
+    viewRevision: number;
     promise: Promise<void>;
   } | null>(null);
   const lastSilentRefreshAtRef = useRef(0);
@@ -507,6 +508,7 @@ function ContractsPageContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const serverFilterRequestRef = useRef(0);
+  const dataViewRevisionRef = useRef(0);
   const previousServerFilterActiveRef = useRef(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -532,8 +534,6 @@ function ContractsPageContent() {
   const [selectedPositions, setSelectedPositions] = useState<Set<Position>>(new Set());
   const [selectedSubordinates, setSelectedSubordinates] = useState<Set<string>>(new Set());
   const [listMicroAnimating, setListMicroAnimating] = useState(false);
-  const [searchProgress, setSearchProgress] = useState(0);
-  const [searchProgressVisible, setSearchProgressVisible] = useState(false);
   const [commissionAuditFilterPending, setCommissionAuditFilterPending] =
     useState(false);
   const [contractDetailWindow, setContractDetailWindow] =
@@ -543,7 +543,6 @@ function ContractsPageContent() {
   const [contractActionToast, setContractActionToast] =
     useState<ContractActionToastState | null>(null);
   const contractsListRef = useRef<HTMLDivElement | null>(null);
-  const searchProgressHideTimerRef = useRef<number | null>(null);
   const contractActionToastTimerRef = useRef<number | null>(null);
   const searchResponseCacheRef = useRef(
     new Map<string, { expiresAt: number; data: ContractsApiResponse }>()
@@ -558,9 +557,10 @@ function ContractsPageContent() {
   const shouldRestoreView = searchParams?.get("restore") === "1";
   const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
   const normalizedUserEmail = useEffectiveUserEmail(user?.email);
-  const hasImmediateSearchQuery = normalizeSearchValue(searchText).length > 0;
-  const hasSearchQuery = normalizeSearchValue(debouncedSearchText).length > 0;
-  const searchDebouncePending = searchText !== debouncedSearchText;
+  const normalizedSearchText = normalizeSearchValue(searchText);
+  const hasImmediateSearchQuery = normalizedSearchText.length > 0;
+  const hasSearchQuery = debouncedSearchText.length > 0;
+  const searchDebouncePending = normalizedSearchText !== debouncedSearchText;
   const canShowTeamToggle =
     isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
   const anniversaryModeActive =
@@ -599,10 +599,10 @@ function ContractsPageContent() {
     }
 
     const timer = window.setTimeout(() => {
-      setDebouncedSearchText(searchText);
+      setDebouncedSearchText(normalizedSearchText);
     }, CONTRACT_SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [searchText, hasImmediateSearchQuery]);
+  }, [normalizedSearchText, hasImmediateSearchQuery]);
 
   useEffect(() => {
     searchResponseCacheRef.current.clear();
@@ -664,6 +664,10 @@ function ContractsPageContent() {
       selectedSubordinateList,
     ]
   );
+
+  // Unfiltered refreshes contain both portfolios, so switching tabs keeps them valid.
+  const dataViewKey = JSON.stringify([normalizedUserEmail, serverFilterActive && showTeam, normalizedSearchText, activeListFilters]);
+  useEffect(() => { dataViewRevisionRef.current += 1; }, [dataViewKey]);
 
   const mergeContracts = <T extends { id: string }>(prev: T[], next: T[]): T[] => {
     const seen = new Set(prev.map((c) => c.id));
@@ -830,6 +834,11 @@ function ContractsPageContent() {
   );
 
   const applyContractsMetadata = useCallback((data: ContractsApiResponse) => {
+    if (data.teamEmails) {
+      teamUsersRef.current = data.teamEmails.map(normalizeEmail).filter(Boolean).map(email => ({
+        id: email, email, position: null, managerEmail: null,
+      }));
+    }
     if (data.availablePositions) setAvailablePositions(normalizeCareerPositions(data.availablePositions));
     if (data.position !== undefined) setCurrentUserPosition(data.position);
     if (typeof data.canTransferContracts === "boolean") {
@@ -865,7 +874,6 @@ function ContractsPageContent() {
         filters,
         signal,
       });
-      applyContractsMetadata(data);
       const list = (data.contracts as ContractDoc[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -877,6 +885,7 @@ function ContractsPageContent() {
         return { list, oldest, hasMore };
       }
 
+      applyContractsMetadata(data);
       setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setMyHasMore(hasMore);
       setMyCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
@@ -913,7 +922,6 @@ function ContractsPageContent() {
         filters,
         signal,
       });
-      applyContractsMetadata(data);
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
       const oldest = getOldestContractDate(list);
       const hasMore = Boolean(data.hasMore);
@@ -925,6 +933,7 @@ function ContractsPageContent() {
         return { list, oldest, hasMore };
       }
 
+      applyContractsMetadata(data);
       setTeamContracts((prev) => (append ? mergeContracts(prev, list) : list));
       setTeamHasMore(hasMore);
       setTeamCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
@@ -986,7 +995,8 @@ function ContractsPageContent() {
       if (silent && Date.now() - lastSilentRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
         return;
       }
-      if (refreshInFlightRef.current?.scopeEmail === email) {
+      const viewRevision = dataViewRevisionRef.current;
+      if (refreshInFlightRef.current?.scopeEmail === email && refreshInFlightRef.current.viewRevision === viewRevision) {
         if (!silent) {
           await refreshInFlightRef.current.promise;
         }
@@ -998,10 +1008,15 @@ function ContractsPageContent() {
         try {
           const data = await apiFetchContracts({ scope: "my", includeTeam: true });
           if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
+          // The initial response still supplies team navigation metadata, but
+          // must not replace a search that completed while it was loading.
+          applyContractsMetadata(data);
+          if (dataViewRevisionRef.current !== viewRevision) return;
           applyContractsPayload(email, data);
         } catch (e) {
           if ((e as { name?: string } | null)?.name === "AbortError") return;
           if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
+          if (dataViewRevisionRef.current !== viewRevision) return;
           const msg = getErrorMessage(e, "Nepodařilo se načíst nejnovější smlouvy.");
           if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
             console.warn("Dočasný výpadek sítě při načítání smluv:", msg);
@@ -1010,13 +1025,13 @@ function ContractsPageContent() {
           }
           setLoadError(msg);
         } finally {
-          if (!silent && effectiveUserEmail(auth.currentUser?.email) === email) {
+          if (!silent && effectiveUserEmail(auth.currentUser?.email) === email && dataViewRevisionRef.current === viewRevision) {
             setLoading(false);
           }
         }
       })();
 
-      refreshInFlightRef.current = { scopeEmail: email, promise: task };
+      refreshInFlightRef.current = { scopeEmail: email, viewRevision, promise: task };
       try {
         await task;
       } finally {
@@ -1028,7 +1043,7 @@ function ContractsPageContent() {
         }
       }
     },
-    [normalizedUserEmail, user, apiFetchContracts, applyContractsPayload, serverFilterActive]
+    [normalizedUserEmail, user, apiFetchContracts, applyContractsPayload, applyContractsMetadata, serverFilterActive]
   );
 
   // auth
@@ -1121,6 +1136,8 @@ function ContractsPageContent() {
   useEffect(() => {
     if (!user || !normalizedUserEmail) return;
 
+    // Invalidate paginated responses as soon as the query changes, including the debounce window.
+    const requestId = ++serverFilterRequestRef.current;
     if (searchDebouncePending) return;
 
     if (!serverFilterActive) {
@@ -1132,8 +1149,6 @@ function ContractsPageContent() {
     }
 
     previousServerFilterActiveRef.current = true;
-    const requestId = serverFilterRequestRef.current + 1;
-    serverFilterRequestRef.current = requestId;
     let cancelled = false;
     const controller = new AbortController();
     const includesCommissionAudit =
@@ -1439,9 +1454,9 @@ function ContractsPageContent() {
 
   const filteredContracts = useMemo(() => filterDisplayedContracts(
     displayedContracts,
-    { ...activeListFilters, query: searchText },
+    { ...activeListFilters, query: normalizedSearchText },
     showTeam && canShowTeamToggle
-  ), [displayedContracts, activeListFilters, searchText, showTeam, canShowTeamToggle]);
+  ), [displayedContracts, activeListFilters, normalizedSearchText, showTeam, canShowTeamToggle]);
 
   const effectiveFilteredContracts = filteredContracts;
 
@@ -1613,13 +1628,11 @@ function ContractsPageContent() {
   }, [effectiveFilteredContracts.length, showTeam, filterMode, selectMode, commissionAuditActive]);
 
   const handleLoadMore = useCallback(async () => {
-    if (loadingMore) return;
+    if (loadingMore || loading || searchDebouncePending) return;
     if (!user || !normalizedUserEmail) return;
     setLoadingMore(true);
+    const requestId = serverFilterRequestRef.current;
     try {
-      const requestId = serverFilterActive
-        ? serverFilterRequestRef.current
-        : undefined;
       if (showTeam && canShowTeamToggle) {
         if (!teamHasMore) return;
         await fetchTeamPage(
@@ -1639,6 +1652,7 @@ function ContractsPageContent() {
       }
     } catch (e) {
       if ((e as { name?: string } | null)?.name === "AbortError") return;
+      if (serverFilterRequestRef.current !== requestId) return;
       const msg = getErrorMessage(e, "Nepodařilo se načíst další smlouvy. Zkus to prosím znovu.");
       if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
         console.warn("Dočasný výpadek sítě při načítání dalších smluv:", msg);
@@ -1651,6 +1665,8 @@ function ContractsPageContent() {
     }
   }, [
     loadingMore,
+    loading,
+    searchDebouncePending,
     normalizedUserEmail,
     user,
     showTeam,
@@ -1675,10 +1691,9 @@ function ContractsPageContent() {
     anniversaryModeActive &&
     effectiveFilteredContracts.length === 0 &&
     (loading || isFilterPending || loadingMore);
-  const isSearchLoading =
-    hasSearchQuery &&
-    effectiveFilteredContracts.length === 0 &&
-    (loading || loadingMore);
+  const isSearchBusy = (hasImmediateSearchQuery || hasSearchQuery) &&
+    (searchDebouncePending || loading || loadingMore || isFilterPending);
+  const isSearchLoading = isSearchBusy && effectiveFilteredContracts.length === 0;
   const isFilteredListLoading =
     serverFilterActive &&
     effectiveFilteredContracts.length === 0 &&
@@ -1686,62 +1701,6 @@ function ContractsPageContent() {
   const isCommissionAuditFilterLoading =
     commissionAuditActive &&
     (commissionAuditFilterPending || loading || isFilterPending);
-  const isSearchProgressComplete =
-    searchProgressVisible &&
-    hasImmediateSearchQuery &&
-    searchText === debouncedSearchText &&
-    !loading &&
-    !loadingMore &&
-    !isFilterPending;
-
-  useEffect(() => {
-    if (searchProgressHideTimerRef.current != null) {
-      window.clearTimeout(searchProgressHideTimerRef.current);
-      searchProgressHideTimerRef.current = null;
-    }
-
-    if (!hasImmediateSearchQuery) {
-      setSearchProgressVisible(false);
-      setSearchProgress(0);
-      return;
-    }
-
-    setSearchProgressVisible(true);
-    setSearchProgress(0);
-  }, [searchText, hasImmediateSearchQuery]);
-
-  useEffect(() => {
-    if (!searchProgressVisible || !hasImmediateSearchQuery) return;
-
-    if (isSearchProgressComplete) {
-      setSearchProgress(100);
-      if (searchProgressHideTimerRef.current != null) {
-        window.clearTimeout(searchProgressHideTimerRef.current);
-      }
-      searchProgressHideTimerRef.current = window.setTimeout(() => {
-        setSearchProgressVisible(false);
-        setSearchProgress(0);
-        searchProgressHideTimerRef.current = null;
-      }, 550);
-      return () => {
-        if (searchProgressHideTimerRef.current != null) {
-          window.clearTimeout(searchProgressHideTimerRef.current);
-          searchProgressHideTimerRef.current = null;
-        }
-      };
-    }
-
-    const timer = window.setInterval(() => {
-      setSearchProgress((prev) => {
-        if (prev < 35) return Math.min(prev + 12, 35);
-        if (prev < 70) return Math.min(prev + 7, 70);
-        return Math.min(prev + 3, 95);
-      });
-    }, 120);
-
-    return () => window.clearInterval(timer);
-  }, [searchProgressVisible, hasImmediateSearchQuery, isSearchProgressComplete]);
-
   const persistContractsViewState = useCallback(() => {
     if (!normalizedUserEmail) return;
     writeContractsViewState(normalizedUserEmail, {
@@ -2222,11 +2181,37 @@ function ContractsPageContent() {
                     <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
                     <input
                       type="text"
+                      aria-label="Hledat klienta nebo číslo smlouvy"
+                      maxLength={120}
+                      autoComplete="off"
+                      enterKeyHint="search"
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
-                    placeholder="Hledat klienta nebo smlouvu"
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing) return;
+                        if (event.key === "Enter") setDebouncedSearchText(normalizedSearchText);
+                        if (event.key === "Escape") { setSearchText(""); setDebouncedSearchText(""); }
+                      }}
+                      placeholder="Hledat klienta nebo smlouvu"
                       className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
                     />
+                    {isSearchBusy && (
+                      <span role="status" aria-label="Vyhledávám smlouvy" className="inline-flex shrink-0">
+                        <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-violet-200 border-t-violet-700 motion-reduce:animate-none" />
+                      </span>
+                    )}
+                    {searchText.length > 0 && (
+                      <button
+                        type="button"
+                        aria-label="Vymazat hledání"
+                        title="Vymazat hledání"
+                        onClick={(event) => {
+                          setSearchText(""); setDebouncedSearchText("");
+                          event.currentTarget.parentElement?.querySelector("input")?.focus();
+                        }}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-500"
+                      ><X size={15} aria-hidden="true" /></button>
+                    )}
                 </div>
               </div>
 
@@ -2308,30 +2293,6 @@ function ContractsPageContent() {
                 </div>
               </div>
             </div>
-
-          {searchProgressVisible && hasImmediateSearchQuery && (
-            <div
-              className="overflow-hidden rounded-[16px] border border-emerald-100 bg-emerald-50/75 px-3 py-2"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(searchProgress)}
-              aria-label="Prohledávání smluv"
-            >
-              <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
-                <span className="truncate">Prohledávám databázi smluv</span>
-                <span className="tabular-nums text-emerald-700">
-                  {Math.round(searchProgress)} %
-                </span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-white">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-[width] duration-150 ease-out"
-                  style={{ width: `${searchProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
 
           {selectMode && (
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/85 pt-2">

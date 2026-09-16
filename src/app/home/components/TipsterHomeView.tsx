@@ -1,24 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import Link from "next/link";
+import { TipDialog } from "@/app/tipy/TipDialog";
+import { TipsterDashboard } from "./TipsterDashboard";
+import styles from "./tipsterHome.module.css";
 import type { User as FirebaseUser } from "firebase/auth";
 import {
-  ArrowRight,
   Building2,
   Camera,
   Car,
+  ClipboardCheck as ClipboardCheckIcon,
+  Check,
   CheckCircle2,
+  UserRound,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   Home as HomeIcon,
   Loader2,
   Package,
-  Plus,
   Search,
   Send,
-  Sparkles,
   X,
 } from "lucide-react";
 
@@ -152,12 +153,6 @@ const PRODUCT_OPTIONS: Array<{
   },
 ];
 
-const PRODUCT_HOME_ACCENT: Record<TipProduct, string> = {
-  property: "from-emerald-400 to-cyan-400",
-  vehicle: "from-sky-400 to-blue-500",
-  business: "from-amber-300 to-orange-500",
-  other: "from-fuchsia-400 to-violet-500",
-};
 
 const MILEAGE_OPTIONS = [
   "0-5000 km",
@@ -237,7 +232,7 @@ const TIPSTER_COPY = {
       fillPreferredCall: "Vyplň preferovaný datum a čas volání.",
       fillDescription: "Doplň krátký popis tipu.",
       chooseProduct: "Vyber produkt tipu.",
-      missingRecipient: "Účet nemá nastaveného příjemce tipů. Nastav ho v adminu.",
+      missingRecipient: "U účtu zatím není přiřazený poradce. Požádej správce o jeho doplnění. Rozepsaný tip tu zůstává.",
       submitFailed: "Tip se nepodařilo odeslat.",
     },
     fields: {
@@ -246,7 +241,7 @@ const TIPSTER_COPY = {
       insuranceAddress: "Adresa pojištění",
       phone: "Telefon",
       email: "E-mail",
-      preferredCall: "Preferovaný datum a čas volání",
+      preferredCall: "Preferovaný čas volání",
       note: "Poznámka",
       vehicleClientName: "Jméno a příjmení / název firmy",
       spz: "SPZ",
@@ -305,10 +300,8 @@ const TIPSTER_COPY = {
 
 type TipsterCopy = (typeof TIPSTER_COPY)[AppLanguage];
 
-const labelClass =
-  "text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85";
-const fieldClass =
-  "w-full rounded-2xl border border-white/14 bg-white/[0.06] px-3 py-2.5 text-sm text-[#f8fafc] shadow-[0_8px_18px_rgba(7,6,25,0.18)] outline-none transition placeholder:text-violet-100/45 focus:border-violet-200/70 focus:ring-4 focus:ring-violet-300/10";
+const labelClass = styles.fieldLabel;
+const fieldClass = styles.fieldInput;
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -493,18 +486,18 @@ function AttachmentsField({
   };
 
   return (
-    <div className="space-y-2 rounded-2xl border border-dashed border-white/18 bg-white/[0.04] px-4 py-4 transition hover:border-violet-300/45 hover:bg-white/[0.08] sm:col-span-2">
+    <div className="space-y-2 rounded-2xl border border-dashed border-[#e6daee] bg-[#fbf8fe] px-4 py-4 transition hover:border-violet-300/45 hover:bg-[#fbf8fe] sm:col-span-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <span className="flex items-center gap-2 text-sm font-semibold text-[#f8fafc]">
-            <Camera className="h-4 w-4 text-violet-100/70" aria-hidden="true" />
+          <span className="flex items-center gap-2 text-sm font-semibold text-[#695176]">
+            <Camera className="h-4 w-4 text-[#796287]" aria-hidden="true" />
             {copy.title}
           </span>
-          <p className="mt-1 text-xs text-violet-100/58">
+          <p className="mt-1 text-xs text-[#796287]">
             {copy.hint}
           </p>
         </div>
-        <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-violet-300/35 bg-violet-500/80 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-500">
+        <label className={styles.uploadButton}>
           {copy.add}
           <input
             type="file"
@@ -520,16 +513,16 @@ function AttachmentsField({
           {files.map((file, index) => (
             <div
               key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
-              className="flex items-center justify-between gap-3 rounded-xl border border-white/12 bg-white/[0.05] px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-xl border border-[#e6daee] bg-[#fbf8fe] px-3 py-2"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-violet-50">{file.name}</p>
-                <p className="text-xs text-violet-100/55">{formatFileSize(file.size)}</p>
+                <p className="truncate text-sm font-semibold text-[#81648e]">{file.name}</p>
+                <p className="text-xs text-[#796287]">{formatFileSize(file.size)}</p>
               </div>
               <button
                 type="button"
                 onClick={() => onRemove(index)}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/14 bg-white/[0.04] text-violet-100 transition hover:bg-white/[0.1]"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#e6daee] bg-[#fbf8fe] text-[#796287] transition hover:bg-[#fbf8fe]"
                 aria-label={copy.removeAria(file.name)}
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -538,7 +531,7 @@ function AttachmentsField({
           ))}
         </div>
       ) : (
-        <span className="block text-xs text-violet-100/58">
+        <span className="block text-xs text-[#796287]">
           {copy.empty}
         </span>
       )}
@@ -557,6 +550,8 @@ export function TipsterHomeView({
 }) {
   const effectiveEmail = useEffectiveUserEmail(user.email);
   const copy = TIPSTER_COPY[language];
+  const [refreshKey, setRefreshKey] = useState(0);
+  const formBodyRef = useRef<HTMLDivElement>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [product, setProduct] = useState<TipProduct | null>(null);
@@ -655,6 +650,10 @@ export function TipsterHomeView({
   };
 
   const startTip = (selectedProduct?: TipProduct) => {
+    if (!selectedProduct && product) {
+      setFormOpen(true);
+      return;
+    }
     resetForm();
     if (selectedProduct) {
       setProduct(selectedProduct);
@@ -1208,6 +1207,7 @@ export function TipsterHomeView({
       resetForm();
       setFormOpen(false);
       setStatus(copy.message.sentTo(recipientDisplayName));
+      setRefreshKey((value) => value + 1);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -1273,15 +1273,15 @@ export function TipsterHomeView({
                   placeholder={copy.ares.searchPlaceholder}
                 />
                 {showAresSuggestions ? (
-                  <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-white/14 bg-[#130b28] p-1.5 shadow-[0_22px_54px_rgba(7,6,25,0.55)]">
+                  <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-[#e6daee] bg-white p-1.5 shadow-[0_12px_32px_rgba(87,59,109,0.12)]">
                     {aresSuggestLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-violet-100/75">
+                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-[#796287]">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         {copy.ares.searching}
                       </div>
                     ) : null}
                     {!aresSuggestLoading && aresSuggestError ? (
-                      <div className="px-3 py-2.5 text-sm text-rose-100">
+                      <div className="px-3 py-2.5 text-sm text-rose-700">
                         {aresSuggestError}
                       </div>
                     ) : null}
@@ -1289,7 +1289,7 @@ export function TipsterHomeView({
                     !aresSuggestError &&
                     aresSuggestions.length === 0 &&
                     canSearchAresQuery(aresQuery) ? (
-                      <div className="px-3 py-2.5 text-sm text-violet-100/68">
+                      <div className="px-3 py-2.5 text-sm text-[#796287]">
                         {copy.ares.noSubject}
                       </div>
                     ) : null}
@@ -1305,12 +1305,12 @@ export function TipsterHomeView({
                               type="button"
                               onMouseDown={(event) => event.preventDefault()}
                               onClick={() => selectVehicleAresEntity(entity)}
-                              className="block w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
+                              className="block w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-[#fbf8fe] focus:bg-[#fbf8fe] focus:outline-none"
                             >
-                              <span className="block text-sm font-semibold text-[#f8fafc]">
+                              <span className="block text-sm font-semibold text-[#695176]">
                                 {name}
                               </span>
-                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-violet-100/68">
+                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#796287]">
                                 {ico ? <span>{copy.ares.icoPrefix} {ico}</span> : null}
                                 {address ? <span>{address}</span> : null}
                               </span>
@@ -1325,7 +1325,7 @@ export function TipsterHomeView({
                 type="button"
                 onClick={() => void handleVehicleAresLookup()}
                 disabled={aresLoading || aresSuggestLoading}
-                className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white/[0.06] text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-[#e6daee] bg-[#fbf8fe] text-[#796287] transition hover:bg-[#fbf8fe] disabled:cursor-not-allowed disabled:opacity-60"
                 title={copy.ares.lookupTitle}
                 aria-label={copy.ares.lookupTitle}
               >
@@ -1336,7 +1336,7 @@ export function TipsterHomeView({
                 )}
               </button>
             </div>
-            <span className="block text-xs text-violet-100/48">
+            <span className="block text-xs text-[#796287]">
               {copy.ares.queryHelp}
             </span>
           </label>
@@ -1347,6 +1347,7 @@ export function TipsterHomeView({
           <label className="space-y-1.5">
             <span className={labelClass}>{copy.fields.annualMileage}</span>
             <select
+              aria-label={copy.fields.annualMileage}
               className={fieldClass}
               value={form.vehicleAnnualMileage}
               onChange={(event) => updateField("vehicleAnnualMileage", event.target.value)}
@@ -1360,7 +1361,7 @@ export function TipsterHomeView({
             </select>
           </label>
           {aresError ? (
-            <p className="rounded-2xl border border-rose-300/45 bg-rose-400/15 px-4 py-3 text-sm text-rose-100 sm:col-span-2">
+            <p className="rounded-2xl border border-rose-300/45 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:col-span-2">
               {aresError}
             </p>
           ) : null}
@@ -1406,15 +1407,15 @@ export function TipsterHomeView({
                   placeholder={copy.ares.searchPlaceholder}
                 />
                 {showAresSuggestions ? (
-                  <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-white/14 bg-[#130b28] p-1.5 shadow-[0_22px_54px_rgba(7,6,25,0.55)]">
+                  <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-auto rounded-2xl border border-[#e6daee] bg-white p-1.5 shadow-[0_12px_32px_rgba(87,59,109,0.12)]">
                     {aresSuggestLoading ? (
-                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-violet-100/75">
+                      <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-[#796287]">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         {copy.ares.searching}
                       </div>
                     ) : null}
                     {!aresSuggestLoading && aresSuggestError ? (
-                      <div className="px-3 py-2.5 text-sm text-rose-100">
+                      <div className="px-3 py-2.5 text-sm text-rose-700">
                         {aresSuggestError}
                       </div>
                     ) : null}
@@ -1422,7 +1423,7 @@ export function TipsterHomeView({
                     !aresSuggestError &&
                     aresSuggestions.length === 0 &&
                     canSearchAresQuery(aresQuery) ? (
-                      <div className="px-3 py-2.5 text-sm text-violet-100/68">
+                      <div className="px-3 py-2.5 text-sm text-[#796287]">
                         {copy.ares.noSubject}
                       </div>
                     ) : null}
@@ -1438,12 +1439,12 @@ export function TipsterHomeView({
                               type="button"
                               onMouseDown={(event) => event.preventDefault()}
                               onClick={() => selectAresEntity(entity)}
-                              className="block w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.08] focus:bg-white/[0.08] focus:outline-none"
+                              className="block w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-[#fbf8fe] focus:bg-[#fbf8fe] focus:outline-none"
                             >
-                              <span className="block text-sm font-semibold text-[#f8fafc]">
+                              <span className="block text-sm font-semibold text-[#695176]">
                                 {name}
                               </span>
-                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-violet-100/68">
+                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#796287]">
                                 {ico ? <span>{copy.ares.icoPrefix} {ico}</span> : null}
                                 {address ? <span>{address}</span> : null}
                               </span>
@@ -1458,7 +1459,7 @@ export function TipsterHomeView({
                 type="button"
                 onClick={() => void handleBusinessAresLookup()}
                 disabled={aresLoading || aresSuggestLoading}
-                className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-white/18 bg-white/[0.06] text-violet-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl border border-[#e6daee] bg-[#fbf8fe] text-[#796287] transition hover:bg-[#fbf8fe] disabled:cursor-not-allowed disabled:opacity-60"
                 title={copy.ares.lookupTitle}
                 aria-label={copy.ares.lookupTitle}
               >
@@ -1469,7 +1470,7 @@ export function TipsterHomeView({
                 )}
               </button>
             </div>
-            <span className="block text-xs text-violet-100/48">
+            <span className="block text-xs text-[#796287]">
               {copy.ares.queryHelp}
             </span>
           </label>
@@ -1478,15 +1479,15 @@ export function TipsterHomeView({
           <TextField label={copy.fields.activity} value={form.businessActivity} onChange={(value) => updateField("businessActivity", value)} />
           <TextField label={copy.fields.preferredCall} value={form.businessPreferredCallAt} onChange={(value) => updateField("businessPreferredCallAt", value)} placeholder={copy.placeholders.preferredCall} />
           {form.businessCompanyName || form.businessAddress ? (
-            <div className="rounded-2xl border border-emerald-300/40 bg-emerald-400/15 px-4 py-3 text-sm text-emerald-100 sm:col-span-2">
+            <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 sm:col-span-2">
               <div className="font-semibold">{form.businessCompanyName || copy.ares.subjectFallback}</div>
               {form.businessAddress ? (
-                <div className="mt-1 text-emerald-100/78">{form.businessAddress}</div>
+                <div className="mt-1 text-emerald-700">{form.businessAddress}</div>
               ) : null}
             </div>
           ) : null}
           {aresError ? (
-            <p className="rounded-2xl border border-rose-300/45 bg-rose-400/15 px-4 py-3 text-sm text-rose-100 sm:col-span-2">
+            <p className="rounded-2xl border border-rose-300/45 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:col-span-2">
               {aresError}
             </p>
           ) : null}
@@ -1509,271 +1510,52 @@ export function TipsterHomeView({
     );
   };
 
-  return (
-    <div className="min-h-screen w-full overflow-hidden bg-[radial-gradient(circle_at_8%_0%,rgba(45,212,191,0.16),transparent_28%),radial-gradient(circle_at_90%_12%,rgba(168,85,247,0.16),transparent_30%),linear-gradient(180deg,#f8fafc_0%,#eef4f8_48%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6 font-sans text-slate-900">
-        <section className="tipster-hero-dark relative overflow-hidden rounded-[36px] border border-white/70 bg-[#08111f] p-5 text-[#f8fafc] shadow-[0_28px_80px_rgba(15,23,42,0.2)] sm:p-7 lg:p-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(45,212,191,0.28),transparent_34%),radial-gradient(circle_at_78%_14%,rgba(168,85,247,0.34),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_44%)]" />
-          <div className="absolute -bottom-24 -right-20 h-64 w-64 rounded-full bg-emerald-300/20 blur-3xl" />
-          <div className="relative grid gap-7 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-            <div>
-              <div className="tipster-hero-kicker inline-flex items-center gap-2 rounded-full border border-emerald-200/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-100">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                {copy.hero.kicker}
-              </div>
-              <h1 className="tipster-hero-title mt-5 max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.05em] text-[#f8fafc] sm:text-6xl">
-                {copy.hero.title}
-              </h1>
-              <p className="tipster-hero-copy mt-5 max-w-2xl text-base leading-7 text-slate-100">
-                {copy.hero.signedPrefix} <span className="tipster-hero-strong font-bold text-[#f8fafc]">{displayName}</span>. {copy.hero.recipientPrefix}{" "}
-                <span className="tipster-hero-accent font-bold text-emerald-50">{recipientDisplayName}</span>
-                {" "}{copy.hero.signedSuffix}
-              </p>
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => startTip()}
-                  className="group inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/25 bg-[linear-gradient(135deg,#34d399_0%,#14b8a6_48%,#0ea5e9_100%)] px-5 py-3 text-sm font-black text-slate-950 shadow-[0_18px_38px_rgba(20,184,166,0.32)] transition hover:-translate-y-0.5 hover:brightness-110"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  {copy.hero.addTip}
-                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden="true" />
-                </button>
-                <Link
-                  href="/tipy"
-                  className="tipster-hero-secondary-button inline-flex items-center justify-center gap-2 rounded-2xl border border-white/25 bg-white/[0.12] px-5 py-3 text-sm font-bold text-slate-50 transition hover:bg-white/[0.18]"
-                >
-                  {copy.hero.myTips}
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </div>
-            </div>
+  const hasDraft = product !== null || Object.values(form).some(Boolean) || tipAttachments.length > 0;
+  const closeForm = () => { if (!submitting) setFormOpen(false); };
 
-            <div className="rounded-[30px] border border-white/[0.12] bg-white/[0.09] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="tipster-hero-kicker text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-100/80">
-                    {copy.hero.quickStart}
-                  </p>
-                  <h2 className="tipster-hero-panel-title mt-1 text-2xl font-black tracking-tight text-[#f8fafc]">
-                    {copy.hero.chooseTipType}
-                  </h2>
-                </div>
-                <span className="tipster-hero-card-icon inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-emerald-100">
-                  <ClipboardCheck className="h-5 w-5" aria-hidden="true" />
-                </span>
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {PRODUCT_OPTIONS.map((item) => {
-                  const Icon = item.icon;
-                  const accent = PRODUCT_HOME_ACCENT[item.id];
-                  const translatedMeta = copy.productHomeMeta[item.id];
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => startTip(item.id)}
-                      className="group overflow-hidden rounded-2xl border border-white/20 bg-white/[0.12] p-3 text-left transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.16]"
-                    >
-                      <div className={`h-1.5 rounded-full bg-gradient-to-r ${accent}`} />
-                      <div className="mt-3 flex items-start gap-3">
-                        <span className="tipster-hero-card-icon inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-slate-50">
-                          <Icon className="h-5 w-5" aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="tipster-hero-card-title block text-sm font-black text-[#f8fafc]">{translatedMeta.title}</span>
-                          <span className="tipster-hero-card-description mt-1 block text-xs leading-5 text-slate-100">{translatedMeta.description}</span>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+  return (
+    <>
+      <TipsterDashboard
+        user={user}
+        effectiveEmail={effectiveEmail}
+        displayName={displayName}
+        recipientName={recipientDisplayName}
+        recipientEmail={recipientEmail}
+        refreshKey={refreshKey}
+        hasDraft={hasDraft}
+        status={status}
+        onStart={startTip}
+      />
+      {formOpen ? (
+        <TipDialog title="Nový tip" subtitle={`Pro poradce: ${recipientDisplayName}`} onClose={closeForm} busy={submitting}>
+          <div className={styles.form} ref={formBodyRef}>
+            <div className={styles.formSteps} aria-label="Průběh odeslání tipu">
+              {copy.hero.steps.map((label, index) => <div key={label} data-active={step === index} data-done={step > index} aria-current={step === index ? "step" : undefined}>
+                <span>{step > index ? <Check size={15} /> : index + 1}</span><strong>{label}</strong>
+              </div>)}
+            </div>
+            <div className={styles.formIntro}>
+              <span>KROK {step + 1} ZE 3{product ? ` · ${productLabel(product, copy)}` : ""}</span>
+              <h3>{step === 0 ? "S čím potřebuje klient pomoct?" : step === 1 ? "Představ nám svého klienta" : "Je všechno správně?"}</h3>
+              <p>{step === 0 ? "Vyber oblast, která nejlépe odpovídá jeho potřebám." : step === 1 ? "Předej kontakt a užitečné podrobnosti. Poradce už naváže osobně." : "Zkontroluj údaje. Tip i přílohy odešleme tvému poradci."}</p>
+            </div>
+            {step === 0 ? <div className={styles.formProductGrid}>{PRODUCT_OPTIONS.map(({ id, icon: Icon }) => <button key={id} type="button" aria-pressed={product === id} onClick={() => { if (product !== id) clearAresState(); setProduct(id); setError(null); }}><Icon size={23} /><span>{copy.productLabels[id]}</span>{product === id ? <CheckCircle2 size={19} /> : <ChevronRight size={17} />}</button>)}</div> : null}
+            {step === 1 ? renderDetails() : null}
+            {step === 2 ? <>
+              <section className={styles.formReview} aria-label="Souhrn tipu">
+                <div className={styles.reviewProduct}><ClipboardCheckIcon />{productLabel(product, copy)}</div>
+                <dl className={styles.reviewFields}>{tipFields.map((field, index) => <div key={`${field.label}-${index}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}{tipAttachments.length ? <div><dt>Přílohy ({tipAttachments.length})</dt><dd>{tipAttachments.map((file) => file.name).join(", ")}</dd></div> : null}</dl>
+              </section>
+              <div className={styles.reviewRecipient}><UserRound size={21} /><div>Tip obdrží<strong>{recipientDisplayName}</strong><span>{recipientEmail}</span></div></div>
+            </> : null}
+            {error ? <p className={styles.formError} role="alert">{error}</p> : null}
+            <div className={styles.formFooter}>
+              <button type="button" disabled={submitting} onClick={() => { if (step === 0) closeForm(); else { setError(null); setStep((previous) => Math.max(previous - 1, 0)); } }}><ChevronLeft size={16} />{step === 0 ? "Zavřít" : "Zpět"}</button>
+              {step < 2 ? <button type="button" className={styles.primary} onClick={() => { goNext(); formBodyRef.current?.scrollIntoView({ block: "start" }); }}>Pokračovat<ChevronRight size={16} /></button> : <button type="button" className={styles.primary} onClick={() => void submitTip()} disabled={submitting}>{submitting ? <Loader2 size={16} className={styles.spinning} /> : <Send size={16} />}{submitting ? "Odesílám tip…" : "Odeslat tip"}</button>}
             </div>
           </div>
-        </section>
-
-        {status ? (
-          <p className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-            {status}
-          </p>
-        ) : null}
-
-        {formOpen ? (
-          <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6">
-            <div className="flex flex-col gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
-                {copy.hero.formKicker}
-              </p>
-              <h2 className="text-xl font-bold tracking-[-0.02em] text-[#f8fafc]">
-                {copy.hero.formTitle}
-              </h2>
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-3">
-            <div className="grid gap-2 sm:grid-cols-3">
-              {copy.hero.steps.map((label, index) => {
-                const active = step === index;
-                const done = step > index;
-                return (
-                  <div key={label} className="flex flex-col items-center gap-1 text-center">
-                    <span
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                        done
-                          ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
-                          : active
-                            ? "border-violet-200/70 bg-violet-400/30 text-[#f8fafc]"
-                            : "border-white/20 bg-white/[0.03] text-violet-200/70"
-                      }`}
-                    >
-                      {done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                    </span>
-                    <span
-                      className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                        active || done ? "text-[#f4f0ff]" : "text-violet-200/60"
-                      }`}
-                    >
-                      {label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 h-1.5 rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)] transition-[width] duration-300"
-                style={{ width: `${((step + 1) / 3) * 100}%` }}
-              />
-            </div>
-            </div>
-
-            <div className="mt-5">
-              {step === 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {PRODUCT_OPTIONS.map((item) => {
-                    const Icon = item.icon;
-                    const selected = product === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          if (product !== item.id) {
-                            clearAresState();
-                          }
-                          setProduct(item.id);
-                          setError(null);
-                        }}
-                        className={`flex min-h-[92px] items-center gap-3 rounded-2xl border px-4 py-4 text-left transition ${
-                          selected
-                            ? "border-violet-200/70 bg-violet-400/20 text-[#f8fafc] shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
-                            : "border-white/14 bg-white/[0.03] text-violet-100/90 hover:border-violet-300/40 hover:bg-white/[0.07]"
-                        }`}
-                      >
-                        <span
-                          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-                            selected
-                              ? "border-violet-200/70 bg-violet-300/35 text-[#f8fafc]"
-                              : "border-white/20 bg-white/[0.03] text-violet-100/80"
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" aria-hidden="true" />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-semibold leading-tight text-[#f8fafc]">{copy.productLabels[item.id]}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {step === 1 ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                      {productLabel(product, copy)}
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold text-[#f8fafc]">
-                      {copy.hero.detailsTitle}
-                    </h2>
-                  </div>
-                  {renderDetails()}
-                </div>
-              ) : null}
-
-              {step === 2 ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                      {copy.hero.reviewKicker}
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold text-[#f8fafc]">
-                      {copy.hero.reviewTitle}
-                    </h2>
-                  </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-4">
-                    <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed text-violet-100/90">
-                      {messageLines.join("\n")}
-                    </pre>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {error ? (
-              <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-4 py-3 text-sm font-medium text-rose-100">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-white/12 pt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  if (step === 0) {
-                    resetForm();
-                    setFormOpen(false);
-                    return;
-                  }
-                  setError(null);
-                  setStep((prev) => Math.max(prev - 1, 0));
-                }}
-                className="inline-flex items-center gap-2 rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1]"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                {step === 0 ? copy.hero.close : copy.hero.back}
-              </button>
-
-              {step < 2 ? (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110"
-                >
-                  {copy.hero.next}
-                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void submitTip()}
-                  disabled={submitting}
-                  className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  {copy.hero.submit}
-                </button>
-              )}
-            </div>
-          </section>
-        ) : null}
-      </div>
-    </div>
+        </TipDialog>
+      ) : null}
+    </>
   );
 }

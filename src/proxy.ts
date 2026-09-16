@@ -262,6 +262,10 @@ export async function proxy(req: NextRequest) {
     pathname === "/embed/zlato" || pathname === "/embed/zivotni-pojisteni";
   const isContractDetailEmbed =
     pathname.startsWith("/smlouvy/") && req.nextUrl.searchParams.get("embedded") === "1";
+  const isTipDetailEmbed =
+    /^\/tipy\/[^/]+\/?$/.test(pathname) && req.nextUrl.searchParams.get("embedded") === "1";
+  const isAresEmbed =
+    pathname === "/pomucky/ares" && req.nextUrl.searchParams.get("embed") === "1";
   const isStatementCalculatorEmbed =
     pathname === "/kalkulacka" &&
     req.nextUrl.searchParams.get("prefill") === "commission-statement";
@@ -271,7 +275,7 @@ export async function proxy(req: NextRequest) {
     req.nextUrl.searchParams.get("preset") === "neon-oneguard-10x";
   const isVigModelEmbed = pathname === "/models/vig/index.html";
   const isSameOriginEmbed =
-    isContractDetailEmbed || isStatementCalculatorEmbed || isOnlineCardEmbed ||
+    isContractDetailEmbed || isTipDetailEmbed || isAresEmbed || isStatementCalculatorEmbed || isOnlineCardEmbed ||
     isToolsComparisonEmbed || isVigModelEmbed;
   const frameAncestors = isMeetingEmbed
     ? getMeetingEmbedFrameAncestors()

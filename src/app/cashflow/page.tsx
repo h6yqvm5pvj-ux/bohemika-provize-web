@@ -45,6 +45,7 @@ import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
 import { CashflowAccordion } from "./components/CashflowAccordion";
 import { CashflowFilters } from "./components/CashflowFilters";
 import { CashflowHeader } from "./components/CashflowHeader";
+import { TipsterRewardsCalendar, TipsterRewardsHeader, TipsterRewardsNote } from "./components/TipsterRewards";
 import { CashflowInitialLoader } from "./components/CashflowInitialLoader";
 import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import { IntelligentPredictionModal } from "./components/IntelligentPredictionModal";
@@ -748,7 +749,16 @@ export default function CashflowPage() {
           ) : (
             <>
               <div className={introStyles.heroReveal} style={introDelay(40)}>
-                <CashflowHeader
+                {isTipsterMode ? <TipsterRewardsHeader
+                  total={totalCashflow}
+                  calculating={calculating}
+                  failed={Boolean(workerView.error)}
+                  hasPaidMonthTotals={hasPaidMonthTotals}
+                  forecastYears={CASHFLOW_FORECAST_YEARS}
+                  showPastYears={showPastYears}
+                  onTogglePastYears={() => setShowPastYears((value) => !value)}
+                  onOpenHelp={() => setCashflowHelpOpen(true)}
+                /> : <CashflowHeader
                   totalCashflow={totalCashflow}
                   calculating={calculating}
                   calculationFailed={Boolean(workerView.error)}
@@ -760,7 +770,7 @@ export default function CashflowPage() {
                   onOpenPredictionInfo={() => setPredictionInfoOpen(true)}
                   onOpenHelp={() => setCashflowHelpOpen(true)}
                   tipsterMode={isTipsterMode}
-                />
+                />}
               </div>
 
               {!isTipsterMode && hasInternalProfile === true && (
@@ -806,19 +816,19 @@ export default function CashflowPage() {
                           : "Zatím nemáš žádné smlouvy, ze kterých by šlo cashflow spočítat."}
                       </p>
                     )}
-                    {!calculating && !workerView.error && <CashflowAccordion
+                    {!calculating && !workerView.error && (isTipsterMode ? <TipsterRewardsCalendar yearGroups={yearGroups} expandedYears={displayedExpandedYears} onToggleYear={toggleYear} onSelectMonth={selectMonth} monthItemLabels={monthItemLabels} /> : <CashflowAccordion
                       yearGroups={yearGroups}
                       expandedYears={displayedExpandedYears}
                       onToggleYear={toggleYear}
                       onSelectMonth={selectMonth}
                       monthItemLabels={monthItemLabels}
                       tipsterMode={isTipsterMode}
-                    />}
+                    />)}
                   </>
                 )}
               </div>
 
-              <aside className="rounded-[20px] border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-xs leading-relaxed text-amber-950 shadow-[0_12px_28px_rgba(146,64,14,0.08)] backdrop-blur-lg sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-sm sm:shadow-[0_16px_38px_rgba(146,64,14,0.08)]">
+              {isTipsterMode ? <TipsterRewardsNote /> : <aside className="rounded-[20px] border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-xs leading-relaxed text-amber-950 shadow-[0_12px_28px_rgba(146,64,14,0.08)] backdrop-blur-lg sm:rounded-[24px] sm:px-5 sm:py-4 sm:text-sm sm:shadow-[0_16px_38px_rgba(146,64,14,0.08)]">
                 <p className="font-semibold">Upozornění k predikci cashflow</p>
                 <p className="mt-1">
                   Jedná se pouze o predikci na základě data sjednání, počátku a frekvencí
@@ -826,7 +836,7 @@ export default function CashflowPage() {
                   uhrazení klientem. Za správnost dat si zodpovídá každý uživatel sám.
                   Při stornu smlouvy si uživatel musí sám označit smlouvu jako stornovanou.
                 </p>
-              </aside>
+              </aside>}
             </>
           )}
         </div>

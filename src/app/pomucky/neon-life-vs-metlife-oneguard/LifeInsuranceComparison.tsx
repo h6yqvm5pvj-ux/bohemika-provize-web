@@ -24,7 +24,7 @@ function normalize(text: string) {
 }
 
 function ProductLabel({ product }: { product: "neon" | "metlife" }) {
-  return <span className={styles.productLabel} data-product={product}><span aria-hidden="true" />{product === "neon" ? "ČPP · NEON Life" : "MetLife · OneGuard"}</span>;
+  return <span className={styles.productLabel} data-product={product}><span aria-hidden="true" />{product === "neon" ? "ČPP Životní pojištění NEON Life" : "MetLife · OneGuard"}</span>;
 }
 
 function Summary({ summary, product }: { summary: ComparisonRow["neonSummary"]; product: "neon" | "metlife" }) {
@@ -41,7 +41,7 @@ function Summary({ summary, product }: { summary: ComparisonRow["neonSummary"]; 
 
 function ProductCard({ product }: { product: "neon" | "metlife" }) {
   const isNeon = product === "neon";
-  return <section className={styles.productCard} data-product={product} aria-label={isNeon ? "ČPP NEON Life" : "MetLife OneGuard"}>
+  return <section className={styles.productCard} data-product={product} aria-label={isNeon ? "ČPP Životní pojištění NEON Life" : "MetLife OneGuard"}>
     <span className={styles.productLogo}><Image src={isNeon ? "/icons/cpp.png" : "/icons/metlife.png"} alt={isNeon ? "ČPP" : "MetLife"} fill sizes="82px" className={institutionLogoImageClass(isNeon ? "cpp" : "metlife")} /></span>
     <div className={styles.productIdentity}><span>{isNeon ? "Česká podnikatelská pojišťovna" : "MetLife"}</span><h2>{isNeon ? "NEON Life" : "OneGuard"}</h2><p>Pojistné podmínky {isNeon ? "04/2026" : "09/2024"}</p></div>
   </section>;

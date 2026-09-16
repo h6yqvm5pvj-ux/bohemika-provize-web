@@ -366,6 +366,7 @@ export async function PATCH(
   let text = "";
   let section: IntranetSectionKey | null = null;
   let pinned = false;
+  let important: boolean | null = null;
   let readByDay: string | null = null;
   let sources: string[] | null = null;
   let sourcesError: string | null = null;
@@ -379,6 +380,7 @@ export async function PATCH(
       text = normalizeText(form.get("text")).slice(0, TEXT_MAX_LEN);
       section = parseSection(form.get("section"));
       pinned = normalizeText(form.get("pinned")) === "1";
+      if (form.has("important")) important = normalizeText(form.get("important")) === "1";
       const readByDayRaw = normalizeText(form.get("readByDay"));
       readByDay = readByDayRaw || null;
       if (form.has("sources")) {
@@ -404,6 +406,10 @@ export async function PATCH(
       text = normalizeText(body.text).slice(0, TEXT_MAX_LEN);
       section = parseSection(body.section);
       pinned = body.pinned === true;
+      if (Object.prototype.hasOwnProperty.call(body, "important")) {
+        if (typeof body.important !== "boolean") throw new Error("Invalid important flag");
+        important = body.important;
+      }
       const readByDayRaw = normalizeText(body.readByDay);
       readByDay = readByDayRaw || null;
       if (Object.prototype.hasOwnProperty.call(body, "sources")) {
@@ -623,6 +629,7 @@ export async function PATCH(
       attachments,
       ...(sources ? { sources } : {}),
       pinned,
+      ...(important !== null ? { important } : {}),
       readByDay,
       ...(section !== "pomoc" ? { acceptedCommentId: null, acceptedByEmail: null, acceptedAt: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),

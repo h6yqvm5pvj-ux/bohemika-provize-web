@@ -66,7 +66,9 @@ export function ContractHistoryDialog({ ownerEmail, entryId, contractNumber, man
     dialog?.showModal(); document.body.style.overflow = "hidden";
     return () => {
       dialog?.close(); document.body.style.overflow = overflow;
-      document.querySelector<HTMLButtonElement>("[data-contract-menu]")?.focus({ preventScroll: true });
+      Array.from(document.querySelectorAll<HTMLButtonElement>("[data-contract-menu]"))
+        .find(button => button.getClientRects().length > 0)
+        ?.focus({ preventScroll: true });
     };
   }, []);
 

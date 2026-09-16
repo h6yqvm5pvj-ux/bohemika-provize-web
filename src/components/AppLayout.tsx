@@ -42,6 +42,7 @@ import {
 import { clearServerSession } from "@/app/lib/authSession";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
+import { useIntranetUnreadCount } from "@/components/navigation/useIntranetUnreadCount";
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
@@ -155,13 +156,14 @@ export function AppLayout({
   const pathname = usePathname();
   const router = useRouter();
   const isHomeRoute = pathname === "/";
+  const isHallRoute = pathname === "/sin-slavy" || pathname.startsWith("/sin-slavy/");
   const isTipsRoute = pathname === "/tipy" || pathname.startsWith("/tipy/");
   const isCashflowRoute = pathname === "/cashflow";
   const isPreparationSectionRoute =
     pathname === "/klienti" ||
     pathname.startsWith("/klienti/") ||
     pathname === "/provizni-vypisy";
-  const isTipsterAllowedRoute = pathname === "/" || pathname === "/sin-slavy" || isTipsRoute || isCashflowRoute;
+  const isTipsterAllowedRoute = pathname === "/" || isTipsRoute || isCashflowRoute;
   const pageHasCustomToolsBackButton =
     pathname === "/pomucky/projekce-vykonu" ||
     pathname === "/pomucky/srovnavac-trvalych-nasledku";
@@ -542,20 +544,25 @@ export function AppLayout({
   }, [user]);
 
   useEffect(() => {
-    if (impersonation || !user || loadingProfile || accountType !== "tipster") return;
+    if ((impersonation && !isHallRoute) || !user || loadingProfile || accountType !== "tipster") return;
     if (!isTipsterAllowedRoute) {
       router.replace("/");
     }
-  }, [accountType, impersonation, isTipsterAllowedRoute, loadingProfile, router, user]);
+  }, [accountType, impersonation, isHallRoute, isTipsterAllowedRoute, loadingProfile, router, user]);
 
   const layoutCopy = APP_LAYOUT_COPY[language];
   const tipsterRestrictedRoute =
-    !impersonation && isTipsterAccount && !isTipsterAllowedRoute;
+    (!impersonation || isHallRoute) && isTipsterAccount && !isTipsterAllowedRoute;
   const effectiveShowPaywall = showPaywall && !impersonation;
   const showAccountSetupMfaGraceBanner =
     accountSetup.showMfaGraceBanner && !effectiveShowPaywall && !impersonation;
   const timelineSetupGateActive =
     accountSetup.timelineSetupGateActive && !impersonation;
+  const intranetUnreadCount = useIntranetUnreadCount(
+    user,
+    (impersonation?.email || user?.email || "").trim().toLowerCase(),
+    !embedded && !loadingProfile && !isTipsterAccount && !effectiveShowPaywall && !timelineSetupGateActive
+  );
   const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
   const canAccessAdminArea = isAdminRequestsUser || canCreateUsers;
   const preparationSectionRouteDenied =
@@ -682,13 +689,14 @@ export function AppLayout({
           navLabels={layoutCopy.nav}
           logoutLabel={layoutCopy.logout}
           hasUser={Boolean(user)}
+          intranetUnreadCount={intranetUnreadCount}
           userEmail={user?.email ?? ""}
           userAvatar={profileAvatar}
           hasTeam={hasTeam}
           hasTipsters={hasTipsters}
           isAdminRequestsUser={isAdminRequestsUser}
           canAccessAdminArea={canAccessAdminArea}
-          isTipsterAccount={isTipsterAccount && !impersonation}
+          isTipsterAccount={isTipsterAccount}
           isProfilePending={Boolean(user && loadingProfile)}
           timelineSetupGateActive={timelineSetupGateActive}
           mobileMenuOpen={mobileMenuOpen}
@@ -743,7 +751,7 @@ export function AppLayout({
               </div>
             ) : null}
 
-            {impersonation && isAdminRequestsUser ? (
+            {impersonation && isAdminRequestsUser && !embedded ? (
               <div className="fixed left-1/2 top-4 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-sky-200 bg-white/95 px-4 py-3 text-sm text-slate-900 shadow-[0_16px_34px_rgba(15,23,42,0.2)] backdrop-blur">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-3">

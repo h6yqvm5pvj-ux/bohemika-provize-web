@@ -249,7 +249,7 @@ export const CashflowGenerator = {
           );
 
           if (nasl25) {
-            // ČPP NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
+            // ČPP Životní pojištění NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
             for (let y = 1; y <= 4 && y <= maxYears; y++) {
               addItem(
                 nasl25.amount,

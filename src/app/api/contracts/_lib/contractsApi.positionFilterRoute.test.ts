@@ -43,6 +43,30 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("signing position filter API integration", () => {
+  it("routes a team text search through complete projected filtering for authorized owners only", async () => {
+    const originalCollection = mocks.collection.getMockImplementation()!;
+    mocks.collection.mockImplementation((name: string) => {
+      const collection = originalCollection(name);
+      if (name !== "users") return collection;
+      return { ...collection, get: async () => {
+        const snapshot = await collection.get();
+        snapshot.docs.push({ id: "second-team@example.test", data: () => ({ position: "poradce6", managerEmail: email }) });
+        return snapshot;
+      } };
+    });
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?shape=contractList&scope=team&q=novak%20jan"));
+    expect(response.status).toBe(200);
+    expect(mocks.filtered).toHaveBeenCalledWith(expect.objectContaining({
+      owners: expect.arrayContaining(["team@example.test", "second-team@example.test"]),
+      filters: expect.objectContaining({ query: "novak jan", positions: new Set() }),
+    }));
+    const owners = mocks.filtered.mock.calls[0][0].owners;
+    expect(owners).toHaveLength(2);
+    expect(owners).not.toContain("unrelated@example.test");
+    expect(owners).not.toContain(email);
+  });
+
   it.each(["my", "team"])("offers only the viewer's held positions in %s scope, even with zero matching contracts", async scope => {
     const { handleContractsList } = await import("./contractsApi");
     const response = await handleContractsList(request(scope));

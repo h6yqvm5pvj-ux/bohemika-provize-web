@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  guard: vi.fn(), collection: vi.fn(), fullRead: vi.fn(), projected: vi.fn(),
+  guard: vi.fn(), collection: vi.fn(), fullRead: vi.fn(), projected: vi.fn(), indexedRead: vi.fn(),
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminDb: { collection: mocks.collection }, adminAuth: null, adminMessaging: null, adminStorage: null,
@@ -15,7 +15,7 @@ vi.mock("./contractsApi.projectedSearch", () => ({ readProjectedContractSearchPa
 
 const email = "owner@example.test";
 const ts = Date.parse("2026-09-10");
-const doc = (id: string) => ({ id, data: () => ({
+const doc = (id: string) => ({ id, ref: { path: `users/${email}/entries/${id}` }, data: () => ({
   clientName: "X test", productKey: "neon", contractSignedDate: new Date(ts), total: 42, items: [],
   clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", note: "Private note",
 }) });
@@ -29,6 +29,7 @@ beforeEach(() => {
     actorEmail: email, actorUid: "uid", impersonation: null,
   } });
   mocks.fullRead.mockResolvedValue({ docs: [doc("a")] });
+  mocks.indexedRead.mockResolvedValue({ docs: [doc("a")], size: 1 });
   mocks.collection.mockImplementation((name: string) => {
     if (name === "usersPrivate") return { doc: () => ({ get: async () => ({
       exists: true, data: () => ({ subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" }),
@@ -42,7 +43,7 @@ beforeEach(() => {
         expect(owner).toBe(email);
         return { collection: (nested: string) => {
           expect(nested).toBe("entries");
-          return { get: mocks.fullRead };
+          return { get: mocks.fullRead, where: () => ({ limit: () => ({ get: mocks.indexedRead }) }) };
         } };
       },
     };
@@ -51,6 +52,18 @@ beforeEach(() => {
 });
 
 describe("contract search projection integration", () => {
+  it("does not lose legacy matches when only some entries have stored search keys", async () => {
+    mocks.projected.mockResolvedValue([doc("b"), doc("a")]);
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=own&q=test&limit=10"));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.contracts.map((item: { id: string }) => item.id)).toEqual(["b", "a"]);
+    expect(payload.hasMore).toBe(false);
+    expect(mocks.indexedRead).not.toHaveBeenCalled();
+    expect(mocks.fullRead).not.toHaveBeenCalled();
+  });
+
   it("authenticates before projected or full contract reads", async () => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
     const { handleContractsList } = await import("./contractsApi");

@@ -9,6 +9,12 @@ import {
 } from "@/app/lib/commissionAudit";
 import { toDate } from "@/app/lib/formatters";
 import {
+  normalizeContractSearchText as normalizeSearchValue,
+  compactContractSearchNumber as normalizeContractNumberForSearch,
+  matchesContractSearch, prepareContractSearch, type PreparedContractSearch,
+} from "@/app/lib/contractSearch";
+export { normalizeSearchValue, normalizeContractNumberForSearch };
+import {
   AUTO_PRODUCTS,
   COMFORT_PRODUCTS,
   PENSION_PRODUCTS,
@@ -94,16 +100,6 @@ export type ContractListIndexedQueryClause =
       op: "==";
       value: boolean;
     };
-
-const stripDiacritics = (value: string): string =>
-  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-export const normalizeSearchValue = (value?: string | null): string =>
-  stripDiacritics((value ?? "").trim().toLowerCase());
-
-export const normalizeContractNumberForSearch = (
-  value?: string | null
-): string => normalizeSearchValue(value).replace(/[^a-z0-9]/g, "");
 
 const CONTRACT_SEARCH_KEY_MIN_LENGTH = 2;
 const CONTRACT_SEARCH_TOKEN_MAX_LENGTH = 48;
@@ -454,21 +450,10 @@ export function isAnniversarySoonForList(
 
 export function contractMatchesListSearch(
   contract: ContractDoc,
-  query: string
+  query: string,
+  prepared = prepareContractSearch(query),
 ): boolean {
-  const q = normalizeSearchValue(query);
-  if (!q) return true;
-  const qContract = normalizeContractNumberForSearch(query);
-  const client = normalizeSearchValue(contract.clientName);
-  const contractNumber = normalizeSearchValue(contract.contractNumber);
-  const compactContractNumber = normalizeContractNumberForSearch(
-    contract.contractNumber
-  );
-  return (
-    client.includes(q) ||
-    contractNumber.includes(q) ||
-    (qContract.length > 0 && compactContractNumber.includes(qContract))
-  );
+  return matchesContractSearch(contract, prepared);
 }
 
 export function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
@@ -482,7 +467,8 @@ export function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
 export function contractMatchesListFilters(
   contract: ContractDoc,
   filters: ContractListFilters,
-  ownerEmail?: string | null
+  ownerEmail?: string | null,
+  search: PreparedContractSearch = prepareContractSearch(filters.query),
 ): boolean {
   const product = contract.productKey as Product | undefined;
   if (filters.signedFrom) {
@@ -490,7 +476,7 @@ export function contractMatchesListFilters(
     if (!signed || signed < filters.signedFrom) return false;
   }
 
-  if (!contractMatchesListSearch(contract, filters.query)) return false;
+  if (!contractMatchesListSearch(contract, filters.query, search)) return false;
   if (filters.positions.size > 0 && (!contract.position || !filters.positions.has(contract.position))) return false;
 
   if (filters.refreshOnly && !contractMatchesRefreshFilter(contract)) {

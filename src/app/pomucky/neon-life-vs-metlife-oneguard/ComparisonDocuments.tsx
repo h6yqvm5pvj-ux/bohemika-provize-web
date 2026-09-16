@@ -10,7 +10,7 @@ import styles from "./comparisonDocuments.module.css";
 const DOCUMENTS = [
   {
     id: "cpp-neon-conditions-2026",
-    product: "ČPP NEON Life",
+    product: "ČPP Životní pojištění NEON Life",
     insurer: "cpp",
     logo: "/icons/cpp.png",
     period: "04/2026",

@@ -4,6 +4,8 @@
 .breadcrumb a { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; color: #695573; text-decoration: none; }
 .breadcrumb a:hover { color: #493157; }
 .breadcrumb > span { color: #a79aaa; }
+.topbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 20px; }
+.topbar .breadcrumb { margin-bottom: 0; }
 .profile { position: relative; overflow: hidden; border: 1px solid #e7e0eb; border-radius: 20px; background: #fff; box-shadow: 0 5px 28px #49316004; }
 .profile::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: linear-gradient(90deg, #604377, #ac8fbe 62%, #eee6f4); }
 .profileMain { display: flex; align-items: center; gap: 21px; padding: 29px 30px 23px; }

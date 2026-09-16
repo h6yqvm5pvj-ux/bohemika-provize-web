@@ -66,7 +66,7 @@ export const isFirstYearAutoACommissionPayout = ({
 };
 
 /**
- * ČPP ŽP NEON reports A201 as the investment-life component. Its premium base
+ * ČPP Životní pojištění NEON reports A201 as the investment-life component. Its premium base
  * is intentionally different from the base of the regular A101 commission.
  */
 export const isNeonInvestmentLifeA201Payout = ({

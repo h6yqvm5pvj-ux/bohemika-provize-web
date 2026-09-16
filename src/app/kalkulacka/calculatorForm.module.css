@@ -37,6 +37,15 @@
 .actionButton > svg { width: 15px; height: 15px; stroke-width: 1.8; }
 .actionButton:hover, .secondaryButton:hover:not(:disabled) { border-color: #cdb3df; background: #faf6fe; }
 .actionActive { border-color: #d9beeC; background: #f1e5fb; color: #8b54b2; box-shadow: inset 0 0 0 1px #eee0f8; }
+.refreshSwitch { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid #e4d7ed; border-radius: 10px; background: #fcf9ff; color: #684578; font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1.5; text-align: left; cursor: pointer; transition: border-color 160ms, background 160ms; }
+.refreshSwitch:hover { border-color: #cdb3df; background: #f7f0fc; }
+.refreshSwitch:focus-visible { outline: 2px solid #8756ac; outline-offset: 3px; }
+.refreshSwitch[aria-checked="true"] { border-color: #cdb3df; background: #f1e5fb; }
+.refreshSwitchTrack { display: inline-flex; flex-shrink: 0; align-items: center; width: 36px; height: 20px; padding: 2px; border-radius: 999px; background: #b7a8c1; transition: background 160ms; }
+.refreshSwitchThumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #48286126; transition: transform 160ms; }
+.refreshSwitch[aria-checked="true"] .refreshSwitchTrack { background: #8756ac; }
+.refreshSwitch[aria-checked="true"] .refreshSwitchThumb { transform: translateX(16px); }
+.refreshSwitchValue { width: 3ch; flex-shrink: 0; }
 .secondaryButton:disabled { opacity: .6; cursor: wait; }
 .productCard { overflow: hidden; }
 .productButton { display: flex; width: 100%; align-items: center; gap: 14px; padding: 22px; border: 0; background: #fff; text-align: left; cursor: pointer; transition: background 160ms; }

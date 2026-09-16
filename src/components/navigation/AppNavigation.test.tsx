@@ -54,6 +54,33 @@ beforeEach(async () => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); });
 
 describe("collapsible application navigation", () => {
+  it("shows the unread count in expanded, collapsed and mobile navigation with an accessible label", async () => {
+    await render({ intranetUnreadCount: 7, active: "intranet" });
+    const link = () => sidebar().querySelector('a[href="/intranet"]')!;
+    expect(link().textContent).toBe("Intranet7");
+    expect(link().getAttribute("aria-label")).toBe("Intranet – nepřečtené příspěvky: 7");
+    await click(toggle());
+    expect(link().textContent).toBe("Intranet7");
+    expect(link().getAttribute("aria-current")).toBe("page");
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+    await render({ mobileMenuOpen: true });
+    expect(container.querySelector('#mobile-navigation a[href="/intranet"]')?.textContent).toBe("Intranet7");
+  });
+
+  it("caps the visible badge at 99+ and removes it when all posts are read", async () => {
+    await render({ intranetUnreadCount: 123 });
+    const link = () => sidebar().querySelector('a[href="/intranet"]')!;
+    expect(link().textContent).toBe("Intranet99+");
+    expect(link().getAttribute("aria-label")).toContain("123");
+    for (const intranetUnreadCount of [0, null, -2, NaN]) {
+      await render({ intranetUnreadCount });
+      expect(link().textContent).toBe("Intranet");
+      expect(link().getAttribute("aria-label")).toBe("Intranet");
+    }
+    await render({ hasUser: false, intranetUnreadCount: 5 });
+    expect(link().textContent).toBe("Intranet");
+  });
+
   it("collapses, preserves the active accessible link, and restores the preference after a remount", async () => {
     await render();
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
@@ -101,7 +128,7 @@ describe("collapsible application navigation", () => {
     expect(sidebar().querySelector('a[href="/smlouvy"]')).toBeNull();
     expect(sidebar().querySelector('a[href="/nastaveni"]')).not.toBeNull();
     await render({ timelineSetupGateActive: false, isTipsterAccount: true });
-    expect([...sidebar().querySelectorAll('nav a')].map(a => a.getAttribute("href"))).toEqual(["/", "/sin-slavy", "/tipy", "/cashflow"]);
+    expect([...sidebar().querySelectorAll('nav a')].map(a => a.getAttribute("href"))).toEqual(["/", "/tipy", "/cashflow"]);
     await render({ isProfilePending: true });
     expect(sidebar().querySelectorAll("nav a").length).toBe(0);
   });

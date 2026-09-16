@@ -4,6 +4,7 @@ import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { getAnniversaryStartDate, isAnniversarySoon, shouldTrackAnniversary } from "@/app/lib/contractAnniversary";
 import { productMatchesFilters } from "./contractsPageFilters";
 import { normalizeEmail, normalizeSearchValue, normalizeContractNumberForSearch } from "./contractsPageStorage";
+import { matchesContractClientName, prepareContractSearch } from "@/app/lib/contractSearch";
 import type { ContractDoc, DisplayedContract, ContractsListFilters } from "./contractsPageTypes";
 const isContractStorno = (c: ContractDoc) => contractLifecycleStatus(c) === "storno";
 const isContractDozita = (c: ContractDoc) => contractLifecycleStatus(c) === "dozita";
@@ -47,8 +48,9 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
   const selectedInstitutions = new Set(filters.selectedInstitutions);
   const selectedSubordinates = new Set(filters.selectedSubordinates.map(normalizeEmail));
   const commissionAuditActive = isCommissionAuditFilterActive({mode: commissionAuditMode});
-  const q = normalizeSearchValue(searchText);
-  const qContract = normalizeContractNumberForSearch(searchText);
+  const search = prepareContractSearch(searchText);
+  const q = search.text;
+  const qContract = search.number;
   const anniversaryOnly = filterMode === "anniversary";
   let base = selectedPositions.size === 0 ? displayedContracts
     : displayedContracts.filter(contract => contract.position != null && selectedPositions.has(contract.position));
@@ -74,7 +76,7 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
           ? c.searchContractCompactTokens
           : [normalizeContractNumberForSearch(c.contractNumber)];
       return (
-        clientTokens.some((value) => value.includes(q)) ||
+        clientTokens.some((value) => matchesContractClientName(value, search)) ||
         contractTokens.some((value) => value.includes(q)) ||
         (qContract.length > 0 &&
           compactContractTokens.some((value) => value.includes(qContract)))

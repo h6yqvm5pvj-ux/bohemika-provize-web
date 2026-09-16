@@ -110,13 +110,13 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     category: "pension",
   },
   neon: {
-    label: "ČPP ŽP NEON",
+    label: "ČPP Životní pojištění NEON",
     icon: "/icons/zivot.webp",
     institutionId: "cpp",
     category: "life",
   },
   flexi: {
-    label: "Kooperativa ŽP FLEXI",
+    label: "Kooperativa Životní pojištění FLEXI",
     icon: "/icons/zivot.webp",
     institutionId: "kooperativa",
     category: "life",

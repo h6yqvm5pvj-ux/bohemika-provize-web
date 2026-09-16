@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
   const store = new Map<string, Record<string, any>>();
   const mailbox = new Set<string>();
   const writes: string[] = [];
+  const projections: string[][] = [];
+  const reads: string[] = [];
   class Ref {
     constructor(public path: string) {}
     get id() { return this.path.split("/").at(-1)!; }
@@ -26,9 +28,12 @@ const mocks = vi.hoisted(() => {
     where(field: string, _operator: string, value: unknown) { return new Query(this.path, [...this.filters, [field, value]], this.orders, this.size, this.cursor); }
     orderBy(field: string, direction = 'asc') { return new Query(this.path, this.filters, [...this.orders, [field, direction]], this.size, this.cursor); }
     limit(size: number) { return new Query(this.path, this.filters, this.orders, size, this.cursor); }
+    select(...fields: string[]) { projections.push(fields); return this; }
     startAfter(...cursor: any[]) { return new Query(this.path, this.filters, this.orders, this.size, cursor); }
     async get() {
+      reads.push(this.path);
       let docs = [...store.keys()].filter(path => path.startsWith(`${this.path}/`) && !path.slice(this.path.length + 1).includes('/')).map(path => snapshot(new Ref(path)));
+      docs = docs.filter(doc => this.orders.every(([field]) => field === '__name__' || doc.data()?.[field] !== undefined));
       docs = docs.filter(doc => this.filters.every(([field, value]) => doc.data()?.[field] === value));
       const values = (doc: ReturnType<typeof snapshot>) => this.orders.map(([field]) => field === '__name__' ? doc.id : doc.data()?.[field]);
       const compare = (a: any[], b: any[]) => {
@@ -43,10 +48,10 @@ const mocks = vi.hoisted(() => {
   }
   const db = {
     collection: (name: string) => new Query(name),
-    getAll: async (...refs: Ref[]) => Promise.all(refs.map(ref => ref.get())),
+    getAll: async (...refs: (Ref | { fieldMask: string[] })[]) => Promise.all(refs.filter((ref): ref is Ref => ref instanceof Ref).map(ref => ref.get())),
     runTransaction: async (run: (tx: any)=>unknown) => run({ get: (ref: Ref)=>ref.get(), set:(ref:Ref,data:any,options:any)=>ref.set(data,options), update:(ref:Ref,data:any)=>ref.update(data) }),
   };
-  return { store, db, writes, mailbox, guard: vi.fn(), push: vi.fn(), writeMailbox: vi.fn() };
+  return { store, db, writes, projections, reads, mailbox, guard: vi.fn(), push: vi.fn(), writeMailbox: vi.fn() };
 });
 
 vi.mock("@/lib/server/firebaseAdmin",()=>({adminDb:mocks.db,adminMessaging:{sendEachForMulticast:mocks.push}}));
@@ -56,7 +61,9 @@ vi.mock("firebase-admin/storage",()=>({getStorage:vi.fn()}));
 vi.mock("@/lib/server/intranetWallAttachments",()=>({prepareIntranetWallAttachmentFile:vi.fn()}));
 vi.mock("@/lib/server/mailbox",()=>({writeMailboxEntryOnce:mocks.writeMailbox,writeMailboxEntries:vi.fn()}));
 
-import { GET } from "./route";
+import { GET, POST as createPost } from "./route";
+import { PATCH as editPost } from "./[postId]/route";
+import { GET as unreadCount } from "./unread-count/route";
 import { POST as updateState } from "./[postId]/state/route";
 import { POST as updateSolution } from "./[postId]/solution/route";
 import { sendDiscussionCommentNotifications } from "@/lib/server/intranetDiscussionNotifications";
@@ -75,9 +82,109 @@ const solution = (commentId:unknown,id='post') => updateSolution(request(`/${id}
 const feed = async (query='') => (await GET(request(query))).json();
 
 beforeEach(()=>{
-  vi.clearAllMocks();mocks.store.clear();mocks.writes.length=0;mocks.mailbox.clear();asUser();
+  vi.restoreAllMocks();vi.clearAllMocks();mocks.store.clear();mocks.writes.length=0;mocks.projections.length=0;mocks.reads.length=0;mocks.mailbox.clear();asUser();
   mocks.push.mockResolvedValue({successCount:1});
   mocks.writeMailbox.mockImplementation(async ({recipientEmail,entryId})=>{const key=`${recipientEmail}:${entryId}`;if(mocks.mailbox.has(key))return{written:false};mocks.mailbox.add(key);return{written:true};});
+});
+
+describe('počet nepřečtených příspěvků v navigaci', () => {
+  const count = async () => (await unreadCount(request('/unread-count'))).json();
+
+  it('počítá všechny kategorie i stránky bez komentářů, příloh a profilů', async () => {
+    for (let i = 0; i < 307; i++) post(`post${i}`, { createdAt: 1000 + i, section: i % 2 ? 'auto' : 'zivot' });
+    for (let i = 0; i < 5; i++) mocks.store.set(statePath(`post${i}`), { readAtMs: 123 });
+    expect(await count()).toEqual({ ok: true, unreadCount: 302 });
+    expect(mocks.projections).toEqual([['createdAt', 'section', 'title', 'text']]);
+    expect(mocks.reads).toEqual(['intranetWallPosts', 'intranetWallPosts']);
+    expect(mocks.writes).toEqual([]);
+  });
+
+  it('používá stav právě zobrazeného účtu a reaguje na přečtení i vrácení', async () => {
+    post();
+    expect((await count()).unreadCount).toBe(1);
+    await state({ field: 'read', value: true });
+    expect((await count()).unreadCount).toBe(0);
+    asUser(owner); expect((await count()).unreadCount).toBe(1);
+    asUser(); await state({ field: 'read', value: false });
+    expect((await count()).unreadCount).toBe(1);
+  });
+
+  it('vynechá smazané a neplatné příspěvky stejně jako nástěnka', async () => {
+    post('deleted'); mocks.store.set(statePath('deleted'), { readAtMs: 20 }); mocks.store.delete(postPath('deleted'));
+    post('invalid', { section: 'invalid' }); post('blank', { title: ' ' });
+    post('no-text', { text: null }); post('no-date', { createdAt: undefined });
+    post('legacy', { section: 'Život' });
+    post('valid', { section: 'auto' });
+    post('saved', { section: 'zivot' }); mocks.store.set(statePath('saved'), { saved: true, readAtMs: -1 });
+    expect((await count()).unreadCount).toBe(2);
+    expect((await feed('?view=unread')).posts).toHaveLength(2);
+  });
+
+  it('vrátí nulu pro prázdný intranet a zakáže sdílené cachování', async () => {
+    const response = await unreadCount(request('/unread-count'));
+    expect(await response.json()).toEqual({ ok: true, unreadCount: 0 });
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('respektuje zamítnuté přihlášení a přístup bez čtení databáze', async () => {
+    for (const status of [401, 403]) {
+      mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+      expect((await unreadCount(request('/unread-count'))).status).toBe(status);
+    }
+    expect(mocks.reads).toEqual([]);
+  });
+
+  it('chybu čtení neprezentuje jako nulový počet', async () => {
+    post(); vi.spyOn(mocks.db, 'getAll').mockRejectedValueOnce(new Error('unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const response = await unreadCount(request('/unread-count'));
+    expect(response.status).toBe(500); expect(await response.json()).not.toHaveProperty('unreadCount');
+  });
+});
+
+describe('výstražný odznak Důležité', () => {
+  const form = (important?: string) => {
+    const data = new FormData();
+    data.set('title', 'Důležitá změna'); data.set('text', 'Podklady pro poradce.'); data.set('section', 'auto');
+    if (important !== undefined) data.set('important', important);
+    return data;
+  };
+  const edit = (body: FormData | Record<string, unknown>) => editPost(new NextRequest('https://example.test/api/intranet/wall/post', {
+    method: 'PATCH', body: body instanceof FormData ? body : JSON.stringify(body),
+    ...(body instanceof FormData ? {} : { headers: { 'Content-Type': 'application/json' } }),
+  }), { params: Promise.resolve({ postId: 'post' }) });
+
+  it.each(['1', '0', undefined])('uloží označení při vytvoření (%s) a vrací ho v nástěnce', async important => {
+    asUser(owner);
+    const response = await createPost(new NextRequest('https://example.test/api/intranet/wall', { method: 'POST', body: form(important) }));
+    expect(response.status).toBe(200);
+    expect(mocks.store.get(postPath('generated'))?.important).toBe(important === '1');
+    expect((await feed()).posts[0]).toMatchObject({ important: important === '1', pinned: false });
+  });
+
+  it('autor může odznak zapnout i vypnout přes formulář a změna přežije opětovné načtení', async () => {
+    post(); asUser(owner);
+    expect((await edit(form('1'))).status).toBe(200);
+    expect((await feed()).posts[0].important).toBe(true);
+    expect((await edit(form('0'))).status).toBe(200);
+    expect((await feed()).posts[0].important).toBe(false);
+  });
+
+  it('zachová označení při starší úpravě bez nového pole a odlišuje ho od připnutí', async () => {
+    post('post', { important: true, pinned: false }); asUser(owner);
+    expect((await edit(form())).status).toBe(200);
+    expect((await feed()).posts[0]).toMatchObject({ important: true, pinned: false });
+    const body = { title: 'Změna', text: 'Text', section: 'auto', pinned: true, important: false };
+    expect((await edit(body)).status).toBe(200);
+    expect((await feed()).posts[0]).toMatchObject({ important: false, pinned: true });
+    expect((await edit({ ...body, important: 'true' })).status).toBe(400);
+  });
+
+  it('staré příspěvky nemají výstrahu a cizí autor ji nemůže změnit', async () => {
+    post(); expect((await feed()).posts[0].important).toBe(false);
+    expect((await edit(form('1'))).status).toBe(403);
+    expect(mocks.writes).toEqual([]);
+  });
 });
 
 describe('osobní stav příspěvků',()=>{

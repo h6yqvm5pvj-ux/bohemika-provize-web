@@ -65,6 +65,7 @@
 }
 .active .navIcon { color: #dccbf6; }
 .activeDot { margin-left: auto; flex: 0 0 5px; height: 5px; border-radius: 50%; background: #c5ade6; }
+.unreadBadge { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 21px; height: 21px; margin-left: auto; padding: 0 5px; border-radius: 999px; background: #dc354b; color: #fff; font-size: 10px; font-weight: 750; line-height: 1; font-variant-numeric: tabular-nums; box-shadow: 0 2px 5px #dc354b24; }
 .groupStart { margin-top: 16px; }
 .groupStart::before { content: ""; position: absolute; height: 1px; top: -10px; left: 13px; right: 13px; background: #e5e5ee; }
 .disabled { opacity: .45; cursor: not-allowed; }
@@ -84,6 +85,8 @@
 .sidebar[data-collapsed="true"] .activeDot { display: none; }
 .sidebar[data-collapsed="true"] .collapseButton { margin-inline: 14px; justify-content: center; padding-inline: 0; }
 .sidebar[data-collapsed="true"] .navItem { justify-content: center; padding-inline: 0; gap: 0; }
+.sidebar[data-collapsed="true"] .unreadBadge { position: absolute; top: 2px; right: 1px; min-width: 18px; height: 18px; padding-inline: 3px; font-size: 9px; box-shadow: 0 0 0 2px #f8f9fc; }
+.sidebar[data-collapsed="true"] .active .unreadBadge { box-shadow: 0 0 0 2px #39304b; }
 .sidebar[data-collapsed="true"] .profile { justify-content: center; padding-inline: 0; }
 .sidebar[data-collapsed="true"] .logout { justify-content: center; padding-inline: 0; }
 .tooltip { position: fixed; z-index: 100; transform: translateY(-50%); padding: 8px 12px; border: 1px solid #ffffff14; border-radius: 8px; background: #30283f; color: white; box-shadow: 0 4px 16px #201a3429; font-family: var(--ui-font-mono), sans-serif; font-size: 12px; font-weight: 550; pointer-events: none; }
@@ -96,3 +99,8 @@
 @keyframes enter { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @media (min-width: 1024px) { .sidebar { display: flex; } .mobileHeader { display: none; } }
 @media (prefers-reduced-motion: reduce) { .sidebar, .navItem, .collapseButton, .logout { transition: none; } .mobileDrawer { animation: none; } }
+
+.tipsterBadge { display: flex; align-items: center; gap: 7px; margin: -2px 22px 20px; width: fit-content; border: 1px solid #e5d8ef; border-radius: 7px; padding: 6px 9px; color: #a081b5; background: #f5eefb; font-size: 8px; font-weight: 650; letter-spacing: 1.2px; }
+.sidebar[data-account="tipster"] { background: linear-gradient(180deg, #fcfaff, #f8f4fc); border-right-color: #ebe3f1; }
+.sidebar[data-account="tipster"] .navItem { height: 47px; margin-bottom: 3px; }
+.sidebar[data-account="tipster"] .active { background: linear-gradient(110deg, #655078, #86649c); }

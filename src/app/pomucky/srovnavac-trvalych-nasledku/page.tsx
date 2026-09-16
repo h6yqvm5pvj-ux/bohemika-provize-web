@@ -624,7 +624,7 @@ function PayoutCurveChart({
         {diagnosisPoints.length > 0 ? (
           <div className="mt-3 rounded-2xl border border-violet-100 bg-violet-50/55 p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#916eaa]">
-              Příklady diagnóz ČPP Neon
+              Příklady diagnóz ČPP Životní pojištění NEON
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {diagnosisPoints.map((example) => {
@@ -2826,7 +2826,7 @@ const buildKooperativaNaPraniTablePreview = (
 const buildCppNeon10xTablePreview = (currentPercent: number): InfoTablePreview => {
   const clamped = clampPercent(currentPercent);
 
-  return buildRangeTablePreview("Tabulka ČPP Neon 2023–2026 10×", ["Rozsah TN", "Násobek"], [
+  return buildRangeTablePreview("Tabulka ČPP Životní pojištění NEON 2023–2026 10×", ["Rozsah TN", "Násobek"], [
     { cells: ["do 10 % včetně", "1×"], active: clamped <= 10 },
     {
       cells: ["nad 10 % do 20 % včetně", "2×"],
@@ -2944,7 +2944,7 @@ const buildKooperativaFlexi4xTablePreview = (
   });
 
   return buildHalfStepValueTablePreview(
-    "Tabulka Kooperativa FLEXI 2026 4×",
+    "Tabulka Kooperativa Životní pojištění FLEXI 2026 4×",
     rows,
     currentPercent
   );
@@ -3324,7 +3324,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const cardsWithoutCurves: ComparisonCardBase[] = [
       {
         key: "cpp-10x",
-        insurer: "ČPP Neon 2023–2026",
+        insurer: "ČPP Životní pojištění NEON 2023–2026",
         badges: ["10× progrese"],
         payout: payout,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
@@ -3333,24 +3333,24 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
       {
         key: "cpp-5x",
-        insurer: "ČPP Neon 2023–2026",
+        insurer: "ČPP Životní pojištění NEON 2023–2026",
         badges: ["5× progrese"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
-          "Tabulka ČPP Neon 2023–2026 5×",
+          "Tabulka ČPP Životní pojištění NEON 2023–2026 5×",
           normalizedPercent
         ),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
         key: "cpp-neon-top-2022-06",
-        insurer: "ČPP Neon",
+        insurer: "ČPP Životní pojištění NEON",
         badges: ["2019–01.06.2022", "TOP progrese 5×"],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
-          "Tabulka ČPP Neon 2019–01.06.2022 TOP progrese 5×",
+          "Tabulka ČPP Životní pojištění NEON 2019–01.06.2022 TOP progrese 5×",
           normalizedPercent
         ),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
@@ -3501,19 +3501,19 @@ export default function SrovnavacTrvalychNasledkuPage() {
       },
       {
         key: "koop-flexi",
-        insurer: "Kooperativa FLEXI 2026",
+        insurer: "Kooperativa Životní pojištění FLEXI 2026",
         badges: ["10× progrese"],
         payout: payoutKooperativaFlexi,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
         tablePreview: buildHalfStepValueTablePreview(
-          "Tabulka Kooperativa FLEXI 2026 10×",
+          "Tabulka Kooperativa Životní pojištění FLEXI 2026 10×",
           KOOP_FLEXI_TN10,
           normalizedPercent
         ),
       },
       {
         key: "koop-flexi-4x",
-        insurer: "Kooperativa FLEXI 2026",
+        insurer: "Kooperativa Životní pojištění FLEXI 2026",
         badges: ["4× progrese"],
         payout: payoutKooperativaFlexi4,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,

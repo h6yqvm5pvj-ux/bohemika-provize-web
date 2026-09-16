@@ -171,7 +171,9 @@ export const normalizeStatementProductMapEntry = (
     statementCategoryForProductKey(productKey) ?? inferStatementProductCategory(code);
   const category = normalizeCategory(raw.category, inferredCategory);
   const label =
-    normalizeText(raw.label) ||
+    normalizeText(raw.label)
+      .replace(/^ČPP (?:ŽP )?NEON(?=$|\s)/iu, PRODUCT_CATALOG.neon.label)
+      .replace(/^Kooperativa (?:ŽP )?FLEXI(?=$|\s)/iu, PRODUCT_CATALOG.flexi.label) ||
     catalogMeta?.label ||
     code;
 
@@ -211,28 +213,26 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   defaultEntry({
     code: "CPP_NEON",
     productKey: "neon",
-    label: "ČPP ŽP NEON",
     baseRule: "annual",
     isLifeSplit: true,
   }),
   defaultEntry({
     code: "CPP_NRF_LF",
     productKey: "neon",
-    label: "ČPP ŽP NEON",
     baseRule: "annual",
     isLifeSplit: true,
   }),
   defaultEntry({
     code: "CPP_NEONRF",
     productKey: "neon",
-    label: "ČPP ŽP NEON RF",
+    label: `${PRODUCT_CATALOG.neon.label} RF`,
     baseRule: "annual",
     isLifeSplit: true,
   }),
   defaultEntry({
     code: "CPP_NRF_IN",
     productKey: "neon",
-    label: "ČPP ŽP NEON RF",
+    label: `${PRODUCT_CATALOG.neon.label} RF`,
     baseRule: "annual",
     isLifeSplit: true,
     note: "Investiční varianta životního pojištění REFRESH. Rizikovou základnu určují A101/B0301; investiční provize A201 se posuzuje samostatně.",
@@ -240,7 +240,7 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   defaultEntry({
     code: "CPP_N_RISK",
     productKey: "neon",
-    label: "ČPP ŽP NEON RISK",
+    label: `${PRODUCT_CATALOG.neon.label} RISK`,
     baseRule: "annual",
     isLifeSplit: true,
   }),

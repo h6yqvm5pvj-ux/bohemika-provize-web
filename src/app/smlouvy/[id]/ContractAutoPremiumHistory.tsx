@@ -1,7 +1,10 @@
+import { useId, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
   Car,
+  FileText,
+  Loader2,
   Minus,
   TrendingDown,
   TrendingUp,
@@ -22,7 +25,9 @@ import {
   type ContractCommissionStatementSummary,
   type ContractDoc,
 } from "./contractDetailTypes";
-import { ContractSectionHeading } from "./ContractDetailUi";
+import { ContractSectionToggle } from "./ContractSectionToggle";
+import { PremiumHistorySourceDialog } from "./PremiumHistorySourceDialog";
+import styles from "./autoPremiumHistory.module.css";
 import { resolveAutoPremiumBasis, premiumBaseSourceKey, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 import { PremiumBaseReview, type PremiumBaseReviewItem, type ResolvePremiumBase } from "./PremiumBaseReview";
 
@@ -461,21 +466,6 @@ const statusLabel = (status: PremiumChangeStatus): string => {
   }
 };
 
-const statusClass = (status: PremiumChangeStatus): string => {
-  switch (status) {
-    case "initial":
-      return "border-sky-200 bg-sky-50 text-sky-800";
-    case "increased":
-      return "border-emerald-200 bg-emerald-50 text-emerald-800";
-    case "decreased":
-      return "border-amber-200 bg-amber-50 text-amber-900";
-    case "same":
-      return "border-slate-200 bg-slate-50 text-slate-700";
-    default:
-      return "border-sky-200 bg-sky-50 text-sky-800";
-  }
-};
-
 const statusIcon = (status: PremiumChangeStatus) => {
   switch (status) {
     case "increased":
@@ -756,6 +746,9 @@ export function ContractAutoPremiumHistory({
   loading = false,
   error = null,
 }: ContractAutoPremiumHistoryProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const contentId = useId();
+  const [selectedSource, setSelectedSource] = useState<PremiumHistoryRow | null>(null);
   const showAutoStatementScan = isAutoProduct(product);
   const normalizedContractNumber = normalizeContractNumber(contractNumber);
   const policyStart = toDate(policyStartDate);
@@ -850,88 +843,62 @@ export function ContractAutoPremiumHistory({
   const HeaderIcon = showAutoStatementScan ? Car : TrendingUp;
 
   return (
-    <section className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_10px_26px_rgba(15,23,42,0.055)]">
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <ContractSectionHeading
-            icon={<HeaderIcon size={17} strokeWidth={2.2} aria-hidden="true" />}
-          >
-            Změny pojistného
-          </ContractSectionHeading>
-          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
-            {changeCountLabel(rows.length)}
+    <section className={styles.panel} aria-label="Změny pojistného">
+      <div className={styles.heading}>
+        <ContractSectionToggle
+          title="Změny pojistného"
+          icon={<HeaderIcon size={18} strokeWidth={2} />}
+          count={loading ? "Načítám…" : changeCountLabel(rows.length)}
+          expanded={isExpanded}
+          contentId={contentId}
+          onToggle={() => setIsExpanded(value => !value)}
+        />
+      </div>
+
+      <div id={contentId} hidden={!isExpanded}>
+      <div className={styles.summary}>
+        <div className={styles.summaryStart}>
+          <span className={styles.label}>Při sjednání</span>
+          <strong className={styles.startAmount}>{annualPremiumLabel(signedAnnualPremiumValue)}</strong>
+          <span className={styles.caption}>
+            <CalendarDays size={13} aria-hidden="true" />
+            od {formatDate(policyStart)}
           </span>
         </div>
-
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-3 border-t border-slate-200 pt-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_minmax(150px,0.8fr)] sm:gap-x-5">
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-              Při sjednání
-            </div>
-            <div className="mt-0.5 text-base font-black tracking-tight text-slate-950 sm:text-lg">
-              {annualPremiumLabel(signedAnnualPremiumValue)}
-            </div>
-            <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-              <CalendarDays size={12} strokeWidth={2.1} aria-hidden="true" />
-              od {formatDate(policyStart)}
-            </div>
-          </div>
-
-          <ArrowRight size={17} strokeWidth={2.2} className="text-slate-300" aria-hidden="true" />
-
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-              {rows.length > 0 ? "Aktuálně" : "Stav z výpisů"}
-            </div>
-            <div className="mt-0.5 text-base font-black tracking-tight text-slate-950 sm:text-lg">
-              {hasUnconfirmed ? "Čeká na ověření" : rows.length > 0 ? annualPremiumLabel(latestAnnualPremium) : "Beze změn"}
-            </div>
-            <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
-              Poslední známé roční pojistné
-            </div>
-          </div>
-
-          <div className="col-span-3 mt-2 border-t border-slate-100 pt-2 sm:col-span-1 sm:mt-0 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
-              Celková změna
-            </div>
-            <div
-              className={`mt-0.5 text-base font-black tracking-tight ${
-                totalAnnualChange == null
-                  ? "text-slate-500"
-                  : totalAnnualChange >= 0
-                    ? "text-emerald-700"
-                    : "text-rose-700"
-              }`}
-            >
-              {!hasUnconfirmed && rows.length > 0 && totalAnnualChange != null
-                ? signedAnnualMoneyLabel(totalAnnualChange)
-                : "—"}
-            </div>
-          </div>
+        <span className={styles.connector} aria-hidden="true"><ArrowRight size={19} strokeWidth={1.7} /></span>
+        <div className={styles.summaryCurrent}>
+          <span className={styles.label}>{rows.length > 0 ? "Aktuálně" : "Stav z výpisů"}</span>
+          <strong className={styles.currentAmount}>
+            {hasUnconfirmed ? "Čeká na ověření" : rows.length > 0 ? annualPremiumLabel(latestAnnualPremium) : "Beze změn"}
+          </strong>
+          <span className={styles.caption}>Poslední známé roční pojistné</span>
+        </div>
+        <div className={styles.summaryChange}>
+          <span className={styles.label}>Celková změna</span>
+          <strong className={`${styles.changeAmount} ${totalAnnualChange == null ? "text-slate-500" : totalAnnualChange >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+            {!hasUnconfirmed && rows.length > 0 && totalAnnualChange != null ? signedAnnualMoneyLabel(totalAnnualChange) : "—"}
+          </strong>
         </div>
       </div>
 
       {!loading && <PremiumBaseReview items={uniqueReviews} onResolve={onResolveBase} onOpenStatement={onOpenStatement} />}
 
       {showAutoStatementScan && loading ? (
-        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
-          Načítám provizní výpisy pro kontrolu výročí.
+        <div className={styles.message} role="status">
+          <Loader2 size={20} className={styles.spinner} aria-hidden="true" />
+          <span>Načítám provizní výpisy pro kontrolu výročí.</span>
         </div>
       ) : showAutoStatementScan && error ? (
-        <div className="m-4 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm font-semibold text-amber-900">
-          {error}
-        </div>
+        <div className={styles.message} role="alert" data-error="true">{error}</div>
       ) : showAutoStatementScan && !normalizedContractNumber ? (
-        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
-          Smlouva nemá číslo smlouvy, takže ji nejde spárovat s provizním výpisem.
-        </div>
+        <div className={styles.message}>Smlouva nemá číslo smlouvy, takže ji nejde spárovat s provizním výpisem.</div>
       ) : rows.length === 0 ? (
-        <div className="m-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3.5 py-3 text-sm font-medium text-slate-600">
-          {hasUnconfirmed ? "Změnu pojistného zobrazíme po ověření období základny." : "Zatím žádný provizní výpis neobsahuje změnu pojistného."}
+        <div className={styles.message}>
+          <span className={styles.emptyIcon}><CalendarDays size={22} strokeWidth={1.6} aria-hidden="true" /></span>
+          <span>{hasUnconfirmed ? "Změnu pojistného zobrazíme po ověření období základny." : "Zatím žádný provizní výpis neobsahuje změnu pojistného."}</span>
         </div>
       ) : (
-        <div className="border-t border-slate-200">
+        <ol className={styles.timeline} aria-label="Historie změn pojistného">
           {rows.map((row, index) => {
             const rowAnnualPremium = annualPremiumFromRow(row, paymentFrequency);
             const previousDisplayedAnnualPremium =
@@ -955,7 +922,6 @@ export function ContractAutoPremiumHistory({
                 : row.status;
             const StatusIcon = statusIcon(displayStatus);
             const isLifeIncrease = row.premiumKind === "life_increase";
-            const effectiveLabel = isLifeIncrease ? "Účinnost" : "Výročí";
             const changeToneClass =
               rowDifferenceAnnual == null
                 ? "text-slate-950"
@@ -963,67 +929,63 @@ export function ContractAutoPremiumHistory({
                   ? "text-emerald-700"
                   : "text-rose-700";
             return (
-              <article
-                key={row.key}
-                className="border-b border-slate-100 px-4 py-3 last:border-b-0"
-              >
-                <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${statusClass(displayStatus)}`}
-                      >
-                        <StatusIcon size={12} strokeWidth={2.3} aria-hidden="true" />
-                        {statusLabel(displayStatus)}
+              <li key={row.key} className={styles.event}>
+                <span className={styles.marker} data-status={displayStatus} aria-hidden="true">
+                  <StatusIcon size={18} strokeWidth={1.8} />
+                </span>
+                <article className={styles.eventContent}>
+                  <div className={styles.eventTop}>
+                    <div className={styles.eventHeading}>
+                      <h4>{isLifeIncrease ? "Změna pojistného" : `${row.anniversaryNumber}. výročí`}</h4>
+                      <span className={styles.eventDate}>
+                        <CalendarDays size={13} aria-hidden="true" />
+                        {isLifeIncrease ? "Účinnost " : ""}{formatDate(row.anniversaryDate)}
                       </span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                        {isLifeIncrease ? "Změna pojistného" : `${row.anniversaryNumber}. výročí`}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-                        <CalendarDays size={12} strokeWidth={2.1} aria-hidden="true" />
-                        {effectiveLabel} {formatDate(row.anniversaryDate)}
-                      </span>
-                  </div>
-                  <div className="min-w-0 truncate text-[11px] font-medium text-slate-500" title={statementSourceLabel(row)}>
-                    Zdroj: {statementSourceLabel(row)}
-                  </div>
-                </div>
-
-                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-x-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_minmax(130px,0.75fr)] sm:gap-x-5">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-                      Původní
+                      <span className={styles.eventStatus} data-status={displayStatus}>{statusLabel(displayStatus)}</span>
                     </div>
-                    <div className="mt-0.5 text-sm font-bold text-slate-700 sm:text-base">
-                      {annualPremiumLabel(previousAnnualPremium)}
-                    </div>
+                    <button
+                      type="button"
+                      className={styles.sourceButton}
+                      aria-haspopup="dialog"
+                      aria-label={`Zdroj změny ${formatDate(row.anniversaryDate)}`}
+                      onClick={() => setSelectedSource(row)}
+                    >
+                      <FileText size={14} strokeWidth={1.8} aria-hidden="true" />
+                      Zdroj
+                    </button>
                   </div>
-                  <ArrowRight
-                    size={16}
-                    strokeWidth={2.2}
-                    className="mb-0.5 text-slate-300"
-                    aria-hidden="true"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
-                      Nové pojistné
+                  <div className={styles.eventAmounts}>
+                    <div>
+                      <span className={styles.label}>Původní</span>
+                      <span className={styles.previousAmount}>{annualPremiumLabel(previousAnnualPremium)}</span>
                     </div>
-                    <div className="mt-0.5 text-sm font-black text-slate-950 sm:text-base">
-                      {annualPremiumLabel(rowAnnualPremium)}
+                    <ArrowRight size={16} strokeWidth={1.7} className={styles.amountArrow} aria-hidden="true" />
+                    <div>
+                      <span className={styles.label}>Nové pojistné</span>
+                      <strong className={styles.newAmount}>{annualPremiumLabel(rowAnnualPremium)}</strong>
+                    </div>
+                    <div className={styles.eventDifference}>
+                      <span className={styles.label}>Rozdíl</span>
+                      <strong className={`${styles.differenceAmount} ${changeToneClass}`}>{signedAnnualMoneyLabel(rowDifferenceAnnual)}</strong>
                     </div>
                   </div>
-                  <div className="col-span-3 mt-2 flex items-baseline justify-between border-t border-slate-100 pt-2 sm:col-span-1 sm:mt-0 sm:block sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
-                      Rozdíl
-                    </div>
-                    <div className={`mt-0.5 text-sm font-black sm:text-base ${changeToneClass}`}>
-                      {signedAnnualMoneyLabel(rowDifferenceAnnual)}
-                    </div>
-                  </div>
-                </div>
-              </article>
+                </article>
+              </li>
             );
           })}
-        </div>
+        </ol>
+      )}
+
+      </div>
+
+      {selectedSource && (
+        <PremiumHistorySourceDialog
+          source={selectedSource}
+          sourceLabel={statementSourceLabel(selectedSource)}
+          contractNumber={contractNumber}
+          onOpenStatement={onOpenStatement}
+          onClose={() => setSelectedSource(null)}
+        />
       )}
     </section>
   );

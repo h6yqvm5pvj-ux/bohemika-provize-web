@@ -596,7 +596,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
         <div className="rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-sm font-semibold text-slate-900">
-              Načíst rizika z PDF (ČPP ŽP NEON)
+              Načíst rizika z PDF (ČPP Životní pojištění NEON)
             </div>
             <button
               type="button"

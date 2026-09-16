@@ -1022,7 +1022,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
                       Nad limitem {limit} Kč pro variantu {fromLabel} je potřeba doložit příjem.
                     </p>
                     <p className="mt-1 text-amber-900">
-                      Platí pro ČPP. U Kooperativa FLEXI se příjem dokládá nad 650 Kč / den.
+                      Platí pro ČPP. U Kooperativa Životní pojištění FLEXI se příjem dokládá nad 650 Kč / den.
                     </p>
                     <button
                       type="button"
@@ -1906,7 +1906,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
                       Nad limitem 600 Kč je potřeba doložit příjem.
                     </p>
                     <p className="mt-1 text-amber-900">
-                      Platí pro ČPP. U Kooperativa FLEXI se příjem dokládá nad 650 Kč / den.
+                      Platí pro ČPP. U Kooperativa Životní pojištění FLEXI se příjem dokládá nad 650 Kč / den.
                     </p>
                     <button
                       type="button"

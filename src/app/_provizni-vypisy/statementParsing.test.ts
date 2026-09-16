@@ -192,7 +192,7 @@ describe("commission statement parsing helpers", () => {
   it("maps known statement products to internal product metadata", () => {
     expect(resolveStatementProduct("CPP_NRF_LF")).toMatchObject({
       rawCode: "CPP_NRF_LF",
-      label: "ČPP ŽP NEON",
+      label: "ČPP Životní pojištění NEON",
       productKey: "neon",
       category: "life",
       usesAnnualPremiumBase: true,

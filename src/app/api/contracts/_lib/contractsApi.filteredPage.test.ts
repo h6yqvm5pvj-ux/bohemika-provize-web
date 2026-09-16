@@ -1,6 +1,7 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFilteredContractPage, CONTRACT_FILTER_PROJECTION } from "./contractsApi.filteredPage";
+import { CONTRACT_SEARCH_PROJECTION } from "./contractsApi.projectedSearch";
 import { parseContractListFilters } from "./contractsApi.listFilters";
 import type { ContractDoc } from "./contractsApi.types";
 
@@ -35,6 +36,17 @@ afterEach(() => vi.useRealTimers());
 const filter = (values: Record<string, string>) => parseContractListFilters(new URLSearchParams(values));
 
 describe("complete filtered contract pagination", () => {
+  it("finds old team search matches beyond the first 1,500 records without search indexes", async () => {
+    const second = "second@example.test";
+    const records = Array.from({ length: 1600 }, (_, i) => record(String(i), { clientName: "Jana Černá" }));
+    records.push(record("old-match", { clientName: "Žaneta Nováková", contractSignedDate: "2020-01-01" }, second));
+    const { db, state } = database(records);
+    const matches = await readFilteredContractPage({ db, owners: [owner, second], filters: filter({ q: "novakova zaneta" }), cursor: null, pageSize: 20 });
+    expect(matches.map(item => item.doc.id)).toEqual(["old-match"]);
+    expect(state.hydrated).toEqual([`users/${second}/entries/old-match`]);
+    expect(state.fields).toEqual([[...CONTRACT_SEARCH_PROJECTION], [...CONTRACT_SEARCH_PROJECTION]]);
+  });
+
   it("finds historical signing positions beyond the first page and preserves pagination", async () => {
     const records = Array.from({ length: 1500 }, (_, i) => record(String(i), { position: "poradce5" }));
     records.push(record("old-b", { position: "poradce2", contractSignedDate: "2020-01-01" }),

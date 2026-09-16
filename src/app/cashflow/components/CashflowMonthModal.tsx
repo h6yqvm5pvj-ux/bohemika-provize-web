@@ -1,3 +1,5 @@
+import { TipDialog } from "@/app/tipy/TipDialog";
+import tipsterStyles from "../tipsterRewards.module.css";
 import { FileText, Loader2, X } from "lucide-react";
 
 import {
@@ -102,6 +104,7 @@ export function CashflowMonthModal({
 }: CashflowMonthModalProps) {
   if (!month) {
     if (!loading && !loadingError) return null;
+    if (tipsterMode) return <TipDialog title="Detail odměn" subtitle={loadingLabel} onClose={onClose}><div className={tipsterStyles.loading} role={loadingError ? "alert" : "status"}>{loadingError || "Načítám odměny za vybraný měsíc…"}</div></TipDialog>;
     return <div className="fixed inset-0 z-30 flex items-center justify-center bg-[#08030f]/78 px-4 backdrop-blur-[7px]" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-busy={loading} aria-label={loadingLabel ?? "Detail měsíce"} className="w-full max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl" onClick={event => event.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between gap-4"><h2 className="font-semibold">{loadingLabel ?? "Detail měsíce"}</h2>
@@ -131,6 +134,23 @@ export function CashflowMonthModal({
     ? "Předplatné"
     : "Předpoklad";
   const itemCountLabel = formatCashflowGroupCount(displayGroups);
+
+  if (tipsterMode) return <TipDialog title="Detail odměn" subtitle={month.label} onClose={onClose}>
+    <div className={tipsterStyles.monthDetail}>
+      <div className={tipsterStyles.monthSummary}>
+        {isPaidMonth ? <>
+          <div><span>Vyplaceno</span><strong>{formatMoney(month.total)}</strong></div>
+          <div><span>Předpoklad systému</span><strong>{formatMoney(predictedTotal)}</strong></div>
+          <div><span>Rozdíl proti předpokladu</span><strong>{formatMoney(payoutDifference)}</strong></div>
+        </> : <>
+          <div><span>Očekávané provize</span><strong>{formatMoney(month.total)}</strong></div>
+          <div><span>Stornofond ({stornoPercent} %)</span><strong>{formatMoney(stornoFund)}</strong></div>
+          <div><span>Po odpočtu</span><strong>{formatMoney(netTotal)}</strong></div>
+        </>}
+      </div>
+      <div className={tipsterStyles.monthItems}>{displayGroups.map((group) => <CashflowCommissionCard key={group.id} group={group} />)}</div>
+    </div>
+  </TipDialog>;
 
   return (
     <>

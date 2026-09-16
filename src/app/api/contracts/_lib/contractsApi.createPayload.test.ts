@@ -452,7 +452,7 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP ŽP NEON, DOMEX, ČPP Auto a Allianz Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, DOMEX, ČPP Auto a Allianz Auto.",
     });
 
     const allianzReplacementPayload = normalizedPayload(

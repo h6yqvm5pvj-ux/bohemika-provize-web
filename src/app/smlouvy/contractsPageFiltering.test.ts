@@ -42,6 +42,19 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("contract filter results in the page and API", () => {
+  it.each(["novakova zaneta", "  ŽANETA\t  Nováková ", "novak zan", "AB 12 / 34"])("matches %s identically in the page and API", query => {
+    const values = [contract("match"), contract("other", { clientName: "Jana Černá", contractNumber: "ZZ9999" })];
+    const server = parseContractListFilters(new URLSearchParams({ q: query }));
+    expect(matching(values, { query })).toEqual(["match"]);
+    expect(values.filter(item => contractMatchesListFilters(item as ApiContract, server)).map(item => item.id)).toEqual(["match"]);
+  });
+
+  it("requires all name fragments within the same endorsement alias", () => {
+    const grouped = contract("group", { searchClientTokens: ["jan novak", "jana cerna"] });
+    expect(matching([grouped], { query: "novak jan" })).toEqual(["group"]);
+    expect(matching([grouped], { query: "novak cerna" })).toEqual([]);
+  });
+
   it.each(CAREER_POSITIONS)("filters the saved signing position %s in both the page and API", position => {
     const values = [...CAREER_POSITIONS.map(value => contract(value, { position: value })), contract("missing")];
     expect(matching(values, { selectedPositions: [position] })).toEqual([position]);

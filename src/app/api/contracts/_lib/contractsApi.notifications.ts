@@ -130,7 +130,7 @@ export const buildContractActivityNotificationContent = ({
   const productName = productLabel(
     input.productKey,
     "Neznámý produkt"
-  ).toLocaleUpperCase("cs-CZ");
+  );
   const thematicEmoji = thematicEmojiForProduct(input.productKey);
 
   if (kind === "contract_increase") {

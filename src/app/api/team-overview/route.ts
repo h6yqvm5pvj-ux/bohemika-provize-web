@@ -23,7 +23,7 @@ import {
   consumeRateLimit,
 } from "@/lib/server/rateLimit";
 import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess";
-import { getAdvisorAccessError, getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import {
@@ -718,7 +718,7 @@ function buildContractRefPayload({
   };
 }
 
-async function getAuthContext(req: NextRequest, options?: { allowTipster?: boolean }): Promise<{
+async function getAuthContext(req: NextRequest): Promise<{
   email: string;
   uid: string;
   actorEmail: string;
@@ -787,7 +787,7 @@ async function getAuthContext(req: NextRequest, options?: { allowTipster?: boole
     effectiveClaims = {};
   }
 
-  const setupError = await (options?.allowTipster ? getAdvisorSetupError : getAdvisorAccessError)({ email, uid });
+  const setupError = await getAdvisorAccessError({ email, uid });
   if (setupError) {
     throw Object.assign(new Error(setupError.error), {
       status: setupError.status,
@@ -2970,7 +2970,7 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
 export async function GET(req: NextRequest) {
   try {
     const action = (req.nextUrl.searchParams.get("action") ?? "").trim();
-    const authCtx = await getAuthContext(req, { allowTipster: action === "hallOfFame" });
+    const authCtx = await getAuthContext(req);
     const { email } = authCtx;
 
     const rateLimitResult = await consumeRateLimit({

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Pencil, Target } from "lucide-react";
-import Image from "next/image";
 import { createPortal } from "react-dom";
 import styles from "./homeWidgets.module.css";
 
@@ -63,6 +62,7 @@ export function MonthlyGoalSection({
   onSaveGoal,
 }: Props) {
   const copy = MONTHLY_GOAL_COPY[language];
+  const ringId = useId().replace(/:/g, "");
   const [editOpen, setEditOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -78,8 +78,10 @@ export function MonthlyGoalSection({
     return () => { document.body.style.overflow = overflow; previousFocus?.focus(); };
   }, [editOpen]);
 
-  const rawProgress = Math.max(0, Number(progress) || 0);
-  const progressForBar = Math.min(100, rawProgress);
+  const hasGoal = monthlyGoal != null && Number.isFinite(monthlyGoal) && monthlyGoal > 0;
+  const rawProgress = Number.isFinite(progress) ? Math.max(0, progress) : 0;
+  const progressForRing = Math.min(100, rawProgress);
+  const showProgress = hasGoal && !loading && !unavailable;
   const progressLabel = new Intl.NumberFormat("cs-CZ", {
     maximumFractionDigits: 1,
   }).format(rawProgress);
@@ -113,8 +115,7 @@ export function MonthlyGoalSection({
   };
 
   return (
-    <section className={`monthly-goal-card ${styles.card} ${styles.goal} ${isLiteUI ? "" : styles.elevated}`}>
-      <Image src="/icons/cilmesice.webp" alt="" width={3000} height={3000} quality={100} aria-hidden="true" className={`${styles.ghost} ${styles.goalGhost}`} />
+    <section className={`monthly-goal-card ${styles.card} ${styles.goal} ${isLiteUI ? "" : styles.elevated}`} data-lite={isLiteUI}>
       {editOpen && createPortal(
         <div className={styles.modalBackdrop}>
           <div ref={modalRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="monthly-goal-title"
@@ -141,23 +142,55 @@ export function MonthlyGoalSection({
           </div>
         </div>, document.body
       )}
-      <div className={styles.content}>
+      <div className={`${styles.content} ${styles.goalLayout}`}>
         <div className={styles.goalHeader}>
           <h2 className={styles.title}><span className={styles.icon}><Target aria-hidden="true" /></span>{copy.monthlyGoal}</h2>
           <button type="button" onClick={() => setEditOpen(true)} className={styles.goalEdit} aria-label={copy.editGoal} title={copy.editGoal} aria-haspopup="dialog" aria-expanded={editOpen}>
             <Pencil size={15} aria-hidden="true" />
           </button>
         </div>
-        <div className={styles.goalNumbers}>
+        <div className={styles.goalAmount}>
           <p className={styles.amount}>{goalDisplayValue}</p>
-          <div className={styles.goalPercent} data-complete={!loading && !unavailable && rawProgress >= 100}>
-            <span className={styles.label}>{copy.completed}</span>
-            {loading ? <span className={styles.loading} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span>
-              : unavailable ? <span role="status">Plnění není k dispozici</span> : <strong>{progressLabel} %</strong>}
-          </div>
+          <p className={styles.goalHint}>{!hasGoal ? "Nastav si cíl pro tento měsíc." : showProgress && rawProgress >= 100 ? "Měsíční cíl je splněný." : "Cílová provize tento měsíc"}</p>
         </div>
-        <div className={styles.progress} data-complete={!loading && !unavailable && rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loading || unavailable ? undefined : progressForBar} aria-valuetext={loading ? copy.loading : unavailable ? "Plnění není k dispozici" : `${progressLabel} %`}>
-          <div className={styles.progressFill} style={{ width: `${loading || unavailable ? 0 : progressForBar}%` }} />
+        <div className={styles.goalRing} data-complete={showProgress && rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={showProgress ? progressForRing : undefined} aria-valuetext={loading ? copy.loading : unavailable ? "Plnění není k dispozici" : !hasGoal ? copy.notSet : `${progressLabel} %`}>
+          <svg viewBox="0 0 144 144" aria-hidden="true" className={styles.goalRingSvg}>
+            <defs>
+              <radialGradient id={`${ringId}-rim`}>
+                <stop offset="78%" stopColor="#edf4ef" />
+                <stop offset="91%" stopColor="#dce9e1" />
+                <stop offset="98%" stopColor="#f8fcfa" />
+                <stop offset="100%" stopColor="#dce7e1" />
+              </radialGradient>
+              <radialGradient id={`${ringId}-track`}>
+                <stop offset="75%" stopColor="#c2d7ca" />
+                <stop offset="84%" stopColor="#e2ede6" />
+                <stop offset="92%" stopColor="#edf5f0" />
+                <stop offset="100%" stopColor="#c8ddcf" />
+              </radialGradient>
+              <radialGradient id={`${ringId}-face`} cx="40%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="75%" stopColor="#f7faf8" />
+                <stop offset="100%" stopColor="#e7f0ea" />
+              </radialGradient>
+              <linearGradient id={`${ringId}-green`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#249466" />
+                <stop offset="40%" stopColor="#59ce96" />
+                <stop offset="70%" stopColor="#3cb57f" />
+                <stop offset="100%" stopColor="#218b5d" />
+              </linearGradient>
+            </defs>
+            <circle cx="72" cy="72" r="68" fill={`url(#${ringId}-rim)`} stroke="#f7fbf9" strokeWidth="1" />
+            <circle cx="72" cy="72" r="61" fill={`url(#${ringId}-track)`} />
+            <circle cx="72" cy="72" r="44" fill={`url(#${ringId}-face)`} stroke="#ffffff" strokeWidth="1.5" />
+            <circle cx="72" cy="72" r="55" pathLength="100" transform="rotate(-90 72 72)" stroke={`url(#${ringId}-green)`} className={styles.goalRingFill} strokeDasharray="100 100" style={{ strokeDashoffset: 100 - (showProgress ? progressForRing : 0), opacity: showProgress && progressForRing > 0 ? 1 : 0 }} />
+          </svg>
+          <div className={styles.goalRingLabel}>
+            {loading ? <span className={styles.goalRingStatus} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span>
+              : unavailable ? <span className={styles.goalRingStatus} role="status">Plnění není<br />k dispozici</span>
+              : !hasGoal ? <><strong>—</strong><span>Bez cíle</span></>
+              : <><strong>{progressLabel}<small> %</small></strong><span>{copy.completed}</span></>}
+          </div>
         </div>
       </div>
     </section>

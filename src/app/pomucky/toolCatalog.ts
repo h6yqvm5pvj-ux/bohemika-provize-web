@@ -422,12 +422,12 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     key: "neon-life-vs-metlife-oneguard",
     category: "Životní pojištění",
     title: "NEON Life vs. MetLife OneGuard",
-    description: "Přehledné srovnání produktů ČPP NEON Life a MetLife OneGuard.",
+    description: "Přehledné srovnání produktů ČPP Životní pojištění NEON Life a MetLife OneGuard.",
     href: "/pomucky/neon-life-vs-metlife-oneguard",
     news: {
       kind: "new",
       summary:
-        "Nové přehledné srovnání ČPP NEON Life a MetLife OneGuard na jednom místě.",
+        "Nové přehledné srovnání ČPP Životní pojištění NEON Life a MetLife OneGuard na jednom místě.",
     },
   },
 ];

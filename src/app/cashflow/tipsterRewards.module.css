@@ -1,0 +1,88 @@
+.topline { display: flex; justify-content: space-between; align-items: center; gap: 15px; color: #8d71a5; margin: 0 0 22px; }
+.topline > div, .topline > a { display: flex; align-items: center; gap: 9px; }
+.topline h1 { font-size: 23px; font-weight: 700; letter-spacing: -.6px; color: #3d2e4c; }
+.topline > a { font-size: 11px; }
+.hero { display: flex; align-items: center; justify-content: space-between; gap: 30px; padding: 32px 36px; border: 1px solid #e9ddf4; border-radius: 21px; background: radial-gradient(ellipse at 100% 0, #e9dcf5, transparent 70%), #faf7fd; }
+.heroCopy { max-width: 490px; }
+.eyebrow { font-size: 9px; color: #8859a8; font-weight: 650; letter-spacing: 1.4px; }
+.hero h2 { margin-top: 15px; font-size: 35px; font-weight: 700; letter-spacing: -1.1px; line-height: 1.2; color: #4e375e; }
+.hero h2 > span { color: #9b75b7; }
+.heroCopy > p { font-size: 13px; line-height: 1.9; color: #806192; margin-top: 14px; max-width: 370px; }
+.total { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; min-width: 235px; padding: 8px 0 8px 35px; border-left: 1px solid #e7d9f0; text-align: right; }
+.walletIcon { display: grid; place-items: center; width: 44px; height: 44px; color: #b496cd; border: 1px solid #e2d0ee; border-radius: 14px; background: #ffffff73; margin-bottom: 8px; }
+.total > span:not(.walletIcon) { font-size: 11px; color: #835f97; }
+.total > strong { font-size: 39px; letter-spacing: -1.2px; color: #75538b; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+.total p { font-size: 10px; line-height: 1.8; color: #825f98; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 25px 0 10px; }
+.toolbar > span { display: flex; align-items: center; gap: 8px; color: #7e638f; font-size: 13px; font-weight: 600; }
+.toolbar > div { display: flex; gap: 7px; }
+.toolbar button { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 9px 11px; border: 1px solid #e8dcef; background: #fff; color: #855e9a; border-radius: 8px; cursor: pointer; }
+.toolbar button[aria-pressed="true"] { background: #f3eafa; border-color: #d3b9e4; }
+.years { display: grid; gap: 18px; }
+.year { border: 1px solid #e8dff0; background: #fff; border-radius: 17px; overflow: hidden; }
+.yearHeader { display: flex; align-items: center; gap: 15px; width: 100%; text-align: left; padding: 22px 26px; color: #b295c4; cursor: pointer; }
+.yearIcon { display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid #e8dbf1; border-radius: 13px; color: #a881c0; background: #f8f2fc; }
+.yearTitle small { display: block; font-size: 8px; letter-spacing: 1.2px; color: #875ca0; }
+.yearTitle > strong { display: flex; align-items: center; gap: 9px; font-size: 27px; letter-spacing: -.8px; color: #715180; font-weight: 650; }
+.yearTitle > strong > span { font-size: 9px; font-weight: 550; background: #f7eefc; color: #8c55ab; padding: 3px 7px; border-radius: 5px; letter-spacing: 0; }
+.yearTotal { margin-left: auto; text-align: right; }
+.yearTotal small { display: block; font-size: 10px; color: #865f95; }
+.yearTotal strong { display: block; margin-top: 5px; font-size: 23px; color: #82608f; font-weight: 650; letter-spacing: -.5px; }
+.rotated { transform: rotate(180deg); }
+.months { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; padding: 0 24px 24px; }
+.month { min-width: 0; display: flex; flex-direction: column; align-items: stretch; border: 1px solid #eee4f4; background: #fefcff; border-radius: 12px; padding: 16px; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.month:hover:not(:disabled) { border-color: #c5a4da; background: #fcf7ff; }
+.month:disabled { background: #fdfbff; cursor: default; }
+.month[data-current="true"] { border-color: #cab0df; background: #faf4ff; }
+.monthTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.monthTop > span { color: #8859a7; font-size: 11px; }
+.monthTop > small { display: flex; align-items: center; gap: 4px; background: #efe2fa; color: #8a58ac; font-size: 8px; border-radius: 5px; padding: 4px 6px; }
+.monthTop > .paid { color: #80a18c; background: #f0f8f2; }
+.month h3 { margin-top: 9px; font-size: 12px; font-weight: 550; color: #836096; text-transform: capitalize; }
+.amount { font-size: 25px; font-weight: 650; color: #826190; letter-spacing: -.6px; margin: 11px 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.month:disabled .amount { color: #d4c3de; }
+.month[data-negative="true"] .amount { color: #ba8197; }
+.bar { height: 3px; width: 100%; background: #f1e9f7; border-radius: 5px; }
+.bar > span { display: block; height: 100%; background: #c4a4da; border-radius: inherit; }
+.monthBottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 13px; font-size: 9px; color: #8a59a7; }
+.monthBottom > span { overflow-wrap: anywhere; }
+.note { display: flex; align-items: flex-start; gap: 12px; padding: 19px 22px; background: #faf7fd; border: 1px solid #eee3f5; border-radius: 14px; color: #b393c6; }
+.note > svg { flex-shrink: 0; }
+.note strong { color: #835f96; font-size: 12px; font-weight: 600; }
+.note p { margin-top: 6px; font-size: 11px; line-height: 1.9; color: #855e97; }
+.monthDetail { padding: 25px; }
+.monthSummary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-bottom: 23px; }
+.monthSummary > div { border: 1px solid #eaddf3; border-radius: 12px; background: #fff; padding: 18px; }
+.monthSummary span { display: block; font-size: 11px; color: #845d99; }
+.monthSummary strong { display: block; font-size: 25px; color: #835f91; margin-top: 8px; font-weight: 650; overflow-wrap: anywhere; }
+.monthItems { display: grid; gap: 12px; }
+.loading { padding: 40px; text-align: center; color: #875ba3; font-size: 13px; }
+.years :is(button, a):focus-visible, .toolbar button:focus-visible { outline: 3px solid #c0a3d6; outline-offset: 3px; }
+@media (max-width: 900px) { .hero { padding: 28px; gap: 20px; } .hero h2 { font-size: 30px; } .total { min-width: 190px; padding-left: 22px; } .total > strong { font-size: 31px; } }
+@media (max-width: 600px) {
+  .topline { flex-wrap: wrap; }
+  .topline h1 { font-size: 22px; }
+  .hero { flex-direction: column; align-items: stretch; padding: 25px 22px; border-radius: 17px; }
+  .hero h2 { font-size: 29px; }
+  .heroCopy p { font-size: 12px; }
+  .eyebrow { font-size: 8px; }
+  .total { align-items: flex-start; padding: 21px 0 0; border-left: 0; border-top: 1px solid #e6d5f0; text-align: left; position: relative; }
+  .walletIcon { position: absolute; right: 0; top: 25px; }
+  .total > strong { font-size: 34px; }
+  .toolbar { flex-direction: column; align-items: flex-start; }
+  .toolbar > div { flex-wrap: wrap; }
+  .yearHeader { padding: 19px 16px; gap: 10px; flex-wrap: wrap; }
+  .yearIcon { width: 37px; height: 37px; }
+  .yearTitle > strong { font-size: 23px; }
+  .yearTotal { margin-left: 0; flex-basis: calc(100% - 35px); text-align: left; padding-left: 47px; }
+  .yearTotal strong { font-size: 21px; }
+  .months { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 13px 15px; gap: 9px; }
+  .month { padding: 13px 11px; }
+  .amount { font-size: 21px; }
+  .monthTop > small { font-size: 7px; }
+  .monthSummary { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .monthSummary > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 15px; }
+  .monthSummary strong { margin: 0; font-size: 23px; }
+  .monthDetail { padding: 18px 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .month { transition: none; } }
