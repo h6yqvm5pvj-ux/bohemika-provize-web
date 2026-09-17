@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Info, Repeat2, X } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Eye, Info, Repeat2, X } from "lucide-react";
 import styles from "./contractCommission.module.css";
+import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
+  type PaymentFrequency,
   type Position,
   type Product,
 } from "../../types/domain";
@@ -46,6 +48,10 @@ type ContractCommissionSectionProps = {
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
   contractDurationYears?: number | null;
+  paymentFrequency?: PaymentFrequency | null;
+  policyStartDate?: unknown;
+  onOpenStatement?: (statementId: string) => void;
+  statementPreviewLoadingId?: string | null;
   adviserBreakdownPosition: Position | null;
   adviserBreakdownMode: CommissionMode | null;
   paymentBasedAdviserTotals: { immediate: number; subsequent: number } | null;
@@ -348,13 +354,13 @@ const fullyOffsetPayoutRecordIndexes = (
     if (!isStornoPayoutRecord(storno) || pairedIndexes.has(stornoIndex)) return;
 
     const stornoAmount = Math.abs(validPayoutAmount(storno.amount));
-    if (stornoAmount <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE) return;
+    if (stornoAmount <= 0) return;
 
     const payoutIndex = records.findIndex(
       (payout, index) =>
         !pairedIndexes.has(index) &&
         !isStornoPayoutRecord(payout) &&
-        validPayoutAmount(payout.amount) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE &&
+        validPayoutAmount(payout.amount) > 0 &&
         payoutAmountsMatch(payout.amount, stornoAmount) &&
         payoutRecordsCanOffset(payout, storno)
     );
@@ -651,6 +657,10 @@ export function ContractCommissionSection({
   viewerEmail = null,
   contractOwnerEmail = null,
   contractDurationYears = null,
+  paymentFrequency = null,
+  policyStartDate = null,
+  onOpenStatement,
+  statementPreviewLoadingId = null,
   adviserBreakdownPosition,
   adviserBreakdownMode,
   paymentBasedAdviserTotals,
@@ -893,6 +903,83 @@ export function ContractCommissionSection({
       product,
       contractDurationYears
     );
+
+    const acquisitionInstallments = acquisitionCommissionInstallments({
+      item, product, frequency: paymentFrequency, policyStartDate,
+    });
+    if (acquisitionInstallments.length > 0) {
+      const installments = acquisitionInstallments.map((installment) => {
+        const records = payoutsForAcquisitionInstallment(payoutsForRows, installment);
+        const state = payoutStatusForCodes(records, installment.codes, installment.amount);
+        return { ...installment, state, records };
+      });
+      const paidCount = installments.filter(({ state }) => state.status === "paid").length;
+      const total = installments.reduce((sum, installment) => sum + installment.amount, 0);
+      const hasPayment = installments.some(({ state }) => state.paidAmount > 0);
+      const status = paidCount === installments.length ? "paid" : hasPayment ? "partial" : installments.some(({ state }) => state.status === "storno") ? "storno" : "pending";
+      const frequencyLabel = paymentFrequency === "monthly" ? "měsíčně" : paymentFrequency === "quarterly" ? "čtvrtletně" : "pololetně";
+
+      return (
+        <details key={key} className={`group ${styles.installmentGroup}`}>
+          <summary className={`${commissionRowClass} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+            <span className="flex min-w-0 gap-3">
+              <span className={styles.icon}><Banknote size={18} strokeWidth={1.8} aria-hidden="true" /></span>
+              <span className="min-w-0">
+                <span className={styles.installmentTitle}>Získatelská provize <span className={styles.frequency}>{frequencyLabel}</span></span>
+                <span className={styles.installmentMeta}>Vyplaceno {paidCount}/{installments.length} · první rok {formatMoney(total)}</span>
+                {itemNote && <span className="mt-1 block text-xs font-semibold text-red-600">{itemNote}</span>}
+                <span className={styles.installmentProgress} aria-hidden="true">
+                  {installments.map((installment) => <span key={installment.code} data-status={installment.state.status} />)}
+                </span>
+              </span>
+            </span>
+            <span className={styles.installmentSummaryAmount}>
+              <span className="flex flex-col items-end gap-1">
+                <span>{formatMoney(item.amount)} <span className={styles.perInstallment}>/ splátka</span></span>
+                <span className={`${styles.status} ${payoutStatusClass(status)}`}>
+                  {status === "partial" ? "Částečně vyplaceno" : payoutStatusLabel(status, 0)}
+                </span>
+              </span>
+              <ChevronDown size={18} className="text-violet-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+            </span>
+          </summary>
+          <div className={styles.breakdown}>
+            {installments.map((installment) => {
+              const sources = Array.from(new Map(installment.records
+                .filter((record) => record.statementId && (!normalizeEmail(record.writtenBy) || normalizeEmail(record.writtenBy) === normalizedViewerEmail))
+                .map((record) => [record.statementId!, record])).values());
+              return (
+                <div key={installment.code} className={`${styles.breakdownRow} ${payoutRowClass(installment.state.status)}`}>
+                  <span className="min-w-0 text-sm font-medium text-slate-800">
+                    <span>{installment.label} <span className={styles.installmentCode}>{installment.code}</span></span>
+                    {installment.period && <span className={styles.installmentMeta}>Období splátky · {installment.period}</span>}
+                    {renderPayoutRecordHint(installment.state.records)}
+                    {onOpenStatement && sources.length > 0 && (
+                      <span className={styles.installmentSources}>
+                        {sources.map((record) => (
+                          <button key={record.statementId} type="button" className={styles.sourceButton}
+                            disabled={statementPreviewLoadingId === record.statementId}
+                            onClick={() => onOpenStatement(record.statementId!)}
+                            aria-label={`Otevřít zdrojový výpis ${record.statementNumber || ""} pro ${installment.label}`}>
+                            <Eye size={13} aria-hidden="true" />
+                            {statementPreviewLoadingId === record.statementId ? "Načítám…" : `Výpis ${record.statementNumber || "– náhled"}`}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1 text-sm font-semibold text-slate-950">
+                    <span>{formatMoney(installment.amount)}</span>
+                    {installment.state.paidAmount > 0 && <span className={styles.installmentMeta}>Z výpisů {formatMoney(installment.state.paidAmount)}</span>}
+                    {renderPayoutStatusChip(installment.state.status, installment.state.paidAmount, installment.amount, installment.state.records)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      );
+    }
 
     if (recurringInstallments.length > 0) {
       const paidInstallments = recurringInstallments.filter(

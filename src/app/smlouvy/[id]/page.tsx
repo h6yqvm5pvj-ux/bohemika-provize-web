@@ -6479,6 +6479,10 @@ export default function ContractDetailPage() {
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                 contractDurationYears={contract?.durationYears ?? null}
+                paymentFrequency={freq}
+                policyStartDate={contract?.policyStartDate}
+                onOpenStatement={handleOpenCommissionStatementPreview}
+                statementPreviewLoadingId={statementPreviewLoadingId}
                 adviserBreakdownPosition={adviserBreakdownPosition}
                 adviserBreakdownMode={adviserBreakdownMode}
                 paymentBasedAdviserTotals={paymentBasedAdviserTotals}

@@ -23,6 +23,10 @@ vi.mock("@/lib/server/cashflowMutationTracking", () => ({
 vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: mocks.history }));
 
 import { POST } from "./route";
+import { calculateCppPPRbez } from "@/app/lib/productFormulas/cppPPRbez";
+import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "@/app/smlouvy/[id]/contractCommissionInstallments";
+import { payoutStatusForCodes } from "@/app/smlouvy/[id]/ContractCommissionSection";
+import type { ContractCommissionPayout } from "@/app/smlouvy/[id]/contractDetailTypes";
 
 const viewer = "represented@example.test";
 const owner = "owner@example.test";
@@ -112,6 +116,31 @@ async function expectRebuilt(actorEmail: string) {
 }
 
 describe("rebuilding a contract from saved statements", () => {
+  it("fills every acquisition installment from archived statements and preserves sources on repeated rebuilds", async () => {
+    setContext({ teamEmails: [owner] });
+    const calculation = calculateCppPPRbez(6989, "semiannual", "poradce5");
+    records.set(entryPath, { contractNumber, productKey: "cppPPRbez", userEmail: owner, frequencyRaw: "semiannual", position: "poradce5", inputAmount: 6989, items: calculation.items, total: calculation.total });
+    for (const [index, code] of ["A101", "A102"].entries()) {
+      const cells = [1, contractNumber, "01.01.2026", "01.01.2026", "Testovací firma", "Z", "CPP_PPR", code, 6989, "", "", "5", "1 235,66", 0];
+      records.set(`usersPrivate/${viewer}/commissionStatements/statement-${index + 1}`, {
+        statementNumber: String(index + 1), statementDate: `23.0${index + 1}.2026`,
+        period: `01.0${index + 1}.2026 - 28.0${index + 1}.2026`,
+        html: `<div id="provize"><table><tr>${cells.map((value) => `<td>${value}</td>`).join("")}</tr></table></div>`,
+      });
+    }
+    const installments = acquisitionCommissionInstallments({ item: calculation.items[0], product: "cppPPRbez", frequency: "semiannual" });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await POST(request());
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, matchedStatements: 2, processedStatements: 2 });
+      const payouts = records.get(entryPath)!.commissionPayouts as ContractCommissionPayout[];
+      expect(payouts).toHaveLength(2);
+      const states = installments.map((part) => payoutStatusForCodes(payoutsForAcquisitionInstallment(payouts, part), part.codes, part.amount));
+      expect(states.map((state) => state.status)).toEqual(["paid", "paid"]);
+      expect(states.map((state) => state.records[0].statementId)).toEqual(["statement-1", "statement-2"]);
+    }
+  });
+
   it("allows an administrator outside the owner's team through both access checks", async () => {
     setContext({ canManageContractsAsAdmin: true });
     await expectRebuilt(viewer);

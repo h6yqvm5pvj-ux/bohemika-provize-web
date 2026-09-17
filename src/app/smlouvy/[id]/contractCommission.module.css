@@ -60,6 +60,24 @@ summary.row:focus-visible, button.row:focus-visible { outline: 2px solid #8b5cf6
 }
 .breakdownRow + .breakdownRow { border-top: 1px solid #efedf3; }
 
+.installmentGroup[open] > summary { background: #faf8fd; }
+.installmentTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.frequency { color: #8864a6; font-size: 11px; font-weight: 500; }
+.installmentMeta { display: block; margin-top: 4px; color: #8190a6; font-size: 11px; font-weight: 500; }
+.installmentCode { margin-left: 5px; color: #9d91aa; font-size: 10px; font-weight: 500; }
+.installmentProgress { display: flex; gap: 3px; max-width: 160px; margin-top: 9px; }
+.installmentProgress > span { flex: 1; height: 3px; border-radius: 3px; background: #e8e2ef; }
+.installmentProgress > span[data-status="paid"] { background: #2fb880; }
+.installmentProgress > span[data-status="partial"] { background: #e2ab42; }
+.installmentProgress > span[data-status="storno"] { background: #e8758b; }
+.installmentSummaryAmount { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.perInstallment { color: #93879f; font-size: 10px; font-weight: 500; }
+.installmentSources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.sourceButton { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 5px; color: #8056a2; background: #f6f1fb; font-size: 11px; font-weight: 600; cursor: pointer; }
+.sourceButton:hover { background: #eee3f8; }
+.sourceButton:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+.sourceButton:disabled { opacity: .6; cursor: wait; }
+
 .total { padding: 22px 20px; border-top: 1px solid #e5dbee; background: #f3edf9; }
 .totalLine { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .totalLabel { color: #6e5585; font-size: .95rem; font-weight: 600; }
