@@ -311,7 +311,7 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   defaultEntry({
     code: "CPP_PPR",
     productKey: "cppPPRbez",
-    label: "ČPP PPR",
+    label: "ČPP KOMPLEX",
     category: "business",
   }),
   defaultEntry({ code: "CPP_ACPIII", productKey: "cppAuto" }),

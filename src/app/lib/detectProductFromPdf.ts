@@ -42,6 +42,15 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 
 const DETECTION_RULES: DetectionRule[] = [
   {
+    product: "cppPPRbez",
+    mustContain: [
+      { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
+      { page: "any", text: normalizeText("KOMPLEX"), wholeWord: true },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „KOMPLEX“.",
+  },
+  {
     product: "conseqzenit",
     mustContain: [
       { page: "any", text: normalizeText("Conseq") },

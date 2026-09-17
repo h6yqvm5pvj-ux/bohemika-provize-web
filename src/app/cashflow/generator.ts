@@ -1067,10 +1067,8 @@ export function generateCashflow(
                   : product === "cppsimplex"
                   ? "ČPP Simplex"
                   : product === "cppPPRs"
-                  ? "ČPP PPR ÚPIS"
-                  : product === "cppPPRbez"
-                  ? "ČPP PPR bez ÚPIS"
-                  : "ČPP PPR"
+                  ? "ČPP KOMPLEX – ÚPIS"
+                  : "ČPP KOMPLEX"
               }, ${
                 stepMonths === 1 ? "měsíčně" : `každých ${stepMonths} měsíců`
               }`,

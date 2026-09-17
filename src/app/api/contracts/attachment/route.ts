@@ -1,6 +1,7 @@
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { fillClientCardEmailFromUploadedPdf, type ClientCardEmailImportStatus } from "@/lib/server/clientCardEmailImport";
+import { fillClientCardCompanyIdFromUploadedPdf, type ClientCardCompanyIdImportStatus } from "@/lib/server/clientCardCompanyIdImport";
 import { Readable } from "node:stream";
 
 import { FieldValue } from "firebase-admin/firestore";
@@ -214,11 +215,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let clientCardCompanyId: ClientCardCompanyIdImportStatus | "unavailable" | undefined;
+  if (["cppPPRbez", "cppPPRs"].includes(loaded.contract.productKey ?? "") && ctx.email === ownerEmail && !ctx.isImpersonating) {
+    try {
+      clientCardCompanyId = await fillClientCardCompanyIdFromUploadedPdf(loaded.entryRef.firestore, { email: ctx.email, uid: ctx.uid }, entryId, uploaded.sha256);
+    } catch {
+      clientCardCompanyId = "unavailable";
+    }
+  }
+
   return withRateLimit(
     NextResponse.json({
       ok: true,
       attachment: toPublicContractPdfAttachment(uploaded),
       clientCardEmail,
+      ...(clientCardCompanyId ? { clientCardCompanyId } : {}),
     })
   );
   });

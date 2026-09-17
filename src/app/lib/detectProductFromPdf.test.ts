@@ -45,6 +45,14 @@ const makePdfFile = () =>
   new File(["pdf fixture"], "fixture.pdf", { type: "application/pdf" });
 
 describe("detectProductFromPdf", () => {
+  it("detects ČPP KOMPLEX even when the insurer and product are on different pages", async () => {
+    pdfState.pages = [["Česká podnikatelská pojišťovna"], ["Pojištění podnikatelů KOMPLEX"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "cppPPRbez", confidence: "high" });
+  });
+  it.each(["Česká podnikatelská pojišťovna Komplexní pojištění", "Jiná pojišťovna KOMPLEX"])("does not misidentify KOMPLEX: %s", async text => {
+    pdfState.pages = [[text]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toBeNull();
+  });
   it("detects CONSEQ Zenit when both terms appear, including on different pages", async () => {
     pdfState.pages = [["CONSEQ"], ["Penzijní program Zenit"]];
     await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "conseqzenit", confidence: "high" });

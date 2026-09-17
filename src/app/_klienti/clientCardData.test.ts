@@ -5,6 +5,15 @@ const card = createEmptyClientCard("Testovací klient");
 const document = { id: "doc-1", type: "identity-card", validFrom: "2024-02-29", validTo: "2034-02-28", number: "TEST-123", issuedBy: "Test" };
 
 describe("client card input validation", () => {
+  it("reads older cards without an IČO and keeps leading zeros in a new IČO", () => {
+    const legacy = { ...card } as Record<string, unknown>;
+    delete legacy.companyId;
+    expect(parseClientCardDraft(legacy)).toEqual(card);
+    expect(parseClientCardDraft({ ...card, companyId: "00123456" })?.companyId).toBe("00123456");
+  });
+  it.each(["123", "123456789", "abcdefgh", 12345678, null])("rejects an invalid IČO: %s", companyId => {
+    expect(parseClientCardDraft({ ...card, companyId })).toBeNull();
+  });
   it("accepts complete data, trims text and preserves intentionally blank fields", () => {
     expect(parseClientCardDraft({ ...card, clientName: "  Testovací klient  ", identityDocuments: [document] }))
       .toEqual({ ...card, identityDocuments: [document] });

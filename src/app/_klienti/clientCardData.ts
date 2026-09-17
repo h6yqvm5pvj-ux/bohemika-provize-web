@@ -20,6 +20,7 @@ export type ClientIdentityDocument = {
 export type ClientCardDraft = {
   clientName: string;
   birthNumber: string;
+  companyId: string;
   birthDate: string;
   phone: string;
   email: string;
@@ -40,6 +41,7 @@ export type ClientCardResponse = {
 export const createEmptyClientCard = (clientName = ""): ClientCardDraft => ({
   clientName,
   birthNumber: "",
+  companyId: "",
   birthDate: "",
   phone: "",
   email: "",
@@ -54,6 +56,7 @@ export const createEmptyClientCard = (clientName = ""): ClientCardDraft => ({
 const TEXT_LIMITS = {
   clientName: 200,
   birthNumber: 20,
+  companyId: 8,
   birthDate: 10,
   phone: 50,
   email: 254,
@@ -85,13 +88,14 @@ export function parseClientCardDraft(value: unknown): ClientCardDraft | null {
   const card = createEmptyClientCard();
   for (const [key, limit] of Object.entries(TEXT_LIMITS)) {
     const field = key as keyof typeof TEXT_LIMITS;
-    const raw = value[field];
+    const raw = field === "companyId" && value[field] === undefined ? "" : value[field];
     if (typeof raw !== "string" || raw.length > limit || /[\u0000-\u001f\u007f]/.test(raw)) {
       return null;
     }
     card[field] = raw.trim();
   }
   if (!card.clientName || !isDateOrEmpty(card.birthDate)) return null;
+  if (card.companyId && !/^\d{8}$/.test(card.companyId)) return null;
   if (card.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email)) return null;
   if (!Array.isArray(value.identityDocuments) || value.identityDocuments.length > MAX_CLIENT_IDENTITY_DOCUMENTS) {
     return null;

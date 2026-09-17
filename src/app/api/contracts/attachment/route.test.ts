@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ guard: vi.fn(), get: vi.fn(), upload: vi.fn(), fill: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const mocks = vi.hoisted(() => ({ guard: vi.fn(), get: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 const db = vi.hoisted(() => ({
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ adminDb: db }));
 vi.mock("@/lib/server/clientCardEmailImport", () => ({ fillClientCardEmailFromUploadedPdf: mocks.fill }));
+vi.mock("@/lib/server/clientCardCompanyIdImport", () => ({ fillClientCardCompanyIdFromUploadedPdf: mocks.fillCompanyId }));
 vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: (_writer: unknown, _ref: unknown, _before: unknown, patch: unknown) => patch }));
 vi.mock("@/lib/server/cashflowMutationTracking", () => ({ withCashflowMutation: (_name: string, work: () => unknown) => work(), trackCashflowWrite: (work: () => unknown) => work() }));
 vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard, hasContractAccess: () => true, CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL: "override@example.test" }));
@@ -37,6 +38,26 @@ beforeEach(() => {
 });
 
 describe("CPP Auto attachment contact import", () => {
+  it.each(["cppPPRbez", "cppPPRs"])("fills IČO only after committing a KOMPLEX PDF: %s", async productKey => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
+    mocks.fillCompanyId.mockResolvedValue("saved");
+    expect(await (await POST(request())).json()).toMatchObject({ ok: true, clientCardCompanyId: "saved" });
+    expect(mocks.fillCompanyId).toHaveBeenCalledWith(db, { email: owner, uid: "owner-uid" }, "entry", "verified-hash");
+    expect(mocks.commit.mock.invocationCallOrder[0]).toBeLessThan(mocks.fillCompanyId.mock.invocationCallOrder[0]);
+    expect(mocks.fill).not.toHaveBeenCalled();
+  });
+  it("keeps an uploaded KOMPLEX PDF if IČO enrichment fails", async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppPPRbez" }), updateTime: "version" });
+    mocks.fillCompanyId.mockRejectedValue(new Error("private details"));
+    expect(await (await POST(request())).json()).toMatchObject({ ok: true, clientCardCompanyId: "unavailable" });
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+  it("does not write private IČO data during impersonation", async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppPPRbez" }), updateTime: "version" });
+    mocks.guard.mockResolvedValue({ ok: true, ctx: { ...ctx, isImpersonating: true, impersonation: { actorRole: "admin" } }, withRateLimit: (response: NextResponse) => response });
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.fillCompanyId).not.toHaveBeenCalled();
+  });
   it("imports into the authenticated owner's card after the PDF is committed", async () => {
     const response = await POST(request());
     expect(await response.json()).toMatchObject({ ok: true, clientCardEmail: "saved" });

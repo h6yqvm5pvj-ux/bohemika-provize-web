@@ -218,7 +218,8 @@ export function paymentBasedTotals(
   let immediate = 0;
   let subsequent = 0;
   items.forEach((it) => {
-    const norm = normalizeTitleForCompare(it.title);
+    // KOMPLEX inserts "(získatelská)" between "Okamžitá" and "provize".
+    const norm = normalizeTitleForCompare(it.title.replace(/\([^)]*\)/g, " "));
     if (norm.includes("okamžitá provize")) {
       immediate += it.amount ?? 0;
     } else if (norm.includes("následná provize")) {

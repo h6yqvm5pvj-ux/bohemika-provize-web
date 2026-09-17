@@ -384,9 +384,9 @@ export function CalculatorCoefficientModal({
       : product === "cppsimplex"
       ? "ČPP Simplex – koeficienty platné od 01.09.2021"
       : product === "cppPPRbez"
-      ? "ČPP PPR bez ÚPIS – koeficienty platné od 01.06.2023"
+      ? "ČPP KOMPLEX – koeficienty platné od 01.06.2023"
       : product === "cppPPRs"
-      ? "ČPP PPR ÚPIS – koeficienty platné od 01.06.2023"
+      ? "ČPP KOMPLEX – ÚPIS – koeficienty platné od 01.06.2023"
       : product === "kooperativaAuto"
       ? isKooperativaAutoHistorical
         ? "Historické koeficienty – platnost 01.07.2021 až 31.03.2026"

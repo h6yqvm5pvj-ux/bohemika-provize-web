@@ -8,6 +8,7 @@ import { parseCppBytexPdf } from "@/app/lib/parseCppBytexPdf";
 import { parseCppCestovkoPdf } from "@/app/lib/parseCppCestovkoPdf";
 import { parseCppHafanPdf } from "@/app/lib/parseCppHafanPdf";
 import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
+import { parseCppKomplexPdf } from "@/app/lib/parseCppKomplexPdf";
 import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
 import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
 import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
@@ -42,6 +43,8 @@ export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> =
   koopcestovko: parseKooperativaCestovkoPdf,
   cppcestovko: parseCppCestovkoPdf,
   cppsimplex: parseCppSimplexPdf,
+  cppPPRbez: parseCppKomplexPdf,
+  cppPPRs: parseCppKomplexPdf,
   neon: parseNeonPdf,
   flexi: parseFlexiPdf,
   domex: parseDomexPdf,

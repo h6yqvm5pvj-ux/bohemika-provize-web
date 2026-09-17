@@ -6,6 +6,7 @@ import {
   BULK_PDF_PRODUCTS,
   hasAutomatedPdfImport,
   buildPdfImportIssueMessage,
+  resolveDetectedPdfProduct,
 } from "./calculatorPdfImport";
 
 const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
@@ -21,6 +22,8 @@ const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
   "axacestovko",
   "koopcestovko",
   "cppsimplex",
+  "cppPPRbez",
+  "cppPPRs",
   "neon",
   "flexi",
   "domexneuron",
@@ -35,6 +38,15 @@ const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
 ];
 
 describe("AUTOMATED_PDF_PRODUCTS", () => {
+  it("keeps a manually selected KOMPLEX ÚPIS arrangement during detection", () => {
+    expect(resolveDetectedPdfProduct("cppPPRbez", "cppPPRs")).toBe("cppPPRs");
+    expect(resolveDetectedPdfProduct("cppPPRbez", null)).toBe("cppPPRbez");
+    expect(resolveDetectedPdfProduct("cppPPRbez", "cppsimplex")).toBe("cppPPRbez");
+    expect(resolveDetectedPdfProduct("cppAuto", "cppPPRs")).toBe("cppAuto");
+  });
+  it("surfaces inconsistent premium values for review before save", () => {
+    expect(buildPdfImportIssueMessage({ product: "cppPPRbez", parsed: { pdfImportWarnings: ["Pojistné: součet splátek se liší."] } })).toContain("součet splátek se liší");
+  });
   it("contains every product with a contract-PDF parser", () => {
     expect([...AUTOMATED_PDF_PRODUCTS].sort()).toEqual(
       [...PRODUCTS_WITH_CONTRACT_PDF_PARSER].sort()

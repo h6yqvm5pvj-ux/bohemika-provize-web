@@ -210,6 +210,7 @@ import {
   manualPdfImportMessage,
   parseContractPdfByProduct,
   parseMaxCizinKomplexPdfLazy,
+  resolveDetectedPdfProduct,
   type ParsedContractPdf,
   unreadablePdfImportMessage,
 } from "./calculatorPdfImport";
@@ -3163,14 +3164,15 @@ export default function CalculatorPage() {
       if (!isCurrentPdfImport()) return;
       if (detected) {
         productDetected = true;
-        if (detected.product !== product) {
-          importProduct = detected.product;
-          setProduct(detected.product);
+        const detectedProduct = resolveDetectedPdfProduct(detected.product, importProduct);
+        if (detectedProduct !== product) {
+          importProduct = detectedProduct;
+          setProduct(detectedProduct);
           setHasSelectedProduct(true);
-          setProductPickerSectionForProduct(detected.product);
-          setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detected.product)}. Načítám data…`);
+          setProductPickerSectionForProduct(detectedProduct);
+          setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detectedProduct)}. Načítám data…`);
         } else {
-          importProduct = detected.product;
+          importProduct = detectedProduct;
           setHasSelectedProduct(true);
         }
       } else if (importProduct) {
@@ -3344,7 +3346,7 @@ export default function CalculatorPage() {
       }
       const importIssueMessage = buildPdfImportIssueMessage({ product: importProduct, parsed });
       setPensionTargetAge(importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null);
-      if (importProduct === "conseqzenit") {
+      if (["conseqzenit", "cppPPRbez", "cppPPRs"].includes(importProduct)) {
         if (!parsed.contractNumber) setContractNumber("");
         if (!parsed.clientName) setClientName("");
         if (!parsed.policyStartDate) setPolicyStartDate("");
@@ -3373,7 +3375,7 @@ export default function CalculatorPage() {
         setPolicyStartDate(parsed.policyStartDate);
         applied += 1;
       }
-      if ("policyEndDate" in parsed && (typeof parsed.policyEndDate === "string" || importProduct === "conseqzenit")) {
+      if ("policyEndDate" in parsed && (typeof parsed.policyEndDate === "string" || ["conseqzenit", "cppPPRbez", "cppPPRs"].includes(importProduct))) {
         setPolicyEndDate(typeof parsed.policyEndDate === "string" ? parsed.policyEndDate : "");
         if (parsed.policyEndDate) applied += 1;
       }
@@ -4403,7 +4405,9 @@ export default function CalculatorPage() {
 
           const productDetected = Boolean(detected);
           const detectionConfidence = detected?.confidence ?? null;
-          const importProduct = detected?.product ?? (isBulkImportProduct(product) ? product : null);
+          const importProduct = detected
+            ? resolveDetectedPdfProduct(detected.product, hasSelectedProduct ? product : null)
+            : (isBulkImportProduct(product) ? product : null);
           if (!importProduct) {
             finishRow(
               index,

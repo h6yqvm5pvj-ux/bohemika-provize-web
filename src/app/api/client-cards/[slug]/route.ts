@@ -119,14 +119,18 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       const snap = await transaction.get(access.ref);
       const current = storedCard(snap.data(), access.ctx.uid);
       if (current.revision !== body.expectedRevision) return null;
+      // Older open tabs do not send the new IČO field. Only an explicit blank
+      // from a current form should clear an existing company identifier.
+      const updatedCard = Object.prototype.hasOwnProperty.call(body.card, "companyId")
+        ? card : { ...card, companyId: current.card?.companyId ?? "" };
       const revision = current.revision + 1;
       transaction.set(access.ref, {
         ownerUid: access.ctx.uid,
-        card,
+        card: updatedCard,
         revision,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      return { ok: true as const, card, revision };
+      return { ok: true as const, card: updatedCard, revision };
     });
     if (!saved) return errorResponse(409, "Karta byla mezitím změněna v jiném okně. Před dalším uložením načti aktuální verzi.");
     return noStore(withRateLimitHeaders(NextResponse.json(saved), access.ctx));

@@ -166,8 +166,8 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   axacestovko: "Cestovní pojištění",
   maxcizinkomplex: "Komplexní zdravotní pojištění cizinců",
   comfortcc: "Comfort Commodity",
-  cppPPRs: "Majetek a odpovědnost podnikatelů – ÚPIS",
-  cppPPRbez: "Majetek a odpovědnost podnikatelů",
+  cppPPRs: "KOMPLEX – ÚPIS",
+  cppPPRbez: "KOMPLEX",
 };
 
 const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {

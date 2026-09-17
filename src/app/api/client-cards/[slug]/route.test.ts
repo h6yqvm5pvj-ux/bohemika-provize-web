@@ -158,6 +158,17 @@ describe("client card authorization and persistence", () => {
     expect(mocks.write).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ card: edited, revision: 4 }));
   });
 
+  it("preserves IČO from older clients and lets current clients update or clear it", async () => {
+    const savedCard = { ...card, companyId: "00123456" };
+    mocks.get.mockResolvedValue({ data: () => ({ ownerUid: owner.uid, card: savedCard, revision: 3 }) });
+    const legacy = { ...card } as Record<string, unknown>;
+    delete legacy.companyId;
+    expect((await (await PUT(request("PUT", { card: legacy, expectedRevision: 3 }), context())).json()).card.companyId).toBe("00123456");
+    for (const companyId of ["87654321", ""]) {
+      expect((await (await PUT(request("PUT", { card: { ...card, companyId }, expectedRevision: 3 }), context())).json()).card.companyId).toBe(companyId);
+    }
+  });
+
   it.each([0, 2, 4])("rejects stale or invented revision %s without overwriting", async (expectedRevision) => {
     mocks.get.mockResolvedValue({ data: () => ({ ownerUid: owner.uid, card, revision: 3 }) });
     const response = await PUT(request("PUT", { card, expectedRevision }), context());

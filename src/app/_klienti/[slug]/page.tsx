@@ -815,6 +815,7 @@ function ClientCardEditor({ user, slug, query, returnContractHref }: { user: Fir
   const [notFound, setNotFound] = useState(!isClientCardSlug(slug));
   const savedCard = useRef<ClientCardDraft | null>(null);
   const [birthNumber, setBirthNumber] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -835,6 +836,7 @@ function ClientCardEditor({ user, slug, query, returnContractHref }: { user: Fir
   const applyCard = useCallback((card: ClientCardDraft) => {
     setClientName(card.clientName);
     setBirthNumber(card.birthNumber);
+    setCompanyId(card.companyId ?? "");
     setBirthDate(card.birthDate);
     setPhone(card.phone);
     setEmail(card.email);
@@ -962,6 +964,7 @@ function ClientCardEditor({ user, slug, query, returnContractHref }: { user: Fir
       const card: ClientCardDraft = {
         clientName,
         birthNumber,
+        companyId,
         birthDate,
         phone,
         email,
@@ -1122,6 +1125,13 @@ function ClientCardEditor({ user, slug, query, returnContractHref }: { user: Fir
                 value={birthNumber}
                 onChange={handleBirthNumberChange}
                 placeholder="Např. 850101/1234"
+                disabled={!canEditFields}
+              />
+              <Field
+                label="IČO"
+                value={companyId}
+                onChange={setCompanyId}
+                placeholder="Např. 12345678"
                 disabled={!canEditFields}
               />
               <Field

@@ -236,14 +236,14 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     category: "auto",
   },
   cppPPRs: {
-    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů – ÚPIS",
+    label: "ČPP KOMPLEX – ÚPIS",
     icon: "/icons/icon_domex.webp",
     institutionId: "cpp",
     category: "property",
     extraGroups: ["liability"],
   },
   cppPPRbez: {
-    label: "ČPP Pojištění majetku a odpovědnosti podnikatelů",
+    label: "ČPP KOMPLEX",
     icon: "/icons/icon_domex.webp",
     institutionId: "cpp",
     category: "property",

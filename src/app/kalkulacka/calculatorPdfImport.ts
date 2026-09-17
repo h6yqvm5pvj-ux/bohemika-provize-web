@@ -13,6 +13,12 @@ type PdfParserOptions = {
   onOcrProgress?: (progress: PdfOcrProgress) => void;
 };
 
+// The KOMPLEX document identifies the product, not the adviser's underwriting
+// commission arrangement. Keep an explicitly selected ÚPIS variant.
+export function resolveDetectedPdfProduct(detected: Product, selected: Product | null): Product {
+  return detected === "cppPPRbez" && selected === "cppPPRs" ? selected : detected;
+}
+
 const PDF_IMPORT_REQUIRED_FIELD_MESSAGES: Record<string, string> = {
   clientName: "pojistníka",
   contractNumber: "číslo smlouvy",
@@ -78,7 +84,9 @@ export function buildPdfImportIssueMessage({
     .map(([key]) => requiredFieldMessages[key])
     .filter((value): value is string => Boolean(value));
 
-  const warnings: string[] = [];
+  const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
+    ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
   if (clientName && clientName.split(/\s+/).filter(Boolean).length < 2) {
     warnings.push("Klient: jméno vypadá neúplně");
   }
@@ -145,6 +153,11 @@ export async function parseContractPdfByProduct(
   options: PdfParserOptions = {}
 ): Promise<ParsedContractPdf | null> {
   switch (product) {
+    case "cppPPRbez":
+    case "cppPPRs": {
+      const { parseCppKomplexPdf } = await import("../lib/parseCppKomplexPdf");
+      return parseCppKomplexPdf(file);
+    }
     case "conseqzenit": {
       const { parseConseqZenitPdf } = await import("../lib/parseConseqZenitPdf");
       return parseConseqZenitPdf(file, options);
@@ -259,6 +272,8 @@ export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
   "axacestovko",
   "koopcestovko",
   "cppsimplex",
+  "cppPPRbez",
+  "cppPPRs",
   "neon",
   "flexi",
   "domexneuron",
