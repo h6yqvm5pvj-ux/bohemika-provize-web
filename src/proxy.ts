@@ -6,6 +6,7 @@ import {
 import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
 import { AUTH_EMAIL_ACTION_PATH } from "@/lib/authEmailAction";
 import { OCR_WORKER_CSP } from "@/lib/ocrWorkerPolicy";
+import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 
 const CONNECT_SRC = [
   "'self'",
@@ -158,14 +159,6 @@ function isClientCardsPath(pathname: string): boolean {
   return pathname === "/klienti" || pathname.startsWith("/klienti/");
 }
 
-function isClientCardsEnabled(): boolean {
-  return (
-    process.env.NODE_ENV !== "production" ||
-    process.env.ENABLE_CLIENTS_PAGE === "1" ||
-    process.env.NEXT_PUBLIC_ENABLE_CLIENTS_PAGE === "1"
-  );
-}
-
 function privateNotFoundResponse(): NextResponse {
   return new NextResponse("Not found", {
     status: 404,
@@ -239,7 +232,7 @@ async function buildAuthRedirectResponse(
 export async function proxy(req: NextRequest) {
   const nonce = createNonce();
   const pathname = req.nextUrl.pathname.toLowerCase();
-  if (isClientCardsPath(pathname) && !isClientCardsEnabled()) {
+  if (isClientCardsPath(pathname) && !CLIENT_CARDS_ENABLED) {
     return privateNotFoundResponse();
   }
 
