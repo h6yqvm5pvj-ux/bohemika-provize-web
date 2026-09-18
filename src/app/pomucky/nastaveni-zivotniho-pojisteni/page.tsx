@@ -9,6 +9,8 @@ import {
   Accessibility,
   Activity,
   Banknote,
+  BriefcaseBusiness,
+  UserRound,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
@@ -23,6 +25,10 @@ import {
   Percent,
   Phone,
   ShieldCheck,
+  SignalLow,
+  SignalMedium,
+  SignalHigh,
+  TrendingUp,
   Users,
   Wallet,
   X,
@@ -40,10 +46,16 @@ import { SicknessBenefitInputs } from "./SicknessBenefitInputs";
 import { SicknessBenefitBreakdown, SIMPLE_SICKNESS_COPY } from "./SicknessBenefitBreakdown";
 import { calculateSicknessBenefits, DEFAULT_SICKNESS_INPUTS, validateSicknessInputs } from "./sicknessBenefits";
 import styles from "./lifeInsuranceSetup.module.css";
+import clientStyles from "./clientStep.module.css";
 import { LifeInsuranceExportDialog } from "./LifeInsuranceExportDialog";
 import { DISABILITY_PENSION_STATISTICS } from "@/lib/disabilityPensionStatistics";
 import { DISABILITY_PENSION_COPY } from "./disabilityPensionCopy";
 import { DisabilityPensionSource } from "./DisabilityPensionSource";
+import { PensionStep } from "./PensionStep";
+import { PersonalPensionSource } from "./PersonalPensionSource";
+import { PENSION_PLAN_COPY } from "./pensionPlanCopy";
+import { calculateInvalidityCover, type DisabilityPensionPlan } from "./pensionPlan";
+import { EMPTY_PENSION_FORM, evaluatePensionForm, type PensionFormState } from "../invalidni-duchod/pensionForm";
 import {
   PDF_COPY, INVALIDITY_SCENARIOS, INVALIDITY_LABELS, RETIREMENT_AGE, DEATH_COVERAGE_END_AGE,
   DAILY_TARGET_RATIO, SICK_LEAVE_EXPENSE_RESERVE_RATIO, DEFAULT_SOLO_DEATH_YEARS,
@@ -54,11 +66,14 @@ import {
   type AdvisorFooterInfo, type InvalidityScenarioId, type LifeInsuranceResultData,
 } from "./lifeInsuranceShared";
 
+const INVALIDITY_SCENARIO_ICONS = { veryLow: SignalLow, low: SignalMedium, medium: SignalHigh };
+
 const STEPS: Array<{ id: StepId; label: string; title: string; description: string; icon: LucideIcon }> = [
   { id: "base", label: "Klient", title: "Začněme příjmem a výdaji", description: "Základní údaje pro ochranu životní úrovně klienta.", icon: Activity },
   { id: "family", label: "Domácnost", title: "Na koho se domácnost spoléhá?", description: "Doplň příjem, který by rodině zůstal, a jednorázové náklady.", icon: Home },
   { id: "children", label: "Děti", title: "Mysleme i na budoucnost dětí", description: "Zohledni dobu do jejich samostatnosti a náklady na studium.", icon: Users },
   { id: "mortgage", label: "Závazky", title: "Jaké závazky je potřeba pokrýt?", description: "Oddělíme běžné výdaje od splátek a celkového dluhu.", icon: Wallet },
+  { id: "pension", label: "Invalidita", title: "Kolik by klient dostal od státu?", description: "Zobraz orientační státní důchod pro jednotlivé stupně invalidity.", icon: Accessibility },
   { id: "confirm", label: "Souhrn", title: "Vše připraveno k výpočtu", description: "Zkontroluj podklady. K jednotlivým krokům se můžeš kdykoli vrátit.", icon: ShieldCheck },
 ];
 
@@ -198,22 +213,22 @@ const BASE_FIELDS: Array<{
   {
     key: "age",
     label: "Věk klienta",
-    description: "Pro invaliditu počítáme krytí do 65 let, pro smrt orientačně do 75 let.",
+    description: "Krytí: invalidita do 65, smrt do 75 let.",
     badge: "roky",
     icon: Activity,
   },
   {
     key: "insuredIncome",
     label: "Čistý měsíční příjem",
-    description: "Příjem klienta, který v modelu při smrti vypadne.",
+    description: "Pravidelný příjem klienta po zdanění.",
     badge: "Kč / měsíc",
     icon: Banknote,
   },
   {
     key: "essentialExpenses",
-    label: "Závazky - nutné výdaje",
+    label: "Nutné měsíční výdaje",
     description:
-      "Bydlení, energie, jídlo, domácnost a další pevné náklady. Splátky úvěru / hypotéky zde neuvádějte.",
+      "Bydlení, jídlo, energie a další náklady domácnosti. Bez splátek úvěrů.",
     badge: "Kč / měsíc",
     icon: Home,
   },
@@ -351,8 +366,6 @@ export default function LifeInsuranceSetupPage() {
   const [employmentType, setEmploymentType] = useState<EmploymentType>("employee");
   const [selfEmployedSicknessInsurance, setSelfEmployedSicknessInsurance] =
     useState<SicknessInsuranceChoice | null>(null);
-  const [invalidityScenarioId, setInvalidityScenarioId] =
-    useState<InvalidityScenarioId>("medium");
   const [invalidityModel, setInvalidityModel] =
     useState<InvalidityModel>("insurance");
   const [invalidityInvestmentVariantId, setInvalidityInvestmentVariantId] =
@@ -363,6 +376,9 @@ export default function LifeInsuranceSetupPage() {
   const [sicknessInputs, setSicknessInputs] = useState(DEFAULT_SICKNESS_INPUTS);
   const sicknessBenefits = useMemo(() => calculateSicknessBenefits(sicknessInputs, employmentType, employmentType === "employee" || selfEmployedSicknessInsurance === "yes"), [sicknessInputs, employmentType, selfEmployedSicknessInsurance]);
   const [values, setValues] = useState<InputValues>(EMPTY_INPUT_VALUES);
+  const [pensionEnabled, setPensionEnabled] = useState(false);
+  const [pensionForm, setPensionForm] = useState<PensionFormState>(EMPTY_PENSION_FORM);
+  const [invalidityScenarioId, setInvalidityScenarioId] = useState<InvalidityScenarioId>("veryLow");
 
   const numbers = useMemo(() => {
     const age = Math.max(0, Math.round(parseInput(values.age)));
@@ -470,33 +486,16 @@ export default function LifeInsuranceSetupPage() {
     numbers.monthlyExpenses,
   ]);
 
-  const invalidityScenario = useMemo(
-    () =>
-      INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
-      INVALIDITY_SCENARIOS[2],
-    [invalidityScenarioId]
-  );
+  const pensionCalculation = useMemo(() => evaluatePensionForm(pensionForm, numbers.age), [pensionForm, numbers.age]);
+  const disabilityPension = useMemo<DisabilityPensionPlan | null>(() => pensionEnabled && pensionCalculation.result
+    ? { result: pensionCalculation.result, incomeMode: pensionForm.incomeMode } : null,
+    [pensionEnabled, pensionCalculation.result, pensionForm.incomeMode]);
 
-  const invalidity = useMemo(() => {
-    return invalidityScenario.ratios.map((ratio, index) => {
-      const monthlyNeed = roundMoney(
-        Math.max(numbers.insuredIncome * ratio, numbers.monthlyExpenses * ratio)
-      );
-      const lumpWithoutDebt = roundMoney(monthlyNeed * numbers.invalidityMonths);
-
-      return {
-        label: INVALIDITY_LABELS[index],
-        ratio,
-        monthlyNeed,
-        lumpWithoutDebt,
-      };
-    });
-  }, [
-    invalidityScenario.ratios,
-    numbers.insuredIncome,
-    numbers.invalidityMonths,
-    numbers.monthlyExpenses,
-  ]);
+  const invalidityScenario = INVALIDITY_SCENARIOS.find(item => item.id === invalidityScenarioId) ?? INVALIDITY_SCENARIOS[2];
+  const invalidity = useMemo(() => INVALIDITY_LABELS.map((label, index) => ({
+    label,
+    ...calculateInvalidityCover(numbers.insuredIncome, numbers.monthlyExpenses, numbers.invalidityMonths, invalidityScenario.ratios[index]),
+  })), [numbers.insuredIncome, numbers.monthlyExpenses, numbers.invalidityMonths, invalidityScenario]);
 
   const death = useMemo(() => {
     const incomeGapCoverage = roundMoney(
@@ -601,6 +600,7 @@ export default function LifeInsuranceSetupPage() {
     setEmploymentType(selected);
     setCompleted(false);
     setFormError(null);
+    if (selected !== employmentType) setPensionForm(previous => ({ ...previous, income: "", incomeMode: selected === "selfEmployed" ? "assessment" : "gross" }));
 
     if (selected === "employee") {
       setSelfEmployedSicknessInsurance(null);
@@ -713,6 +713,15 @@ export default function LifeInsuranceSetupPage() {
       return false;
     }
 
+    if (throughStep >= 4 && pensionEnabled && !pensionCalculation.result) {
+      setStep(4);
+      setFormError(pensionCalculation.incomeError || pensionCalculation.yearsError || pensionCalculation.minimumError ||
+        (!pensionForm.minimumMode && pensionForm.income.trim() && pensionForm.years.trim()
+          ? "Vyber možnost v poli Zvýšené minimum."
+          : "Doplň příjem a celkovou započtenou dobu pro osobní odhad důchodu, nebo ponech pouze statistické průměry."));
+      return false;
+    }
+
     setFormError(null);
     return true;
   };
@@ -743,7 +752,7 @@ export default function LifeInsuranceSetupPage() {
     setStep(target);
   };
   const resultData: LifeInsuranceResultData = { numbers, providerRole, futureFamilyPlan, sickLeave, sicknessBenefits,
-    invalidity, invalidityModel, invalidityInvestmentVariantId, invalidityScenarioId, death,
+    invalidity, invalidityModel, invalidityInvestmentVariantId, disabilityPension, invalidityScenarioId, death,
     advisorFooter, clientName: clientName.trim() };
 
   useEffect(() => {
@@ -775,106 +784,43 @@ export default function LifeInsuranceSetupPage() {
                 <div><h2 ref={stepHeadingRef} tabIndex={-1}>{STEPS[step].title}</h2><p>{STEPS[step].description}</p></div>
               </div>
               {currentStep === "base" ? (
-                <div className="space-y-5">
-                  <label className={styles.clientField}>Jméno klienta <span>nepovinné · pro výsledný dokument</span>
-                    <input type="text" autoComplete="off" value={clientName} maxLength={120} placeholder="Např. Jan Novák" onChange={event => setClientName(event.target.value)} />
-                  </label>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {BASE_FIELDS.map((field) => (
-                      <NumberField
-                        key={field.key}
-                        field={field}
-                        value={values[field.key]}
-                        onChange={(value) => updateValue(field.key, value)}
-                      />
-                    ))}
-                  </div>
-                  <div className={styles.questionGroup}>
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-xl">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-slate-600">
-                          Je klient
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                          Vyber typ příjmu klienta. U OSVČ se ptáme zvlášť na dobrovolné nemocenské pojištění.
-                        </p>
+                <div className={clientStyles.step}>
+                  <div className={clientStyles.workspace} data-benefits={employmentType === "employee" || selfEmployedSicknessInsurance === "yes"}>
+                    <div className={clientStyles.mainFields}>
+                      <div className={clientStyles.identity}>
+                        <label className={clientStyles.nameField} htmlFor="life-clientName">Jméno klienta <span>nepovinné</span>
+                          <input id="life-clientName" type="text" autoComplete="off" value={clientName} maxLength={120} placeholder="Např. Jan Novák" onChange={event => setClientName(event.target.value)} />
+                        </label>
+                        <NumberField compact field={BASE_FIELDS[0]} value={values.age} onChange={value => updateValue("age", value)} />
                       </div>
-                      <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-[520px]">
-                        {EMPLOYMENT_TYPE_OPTIONS.map((option) => {
-                          const selected = employmentType === option.id;
-
-                          return (
-                            <button
-                              key={option.id}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => handleEmploymentTypeChoice(option.id)}
-                              className={`min-h-[76px] rounded-2xl border px-4 py-3 text-left transition ${
-                                selected
-                                  ? styles.choiceSelected
-                                  : styles.choiceIdle
-                              }`}
-                            >
-                              <span className=" flex items-center gap-2 text-sm font-semibold text-slate-800">
-                                {selected ? (
-                                  <CheckCircle2 className="h-4 w-4 text-violet-600" />
-                                ) : null}
-                                {option.label}
-                              </span>
-                              <span className="mt-1 block text-xs leading-relaxed text-slate-500">
-                                {option.description}
-                              </span>
-                            </button>
-                          );
-                        })}
+                      <div className={clientStyles.incomeFields}>
+                        {BASE_FIELDS.slice(1).map(field => <NumberField compact key={field.key} field={field} value={values[field.key]} onChange={value => updateValue(field.key, value)} />)}
                       </div>
-                    </div>
-
-                    {employmentType === "selfEmployed" ? (
-                      <div className="mt-3 border-t border-slate-200 pt-3">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="max-w-xl">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-slate-600">
-                              Platí si nemocenské pojištění?
-                            </div>
-                            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                              Tuhle odpověď pak použijeme pro navazující doporučení k pracovní neschopnosti.
-                            </p>
-                          </div>
-                          <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-[520px]">
-                            {SICKNESS_INSURANCE_OPTIONS.map((option) => {
-                              const selected = selfEmployedSicknessInsurance === option.id;
-
-                              return (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  aria-pressed={selected}
-                                  onClick={() => handleSicknessInsuranceChoice(option.id)}
-                                  className={`min-h-[76px] rounded-2xl border px-4 py-3 text-left transition ${
-                                    selected
-                                      ? styles.choiceSelected
-                                      : styles.choiceIdle
-                                  }`}
-                                >
-                                  <span className=" flex items-center gap-2 text-sm font-semibold text-slate-800">
-                                    {selected ? (
-                                      <CheckCircle2 className="h-4 w-4 text-violet-600" />
-                                    ) : null}
-                                    {option.label}
-                                  </span>
-                                  <span className="mt-1 block text-xs leading-relaxed text-slate-500">
-                                    {option.description}
-                                  </span>
-                                </button>
-                              );
+                      <div className={clientStyles.employment}>
+                        <div className={clientStyles.choiceRow}>
+                          <span id="life-employment-label">Typ příjmu</span>
+                          <div className={clientStyles.segmented} role="group" aria-labelledby="life-employment-label">
+                            {EMPLOYMENT_TYPE_OPTIONS.map(option => {
+                              const Icon = option.id === "employee" ? BriefcaseBusiness : UserRound;
+                              return <button key={option.id} type="button" aria-pressed={employmentType === option.id} onClick={() => handleEmploymentTypeChoice(option.id)}>
+                                <Icon size={15} aria-hidden="true" />{option.label}
+                              </button>;
                             })}
                           </div>
                         </div>
+                        {employmentType === "selfEmployed" ? <div className={clientStyles.insuranceChoice}>
+                          <div className={clientStyles.choiceRow}>
+                            <span id="life-sickness-insurance-label">Platí si nemocenské pojištění?</span>
+                            <div className={clientStyles.segmented} role="group" aria-labelledby="life-sickness-insurance-label">
+                              {SICKNESS_INSURANCE_OPTIONS.map(option => <button key={option.id} type="button" aria-pressed={selfEmployedSicknessInsurance === option.id} onClick={() => handleSicknessInsuranceChoice(option.id)}>{option.label}</button>)}
+                            </div>
+                          </div>
+                          <p>{selfEmployedSicknessInsurance === "no" ? "Bez dobrovolného nemocenského pojištění počítáme se soukromým krytím." : "Jde o dobrovolné nemocenské pojištění OSVČ."}</p>
+                        </div> : <p>Nemocenské pojištění je součástí zaměstnání.</p>}
                       </div>
-                    ) : null}
+                    </div>
+                    <SicknessBenefitInputs compact values={sicknessInputs} employee={employmentType === "employee"} insured={employmentType === "employee" || selfEmployedSicknessInsurance === "yes"} onChange={setSicknessInputs} />
                   </div>
-                  <SicknessBenefitInputs values={sicknessInputs} employee={employmentType === "employee"} insured={employmentType === "employee" || selfEmployedSicknessInsurance === "yes"} onChange={setSicknessInputs} />
                   <WizardMetrics
                     items={[
                       {
@@ -896,58 +842,16 @@ export default function LifeInsuranceSetupPage() {
               ) : null}
 
               {currentStep === "family" ? (
-                <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {FAMILY_FIELDS.map((field) => (
-                      <NumberField
-                        key={field.key}
-                        field={field}
-                        value={values[field.key]}
-                        onChange={(value) => updateValue(field.key, value)}
-                      />
-                    ))}
-                  </div>
-                  <div className={styles.questionGroup}>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.17em] text-slate-600">
-                      Kdo je hlavní živitel
+                <div className={styles.familyFields}>
+                  {FAMILY_FIELDS.map(field => <NumberField key={field.key} field={field}
+                    value={values[field.key]} onChange={value => updateValue(field.key, value)} />)}
+                  <div className={`${styles.numberField} ${styles.providerCard}`}>
+                    <div id="life-provider-label" className={styles.providerHeading}><Users size={17} aria-hidden="true" />Kdo je hlavní živitel</div>
+                    <div className={styles.providerChoices} role="group" aria-labelledby="life-provider-label" aria-describedby="life-provider-hint">
+                      <button type="button" aria-pressed={providerRole === "main"} onClick={() => setProviderRole("main")}>Klient</button>
+                      <button type="button" aria-pressed={providerRole === "secondary"} onClick={() => setProviderRole("secondary")}>Někdo jiný</button>
                     </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {[
-                        {
-                          id: "main" as const,
-                          label: "Klient je hlavní živitel",
-                          description: "Vhodné, když přináší větší část rodinného příjmu.",
-                        },
-                        {
-                          id: "secondary" as const,
-                          label: "Klient není hlavní živitel",
-                          description: "Výpočet stále kryje výpadek příjmu klienta.",
-                        },
-                      ].map((item) => {
-                        const selected = providerRole === item.id;
-
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setProviderRole(item.id)}
-                            className={`rounded-2xl border px-4 py-3 text-left transition ${
-                              selected
-                                ? styles.choiceSelected
-                                : styles.choiceIdle
-                            }`}
-                          >
-                            <span className=" block text-sm font-semibold text-slate-800">
-                              {item.label}
-                            </span>
-                            <span className="mt-1 block text-xs leading-relaxed text-slate-500">
-                              {item.description}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <p id="life-provider-hint">{providerRole === "main" ? "Klient přináší větší část rodinného příjmu." : "Výpočet dál kryje příjem klienta, i když není hlavním živitelem."}</p>
                   </div>
                 </div>
               ) : null}
@@ -1176,6 +1080,10 @@ export default function LifeInsuranceSetupPage() {
                 </div>
               ) : null}
 
+              {currentStep === "pension" && <PensionStep enabled={pensionEnabled} onEnabledChange={setPensionEnabled}
+                form={pensionForm} onChange={patch => { setPensionForm(previous => ({ ...previous, ...patch })); setFormError(null); }}
+                age={numbers.age} employee={employmentType === "employee"} grossIncome={sicknessInputs.grossMonthly} />}
+
               {currentStep === "confirm" ? (
                 <div className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -1184,6 +1092,8 @@ export default function LifeInsuranceSetupPage() {
                       value={`${numbers.age} let`}
                       note={`${clientName.trim() ? `${clientName.trim()} · ` : ""}Příjem ${formatMoney(numbers.insuredIncome)}.`}
                     />
+                    <ConfirmTile label="Státní invalidní důchod" value={disabilityPension ? "Osobní odhad 2026" : "Statistické průměry"}
+                      note={disabilityPension ? "Orientační částka od státu, oddělená od soukromého krytí." : "Průměrné důchody neodečítáme od krytí."} />
                     <ConfirmTile
                       label="Typ klienta"
                       value={employmentType === "employee" ? "Zaměstnanec" : "OSVČ"}
@@ -1284,8 +1194,10 @@ export default function LifeInsuranceSetupPage() {
               onInvalidityModelChange={setInvalidityModel}
               invalidityInvestmentVariantId={invalidityInvestmentVariantId}
               onInvalidityInvestmentVariantChange={setInvalidityInvestmentVariantId}
+              disabilityPension={disabilityPension}
               invalidityScenarioId={invalidityScenarioId}
               onInvalidityScenarioChange={setInvalidityScenarioId}
+              onEditPension={() => { setStep(4); setCompleted(false); }}
               death={death}
               advisorFooter={advisorFooter}
               generatedAtLabel={formatGeneratedDate(new Date(), "cs")}
@@ -1325,7 +1237,9 @@ function NumberField({
   field,
   value,
   onChange,
+  compact = false,
 }: {
+  compact?: boolean;
   field: {
     key: InputKey;
     label: string;
@@ -1338,7 +1252,7 @@ function NumberField({
 }) {
   const Icon = field.icon;
 
-  return <div className={styles.numberField}>
+  return <div className={`${styles.numberField} ${compact ? clientStyles.compactField : ""}`}>
     <label htmlFor={`life-${field.key}`}><Icon size={17} aria-hidden="true" />{field.label}</label>
     <div className={styles.numberInput}><input id={`life-${field.key}`} type="text" inputMode={field.key === "mortgageRate" ? "decimal" : "numeric"} value={value} placeholder="0" aria-describedby={`life-${field.key}-hint`} onChange={event => onChange(event.target.value)} /><span>{field.badge}</span></div>
     <p id={`life-${field.key}-hint`}>{field.description}</p>
@@ -1367,29 +1281,27 @@ function ConfirmTile({
 
 function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sicknessBenefits, invalidity, invalidityModel,
   onInvalidityModelChange, invalidityInvestmentVariantId, onInvalidityInvestmentVariantChange,
-  invalidityScenarioId, onInvalidityScenarioChange, death, advisorFooter, generatedAtLabel, language, clientName, headingRef,
+  disabilityPension, invalidityScenarioId, onInvalidityScenarioChange, onEditPension, death, advisorFooter, generatedAtLabel, language, clientName, headingRef,
 }: LifeInsuranceResultData & {
   onInvalidityModelChange: (model: InvalidityModel) => void;
   onInvalidityInvestmentVariantChange: (variant: InvalidityInvestmentVariantId) => void;
-  onInvalidityScenarioChange: (scenario: InvalidityScenarioId) => void;
+  onInvalidityScenarioChange: (value: InvalidityScenarioId) => void;
+  onEditPension: () => void;
   generatedAtLabel: string; language: PdfLanguage; headingRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
   const [investmentVariantPickerOpen, setInvestmentVariantPickerOpen] = useState(false);
   const copy = PDF_COPY[language];
   const pensionCopy = DISABILITY_PENSION_COPY[language];
+  const personalCopy = PENSION_PLAN_COPY[language];
   const money = (value: number | null) => value === null ? "—" : formatPdfMoney(value, language);
   const percent = (value: number) => formatPdfPercent(value, language);
   const activeInvestmentVariant =
     INVALIDITY_INVESTMENT_VARIANTS.find(
       (variant) => variant.id === invalidityInvestmentVariantId
     ) ?? INVALIDITY_INVESTMENT_VARIANTS[0];
-  const activeInvalidityScenario =
-    INVALIDITY_SCENARIOS.find((scenario) => scenario.id === invalidityScenarioId) ??
-    INVALIDITY_SCENARIOS[2];
+  const activeScenario = INVALIDITY_SCENARIOS.find(item => item.id === invalidityScenarioId) ?? INVALIDITY_SCENARIOS[2];
   const invalidityModelLabel =
     invalidityModel === "investment" ? copy.investmentVariant : copy.insurancePayout;
-  const activeInvalidityScenarioLabel =
-    copy.scenarioLabels[activeInvalidityScenario.id] ?? activeInvalidityScenario.label;
   const showFutureFamilyNote =
     numbers.childrenCount === 0 &&
     (futureFamilyPlan === "yes" || futureFamilyPlan === "maybe");
@@ -1406,11 +1318,22 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
           <p>{copy.previewIntro}</p>
         </div><span className={styles.resultDate}><CalendarDays size={15} />{generatedAtLabel}</span>
       </section>
-      <div className={styles.coverageOverview}>
-        <a href="#life-death"><Image className={styles.overviewIllustration} src="/illustrations/life-insurance/memorial.webp" width={760} height={760} alt="" unoptimized /><span>{copy.death}<strong>{money(death.constantAmount + death.decreasingAmount + death.annuityMortgageAmount)}</strong><small>Součet počátečních pojistných částek<ChevronRight size={13} /></small></span></a>
-        <a href="#life-sickness"><Image className={styles.overviewIllustration} src="/illustrations/life-insurance/recovery.webp" width={760} height={760} alt="" unoptimized /><span>{copy.sickLeave}<strong>{money(sickLeave.recommendedDaily)} <em>/ den</em></strong><small>Denní dávka při výpadku příjmu<ChevronRight size={13} /></small></span></a>
-        <a href="#life-disability"><Image className={styles.overviewIllustration} src="/illustrations/life-insurance/independence.webp" width={760} height={760} alt="" unoptimized /><span>{copy.disability} · 3. stupeň<strong>{money(topCapital)}</strong><small>{invalidityModel === "investment" ? "Modelovaný vklad pro rentu" : "Pojistná částka bez dluhů"}<ChevronRight size={13} /></small></span></a>
-      </div>
+      <nav className={styles.coverageOverview} aria-label="Přehled pojistného krytí">
+        {[
+          { id: "death", label: copy.death, illustration: "memorial", amount: money(death.constantAmount + death.decreasingAmount + death.annuityMortgageAmount), note: "Součet počátečních pojistných částek" },
+          { id: "sickness", label: copy.sickLeave, illustration: "recovery", amount: money(sickLeave.recommendedDaily), note: "Denní dávka při výpadku příjmu" },
+          { id: "disability", label: `${copy.disability} · 3. stupeň`, illustration: "independence", amount: money(topCapital), note: invalidityModel === "investment" ? "Modelovaný vklad pro rentu" : "Pojistná částka bez dluhů" },
+        ].map(card => <a key={card.id} href={`#life-${card.id}`} data-coverage={card.id}>
+          <span className={styles.overviewHeading}>
+            <span className={styles.overviewLabel}>{card.label}</span>
+            <span className={styles.overviewArtwork} aria-hidden="true">
+              <Image className={styles.overviewIllustration} src={`/illustrations/life-insurance/${card.illustration}-3d.webp`} width={320} height={320} alt="" unoptimized />
+            </span>
+          </span>
+          <strong className={styles.overviewAmount}>{card.amount}{card.id === "sickness" && <em>/ den</em>}</strong>
+          <span className={styles.overviewFooter}><span>{card.note}</span><span className={styles.overviewArrow} aria-hidden="true"><ChevronRight size={15} /></span></span>
+        </a>)}
+      </nav>
       <section className={styles.householdSummary} aria-label="Podklady výpočtu">
         <div className={styles.householdMetrics}>
           <PreviewMetric
@@ -1565,7 +1488,7 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
               {copy.disabilityCoverageVariant}
             </div>
             <div className="mt-1 text-xl font-bold text-violet-950">
-              {activeInvalidityScenarioLabel}
+              {copy.scenarioLabels[activeScenario.id]}
             </div>
             <div className="mt-0.5 text-xs font-semibold text-violet-800">
               {invalidityModelLabel}
@@ -1579,12 +1502,13 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
             className={styles.modelOptions}
             data-pdf-ignore="1"
           >
-            <div className={styles.segmented}>
+            <div className={styles.segmented} role="group" aria-label="Způsob krytí invalidity">
               {[
-                { id: "insurance" as const, label: "Pojistné plnění" },
-                { id: "investment" as const, label: "Investiční varianta" },
+                { id: "insurance" as const, label: copy.insurancePayout, icon: ShieldCheck },
+                { id: "investment" as const, label: copy.investmentVariant, icon: TrendingUp },
               ].map((model) => {
                 const active = model.id === invalidityModel;
+                const Icon = model.icon;
                 return (
                   <button
                     key={model.id}
@@ -1603,43 +1527,24 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
                         : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
                     }`}
                   >
+                    <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
                     {model.label}
                   </button>
                 );
               })}
             </div>
-
-            <div className={styles.segmented}>
-              {INVALIDITY_SCENARIOS.map((scenario) => {
-                const active = scenario.id === invalidityScenarioId;
-                return (
-                  <button
-                    key={scenario.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onInvalidityScenarioChange(scenario.id)}
-                    className={`rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
-                      active
-                        ? styles.segmentActive
-                        : "text-slate-600 hover:bg-violet-50 hover:text-violet-900"
-                    }`}
-                  >
-                    {scenario.label}
-                  </button>
-                );
+            <div className={styles.segmented} role="group" aria-label={copy.disabilityCoverageVariant}>
+              {INVALIDITY_SCENARIOS.map(scenario => {
+                const Icon = INVALIDITY_SCENARIO_ICONS[scenario.id];
+                return <button type="button" key={scenario.id} aria-pressed={scenario.id === invalidityScenarioId}
+                  className={scenario.id === invalidityScenarioId ? styles.segmentActive : "text-slate-600 hover:bg-violet-50"}
+                  onClick={() => onInvalidityScenarioChange(scenario.id)}>
+                  <Icon size={16} aria-hidden="true" />{copy.scenarioLabels[scenario.id]}
+                </button>;
               })}
             </div>
           </div>
-
-          <div className="shrink-0 rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900">
-            {copy.coveragePrefix}:{" "}
-            {activeInvalidityScenario.ratios
-              .map((ratio) => percent(Math.round(ratio * 100)))
-              .join(" / ")}
-            {invalidityModel === "investment"
-              ? ` | ${activeInvestmentVariant.returnLabel}`
-              : ""}
-          </div>
+          <p className={styles.incomeReplacementNote}>{copy.variantNote}{invalidityModel === "insurance" && <><br />{copy.insuranceAnnuityNote}</>}</p>
         </div>
 
         {investmentVariantPickerOpen ? (
@@ -1756,19 +1661,16 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
                     </div>
                   </div>
                   <div className={styles.pensionReference}>
-                    <span>{pensionCopy.average}</span>
-                    <strong>{money(DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly)}</strong>
-                    <small>{pensionCopy.monthly}</small>
+                    <span>{disabilityPension ? personalCopy.estimate : pensionCopy.average}</span>
+                    <strong>{money(disabilityPension?.result.pensions[index].total ?? DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly)}</strong>
+                    <small>{pensionCopy.monthly}{disabilityPension ? " · 2026" : ""}</small>
                   </div>
                   <div className={styles.privateCoverHeading}>
-                    <span>{pensionCopy.privateCover}</span>
-                    <span>{copy.coveragePrefix}: {percent(Math.round(item.ratio * 100))}</span>
+                    <span>{pensionCopy.privateCover}</span><span>{percent(item.ratio * 100)}</span>
                   </div>
                   <div className="divide-y divide-slate-200 border-b border-slate-100">
-                    <SmallCalcRow
-                      label={pensionCopy.privateAnnuity}
-                      value={money(item.monthlyNeed)}
-                    />
+                    <SmallCalcRow label={copy.coverageBasis} value={money(Math.max(numbers.insuredIncome, numbers.monthlyExpenses))} />
+                    <div className={styles.privateAnnuityResult}><span>{pensionCopy.privateAnnuity}</span><strong>{money(item.monthlyNeed)}</strong></div>
                     {invalidityModel === "investment" ? (
                       <SmallCalcRow
                         label={copy.requiredDeposit}
@@ -1781,13 +1683,19 @@ function PreviewPanel({ numbers, providerRole, futureFamilyPlan, sickLeave, sick
                       />
                     )}
                   </div>
+                  {invalidityModel === "insurance" && <p className={styles.capitalExplanation}>{copy.capitalExplanation}:<br />{money(item.monthlyNeed)} × {numbers.invalidityMonths} {copy.monthsUnit}</p>}
                 </div>
               </article>
             );
           })}
         </div>
 
-        <DisabilityPensionSource language={language} className={styles.pensionSource} />
+        {disabilityPension
+          ? <PersonalPensionSource plan={disabilityPension} language={language} className={styles.pensionSource} collapsible />
+          : <DisabilityPensionSource language={language} className={styles.pensionSource} />}
+        <button type="button" className={styles.pensionEdit} onClick={onEditPension}>
+          {disabilityPension ? "Upravit odhad důchodu" : "Doplnit údaje o důchodu"}
+        </button>
 
         {invalidityModel === "investment" ? (
           <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-blue-950">

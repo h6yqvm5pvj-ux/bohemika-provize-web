@@ -1,13 +1,27 @@
 import nextEnv from "@next/env";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
+let phase = "initialization";
+export async function main() {
 const { loadEnvConfig } = nextEnv;
-loadEnvConfig(process.cwd());
+loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
+
+const credentials = process.env.FIREBASE_ADMIN_CREDENTIALS ? JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS) : {
+  projectId: process.env.FIREBASE_ADMIN_PROJECT_ID, clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+  privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+};
+if (!getApps().length) initializeApp({ credential: cert(credentials) });
+const adminDb = getFirestore();
 
 const apply = process.argv.includes("--apply");
-const [{ adminDb }, encryption, storageHelpers, conversations] = await Promise.all([
-  import("../src/lib/server/firebaseAdmin.ts"),
+const [encryption, storageHelpers, conversations] = await Promise.all([
   import("../src/lib/server/mailboxEncryption.ts"),
   import("../src/lib/server/mailboxAttachmentStorage.ts"),
   import("../src/lib/server/mailboxConversation.ts"),
@@ -54,8 +68,10 @@ const downloadAttachment = async (attachment) => {
   let lastError = null;
   for (const bucketName of bucketCandidatesFor(attachment)) {
     try {
-      const [bytes] = await getStorage().bucket(bucketName).file(path).download();
-      return { bytes, bucketName };
+      const file = getStorage().bucket(bucketName).file(path);
+      const [metadata] = await file.getMetadata();
+      const [bytes] = await getStorage().bucket(bucketName).file(path, { generation: metadata.generation }).download();
+      return { bytes, bucketName, generation: metadata.generation };
     } catch (error) {
       lastError = error;
     }
@@ -123,10 +139,55 @@ if (!apply || (pendingGroups.length === 0 && pendingCleanupDocs.length === 0)) {
   if (!apply && (pendingGroups.length > 0 || pendingCleanupDocs.length > 0)) {
     console.info("Pro provedení spusť stejný příkaz s parametrem --apply.");
   }
-  process.exit(0);
+  await adminDb.terminate();
+  return;
+}
+
+// A protected encrypted snapshot is mandatory before the first write. It can be
+// decrypted with the existing mailbox key; never save message plaintext to disk.
+const backupArg = process.argv.find(arg => arg.startsWith("--backup-dir="));
+phase = "encrypted-backup";
+if (!backupArg) throw new Error("Apply requires --backup-dir=PRIVATE_DIRECTORY");
+const backupDir = resolve(backupArg.slice("--backup-dir=".length));
+await mkdir(backupDir, { recursive: true, mode: 0o700 });
+const migrationId = randomUUID();
+const backupContext = `migration-backup:${migrationId}`;
+const backupDocuments = [...new Map([
+  ...pendingGroups.flatMap(([, rows]) => rows.map(({ doc }) => [doc.ref.path, doc])),
+  ...pendingCleanupDocs.map(({ doc }) => [doc.ref.path, doc]),
+]).values()].map(doc => ({
+  path: doc.ref.path,
+  updateTime: { seconds: doc.updateTime.seconds, nanoseconds: doc.updateTime.nanoseconds },
+  data: doc.data(),
+}));
+const backup = encryption.encryptMailboxJson({ documents: backupDocuments }, backupContext);
+if (JSON.stringify(encryption.decryptMailboxJson(backup, backupContext)) !== JSON.stringify({ documents: backupDocuments })) {
+  throw new Error("Encrypted backup verification failed");
+}
+await writeFile(resolve(backupDir, `${migrationId}.json`), JSON.stringify({ context: backupContext, payload: backup }), { mode: 0o600, flag: "wx" });
+
+// Preflight every source before changing any group; fail without partial data
+// migration if an attachment is missing or a stored path is outside the mailbox.
+const sources = new Map();
+phase = "attachment-preflight";
+for (const [messageId, rows] of pendingGroups) {
+  const canonical = new Map();
+  for (const { metadata } of rows) for (const attachment of attachmentRows(metadata)) {
+    const id = normalizeText(attachment.id);
+    if (!id) throw new Error("Attachment has no identifier; migration stopped");
+    if (!canonical.has(id) || attachment.encryption != null) canonical.set(id, attachment);
+  }
+  for (const attachment of canonical.values()) {
+    if (attachment.encryption != null) continue;
+    const path = normalizeText(attachment.path);
+    if (!storageHelpers.isSafeMailboxStoragePath(path, messageId)) throw new Error("Unsafe attachment source; migration stopped");
+    const key = `${messageId}:${normalizeText(attachment.id)}`;
+    if (!sources.has(key)) sources.set(key, await downloadAttachment(attachment));
+  }
 }
 
 let migratedGroups = 0;
+phase = "migration";
 let migratedDocuments = 0;
 let migratedAttachments = 0;
 const failures = [];
@@ -141,7 +202,8 @@ for (const { doc, pendingCleanup } of pendingCleanupDocs) {
         throw new Error("Uložená cesta k odstranění není bezpečná.");
       }
       const oldFile = getStorage().bucket(pending.bucketName).file(pending.path);
-      await oldFile.delete({ ignoreNotFound: true });
+      const [oldMetadata] = await oldFile.getMetadata();
+      await oldFile.delete({ ifGenerationMatch: oldMetadata.generation, ignoreNotFound: true });
       const [stillExists] = await oldFile.exists();
       if (stillExists) throw new Error("Původní nešifrovaný objekt stále existuje.");
       recoveredCleanupObjects += 1;
@@ -188,6 +250,7 @@ for (const [messageId, rows] of pendingGroups) {
         { subject: sourceSubject, messageText: sourceText },
         `message:${messageId}`
       );
+    encryption.decryptMailboxJson(encryptedContent, `message:${messageId}`);
     const senderEmail = normalizeText(source?.metadata.senderEmail).toLowerCase();
     const recipientEmail = normalizeText(source?.metadata.recipientEmail).toLowerCase();
     const conversationId = conversations.mailboxConversationId(
@@ -213,13 +276,16 @@ for (const [messageId, rows] of pendingGroups) {
       if (!storageHelpers.isSafeMailboxStoragePath(oldPath, messageId)) {
         throw new Error(`Příloha ${attachmentId} má neočekávanou cestu.`);
       }
-      const downloaded = await downloadAttachment(attachment);
+      const downloaded = sources.get(`${messageId}:${attachmentId}`);
+      if (!downloaded) throw new Error("Missing preflight attachment");
       const encrypted = encryption.encryptMailboxBytes(
         downloaded.bytes,
         `attachment:${messageId}:${attachmentId}`
       );
-      const newPath = `mailbox/${messageId}/migration-${attachmentId}.enc`;
-      await getStorage().bucket(downloaded.bucketName).file(newPath).save(encrypted.bytes, {
+      const newPath = `mailbox/${messageId}/migration-${migrationId}-${attachmentId}.enc`;
+      const newFile = getStorage().bucket(downloaded.bucketName).file(newPath);
+      await newFile.save(encrypted.bytes, {
+        preconditionOpts: { ifGenerationMatch: 0 },
         resumable: false,
         contentType: "application/octet-stream",
         metadata: {
@@ -234,7 +300,12 @@ for (const [messageId, rows] of pendingGroups) {
         bucketName: downloaded.bucketName,
         newPath,
         oldPath,
+        oldGeneration: downloaded.generation,
       });
+      const [storedBytes] = await newFile.download();
+      if (!encryption.decryptMailboxBytes(storedBytes, encrypted.encryption, `attachment:${messageId}:${attachmentId}`).equals(downloaded.bytes)) {
+        throw new Error("Encrypted attachment round-trip failed");
+      }
       attachmentsById.set(attachmentId, {
         ...attachment,
         path: newPath,
@@ -259,15 +330,15 @@ for (const [messageId, rows] of pendingGroups) {
         "metadata.messageText": FieldValue.delete(),
         ...(attachments.length > 0 ? { "metadata.attachments": attachments } : {}),
         encryptionMigratedAt: FieldValue.serverTimestamp(),
-      });
+      }, { lastUpdateTime: doc.updateTime });
     });
     await batch.commit();
     committed = true;
 
     const cleanupResults = await Promise.allSettled(
-      uploadedObjects.map(async ({ bucketName, oldPath }) => {
+      uploadedObjects.map(async ({ bucketName, oldPath, oldGeneration }) => {
         const oldFile = getStorage().bucket(bucketName).file(oldPath);
-        await oldFile.delete({ ignoreNotFound: true });
+        await oldFile.delete({ ifGenerationMatch: oldGeneration, ignoreNotFound: true });
         const [stillExists] = await oldFile.exists();
         if (stillExists) {
           throw new Error("Původní nešifrovaný objekt po smazání stále existuje.");
@@ -330,13 +401,18 @@ console.info(
       migratedAttachments,
       recoveredCleanupObjects,
       failedGroups: failures.length,
-      failures,
       plaintextCleanupFailures: cleanupFailures.length,
-      cleanupFailures,
+      encryptedBackupVerified: true,
     },
     null,
     2
   )
 );
-
-if (failures.length > 0 || cleanupFailures.length > 0) process.exitCode = 1;
+if (failures.length || cleanupFailures.length) process.exitCode = 1;
+await adminDb.terminate();
+}
+if (resolve(process.argv[1] || "") === fileURLToPath(import.meta.url)) main().catch(error => {
+  const code = String(error?.code || "validation");
+  console.error(JSON.stringify({ stopped: true, phase, code: /^[a-z0-9_/-]{1,50}$/i.test(code) ? code : "unknown", privateDetailsSuppressed: true }));
+  process.exitCode = 1;
+});

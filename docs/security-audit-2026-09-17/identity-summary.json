@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-09-17T10:04:33.128Z",
+  "accounts": 34,
+  "active": 34,
+  "activeWithoutVerifiedEmail": 10,
+  "activeWithoutTotp": 11,
+  "activeAdvisorsWithoutTotp": 6,
+  "activeClaimedAdmins": 2,
+  "activeClaimedAdminsWithoutTotp": 0,
+  "activeClaimedAdminsWithoutVerifiedEmail": 0,
+  "profiles": {
+    "documents": 32,
+    "orphanedProfileEmails": 0,
+    "uidMismatch": 0,
+    "profilesWithoutUid": 0
+  },
+  "limitations": "Counts of admin claims exclude email-only fallback roles; incomplete onboarding accounts may be among advisors without TOTP. No account was modified."
+}

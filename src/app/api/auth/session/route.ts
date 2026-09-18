@@ -19,6 +19,7 @@ import {
 import { recordAppSession, revokeAppSession } from "@/lib/server/appSessionRegistry";
 import { loadUserProfileForAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
+import { ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,6 +129,17 @@ export async function POST(req: NextRequest) {
   try {
     decoded = await adminAuth.verifyIdToken(token, true);
   } catch (error: any) {
+    if (error?.code === MFA_REAUTH_REQUIRED_CODE) {
+      return withCommonHeaders(NextResponse.json(
+        { ok: false, code: MFA_REAUTH_REQUIRED_CODE, error: MFA_REAUTH_REQUIRED_MESSAGE }, { status: 401 }
+      ));
+    }
+    if (isAccountBlockedError(error)) {
+      return withCommonHeaders(NextResponse.json(
+        { ok: false, code: ACCOUNT_BLOCKED_CODE, error: ACCOUNT_BLOCKED_MESSAGE },
+        { status: 403 }
+      ));
+    }
     const code = error?.code || "auth/invalid-token";
     return withCommonHeaders(
       NextResponse.json(
@@ -176,6 +188,7 @@ export async function POST(req: NextRequest) {
     const session = await createAppSessionCookieValue({
       uid,
       email,
+      authenticationTime: decoded.auth_time,
       maxAgeSeconds: getAppSessionMaxAgeSeconds({ rememberThisDevice }),
     });
     await recordAppSession({

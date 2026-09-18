@@ -1,0 +1,9 @@
+{
+  "mode": "verify",
+  "checkedAt": "2026-09-17T11:51:04.930Z",
+  "accounts": 34,
+  "disabled": 11,
+  "activeWithoutTotp": 0,
+  "mailboxObjects": 16,
+  "mailboxDownloadTokens": 0
+}

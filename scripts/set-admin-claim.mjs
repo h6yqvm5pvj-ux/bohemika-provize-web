@@ -3,6 +3,8 @@
 import nextEnv from "@next/env";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
+import { withFirestoreTokenRevocation } from "./auth-security.mjs";
 
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
@@ -68,7 +70,7 @@ async function main() {
       credential: cert(credentials),
     });
 
-  const auth = getAuth(app);
+  const auth = withFirestoreTokenRevocation(getAuth(app), getFirestore(app));
   const user = await auth.getUserByEmail(email);
   const currentClaims = user.customClaims ?? {};
   const nextClaims = { ...currentClaims };
@@ -84,7 +86,6 @@ async function main() {
   }
 
   await auth.setCustomUserClaims(user.uid, nextClaims);
-  await auth.revokeRefreshTokens(user.uid);
 
   console.log(
     JSON.stringify(

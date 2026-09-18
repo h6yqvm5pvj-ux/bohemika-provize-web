@@ -1,0 +1,103 @@
+.fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px 12px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fields > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.amountInput {
+  width: 144px;
+  max-width: 100%;
+}
+
+.amountField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 144px;
+  max-width: 100%;
+  color: #334155;
+  font-size: 11px;
+}
+
+.amountField input {
+  width: 100%;
+}
+
+.amounts {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 8px;
+}
+
+.amounts .amountField {
+  flex: 1 1 120px;
+  max-width: 160px;
+}
+
+.segmentedControl {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid #e9dff6;
+  border-radius: 16px;
+  background: #fff;
+  font-size: 11px;
+}
+
+.dailyAmount {
+  flex: 0 1 144px;
+}
+
+.dailyAmount.hasWarning {
+  flex-basis: 100%;
+}
+
+.dailyInput {
+  position: relative;
+  width: 144px;
+  max-width: 100%;
+  margin-top: 4px;
+}
+
+.toggleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  max-width: 100%;
+}
+
+.toggleRow button {
+  flex-shrink: 0;
+}
+
+.toggleAmount {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.toggleAmount .toggleRow {
+  flex: 0 1 245px;
+  justify-content: space-between;
+}
+
+.cardBody {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee6f4;
+}

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
 import {
   advisorSetupError,
   checkAdvisorSetup,
@@ -207,6 +208,12 @@ async function getAuthContext(req: NextRequest) {
   try {
     decoded = await adminAuth.verifyIdToken(token, true);
   } catch (err: any) {
+    if (isAccountBlockedError(err)) {
+      return { error: ACCOUNT_BLOCKED_MESSAGE, code: ACCOUNT_BLOCKED_CODE, status: 403 } as const;
+    }
+    if (err?.code === MFA_REAUTH_REQUIRED_CODE) {
+      return { error: MFA_REAUTH_REQUIRED_MESSAGE, code: MFA_REAUTH_REQUIRED_CODE, status: 401 } as const;
+    }
     const code = err?.code || "auth/invalid-token";
     const message = err?.message || "Invalid or expired token";
     return { error: `Invalid or expired token (${code}): ${message}`, status: 401 } as const;
@@ -1069,7 +1076,7 @@ export async function GET(req: NextRequest) {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx && typeof ctx.error === "string") {
-      const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+      const response = NextResponse.json({ ok: false, error: ctx.error, ...("code" in ctx ? { code: ctx.code } : {}) } satisfies ApiError, {
         status: ctx.status,
       });
       if ("retryAfterSeconds" in ctx) {
@@ -1144,7 +1151,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const ctx = await getAuthContext(req);
     if ("error" in ctx && typeof ctx.error === "string") {
-      const response = NextResponse.json({ ok: false, error: ctx.error } satisfies ApiError, {
+      const response = NextResponse.json({ ok: false, error: ctx.error, ...("code" in ctx ? { code: ctx.code } : {}) } satisfies ApiError, {
         status: ctx.status,
       });
       if ("retryAfterSeconds" in ctx) {

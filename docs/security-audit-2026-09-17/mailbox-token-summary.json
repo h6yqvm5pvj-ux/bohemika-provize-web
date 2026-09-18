@@ -1,0 +1,13 @@
+{
+  "checkedAt": "2026-09-17T09:56:55.167Z",
+  "method": "HEAD",
+  "downloadedContentBytes": 0,
+  "tokenObjects": 8,
+  "statuses": {
+    "200": 8
+  },
+  "contentTypes": {
+    "image/jpeg": 6,
+    "image/png": 2
+  }
+}

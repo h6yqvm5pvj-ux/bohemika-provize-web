@@ -3746,7 +3746,7 @@ const createProcessingBatchWriter = () => {
     batch.update(match.ref, withContractHistory(batch, match.ref, match.contract, patch, {
       actorEmail, title: "Aktualizace údajů podle provizního výpisu",
     }), { lastUpdateTime: match.updateTime });
-    ops += 5; // Contract, client link, event and at most two older records.
+    ops += 7; // Contract, client link, history and up to two hall projection invalidations.
     if (ops >= 400) await commit();
   };
   const updateDocument = async (snapshot: FirebaseFirestore.DocumentSnapshot, data: FirebaseFirestore.DocumentData) => {

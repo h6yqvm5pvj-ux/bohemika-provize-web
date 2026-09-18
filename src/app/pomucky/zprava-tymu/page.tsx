@@ -2,9 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   Check,
+  CheckCircle2,
   ChevronRight,
+  GitBranch,
+  Info,
   Loader2,
+  MessageSquare,
   Search,
   Send,
   Smile,
@@ -20,6 +25,7 @@ import {
   effectiveUserEmail,
   useEffectiveUserEmail,
 } from "@/app/lib/useAdminImpersonation";
+import styles from "./teamMessage.module.css";
 
 type TargetMode = "all" | "selected";
 
@@ -86,6 +92,14 @@ function formatNameFromEmail(email: string): string {
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function recipientLabel(count: number): string {
+  return `${count} ${count === 1 ? "příjemce" : count >= 2 && count <= 4 ? "příjemci" : "příjemců"}`;
+}
+
+function initials(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
 function buildSubordinateTree(
@@ -228,6 +242,7 @@ export default function TeamMessagePage() {
   const [subordinateSearch, setSubordinateSearch] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
+  const recipientsDialogRef = useRef<HTMLDialogElement | null>(null);
   const successTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -313,13 +328,18 @@ export default function TeamMessagePage() {
 
   useEffect(() => {
     if (!subordinatesModalOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setSubordinatesModalOpen(false);
-      }
+    const dialog = recipientsDialogRef.current;
+    if (!dialog) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.showModal();
+    dialog.querySelector("input")?.focus();
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement) previousFocus.focus();
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
   }, [subordinatesModalOpen]);
 
   useEffect(() => {
@@ -363,6 +383,7 @@ export default function TeamMessagePage() {
 
   const trimmedMessage = messageText.trim();
   const selectedResolvedCount = expandedSelectedEmails.length;
+  const recipientCount = targetMode === "all" ? subordinateCount : selectedResolvedCount;
   const hasSelectedRecipients =
     targetMode === "all" || selectedResolvedCount > 0;
   const canSend =
@@ -471,346 +492,250 @@ export default function TeamMessagePage() {
   const statusText = !user
     ? "Musíš být přihlášený, aby šla zpráva odeslat."
     : loadingSubs
-      ? "Načítám strukturu pod tebou…"
+      ? "Načítám členy týmu…"
       : subordinateCount === 0
-        ? "Nemáš pod sebou žádné podřízené."
+        ? "Ve tvém týmu zatím nejsou žádní příjemci."
         : targetMode === "all"
-          ? `Zpráva se odešle všem ${subordinateCount} lidem v tvé struktuře.`
+          ? "Zprávu dostanou všichni členové tvého týmu."
           : selectedEmails.length === 0
-            ? "Vyber alespoň jednoho podřízeného. Zahrnou se i jeho podřízení."
-            : `Zpráva se odešle ${selectedResolvedCount} lidem (${selectedEmails.length} vybraných větví).`;
+            ? "Vyber alespoň jednoho člena týmu."
+            : "Do výběru jsou zahrnuti i podřízení vybraných členů.";
 
   return (
     <AppLayout active="tools">
-      <div className="mx-auto w-full max-w-5xl">
-        <header className="mb-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="relative overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(135deg,#020617_0%,#14071f_48%,#5b21b6_100%)] px-5 py-5 shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
-            <div className="relative z-10">
-              <span className="mb-3 inline-flex rounded-full border border-fuchsia-200/35 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-fuchsia-100 backdrop-blur">
-                Týmová komunikace
-              </span>
-              <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                Zpráva týmu
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm font-medium text-white/68">
-                Napiš krátkou zprávu a odešli ji všem nebo jen vybraným větvím svého týmu.
-              </p>
+      <div className={styles.page}>
+        <header className={styles.header}>
+          <div className={styles.headingGroup}>
+            <span className={styles.headingIcon}><MessageSquare size={25} strokeWidth={1.7} aria-hidden="true" /></span>
+            <div>
+              <p className={styles.eyebrow}>TÝMOVÁ KOMUNIKACE</p>
+              <h1 className={styles.title}>Zpráva týmu</h1>
+              <p className={styles.subtitle}>Povzbuzení, novinka nebo důležitá informace. Dej svému týmu vědět.</p>
             </div>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-[linear-gradient(90deg,rgba(255,255,255,0),rgba(236,72,153,0.85),rgba(168,85,247,0.75),rgba(255,255,255,0))]" />
           </div>
-          <div className="relative overflow-hidden rounded-[24px] border border-violet-200/70 bg-white/72 px-4 py-4 shadow-[0_18px_46px_rgba(76,29,149,0.14)] backdrop-blur-xl">
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
-              Pod tebou celkem
+          <div className={styles.teamTotal}>
+            <Users size={20} strokeWidth={1.7} aria-hidden="true" />
+            <div>
+              <strong>{loadingSubs ? "…" : subordinateCount}</strong>
+              <span>členů v týmu</span>
             </div>
-            <div className="mt-2 text-3xl font-black tracking-tight text-slate-950">{subordinateCount}</div>
-            <div className="mt-3 h-1 rounded-full bg-[linear-gradient(90deg,#020617_0%,#7c3aed_52%,#ec4899_100%)]" />
           </div>
         </header>
 
-        <section className="relative overflow-hidden rounded-[28px] border border-white/80 bg-white/68 p-5 shadow-[0_28px_86px_rgba(76,29,149,0.16)] backdrop-blur-xl sm:p-6">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]" />
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.85)_0%,rgba(250,245,255,0.58)_42%,rgba(244,244,245,0.76)_100%)]" />
-
-          <div className="relative z-10 mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-bold text-slate-950">Komu poslat</div>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Ve výběru se vždy odešle i celý podstrom pod vybraným člověkem.
-              </p>
+        <div className={styles.workspace}>
+          <section className={styles.composer} aria-labelledby="composer-title">
+            <div className={styles.sectionHeading}>
+              <h2 id="composer-title">Nová zpráva</h2>
+              <span className={styles.channelBadge}><Bell size={13} aria-hidden="true" /> Oznámení týmu</span>
             </div>
-            <div className="inline-flex rounded-full border border-violet-200/80 bg-white/72 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur">
-              <button
-                type="button"
-                onClick={() => setTargetMode("all")}
-                className={`ui-focus rounded-full px-3 py-1.5 text-sm font-bold transition ${
-                  targetMode === "all"
-                    ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)]"
-                    : "text-slate-600 hover:bg-white hover:text-slate-950"
-                }`}
-              >
-                Všem
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTargetMode("selected");
-                  setSubordinatesModalOpen(true);
-                }}
-                className={`ui-focus inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold transition ${
-                  targetMode === "selected"
-                    ? "bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.22)]"
-                    : "text-slate-600 hover:bg-white hover:text-slate-950"
-                }`}
-              >
-                <Users size={14} strokeWidth={2.2} aria-hidden="true" />
-                Vybraní podřízení
-              </button>
-            </div>
-          </div>
 
-          {targetMode === "selected" ? (
-            <div className="relative z-10 mb-5 rounded-2xl border border-violet-200/75 bg-white/72 p-3 shadow-[0_16px_42px_rgba(76,29,149,0.10)] backdrop-blur">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            <fieldset className={styles.recipientsField}>
+              <legend className={styles.fieldLabel}>Komu chceš napsat?</legend>
+              <div className={styles.targetOptions}>
                 <button
                   type="button"
-                  onClick={() => setSubordinatesModalOpen(true)}
-                  disabled={loadingSubs || subordinateCount === 0}
-                  className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/80 px-3 py-1.5 text-sm font-bold text-slate-800 shadow-sm transition hover:border-violet-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-pressed={targetMode === "all"}
+                  onClick={() => setTargetMode("all")}
+                  className={styles.targetOption}
                 >
-                  <Users size={14} strokeWidth={2} aria-hidden="true" />
-                  Vybrat podřízené
+                  <span className={styles.optionIcon}><Users size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                  <span className={styles.optionText}><strong>Celý tým</strong><small>Všichni členové pod tebou</small></span>
+                  <span className={styles.radioMark} aria-hidden="true">{targetMode === "all" ? <Check size={12} strokeWidth={3} /> : null}</span>
                 </button>
-
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 font-bold text-slate-700">
-                    Vybrané větve: {selectedEmails.length}
-                  </span>
-                  <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 font-bold text-fuchsia-700">
-                    Celkem příjemců: {selectedResolvedCount}
-                  </span>
-                  {selectedEmails.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEmails([])}
-                      className="ui-focus rounded-full border border-slate-300 bg-white/70 px-2 py-1 font-bold text-slate-700 transition hover:bg-white"
-                    >
-                      Vyčistit
-                    </button>
-                  ) : null}
-                </div>
+                <button
+                  type="button"
+                  aria-pressed={targetMode === "selected"}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setTargetMode("selected");
+                    setSubordinatesModalOpen(true);
+                  }}
+                  className={styles.targetOption}
+                >
+                  <span className={styles.optionIcon}><GitBranch size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                  <span className={styles.optionText}><strong>Vybrat členy</strong><small>Vybraní lidé a jejich týmy</small></span>
+                  <span className={styles.radioMark} aria-hidden="true">{targetMode === "selected" ? <Check size={12} strokeWidth={3} /> : null}</span>
+                </button>
               </div>
+            </fieldset>
 
-              {selectedEmails.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedPreview.map((sub) => (
-                    <span
-                      key={sub.email}
-                      className="inline-flex items-center gap-1 rounded-full border border-violet-100 bg-white/82 px-2.5 py-1 text-xs font-bold text-slate-700"
-                    >
-                      {sub.name}
-                      {sub.subtreeSize > 1 ? (
-                        <span className="text-slate-500">(+{sub.subtreeSize - 1})</span>
-                      ) : null}
-                    </span>
-                  ))}
-                  {selectedEmails.length > selectedPreview.length ? (
-                    <span className="inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                      +{selectedEmails.length - selectedPreview.length} dalších
-                    </span>
+            {targetMode === "selected" ? (
+              <div className={styles.selection}>
+                <div className={styles.selectionHeading}>
+                  <span><strong>{recipientLabel(selectedResolvedCount)}</strong> včetně jejich podřízených</span>
+                  <button type="button" onClick={() => setSubordinatesModalOpen(true)} className={styles.textButton} aria-haspopup="dialog">Upravit výběr <ChevronRight size={14} aria-hidden="true" /></button>
+                </div>
+                {selectedEmails.length > 0 ? (
+                  <div className={styles.selectedChips}>
+                    {selectedPreview.map((sub) => (
+                      <span key={sub.email} className={styles.selectedChip}>
+                        {sub.name}
+                        {sub.subtreeSize > 1 ? <span>+{sub.subtreeSize - 1}</span> : null}
+                        <button type="button" onClick={() => toggleSelectedEmail(sub.email)} aria-label={`Odebrat ${sub.name}`}><X size={12} aria-hidden="true" /></button>
+                      </span>
+                    ))}
+                    {selectedEmails.length > selectedPreview.length ? <span className={styles.moreSelected}>+{selectedEmails.length - selectedPreview.length} dalších</span> : null}
+                    <button type="button" onClick={() => setSelectedEmails([])} className={styles.textButton}>Zrušit výběr</button>
+                  </div>
+                ) : <p className={styles.selectionHint}>Vyber členy, kterým chceš zprávu poslat.</p>}
+              </div>
+            ) : null}
+
+            <div className={styles.messageHeading}>
+              <label htmlFor="team-message" className={styles.fieldLabel}>Text zprávy</label>
+              <span>Stačí pár slov.</span>
+            </div>
+            <div className={styles.editor}>
+              <textarea
+                id="team-message"
+                ref={textareaRef}
+                value={messageText}
+                onChange={(e) => {
+                  setMessageText(e.target.value);
+                  setSendSuccess(false);
+                  if (errorText) setErrorText(null);
+                }}
+                maxLength={MAX_MESSAGE_LENGTH}
+                aria-describedby="team-message-length"
+                placeholder="Co dnes potřebuje tvůj tým vědět?"
+                className={styles.textarea}
+              />
+              <div className={styles.editorToolbar}>
+                <div ref={emojiPickerRef} className={styles.emojiControl} onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setEmojiPickerOpen(false);
+                    emojiPickerRef.current?.querySelector("button")?.focus();
+                  }
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setEmojiPickerOpen((open) => !open)}
+                    className={styles.emojiButton}
+                    aria-label="Vložit emoji"
+                    aria-expanded={emojiPickerOpen}
+                    aria-controls="team-message-emojis"
+                  >
+                    <Smile size={18} strokeWidth={1.8} aria-hidden="true" /> Emoji
+                  </button>
+                  {emojiPickerOpen ? (
+                    <div id="team-message-emojis" className={styles.emojiPicker} role="group" aria-label="Výběr emoji">
+                      {QUICK_EMOJIS.map((emoji) => (
+                        <button key={emoji} type="button" onClick={() => insertEmoji(emoji)} aria-label={`Vložit ${emoji}`}>{emoji}</button>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
-              ) : (
-                <p className="mt-2 text-xs font-medium text-slate-500">
-                  Vyber kořenové podřízené, pod kterými se mají zahrnout celé větve.
-                </p>
-              )}
+                <span id="team-message-length" className={styles.characterCount} data-limit={messageText.length >= MAX_MESSAGE_LENGTH}>
+                  <strong>{messageText.length}</strong> / {MAX_MESSAGE_LENGTH} znaků
+                </span>
+              </div>
             </div>
-          ) : null}
 
-          <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-bold text-slate-950">Text zprávy</div>
-            <span
-              className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
-                messageText.length > MAX_MESSAGE_LENGTH
-                  ? "border-rose-200 bg-rose-50 text-rose-600"
-                  : "border-violet-100 bg-white/80 text-slate-600"
-              }`}
-            >
-              {messageText.length}/{MAX_MESSAGE_LENGTH}
-            </span>
-          </div>
-
-          <textarea
-            ref={textareaRef}
-            value={messageText}
-            onChange={(e) => {
-              setMessageText(e.target.value);
-              setSendSuccess(false);
-              if (errorText) setErrorText(null);
-            }}
-            maxLength={MAX_MESSAGE_LENGTH}
-            placeholder="Napiš zprávu pro tým…"
-            className="relative z-10 min-h-[240px] w-full resize-y rounded-2xl border border-violet-200/90 bg-white/76 px-4 py-3 text-base leading-relaxed text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_34px_rgba(15,23,42,0.05)] outline-none backdrop-blur transition placeholder:text-slate-400 focus:border-fuchsia-400 focus:bg-white focus:ring-4 focus:ring-fuchsia-500/15"
-          />
-
-          <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div ref={emojiPickerRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setEmojiPickerOpen((open) => !open)}
-                className="ui-focus inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white/78 px-3 py-2 text-sm font-bold text-slate-800 shadow-sm backdrop-blur transition hover:border-violet-300 hover:bg-white"
-                aria-label="Vložit emoji"
-              >
-                <Smile size={16} strokeWidth={2} aria-hidden="true" />
-                Emoji
+            <div className={styles.sendFooter}>
+              <div className={styles.deliverySummary} aria-live="polite">
+                {loadingSubs ? <Loader2 size={17} className={styles.spinner} aria-hidden="true" /> : <Users size={17} aria-hidden="true" />}
+                <span>{loadingSubs ? "Načítám příjemce…" : recipientLabel(recipientCount)}</span>
+              </div>
+              <button type="button" onClick={handleSend} disabled={!canSend} className={styles.sendButton}>
+                {sending ? <Loader2 size={17} className={styles.spinner} aria-hidden="true" /> : <Send size={17} strokeWidth={1.8} aria-hidden="true" />}
+                {sending ? "Odesílám…" : "Odeslat zprávu"}
               </button>
-
-              {emojiPickerOpen ? (
-                <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[280px] rounded-2xl border border-violet-200/80 bg-white/88 p-3 shadow-[0_18px_44px_rgba(76,29,149,0.20)] backdrop-blur-xl">
-                  <div className="grid grid-cols-8 gap-1">
-                    {QUICK_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => insertEmoji(emoji)}
-                        className="ui-focus inline-flex h-8 w-8 items-center justify-center rounded-lg text-lg transition hover:bg-fuchsia-50"
-                        aria-label={`Vložit ${emoji}`}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
+            <div className={styles.status} data-state={errorText ? "error" : sendSuccess ? "success" : "default"} role={errorText ? "alert" : "status"}>
+              {sendSuccess && !errorText ? <CheckCircle2 size={15} aria-hidden="true" /> : <Info size={15} aria-hidden="true" />}
+              <p>{errorText || (sendSuccess ? "Zpráva byla úspěšně odeslána." : statusText)}</p>
+            </div>
+          </section>
 
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!canSend}
-              className="ui-focus inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#020617_0%,#4c1d95_52%,#ec4899_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(76,29,149,0.26)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(76,29,149,0.32)] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:bg-none disabled:opacity-45 disabled:shadow-none disabled:hover:translate-y-0"
-            >
-              {sending ? (
-                <Loader2
-                  className="h-4 w-4 animate-spin"
-                  strokeWidth={2}
-                  aria-hidden="true"
-                />
-              ) : (
-                <Send size={14} strokeWidth={2} aria-hidden="true" />
-              )}
-              {sending ? "Odesílám…" : "Odeslat zprávu"}
-            </button>
-          </div>
-
-          <div className="relative z-10 mt-3 min-h-[20px] rounded-2xl border border-white/70 bg-white/48 px-3 py-2 text-sm backdrop-blur">
-            {errorText ? (
-              <p className="font-medium text-rose-600">{errorText}</p>
-            ) : sendSuccess ? (
-              <p className="font-bold text-fuchsia-700">
-                Notifikace byla úspěšně odeslána.
-              </p>
-            ) : (
-              <p className="font-medium text-slate-600">{statusText}</p>
-            )}
-          </div>
-        </section>
+          <aside className={styles.preview} aria-labelledby="preview-title">
+            <div className={styles.previewHeading}>
+              <span className={styles.previewIcon}><Bell size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+              <div><h2 id="preview-title">Náhled zprávy</h2><p>Takto může vypadat oznámení.</p></div>
+            </div>
+            <div className={styles.previewStage}>
+              <div className={styles.notification}>
+                <div className={styles.notificationMeta}>
+                  <span className={styles.appIcon}><MessageSquare size={15} strokeWidth={2} aria-hidden="true" /></span>
+                  <span>Bohemka.App</span>
+                  <span className={styles.notificationTime}>právě teď</span>
+                </div>
+                <strong className={styles.notificationTitle}>Zpráva od nadřízeného</strong>
+                <p className={styles.notificationBody} data-empty={!trimmedMessage}>{trimmedMessage || "Tady se objeví tvoje zpráva. Napiš pár slov a sleduj náhled."}</p>
+              </div>
+              <div className={styles.previewCaption}><span /> Průběžný náhled</div>
+            </div>
+            <div className={styles.previewNote}>
+              <MessageSquare size={18} strokeWidth={1.7} aria-hidden="true" />
+              <p>Krátce a osobně.<br /><span>Na pochvalu nebo důležitou novinku máš {MAX_MESSAGE_LENGTH} znaků.</span></p>
+            </div>
+          </aside>
+        </div>
       </div>
 
       {subordinatesModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
-          onClick={() => setSubordinatesModalOpen(false)}
+        <dialog
+          ref={recipientsDialogRef}
+          className={styles.dialog}
+          aria-labelledby="recipients-title"
+          aria-describedby="recipients-description"
+          onCancel={() => setSubordinatesModalOpen(false)}
+          onClick={(event) => { if (event.target === event.currentTarget) setSubordinatesModalOpen(false); }}
         >
-          <div
-            className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/75 bg-white/88 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.34)] backdrop-blur-xl sm:p-5"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#020617_0%,#8b5cf6_48%,#ec4899_100%)]" />
-            <div className="mb-4 flex items-center justify-between gap-3">
+          <div className={styles.dialogContent}>
+            <header className={styles.dialogHeader}>
               <div>
-                <h2 className="text-lg font-bold text-slate-950">Vyber podřízené</h2>
-                <p className="text-xs font-medium text-slate-500">
-                  Když vybereš člověka, přidají se i všichni pod ním.
-                </p>
+                <p className={styles.eyebrow}>PŘÍJEMCI ZPRÁVY</p>
+                <h2 id="recipients-title">Vyber členy týmu</h2>
+                <p id="recipients-description">S každým vybraným člověkem se přidají i všichni jeho podřízení.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSubordinatesModalOpen(false)}
-                className="ui-focus inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-black"
-                aria-label="Zavřít"
-              >
-                <X size={16} strokeWidth={2} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
+              <button type="button" onClick={() => setSubordinatesModalOpen(false)} className={styles.closeButton} aria-label="Zavřít výběr příjemců"><X size={19} aria-hidden="true" /></button>
+            </header>
+            <div className={styles.dialogSearch}>
+              <Search size={18} aria-hidden="true" />
               <input
-                type="text"
+                type="search"
                 value={subordinateSearch}
                 onChange={(e) => setSubordinateSearch(e.target.value)}
-                placeholder="Hledat podřízeného (jméno nebo e-mail)"
-                className="w-full rounded-xl border border-violet-200 bg-white/80 py-2 pl-9 pr-3 text-sm font-medium text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-fuchsia-400 focus:bg-white focus:ring-4 focus:ring-fuchsia-500/15"
+                placeholder="Hledat jméno nebo e-mail…"
+                aria-label="Hledat člena týmu"
               />
             </div>
-
-            <div className="mt-3 max-h-[380px] space-y-2 overflow-auto pr-1">
-              {loadingSubs ? (
-                <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2 text-sm font-medium text-slate-600">
-                  Načítám podřízené…
-                </div>
-              ) : filteredSubordinates.length === 0 ? (
-                <div className="rounded-xl border border-violet-100 bg-white/70 px-3 py-2 text-sm font-medium text-slate-600">
-                  Pro tento filtr nebyli nalezeni podřízení.
-                </div>
-              ) : (
-                filteredSubordinates.map((sub) => {
-                  const selected = selectedEmails.includes(sub.email);
-                  return (
-                    <button
-                      key={sub.email}
-                      type="button"
-                      onClick={() => toggleSelectedEmail(sub.email)}
-                      className={`ui-focus flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left shadow-sm transition ${
-                        selected
-                          ? "border-violet-300 bg-violet-50/90"
-                          : "border-violet-100 bg-white/76 hover:border-violet-200 hover:bg-white"
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1" style={{ paddingLeft: `${sub.depth * 18}px` }}>
-                        <div className="flex items-center gap-2">
-                          {sub.depth > 0 ? (
-                            <ChevronRight
-                              size={14}
-                              strokeWidth={2.5}
-                              className="shrink-0 text-slate-400"
-                              aria-hidden="true"
-                            />
-                          ) : null}
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {sub.name}
-                          </div>
-                          {sub.subtreeSize > 1 ? (
-                            <span className="rounded-full border border-fuchsia-100 bg-fuchsia-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-700">
-                              +{sub.subtreeSize - 1} pod ním
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="truncate text-xs text-slate-500">{sub.email}</div>
-                      </div>
-                      <span
-                        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
-                          selected
-                            ? "border-slate-950 bg-slate-950 text-white shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
-                            : "border-slate-300 bg-white text-transparent"
-                        }`}
-                      >
-                        <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+            <div className={styles.memberList}>
+              {loadingSubs ? <p className={styles.emptyState}>Načítám členy týmu…</p> : filteredSubordinates.length === 0 ? (
+                <p className={styles.emptyState}>{subordinateCount === 0 ? "Ve tvém týmu zatím nejsou žádní příjemci." : "Tomuto hledání neodpovídá žádný člen týmu."}</p>
+              ) : filteredSubordinates.map((sub) => {
+                const selected = selectedEmails.includes(sub.email);
+                const included = expandedSelectedEmails.includes(sub.email);
+                return (
+                  <button
+                    key={sub.email}
+                    type="button"
+                    onClick={() => toggleSelectedEmail(sub.email)}
+                    className={styles.member}
+                    aria-pressed={selected}
+                    aria-label={`${sub.name}, ${sub.email}${sub.subtreeSize > 1 ? `, včetně ${sub.subtreeSize - 1} podřízených` : ""}${included && !selected ? ", zahrnutý ve vybrané větvi" : ""}`}
+                    data-included={included}
+                  >
+                    <span className={styles.memberIdentity} style={{ paddingLeft: `${Math.min(sub.depth, 3) * 12}px` }}>
+                      {sub.depth > 0 ? <ChevronRight size={13} className={styles.memberBranch} aria-hidden="true" /> : null}
+                      <span className={styles.memberAvatar} aria-hidden="true">{initials(sub.name)}</span>
+                      <span className={styles.memberText}>
+                        <strong>{sub.name}</strong>
+                        <small>{sub.email}</small>
+                        {sub.subtreeSize > 1 || (included && !selected) ? <span className={styles.memberDetail}>{included && !selected ? "Zahrnutý ve vybrané větvi" : `+${sub.subtreeSize - 1} podřízených`}</span> : null}
                       </span>
-                    </button>
-                  );
-                })
-              )}
+                    </span>
+                    <span className={styles.memberCheck} aria-hidden="true">{included ? <Check size={14} strokeWidth={2.5} /> : null}</span>
+                  </button>
+                );
+              })}
             </div>
-
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-600">
-                Vybrané větve: {selectedEmails.length} | Celkem příjemců: {selectedResolvedCount}
-              </p>
-              <button
-                type="button"
-                onClick={() => setSubordinatesModalOpen(false)}
-                className="ui-focus rounded-full bg-[linear-gradient(135deg,#020617_0%,#4c1d95_55%,#ec4899_100%)] px-4 py-2 text-sm font-bold text-white shadow-[0_14px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5"
-              >
-                Hotovo
-              </button>
-            </div>
+            <footer className={styles.dialogFooter}>
+              <div><strong>{recipientLabel(selectedResolvedCount)}</strong><span>včetně podřízených ve vybraných týmech</span></div>
+              <button type="button" onClick={() => setSubordinatesModalOpen(false)} className={styles.sendButton}><Check size={16} aria-hidden="true" /> Potvrdit výběr</button>
+            </footer>
           </div>
-        </div>
+        </dialog>
       ) : null}
     </AppLayout>
   );

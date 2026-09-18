@@ -1,0 +1,48 @@
+{
+  "checkedAt": "2026-09-17T12:43:51.513Z",
+  "environment": "isolated-local-production-build",
+  "syntheticConfiguration": true,
+  "productionAccess": false,
+  "checks": [
+    {
+      "path": "/login",
+      "status": 200,
+      "strictCsp": true,
+      "nonceMatches": true
+    },
+    {
+      "path": "/ucet/akce",
+      "status": 200,
+      "strictCsp": true,
+      "nonceMatches": true
+    },
+    {
+      "path": "/admin",
+      "status": 307,
+      "unauthenticatedDenied": true
+    },
+    {
+      "path": "/nastaveni",
+      "status": 307,
+      "unauthenticatedDenied": true
+    },
+    {
+      "path": "/api/auth/password-reset/confirm",
+      "expected": 415,
+      "status": 415,
+      "privateDetailsExposed": false
+    },
+    {
+      "path": "/api/auth/password-reset/confirm",
+      "expected": 403,
+      "status": 403,
+      "privateDetailsExposed": false
+    },
+    {
+      "path": "/api/auth/password-reset/confirm",
+      "expected": 403,
+      "status": 403,
+      "privateDetailsExposed": false
+    }
+  ]
+}

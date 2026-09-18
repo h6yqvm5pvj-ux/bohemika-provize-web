@@ -1,6 +1,8 @@
 "use client";
+import dynamic from "next/dynamic";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -38,6 +40,9 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import Image from "next/image";
 
 import adminStyles from "./adminConsole.module.css";
+import usersStyles from "./adminUsers.module.css";
+import { AdminUserCard } from "./components/AdminUserCard";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { AdminPageHeader } from "../components/AdminPageHeader";
 import { ADMIN_SECTIONS } from "../components/adminSections";
 
@@ -55,10 +60,10 @@ import {
   resolveAdminRoleFromClaims,
   type AdminRole,
 } from "@/lib/adminAccess";
-import { AdminSecuritySection } from "./components/AdminSecuritySection";
+
 import { AdminNavigation, type AdminSection } from "./components/AdminNavigation";
-import { AdminBroadcastSection } from "./components/AdminBroadcastSection";
-import { AdminSubscriptionsSection } from "./components/AdminSubscriptionsSection";
+
+
 import {
   ADMIN_POSITIONS as POSITIONS,
   formatAccountTypeLabel,
@@ -72,7 +77,14 @@ import { getMfaFactorLabel } from "./adminSecurity";
 import { useAdminSecurity } from "./useAdminSecurity";
 import { useAdminBroadcast } from "./useAdminBroadcast";
 import { useAdminSubscriptions } from "./useAdminSubscriptions";
-import type { AdminUsersResponse, AdminUsersRow } from "./adminUsers";
+import { buildAdminUserMissingItems } from "./adminUserCompleteness";
+import { useAdminUserDetail } from "./useAdminUserDetail";
+import type { AdminUsersResponse, AdminUsersRow, AdminUserSummary } from "./adminUsers";
+
+const AdminSecuritySection = dynamic(() => import("./components/AdminSecuritySection").then((module) => module.AdminSecuritySection));
+const AdminBroadcastSection = dynamic(() => import("./components/AdminBroadcastSection").then((module) => module.AdminBroadcastSection));
+const AdminSubscriptionsSection = dynamic(() => import("./components/AdminSubscriptionsSection").then((module) => module.AdminSubscriptionsSection));
+
 
 type EndCollaborationRequestStatus =
   | "pending"
@@ -459,26 +471,11 @@ type AdminUsersDeleteTarget = {
 type AdminUsersAccountTypeDraft = NewUserAccountType | "";
 type AdminUsersAccountFilter = "all" | "advisor" | "tipster";
 
-type AdminUsersMissingItem = {
-  key: string;
-  label: string;
-};
-
 const ADMIN_USER_ICO_MAX_LEN = 8;
 const ADMIN_USER_PHONE_MAX_LEN = 40;
 
 const normalizeIcoInput = (value: string): string =>
   value.replace(/\D+/g, "").slice(0, ADMIN_USER_ICO_MAX_LEN);
-
-const hasUsablePhoneNumber = (value: string | null | undefined): boolean =>
-  (value ?? "").replace(/\D+/g, "").length >= 6;
-
-const hasUsableIco = (value: string | null | undefined): boolean =>
-  (value ?? "").replace(/\D+/g, "").length === ADMIN_USER_ICO_MAX_LEN;
-
-const hasUsablePositionTimeline = (
-  timeline: AdminUsersRow["positionTimeline"]
-): boolean => Array.isArray(timeline) && timeline.length > 0;
 
 const buildOnlineCardPublicUrl = (slug: string | null | undefined): string =>
   slug ? `${ONLINE_CARD_PUBLIC_BASE_URL}/vizitka/${slug}` : "";
@@ -489,41 +486,6 @@ const getAdminUserOnlineCardLabel = (row: AdminUsersRow): string => {
   if (card?.enabled) return "Zapnutá, ale neúplná";
   if (card?.slug) return "Vypnutá";
   return "Nenastavená";
-};
-
-const buildAdminUserMissingItems = (row: AdminUsersRow): AdminUsersMissingItem[] => {
-  const accountType = (row.accountType ?? "").trim().toLowerCase();
-  const missing: AdminUsersMissingItem[] = [];
-
-  if (!row.profileExists) missing.push({ key: "profile", label: "Profil" });
-  if (!(row.fullName ?? "").trim()) missing.push({ key: "fullName", label: "Jméno" });
-  if (!accountType) missing.push({ key: "accountType", label: "Typ účtu" });
-
-  if (accountType === "tipster") {
-    if (!normalizeEmail(row.tipRecipientEmail)) {
-      missing.push({ key: "tipRecipientEmail", label: "Příjemce tipů" });
-    }
-    return missing;
-  }
-
-  if (!normalizeEmail(row.managerEmail)) {
-    missing.push({ key: "managerEmail", label: "Nadřízený" });
-  }
-  if (!(row.agencyNumber ?? "").trim()) {
-    missing.push({ key: "agencyNumber", label: "Agenturní číslo" });
-  }
-  if (!hasUsableIco(row.ico)) missing.push({ key: "ico", label: "IČO" });
-  if (!hasUsablePhoneNumber(row.phoneNumber)) {
-    missing.push({ key: "phoneNumber", label: "Telefon" });
-  }
-  if (!hasUsablePositionTimeline(row.positionTimeline) && !(row.position ?? "").trim()) {
-    missing.push({ key: "position", label: "Kariéra" });
-  }
-  if (!(row.commissionMode ?? "").trim()) {
-    missing.push({ key: "commissionMode", label: "Provizní režim" });
-  }
-
-  return missing;
 };
 
 const generateTemporaryPassword = (): string => {
@@ -624,7 +586,7 @@ export default function AdminRequestsPage() {
   const [showCreateUserCelebration, setShowCreateUserCelebration] = useState(false);
   const [createUserCelebrationKey, setCreateUserCelebrationKey] = useState(0);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("requests");
-  const [adminUsersRows, setAdminUsersRows] = useState<AdminUsersRow[]>([]);
+  const [adminUsersRows, setAdminUsersRows] = useState<AdminUserSummary[]>([]);
   const [adminUsersLoading, setAdminUsersLoading] = useState(false);
   const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
   const [adminUsersStatus, setAdminUsersStatus] = useState<InlineStatus | null>(null);
@@ -802,37 +764,42 @@ export default function AdminRequestsPage() {
     return () => window.clearTimeout(timeoutId);
   }, [createUserCelebrationKey, showCreateUserCelebration]);
 
-  const loadAdminUsersRows = useCallback(async () => {
-    const user = auth.currentUser;
+  const adminDirectoryRequestRef = useRef(0);
+  const adminDirectoryLoadedRef = useRef<{ uid: string; at: number } | null>(null);
+  const loadAdminUsersRows = useCallback(async (options?: { reuse?: boolean }) => {
+    const user = currentUser;
     if (!user || !isAllowedAdmin) {
+      adminDirectoryRequestRef.current += 1;
+      adminDirectoryLoadedRef.current = null;
       setAdminUsersRows([]);
       setAdminUsersError(null);
       setAdminUsersLoading(false);
       return;
     }
-
+    const cached = adminDirectoryLoadedRef.current;
+    if (options?.reuse && cached?.uid === user.uid && Date.now() - cached.at < 30_000) return;
+    const request = ++adminDirectoryRequestRef.current;
+    const isCurrent = () => request === adminDirectoryRequestRef.current && auth.currentUser?.uid === user.uid;
     setAdminUsersLoading(true);
     setAdminUsersError(null);
     try {
-      const payload = await fetchAuthedJsonOrThrow<AdminUsersResponse>(
-        user,
-        "/api/admin/users",
-        { method: "GET" }
-      );
+      const payload = await fetchAuthedJsonOrThrow<AdminUsersResponse>(user, "/api/admin/users?view=directory", { method: "GET" });
+      if (!isCurrent()) return;
+      adminDirectoryLoadedRef.current = { uid: user.uid, at: Date.now() };
       setAdminUsersRows(Array.isArray(payload?.users) ? payload.users : []);
     } catch (error) {
+      if (!isCurrent()) return;
+      adminDirectoryLoadedRef.current = null;
       setAdminUsersRows([]);
-      setAdminUsersError(
-        error instanceof Error ? error.message : "Nepodařilo se načíst uživatele."
-      );
+      setAdminUsersError(error instanceof Error ? error.message : "Nepodařilo se načíst uživatele.");
     } finally {
-      setAdminUsersLoading(false);
+      if (isCurrent()) setAdminUsersLoading(false);
     }
-  }, [isAllowedAdmin]);
+  }, [currentUser, isAllowedAdmin]);
 
   useEffect(() => {
     if (activeAdminSection !== "users" && activeAdminSection !== "broadcasts") return;
-    void loadAdminUsersRows();
+    void loadAdminUsersRows({ reuse: true });
   }, [activeAdminSection, loadAdminUsersRows]);
 
   const loadRequests = useCallback(async () => {
@@ -1095,6 +1062,11 @@ export default function AdminRequestsPage() {
       setAdminUsersSelectedEmail(nextEmail);
     }
   }, [adminUsersSelectedEmail, selectedAdminDirectoryUser?.email]);
+
+  const { detail: adminUserDetail, error: adminUserDetailError, reload: reloadAdminUserDetail } = useAdminUserDetail(
+    isAllowedAdmin && activeAdminSection === "users" ? selectedAdminDirectoryUser : null,
+    currentUser,
+  );
 
   useEffect(() => {
     if (!selectedAdminDirectoryUser) return;
@@ -1765,7 +1737,7 @@ export default function AdminRequestsPage() {
   const subscriptionHistoryIconButtonClass = adminStyles.iconButton;
   const subscriptionHistoryDangerButtonClass = adminStyles.dangerButton;
   const selectedAdminUser = adminUsersEditingEmail
-    ? adminUsersRows.find((row) => row.email === adminUsersEditingEmail) ?? null
+    ? (adminUserDetail?.email === adminUsersEditingEmail ? adminUserDetail : null)
     : null;
   const selectedAdminUserDraft = selectedAdminUser
     ? {
@@ -2049,9 +2021,7 @@ export default function AdminRequestsPage() {
                 </button>
 
                 <div className="pr-10">
-                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-bold text-slate-950">
-                    {(selectedAdminUser.fullName || selectedAdminUser.email).charAt(0).toUpperCase()}
-                  </span>
+                  <ProfileAvatar src={selectedAdminUser.profileAvatar} name={selectedAdminUser.fullName || selectedAdminUser.email} sizes="58px" className={adminStyles.profileAvatar} />
                   <div className="mt-4 flex flex-wrap gap-2">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
@@ -3878,7 +3848,7 @@ export default function AdminRequestsPage() {
                   <span>Uživatelé</span>
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-                  Karty zvýrazňují hlavně chybějící údaje. Kliknutím otevřeš detail a editaci.
+                  Profily, přístup a nastavení účtů přehledně na jednom místě.
                 </p>
               </div>
               <button
@@ -3896,362 +3866,83 @@ export default function AdminRequestsPage() {
               </button>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <div className={adminMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Celkem
+            <div className={usersStyles.stats}>
+              {[
+                { label: "Celkem uživatelů", value: adminUsersStats.total, icon: UserRound, tone: "default" },
+                { label: "Kompletní profily", value: adminUsersStats.complete, icon: CheckCircle2, tone: "success" },
+                { label: "K doplnění", value: adminUsersStats.incomplete, icon: Pencil, tone: "warning" },
+                { label: "Bez profilu", value: adminUsersStats.missingProfile, icon: UserPlus, tone: "warning" },
+                { label: "Deaktivovaní", value: adminUsersStats.disabled, icon: ShieldAlert, tone: "default" },
+              ].map(({ label, value, icon: Icon, tone }) => (
+                <div key={label} className={usersStyles.stat} data-tone={tone}>
+                  <span className={usersStyles.statIcon}><Icon size={17} strokeWidth={1.6} aria-hidden="true" /></span>
+                  <div><span>{label}</span><strong>{value}</strong></div>
                 </div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.total}</div>
-              </div>
-              <div className={adminMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  OK
-                </div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.complete}</div>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
-                  K doplnění
-                </div>
-                <div className="mt-2 text-2xl font-bold text-amber-900">{adminUsersStats.incomplete}</div>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 shadow-[0_8px_18px_rgba(245,158,11,0.12)]">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">
-                  Bez profilu
-                </div>
-                <div className="mt-2 text-2xl font-bold text-amber-900">{adminUsersStats.missingProfile}</div>
-              </div>
-              <div className={adminMetricClass}>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Deaktivovaní
-                </div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{adminUsersStats.disabled}</div>
-              </div>
+              ))}
             </div>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-[330px_minmax(0,1fr)] lg:items-start">
-            <aside className="relative overflow-hidden rounded-3xl border border-violet-100 bg-white p-3 shadow-[0_18px_48px_rgba(76,29,149,0.08)]">
-              <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-300 via-purple-400 to-indigo-300" />
-            <div className="rounded-2xl bg-slate-50/80 p-2.5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label className="relative block min-w-0 flex-1">
-                  <Search
-                    size={14}
-                    strokeWidth={2.1}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
+            <div className={usersStyles.workspace}>
+            <aside className={usersStyles.directory} aria-label="Seznam uživatelů">
+              <div className={usersStyles.directoryTools}>
+                <div className={usersStyles.directoryHeading}>
+                  <h3>Uživatelé</h3>
+                  <span aria-live="polite">{filteredAdminUsersRows.length} z {adminUsersRows.length}</span>
+                </div>
+                <label className={usersStyles.search}>
+                  <Search size={15} strokeWidth={1.8} aria-hidden="true" />
                   <input
                     type="search"
                     className={`${createUserFieldClass} ${adminStyles.fieldWithIcon}`}
                     value={adminUsersSearch}
                     onChange={(event) => setAdminUsersSearch(event.target.value)}
-                    placeholder="Hledat jméno, e-mail, IČO, telefon nebo agenturní číslo…"
+                    placeholder="Hledat uživatele…"
+                    aria-label="Hledat podle jména, e-mailu, IČO, telefonu nebo agenturního čísla"
                   />
                 </label>
-                <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-2 text-center text-xs font-semibold text-slate-600">
-                  {adminUsersSearch.trim()
-                    ? `${filteredAdminUsersRows.length} z ${adminUsersRows.length}`
-                    : `${adminUsersRows.length} uživatelů`}
-                </span>
-              </div>
-
-              <div
-                className="mt-2 grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-white p-1"
-                role="tablist"
-                aria-label="Typ uživatelského účtu"
-              >
-                {[
-                  { id: "all" as const, label: "Všichni", count: adminUsersStats.total },
-                  { id: "advisor" as const, label: "Zástupci", count: adminUsersStats.advisors },
-                  { id: "tipster" as const, label: "Tipaři", count: adminUsersStats.tipsters },
-                ].map((option) => {
-                  const active = adminUsersAccountFilter === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setAdminUsersAccountFilter(option.id)}
-                      className={`rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
-                        active
-                          ? adminStyles.segmentActive
-                          : "text-slate-500 hover:bg-violet-50 hover:text-violet-700"
-                      }`}
-                    >
-                      <span className="block truncate">{option.label}</span>
-                      <span className={`mt-0.5 block text-[10px] ${active ? "text-slate-600" : "text-slate-400"}`}>
-                        {option.count}
-                      </span>
+                <div className={usersStyles.filters} role="group" aria-label="Typ uživatelského účtu">
+                  {[
+                    { id: "all" as const, label: "Všichni", count: adminUsersStats.total },
+                    { id: "advisor" as const, label: "Zástupci", count: adminUsersStats.advisors },
+                    { id: "tipster" as const, label: "Tipaři", count: adminUsersStats.tipsters },
+                  ].map((option) => (
+                    <button key={option.id} type="button" aria-pressed={adminUsersAccountFilter === option.id} onClick={() => setAdminUsersAccountFilter(option.id)}>
+                      {option.label}<span>{option.count}</span>
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+                {adminUsersStatus ? (
+                  <div role="status" className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-relaxed ${
+                    adminUsersStatus.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : adminUsersStatus.type === "info" ? "border-sky-200 bg-sky-50 text-sky-700"
+                      : "border-rose-200 bg-rose-50 text-rose-700"
+                  }`}>
+                    {adminUsersStatus.message}
+                  </div>
+                ) : null}
+                {adminUsersError ? (
+                  <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-700">{adminUsersError}</div>
+                ) : null}
               </div>
-
-              {adminUsersStatus ? (
-                <div
-                  className={`mt-3 rounded-xl border px-3 py-2 text-sm ${
-                    adminUsersStatus.type === "success"
-                      ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
-                    : adminUsersStatus.type === "info"
-                        ? "border-sky-200 bg-sky-50 text-sky-700"
-                        : "border-rose-200 bg-rose-50 text-rose-700"
-                  }`}
-                >
-                  {adminUsersStatus.message}
-                </div>
-              ) : null}
-
-              {adminUsersError ? (
-                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {adminUsersError}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-3 grid max-h-[640px] grid-cols-1 gap-2 overflow-y-auto pr-1">
-              {adminUsersLoading ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-                  Načítám uživatele…
-                </div>
-              ) : filteredAdminUsersRows.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-9 text-center text-sm text-slate-600">
-                  Pro zadaný filtr nejsou žádní uživatelé.
-                </div>
-              ) : (
-                filteredAdminUsersRows.map((row) => {
-                  const title = row.fullName || nameFromEmail(row.email);
-                  const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
-                  const isSelected = selectedAdminDirectoryUser?.email === row.email;
-                  const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
-                  const accountTypeLabel = formatAccountTypeLabel(row.accountType);
-                  const positionLabel = formatPositionLabel(row.position);
-                  const missingItems = buildAdminUserMissingItems(row);
-                  const complete = missingItems.length === 0;
-                  const targetAdminRole = resolveAdminRoleFromClaims(row.email, null);
-                  const canImpersonate =
-                    isAllowedAdmin && !row.disabled && !isCurrentUser && !targetAdminRole;
-                  const impersonateDisabledTitle = isCurrentUser
-                    ? "Vlastní účet nejde zobrazit přes impersonaci."
-                    : row.disabled
-                      ? "Deaktivovaný účet nejde zobrazit přes impersonaci."
-                      : targetAdminRole
-                        ? "Administrátorský účet nejde zobrazit přes impersonaci."
-                        : undefined;
-
-                  return (
-                    <article
-                      key={row.uid || row.email}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setAdminUsersSelectedEmail(row.email)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        setAdminUsersSelectedEmail(row.email);
-                      }}
-                      className={`group relative w-full overflow-hidden rounded-xl border p-2.5 text-left transition ${
-                        isSelected
-                          ? "border-violet-300 bg-violet-50/80 shadow-[0_12px_28px_rgba(76,29,149,0.12)]"
-                          : complete
-                            ? "border-violet-100 bg-white hover:border-violet-200 hover:bg-violet-50/40"
-                            : "border-amber-200 bg-amber-50/40 hover:border-amber-300 hover:bg-amber-50"
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${
-                          isSelected
-                            ? "bg-violet-500"
-                            : complete
-                              ? "bg-violet-200"
-                              : "bg-amber-400"
-                        }`}
-                      />
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-start gap-3">
-                          <span
-                            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${
-                              complete
-                                ? "border-violet-300/35 bg-violet-400/14 text-slate-600"
-                                : "border-amber-200 bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {avatarInitial}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="min-w-0 max-w-full truncate text-sm font-bold text-slate-900">
-                                {title}
-                              </span>
-                              <span
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                                  row.accountType === "tipster"
-                                    ? "border-violet-200 bg-violet-50 text-violet-700"
-                                    : row.accountType === "advisor"
-                                      ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
-                                      : "border-slate-200 bg-slate-50 text-slate-600"
-                                }`}
-                              >
-                                  {accountTypeLabel}
-                                </span>
-                              {row.specialist ? (
-                                <span className="hidden items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
-                                  <ShieldCheck size={12} strokeWidth={2.4} aria-hidden="true" />
-                                  Specialista
-                                </span>
-                              ) : null}
-                              {positionLabel ? (
-                                <span className="hidden rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                  {positionLabel}
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="truncate text-xs text-slate-600">{row.email}</div>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
-                            complete
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700"
-                          }`}
-                          title={complete ? "Profil je kompletní" : `K doplnění: ${missingItems.length}`}
-                        >
-                          {complete ? (
-                            <CheckCircle2 size={14} strokeWidth={2.3} aria-hidden="true" />
-                          ) : (
-                            <AlertTriangle size={14} strokeWidth={2.3} aria-hidden="true" />
-                          )}
-                        </span>
-
-                        <div className="hidden flex-wrap items-center gap-2 lg:justify-end">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                              complete
-                                ? "border-violet-300/30 bg-violet-400/12 text-slate-600"
-                                : "border-amber-200 bg-amber-50 text-amber-800"
-                            }`}
-                          >
-                            {complete ? (
-                              <CheckCircle2 size={14} strokeWidth={2.4} aria-hidden="true" />
-                            ) : (
-                              <AlertTriangle size={14} strokeWidth={2.4} aria-hidden="true" />
-                            )}
-                            {complete ? "OK" : `K doplnění ${missingItems.length}`}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 transition group-hover:border-violet-300/35 group-hover:text-slate-900">
-                            <Pencil size={13} strokeWidth={2.2} aria-hidden="true" />
-                            Detail
-                          </span>
-                          {isAllowedAdmin ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleImpersonateAdminUser(row);
-                              }}
-                              disabled={!canImpersonate}
-                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                canImpersonate
-                                  ? "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                              }`}
-                              title={impersonateDisabledTitle}
-                            >
-                              <UserRound size={13} strokeWidth={2.2} aria-hidden="true" />
-                              Zobrazit jako
-                            </button>
-                          ) : null}
-                          {isOwnerAdmin ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleOpenAdminUserDelete(row);
-                              }}
-                              disabled={isCurrentUser}
-                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                                isCurrentUser
-                                  ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                                  : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                              }`}
-                              title={isCurrentUser ? "Vlastní účet nejde smazat." : undefined}
-                            >
-                              <Trash2 size={13} strokeWidth={2.2} aria-hidden="true" />
-                              Smazat
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="hidden">
-                        {complete ? (
-                          <div className="inline-flex items-center gap-2 rounded-2xl border border-violet-300/30 bg-violet-400/12 px-3 py-2 text-sm font-semibold text-slate-600">
-                            <CheckCircle2 size={15} strokeWidth={2.4} aria-hidden="true" />
-                            Hlavní profilové údaje jsou vyplněné.
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {missingItems.map((item) => (
-                              <span
-                                key={item.key}
-                                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
-                              >
-                                <AlertTriangle size={12} strokeWidth={2.3} aria-hidden="true" />
-                                {item.label}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="hidden grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            IČO
-                          </span>
-                          <span className="mt-0.5 block font-semibold text-slate-900">
-                            {row.ico || "—"}
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Agenturní číslo
-                          </span>
-                          <span className="mt-0.5 block font-semibold text-slate-900">
-                            {row.agencyNumber || "—"}
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Telefon
-                          </span>
-                          <span className="mt-0.5 block font-semibold text-slate-900">
-                            {row.phoneNumber || "—"}
-                          </span>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            Přihlášení
-                          </span>
-                          <span className="mt-0.5 block font-semibold text-slate-900">
-                            {formatAuthDateTime(row.lastSignInAt)}
-                          </span>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })
-              )}
-            </div>
+              <div className={usersStyles.userList}>
+                {adminUsersLoading ? (
+                  <div role="status" className="px-4 py-8 text-center text-sm text-slate-500">Načítám uživatele…</div>
+                ) : filteredAdminUsersRows.length === 0 ? (
+                  <div role="status" className="px-4 py-8 text-center text-sm text-slate-500">Pro zadaný filtr nejsou žádní uživatelé.</div>
+                ) : filteredAdminUsersRows.map((row) => (
+                  <AdminUserCard
+                    key={row.uid || row.email}
+                    user={row}
+                    selected={selectedAdminDirectoryUser?.email === row.email}
+                    missingCount={buildAdminUserMissingItems(row).length}
+                    onSelect={() => setAdminUsersSelectedEmail(row.email)}
+                  />
+                ))}
+              </div>
             </aside>
 
-            {selectedAdminDirectoryUser ? (() => {
-              const row = selectedAdminDirectoryUser;
+            {adminUserDetail ? (() => {
+              const row = adminUserDetail;
               const title = row.fullName || nameFromEmail(row.email);
-              const avatarInitial = (title.trim().charAt(0) || row.email.charAt(0)).toUpperCase();
               const missingItems = buildAdminUserMissingItems(row);
               const complete = missingItems.length === 0;
               const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
@@ -4273,54 +3964,44 @@ export default function AdminRequestsPage() {
                 : relationEmail || "Nenastaveno";
 
               return (
-                <section className="overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-[0_24px_58px_rgba(76,29,149,0.10)]">
-                  <div className={adminStyles.profileHeader}>
-                    <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-                      <span className={adminStyles.profileAvatar}>
-                        {avatarInitial}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-600">
-                          Profil uživatele
-                        </div>
-                        <h3 className="mt-1 break-words text-2xl font-bold leading-tight text-slate-900">
-                          {title}
-                        </h3>
-                        <p className="mt-1 break-all text-sm text-slate-600">{row.email}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                            {formatAccountTypeLabel(row.accountType)}
-                          </span>
-                          {row.position ? (
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                              {formatPositionLabel(row.position)}
-                            </span>
-                          ) : null}
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                            {row.disabled ? "Deaktivovaný" : "Aktivní účet"}
-                          </span>
+                <section id="admin-user-detail" className={usersStyles.detail} aria-labelledby="admin-user-name">
+                  <div className={usersStyles.profileHeader}>
+                    <div className={usersStyles.profileIdentity}>
+                      <div className={usersStyles.portrait}>
+                        <ProfileAvatar src={row.profileAvatar} name={title} sizes="84px" className={usersStyles.profileAvatar} />
+                        <span className={usersStyles.portraitStatus} data-disabled={row.disabled} aria-hidden="true" />
+                      </div>
+                      <div className={usersStyles.profileName}>
+                        <span className={usersStyles.eyebrow}>Profil uživatele</span>
+                        <h3 id="admin-user-name">{title}</h3>
+                        <p className={usersStyles.profileEmail}><Mail size={12} aria-hidden="true" />{row.email}</p>
+                        <div className={usersStyles.profileBadges}>
+                          <span>{formatAccountTypeLabel(row.accountType)}</span>
+                          {row.position ? <span><BriefcaseBusiness size={11} aria-hidden="true" />{formatPositionLabel(row.position)}</span> : null}
+                          <span data-active={!row.disabled}><span className={usersStyles.statusDot} />{row.disabled ? "Deaktivovaný účet" : "Aktivní účet"}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4 p-4 sm:p-5">
+                  <div className={usersStyles.body}>
+                    <div className={usersStyles.completion} data-complete={complete}>
+                      {complete ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />}
+                      <div>
+                        <strong>{complete ? "Profil je kompletní" : `Údaje k doplnění: ${missingItems.length}`}</strong>
+                        {!complete && <div className={usersStyles.missingItems}>{missingItems.map((item) => <span key={item.key}>{item.label}</span>)}</div>}
+                      </div>
+                    </div>
+
                     <form
-                      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
+                      className={usersStyles.form}
                       onSubmit={(event) => {
                         event.preventDefault();
                         void handleSaveAdminUser(row);
                       }}
                     >
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-600">
-                            Profilové údaje
-                          </div>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Změny uložíš přímo bez otevírání dalšího okna.
-                          </p>
-                        </div>
+                      <div className={usersStyles.sectionHeading}>
+                        <h4 className={usersStyles.sectionTitle}><UserRound aria-hidden="true" />Profilové údaje</h4>
                         <button
                           type="submit"
                           disabled={adminUsersSavingEmail === row.email}
@@ -4335,8 +4016,8 @@ export default function AdminRequestsPage() {
                         </button>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="space-y-1.5">
+                      <div className={usersStyles.formFields}>
+                        <label>
                           <span className={createUserLabelClass}>Jméno / název</span>
                           <input
                             type="text"
@@ -4346,7 +4027,7 @@ export default function AdminRequestsPage() {
                             maxLength={120}
                           />
                         </label>
-                        <label className="space-y-1.5">
+                        <label>
                           <span className={createUserLabelClass}>Typ účtu</span>
                           <select
                             value={adminUsersEditAccountType}
@@ -4362,7 +4043,7 @@ export default function AdminRequestsPage() {
                             <option value="tipster">Tipař</option>
                           </select>
                         </label>
-                        <label className="space-y-1.5">
+                        <label>
                           <span className={createUserLabelClass}>Agenturní číslo</span>
                           <input
                             type="text"
@@ -4372,7 +4053,7 @@ export default function AdminRequestsPage() {
                             maxLength={80}
                           />
                         </label>
-                        <label className="space-y-1.5">
+                        <label>
                           <span className={createUserLabelClass}>IČO</span>
                           <input
                             type="text"
@@ -4385,7 +4066,7 @@ export default function AdminRequestsPage() {
                             maxLength={ADMIN_USER_ICO_MAX_LEN}
                           />
                         </label>
-                        <label className="space-y-1.5 sm:col-span-2">
+                        <label className={usersStyles.fullWidth}>
                           <span className={createUserLabelClass}>Telefon</span>
                           <input
                             type="tel"
@@ -4397,36 +4078,31 @@ export default function AdminRequestsPage() {
                         </label>
                       </div>
 
-                      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-3.5 py-3">
+                      <label className={usersStyles.permission}>
                         <input
                           type="checkbox"
                           checked={adminUsersEditSpecialist}
                           onChange={(event) => setAdminUsersEditSpecialist(event.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-cyan-300 accent-cyan-600"
                         />
                         <span>
-                          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-900">
+                          <strong>
                             <ShieldCheck size={15} strokeWidth={2.2} aria-hidden="true" />
                             Specialista dokumentů
-                          </span>
-                          <span className="mt-0.5 block text-xs leading-relaxed text-cyan-700">
-                            Uživatel může spravovat dokumenty a nahrávat jejich soubory.
-                          </span>
+                          </strong>
+                          <small>
+                            Správa dokumentů a nahrávání souborů.
+                          </small>
                         </span>
                       </label>
                     </form>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className={usersStyles.actions}>
                       {isAllowedAdmin ? (
                         <button
                           type="button"
                           onClick={() => handleImpersonateAdminUser(row)}
                           disabled={!canImpersonate}
-                          className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                            canImpersonate
-                              ? "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                              : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                          }`}
+                          className={adminSubtleButtonClass}
                           title={
                             isCurrentUser
                               ? "Vlastní účet nejde zobrazit přes impersonaci."
@@ -4446,11 +4122,7 @@ export default function AdminRequestsPage() {
                           type="button"
                           onClick={() => handleOpenAdminUserDelete(row)}
                           disabled={isCurrentUser}
-                          className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                            isCurrentUser
-                              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                              : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                          }`}
+                          className={`${adminSubtleButtonClass} ${adminStyles.destructiveButton}`}
                         >
                           <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" />
                           Smazat
@@ -4458,20 +4130,20 @@ export default function AdminRequestsPage() {
                       ) : null}
                     </div>
 
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]">
+                    <div className={usersStyles.supportGrid}>
+                      <section className={usersStyles.supportPanel}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+                            <div className={usersStyles.sectionTitle}>
                               <ShieldCheck size={16} strokeWidth={2.2} className="text-violet-600" aria-hidden="true" />
                               Bezpečnostní akce
                             </div>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className={usersStyles.supportDescription}>
                               E-mail {row.emailVerified ? "je ověřený" : "není ověřený"} · {row.mfa.enabled ? `2FA aktivní (${row.mfa.factorCount})` : "bez 2FA"}
                             </p>
                           </div>
                         </div>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className={usersStyles.securityActions}>
                           <button
                             type="button"
                             onClick={() =>
@@ -4537,14 +4209,14 @@ export default function AdminRequestsPage() {
                         </div>
                       </section>
 
-                      <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-[0_10px_28px_rgba(76,29,149,0.06)]">
+                      <section className={usersStyles.supportPanel}>
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <div className="inline-flex items-center gap-2 text-sm font-bold text-slate-900">
+                            <div className={usersStyles.sectionTitle}>
                               <ExternalLink size={16} strokeWidth={2.2} className="text-violet-600" aria-hidden="true" />
                               Online vizitka
                             </div>
-                            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                            <p className={usersStyles.supportDescription}>
                               {row.onlineCard.enabled
                                 ? "Vizitka je veřejně dostupná. Uživatel si může doplnit její obsah v Nastavení."
                                 : "Zapnutím vytvoříš veřejnou vizitku a automaticky rezervuješ její URL."}
@@ -4601,42 +4273,10 @@ export default function AdminRequestsPage() {
                       </section>
                     </div>
 
-                    <div
-                      className={`rounded-2xl border px-4 py-3 ${
-                        complete
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                          : "border-amber-200 bg-amber-50 text-amber-900"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        {complete ? (
-                          <CheckCircle2 size={16} strokeWidth={2.3} aria-hidden="true" />
-                        ) : (
-                          <AlertTriangle size={16} strokeWidth={2.3} aria-hidden="true" />
-                        )}
-                        {complete
-                          ? "Profil je kompletní"
-                          : `${missingItems.length} ${missingItems.length === 1 ? "údaj je potřeba doplnit" : "údaje je potřeba doplnit"}`}
-                      </div>
-                      {!complete ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {missingItems.map((item) => (
-                            <span
-                              key={item.key}
-                              className="rounded-full border border-amber-200 bg-white/70 px-2.5 py-1 text-xs font-semibold text-amber-800"
-                            >
-                              {item.label}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <section className={usersStyles.metadataSection} aria-label="Informace o účtu">
+                      <h4 className={usersStyles.sectionTitle}><BriefcaseBusiness aria-hidden="true" />Informace o účtu</h4>
+                      <dl className={usersStyles.metadata}>
                       {[
-                        { label: "Agenturní číslo", value: row.agencyNumber || "—", icon: IdCard },
-                        { label: "IČO", value: row.ico || "—", icon: Building2 },
-                        { label: "Telefon", value: row.phoneNumber || "—", icon: PhoneCall },
                         {
                           label: row.accountType === "tipster" ? "Příjemce tipů" : "Nadřízený",
                           value: relationLabel,
@@ -4674,43 +4314,25 @@ export default function AdminRequestsPage() {
                       ].map((item) => {
                         const Icon = item.icon;
                         return (
-                          <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              <Icon size={13} strokeWidth={2.1} aria-hidden="true" />
-                              {item.label}
-                            </div>
-                            <div className="mt-1.5 break-words text-sm font-semibold text-slate-900">
-                              {item.value}
-                            </div>
+                          <div key={item.label}>
+                            <dt><Icon size={12} strokeWidth={1.7} aria-hidden="true" />{item.label}</dt>
+                            <dd>{item.value}</dd>
                           </div>
                         );
                       })}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-3">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">E-mail</div>
-                        <div className="mt-1.5 text-sm font-semibold text-slate-900">
-                          {row.emailVerified ? "Ověřený" : "Neověřený"}
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-3">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">Zabezpečení</div>
-                        <div className="mt-1.5 text-sm font-semibold text-slate-900">
-                          {row.mfa.enabled ? `2FA aktivní (${row.mfa.factorCount})` : "Bez 2FA"}
-                        </div>
-                      </div>
-                      <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-3">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-600">Online vizitka</div>
-                        <div className="mt-1.5 text-sm font-semibold text-slate-900">
-                          {getAdminUserOnlineCardLabel(row)}
-                        </div>
-                      </div>
-                    </div>
+                      </dl>
+                    </section>
                   </div>
                 </section>
               );
-            })() : (
+            })() : selectedAdminDirectoryUser ? (
+              <section id="admin-user-detail" className={usersStyles.detail} role="status" aria-busy={!adminUserDetailError}>
+                <div className="p-8 text-center text-sm text-slate-500">
+                  {adminUserDetailError || "Načítám detail uživatele…"}
+                  {adminUserDetailError && <button type="button" className="ml-3 underline" onClick={reloadAdminUserDetail}>Zkusit znovu</button>}
+                </div>
+              </section>
+            ) : (
               <div className="flex min-h-[420px] items-center justify-center rounded-[28px] border border-dashed border-violet-200 bg-violet-50/40 p-8 text-center">
                 <div>
                   <UserRound className="mx-auto h-10 w-10 text-violet-400" aria-hidden="true" />

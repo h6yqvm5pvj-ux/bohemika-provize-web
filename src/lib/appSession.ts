@@ -11,6 +11,7 @@ type AppSessionPayload = {
   email: string;
   sid?: string;
   iat: number;
+  authTime?: number;
   exp: number;
 };
 
@@ -19,6 +20,7 @@ export type VerifiedAppSession = {
   email: string;
   sessionId: string | null;
   issuedAt: number;
+  authenticationTime?: number;
   expiresAt: number;
 };
 
@@ -173,6 +175,7 @@ function isValidSessionPayload(value: unknown): value is AppSessionPayload {
     payload.email.includes("@") &&
     typeof payload.iat === "number" &&
     Number.isFinite(payload.iat) &&
+    (payload.authTime === undefined || (Number.isSafeInteger(payload.authTime) && payload.authTime >= 0 && payload.authTime <= payload.iat + 5)) &&
     typeof payload.exp === "number" &&
     Number.isFinite(payload.exp) &&
     payload.exp > payload.iat
@@ -185,12 +188,14 @@ export async function createAppSessionCookieValue({
   nowMs = Date.now(),
   maxAgeSeconds = getAppSessionMaxAgeSeconds(),
   sessionId,
+  authenticationTime,
 }: {
   uid: string;
   email: string;
   nowMs?: number;
   maxAgeSeconds?: number;
   sessionId?: string;
+  authenticationTime?: number;
 }): Promise<{
   value: string;
   sessionId: string;
@@ -219,6 +224,7 @@ export async function createAppSessionCookieValue({
     email: email.trim().toLowerCase(),
     sid: resolvedSessionId,
     iat: issuedAt,
+    ...(authenticationTime === undefined ? {} : { authTime: authenticationTime }),
     exp: expiresAt,
   };
   const payloadBase64 = textToBase64Url(JSON.stringify(payload));
@@ -276,6 +282,7 @@ export async function verifyAppSessionCookieValue(
           ? parsed.sid.trim()
           : null,
       issuedAt: parsed.iat,
+      ...(parsed.authTime === undefined ? {} : { authenticationTime: parsed.authTime }),
       expiresAt: parsed.exp,
     },
   };

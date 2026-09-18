@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-09-17T12:04:01.349Z",
+  "environment": "local-demo-emulators",
+  "beforeRevocation": 200,
+  "adminSdkRejectsRevokedToken": true,
+  "afterRevocation": 200,
+  "afterPersistentBlock": 403,
+  "revokedTokenStillReadsFirestore": true,
+  "productionAccess": false
+}

@@ -1,3 +1,4 @@
+import { invalidateHallContractChange } from "./hallOfFameProjection";
 import { writeClientContractLink } from "./clientContractIndex";
 import { randomUUID } from "node:crypto";
 import { FieldPath, type DocumentReference } from "firebase-admin/firestore";
@@ -14,6 +15,7 @@ const safeId = (id: unknown): id is string => typeof id === "string" && /^[\w-]{
  * on transfer), so concurrent edits cannot fork or overwrite the history. */
 export function withContractHistory(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>, input: EventInput): Record<string, unknown> {
   writeClientContractLink(writer, ref, before, patch, input.kind === "transfer");
+  invalidateHallContractChange(writer, ref, before, patch);
   const changes = input.changes ?? contractHistoryChanges(before, patch);
   if (!changes.length && !input.kind) return patch;
   const hasHistory = safeId(before.contractHistoryId);

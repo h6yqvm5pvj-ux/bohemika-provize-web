@@ -1,0 +1,16 @@
+{
+  "changedAt": "2026-09-17T10:28:33.369Z",
+  "changes": [
+    {
+      "key": "RATE_LIMIT_TRUSTED_IP_HEADERS",
+      "value": "x-vercel-forwarded-for",
+      "created": true
+    },
+    {
+      "key": "RATE_LIMIT_ALLOW_MEMORY_FALLBACK",
+      "value": "false",
+      "created": true
+    }
+  ],
+  "appliesToNextDeployment": true
+}

@@ -1,9 +1,11 @@
 import type { SicknessInputs } from "./sicknessBenefits";
 import styles from "./lifeInsuranceSetup.module.css";
+import clientStyles from "./clientStep.module.css";
 
-export function SicknessBenefitInputs({ values, employee, insured, onChange }: {
+export function SicknessBenefitInputs({ values, employee, insured, onChange, compact = false }: {
   values: SicknessInputs; employee: boolean; insured: boolean;
   onChange: (values: SicknessInputs) => void;
+  compact?: boolean;
 }) {
   if (!insured) return null;
   const field = (key: keyof SicknessInputs, label: string, note: string, placeholder: string) => <label className={styles.benefitInput} key={key}>
@@ -11,8 +13,8 @@ export function SicknessBenefitInputs({ values, employee, insured, onChange }: {
       aria-describedby={`sickness-${key}-note`} onChange={event => onChange({ ...values, [key]: event.target.value })} />
     <small id={`sickness-${key}-note`}>{note}</small>
   </label>;
-  return <section className={styles.benefitInputs} aria-label="Podklady pro nemocenskou">
-    <div><h3>Kolik klient dostane při neschopnosti?</h3><p>Nepovinné podklady pro rozpis náhrady mzdy a nemocenské v roce 2026. Bez nich příslušnou částku nevyčíslíme.</p></div>
+  return <section className={`${styles.benefitInputs} ${compact ? clientStyles.benefits : ""}`} aria-label="Podklady pro nemocenskou">
+    <div className={compact ? clientStyles.benefitHeading : undefined}><h3>{compact ? "Podklady pro nemocenskou" : "Kolik klient dostane při neschopnosti?"}</h3>{compact && <span>Nepovinné</span>}<p>{compact ? "Pro odhad náhrady mzdy a nemocenské (2026). Bez údajů částku nevyčíslíme." : "Nepovinné podklady pro rozpis náhrady mzdy a nemocenské v roce 2026. Bez nich příslušnou částku nevyčíslíme."}</p></div>
     <div className={styles.benefitInputGrid}>
       {employee ? <>
         {field("grossMonthly", "Průměrný hrubý příjem měsíčně", "Započitatelné příjmy za posledních 12 měsíců, v Kč.", "Např. 50 000")}

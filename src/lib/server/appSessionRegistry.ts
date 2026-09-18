@@ -63,23 +63,6 @@ function resolveLocation(req: NextRequest): {
   };
 }
 
-function readFirstHeaderIp(value: string | null): string {
-  if (!value) return "";
-  const first = value.split(",")[0]?.trim() ?? "";
-  const normalized = first.replace(/^\[/, "").replace(/\]$/, "");
-  return isIP(normalized) ? normalized : "";
-}
-
-function resolveSessionDisplayIp(req: NextRequest): string {
-  return (
-    readFirstHeaderIp(req.headers.get("cf-connecting-ip")) ||
-    readFirstHeaderIp(req.headers.get("true-client-ip")) ||
-    readFirstHeaderIp(req.headers.get("x-real-ip")) ||
-    readFirstHeaderIp(req.headers.get("x-forwarded-for")) ||
-    ""
-  );
-}
-
 function maskIpAddress(ip: string): string {
   if (!ip) return "";
   if (isIP(ip) === 4) {
@@ -103,7 +86,9 @@ function resolveSessionRequestMetadata(req: NextRequest): {
   locationLabel: string;
 } {
   const requestIp = getRequestIp(req);
-  const displayIp = resolveSessionDisplayIp(req) || (isIP(requestIp) ? requestIp : "");
+  // Session history must obey the same proxy trust boundary as rate limiting.
+  // Client-supplied forwarding headers must not replace the platform's IP.
+  const displayIp = isIP(requestIp) ? requestIp : "";
   return {
     userAgent: sanitizeUserAgent(req.headers.get("user-agent")),
     ipHash: hashIp(displayIp),

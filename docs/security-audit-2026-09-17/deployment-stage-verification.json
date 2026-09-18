@@ -1,0 +1,80 @@
+{
+  "checkedAt": "2026-09-17T11:53:30.590Z",
+  "mode": "stage",
+  "deployment": {
+    "id": "dpl_98bA4SL9WYGyAy93moimsdXBqd3W",
+    "url": "bohemika-provize-kryj4w971-jacobrausch989s-projects-909dd478.vercel.app",
+    "readyState": "READY",
+    "target": "production"
+  },
+  "currentProductionId": "dpl_jp7TjFrnU6q9vvzSJ3XLn8PyJXq8",
+  "checks": [
+    {
+      "path": "/login",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": true
+    },
+    {
+      "path": "/ucet/zabezpeceni",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": true
+    },
+    {
+      "path": "/ucet/akce",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": true
+    },
+    {
+      "path": "/embed/zlato",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": true
+    },
+    {
+      "path": "/embed/zivotni-pojisteni",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": true
+    },
+    {
+      "path": "/models/vig/index.html",
+      "status": 200,
+      "strictCsp": true,
+      "htmlNonceMatches": true,
+      "privateCache": false
+    },
+    {
+      "path": "/pomucky/proklepka-vozidla",
+      "status": 307,
+      "denied": true
+    },
+    {
+      "path": "/admin",
+      "status": 307,
+      "denied": true
+    },
+    {
+      "path": "/api/user/profile",
+      "status": 401,
+      "denied": true
+    },
+    {
+      "path": "/api/admin/users/security",
+      "status": 401,
+      "denied": true
+    },
+    {
+      "path": "/api/auth/session",
+      "invalidTokenDenied": true,
+      "status": 401
+    }
+  ]
+}

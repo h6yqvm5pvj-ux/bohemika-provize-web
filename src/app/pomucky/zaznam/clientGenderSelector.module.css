@@ -1,0 +1,118 @@
+.selector {
+  flex-shrink: 0;
+  margin-left: auto;
+  text-align: center;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  color: #6d5b86;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.options {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid #e9dff6;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #f9f6fd, #fff);
+  box-shadow: inset 0 1px 0 #fff, 0 5px 16px #58308408;
+}
+
+.option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 82px;
+  padding: 9px 10px 8px;
+  border: 1px solid transparent;
+  border-radius: 17px;
+  color: #8e84a1;
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+.portrait {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #ede9f3;
+  transition: background .2s ease;
+}
+
+.silhouette {
+  width: 38px;
+  height: 38px;
+  transform-origin: 50% 90%;
+}
+
+.optionLabel {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+.selectedMark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #7c3aed;
+  color: white;
+  opacity: 0;
+  transform: scale(.6);
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.option:hover {
+  background: #f3edf9;
+  color: #7952a8;
+}
+
+.option[aria-pressed="true"] {
+  border-color: #d9c3f7;
+  background: linear-gradient(155deg, #fff, #f0e7ff);
+  color: #7c3aed;
+  box-shadow: 0 3px 10px #7c3aed12, inset 0 1px 0 #fff;
+}
+
+.option[aria-pressed="true"] .portrait {
+  background: linear-gradient(145deg, #ede0ff, #faf6ff);
+}
+
+.option[aria-pressed="true"] .selectedMark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.option[aria-pressed="true"] .silhouette {
+  animation: silhouetteFloat 3.8s ease-in-out infinite;
+}
+
+.option:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 3px;
+}
+
+@keyframes silhouetteFloat {
+  0%, 100% { transform: translateY(1px) rotate(-1deg); }
+  50% { transform: translateY(-2px) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .option, .portrait, .selectedMark { transition: none; }
+  .option[aria-pressed="true"] .silhouette { animation: none; }
+}

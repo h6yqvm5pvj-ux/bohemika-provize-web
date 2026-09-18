@@ -51,6 +51,7 @@ p { margin: 5px 0 0; }
 .product-table td:last-child { font-weight: 700; text-align: right; color: #3f819e; }
 .product-table small { display: block; margin-top: 3px; color: #657c8c; font-size: 8px; font-weight: 400; }
 .product-table .pension-average { background: #f7fafc; color: #456f85; font-weight: 600; }
+.product-table .pension-personal { background: #f6f0fa; color: #78538f; font-weight: 600; }
 .pension-source { margin-top: 10px; color: #657c8c; font-size: 8px; line-height: 1.7; }
 .pension-source a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .product-table tr { break-inside: avoid; }

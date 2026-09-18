@@ -1,3 +1,4 @@
+import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { readFile } from "node:fs/promises";
@@ -497,6 +498,7 @@ async function markTeamOverviewOwnersDirty(ownerEmails: Iterable<string>): Promi
   const yearMonth = currentYearMonth(new Date());
   const batch = db.batch();
   owners.forEach((ownerEmail) => {
+    markHallOwnerDirty(batch, db, ownerEmail);
     batch.delete(db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail));
     batch.delete(
       db
@@ -2222,6 +2224,7 @@ export async function DELETE(req: NextRequest) {
     claimSnap.exists && claimEntryPath === targetEntry.path && !replacementClaimPayload;
 
   const batch = db.batch();
+  markHallOwnerDirty(batch, db, ownerEmail);
   batch.delete(entryRef);
   batch.delete(contractRef);
   batch.delete(clientContractLinkRef(db, ownerEmail, entryId));

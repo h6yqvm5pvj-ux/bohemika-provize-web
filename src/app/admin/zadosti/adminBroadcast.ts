@@ -1,5 +1,6 @@
 import { nameFromEmail } from "./adminFormatters";
 import type { AdminUsersRow } from "./adminUsers";
+type AdminBroadcastUser = Pick<AdminUsersRow, "email" | "fullName" | "disabled" | "accountType" | "position" | "specialist">;
 
 export const ADMIN_BROADCAST_EMOJI_OPTIONS = [
   "📣",
@@ -133,7 +134,7 @@ const isManagerPositionKey = (value: string | null | undefined): boolean =>
   /^(manazer|manažer|manager)\d*$/.test(normalizePositionKey(value));
 
 export const buildAdminBroadcastRecipientOptions = (
-  rows: AdminUsersRow[]
+  rows: AdminBroadcastUser[]
 ): AdminBroadcastRecipientOption[] =>
   rows
     .map((row) => {
@@ -149,7 +150,7 @@ export const buildAdminBroadcastRecipientOptions = (
     .sort((a, b) => a.label.localeCompare(b.label, "cs"));
 
 export const countAdminBroadcastGroups = (
-  rows: AdminUsersRow[]
+  rows: AdminBroadcastUser[]
 ): AdminBroadcastGroupCounts => ({
   advisors: rows.filter(
     (row) => row.accountType === "advisor" && isAdvisorPositionKey(row.position)

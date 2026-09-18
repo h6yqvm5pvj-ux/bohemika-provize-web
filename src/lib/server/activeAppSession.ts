@@ -1,9 +1,11 @@
 import { verifyAppSessionCookieValue, type VerifiedAppSession } from "@/lib/appSession";
 import { adminAuth, adminDb } from "./firebaseAdmin";
+import { hasTotpFactor } from "@/lib/accountSecurity";
+import { isAuthenticationRevoked, isPersistentAccountBlock, revocationFromAccountData } from "./tokenRevocation";
 
 type ActiveSessionResult =
   | { ok: true; session: VerifiedAppSession }
-  | { ok: false; reason: "invalid" | "revoked" | "unavailable" };
+  | { ok: false; reason: "invalid" | "revoked" | "unavailable" | "blocked" };
 
 // Do not cache positive results: logout must invalidate a copied cookie immediately.
 export async function verifyActiveAppSession(value: string | null | undefined): Promise<ActiveSessionResult> {
@@ -18,16 +20,22 @@ export async function verifyActiveAppSession(value: string | null | undefined): 
     }
     if (!adminDb || !adminAuth) return { ok: false, reason: "unavailable" };
 
-    const [record, user] = await Promise.all([
+    const [record, user, block] = await Promise.all([
       adminDb.collection("usersPrivate").doc(session.email).collection("appSessions").doc(session.sessionId).get(),
       adminAuth.getUser(session.uid),
+      adminDb.collection("accountBlocks").doc(session.uid).get(),
     ]);
     const data = record.data();
+    if (isPersistentAccountBlock(block.data()) || user.disabled || !user.emailVerified || !hasTotpFactor(user)) {
+      return { ok: false, reason: "blocked" };
+    }
     const validAfter = Date.parse(user.tokensValidAfterTime ?? "");
-    if (!record.exists || !data || data.uid !== session.uid || data.email !== session.email ||
+    const authenticationTime = session.authenticationTime ?? session.issuedAt;
+    if (isAuthenticationRevoked(revocationFromAccountData(block.data()), authenticationTime) ||
+      !record.exists || !data || data.uid !== session.uid || data.email !== session.email ||
       data.revokedAtMs != null || data.expiresAtMs !== session.expiresAt * 1000 || data.expiresAtMs <= Date.now() ||
       user.disabled || user.email?.trim().toLowerCase() !== session.email ||
-      (Number.isFinite(validAfter) && session.issuedAt * 1000 < validAfter)) {
+      (Number.isFinite(validAfter) && authenticationTime * 1000 < validAfter)) {
       return { ok: false, reason: "revoked" };
     }
     return { ok: true, session };

@@ -19,6 +19,7 @@ import {
   type EvaluatedSubscriptionAccess,
 } from "@/lib/subscriptionAccess";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { isAccountBlockedError } from "@/lib/accountSecurity";
 
 export type SubscriptionAccessUiState = "none" | "active" | "grace" | "blocked";
 export type SubscriptionBlockReason = "none" | "unpaid" | "expired";
@@ -82,6 +83,7 @@ export function useUserProfileAccess({
   const [subscriptionEvaluation, setSubscriptionEvaluation] =
     useState<EvaluatedSubscriptionAccess | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState<"reauth" | "blocked" | "unavailable" | null>(null);
   const [hasInternalProfile, setHasInternalProfile] = useState(false);
   const [accountType, setAccountType] = useState<AccountType>("advisor");
   const [hasTeam, setHasTeam] = useState<boolean>(true);
@@ -93,6 +95,7 @@ export function useUserProfileAccess({
   const lastActiveUpdateRef = useRef(0);
 
   const resetProfileAccess = useCallback(() => {
+    setProfileLoadError(null);
     setSubscriptionAccessState("none");
     setSubscriptionBlockReason("none");
     setSubscriptionEvaluation(null);
@@ -111,6 +114,7 @@ export function useUserProfileAccess({
 
   const applyProfilePayload = useCallback(
     (payload: UserProfileResponse, currentUser: FirebaseUser) => {
+      setProfileLoadError(null);
       const data = (payload?.profile ?? {}) as Record<string, unknown>;
       const nextHasInternalProfile = payload?.hasProfile === true;
       const nextAccountType = resolveAccountType(data);
@@ -186,6 +190,9 @@ export function useUserProfileAccess({
       } catch (error) {
         if (effectiveUserEmail(currentUser.email) !== requestScopeEmail) return;
         console.warn("Chyba při načítání subscription profilu:", error);
+        setProfileLoadError(isAccountBlockedError(error) ? "blocked" :
+          (error as { status?: number })?.status === 401 ? "reauth" : "unavailable");
+        setAccountSetupProfileSync(null);
         setSubscriptionAccessState("none");
         setSubscriptionBlockReason("none");
         setSubscriptionEvaluation(null);
@@ -308,6 +315,7 @@ export function useUserProfileAccess({
       hasTipsters,
       isTipsterAccount,
       loadingProfile,
+      profileLoadError,
       markInternalProfileReady,
       profileLoadFailureVersion,
       profileAvatar,
@@ -325,6 +333,7 @@ export function useUserProfileAccess({
       hasTipsters,
       isTipsterAccount,
       loadingProfile,
+      profileLoadError,
       markInternalProfileReady,
       profileLoadFailureVersion,
       profileAvatar,

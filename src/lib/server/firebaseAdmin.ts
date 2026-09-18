@@ -3,6 +3,8 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
+import { withAccountSecurityPolicy } from "./accountSecurityPolicy";
+import { isPersistentAccountBlock, withFirestoreTokenRevocation } from "./tokenRevocation";
 
 type AdminCert = {
   projectId: string;
@@ -55,5 +57,8 @@ if (!app && credentials) {
 }
 
 export const adminDb: Firestore | null = app ? getFirestore(app) : null;
-export const adminAuth: Auth | null = app ? getAuth(app) : null;
+export const adminAuth: Auth | null = app && adminDb ? withAccountSecurityPolicy(
+  withFirestoreTokenRevocation(getAuth(app), adminDb),
+  async uid => isPersistentAccountBlock((await adminDb!.collection("accountBlocks").doc(uid).get()).data())
+) : null;
 export const adminMessaging: Messaging | null = app ? getMessaging(app) : null;

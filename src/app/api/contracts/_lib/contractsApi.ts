@@ -1,3 +1,4 @@
+import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
@@ -7741,10 +7742,11 @@ export async function handleContractsDelete(req: NextRequest) {
       .collection(CONTRACT_REFS_COLLECTION)
       .doc(contractRefDocId(owner, entryId));
 
+    markHallOwnerDirty(batch, db, owner);
     batch.delete(entryRef);
     batch.delete(contractRef);
     batch.delete(clientContractLinkRef(db, owner, entryId));
-    opsInBatch += 3;
+    opsInBatch += 4;
     deleted += 1;
     dirtyOwners.add(owner);
 

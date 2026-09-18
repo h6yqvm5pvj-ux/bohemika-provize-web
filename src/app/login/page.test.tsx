@@ -142,6 +142,34 @@ describe("login verification boundary", () => {
     expect(mocks.router.replace).not.toHaveBeenCalled();
   };
 
+  it("blocks a password login without TOTP before reading the user's profile", async () => {
+    fetchMock.mockImplementation(async (url, options) => url === "/api/auth/session" && options?.method === "POST"
+      ? Response.json({ ok: false, code: "auth/account-blocked", error: "Přístup je zablokován; kontaktujte administrátora." }, { status: 403 })
+      : Response.json({ ok: true }));
+    await enterPassword(); await submit();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(mocks.profile).not.toHaveBeenCalled();
+    expect(mocks.signOut).toHaveBeenCalled();
+    expect(container.textContent).toContain("kontaktujte administrátora");
+  });
+
+  it("distinguishes a stale sign-in proof from a blocked account", async () => {
+    fetchMock.mockImplementation(async (url, options) => url === "/api/auth/session" && options?.method === "POST"
+      ? Response.json({ ok: false, code: "auth/mfa-reauth-required", error: "Přihlaste se znovu." }, { status: 401 })
+      : Response.json({ ok: true }));
+    await enterPassword(); await submit();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Účet není zablokovaný");
+    expect(container.textContent).not.toContain("kontaktujte administrátora");
+  });
+
+  it("shows administrator guidance for a disabled account", async () => {
+    mocks.password.mockRejectedValue({ code: "auth/user-disabled" });
+    await enterPassword(); await submit();
+    expectNotLoggedIn();
+    expect(container.textContent).toContain("kontaktujte administrátora");
+  });
+
   const requestPasswordReset = async () => {
     const button = Array.from(container.querySelectorAll("button")).find(
       (element) => element.textContent === "Zapomenuté heslo?"
@@ -281,10 +309,12 @@ describe("login verification boundary", () => {
   });
 
   it("still applies the account lockout after a verified passkey", async () => {
-    fetchMock.mockResolvedValue(Response.json({ ok: false, locked: true, retryAfterSeconds: 60 }));
+    fetchMock.mockImplementation(async (url) => Response.json(url === "/api/auth/login-attempts"
+      ? { ok: false, locked: true, retryAfterSeconds: 60 } : { ok: true }));
     mocks.passkey.mockResolvedValue({ user: freshUser });
     await startPasskey();
-    expectNotLoggedIn();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some(([url, init]) => url === "/api/auth/session" && init?.method === "DELETE")).toBe(true);
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("Příliš mnoho neúspěšných pokusů");
   });

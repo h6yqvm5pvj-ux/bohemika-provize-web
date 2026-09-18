@@ -15,15 +15,20 @@ import {
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { MeetingRecordSession } from "../MeetingRecordSession";
+import { LifeDiscrepancyExamples } from "../LifeDiscrepancyExamples";
+import { getLifeRecordTexts, IMPACT_HEADING_PREFIX, type ClientGender } from "../lifeRecordTexts";
 import { readMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 import {
   PRODUCT_CAPABILITIES,
   type CapabilityEntry,
+  type PermanentProgress,
+  type PermanentStart,
   type ProductKey,
 } from "../productCapabilities";
 
 type LifeResultInput = {
   savedAt?: number;
+  clientGender?: ClientGender;
   hasInvalidity: boolean;
   totalInvalidity: number;
   hasCriticalIllness: boolean;
@@ -112,6 +117,25 @@ function findCapability(entries: CapabilityEntry[], key: CapabilityEntry["key"])
   return entries.find((e) => e.key === key);
 }
 
+const PERMANENT_PROGRESSION_VALUES: Record<PermanentProgress, number> = {
+  none: 1, x4: 4, x5: 5, x10: 10,
+};
+const PERMANENT_THRESHOLD_VALUES: Record<PermanentStart, number> = {
+  from0: 0, from0001: 0.001, from05: 0.5, from10: 10,
+};
+
+function closestSupported<T extends string>(
+  requested: T,
+  supported: T[],
+  values: Record<T, number>
+): T | undefined {
+  if (!Number.isFinite(values[requested])) return undefined;
+  return supported.reduce<T | undefined>((closest, candidate) =>
+    closest === undefined ||
+    Math.abs(values[candidate] - values[requested]) < Math.abs(values[closest] - values[requested])
+      ? candidate : closest, undefined);
+}
+
 function supportsBenefit(
   benefit: SelectedBenefit,
   entries: CapabilityEntry[]
@@ -148,11 +172,7 @@ function supportsBenefit(
       const okProgress = cap.permanentInjury.progressions.includes(
         benefit.progress
       );
-      const okThreshold =
-        cap.permanentInjury.thresholds.includes(benefit.from) ||
-        // tolerujeme from0001 jako from0 (Kooperativa umí od 0 %)
-        (benefit.from === "from0001" &&
-          cap.permanentInjury.thresholds.includes("from0"));
+      const okThreshold = cap.permanentInjury.thresholds.includes(benefit.from);
       return okProgress && okThreshold;
     }
     case "dailyAllowance": {
@@ -338,8 +358,38 @@ function buildRecommendation(
 ): string | null {
   const capability = PRODUCT_CAPABILITIES[productKey];
   const texts: string[] = [];
+  const notes = new Set<string>();
 
-  selected.forEach((benefit) => {
+  selected.forEach((selectedBenefit) => {
+    let benefit = selectedBenefit;
+    if (benefit.key === "permanentInjury") {
+      const permanent = findCapability(capability.entries, "permanentInjury")?.permanentInjury;
+      if (!permanent) return;
+      // Keep exact matches; otherwise compare the nearest available parameters.
+      // Describe the insurer's actual variant without changing the saved request.
+      const progress = closestSupported(benefit.progress, permanent.progressions, PERMANENT_PROGRESSION_VALUES);
+      const from = closestSupported(benefit.from, permanent.thresholds, PERMANENT_THRESHOLD_VALUES);
+      if (!progress || !from) return;
+      benefit = { ...benefit, progress, from };
+      const note = permanent.progressionNotes?.[progress];
+      if (note) notes.add(`U varianty s ${progress.slice(1)}× progresí: ${note}`);
+    }
+
+    // If only progression is unavailable, show the supported nonprogressive
+    // alternative while keeping the client's requested start day unchanged.
+    if (
+      benefit.key === "dailyAllowance" &&
+      benefit.progress === "with" &&
+      !supportsBenefit(benefit, capability.entries)
+    ) {
+      const withoutProgress = { ...benefit, progress: "none" as const };
+      if (supportsBenefit(withoutProgress, capability.entries)) {
+        const text = describeBenefit(withoutProgress);
+        if (text) texts.push(text);
+      }
+      return;
+    }
+
     // Speciální případ: Kooperativa Životní pojištění FLEXI umí u PN od 15. dne zpětně jen pro úraz.
     if (
       productKey === "kooperativaFlexi" &&
@@ -356,15 +406,7 @@ function buildRecommendation(
     }
 
     if (supportsBenefit(benefit, capability.entries)) {
-      let t = describeBenefit(benefit);
-      if (
-        productKey === "kooperativaFlexi" &&
-        benefit.key === "permanentInjury" &&
-        benefit.from === "from0001" &&
-        t?.includes("0,001 %")
-      ) {
-        t = t.replace("0,001 %", "0 %");
-      }
+      const t = describeBenefit(benefit);
       if (t) texts.push(t);
     }
   });
@@ -373,7 +415,7 @@ function buildRecommendation(
   if (productKey === "cppNeon" && shouldMentionCppAccidentPlus(selected)) {
     texts.unshift("Úraz PLUS");
   }
-  return `Pojišťovna umožňuje pojistit rizika: ${texts.join(", ")}.`;
+  return [`Pojišťovna umožňuje pojistit rizika: ${texts.join(", ")}.`, ...notes].join(" ");
 }
 
 function formatCzkAmount(amount: number): string {
@@ -386,48 +428,6 @@ function joinWithAnd(items: string[]): string {
   if (items.length === 2) return `${items[0]} a ${items[1]}`;
   return `${items.slice(0, -1).join(", ")} a ${items[items.length - 1]}`;
 }
-
-const MANDATORY_IMPACT_TEXTS: string[] = [
-  "Klient byl seznámen s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.",
-];
-const BASE_ADDITIONAL_REQUIREMENT_TEXT =
-  "Klient vyžadoval vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění.";
-const EXISTING_CONTRACT_EXTRA_TEXT =
-  "Protože jsi zvolil, že klient má již smlouvu se stejným pojistným zájmem, uveď, že klient má již uzavřenou smlouvu / smlouvy životního pojištění u pojišťovny ______ a co s nimi má v plánu. Např.: Klient má již uzavřenou smlouvu ŽP u pojišťovny Kooperativa a.s., klient ji chce vypovědět.";
-const IMPACT_HEADING_PREFIX = "[[heading]]:";
-const CHANGE_EXISTING_CONTRACT_HEADING_ONE = `${IMPACT_HEADING_PREFIX}Dopady na změnu/vyjmutí připojištění bez ukončení stávající smlouvy:`;
-const CHANGE_EXISTING_CONTRACT_HEADING_TWO = `${IMPACT_HEADING_PREFIX}Dopady na změnu/vyjmutí připojištění ze stávající smlouvy z důvodu sjednání připojištění v nové pojistné smlouvě:`;
-const CHANGE_EXISTING_CONTRACT_IMPACT_LINES_ONE: string[] = [
-  "ukončení pojistného krytí a nepřipsání bonusů definovaných v pojistných podmínkách.",
-];
-const CHANGE_EXISTING_CONTRACT_IMPACT_LINES_TWO: string[] = [
-  "uplatnění nové čekací doby pro nárok na pojistné plnění z některých pojištěných rizik.",
-  "nové oceňování zdravotního stavu pojištěného, které může znamenat zhoršení podmínek v rámci nově sjednaného pojištění.",
-  "vyšší rizikové pojistné s ohledem na věk pojištěného.",
-  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nové navrhované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
-  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám.",
-];
-const REFRESH_RENOVATION_HEADING = `${IMPACT_HEADING_PREFIX}Refresh / Renovace - S čím byl klient seznámen?`;
-const REFRESH_RENOVATION_IMPACT_LINES: string[] = [
-  "přechod na nové pojistné podmínky.",
-  "uplatnění nové čekací doby pro nárok na pojistné plnění z navýšených nebo nově zahrnutých pojištěných rizik.",
-  "nové oceňování zdravotního stavu pojištěného.",
-  "vyšší rizikové pojistné s ohledem na věk a zdravotní ocenění pojištěného a tím i vyšší celkově pravidelně placené pojistné.",
-  "ukončení pravidelně připisovaných bonusů dle původních pojistných podmínek.",
-  "nemožnost sjednat některá z původních připojištění (viz. modelace pojištění „Náhled původní smlouvy“).",
-  "v případě volby daňově neodečitatelné náhrady (Refreshe/Renovace) povinnost dodanění uplatněných odpočtů zaplaceného pojistného od základu daně z příjmů, včetně případných příspěvků zaměstnavatele, pokud dojde k porušení podmínek pro tyto odpočty.",
-  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nově nahtazované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
-  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám",
-];
-const TERMINATION_DUE_TO_NEW_CONTRACT_HEADING = `${IMPACT_HEADING_PREFIX}Ukončení z důvodu sjednání nové pojistné smlouvy:`;
-const TERMINATION_DUE_TO_NEW_CONTRACT_IMPACT_LINES: string[] = [
-  "opětovná úhrada počátečních nákladů na sjednání pojištění.",
-  "uplatnění nových čekacích dob pro nárok na pojistné plnění z některých pojištěných rizik.",
-  "nové oceňování zdravotního stavu pojištěného, které může znamenat zhoršení podmínek v rámci nově sjednaného pojištění v podobě výluk nebo rizikových přirážek za zdravotní stav.",
-  "vyšší rizikové pojistné s ohledem na věk pojištěného a zdravotní stav a tím i vyšší celkově pravidelně placené pojistné.",
-  "klient byl seznámen s konkrétním porovnáním a rozdíly mezi nastavením jeho stávající a nové navrhované smlouvy, po předložení modelace ke stávající smlouvě mu byla k posouzení rozdílů před sjednáním nové smlouvy odeslána na jeho mailovou adresu modelace nová.",
-  "na základě porovnání modelací klient vyhodnotil novou variantu jako odpovídající jeho aktuálním potřebám.",
-];
 
 type CopyHandler = (text: string) => void;
 
@@ -558,7 +558,7 @@ function ResultTextRow({
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-[11px] font-black text-violet-900">
         {formatLineNumber(index)}
       </span>
-      <p className="text-sm leading-relaxed text-slate-800">{text}</p>
+      <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{text}</p>
       {copyable ? (
         <CopyAction text={text} copiedText={copiedText} onCopy={onCopy} />
       ) : (
@@ -609,6 +609,8 @@ export default function RecordResultsPage() {
 
 function RecordResults({ owner }: { owner: MeetingRecordContext }) {
   const router = useRouter();
+  const [clientGender, setClientGender] = useState<ClientGender>("male");
+  const texts = getLifeRecordTexts(clientGender);
   const [lines, setLines] = useState<string[] | null>(null);
   const [additional, setAdditional] = useState<string[] | null>(null);
   const [showProductInfo, setShowProductInfo] = useState(false);
@@ -631,46 +633,41 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
     if (typeof window === "undefined") return;
 
     const data = readMeetingRecord<LifeResultInput>("lifeResults", owner);
+    const gender = data?.clientGender === "female" ? "female" : "male";
+    const texts = getLifeRecordTexts(gender);
+    setClientGender(gender);
     if (!data) {
-      setLines([...MANDATORY_IMPACT_TEXTS]);
+      setLines([...texts.mandatoryImpacts]);
       setAdditional([]);
       setProductRecs([]);
       return;
     }
 
     try {
-      const recs: string[] = [...MANDATORY_IMPACT_TEXTS];
+      const recs: string[] = [...texts.mandatoryImpacts];
       const extras: string[] = [];
 
       // 1) Invalidita
       if (!data.hasInvalidity) {
-        recs.push(
-          "Klientovi bylo vysvětleno, proč by měl mít připojištěnou invaliditu, přesto si ji nepřeje."
-        );
+        recs.push(texts.invalidityDeclined);
       } else if (
         data.totalInvalidity > 0 &&
         data.totalInvalidity < 1_000_000
       ) {
-        recs.push(
-          "Klient byl upozorněn, že požadované částky na invaliditu mohou být nedostačující."
-        );
+        recs.push(texts.lowInvalidityAmount);
       }
 
       // 2) Závažná onemocnění a poranění
       if (data.hasCriticalIllness) {
-        recs.push(
-          "Klient byl upozorněn, že se připojištění Závažná onemocnění a poranění vztahuje pouze na diagnózy uvedené v pojistných podmínkách."
-        );
+        recs.push(texts.criticalIllness);
       }
 
       // 3) Vážná onemocnění Pro něj / Pro ni
       if (data.hasSeriousIllness) {
-        recs.push(
-          "Klient byl upozorněn, že se připojištění Vážná onemocnění (Pro něj / Pro ni) vztahuje pouze na diagnózy uvedené v pojistných podmínkách."
-        );
+        recs.push(texts.seriousIllness);
       }
       if (data.hasExistingContract) {
-        extras.push(EXISTING_CONTRACT_EXTRA_TEXT);
+        extras.push(texts.existingContract);
       }
 
       const selectedBenefits = data.selectedBenefits ?? [];
@@ -740,9 +737,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
       const uniqueHighDailyBenefits = [...new Set(highDailyBenefits)];
       if (uniqueHighDailyBenefits.length > 0) {
         const list = joinWithAnd(uniqueHighDailyBenefits);
-        recs.push(
-          `Klient požaduje následující denní dávky: ${list} a byl seznámen s tím, že při pojistné události je nutné doložit příjem, dále byl seznámen s tabulkou maximálních pojistných částek denního odškodného ve vztahu k příjmu.`
-        );
+        recs.push(texts.dailyBenefitsIncome(list));
       }
 
       const productTexts = [
@@ -763,22 +758,19 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
       recs.push(
         "Negativním dopadem může být nevyužití dalších doporučených připojištění a vyšších pojistných částek."
       );
-      recs.push(
-        "Klient byl poučen o povinnosti uvádět pravdivé a úplné informace ve zdravotním dotazníku a o možných důsledcích nepravdivých údajů (krácení/odmítnutí plnění)."
-      );
+      recs.push(texts.healthDisclosure);
       if (data.isChangeOnExistingContract) {
-        recs.push(CHANGE_EXISTING_CONTRACT_HEADING_ONE);
-        recs.push(...CHANGE_EXISTING_CONTRACT_IMPACT_LINES_ONE);
-        recs.push(CHANGE_EXISTING_CONTRACT_HEADING_TWO);
-        recs.push(...CHANGE_EXISTING_CONTRACT_IMPACT_LINES_TWO);
+        recs.push(texts.changeExistingContractHeadingOne);
+        recs.push(...texts.changeExistingContractImpactsOne);
+        recs.push(texts.changeExistingContractHeadingTwo);
+        recs.push(...texts.changeExistingContractImpactsTwo);
       }
       if (data.isRefreshOrRenovation) {
-        recs.push(REFRESH_RENOVATION_HEADING);
-        recs.push(...REFRESH_RENOVATION_IMPACT_LINES);
+        recs.push(texts.refreshHeading);
+        recs.push(...texts.refreshImpacts);
       }
       if (data.isContractTerminationDueToNewOne) {
-        recs.push(TERMINATION_DUE_TO_NEW_CONTRACT_HEADING);
-        recs.push(...TERMINATION_DUE_TO_NEW_CONTRACT_IMPACT_LINES);
+        recs.push(texts.terminationImpact);
       }
 
       setLines(recs);
@@ -786,7 +778,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
       setProductRecs(productTexts);
     } catch (err) {
       console.error(err);
-      setLines([...MANDATORY_IMPACT_TEXTS]);
+      setLines([...texts.mandatoryImpacts]);
       setAdditional([]);
       setProductRecs([]);
     }
@@ -797,7 +789,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
   const additionalCopyText =
     additional === null
       ? undefined
-      : [BASE_ADDITIONAL_REQUIREMENT_TEXT, ...additionalLines].join("\n");
+      : [texts.additionalRequirement, ...additionalLines].join("\n");
   const impactTextCount =
     lines?.filter((line) => !line.startsWith(IMPACT_HEADING_PREFIX)).length ?? 0;
   const impactCopyText =
@@ -817,7 +809,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
           <div>
             <span className={styles.eyebrow}><Sparkles size={14} /> Výstup pro jednání</span>
             <h1>Doporučení do dopadů</h1>
-            <p>Texty pro část „Dopady na klienta“. Zkopíruj celou sekci nebo jednotlivé věty podle toho, co do záznamu potřebuješ.</p>
+            <p>Texty pro část „Dopady na {texts.clientAccusative}“. Zkopíruj celou sekci nebo jednotlivé věty podle toho, co do záznamu potřebuješ.</p>
             <div className={styles.stats}>
               <span><b>{additional === null ? "…" : additionalCount}</b><small>Cíle</small></span>
               <span><b>{lines === null ? "…" : impactTextCount}</b><small>Dopady</small></span>
@@ -829,7 +821,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
 
         <ResultSection
           eyebrow="Část 1"
-          title="Další požadavky, potřeby a cíle zákazníka"
+          title={`Další požadavky, potřeby a cíle ${texts.customerGenitive}`}
           description="Krátké texty pro úvodní část záznamu. Položky označené jako ruční doplnění obsahují proměnné údaje."
           countLabel={additional === null ? "Načítám" : formatTextCount(additionalCount)}
           copyText={additionalCopyText}
@@ -838,7 +830,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
         >
           <ResultTextRow
             index={1}
-            text={BASE_ADDITIONAL_REQUIREMENT_TEXT}
+            text={texts.additionalRequirement}
             copiedText={copiedText}
             onCopy={handleCopy}
           />
@@ -854,7 +846,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
                 text={line}
                 copiedText={copiedText}
                 onCopy={handleCopy}
-                copyable={line !== EXISTING_CONTRACT_EXTRA_TEXT}
+                copyable={line !== texts.existingContract}
               />
             ))
           )}
@@ -862,6 +854,18 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
 
         <ResultSection
           eyebrow="Část 2"
+          title={`Výčet případných nesrovnalostí mezi požadavky ${texts.customerGenitive} a nabízeným pojištěním`}
+          copiedText={copiedText}
+          onCopy={handleCopy}
+        >
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
+            {texts.discrepanciesInstruction}
+          </p>
+          <LifeDiscrepancyExamples />
+        </ResultSection>
+
+        <ResultSection
+          eyebrow="Část 3"
           title="Popis dopadů sjednání pojištění/změny pojištění"
           description="Hlavní sada vět do pole dopadů. Nadpisy oddělují zvláštní situace jako refresh, změnu nebo ukončení starší smlouvy."
           countLabel={lines === null ? "Načítám" : formatTextCount(impactTextCount)}
@@ -908,7 +912,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
-                Část 3
+                Část 4
               </p>
               <h2 className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">
                 Doporučení pojistného produktu

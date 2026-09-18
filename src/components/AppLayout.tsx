@@ -214,6 +214,7 @@ export function AppLayout({
     hasTipsters,
     isTipsterAccount,
     loadingProfile,
+    profileLoadError,
     markInternalProfileReady,
     profileLoadFailureVersion,
     profileAvatar,
@@ -609,6 +610,22 @@ export function AppLayout({
   // user je null a redirect se provede v efektu výše
   if (authReady && !user) {
     return null;
+  }
+
+  if (profileLoadError) {
+    return <main className="flex min-h-screen items-center justify-center bg-white p-6 text-slate-900">
+      <div role="alert" className="max-w-md space-y-4 text-center">
+        <h1 className="text-xl font-semibold">{profileLoadError === "reauth" ? "Přihlaste se prosím znovu" : profileLoadError === "blocked" ? "Přístup k účtu je zablokován" : "Profil se nepodařilo načíst"}</h1>
+        <p>{profileLoadError === "reauth"
+          ? "Aktuální přihlášení je potřeba znovu ověřit. Stávající profil zůstává zachovaný; není nutné znovu vyplňovat jeho údaje."
+          : profileLoadError === "blocked" ? "Pro obnovení přístupu a nastavení TOTP kontaktujte administrátora."
+          : "Vaše údaje zůstávají zachované. Zkuste načtení opakovat."}</p>
+        <div className="flex justify-center gap-3">
+          {profileLoadError === "unavailable" && <button className="rounded-xl border px-4 py-2" onClick={() => void reloadProfile()}>Zkusit znovu</button>}
+          <button className="rounded-xl bg-slate-900 px-4 py-2 text-white" onClick={() => void handleLogout()}>{profileLoadError === "reauth" ? "Přejít na přihlášení" : "Odhlásit se"}</button>
+        </div>
+      </div>
+    </main>;
   }
 
   const backgroundStyle = { backgroundColor: "#ffffff" };

@@ -1,3 +1,6 @@
+import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
+import type { AdminUsersRow, AdminUserSummary } from "@/app/admin/zadosti/adminUsers";
+import { buildAdminUserMissingItems } from "@/app/admin/zadosti/adminUserCompleteness";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import type { MultiFactorInfo, UserRecord } from "firebase-admin/auth";
@@ -13,6 +16,7 @@ import {
   ONLINE_CARD_SLUG_RE,
 } from "@/lib/server/onlineCard";
 import { isSpecialistProfile } from "@/lib/specialistAccess";
+import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import type { Position } from "@/app/types/domain";
 
 export const runtime = "nodejs";
@@ -48,52 +52,6 @@ const POSITION_SET = new Set<Position>([
 ]);
 
 type ApiError = { ok: false; error: string };
-
-type AdminUsersRow = {
-  uid: string;
-  email: string;
-  fullName: string | null;
-  agencyNumber: string | null;
-  ico: string | null;
-  phoneNumber: string | null;
-  position: string | null;
-  positionTimeline: Array<{
-    id: string;
-    position: string;
-    validFrom: string;
-    validTo: string | null;
-  }>;
-  accountType: string | null;
-  managerEmail: string | null;
-  tipRecipientEmail: string | null;
-  commissionMode: string | null;
-  specialist: boolean;
-  accountSetupCompletedAt: string | null;
-  disabled: boolean;
-  emailVerified: boolean;
-  createdAt: string | null;
-  lastSignInAt: string | null;
-  profileExists: boolean;
-  privateProfileExists: boolean;
-  mfa: {
-    enabled: boolean;
-    factorCount: number;
-    hasTotp: boolean;
-    hasPhone: boolean;
-    factors: Array<{
-      uid: string;
-      factorId: string;
-      displayName: string | null;
-      enrollmentTime: string | null;
-      phoneNumber: string | null;
-    }>;
-  };
-  onlineCard: {
-    enabled: boolean;
-    slug: string | null;
-    ready: boolean;
-  };
-};
 
 type ProfileSummary = {
   publicDocId: string | null;
@@ -282,12 +240,12 @@ async function listAllAuthUsers(): Promise<UserRecord[]> {
   return users;
 }
 
-async function loadProfileSummaries() {
+async function loadProfileSummaries(directoryOnly = false) {
   if (!adminDb) return new Map<string, ProfileSummary>();
 
   const [usersSnap, privateSnap] = await Promise.all([
-    adminDb.collection("users").get(),
-    adminDb.collection("usersPrivate").get(),
+    (directoryOnly ? adminDb.collection("users").select(...DIRECTORY_PROFILE_FIELDS) : adminDb.collection("users")).get(),
+    (directoryOnly ? adminDb.collection("usersPrivate").select(...DIRECTORY_PROFILE_FIELDS) : adminDb.collection("usersPrivate")).get(),
   ]);
   const byEmail = new Map<string, ProfileSummary>();
 
@@ -355,6 +313,7 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     uid: authUser.uid,
     email,
     fullName,
+    profileAvatar: normalizeProfileAvatar(publicData.profileAvatar),
     agencyNumber: normalizeText(mergedData.agencyNumber) || null,
     ico: normalizeText(mergedData.ico).replace(/\D+/g, "") || null,
     phoneNumber: normalizeText(mergedData.phoneNumber) || null,
@@ -419,6 +378,40 @@ async function findProfileRefs(email: string, uid?: string) {
   };
 }
 
+const DIRECTORY_PROFILE_FIELDS = [
+  "email", "fullName", "name", "profileAvatar", "agencyNumber", "ico", "phoneNumber",
+  "position", "positionTimeline", "accountType", "userRole", "managerEmail", "tipRecipientEmail",
+  "commissionMode", "specialist", "documentsSpecialist", "role", "appRole", "roles",
+];
+
+function serializeDirectoryUser(row: AdminUsersRow): AdminUserSummary {
+  return { uid: row.uid, email: row.email, fullName: row.fullName, profileAvatar: row.profileAvatar,
+    agencyNumber: row.agencyNumber, ico: row.ico, phoneNumber: row.phoneNumber, position: row.position,
+    accountType: row.accountType, managerEmail: row.managerEmail, tipRecipientEmail: row.tipRecipientEmail,
+    commissionMode: row.commissionMode, specialist: row.specialist, disabled: row.disabled,
+    emailVerified: row.emailVerified, profileExists: row.profileExists, missingItems: buildAdminUserMissingItems(row),
+  };
+}
+
+async function loadUserDetail(email: string): Promise<AdminUsersRow | null> {
+  if (!adminAuth || !adminDb) throw new Error("Firebase Admin is unavailable.");
+  const authUser = await adminAuth.getUserByEmail(email);
+  const [publicDirect, privateDirect] = await Promise.all([
+    adminDb.collection("users").doc(email).get(), adminDb.collection("usersPrivate").doc(email).get(),
+  ]);
+  // Older accounts may use a document ID other than their email.
+  const [publicFallback, privateFallback] = await Promise.all([
+    publicDirect.exists ? null : adminDb.collection("users").where("email", "==", email).limit(1).get(),
+    privateDirect.exists ? null : adminDb.collection("usersPrivate").where("email", "==", email).limit(1).get(),
+  ]);
+  let publicDoc = publicDirect.exists ? publicDirect : publicFallback?.docs[0];
+  if (!publicDoc) publicDoc = (await adminDb.collection("users").where("userId", "==", authUser.uid).limit(1).get()).docs[0];
+  const privateDoc = privateDirect.exists ? privateDirect : privateFallback?.docs[0];
+  return serializeUser(authUser, { publicDocId: publicDoc?.id ?? null, privateDocId: privateDoc?.id ?? null,
+    publicData: publicDoc?.data() ?? {}, privateData: privateDoc?.data() ?? {},
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const ctx = await getAdminAuthContext(req, {
@@ -429,9 +422,17 @@ export async function GET(req: NextRequest) {
       return adminAuthErrorResponse(ctx);
     }
 
+    const requestedEmail = req.nextUrl.searchParams.get("email");
+    if (requestedEmail !== null) {
+      const email = normalizeEmail(requestedEmail);
+      if (!EMAIL_RE.test(email)) return NextResponse.json({ ok: false, error: "Neplatný e-mail." }, { status: 400 });
+      const user = await loadUserDetail(email);
+      return NextResponse.json({ ok: true, user }, { headers: { "Cache-Control": "no-store" } });
+    }
+    const directoryOnly = req.nextUrl.searchParams.get("view") === "directory";
     const [authUsers, profilesByEmail] = await Promise.all([
       listAllAuthUsers(),
-      loadProfileSummaries(),
+      loadProfileSummaries(directoryOnly),
     ]);
 
     const users = authUsers
@@ -445,7 +446,7 @@ export async function GET(req: NextRequest) {
 
     const response = NextResponse.json({
       ok: true,
-      users,
+      users: directoryOnly ? users.map(serializeDirectoryUser) : users,
       summary: {
         total: users.length,
         disabled: users.filter((user) => user.disabled).length,
@@ -455,6 +456,7 @@ export async function GET(req: NextRequest) {
     response.headers.set("Cache-Control", "no-store");
     return response;
   } catch (error) {
+    if ((error as { code?: string })?.code === "auth/user-not-found") return NextResponse.json({ ok: false, error: "Uživatel nebyl nalezen." }, { status: 404 });
     console.error("GET /api/admin/users selhalo:", error);
     return NextResponse.json(
       { ok: false, error: "Nepodařilo se načíst uživatele." } satisfies ApiError,
@@ -759,6 +761,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const batch = adminDb.batch();
+    markHallOwnerDirty(batch, adminDb, email);
     [...publicRefs, ...privateRefs].forEach((ref) => batch.delete(ref));
     if (publicRefs.length === 0) batch.delete(adminDb.collection("users").doc(email));
     if (privateRefs.length === 0) batch.delete(adminDb.collection("usersPrivate").doc(email));

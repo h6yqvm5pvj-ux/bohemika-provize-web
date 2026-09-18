@@ -27,8 +27,9 @@ beforeAll(async () => {
 beforeEach(async () => environment.clearFirestore());
 afterAll(async () => environment?.cleanup());
 
+const totpFirebase = { sign_in_provider: "password" as const, sign_in_second_factor: "totp" };
 const actor = (email = EMAIL, claims: Record<string, unknown> = {}) =>
-  environment.authenticatedContext(email === EMAIL ? UID : "other-uid", { email, ...claims }).firestore();
+  environment.authenticatedContext(email === EMAIL ? UID : "other-uid", { email, email_verified: true, firebase: totpFirebase, ...claims }).firestore();
 const reference = (collection: string, email = EMAIL, claims: Record<string, unknown> = {}) =>
   doc(actor(email, claims), collection, EMAIL);
 const seed = async (path: string, data: Record<string, unknown>) =>
@@ -37,6 +38,105 @@ const profile = {
   email: EMAIL, userId: UID, fullName: "Test Advisor", managerEmail: "",
   accountType: "advisor", canChangePosition: false, adminFunction: false,
 };
+
+describe("mandatory verified TOTP and persistent account blocks", () => {
+  const contract = { userEmail: EMAIL, userId: UID, managerEmailSnapshot: "", managerChain: [], managerOverrides: [] };
+  it.each([
+    { email_verified: false },
+    { firebase: { sign_in_provider: "password" } },
+    { firebase: { sign_in_provider: "password", sign_in_second_factor: "phone" } },
+    { firebase: { sign_in_provider: "custom" } },
+    { app_totp_enrolled: true, firebase: { sign_in_provider: "password" } },
+    { admin: true, adminRole: "owner", firebase: { sign_in_provider: "password" } },
+  ])("denies own and admin reads/writes with inadequate authentication: %j", async claims => {
+    await seed(`users/${EMAIL}`, profile);
+    await seed("contracts/private", contract);
+    const db = actor(EMAIL, claims);
+    await assertFails(getDoc(doc(db, "users", EMAIL)));
+    await assertFails(getDoc(doc(db, "contracts", "private")));
+    await assertFails(updateDoc(doc(db, "users", EMAIL), { fullName: "changed" }));
+    await assertFails(setDoc(doc(db, "contracts", "new"), contract));
+  });
+  it("allows the owner through a signed passkey custom token with server-issued proof", async () => {
+    await seed("contracts/private", contract);
+    const db = actor(EMAIL, { app_totp_enrolled: true, firebase: { sign_in_provider: "custom" } });
+    await assertSucceeds(getDoc(doc(db, "contracts", "private")));
+  });
+  it("blocks previously issued TOTP and passkey tokens, including owner administrators", async () => {
+    await seed("contracts/private", contract);
+    await seed(`accountBlocks/${UID}`, { reason: "missing-totp" });
+    for (const claims of [{}, { admin: true, adminRole: "owner" }, { app_totp_enrolled: true, firebase: { sign_in_provider: "custom" } }]) {
+      const db = actor(EMAIL, claims);
+      await assertFails(getDoc(doc(db, "contracts", "private")));
+      await assertFails(deleteDoc(doc(db, "accountBlocks", UID)));
+      await assertFails(updateDoc(doc(db, "accountBlocks", UID), { reason: "" }));
+    }
+  });
+  it("never lets client tokens modify or inspect account blocks", async () => {
+    const db = actor(EMAIL, { admin: true, adminRole: "owner" });
+    await assertFails(setDoc(doc(db, "accountBlocks", UID), { reason: "" }));
+    await assertFails(getDoc(doc(db, "accountBlocks", UID)));
+  });
+});
+
+describe("immediate token revocation", () => {
+  const seedRevocation = (path: string, data: Record<string, unknown>) => seed(path, { revocation: data });
+  const generation = "00000000-0000-0000-0000-000000000001";
+  const revocation = { validAfterSeconds: 101, generation, pendingOperations: {} };
+  beforeEach(async () => { await seed(`users/${EMAIL}`, profile); });
+  it.each([
+    { auth_time: 99 }, { auth_time: 100 }, { auth_time: 100, admin: true, adminRole: "owner" },
+    { auth_time: 100, app_totp_enrolled: true, app_auth_generation: generation, firebase: { sign_in_provider: "custom" } },
+    { auth_time: 101, app_totp_enrolled: true, app_auth_generation: "initial", firebase: { sign_in_provider: "custom" } },
+    { auth_time: 102, app_totp_enrolled: true, firebase: { sign_in_provider: "custom" } },
+  ])("rejects old authentication including old custom tokens exchanged later: %j", async claims => {
+    await seedRevocation(`accountBlocks/${UID}`, revocation);
+    const ref = reference("users", EMAIL, claims);
+    await assertFails(getDoc(ref)); await assertFails(updateDoc(ref, { fullName: "Changed" }));
+  });
+  it.each([
+    { auth_time: 101 },
+    { auth_time: 101, app_totp_enrolled: true, app_auth_generation: generation, firebase: { sign_in_provider: "custom" } },
+  ])("allows fresh authentication after completed revocation %j", async claims => {
+    await seedRevocation(`accountBlocks/${UID}`, revocation);
+    await assertSucceeds(getDoc(reference("users", EMAIL, claims)));
+    await assertSucceeds(updateDoc(reference("users", EMAIL, claims), { fullName: "Changed" }));
+  });
+  it("blocks any authentication while a mutation is pending", async () => {
+    await seedRevocation(`accountBlocks/${UID}`, { ...revocation, pendingOperations: { [generation]: true } });
+    await assertFails(getDoc(reference("users", EMAIL, { auth_time: 999, admin: true, adminRole: "owner" })));
+  });
+  it.each([{}, { ...revocation, validAfterSeconds: -1 }, { ...revocation, pendingOperations: [] }, { ...revocation, generation: "" }])("fails closed on corrupted registry %j", async record => {
+    await seedRevocation(`accountBlocks/${UID}`, record);
+    await assertFails(getDoc(reference("users", EMAIL, { auth_time: 999 })));
+  });
+  it("scopes revocation to a UID and never exposes registry writes or reads", async () => {
+    await seedRevocation("accountBlocks/other-uid", revocation);
+    await assertSucceeds(getDoc(reference("users", EMAIL, { auth_time: 50 })));
+    for (const claims of [{}, { admin: true, adminRole: "owner" }]) {
+      const ref = doc(actor(EMAIL, claims), "accountBlocks", UID);
+      await assertFails(getDoc(ref)); await assertFails(setDoc(ref, revocation)); await assertFails(deleteDoc(ref));
+    }
+  });
+  it.each(["managerChain", "managerOverrides"])("preserves a manager at the end of %s after a fresh login", async field => {
+    await seedRevocation("accountBlocks/other-uid", revocation);
+    const managers = Array.from({ length: 10 }, (_, i) => ({ email: i === 9 ? OTHER : `level${i}@example.test` }));
+    const contract = { userEmail: EMAIL, userId: UID, managerEmailSnapshot: "", managerChain: [], managerOverrides: [], [field]: managers };
+    for (const path of ["contracts/managed", `users/${EMAIL}/entries/managed`]) {
+      await seed(path, contract);
+      await assertSucceeds(getDoc(doc(actor(OTHER, { auth_time: 101 }), path)));
+      await assertFails(getDoc(doc(actor(OTHER, { auth_time: 100 }), path)));
+    }
+  });
+  it.each(["up", "down"])("preserves profiles eight levels %s the hierarchy", async direction => {
+    await seedRevocation(`accountBlocks/${UID}`, revocation);
+    const emails = [EMAIL, ...Array.from({ length: 7 }, (_, i) => `level${i}@example.test`), OTHER];
+    for (let i = 0; i < emails.length; i++) await seed(`users/${emails[i]}`, { email: emails[i], managerEmail: emails[i + 1] ?? "" });
+    await seedRevocation("accountBlocks/other-uid", revocation);
+    const viewer = direction === "up" ? EMAIL : OTHER, target = direction === "up" ? OTHER : EMAIL;
+    await assertSucceeds(getDoc(doc(actor(viewer, { auth_time: 101 }), "users", target)));
+  });
+});
 
 // Include every role alias used by server authorization, plus identity,
 // hierarchy, financial and setup state. Future unknown fields default to deny.

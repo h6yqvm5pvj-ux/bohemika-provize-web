@@ -10,10 +10,12 @@ const queries: { path: string; conditions: unknown[][] }[] = [];
 let beforeTransaction: (() => void) | undefined;
 const snapshot = (path: string) => ({ id: path.split("/").at(-1)!, ref: ref(path), exists: records.has(path), data: () => records.get(path) });
 const ref = (path: string): DocumentReference => ({ path, id: path.split("/").at(-1)!, firestore: db,
+  get parent() { return collection(path.split("/").slice(0, -1).join("/")); },
   collection: (name: string) => collection(path + "/" + name), get: async () => { reads.push(path); return snapshot(path); },
 }) as unknown as DocumentReference;
 function collection(path: string, conditions: unknown[][] = [], after = "", limit = Infinity) {
   return {
+    get parent() { return path.includes("/") ? ref(path.split("/").slice(0, -1).join("/")) : null; },
     doc: (id: string) => ref(path + "/" + id),
     select: () => collection(path, conditions, after, limit),
     orderBy: () => collection(path, conditions, after, limit),

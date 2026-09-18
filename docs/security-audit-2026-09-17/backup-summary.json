@@ -1,0 +1,110 @@
+{
+  "checkedAt": "2026-09-17T10:29:05.279Z",
+  "schedules": {
+    "status": 200,
+    "policies": [
+      {
+        "retention": "7257600s",
+        "daily": false,
+        "weekly": true
+      },
+      {
+        "retention": "1209600s",
+        "daily": true,
+        "weekly": false
+      }
+    ],
+    "complete": true
+  },
+  "backups": {
+    "status": 200,
+    "items": [
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-16T09:22:56.764886Z",
+        "expireTime": "2026-09-30T09:22:56.764886Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-08-30T22:47:31.932041Z",
+        "expireTime": "2026-11-22T22:47:31.932041Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-12T08:52:15.894416Z",
+        "expireTime": "2026-09-26T08:52:15.894416Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-09T08:32:22.756539Z",
+        "expireTime": "2026-09-23T08:32:22.756539Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-11T08:42:10.176395Z",
+        "expireTime": "2026-09-25T08:42:10.176395Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-07T04:23:41.909366Z",
+        "expireTime": "2026-09-21T04:23:41.909366Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-13T09:01:33.393023Z",
+        "expireTime": "2026-12-06T09:01:33.393023Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-08T04:57:47.984989Z",
+        "expireTime": "2026-09-22T04:57:47.984989Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-06T04:20:35.808866Z",
+        "expireTime": "2026-09-20T04:20:35.808866Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-05T02:52:42.336958Z",
+        "expireTime": "2026-09-19T02:52:42.336958Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-13T09:01:33.393023Z",
+        "expireTime": "2026-09-27T09:01:33.393023Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-15T09:13:50.777494Z",
+        "expireTime": "2026-09-29T09:13:50.777494Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-14T09:07:05.045031Z",
+        "expireTime": "2026-09-28T09:07:05.045031Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-04T02:45:02.652930Z",
+        "expireTime": "2026-09-18T02:45:02.652930Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-10T08:37:40.793543Z",
+        "expireTime": "2026-09-24T08:37:40.793543Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-17T09:44:21.769641Z",
+        "expireTime": "2026-10-01T09:44:21.769641Z"
+      },
+      {
+        "state": "READY",
+        "snapshotTime": "2026-09-06T04:20:35.808866Z",
+        "expireTime": "2026-11-29T04:20:35.808866Z"
+      }
+    ],
+    "complete": true
+  }
+}

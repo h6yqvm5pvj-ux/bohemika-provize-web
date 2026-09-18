@@ -1,4 +1,6 @@
 "use client";
+import dynamic from "next/dynamic";
+
 
 import {
   Fragment,
@@ -102,10 +104,7 @@ import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
 import { StatementContractHeader } from "./StatementContractHeader";
 import detailStyles from "./statementContractDetail.module.css";
-import {
-  NeonRefreshConversionPromptModal,
-  StornoStatementActionModal,
-} from "./statementActionModals";
+
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
 import {
   contractMatchKey,
@@ -113,24 +112,9 @@ import {
   fetchSystemContractMatches,
   systemContractMatchError,
 } from "./statementContractMatching";
-import {
-  DiscrepancyPdfNotesModal,
-  MarkedDiscrepancyToggle,
-} from "./statementDiscrepancyUi";
-import {
-  CommissionCodeRulesPanel,
-  ContractStatusRulesPanel,
-} from "./statementRulePanels";
-import {
-  BohemkaContractDetailLink,
-  BohemkaContractDetailModal,
-  ContractDetailLink,
-  firstContractDetailUrl,
-  firstSjednatelExtranetUrl,
-  SjednatelExtranetLink,
-  StatementCalculatorIframePanel,
-  StatementCalculatorPrefillButton,
-} from "./statementLinksAndCalculator";
+import { MarkedDiscrepancyToggle } from "./statementDiscrepancyUi";
+
+import { BohemkaContractDetailLink, ContractDetailLink, firstContractDetailUrl, firstSjednatelExtranetUrl, SjednatelExtranetLink, StatementCalculatorPrefillButton } from "./statementLinksAndCalculator";
 import {
   BohemkaContractDetailModalContext,
   StatementCalculatorPrefillContext,
@@ -140,15 +124,8 @@ import {
   type StatementCalculatorPrefillSource,
 } from "./statementPresentation";
 import { StatementSummary } from "./statementSummary";
-import {
-  LifeSplitProductsSectionPanel,
-  OtherProductsSectionPanel,
-  type StatementProductSectionKind,
-} from "./statementProductSections";
-import {
-  LifeSplitCommissionTable,
-  OtherProductCommissionTable,
-} from "./statementContractTables";
+import { type StatementProductSectionKind } from "./statementProductSections";
+
 import {
   lifeSplitCardSummary,
   otherProductCardSummary,
@@ -178,11 +155,7 @@ import {
   SystemMatchPanel,
   type SystemMatchPresentation,
 } from "./statementSystemMatchUi";
-import {
-  StornoContractsSectionPanel,
-  StornoSystemActionPanel,
-  StornoSystemStatusBadge,
-} from "./statementStornoPanels";
+
 import { suggestedStornoDateForStatement } from "./statementStorno";
 import {
   contractMatchForNumber,
@@ -213,14 +186,8 @@ import {
   ContractTimelinePositionWarning,
   StatementCorrectionWarning,
 } from "./statementWarnings";
-import {
-  ProcessingAuditPanel,
-  ProcessedStatementHistoryModal,
-  StatementProcessingOverlay,
-} from "./statementProcessingPanels";
-import {
-  downloadDiscrepancySummaryPdf,
-} from "./statementDiscrepancyReport";
+
+
 import {
   discrepancyIssueKey,
   markedDiscrepancyKey,
@@ -334,6 +301,25 @@ import type {
   StatementSaveState,
   StornoStatementActionTarget,
 } from "./statementTypes";
+
+const LifeSplitProductsSectionPanel = dynamic(() => import("./statementProductSections").then((module) => module.LifeSplitProductsSectionPanel));
+const OtherProductsSectionPanel = dynamic(() => import("./statementProductSections").then((module) => module.OtherProductsSectionPanel));
+const LifeSplitCommissionTable = dynamic(() => import("./statementContractTables").then((module) => module.LifeSplitCommissionTable));
+const OtherProductCommissionTable = dynamic(() => import("./statementContractTables").then((module) => module.OtherProductCommissionTable));
+const StornoContractsSectionPanel = dynamic(() => import("./statementStornoPanels").then((module) => module.StornoContractsSectionPanel));
+const StornoSystemActionPanel = dynamic(() => import("./statementStornoPanels").then((module) => module.StornoSystemActionPanel));
+const StornoSystemStatusBadge = dynamic(() => import("./statementStornoPanels").then((module) => module.StornoSystemStatusBadge));
+const ProcessingAuditPanel = dynamic(() => import("./statementProcessingPanels").then((module) => module.ProcessingAuditPanel));
+const ProcessedStatementHistoryModal = dynamic(() => import("./statementProcessingPanels").then((module) => module.ProcessedStatementHistoryModal));
+const StatementProcessingOverlay = dynamic(() => import("./statementProcessingPanels").then((module) => module.StatementProcessingOverlay));
+const DiscrepancyPdfNotesModal = dynamic(() => import("./DiscrepancyPdfNotesModal").then((module) => module.DiscrepancyPdfNotesModal));
+const BohemkaContractDetailModal = dynamic(() => import("./StatementEmbeddedModals").then((module) => module.BohemkaContractDetailModal));
+const StatementCalculatorIframePanel = dynamic(() => import("./StatementEmbeddedModals").then((module) => module.StatementCalculatorIframePanel));
+const CommissionCodeRulesPanel = dynamic(() => import("./statementRulePanels").then((module) => module.CommissionCodeRulesPanel));
+const ContractStatusRulesPanel = dynamic(() => import("./statementRulePanels").then((module) => module.ContractStatusRulesPanel));
+const NeonRefreshConversionPromptModal = dynamic(() => import("./statementActionModals").then((module) => module.NeonRefreshConversionPromptModal));
+const StornoStatementActionModal = dynamic(() => import("./statementActionModals").then((module) => module.StornoStatementActionModal));
+
 
 type StatementProductMapResponse = {
   ok: true;
@@ -8146,6 +8132,7 @@ export default function CommissionStatementsPage() {
     setPdfError(null);
     setPdfDownloading(true);
     try {
+      const { downloadDiscrepancySummaryPdf } = await import("./statementDiscrepancyReport");
       await downloadDiscrepancySummaryPdf(selectedPdfItems);
       setReportModalOpen(false);
     } catch (downloadError) {

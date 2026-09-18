@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -60,8 +61,12 @@ export async function GET(req: NextRequest) {
         .limit(80)
         .onSnapshot(
           (snapshot) => {
+            // Update timestamps also detect edits/deletions when reconnecting.
+            const revision = createHash("sha256").update(JSON.stringify(snapshot.docs.map((doc) => [
+              doc.id, doc.updateTime.seconds, doc.updateTime.nanoseconds,
+            ]))).digest("hex");
             const changedIds = snapshot.docChanges().map((change) => change.doc.id);
-            send(`event: mailbox\ndata: ${JSON.stringify({ changedIds, atMs: Date.now() })}\n\n`);
+            send(`event: mailbox\ndata: ${JSON.stringify({ revision, changedIds, atMs: Date.now() })}\n\n`);
           },
           (error) => {
             console.error("Mailbox realtime listener failed:", error);

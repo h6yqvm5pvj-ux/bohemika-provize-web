@@ -1,0 +1,53 @@
+{
+  "date": "2026-09-17",
+  "baseCommit": "5ca711d1c809c953f05d72bd00784c23b7090102",
+  "scope": {
+    "apiRouteFiles": 116,
+    "routesWithAuthenticationRegression": 108,
+    "routeMethodsTested": 158,
+    "newAuthenticationCases": 316
+  },
+  "validation": {
+    "applicationTests": {
+      "passed": 3203,
+      "files": 275
+    },
+    "emulatorTests": {
+      "passed": 253,
+      "files": 7,
+      "securityRulesCases": 214
+    },
+    "typescript": "passed",
+    "productionBuild": "passed: default Turbopack, isolated synthetic configuration",
+    "authProxyBuild": "passed",
+    "imageRuntime": {
+      "next": "16.3.4",
+      "sharp": "0.35.4",
+      "libheif": "1.23.2",
+      "nextSharp": "0.35.4",
+      "nextLibheif": "1.23.2"
+    },
+    "localHttp": {
+      "passed": 7
+    },
+    "npmAudit": {
+      "before": 10,
+      "after": 0
+    },
+    "eslint": {
+      "errors": 0,
+      "preexistingWarnings": 4
+    }
+  },
+  "productionChanges": false,
+  "deploymentPerformed": false,
+  "downloadedBusinessDocumentBytes": 0,
+  "hashes": {
+    "package.json": "cc2c33d25842661aca80fbe4e33b22fd00a8e1ca68344a62bac4de4d25738ae7",
+    "package-lock.json": "489360444fe591340a62ea30a7ec99c0b944f445f7e5dbd45cedcc7725695f2f",
+    "firestore.rules": "badc95d7f8f0994a1501c576a6e863e7da15230af506b7b0f17fa53e86453bbc",
+    "storage.rules": "af9f6cb2151920c457237aefaf8655bc9212c42d92a6a5a0f8b0f00b569a542d",
+    "firebase.rules-test.json": "b2cb25f1bed6273820ef586adae201431e769e59112bcdff4432359daaa1df87",
+    "tests/security/api-authentication.test.ts": "d4b56db92f3545419b4806d0f59a544198ca7582182538b11f9aa1e3ffab7949"
+  }
+}

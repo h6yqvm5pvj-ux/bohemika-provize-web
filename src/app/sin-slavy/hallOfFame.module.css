@@ -28,7 +28,7 @@
 .periods button[aria-pressed="true"] { color: #674781; background: #fff; box-shadow: 0 2px 5px #39244d0e; }
 .periods button:hover { color: #604178; }
 .dateRange { display: flex; align-items: center; gap: 7px; color: #97889c; font-size: 11px; white-space: nowrap; }
-.categories { display: grid; grid-template-columns: 1.1fr .8fr 1.45fr .8fr; gap: 10px; margin-bottom: 31px; }
+.categories { display: grid; grid-template-columns: 1.1fr .7fr 1.45fr 1fr .7fr; gap: 10px; margin-bottom: 31px; }
 .categories button { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 51px; padding: 12px 14px; border: 1px solid #eae4ef; border-radius: 12px; background: #fff; color: #95839f; font-size: 12px; font-weight: 550; transition: border-color .18s, background .18s; }
 .categories button[aria-pressed="true"] { border-color: #cdb9df; background: #f3edf9; color: #795795; box-shadow: 0 2px 0 #ebe2f3; }
 .categories button:hover { border-color: #cdb9df; }

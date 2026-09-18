@@ -1,7 +1,8 @@
 import type { SicknessBenefits } from "./sicknessBenefits";
+import type { DisabilityPensionPlan } from "./pensionPlan";
 import { formatMoney } from "@/app/lib/formatters";
 
-export type StepId = "base" | "family" | "children" | "mortgage" | "confirm";
+export type StepId = "base" | "family" | "children" | "mortgage" | "pension" | "confirm";
 export type EmploymentType = "employee" | "selfEmployed";
 export type SicknessInsuranceChoice = "yes" | "no";
 export type ProviderRole = "main" | "secondary";
@@ -33,13 +34,12 @@ export type AdvisorFooterInfo = {
 };
 
 export const INVALIDITY_SCENARIOS = [
-  { id: "veryLow", label: "Velmi nízké", ratios: [0.1, 0.2, 0.3] },
-  { id: "low", label: "Nízké", ratios: [0.3, 0.5, 0.8] },
-  { id: "medium", label: "Střední", ratios: [0.4, 0.6, 1] },
-  { id: "high", label: "Vyšší", ratios: [0.5, 0.75, 1.2] },
+  { id: "veryLow", ratios: [0.1, 0.2, 0.3] },
+  { id: "low", ratios: [0.3, 0.5, 0.8] },
+  { id: "medium", ratios: [0.4, 0.6, 1] },
 ] as const;
+export type InvalidityScenarioId = typeof INVALIDITY_SCENARIOS[number]["id"];
 export const INVALIDITY_LABELS = ["1. stupeň", "2. stupeň", "3. stupeň"] as const;
-export type InvalidityScenarioId = (typeof INVALIDITY_SCENARIOS)[number]["id"];
 export const RETIREMENT_AGE = 65;
 export const DEATH_COVERAGE_END_AGE = 75;
 export const DAILY_TARGET_RATIO = 0.4;
@@ -76,6 +76,12 @@ export const INVALIDITY_INVESTMENT_VARIANTS: Array<{
 ];
 export const PDF_COPY = {
   cs: {
+    monthsUnit: "měsíců",
+    capitalExplanation: "Renta × počet měsíců do 65 let",
+    scenarioLabels: { veryLow: "Nízká", low: "Střední", medium: "Vysoká" },
+    coverageBasis: "Základ pro krytí",
+    variantNote: "Základem variant je vyšší částka z čistého příjmu a měsíčních výdajů. Státní důchod je uveden samostatně pro orientaci.",
+    insuranceAnnuityNote: "Návrh počítá s jednorázovým pojistným plněním. Renta představuje jeho plánované měsíční čerpání.",
     previewEyebrow: "Náhled nastavení",
     previewTitle: "Co a jak nastavit ve smlouvě",
     previewIntro:
@@ -136,17 +142,15 @@ export const PDF_COPY = {
     expenseReserveTarget: "Závazky + 20 % rezerva",
     disability: "Invalidita",
     investmentByDegree: "Investiční varianta podle stupně",
-    insuranceByDegree: "Rentové pojistné částky podle stupně",
+    insuranceByDegree: "Státní důchod a pojistné krytí",
     coverageTo65: "Krytí do 65 let",
     disabilityCoverageVariant: "Varianta krytí invalidity",
     insurancePayout: "Pojistné plnění",
     investmentVariant: "Investiční varianta",
-    coveragePrefix: "Pokrytí",
-    incomeCoverageSuffix: "příjmu",
     degreeOfDisability: "Stupeň invalidity",
     monthlyAnnuity: "Měsíční renta",
     requiredDeposit: "Potřebný vklad",
-    sumWithoutDebt: "PČ bez dluhů",
+    sumWithoutDebt: "Částka k pojištění bez dluhů",
     to: "až",
     investmentNote:
       "Investiční varianta modeluje kapitál, ze kterého by šla čerpat zvolená měsíční renta při vybraném výnosu. Nejde o investiční doporučení.",
@@ -155,12 +159,6 @@ export const PDF_COPY = {
     disabilityLoanNote:
       "Nastavit samostatně podle aktuální dlužné částky na dobu splácení. Renta výše kryje výpadek příjmu, tato část kryje splacení dluhu.",
     byRepaymentPeriod: "Podle doby splácení",
-    scenarioLabels: {
-      veryLow: "Velmi nízké",
-      low: "Nízké",
-      medium: "Střední",
-      high: "Vyšší",
-    },
     degreeLabels: ["1. stupeň", "2. stupeň", "3. stupeň"],
     footer: {
       manager: "Manažer",
@@ -173,6 +171,12 @@ export const PDF_COPY = {
     },
   },
   en: {
+    monthsUnit: "months",
+    capitalExplanation: "Annuity × months until age 65",
+    scenarioLabels: { veryLow: "Low", low: "Medium", medium: "High" },
+    coverageBasis: "Coverage basis",
+    variantNote: "The variants use the higher of net income and monthly expenses. The state pension is shown separately for reference.",
+    insuranceAnnuityNote: "The plan assumes a lump-sum insurance payout. The annuity represents planned monthly withdrawals from it.",
     previewEyebrow: "Setup preview",
     previewTitle: "What to set up in the policy",
     previewIntro:
@@ -238,8 +242,6 @@ export const PDF_COPY = {
     disabilityCoverageVariant: "Disability cover variant",
     insurancePayout: "Insurance payout",
     investmentVariant: "Investment variant",
-    coveragePrefix: "Coverage",
-    incomeCoverageSuffix: "income",
     degreeOfDisability: "Disability degree",
     monthlyAnnuity: "Monthly annuity",
     requiredDeposit: "Required deposit",
@@ -252,12 +254,6 @@ export const PDF_COPY = {
     disabilityLoanNote:
       "Set this separately according to the current outstanding debt and repayment period. The annuity above covers the income shortfall; this part covers repayment of the debt.",
     byRepaymentPeriod: "According to the repayment period",
-    scenarioLabels: {
-      veryLow: "Very low",
-      low: "Low",
-      medium: "Medium",
-      high: "Higher",
-    },
     degreeLabels: ["Degree I", "Degree II", "Degree III"],
     footer: {
       manager: "Manager",
@@ -270,6 +266,12 @@ export const PDF_COPY = {
     },
   },
   uk: {
+    monthsUnit: "місяців",
+    capitalExplanation: "Рента × місяці до 65 років",
+    scenarioLabels: { veryLow: "Низька", low: "Середня", medium: "Висока" },
+    coverageBasis: "База покриття",
+    variantNote: "Варіанти базуються на більшій із сум чистого доходу та місячних витрат. Державна пенсія наведена окремо для довідки.",
+    insuranceAnnuityNote: "План передбачає одноразову страхову виплату. Рента означає заплановане щомісячне використання цієї суми.",
     previewEyebrow: "Попередній перегляд налаштувань",
     previewTitle: "Що і як налаштувати в договорі",
     previewIntro:
@@ -335,8 +337,6 @@ export const PDF_COPY = {
     disabilityCoverageVariant: "Варіант покриття інвалідності",
     insurancePayout: "Страхова виплата",
     investmentVariant: "Інвестиційний варіант",
-    coveragePrefix: "Покриття",
-    incomeCoverageSuffix: "доходу",
     degreeOfDisability: "Ступінь інвалідності",
     monthlyAnnuity: "Місячна рента",
     requiredDeposit: "Необхідний внесок",
@@ -350,12 +350,6 @@ export const PDF_COPY = {
     disabilityLoanNote:
       "Налаштувати окремо за актуальною сумою боргу на строк погашення. Рента вище покриває втрату доходу; ця частина покриває погашення боргу.",
     byRepaymentPeriod: "За строком погашення",
-    scenarioLabels: {
-      veryLow: "Дуже низьке",
-      low: "Низьке",
-      medium: "Середнє",
-      high: "Вище",
-    },
     degreeLabels: ["I ступінь", "II ступінь", "III ступінь"],
     footer: {
       manager: "Менеджер",
@@ -368,6 +362,12 @@ export const PDF_COPY = {
     },
   },
   ne: {
+    monthsUnit: "महिना",
+    capitalExplanation: "मासिक आय × ६५ वर्षसम्मका महिना",
+    scenarioLabels: { veryLow: "न्यून", low: "मध्यम", medium: "उच्च" },
+    coverageBasis: "सुरक्षाको आधार",
+    variantNote: "विकल्पहरू खुद आम्दानी र मासिक खर्चमध्ये ठूलो रकममा आधारित छन्। सरकारी पेन्सन छुट्टै जानकारीका लागि देखाइएको छ।",
+    insuranceAnnuityNote: "योजनाले एकमुष्ट बीमा भुक्तानी मानेको छ। मासिक आय भनेको त्यस रकमबाट योजनाबद्ध मासिक निकासी हो।",
     previewEyebrow: "सेटिङको पूर्वावलोकन",
     previewTitle: "बीमा सम्झौतामा के र कसरी सेट गर्ने",
     previewIntro:
@@ -433,8 +433,6 @@ export const PDF_COPY = {
     disabilityCoverageVariant: "अपाङ्गता कभरेज विकल्प",
     insurancePayout: "बीमा भुक्तानी",
     investmentVariant: "लगानी विकल्प",
-    coveragePrefix: "कभरेज",
-    incomeCoverageSuffix: "आम्दानी",
     degreeOfDisability: "अपाङ्गताको स्तर",
     monthlyAnnuity: "मासिक रेन्टा",
     requiredDeposit: "आवश्यक जम्मा रकम",
@@ -447,12 +445,6 @@ export const PDF_COPY = {
     disabilityLoanNote:
       "हालको बाँकी ऋण र भुक्तानी अवधिको आधारमा यो अलग सेट गर्नुहोस्। माथिको रेन्टाले आम्दानीको कमी कभर गर्छ; यो भागले ऋण चुक्ता गर्ने रकम कभर गर्छ।",
     byRepaymentPeriod: "भुक्तानी अवधिअनुसार",
-    scenarioLabels: {
-      veryLow: "धेरै कम",
-      low: "कम",
-      medium: "मध्यम",
-      high: "उच्च",
-    },
     degreeLabels: ["पहिलो तह", "दोस्रो तह", "तेस्रो तह"],
     footer: {
       manager: "प्रबन्धक",
@@ -465,6 +457,12 @@ export const PDF_COPY = {
     },
   },
   hi: {
+    monthsUnit: "महीने",
+    capitalExplanation: "मासिक आय × ६५ वर्ष तक के महीने",
+    scenarioLabels: { veryLow: "कम", low: "मध्यम", medium: "उच्च" },
+    coverageBasis: "कवर का आधार",
+    variantNote: "विकल्प शुद्ध आय और मासिक खर्च में से अधिक राशि पर आधारित हैं। सरकारी पेंशन अलग से जानकारी के लिए दिखाई गई है।",
+    insuranceAnnuityNote: "योजना एकमुश्त बीमा भुगतान मानती है। मासिक आय का अर्थ उस राशि से नियोजित मासिक निकासी है।",
     previewEyebrow: "सेटअप पूर्वावलोकन",
     previewTitle: "पॉलिसी में क्या और कैसे सेट करें",
     previewIntro:
@@ -530,8 +528,6 @@ export const PDF_COPY = {
     disabilityCoverageVariant: "विकलांगता कवर विकल्प",
     insurancePayout: "बीमा भुगतान",
     investmentVariant: "निवेश विकल्प",
-    coveragePrefix: "कवर",
-    incomeCoverageSuffix: "आय",
     degreeOfDisability: "विकलांगता स्तर",
     monthlyAnnuity: "मासिक रेंट",
     requiredDeposit: "आवश्यक जमा राशि",
@@ -544,12 +540,6 @@ export const PDF_COPY = {
     disabilityLoanNote:
       "इसे वर्तमान बकाया ऋण और चुकौती अवधि के अनुसार अलग से सेट करें। ऊपर दिया गया रेंट आय की कमी को कवर करता है; यह भाग ऋण चुकाने को कवर करता है।",
     byRepaymentPeriod: "चुकौती अवधि के अनुसार",
-    scenarioLabels: {
-      veryLow: "बहुत कम",
-      low: "कम",
-      medium: "मध्यम",
-      high: "अधिक",
-    },
     degreeLabels: ["स्तर I", "स्तर II", "स्तर III"],
     footer: {
       manager: "प्रबंधक",
@@ -712,15 +702,11 @@ export type LifeInsuranceResultData = {
     recommendedMonthly: number;
     recommendedDaily: number;
   };
-  invalidity: Array<{
-    label: string;
-    ratio: number;
-    monthlyNeed: number;
-    lumpWithoutDebt: number;
-  }>;
-  invalidityModel: InvalidityModel;
-  invalidityInvestmentVariantId: InvalidityInvestmentVariantId;
+  invalidity: Array<{ label: string; ratio: number; monthlyNeed: number; lumpWithoutDebt: number }>;
   invalidityScenarioId: InvalidityScenarioId;
+  invalidityModel: InvalidityModel;
+  disabilityPension?: DisabilityPensionPlan | null;
+  invalidityInvestmentVariantId: InvalidityInvestmentVariantId;
   death: {
     incomeGapCoverage: number;
     educationCoverage: number;

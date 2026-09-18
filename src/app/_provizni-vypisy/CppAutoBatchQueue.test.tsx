@@ -7,7 +7,7 @@ import { CppAutoBatchQueue, cppAutoBatchQueueItemFromPrefill, cppAutoBatchQueueI
   statementBatchQueueContractEntry, validateCppAutoBatchQueueItem } from "./CppAutoBatchQueue";
 import { statementCalculatorPrefill } from "./statementPresentation";
 import { resolveStatementProduct } from "./statementParsing";
-import { StatementCalculatorIframePanel } from "./statementLinksAndCalculator";
+import { StatementCalculatorIframePanel } from "./StatementEmbeddedModals";
 import { isStatementBatchQueueAddMessage, isStatementBatchQueueProduct,
   STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE } from "@/app/lib/statementBatchQueue";
 import { saveContractEntry } from "../kalkulacka/useContractSave";

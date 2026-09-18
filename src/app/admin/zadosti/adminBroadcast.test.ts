@@ -20,6 +20,7 @@ const userRow = (
     uid,
     email,
     fullName: null,
+    profileAvatar: "",
     agencyNumber: null,
     ico: null,
     phoneNumber: null,

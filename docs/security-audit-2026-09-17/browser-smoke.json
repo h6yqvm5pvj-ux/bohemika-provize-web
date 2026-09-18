@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-09-17T11:50:04.146Z",
+  "results": [
+    {
+      "path": "/login",
+      "status": 200,
+      "scripts": 14,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    },
+    {
+      "path": "/ucet/zabezpeceni",
+      "status": 200,
+      "scripts": 12,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    },
+    {
+      "path": "/ucet/akce",
+      "status": 200,
+      "scripts": 12,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    },
+    {
+      "path": "/embed/zlato",
+      "status": 200,
+      "scripts": 13,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    },
+    {
+      "path": "/embed/zivotni-pojisteni",
+      "status": 200,
+      "scripts": 12,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    },
+    {
+      "path": "/models/vig/index.html",
+      "status": 200,
+      "scripts": 2,
+      "cspViolationsOnLoad": 0,
+      "inlineInjectionBlocked": true
+    }
+  ]
+}

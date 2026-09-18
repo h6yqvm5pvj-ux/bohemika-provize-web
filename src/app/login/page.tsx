@@ -32,9 +32,12 @@ import {
 } from "@/app/lib/passkeys";
 import { PasskeyLoginLoader, type PasskeyLoginStage } from "./PasskeyLoginLoader";
 import passkeyStyles from "./passkeyLoginLoader.module.css";
+import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
+  "auth/user-disabled",
+  "auth/account-blocked",
   "auth/invalid-verification-code",
   "auth/code-expired",
   "auth/too-many-requests",
@@ -240,14 +243,7 @@ export default function LoginPage() {
   }, []);
 
   const finalizeServerSession = useCallback(
-    async (token: string) => {
-      await withTimeout(
-        createServerSessionFromToken(token, {
-          rememberThisDevice: loginRememberThisDeviceRef.current,
-        }),
-        10000,
-        "Nastavuji relaci uživatele trvá příliš dlouho."
-      );
+    async () => {
       setMfaResolver(null);
       setMfaDigits(createEmptyMfaDigits());
       setMfaHintUid(null);
@@ -276,8 +272,17 @@ export default function LoginPage() {
         10000,
         "Ověření přihlášení trvá příliš dlouho."
       );
+      // Account eligibility comes from the live server record, not potentially
+      // stale MFA metadata restored by the browser (especially after passkeys).
+      await withTimeout(
+        createServerSessionFromToken(loginToken, {
+          rememberThisDevice: loginRememberThisDeviceRef.current,
+        }),
+        10000,
+        "Nastavení relace uživatele trvá příliš dlouho."
+      );
       const finishLogin = async () => {
-        await finalizeServerSession(loginToken);
+        await finalizeServerSession();
       };
       const loginAttemptState = await postLoginAttempt("success", rawEmail, loginToken);
       if (!loginAttemptState.ok || loginAttemptState.locked) {
@@ -319,7 +324,9 @@ export default function LoginPage() {
       console.error("Chyba při ověřování přihlášení/předplatného:", e);
       await safeSignOut();
       setError(
-        "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
+        isAccountBlockedError(e) ? ACCOUNT_BLOCKED_MESSAGE :
+          (e as { code?: string })?.code === MFA_REAUTH_REQUIRED_CODE ? MFA_REAUTH_REQUIRED_MESSAGE :
+          "Nepodařilo se bezpečně dokončit přihlášení. Zkus to prosím znovu nebo kontaktuj podporu."
       );
     } finally {
       setLoading(false);
@@ -330,6 +337,9 @@ export default function LoginPage() {
     if (typeof window === "undefined") return;
 
     setIsIosDevice(detectIosDevice());
+    if (new URLSearchParams(window.location.search).get("reason") === "account-blocked") {
+      setError(ACCOUNT_BLOCKED_MESSAGE);
+    }
   }, []);
 
   useEffect(() => {
@@ -493,6 +503,8 @@ export default function LoginPage() {
           logAuthIssue("handleSubmitResolver", resolverError);
           msg = "Nepodařilo se zahájit 2FA ověření. Zkus přihlášení znovu.";
         }
+      } else if (isAccountBlockedError(err)) {
+        msg = ACCOUNT_BLOCKED_MESSAGE;
       } else if (authErr?.code && PASSWORD_ATTEMPT_ERROR_CODES.has(authErr.code)) {
         const attemptState = await postLoginAttempt(
           "failure",

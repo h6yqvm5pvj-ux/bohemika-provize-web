@@ -20,6 +20,7 @@ import {
   type AdminBroadcastStatus,
 } from "./adminBroadcast";
 import type { AdminUsersRow } from "./adminUsers";
+type AdminBroadcastUser = Pick<AdminUsersRow, "email" | "fullName" | "disabled" | "accountType" | "position" | "specialist">;
 
 export function useAdminBroadcast({
   isAllowedAdmin,
@@ -27,7 +28,7 @@ export function useAdminBroadcast({
   usersLoading,
 }: {
   isAllowedAdmin: boolean;
-  users: AdminUsersRow[];
+  users: AdminBroadcastUser[];
   usersLoading: boolean;
 }) {
   const [emoji, setEmoji] = useState("📣");

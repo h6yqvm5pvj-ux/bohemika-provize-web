@@ -211,6 +211,7 @@ export function useAccountSetupFlow({
 }: UseAccountSetupFlowOptions) {
   const [needsCareerTimelineSetup, setNeedsCareerTimelineSetup] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [phone, setPhone] = useState("");
@@ -253,6 +254,7 @@ export function useAccountSetupFlow({
   }, []);
 
   const resetAll = useCallback(() => {
+    setProfileLoaded(false);
     setNeedsCareerTimelineSetup(false);
     setShowWizard(false);
     setCompleted(false);
@@ -283,16 +285,9 @@ export function useAccountSetupFlow({
   }, [resetAll]);
 
   const resetAfterProfileLoadFailure = useCallback(() => {
-    setNeedsCareerTimelineSetup(false);
-    setSavedPhone("");
-    setIco("");
-    setSavedIco("");
-    setFullName("");
-    setAgencyNumber("");
-    setCompletedAt(null);
-    setMfaGraceStartedAt(null);
-    setSecurityHardRequired(false);
-    setWizardManuallyOpened(false);
+    // A failed read never means that an existing account needs to be recreated.
+    setProfileLoaded(false);
+    setShowWizard(false);
   }, []);
 
   const syncFromProfileData = useCallback(
@@ -300,6 +295,7 @@ export function useAccountSetupFlow({
       data: Record<string, unknown>,
       options: { accountType: AccountType; hasInternalProfile: boolean }
     ) => {
+      setProfileLoaded(true);
       const parsedTimeline = parsePositionTimeline(data.positionTimeline);
       const nextPhoneNumber = formatProfilePhoneInput(
         typeof data.phoneNumber === "string" ? data.phoneNumber : ""
@@ -421,6 +417,7 @@ export function useAccountSetupFlow({
 
   useEffect(() => {
     if (!user) return;
+    if (!profileLoaded) { setShowWizard(false); return; }
     if (loadingProfile || !mfaReady || subscriptionAccessState === "blocked") return;
     if (accountType === "tipster") {
       setShowWizard(false);
@@ -442,6 +439,7 @@ export function useAccountSetupFlow({
     completed,
     completedAt,
     loadingProfile,
+    profileLoaded,
     mfaEnabled,
     mfaGraceStartedAt,
     mfaReady,

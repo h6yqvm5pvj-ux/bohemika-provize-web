@@ -1,0 +1,111 @@
+{
+  "checkedAt": "2026-09-17T09:55:00.840Z",
+  "rules": {
+    "firestore": {
+      "status": 200,
+      "matchesLocal": true,
+      "sourceSha256": "badc95d7f8f0994a1501c576a6e863e7da15230af506b7b0f17fa53e86453bbc"
+    },
+    "storage": {
+      "status": 200,
+      "matchesLocal": false,
+      "sourceSha256": "e656d238ee388d951268ca38d1eca2dbf2f5fdc55ef4b20e22911413d36c935b",
+      "semanticReview": "Both active and local rules deny every direct client read/write; source difference is comments and redundant deny stanza."
+    }
+  },
+  "storage": {
+    "status": 200,
+    "uniformAccess": false,
+    "publicAccessPrevention": "inherited",
+    "softDeleteRetentionSeconds": "2592000",
+    "versioning": false,
+    "publicIam": {
+      "status": 200,
+      "bindings": 0
+    },
+    "objects": {
+      "complete": true,
+      "groups": {
+        "contract-pdfs": {
+          "objects": 1484,
+          "downloadToken": 0,
+          "publicAcl": 0
+        },
+        "other": {
+          "objects": 7,
+          "downloadToken": 0,
+          "publicAcl": 0
+        },
+        "mailbox": {
+          "objects": 16,
+          "downloadToken": 8,
+          "publicAcl": 0
+        },
+        "online-card/offices": {
+          "objects": 4,
+          "downloadToken": 4,
+          "publicAcl": 0
+        }
+      }
+    }
+  },
+  "auth": {
+    "status": 200,
+    "emailPrivacy": true,
+    "mfaState": "ENABLED",
+    "disableSignup": "not-returned",
+    "disableDeletion": "not-returned",
+    "passwordPolicy": "not-returned"
+  },
+  "database": {
+    "status": 200,
+    "pitr": "POINT_IN_TIME_RECOVERY_ENABLED",
+    "deleteProtection": "DELETE_PROTECTION_ENABLED",
+    "location": "eur3",
+    "backups": {
+      "status": 403
+    }
+  },
+  "http": [
+    {
+      "path": "/login",
+      "status": 429,
+      "headers": {
+        "content-security-policy": null,
+        "x-content-type-options": null,
+        "strict-transport-security": null,
+        "cache-control": "private, no-store, max-age=0"
+      }
+    },
+    {
+      "path": "/api/contracts/list",
+      "status": 429,
+      "headers": {
+        "content-security-policy": null,
+        "x-content-type-options": null,
+        "strict-transport-security": null,
+        "cache-control": "private, no-store, max-age=0"
+      }
+    },
+    {
+      "path": "/api/admin/security",
+      "status": 429,
+      "headers": {
+        "content-security-policy": null,
+        "x-content-type-options": null,
+        "strict-transport-security": null,
+        "cache-control": "private, no-store, max-age=0"
+      }
+    },
+    {
+      "path": "/api/mailbox/attachment",
+      "status": 429,
+      "headers": {
+        "content-security-policy": null,
+        "x-content-type-options": null,
+        "strict-transport-security": null,
+        "cache-control": "private, no-store, max-age=0"
+      }
+    }
+  ]
+}

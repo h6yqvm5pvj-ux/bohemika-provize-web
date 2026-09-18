@@ -8,8 +8,9 @@ vi.mock("@/app/firebase", () => ({ auth: mocks.auth }));
 vi.mock("firebase/auth", () => ({
   ActionCodeOperation: { VERIFY_EMAIL: "VERIFY_EMAIL" },
   checkActionCode: mocks.check, applyActionCode: mocks.apply,
-  verifyPasswordResetCode: mocks.inspectReset, confirmPasswordReset: mocks.reset,
+  verifyPasswordResetCode: mocks.inspectReset,
 }));
+vi.mock("@/app/lib/passwordReset", () => ({ confirmPasswordReset: mocks.reset }));
 import { AuthEmailActionPage } from "./AuthEmailActionPage";
 
 describe("custom email action page", () => {
@@ -66,7 +67,10 @@ describe("custom email action page", () => {
     await mount();
     const reload = vi.spyOn(window.location, "reload").mockImplementation(() => {});
     window.history.replaceState(null, "", "/ucet/akce#mode=resetPassword&oobCode=another-code");
-    await act(async () => { window.dispatchEvent(new Event("hashchange")); });
+    await act(async () => {
+      window.dispatchEvent(new Event("hashchange"));
+      window.dispatchEvent(new Event("hashchange"));
+    });
     expect(reload).toHaveBeenCalledOnce();
     expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.reset).not.toHaveBeenCalled();
   });
@@ -91,7 +95,7 @@ describe("custom email action page", () => {
     await passwords("Synthetic-password-1!", "Different-password-1!"); await submit();
     expect(container.textContent).toContain("Hesla se neshodují"); expect(mocks.reset).not.toHaveBeenCalled();
     await passwords(); await submit();
-    expect(mocks.reset).toHaveBeenCalledExactlyOnceWith(mocks.auth, "synthetic-code", "Synthetic-password-1!");
+    expect(mocks.reset).toHaveBeenCalledExactlyOnceWith("synthetic-code", "Synthetic-password-1!");
     expect(container.textContent).toContain("Nové heslo je nastavené");
     expect(container.querySelector("input")).toBeNull();
     expect(window.location.pathname).toBe("/ucet/akce"); expect(window.location.hash + window.location.search).toBe("");

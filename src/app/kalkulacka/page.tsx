@@ -1,5 +1,8 @@
 // src/app/kalkulacka/page.tsx
 "use client";
+import dynamic from "next/dynamic";
+import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
+
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -57,7 +60,7 @@ import {
 import { autoAssistancePlanLabel } from "@/app/lib/autoAssistanceLabels";
 import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import { AppLayout } from "@/components/AppLayout";
-import { CalculatorHelpDialog } from "./CalculatorHelpDialog";
+
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
@@ -129,7 +132,7 @@ import {
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
-import { CalculatorProductPickerModal } from "./CalculatorProductPickerModal";
+
 import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
 import entryStyles from "./calculatorEntry.module.css";
 import formStyles from "./calculatorForm.module.css";
@@ -147,49 +150,25 @@ import {
   type AutoPdfDetailSummaryItem,
   type AutoPdfDetailSummarySection,
 } from "./CalculatorAutoPdfDetailSummary";
-import {
-  CalculatorAutoPdfDetailEditor,
-  type AutoPdfDetailEditorFields,
-  type AutoPdfEditorBooleanField,
-  type AutoPdfEditorTextField,
-} from "./CalculatorAutoPdfDetailEditor";
+import { type AutoPdfDetailEditorFields, type AutoPdfEditorBooleanField, type AutoPdfEditorTextField } from "./CalculatorAutoPdfDetailEditor";
 import {
   CalculatorDomexPdfDetailSummary,
   type DomexPdfDetailSummaryItem,
   type DomexPdfDetailSummarySection,
 } from "./CalculatorDomexPdfDetailSummary";
-import {
-  CalculatorDomexPdfDetailEditor,
-  type DomexPdfDetailEditorFields,
-  type DomexPdfEditorBooleanField,
-  type DomexPdfEditorTextField,
-} from "./CalculatorDomexPdfDetailEditor";
+import { type DomexPdfDetailEditorFields, type DomexPdfEditorBooleanField, type DomexPdfEditorTextField } from "./CalculatorDomexPdfDetailEditor";
 import {
   CalculatorNeonPdfDetailSummary,
   type NeonPdfDetailSummaryItem,
   type NeonPdfDetailSummarySection,
 } from "./CalculatorNeonPdfDetailSummary";
-import {
-  CalculatorNeonPdfDetailEditor,
-  createEmptyNeonPdfDetailFields,
-  type NeonPdfDetailEditorFields,
-  type NeonPdfEditorBooleanField,
-  type NeonPdfEditorTextField,
-} from "./CalculatorNeonPdfDetailEditor";
+import { type NeonPdfDetailEditorFields, type NeonPdfEditorBooleanField, type NeonPdfEditorTextField } from "./CalculatorNeonPdfDetailEditor";
 import { CalculatorResultsSection } from "./CalculatorResultsSection";
 import { ContractSaveSuccessOverlay } from "./ContractSaveSuccessOverlay";
 import { CalculatorSaveLoader } from "./CalculatorSaveLoader";
-import {
-  CalculatorCoefficientModal,
-  type NeonCoefficientView,
-} from "./CalculatorCoefficientModal";
-import {
-  DuplicateContractModal,
-  EndorsementDraftModal,
-  SubordinatePickerModal,
-  ValidationErrorModal,
-} from "./CalculatorWorkflowModals";
-import { TipContractModal, TipContractTipsModal } from "./TipContractModals";
+import { type NeonCoefficientView } from "./CalculatorCoefficientModal";
+
+
 import {
   type AdvisorTipsByUserApiResponse,
   type TipContractConfig,
@@ -229,6 +208,20 @@ import {
   type TeamOverviewApiResponse,
   type TeamOverviewPositionTimelineReadApiResponse,
 } from "./calculatorApi";
+
+const CalculatorHelpDialog = dynamic(() => import("./CalculatorHelpDialog").then((module) => module.CalculatorHelpDialog));
+const CalculatorProductPickerModal = dynamic(() => import("./CalculatorProductPickerModal").then((module) => module.CalculatorProductPickerModal));
+const CalculatorCoefficientModal = dynamic(() => import("./CalculatorCoefficientModal").then((module) => module.CalculatorCoefficientModal));
+const CalculatorAutoPdfDetailEditor = dynamic(() => import("./CalculatorAutoPdfDetailEditor").then((module) => module.CalculatorAutoPdfDetailEditor));
+const CalculatorDomexPdfDetailEditor = dynamic(() => import("./CalculatorDomexPdfDetailEditor").then((module) => module.CalculatorDomexPdfDetailEditor));
+const CalculatorNeonPdfDetailEditor = dynamic(() => import("./CalculatorNeonPdfDetailEditor").then((module) => module.CalculatorNeonPdfDetailEditor));
+const ValidationErrorModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.ValidationErrorModal));
+const DuplicateContractModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.DuplicateContractModal));
+const EndorsementDraftModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.EndorsementDraftModal));
+const SubordinatePickerModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.SubordinatePickerModal));
+const TipContractModal = dynamic(() => import("./TipContractModals").then((module) => module.TipContractModal));
+const TipContractTipsModal = dynamic(() => import("./TipContractModals").then((module) => module.TipContractTipsModal));
+
 
 
 // ---------- Pomocné ----------
@@ -8557,17 +8550,17 @@ export default function CalculatorPage() {
         data-impersonating={Boolean(impersonatedUserEmail) && !statementEmbedMode}
       >
       <div className={hasSelectedProduct ? formStyles.workspace : "mx-auto w-full max-w-6xl font-mono text-slate-900"}>
-      <ValidationErrorModal
+      {Boolean(validationError) && (<ValidationErrorModal
         message={validationError}
         onClose={() => setValidationError(null)}
-      />
-      <DuplicateContractModal
+      />)}
+      {Boolean(duplicateModal) && (<DuplicateContractModal
         modal={duplicateModal}
         onCancel={() => setDuplicateModal(null)}
         onConfirm={handleConfirmDuplicateModal}
-      />
-      <EndorsementDraftModal
-        draft={endorsementDraftModalOpen && product !== "neon" ? endorsementDraft : null}
+      />)}
+      {endorsementDraftModalOpen && product !== "neon" && (<EndorsementDraftModal
+        draft={endorsementDraft}
         onCancel={() => {
           setEndorsementDraft(null);
           setEndorsementDraftModalOpen(false);
@@ -8577,9 +8570,9 @@ export default function CalculatorPage() {
           setSaveMessage(null);
         }}
         onContinue={() => setEndorsementDraftModalOpen(false)}
-      />
+      />)}
 
-      <TipContractModal
+      {tipContractModalOpen && (<TipContractModal
         isOpen={tipContractModalOpen}
         draftPercent={tipContractDraftPercent}
         draftEmail={tipContractDraftEmail}
@@ -8602,9 +8595,9 @@ export default function CalculatorPage() {
         onClear={clearTipContractSettings}
         onApply={applyTipContractSettings}
         applyDisabled={tipContractApplyDisabled}
-      />
+      />)}
 
-      <TipContractTipsModal
+      {tipContractTipsModalOpen && (<TipContractTipsModal
         isOpen={tipContractTipsModalOpen}
         currentUser={currentTipContractUser}
         loading={tipContractTipsLoading}
@@ -8617,9 +8610,9 @@ export default function CalculatorPage() {
         onClose={() => setTipContractTipsModalOpen(false)}
         onFilterChange={setTipContractTipsFilter}
         onSelectTip={selectTipContractTip}
-      />
+      />)}
 
-      <SubordinatePickerModal
+      {canOverrideOwnerOnSave && subordinatePickerOpen && (<SubordinatePickerModal
         isOpen={canOverrideOwnerOnSave && subordinatePickerOpen}
         searchText={subordinateSearchText}
         loading={subordinateLoading}
@@ -8638,9 +8631,9 @@ export default function CalculatorPage() {
           setSelectedSubordinateEmail(email);
           setSubordinatePickerOpen(false);
         }}
-      />
+      />)}
 
-      <CalculatorProductPickerModal
+      {productOpen && (<CalculatorProductPickerModal
         isOpen={productOpen}
         product={hasSelectedProduct ? product : null}
         columns={productPickerColumns}
@@ -8653,15 +8646,15 @@ export default function CalculatorPage() {
         onSectionChange={setProductPickerSection}
         onSearchTextChange={setProductSearchText}
         onSelectProduct={selectProduct}
-      />
+      />)}
 
-      <CalculatorHelpDialog
+      {addContractHelpOpen && (<CalculatorHelpDialog
         isOpen={addContractHelpOpen}
         onClose={() => setAddContractHelpOpen(false)}
         productLabel={hasSelectedProduct ? currentProduct.label : undefined}
         showNeonHelp={showNeonAddContractHelp}
         showReplacementHelp={showReplacementAddContractHelp}
-      />
+      />)}
 
       <div className={hasSelectedProduct ? formStyles.pageContent : "w-full max-w-6xl space-y-6"}>
         {/* Header */}
@@ -9105,8 +9098,7 @@ export default function CalculatorPage() {
         )}
       </div>
 
-      {hasSelectedProduct && (
-      <CalculatorCoefficientModal
+      {hasSelectedProduct && showCoefModal && (<CalculatorCoefficientModal
         isOpen={showCoefModal}
         product={product}
         productLabel={productLabel(product)}

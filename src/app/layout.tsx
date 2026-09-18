@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import "./globals.css";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
 import { ClientCardPrivacyCleanup } from "@/components/ClientCardPrivacyCleanup";
@@ -38,11 +39,13 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Nonces are request-specific; never reuse statically generated HTML.
+  await connection();
   return (
     <html lang="cs">
       <body className="antialiased">

@@ -1,0 +1,118 @@
+{
+  "checkedAt": "2026-09-17T10:03:32.431Z",
+  "failed": 0,
+  "checks": [
+    {
+      "path": "/login",
+      "status": 200,
+      "expectedStatus": 200,
+      "pass": true,
+      "headers": {
+        "cache-control": "s-maxage=31536000",
+        "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "content-security-policy-report-only": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-/cFKoOI/Bxx14NLh894FWQ==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": null
+      }
+    },
+    {
+      "path": "/",
+      "status": 307,
+      "expectedStatus": 307,
+      "pass": true,
+      "headers": {
+        "cache-control": "private, no-store, max-age=0, must-revalidate",
+        "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "content-security-policy-report-only": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-usvUAw35Nv3RIRXFVoKu2A==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": "/login"
+      }
+    },
+    {
+      "path": "/admin",
+      "status": 307,
+      "expectedStatus": 307,
+      "pass": true,
+      "headers": {
+        "cache-control": "private, no-store, max-age=0, must-revalidate",
+        "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "content-security-policy-report-only": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-DZsJov2j2osYpN7Q9tZ+QA==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": "/login?next=%2Fadmin"
+      }
+    },
+    {
+      "path": "/smlouvy",
+      "status": 307,
+      "expectedStatus": 307,
+      "pass": true,
+      "headers": {
+        "cache-control": "private, no-store, max-age=0, must-revalidate",
+        "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "content-security-policy-report-only": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-w2t6HhDPGi5+mPATutdwvw==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": "/login?next=%2Fsmlouvy"
+      }
+    },
+    {
+      "path": "/dokumenty/private.pdf",
+      "status": 404,
+      "expectedStatus": 404,
+      "pass": true,
+      "headers": {
+        "cache-control": "private, no-store, max-age=0",
+        "content-security-policy": null,
+        "content-security-policy-report-only": null,
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": null
+      }
+    },
+    {
+      "path": "/ucet/akce?mode=resetPassword&oobCode=synthetic",
+      "status": 200,
+      "expectedStatus": 200,
+      "pass": true,
+      "headers": {
+        "cache-control": "private, no-store, max-age=0, must-revalidate",
+        "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "content-security-policy-report-only": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-w9D7Y7TbInLePlOqk0xXyg==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+        "x-frame-options": "DENY",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": null
+      }
+    },
+    {
+      "path": "/_next/image?url=https%3A%2F%2Ffirebasestorage.googleapis.com%2Fv0%2Fb%2Funtrusted-bucket%2Fo%2Fimage.png&w=64&q=75",
+      "status": 400,
+      "expectedStatus": 400,
+      "pass": true,
+      "headers": {
+        "cache-control": null,
+        "content-security-policy": null,
+        "content-security-policy-report-only": null,
+        "x-frame-options": null,
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+        "location": null
+      }
+    }
+  ]
+}

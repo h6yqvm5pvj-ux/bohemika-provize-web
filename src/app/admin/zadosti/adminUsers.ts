@@ -4,6 +4,7 @@ export type AdminUsersRow = {
   uid: string;
   email: string;
   fullName: string | null;
+  profileAvatar: string;
   agencyNumber: string | null;
   ico: string | null;
   phoneNumber: string | null;
@@ -40,9 +41,13 @@ export type AdminUsersRow = {
   };
 };
 
+export type AdminUserSummary = Omit<AdminUsersRow,
+  "positionTimeline" | "mfa" | "onlineCard" | "createdAt" | "lastSignInAt" | "accountSetupCompletedAt" | "privateProfileExists"
+> & { missingItems: Array<{ key: string; label: string }> };
+
 export type AdminUsersResponse = {
   ok?: boolean;
-  users?: AdminUsersRow[];
+  users?: AdminUserSummary[];
   summary?: {
     total?: number;
     disabled?: number;

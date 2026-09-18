@@ -27,7 +27,7 @@ const uid = "test-user";
 const email = "test@example.invalid";
 const sessionPath = (id: string) => `usersPrivate/${email}/appSessions/${id}`;
 const nowMs = 1_800_000_000_250;
-const baseUser = { uid, email, disabled: false, tokensValidAfterTime: new Date(0).toISOString(), multiFactor: { enrolledFactors: [] as { factorId: string }[] } };
+const baseUser = { uid, email, disabled: false, emailVerified: true, tokensValidAfterTime: new Date(0).toISOString(), multiFactor: { enrolledFactors: [{ factorId: "totp" }] as { factorId: string }[] } };
 const decoded = (authTime = Math.floor(nowMs / 1000) - 3600, secondFactor?: string) => ({
   uid, email, auth_time: authTime,
   firebase: { sign_in_provider: "password", ...(secondFactor ? { sign_in_second_factor: secondFactor } : {}) },
@@ -82,6 +82,29 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe("server session revocation", () => {
+  it("rejects a cookie minted after revocation using older authentication", async () => {
+    const cookie = await createAppSessionCookieValue({ uid, email, sessionId: "current", maxAgeSeconds: 3600, authenticationTime: Math.floor(nowMs / 1000) - 100 });
+    await recordAppSession({ uid, email, sessionId: cookie.sessionId, expiresAtMs: cookie.expiresAt * 1000, req: request("/") });
+    mocks.store.set(`accountBlocks/${uid}`, { revocation: { validAfterSeconds: Math.floor(nowMs / 1000) - 1, generation: "00000000-0000-0000-0000-000000000001", pendingOperations: {} } });
+    expect(await verifyActiveAppSession(cookie.value)).toEqual({ ok: false, reason: "revoked" });
+  });
+  it("rejects any cookie while account revocation is in progress", async () => {
+    const cookie = await issue();
+    const generation = "00000000-0000-0000-0000-000000000001";
+    mocks.store.set(`accountBlocks/${uid}`, { revocation: { validAfterSeconds: 1, generation, pendingOperations: { [generation]: true } } });
+    expect(await verifyActiveAppSession(cookie.value)).toEqual({ ok: false, reason: "revoked" });
+  });
+  it.each(["no-totp", "unverified", "persistent-block"])("blocks an existing cookie for %s and redirects with administrator guidance", async kind => {
+    const cookie = await issue();
+    if (kind === "no-totp") mocks.getUser.mockResolvedValue({ ...baseUser, multiFactor: { enrolledFactors: [] } });
+    if (kind === "unverified") mocks.getUser.mockResolvedValue({ ...baseUser, emailVerified: false });
+    if (kind === "persistent-block") mocks.store.set(`accountBlocks/${uid}`, { reason: "missing-totp" });
+    expect(await verifyActiveAppSession(cookie.value)).toEqual({ ok: false, reason: "blocked" });
+    const response = await middleware(request("/pomucky", cookie.value));
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("reason=account-blocked");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
   it("accepts a registered active session", async () => {
     const cookie = await issue(); expect((await verifyActiveAppSession(cookie.value)).ok).toBe(true);
     expect((await middleware(request("/pomucky", cookie.value))).headers.get("x-middleware-next")).toBe("1");
@@ -147,7 +170,7 @@ describe("cadastral map frame policy", () => {
       const response = await middleware(request(path, cookie.value));
       expect(response.headers.get("x-middleware-next")).toBe("1");
       const policies = [response.headers.get("Content-Security-Policy")!];
-      if (strict === "0") policies.push(response.headers.get("Content-Security-Policy-Report-Only")!);
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
       const isCadastralPage = ["/cuzk", "/cuzk/", "/cuzk?address=Kadan"].includes(path);
       for (const policy of policies) {
         const frameSources = policy.split("; ").find(directive => directive.startsWith("frame-src "))!.split(" ").slice(1);
@@ -177,9 +200,7 @@ describe("statement calculator frame policy", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
-    if (strict === "0") {
-      expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
-    }
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
     expect(response.headers.get("Cache-Control")).toContain("private, no-store");
   });
 
@@ -219,9 +240,7 @@ describe("statement contract detail frame policy", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
-    if (strict === "0") {
-      expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
-    }
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
 
     const ordinary = await middleware(request(path.replace("&embedded=1", ""), cookie.value));
     expect(ordinary.headers.get("X-Frame-Options")).toBe("DENY");
@@ -250,7 +269,7 @@ describe("tip detail and ARES frame policy", () => {
       expect(response.headers.get("x-middleware-next")).toBe("1");
       expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
       expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
-      if (strict === "0") expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain("frame-ancestors 'self'");
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
       expect(response.headers.get("Cache-Control")).toContain("private, no-store");
     }
   });
@@ -300,12 +319,12 @@ describe("fresh reauthentication for signing out other devices", () => {
     const response = await mutateSessions(request("/api/auth/sessions", current.value, { action: "revokeOthers", challengeId: kind === "missing" ? undefined : kind === "wrong-challenge" ? "wrong" : challengeId }));
     expect(response.status).toBe(403); expect(mocks.createCustomToken).not.toHaveBeenCalled(); expect(mocks.revokeRefreshTokens).not.toHaveBeenCalled();
   });
-  it.each([false, true])("completes reauthenticated revocation, rotates the current cookie and prevents replay (MFA %s)", async (mfa) => {
+  it("completes TOTP reauthenticated revocation, rotates the current cookie and prevents replay", async () => {
     const current = await issue(); const other = await issue("other");
     const prepare = await mutateSessions(request("/api/auth/sessions", current.value, { action: "prepareRevokeOthers" }));
     const { challengeId } = await prepare.json(); vi.setSystemTime(nowMs + 2000);
-    mocks.verifyIdToken.mockResolvedValue(decoded(Math.floor((nowMs + 2000) / 1000), mfa ? "totp" : undefined));
-    if (mfa) mocks.getUser.mockResolvedValue({ ...baseUser, multiFactor: { enrolledFactors: [{ factorId: "totp" }] } });
+    mocks.verifyIdToken.mockResolvedValue(decoded(Math.floor((nowMs + 2000) / 1000), "totp"));
+
     const body = { action: "revokeOthers", challengeId };
     const response = await mutateSessions(request("/api/auth/sessions", current.value, body));
     expect(response.status).toBe(200); expect((await response.json()).customToken).toBe("new-test-token");

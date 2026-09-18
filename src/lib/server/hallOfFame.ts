@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import type { AggregateMetrics, Category } from "@/app/api/team-overview/teamOverview.types";
-import type { HallCategory, HallPeriod, HallPeriodRange, HallRankings, HallRow } from "@/app/sin-slavy/hallOfFame.types";
+import type { HallCategory, HallPeriod, HallPeriodRange, HallPeriodResult, HallRankings, HallRow } from "@/app/sin-slavy/hallOfFame.types";
 
-type HallMember = { email: string; name: string; profileAvatar: string };
-type HallStats = { categoryMetrics: Partial<Record<Category, AggregateMetrics>> };
+export type HallMember = { email: string; name: string; profileAvatar: string };
+export type HallStats = { categoryMetrics: Partial<Record<Category, AggregateMetrics>> };
 export type HallProductionEntry = { id: string; ownerEmail: string; category: Category; annualPremium: number; signedDate: string };
 export const HALL_PERIOD_MONTHS: Record<HallPeriod, number> = { month: 1, "3months": 3, "6months": 6, year: 12 };
-export type HallPeriodResult = { rankings: HallRankings; period: HallPeriodRange };
 const dayFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague", year: "numeric", month: "2-digit", day: "2-digit" });
 export const hallDayKey = (date: Date) => dayFormatter.format(date);
 
@@ -22,6 +21,12 @@ export function hallPeriodRanges(now: Date): Record<HallPeriod, HallPeriodRange>
 
 /** Build every selectable period in one pass; switching periods needs no new database scan. */
 export function buildHallRankingsForPeriods(members: HallMember[], entries: HallProductionEntry[], now: Date): Record<HallPeriod, HallPeriodResult> {
+  return buildHallRankingsFromStats(members, aggregateHallEntries(entries, now), now);
+}
+
+export type HallPeriodStats = Record<HallPeriod, Record<string, HallStats>>;
+
+export function aggregateHallEntries(entries: HallProductionEntry[], now: Date): HallPeriodStats {
   const ranges = hallPeriodRanges(now);
   const periods = Object.keys(ranges) as HallPeriod[];
   const stats = Object.fromEntries(periods.map((key) => [key, {}])) as Record<HallPeriod, Record<string, HallStats>>;
@@ -40,11 +45,17 @@ export function buildHallRankingsForPeriods(members: HallMember[], entries: Hall
       metric.annualPremium += amount(entry.annualPremium);
     }
   }
+  return stats;
+}
+
+export function buildHallRankingsFromStats(members: HallMember[], stats: HallPeriodStats, now: Date): Record<HallPeriod, HallPeriodResult> {
+  const ranges = hallPeriodRanges(now);
+  const periods = Object.keys(ranges) as HallPeriod[];
   return Object.fromEntries(periods.map((key) => [key, { rankings: buildHallRankings(members, stats[key]), period: ranges[key] }])) as Record<HallPeriod, HallPeriodResult>;
 }
 
 const CATEGORIES: Record<HallCategory, Category[]> = {
-  life: ["life"], auto: ["auto"], property: ["property", "business", "travel", "foreigners", "other"], gold: ["comfort"],
+  life: ["life"], auto: ["auto"], property: ["property", "travel", "foreigners", "other"], business: ["business"], gold: ["comfort"],
 };
 const amount = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 export const hallParticipantId = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 24);

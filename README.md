@@ -29,9 +29,15 @@ New app emails open the [custom Czech account action page](docs/auth-email-actio
 ## Firestore rules tests
 
 Install Java 21 or newer and the Firebase CLI, then run `npm run test:rules`.
-The suite uses only the local Firestore emulator on `127.0.0.1:8180` and the
+The suite uses only the local Firestore emulator on `127.0.0.1:8180`, the Auth
+emulator on `127.0.0.1:9299` (for password-change integration tests), and the
 non-production project `demo-bohemika-rules`. It refuses to run against another
 host and needs no production credentials. Ordinary `npm test` runs separately.
+
+If Java reports a missing `JValidationMessages` resource bundle with a Czech
+locale, run the emulator with `JAVA_TOOL_OPTIONS='-Duser.language=en -Duser.country=US'`.
+The API authentication regression suite in `tests/security` uses synthetic tokens
+and fails on any attempted database or network access before authentication.
 
 The rules tests cover adding, modifying and deleting every supported role alias,
 identity and hierarchy fields, subscription/setup flags, profile replacement,

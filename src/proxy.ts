@@ -67,10 +67,9 @@ function getMeetingEmbedFrameAncestors(): string {
   return configured ? `'self' ${configured}` : "'self' *";
 }
 
-function buildBaselineCsp(frameAncestors = "'none'", frameSrc = FRAME_SRC): string {
+function buildStaticCsp(frameAncestors = "'none'", frameSrc = FRAME_SRC): string {
   const scriptSrc = [
     "'self'",
-    "'unsafe-inline'",
     ...(process.env.NODE_ENV !== "production" ? ["'unsafe-eval'"] : []),
   ].join(" ");
 
@@ -86,6 +85,7 @@ function buildBaselineCsp(frameAncestors = "'none'", frameSrc = FRAME_SRC): stri
     "font-src 'self' data: https:",
     "style-src 'self' 'unsafe-inline' https:",
     `script-src ${scriptSrc}`,
+    "script-src-attr 'none'",
     `connect-src ${CONNECT_SRC}`,
     "upgrade-insecure-requests",
   ]).join("; ");
@@ -216,6 +216,7 @@ async function buildAuthRedirectResponse(
   const loginUrl = req.nextUrl.clone();
   loginUrl.pathname = "/login";
   loginUrl.search = "";
+  if (verification.reason === "blocked") loginUrl.searchParams.set("reason", "account-blocked");
 
   const nextPath = `${req.nextUrl.pathname}${req.nextUrl.search}`;
   if (nextPath && nextPath !== "/" && !nextPath.startsWith("/login")) {
@@ -277,6 +278,13 @@ export async function proxy(req: NextRequest) {
       : "'none'";
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-csp-nonce", nonce);
+  // Next.js reads the request CSP to nonce its framework and hydration scripts.
+  // Overwrite any client-supplied header; each HTML response gets its own nonce.
+  const frameSrc = pathname === "/cuzk" || pathname === "/cuzk/"
+    ? `${FRAME_SRC} https://www.google.com/maps https://www.google.com/maps/`
+    : FRAME_SRC;
+  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors, frameSrc);
+  requestHeaders.set("Content-Security-Policy", strictCsp);
 
   const earlyRedirect =
     buildWeeklyReportLegacyRedirectResponse(req, pathname) ??
@@ -289,11 +297,6 @@ export async function proxy(req: NextRequest) {
       },
     });
 
-  // The cadastral result embeds Google Maps; keep other pages' frame sources unchanged.
-  const frameSrc = pathname === "/cuzk" || pathname === "/cuzk/"
-    ? `${FRAME_SRC} https://www.google.com/maps https://www.google.com/maps/`
-    : FRAME_SRC;
-  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors, frameSrc);
   if (isMeetingEmbed) {
     res.headers.delete("X-Frame-Options");
     res.headers.set("Cross-Origin-Opener-Policy", "unsafe-none");
@@ -307,18 +310,16 @@ export async function proxy(req: NextRequest) {
   if (pathname === "/ocr/worker.min.js") {
     res.headers.set("Content-Security-Policy", OCR_WORKER_CSP);
   } else if (isVigModelEmbed) {
-    // The supplied standalone renderer is sandboxed by its parent iframe and uses inline GLSL/WebGL code.
-    res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors, frameSrc));
-  } else if (process.env.CSP_STRICT_ENFORCE === "1") {
-    res.headers.set("Content-Security-Policy", strictCsp);
+    // Static renderer scripts are local external files; no inline script exception.
+    res.headers.set("Content-Security-Policy", buildStaticCsp(frameAncestors, frameSrc));
   } else {
-    res.headers.set("Content-Security-Policy", buildBaselineCsp(frameAncestors, frameSrc));
-    res.headers.set("Content-Security-Policy-Report-Only", strictCsp);
+    res.headers.set("Content-Security-Policy", strictCsp);
   }
 
   const isEmailAction = pathname === AUTH_EMAIL_ACTION_PATH || pathname === `${AUTH_EMAIL_ACTION_PATH}/`;
   if (isEmailAction) res.headers.set("Referrer-Policy", "no-referrer");
-  if (isEmailAction || isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
+  const isPageRequest = !pathname.startsWith("/api/") && !/\.[a-z0-9]+$/.test(pathname);
+  if (isPageRequest || isEmailAction || isServerProtectedPagePath(pathname) || isPrivateWorkspacePath(pathname)) {
     res.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     res.headers.set("Pragma", "no-cache");
     res.headers.set("Expires", "0");

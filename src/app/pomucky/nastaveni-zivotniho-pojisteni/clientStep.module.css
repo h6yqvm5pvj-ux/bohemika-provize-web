@@ -1,0 +1,60 @@
+.step { container-type: inline-size; min-width: 0; }
+.workspace { display: grid; gap: 20px; align-items: start; }
+.mainFields { display: grid; gap: 17px; min-width: 0; }
+.identity { display: grid; grid-template-columns: minmax(0,1fr) minmax(140px,.55fr); gap: 18px; align-items: start; }
+.incomeFields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+.nameField { display: block; min-width: 0; color: #555d70; font-size: 12px; font-weight: 550; line-height: 1.5; }
+.nameField > span { margin-left: 6px; color: #9891a1; font-size: 10px; font-weight: 400; }
+.nameField input { display: block; width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; margin-top: 7px; border: 1px solid #e1dbe9; border-radius: 9px; color: #34304c; background: #fff; font-size: 14px; font-weight: 400; }
+.nameField input::placeholder { color: #b0a8bb; }
+.step .compactField { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.step .compactField:focus-within { border: 0; box-shadow: none; }
+.step .compactField > label { min-height: 0; align-items: center; gap: 6px; font-size: 12px; line-height: 1.5; }
+.step .compactField > label > svg { width: 14px; height: 14px; margin: 0; }
+.step .compactField > div { align-items: center; min-height: 44px; margin-top: 7px; padding: 9px 12px; border: 1px solid #e1dbe9; border-radius: 9px; background: #fcfaff; }
+.step .compactField > div:focus-within, .nameField input:focus-visible { border-color: #b097c9; outline: 3px solid #f2eaf9; }
+.step .compactField input { font-size: 19px; line-height: 1.25; }
+.step .compactField > p { margin-top: 6px; font-size: 10px; line-height: 1.6; }
+.employment { padding-top: 14px; border-top: 1px solid #eee7f3; }
+.choiceRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.choiceRow > span { color: #62566f; font-size: 12px; font-weight: 550; }
+.segmented { display: flex; max-width: 100%; gap: 3px; padding: 3px; border: 1px solid #e7dfed; border-radius: 10px; background: #f8f5fb; }
+.segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 34px; padding: 7px 12px; border: 0; border-radius: 7px; color: #8c7a9a; background: transparent; font-size: 11px; font-weight: 600; }
+.segmented button[aria-pressed="true"] { background: #fff; color: #785197; box-shadow: 0 2px 6px #59317412; }
+.segmented button:focus-visible { outline: 3px solid #c0a9d5; outline-offset: 2px; }
+.employment p { margin: 7px 0 0; color: #8a7c94; font-size: 10px; line-height: 1.6; }
+.insuranceChoice { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee7f3; }
+.step .benefits { padding: 15px; border-radius: 12px; }
+.benefitHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.step .benefitHeading h3 { font-size: 12px; line-height: 1.5; }
+.benefitHeading > span { padding: 3px 6px; border: 1px solid #e0e8ee; border-radius: 5px; color: #8192a2; background: #fff; font-size: 9px; }
+.step .benefitHeading p { flex-basis: 100%; margin: 0; font-size: 10px; line-height: 1.6; }
+.step .benefits > div:nth-child(2) { gap: 12px; margin-top: 13px; }
+.step .benefits label { font-size: 11px; line-height: 1.5; }
+.step .benefits input { min-height: 42px; margin-top: 6px; padding: 9px 11px; font-size: 16px; }
+.step .benefits small { margin-top: 5px; font-size: 10px; line-height: 1.55; }
+.step .benefits details { margin-top: 12px; padding-top: 10px; }
+.step .benefits details summary { font-size: 10px; }
+.step .benefits details summary:focus-visible { outline: 3px solid #c0a9d5; outline-offset: 3px; border-radius: 2px; }
+.step > div:last-child:not(.workspace) { gap: 14px; padding: 12px 16px; margin-top: 18px; border-radius: 11px; }
+.step > div:last-child:not(.workspace) strong { margin-top: 4px; font-size: 19px; }
+@container (min-width: 860px) {
+  .workspace[data-benefits="true"] { grid-template-columns: minmax(0,1.45fr) minmax(0,1fr); gap: 24px; }
+  .step .benefits > div:nth-child(2) { grid-template-columns: 1fr; }
+}
+@container (max-width: 520px) {
+  .identity { grid-template-columns: minmax(0,1fr) 104px; gap: 12px; }
+  .nameField > span { display: block; margin-left: 0; }
+  .identity .compactField > label { min-height: 33px; }
+  .identity .compactField > label > svg { display: none; }
+  .incomeFields { grid-template-columns: 1fr; gap: 14px; }
+  .mainFields { gap: 14px; }
+  .choiceRow { align-items: start; }
+  .insuranceChoice .choiceRow { flex-wrap: nowrap; align-items: center; }
+  .choiceRow > span { font-size: 11px; }
+  .segmented button { padding-inline: 9px; }
+  .step > div:last-child:not(.workspace) { gap: 9px; }
+}
+@layer base {
+  @media (max-width: 680px) { .step .benefits .benefitHeading h3 { font-size: 12px !important; line-height: 1.5 !important; } }
+}

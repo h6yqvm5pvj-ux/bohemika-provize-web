@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ActionCodeOperation, applyActionCode, checkActionCode, confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
+import { ActionCodeOperation, applyActionCode, checkActionCode, verifyPasswordResetCode } from "firebase/auth";
+import { confirmPasswordReset } from "@/app/lib/passwordReset";
 import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, MailCheck, ShieldCheck, TriangleAlert } from "lucide-react";
 import { auth } from "@/app/firebase";
 import { AUTH_EMAIL_ACTION_PATH, parseAuthEmailAction, type AuthEmailAction } from "@/lib/authEmailAction";
@@ -45,7 +46,13 @@ export function AuthEmailActionPage() {
   useEffect(() => {
     // Opening another email in the same tab may be a fragment-only navigation.
     // Reload to give the new code its own lifecycle, including any pending writes.
-    const openNewLink = () => { if (window.location.hash) window.location.reload(); };
+    let reloadScheduled = false;
+    const openNewLink = () => {
+      if (window.location.hash && !reloadScheduled) {
+        reloadScheduled = true;
+        window.location.reload();
+      }
+    };
     window.addEventListener("hashchange", openNewLink);
     return () => window.removeEventListener("hashchange", openNewLink);
   }, []);
@@ -87,7 +94,7 @@ export function AuthEmailActionPage() {
     setBusy(true);
     try {
       if (screen === "reset") {
-        await confirmPasswordReset(auth, action.current.code, password);
+        await confirmPasswordReset(action.current.code, password);
         setScreen("reset-done");
       } else {
         await applyActionCode(auth, action.current.code);

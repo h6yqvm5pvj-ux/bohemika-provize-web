@@ -1,3 +1,4 @@
+import { loadHallOwnerStats } from "@/lib/server/hallOfFameProjection";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
@@ -53,8 +54,8 @@ import type {
   TipStats,
 } from "./teamOverview.types";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
-import { buildHallRankingsForPeriods, hallDayKey, hallParticipantId, hallPeriodRanges, HALL_PERIOD_MONTHS, type HallPeriodResult, type HallProductionEntry } from "@/lib/server/hallOfFame";
-import type { HallOfFameResponse, HallPeriod } from "@/app/sin-slavy/hallOfFame.types";
+import { buildHallRankingsFromStats, hallDayKey, hallParticipantId, hallPeriodRanges, HALL_PERIOD_MONTHS, type HallProductionEntry } from "@/lib/server/hallOfFame";
+import type { HallOfFameResponse, HallOfFamePeriodsResponse, HallPeriod, HallPeriodResult } from "@/app/sin-slavy/hallOfFame.types";
 
 const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -1796,7 +1797,7 @@ async function transferOwnerEntriesToSuccessor({
         ...nextData, contractNotesPath: entryData.contractNotesPath ?? entrySnap.ref.path,
       }, { actorEmail, kind: "transfer", title: "Převod při ukončení spolupráce", atMs: now.getTime(),
         changes: [{ label: "Správce", before: fromOwnerEmail, after: toOwnerEmail }] }));
-      ops += 6; // Audit, legacy migration, notes location and both client links.
+      ops += 8; // Audit, legacy migration, notes location, client links and hall projections.
       ops += 1;
 
       batch.delete(entrySnap.ref, { lastUpdateTime: entrySnap.updateTime });
@@ -2939,13 +2940,15 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
     const members = users.docs.map(candidateFromDoc)
       .filter((member): member is TeamMember => Boolean(member && member.email.includes("@")));
     const owners = [...new Set(members.map((member) => member.email))];
-    const ownerSet = new Set(owners);
-    const entries: HallProductionEntry[] = [];
     const yearStart = hallPeriodRanges(now).year.startDate;
-    // Monthly team read models retain category detail only for the current month.
-    // Use the original signing dates for accurate historical periods as well.
-    for (let i = 0; i < owners.length; i += FIRESTORE_IN_LIMIT) {
-      const snap = await adminDb.collectionGroup("entries").where("userEmail", "in", owners.slice(i, i + FIRESTORE_IN_LIMIT)).get();
+    const db = adminDb;
+    const stats = await loadHallOwnerStats(db, owners, now, async (batchOwners) => {
+      const entries: HallProductionEntry[] = [];
+      const ownerSet = new Set(batchOwners);
+      const snap = await db.collectionGroup("entries")
+        .where("userEmail", "in", batchOwners)
+        .select("userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType")
+        .get();
       for (const doc of snap.docs) {
         const data = doc.data() as Record<string, unknown>;
         if (isInheritedContract(data)) continue;
@@ -2958,8 +2961,9 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
         const category = categorizeProduct(data.productKey as Product | undefined);
         entries.push({ id: doc.id, ownerEmail, category, signedDate, annualPremium: annualPremiumFromEntry(data, category) });
       }
-    }
-    const result = { periods: buildHallRankingsForPeriods(members, entries, now), updatedAtMs: now.getTime(), day };
+      return entries;
+    });
+    const result = { periods: buildHallRankingsFromStats(members, stats, now), updatedAtMs: Date.now(), day };
     hallCache = result;
     return result;
   })();
@@ -2999,11 +3003,15 @@ export async function GET(req: NextRequest) {
         return response;
       }
       const hall = await loadGlobalHallOfFame();
-      const response = NextResponse.json({
+      const identity = { updatedAtMs: hall.updatedAtMs, currentUserId: hallParticipantId(email) };
+      const response = NextResponse.json(req.nextUrl.searchParams.get("includePeriods") === "true" ? {
+        ok: true,
+        periods: hall.periods,
+        ...identity,
+      } satisfies HallOfFamePeriodsResponse : {
         ok: true,
         ...hall.periods[period as HallPeriod],
-        updatedAtMs: hall.updatedAtMs,
-        currentUserId: hallParticipantId(email),
+        ...identity,
       } satisfies HallOfFameResponse);
       response.headers.set("Cache-Control", "private, no-store");
       applyRateLimitHeaders(response.headers, rateLimitResult);

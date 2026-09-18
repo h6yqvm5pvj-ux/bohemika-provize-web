@@ -204,7 +204,7 @@
   background: white;
   box-shadow: none;
   transform: none;
-  padding: 17px;
+  padding: 12px;
   align-self: start;
 }
 .form .risk[data-active=true] {
@@ -213,7 +213,7 @@
   box-shadow: inset 3px 0 #a483c0;
 }
 .risk > button {
-  gap: 10px;
+  gap: 8px;
 }
 .risk > button > div:first-child {
   width: 22px;
@@ -224,8 +224,8 @@
   --tw-ring-shadow: 0 0 #0000;
 }
 .risk > button > div:nth-child(2) {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: #f4edf9;
   border: 0;
   color: #936faf;
@@ -254,6 +254,10 @@
   background: transparent;
   padding: 0;
   box-shadow: none;
+}
+.form .risk input[inputmode="numeric"] {
+  min-height: 36px;
+  padding-block: 6px;
 }
 .results {
   max-width: 1100px;
@@ -357,7 +361,7 @@
     display: none;
   }
   .form .risk {
-    padding: 13px;
+    padding: 12px;
   }
   .risk > button > span {
     display: none;

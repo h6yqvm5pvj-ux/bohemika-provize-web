@@ -2,12 +2,27 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hallParticipantId } from "@/lib/server/hallOfFame";
 
-const mocks = vi.hoisted(() => ({ verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn(), impersonation: vi.fn() }));
+const mocks = vi.hoisted(() => ({ projections: new Map<string, Record<string, unknown>>(), verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn(), select: vi.fn(), impersonation: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verify },
   adminDb: {
-    collection: () => ({ select: () => ({ get: mocks.users }) }),
-    collectionGroup: () => ({ where: (_field: string, _op: string, owners: string[]) => ({ get: () => mocks.group(owners) }) }),
+    collection: (name: string) => ({ select: () => ({ get: mocks.users }), doc: (id: string) => ({ path: `${name}/${id}` }) }),
+    getAll: async (...refs: { path: string }[]) => refs.map(ref => { const data = mocks.projections.get(ref.path); return { ref, data: () => data }; }),
+    runTransaction: async (run: (tx: unknown) => Promise<void>) => run({
+      getAll: async (...refs: { path: string }[]) => refs.map(ref => ({ ref, data: () => mocks.projections.get(ref.path) })),
+      set: (ref: { path: string }, data: Record<string, unknown>) => mocks.projections.set(ref.path, data),
+    }),
+    collectionGroup: () => ({ where: (_field: string, _op: string, owners: string[]) => ({
+      select: (...fields: string[]) => {
+        mocks.select(...fields);
+        return { get: async () => {
+          const snapshot = await mocks.group(owners);
+          return { docs: snapshot.docs.map((doc: { data: () => Record<string, unknown> }) => ({
+            ...doc, data: () => Object.fromEntries(fields.map((field) => [field, doc.data()[field]])),
+          })) };
+        } };
+      },
+    }) }),
   },
 }));
 vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorAccessError: mocks.access, getAdvisorSetupError: mocks.setup }));
@@ -23,6 +38,7 @@ const contract = (id: string, owner: string, signedDate: string | null, amount: 
 });
 
 beforeEach(() => {
+  mocks.projections.clear();
   vi.resetModules(); vi.clearAllMocks(); vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-14T10:00:00Z"));
   mocks.verify.mockResolvedValue({ email: "a@example.test", uid: "ordinary-advisor" });
@@ -35,7 +51,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("global hall API access and periods", () => {
-  it("includes all business products in property totals and ranks, respecting payment frequency and periods", async () => {
+  it("ranks all business products separately from property, respecting payment frequency and periods", async () => {
     mocks.group.mockResolvedValue({ docs: [
       contract("property-a", "a@example.test", "2026-09-01", 12000, { productKey: "domex" }),
       contract("simplex-a", "a@example.test", "2026-09-02", 1000, { productKey: "cppsimplex", frequencyRaw: "monthly" }),
@@ -47,21 +63,83 @@ describe("global hall API access and periods", () => {
     ] });
     const { GET } = await import("./route");
     const month = await (await GET(request())).json();
-    expect(month.rankings.property).toEqual([
+    expect(month.rankings.business).toEqual([
       expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 1 }),
-      expect.objectContaining({ name: "Anna", annualPremium: 24000, contracts: 2, rank: 2 }),
+      expect.objectContaining({ name: "Anna", annualPremium: 12000, contracts: 1, rank: 2 }),
     ]);
+    expect(month.rankings.property).toEqual([expect.objectContaining({ name: "Anna", annualPremium: 12000, contracts: 1, rank: 1 })]);
     for (const period of ["3months", "6months", "year"]) {
       const body = await (await GET(request(`hallOfFame&period=${period}`))).json();
-      expect(body.rankings.property).toEqual([
-        expect.objectContaining({ name: "Anna", annualPremium: 34000, contracts: 3, rank: 1 }),
-        expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 2 }),
+      expect(body.rankings.business).toEqual([
+        expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 1 }),
+        expect.objectContaining({ name: "Anna", annualPremium: 22000, contracts: 2, rank: 2 }),
       ]);
+      expect(body.rankings.property).toEqual(month.rankings.property);
       expect(body.rankings.life).toEqual([]);
       expect(body.rankings.auto).toEqual([]);
       expect(body.rankings.gold).toEqual([]);
     }
     expect(mocks.group).toHaveBeenCalledOnce();
+  });
+
+  it("returns every period in one authorized response without duplicating the selected rankings", async () => {
+    mocks.group.mockResolvedValue({ docs: [
+      contract("month", "a@example.test", "2026-09-01", 1000),
+      contract("quarter", "a@example.test", "2026-07-01", 2000),
+      contract("half", "a@example.test", "2026-04-01", 3000),
+      contract("year", "a@example.test", "2025-10-01", 4000),
+    ] });
+    const { GET } = await import("./route");
+    const response = await GET(request("hallOfFame&includePeriods=true"));
+    const body = await response.json();
+    expect(body.currentUserId).toBe(hallParticipantId("a@example.test"));
+    expect(Object.keys(body.periods)).toEqual(["month", "3months", "6months", "year"]);
+    expect(Object.values(body.periods).map((value: any) => value.rankings.life[0].contracts)).toEqual([1, 2, 3, 4]);
+    expect(body.rankings).toBeUndefined();
+    expect(JSON.stringify(body)).not.toMatch(/@example.test|private-phone|managerEmail|userEmail/);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(mocks.users).toHaveBeenCalledOnce();
+    expect(mocks.group).toHaveBeenCalledOnce();
+    expect(mocks.select).toHaveBeenCalledExactlyOnceWith("userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType");
+    mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });
+    expect((await GET(request("hallOfFame&includePeriods=true"))).status).toBe(403);
+    expect(mocks.users).toHaveBeenCalledOnce();
+  });
+
+  it("loads batches concurrently with a bound and shares the scan between simultaneous visitors", async () => {
+    const owners = Array.from({ length: 95 }, (_, index) => `advisor${index}@example.test`);
+    mocks.users.mockResolvedValue({ docs: owners.map((email) => profile(email, email.split("@")[0])) });
+    const pending: (() => void)[] = [];
+    mocks.group.mockImplementation((batch: string[]) => new Promise((resolve) => {
+      pending.push(() => resolve({ docs: batch.map((owner) => contract(owner, owner, "2026-09-01", 1000)) }));
+    }));
+    const { GET } = await import("./route");
+    const first = GET(request());
+    const second = GET(request("hallOfFame&includePeriods=true"));
+    await vi.waitFor(() => expect(mocks.group).toHaveBeenCalledTimes(8));
+    expect(mocks.users).toHaveBeenCalledOnce();
+    pending.shift()!();
+    await vi.waitFor(() => expect(mocks.group).toHaveBeenCalledTimes(9));
+    expect(pending).toHaveLength(8);
+    pending.shift()!();
+    await vi.waitFor(() => expect(mocks.group).toHaveBeenCalledTimes(10));
+    pending.splice(0).forEach((resolve) => resolve());
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+    expect((await firstResponse.json()).rankings.life).toHaveLength(95);
+    expect((await secondResponse.json()).periods.year.rankings.life).toHaveLength(95);
+    const batches = mocks.group.mock.calls.map(([batch]) => batch as string[]);
+    expect(batches.every((batch) => batch.length <= 10)).toBe(true);
+    expect(batches.flat()).toEqual(owners);
+  });
+
+  it("retries a failed scan without caching partial rankings", async () => {
+    mocks.group.mockRejectedValueOnce(new Error("Temporary read failure"));
+    const { GET } = await import("./route");
+    expect((await GET(request())).status).toBe(500);
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    expect((await response.json()).rankings.life).toHaveLength(2);
+    expect(mocks.group).toHaveBeenCalledTimes(2);
   });
 
   it("lets an ordinary adviser see another team's result and keeps cached requester identity separate", async () => {
@@ -81,6 +159,16 @@ describe("global hall API access and periods", () => {
     expect(next.currentUserId).toBe(hallParticipantId("other-team@example.test"));
     expect(mocks.users).toHaveBeenCalledTimes(1);
     expect(mocks.group).toHaveBeenCalledTimes(1);
+  });
+  it("reuses durable aggregates after a server restart, with fresh member names", async () => {
+    const first = await import("./route");
+    await first.GET(request());
+    vi.resetModules();
+    mocks.users.mockResolvedValue({ docs: [profile("a@example.test", "Nové jméno"), profile("other-team@example.test", "Boris")] });
+    const cold = await import("./route");
+    const body = await (await cold.GET(request())).json();
+    expect(body.rankings.life.map((row: { name: string }) => row.name)).toContain("Nové jméno");
+    expect(mocks.group).toHaveBeenCalledOnce();
   });
   it("rejects tipsters from the hall and team details before loading rankings", async () => {
     mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });

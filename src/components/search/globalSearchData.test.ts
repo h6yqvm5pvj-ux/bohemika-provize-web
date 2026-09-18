@@ -55,9 +55,18 @@ describe("globalSearchData", () => {
     expect(vehicleKeys).toContain("proklepka-vozidla");
     expect(vehicleKeys).toContain("nahrat-tachometr");
     expect(disabilityKeys).toContain("nastaveni-zivotniho-pojisteni");
+    expect(disabilityKeys).toContain("invalidni-duchod");
     expect(comparisonKeys).toContain(
       "cestovni-pojisteni-cpp-vs-kooperativa",
     );
     expect(comparisonKeys).toContain("neon-life-vs-metlife-oneguard");
+  });
+
+  it("najde novou kalkulačku důchodu podle názvu i ČSSZ", () => {
+    for (const query of ["invalidni duchod", "cssz", "dopoctena doba"]) {
+      expect(findToolSearchResults(query)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: "invalidni-duchod", href: "/pomucky/invalidni-duchod" }),
+      ]));
+    }
   });
 });

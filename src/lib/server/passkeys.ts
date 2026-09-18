@@ -15,6 +15,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import type { NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { ACCOUNT_BLOCKED_MESSAGE, hasTotpFactor } from "@/lib/accountSecurity";
 
 const PASSKEY_CREDENTIALS_COLLECTION = "passkeyCredentials";
 const PASSKEY_CHALLENGES_COLLECTION = "_passkeyChallenges";
@@ -591,7 +592,10 @@ export async function verifyAuthentication(
 
   const authUser = await auth.getUser(credential.uid).catch(() => null);
   if (!authUser || authUser.disabled || normalizeEmail(authUser.email) !== credential.email) {
-    throw new PasskeyError("Uživatel není aktivní.", 403);
+    throw new PasskeyError(ACCOUNT_BLOCKED_MESSAGE, 403);
+  }
+  if (!authUser.emailVerified || !hasTotpFactor(authUser)) {
+    throw new PasskeyError(ACCOUNT_BLOCKED_MESSAGE, 403);
   }
 
   const nowMs = Date.now();

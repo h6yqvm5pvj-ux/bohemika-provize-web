@@ -37,6 +37,7 @@ export type CapabilityEntry = {
   permanentInjury?: {
     progressions: PermanentProgress[];
     thresholds: PermanentStart[];
+    progressionNotes?: Partial<Record<PermanentProgress, string>>;
   };
   dailyAllowance?: {
     starts: DailyStart[];
@@ -77,6 +78,9 @@ export const PRODUCT_CAPABILITIES = {
         permanentInjury: {
           progressions: ["none", "x5", "x10"],
           thresholds: ["from0001", "from10"],
+          progressionNotes: {
+            x10: "Progrese trvalých následků začíná nad 10 % rozsahu poškození.",
+          },
         },
       },
       {
@@ -147,7 +151,7 @@ export const PRODUCT_CAPABILITIES = {
       {
         key: "permanentInjury",
         permanentInjury: {
-          progressions: ["none", "x4", "x10"],
+          progressions: ["x4", "x10"],
           thresholds: ["from0", "from10"],
         },
       },

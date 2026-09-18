@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-09-17T11:49:20.681Z",
+  "encryptedDocuments": 77,
+  "encryptedAttachments": 3,
+  "activeKeyDocuments": 77,
+  "allCheckedContentDecrypted": true,
+  "plaintextWrittenToDisk": false,
+  "plaintextLogged": false,
+  "activeKeyId": "v1",
+  "keyFingerprint": "231f98cf1618ceed6e5c1155b9459e124803cf69d9e60addd043f67b36deb281"
+}

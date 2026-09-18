@@ -1,6 +1,8 @@
 // src/app/page.tsx
 "use client";
 
+import { useMailboxRefresh } from "./posta/useMailboxRefresh";
+
 import homeWidgetStyles from "./home/components/homeWidgets.module.css";
 import { QuickActionsContent } from "./home/components/QuickActionsContent";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
@@ -779,53 +781,22 @@ export default function HomePage() {
     };
   }, [authReady, normalizedEmail, user]);
 
-  useEffect(() => {
-    if (!authReady || !user) {
-      setMailUnreadCount(0);
-      return;
-    }
-
-    let cancelled = false;
+  const refreshMailUnreadCount = useCallback(async () => {
+    const currentUser = auth.currentUser;
     const requestScopeEmail = normalizedEmail;
-    const loadUnreadCount = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-      try {
-        const payload = await fetchAuthedJsonOrThrow<{ unreadCount?: number }>(
-          currentUser,
-          "/api/mailbox?countOnly=1",
-          { method: "GET" }
-        );
-        if (
-          cancelled ||
-          effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
-        ) return;
-        const count = Number(payload?.unreadCount ?? 0);
-        setMailUnreadCount(
-          Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
-        );
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Načtení počtu nepřečtených zpráv selhalo:", error);
-        }
-      }
-    };
+    if (!currentUser || !requestScopeEmail) return;
+    try {
+      const payload = await fetchAuthedJsonOrThrow<{ unreadCount?: number }>(currentUser, "/api/mailbox?countOnly=1", { method: "GET" });
+      if (auth.currentUser?.uid !== currentUser.uid || effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail) return;
+      const count = Number(payload?.unreadCount ?? 0);
+      setMailUnreadCount(Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0);
+    } catch (error) {
+      console.error("Načtení počtu nepřečtených zpráv selhalo:", error);
+    }
+  }, [normalizedEmail]);
+  useMailboxRefresh(authReady && Boolean(user), refreshMailUnreadCount, 45_000);
+  useEffect(() => { if (!user) setMailUnreadCount(0); }, [user]);
 
-    void loadUnreadCount();
-    const intervalId = window.setInterval(() => {
-      void loadUnreadCount();
-    }, 45_000);
-    const onFocus = () => {
-      void loadUnreadCount();
-    };
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [authReady, normalizedEmail, user]);
 
   const pushHomeSettingsToCloud = useCallback(async (payload: {
     homeLayout?: HomeSection[];

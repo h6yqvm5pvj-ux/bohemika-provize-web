@@ -44,13 +44,17 @@ export function resolveSafeLoginNextPath(defaultPath = "/"): string {
   }
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+async function readSessionError(response: Response): Promise<Error> {
   const payload = (await response.json().catch(() => null)) as {
     error?: unknown;
+    code?: unknown;
   } | null;
-  return typeof payload?.error === "string" && payload.error.trim()
+  const message = typeof payload?.error === "string" && payload.error.trim()
     ? payload.error.trim()
     : "Serverovou session se nepodařilo nastavit.";
+  return Object.assign(new Error(message), {
+    code: typeof payload?.code === "string" ? payload.code : undefined,
+  });
 }
 
 export async function createServerSessionFromToken(
@@ -70,7 +74,7 @@ export async function createServerSessionFromToken(
   });
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw await readSessionError(response);
   }
 }
 

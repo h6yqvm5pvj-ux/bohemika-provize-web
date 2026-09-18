@@ -1,0 +1,54 @@
+{
+  "checkedAt": "2026-09-17T12:44:43.507173+00:00",
+  "deploymentStatus": "blocked-pending-user-approval",
+  "productionChangedThisFix": false,
+  "unitTests": {
+    "files": 282,
+    "passed": 4241
+  },
+  "emulatorTests": {
+    "files": 8,
+    "passed": 287
+  },
+  "typescript": "passed",
+  "eslint": {
+    "errors": 0,
+    "preexistingWarnings": 4
+  },
+  "productionBuild": {
+    "status": "passed",
+    "platform": "darwin-arm64",
+    "isolatedSyntheticConfiguration": true,
+    "authProxyManifest": "passed",
+    "linuxCloudBuild": "not-run-upload-rejected"
+  },
+  "localHttpChecks": 7,
+  "diagnostic": "passed",
+  "sourceSha256": {
+    "firestore.rules": "e0d6df50def19a1421a20ebdd09b034f4b449e3a12ae9f632c3643864c5e9bc9",
+    "src/lib/server/tokenRevocation.ts": "5461d8e85fcda1998bdc1249f0861bf56433c5aaf40d563e175df9cd8b70ff31",
+    "src/lib/server/tokenRevocation.test.ts": "15279cb6a8ff2e6bac859e448709449bda8247568487ec975d8a0764046fdba4",
+    "src/lib/server/firebaseAdmin.ts": "fd5181d817c799baa5d0f6e05ece616ba02a09e92c2996cf9c247c28d136d72d",
+    "src/lib/server/activeAppSession.ts": "acd25c1eb8b555336d7c65e336881b4541ae6250b42ffefdb325d45a9e25d234",
+    "src/lib/server/appSessionRegistry.ts": "3d52f818a4e19cd0323538b3f0c453f4682cb77e77614835920104e4a3506534",
+    "src/lib/server/appSessionRegistry.security.test.ts": "c2182ccca9bfd2870c1344fe68a5a06b89cd49f6244eb9ce7d9b17b66544c9fa",
+    "src/lib/appSession.ts": "80511668e3640f3ef698c45c921e47028ab59fe073d699c6799d245fdd8bcd58",
+    "src/app/api/auth/session/route.ts": "5aa5041c17dab748f5ee5ef55a77502fca1024730bdafe80e98c9cbea713b7f4",
+    "src/app/api/admin/users/security/route.ts": "433314d17e8c7890b72535d4f4842a23c025bb23fbc724fc78ae55de0b2ff929",
+    "src/lib/server/passwordReset.ts": "bddeb32aabad8bdcd1bd0389a4228f80a9f1eb7da0e338132cc8b41e42937168",
+    "src/app/api/auth/password-reset/confirm/route.ts": "6c2a99f8c298dc14a2dc6257ecfdf1c7199541b66215a229aede9703dca8d16c",
+    "src/app/api/auth/password-reset/confirm/route.test.ts": "22560a6268892f04c4341290dc035c2d49a836e939aa12d52f79263f09726fb1",
+    "src/app/lib/passwordReset.ts": "b3507c5410ce017e231ffedf310ba9e91371f7d34230ddc98df63f94128d27ec",
+    "src/app/ucet/akce/AuthEmailActionPage.tsx": "47d32f410ddafc84e71aee9f92f61f9bb217874c390110d4eb1d23f1f8c3456e",
+    "src/lib/server/appSessionSecurity.test.ts": "599135316e19a25df2b3afae5f167b81e098b93e40b407201a34fcd10b0d9cc4",
+    "tests/firestore/security.rules.test.ts": "03dd9a990a63df0ebd48b55bf3da936f556e6c9431410842c39e2c912b4eba35",
+    "tests/firestore/tokenRevocation.test.ts": "75047516b5ac291950546d7d80b0e4983fc8f341d94909210f1ff50051c09696",
+    "tests/firestore/passwordChange.test.ts": "df26ada203a630bd4031f0ea59f525a632da800e2aa36557b9e3ce8b0952fe06",
+    "scripts/auth-security.mjs": "d220981a3075d33618a6c453c75d220541b1438f218d5f3ab157f92667ed09a4",
+    "scripts/audit-token-revocation.mjs": "cba09b2810fb6fd640008cb5cdea5728349afa2dbba934f32da76e6c6696d39e",
+    "scripts/revoke-account-sessions.mjs": "b7b33fce1d76d3de22ba9b9e52679fa4269ad2f85bd086a37d3821d9aea924fd",
+    "scripts/account-recovery.mjs": "895376961244227ac2b8a515eba73f774f8112cbbebbbf425a776f0ed61f2b70",
+    "scripts/security-remediation.mjs": "790510d4f4f3715b80aed9b6ccd25f47fc99144fd067b5d97a2507d2813dc43d",
+    "scripts/set-admin-claim.mjs": "78e4407dd45ad68197ceffd76c603357ec1b3a48224e803ece64990178496d69"
+  }
+}

@@ -57,6 +57,16 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
     fileName: "koopprijem.jpg",
     contentType: "image/jpeg",
   },
+  "life-record-health-assessment-example": {
+    fileName: "oceneni-zdravotniho-stavu.png",
+    contentType: "image/png",
+    localPath: "zaznam-zivot/oceneni-zdravotniho-stavu.png",
+  },
+  "life-record-discrepancies-example": {
+    fileName: "vypis-nesrovnalosti.png",
+    contentType: "image/png",
+    localPath: "zaznam-zivot/vypis-nesrovnalosti.png",
+  },
   "metlife-vypoved": {
     fileName: "metlifevypoved.pdf",
     contentType: "application/pdf",

@@ -154,6 +154,7 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
     "dluhy",
     "rizika",
   ],
+  "invalidni-duchod": ["invalidita", "důchod", "kalkulačka", "čssz", "státní", "penze", "příjem", "dopočtená doba"],
   "srovnavac-trvalych-nasledku": [
     "úraz",
     "progrese",
@@ -403,6 +404,17 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     description:
       "Stepper pro nastavení smrti, invalidity a pracovní neschopnosti podle příjmu, závazků a dluhů.",
     href: "/pomucky/nastaveni-zivotniho-pojisteni",
+  },
+  {
+    key: "invalidni-duchod",
+    category: "Životní pojištění",
+    title: "Kalkulačka invalidního důchodu",
+    description: "Orientační výpočet státního důchodu pro I., II. a III. stupeň invalidity podle pravidel roku 2026.",
+    href: "/pomucky/invalidni-duchod",
+    news: {
+      kind: "new",
+      summary: "Porovnej všechny tři stupně invalidity, včetně minimálních částek a rozpisu výpočtu pro rok 2026.",
+    },
   },
   {
     key: "srovnavac-trvalych-nasledku",

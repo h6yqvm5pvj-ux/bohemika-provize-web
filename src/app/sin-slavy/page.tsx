@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDown, ArrowLeft, CalendarDays, CarFront, Check, ChevronDown, Crown, Globe2, Home, Medal, Search, ShieldCheck, Sparkles, Trophy, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, BriefcaseBusiness, CalendarDays, CarFront, Check, ChevronDown, Crown, Globe2, Home, Medal, Search, ShieldCheck, Sparkles, Trophy, X } from "lucide-react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { AppLayout } from "@/components/AppLayout";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
@@ -11,7 +11,7 @@ import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { formatMoney } from "@/app/lib/formatters";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
-import type { HallCategory, HallOfFameResponse, HallPeriod, HallRow } from "./hallOfFame.types";
+import type { HallCategory, HallOfFamePeriodsResponse, HallPeriod, HallRow } from "./hallOfFame.types";
 import styles from "./hallOfFame.module.css";
 import { HallOfFameLoader } from "./HallOfFameLoader";
 
@@ -19,6 +19,7 @@ const CATEGORIES = [
   { key: "life", label: "Životní pojištění", icon: ShieldCheck },
   { key: "auto", label: "Auto", icon: CarFront },
   { key: "property", label: "Majetek a odpovědnost", icon: Home },
+  { key: "business", label: "Podnikatelé", icon: BriefcaseBusiness },
   { key: "gold", label: "Zlato", icon: Sparkles },
 ] as const;
 const PERIODS: { key: HallPeriod; label: string }[] = [
@@ -60,7 +61,7 @@ export default function HallOfFamePage() {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hall, setHall] = useState<HallOfFameResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<HallOfFamePeriodsResponse | null>(null);
   const [retry, setRetry] = useState(0);
   const [activeCategory, setActiveCategory] = useState<HallCategory>("life");
   const [period, setPeriod] = useState<HallPeriod>("month");
@@ -69,20 +70,21 @@ export default function HallOfFamePage() {
   const [locateRequest, setLocateRequest] = useState(0);
   const locatePending = useRef(false);
   const effectiveEmail = useEffectiveUserEmail(authUser?.email);
+  const hall = useMemo(() => snapshot ? { ...snapshot.periods[period], currentUserId: snapshot.currentUserId } : null, [snapshot, period]);
 
   useEffect(() => onAuthStateChanged(auth, (user) => {
     setAuthUser(user);
-    if (!user) { setLoading(false); setHall(null); }
+    if (!user) { setLoading(false); setSnapshot(null); }
   }), []);
 
   useEffect(() => {
     let cancelled = false;
     if (!authUser || !effectiveEmail) return;
     const load = async () => {
-      setLoading(true); setError(null); setHall(null);
+      setLoading(true); setError(null); setSnapshot(null);
       try {
-        const payload = await fetchAuthedJsonOrThrow<HallOfFameResponse>(authUser, `/api/team-overview?action=hallOfFame&period=${period}`);
-        if (!cancelled) setHall(payload);
+        const payload = await fetchAuthedJsonOrThrow<HallOfFamePeriodsResponse>(authUser, "/api/team-overview?action=hallOfFame&includePeriods=true");
+        if (!cancelled) setSnapshot(payload);
       } catch {
         if (!cancelled) setError("Síň slávy se nepodařilo načíst.");
       } finally {
@@ -91,7 +93,7 @@ export default function HallOfFamePage() {
     };
     void load();
     return () => { cancelled = true; };
-  }, [authUser, effectiveEmail, retry, period]);
+  }, [authUser, effectiveEmail, retry]);
 
   const rankedRows = useMemo(() => hall?.rankings[activeCategory] ?? [], [hall, activeCategory]);
   const filteredRows = useMemo(() => rankedRows.filter((row) => normalize(row.name).includes(normalize(query))), [rankedRows, query]);

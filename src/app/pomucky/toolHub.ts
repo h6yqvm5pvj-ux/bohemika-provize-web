@@ -25,6 +25,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "projekce-vykonu",
   "cestovni-pojisteni-cpp-vs-kooperativa",
   "nastaveni-zivotniho-pojisteni",
+  "invalidni-duchod",
   "srovnavac-trvalych-nasledku",
   "srovnavac-pracovni-neschopnosti",
   "neon-life-vs-metlife-oneguard",

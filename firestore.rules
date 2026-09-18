@@ -2,8 +2,34 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // ---------- Helpers ----------
+    function validRevocation(state) {
+      return state.pendingOperations is map && state.pendingOperations.size() == 0
+        && state.validAfterSeconds is int && state.validAfterSeconds >= 0
+        && state.generation is string && state.generation.matches("^[a-f0-9-]{36}$")
+        && request.auth.token.auth_time is int
+        && request.auth.token.auth_time >= state.validAfterSeconds
+        && (request.auth.token.firebase.sign_in_provider != "custom"
+          || request.auth.token.get("app_auth_generation", "") == state.generation);
+    }
+
+    function hasUnrevokedAuthentication() {
+      let ref = /databases/$(database)/documents/accountBlocks/$(request.auth.uid);
+      // Persistent block fields always deny. A revocation-only record permits
+      // fresh proof. One shared document preserves the hierarchy's read budget.
+      return !exists(ref) || (get(ref).data.keys().hasOnly(["revocation"])
+        && validRevocation(get(ref).data.revocation));
+    }
+
     function isSignedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.token.get("email_verified", false) == true
+        && (
+          request.auth.token.firebase.get("sign_in_second_factor", "") == "totp"
+          || (request.auth.token.firebase.sign_in_provider == "custom"
+            && request.auth.token.get("app_totp_enrolled", false) == true)
+        )
+        // Server-only blocks also invalidate previously issued ID tokens.
+        && hasUnrevokedAuthentication();
     }
 
     function cleanEmail(email) {
@@ -15,8 +41,10 @@ service cloud.firestore {
       return (c is string) ? c.lower() : "";
     }
 
+    // Identity/role helpers rely on isSignedIn() at every allow boundary below.
     function authEmail() {
-      return isSignedIn() ? normEmail(request.auth.token.email) : null;
+      return request.auth != null && request.auth.token.email is string
+        && request.auth.token.email.matches("^[^/]+$") ? request.auth.token.email.lower() : null;
     }
 
     // `admin` also marks support accounts; only admin/owner may use full access.
@@ -40,7 +68,7 @@ service cloud.firestore {
     }
 
     function authUid() {
-      return isSignedIn() ? request.auth.uid : null;
+      return request.auth != null ? request.auth.uid : null;
     }
 
     function isOwnerUid(uid) {
@@ -49,14 +77,37 @@ service cloud.firestore {
 
     // Vrátí manažera daného uživatele (pokud existuje), jinak prázdný string.
     function managerEmailOf(email) {
-      let clean = normEmail(email);
-      let safe = clean == "" ? "__missing__" : clean;
-      let ref = /databases/$(database)/documents/users/$(safe);
-      let snap = get(ref);
-      return clean != ""
-        && snap.data is map
-        ? normEmail(snap.data.managerEmail)
-        : "";
+      // Callers supply a normalized, nonempty address. Parent links are server
+      // controlled; a missing/malformed link denies access. Reference the prior
+      // lookup only once here to avoid exponential expression expansion.
+      return get(/databases/$(database)/documents/users/$(email)).data.get("managerEmail", "").lower();
+    }
+
+    // Pass each parent as a function argument. Deeply reused let expressions
+    // can expand past the rules expression limit even when document reads cache.
+    function managerChainWithin1(current, target) {
+      return (current == target);
+    }
+    function managerChainWithin2(current, target) {
+      return (current == target || managerChainWithin1(managerEmailOf(current), target));
+    }
+    function managerChainWithin3(current, target) {
+      return (current == target || managerChainWithin2(managerEmailOf(current), target));
+    }
+    function managerChainWithin4(current, target) {
+      return (current == target || managerChainWithin3(managerEmailOf(current), target));
+    }
+    function managerChainWithin5(current, target) {
+      return (current == target || managerChainWithin4(managerEmailOf(current), target));
+    }
+    function managerChainWithin6(current, target) {
+      return (current == target || managerChainWithin5(managerEmailOf(current), target));
+    }
+    function managerChainWithin7(current, target) {
+      return (current == target || managerChainWithin6(managerEmailOf(current), target));
+    }
+    function managerChainContains(current, target) {
+      return (current == target || managerChainWithin7(managerEmailOf(current), target));
     }
 
     function isDirectManagerOfUserResource() {
@@ -70,42 +121,18 @@ service cloud.firestore {
 
     function isManagerOfUserResource(userEmail) {
       let me = authEmail();
-      let m1 = resource != null && resource.data is map
-        ? normEmail(resource.data.managerEmail)
-        : managerEmailOf(userEmail);
-      return me != null
-        && me != ""
-        && (
-          m1 == me ||
-          managerEmailOf(m1) == me ||
-          managerEmailOf(managerEmailOf(m1)) == me ||
-          managerEmailOf(managerEmailOf(managerEmailOf(m1))) == me ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))) == me ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))) == me ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))))) == me ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))))) == me
-        );
+      let first = resource != null && resource.data is map
+        ? resource.data.get("managerEmail", "") : managerEmailOf(userEmail);
+      return me is string && me != "" && normEmail(first) != "" && managerChainContains(normEmail(first), me);
     }
 
-    // Podřízený může číst veřejný profil svého nadřízeného (a nadřízených nad ním),
-    // aby šlo při ukládání smlouvy dopočítat managerChain / meziprovize.
+    // Public manager profiles are needed to calculate the stored manager chain.
     function isSubordinateOfUserResource(userEmail) {
       let me = authEmail();
       let target = normEmail(userEmail);
-      let m1 = managerEmailOf(me);
-      return me != null
-        && me != ""
-        && target != ""
-        && (
-          m1 == target ||
-          managerEmailOf(m1) == target ||
-          managerEmailOf(managerEmailOf(m1)) == target ||
-          managerEmailOf(managerEmailOf(managerEmailOf(m1))) == target ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))) == target ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))) == target ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1)))))) == target ||
-          managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(managerEmailOf(m1))))))) == target
-        );
+      let first = managerEmailOf(request.auth.token.email.lower());
+      return me is string && me != "" && target != ""
+        && first != "" && managerChainContains(first, target);
     }
 
     function isAuthUsersLegacyProfileDoc() {
@@ -113,7 +140,7 @@ service cloud.firestore {
         && resource.data is map
         && (
           isAuthEmail(resource.data.email)
-          || isOwnerUid(resource.data.userId)
+          || isOwnerUid(resource.data.get("userId", ""))
         );
     }
 
@@ -180,59 +207,38 @@ service cloud.firestore {
 
     // čitelnost smlouvy podle uložených údajů (autor, manažeři z chainu/override, manažer snapshot)
     function canReadContractDoc(doc) {
-      return isContractOwnerData(doc)
-        || isAuthEmail(doc.managerEmailSnapshot)
-        || isAuthEmail(chainEmail(doc, 0))
-        || isAuthEmail(chainEmail(doc, 1))
-        || isAuthEmail(chainEmail(doc, 2))
-        || isAuthEmail(chainEmail(doc, 3))
-        || isAuthEmail(chainEmail(doc, 4))
-        || isAuthEmail(chainEmail(doc, 5))
-        || isAuthEmail(chainEmail(doc, 6))
-        || isAuthEmail(chainEmail(doc, 7))
-        || isAuthEmail(chainEmail(doc, 8))
-        || isAuthEmail(chainEmail(doc, 9))
-        || isAuthEmail(overrideEmail(doc, 0))
-        || isAuthEmail(overrideEmail(doc, 1))
-        || isAuthEmail(overrideEmail(doc, 2))
-        || isAuthEmail(overrideEmail(doc, 3))
-        || isAuthEmail(overrideEmail(doc, 4))
-        || isAuthEmail(overrideEmail(doc, 5))
-        || isAuthEmail(overrideEmail(doc, 6))
-        || isAuthEmail(overrideEmail(doc, 7))
-        || isAuthEmail(overrideEmail(doc, 8))
-        || isAuthEmail(overrideEmail(doc, 9))
-        || isManagerInChain(doc);
+      // Resolve authenticated identity once. Repeating the full revocation check
+      // for every manager can exceed Firestore's expression evaluation limit.
+      let me = authEmail();
+      return me is string && me != "" && doc is map && (
+        normEmail(doc.userEmail) == me
+        || doc.userId == request.auth.uid
+        || normEmail(doc.managerEmailSnapshot) == me
+        || chainEmail(doc, 0) == me
+        || chainEmail(doc, 1) == me
+        || chainEmail(doc, 2) == me
+        || chainEmail(doc, 3) == me
+        || chainEmail(doc, 4) == me
+        || chainEmail(doc, 5) == me
+        || chainEmail(doc, 6) == me
+        || chainEmail(doc, 7) == me
+        || chainEmail(doc, 8) == me
+        || chainEmail(doc, 9) == me
+        || overrideEmail(doc, 0) == me
+        || overrideEmail(doc, 1) == me
+        || overrideEmail(doc, 2) == me
+        || overrideEmail(doc, 3) == me
+        || overrideEmail(doc, 4) == me
+        || overrideEmail(doc, 5) == me
+        || overrideEmail(doc, 6) == me
+        || overrideEmail(doc, 7) == me
+        || overrideEmail(doc, 8) == me
+        || overrideEmail(doc, 9) == me
+      );
     }
 
-    // ověří přístup k dokumentu podle dat v dokumentu (userEmail + manager snapshot/chain)
     function canReadEntryDoc(doc) {
-      return doc != null && (
-        isAuthEmail(doc.userEmail)
-        || isOwnerUid(doc.userId)
-        || isAuthEmail(doc.managerEmailSnapshot)
-        || isAuthEmail(chainEmail(doc, 0))
-        || isAuthEmail(chainEmail(doc, 1))
-        || isAuthEmail(chainEmail(doc, 2))
-        || isAuthEmail(chainEmail(doc, 3))
-        || isAuthEmail(chainEmail(doc, 4))
-        || isAuthEmail(chainEmail(doc, 5))
-        || isAuthEmail(chainEmail(doc, 6))
-        || isAuthEmail(chainEmail(doc, 7))
-        || isAuthEmail(chainEmail(doc, 8))
-        || isAuthEmail(chainEmail(doc, 9))
-        || isAuthEmail(overrideEmail(doc, 0))
-        || isAuthEmail(overrideEmail(doc, 1))
-        || isAuthEmail(overrideEmail(doc, 2))
-        || isAuthEmail(overrideEmail(doc, 3))
-        || isAuthEmail(overrideEmail(doc, 4))
-        || isAuthEmail(overrideEmail(doc, 5))
-        || isAuthEmail(overrideEmail(doc, 6))
-        || isAuthEmail(overrideEmail(doc, 7))
-        || isAuthEmail(overrideEmail(doc, 8))
-        || isAuthEmail(overrideEmail(doc, 9))
-        || isManagerInChain(doc)
-      );
+      return canReadContractDoc(doc);
     }
 
     function isOwnerPublicUpdateAllowed() {
@@ -362,37 +368,37 @@ service cloud.firestore {
 
     // ---------- entries (collectionGroup fallback) ----------
     match /{path=**}/entries/{entryId} {
-      allow read: if isAdmin() || canReadEntryDoc(resource.data);
-      allow create, update, delete: if isAdmin();
+      allow read: if isSignedIn() && (isAdmin() || canReadEntryDoc(resource.data));
+      allow create, update, delete: if isSignedIn() && (isAdmin());
     }
 
     // ---------- users ----------
     match /users/{userEmail} {
       // čtení profilu: já / moji nadřízení / moji podřízení
-      allow read: if isAdmin()
+      allow read: if isSignedIn() && (isAdmin()
                   || isOwner(userEmail)
                   || isAuthUsersLegacyProfileDoc()
                   || isDirectManagerOfUserResource()
                   || isManagerOfUserResource(userEmail)
-                  || isSubordinateOfUserResource(userEmail);
+                  || isSubordinateOfUserResource(userEmail));
       // Account lifecycle, roles and hierarchy are managed through server APIs.
       // Disallow self-delete/recreate so protected fields cannot be stripped.
-      allow create, delete: if isOwnerAdmin();
-      allow update: if (isOwner(userEmail) && isOwnerPublicUpdateAllowed()) || isOwnerAdmin();
+      allow create, delete: if isSignedIn() && (isOwnerAdmin());
+      allow update: if isSignedIn() && ((isOwner(userEmail) && isOwnerPublicUpdateAllowed()) || isOwnerAdmin());
 
       // ---------- entries ----------
       match /entries/{entryId} {
         // čtení povoleno autorovi, jeho nadřízeným (podle snapshotu v dokumentu) a adminu
-        allow read: if isAdmin()
+        allow read: if isSignedIn() && (isAdmin()
                     || isOwner(userEmail)
-                    || canReadEntryDoc(resource.data);
+                    || canReadEntryDoc(resource.data));
         // zápis smluv jen přes backend API (Admin SDK), ne přímo z klienta
-        allow create, update, delete: if isAdmin();
+        allow create, update, delete: if isSignedIn() && (isAdmin());
       }
 
       // ---------- calendarEvents ----------
       match /calendarEvents/{eventId} {
-        allow read, write: if isOwner(userEmail) || isAdmin();
+        allow read, write: if isSignedIn() && (isOwner(userEmail) || isAdmin());
       }
     }
 
@@ -401,31 +407,31 @@ service cloud.firestore {
       // citlivá profilová data:
       // - subscription/admin flagy mění jen admin/backend
       // - owner může měnit pouze push tokeny
-      allow read: if isOwner(userEmail) || isAdmin();
-      allow create, update: if (isOwner(userEmail) && isOwnerPrivateWriteAllowed()) || isOwnerAdmin();
-      allow delete: if isOwnerAdmin();
+      allow read: if isSignedIn() && (isOwner(userEmail) || isAdmin());
+      allow create, update: if isSignedIn() && ((isOwner(userEmail) && isOwnerPrivateWriteAllowed()) || isOwnerAdmin());
+      allow delete: if isSignedIn() && (isOwnerAdmin());
     }
 
     // ---------- userStats ----------
     match /userStats/{ownerEmail} {
       allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
-      allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+      allow create, update, delete: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
 
       match /dailyStats/{dayKey} {
         allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
-        allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+        allow create, update, delete: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
       }
 
       match /monthlySnapshots/{snapId} {
         allow read: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
-        allow create, update, delete: if isOwner(ownerEmail) || isAdmin();
+        allow create, update, delete: if isSignedIn() && (isOwner(ownerEmail) || isAdmin());
       }
     }
 
     // ---------- contracts ----------
     match /contracts/{contractId} {
-      allow read: if isAdmin() || canReadContractDoc(resource.data);
-      allow create, update, delete: if isAdmin();
+      allow read: if isSignedIn() && (isAdmin() || canReadContractDoc(resource.data));
+      allow create, update, delete: if isSignedIn() && (isAdmin());
     }
 
     // ---------- fallback ----------

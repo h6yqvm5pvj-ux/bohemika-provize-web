@@ -2,10 +2,13 @@
 "use client";
 
 import styles from "./record.module.css";
+import compact from "./lifeRecordForm.module.css";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readMeetingRecord, writeMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
+import { getLifeRecordTexts, type ClientGender } from "./lifeRecordTexts";
+import { ClientGenderSelector } from "./ClientGenderSelector";
 import {
   Accessibility,
   AlertTriangle,
@@ -116,11 +119,12 @@ function getBenefitCardIcon(title: string): React.ReactNode {
   return <Shield className="h-4 w-4" />;
 }
 
-const SEGMENTED_CONTROL_CLASS =
-  "inline-flex flex-wrap gap-1 rounded-full border border-violet-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#faf5ff_100%)] p-1 text-[11px] shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_rgba(88,28,135,0.12)] sm:text-xs";
+const SEGMENTED_CONTROL_CLASS = compact.segmentedControl;
 
 export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
   const router = useRouter();
+  const [clientGender, setClientGender] = useState<ClientGender>("male");
+  const texts = getLifeRecordTexts(clientGender);
 
   // --------------------------------------------------
   // ZÁKLAD – SMRT, DOŽITÍ, ZPROŠTĚNÍ, INVALIDITY
@@ -341,6 +345,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
       if (!draft) return;
 
       frameId = window.requestAnimationFrame(() => {
+        setClientGender(draft.clientGender === "female" ? "female" : "male");
         if (typeof draft.deathOn === "boolean") {
           setDeathOn(draft.deathOn);
         }
@@ -669,7 +674,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
   ) => (
     <input
       {...moneyInputProps}
-      className="w-full rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] placeholder:text-slate-400 focus:border-violet-500/80 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+      aria-label={placeholder}
+      className={`${compact.amountInput} rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] placeholder:text-slate-400 focus:border-violet-500/80 focus:outline-none focus:ring-2 focus:ring-violet-500/30`}
       value={value}
       onChange={(e) => onChange(normalizeAmountInput(e.target.value, opts))}
       placeholder={placeholder}
@@ -682,10 +688,10 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
     onChange: (v: string) => void,
     opts?: { min?: number; max?: number }
   ) => (
-    <div className="space-y-1">
-      <p className="text-[11px] sm:text-xs text-slate-900">{label}</p>
+    <label className={compact.amountField}>
+      <span>{label}</span>
       {renderAmountInput(value, onChange, label, opts)}
-    </div>
+    </label>
   );
 
   // Reusable blok pro invaliditu (použijeme 2×)
@@ -711,7 +717,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-4 text-xs sm:text-sm text-slate-800">
+        <div className={compact.fields}>
           {/* Rozsah stupňů */}
           <div className="space-y-1">
             <p className="text-[11px] sm:text-xs text-slate-900">
@@ -767,7 +773,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           </div>
 
           {/* Částky dle zvolených stupňů */}
-          <div className="space-y-3">
+          <div className={compact.amounts}>
             {degrees === "all" && (
               <>
                 {renderLabeledAmountInput(
@@ -836,7 +842,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+        <div className={compact.fields}>
           {renderAmountInput(
             amount,
             setAmount,
@@ -896,8 +902,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
       onToggle={onToggle}
     >
       {enabled && (
-        <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-          {renderAmountInput(amount, setAmount, "Pojistná částka (Kč)")}
+        <div className={compact.fields}>
+          {renderLabeledAmountInput("Pojistná částka (Kč)", amount, setAmount)}
 
           <div className="space-y-1">
             <p className="text-[11px] sm:text-xs text-slate-900">
@@ -995,10 +1001,10 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
         onToggle={onToggle}
       >
         {enabled && (
-          <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-            <div className="space-y-1">
+          <div className={compact.fields}>
+            <div className={`${compact.dailyAmount} ${isOverLimit ? compact.hasWarning : ""}`}>
               <p className="text-[11px] sm:text-xs text-slate-900">Denní dávka (Kč)</p>
-              <div className="relative">
+              <div className={compact.dailyInput}>
                 <input
                   {...moneyInputProps}
                   className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
@@ -1421,6 +1427,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
 
     const payload = {
       savedAt: Date.now(),
+      clientGender,
       hasInvalidity,
       totalInvalidity,
       hasCriticalIllness: ci1On || ci2On,
@@ -1436,6 +1443,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
     if (typeof window !== "undefined") {
       const draft = {
         savedAt: Date.now(),
+        clientGender,
         deathOn,
         deathAmount,
         terminalOn,
@@ -1551,7 +1559,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
     <>
       <div className="space-y-4">
         <section className="overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[0_18px_44px_rgba(42,20,72,0.12)]">
-          <div className="border-b border-violet-100/80 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-violet-100/80 px-4 py-4 sm:flex-nowrap sm:px-5">
+            <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
               Životní pojištění
             </p>
@@ -1559,9 +1568,11 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
               Životní pojištění – přehled sjednávaných krytí
             </h2>
             <p className="mt-1 text-xs sm:text-sm text-slate-600">
-              Zaklikni rizika, která s klientem řešíš, a doplň jejich částky.
+              Zaklikni rizika, která s {texts.clientInstrumental} řešíš, a doplň jejich částky.
               Slouží jako tahák k vyplnění Záznamu z jednání.
             </p>
+            </div>
+            <ClientGenderSelector value={clientGender} onChange={setClientGender} />
           </div>
         </section>
 
@@ -1604,42 +1615,48 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setExtraDeathOn((v) => !v)}
         >
           {extraDeathOn && (
-            <div className="mt-3 space-y-4">
-              <ToggleRow
-                label="Konstantní pojistná částka"
-                checked={extraDeathConstantOn}
-                onChange={setExtraDeathConstantOn}
-              />
-              {extraDeathConstantOn &&
-                renderAmountInput(
-                  extraDeathConstantAmount,
-                  setExtraDeathConstantAmount,
-                  "Částka – konstantní (Kč)"
-                )}
+            <div className={compact.fields}>
+              <div className={compact.toggleAmount}>
+                <ToggleRow
+                  label="Konstantní pojistná částka"
+                  checked={extraDeathConstantOn}
+                  onChange={setExtraDeathConstantOn}
+                />
+                {extraDeathConstantOn &&
+                  renderAmountInput(
+                    extraDeathConstantAmount,
+                    setExtraDeathConstantAmount,
+                    "Částka – konstantní (Kč)"
+                  )}
+              </div>
 
-              <ToggleRow
-                label="Klesající částka"
-                checked={extraDeathDecreasingOn}
-                onChange={setExtraDeathDecreasingOn}
-              />
-              {extraDeathDecreasingOn &&
-                renderAmountInput(
-                  extraDeathDecreasingAmount,
-                  setExtraDeathDecreasingAmount,
-                  "Částka – klesající (Kč)"
-                )}
+              <div className={compact.toggleAmount}>
+                <ToggleRow
+                  label="Klesající částka"
+                  checked={extraDeathDecreasingOn}
+                  onChange={setExtraDeathDecreasingOn}
+                />
+                {extraDeathDecreasingOn &&
+                  renderAmountInput(
+                    extraDeathDecreasingAmount,
+                    setExtraDeathDecreasingAmount,
+                    "Částka – klesající (Kč)"
+                  )}
+              </div>
 
-              <ToggleRow
-                label="Klesající dle úroku z úvěru"
-                checked={extraDeathInterestOn}
-                onChange={setExtraDeathInterestOn}
-              />
-              {extraDeathInterestOn &&
-                renderAmountInput(
-                  extraDeathInterestAmount,
-                  setExtraDeathInterestAmount,
-                  "Částka – dle úroku (Kč)"
-                )}
+              <div className={compact.toggleAmount}>
+                <ToggleRow
+                  label="Klesající dle úroku z úvěru"
+                  checked={extraDeathInterestOn}
+                  onChange={setExtraDeathInterestOn}
+                />
+                {extraDeathInterestOn &&
+                  renderAmountInput(
+                    extraDeathInterestAmount,
+                    setExtraDeathInterestAmount,
+                    "Částka – dle úroku (Kč)"
+                  )}
+              </div>
             </div>
           )}
         </BenefitCard>
@@ -1667,7 +1684,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setWaiverOn((v) => !v)}
         >
           {waiverOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+            <div className={compact.fields}>
               <ToggleRow
                 label="Přiznání invalidity"
                 checked={waiverInvalidityOn}
@@ -1833,7 +1850,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setDeathAccOn((v) => !v)}
         >
           {deathAccOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+            <div className={compact.fields}>
               {renderAmountInput(
                 deathAccAmount,
                 setDeathAccAmount,
@@ -1879,10 +1896,10 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setDailyOn((v) => !v)}
         >
           {dailyOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-              <div className="space-y-1">
+            <div className={compact.fields}>
+              <div className={`${compact.dailyAmount} ${parseAmount(dailyAmount) > 600 ? compact.hasWarning : ""}`}>
                 <p className="text-[11px] sm:text-xs text-slate-900">Denní dávka (Kč)</p>
-                <div className="relative">
+                <div className={compact.dailyInput}>
                   <input
                     {...moneyInputProps}
                     className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${
@@ -1969,7 +1986,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setBodilyOn((v) => !v)}
         >
           {bodilyOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+            <div className={compact.fields}>
               {renderAmountInput(
                 bodilyAmount,
                 setBodilyAmount,
@@ -2038,8 +2055,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setHospitalOn((v) => !v)}
         >
           {hospitalOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
-              <div className="space-y-2">
+            <div className={compact.fields}>
+              <div className={compact.toggleAmount}>
                 <ToggleRow
                   label="Plnění při úrazu"
                   checked={hospitalAccidentOn}
@@ -2051,7 +2068,9 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
                     setHospitalAccidentAmount,
                     "Denní dávka – úraz (Kč)"
                   )}
+              </div>
 
+              <div className={compact.toggleAmount}>
                 <ToggleRow
                   label="Plnění při nemoci"
                   checked={hospitalIllnessOn}
@@ -2097,7 +2116,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setChildrenAccidentOn((v) => !v)}
         >
           {childrenAccidentOn && (
-            <div className="mt-3 space-y-3 text-xs sm:text-sm text-slate-800">
+            <div className={compact.fields}>
               {renderAmountInput(
                 childrenAccidentAmount,
                 setChildrenAccidentAmount,
@@ -2197,7 +2216,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
         <section className="rounded-[22px] border border-violet-200/70 bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)]">
           <div className="space-y-3">
             <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
-              Zákazník má již uzavřenou pojistnou smlouvu týkající se stejného
+              {texts.customerCapitalized} má již uzavřenou pojistnou smlouvu týkající se stejného
               pojistného zájmu
             </div>
             <div className={SEGMENTED_CONTROL_CLASS}>
@@ -2252,9 +2271,9 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
             </div>
 
             <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
-              Výpověď smlouvy z důvodu sjednání nové
+              {texts.terminationLabel}
             </div>
-            <div className={SEGMENTED_CONTROL_CLASS}>
+            <div role="group" aria-label={texts.terminationLabel} className={SEGMENTED_CONTROL_CLASS}>
               <ChipButton
                 active={isContractTerminationDueToNewOne === "yes"}
                 onClick={() => setIsContractTerminationDueToNewOne("yes")}
@@ -2443,11 +2462,7 @@ function BenefitCard({
       </button>
 
       {enabled && children && (
-        <div className="mt-4 border-t border-violet-100 pt-4">
-          <div className="rounded-2xl border border-violet-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] p-3 shadow-[0_6px_18px_rgba(42,20,72,0.06)] [&>*:first-child]:mt-0">
-            {children}
-          </div>
-        </div>
+        <div className={compact.cardBody}>{children}</div>
       )}
     </section>
   );
@@ -2461,8 +2476,8 @@ type ToggleRowProps = {
 
 function ToggleRow({ label, checked, onChange }: ToggleRowProps) {
   return (
-    <label className="flex items-center justify-between gap-3">
-      <span className="text-xs sm:text-sm font-medium text-slate-700">{label}</span>
+    <label className={compact.toggleRow}>
+      <span className="text-xs font-medium text-slate-700">{label}</span>
       <button
         type="button"
         onClick={() => onChange(!checked)}
@@ -2497,7 +2512,7 @@ function ChipButton({ active, children, onClick }: ChipButtonProps) {
       aria-pressed={active}
       type="button"
       onClick={onClick}
-      className={`whitespace-nowrap rounded-full px-3.5 py-1.5 font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 ${
+      className={`whitespace-nowrap rounded-full px-2.5 py-1.5 font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35 ${
         active
           ? "bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] !text-white shadow-[0_7px_14px_rgba(109,40,217,0.28)]"
           : "text-violet-900 hover:bg-white hover:text-violet-950 hover:shadow-[0_5px_12px_rgba(88,28,135,0.14)]"

@@ -92,6 +92,8 @@ import type {
   UserSearchResponse,
 } from "./postaTypes";
 import styles from "./postaWall.module.css";
+import { subscribeMailboxStream } from "./mailboxStream";
+import { useMailboxRefresh } from "./useMailboxRefresh";
 
 type MailboxDisplayRow =
   | {
@@ -654,40 +656,45 @@ export default function PostaPage() {
     setPreviewAttachmentBlobUrls({});
   }, [effectiveEmail]);
 
-  const loadMailbox = useCallback(async (options?: { silent?: boolean }) => {
+  const mailboxRequestRef = useRef<{ key: string; promise: Promise<void>; queued: boolean } | null>(null);
+  const loadedMailboxKeyRef = useRef<string | null>(null);
+  const loadMailbox = useCallback((options?: { silent?: boolean; queue?: boolean }): Promise<void> => {
     const currentUser = auth.currentUser;
     const scopeEmail = effectiveEmail;
-    if (!currentUser || !scopeEmail) return;
-    const sequence = ++mailboxLoadSequenceRef.current;
-    if (!options?.silent) {
-      setLoading(true);
-      setError(null);
+    if (!currentUser || !scopeEmail) return Promise.resolve();
+    const requestKey = `${currentUser.uid}:${scopeEmail}`;
+    const existing = mailboxRequestRef.current;
+    if (existing?.key === requestKey) {
+      // Mutations and realtime events arriving during a read need one follow-up.
+      // Poll/focus refreshes can share the read that is already in progress.
+      if (options?.queue !== false) existing.queued = true;
+      return existing.promise;
     }
-    try {
-      const data = await fetchAuthedJsonOrThrow<MailboxResponse>(
-        currentUser,
-        "/api/mailbox?limit=80",
-        { method: "GET" }
-      );
-      if (
-        effectiveUserEmail(auth.currentUser?.email) !== scopeEmail ||
-        sequence !== mailboxLoadSequenceRef.current
-      ) return;
-      setItems(Array.isArray(data.items) ? data.items : []);
-      setUnreadCount(
-        typeof data.unreadCount === "number" && Number.isFinite(data.unreadCount)
-          ? Math.max(0, Math.floor(data.unreadCount))
-          : 0
-      );
-    } catch (err: any) {
-      if (!options?.silent && effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
-        setError(err?.message || "Poštu se nepodařilo načíst.");
-      }
-    } finally {
-      if (!options?.silent && effectiveUserEmail(auth.currentUser?.email) === scopeEmail) {
-        setLoading(false);
-      }
-    }
+    const request = { key: requestKey, queued: false, promise: Promise.resolve() };
+    const isCurrent = () => auth.currentUser?.uid === currentUser.uid && effectiveUserEmail(auth.currentUser?.email) === scopeEmail;
+    request.promise = (async () => {
+      const sequence = ++mailboxLoadSequenceRef.current;
+      if (!options?.silent) { setLoading(true); setError(null); }
+      do {
+        request.queued = false;
+        try {
+          const data = await fetchAuthedJsonOrThrow<MailboxResponse>(currentUser, "/api/mailbox?limit=80", { method: "GET" });
+          if (!isCurrent() || sequence !== mailboxLoadSequenceRef.current) return;
+          loadedMailboxKeyRef.current = requestKey;
+          setError(null);
+          setLoading(false);
+          setItems(Array.isArray(data.items) ? data.items : []);
+          setUnreadCount(typeof data.unreadCount === "number" && Number.isFinite(data.unreadCount) ? Math.max(0, Math.floor(data.unreadCount)) : 0);
+        } catch (err: any) {
+          if (!options?.silent && isCurrent()) setError(err?.message || "Poštu se nepodařilo načíst.");
+        } finally {
+          if (!options?.silent && isCurrent()) setLoading(false);
+        }
+      } while (request.queued && isCurrent());
+    })();
+    mailboxRequestRef.current = request;
+    void request.promise.finally(() => { if (mailboxRequestRef.current === request) mailboxRequestRef.current = null; });
+    return request.promise;
   }, [effectiveEmail]);
 
   const mailboxScopeIsCurrent = useCallback(
@@ -776,91 +783,17 @@ export default function PostaPage() {
     }
   }, [effectiveEmail]);
 
+  const refreshMailbox = useCallback(() => loadMailbox({
+    silent: loadedMailboxKeyRef.current === `${auth.currentUser?.uid}:${effectiveEmail}`, queue: false,
+  }), [effectiveEmail, loadMailbox]);
+  useMailboxRefresh(authReady && Boolean(user), refreshMailbox);
   useEffect(() => {
-    if (!authReady || !user) {
-      if (authReady) setLoading(false);
-      return;
-    }
-    void loadMailbox();
-
-    const intervalId = window.setInterval(() => {
-      void loadMailbox({ silent: true });
-    }, 120_000);
-
-    const onFocus = () => {
-      void loadMailbox({ silent: true });
-    };
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [authReady, effectiveEmail, loadMailbox, user]);
+    if (authReady && !user) setLoading(false);
+  }, [authReady, user]);
 
   useEffect(() => {
     if (!authReady || !user || !effectiveEmail) return;
-    let stopped = false;
-    let abortController: AbortController | null = null;
-    let reconnectTimer: number | null = null;
-    let refreshTimer: number | null = null;
-
-    const scheduleRefresh = () => {
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
-        void loadMailbox({ silent: true });
-      }, 120);
-    };
-
-    const connect = async () => {
-      if (stopped) return;
-      abortController = new AbortController();
-      try {
-        const request = async (forceRefresh: boolean) => {
-          const token = await user.getIdToken(forceRefresh);
-          return fetch("/api/mailbox/stream", {
-            method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
-            cache: "no-store",
-            signal: abortController?.signal,
-          });
-        };
-        let response = await request(false);
-        if (response.status === 401) response = await request(true);
-        if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (!stopped) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split("\n\n");
-          buffer = events.pop() ?? "";
-          events.forEach((event) => {
-            if (event.split("\n").some((line) => line.trim() === "event: mailbox")) {
-              scheduleRefresh();
-            }
-          });
-        }
-      } catch (streamError) {
-        if (!stopped && !(streamError instanceof DOMException && streamError.name === "AbortError")) {
-          console.warn("Realtime pošty se znovu připojí:", streamError);
-        }
-      } finally {
-        if (!stopped) reconnectTimer = window.setTimeout(() => void connect(), 1500);
-      }
-    };
-
-    void connect();
-    return () => {
-      stopped = true;
-      abortController?.abort();
-      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-    };
+    return subscribeMailboxStream(user, () => loadMailbox({ silent: true }));
   }, [authReady, effectiveEmail, loadMailbox, user]);
 
   const receivedItems = useMemo(() => items.filter((item) => !isSentMailboxItem(item)), [items]);

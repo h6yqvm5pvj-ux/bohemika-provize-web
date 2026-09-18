@@ -60,8 +60,9 @@ export async function fetchAuthedJsonOrThrow<T extends JsonRecord = JsonRecord>(
       typeof (data as Record<string, unknown>).error === "string"
         ? ((data as Record<string, unknown>).error as string)
         : null) || `HTTP ${response.status}`;
-    const err = new Error(message) as Error & { status?: number };
+    const err = new Error(message) as Error & { status?: number; code?: string };
     err.status = response.status;
+    if (data && typeof data.code === "string") err.code = data.code;
     throw err;
   }
   return data;

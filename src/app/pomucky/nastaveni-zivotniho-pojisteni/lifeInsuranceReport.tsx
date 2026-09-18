@@ -10,6 +10,8 @@ import { LIFE_INSURANCE_REPORT_STYLES } from "./lifeInsuranceReportStyles";
 import { DISABILITY_PENSION_STATISTICS } from "@/lib/disabilityPensionStatistics";
 import { DISABILITY_PENSION_COPY } from "./disabilityPensionCopy";
 import { DisabilityPensionSource } from "./DisabilityPensionSource";
+import { PersonalPensionSource } from "./PersonalPensionSource";
+import { PENSION_PLAN_COPY } from "./pensionPlanCopy";
 
 const DOCUMENT_COPY = {
   cs: { title: "Návrh pojistného krytí", subtitle: "Životní pojištění", basis: "Podklady pro výpočet", age: "Věk klienta", children: "Počet dětí", debt: "Zůstatek úvěrů", horizon: "Horizont dětí", education: "Studium na dítě měsíčně" },
@@ -27,6 +29,7 @@ export function buildLifeInsuranceReportHtml(data: LifeInsuranceResultData, lang
   const { numbers: n, death, sickLeave, advisorFooter: advisor } = data;
   const copy = PDF_COPY[language], doc = DOCUMENT_COPY[language];
   const pensionCopy = DISABILITY_PENSION_COPY[language];
+  const personalCopy = PENSION_PLAN_COPY[language];
   const money = (value: number | null) => value === null ? "—" : formatPdfMoney(value, language);
   const percent = (value: number) => formatPdfPercent(value, language);
   const variant = INVALIDITY_INVESTMENT_VARIANTS.find(item => item.id === data.invalidityInvestmentVariantId) ?? INVALIDITY_INVESTMENT_VARIANTS[0];
@@ -79,17 +82,20 @@ export function buildLifeInsuranceReportHtml(data: LifeInsuranceResultData, lang
 
     <section className="report-section info-card"><h2 className="section-title"><b>03</b>{copy.disability}<span>{copy.coverageTo65}: {years(n.invalidityYears)}</span>{illustration("independence")}</h2>
       <div className="info-card model-note"><strong>{copy.scenarioLabels[scenario.id]} · {investment ? copy.investmentVariant : copy.insurancePayout}</strong>
-        <span>{copy.coveragePrefix}: {scenario.ratios.map(ratio => percent(ratio * 100)).join(" / ")}{investment ? ` · ${variant.productName} · ${variant.returnLabel}` : ""}</span>
+        <span>{copy.coverageBasis}: {money(Math.max(n.insuredIncome,n.monthlyExpenses))}{investment ? ` · ${variant.productName} · ${variant.returnLabel}` : ""}</span>
+        <p>{copy.variantNote}{!investment && <><br />{copy.insuranceAnnuityNote}</>}</p>
       </div>
-      <table className="product-table info-card"><thead><tr><th>{copy.degreeOfDisability}</th><th>{pensionCopy.average}<small>{pensionCopy.monthly}</small></th><th>{pensionCopy.privateAnnuity}</th><th>{investment ? copy.requiredDeposit : copy.sumWithoutDebt}</th></tr></thead><tbody>
+      <table className="product-table info-card"><thead><tr><th>{copy.degreeOfDisability}</th><th>{data.disabilityPension ? personalCopy.estimate : pensionCopy.average}<small>{pensionCopy.monthly}</small></th><th>{pensionCopy.privateAnnuity}</th><th>{investment ? copy.requiredDeposit : copy.sumWithoutDebt}</th></tr></thead><tbody>
         {data.invalidity.map((item, index) => {
           const min = roundMoney(requiredCapitalForRenta(item.monthlyNeed, n.invalidityMonths, variant.returnRange.max));
           const max = roundMoney(requiredCapitalForRenta(item.monthlyNeed, n.invalidityMonths, variant.returnRange.min));
           const capital = investment ? (min === max ? money(min) : `${money(min)} ${copy.to} ${money(max)}`) : money(item.lumpWithoutDebt);
-          return <tr key={item.label}><td>{copy.degreeLabels[index]}</td><td className="pension-average">{money(DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly)}</td><td>{money(item.monthlyNeed)}<small>{copy.coveragePrefix}: {percent(item.ratio * 100)}</small></td><td>{capital}</td></tr>;
+          return <tr key={item.label}><td>{copy.degreeLabels[index]}</td><td className={data.disabilityPension ? "pension-personal" : "pension-average"}>{money(data.disabilityPension?.result.pensions[index].total ?? DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly)}</td><td>{money(item.monthlyNeed)}<small>{percent(item.ratio*100)}</small></td><td>{capital}{!investment && <small>{money(item.monthlyNeed)} × {n.invalidityMonths} {copy.monthsUnit}</small>}</td></tr>;
         })}
       </tbody></table>
-      <DisabilityPensionSource language={language} className="pension-source info-card" />
+      {data.disabilityPension
+        ? <PersonalPensionSource plan={data.disabilityPension} language={language} className="pension-source info-card" />
+        : <DisabilityPensionSource language={language} className="pension-source info-card" />}
       {investment && <p className="info-card note">{copy.investmentNote} <strong>{variant.productName}: {variant.returnLabel}.</strong></p>}
       {n.totalDebt > 0 && <div className="summary-list loan"><ReportRow label={copy.disabilityLoanTitle} value={money(death.annuityMortgageAmount)} note={`${copy.disabilityLoanNote} ${years(n.mortgageYears)}, ${copy.interest} ${percent(n.mortgageRate)} ${copy.perYear}.`} /></div>}
     </section>

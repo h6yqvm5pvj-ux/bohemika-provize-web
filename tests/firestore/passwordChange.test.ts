@@ -11,6 +11,7 @@ vi.mock("@/lib/server/firebaseAuthEmail", () => ({ requireAuthEmailConfig: () =>
 vi.mock("@/lib/server/passwordChangeEmail", () => ({ renderPasswordChangeCode: (code: string) => ({ code }), queuePasswordChanged: async () => ({ sent: true, jobId: "synthetic-notice" }) }));
 vi.mock("@/lib/appSession", () => ({ resolveAppSessionSecret: () => "synthetic-local-secret" }));
 import { authorizePasswordChange, completePasswordChange, preparePasswordChange } from "../../src/lib/server/passwordChange";
+import { withFirestoreTokenRevocation } from "../../src/lib/server/tokenRevocation";
 let app: App, rules: RulesTestEnvironment;
 const projectId = "demo-bohemika-rules";
 const email = "password-change@example.test", uid = "password-change-synthetic-uid";
@@ -23,7 +24,7 @@ async function signIn(password: string) {
 }
 beforeAll(async () => {
   if (process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:8180" || process.env.FIREBASE_AUTH_EMULATOR_HOST !== "127.0.0.1:9299") throw new Error("Only local demo emulators allowed.");
-  app = initializeApp({ projectId }, "password-change-integration"); state.auth = getAuth(app); state.db = getFirestore(app);
+  app = initializeApp({ projectId }, "password-change-integration"); state.db = getFirestore(app); state.auth = withFirestoreTokenRevocation(getAuth(app), state.db);
   await state.auth.createUser({ uid, email, password: oldPassword, emailVerified: true });
   setLogLevel("silent");
   rules = await initializeTestEnvironment({ projectId, firestore: { host: "127.0.0.1", port: 8180, rules: readFileSync("firestore.rules", "utf8") } });

@@ -4,7 +4,8 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BohemkaContractDetailLink, BohemkaContractDetailModal } from "./statementLinksAndCalculator";
+import { BohemkaContractDetailLink } from "./statementLinksAndCalculator";
+import { BohemkaContractDetailModal } from "./StatementEmbeddedModals";
 import { BohemkaContractDetailModalContext } from "./statementPresentation";
 import type { BohemkaContractDetailModalPayload } from "./statementTypes";
 
