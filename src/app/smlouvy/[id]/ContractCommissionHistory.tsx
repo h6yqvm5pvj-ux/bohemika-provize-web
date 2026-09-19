@@ -14,9 +14,11 @@ import { type ContractCommissionPayout } from "./contractDetailTypes";
 import { partitionSettledCommissionPayouts } from "./contractCommissionHistoryRules";
 import { ContractSectionToggle } from "./ContractSectionToggle";
 import styles from "./commissionHistory.module.css";
+import { describeKooperativaCPayout } from "@/app/lib/kooperativaCPayoutMeaning";
 
 type ContractCommissionHistoryProps = {
   product?: Product | null;
+  policyStartDate?: unknown;
   payouts?: ContractCommissionPayout[] | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
@@ -406,6 +408,7 @@ const groupPayoutsByWriter = ({
 
 export function ContractCommissionHistory({
   product = null,
+  policyStartDate,
   payouts,
   viewerEmail = null,
   contractOwnerEmail = null,
@@ -540,6 +543,7 @@ export function ContractCommissionHistory({
                             const canOpenStatement = Boolean(statementId && onOpenStatement);
                             const isPreviewLoading = statementPreviewLoadingId === statementId;
                             const itemLabel = payoutItemLabel(payout);
+                            const meaning = describeKooperativaCPayout({ product, policyStartDate, payout, payouts: payouts ?? [] });
                             const alertMessage = isExpectedInvestmentLifeA201 ? null : payoutAlertMessage(payout, product);
                             const rowKey = payout.key ?? `${payout.statementId ?? "statement"}-${payout.code ?? payout.title ?? index}`;
                             return (
@@ -554,7 +558,10 @@ export function ContractCommissionHistory({
                                       </div>
                                     </div>
                                   </td>
-                                  <td className={styles.itemCell}><span className={styles.itemCode}>{itemLabel}</span></td>
+                                  <td className={styles.itemCell}>
+                                    <span className={styles.itemCode}>{itemLabel}</span>
+                                    {meaning && <span className={styles.itemMeaning} title={meaning.explanation}>{meaning.label}</span>}
+                                  </td>
                                   <td className={styles.amountCell} data-negative={(payout.amount ?? 0) < 0}>{formatMoney(payout.amount ?? 0)}</td>
                                   <td className={styles.statusCell}>
                                     <span className={styles.statusGroup}>

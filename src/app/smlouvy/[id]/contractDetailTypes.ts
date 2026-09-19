@@ -216,6 +216,7 @@ export type ContractDoc = {
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: ContractCommissionPayout[] | null;
+  cashflowPayoutMatches?: import("@/app/cashflow/payoutPlanMatching").CashflowPayoutMatch[] | null;
   commissionStornoSummary?: ContractCommissionStornoSummary | null;
   premiumStatementBaseResolutions?: import("@/app/lib/autoPremiumBasis").PremiumBaseResolution[] | null;
   premiumStatementHistory?: ContractAutoPremiumStatementHistoryEntry[] | null;

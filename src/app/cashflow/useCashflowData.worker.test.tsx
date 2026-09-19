@@ -153,11 +153,30 @@ describe("actual cashflow data hook worker boundary", () => {
       expect(vi.mocked(generateCashflow).mock.calls.length > 0).toBe(!deferred);
       const contractUrls = fetchMock.mock.calls.map(([url]) => new URL(String(url), "https://synthetic.example.test"))
         .filter(url => url.pathname === "/api/contracts/list");
-      expect(contractUrls).toHaveLength(3);
-      expect(contractUrls.some(url => url.searchParams.get("cursor") === "100")).toBe(true);
+      expect(contractUrls).toHaveLength(2);
+      expect(contractUrls.every(url => url.searchParams.get("limit") === "500")).toBe(true);
       expect(contractUrls.every(url => url.searchParams.get("shape") === "cashflow")).toBe(true);
     },
   );
+
+  it("loads a full thousand-contract portfolio in three own/team requests without missing or duplicate entries", async () => {
+    email = addAccount(1000);
+    signIn(email);
+    await render({ deferCalculation: true });
+    await finishLoading();
+    const expected = snapshots.get(email)!;
+    const snapshot = latest.rawSnapshot!;
+    const keys = (entries: CashflowSnapshot["ownEntries"]) => entries.map(entry => `${entry.userEmail}___${entry.id}`).sort();
+    expect(keys(snapshot.ownEntries)).toEqual(keys(expected.ownEntries));
+    expect(keys(snapshot.teamEntriesRaw)).toEqual(keys(expected.teamEntriesRaw));
+    expect(new Set(keys([...snapshot.ownEntries, ...snapshot.teamEntriesRaw])).size).toBe(1000);
+    const urls = fetchMock.mock.calls.map(([url]) => new URL(String(url), "https://synthetic.example.test"))
+      .filter(url => url.pathname === "/api/contracts/list");
+    expect(urls).toHaveLength(3); // 750 own = 2 pages, 250 team = 1 page.
+    expect(urls.filter(url => url.searchParams.get("scope") === "my")).toHaveLength(2);
+    expect(urls.some(url => url.searchParams.get("cursor") === "500")).toBe(true);
+    expect(urls.every(url => url.searchParams.get("limit") === "500")).toBe(true);
+  });
 
   it("defaults to the original calculation and can toggle deferral without reloading data", async () => {
     email = addAccount(300);

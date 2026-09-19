@@ -1,6 +1,6 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
 
-export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v1";
+export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v2";
 export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
 export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;

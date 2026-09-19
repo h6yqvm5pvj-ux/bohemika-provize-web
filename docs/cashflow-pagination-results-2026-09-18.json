@@ -1,0 +1,347 @@
+{
+  "date": "2026-09-18T12:11:14.961Z",
+  "environment": "local Firestore emulator",
+  "scope": "Real contract-list handler, Firestore SDK queries, serializer and cursor loop with synthetic portfolios. Authentication identity is mocked. Warm process after fixture seeding; no production network, browser rendering or rate-limit service. Gzip measured after timing, not actual wire bytes.",
+  "results": [
+    {
+      "scenario": "own-1000",
+      "samples": [
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 156.778624999999,
+          "firstResponseMs": 24.51708399999916,
+          "rawBytes": 1437646,
+          "maxResponseBytes": 143786,
+          "gzipBytes": 41790,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 130.19545900000048,
+          "firstResponseMs": 50.60216700000092,
+          "rawBytes": 1420738,
+          "maxResponseBytes": 425701,
+          "gzipBytes": 35069,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 121.94195799999943,
+          "firstResponseMs": 73.85079199999927,
+          "rawBytes": 1415102,
+          "maxResponseBytes": 707606,
+          "gzipBytes": 32700,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 130.72279200000048,
+          "firstResponseMs": 52.42341699999997,
+          "rawBytes": 1420738,
+          "maxResponseBytes": 425701,
+          "gzipBytes": 35069,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 121.55279200000041,
+          "firstResponseMs": 77.51070900000013,
+          "rawBytes": 1415102,
+          "maxResponseBytes": 707606,
+          "gzipBytes": 32700,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 160.8384590000005,
+          "firstResponseMs": 26.742041999999856,
+          "rawBytes": 1437646,
+          "maxResponseBytes": 143786,
+          "gzipBytes": 41790,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 113.63837500000045,
+          "firstResponseMs": 71.80945799999972,
+          "rawBytes": 1415102,
+          "maxResponseBytes": 707606,
+          "gzipBytes": 32700,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 151.01795800000036,
+          "firstResponseMs": 25.906750000000102,
+          "rawBytes": 1437646,
+          "maxResponseBytes": 143786,
+          "gzipBytes": 41790,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 120.05537499999991,
+          "firstResponseMs": 45.56595799999923,
+          "rawBytes": 1420738,
+          "maxResponseBytes": 425701,
+          "gzipBytes": 35069,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 149.57095900000058,
+          "firstResponseMs": 22.025250000000597,
+          "rawBytes": 1437646,
+          "maxResponseBytes": 143786,
+          "gzipBytes": 41790,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 119.57875000000058,
+          "firstResponseMs": 46.17516700000124,
+          "rawBytes": 1420738,
+          "maxResponseBytes": 425701,
+          "gzipBytes": 35069,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 115.28733300000022,
+          "firstResponseMs": 70.84950000000026,
+          "rawBytes": 1415102,
+          "maxResponseBytes": 707606,
+          "gzipBytes": 32700,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 122.49516700000095,
+          "firstResponseMs": 44.9163750000007,
+          "rawBytes": 1420738,
+          "maxResponseBytes": 425701,
+          "gzipBytes": 35069,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 117.20866600000045,
+          "firstResponseMs": 74.66400000000067,
+          "rawBytes": 1415102,
+          "maxResponseBytes": 707606,
+          "gzipBytes": 32700,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 149.31229200000053,
+          "firstResponseMs": 24.83283400000073,
+          "rawBytes": 1437646,
+          "maxResponseBytes": 143786,
+          "gzipBytes": 41790,
+          "hash": "fd08d4d7e4f18b4f1f020a70b6e3a973d2fc52252df4ea636551a69302724e18"
+        }
+      ]
+    },
+    {
+      "scenario": "team-1000",
+      "samples": [
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 5104.821834000002,
+          "firstResponseMs": 154.80558400000155,
+          "rawBytes": 1705336,
+          "maxResponseBytes": 170555,
+          "gzipBytes": 58720,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 1313.0676660000026,
+          "firstResponseMs": 185.64016600000105,
+          "rawBytes": 1686574,
+          "maxResponseBytes": 505390,
+          "gzipBytes": 51213,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 555.3366669999996,
+          "firstResponseMs": 214.67324999999983,
+          "rawBytes": 1680320,
+          "maxResponseBytes": 840215,
+          "gzipBytes": 48584,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 1332.9973329999993,
+          "firstResponseMs": 191.17812499999854,
+          "rawBytes": 1686574,
+          "maxResponseBytes": 505390,
+          "gzipBytes": 51213,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 550.3086250000015,
+          "firstResponseMs": 207.70254199999908,
+          "rawBytes": 1680320,
+          "maxResponseBytes": 840215,
+          "gzipBytes": 48584,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 5290.004332999997,
+          "firstResponseMs": 154.0655000000006,
+          "rawBytes": 1705336,
+          "maxResponseBytes": 170555,
+          "gzipBytes": 58720,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 547.9544159999932,
+          "firstResponseMs": 207.29349999999977,
+          "rawBytes": 1680320,
+          "maxResponseBytes": 840215,
+          "gzipBytes": 48584,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 5192.030791000005,
+          "firstResponseMs": 161.5425000000032,
+          "rawBytes": 1705336,
+          "maxResponseBytes": 170555,
+          "gzipBytes": 58720,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 1290.5352080000011,
+          "firstResponseMs": 187.9169580000016,
+          "rawBytes": 1686574,
+          "maxResponseBytes": 505390,
+          "gzipBytes": 51213,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 5206.885208,
+          "firstResponseMs": 160.7252079999962,
+          "rawBytes": 1705336,
+          "maxResponseBytes": 170555,
+          "gzipBytes": 58720,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 1283.885000000002,
+          "firstResponseMs": 183.86175000000367,
+          "rawBytes": 1686574,
+          "maxResponseBytes": 505390,
+          "gzipBytes": 51213,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 548.8344999999972,
+          "firstResponseMs": 213.64295799999672,
+          "rawBytes": 1680320,
+          "maxResponseBytes": 840215,
+          "gzipBytes": 48584,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 300,
+          "requests": 4,
+          "contracts": 1000,
+          "totalMs": 1280.9928750000036,
+          "firstResponseMs": 188.43020799999795,
+          "rawBytes": 1686574,
+          "maxResponseBytes": 505390,
+          "gzipBytes": 51213,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 500,
+          "requests": 2,
+          "contracts": 1000,
+          "totalMs": 536.6160000000018,
+          "firstResponseMs": 202.97987499999726,
+          "rawBytes": 1680320,
+          "maxResponseBytes": 840215,
+          "gzipBytes": 48584,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        },
+        {
+          "limit": 100,
+          "requests": 10,
+          "contracts": 1000,
+          "totalMs": 5138.114834,
+          "firstResponseMs": 154.88991700000042,
+          "rawBytes": 1705336,
+          "maxResponseBytes": 170555,
+          "gzipBytes": 58720,
+          "hash": "b3d6f4c813f53eed54625c17bfdbbe5614c83efd1839f5779af673bfc678c22f"
+        }
+      ]
+    }
+  ]
+}

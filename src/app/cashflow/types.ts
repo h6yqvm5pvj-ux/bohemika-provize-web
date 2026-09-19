@@ -44,6 +44,7 @@ export type EntryDoc = {
     writtenAtMs?: number | null;
     writtenBy?: string | null;
   }[] | null;
+  cashflowPayoutMatches?: import("./payoutPlanMatching").CashflowPayoutMatch[] | null;
 
   userEmail?: string | null;
   acquisitionType?: "inherited" | null;
@@ -167,6 +168,9 @@ export type CashflowItem = {
   predictedAmount?: number | null;
   isStatementOnly?: boolean;
   commissionPayoutKey?: string | null;
+  commissionPeriodStart?: string | null;
+  payoutPlanStatus?: "matched" | "unmatched" | "correction";
+  matchedPlannedCode?: string | null;
   commissionStatementNumber?: string | null;
   commissionStatementPeriod?: string | null;
   originalDate?: Date | null;

@@ -24,10 +24,11 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
   const href = !isTip && !isSubscription && ownerEmail && entryId
     ? `/smlouvy/${encodeURIComponent(`${ownerEmail}___${entryId}`)}` : null;
   const statuses = new Set(group.items.map((part) => part.payoutStatus ?? "predicted"));
+  const hasUnmatchedPayout = group.items.some(part => part.payoutPlanStatus === "unmatched");
   const status = statuses.size === 1 ? (item.payoutStatus ?? "predicted") : "mixed";
   const statusLabel = status === "mixed" ? "Různé stavy"
     : isSubscription ? status === "paid" ? "Zaplaceno" : "Očekáváno"
-    : payoutStatusLabel(status);
+    : status === "paid" && hasUnmatchedPayout ? "Vyplaceno — nepřiřazeno k plánu" : payoutStatusLabel(status);
   const hasDifferentDates = new Set(group.items.map((part) => part.date.toLocaleDateString("cs-CZ"))).size > 1;
   const sourceLabel = isTip ? "TIP provize" : isSubscription ? "Předplatné" : isTeam ? "Týmová smlouva" : "Vlastní smlouva";
   const nonLife = nonLifeCommissionDetail(item);
@@ -91,6 +92,12 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
                   return <tr key={part.id}>
                     <th scope="row">
                       <span className={styles.partName}>{commissionLabelForItem(part) ?? (isSubscription ? "Předplatné" : "Provize")}</span>
+                      {part.payoutPlanStatus === "unmatched" && <span className={styles.partMeta}>
+                        {href ? <a href={`${href}#payout-plan-matching`}>Přiřadit k plánu ve smlouvě</a> : "Nepřiřazeno k plánu"}
+                      </span>}
+                      {part.payoutPlanStatus === "matched" && <span className={styles.partMeta}>
+                        Nahrazuje {part.matchedPlannedCode}{part.commissionPeriodStart && ` · období od ${part.commissionPeriodStart.split("-").reverse().join(".")}`}
+                      </span>}
                       {(hasDifferentDates || status === "mixed") && <span className={styles.partMeta}>
                         {hasDifferentDates && part.date.toLocaleDateString("cs-CZ")}
                         {hasDifferentDates && status === "mixed" && " · "}

@@ -4,6 +4,7 @@ import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
+import { applyConfirmedPayoutMatches } from "./payoutPlanMatching";
 
 type ImmediateCashflowPart = {
   title: string;
@@ -490,6 +491,7 @@ export function generateCashflow(
   );
 
   for (const entry of entries) {
+    const entryOutputStart = out.length;
     const baseEntryId = entry.originalEntryId ?? entry.id;
     const ownerEmail = entry.userEmail ?? null;
     const normalizedOwnerEmail = ownerEmail
@@ -717,6 +719,9 @@ export function generateCashflow(
             ? date
             : null,
         commissionPayoutKey: settledPayout?.key ?? null,
+        ...(product === "kooperativaAuto" && /^B1\d{2,}$/.test(metadata.commissionCode ?? "")
+          ? { commissionPeriodStart: dateToIsoDay(commissionPeriods.get(date.getTime())) }
+          : {}),
         commissionStatementNumber: settledPayout?.payout.statementNumber ?? null,
         commissionStatementPeriod: settledPayout?.payout.statementPeriod ?? null,
         ...metadata,
@@ -1387,6 +1392,10 @@ export function generateCashflow(
     }
 
     pushUnmatchedStatementPayouts();
+    if (entry.productKey === "kooperativaAuto") {
+      const entryItems = out.splice(entryOutputStart);
+      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail));
+    }
   }
 
   return out.sort((a, b) => a.date.getTime() - b.date.getTime());

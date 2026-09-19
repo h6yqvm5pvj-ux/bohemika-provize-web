@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
-  CalendarDays,
   CheckCircle2,
-  ChevronDown,
+  ChevronRight,
   ListChecks,
   Loader2,
   RotateCcw,
+  Search,
   WalletCards,
   X,
   type LucideIcon,
@@ -16,6 +16,8 @@ import {
 
 import { StatementProgressPanel } from "./StatementProgressPanel";
 import importStyles from "./statementImport.module.css";
+import historyStyles from "./statementHistory.module.css";
+import { matchesStatementHistorySearch, statementHistoryPeriod, statementPayoutTitle } from "./statementHistoryPresentation";
 import { formatMoney, formatSystemDate } from "./statementParsing";
 import type {
   SavedCommissionStatement,
@@ -210,138 +212,105 @@ function ProcessedStatementHistoryPanel({
   onRefresh,
   onOpen,
 }: ProcessedStatementHistoryPanelProps) {
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searching = search.trim().length > 0;
+  const visibleStatements = statements.filter((statement) => matchesStatementHistorySearch(statement, search));
+  const countLabel = statements.length === 1
+    ? "1 výpis"
+    : `${statements.length} ${statements.length >= 2 && statements.length <= 4 ? "výpisy" : "výpisů"}`;
+
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-[0_18px_42px_rgba(15,23,42,0.05)] sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className={historyStyles.panel}>
+      <header className={historyStyles.header}>
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            Historie
+          <div className={historyStyles.heading}>
+            <span className={historyStyles.headingIcon}><WalletCards size={24} strokeWidth={1.7} aria-hidden="true" /></span>
+            <div>
+              <span className={historyStyles.eyebrow}>Provizní výpisy</span>
+              <h2 className={historyStyles.title}>Historie výplat</h2>
+            </div>
           </div>
-          <h2 className="mt-3 text-lg font-black text-slate-950">Zpracované výpisy</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Uložené výstupy po zpracování výpisu.
-          </p>
+          <p className={historyStyles.subtitle}>Vyber výplatu a prohlédni si její podrobný výpis.</p>
         </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-            ) : (
-              <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-            )}
-            Obnovit
+        <div className={historyStyles.actions}>
+          <button type="button" onClick={onRefresh} disabled={loading}
+            className={historyStyles.refresh} aria-label="Obnovit historii" title="Obnovit historii">
+            {loading
+              ? <Loader2 size={16} className={historyStyles.spinner} aria-hidden="true" />
+              : <RotateCcw size={16} aria-hidden="true" />}
+            <span>Obnovit</span>
           </button>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              aria-label="Zavřít historii"
-            >
-              <X className="h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-            </button>
-          )}
+          {onClose && <button type="button" onClick={onClose}
+            className={historyStyles.close} aria-label="Zavřít historii">
+            <X size={19} aria-hidden="true" />
+          </button>}
         </div>
+      </header>
+      <div className={historyStyles.searchArea}>
+        <div className={historyStyles.searchField}>
+          <Search size={18} aria-hidden="true" />
+          <input ref={searchRef} type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+            className={historyStyles.searchInput} aria-label="Hledat výpisy podle roku, měsíce nebo částky"
+            placeholder="Hledat rok, měsíc nebo částku…" autoComplete="off" />
+          {search && <button type="button" aria-label="Vymazat hledání" className={historyStyles.clearSearch}
+            onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} aria-hidden="true" /></button>}
+        </div>
+        <span className={historyStyles.searchHint}>Např. 2026, srpen nebo 26 956 Kč</span>
       </div>
-
-      {error && (
-        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
-          {error}
-        </div>
-      )}
-
+      <div className={historyStyles.listHeading}>
+        <span>{searching ? "Výsledky hledání" : "Zpracované výpisy"}</span>
+        <span role="status" aria-live="polite">{loading ? "Obnovuji…" : searching ? `${visibleStatements.length} z ${countLabel}` : countLabel}</span>
+      </div>
+      {error && <div role="alert" className={historyStyles.error}>{error}</div>}
       {loading && statements.length === 0 ? (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
-          <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.2} aria-hidden="true" />
+        <div role="status" className={historyStyles.message}>
+          <Loader2 size={18} className={historyStyles.spinner} aria-hidden="true" />
           Načítám historii zpracovaných výpisů…
         </div>
       ) : statements.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-5 text-sm font-semibold text-slate-500">
+        <div className={historyStyles.message}>
+          <WalletCards size={22} aria-hidden="true" />
           Zatím tu není žádný zpracovaný výpis.
         </div>
+      ) : visibleStatements.length === 0 ? (
+        <div className={historyStyles.message}>
+          <Search size={22} aria-hidden="true" />
+          <span>Žádná výplata neodpovídá hledání.<br />Zkus jiný rok, měsíc nebo částku.</span>
+        </div>
       ) : (
-        <div className="mt-4 max-h-80 space-y-2 overflow-y-auto pr-1">
-          {statements.map((statement) => {
+        <div className={historyStyles.list} aria-busy={loading}>
+          {visibleStatements.map((statement) => {
             const selected = selectedId === statement.id;
             const opening = openingId === statement.id;
-            const title = statement.statementNumber
-              ? `Výpis ${statement.statementNumber}`
-              : statement.fileName || "Provizní výpis";
-            const period = statement.period || statement.payoutMonthKey || "Bez období";
+            const title = statementPayoutTitle(statement);
+            const amount = typeof statement.payoutTotal === "number" && Number.isFinite(statement.payoutTotal)
+              ? formatMoney(statement.payoutTotal) : null;
 
             return (
-              <button
-                key={statement.id}
-                type="button"
-                onClick={() => onOpen(statement.id)}
-                disabled={opening}
-                className={`w-full rounded-xl border px-4 py-3 text-left transition disabled:cursor-wait ${
-                  selected
-                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-black">{title}</span>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          selected
-                            ? "border-white/25 bg-white/10 text-white"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        }`}
-                      >
-                        Zpracováno
-                      </span>
-                    </div>
-                    <div
-                      className={`mt-1 text-sm font-semibold ${
-                        selected ? "text-slate-200" : "text-slate-600"
-                      }`}
-                    >
-                      {period}
-                    </div>
-                    <div
-                      className={`mt-1 text-xs font-semibold ${
-                        selected ? "text-slate-300" : "text-slate-500"
-                      }`}
-                    >
-                      Vystaveno {statement.statementDate || "—"} · zpracováno{" "}
-                      {formatSystemDate(statement.processedAtMs)}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3">
-                    <div className="text-right">
-                      <div
-                        className={`text-xs font-bold uppercase ${
-                          selected ? "text-slate-300" : "text-slate-500"
-                        }`}
-                      >
-                        Vyplaceno
-                      </div>
-                      <div className="text-base font-black">
-                        {typeof statement.payoutTotal === "number" &&
-                        Number.isFinite(statement.payoutTotal)
-                          ? `${formatMoney(statement.payoutTotal)} Kč`
-                          : "—"}
-                      </div>
-                    </div>
-                    {opening ? (
-                      <Loader2 className="h-5 w-5 animate-spin" strokeWidth={2.2} aria-hidden="true" />
-                    ) : (
-                      <ChevronDown className="-rotate-90 h-5 w-5" strokeWidth={2.2} aria-hidden="true" />
-                    )}
-                  </div>
-                </div>
+              <button key={statement.id} type="button" onClick={() => onOpen(statement.id)}
+                disabled={opening} aria-current={selected || undefined} aria-busy={opening}
+                className={historyStyles.card}>
+                <span className={historyStyles.payout}>
+                  <span className={historyStyles.payoutLabel}>Vyplaceno</span>
+                  <span className={historyStyles.amount}>
+                    <span className={historyStyles.amountNumber} data-long={amount != null && amount.length > 10 || undefined}>{amount ?? "—"}</span>
+                    {amount != null && <span className={historyStyles.currency}>Kč</span>}
+                  </span>
+                </span>
+                <span className={historyStyles.details}>
+                  <span className={historyStyles.cardTitle}>{title}</span>
+                  <span className={historyStyles.period}>{statementHistoryPeriod(statement)}</span>
+                  <span className={historyStyles.metadata}>
+                    {statement.statementNumber && <span>Výpis č. {statement.statementNumber}</span>}
+                    <span className={historyStyles.status}>
+                      {opening ? <Loader2 size={12} className={historyStyles.spinner} aria-hidden="true" /> : <CheckCircle2 size={12} aria-hidden="true" />}
+                      {opening ? "Otevírám…" : selected ? "Právě otevřený" : "Zpracováno"}
+                    </span>
+                    <span className={historyStyles.processedDate}>Zpracováno {formatSystemDate(statement.processedAtMs)}</span>
+                  </span>
+                </span>
+                <span className={historyStyles.arrow}><ChevronRight size={20} aria-hidden="true" /></span>
               </button>
             );
           })}
@@ -355,33 +324,52 @@ export function ProcessedStatementHistoryModal({
   onClose,
   ...panelProps
 }: ProcessedStatementHistoryPanelProps & { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      const controls = dialog?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)");
+      const first = controls?.[0];
+      const last = controls?.[controls.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
     };
   }, [onClose]);
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      className={historyStyles.overlay}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Historie zpracovaných provizních výpisů"
-        className="w-full max-w-3xl"
+        className={historyStyles.dialog}
       >
         <ProcessedStatementHistoryPanel {...panelProps} onClose={onClose} />
       </div>

@@ -149,6 +149,8 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
+import { ContractPayoutPlanMatching, type PayoutPlanRequest } from "./ContractPayoutPlanMatching";
+import { isKooperativaCPayout, type PayoutPlanPreview } from "@/app/cashflow/payoutPlanMatching";
 import {
   ContractAutoPremiumHistory,
   initialAnnualPremiumFromStatementHistory,
@@ -1857,6 +1859,23 @@ export default function ContractDetailPage() {
       window.dispatchEvent(new Event("contracts:updated"));
     } catch { /* Cache invalidation is best effort. */ }
   }, [canManageContract, ownerEmail, entryId, contract, requestContractsApi, refreshContractDetail]);
+
+  const handlePayoutPlanRequest = useCallback(async (request: PayoutPlanRequest): Promise<PayoutPlanPreview> => {
+    const result = await requestContractsApi<ContractsApiResponseBase & { preview: PayoutPlanPreview }>("/api/contracts/payout-plan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...request, ownerEmail, entryId }),
+    });
+    if (request.operation !== "preview") {
+      try {
+        sessionStorage.removeItem("contracts_cache_v3");
+        localStorage.setItem("contracts_last_updated", String(Date.now()));
+        window.dispatchEvent(new Event("contracts:updated"));
+      } catch { /* Best effort cache invalidation. */ }
+      // The returned preview already contains the committed state.
+      await refreshContractDetail().catch(() => undefined);
+    }
+    return result.preview;
+  }, [ownerEmail, entryId, requestContractsApi, refreshContractDetail]);
 
   const handleRebuildContractFromStatements = useCallback(async () => {
     const contractNumber = String(contract?.contractNumber ?? "").trim();
@@ -6515,6 +6534,7 @@ export default function ContractDetailPage() {
 
               <ContractCommissionHistory
                 product={contract?.productKey ?? null}
+                policyStartDate={contract?.policyStartDate}
                 payouts={contract?.commissionPayouts ?? []}
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
@@ -6526,6 +6546,14 @@ export default function ContractDetailPage() {
                   canManageContract && contract?.contractNumber
                 )}
               />
+
+              {contract?.productKey === "kooperativaAuto" && (
+                contract.commissionPayouts?.some(payout => isKooperativaCPayout(contract.productKey, payout.code) && normalizeEmail(payout.writtenBy) === normalizedViewerEmail) ||
+                contract.cashflowPayoutMatches?.some(match => normalizeEmail(match.writtenBy) === normalizedViewerEmail)
+              ) && <ContractPayoutPlanMatching
+                key={`${ownerEmail}___${entryId}___${normalizedViewerEmail}`}
+                onRequest={handlePayoutPlanRequest}
+              />}
 
               {/* POZNÁMKY A PŘIPOMÍNKY */}
               <section id="contract-notes" className={noteStyles.panel} aria-label="Poznámky a připomínky">

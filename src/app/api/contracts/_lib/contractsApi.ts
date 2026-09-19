@@ -1,6 +1,7 @@
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
+import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
@@ -198,7 +199,7 @@ export type ContractsPatchAction =
 
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
-const CASHFLOW_PAGE_SIZE_MAX = 100;
+const CASHFLOW_PAGE_SIZE_MAX = CASHFLOW_CONTRACTS_PAGE_SIZE;
 const FILTERED_LIST_QUERY_LIMIT = 250;
 const CONTRACTS_MUTATION_RATE_LIMIT = 60;
 const CONTRACTS_MUTATION_RATE_LIMIT_WINDOW_MS = 60_000;
@@ -725,6 +726,9 @@ const filterStatementDerivedContractDataForViewer = ({
     commissionPayouts: Array.isArray(contract.commissionPayouts)
       ? contract.commissionPayouts.filter(canViewRecord)
       : [],
+    cashflowPayoutMatches: Array.isArray(contract.cashflowPayoutMatches)
+      ? contract.cashflowPayoutMatches.filter(canViewRecord)
+      : [],
     premiumStatementHistory: Array.isArray(contract.premiumStatementHistory)
       ? contract.premiumStatementHistory.filter(canViewRecord)
       : [],
@@ -972,6 +976,7 @@ const toContractListResponseItem = ({
           : undefined,
       refreshCommissionBase: data.refreshCommissionBase ?? null,
       items: Array.isArray(data.items) ? data.items : [],
+      cashflowPayoutMatches: Array.isArray(data.cashflowPayoutMatches) ? data.cashflowPayoutMatches : [],
       commissionPayouts: Array.isArray(data.commissionPayouts)
         ? data.commissionPayouts
         : [],
@@ -3288,6 +3293,50 @@ async function fetchContractsForOwners(
     ? buildContractListIndexedQueryClauses(filters, { allowIn: true })
     : [];
 
+  const sortCollected = () => {
+    collected.sort((a, b) => {
+      const da = contractSortDate(a);
+      const dbDate = contractSortDate(b);
+      if (!da && !dbDate) return 0;
+      if (!da) return 1;
+      if (!dbDate) return -1;
+      const diff = dbDate.getTime() - da.getTime();
+      if (diff !== 0) return diff;
+      const keyA = responseCursorKey(a);
+      const keyB = responseCursorKey(b);
+      if (keyA === keyB) return 0;
+      return keyA > keyB ? -1 : 1;
+    });
+  };
+
+  // The two date queries do not necessarily cover the same logical range:
+  // recent imports can have old signing dates, and cursor filtering can remove
+  // a whole batch of ties. Read each stream through the merged page boundary
+  // before returning a cursor so neither situation can hide later entries.
+  const completeQuery = async (
+    query: FirebaseFirestore.Query,
+    initial: FirebaseFirestore.QuerySnapshot,
+    field: "contractSignedDate" | "createdAt",
+    consume: (snap: FirebaseFirestore.QuerySnapshot) => void
+  ) => {
+    let batch = initial;
+    while (batch.docs.length === pageLimit) {
+      sortCollected();
+      const boundary = collected[pageSize]; // Include the hasMore record.
+      const boundaryDate = boundary ? contractSortDate(boundary) : null;
+      const last = batch.docs.at(-1)!;
+      const lastDate = toDate(last.data()[field]);
+      const owner = normalizeEmail(last.ref.parent.parent?.id);
+      if (boundary && boundaryDate && lastDate && owner) {
+        const dateDiff = lastDate.getTime() - boundaryDate.getTime();
+        if (dateDiff < 0 || (dateDiff === 0 &&
+          contractCursorKey(owner, last.id) <= responseCursorKey(boundary))) return;
+      }
+      batch = await query.startAfter(last).limit(pageLimit).get();
+      consume(batch);
+    }
+  };
+
   const shouldIncludeByCursor = (
     data: ContractDoc,
     docId: string,
@@ -3330,20 +3379,7 @@ async function fetchContractsForOwners(
   if (owners.length === 1) {
     const ownerEmail = owners[0]!;
     const buildPage = () => {
-      collected.sort((a, b) => {
-        const da = contractSortDate(a);
-        const dbDate = contractSortDate(b);
-        if (!da && !dbDate) return 0;
-        if (!da) return 1;
-        if (!dbDate) return -1;
-        const diff = dbDate.getTime() - da.getTime();
-        if (diff !== 0) return diff;
-        const keyA = responseCursorKey(a);
-        const keyB = responseCursorKey(b);
-        if (keyA === keyB) return 0;
-        return keyA > keyB ? -1 : 1;
-      });
-
+      sortCollected();
       const page = collected.slice(0, pageSize);
       const hasMore = collected.length > pageSize;
       const oldest = page.length > 0 ? contractSortDate(page[page.length - 1]) : null;
@@ -3432,6 +3468,8 @@ async function fetchContractsForOwners(
 
         consumeSnap(signedSnap);
         consumeSnap(createdSnap);
+        await completeQuery(qBySigned, signedSnap, "contractSignedDate", consumeSnap);
+        await completeQuery(qByCreated, createdSnap, "createdAt", consumeSnap);
 
         return buildPage();
       } catch (err) {
@@ -3548,6 +3586,8 @@ async function fetchContractsForOwners(
 
         consumeSnap(signedSnap);
         consumeSnap(createdSnap);
+        await completeQuery(qBySigned, signedSnap, "contractSignedDate", consumeSnap);
+        await completeQuery(qByCreated, createdSnap, "createdAt", consumeSnap);
       } catch {
         // Keep the endpoint functional even when collectionGroup index is missing/misconfigured.
         collectionGroupFailed = true;
@@ -3605,7 +3645,7 @@ async function fetchContractsForOwners(
               qByCreated.limit(pageLimit).get(),
             ]);
 
-            return { owner, signedSnap, createdSnap };
+            return { owner, qBySigned, qByCreated, signedSnap, createdSnap };
           } catch {
             // Ignore one broken owner branch instead of failing the whole response.
             return null;
@@ -3613,8 +3653,8 @@ async function fetchContractsForOwners(
         })
       );
 
-      chunkResults.forEach((result) => {
-        if (!result) return;
+      for (const result of chunkResults) {
+        if (!result) continue;
 
         const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
           snap.docs.forEach((doc) => {
@@ -3625,23 +3665,13 @@ async function fetchContractsForOwners(
 
         consumeSnap(result.signedSnap);
         consumeSnap(result.createdSnap);
-      });
+        await completeQuery(result.qBySigned, result.signedSnap, "contractSignedDate", consumeSnap);
+        await completeQuery(result.qByCreated, result.createdSnap, "createdAt", consumeSnap);
+      }
     }
   }
 
-  collected.sort((a, b) => {
-    const da = contractSortDate(a);
-    const db = contractSortDate(b);
-    if (!da && !db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    const diff = db.getTime() - da.getTime();
-    if (diff !== 0) return diff;
-    const keyA = responseCursorKey(a);
-    const keyB = responseCursorKey(b);
-    if (keyA === keyB) return 0;
-    return keyA > keyB ? -1 : 1;
-  });
+  sortCollected();
 
   const page = collected.slice(0, pageSize);
   const hasMore = collected.length > pageSize;

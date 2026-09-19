@@ -147,6 +147,19 @@ export function nonLifeCommissionDetail(item: CashflowItem): NonLifeCommissionDe
       : item.productKey;
   if (!product || (!isAutoProduct(product) && !isPropertyProduct(product))) return null;
 
+  if (item.payoutPlanStatus) {
+    return {
+      commissionTypeLabel: item.payoutPlanStatus === "matched" ? "Následná provize" : item.payoutPlanStatus === "correction" ? "Storno / srážka z výpisu" : item.commissionLabel || "C výplata z výpisu",
+      commissionText: item.payoutPlanStatus === "matched"
+        ? `Výplata ${item.commissionCode} nahrazuje potvrzenou položku plánu ${item.matchedPlannedCode}. Původní odhad se už nezapočítává.`
+        : item.payoutPlanStatus === "correction"
+        ? "Oprava zůstává samostatnou položkou se skutečnou částkou z výpisu."
+        : "Výplata je započítaná. Její vztah k plánu zatím není potvrzený; přiřazení najdeš v detailu smlouvy.",
+      payoutModeLabel: "Skutečná částka z výpisu",
+      firstAnniversaryLabel: null,
+    };
+  }
+
   const policyStart = item.policyStartDate ?? null;
   const firstAnniversary = policyStart ? addYears(policyStart, 1) : null;
   const firstAnniversaryPayout = firstAnniversary

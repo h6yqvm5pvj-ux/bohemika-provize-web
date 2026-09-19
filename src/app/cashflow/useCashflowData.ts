@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
+import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "../lib/cashflowPagination";
 import {
   type CommissionMode,
   type Position,
@@ -77,7 +78,7 @@ type SubscriptionPaymentsApiResponse = {
   hasMore?: boolean;
 };
 
-const CONTRACTS_PAGE_LIMIT = 100;
+const CONTRACTS_PAGE_LIMIT = CASHFLOW_CONTRACTS_PAGE_SIZE;
 const CONTRACTS_MAX_PAGES = 400;
 const TIP_PAYOUTS_PAGE_LIMIT = 100;
 const TIP_PAYOUTS_MAX_PAGES = 200;

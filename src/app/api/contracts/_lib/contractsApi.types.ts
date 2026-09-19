@@ -176,6 +176,7 @@ export type ContractDoc = {
     writtenAtMs?: number | null;
     writtenBy?: string | null;
   }[] | null;
+  cashflowPayoutMatches?: import("@/app/cashflow/payoutPlanMatching").CashflowPayoutMatch[] | null;
   commissionStornoSummary?: {
     totalAmount?: number | null;
     totalAbsAmount?: number | null;
