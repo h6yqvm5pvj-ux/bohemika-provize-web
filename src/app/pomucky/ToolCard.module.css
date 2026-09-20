@@ -1,208 +1,52 @@
-.card {
-  --category-color: #7c3aed;
-  --category-surface: #f3efff;
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  min-height: 184px;
-  padding: 18px 22px 0;
-  border: 1px solid #e5e7ee;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgb(31 24 55 / 2%), 0 8px 24px rgb(31 24 55 / 3%);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-}
-
-.card::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  right: 0;
-  bottom: 0;
-  width: 52%;
-  height: 49px;
-  border-radius: 0 0 21px 0;
-  clip-path: polygon(24px 0, 100% 0, 100% 100%, 0 100%);
-  background: linear-gradient(120deg, #8850c1, #69369f);
-  pointer-events: none;
-}
-
-.card[data-category="Pojištění vozidel"] { --category-color: #2563eb; --category-surface: #edf4ff; }
-.card[data-category="Životní pojištění"] { --category-color: #be3d70; --category-surface: #fff0f5; }
-.card[data-category="Pojištění majetku"] { --category-color: #087c83; --category-surface: #eaf8f7; }
-.card[data-category="Cestovní pojištění"] { --category-color: #087eaf; --category-surface: #edf8fd; }
-.card[data-category="Finance"] { --category-color: #168362; --category-surface: #ecf8f2; }
-.card[data-category="Investice"] { --category-color: #a66b11; --category-surface: #fff7e8; }
-.card[data-favorite="true"] { border-color: #ddd5f1; }
-
-.header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.icon {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid color-mix(in srgb, var(--category-color) 9%, transparent);
-  border-radius: 14px;
-  color: var(--category-color);
-  background: var(--category-surface);
-}
-
-.favorite {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  margin-left: auto;
-  margin-right: -8px;
-  border: 1px solid transparent;
-  border-radius: 13px;
-  color: #8a94a5;
-  background: transparent;
-  cursor: pointer;
-  transition: color 150ms ease, background 150ms ease;
-}
-
-.favorite[aria-pressed="true"] { color: #8b5cf6; background: #f5f1ff; }
-.favorite:disabled { cursor: not-allowed; opacity: 0.4; }
-
-.body {
-  flex: 1;
-  padding: 13px 0 14px;
-}
-
-.title {
-  margin: 0;
-  color: #202538;
-  font-size: 18px;
-  font-weight: 650;
-  line-height: 1.35;
-  letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
-}
-
-.footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  min-height: 50px;
-  margin-inline: -22px;
-  border-top: 1px solid #f0f1f5;
-}
-
-.open {
-  display: inline-flex;
-  grid-column: 2;
-  grid-row: 1;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  min-height: 49px;
-  padding: 0 18px 0 24px;
-  border: 0;
-  color: #fff;
-  background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-/* The primary action covers the card; the two secondary buttons sit above it. */
-.open::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: 22px;
-}
-
-.actionArrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  color: #fff;
-  background: #ffffff18;
-  transition: background 150ms ease, transform 150ms ease;
-}
-
-.news {
-  position: relative;
-  z-index: 2;
-  display: inline-flex;
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: start;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  margin-left: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.newsBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 9px;
-  border-radius: 7px;
-  color: #137557;
-  background: #eef9f3;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.news[data-kind="updated"] .newsBadge { color: #48699f; background: #f0f5fc; }
-.newsDot { width: 5px; height: 5px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
-
+.card { --category-color: #8056a0; --category-surface: #f5effa; position: relative; isolation: isolate; display: flex; flex-direction: column; height: 100%; min-width: 0; padding: 18px 18px 10px; border: 1px solid #e5dfea; border-radius: 15px; background: #fff; box-shadow: 0 3px 12px #35204203; transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.card[data-category="Pojištění vozidel"] { --category-color: #4f7bab; --category-surface: #edf4fb; }
+.card[data-category="Životní pojištění"] { --category-color: #a15878; --category-surface: #fbf0f5; }
+.card[data-category="Pojištění majetku"] { --category-color: #40736d; --category-surface: #eef8f5; }
+.card[data-category="Cestovní pojištění"] { --category-color: #416f8b; --category-surface: #f0f8fc; }
+.card[data-category="Finance"] { --category-color: #53795d; --category-surface: #f1f7f0; }
+.card[data-category="Investice"] { --category-color: #937433; --category-surface: #faf6ec; }
+.card[data-favorite="true"] { border-color: #cdbbde; }
+.header { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 42px; height: 42px; border: 1px solid color-mix(in srgb, var(--category-color) 12%, transparent); border-radius: 12px; color: var(--category-color); background: var(--category-surface); }
+.category { color: var(--category-color); font-size: 10px; font-weight: 550; }
+.favorite { position: relative; z-index: 2; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; margin: -8px -8px -8px auto; border: 0; border-radius: 11px; color: #c1b5ca; background: transparent; cursor: pointer; }
+.favorite[aria-pressed="true"] { color: #a17bbd; }
+.favorite:disabled { cursor: not-allowed; opacity: .4; }
+.body { flex: 1; min-width: 0; padding: 14px 0 12px; }
+.title { margin: 0; color: #42304e; font-size: 16px; font-weight: 650; line-height: 1.4; letter-spacing: -.018em; overflow-wrap: anywhere; }
+.description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 7px; color: #7b6a88; font-size: 12px; line-height: 1.65; }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding-top: 3px; border-top: 1px solid #f0ebf4; }
+.open { display: inline-flex; order: 2; align-items: center; justify-content: flex-end; gap: 7px; min-height: 40px; margin-left: auto; color: #79568f; background: transparent; font-size: 11px; font-weight: 600; text-decoration: none; cursor: pointer; }
+/* Celá karta je odkaz; oblíbené a novinky zůstávají samostatné ovládací prvky. */
+.open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: 15px; }
+.actionArrow { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; color: #8d6ba2; background: #f6f0fa; transition: background 150ms ease, transform 150ms ease; }
+.news { position: relative; z-index: 2; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.newsBadge { display: inline-flex; align-items: center; gap: 5px; color: #6c927b; font-size: 10px; font-weight: 550; line-height: 1.3; }
+.news[data-kind="updated"] .newsBadge { color: #8d79a0; }
+.newsDot { width: 4px; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 .open:focus-visible { outline: none; }
-.open:focus-visible::after { outline: 2px solid #8b5cf6; outline-offset: 3px; }
-.favorite:focus-visible, .news:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
-
+.open:focus-visible::after { outline: 2px solid #9872b1; outline-offset: 3px; }
+.favorite:focus-visible, .news:focus-visible { outline: 2px solid #9872b1; outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) {
-  .card:hover { transform: translateY(-3px); border-color: #d1c6eb; box-shadow: 0 4px 10px rgb(43 30 79 / 3%), 0 16px 36px rgb(43 30 79 / 7%); }
-  .card:hover .actionArrow { background: #ffffff2b; transform: translate(1px, -1px); }
-  .favorite:hover:not(:disabled) { color: #7c3aed; background: #f3efff; }
-  .news:hover .newsBadge { filter: brightness(0.97); }
+  .card:hover { transform: translateY(-2px); border-color: #c9b4d8; box-shadow: 0 8px 22px #4a2f6110; }
+  .card:hover .actionArrow { background: #eee1f6; transform: translate(1px, -1px); }
+  .favorite:hover:not(:disabled) { color: #8c5fac; background: #f6effa; }
+  .news:hover .newsBadge { color: #604477; }
 }
-
-@media (max-width: 639px) {
-  .card { min-height: 180px; padding: 16px 18px 0; border-radius: 19px; }
-  .card::before { border-bottom-right-radius: 18px; }
-  .footer { margin-inline: -18px; }
-  .news { margin-left: 18px; }
-  .body { padding: 11px 0 13px; }
-  .title { font-size: 18px; }
-  .open::after { border-radius: 19px; }
+@media (max-width: 650px) {
+  .card { display: grid; grid-template-columns: 38px minmax(0, 1fr) 32px; column-gap: 12px; padding: 14px 14px 7px; border-radius: 13px; }
+  .header { display: contents; }
+  .icon { grid-column: 1; grid-row: 1 / 3; width: 38px; height: 38px; border-radius: 10px; }
+  .icon svg { width: 20px; height: 20px; }
+  .category { grid-column: 2; grid-row: 1; margin-bottom: 4px; font-size: 9px; }
+  .favorite { grid-column: 3; grid-row: 1 / 3; align-self: start; width: 44px; height: 44px; margin: -7px -6px 0 -5px; }
+  .body { grid-column: 2; grid-row: 2; padding: 0 0 6px; }
+  .title { font-size: 14px; line-height: 1.45; }
+  .description { margin-top: 5px; font-size: 11px; line-height: 1.6; }
+  .footer { grid-column: 2 / -1; margin-top: 3px; min-height: 36px; padding: 0; border: 0; }
+  .open, .news { min-height: 38px; }
+  .open::after { border-radius: 13px; }
+  .newsBadge { font-size: 9px; }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .card, .favorite, .actionArrow { transition: none; }
-  .card:hover, .card:hover .actionArrow { transform: none; }
-}
-
-:global(:root[data-motion="off"]) .card:hover,
-:global(:root[data-motion="off"]) .card:hover .actionArrow { transform: none; }
+@media (prefers-reduced-motion: reduce) { .card, .actionArrow { transition: none; } .card:hover, .card:hover .actionArrow { transform: none; } }
+:global(:root[data-motion="off"]) .card:hover, :global(:root[data-motion="off"]) .card:hover .actionArrow { transform: none; }

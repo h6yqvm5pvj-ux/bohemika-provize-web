@@ -1965,12 +1965,22 @@ body {
     border-color: rgba(255, 255, 255, 0.18) !important;
   }
 
+  .tools-workspace { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
+  .tools-breadcrumb { display: flex; width: 100%; max-width: 1280px; margin: 0 auto; }
+  .tools-breadcrumb a { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 12px; border: 1px solid #e6ddec; border-radius: 10px; background: #fff; color: #8b709e; font-size: 12px; font-weight: 500; }
+  .tools-breadcrumb a:hover { background: #f4edf8; color: #67477b; }
+  .tools-breadcrumb a:focus-visible { outline: 2px solid #a07eba; outline-offset: 3px; }
+  @media print { .tools-breadcrumb { display: none; } }
+
   @media (max-width: 639px) {
     .tools-content {
       align-items: stretch;
-      padding: 0.75rem 0.5rem 2rem !important;
+      padding: 1rem 0.875rem max(2rem, env(safe-area-inset-bottom)) !important;
       overflow-x: clip;
     }
+
+    .tools-workspace { gap: 8px; }
+    .tools-breadcrumb a { min-height: 44px; }
 
     .tools-content > * {
       min-width: 0;
@@ -1979,24 +1989,24 @@ body {
 
     .tools-content h1 {
       max-width: 100%;
-      font-size: clamp(2rem, 11vw, 3.1rem) !important;
-      line-height: 1.02 !important;
-      letter-spacing: 0 !important;
+      font-size: clamp(1.5rem, 6.5vw, 1.875rem) !important;
+      line-height: 1.2 !important;
+      letter-spacing: -0.025em !important;
       overflow-wrap: anywhere;
     }
 
     .tools-content h2:not(.tool-card-title) {
       max-width: 100%;
-      font-size: clamp(1.35rem, 7vw, 2rem) !important;
-      line-height: 1.08 !important;
-      letter-spacing: 0 !important;
+      font-size: clamp(1rem, 4.5vw, 1.25rem) !important;
+      line-height: 1.35 !important;
+      letter-spacing: -0.015em !important;
       overflow-wrap: anywhere;
     }
 
     .tools-content h3 {
       max-width: 100%;
-      font-size: clamp(1.08rem, 5.6vw, 1.55rem) !important;
-      line-height: 1.12 !important;
+      font-size: clamp(0.875rem, 4vw, 1.125rem) !important;
+      line-height: 1.4 !important;
       overflow-wrap: anywhere;
     }
 
@@ -2040,6 +2050,7 @@ body {
 
     .tools-content .pomucky-modal-panel {
       max-height: calc(100dvh - 1rem) !important;
+      overflow-y: auto;
       border-radius: 22px !important;
       padding: 1rem !important;
     }

@@ -9,6 +9,7 @@ import {
   type ReactElement,
 } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
@@ -40,6 +41,9 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
+  LayoutGrid,
+  History,
   TrendingUp,
   Trophy,
   WalletCards,
@@ -47,8 +51,7 @@ import {
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
-import { InstitutionPortalLinksModal } from "./InstitutionPortalLinksModal";
-import { ContactsModal } from "./ContactsModal";
+import hubStyles from "./toolHub.module.css";
 import { ToolFilterNavigation } from "./ToolFilterNavigation";
 import { ToolCard } from "./ToolCard";
 import { systemSansFont } from "@/lib/fonts";
@@ -71,6 +74,9 @@ import {
   type ToolCatalogCategory,
   type ToolCatalogNews,
 } from "./toolCatalog";
+
+const InstitutionPortalLinksModal = dynamic(() => import("./InstitutionPortalLinksModal").then(module => module.InstitutionPortalLinksModal));
+const ContactsModal = dynamic(() => import("./ContactsModal").then(module => module.ContactsModal));
 
 const toolsFont = systemSansFont;
 
@@ -99,88 +105,18 @@ const FILTER_TAB_LABEL: Record<FilterKey, string> = {
   Obecné: "Obecné",
 };
 
-type FilterVisual = {
-  icon: LucideIcon;
-  active: string;
-  glow: string;
-  inactive: string;
-  helper: string;
+const FILTER_ICONS: Record<FilterKey, LucideIcon> = {
+  Všechny: LayoutGrid,
+  "Životní pojištění": HeartPulse,
+  "Pojištění majetku": Home,
+  "Pojištění vozidel": CarFront,
+  "Cestovní pojištění": Plane,
+  Finance: BarChart3,
+  Investice: PiggyBank,
+  Obecné: Files,
 };
 
-const FILTER_VISUALS: Record<FilterKey, FilterVisual> = {
-  Všechny: {
-    icon: Sparkles,
-    active:
-      "border-slate-700 bg-[linear-gradient(135deg,#334155_0%,#0f172a_100%)] !text-white",
-    glow: "shadow-[0_16px_36px_rgba(15,23,42,0.34)]",
-    inactive:
-      "border-slate-300/90 bg-white/85 text-slate-700 hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white",
-    helper: "Všechny interní pomůcky na jednom místě.",
-  },
-  "Pojištění majetku": {
-    icon: Home,
-    active:
-      "border-cyan-500 bg-[linear-gradient(135deg,#22d3ee_0%,#0e7490_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(14,116,144,0.32)]",
-    inactive:
-      "border-cyan-200/90 bg-white/88 text-cyan-800 hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-50/75",
-    helper: "Nástroje pro katastr, majetek a kalkulace hodnoty nemovitostí.",
-  },
-  "Pojištění vozidel": {
-    icon: CarFront,
-    active:
-      "border-blue-500 bg-[linear-gradient(135deg,#60a5fa_0%,#1d4ed8_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(29,78,216,0.34)]",
-    inactive:
-      "border-blue-200/90 bg-white/88 text-blue-800 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50/75",
-    helper: "VIN, tachometry i další auto utility.",
-  },
-  "Životní pojištění": {
-    icon: HeartPulse,
-    active:
-      "border-rose-500 bg-[linear-gradient(135deg,#fb7185_0%,#be123c_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(190,24,93,0.34)]",
-    inactive:
-      "border-rose-200/90 bg-white/88 text-rose-800 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50/75",
-    helper: "Invalidita, pracovní neschopnost a srovnání životních produktů.",
-  },
-  "Cestovní pojištění": {
-    icon: Plane,
-    active:
-      "border-sky-500 bg-[linear-gradient(135deg,#38bdf8_0%,#0369a1_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(3,105,161,0.32)]",
-    inactive:
-      "border-sky-200/90 bg-white/88 text-sky-800 hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50/75",
-    helper: "Srovnání limitů, připojištění a situací na cestách.",
-  },
-  Finance: {
-    icon: BarChart3,
-    active:
-      "border-emerald-500 bg-[linear-gradient(135deg,#34d399_0%,#047857_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(4,120,87,0.34)]",
-    inactive:
-      "border-emerald-200/90 bg-white/88 text-emerald-800 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/75",
-    helper: "Statistika, export a plánování výkonu v jednom flow.",
-  },
-  Investice: {
-    icon: TrendingUp,
-    active:
-      "border-amber-500 bg-[linear-gradient(135deg,#f59e0b_0%,#b45309_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(180,83,9,0.34)]",
-    inactive:
-      "border-amber-200/90 bg-white/88 text-amber-800 hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-50/75",
-    helper: "Kalkulačky a podklady pro investiční schůzky.",
-  },
-  Obecné: {
-    icon: ShieldCheck,
-    active:
-      "border-indigo-500 bg-[linear-gradient(135deg,#818cf8_0%,#4338ca_100%)] text-white",
-    glow: "shadow-[0_16px_36px_rgba(67,56,202,0.34)]",
-    inactive:
-      "border-indigo-200/90 bg-white/88 text-indigo-800 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50/75",
-    helper: "Školení, argumenty, dokumenty a týmové workflow pomůcky.",
-  },
-};
+type ToolCollection = "all" | "favorites" | "recent";
 
 const TACHOMETER_UPLOAD_TARGETS = [
   {
@@ -255,6 +191,7 @@ type ToolHubUsageResponse = {
 export default function ToolsPage() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("Všechny");
   const [searchQuery, setSearchQuery] = useState("");
+  const [collection, setCollection] = useState<ToolCollection>("all");
   const [tachometerModalOpen, setTachometerModalOpen] = useState(false);
   const [linksModalOpen, setLinksModalOpen] = useState(false);
   const [contactsModalOpen, setContactsModalOpen] = useState(false);
@@ -474,70 +411,76 @@ export default function ToolsPage() {
     [effectiveEmail, favoritePendingKeys, usageByKey, user]
   );
 
+  const collectionTools = useMemo(() => tools.filter(tool =>
+    collection === "favorites" ? usageByKey[tool.key]?.favorite
+      : collection === "recent" ? (usageByKey[tool.key]?.lastOpenedAtMs ?? 0) > 0 : true,
+  ), [collection, tools, usageByKey]);
+  const favoriteCount = tools.filter(tool => usageByKey[tool.key]?.favorite).length;
+
   const filterCounts = useMemo(() => {
     const counts = Object.fromEntries(FILTERS.map((filter) => [filter, 0])) as Record<FilterKey, number>;
 
-    tools.forEach((tool) => {
+    collectionTools.forEach((tool) => {
       if (!toolMatchesSearchQuery(tool, searchQuery)) return;
       counts.Všechny += 1;
       counts[tool.category] += 1;
     });
 
     return counts;
-  }, [searchQuery, tools]);
+  }, [searchQuery, collectionTools]);
 
   const filteredTools = useMemo(
     () => {
-      const filtered = tools.filter((tool) => {
+      const filtered = collectionTools.filter((tool) => {
         const categoryMatch = activeFilter === "Všechny" || tool.category === activeFilter;
         if (!categoryMatch) return false;
         return toolMatchesSearchQuery(tool, searchQuery);
       });
 
-      return filtered.sort((a, b) => compareToolHubTools(a, b, usageByKey));
+      return filtered.sort((a, b) => collection === "recent"
+        ? (usageByKey[b.key]?.lastOpenedAtMs ?? 0) - (usageByKey[a.key]?.lastOpenedAtMs ?? 0)
+        : compareToolHubTools(a, b, usageByKey));
     },
-    [activeFilter, searchQuery, tools, usageByKey]
+    [activeFilter, searchQuery, collectionTools, collection, usageByKey]
   );
 
   return (
     <AppLayout active="tools">
-      <div className={`${toolsFont.className} pomucky-tools-root relative w-full overflow-visible px-0 pb-8 pt-1 sm:px-3 sm:pb-10 sm:pt-2`}>
-        <div className="relative z-10 mx-auto max-w-7xl space-y-4 px-0 sm:space-y-5 sm:px-2 lg:px-3">
-          <section className="py-0 sm:py-2">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <h1 className="text-3xl font-bold tracking-[-0.015em] text-slate-900 sm:text-5xl">
-                Pomůcky
-              </h1>
-
-              <div className="w-full max-w-xl xl:w-[32rem]">
-                <label htmlFor="tools-search" className="sr-only">
-                  Hledat pomůcky
-                </label>
-                <div className="relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:rounded-2xl sm:shadow-[0_16px_38px_rgba(15,23,42,0.12)]">
-                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-500 sm:left-4 sm:h-5 sm:w-5" />
-                  <input
-                    id="tools-search"
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Název, kategorie nebo klíčové slovo..."
-                    className="h-11 w-full bg-transparent py-2.5 pl-10 pr-3 text-base text-slate-900 outline-none placeholder:text-slate-500 sm:h-14 sm:py-3 sm:pl-12 sm:pr-4"
-                  />
-                </div>
+      <div className={`${toolsFont.className} ${hubStyles.hub} pomucky-tools-root`}>
+        <div className={hubStyles.content}>
+          <header className={hubStyles.hero}>
+            <div className={hubStyles.intro}>
+              <span className={hubStyles.eyebrow}><LayoutGrid size={14} aria-hidden="true" /> Tvůj pracovní prostor</span>
+              <h1>Pomůcky<span>{tools.length}</span></h1>
+              <p>Vše pro klienty, srovnání i každodenní agendu.</p>
+            </div>
+            <div className={hubStyles.search}>
+              <label htmlFor="tools-search">Co dnes potřebuješ vyřešit?</label>
+              <div className={hubStyles.searchBox}>
+                <Search size={19} aria-hidden="true" />
+                <input id="tools-search" type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)}
+                  placeholder="Hledat pomůcku, téma nebo klíčové slovo…" autoComplete="off" />
+                {searchQuery && <button type="button" onClick={() => { setSearchQuery(""); document.getElementById("tools-search")?.focus(); }} aria-label="Vymazat hledání"><X size={17} aria-hidden="true" /></button>}
               </div>
             </div>
-          </section>
+          </header>
 
-          <ToolFilterNavigation
-            activeFilter={activeFilter}
-            onFilterChange={setActiveFilter}
-            options={FILTERS.map((filter) => ({
-              id: filter,
-              label: FILTER_TAB_LABEL[filter],
-              icon: FILTER_VISUALS[filter].icon,
-              count: filterCounts[filter],
-            }))}
-          />
+          <div className={hubStyles.navigation}>
+            <div className={hubStyles.collections} role="group" aria-label="Výběr pomůcek">
+              <button type="button" aria-pressed={collection === "all"} onClick={() => setCollection("all")}><LayoutGrid size={16} aria-hidden="true" /> Všechny pomůcky</button>
+              <button type="button" aria-pressed={collection === "favorites"} onClick={() => setCollection("favorites")}><Star size={16} aria-hidden="true" /> Oblíbené <small>{favoriteCount}</small></button>
+              <button type="button" aria-pressed={collection === "recent"} onClick={() => setCollection("recent")}><History size={16} aria-hidden="true" /> Nedávné</button>
+            </div>
+            <ToolFilterNavigation
+              activeFilter={activeFilter}
+              onFilterChange={setActiveFilter}
+              options={FILTERS.map((filter) => ({ id: filter, label: FILTER_TAB_LABEL[filter], icon: FILTER_ICONS[filter], count: filterCounts[filter] }))}
+            />
+          </div>
+          <div className={hubStyles.listHeading}>
+            <h2 className="tool-card-title">{collection === "favorites" ? "Tvoje oblíbené" : collection === "recent" ? "Nedávno otevřené" : activeFilter === "Všechny" ? "Všechny pomůcky" : activeFilter}</h2>
+            <span role="status" aria-live="polite">Zobrazeno {filteredTools.length} z {tools.length}</span>
+          </div>
 
           {usageLoading || usageError ? (
             <p role="status" className={`text-xs font-medium ${usageLoading ? "text-slate-500" : "text-rose-700"}`}>
@@ -546,19 +489,14 @@ export default function ToolsPage() {
           ) : null}
 
           {filteredTools.length === 0 ? (
-            <div className="rounded-[30px] border border-slate-200/80 bg-white/82 px-6 py-10 text-center shadow-[0_20px_58px_rgba(15,23,42,0.1)] backdrop-blur-xl">
-              <div className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.14)]">
-                <Sparkles className="h-6 w-6" />
-              </div>
-              <h2 className="mt-4 text-2xl font-semibold text-slate-900">
-                Nic neodpovídá aktuálnímu filtru
-              </h2>
-              <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 sm:text-base">
-                Pro filtr <strong>{activeFilter}</strong> a zadané hledání se nenašla žádná pomůcka.
-              </p>
+            <div className={hubStyles.empty}>
+              {collection === "favorites" ? <Star size={28} aria-hidden="true" /> : collection === "recent" ? <History size={28} aria-hidden="true" /> : <Search size={28} aria-hidden="true" />}
+              <h2 className="tool-card-title">{collection === "favorites" && !favoriteCount ? "Oblíbené pomůcky na dosah" : collection === "recent" && !collectionTools.length ? "Tady najdeš naposledy otevřené pomůcky" : "Tady jsme žádnou pomůcku nenašli"}</h2>
+              <p>{collection === "favorites" && !favoriteCount ? "Označ pomůcku hvězdičkou a příště ji najdeš rovnou tady." : collection === "recent" && !collectionTools.length ? "Otevři některou z pomůcek. Při příští návštěvě na ni snadno navážeš." : "Zkus jiné slovo nebo zruš filtry."}</p>
+              <button type="button" onClick={() => { setSearchQuery(""); setActiveFilter("Všechny"); setCollection("all"); }}>Zobrazit všechny pomůcky</button>
             </div>
           ) : (
-            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Katalog pomůcek">
+            <section className={hubStyles.grid} aria-label="Katalog pomůcek">
               {filteredTools.map((tool) => tool.render ? (
                 <div key={tool.key}>{tool.render()}</div>
               ) : (

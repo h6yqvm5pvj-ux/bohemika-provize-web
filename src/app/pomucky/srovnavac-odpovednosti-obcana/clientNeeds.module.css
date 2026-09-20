@@ -1,0 +1,37 @@
+.assistant { flex-shrink: 0; min-width: 0; overflow: hidden; border: 1px solid #d8c3e7; border-radius: 9px; background: #fff; color: #60446f; }
+.summary { display: flex; align-items: center; background: #f5eef9; }
+.summary > button:first-child { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 8px 11px; text-align: left; }
+.summary > button > svg { flex-shrink: 0; color: #79558f; }
+.summary strong { display: block; font-size: 12px; font-weight: 650; }
+.summary small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; font-size: 10px; }
+.summary > button > span:first-of-type { min-width: 0; }
+.openLabel { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: auto; padding: 4px 7px; border: 1px solid #b99acd; border-radius: 6px; background: white; color: #603779; font-size: 10px; font-weight: 600; }
+.reset { padding: 8px; }
+.panel { max-height: 52dvh; overflow: auto; padding: 12px; border-top: 1px solid #e7dced; }
+.panel[hidden], .options[hidden] { display: none; }
+.panel label { font-size: 12px; font-weight: 600; }
+.panel form > p { margin-top: 3px; color: #826991; font-size: 11px; }
+.panel textarea { display: block; width: 100%; min-height: 62px; resize: vertical; margin-top: 8px; padding: 9px 10px; border: 1px solid #cdb6dd; border-radius: 7px; background: white; color: #493354; font: inherit; font-size: 12px; }
+.formActions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 7px; }
+.formActions > small { color: #947e9f; font-size: 10px; }
+.formActions > .primary { margin-left: auto; }
+.primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 6px 10px; border: 1px solid #79558f; border-radius: 7px; background: #79558f; color: white; font-size: 11px; font-weight: 600; }
+.primary:hover { background: #68467d; }
+.primary:disabled { opacity: .5; cursor: not-allowed; }
+.example { color: #79558f; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
+.status { margin-top: 7px; color: #79558f; font-size: 11px; line-height: 1.5; }
+.status:empty { display: none; }
+.selected { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.selected button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid #c8b0d8; border-radius: 7px; background: #f3eaf9; font-size: 11px; }
+.manualToggle { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; margin-top: 8px; color: #68467d; font-size: 11px; font-weight: 600; }
+.options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 7px; }
+.options label { display: flex; align-items: flex-start; gap: 7px; padding: 8px; border: 1px solid #e5d9ec; border-radius: 7px; font-size: 11px; cursor: pointer; }
+.options label:has(input:checked) { background: #f5eef9; border-color: #b99acd; }
+.options input { margin-top: 2px; flex-shrink: 0; accent-color: #79558f; }
+.options small { display: block; margin-top: 3px; color: #826991; font-size: 10px; font-weight: 400; line-height: 1.4; }
+.applyRow { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #ece3f2; }
+.applyRow p { max-width: 500px; font-size: 10px; color: #947e9f; }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 650px) { .options { grid-template-columns: 1fr; } .summary strong { font-size: 11px; } .panel { padding: 9px; } .applyRow .primary { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

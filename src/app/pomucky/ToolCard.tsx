@@ -44,6 +44,7 @@ export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, o
     <article className={styles.card} data-category={tool.category} data-favorite={favorite} aria-labelledby={titleId}>
       <div className={styles.header}>
         <span className={styles.icon}><Icon size={23} strokeWidth={1.7} aria-hidden="true" /></span>
+        <span className={styles.category}>{tool.category}</span>
         <button
           type="button"
           className={styles.favorite}
@@ -59,6 +60,7 @@ export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, o
 
       <div className={styles.body}>
         <h2 id={titleId} className={`${styles.title} tool-card-title`}>{tool.title}</h2>
+        <p className={styles.description}>{tool.description}</p>
       </div>
 
       <div className={styles.footer}>

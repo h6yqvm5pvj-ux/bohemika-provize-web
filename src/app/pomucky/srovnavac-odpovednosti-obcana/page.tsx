@@ -8,6 +8,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { InsurerPicker } from "../srovnavac-trvalych-nasledku/InsurerPicker";
 import { LIABILITY_INSURERS } from "./products";
 import { LiabilityComparisonResults } from "./LiabilityComparisonResults";
+import { ClientNeedsAssistant } from "./ClientNeedsAssistant";
+import type { ClientNeedId } from "./clientNeeds";
 import styles from "./comparison.module.css";
 
 const PRODUCT_GROUPS = LIABILITY_INSURERS.map((insurer) => ({
@@ -29,6 +31,7 @@ export default function LiabilityComparisonPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>(ALL_PRODUCT_IDS);
   const [expandedInsurers, setExpandedInsurers] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [clientNeeds, setClientNeeds] = useState<ClientNeedId[]>([]);
   const pickerHeadingRef = useRef<HTMLHeadingElement>(null);
   const returningToPicker = useRef(false);
 
@@ -75,8 +78,13 @@ export default function LiabilityComparisonPage() {
           {!showResults && <span className={styles.catalogCount}>{LIABILITY_INSURERS.length} pojišťoven · {ALL_PRODUCT_IDS.length} variant</span>}
         </header>
 
+        <ClientNeedsAssistant applied={clientNeeds} canCompare={selectedProducts.length > 0} onApply={(needs) => {
+          setClientNeeds(needs);
+          if (needs.length && selectedProducts.length) setShowResults(true);
+        }} />
+
         {showResults ? (
-          <LiabilityComparisonResults selectedIds={selectedProducts} onEditSelection={() => {
+          <LiabilityComparisonResults key={[...clientNeeds].sort().join(":")} needs={clientNeeds} selectedIds={selectedProducts} onEditSelection={() => {
             returningToPicker.current = true;
             setShowResults(false);
           }} />

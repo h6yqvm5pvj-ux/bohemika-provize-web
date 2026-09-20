@@ -457,7 +457,7 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     href: "/pomucky/srovnavac-odpovednosti-obcana",
     news: {
       kind: "new",
-      summary: "Šest sekcí srovnání pro 17 produktů: obecné podmínky, život a sport, chovatel, nemovitosti, nájem a spolupojištěné osoby.",
+      summary: "Šest sekcí a 17 produktů. Nově můžeš popsat klienta vlastními slovy, zkontrolovat jeho potřeby a zobrazit související kritéria. Rychlý profil funguje i bez odpovědi AI; porovnání vychází z uložených údajů. Nechybí PDF s výběrem obsahu a vizitkou.",
     },
   },
   {

@@ -79,6 +79,7 @@ export function ComparisonSection({ section, products, active }: {
                     <th scope="row" className={styles.criterionCell} data-subcriterion={!!criterion.parentId}>
                       {criterion.parentLabel && <small>{criterion.parentLabel}</small>}
                       <span className={styles.criterionTitle}><CriterionIcon size={15} aria-hidden="true" /><span>{criterion.title}</span></span>
+                      {criterion.relevance && <small>Pro: {criterion.relevance.join(" · ")}</small>}
                       {childCount > 0 && (
                         <button type="button" className={styles.subcriteriaToggle} aria-expanded={groupExpanded}
                           aria-label={`${groupExpanded ? "Skrýt" : "Zobrazit"} podkritéria: ${criterion.title} (${childCount})`}

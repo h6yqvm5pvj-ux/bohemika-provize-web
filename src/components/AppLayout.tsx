@@ -43,6 +43,10 @@ import { clearServerSession } from "@/app/lib/authSession";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
 import { useIntranetUnreadCount } from "@/components/navigation/useIntranetUnreadCount";
+
+function ToolWorkspace({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  return enabled ? <div className="tools-workspace">{children}</div> : <>{children}</>;
+}
 import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess";
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
@@ -172,7 +176,6 @@ export function AppLayout({
     active === "tools" &&
     pathname !== "/pomucky" &&
     !pageHasCustomToolsBackButton;
-  const toolsBackButtonRightAligned = pathname === "/pomucky/invalidita";
   const contentOverflowClass =
     active === "tools" || active === "cashflow" ? "overflow-visible" : "overflow-x-clip";
   const isFullBleedPage =
@@ -830,27 +833,19 @@ export function AppLayout({
                   </div>
                 </div>
               ) : (
-                <>
+                <ToolWorkspace enabled={active === "tools" && !embedded}>
                   {showToolsBackToIndex ? (
-                    <div
-                      className={[
-                        "pointer-events-none absolute top-1 z-10 sm:top-2",
-                        toolsBackButtonRightAligned
-                          ? "right-3 sm:right-4 lg:right-8"
-                          : "left-3 sm:left-4 lg:left-8",
-                      ].join(" ")}
-                    >
+                    <nav className="tools-breadcrumb" aria-label="Zpět na přehled pomůcek">
                       <Link
                         href="/pomucky"
-                        className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
                       >
                         <ArrowLeft size={15} strokeWidth={2} aria-hidden="true" />
-                        <span>Zpět na pomůcky</span>
+                        <span>Všechny pomůcky</span>
                       </Link>
-                    </div>
+                    </nav>
                   ) : null}
                   {children}
-                </>
+                </ToolWorkspace>
               )}
             </SubscriptionGate>
           </div>

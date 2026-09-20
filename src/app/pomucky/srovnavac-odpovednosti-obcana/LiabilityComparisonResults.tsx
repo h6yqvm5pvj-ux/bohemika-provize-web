@@ -8,20 +8,27 @@ import { ComparisonExport } from "./ComparisonExport";
 import { SECTION_ICONS } from "./comparisonIcons";
 import { LIABILITY_PRODUCTS } from "./products";
 import { LIABILITY_SECTIONS } from "./sections";
+import { personalizeSections, type ClientNeedId } from "./clientNeeds";
 import styles from "./comparison.module.css";
 
-export function LiabilityComparisonResults({ selectedIds, onEditSelection }: {
+export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSelection }: {
   selectedIds: string[];
+  needs?: ClientNeedId[];
   onEditSelection: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const [activeSection, setActiveSection] = useState(LIABILITY_SECTIONS[0].id);
+  const [selectedSection, setActiveSection] = useState(LIABILITY_SECTIONS[0].id);
+  const [showFullComparison, setShowFullComparison] = useState(false);
   useEffect(() => { headingRef.current?.focus(); }, []);
   const selectedProducts = LIABILITY_PRODUCTS.filter((product) => selectedIds.includes(product.id));
   const hasData = (id: string) => LIABILITY_SECTIONS.some((section) => hasSectionComparison(section, id));
   const products = selectedProducts.filter((product) => hasData(product.id));
   const missingProducts = selectedProducts.filter((product) => !hasData(product.id));
-  const sections = LIABILITY_SECTIONS.filter((section) => products.some((product) => hasSectionComparison(section, product.id)));
+  const allSections = LIABILITY_SECTIONS.filter((section) => products.some((product) => hasSectionComparison(section, product.id)));
+  const personalized = needs.length > 0 && !showFullComparison;
+  const sections = personalized ? personalizeSections(allSections, needs) : allSections;
+  const activeSection = sections.some((section) => section.id === selectedSection) ? selectedSection : sections[0]?.id;
+  const viewKey = `${needs.join(":")}:${personalized}`;
 
   const handleTabKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const targetIndex = event.key === "ArrowRight" ? (index + 1) % sections.length
@@ -41,6 +48,7 @@ export function LiabilityComparisonResults({ selectedIds, onEditSelection }: {
       <div className={styles.resultsToolbar}>
         <div className={styles.resultsMeta}>
           <span>Srovnáváme <strong>{products.length}</strong> z {selectedProducts.length} vybraných produktů</span>
+          {personalized && <span>Podle profilu · {sections.reduce((total, section) => total + section.criteria.length, 0)} kritérií včetně podkritérií</span>}
           {missingProducts.length > 0 && (
             <details className={styles.missingNotice}>
               <summary><Info size={13} aria-hidden="true" /> {missingProducts.length} bez údajů · zobrazit <ChevronDown size={14} aria-hidden="true" /></summary>
@@ -52,7 +60,8 @@ export function LiabilityComparisonResults({ selectedIds, onEditSelection }: {
           )}
         </div>
         <div className={styles.actions}>
-          {products.length > 0 && <ComparisonExport sections={sections} products={products} activeSection={activeSection} />}
+          {needs.length > 0 && <button type="button" onClick={() => setShowFullComparison(!showFullComparison)}>{personalized ? "Zobrazit celé srovnání" : "Jen kritéria podle profilu"}</button>}
+          {products.length > 0 && <ComparisonExport key={viewKey} sections={sections} products={products} activeSection={activeSection} />}
           <button type="button" onClick={onEditSelection}><ChevronLeft size={14} aria-hidden="true" /> Upravit výběr</button>
         </div>
       </div>
@@ -76,7 +85,7 @@ export function LiabilityComparisonResults({ selectedIds, onEditSelection }: {
               </button>;
             })}
           </div>
-          {sections.map((section) => <ComparisonSection key={section.id} section={section} products={products} active={activeSection === section.id} />)}
+          {sections.map((section) => <ComparisonSection key={`${viewKey}:${section.id}`} section={section} products={products} active={activeSection === section.id} />)}
         </>
       )}
     </section>

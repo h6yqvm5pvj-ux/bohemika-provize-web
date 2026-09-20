@@ -12,6 +12,7 @@ export type ComparisonCriterion = {
   parentId?: string;
   parentLabel?: string;
   coverageParentId?: string;
+  relevance?: string[];
 };
 
 export type ComparisonSectionData = {

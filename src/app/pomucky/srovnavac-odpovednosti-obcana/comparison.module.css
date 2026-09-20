@@ -1,7 +1,7 @@
 .page { display: flex; flex-direction: column; gap: 10px; width: 100%; min-width: 0; margin: 0 auto; padding: 12px 18px; color: #493354; background: #fbf9fd; font-family: var(--font-inter), system-ui, sans-serif; }
 .page[data-view="results"] { height: 100dvh; min-height: 460px; overflow: hidden; }
 .page button { cursor: pointer; }
-.page :is(button, a, input):focus-visible { outline: 2px solid #9874b0; outline-offset: 2px; }
+.page :is(button, a, input, textarea):focus-visible { outline: 2px solid #9874b0; outline-offset: 2px; }
 .pageHeader { display: flex; align-items: center; flex-wrap: wrap; flex-shrink: 0; gap: 10px 18px; min-height: 36px; }
 .backLink { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; color: #90749f; font-size: 12px; }
 .backLink:hover { color: #624477; }
@@ -109,8 +109,8 @@
   .toolbar { padding: 8px; }
   .toolbar > .actions { gap: 5px; }
   .results { gap: 6px; }
-  .resultsToolbar { align-items: flex-start; flex-wrap: nowrap; gap: 6px; }
-  .resultsToolbar .actions { flex-shrink: 0; }
+  .resultsToolbar { align-items: stretch; flex-direction: column; gap: 6px; }
+  .resultsToolbar .actions { flex-wrap: wrap; }
   .resultsMeta { gap: 3px 8px; font-size: 10px; }
   .missingList { position: fixed; top: 110px; left: 8px; width: calc(100vw - 16px); max-height: 60vh; }
   .sectionNav button { padding: 8px 9px; font-size: 11px; }

@@ -1,0 +1,60 @@
+.hub { width: 100%; min-width: 0; color: #292337; padding: 0 0 32px; }
+.content { width: 100%; max-width: 1280px; margin: 0 auto; }
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding: 12px 0 28px; }
+.eyebrow { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; color: #82758f; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.intro h1 { display: flex; align-items: center; gap: 12px; color: #30223f; font-size: 36px; line-height: 1.2; font-weight: 720; letter-spacing: -.04em; }
+.intro h1 > span { display: grid; place-items: center; min-width: 30px; height: 28px; padding-inline: 6px; border: 1px solid #e5dcef; border-radius: 9px; color: #87699f; background: #f5effa; font-size: 12px; font-weight: 550; letter-spacing: 0; }
+.intro > p { margin-top: 8px; color: #807689; font-size: 13px; line-height: 1.6; }
+.search { width: min(46%, 500px); flex-shrink: 0; }
+.search > label { display: block; margin-bottom: 9px; color: #675774; font-size: 12px; font-weight: 550; }
+.searchBox { display: flex; align-items: center; gap: 10px; min-height: 50px; padding-left: 15px; border: 1px solid #ded7e7; border-radius: 12px; background: #fff; box-shadow: 0 3px 12px #37224404; }
+.searchBox:focus-within { border-color: #9875b4; box-shadow: 0 0 0 3px #9c7aba12; }
+.searchBox > svg { flex-shrink: 0; color: #9585a4; }
+.searchBox input { width: 100%; min-width: 0; padding: 13px 10px 13px 0; background: transparent; border: 0; outline: none; color: #3c3049; font-size: 14px; }
+.searchBox input::placeholder { color: #9b90a5; }
+.searchBox input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.searchBox button { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; color: #857190; }
+.navigation { position: sticky; top: 0; z-index: 20; padding: 4px 0 10px; background: #faf9fcf7; backdrop-filter: blur(12px); }
+.collections { display: flex; gap: 22px; margin-bottom: 13px; border-bottom: 1px solid #e6e0eb; }
+.collections button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 4px 0 11px; border-bottom: 2px solid transparent; color: #8d7e9a; font-size: 12px; font-weight: 550; white-space: nowrap; cursor: pointer; }
+.collections button[aria-pressed="true"] { color: #6e4490; border-color: #885eaa; }
+.collections button:hover { color: #604077; }
+.collections small { display: grid; place-items: center; min-width: 19px; height: 19px; border-radius: 5px; padding-inline: 3px; background: #efe8f5; color: #87669e; font-size: 10px; }
+.categories { min-width: 0; }
+.categoryList { gap: 5px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.categoryList button { display: inline-flex; flex: 1 0 auto; align-items: center; justify-content: center; gap: 7px; min-height: 43px; padding: 8px 13px; border: 1px solid #e8e2ee; border-radius: 10px; background: #fff; color: #83718f; font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.categoryList button[aria-pressed="true"] { border-color: #87629e; background: #79568f; color: #fff; box-shadow: 0 3px 8px #6c44871a; }
+.categoryList button:hover:not([aria-pressed="true"]) { border-color: #c9b2da; background: #f5f0f9; }
+.categoryList button > svg { flex-shrink: 0; }
+.categoryList button > small { margin-left: 2px; font-size: 10px; opacity: .7; font-variant-numeric: tabular-nums; }
+.listHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 15px 0 14px; }
+.listHeading h2 { color: #6b5879; font-size: 13px; font-weight: 600; }
+.listHeading > span { color: #9b8ca6; font-size: 11px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.empty { display: grid; justify-items: center; gap: 12px; padding: 52px 22px; border: 1px dashed #d8c9e3; border-radius: 16px; background: #ffffffa8; text-align: center; color: #8a6c9f; }
+.empty h2 { color: #51405e; font-size: 18px; font-weight: 600; }
+.empty p { color: #8b7a98; max-width: 410px; font-size: 13px; line-height: 1.65; }
+.empty button { min-height: 44px; margin-top: 6px; padding: 9px 16px; border: 1px solid #d4bee2; border-radius: 9px; background: #f5eff9; color: #6a437f; font-size: 12px; font-weight: 600; cursor: pointer; }
+.hub :is(button, a):focus-visible { outline: 2px solid #9770b3; outline-offset: 3px; }
+@media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hero { gap: 18px; } }
+@media (max-width: 650px) {
+  .hero { flex-direction: column; align-items: stretch; gap: 20px; padding: 3px 2px 18px; }
+  .eyebrow { margin-bottom: 8px; font-size: 9px; }
+  .intro h1 { font-size: 28px; }
+  .intro > p { margin-top: 6px; font-size: 12px; }
+  .search { width: 100%; }
+  .search > label { font-size: 11px; margin-bottom: 7px; }
+  .searchBox { min-height: 48px; padding-left: 12px; gap: 9px; }
+  .searchBox input { font-size: 16px; }
+  .collections { gap: 14px; justify-content: space-between; margin-bottom: 10px; }
+  .collections button { font-size: 11px; gap: 5px; padding-bottom: 9px; }
+  .collections button > svg { width: 14px; }
+  .categoryList { padding-bottom: 4px; }
+  .categoryList button { min-height: 44px; padding-inline: 12px; font-size: 11px; }
+  .listHeading { margin: 10px 2px; }
+  .listHeading h2 { font-size: 12px; }
+  .listHeading > span { font-size: 10px; }
+  .navigation { padding-bottom: 5px; }
+  .grid { grid-template-columns: 1fr; gap: 9px; }
+  .empty { padding: 34px 20px; }
+}

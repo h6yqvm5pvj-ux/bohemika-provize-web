@@ -1,8 +1,9 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { SectionNavigation, SectionNavigationIcon, sectionNavigationItemClass } from "@/components/navigation/SectionNavigation";
+import { SectionNavigation } from "@/components/navigation/SectionNavigation";
 import type { ToolCatalogCategory } from "./toolCatalog";
+import styles from "./toolHub.module.css";
 
 type FilterKey = "Všechny" | ToolCatalogCategory;
 type ToolFilterNavigationProps = {
@@ -13,10 +14,11 @@ type ToolFilterNavigationProps = {
 
 export function ToolFilterNavigation({ options, activeFilter, onFilterChange }: ToolFilterNavigationProps) {
   return (
-    <nav className="sticky top-1 z-30 rounded-[20px] bg-white/95 backdrop-blur-md sm:top-2" aria-label="Sekce pomůcek">
-      <SectionNavigation activeKey={activeFilter} label="Kategorie pomůcek">
+    <nav className={styles.categories} aria-label="Sekce pomůcek">
+      <SectionNavigation activeKey={activeFilter} label="Kategorie pomůcek" className={styles.categoryList}>
         {options.map((option) => {
           const active = option.id === activeFilter;
+          const Icon = option.icon;
           return (
             <button
               key={option.id}
@@ -24,13 +26,10 @@ export function ToolFilterNavigation({ options, activeFilter, onFilterChange }: 
               data-active={active}
               aria-pressed={active}
               onClick={() => onFilterChange(option.id)}
-              className={sectionNavigationItemClass(active)}
             >
-              <SectionNavigationIcon icon={option.icon} active={active} />
+              <Icon size={16} aria-hidden="true" />
               {option.label}
-              <span className={`inline-flex min-w-5 items-center justify-center rounded-md px-1.5 py-1 text-[10px] font-bold leading-none tabular-nums ${active ? "bg-violet-100/80 text-violet-700" : "bg-slate-200/60 text-slate-500"}`}>
-                {option.count}
-              </span>
+              <small>{option.count}</small>
             </button>
           );
         })}
