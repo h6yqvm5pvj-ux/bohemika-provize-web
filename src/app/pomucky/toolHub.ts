@@ -27,6 +27,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "nastaveni-zivotniho-pojisteni",
   "invalidni-duchod",
   "srovnavac-trvalych-nasledku",
+  "srovnavac-odpovednosti-obcana",
   "srovnavac-pracovni-neschopnosti",
   "neon-life-vs-metlife-oneguard",
 ] as const;

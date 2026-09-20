@@ -475,6 +475,7 @@ export function AppLayout({
       clearAdminImpersonationState();
       await clearServerSession();
       await signOut(auth);
+      accountSetup.resetAll();
       window.location.href = "/login";
     } catch (e) {
       console.error(e);
@@ -639,8 +640,15 @@ export function AppLayout({
       />
 
       <div className="relative flex min-h-[100dvh]">
-        {accountSetup.showWizard && !effectiveShowPaywall && !impersonation ? (
+        {user && accountSetup.showWizard && !effectiveShowPaywall && !impersonation ? (
           <AccountSetupWizard
+            user={user}
+            completedStepIds={accountSetup.completedStepIds}
+            careerDraftStatus={accountSetup.careerDraftStatus}
+            mfaAwaitingEmail={accountSetup.mfaAwaitingEmail}
+            mfaEmailVerified={accountSetup.mfaEmailVerified}
+            onComplete={accountSetup.onComplete}
+            onStepChange={accountSetup.onStepChange}
             ariaLabel={layoutCopy.accountSettings}
             logoutLabel={layoutCopy.logout}
             steps={accountSetup.steps}

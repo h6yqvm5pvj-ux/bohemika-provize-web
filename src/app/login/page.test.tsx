@@ -144,13 +144,13 @@ describe("login verification boundary", () => {
 
   it("blocks a password login without TOTP before reading the user's profile", async () => {
     fetchMock.mockImplementation(async (url, options) => url === "/api/auth/session" && options?.method === "POST"
-      ? Response.json({ ok: false, code: "auth/account-blocked", error: "Přístup je zablokován; kontaktujte administrátora." }, { status: 403 })
+      ? Response.json({ ok: false, code: "auth/account-blocked", error: "Přístup je zablokován; kontaktuj administrátora." }, { status: 403 })
       : Response.json({ ok: true }));
     await enterPassword(); await submit();
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(mocks.profile).not.toHaveBeenCalled();
     expect(mocks.signOut).toHaveBeenCalled();
-    expect(container.textContent).toContain("kontaktujte administrátora");
+    expect(container.textContent).toContain("kontaktuj administrátora");
   });
 
   it("distinguishes a stale sign-in proof from a blocked account", async () => {
@@ -160,14 +160,14 @@ describe("login verification boundary", () => {
     await enterPassword(); await submit();
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Účet není zablokovaný");
-    expect(container.textContent).not.toContain("kontaktujte administrátora");
+    expect(container.textContent).not.toContain("kontaktuj administrátora");
   });
 
   it("shows administrator guidance for a disabled account", async () => {
     mocks.password.mockRejectedValue({ code: "auth/user-disabled" });
     await enterPassword(); await submit();
     expectNotLoggedIn();
-    expect(container.textContent).toContain("kontaktujte administrátora");
+    expect(container.textContent).toContain("kontaktuj administrátora");
   });
 
   const requestPasswordReset = async () => {

@@ -1,9 +1,9 @@
 export const ACCOUNT_BLOCKED_MESSAGE =
-  "Přístup k účtu je zablokován. Pro obnovení přístupu a nastavení dvoufázového ověření (TOTP) kontaktujte administrátora.";
+  "Přístup k účtu je zablokován. Pro obnovení přístupu a nastavení dvoufázového ověření kontaktuj administrátora.";
 
 export const ACCOUNT_BLOCKED_CODE = "auth/account-blocked";
 export const MFA_REAUTH_REQUIRED_CODE = "auth/mfa-reauth-required";
-export const MFA_REAUTH_REQUIRED_MESSAGE = "Z bezpečnostních důvodů se prosím znovu přihlaste heslem a TOTP nebo přístupovým klíčem. Účet není zablokovaný.";
+export const MFA_REAUTH_REQUIRED_MESSAGE = "Z bezpečnostních důvodů se znovu přihlas heslem a kódem z ověřovací aplikace nebo přístupovým klíčem. Účet není zablokovaný.";
 export const TOTP_CUSTOM_TOKEN_CLAIM = "app_totp_enrolled";
 
 export function hasTotpFactor(user: {

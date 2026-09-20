@@ -3,7 +3,10 @@
 
 import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, KeyRound, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { ArrowRight, KeyRound, Mail, ShieldCheck } from "lucide-react";
+import { AuthPage } from "@/components/account-setup/AuthPage";
+import { PasswordField } from "@/components/account-setup/PasswordField";
+import surface from "@/components/account-setup/authSurface.module.css";
 import {
   FactorId,
   getMultiFactorResolver,
@@ -595,8 +598,7 @@ export default function LoginPage() {
     }
   };
 
-  const fieldInputClass =
-    "w-full rounded-2xl border border-violet-300/25 bg-white/[0.08] py-3 pl-11 pr-4 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 focus:border-violet-200/70 focus:bg-white/[0.12] focus:ring-2 focus:ring-violet-200/20";
+  const fieldInputClass = `${surface.field} ${surface.withIcon}`;
 
   const focusMfaInput = (index: number) => {
     window.requestAnimationFrame(() => mfaInputRefs.current[index]?.focus());
@@ -634,31 +636,10 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative h-[100dvh] max-h-[100dvh] overflow-hidden overscroll-none bg-[#0b0717] text-white">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#080513_0%,#130923_48%,#25134a_100%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:46px_46px] opacity-60" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,transparent_28%,rgba(168,85,247,0.16)_28%,rgba(168,85,247,0.16)_28.35%,transparent_28.35%,transparent_61%,rgba(99,102,241,0.12)_61%,rgba(99,102,241,0.12)_61.35%,transparent_61.35%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.09)_0%,rgba(255,255,255,0.025)_34%,rgba(0,0,0,0.22)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#160c2a_0%,#7c3aed_52%,#c084fc_100%)]" />
-
-      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-6xl items-center justify-center px-4 py-4 sm:py-16">
-        <div className="w-full max-w-[30rem] space-y-7 font-mono">
-          <div className="space-y-2 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-violet-200/30 bg-white/[0.08] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-100 shadow-[0_8px_20px_rgba(10,5,30,0.18)]">
-              <span className="h-2 w-2 rounded-full bg-violet-300" aria-hidden="true" />
-              Přihlášení
-            </div>
-            <h1 className="text-5xl font-semibold tracking-tight text-white sm:text-6xl">
-              Bohemka.App
-            </h1>
-            <p className="text-sm text-violet-100/72">Přihlaš se do svého účtu.</p>
-          </div>
-
-          <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[linear-gradient(155deg,#160c2a_0%,#100b21_62%,#0b0717_100%)] px-6 py-7 text-[#f8fafc] shadow-[0_24px_68px_rgba(39,18,67,0.34),inset_0_1px_0_rgba(196,181,253,0.18)] sm:px-8 sm:py-8">
-            <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#cb85ff_0%,#aa57f5_46%,#8f44e8_100%)]" />
-            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(116deg,rgba(73,32,111,0.62)_0%,rgba(31,18,49,0.78)_42%,rgba(18,12,27,0.98)_100%)]" />
-            <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(190,92,255,0.15)_0%,rgba(190,92,255,0)_36%,rgba(164,82,244,0.13)_100%)]" />
-            <span className="pointer-events-none absolute -top-24 left-16 h-72 w-px rotate-[34deg] bg-[#9d61ca]/14" />
+    <AuthPage
+      title={mfaResolver ? "Ověř své přihlášení" : "Vítej zpátky"}
+      description={mfaResolver ? "Už jen kód z tvé ověřovací aplikace." : "Přihlas se do svého pracovního prostoru."}
+    >
             <form
               onSubmit={handleSubmit}
               inert={passkeyLoading}
@@ -670,7 +651,7 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-email"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
+                      className="text-sm font-medium text-violet-100/80"
                     >
                       E-mail
                     </label>
@@ -696,27 +677,19 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-password"
-                      className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75"
+                      className="text-sm font-medium text-violet-100/80"
                     >
                       Heslo
                     </label>
-                    <div className="relative">
-                      <LockKeyhole
-                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-100/48"
-                        aria-hidden="true"
-                      />
-                      <input
+                      <PasswordField
                         id="login-password"
                         name="password"
-                        type="password"
                         autoComplete="current-password"
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className={fieldInputClass}
                         placeholder="••••••••"
                       />
-                    </div>
                     <div className="flex justify-end">
                       <button
                         type="button"
@@ -738,7 +711,7 @@ export default function LoginPage() {
                       : " Potvrď ho kódem z Microsoft Authenticator."}
                   </div>
                   <fieldset className="space-y-3" aria-describedby="mfa-code-help">
-                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-violet-100/75">
+                    <legend className="flex items-center gap-2 text-sm font-medium text-violet-100/80">
                       <ShieldCheck className="h-4 w-4 text-violet-200/75" aria-hidden="true" />
                       Jednorázový kód (2FA)
                     </legend>
@@ -806,12 +779,12 @@ export default function LoginPage() {
               )}
 
               {error && (
-                <p className="rounded-2xl border border-rose-300/40 bg-rose-500/12 px-3 py-2 text-xs text-rose-100">
+                <p role="alert" className={`${surface.notice} ${surface.noticeError}`}>
                   {error}
                 </p>
               )}
               {resetStatus && (
-                <p className="rounded-2xl border border-emerald-300/40 bg-emerald-400/12 px-3 py-2 text-xs text-emerald-100">
+                <p role="status" className={`${surface.notice} ${surface.noticeSuccess}`}>
                   {resetStatus}
                 </p>
               )}
@@ -826,7 +799,7 @@ export default function LoginPage() {
                     className="h-4 w-4 rounded border-violet-200/60 bg-transparent text-violet-500 focus:ring-violet-200/60 focus:ring-offset-0 focus:ring-offset-transparent"
                   />
                   <span className="text-violet-100/82">
-                    Důvěřovat tomuto zařízení (zůstanu přihlášený déle)
+                    Zůstat přihlášený na tomto zařízení
                   </span>
                 </label>
               ) : null}
@@ -834,17 +807,17 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || passkeyLoading}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-violet-200/25 bg-[linear-gradient(135deg,#b85cff_0%,#7c3aed_52%,#4338ca_100%)] py-3 text-base font-semibold tracking-[0.01em] text-white shadow-[0_14px_30px_rgba(124,58,237,0.34)] transition duration-200 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#100b21] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className={`${surface.primary} mt-2 w-full`}
               >
                 <span>
                   {loading && !passkeyLoading
                     ? mfaResolver
-                      ? "Ověřuji 2FA…"
+                      ? "Ověřuji kód…"
                       : "Přihlašuji…"
                     : passkeyLoading
                       ? "Ověřuji přístupový klíč…"
                     : mfaResolver
-                      ? "Potvrdit 2FA"
+                      ? "Potvrdit kód"
                       : "Přihlásit se"}
                 </span>
                 {!loading && !passkeyLoading ? (
@@ -863,7 +836,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => void handlePasskeyLogin()}
                     disabled={loading || passkeyLoading}
-                    className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-violet-200/25 bg-white/[0.1] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(10,5,30,0.18)] transition hover:bg-white/[0.16] disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`${surface.secondary} w-full`}
                   >
                     <KeyRound className="h-4 w-4 text-violet-100/82" aria-hidden="true" />
                     {passkeyLoading
@@ -876,9 +849,6 @@ export default function LoginPage() {
               ) : null}
             </form>
             {passkeyStage && <PasskeyLoginLoader stage={passkeyStage} onCancel={passkeyStage === "session" ? undefined : () => passkeyAttemptRef.current?.abort()} />}
-          </section>
-        </div>
-      </div>
-    </main>
+    </AuthPage>
   );
 }

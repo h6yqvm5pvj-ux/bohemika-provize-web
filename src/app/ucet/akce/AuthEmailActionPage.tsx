@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ActionCodeOperation, applyActionCode, checkActionCode, verifyPasswordResetCode } from "firebase/auth";
 import { confirmPasswordReset } from "@/app/lib/passwordReset";
-import { ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, MailCheck, ShieldCheck, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { AuthPage } from "@/components/account-setup/AuthPage";
+import { PasswordField } from "@/components/account-setup/PasswordField";
+import { ArrowLeft, ArrowRight, Check, KeyRound, LoaderCircle, MailCheck, TriangleAlert } from "lucide-react";
 import { auth } from "@/app/firebase";
 import { AUTH_EMAIL_ACTION_PATH, parseAuthEmailAction, type AuthEmailAction } from "@/lib/authEmailAction";
-import styles from "./authEmailAction.module.css";
+import styles from "@/components/account-setup/authSurface.module.css";
 
 type Problem = "invalid" | "expired" | "unavailable";
 type Screen = "checking" | "verify" | "reset" | "verified" | "reset-done" | Problem;
@@ -36,7 +39,6 @@ export function AuthEmailActionPage() {
   const [screen, setScreen] = useState<Screen>("checking");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const action = useRef<AuthEmailAction | null | undefined>(undefined);
@@ -121,49 +123,51 @@ export function AuthEmailActionPage() {
   const title = problem?.title ?? ({ checking: "Kontroluji odkaz…", verify: "Potvrď svůj e-mail", reset: "Nastav si nové heslo", verified: "E-mail je ověřený", "reset-done": "Nové heslo je nastavené" } as const)[screen as "checking" | "verify" | "reset" | "verified" | "reset-done"];
   const Icon = screen === "checking" ? LoaderCircle : success ? Check : problem ? TriangleAlert : screen === "verify" ? MailCheck : KeyRound;
 
+  const description = problem?.description ?? {
+    checking: "Chvilku strpení, ověřujeme platnost odkazu.",
+    verify: "Potvrď přístup ke své e-mailové schránce a pokračuj v nastavení účtu.",
+    reset: "Zvol nové heslo pro svůj účet. Pro kontrolu ho zadej ještě jednou.",
+    verified: "Vrať se do původní karty aplikace a pokračuj v nastavení účtu. Pokud už ji nemáš otevřenou, přihlas se.",
+    "reset-done": "Teď se můžeš přihlásit novým heslem.",
+  }[screen as Exclude<Screen, Problem>];
+
   return (
-    <main className={styles.page}>
-      <div className={styles.wrap}>
-        <header className={styles.brand}>
-          <span className={styles.eyebrow}><ShieldCheck size={15} aria-hidden="true" /> Tvůj účet</span>
-          <a href="/login" className={styles.wordmark}>Bohemka.App</a>
-        </header>
-        <section className={styles.card} aria-labelledby="action-title" aria-busy={screen === "checking" || busy}>
-          <div className={`${styles.icon} ${success ? styles.successIcon : ""}`}><Icon size={28} aria-hidden="true" className={screen === "checking" ? styles.spin : undefined} /></div>
-          <div aria-live="polite" aria-atomic="true">
-            <h1 id="action-title">{title}</h1>
-            {screen === "checking" && <p className={styles.description}>Chvilku strpení, ověřujeme platnost odkazu.</p>}
-            {screen === "verify" && <p className={styles.description}>Potvrď, že máš přístup k této e-mailové schránce. Pak můžeš pokračovat v nastavení účtu.</p>}
-            {screen === "reset" && <p className={styles.description}>Zvol nové heslo pro svůj účet. Pro kontrolu ho zadej ještě jednou.</p>}
-            {screen === "verified" && <p className={styles.description}>Děkujeme za potvrzení. Vrať se do původní záložky aplikace a pokračuj v nastavení. Pokud už ji nemáš otevřenou, přihlas se.</p>}
-            {screen === "reset-done" && <p className={styles.description}>Heslo jsme úspěšně změnili. Teď se můžeš přihlásit novým heslem.</p>}
-            {problem && <p className={styles.description}>{problem.description}</p>}
+    <AuthPage title={title} titleId="action-title" description={description}
+      busy={screen === "checking" || busy} tone={success ? "success" : problem ? "error" : "neutral"}
+      icon={<Icon size={24} className={screen === "checking" ? styles.spinner : undefined} />}>
+      {screen === "checking" && <p className={styles.hint}>Stránka bude za chvíli připravená. Můžeš ji nechat otevřenou.</p>}
+      {(screen === "reset" || screen === "verify") && <form onSubmit={(event) => void submit(event)} className={styles.fields}>
+        {screen === "reset" && <>
+          <div className={styles.fieldGroup}>
+            <label htmlFor="new-password" className={styles.label}>Nové heslo</label>
+            <PasswordField id="new-password" name="new-password" autoComplete="new-password" required minLength={8} maxLength={4096}
+              value={password} onChange={(event) => { setPassword(event.target.value); setFormError(""); }} disabled={busy}
+              aria-describedby="password-help form-error" />
+            <p id="password-help" className={styles.hint}>Alespoň 8 znaků. Použij delší heslo, které nemáš v jiné službě.</p>
           </div>
-          {(screen === "reset" || screen === "verify") && <form onSubmit={(event) => void submit(event)} className={styles.form}>
-            {screen === "reset" && <>
-              <div className={styles.field}>
-                <label htmlFor="new-password">Nové heslo</label>
-                <div className={styles.inputWrap}>
-                  <input id="new-password" name="new-password" type={visible ? "text" : "password"} autoComplete="new-password" required minLength={8} maxLength={4096} value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} aria-describedby="password-help form-error" />
-                  <button type="button" className={styles.reveal} aria-label={visible ? "Skrýt hesla" : "Zobrazit hesla"} aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff size={19} /> : <Eye size={19} />}</button>
-                </div>
-                <p id="password-help" className={styles.hint}>Alespoň 8 znaků. Doporučujeme delší, jedinečné heslo.</p>
-              </div>
-              <div className={styles.field}>
-                <label htmlFor="confirm-password">Nové heslo znovu</label>
-                <input id="confirm-password" name="confirm-password" type={visible ? "text" : "password"} autoComplete="new-password" required minLength={8} maxLength={4096} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} disabled={busy} aria-describedby="form-error" />
-              </div>
-            </>}
-            <div id="form-error" role="alert">{formError && <p className={styles.error}>{formError}</p>}</div>
-            <button className={styles.primary} type="submit" disabled={busy}>{busy ? <><LoaderCircle size={18} className={styles.spin} /> {screen === "reset" ? "Ukládám heslo…" : "Potvrzuji…"}</> : <>{screen === "reset" ? "Uložit nové heslo" : "Potvrdit e-mail"}<ArrowRight size={18} /></>}</button>
-          </form>}
-          {screen === "unavailable" && <button type="button" className={styles.primary} onClick={() => void retryInspection()}>Zkusit znovu</button>}
-          {(screen === "invalid" || screen === "expired") && <p className={styles.help}>Nový odkaz pro obnovu hesla získáš přes „Zapomenuté heslo?“ na přihlašovací stránce. Ověřovací e-mail si můžeš poslat znovu po přihlášení v nastavení účtu.</p>}
-          {screen !== "checking" && <a href="/login" className={success ? styles.primary : styles.back}>{success ? "Přejít k přihlášení" : "Zpět na přihlášení"}{success && <ArrowRight size={18} aria-hidden="true" />}</a>}
-          <noscript>Pro potvrzení e-mailu nebo nastavení hesla zapni JavaScript v prohlížeči.</noscript>
-        </section>
-        <p className={styles.footer}><ShieldCheck size={14} aria-hidden="true" /> Bezpečné nastavení účtu Bohemka.App</p>
-      </div>
-    </main>
+          <div className={styles.fieldGroup}>
+            <label htmlFor="confirm-password" className={styles.label}>Nové heslo znovu</label>
+            <PasswordField id="confirm-password" name="confirm-password" autoComplete="new-password" required minLength={8} maxLength={4096}
+              value={confirmation} onChange={(event) => { setConfirmation(event.target.value); setFormError(""); }} disabled={busy} aria-describedby="form-error" />
+          </div>
+        </>}
+        {screen === "verify" && <p className={styles.hint}>Ověření dokončíš tlačítkem níže.</p>}
+        <div id="form-error" role="alert" hidden={!formError}>{formError && <p className={`${styles.notice} ${styles.noticeError}`}>{formError}</p>}</div>
+        <button className={`${styles.primary} ${styles.fullWidth}`} type="submit" disabled={busy}>
+          {busy ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> {screen === "reset" ? "Ukládám heslo…" : "Potvrzuji…"}</> :
+            <>{screen === "reset" ? "Uložit nové heslo" : "Potvrdit e-mail"}<ArrowRight size={18} aria-hidden="true" /></>}
+        </button>
+      </form>}
+      {screen === "unavailable" && <button type="button" className={`${styles.primary} ${styles.fullWidth}`} onClick={() => void retryInspection()}>Zkusit znovu</button>}
+      {(screen === "invalid" || screen === "expired") && <div className={styles.fields}>
+        <p className={styles.muted}>Pro nové heslo přejdi na přihlášení a zvol „Zapomenuté heslo?“.</p>
+        <p className={styles.hint}>Pokud ověřuješ e-mail, nový odkaz si vyžádej v aplikaci při dokončování účtu nebo v jeho nastavení.</p>
+      </div>}
+      {screen !== "checking" && <Link href="/login" className={success ? `${styles.primary} ${styles.fullWidth}` : styles.backLink}>
+        {!success && <ArrowLeft size={16} aria-hidden="true" />}{success ? "Přejít na přihlášení" : "Zpět na přihlášení"}
+        {success && <ArrowRight size={18} aria-hidden="true" />}
+      </Link>}
+      <noscript>Pro potvrzení e-mailu nebo nastavení hesla zapni JavaScript v prohlížeči.</noscript>
+    </AuthPage>
   );
 }

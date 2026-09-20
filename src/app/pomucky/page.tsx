@@ -241,6 +241,7 @@ const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
   "nastaveni-zivotniho-pojisteni": HeartPulse,
   "invalidni-duchod": Calculator,
   "srovnavac-trvalych-nasledku": Bike,
+  "srovnavac-odpovednosti-obcana": ShieldCheck,
   "srovnavac-pracovni-neschopnosti": HeartPulse,
   "neon-life-vs-metlife-oneguard": ChartNoAxesColumn,
 };

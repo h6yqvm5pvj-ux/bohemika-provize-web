@@ -1,7 +1,7 @@
 // src/components/account-setup/useAccountSetupFlow.ts
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EmailAuthProvider,
   FactorId,
@@ -12,10 +12,11 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 
+import { careerSignature, clearCareerDraft, restoreCareerDraft, saveCareerDraft } from "./careerDraft";
+
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
-import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
@@ -30,6 +31,7 @@ export type AccountSetupTimelineItem = {
   position: Position | "";
   validFrom: string;
   validTo: string;
+  ongoing?: boolean;
 };
 
 type SubscriptionAccessStateForSetup = "none" | "active" | "grace" | "blocked";
@@ -70,7 +72,7 @@ export const AGENCY_NUMBER_MAX_LEN = 80;
 export const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = [
   { id: "phone", label: "Profil" },
   { id: "career", label: "Kariéra" },
-  { id: "security", label: "2FA" },
+  { id: "security", label: "Zabezpečení" },
 ];
 
 const POSITION_SET = new Set<Position>(ACCOUNT_SETUP_POSITIONS.map((item) => item.id));
@@ -222,6 +224,13 @@ export function useAccountSetupFlow({
   const [agencyNumber, setAgencyNumber] = useState("");
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [timelineDraft, setTimelineDraft] = useState<AccountSetupTimelineItem[]>([]);
+  const draftOwner = useRef(user?.uid ?? "");
+  const draftBaseline = useRef("[]");
+  const [careerDraftStatus, setCareerDraftStatus] = useState<"none" | "saved" | "restored" | "unavailable">("none");
+  const [mfaAwaitingEmail, setMfaAwaitingEmail] = useState(false);
+  const [mfaEmailVerified, setMfaEmailVerified] = useState(false);
+  const emailCheckInFlight = useRef(false);
+  const emailCheckGeneration = useRef(0);
   const [timelineSaving, setTimelineSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -254,6 +263,13 @@ export function useAccountSetupFlow({
   }, []);
 
   const resetAll = useCallback(() => {
+    if (draftOwner.current) clearCareerDraft(draftOwner.current);
+    draftOwner.current = "";
+    draftBaseline.current = "[]";
+    setCareerDraftStatus("none");
+    emailCheckGeneration.current += 1;
+    setMfaAwaitingEmail(false);
+    setMfaEmailVerified(false);
     setProfileLoaded(false);
     setNeedsCareerTimelineSetup(false);
     setShowWizard(false);
@@ -326,11 +342,17 @@ export function useAccountSetupFlow({
       setAgencyNumber(nextAgencyNumber);
       setCompletedAt(nextCompletedAt);
       setMfaGraceStartedAt(nextMfaGraceStartedAt);
-      setTimelineDraft(parsedTimeline);
+      const uid = user?.uid ?? "";
+      if (draftOwner.current && draftOwner.current !== uid) clearCareerDraft(draftOwner.current);
+      draftOwner.current = uid;
+      draftBaseline.current = careerSignature(parsedTimeline);
+      const restored = restoreCareerDraft(uid, draftBaseline.current, POSITION_SET);
+      setTimelineDraft(restored ?? parsedTimeline);
+      setCareerDraftStatus(restored ? "restored" : "none");
       setSecurityHardRequired((prev) => prev || timelineRequired);
       setNeedsCareerTimelineSetup(timelineRequired);
     },
-    []
+    [user?.uid]
   );
 
   const syncMfaState = useCallback(async (targetUser: FirebaseUser) => {
@@ -341,6 +363,7 @@ export function useAccountSetupFlow({
         (factor) => factor.factorId === FactorId.TOTP
       ) ?? null;
     setMfaEnabled(Boolean(totpFactor));
+    setMfaEmailVerified(Boolean(activeUser.emailVerified));
     return Boolean(totpFactor);
   }, []);
 
@@ -427,12 +450,9 @@ export function useAccountSetupFlow({
     const contactMissing = !savedPhone.trim() || !savedIco.trim();
     const setupRequired = contactMissing || needsCareerTimelineSetup || mfaMissing;
 
-    if (!setupRequired) {
-      if (!completed) {
-        setShowWizard(false);
-      }
-      return;
-    }
+    // An open wizard stays visible while completion is saved (or retried).
+    // Only the explicit success action dismisses it.
+    if (!setupRequired) return;
     setShowWizard(true);
   }, [
     accountType,
@@ -485,17 +505,14 @@ export function useAccountSetupFlow({
     showWizard,
   ]);
 
-  useEffect(() => {
+  const closeCompletedSetup = useCallback(() => {
     if (!completed) return;
-    const timeoutId = window.setTimeout(() => {
-      setShowWizard(false);
-      setCompleted(false);
-      setStepIndex(0);
-      setError(null);
-      setInfo(null);
-      setWizardManuallyOpened(false);
-    }, 2200);
-    return () => window.clearTimeout(timeoutId);
+    setShowWizard(false);
+    setCompleted(false);
+    setStepIndex(0);
+    setError(null);
+    setInfo(null);
+    setWizardManuallyOpened(false);
   }, [completed]);
 
   const markCompleted = useCallback(async () => {
@@ -515,6 +532,8 @@ export function useAccountSetupFlow({
       userProfileCache.invalidateUserProfileCache(user.email);
       onInternalProfileReady();
       setCompletedAt(nextCompletedAt);
+      if (draftOwner.current) clearCareerDraft(draftOwner.current);
+      setCareerDraftStatus("none");
       setWizardManuallyOpened(false);
       setCompleted(true);
       if (typeof window !== "undefined") {
@@ -606,45 +625,27 @@ export function useAccountSetupFlow({
     }
   }, [agencyNumber, fullName, ico, onInternalProfileReady, phone, user]);
 
-  const addTimelineRow = useCallback(() => {
+  const persistTimelineDraft = useCallback((rows: AccountSetupTimelineItem[]) => {
+    const saved = saveCareerDraft(draftOwner.current, draftBaseline.current, rows);
+    setCareerDraftStatus(saved ? "saved" : "unavailable");
+    setTimelineDraft(rows);
     setError(null);
-    setTimelineDraft((prev) => [
-      ...prev,
-      {
-        id: createTimelineRowId(),
-        position: "",
-        validFrom: getNextCareerTimelineStart(prev),
-        validTo: "",
-      },
-    ]);
   }, []);
 
-  const updateTimelineRow = useCallback(
-    (rowId: string, patch: Partial<AccountSetupTimelineItem>) => {
-      setError(null);
-      setTimelineDraft((prev) =>
-        prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
-      );
-    },
-    []
-  );
+  const addTimelineRow = useCallback(() => {
+    persistTimelineDraft([...timelineDraft, {
+      id: createTimelineRowId(), position: "", validFrom: getNextCareerTimelineStart(timelineDraft), validTo: "",
+    }]);
+  }, [persistTimelineDraft, timelineDraft]);
+
+  const updateTimelineRow = useCallback((rowId: string, patch: Partial<AccountSetupTimelineItem>) => {
+    persistTimelineDraft(timelineDraft.map(row => row.id === rowId ? { ...row, ...patch } : row));
+  }, [persistTimelineDraft, timelineDraft]);
 
   const removeTimelineRow = useCallback((rowId: string) => {
-    setError(null);
-    setTimelineDraft((prev) => {
-      const next = prev.filter((row) => row.id !== rowId);
-      return next.length > 0
-        ? next
-        : [
-            {
-              id: createTimelineRowId(),
-              position: "",
-              validFrom: "",
-              validTo: "",
-            },
-          ];
-    });
-  }, []);
+    const rows = timelineDraft.filter(row => row.id !== rowId);
+    persistTimelineDraft(rows.length ? rows : [{ id: createTimelineRowId(), position: "", validFrom: "", validTo: "" }]);
+  }, [persistTimelineDraft, timelineDraft]);
 
   const buildTimelinePayload = useCallback(():
     | {
@@ -682,6 +683,9 @@ export function useAccountSetupFlow({
       }
       if (!isIsoDay(row.validFrom)) {
         return { ok: false, error: `Řádek ${rowNo}: datum OD musí být platné.` };
+      }
+      if (row.ongoing === false && !row.validTo) {
+        return { ok: false, error: `Řádek ${rowNo}: vyplň datum DO nebo označ současnou pozici.` };
       }
       if (row.validTo && !isIsoDay(row.validTo)) {
         return { ok: false, error: `Řádek ${rowNo}: datum DO musí být platné.` };
@@ -776,6 +780,9 @@ export function useAccountSetupFlow({
           validTo: row.validTo ?? "",
         }))
       );
+      if (draftOwner.current) clearCareerDraft(draftOwner.current);
+      draftBaseline.current = careerSignature(timeline.payload.map(row => ({ ...row, validTo: row.validTo ?? "" })));
+      setCareerDraftStatus("none");
       setNeedsCareerTimelineSetup(false);
       if (mfaEnabled) {
         await markCompleted();
@@ -844,13 +851,18 @@ export function useAccountSetupFlow({
       if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
         setMfaPassword("");
         clearMfaDraft();
-        setInfo(MFA_VERIFICATION_SENT_MESSAGE);
+        setMfaAwaitingEmail(true);
+        setMfaEmailVerified(false);
+        setInfo("Ověřovací e-mail byl vyžádán. Otevři odkaz ve schránce (zkontroluj i spam) a vrať se sem. Doručení může trvat několik minut.");
         return;
       }
+      setMfaAwaitingEmail(false);
+      setMfaEmailVerified(true);
       const enrollmentUser = auth.currentUser ?? activeUser;
       const session = await multiFactor(enrollmentUser).getSession();
       const secret = await TotpMultiFactorGenerator.generateSecret(session);
       setMfaSecret(secret);
+      setMfaPassword("");
       setMfaCode("");
       setInfo(null);
     } catch (enrollmentError) {
@@ -871,6 +883,58 @@ export function useAccountSetupFlow({
       setMfaSaving(false);
     }
   }, [clearMfaDraft, markCompleted, mfaPassword, user]);
+
+  const resumeAfterEmailVerification = useCallback(async () => {
+    if (!user || auth.currentUser?.uid !== user.uid || !mfaAwaitingEmail || emailCheckInFlight.current) return;
+    const generation = emailCheckGeneration.current;
+    const isCurrent = () => generation === emailCheckGeneration.current && auth.currentUser?.uid === user.uid;
+    emailCheckInFlight.current = true;
+    setMfaSaving(true);
+    setError(null);
+    try {
+      await user.reload();
+      if (!isCurrent()) return;
+      if (!user.emailVerified) {
+        setInfo("E-mail zatím není ověřený. Otevři odkaz ve schránce a vrať se sem.");
+        return;
+      }
+      await user.getIdToken(true);
+      if (!isCurrent()) return;
+      setMfaEmailVerified(true);
+      const session = await multiFactor(user).getSession();
+      if (!isCurrent()) return;
+      const secret = await TotpMultiFactorGenerator.generateSecret(session);
+      if (!isCurrent()) return;
+      setMfaSecret(secret);
+      setMfaCode("");
+      setMfaEmailVerified(true);
+      setMfaAwaitingEmail(false);
+      setInfo(null);
+    } catch (error) {
+      if (isCurrent()) {
+        setMfaAwaitingEmail(false);
+        setError(resolveAccountSetupMfaErrorMessage(error, "Ověření e-mailu se nepodařilo zkontrolovat. Zkus to znovu."));
+      }
+    } finally {
+      emailCheckInFlight.current = false;
+      if (isCurrent()) setMfaSaving(false);
+    }
+  }, [mfaAwaitingEmail, user]);
+
+  useEffect(() => {
+    if (!mfaAwaitingEmail || !showWizard || stepIndex !== SECURITY_STEP_INDEX) return;
+    const check = () => {
+      if (document.visibilityState === "visible") void resumeAfterEmailVerification();
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [mfaAwaitingEmail, resumeAfterEmailVerification, showWizard, stepIndex]);
+
+  useEffect(() => () => { emailCheckGeneration.current += 1; }, [user?.uid]);
 
   const confirmMfaEnrollment = useCallback(async () => {
     if (!user || !mfaSecret) {
@@ -963,9 +1027,15 @@ export function useAccountSetupFlow({
       void confirmMfaEnrollment();
       return;
     }
+    if (mfaAwaitingEmail) {
+      void resumeAfterEmailVerification();
+      return;
+    }
     void startMfaEnrollment();
   }, [
     confirmMfaEnrollment,
+    mfaAwaitingEmail,
+    resumeAfterEmailVerification,
     currentStep,
     markCompleted,
     mfaEnabled,
@@ -988,6 +1058,16 @@ export function useAccountSetupFlow({
       steps: ACCOUNT_SETUP_STEPS,
       stepIndex,
       completed,
+      completedStepIds: ACCOUNT_SETUP_STEPS.filter(step => step.id === "phone" ? Boolean(savedPhone && savedIco) : step.id === "career" ? !needsCareerTimelineSetup : completed).map(step => step.id),
+      careerDraftStatus,
+      mfaAwaitingEmail,
+      mfaEmailVerified,
+      onComplete: closeCompletedSetup,
+      onStepChange: (index: number) => {
+        if (busy || !Number.isInteger(index) || index < 0 || index >= stepIndex) return;
+        setStepIndex(index);
+        setError(null);
+      },
       currentStep,
       phone,
       phoneMaxLength: PHONE_NUMBER_MAX_LEN,
@@ -1069,6 +1149,12 @@ export function useAccountSetupFlow({
       addTimelineRow,
       busy,
       completed,
+      savedPhone,
+      savedIco,
+      careerDraftStatus,
+      mfaAwaitingEmail,
+      mfaEmailVerified,
+      closeCompletedSetup,
       completionSaving,
       currentStep,
       error,
