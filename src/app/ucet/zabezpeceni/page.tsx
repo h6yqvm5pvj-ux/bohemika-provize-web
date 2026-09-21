@@ -7,9 +7,10 @@ import { AuthPage } from "@/components/account-setup/AuthPage";
 import { PasswordField } from "@/components/account-setup/PasswordField";
 import styles from "@/components/account-setup/authSurface.module.css";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { initializeAuth, inMemoryPersistence, multiFactor, signInWithEmailAndPassword, signOut, TotpMultiFactorGenerator, type Auth, type TotpSecret } from "firebase/auth";
+import { initializeAuth, inMemoryPersistence, multiFactor, reload, sendEmailVerification, signInWithEmailAndPassword, signOut, TotpMultiFactorGenerator, type Auth, type TotpSecret, type User } from "firebase/auth";
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
+import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
 
 // Isolated Auth in memory: this recovery page cannot establish an application
 // session and does not access profiles, Firestore, or business APIs.
@@ -23,6 +24,8 @@ export default function TotpRecoveryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [awaitingEmail, setAwaitingEmail] = useState(false);
+  const [emailRequested, setEmailRequested] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyError, setCopyError] = useState(false);
 
@@ -30,6 +33,23 @@ export default function TotpRecoveryPage() {
     const auth = setupAuth.current, app = setupApp.current;
     if (auth && app) void signOut(auth).catch(() => {}).finally(() => deleteApp(app));
   }, []);
+
+  async function requestEmail(user: User) {
+    // Firebase authenticates this isolated setup session directly. Application
+    // APIs deliberately remain inaccessible until the administrator activates it.
+    try {
+      await sendEmailVerification(user);
+      setEmailRequested(true);
+    } catch (failure) {
+      setError(resolveAuthEmailErrorMessage(failure, "Ověřovací e-mail se nepodařilo odeslat. Zkus ho vyžádat znovu."));
+    }
+  }
+
+  async function beginEnrollment(user: User) {
+    const session = await multiFactor(user).getSession();
+    setSecret(await TotpMultiFactorGenerator.generateSecret(session));
+    setAwaitingEmail(false);
+  }
 
   async function start(event: FormEvent) {
     event.preventDefault(); if (busy) return;
@@ -42,17 +62,43 @@ export default function TotpRecoveryPage() {
       const { user } = await signInWithEmailAndPassword(setupAuth.current, email.trim(), password);
       setPassword("");
       if (!user.emailVerified) {
-        await signOut(setupAuth.current);
-        setError("Nejdřív je potřeba ověřit e-mail. Kontaktuj administrátora."); return;
+        setAwaitingEmail(true);
+        await requestEmail(user);
+        return;
       }
-      const session = await multiFactor(user).getSession();
-      setSecret(await TotpMultiFactorGenerator.generateSecret(session));
+      await beginEnrollment(user);
     } catch (failure) {
       const authCode = (failure as { code?: string }).code;
       setError(isAccountBlockedError(failure) ? ACCOUNT_BLOCKED_MESSAGE : authCode === "auth/multi-factor-auth-required"
         ? "Dvoufázové ověření už je zapnuté. Pro odblokování účtu kontaktuj administrátora a potom se přihlas běžným způsobem."
         : "Nastavení se nepodařilo zahájit. Zkontroluj e-mail a heslo nebo kontaktuj administrátora.");
     } finally { setBusy(false); }
+  }
+
+  async function continueAfterEmail(event: FormEvent) {
+    event.preventDefault();
+    const user = setupAuth.current?.currentUser;
+    if (busy || !user) return;
+    setBusy(true); setError("");
+    try {
+      await reload(user);
+      if (!user.emailVerified) {
+        setError("E-mail ještě není ověřený. Otevři odkaz ve své schránce a potom klikni znovu.");
+        return;
+      }
+      await user.getIdToken(true);
+      await beginEnrollment(user);
+    } catch {
+      setError("Ověření se nepodařilo dokončit. Zkus to znovu; pokud přihlášení vypršelo, obnov stránku a přihlas se heslem.");
+    } finally { setBusy(false); }
+  }
+
+  async function resendEmail() {
+    const user = setupAuth.current?.currentUser;
+    if (busy || !user) return;
+    setBusy(true); setError("");
+    try { await requestEmail(user); }
+    finally { setBusy(false); }
   }
 
   async function enroll(event: FormEvent) {
@@ -75,15 +121,16 @@ export default function TotpRecoveryPage() {
     catch { setCopyError(true); }
   }
 
-  const title = done ? "Zabezpečení je nastavené" : secret ? "Přidej ověřovací aplikaci" : "Obnov si zabezpečení";
+  const title = done ? "Zabezpečení je nastavené" : secret ? "Přidej ověřovací aplikaci" : awaitingEmail ? "Ověř svůj e-mail" : "Obnov si zabezpečení";
   const description = done
     ? "Požádej administrátora o odblokování účtu. Potom se můžeš znovu přihlásit."
     : secret ? "Propoj svůj účet s Microsoft Authenticatorem nebo jinou aplikací pro jednorázové kódy."
+      : awaitingEmail ? "Před nastavením 2FA potvrď, že e-mailová adresa patří tobě."
       : "Nové dvoufázové ověření nastav podle pokynů administrátora.";
   return <AuthPage title={title} description={description} busy={busy} tone={done ? "success" : "neutral"}
     icon={done ? <Check size={24} /> : <ShieldCheck size={24} />}>
     {done ? <Link href="/login" className={`${styles.primary} ${styles.fullWidth}`}>Přejít na přihlášení <ArrowRight size={18} aria-hidden="true" /></Link> :
-      <form onSubmit={secret ? enroll : start} className={styles.fields}>
+      <form onSubmit={secret ? enroll : awaitingEmail ? continueAfterEmail : start} className={styles.fields}>
         {secret ? <>
           <div className={styles.notice}>
             <p className={styles.label}>1. Přidej účet pomocí klíče</p>
@@ -101,6 +148,13 @@ export default function TotpRecoveryPage() {
               inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} disabled={busy} aria-describedby="recovery-code-help recovery-error" />
             <p id="recovery-code-help" className={styles.hint}>Použij aktuální kód z právě přidaného účtu.</p>
           </div>
+        </> : awaitingEmail ? <>
+          <p role="status" className={styles.notice}>{emailRequested
+            ? "Ověřovací e-mail byl vyžádán. Otevři odkaz ve své schránce (zkontroluj i spam) a vrať se na tuto stránku. Doručení může trvat několik minut."
+            : "Vyžádej si ověřovací e-mail, otevři odkaz ve schránce a potom se vrať na tuto stránku."}</p>
+          <button type="button" onClick={() => void resendEmail()} disabled={busy} className={styles.secondary}>
+            {emailRequested ? "Poslat ověřovací e-mail znovu" : "Poslat ověřovací e-mail"}
+          </button>
         </> : <>
           <p className={styles.notice}>Nastavení ověřovací aplikace samo neodblokuje účet. Obnovení přístupu dokončí administrátor.</p>
           <div className={styles.fieldGroup}>
@@ -119,7 +173,7 @@ export default function TotpRecoveryPage() {
         </>}
         <div id="recovery-error" role="alert" hidden={!error}>{error && <p className={`${styles.notice} ${styles.noticeError}`}>{error}</p>}</div>
         <button type="submit" disabled={busy} className={`${styles.primary} ${styles.fullWidth}`}>
-          {busy ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Ověřuji…</> : <>{secret ? "Potvrdit kód" : "Pokračovat"}<ArrowRight size={18} aria-hidden="true" /></>}
+          {busy ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Ověřuji…</> : <>{secret ? "Potvrdit kód" : awaitingEmail ? "E-mail je ověřený, pokračovat" : "Pokračovat"}<ArrowRight size={18} aria-hidden="true" /></>}
         </button>
       </form>}
     {!done && <Link href="/login" className={styles.backLink}><ArrowLeft size={16} aria-hidden="true" /> Zpět na přihlášení</Link>}

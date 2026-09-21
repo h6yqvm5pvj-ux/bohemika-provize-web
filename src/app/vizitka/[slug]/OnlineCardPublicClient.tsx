@@ -13,6 +13,7 @@ import {
   Moon,
   PhoneCall,
   Share2,
+  ShieldCheck,
   Sun,
   X,
 } from "lucide-react";
@@ -32,7 +33,6 @@ import {
   type OnlineCardLocale,
 } from "@/lib/onlineCardI18n";
 import { trackOnlineCardEvent, trackOnlineCardVisit } from "@/lib/onlineCardTracking";
-import { getOnlineCardHeroArtwork } from "@/lib/onlineCardHeroArtwork";
 
 type OfficePhotoMeta = {
   width: number;
@@ -146,11 +146,6 @@ export default function OnlineCardPublicClient({
   );
   const cardWebsiteLabel = cardWebsiteLink ? normalizeWebsiteLabel(cardWebsiteLink) : localizedCard.website.trim();
   const cardPhoneLink = localizedCard.phone ? normalizePhoneHref(localizedCard.phone) : "";
-  const heroArtwork = getOnlineCardHeroArtwork({
-    slug,
-    email: localizedCard.email,
-    fullName: localizedCard.fullName,
-  });
   const officeLabel = localizedCard.officeLabel.trim();
   const officePhotos = localizedCard.officePhotos;
   const hasOfficeSection = officeLabel.length > 0 || officePhotos.length > 0;
@@ -424,9 +419,13 @@ export default function OnlineCardPublicClient({
                 <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
               </div>
             </div>
-            <OnlineCardHeroVisual artwork={heroArtwork} location={localizedCard.location} promise={copy.advisor.pillars[0][0]} />
+            <OnlineCardHeroVisual />
           </div>
           <div className={styles.heroFoot}>
+            <div className={styles.heroHighlights}>
+              {localizedCard.location ? <span><MapPin aria-hidden="true" />{localizedCard.location}</span> : null}
+              <span><ShieldCheck aria-hidden="true" />{copy.advisor.pillars[0][0]}</span>
+            </div>
             <a href="#services" className={styles.exploreLink}>{copy.advisor.serviceKicker}<span><ArrowDown aria-hidden="true" /></span></a>
           </div>
           </div>

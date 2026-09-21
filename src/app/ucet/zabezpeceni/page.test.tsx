@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   app: { name: "isolated-setup" },
-  auth: { currentUser: { emailVerified: true } },
+  auth: { currentUser: { emailVerified: true, getIdToken: vi.fn() } },
+  reload: vi.fn(), sendEmail: vi.fn(),
   initApp: vi.fn(), initAuth: vi.fn(), login: vi.fn(), session: vi.fn(), secret: vi.fn(), enroll: vi.fn(), signOut: vi.fn(), deleteApp: vi.fn(),
 }));
 vi.mock("@/app/firebase-app", () => ({ firebaseApp: { options: { projectId: "synthetic" } } }));
 vi.mock("firebase/app", () => ({ initializeApp: mocks.initApp, deleteApp: mocks.deleteApp }));
 vi.mock("firebase/auth", () => ({
   initializeAuth: mocks.initAuth, inMemoryPersistence: "memory-only", signInWithEmailAndPassword: mocks.login, signOut: mocks.signOut,
+  reload: mocks.reload, sendEmailVerification: mocks.sendEmail,
   multiFactor: () => ({ getSession: mocks.session, enroll: mocks.enroll }),
   TotpMultiFactorGenerator: { generateSecret: mocks.secret, assertionForEnrollment: (secret: unknown, code: string) => ({ secret, code }) },
 }));
@@ -23,7 +25,7 @@ describe("administrator-assisted recovery remains isolated from application sign
     vi.resetAllMocks();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Recovery must not access application APIs")));
-    mocks.auth.currentUser = { emailVerified: true };
+    mocks.auth.currentUser = { emailVerified: true, getIdToken: vi.fn().mockResolvedValue("synthetic-token") };
     mocks.initApp.mockReturnValue(mocks.app);
     mocks.initAuth.mockReturnValue(mocks.auth);
     mocks.login.mockResolvedValue({ user: mocks.auth.currentUser });
@@ -62,12 +64,54 @@ describe("administrator-assisted recovery remains isolated from application sign
     expect(container.textContent).not.toContain("SYNTHETIC-SETUP-KEY");
     expect(fetch).not.toHaveBeenCalled();
   });
-  it("never generates a secret for an unverified email", async () => {
+  it("requests inbox verification without creating a secret or an application session", async () => {
     mocks.auth.currentUser.emailVerified = false;
     await submit();
-    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(mocks.sendEmail).toHaveBeenCalledWith(mocks.auth.currentUser);
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.session).not.toHaveBeenCalled();
     expect(mocks.secret).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Kontaktuj administrátora");
+    expect(container.textContent).toContain("Ověřovací e-mail byl vyžádán");
+    expect(container.querySelector("#recovery-password")).toBeNull();
+    await submit();
+    expect(mocks.reload).toHaveBeenCalledWith(mocks.auth.currentUser);
+    expect(mocks.secret).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("E-mail ještě není ověřený");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("continues to TOTP only after Firebase confirms inbox verification", async () => {
+    mocks.auth.currentUser.emailVerified = false;
+    await submit();
+    mocks.reload.mockImplementation(async () => { mocks.auth.currentUser.emailVerified = true; });
+    await submit();
+    expect(mocks.auth.currentUser.getIdToken).toHaveBeenCalledWith(true);
+    expect(mocks.secret).toHaveBeenCalledOnce();
+    await input("recovery-code", "123456"); await submit();
+    expect(mocks.enroll).toHaveBeenCalledOnce();
+    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(container.textContent).toContain("Požádej administrátora o odblokování účtu");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("allows retrying a failed verification email without claiming it was sent", async () => {
+    mocks.auth.currentUser.emailVerified = false;
+    mocks.sendEmail.mockRejectedValueOnce({ code: "auth/too-many-requests", message: "private synthetic details" });
+    await submit();
+    expect(container.textContent).toContain("Příliš mnoho žádostí");
+    expect(container.textContent).not.toContain("Ověřovací e-mail byl vyžádán");
+    expect(container.textContent).not.toContain("private synthetic details");
+    const resend = [...container.querySelectorAll("button")].find(button => button.textContent === "Poslat ověřovací e-mail")!;
+    await act(async () => resend.click());
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain("Ověřovací e-mail byl vyžádán");
+    expect(mocks.secret).not.toHaveBeenCalled();
+  });
+  it("does not start enrollment if refreshing verification fails", async () => {
+    mocks.auth.currentUser.emailVerified = false;
+    await submit();
+    mocks.reload.mockRejectedValue(new Error("expired"));
+    await submit();
+    expect(mocks.secret).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Ověření se nepodařilo dokončit");
   });
   it.each(["auth/multi-factor-auth-required", "auth/user-disabled"])("keeps %s behind administrator recovery", async code => {
     mocks.login.mockRejectedValue({ code, message: "private synthetic token" });

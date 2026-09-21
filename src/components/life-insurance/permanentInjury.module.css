@@ -1,0 +1,48 @@
+.cardTitle { font-size: 16px; line-height: 1.4; font-weight: 600; }
+.recommendationTitle { margin-top: 8px; }
+.advantages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 20px; }
+.advantages li { min-width: 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.advantages strong { display: block; color: var(--accent); font-size: 26px; font-weight: 500; letter-spacing: -.04em; }
+.advantages p { margin-top: 8px; font-size: 13px; line-height: 1.65; color: var(--muted); }
+.options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.options li { padding: 9px 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--accent); background: var(--card); font-size: 14px; font-weight: 600; }
+.model { padding: 24px; margin-top: 28px; border: 1px solid var(--border); border-radius: 22px; background: var(--card); }
+.model h3 { font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -.03em; }
+.field { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; min-width: 0; font-size: 14px; font-weight: 600; }
+.field select { width: min(100%, 320px); min-height: 48px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); font-size: 16px; }
+.field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.rangeLabel { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.rangeLabel strong { flex-shrink: 0; color: var(--accent); font-size: 28px; letter-spacing: -.04em; }
+.slider { width: 100%; min-height: 44px; cursor: pointer; accent-color: var(--accent); }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.presets button { min-width: 60px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); background: var(--surface); font-size: 14px; cursor: pointer; }
+.presets button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+.comparison { display: grid; gap: 18px; margin-top: 24px; }
+.comparisonRow { padding: 18px; border-radius: 16px; background: var(--surface); }
+.comparisonRow:last-child { background: var(--accent-bg); }
+.comparisonRow dt { font-size: 13px; color: var(--muted); }
+.comparisonRow dd { margin-top: 6px; color: var(--text); font-size: clamp(26px, 3.5vw, 36px); font-weight: 500; line-height: 1.2; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.comparisonRow:last-child dd { color: var(--accent); }
+.bar { height: 8px; margin-top: 14px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
+.comparisonRow:last-child .bar span { background: var(--accent); }
+.multiplier { margin-top: 16px; color: var(--accent); font-size: 14px; font-weight: 600; }
+.formula { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.table { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+.table th { color: var(--muted); font-size: 12px; font-weight: 500; }
+.table th:last-child, .table td:last-child { text-align: right; }
+.table td:last-child { color: var(--accent); font-weight: 600; white-space: nowrap; }
+@media (max-width: 639px) {
+  .advantages { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .advantages li { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: start; gap: 12px; }
+  .advantages strong { font-size: 23px; }
+  .advantages p { margin: 0; }
+  .model { padding: 16px; }
+  .model h3 { font-size: 22px; }
+  .field select { width: 100%; }
+  .presets { gap: 6px; }
+  .presets button { flex: 1; padding-inline: 10px; }
+  .comparisonRow { padding: 16px; }
+  .table th, .table td { padding-inline: 6px; }
+}

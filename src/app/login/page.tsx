@@ -1,6 +1,8 @@
 // src/app/login/page.tsx
 "use client";
 
+import Link from "next/link";
+
 import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, KeyRound, Mail, ShieldCheck } from "lucide-react";
@@ -782,6 +784,11 @@ export default function LoginPage() {
                 <p role="alert" className={`${surface.notice} ${surface.noticeError}`}>
                   {error}
                 </p>
+              )}
+              {error === ACCOUNT_BLOCKED_MESSAGE && (
+                <Link href="/ucet/zabezpeceni" className={surface.secondary}>
+                  Nastavit dvoufázové ověření (2FA)
+                </Link>
               )}
               {resetStatus && (
                 <p role="status" className={`${surface.notice} ${surface.noticeSuccess}`}>

@@ -1,16 +1,11 @@
 "use client";
 
 import {
-  Accessibility,
   ArrowUpRight,
   BadgeCheck,
-  Bandage,
-  BedDouble,
-  BriefcaseMedical,
   CalendarDays,
   CheckCircle2,
   CircleHelp,
-  HandHeart,
   HeartHandshake,
   HeartPulse,
   Plus,
@@ -25,6 +20,13 @@ import themeStyles from "./life-insurance/lifeInsuranceTheme.module.css";
 import { useEffect, useRef, useState } from "react";
 import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
 import { SickLeaveDialog } from "@/components/life-insurance/SickLeaveDialog";
+import { DailyAccidentDialog } from "@/components/life-insurance/DailyAccidentDialog";
+import { DisabilityDialog } from "@/components/life-insurance/DisabilityDialog";
+import { PermanentInjuryDialog } from "@/components/life-insurance/PermanentInjuryDialog";
+import { LifeInsuranceHeroMedia } from "@/components/life-insurance/LifeInsuranceHeroMedia";
+import { DAILY_ACCIDENT_COPY } from "@/components/life-insurance/dailyAccidentCopy";
+import { DISABILITY_COPY } from "@/components/life-insurance/disabilityCopy";
+import { PERMANENT_INJURY_COPY } from "@/components/life-insurance/permanentInjuryCopy";
 import { SICK_LEAVE_COPY } from "@/components/life-insurance/sickLeaveCopy";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { DISABILITY_PENSION_STATISTICS } from "@/lib/disabilityPensionStatistics";
@@ -38,14 +40,14 @@ function formatAveragePension(amount: number, locale: OnlineCardLocale): string 
 const INVALIDITY_COUNTS = ["180 812", "79 864", "154 947"];
 
 const COVERAGE_ITEMS = [
-  { id: "death", icon: UsersRound },
-  { id: "disability", icon: Accessibility },
-  { id: "care", icon: HandHeart },
-  { id: "serious-illness", icon: HeartPulse },
-  { id: "daily-accident", icon: Bandage },
-  { id: "permanent-injury", icon: ShieldCheck },
-  { id: "sick-leave", icon: BriefcaseMedical },
-  { id: "hospitalisation", icon: BedDouble },
+  { id: "death" },
+  { id: "disability" },
+  { id: "care" },
+  { id: "serious-illness" },
+  { id: "daily-accident" },
+  { id: "permanent-injury" },
+  { id: "sick-leave" },
+  { id: "hospitalisation" },
 ] as const;
 
 const CSSZ_COUNTS_URL = "https://www.cssz.cz/documents/20143/2955053/4%20Ukazatele%20prosinec%202025.pdf/9a7180f1-5f7f-62e7-90d8-8347378ed72c";
@@ -113,7 +115,7 @@ type LifeInsuranceContentProps = {
 export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuranceContentProps) {
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingSubmitted, setMeetingSubmitted] = useState(false);
-  const [activeRisk, setActiveRisk] = useState<"sick-leave" | null>(null);
+  const [activeRisk, setActiveRisk] = useState<"sick-leave" | "daily-accident" | "disability" | "permanent-injury" | null>(null);
   const meetingDialogRef = useRef<HTMLDialogElement>(null);
   const meetingTriggerRef = useRef<HTMLButtonElement>(null);
   const copy = LIFE_COPY[locale];
@@ -147,40 +149,30 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
     <main data-theme={theme} className={`${themeStyles.theme} ${themeStyles.content}`}>
       <article className={themeStyles.article}>
         <header className={themeStyles.hero}>
-          <div className="relative grid gap-7 sm:gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(390px,0.95fr)] lg:items-center lg:gap-16">
+          <div className={themeStyles.heroLayout}>
             <div className="max-w-3xl">
               <p className={`inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] sm:tracking-[0.25em] ${labelTextClass}`}><HeartHandshake className="h-3.5 w-3.5 shrink-0" /> {copy.category}</p>
               <h1 className={themeStyles.heroTitle}>{copy.title}</h1>
-              <p className={`mt-4 max-w-xl sm:mt-6 text-base leading-relaxed sm:text-lg ${bodyTextClass}`}>{copy.intro}</p>
+              <p className={themeStyles.heroIntro}>{copy.intro}</p>
+              <ul className={themeStyles.heroFeatures}>
+                {[
+                  [ShieldCheck, copy.protectionFeatures[0]],
+                  [WalletCards, copy.protectionFeatures[1]],
+                  [UsersRound, copy.protectionFeatures[2]],
+                ].map(([Icon, label]) => {
+                  const FeatureIcon = Icon as typeof ShieldCheck;
+                  return <li key={label as string}><FeatureIcon aria-hidden="true" />{label as string}</li>;
+                })}
+              </ul>
             </div>
 
-            <div className={`${themeStyles.heroCard} relative isolate mx-auto w-full max-w-[500px] overflow-hidden p-5 sm:p-8`}>
-              <div className="pointer-events-none absolute inset-0 opacity-[0.19] [background-image:linear-gradient(rgba(91,196,229,0.28)_1px,transparent_1px),linear-gradient(90deg,rgba(91,196,229,0.28)_1px,transparent_1px)] [background-size:44px_44px]" />
-              <Image
-                src="/icons/bohemika_logo.png"
-                alt=""
-                width={310}
-                height={472}
-                aria-hidden="true"
-                sizes="342px"
-                className={`pointer-events-none absolute -right-8 -top-24 z-[1] h-[32rem] w-auto select-none opacity-[0.16]`}
-              />
-              <div className="relative">
-                <span className={`inline-flex h-14 w-14 items-center justify-center rounded-2xl ${themeStyles.icon}`}><HeartPulse className="h-7 w-7" /></span>
-                <p className={`mt-5 text-xl sm:mt-7 font-medium leading-tight tracking-[-0.035em] sm:text-2xl ${primaryTextClass}`}>{copy.protectionTitle}</p>
-                <p className={`mt-4 max-w-[36ch] text-sm leading-relaxed ${bodyTextClass}`}>{copy.protectionText}</p>
-                <div className={`mt-6 flex flex-wrap gap-x-4 gap-y-3 border-t pt-4 sm:mt-8 sm:grid sm:grid-cols-3 sm:gap-4 sm:pt-6 border-[var(--life-line)]`}>
-                  {[
-                    [ShieldCheck, copy.protectionFeatures[0]],
-                    [WalletCards, copy.protectionFeatures[1]],
-                    [UsersRound, copy.protectionFeatures[2]],
-                  ].map(([Icon, label]) => {
-                    const FeatureIcon = Icon as typeof ShieldCheck;
-                    return <div key={label as string} className={`flex items-center gap-2 text-xs font-semibold ${primaryTextClass}`}><FeatureIcon className={`h-4 w-4 shrink-0 text-[var(--life-accent)]`} />{label as string}</div>;
-                  })}
-                </div>
-              </div>
-            </div>
+            <figure className={themeStyles.heroFigure}>
+              <LifeInsuranceHeroMedia locale={locale} />
+              <figcaption className={themeStyles.heroCaption}>
+                <p className={themeStyles.heroProtectionTitle}>{copy.protectionTitle}</p>
+                <p className={themeStyles.heroProtectionText}>{copy.protectionText}</p>
+              </figcaption>
+            </figure>
           </div>
         </header>
 
@@ -302,29 +294,38 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
             <p className={`mt-4 max-w-2xl text-base leading-relaxed ${bodyTextClass}`}>{copy.coverageIntro}</p>
           </div>
 
-          <ul className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <ul className={themeStyles.coverageGrid}>
             {copy.coverageRisks.map((risk, index) => {
-              const { id, icon: Icon } = COVERAGE_ITEMS[index];
-              const hasDetail = id === "sick-leave";
+              const { id } = COVERAGE_ITEMS[index];
+              const hasDetail = id === "sick-leave" || id === "daily-accident" || id === "disability" || id === "permanent-injury";
+              const detail = id === "permanent-injury" ? PERMANENT_INJURY_COPY[locale].detail
+                : id === "disability" ? DISABILITY_COPY[locale].detail
+                : id === "daily-accident" ? DAILY_ACCIDENT_COPY[locale].detail : SICK_LEAVE_COPY[locale].detail;
               const content = <>
-                <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${themeStyles.icon}`}>
-                  <Icon className="h-5 w-5" aria-hidden="true" />
+                <span className={themeStyles.riskArtwork} aria-hidden="true">
+                  <Image
+                    src={`/images/life-insurance/risks/${id}-v2.webp`}
+                    alt=""
+                    width={384}
+                    height={384}
+                    unoptimized
+                  />
                 </span>
                 <span className="min-w-0 flex-1 self-center">
                   <span className={`block text-base font-medium leading-snug tracking-[-0.02em] ${primaryTextClass}`}>{risk}</span>
-                  {hasDetail && <span className={`mt-1 block text-xs leading-relaxed text-[var(--life-accent)]`}>{SICK_LEAVE_COPY[locale].detail}</span>}
+                  {hasDetail && <span className={`mt-1 block text-xs leading-relaxed text-[var(--life-accent)]`}>{detail}</span>}
                 </span>
                 {hasDetail && <ArrowUpRight className={`h-4 w-4 shrink-0 text-[var(--life-accent)]`} aria-hidden="true" />}
               </>;
               return (
-                <li key={id} className={`min-w-0 rounded-[20px] border border-[var(--life-line)] bg-[var(--life-surface)]`}>
+                <li key={id} className={themeStyles.coverageItem}>
                   {hasDetail ? <button
                     type="button"
                     aria-haspopup="dialog"
-                    aria-controls="sick-leave-dialog"
-                    onClick={event => { event.currentTarget.focus({ preventScroll: true }); setActiveRisk("sick-leave"); }}
-                    className={`flex h-full w-full cursor-pointer items-center gap-3 rounded-[inherit] p-4 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400 sm:p-5 hover:bg-[var(--life-tint)]`}
-                  >{content}</button> : <div className="flex h-full items-center gap-3 p-4 sm:p-5">{content}</div>}
+                    aria-controls={`${id}-dialog`}
+                    onClick={event => { event.currentTarget.focus({ preventScroll: true }); setActiveRisk(id); }}
+                    className={themeStyles.coverageCard}
+                  >{content}</button> : <div className={themeStyles.coverageCard}>{content}</div>}
                 </li>
               );
             })}
@@ -373,6 +374,27 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
       </article>
 
       {activeRisk === "sick-leave" && <SickLeaveDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "daily-accident" && <DailyAccidentDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "disability" && <DisabilityDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "permanent-injury" && <PermanentInjuryDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}

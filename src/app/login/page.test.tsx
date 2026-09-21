@@ -151,6 +151,7 @@ describe("login verification boundary", () => {
     expect(mocks.profile).not.toHaveBeenCalled();
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("kontaktuj administrátora");
+    expect(container.querySelector('a[href="/ucet/zabezpeceni"]')?.textContent).toContain("Nastavit dvoufázové ověření");
   });
 
   it("distinguishes a stale sign-in proof from a blocked account", async () => {
