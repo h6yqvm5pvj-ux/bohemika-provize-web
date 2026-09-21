@@ -8,6 +8,12 @@ export type LiabilityPdfOptions = { report: LiabilityReport; advisor: ReportAdvi
 const FONT = "LiberationSans";
 const INK = "#493354", MUTED = "#82708e", LINE = "#e4dcea", PURPLE = "#79558f";
 const MARGIN = 28, LINE_HEIGHT = 11.5, PADDING = 7;
+const INSURER_LOGO_WIDTH = 60, INSURER_LOGO_HEIGHT = 24, INSURER_LOGO_GAP = 6;
+// PNG copies preserve transparency that jsPDF's WebP decoder would flatten to black.
+const PDF_LOGO_PATHS: Record<string, string> = {
+  "/icons/slavialogo.png": "/icons/pdf/slavia.png",
+  "/icons/pvzp.webp": "/icons/pdf/pvzp.png",
+};
 const TONES: Record<ComparisonTone, { fill: string; ink: string }> = {
   positive: { fill: "#edf7f2", ink: "#286748" }, warning: { fill: "#fff7e9", ink: "#89601d" },
   negative: { fill: "#fff0ed", ink: "#ad4839" }, neutral: { fill: "#f4f4f7", ink: "#625e6e" },
@@ -34,9 +40,10 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
   if (!report.products.length || !report.sections.some((section) => section.rows.length)) throw new Error("Vyber alespoň jeden produkt a kritérium.");
   if (report.sections.some((section) => section.rows.some((row) => row.cells.length !== report.products.length))) throw new Error("Počet odpovědí neodpovídá vybraným produktům.");
   const cardUrl = safeLink(advisor.cardUrl);
-  const [{ jsPDF: Pdf }, regular, bold, companyLogo, qr] = await Promise.all([
+  const [{ jsPDF: Pdf }, regular, bold, companyLogo, qr, logoAssets] = await Promise.all([
     import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"), asset("/icons/nadpislogo.jpg"),
     cardUrl ? import("qrcode").then((module) => module.default.toDataURL(cardUrl, { width: 240, margin: 1, errorCorrectionLevel: "M", color: { dark: INK, light: "#ffffff" } })) : Promise.resolve(""),
+    Promise.all([...new Set(report.products.map((product) => product.logoPath))].map(async (path) => [path, await asset(PDF_LOGO_PATHS[path] ?? path)] as const)),
   ]);
   const pdf = new Pdf({ orientation: "landscape", unit: "pt", format: "a4", compress: true, putOnlyUsedFonts: true });
   for (const [style, bytes] of [["normal", regular], ["bold", bold]] as const) {
@@ -47,6 +54,11 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
   const width = pageWidth - MARGIN * 2, bottom = pageHeight - 39;
   const date = generatedAt.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
   const logoProps = pdf.getImageProperties(companyLogo);
+  const insurerLogos = new Map(logoAssets.map(([path, data]) => {
+    const properties = pdf.getImageProperties(data);
+    const scale = Math.min(INSURER_LOGO_WIDTH / properties.width, INSURER_LOGO_HEIGHT / properties.height);
+    return [path, { data, format: properties.fileType, width: properties.width * scale, height: properties.height * scale }] as const;
+  }));
   let firstPage = true;
 
   function font(size = 8.5, weight = false, color = INK) {
@@ -74,8 +86,7 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
     rule(64); return 78;
   }
 
-  // Repeat the product identities on every page, and use extra column groups
-  // if more than five products are added to the catalog in the future.
+  // Repeat product identities and logos on every page, in groups of up to five.
   const groups: Array<{ products: LiabilityProduct[]; offset: number }> = [];
   for (let offset = 0; offset < report.products.length; offset += 5) groups.push({ products: report.products.slice(offset, offset + 5), offset });
   let y = 78;
@@ -94,11 +105,19 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
         ...wrapped(product.productName, productWidth - PADDING * 2, true),
         { text: product.date, color: MUTED },
       ])];
-      const height = Math.max(...columns.map((column) => column.length)) * LINE_HEIGHT + PADDING * 2;
+      const logoSpace = INSURER_LOGO_HEIGHT + INSURER_LOGO_GAP;
+      const height = Math.max(...columns.map((column, index) => column.length * LINE_HEIGHT + (index ? logoSpace : 0))) + PADDING * 2;
       let x = MARGIN;
       columns.forEach((column, index) => {
         pdf.setFillColor("#f5eff9"); pdf.setDrawColor(LINE); pdf.rect(x, top, columnWidths[index], height, "FD");
-        drawLines(column, x + PADDING, top + PADDING); x += columnWidths[index];
+        if (index > 0) {
+          const product = group.products[index - 1];
+          const logo = insurerLogos.get(product.logoPath)!;
+          pdf.addImage(logo.data, logo.format, x + PADDING, top + PADDING + (INSURER_LOGO_HEIGHT - logo.height) / 2,
+            logo.width, logo.height, `insurer:${product.logoPath}`);
+        }
+        drawLines(column, x + PADDING, index ? top + PADDING + logoSpace : top + (height - LINE_HEIGHT) / 2);
+        x += columnWidths[index];
       });
       return top + height;
     }

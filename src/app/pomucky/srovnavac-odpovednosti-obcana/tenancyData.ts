@@ -1,6 +1,7 @@
 import { createScreenshotSection, included, excluded, notCovered, optional, positive, negative, neutral, warning } from "./screenshotData";
 import { ADDITIONAL_TENANCY_ANSWERS } from "./additionalProductData";
 import { REMAINING_TENANCY_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_TENANCY_ANSWERS } from "./historicalTenancyData";
 
 const tenantInsured = positive("Ano, vztahuje (pojištěným musí být nájemce)");
 const writtenAgreement = warning("Možno připojistit (podmínkou je písemná dohoda)");
@@ -92,4 +93,4 @@ export const TENANCY_SECTION = createScreenshotSection({ id: "tenancy", title: "
     values: [excluded, excluded, negative("Ne, max. 3 místa pojištění"), excluded, excluded],
   },
   { id: "landlord-territory", title: "Územní platnost", ...landlordDamage, values: [excluded, excluded, positive("ČR"), positive("ČR"), excluded] },
-], { ...ADDITIONAL_TENANCY_ANSWERS, ...REMAINING_TENANCY_ANSWERS });
+], { ...ADDITIONAL_TENANCY_ANSWERS, ...REMAINING_TENANCY_ANSWERS, ...HISTORICAL_TENANCY_ANSWERS });

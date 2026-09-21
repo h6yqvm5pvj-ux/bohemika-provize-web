@@ -1,6 +1,7 @@
 import { type ComparisonAnswer, type ComparisonCriterion, type ComparisonSectionData } from "./comparisonData";
 import { ADDITIONAL_LIFE_SPORT_ANSWERS } from "./additionalProductData";
 import { REMAINING_LIFE_SPORT_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_LIFE_SPORT_ANSWERS } from "./historicalLifeSportData";
 
 export const LIFE_SPORT_CRITERIA = [
   { id: "everyday-life", title: "Činnosti vyplývající z běžného občanského života" },
@@ -65,6 +66,7 @@ const COMMON_ANSWERS = {
 export const LIFE_SPORT_ANSWERS: Partial<Record<string, LifeSportAnswers>> = {
   ...ADDITIONAL_LIFE_SPORT_ANSWERS,
   ...REMAINING_LIFE_SPORT_ANSWERS,
+  ...HISTORICAL_LIFE_SPORT_ANSWERS,
   "allianz:mujdomov-2026-06-25": {
     ...COMMON_ANSWERS,
     "electric-vehicles-definition": {

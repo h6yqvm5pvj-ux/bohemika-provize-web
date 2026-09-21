@@ -1,6 +1,7 @@
 import { createScreenshotSection, included, excluded, optional, positive } from "./screenshotData";
 import { ADDITIONAL_PROPERTY_ANSWERS } from "./additionalProductData";
 import { REMAINING_PROPERTY_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_PROPERTY_ANSWERS } from "./historicalPropertyData";
 
 const otherProperty = {
   parentId: "other-properties",
@@ -55,4 +56,4 @@ export const PROPERTY_SECTION = createScreenshotSection({ id: "property", title:
     values: [included, included, included, positive("Ano, limit max. 100 000 000 Kč"), included],
   },
   { id: "self-build", title: "Stavební činnost svépomocí", values: [excluded, included, included, excluded, excluded] },
-], { ...ADDITIONAL_PROPERTY_ANSWERS, ...REMAINING_PROPERTY_ANSWERS });
+], { ...ADDITIONAL_PROPERTY_ANSWERS, ...REMAINING_PROPERTY_ANSWERS, ...HISTORICAL_PROPERTY_ANSWERS });

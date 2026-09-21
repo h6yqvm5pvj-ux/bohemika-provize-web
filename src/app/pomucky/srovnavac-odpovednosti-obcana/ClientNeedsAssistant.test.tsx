@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock("@/app/firebase-auth", () => ({ auth: { currentUser: { uid: "advisor" } } }));
 vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.fetch }));
 import { ClientNeedsAssistant } from "./ClientNeedsAssistant";
+import { CLIENT_AI_WAIT_MS } from "./clientNeeds";
 
 let container: HTMLDivElement, root: Root;
 const onApply = vi.fn();
@@ -39,9 +40,13 @@ describe("rychlý dotaz klienta", () => {
     expect(mocks.fetch.mock.calls[0][2].signal.aborted).toBe(true);
   });
 
-  it("zruší čekání po čtyřech sekundách včetně případného čekání na token", async () => {
+  it("počká i na pomalejší AI a po limitu zruší čekání včetně získání tokenu", async () => {
     await prepare();
     await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    expect(button("Upřesňuji potřeby…").disabled).toBe(true);
+    expect(button("Použít profil a porovnat").disabled).toBe(false);
+    expect(mocks.fetch.mock.calls[0][2].signal.aborted).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(CLIENT_AI_WAIT_MS - 4_000); });
     expect(container.querySelector('[role="status"]')?.textContent).toContain("AI je nyní neupřesnila");
     expect(button("Použít profil a porovnat").disabled).toBe(false);
     expect(button("Připravit profil").disabled).toBe(false);

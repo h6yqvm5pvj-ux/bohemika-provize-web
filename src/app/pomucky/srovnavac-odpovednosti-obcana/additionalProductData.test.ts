@@ -29,7 +29,7 @@ describe("druhá sada podkladů odpovědnosti", () => {
         expect(hasSectionComparison(section, id.replace(/\d{4}-\d{2}-\d{2}$/, "2030-01-01"))).toBe(false);
       }
     }
-    expect(Object.keys(GENERAL_SECTION.answers)).toHaveLength(LIABILITY_PRODUCTS.length);
+    expect(Object.keys(GENERAL_SECTION.answers).filter(id => catalogIds.has(id))).toHaveLength(LIABILITY_PRODUCTS.length);
   });
 
   it("nová podkritéria zvířat zůstanou sbalená a starším podkladům nepřidá domyšlené odpovědi", () => {

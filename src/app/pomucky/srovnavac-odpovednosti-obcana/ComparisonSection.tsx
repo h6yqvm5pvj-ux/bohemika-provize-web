@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type CSSProperties } from "react";
-import { CalendarDays, CheckCircle2, ChevronDown, CircleMinus, CircleX, Info, Minus, Plus, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, ChevronDown, CircleMinus, CircleX, Info, Minus, Plus, TriangleAlert } from "lucide-react";
 import { getCoverageConditions, getVisibleCriteria, type ComparisonSectionData } from "./comparisonData";
-import { getCriterionIcon } from "./comparisonIcons";
+import { getCriterionIcon, SECTION_ICONS } from "./comparisonIcons";
 import { LIABILITY_PRODUCTS } from "./products";
 import styles from "./comparison.module.css";
 
@@ -20,6 +20,30 @@ export function ComparisonSection({ section, products, active }: {
   const [onlyDifferences, setOnlyDifferences] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>(() => groupIds);
   const [expandedDetails, setExpandedDetails] = useState<string[]>([]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [scrollEdges, setScrollEdges] = useState({ previous: false, next: false });
+  const updateScrollEdges = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const previous = viewport.scrollLeft > 1;
+    const next = viewport.scrollLeft + viewport.clientWidth < viewport.scrollWidth - 1;
+    setScrollEdges((current) => current.previous === previous && current.next === next ? current : { previous, next });
+  }, []);
+  useEffect(() => {
+    if (!active || !viewportRef.current) return;
+    const observer = new ResizeObserver(updateScrollEdges);
+    observer.observe(viewportRef.current);
+    const frame = requestAnimationFrame(updateScrollEdges);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [active, products.length, updateScrollEdges]);
+  const scrollProducts = (direction: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.scrollBy({
+      left: direction * Math.max(220, viewport.clientWidth * .65),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
+  };
   const detailKeys = section.criteria.flatMap((criterion) => products
     .filter((product) => section.answers[product.id]?.[criterion.id]?.detail)
     .map((product) => `${criterion.id}:${product.id}`));
@@ -27,6 +51,7 @@ export function ComparisonSection({ section, products, active }: {
   const expandableCriteria = getVisibleCriteria(section, products.map((product) => product.id), onlyDifferences, []);
   const visibleCriteria = getVisibleCriteria(section, products.map((product) => product.id), onlyDifferences, collapsedGroups);
   const contentId = `liability-${section.id}-content`;
+  const SectionIcon = SECTION_ICONS[section.id];
 
   const toggleDetail = (key: string) => setExpandedDetails((current) => current.includes(key)
     ? current.filter((value) => value !== key) : [...current, key]);
@@ -36,12 +61,17 @@ export function ComparisonSection({ section, products, active }: {
   return (
     <section className={styles.comparisonPanel} id={`liability-${section.id}`} role="tabpanel" aria-labelledby={`liability-tab-${section.id}`} hidden={!active}>
       <div className={styles.sectionToolbar}>
-        <span className={styles.criteriaCount}>{visibleCriteria.length} z {section.criteria.length} kritérií</span>
+        <div className={styles.sectionHeading}>
+          <SectionIcon size={18} aria-hidden="true" />
+          <strong>{section.title}</strong>
+          <span className={styles.criteriaCount}>{visibleCriteria.length} z {section.criteria.length} kritérií</span>
+        </div>
         <div className={styles.actions}>
           <label className={styles.differencesToggle}>
-            <input type="checkbox" checked={onlyDifferences} disabled={products.length < 2}
+            <input type="checkbox" aria-label="Zobrazit pouze rozdíly" checked={onlyDifferences} disabled={products.length < 2}
               onChange={(event) => setOnlyDifferences(event.target.checked)} />
-            Zobrazit pouze rozdíly
+            <span className={styles.switchTrack} aria-hidden="true" />
+            Pouze rozdíly
           </label>
           {(groupIds.length > 0 || detailKeys.length > 0) && <button type="button" onClick={() => {
             setCollapsedGroups(allExpanded ? groupIds : []);
@@ -53,12 +83,12 @@ export function ComparisonSection({ section, products, active }: {
         </div>
       </div>
       <div id={contentId} className={styles.sectionContent}>
-        <div className={styles.tableViewport} role="region" aria-label={`Srovnání: ${section.title}`} tabIndex={0}>
+        <div ref={viewportRef} onScroll={updateScrollEdges} className={styles.tableViewport} role="region" aria-label={`Srovnání: ${section.title}`} tabIndex={0}>
           <table className={styles.comparisonTable} style={{ "--product-count": products.length } as CSSProperties}>
             <caption className={styles.srOnly}>{section.title} – pojištění občanské odpovědnosti</caption>
             <colgroup><col className={styles.criterionColumn} />{products.map((product) => <col key={product.id} />)}</colgroup>
             <thead><tr>
-              <th scope="col" className={styles.cornerCell}><strong>Kritérium</strong></th>
+              <th scope="col" className={styles.cornerCell}><span>Rozsah krytí</span><strong>Co porovnáváme</strong></th>
               {products.map((product) => (
                 <th scope="col" key={product.id} aria-label={`${product.insurerName} – ${product.productName}, ${product.date}`}>
                   <div className={styles.productHeading}>
@@ -96,7 +126,6 @@ export function ComparisonSection({ section, products, active }: {
                       const key = `${criterion.id}:${product.id}`;
                       const expanded = expandedDetails.includes(key);
                       const ToneIcon = TONE_ICONS[answer.tone];
-                      const DetailIcon = expanded ? Minus : Plus;
                       const detailId = `detail-${section.id}-${key}`;
                       return (
                         <td key={product.id}>
@@ -109,8 +138,8 @@ export function ComparisonSection({ section, products, active }: {
                                 <button type="button" className={styles.detailToggle} aria-expanded={expanded} aria-controls={detailId}
                                   aria-label={`${expanded ? "Skrýt" : "Zobrazit"} podrobnosti: ${criterion.title} – ${product.insurerName} ${product.productName}`}
                                   onClick={() => toggleDetail(key)}>
-                                  <DetailIcon size={14} aria-hidden="true" />
                                   {expanded ? "Skrýt podrobnosti" : "Zobrazit více"}
+                                  <ChevronDown size={13} aria-hidden="true" style={{ transform: expanded ? "rotate(180deg)" : undefined }} />
                                 </button>
                                 <p className={styles.answerDetail} id={detailId} hidden={!expanded}>{answer.detail}</p>
                               </>
@@ -128,7 +157,14 @@ export function ComparisonSection({ section, products, active }: {
             </tbody>
           </table>
         </div>
-        <p className={styles.sourceNote}><Info size={14} aria-hidden="true" /> Údaje a barevná hodnocení podle dodaného srovnání. Data verzí jsou uvedená u jednotlivých produktů.</p>
+        <div className={styles.comparisonFooter}>
+          <p className={styles.sourceNote}><Info size={14} aria-hidden="true" /> Údaje a barevná hodnocení podle dodaného srovnání. Data verzí jsou uvedená u jednotlivých produktů.</p>
+          {(scrollEdges.previous || scrollEdges.next) && <div className={styles.scrollControls} role="group" aria-label="Posun mezi produkty">
+            <span>Další produkty</span>
+            <button type="button" disabled={!scrollEdges.previous} onClick={() => scrollProducts(-1)} aria-label="Předchozí produkty"><ArrowLeft size={16} aria-hidden="true" /></button>
+            <button type="button" disabled={!scrollEdges.next} onClick={() => scrollProducts(1)} aria-label="Další produkty"><ArrowRight size={16} aria-hidden="true" /></button>
+          </div>}
+        </div>
       </div>
     </section>
   );

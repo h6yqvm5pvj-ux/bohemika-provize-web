@@ -7,9 +7,16 @@ import { ComparisonSection } from "./ComparisonSection";
 import { ComparisonExport } from "./ComparisonExport";
 import { SECTION_ICONS } from "./comparisonIcons";
 import { LIABILITY_PRODUCTS } from "./products";
+import { HISTORICAL_LIABILITY_PRODUCTS } from "./historicalProducts";
 import { LIABILITY_SECTIONS } from "./sections";
 import { personalizeSections, type ClientNeedId } from "./clientNeeds";
 import styles from "./comparison.module.css";
+
+const TAB_LABELS: Record<string, string> = {
+  general: "Obecné", "life-sport": "Život a sport", breeder: "Chovatel",
+  property: "Nemovitosti", tenancy: "Nájem a pronájem", coinsured: "Spolupojištěné osoby",
+};
+const CATALOG_PRODUCTS = [...LIABILITY_PRODUCTS, ...HISTORICAL_LIABILITY_PRODUCTS];
 
 export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSelection }: {
   selectedIds: string[];
@@ -20,7 +27,7 @@ export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSele
   const [selectedSection, setActiveSection] = useState(LIABILITY_SECTIONS[0].id);
   const [showFullComparison, setShowFullComparison] = useState(false);
   useEffect(() => { headingRef.current?.focus(); }, []);
-  const selectedProducts = LIABILITY_PRODUCTS.filter((product) => selectedIds.includes(product.id));
+  const selectedProducts = CATALOG_PRODUCTS.filter((product) => selectedIds.includes(product.id));
   const hasData = (id: string) => LIABILITY_SECTIONS.some((section) => hasSectionComparison(section, id));
   const products = selectedProducts.filter((product) => hasData(product.id));
   const missingProducts = selectedProducts.filter((product) => !hasData(product.id));
@@ -44,9 +51,10 @@ export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSele
 
   return (
     <section className={styles.results} aria-labelledby="liability-results-title">
-      <h2 className={styles.srOnly} id="liability-results-title" ref={headingRef} tabIndex={-1}>Srovnání produktů</h2>
       <div className={styles.resultsToolbar}>
-        <div className={styles.resultsMeta}>
+        <div className={styles.resultsIntro}>
+          <h2 className={styles.srOnly} id="liability-results-title" ref={headingRef} tabIndex={-1}>Srovnání produktů</h2>
+          <div className={styles.resultsMeta}>
           <span>Srovnáváme <strong>{products.length}</strong> z {selectedProducts.length} vybraných produktů</span>
           {personalized && <span>Podle profilu · {sections.reduce((total, section) => total + section.criteria.length, 0)} kritérií včetně podkritérií</span>}
           {missingProducts.length > 0 && (
@@ -58,18 +66,19 @@ export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSele
               </div>
             </details>
           )}
+          </div>
         </div>
         <div className={styles.actions}>
           {needs.length > 0 && <button type="button" onClick={() => setShowFullComparison(!showFullComparison)}>{personalized ? "Zobrazit celé srovnání" : "Jen kritéria podle profilu"}</button>}
-          {products.length > 0 && <ComparisonExport key={viewKey} sections={sections} products={products} activeSection={activeSection} />}
           <button type="button" onClick={onEditSelection}><ChevronLeft size={14} aria-hidden="true" /> Upravit výběr</button>
+          {products.length > 0 && <ComparisonExport key={viewKey} sections={sections} products={products} activeSection={activeSection} />}
         </div>
       </div>
       {products.length === 0 ? (
         <div className={styles.resultsEmpty}>
           <Info size={24} aria-hidden="true" />
           <h3>Pro vybrané produkty zatím nejsou doplněné údaje.</h3>
-          <p>Srovnání je dostupné pro produkty pojišťoven: {[...new Set(LIABILITY_PRODUCTS.filter((product) => hasData(product.id)).map((product) => product.insurerName))].join(", ")}.</p>
+          <p>Srovnání je dostupné pro produkty pojišťoven: {[...new Set(CATALOG_PRODUCTS.filter((product) => hasData(product.id)).map((product) => product.insurerName))].join(", ")}.</p>
           <div className={styles.actions}><button type="button" onClick={onEditSelection}>Změnit výběr produktů</button></div>
         </div>
       ) : (
@@ -79,9 +88,10 @@ export function LiabilityComparisonResults({ selectedIds, needs = [], onEditSele
               const Icon = SECTION_ICONS[section.id];
               return <button key={section.id} type="button" role="tab" id={`liability-tab-${section.id}`}
                 aria-selected={activeSection === section.id} aria-controls={`liability-${section.id}`} tabIndex={activeSection === section.id ? 0 : -1}
+                title={section.title}
                 onKeyDown={(event) => handleTabKey(event, index)}
                 onClick={(event) => { setActiveSection(section.id); event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" }); }}>
-                <Icon size={15} aria-hidden="true" /><span>{section.title}</span><small>{section.criteria.length}</small>
+                <Icon size={16} aria-hidden="true" /><span>{TAB_LABELS[section.id] ?? section.title}</span><small>{section.criteria.length}</small>
               </button>;
             })}
           </div>

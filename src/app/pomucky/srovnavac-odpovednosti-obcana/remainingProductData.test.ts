@@ -4,6 +4,12 @@ import { LIABILITY_PRODUCTS } from "./products";
 import { LIABILITY_SECTIONS } from "./sections";
 import { hasSectionComparison, getVisibleCriteria } from "./comparisonData";
 import { GENERAL_SECTION } from "./generalData";
+import { HISTORICAL_GENERAL_ANSWERS } from "./historicalGeneralData";
+import { HISTORICAL_LIFE_SPORT_ANSWERS } from "./historicalLifeSportData";
+import { HISTORICAL_BREEDER_ANSWERS } from "./historicalBreederData";
+import { HISTORICAL_PROPERTY_ANSWERS } from "./historicalPropertyData";
+import { HISTORICAL_TENANCY_ANSWERS } from "./historicalTenancyData";
+import { HISTORICAL_COINSURED_ANSWERS } from "./historicalCoinsuredData";
 import { COINSURED_SECTION } from "./coinsuredData";
 import { LIFE_SPORT_SECTION } from "./lifeSportData";
 import { buildLiabilityReport, initialExportSettings } from "./exportData";
@@ -23,7 +29,15 @@ describe("posledních sedm produktů odpovědnosti", () => {
       }
     }
     for (const section of LIABILITY_SECTIONS) {
-      expect(new Set(Object.keys(section.answers))).toEqual(new Set(LIABILITY_PRODUCTS.map((product) => product.id)));
+      expect(new Set(Object.keys(section.answers))).toEqual(new Set([
+        ...LIABILITY_PRODUCTS.map((product) => product.id),
+        ...(section.id === "general" ? Object.keys(HISTORICAL_GENERAL_ANSWERS) : []),
+        ...(section.id === "life-sport" ? Object.keys(HISTORICAL_LIFE_SPORT_ANSWERS) : []),
+        ...(section.id === "breeder" ? Object.keys(HISTORICAL_BREEDER_ANSWERS) : []),
+        ...(section.id === "property" ? Object.keys(HISTORICAL_PROPERTY_ANSWERS) : []),
+        ...(section.id === "tenancy" ? Object.keys(HISTORICAL_TENANCY_ANSWERS) : []),
+        ...(section.id === "coinsured" ? Object.keys(HISTORICAL_COINSURED_ANSWERS) : []),
+      ]));
     }
   });
 

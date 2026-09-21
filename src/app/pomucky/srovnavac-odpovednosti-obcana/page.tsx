@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronRight, Search, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { InsurerPicker } from "../srovnavac-trvalych-nasledku/InsurerPicker";
 import { LIABILITY_INSURERS } from "./products";
+import { HistoricalProductsPicker } from "./HistoricalProductsPicker";
 import { LiabilityComparisonResults } from "./LiabilityComparisonResults";
 import { ClientNeedsAssistant } from "./ClientNeedsAssistant";
 import type { ClientNeedId } from "./clientNeeds";
@@ -32,6 +33,8 @@ export default function LiabilityComparisonPage() {
   const [expandedInsurers, setExpandedInsurers] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [clientNeeds, setClientNeeds] = useState<ClientNeedId[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedOnly, setSelectedOnly] = useState(false);
   const pickerHeadingRef = useRef<HTMLHeadingElement>(null);
   const returningToPicker = useRef(false);
 
@@ -43,7 +46,11 @@ export default function LiabilityComparisonPage() {
   }, [showResults]);
 
   const allProductsSelected = ALL_PRODUCT_IDS.every((id) => selectedProducts.includes(id));
+  const currentSelectedCount = ALL_PRODUCT_IDS.filter((id) => selectedProducts.includes(id)).length;
   const allInsurersExpanded = ALL_INSURER_NAMES.every((name) => expandedInsurers.includes(name));
+  const selectedGroups = PRODUCT_GROUPS.filter((group) =>
+    group.options.some((option) => selectedProducts.includes(option.value)),
+  );
 
   const toggleProduct = (id: string) => {
     setSelectedProducts((current) =>
@@ -74,14 +81,47 @@ export default function LiabilityComparisonPage() {
           <Link href="/pomucky" className={styles.backLink} aria-label="Zpět na pomůcky">
             <ChevronLeft size={17} aria-hidden="true" /><span>Pomůcky</span>
           </Link>
-          <div className={styles.pageTitle}><ShieldCheck size={21} aria-hidden="true" /><h1>Srovnávač odpovědnosti občana</h1></div>
-          {!showResults && <span className={styles.catalogCount}>{LIABILITY_INSURERS.length} pojišťoven · {ALL_PRODUCT_IDS.length} variant</span>}
+          <div className={styles.titleRow}>
+            <div className={styles.pageTitle}>
+              <span className={styles.titleIcon}><ShieldCheck size={26} aria-hidden="true" /></span>
+              <div>
+                <p className={styles.eyebrow}>{showResults ? "Výsledky porovnání" : "Srovnávač pojištění"}</p>
+                <h1>Odpovědnost občana</h1>
+                {!showResults && <p className={styles.pageDescription}>Najděte správné krytí pro každodenní život vašeho klienta.</p>}
+              </div>
+            </div>
+            {!showResults && <div className={styles.catalogCount}>
+              <span><strong>{LIABILITY_INSURERS.length}</strong> pojišťoven</span>
+              <span><strong>{ALL_PRODUCT_IDS.length}</strong> aktuálních variant</span>
+            </div>}
+          </div>
         </header>
 
-        <ClientNeedsAssistant applied={clientNeeds} canCompare={selectedProducts.length > 0} onApply={(needs) => {
-          setClientNeeds(needs);
-          if (needs.length && selectedProducts.length) setShowResults(true);
-        }} />
+        <section className={showResults ? styles.resultsControls : styles.controls} aria-label="Nastavení porovnání">
+          {!showResults && <div className={styles.searchField}>
+            <Search size={18} aria-hidden="true" />
+            <input type="search" aria-label="Hledat pojišťovnu nebo produkt" placeholder="Pojišťovna, produkt nebo ročník…" value={query} onChange={(event) => setQuery(event.target.value)} />
+            {query && <button type="button" onClick={() => setQuery("")} aria-label="Vymazat hledání"><X size={18} aria-hidden="true" /></button>}
+          </div>}
+
+          <ClientNeedsAssistant embedded={!showResults} compact={showResults} applied={clientNeeds} canCompare={selectedProducts.length > 0} onApply={(needs) => {
+            setClientNeeds(needs);
+            if (needs.length && selectedProducts.length) setShowResults(true);
+          }} />
+
+          {!showResults && <div className={styles.controlsFooter}>
+            <div className={styles.filters} role="group" aria-label="Filtry pojišťoven">
+              <span className={styles.filterLabel}><SlidersHorizontal size={15} aria-hidden="true" />Filtry</span>
+              <div className={styles.filterOptions}>
+                <button type="button" aria-pressed={!selectedOnly} onClick={() => setSelectedOnly(false)}>Všechny</button>
+                <button type="button" aria-pressed={selectedOnly} onClick={() => setSelectedOnly(true)}>Jen vybrané</button>
+              </div>
+            </div>
+            <button type="button" className={styles.compareAction} disabled={selectedProducts.length === 0} onClick={() => setShowResults(true)}>
+              Porovnat produkty <span>{selectedProducts.length}</span><ArrowRight size={17} aria-hidden="true" />
+            </button>
+          </div>}
+        </section>
 
         {showResults ? (
           <LiabilityComparisonResults key={[...clientNeeds].sort().join(":")} needs={clientNeeds} selectedIds={selectedProducts} onEditSelection={() => {
@@ -90,18 +130,20 @@ export default function LiabilityComparisonPage() {
           }} />
         ) : (
         <section className={styles.picker} aria-labelledby="liability-products-title">
-          <div className={styles.toolbar}>
+          <div className={styles.pickerToolbar}>
             <div className={styles.heading}>
-              <h2 id="liability-products-title" ref={pickerHeadingRef} tabIndex={-1}>Výběr produktů</h2>
-            </div>
-            <div className={styles.actions}>
+              <h2 id="liability-products-title" ref={pickerHeadingRef} tabIndex={-1}>Aktuální produkty</h2>
               <span className={styles.selectionCount} role="status" aria-live="polite" aria-atomic="true">
-                Vybrané produkty: {selectedProducts.length} / {ALL_PRODUCT_IDS.length}
+                <span className={styles.selectionDot} aria-hidden="true" data-empty={currentSelectedCount === 0} />
+                Vybráno {currentSelectedCount} z {ALL_PRODUCT_IDS.length} produktů
               </span>
+            </div>
+            <div className={styles.pickerActions}>
               <button
                 type="button"
-                onClick={() => setSelectedProducts(allProductsSelected ? [] : ALL_PRODUCT_IDS)}
+                onClick={() => toggleInsurerProducts(ALL_PRODUCT_IDS)}
               >
+                <Check size={15} aria-hidden="true" />
                 {allProductsSelected ? "Zrušit výběr" : "Vybrat vše"}
               </button>
               <button
@@ -115,27 +157,28 @@ export default function LiabilityComparisonPage() {
                 />
                 {allInsurersExpanded ? "Sbalit vše" : "Rozbalit vše"}
               </button>
-              <button
-                type="button"
-                className={styles.primaryAction}
-                disabled={selectedProducts.length === 0}
-                onClick={() => setShowResults(true)}
-              >
-                Porovnat produkty <ChevronRight size={15} aria-hidden="true" />
-              </button>
             </div>
           </div>
 
-          <InsurerPicker
+          {selectedOnly && selectedGroups.length === 0 ? <div className={styles.resultsEmpty}>
+            <ShieldCheck size={28} aria-hidden="true" />
+            <h3>Zatím nemáte vybrané současné produkty</h3>
+            <p>Zobrazte všechny pojišťovny a vyberte produkty, které chcete porovnat.</p>
+            <button type="button" className={styles.clearFilter} onClick={() => setSelectedOnly(false)}>Zobrazit všechny pojišťovny <ChevronRight size={15} aria-hidden="true" /></button>
+          </div> : <InsurerPicker
             compact
-            groups={PRODUCT_GROUPS}
+            layout="centered"
+            searchQuery={query}
+            groups={selectedOnly ? selectedGroups : PRODUCT_GROUPS}
             selected={selectedProducts}
             expanded={expandedInsurers}
             onToggleOption={toggleProduct}
             onToggleGroup={toggleInsurerProducts}
             onToggleExpanded={toggleInsurerExpanded}
             getLogo={getInsurerLogo}
-          />
+          />}
+          <HistoricalProductsPicker selected={selectedProducts} query={query} selectedOnly={selectedOnly}
+            onToggleOption={toggleProduct} onToggleGroup={toggleInsurerProducts} />
         </section>
         )}
       </div>

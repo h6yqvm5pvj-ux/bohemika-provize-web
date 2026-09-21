@@ -1,6 +1,7 @@
 import { createScreenshotSection, excluded, positive, negative, neutral } from "./screenshotData";
 import { ADDITIONAL_COINSURED_ANSWERS } from "./additionalProductData";
 import { REMAINING_COINSURED_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_COINSURED_ANSWERS } from "./historicalCoinsuredData";
 
 const yes = positive("Ano");
 const anyAge = positive("Ano (jakéhokoliv věku a stavu)");
@@ -46,4 +47,4 @@ export const COINSURED_SECTION = createScreenshotSection({ id: "coinsured", titl
   { id: "contracted-helper-property-care", title: "Opatrování a údržba nemovité věci", ...contractedHelper, values: [excluded, yes, excluded, yes, excluded] },
   { id: "contracted-helper-path-maintenance", title: "Čištění a údržba chodníků, schodišť, chodeb apod.", ...contractedHelper, values: [excluded, yes, excluded, yes, excluded] },
   { id: "contracted-helper-construction", title: "Pomocné stavební práce", ...contractedHelper, values: [excluded, yes, excluded, excluded, excluded] },
-], { ...ADDITIONAL_COINSURED_ANSWERS, ...REMAINING_COINSURED_ANSWERS });
+], { ...ADDITIONAL_COINSURED_ANSWERS, ...REMAINING_COINSURED_ANSWERS, ...HISTORICAL_COINSURED_ANSWERS });

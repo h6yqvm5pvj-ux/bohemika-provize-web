@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CLIENT_AI_UPSTREAM_TIMEOUT_MS } from "@/app/pomucky/srovnavac-odpovednosti-obcana/clientNeeds";
 
 const guard = vi.hoisted(() => ({
   requireAdvisorAuthedRateLimited: vi.fn(),
@@ -50,11 +51,22 @@ describe("POST /api/liability-profile", () => {
     expect(await response.json()).toEqual({ ok: true, source: "local", needs: [{ id: "children", evidence: "deti" }] });
   });
 
-  it("ukončí čekání po třech sekundách i pokud upstream ignoruje abort", async () => {
+  it("přijme skutečně pomalejší AI odpověď, kterou původní třísekundový limit zahazoval", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify({
+      reply: JSON.stringify({ needs: [{ id: "tenant", evidence: "pronajatém bytě" }] }),
+    }))), 12_000)));
+    const pending = POST(request("Žije v pronajatém bytě."));
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(await (await pending).json()).toEqual({ ok: true, source: "ai", needs: [{ id: "tenant", evidence: "pronajatém bytě" }] });
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(false);
+  });
+
+  it("ukončí čekání po časovém limitu i pokud upstream ignoruje abort", async () => {
     vi.useFakeTimers();
     fetchMock.mockImplementation(() => new Promise(() => {}));
     const pending = POST(request("Bydlí v nájmu."));
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(CLIENT_AI_UPSTREAM_TIMEOUT_MS);
     expect((await (await pending).json()).source).toBe("local");
     expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
   });

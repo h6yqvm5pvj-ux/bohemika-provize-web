@@ -1,6 +1,7 @@
 import { createScreenshotSection, included, excluded, optional } from "./screenshotData";
 import { ADDITIONAL_BREEDER_ANSWERS } from "./additionalProductData";
 import { REMAINING_BREEDER_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_BREEDER_ANSWERS } from "./historicalBreederData";
 
 const otherPets = { parentId: "other-pets", parentLabel: "Chov jiných domácích zvířat", coverageParentId: "other-pets" };
 
@@ -19,4 +20,4 @@ export const BREEDER_SECTION = createScreenshotSection({ id: "breeder", title: "
     title: "Škody způsobené zvířaty na rostlinách (porostech a zemědělských kulturách)",
     values: [excluded, included, included, excluded, included],
   },
-], { ...ADDITIONAL_BREEDER_ANSWERS, ...REMAINING_BREEDER_ANSWERS });
+], { ...ADDITIONAL_BREEDER_ANSWERS, ...REMAINING_BREEDER_ANSWERS, ...HISTORICAL_BREEDER_ANSWERS });

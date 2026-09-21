@@ -1,0 +1,111 @@
+/* Matches the public advisor card in OnlineCardMinimal.module.css. */
+.theme {
+  --life-page: #f6f8fa;
+  --life-surface: #ffffff;
+  --life-soft: #edf2f4;
+  --life-tint: #e7f4f8;
+  --life-ink: #152832;
+  --life-muted: #64747d;
+  --life-line: #e0e7e9;
+  --life-accent: #087a9a;
+  --life-brand: #5bc4e5;
+  --life-button: var(--life-ink);
+  --life-button-text: var(--life-page);
+  --life-success-bg: #e8f8f2;
+  --life-success-ink: #12634e;
+  color-scheme: light;
+  color: var(--life-ink);
+  background-color: var(--life-page);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.theme[data-theme="dark"] {
+  --life-page: #0d161e;
+  --life-surface: #14222d;
+  --life-soft: #101d27;
+  --life-tint: #18313e;
+  --life-ink: #f3f6fc;
+  --life-muted: #a7b6cb;
+  --life-line: #263640;
+  --life-accent: #88d9ef;
+  --life-success-bg: #123c34;
+  --life-success-ink: #a0ecd5;
+  color-scheme: dark;
+}
+.shell { min-height: 100dvh; }
+.toolbar { background: var(--life-page); }
+.toolbar :is(button, a, select):focus-visible { outline: 2px solid var(--life-accent); outline-offset: 3px; }
+.primary { background: var(--life-button); color: var(--life-button-text); border: 1px solid var(--life-button); }
+.primary:hover { transform: translateY(-2px); box-shadow: 0 7px 20px #0825301a; }
+.meetingDialog::backdrop { background: #071d2a99; backdrop-filter: blur(8px); }
+.meetingPanel { color: var(--life-ink); background: var(--life-page); border: 1px solid var(--life-line); box-shadow: 0 28px 80px #0003; }
+.meetingIcon { color: var(--life-accent); background: var(--life-tint); border: 1px solid var(--life-line); }
+.meetingKicker { color: var(--life-accent); }
+.meetingTitle { color: var(--life-ink); }
+.meetingDescription { color: var(--life-muted); }
+.close { color: var(--life-muted); background: var(--life-soft); border: 1px solid var(--life-line); }
+.close:hover { color: var(--life-accent); background: var(--life-tint); }
+.close:focus-visible { outline: 2px solid var(--life-accent); outline-offset: 3px; }
+.success { background: var(--life-success-bg); color: var(--life-success-ink); border: 1px solid var(--life-line); }
+
+.content { min-height: 100vh; padding: 0 20px; overflow-wrap: anywhere; }
+.article { max-width: 1440px; margin-inline: auto; }
+.article > section, .article > footer { width: min(100% - 112px, 1200px); margin-inline: auto; }
+.article > section { margin-block: 12px; }
+.article h2 { font-size: clamp(30px, 3.5vw, 48px); font-weight: 500; line-height: 1.16; letter-spacing: -.055em; }
+.article h3 { font-weight: 500; }
+.article > section > div > p[class*="uppercase"] { font-size: 10px; letter-spacing: .18em; }
+.hero {
+  --life-ink: #f3f6fc;
+  --life-muted: #aec1cd;
+  --life-accent: #a7ddee;
+  --life-tint: #bcefff0c;
+  --life-line: #c5e6f21a;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 60px 56px;
+  border: 1px solid #213d4c;
+  border-radius: 32px;
+  background: radial-gradient(ellipse at 83% 30%, #16465880, transparent 48%), radial-gradient(ellipse at 5% 100%, #14334070, transparent 50%), #0c1923;
+}
+.hero::before { position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none; background-image: linear-gradient(#a9e4ff06 1px, transparent 1px), linear-gradient(90deg, #a9e4ff06 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(90deg, transparent 25%, #000); }
+.hero > div { max-width: 1200px; margin-inline: auto; }
+.heroTitle { max-width: 12ch; margin-top: 24px; font-size: clamp(42px, 5.6vw, 80px); font-weight: 500; line-height: 1.04; letter-spacing: -.065em; color: var(--life-ink); text-wrap: balance; }
+.heroCard { border: 1px solid #c3e3f025; border-radius: 22px; background: #ffffff04; }
+.icon { color: var(--life-accent); background: var(--life-tint); }
+.navInner { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: min(100% - 112px, 1200px); min-height: 90px; margin-inline: auto; }
+.navIdentity, .navTools { display: flex; align-items: center; gap: 16px; }
+.navLogo { position: relative; display: block; width: 168px; height: 40px; overflow: hidden; flex-shrink: 0; }
+.navLogo img { position: absolute; top: -85px; left: 0; width: 168px; height: 168px; max-width: none; }
+.navBack { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; color: var(--life-muted); font-size: 12px; font-weight: 500; }
+.navBack:hover { color: var(--life-accent); }
+.navBack svg { width: 16px; height: 16px; }
+.iconButton { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid var(--life-line); border-radius: 50%; color: var(--life-ink); background: transparent; cursor: pointer; }
+.iconButton:hover { background: var(--life-soft); }
+.iconButton svg { width: 16px; height: 16px; stroke-width: 1.6; }
+.language { width: 64px; height: 44px; padding: 0 7px; color: var(--life-ink); background: transparent; font-size: 12px; cursor: pointer; }
+.language option { color: var(--life-ink); background: var(--life-page); }
+@media (max-width: 900px) {
+  .hero { padding: 36px 32px; }
+  .article > section, .article > footer, .navInner { width: calc(100% - 48px); }
+}
+@media (max-width: 639px) {
+  .content { padding-inline: 12px; }
+  .hero { padding: 28px 20px; border-radius: 24px; }
+  .heroTitle { margin-top: 20px; font-size: clamp(36px, 10vw, 52px); }
+  .article > section, .article > footer { width: calc(100% - 16px); }
+  .article > section { margin-block: 4px; }
+  .navInner { width: calc(100% - 40px); min-height: 76px; gap: 8px; }
+  .navIdentity, .navTools { gap: 8px; }
+  .navLogo { width: 122px; height: 32px; }
+  .navLogo img { width: 122px; height: 122px; top: -62px; }
+  .navBack { min-width: 44px; }
+  .navBack span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 359px) {
+  .navLogo { width: 100px; }
+  .navLogo img { width: 100px; height: 100px; top: -51px; }
+  .navTools { gap: 4px; }
+  .language { width: 56px; }
+}

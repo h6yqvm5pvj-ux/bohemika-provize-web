@@ -1,7 +1,10 @@
 import type { ComparisonSectionData } from "./comparisonData";
 
 export const CLIENT_QUERY_LIMIT = 600;
-export const CLIENT_AI_WAIT_MS = 4_000;
+// Živá služba může odpovídat i přes 10 s; základní profil je mezitím ihned použitelný.
+export const CLIENT_AI_UPSTREAM_TIMEOUT_MS = 15_000;
+// Rezerva na přihlašovací token, serverové ověření uživatele a přenos odpovědi.
+export const CLIENT_AI_WAIT_MS = CLIENT_AI_UPSTREAM_TIMEOUT_MS + 5_000;
 
 export const CLIENT_NEEDS = [
   { id: "tenant", label: "Bydlení v nájmu", explanation: "Škody na pronajatém bytě a jeho vybavení, včetně pojištěných rizik.", criteria: { tenancy: ["rented-property", "rented-property-risks", "rented-equipment", "rented-equipment-risks"] } },

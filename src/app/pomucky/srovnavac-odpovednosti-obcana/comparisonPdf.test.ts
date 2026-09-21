@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
+import sharp from "sharp";
 import { createLiabilityPdf } from "./comparisonPdf";
 import { buildLiabilityReport, initialExportSettings, type LiabilityReport } from "./exportData";
 import { LIABILITY_SECTIONS } from "./sections";
@@ -14,20 +15,52 @@ const products = LIABILITY_PRODUCTS.filter((product) => SCREENSHOT_PRODUCT_IDS.s
 const advisor = { fullName: "Štěpán Dvořák", title: "Finanční poradce", email: "stepan@example.test", phone: "+420 777 123 456", ico: "12345678", cardUrl: "https://example.test/vizitka/stepan" };
 const compact = (value: string) => value.replace(/\s/g, "");
 afterEach(() => vi.unstubAllGlobals());
-async function generate(report: LiabilityReport) {
+async function generate(report: LiabilityReport, withImages = false) {
   vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(await readFile(resolve(process.cwd(), `public${path}`)))));
   const pdf = await createLiabilityPdf({ report, advisor, generatedAt: new Date("2026-09-20T12:00:00Z") });
   const document = await getDocument({ data: new Uint8Array(pdf.output("arraybuffer")), useSystemFonts: true }).promise;
   const pages = [];
   for (let index = 1; index <= document.numPages; index++) {
     const page = await document.getPage(index), content = await page.getTextContent();
+    const operators = withImages ? await page.getOperatorList() : null;
+    const images = operators?.fnArray.flatMap((operator, index) => operator === OPS.paintImageXObject
+      ? [{ width: operators.argsArray[index][1], height: operators.argsArray[index][2] }] : []) ?? [];
     const items = content.items.filter((item) => "str" in item);
-    pages.push({ text: items.map((item) => item.str).join(" "), items, annotations: await page.getAnnotations(), width: page.view[2], height: page.view[3] });
+    pages.push({ text: items.map((item) => item.str).join(" "), items, images, annotations: await page.getAnnotations(), width: page.view[2], height: page.view[3] });
   }
   await document.destroy(); return pages;
 }
 
 describe("PDF občanské odpovědnosti", () => {
+  it("vloží loga všech pojišťoven včetně WebP do správných sloupců a načte každé jen jednou", async () => {
+    const report = buildLiabilityReport(LIABILITY_SECTIONS, LIABILITY_PRODUCTS, {
+      ...initialExportSettings(LIABILITY_SECTIONS), includeDetails: false, selectedCriteria: { general: ["maximum-limit"] },
+    });
+    const pages = await generate(report, true);
+    const expectedLogos = await Promise.all(LIABILITY_PRODUCTS.map(async (product) => {
+      const { width, height } = await sharp(resolve(process.cwd(), `public${product.logoPath}`)).metadata();
+      return { width, height };
+    }));
+    for (let offset = 0; offset < LIABILITY_PRODUCTS.length; offset += 5) {
+      const end = Math.min(offset + 5, LIABILITY_PRODUCTS.length);
+      const page = pages.find((page) => page.text.includes(`Produkty ${offset + 1}–${end} z ${LIABILITY_PRODUCTS.length}`));
+      expect(page).toBeDefined();
+      // The brand logo precedes the product logos; the advisor QR may follow them.
+      expect(page!.images.slice(1, end - offset + 1)).toEqual(expectedLogos.slice(offset, end));
+    }
+    const fetched = vi.mocked(fetch).mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith("/icons/") && path !== "/icons/nadpislogo.jpg");
+    expect(new Set(fetched).size).toBe(new Set(LIABILITY_PRODUCTS.map((product) => product.logoPath)).size);
+    for (const path of new Set(fetched)) {
+      expect(fetched.filter((value) => value === path)).toHaveLength(1);
+    }
+    for (const path of ["/icons/pdf/slavia.png", "/icons/pdf/pvzp.png"]) {
+      expect(fetched).toContain(path);
+      const metadata = await sharp(resolve(process.cwd(), `public${path}`)).metadata();
+      expect(metadata.format).toBe("png");
+      expect(metadata.hasAlpha).toBe(true);
+    }
+  }, 30_000);
+
   it("obsahuje vybraná data, češtinu, firemní hlavičku a vizitku s odkazem", async () => {
     const report = buildLiabilityReport(LIABILITY_SECTIONS, products, { ...initialExportSettings(LIABILITY_SECTIONS), includeSubcriteria: true });
     const pages = await generate(report), text = compact(pages.map((page) => page.text).join(" "));
@@ -101,10 +134,18 @@ describe("PDF občanské odpovědnosti", () => {
   it("zalomí dlouhou odpověď přes více stran bez ztráty textu", async () => {
     const report = buildLiabilityReport(LIABILITY_SECTIONS, products.slice(0, 1), { ...initialExportSettings(LIABILITY_SECTIONS), selectedCriteria: { breeder: ["dog"] } });
     report.sections[0].rows[0].cells[0].detail = Array.from({ length: 350 }, (_, index) => `Záznam ${index}: škoda způsobená zvířetem.`).join(" ") + " KONEC DETAILU";
-    const pages = await generate(report), text = compact(pages.map((page) => page.text).join(" "));
+    const pages = await generate(report, true), text = compact(pages.map((page) => page.text).join(" "));
     expect(pages.length).toBeGreaterThan(1); expect(text).toContain("KONECDETAILU");
-    for (let index = 0; index < 350; index++) expect(text).toContain(compact(`Záznam ${index}:`));
+    // A sentence can cross a page boundary; join the answer column without repeated headers and footers.
+    const answerText = compact(pages.filter((page) => page.text.includes("MůjDomov")).flatMap((page) => {
+      const headerBottom = Math.min(...page.items.filter((item) => item.str === products[0].date).map((item) => item.transform[5]));
+      return page.items.filter((item) => item.transform[4] >= 186 && item.transform[5] < headerBottom - 6 && item.transform[5] > 39).map((item) => item.str);
+    }).join(" "));
+    expect(answerText).toContain(compact(report.sections[0].rows[0].cells[0].detail));
     for (const page of pages.filter((page) => page.text.includes("Pokračování kritéria"))) expect(page.text).toContain("MůjDomov");
+    for (const page of pages.filter((page) => page.text.includes("MůjDomov"))) {
+      expect(page.images).toContainEqual({ width: 1280, height: 318 });
+    }
   });
 
   it("vytiskne posledních sedm produktů i neúplnou skupinu dvou sloupců ve správném pořadí", async () => {

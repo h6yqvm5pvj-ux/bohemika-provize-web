@@ -268,6 +268,8 @@ export async function proxy(req: NextRequest) {
     req.nextUrl.searchParams.get("embed") === "1" &&
     req.nextUrl.searchParams.get("preset") === "neon-oneguard-10x";
   const isVigModelEmbed = pathname === "/models/vig/index.html";
+  const isVigModelScript =
+    pathname === "/models/vig/bootstrap.js" || pathname === "/models/vig/viewer.js";
   const isSameOriginEmbed =
     isContractDetailEmbed || isTipDetailEmbed || isAresEmbed || isStatementCalculatorEmbed || isOnlineCardEmbed ||
     isToolsComparisonEmbed || isVigModelEmbed;
@@ -305,6 +307,12 @@ export async function proxy(req: NextRequest) {
     res.headers.set("X-Frame-Options", "SAMEORIGIN");
   } else {
     res.headers.set("X-Frame-Options", "DENY");
+  }
+
+  if (isVigModelScript) {
+    // The scripts-only iframe has an opaque origin. Allow its two public renderer
+    // scripts through CORP while keeping the iframe isolated from the app origin.
+    res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
   }
 
   if (pathname === "/ocr/worker.min.js") {

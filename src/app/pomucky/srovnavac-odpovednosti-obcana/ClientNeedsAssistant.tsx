@@ -10,7 +10,7 @@ import styles from "./clientNeeds.module.css";
 const EXAMPLE = "Klient bydlí v nájmu, má dvě děti a jezdí na elektrokole.";
 type Status = "idle" | "thinking" | "ready" | "fallback";
 
-export function ClientNeedsAssistant({ applied, canCompare = true, onApply }: { applied: ClientNeedId[]; canCompare?: boolean; onApply: (needs: ClientNeedId[]) => void }) {
+export function ClientNeedsAssistant({ applied, canCompare = true, onApply, embedded = false, compact = false }: { applied: ClientNeedId[]; canCompare?: boolean; onApply: (needs: ClientNeedId[]) => void; embedded?: boolean; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [needs, setNeeds] = useState<ClientNeedId[]>(applied);
@@ -75,12 +75,13 @@ export function ClientNeedsAssistant({ applied, canCompare = true, onApply }: { 
     onApply(needs); summaryRef.current?.focus();
   }
 
-  return <section className={styles.assistant} aria-label="Porovnání podle potřeb klienta">
+  return <section className={styles.assistant} data-embedded={embedded} data-compact={compact} data-open={open} aria-label="Porovnání podle potřeb klienta">
     <div className={styles.summary}>
       <button type="button" ref={summaryRef} aria-expanded={open} aria-controls="client-needs-panel"
         onClick={() => { cancel(); setStatus("idle"); setOpen(!open); setManualOpen(false); if (!open) { setNeeds(applied); setAnalyzed(applied.length > 0); } }}>
         <Sparkles size={16} aria-hidden="true" />
-        <span><strong>{applied.length ? "Profil klienta" : "Popsat klienta vlastními slovy"}</strong>
+        <span><strong>{applied.length ? "Profil klienta" : embedded ? "Popsat situaci klienta" : "Popsat klienta vlastními slovy"}</strong>
+          {embedded && !applied.length && <small>Bydlení, rodina, koníčky — porovnejte to, na čem záleží.</small>}
           {applied.length > 0 && <small>{CLIENT_NEEDS.filter(need => applied.includes(need.id)).map(need => need.label).join(" · ")}</small>}</span>
         <span className={styles.openLabel}>{open ? "Skrýt" : applied.length ? "Upravit" : "Vyzkoušet"}<ChevronDown size={14} aria-hidden="true" style={{ transform: open ? "rotate(180deg)" : undefined }} /></span>
       </button>

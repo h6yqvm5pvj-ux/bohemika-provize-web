@@ -14,6 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
+import styles from "./OnlineCardMeetingStepper.module.css";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 
 type MeetingFormDraft = {
@@ -35,6 +36,7 @@ type OnlineCardMeetingStepperProps = {
   onSubmitted?: () => void;
   initialSelectedTopics?: MeetingTopicId[];
   initialStep?: 0 | 1;
+  palette?: "default" | "bohemika";
 };
 
 const EMPTY_FORM: MeetingFormDraft = {
@@ -69,6 +71,7 @@ export function OnlineCardMeetingStepper({
   onSubmitted,
   initialSelectedTopics,
   initialStep = 0,
+  palette = "default",
 }: OnlineCardMeetingStepperProps) {
   const copy = ONLINE_CARD_COPY[locale].meeting;
   const formSteps = copy.steps;
@@ -194,9 +197,9 @@ export function OnlineCardMeetingStepper({
   };
 
   return (
-    <form className="mt-4 space-y-3.5 sm:mt-5 sm:space-y-5" onSubmit={handleSubmit}>
-      <div className="relative overflow-hidden rounded-[20px] border border-white/12 bg-black/15 p-3 sm:rounded-[22px] sm:p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-        <div className="pointer-events-none absolute inset-x-12 top-0 h-16 bg-blue-400/10 blur-3xl" />
+    <form className={`mt-4 space-y-3.5 sm:mt-5 sm:space-y-5 ${palette === "bohemika" ? styles.bohemika : ""}`} onSubmit={handleSubmit}>
+      <div className={`${styles.panel} relative overflow-hidden rounded-[20px] border border-white/12 bg-black/15 p-3 sm:rounded-[22px] sm:p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]`}>
+        <div className={`${styles.ambient} pointer-events-none absolute inset-x-12 top-0 h-16 bg-blue-400/10 blur-3xl`} />
         <div className="relative grid grid-cols-3 gap-2">
           {formSteps.map((stepLabel, index) => {
             const stepDone = step > index;
@@ -205,7 +208,8 @@ export function OnlineCardMeetingStepper({
             return (
               <div key={stepLabel} className="flex flex-col items-center gap-1.5 text-center">
                 <span
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold shadow-sm transition ${
+                  data-state={stepDone ? "done" : stepActive ? "active" : "upcoming"}
+                  className={`${styles.step} inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold shadow-sm transition ${
                     stepDone
                       ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100 shadow-[0_0_20px_rgba(52,211,153,0.22)]"
                       : stepActive
@@ -216,7 +220,7 @@ export function OnlineCardMeetingStepper({
                   {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
                 </span>
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-[0.15em] ${
+                  className={`${styles.stepLabel} text-[10px] font-bold uppercase tracking-[0.15em] ${
                     stepActive || stepDone ? "text-blue-100" : "text-blue-200/60"
                   }`}
                 >
@@ -226,21 +230,21 @@ export function OnlineCardMeetingStepper({
             );
           })}
         </div>
-        <div className="relative mt-3 h-1 rounded-full bg-white/10">
+        <div className={`${styles.progressTrack} relative mt-3 h-1 rounded-full bg-white/10`}>
           <div
-            className="h-full rounded-full bg-[linear-gradient(90deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] shadow-[0_0_12px_rgba(96,165,250,0.82)] transition-[width] duration-300"
+            className={`${styles.progressFill} h-full rounded-full bg-[linear-gradient(90deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] shadow-[0_0_12px_rgba(96,165,250,0.82)] transition-[width] duration-300`}
             style={{ width: `${((step + 1) / formSteps.length) * 100}%` }}
           />
         </div>
       </div>
 
       {step === 0 ? (
-        <div className="space-y-3 rounded-[18px] border border-white/10 bg-black/10 p-3 sm:rounded-[20px] sm:p-4">
+        <div className={`${styles.panel} space-y-3 rounded-[18px] border border-white/10 bg-black/10 p-3 sm:rounded-[20px] sm:p-4`}>
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-200/85">
+            <p className={`${styles.eyebrow} text-[11px] font-bold uppercase tracking-[0.18em] text-blue-200/85`}>
               {copy.chooseTopic}
             </p>
-            <span className="rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-blue-100/75">
+            <span className={`${styles.counter} rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-blue-100/75`}>
               {copy.selected}: {selectedTopics.length}
             </span>
           </div>
@@ -255,17 +259,17 @@ export function OnlineCardMeetingStepper({
                   type="button"
                   onClick={() => toggleTopic(topic.id)}
                   aria-pressed={selected}
-                  className={`group relative flex min-h-[58px] items-center gap-2.5 overflow-hidden rounded-[16px] border px-3 py-2 text-left transition duration-200 sm:min-h-[64px] sm:gap-3 sm:rounded-[18px] sm:px-3.5 sm:py-2.5 ${
+                  className={`${styles.topic} group relative flex min-h-[58px] items-center gap-2.5 overflow-hidden rounded-[16px] border px-3 py-2 text-left transition duration-200 sm:min-h-[64px] sm:gap-3 sm:rounded-[18px] sm:px-3.5 sm:py-2.5 ${
                     selected
                       ? "border-blue-200/70 bg-[linear-gradient(135deg,rgba(37,99,235,0.46),rgba(29,78,216,0.22))] text-white shadow-[0_12px_28px_rgba(37,99,235,0.28)]"
                       : "border-white/12 bg-white/[0.025] text-blue-100/90 hover:-translate-y-0.5 hover:border-blue-300/40 hover:bg-white/[0.07]"
                   }`}
                 >
                   {selected ? (
-                    <CheckCircle2 className="absolute right-3 top-3 h-4 w-4 text-blue-100" />
+                    <CheckCircle2 className={`${styles.topicMark} absolute right-3 top-3 h-4 w-4 text-blue-100`} />
                   ) : null}
                   <span
-                    className={`inline-flex shrink-0 items-center justify-center transition ${
+                    className={`${styles.topicIcon} inline-flex shrink-0 items-center justify-center transition ${
                       selected ? "text-white" : "text-blue-200/80 group-hover:text-blue-100"
                     }`}
                   >
@@ -280,9 +284,9 @@ export function OnlineCardMeetingStepper({
       ) : null}
 
       {step === 1 ? (
-        <div className="space-y-3 rounded-[20px] border border-white/10 bg-black/10 p-3.5 sm:p-4">
+        <div className={`${styles.panel} space-y-3 rounded-[20px] border border-white/10 bg-black/10 p-3.5 sm:p-4`}>
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85">
+            <label className={`${styles.eyebrow} text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85`}>
               {copy.name}
             </label>
             <input
@@ -292,7 +296,7 @@ export function OnlineCardMeetingStepper({
                 setFormError(null);
                 setForm((prev) => ({ ...prev, fullName: event.target.value.slice(0, 120) }));
               }}
-              className={fieldClass}
+              className={`${styles.field} ${fieldClass}`}
               placeholder={copy.namePlaceholder}
               maxLength={120}
               required
@@ -301,7 +305,7 @@ export function OnlineCardMeetingStepper({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85">
+              <label className={`${styles.eyebrow} text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85`}>
                 {copy.phone}
               </label>
               <input
@@ -311,7 +315,7 @@ export function OnlineCardMeetingStepper({
                   setFormError(null);
                   setForm((prev) => ({ ...prev, phone: event.target.value.slice(0, 80) }));
                 }}
-                className={fieldClass}
+                className={`${styles.field} ${fieldClass}`}
                 placeholder="+420 777 000 111"
                 maxLength={80}
                 required
@@ -319,7 +323,7 @@ export function OnlineCardMeetingStepper({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85">
+              <label className={`${styles.eyebrow} text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85`}>
                 {copy.email}
               </label>
               <input
@@ -329,7 +333,7 @@ export function OnlineCardMeetingStepper({
                   setFormError(null);
                   setForm((prev) => ({ ...prev, email: event.target.value.slice(0, 160) }));
                 }}
-                className={fieldClass}
+                className={`${styles.field} ${fieldClass}`}
                 placeholder="jan@firma.cz"
                 maxLength={160}
                 required
@@ -342,14 +346,14 @@ export function OnlineCardMeetingStepper({
       {step === 2 ? (
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85">
+            <label className={`${styles.eyebrow} text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85`}>
               {copy.selectedTopics}
             </label>
-            <div className="flex flex-wrap gap-1.5 rounded-[16px] border border-white/12 bg-white/[0.035] p-2.5">
+            <div className={`${styles.chips} flex flex-wrap gap-1.5 rounded-[16px] border border-white/12 bg-white/[0.035] p-2.5`}>
               {selectedTopicLabels.map((label) => (
                 <span
                   key={label}
-                  className="inline-flex items-center rounded-full border border-blue-200/35 bg-blue-400/15 px-2.5 py-1 text-xs font-semibold text-blue-100"
+                  className={`${styles.chip} inline-flex items-center rounded-full border border-blue-200/35 bg-blue-400/15 px-2.5 py-1 text-xs font-semibold text-blue-100`}
                 >
                   {label}
                 </span>
@@ -358,7 +362,7 @@ export function OnlineCardMeetingStepper({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85">
+            <label className={`${styles.eyebrow} text-[11px] font-semibold uppercase tracking-[0.17em] text-blue-200/85`}>
               {copy.message}
             </label>
             <textarea
@@ -367,7 +371,7 @@ export function OnlineCardMeetingStepper({
                 setFormError(null);
                 setForm((prev) => ({ ...prev, message: event.target.value.slice(0, 1200) }));
               }}
-              className={`${fieldClass} min-h-[120px] resize-y`}
+              className={`${styles.field} ${fieldClass} min-h-[120px] resize-y`}
               placeholder={copy.messagePlaceholder}
               maxLength={1200}
             />
@@ -391,13 +395,13 @@ export function OnlineCardMeetingStepper({
       </div>
 
       {formError ? (
-        <p className="rounded-[16px] border border-rose-300/45 bg-rose-400/15 px-3 py-2.5 text-xs text-rose-100">
+        <p className={`${styles.error} rounded-[16px] border border-rose-300/45 bg-rose-400/15 px-3 py-2.5 text-xs text-rose-100`}>
           {formError}
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-        <p className="text-xs text-blue-100/70">
+      <div className={`${styles.footer} flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4`}>
+        <p className={`${styles.hint} text-xs text-blue-100/70`}>
           {step === 0
             ? `${copy.selected}: ${selectedTopics.length}`
             : step === 2
@@ -410,7 +414,7 @@ export function OnlineCardMeetingStepper({
               type="button"
               onClick={goToPreviousStep}
               disabled={submitting}
-              className="inline-flex items-center rounded-full border border-white/18 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-blue-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+              className={`${styles.back} inline-flex items-center rounded-full border border-white/18 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-blue-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60`}
             >
               {copy.back}
             </button>
@@ -420,7 +424,7 @@ export function OnlineCardMeetingStepper({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-full border border-blue-200/35 bg-[linear-gradient(120deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_14px_28px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow"
+              className={`${styles.submit} inline-flex items-center gap-2 rounded-full border border-blue-200/35 bg-[linear-gradient(120deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_14px_28px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow`}
             >
               {copy.continue}
             </button>
@@ -428,7 +432,7 @@ export function OnlineCardMeetingStepper({
             <button
               type="submit"
               disabled={submitting || !canSubmit}
-              className="inline-flex items-center gap-2 rounded-full border border-blue-200/35 bg-[linear-gradient(120deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_14px_28px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow"
+              className={`${styles.submit} inline-flex items-center gap-2 rounded-full border border-blue-200/35 bg-[linear-gradient(120deg,#1d4ed8_0%,#2563eb_55%,#38bdf8_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_14px_28px_rgba(37,99,235,0.38)] transition hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-65 vizitka-cta-glow`}
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {submitting ? copy.submitting : copy.submit}

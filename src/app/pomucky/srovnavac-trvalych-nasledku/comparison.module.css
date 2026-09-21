@@ -147,6 +147,51 @@
 .productOptions > button:hover, .productOptions > button[aria-pressed="true"] { background: #f5eef9; }
 .productOptions strong { display: block; font-size: 12px; font-weight: 550; color: #7b5d8b; }
 .productOptions small { display: block; color: #ad97ba; font-size: 10px; margin-top: 3px; }
+.insurerPicker[data-layout="centered"] .insurerGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.insurerPicker[data-layout="centered"] .insurerCard { border-color: #e7e3ec; border-radius: 13px; background: #ffffffa6; box-shadow: 0 1px 3px #30203903; transition: border-color .18s, box-shadow .18s, background .18s, transform .18s; }
+.insurerPicker[data-layout="centered"] .insurerCard[data-selected="true"] { border-color: #e0dbe8; background: #fff; box-shadow: 0 2px 4px #30203903; }
+.insurerPicker[data-layout="centered"] .insurerCard:hover { border-color: #c4b4d5; background: #fff; box-shadow: 0 5px 16px #51365f0a; transform: translateY(-1px); }
+.insurerPicker[data-layout="centered"] .insurerCard:focus-within { border-color: #a78cbc; }
+.insurerPicker[data-layout="centered"] .insurerHeader { min-height: 80px; padding: 12px 15px; gap: 10px; }
+.insurerPicker[data-layout="centered"] .groupSelect { display: grid; place-items: center; min-width: 32px; min-height: 44px; padding: 4px; }
+.insurerPicker[data-layout="centered"] .checkbox { width: 20px; height: 20px; border-color: #d7cedf; border-radius: 6px; }
+.insurerPicker[data-layout="centered"] .checkbox[data-checked="true"] { background: #8c70a2; border-color: #8c70a2; box-shadow: inset 0 1px 0 #ffffff20; }
+.insurerPicker[data-layout="centered"] .groupExpand { min-height: 44px; gap: 13px; }
+.insurerPicker[data-layout="centered"] .groupExpand > span:nth-child(2) { min-width: 0; }
+.insurerPicker[data-layout="centered"] .groupExpand strong { color: #43364e; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.insurerPicker[data-layout="centered"] .groupExpand small { margin-top: 4px; color: #8b7c95; font-size: 11px; line-height: 1.45; }
+.insurerPicker[data-layout="centered"] .pickerLogo { width: 60px; height: 48px; padding: 8px; border: 1px solid #eeeaf2; border-radius: 10px; background: #fff; }
+.insurerPicker[data-layout="centered"] .pickerLogo img { max-height: 32px; }
+.insurerPicker[data-layout="centered"] .groupDisclosure { gap: 7px; min-height: 32px; padding: 5px 7px; border-color: transparent; border-radius: 7px; background: transparent; color: #95849f; font-size: 10px; font-weight: 500; }
+.insurerPicker[data-layout="centered"] .groupExpand:hover .groupDisclosure { border-color: transparent; background: #f3eff8; color: #73508e; }
+.insurerPicker[data-layout="centered"] .groupExpand[aria-expanded="true"] .groupDisclosure { background: #f3eff8; color: #73508e; }
+.insurerPicker[data-layout="centered"] .groupDisclosure > svg { transition: transform .18s; }
+.insurerPicker[data-layout="centered"] .productOptions { gap: 4px; padding: 10px 12px 12px; border-color: #eeeaf3; background: #fcfbfd; }
+.insurerPicker[data-layout="centered"] .productOptions > button { min-height: 44px; padding: 10px; border: 1px solid transparent; border-radius: 8px; }
+.insurerPicker[data-layout="centered"] .productOptions > button[aria-pressed="true"] { border-color: #e9e1f0; background: #f3eff8; }
+.insurerPicker[data-layout="centered"] .productOptions strong { color: #6b537d; }
+.insurerPicker[data-layout="centered"] .productOptions small { color: #8d7d99; }
+.insurerPicker[data-layout="centered"] .empty { padding: 32px 20px; border: 1px dashed #d9c6e5; border-radius: 14px; background: #fff8; }
+@media (max-width: 800px) {
+  .insurerPicker[data-layout="centered"] .insurerHeader { gap: 6px; padding: 10px; }
+  .insurerPicker[data-layout="centered"] .groupExpand { gap: 8px; }
+  .insurerPicker[data-layout="centered"] .pickerLogo { width: 48px; height: 44px; padding: 6px; }
+  .insurerPicker[data-layout="centered"] .groupDisclosure { padding-inline: 4px; font-size: 9px; }
+}
+@media (max-width: 650px) {
+  .insurerPicker[data-layout="centered"] .insurerGrid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .insurerPicker[data-layout="centered"] .insurerHeader { min-height: 80px; padding: 10px; gap: 5px; }
+  .insurerPicker[data-layout="centered"] .groupExpand strong { font-size: 13px; }
+  .insurerPicker[data-layout="centered"] .groupExpand small { font-size: 10px; }
+  .insurerPicker[data-layout="centered"] .groupDisclosure { min-height: 36px; }
+}
+@media (max-width: 380px) {
+  .insurerPicker[data-layout="centered"] .groupDisclosure > span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .insurerPicker[data-layout="centered"] :is(.insurerCard, .groupDisclosure > svg) { transition: none; }
+  .insurerPicker[data-layout="centered"] .insurerCard:hover { transform: none; }
+}
 .scenarioInputs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 15px; margin: 20px 0; }
 .scenarioInput { padding: 16px; border: 1px solid #e7dbef; border-radius: 16px; background: #fcf9ff; }
 .scenarioTable { overflow: auto; max-height: 45vh; border: 1px solid #e7ddef; border-radius: 15px; margin-top: 18px; }

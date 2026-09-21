@@ -1,6 +1,7 @@
 import { comparisonAnswersDiffer, type ComparisonAnswer, type ComparisonSectionData } from "./comparisonData";
 import { ADDITIONAL_GENERAL_ANSWERS } from "./additionalProductData";
 import { REMAINING_GENERAL_ANSWERS } from "./remainingProductData";
+import { HISTORICAL_GENERAL_ANSWERS } from "./historicalGeneralData";
 
 export type GeneralAnswer = ComparisonAnswer;
 
@@ -51,6 +52,7 @@ const LOWER_LIMIT_NOTE =
 export const GENERAL_ANSWERS: Partial<Record<string, GeneralAnswers>> = {
   ...ADDITIONAL_GENERAL_ANSWERS,
   ...REMAINING_GENERAL_ANSWERS,
+  ...HISTORICAL_GENERAL_ANSWERS,
   "allianz:mujdomov-2026-06-25": {
     "maximum-limit": {
       summary: "Max. 20 000 000 Kč",
@@ -85,7 +87,7 @@ export const GENERAL_ANSWERS: Partial<Record<string, GeneralAnswers>> = {
   "cpp:domex-plus-2023-10-01": {
     "maximum-limit": {
       summary: "Max. 50 000 000 Kč",
-      detail: `V dalších variantách 2, 3, 4, 5, 6, 7, 8, 9, 10 a 15 mil. Kč. ${LOWER_LIMIT_NOTE}`,
+      detail: `V dalších variantách 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30 a 40 mil. Kč. ${LOWER_LIMIT_NOTE}`,
       tone: "positive",
     },
     territory: {
