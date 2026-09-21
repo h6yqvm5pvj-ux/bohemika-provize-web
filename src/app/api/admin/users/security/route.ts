@@ -3,6 +3,7 @@ import { sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
 import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { AccountAccessConflict, changeAdminAccountAccess } from "@/lib/server/adminAccountAccess";
 import {
   adminAuthErrorResponse,
   getAdminAuthContext,
@@ -18,6 +19,8 @@ type AdminUserSecurityAction =
   | "sendPasswordReset"
   | "resetMfa"
   | "verifyEmail"
+  | "activateAccount"
+  | "blockAccount"
   | "revokeSessions";
 
 type ApiError = { ok: false; error: string };
@@ -26,6 +29,8 @@ const SECURITY_ACTIONS = new Set<AdminUserSecurityAction>([
   "sendPasswordReset",
   "resetMfa",
   "verifyEmail",
+  "activateAccount",
+  "blockAccount",
   "revokeSessions",
 ]);
 
@@ -89,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     if (
       targetUser.uid === ctx.adminUid &&
-      (action === "resetMfa" || action === "revokeSessions")
+      (action === "resetMfa" || action === "revokeSessions" || action === "blockAccount")
     ) {
       return NextResponse.json(
         {
@@ -98,6 +103,20 @@ export async function POST(req: NextRequest) {
         } satisfies ApiError,
         { status: 400 }
       );
+    }
+
+    if (action === "activateAccount" || action === "blockAccount") {
+      if (!adminDb) throw new Error("Databáze zabezpečení není dostupná.");
+      const access = await changeAdminAccountAccess({
+        auth: adminAuth, db: adminDb, uid: targetUser.uid, actorUid: ctx.adminUid,
+        active: action === "activateAccount",
+      });
+      return NextResponse.json({ ok: true, action, targetEmail, access, message:
+        action === "blockAccount" ? "Účet byl zablokován a přihlášené relace zneplatněny."
+          : access.state === "setup" ? "Přihlášení je povolené. Uživatel si po zadání hesla dokončí ověření e-mailu a nastavení 2FA."
+          : access.state === "blocked" ? "Aktivace čeká na dokončení souběžné změny zabezpečení. Obnov přehled za chvíli."
+          : "Účet byl aktivován. Uživatel se může znovu přihlásit.",
+      }, { headers: { "Cache-Control": "no-store" } });
     }
 
     if (action === "sendPasswordReset") {
@@ -166,6 +185,7 @@ export async function POST(req: NextRequest) {
       message: "Aktivní relace uživatele byly zneplatněny.",
     });
   } catch (error) {
+    if (error instanceof AccountAccessConflict) return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
     console.error("POST /api/admin/users/security selhalo:", error);
     const message =
       error instanceof Error && error.message.trim()

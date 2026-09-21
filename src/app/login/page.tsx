@@ -12,6 +12,7 @@ import surface from "@/components/account-setup/authSurface.module.css";
 import {
   FactorId,
   getMultiFactorResolver,
+  multiFactor,
   type MultiFactorError,
   type MultiFactorResolver,
   signInWithEmailAndPassword,
@@ -22,6 +23,7 @@ import {
 import { auth } from "../firebase";
 import { PASSWORD_RESET_REQUESTED_MESSAGE, resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
 import { requestPasswordResetEmail } from "@/app/lib/authEmailRequest";
+import { discardPendingTotpSetupSession, prepareTotpSetupSession } from "@/app/lib/totpSetupSession";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import {
@@ -475,6 +477,19 @@ export default function LoginPage() {
         20000,
         "Přihlášení trvá příliš dlouho."
       );
+      if (!multiFactor(credential.user).enrolledFactors.some(factor => factor.factorId === FactorId.TOTP)) {
+        try {
+          await withTimeout(prepareTotpSetupSession(credential.user), 10000, "Příprava nastavení 2FA trvá příliš dlouho.");
+          await safeSignOut();
+          setPassword("");
+          router.replace("/ucet/zabezpeceni");
+        } catch (setupError) {
+          await discardPendingTotpSetupSession().catch(() => {});
+          await safeSignOut();
+          throw setupError;
+        }
+        return;
+      }
       await completeLogin(credential.user);
     } catch (err: unknown) {
       logAuthIssue("handleSubmit", err);

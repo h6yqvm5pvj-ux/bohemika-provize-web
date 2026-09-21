@@ -33,6 +33,7 @@ const userRow = (
     specialist: false,
     accountSetupCompletedAt: null,
     disabled: false,
+    access: { state: "active", reason: null },
     emailVerified: false,
     createdAt: null,
     lastSignInAt: null,

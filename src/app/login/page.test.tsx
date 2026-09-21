@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     signOut: vi.fn(),
     mfaPing: vi.fn(),
     resetEmail: vi.fn(),
+    factors: vi.fn(), setupSession: vi.fn(), discardSetup: vi.fn(),
   };
 });
 
@@ -37,6 +38,7 @@ vi.mock("firebase/auth", () => ({
   signInWithEmailAndPassword: mocks.password,
   signOut: mocks.signOut,
   FactorId: { TOTP: "totp" },
+  multiFactor: mocks.factors,
   TotpMultiFactorGenerator: {
     assertionForSignIn: (uid: string, code: string) => ({ uid, code }),
   },
@@ -53,6 +55,7 @@ vi.mock("@/app/lib/passkeys", () => ({
 vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profile }));
 vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.mfaPing }));
 vi.mock("@/app/lib/authEmailRequest", () => ({ requestPasswordResetEmail: mocks.resetEmail }));
+vi.mock("@/app/lib/totpSetupSession", () => ({ prepareTotpSetupSession: mocks.setupSession, discardPendingTotpSetupSession: mocks.discardSetup }));
 
 import LoginPage from "./page";
 
@@ -85,6 +88,9 @@ describe("login verification boundary", () => {
     mocks.signOut.mockImplementation(async () => { mocks.auth.currentUser = null; });
     mocks.mfaPing.mockResolvedValue({ ok: true });
     mocks.resetEmail.mockReset().mockResolvedValue(undefined);
+    mocks.factors.mockReset().mockReturnValue({ enrolledFactors: [{ factorId: "totp" }] });
+    mocks.setupSession.mockReset().mockResolvedValue(undefined);
+    mocks.discardSetup.mockReset().mockResolvedValue(undefined);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ ok: true }));
@@ -142,7 +148,7 @@ describe("login verification boundary", () => {
     expect(mocks.router.replace).not.toHaveBeenCalled();
   };
 
-  it("blocks a password login without TOTP before reading the user's profile", async () => {
+  it("preserves the server's account block even if the browser reports TOTP enrollment", async () => {
     fetchMock.mockImplementation(async (url, options) => url === "/api/auth/session" && options?.method === "POST"
       ? Response.json({ ok: false, code: "auth/account-blocked", error: "Přístup je zablokován; kontaktuj administrátora." }, { status: 403 })
       : Response.json({ ok: true }));
@@ -152,6 +158,30 @@ describe("login verification boundary", () => {
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("kontaktuj administrátora");
     expect(container.querySelector('a[href="/ucet/zabezpeceni"]')?.textContent).toContain("Nastavit dvoufázové ověření");
+  });
+
+  it("continues a password login without TOTP directly to isolated setup", async () => {
+    mocks.factors.mockReturnValue({ enrolledFactors: [] });
+    await enterPassword(); await submit();
+    expect(mocks.setupSession).toHaveBeenCalledExactlyOnceWith(freshUser);
+    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(sessionPosts()).toHaveLength(0);
+    expect(mocks.profile).not.toHaveBeenCalled();
+    expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/ucet/zabezpeceni");
+    expect(container.textContent).not.toContain("Přístup k účtu je zablokován");
+    expect(container.querySelector<HTMLInputElement>("#login-password")?.value).toBe("");
+    expect(mocks.setupSession.mock.invocationCallOrder[0]).toBeLessThan(mocks.signOut.mock.invocationCallOrder[0]);
+    expect(mocks.signOut.mock.invocationCallOrder[0]).toBeLessThan(mocks.router.replace.mock.invocationCallOrder[0]);
+  });
+
+  it("stays logged out and discards setup when transferring the sign-in fails", async () => {
+    mocks.factors.mockReturnValue({ enrolledFactors: [] });
+    mocks.setupSession.mockRejectedValue(new Error("handoff failed"));
+    await enterPassword(); await submit();
+    expectNotLoggedIn();
+    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(mocks.discardSetup).toHaveBeenCalledOnce();
+    expect(mocks.profile).not.toHaveBeenCalled();
   });
 
   it("distinguishes a stale sign-in proof from a blocked account", async () => {

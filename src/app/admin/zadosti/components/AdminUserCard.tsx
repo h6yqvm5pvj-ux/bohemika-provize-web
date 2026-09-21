@@ -3,6 +3,7 @@ import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { formatAccountTypeLabel, formatPositionLabel, nameFromEmail } from "../adminFormatters";
 import type { AdminUserSummary } from "../adminUsers";
 import styles from "../adminUsers.module.css";
+import { adminAccountAccessLabel } from "@/lib/adminAccountAccess";
 
 export function AdminUserCard({ user, selected, missingCount, onSelect }: {
   user: AdminUserSummary;
@@ -11,7 +12,7 @@ export function AdminUserCard({ user, selected, missingCount, onSelect }: {
   onSelect: () => void;
 }) {
   const name = user.fullName || nameFromEmail(user.email);
-  const status = user.disabled ? "Deaktivovaný účet" : missingCount ? `K doplnění: ${missingCount}` : "Kompletní profil";
+  const status = missingCount ? `K doplnění: ${missingCount}` : "Kompletní profil";
   return (
     <button
       type="button"
@@ -33,11 +34,14 @@ export function AdminUserCard({ user, selected, missingCount, onSelect }: {
           {user.accountType === "tipster" ? "Tipař" : formatPositionLabel(user.position) || formatAccountTypeLabel(user.accountType)}
           {user.specialist && <ShieldCheck size={13} aria-label="Specialista dokumentů" />}
         </span>
-        <span className={styles.cardStatus} data-tone={user.disabled ? "muted" : missingCount ? "warning" : "success"}>
-          {user.disabled ? <span className={styles.statusDot} /> : missingCount ? <AlertCircle size={12} aria-hidden="true" /> : <CheckCircle2 size={12} aria-hidden="true" />}
+        <span className={styles.cardStatus} data-tone={missingCount ? "warning" : "success"}>
+          {missingCount ? <AlertCircle size={12} aria-hidden="true" /> : <CheckCircle2 size={12} aria-hidden="true" />}
           {status}
         </span>
       </span>
+      <span className={styles.cardAccess}><span className={styles.accessBadge} data-state={user.access.state}>
+        <span className={styles.statusDot} aria-hidden="true" />{adminAccountAccessLabel(user.access)}
+      </span></span>
     </button>
   );
 }

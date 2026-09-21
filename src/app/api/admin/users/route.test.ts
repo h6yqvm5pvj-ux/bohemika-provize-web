@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ getUser: vi.fn(), direct: vi.fn(), select: vi.fn(), context: vi.fn(), listUsers: vi.fn(), profiles: vi.fn(), privateProfiles: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getUser: vi.fn(), direct: vi.fn(), select: vi.fn(), context: vi.fn(), listUsers: vi.fn(), profiles: vi.fn(), privateProfiles: vi.fn(), blocks: vi.fn(), block: vi.fn() }));
 vi.mock("@/lib/server/adminAuth", () => ({ getAdminAuthContext: mocks.context, adminAuthErrorResponse: () => NextResponse.json({ ok: false }, { status: 403 }) }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminAuth: { listUsers: mocks.listUsers, getUserByEmail: mocks.getUser },
   adminDb: { collection: (name: string) => ({
-    get: name === "users" ? mocks.profiles : mocks.privateProfiles,
+    get: name === "users" ? mocks.profiles : name === "accountBlocks" ? mocks.blocks : mocks.privateProfiles,
     select: (...fields: string[]) => { mocks.select(name, fields); return { get: name === "users" ? mocks.profiles : mocks.privateProfiles }; },
-    doc: (id: string) => ({ get: () => mocks.direct(name, id) }),
+    doc: (id: string) => ({ get: () => name === "accountBlocks" ? mocks.block(id) : mocks.direct(name, id) }),
   }) },
 }));
 import { GET } from "./route";
@@ -24,6 +24,8 @@ describe("admin user profile pictures", () => {
     mocks.listUsers.mockResolvedValue({ users: [{ uid: "advisor", email: "advisor@example.test", displayName: "Anna", disabled: false, emailVerified: true, metadata: {} }] });
     mocks.profiles.mockResolvedValue({ docs: [profile({ fullName: "Anna", profileAvatar: avatar })] });
     mocks.privateProfiles.mockResolvedValue({ docs: [] });
+    mocks.blocks.mockResolvedValue({ docs: [] });
+    mocks.block.mockResolvedValue({ data: () => undefined });
   });
 
   it("includes the same managed profile picture used elsewhere in the application", async () => {
@@ -45,6 +47,17 @@ describe("admin user profile pictures", () => {
     expect((await GET(request())).status).toBe(403);
     expect(mocks.listUsers).not.toHaveBeenCalled();
     expect(mocks.profiles).not.toHaveBeenCalled();
+    expect(mocks.blocks).not.toHaveBeenCalled();
+  });
+  it("includes persistent account blocks in the directory even when Firebase sign-in is enabled", async () => {
+    mocks.blocks.mockResolvedValue({ docs: [{ id: "advisor", data: () => ({ reason: "admin-block", blockedByUid: "private-admin-id" }) }] });
+    const body = await (await GET(request("?view=directory"))).json();
+    expect(body.users[0]).toMatchObject({ disabled: false, access: { state: "blocked", reason: "persistent-block" } });
+    expect(JSON.stringify(body)).not.toContain("private-admin-id");
+  });
+  it("distinguishes setup access from full activation", async () => {
+    const body = await (await GET(request("?view=directory"))).json();
+    expect(body.users[0].access).toEqual({ state: "setup", reason: "mfa-enrollment" });
   });
   it("returns a small directory without security details or career history", async () => {
     const body = await (await GET(request("?view=directory"))).json();

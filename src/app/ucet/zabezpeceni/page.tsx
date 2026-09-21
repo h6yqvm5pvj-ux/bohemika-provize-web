@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, Copy, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { AuthPage } from "@/components/account-setup/AuthPage";
@@ -11,6 +11,7 @@ import { initializeAuth, inMemoryPersistence, multiFactor, reload, sendEmailVeri
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
 import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
+import { takePendingTotpSetupSession } from "@/app/lib/totpSetupSession";
 
 // Isolated Auth in memory: this recovery page cannot establish an application
 // session and does not access profiles, Firestore, or business APIs.
@@ -29,12 +30,7 @@ export default function TotpRecoveryPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyError, setCopyError] = useState(false);
 
-  useEffect(() => () => {
-    const auth = setupAuth.current, app = setupApp.current;
-    if (auth && app) void signOut(auth).catch(() => {}).finally(() => deleteApp(app));
-  }, []);
-
-  async function requestEmail(user: User) {
+  const requestEmail = useCallback(async (user: User) => {
     // Firebase authenticates this isolated setup session directly. Application
     // APIs deliberately remain inaccessible until the administrator activates it.
     try {
@@ -43,13 +39,51 @@ export default function TotpRecoveryPage() {
     } catch (failure) {
       setError(resolveAuthEmailErrorMessage(failure, "Ověřovací e-mail se nepodařilo odeslat. Zkus ho vyžádat znovu."));
     }
-  }
+  }, []);
 
-  async function beginEnrollment(user: User) {
+  const beginEnrollment = useCallback(async (user: User) => {
     const session = await multiFactor(user).getSession();
     setSecret(await TotpMultiFactorGenerator.generateSecret(session));
     setAwaitingEmail(false);
-  }
+  }, []);
+
+  const continueSetup = useCallback(async (user: User) => {
+    setPassword("");
+    if (!user.emailVerified) {
+      setAwaitingEmail(true);
+      await requestEmail(user);
+      return;
+    }
+    await beginEnrollment(user);
+  }, [beginEnrollment, requestEmail]);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Defer consumption so React's Strict Mode cleanup cannot discard the
+    // one-time handoff before the actual mount takes ownership of it.
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      const session = takePendingTotpSetupSession();
+      if (!session) return;
+      setupAuth.current = session.auth;
+      setupApp.current = session.app;
+      const user = session.auth.currentUser;
+      if (!user) return;
+      setBusy(true);
+      try { await continueSetup(user); }
+      catch {
+        if (!cancelled) setError("Nastavení 2FA se nepodařilo zahájit. Přihlas se znovu na této stránce.");
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+      const auth = setupAuth.current, app = setupApp.current;
+      setupAuth.current = null; setupApp.current = null;
+      if (auth && app) void signOut(auth).catch(() => {}).finally(() => deleteApp(app));
+    };
+  }, [continueSetup]);
 
   async function start(event: FormEvent) {
     event.preventDefault(); if (busy) return;
@@ -60,13 +94,7 @@ export default function TotpRecoveryPage() {
         setupAuth.current = initializeAuth(setupApp.current, { persistence: inMemoryPersistence });
       }
       const { user } = await signInWithEmailAndPassword(setupAuth.current, email.trim(), password);
-      setPassword("");
-      if (!user.emailVerified) {
-        setAwaitingEmail(true);
-        await requestEmail(user);
-        return;
-      }
-      await beginEnrollment(user);
+      await continueSetup(user);
     } catch (failure) {
       const authCode = (failure as { code?: string }).code;
       setError(isAccountBlockedError(failure) ? ACCOUNT_BLOCKED_MESSAGE : authCode === "auth/multi-factor-auth-required"

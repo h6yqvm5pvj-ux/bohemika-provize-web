@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,9 +7,11 @@ const mocks = vi.hoisted(() => ({
   app: { name: "isolated-setup" },
   auth: { currentUser: { emailVerified: true, getIdToken: vi.fn() } },
   reload: vi.fn(), sendEmail: vi.fn(),
+  takeSetup: vi.fn(),
   initApp: vi.fn(), initAuth: vi.fn(), login: vi.fn(), session: vi.fn(), secret: vi.fn(), enroll: vi.fn(), signOut: vi.fn(), deleteApp: vi.fn(),
 }));
 vi.mock("@/app/firebase-app", () => ({ firebaseApp: { options: { projectId: "synthetic" } } }));
+vi.mock("@/app/lib/totpSetupSession", () => ({ takePendingTotpSetupSession: mocks.takeSetup }));
 vi.mock("firebase/app", () => ({ initializeApp: mocks.initApp, deleteApp: mocks.deleteApp }));
 vi.mock("firebase/auth", () => ({
   initializeAuth: mocks.initAuth, inMemoryPersistence: "memory-only", signInWithEmailAndPassword: mocks.login, signOut: mocks.signOut,
@@ -48,6 +50,34 @@ describe("administrator-assisted recovery remains isolated from application sign
   async function submit() {
     await act(async () => { container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
   }
+  async function arriveFromLogin() {
+    await act(async () => root.unmount());
+    mocks.takeSetup.mockReturnValueOnce({ auth: mocks.auth, app: mocks.app });
+    root = createRoot(container);
+    await act(async () => root.render(<StrictMode><TotpRecoveryPage /></StrictMode>));
+  }
+  it("starts TOTP after the normal password login without requesting credentials again", async () => {
+    await arriveFromLogin();
+    expect(mocks.login).not.toHaveBeenCalled();
+    expect(mocks.initAuth).not.toHaveBeenCalled();
+    expect(mocks.secret).toHaveBeenCalledOnce();
+    expect(container.querySelector("#recovery-password")).toBeNull();
+    expect(container.querySelector("#recovery-code")).not.toBeNull();
+    await input("recovery-code", "123456"); await submit();
+    expect(mocks.enroll).toHaveBeenCalledOnce();
+    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("requests inbox verification for an unverified user arriving from normal login", async () => {
+    mocks.auth.currentUser.emailVerified = false;
+    await arriveFromLogin();
+    expect(mocks.login).not.toHaveBeenCalled();
+    expect(mocks.secret).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).toHaveBeenCalledExactlyOnceWith(mocks.auth.currentUser);
+    expect(container.querySelector("#recovery-password")).toBeNull();
+    expect(container.textContent).toContain("Ověřovací e-mail byl vyžádán");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("waits for explicit submission, uses memory-only auth and finishes without an application session", async () => {
     expect(mocks.initApp).not.toHaveBeenCalled();
     await input("recovery-email", "synthetic@example.test");

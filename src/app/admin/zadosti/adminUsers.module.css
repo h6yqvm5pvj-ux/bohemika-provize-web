@@ -36,6 +36,17 @@
 .cardStatus[data-tone="success"] { color: #5b8a78; }
 .cardStatus[data-tone="warning"] { color: #ae8a44; }
 .cardStatus[data-tone="muted"] { color: #938a9b; }
+.cardAccess { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 9px; }
+.accessBadge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 7px; background: #edf6f1; color: #386953; font-size: 10px; font-weight: 600; }
+.accessBadge[data-state="blocked"] { background: #fff0f1; color: #a4374c; }
+.accessBadge[data-state="setup"] { background: #fff7e6; color: #846124; }
+.accessPanel { padding: 15px; border: 1px solid #e7dfed; border-radius: 12px; background: #fcfafef0; }
+.accessPanel > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.accessPanel strong { color: #51415e; font-size: 12px; }
+.accessPanel p, .accessPanel small { display: block; margin-top: 9px; color: #7d7187; font-size: 11px; line-height: 1.6; }
+.accessButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; margin-top: 12px; padding: 8px 12px; border: 1px solid #e3b5bf; border-radius: 8px; background: #fff4f5; color: #9a3046; font-size: 11px; font-weight: 600; cursor: pointer; }
+.accessButton[data-action="activate"] { border-color: #b6d8c6; background: #edf8f1; color: #376b50; }
+.accessButton:disabled { opacity: .55; cursor: not-allowed; }
 .statusDot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .detail { min-width: 0; overflow: hidden; border: 1px solid #e7e0ee; border-radius: 22px; background: #fff; box-shadow: 0 6px 25px #45305704; }
 .profileHeader { position: relative; padding: 26px; border-bottom: 1px solid #eae2f0; background: radial-gradient(ellipse at 100% 0, #e9e0f460, transparent 65%), linear-gradient(115deg, #fbf9fd, #f6f1fa); }

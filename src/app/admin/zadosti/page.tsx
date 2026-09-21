@@ -42,6 +42,8 @@ import Image from "next/image";
 import adminStyles from "./adminConsole.module.css";
 import usersStyles from "./adminUsers.module.css";
 import { AdminUserCard } from "./components/AdminUserCard";
+import { AdminAccountAccessPanel } from "./components/AdminAccountAccessPanel";
+import { adminAccountAccessLabel } from "@/lib/adminAccountAccess";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { AdminPageHeader } from "../components/AdminPageHeader";
 import { ADMIN_SECTIONS } from "../components/adminSections";
@@ -450,6 +452,8 @@ type AdminUserSecurityAction =
   | "sendPasswordReset"
   | "resetMfa"
   | "verifyEmail"
+  | "activateAccount"
+  | "blockAccount"
   | "revokeSessions";
 
 type AdminUserSecurityActionResponse = {
@@ -513,6 +517,8 @@ const adminUserSecurityActionKey = (
 ): string => `${normalizeEmail(email)}:${action}`;
 
 const getAdminUserSecurityActionLabel = (action: AdminUserSecurityAction): string => {
+  if (action === "activateAccount") return "Aktivovat účet";
+  if (action === "blockAccount") return "Zablokovat účet";
   if (action === "sendPasswordReset") return "Reset hesla";
   if (action === "resetMfa") return "Reset 2FA";
   if (action === "verifyEmail") return "Ověřit e-mail";
@@ -524,6 +530,7 @@ const getAdminUserSecurityActionSuccess = (
   email: string,
   payload: AdminUserSecurityActionResponse
 ): string => {
+  if (action === "activateAccount" || action === "blockAccount") return payload.message || `Stav účtu ${email} byl změněn.`;
   if (action === "sendPasswordReset") {
     return `E-mail pro obnovení hesla byl odeslán na ${email}.`;
   }
@@ -1087,12 +1094,12 @@ export default function AdminRequestsPage() {
   const adminUsersStats = useMemo(() => {
     const total = adminUsersRows.length;
     const missingProfile = adminUsersRows.filter((row) => !row.profileExists).length;
-    const disabled = adminUsersRows.filter((row) => row.disabled).length;
+    const blocked = adminUsersRows.filter((row) => row.access.state === "blocked").length;
     const advisors = adminUsersRows.filter((row) => row.accountType === "advisor").length;
     const tipsters = adminUsersRows.filter((row) => row.accountType === "tipster").length;
     const incomplete = adminUsersRows.filter((row) => buildAdminUserMissingItems(row).length > 0).length;
     const complete = total - incomplete;
-    return { total, missingProfile, disabled, advisors, tipsters, incomplete, complete };
+    return { total, missingProfile, blocked, advisors, tipsters, incomplete, complete };
   }, [adminUsersRows]);
 
   const handleDecision = useCallback(
@@ -1567,7 +1574,7 @@ export default function AdminRequestsPage() {
       if (!user || !isAllowedAdmin) return;
 
       const actionKey = adminUserSecurityActionKey(row.email, action);
-      const needsConfirmation = action === "resetMfa" || action === "revokeSessions";
+      const needsConfirmation = action === "resetMfa" || action === "revokeSessions" || action === "blockAccount";
       if (needsConfirmation && adminUserSecurityConfirmKey !== actionKey) {
         setAdminUserSecurityConfirmKey(actionKey);
         setAdminUsersStatus({
@@ -2131,6 +2138,11 @@ export default function AdminRequestsPage() {
                       </p>
                     )}
                   </div>
+                  <AdminAccountAccessPanel access={selectedAdminUser.access}
+                    isSelf={selectedAdminUser.uid === currentUser?.uid}
+                    busy={Boolean(adminUserSecurityBusyKey)}
+                    confirming={adminUserSecurityConfirmKey === adminUserSecurityActionKey(selectedAdminUser.email, "blockAccount")}
+                    onChange={action => void handleAdminUserSecurityAction(selectedAdminUser, action)} />
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <span className="block font-semibold uppercase tracking-[0.14em] text-slate-600">
                       Bezpečnostní akce
@@ -3872,7 +3884,7 @@ export default function AdminRequestsPage() {
                 { label: "Kompletní profily", value: adminUsersStats.complete, icon: CheckCircle2, tone: "success" },
                 { label: "K doplnění", value: adminUsersStats.incomplete, icon: Pencil, tone: "warning" },
                 { label: "Bez profilu", value: adminUsersStats.missingProfile, icon: UserPlus, tone: "warning" },
-                { label: "Deaktivovaní", value: adminUsersStats.disabled, icon: ShieldAlert, tone: "default" },
+                { label: "Blokovaní", value: adminUsersStats.blocked, icon: ShieldAlert, tone: "default" },
               ].map(({ label, value, icon: Icon, tone }) => (
                 <div key={label} className={usersStyles.stat} data-tone={tone}>
                   <span className={usersStyles.statIcon}><Icon size={17} strokeWidth={1.6} aria-hidden="true" /></span>
@@ -3948,7 +3960,7 @@ export default function AdminRequestsPage() {
               const isCurrentUser = normalizeEmail(currentUser?.email) === row.email;
               const targetAdminRole = resolveAdminRoleFromClaims(row.email, null);
               const canImpersonate =
-                isAllowedAdmin && !row.disabled && !isCurrentUser && !targetAdminRole;
+                isAllowedAdmin && row.access.state === "active" && !isCurrentUser && !targetAdminRole;
               const resetPasswordKey = adminUserSecurityActionKey(row.email, "sendPasswordReset");
               const resetMfaKey = adminUserSecurityActionKey(row.email, "resetMfa");
               const verifyEmailKey = adminUserSecurityActionKey(row.email, "verifyEmail");
@@ -3969,7 +3981,7 @@ export default function AdminRequestsPage() {
                     <div className={usersStyles.profileIdentity}>
                       <div className={usersStyles.portrait}>
                         <ProfileAvatar src={row.profileAvatar} name={title} sizes="84px" className={usersStyles.profileAvatar} />
-                        <span className={usersStyles.portraitStatus} data-disabled={row.disabled} aria-hidden="true" />
+                        <span className={usersStyles.portraitStatus} data-disabled={row.access.state === "blocked"} aria-hidden="true" />
                       </div>
                       <div className={usersStyles.profileName}>
                         <span className={usersStyles.eyebrow}>Profil uživatele</span>
@@ -3978,13 +3990,17 @@ export default function AdminRequestsPage() {
                         <div className={usersStyles.profileBadges}>
                           <span>{formatAccountTypeLabel(row.accountType)}</span>
                           {row.position ? <span><BriefcaseBusiness size={11} aria-hidden="true" />{formatPositionLabel(row.position)}</span> : null}
-                          <span data-active={!row.disabled}><span className={usersStyles.statusDot} />{row.disabled ? "Deaktivovaný účet" : "Aktivní účet"}</span>
+                          <span data-active={row.access.state === "active"}><span className={usersStyles.statusDot} />{adminAccountAccessLabel(row.access)}</span>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div className={usersStyles.body}>
+                    <AdminAccountAccessPanel access={row.access} isSelf={isCurrentUser}
+                      busy={Boolean(adminUserSecurityBusyKey)}
+                      confirming={adminUserSecurityConfirmKey === adminUserSecurityActionKey(row.email, "blockAccount")}
+                      onChange={action => void handleAdminUserSecurityAction(row, action)} />
                     <div className={usersStyles.completion} data-complete={complete}>
                       {complete ? <CheckCircle2 size={16} aria-hidden="true" /> : <AlertTriangle size={16} aria-hidden="true" />}
                       <div>

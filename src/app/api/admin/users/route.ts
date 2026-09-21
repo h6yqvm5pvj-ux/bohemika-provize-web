@@ -7,6 +7,7 @@ import type { MultiFactorInfo, UserRecord } from "firebase-admin/auth";
 import { FieldValue, type DocumentReference } from "firebase-admin/firestore";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
+import { getAdminAccountAccess } from "@/lib/server/adminAccountAccess";
 import {
   adminAuthErrorResponse,
   getAdminAuthContext,
@@ -283,7 +284,7 @@ async function loadProfileSummaries(directoryOnly = false) {
   return byEmail;
 }
 
-function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined): AdminUsersRow | null {
+function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined, block?: FirebaseFirestore.DocumentData): AdminUsersRow | null {
   const email = normalizeEmail(authUser.email);
   if (!email || !EMAIL_RE.test(email)) return null;
 
@@ -326,6 +327,7 @@ function serializeUser(authUser: UserRecord, summary: ProfileSummary | undefined
     specialist: isSpecialistProfile(mergedData),
     accountSetupCompletedAt: normalizeText(mergedData.accountSetupCompletedAt) || null,
     disabled: authUser.disabled,
+    access: getAdminAccountAccess(authUser, block),
     emailVerified: authUser.emailVerified,
     createdAt: authUser.metadata.creationTime || null,
     lastSignInAt: authUser.metadata.lastSignInTime || null,
@@ -389,6 +391,7 @@ function serializeDirectoryUser(row: AdminUsersRow): AdminUserSummary {
     agencyNumber: row.agencyNumber, ico: row.ico, phoneNumber: row.phoneNumber, position: row.position,
     accountType: row.accountType, managerEmail: row.managerEmail, tipRecipientEmail: row.tipRecipientEmail,
     commissionMode: row.commissionMode, specialist: row.specialist, disabled: row.disabled,
+    access: row.access,
     emailVerified: row.emailVerified, profileExists: row.profileExists, missingItems: buildAdminUserMissingItems(row),
   };
 }
@@ -396,8 +399,9 @@ function serializeDirectoryUser(row: AdminUsersRow): AdminUserSummary {
 async function loadUserDetail(email: string): Promise<AdminUsersRow | null> {
   if (!adminAuth || !adminDb) throw new Error("Firebase Admin is unavailable.");
   const authUser = await adminAuth.getUserByEmail(email);
-  const [publicDirect, privateDirect] = await Promise.all([
+  const [publicDirect, privateDirect, block] = await Promise.all([
     adminDb.collection("users").doc(email).get(), adminDb.collection("usersPrivate").doc(email).get(),
+    adminDb.collection("accountBlocks").doc(authUser.uid).get(),
   ]);
   // Older accounts may use a document ID other than their email.
   const [publicFallback, privateFallback] = await Promise.all([
@@ -409,7 +413,7 @@ async function loadUserDetail(email: string): Promise<AdminUsersRow | null> {
   const privateDoc = privateDirect.exists ? privateDirect : privateFallback?.docs[0];
   return serializeUser(authUser, { publicDocId: publicDoc?.id ?? null, privateDocId: privateDoc?.id ?? null,
     publicData: publicDoc?.data() ?? {}, privateData: privateDoc?.data() ?? {},
-  });
+  }, block.data());
 }
 
 export async function GET(req: NextRequest) {
@@ -430,13 +434,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, user }, { headers: { "Cache-Control": "no-store" } });
     }
     const directoryOnly = req.nextUrl.searchParams.get("view") === "directory";
-    const [authUsers, profilesByEmail] = await Promise.all([
+    if (!adminDb) throw new Error("Firebase Admin is unavailable.");
+    const [authUsers, profilesByEmail, blocks] = await Promise.all([
       listAllAuthUsers(),
       loadProfileSummaries(directoryOnly),
+      adminDb.collection("accountBlocks").get(),
     ]);
+    const blocksByUid = new Map(blocks.docs.map(doc => [doc.id, doc.data()]));
 
     const users = authUsers
-      .map((authUser) => serializeUser(authUser, profilesByEmail.get(normalizeEmail(authUser.email))))
+      .map((authUser) => serializeUser(authUser, profilesByEmail.get(normalizeEmail(authUser.email)), blocksByUid.get(authUser.uid)))
       .filter((row): row is AdminUsersRow => Boolean(row))
       .sort((a, b) => {
         const aName = a.fullName || a.email;

@@ -1,4 +1,5 @@
 import type { AdminSecurityFactorRow } from "./adminSecurity";
+import type { AdminAccountAccess } from "@/lib/adminAccountAccess";
 
 export type AdminUsersRow = {
   uid: string;
@@ -22,6 +23,7 @@ export type AdminUsersRow = {
   specialist: boolean;
   accountSetupCompletedAt: string | null;
   disabled: boolean;
+  access: AdminAccountAccess;
   emailVerified: boolean;
   createdAt: string | null;
   lastSignInAt: string | null;
