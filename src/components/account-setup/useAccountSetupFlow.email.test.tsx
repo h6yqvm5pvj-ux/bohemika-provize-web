@@ -83,6 +83,19 @@ describe("account setup progress, drafts and email verification", () => {
     expect(flow.info).toBeNull();
     expect(mocks.secret).not.toHaveBeenCalled();
   });
+  it("requires inbox verification again if the email changes before confirming the factor", async () => {
+    user.emailVerified = true;
+    await start();
+    expect(flow.mfaSecretKey).toBe("synthetic-secret");
+    user.reload.mockImplementation(async () => { user.emailVerified = false; });
+    await act(async () => flow.onMfaCodeChange("123456"));
+    await act(async () => flow.onPrimaryAction());
+    expect(mocks.enroll).not.toHaveBeenCalled();
+    expect(flow.mfaSecretKey).toBeNull();
+    expect(flow.mfaAwaitingEmail).toBe(true);
+    expect(flow.mfaEmailVerified).toBe(false);
+    expect(mocks.send).toHaveBeenCalledOnce();
+  });
   it("resumes on return from the inbox without storing or requesting the password again", async () => {
     await start();
     expect(flow.mfaAwaitingEmail).toBe(true);

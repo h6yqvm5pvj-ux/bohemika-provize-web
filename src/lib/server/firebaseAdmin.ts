@@ -5,6 +5,7 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
 import { withAccountSecurityPolicy } from "./accountSecurityPolicy";
 import { isPersistentAccountBlock, withFirestoreTokenRevocation } from "./tokenRevocation";
+import { getEmailSetupUser } from "./emailSetupSecurity";
 
 type AdminCert = {
   projectId: string;
@@ -62,3 +63,10 @@ export const adminAuth: Auth | null = app && adminDb ? withAccountSecurityPolicy
   async uid => isPersistentAccountBlock((await adminDb!.collection("accountBlocks").doc(uid).get()).data())
 ) : null;
 export const adminMessaging: Messaging | null = app ? getMessaging(app) : null;
+
+// This deliberately exposes only inbox-verification eligibility, not the raw
+// Auth instance. All business APIs must continue using the protected adminAuth.
+export async function getEmailVerificationUser(token: string) {
+  if (!app || !adminDb) throw new Error("Firebase Admin není nakonfigurovaný.");
+  return getEmailSetupUser(getAuth(app), adminDb, token);
+}

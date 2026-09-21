@@ -16,7 +16,7 @@ import { careerSignature, clearCareerDraft, restoreCareerDraft, saveCareerDraft 
 
 import { auth } from "@/app/firebase-auth";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
+import { ensureEmailVerifiedForMfaEnrollment, refreshEmailVerificationForMfa } from "@/app/lib/mfaEmailVerification";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
@@ -892,14 +892,12 @@ export function useAccountSetupFlow({
     setMfaSaving(true);
     setError(null);
     try {
-      await user.reload();
+      const emailVerified = await refreshEmailVerificationForMfa(user);
       if (!isCurrent()) return;
-      if (!user.emailVerified) {
+      if (!emailVerified) {
         setInfo("E-mail zatím není ověřený. Otevři odkaz ve schránce a vrať se sem.");
         return;
       }
-      await user.getIdToken(true);
-      if (!isCurrent()) return;
       setMfaEmailVerified(true);
       const session = await multiFactor(user).getSession();
       if (!isCurrent()) return;
@@ -952,6 +950,13 @@ export function useAccountSetupFlow({
     setError(null);
     try {
       const activeUser = auth.currentUser ?? user;
+      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
+        clearMfaDraft();
+        setMfaAwaitingEmail(true);
+        setMfaEmailVerified(false);
+        setInfo("Před zapnutím 2FA ověř e-mail odkazem ve schránce a potom pokračuj.");
+        return;
+      }
       const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
         mfaSecret,
         verificationCode

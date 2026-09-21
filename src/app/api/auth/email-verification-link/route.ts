@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FirebaseAuthEmailError, sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
 import { safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
-import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { adminAuth, getEmailVerificationUser } from "@/lib/server/firebaseAdmin";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
 
@@ -34,9 +34,9 @@ export async function POST(req: Request) {
       );
     }
 
-    let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
+    let authUser: Awaited<ReturnType<typeof getEmailVerificationUser>>;
     try {
-      decoded = await adminAuth.verifyIdToken(token, true);
+      authUser = await getEmailVerificationUser(token);
     } catch {
       return NextResponse.json(
         { ok: false, error: "Invalid or expired token" },
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const email = decoded.email?.trim().toLowerCase();
+    const email = authUser.email.trim().toLowerCase();
     if (!email) {
       return NextResponse.json(
         { ok: false, error: "User email missing in token" },
@@ -76,13 +76,6 @@ export async function POST(req: Request) {
       return response;
     }
 
-    const authUser = await adminAuth.getUser(decoded.uid);
-    if (authUser.disabled || authUser.email?.trim().toLowerCase() !== email) {
-      return NextResponse.json(
-        { ok: false, error: "Účet není dostupný. Přihlas se znovu." },
-        { status: 403, headers: { "Cache-Control": "no-store" } }
-      );
-    }
     if (authUser.emailVerified) {
       return NextResponse.json({ ok: true, alreadyVerified: true }, {
         headers: { "Cache-Control": "no-store" },

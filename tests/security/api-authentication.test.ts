@@ -43,6 +43,10 @@ const publicRoutes = new Set([
   "online-card/meeting-request", "online-card/review", "gold",
 ]);
 const retiredRoutes = new Set(["contracts/sync-cpp-status"]);
+// This inbox-only endpoint must accept recent password sessions before email
+// verification and TOTP. Its real setup-token policy, revocation, blocks and
+// delivery limits are covered in src/app/api/auth/emailVerification.test.ts.
+const setupRoutes = new Set(["auth/email-verification-link"]);
 const apiRoot = join(process.cwd(), "src/app/api");
 const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
@@ -55,7 +59,7 @@ function findRoutes(directory: string): string[] {
 
 const cases = findRoutes(apiRoot).flatMap((file) => {
   const route = relative(apiRoot, file).replace(/\/route\.ts$/, "");
-  if (publicRoutes.has(route) || retiredRoutes.has(route)) return [];
+  if (publicRoutes.has(route) || retiredRoutes.has(route) || setupRoutes.has(route)) return [];
   const source = readFileSync(file, "utf8");
   return methods.filter((method) =>
     new RegExp(`export\\s+(?:async\\s+)?function\\s+${method}\\b`).test(source) &&

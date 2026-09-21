@@ -521,7 +521,7 @@ const getAdminUserSecurityActionLabel = (action: AdminUserSecurityAction): strin
   if (action === "blockAccount") return "Zablokovat účet";
   if (action === "sendPasswordReset") return "Reset hesla";
   if (action === "resetMfa") return "Reset 2FA";
-  if (action === "verifyEmail") return "Ověřit e-mail";
+  if (action === "verifyEmail") return "Poslat ověřovací e-mail";
   return "Odhlásit relace";
 };
 
@@ -539,7 +539,7 @@ const getAdminUserSecurityActionSuccess = (
     return `2FA pro ${email} bylo resetováno (${removed} odstraněných faktorů).`;
   }
   if (action === "verifyEmail") {
-    return `E-mail ${email} je označený jako ověřený.`;
+    return payload.message || `Ověřovací e-mail byl odeslán na ${email}. Uživatel musí potvrdit odkaz ve schránce.`;
   }
   return `Aktivní relace uživatele ${email} byly zneplatněny.`;
 };
@@ -2200,7 +2200,7 @@ export default function AdminRequestsPage() {
                           ) : (
                             <Mail size={13} strokeWidth={2.2} aria-hidden="true" />
                           )}
-                          Označit e-mail jako ověřený
+                          Poslat ověřovací e-mail
                         </button>
                       ) : null}
                       <button
@@ -4202,7 +4202,7 @@ export default function AdminRequestsPage() {
                               ) : (
                                 <Mail size={14} strokeWidth={2.2} aria-hidden="true" />
                               )}
-                              Ověřit e-mail
+                              Poslat ověřovací e-mail
                             </button>
                           ) : null}
                           <button

@@ -5,12 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   app: { name: "isolated-setup" },
-  auth: { currentUser: { emailVerified: true, getIdToken: vi.fn() } },
+  auth: { currentUser: { emailVerified: true, getIdToken: vi.fn(), reload: vi.fn() } },
   reload: vi.fn(), sendEmail: vi.fn(),
   takeSetup: vi.fn(),
   initApp: vi.fn(), initAuth: vi.fn(), login: vi.fn(), session: vi.fn(), secret: vi.fn(), enroll: vi.fn(), signOut: vi.fn(), deleteApp: vi.fn(),
 }));
 vi.mock("@/app/firebase-app", () => ({ firebaseApp: { options: { projectId: "synthetic" } } }));
+vi.mock("@/app/lib/authEmailRequest", () => ({ requestVerificationEmail: mocks.sendEmail }));
 vi.mock("@/app/lib/totpSetupSession", () => ({ takePendingTotpSetupSession: mocks.takeSetup }));
 vi.mock("firebase/app", () => ({ initializeApp: mocks.initApp, deleteApp: mocks.deleteApp }));
 vi.mock("firebase/auth", () => ({
@@ -26,8 +27,8 @@ describe("administrator-assisted recovery remains isolated from application sign
   beforeEach(async () => {
     vi.resetAllMocks();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Recovery must not access application APIs")));
-    mocks.auth.currentUser = { emailVerified: true, getIdToken: vi.fn().mockResolvedValue("synthetic-token") };
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Recovery must not access business APIs")));
+    mocks.auth.currentUser = { emailVerified: true, getIdToken: vi.fn().mockResolvedValue("synthetic-token"), reload: mocks.reload };
     mocks.initApp.mockReturnValue(mocks.app);
     mocks.initAuth.mockReturnValue(mocks.auth);
     mocks.login.mockResolvedValue({ user: mocks.auth.currentUser });
@@ -104,7 +105,7 @@ describe("administrator-assisted recovery remains isolated from application sign
     expect(container.textContent).toContain("Ověřovací e-mail byl vyžádán");
     expect(container.querySelector("#recovery-password")).toBeNull();
     await submit();
-    expect(mocks.reload).toHaveBeenCalledWith(mocks.auth.currentUser);
+    expect(mocks.reload).toHaveBeenCalledTimes(2);
     expect(mocks.secret).not.toHaveBeenCalled();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("E-mail ještě není ověřený");
     expect(fetch).not.toHaveBeenCalled();
@@ -142,6 +143,31 @@ describe("administrator-assisted recovery remains isolated from application sign
     await submit();
     expect(mocks.secret).not.toHaveBeenCalled();
     expect(container.textContent).toContain("Ověření se nepodařilo dokončit");
+  });
+  it("rechecks the email from normal login and rejects a stale verified flag", async () => {
+    mocks.reload.mockImplementation(async () => { mocks.auth.currentUser.emailVerified = false; });
+    await arriveFromLogin();
+    expect(mocks.secret).not.toHaveBeenCalled();
+    expect(mocks.session).not.toHaveBeenCalled();
+    expect(mocks.sendEmail).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("Ověř svůj e-mail");
+  });
+  it.each(["reload", "token"])("does not create a key if the initial %s refresh fails", async operation => {
+    (operation === "reload" ? mocks.reload : mocks.auth.currentUser.getIdToken).mockRejectedValue(new Error("expired"));
+    await arriveFromLogin();
+    expect(mocks.secret).not.toHaveBeenCalled();
+    expect(mocks.session).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Nastavení 2FA se nepodařilo zahájit");
+  });
+  it("discards the key if the email is no longer verified before enrollment", async () => {
+    await arriveFromLogin();
+    mocks.reload.mockImplementation(async () => { mocks.auth.currentUser.emailVerified = false; });
+    await input("recovery-code", "123456"); await submit();
+    expect(mocks.enroll).not.toHaveBeenCalled();
+    expect(container.querySelector("#recovery-code")).toBeNull();
+    expect(container.textContent).not.toContain("SYNTHETIC-SETUP-KEY");
+    expect(container.textContent).toContain("Ověř svůj e-mail");
+    expect(mocks.sendEmail).toHaveBeenCalledOnce();
   });
   it.each(["auth/multi-factor-auth-required", "auth/user-disabled"])("keeps %s behind administrator recovery", async code => {
     mocks.login.mockRejectedValue({ code, message: "private synthetic token" });

@@ -137,16 +137,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "verifyEmail") {
-      if (!targetUser.emailVerified) {
-        await adminAuth.updateUser(targetUser.uid, { emailVerified: true });
+      if (targetUser.emailVerified) {
+        return NextResponse.json({ ok: true, action, targetEmail, emailVerified: true,
+          message: "E-mail uživatele už je ověřený.",
+        }, { headers: { "Cache-Control": "no-store" } });
+      }
+      try {
+        await sendFirebaseAuthEmail({ requestType: "VERIFY_EMAIL", email: targetUser.email! });
+      } catch (error) {
+        console.error("[AuthEmail] admin verification:", safeAuthEmailErrorCode(error));
+        return NextResponse.json({
+          ok: false, error: resolveAuthEmailErrorMessage(error, "Ověřovací e-mail se nepodařilo odeslat."),
+        }, { status: 503, headers: { "Cache-Control": "no-store" } });
       }
       return NextResponse.json({
         ok: true,
         action,
         targetEmail,
-        emailVerified: true,
-        message: "E-mail uživatele byl označen jako ověřený.",
-      });
+        emailVerified: false,
+        message: "Ověřovací e-mail byl odeslán. Uživatel musí potvrdit odkaz ve své schránce.",
+      }, { headers: { "Cache-Control": "no-store" } });
     }
 
     if (action === "resetMfa") {

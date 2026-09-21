@@ -2897,6 +2897,11 @@ export default function SettingsPage() {
     setMfaStatus(null);
 
     try {
+      if (!(await ensureEmailVerifiedForMfaEnrollment(user))) {
+        clearMfaDraft();
+        setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
+        return;
+      }
       const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
         mfaEnrollmentSecret,
         otp

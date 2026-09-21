@@ -7,11 +7,13 @@ import { AuthPage } from "@/components/account-setup/AuthPage";
 import { PasswordField } from "@/components/account-setup/PasswordField";
 import styles from "@/components/account-setup/authSurface.module.css";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { initializeAuth, inMemoryPersistence, multiFactor, reload, sendEmailVerification, signInWithEmailAndPassword, signOut, TotpMultiFactorGenerator, type Auth, type TotpSecret, type User } from "firebase/auth";
+import { initializeAuth, inMemoryPersistence, multiFactor, signInWithEmailAndPassword, signOut, TotpMultiFactorGenerator, type Auth, type TotpSecret, type User } from "firebase/auth";
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
 import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
 import { takePendingTotpSetupSession } from "@/app/lib/totpSetupSession";
+import { refreshEmailVerificationForMfa } from "@/app/lib/mfaEmailVerification";
+import { requestVerificationEmail } from "@/app/lib/authEmailRequest";
 
 // Isolated Auth in memory: this recovery page cannot establish an application
 // session and does not access profiles, Firestore, or business APIs.
@@ -31,10 +33,10 @@ export default function TotpRecoveryPage() {
   const [copyError, setCopyError] = useState(false);
 
   const requestEmail = useCallback(async (user: User) => {
-    // Firebase authenticates this isolated setup session directly. Application
-    // APIs deliberately remain inaccessible until the administrator activates it.
+    // The email endpoint accepts only a recent setup session and sends an inbox
+    // link. Business APIs stay inaccessible until the administrator activates it.
     try {
-      await sendEmailVerification(user);
+      await requestVerificationEmail(user);
       setEmailRequested(true);
     } catch (failure) {
       setError(resolveAuthEmailErrorMessage(failure, "Ověřovací e-mail se nepodařilo odeslat. Zkus ho vyžádat znovu."));
@@ -42,19 +44,20 @@ export default function TotpRecoveryPage() {
   }, []);
 
   const beginEnrollment = useCallback(async (user: User) => {
+    if (!(await refreshEmailVerificationForMfa(user))) {
+      setSecret(null);
+      setAwaitingEmail(true);
+      return false;
+    }
     const session = await multiFactor(user).getSession();
     setSecret(await TotpMultiFactorGenerator.generateSecret(session));
     setAwaitingEmail(false);
+    return true;
   }, []);
 
   const continueSetup = useCallback(async (user: User) => {
     setPassword("");
-    if (!user.emailVerified) {
-      setAwaitingEmail(true);
-      await requestEmail(user);
-      return;
-    }
-    await beginEnrollment(user);
+    if (!(await beginEnrollment(user))) await requestEmail(user);
   }, [beginEnrollment, requestEmail]);
 
   useEffect(() => {
@@ -109,13 +112,9 @@ export default function TotpRecoveryPage() {
     if (busy || !user) return;
     setBusy(true); setError("");
     try {
-      await reload(user);
-      if (!user.emailVerified) {
+      if (!(await beginEnrollment(user))) {
         setError("E-mail ještě není ověřený. Otevři odkaz ve své schránce a potom klikni znovu.");
-        return;
       }
-      await user.getIdToken(true);
-      await beginEnrollment(user);
     } catch {
       setError("Ověření se nepodařilo dokončit. Zkus to znovu; pokud přihlášení vypršelo, obnov stránku a přihlas se heslem.");
     } finally { setBusy(false); }
@@ -133,8 +132,14 @@ export default function TotpRecoveryPage() {
     event.preventDefault(); if (busy || !secret || !setupAuth.current?.currentUser) return;
     setBusy(true); setError("");
     try {
+      const user = setupAuth.current.currentUser;
+      if (!(await refreshEmailVerificationForMfa(user))) {
+        setSecret(null); setCode(""); setAwaitingEmail(true);
+        await requestEmail(user);
+        return;
+      }
       const assertion = TotpMultiFactorGenerator.assertionForEnrollment(secret, code.trim());
-      await multiFactor(setupAuth.current.currentUser).enroll(assertion, "Autentizační aplikace");
+      await multiFactor(user).enroll(assertion, "Autentizační aplikace");
       setSecret(null); setCode(""); setDone(true);
       await signOut(setupAuth.current);
     } catch {
