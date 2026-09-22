@@ -24,7 +24,7 @@ export function SickLeaveCalculator({ locale }: { locale: OnlineCardLocale }) {
   );
 
   return (
-    <section aria-labelledby="sickness-calculator-title">
+    <section className={styles.calculator} aria-labelledby="sickness-calculator-title">
       <h3 id="sickness-calculator-title" className={styles.calcTitle}>{copy.calcTitle}</h3>
       <p className={styles.paragraph}>{copy.calcIntro}</p>
       <fieldset className={styles.fieldset}>

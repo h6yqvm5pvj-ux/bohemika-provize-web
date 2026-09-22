@@ -7,7 +7,7 @@
 - Webová verze: `public/images/online-card-hero/bohemika-home-protection-investments-v1.webp`.
 - Rozměry: 1344 × 752 px; požadovaný poměr 16:9, skutečné rozměry vrátil model.
 - Optimalizace: Sharp, WebP quality 86 / effort 6, původní rozlišení.
-- Stav: zapojeno do úvodu veřejných vizitek `/vizitka/[slug]` přes `OnlineCardHeroVisual.tsx`.
+- Stav: původní varianta; 22. 9. 2026 nahrazena [verzí s kovovým logem Bohemika](./online-card-metal-logo-higgsfield.md) v `OnlineCardHeroVisual.tsx`. Původní soubory zůstávají zachované.
 - Načítání: prioritní WebP přímo z projektu, 34 420 bajtů, bez dalšího překódování.
 
 ## Vizuální směr a použití

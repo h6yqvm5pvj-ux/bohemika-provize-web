@@ -21,10 +21,18 @@ import { useEffect, useRef, useState } from "react";
 import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
 import { SickLeaveDialog } from "@/components/life-insurance/SickLeaveDialog";
 import { DailyAccidentDialog } from "@/components/life-insurance/DailyAccidentDialog";
+import { DeathDialog } from "@/components/life-insurance/DeathDialog";
+import { HospitalisationDialog } from "@/components/life-insurance/HospitalisationDialog";
+import { SeriousIllnessDialog } from "@/components/life-insurance/SeriousIllnessDialog";
+import { CareDialog } from "@/components/life-insurance/CareDialog";
 import { DisabilityDialog } from "@/components/life-insurance/DisabilityDialog";
 import { PermanentInjuryDialog } from "@/components/life-insurance/PermanentInjuryDialog";
 import { LifeInsuranceHeroMedia } from "@/components/life-insurance/LifeInsuranceHeroMedia";
 import { DAILY_ACCIDENT_COPY } from "@/components/life-insurance/dailyAccidentCopy";
+import { DEATH_COPY } from "@/components/life-insurance/deathCopy";
+import { HOSPITALISATION_COPY } from "@/components/life-insurance/hospitalisationCopy";
+import { SERIOUS_ILLNESS_COPY } from "@/components/life-insurance/seriousIllnessCopy";
+import { CARE_COPY } from "@/components/life-insurance/careCopy";
 import { DISABILITY_COPY } from "@/components/life-insurance/disabilityCopy";
 import { PERMANENT_INJURY_COPY } from "@/components/life-insurance/permanentInjuryCopy";
 import { SICK_LEAVE_COPY } from "@/components/life-insurance/sickLeaveCopy";
@@ -115,12 +123,11 @@ type LifeInsuranceContentProps = {
 export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuranceContentProps) {
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingSubmitted, setMeetingSubmitted] = useState(false);
-  const [activeRisk, setActiveRisk] = useState<"sick-leave" | "daily-accident" | "disability" | "permanent-injury" | null>(null);
+  const [activeRisk, setActiveRisk] = useState<(typeof COVERAGE_ITEMS)[number]["id"] | null>(null);
   const meetingDialogRef = useRef<HTMLDialogElement>(null);
   const meetingTriggerRef = useRef<HTMLButtonElement>(null);
   const copy = LIFE_COPY[locale];
   const canRequestMeeting = /^[a-z0-9-]+$/i.test(advisorSlug);
-  const lightMode = theme === "light";
   const primaryTextClass = "text-[var(--life-ink)]";
   const bodyTextClass = "text-[var(--life-muted)]";
   const labelTextClass = "text-[var(--life-accent)]";
@@ -210,41 +217,55 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
           </div>
         </section>
 
-        <section className={`relative overflow-hidden rounded-[26px] p-5 sm:p-10 border border-[var(--life-line)] bg-[var(--life-soft)]`}>
-          <div className="pointer-events-none absolute inset-0 opacity-[0.13] [background-image:linear-gradient(rgba(91,196,229,0.28)_1px,transparent_1px),linear-gradient(90deg,rgba(91,196,229,0.28)_1px,transparent_1px)] [background-size:48px_48px]" />
-          <div className="relative">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-end">
-              <div>
-                <p className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${bodyTextClass}`}><HeartPulse className="h-4 w-4" /> {copy.statisticsKicker}</p>
-                <h2 className={`mt-3 text-3xl font-medium leading-[1.12] tracking-[-0.04em] sm:mt-4 sm:max-w-[15ch] sm:text-5xl sm:leading-[0.95] sm:tracking-[-0.055em] ${primaryTextClass}`}>{copy.statisticsTitle}</h2>
+        <section aria-labelledby="life-statistics-title" className={themeStyles.statistics}>
+          <div aria-hidden="true" className={themeStyles.statisticsBackdrop} />
+          <div className={themeStyles.statisticsContent}>
+            <div className={themeStyles.statisticsHeader}>
+              <div className={themeStyles.statisticsIntro}>
+                <p className={themeStyles.statisticsKicker}><HeartPulse aria-hidden="true" /> {copy.statisticsKicker}</p>
+                <h2 id="life-statistics-title" className={themeStyles.statisticsTitle}>{copy.statisticsTitle}</h2>
+                <p className={themeStyles.statisticsSummary}><strong>415 623</strong> {copy.peopleReceived} <strong>418 988 {copy.people}</strong>.</p>
               </div>
-              <div className={`rounded-[22px] p-4 sm:p-7 border border-[var(--life-line)] bg-[var(--life-surface)]`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${bodyTextClass}`}>{copy.paidPensions}</p>
-                <p className={`mt-2 text-5xl font-medium tracking-[-0.07em] sm:text-6xl text-[var(--life-accent)]`}>415 623</p>
-                <p className={`mt-2 text-sm leading-relaxed ${bodyTextClass}`}>{copy.peopleReceived} <strong className={primaryTextClass}>418 988 {copy.people}</strong>.</p>
+              <div className={themeStyles.statisticsTotal}>
+                <div className={themeStyles.statisticsMap}>
+                  <Image
+                    src="/images/life-insurance/czechia-outline-v1.svg"
+                    alt=""
+                    aria-hidden="true"
+                    width={500}
+                    height={300}
+                    className={themeStyles.statisticsMapShape}
+                  />
+                  <div className={themeStyles.statisticsMapLabel}>
+                    <p className={themeStyles.statisticsMapCount}>415.000+</p>
+                    <p className={themeStyles.statisticsDate}>{copy.paidPensions}</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="mt-7 grid gap-6 md:mt-10 md:grid-cols-3 md:gap-7">
+            <div className={themeStyles.statisticsDegrees}>
               {copy.degrees.map(([level, range], index) => (
-                <article key={level} className={`border-b pb-6 last:border-0 last:pb-0 md:border-0 md:pb-0 border-[var(--life-line)]`}>
-                  <p className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${bodyTextClass}`}>{level}</p>
-                  <p className={`mt-2 text-3xl font-medium tracking-[-0.055em] ${primaryTextClass}`}>{INVALIDITY_COUNTS[index]}</p>
-                  <div className={`mt-1 flex items-start gap-2 text-sm leading-relaxed ${bodyTextClass}`}>
-                    <span>{copy.peopleLabel} · {range}</span>
-                    <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${lightMode ? "bg-rose-100 text-rose-700" : "bg-rose-300/12 text-rose-200"}`} title={copy.workCapacityDrop}>
-                      <TrendingDown className="h-3 w-3" aria-hidden="true" />
-                    </span>
+                <article key={level} className={themeStyles.statisticsCard}>
+                  <h3 className={themeStyles.statisticsDegree}>{level}</h3>
+                  <p className={themeStyles.statisticsCardCount}>{INVALIDITY_COUNTS[index]} <span>{copy.peopleLabel}</span></p>
+                  <p className={themeStyles.statisticsRange}>
+                    <TrendingDown aria-hidden="true" />
+                    <span>{range}</span>
+                  </p>
+                  <div className={themeStyles.statisticsPension}>
+                    <p>{copy.averagePension}</p>
+                    <p>{formatAveragePension(DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly, locale)}</p>
                   </div>
-                  <p className={`mt-3 text-[10px] font-semibold uppercase tracking-[0.14em] md:mt-5 ${bodyTextClass}`}>{copy.averagePension}</p>
-                  <p className={`mt-1 text-xl font-medium tracking-[-0.035em] text-[var(--life-accent)]`}>{formatAveragePension(DISABILITY_PENSION_STATISTICS.degrees[index].averageMonthly, locale)}</p>
                 </article>
               ))}
             </div>
 
-            <p className={`mt-9 max-w-2xl border-l-2 border-cyan-400 pl-5 text-xl font-semibold leading-snug tracking-[-0.03em] sm:text-2xl ${primaryTextClass}`}>{copy.futureQuestion}</p>
-
-            <p className={`mt-6 text-[11px] leading-relaxed ${bodyTextClass}`}>
+            <div className={themeStyles.statisticsQuestion}>
+              <ShieldCheck aria-hidden="true" />
+              <p>{copy.futureQuestion}</p>
+            </div>
+            <p className={themeStyles.statisticsSources}>
               {copy.source}: <a className="underline decoration-cyan-500/60 underline-offset-4 transition hover:text-[var(--life-accent)]" href={CSSZ_COUNTS_URL} target="_blank" rel="noreferrer noopener">{copy.countsSource}</a>{" · "}<a className="underline decoration-cyan-500/60 underline-offset-4 transition hover:text-[var(--life-accent)]" href={DISABILITY_PENSION_STATISTICS.sourceUrl} target="_blank" rel="noreferrer noopener">{copy.averagesSource}</a>.
             </p>
           </div>
@@ -253,7 +274,7 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
         <section className="grid gap-6 py-9 sm:gap-8 sm:py-12 lg:grid-cols-[minmax(0,0.92fr)_minmax(300px,0.78fr)] lg:items-center lg:gap-16">
           <div>
             <p className={`inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] ${labelTextClass}`}><WalletCards className="h-4 w-4" /> {copy.costKicker}</p>
-            <h2 className={`mt-4 max-w-3xl text-3xl font-medium leading-[1.12] tracking-[-0.04em] sm:text-5xl sm:leading-[0.98] sm:tracking-[-0.055em] ${primaryTextClass}`}>{copy.costTitleBefore} <span className="text-[var(--life-accent)]">{copy.costTitleAmount}</span> {copy.costTitleAfter}</h2>
+            <h2 className={`mt-4 max-w-3xl text-3xl font-medium leading-[1.12] tracking-[-0.04em] sm:text-5xl sm:leading-[0.98] sm:tracking-[-0.055em] ${primaryTextClass}`}>{copy.costTitleBefore} <span className="whitespace-nowrap text-[var(--life-accent)]">{copy.costTitleAmount}</span> {copy.costTitleAfter}</h2>
             <p className={`mt-5 text-base leading-relaxed sm:text-lg ${bodyTextClass}`}>{copy.costLead}</p>
           </div>
           <div className={`relative min-h-[265px] overflow-hidden rounded-[26px] border p-5 pb-32 sm:min-h-[310px] sm:p-6 border-[var(--life-line)] bg-[var(--life-soft)]`}>
@@ -297,8 +318,11 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
           <ul className={themeStyles.coverageGrid}>
             {copy.coverageRisks.map((risk, index) => {
               const { id } = COVERAGE_ITEMS[index];
-              const hasDetail = id === "sick-leave" || id === "daily-accident" || id === "disability" || id === "permanent-injury";
-              const detail = id === "permanent-injury" ? PERMANENT_INJURY_COPY[locale].detail
+              const detail = id === "death" ? DEATH_COPY[locale].detail
+                : id === "care" ? CARE_COPY[locale].detail
+                : id === "hospitalisation" ? HOSPITALISATION_COPY[locale].detail
+                : id === "serious-illness" ? SERIOUS_ILLNESS_COPY[locale].detail
+                : id === "permanent-injury" ? PERMANENT_INJURY_COPY[locale].detail
                 : id === "disability" ? DISABILITY_COPY[locale].detail
                 : id === "daily-accident" ? DAILY_ACCIDENT_COPY[locale].detail : SICK_LEAVE_COPY[locale].detail;
               const content = <>
@@ -311,21 +335,21 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
                     unoptimized
                   />
                 </span>
-                <span className="min-w-0 flex-1 self-center">
-                  <span className={`block text-base font-medium leading-snug tracking-[-0.02em] ${primaryTextClass}`}>{risk}</span>
-                  {hasDetail && <span className={`mt-1 block text-xs leading-relaxed text-[var(--life-accent)]`}>{detail}</span>}
+                <span className={themeStyles.coverageText}>
+                  <span className={themeStyles.coverageTitle}>{risk}</span>
+                  <span className={themeStyles.coverageDetail}>{detail}</span>
                 </span>
-                {hasDetail && <ArrowUpRight className={`h-4 w-4 shrink-0 text-[var(--life-accent)]`} aria-hidden="true" />}
+                <ArrowUpRight className={themeStyles.coverageArrow} aria-hidden="true" />
               </>;
               return (
                 <li key={id} className={themeStyles.coverageItem}>
-                  {hasDetail ? <button
+                  <button
                     type="button"
                     aria-haspopup="dialog"
                     aria-controls={`${id}-dialog`}
                     onClick={event => { event.currentTarget.focus({ preventScroll: true }); setActiveRisk(id); }}
                     className={themeStyles.coverageCard}
-                  >{content}</button> : <div className={themeStyles.coverageCard}>{content}</div>}
+                  >{content}</button>
                 </li>
               );
             })}
@@ -372,6 +396,34 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
 
         <footer className={`pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-4 text-xs leading-relaxed ${bodyTextClass}`}>{copy.footer}</footer>
       </article>
+
+      {activeRisk === "death" && <DeathDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "hospitalisation" && <HospitalisationDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "care" && <CareDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
+
+      {activeRisk === "serious-illness" && <SeriousIllnessDialog
+        locale={locale}
+        theme={theme}
+        onClose={() => setActiveRisk(null)}
+        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+      />}
 
       {activeRisk === "sick-leave" && <SickLeaveDialog
         locale={locale}

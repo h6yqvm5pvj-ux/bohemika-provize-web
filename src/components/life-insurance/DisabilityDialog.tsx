@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { Calculator, CalendarDays, ShieldCheck, X } from "lucide-react";
+import { Calculator, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { DISABILITY_COPY, DISABILITY_SOURCES } from "./disabilityCopy";
+import { RiskDetailHeader, RiskDetailHero, RiskDetailMeeting } from "./RiskDetailPresentation";
 import styles from "./sickLeave.module.css";
 import disabilityStyles from "./disability.module.css";
 
@@ -114,13 +115,9 @@ export function DisabilityDialog({ locale, theme, onClose, onMeeting }: Disabili
   return (
     <dialog id="disability-dialog" ref={dialogRef} className={styles.dialog} data-theme={theme} aria-labelledby="disability-title" onCancel={onClose}>
       <div className={styles.panel}>
-        <header className={styles.header}>
-          <div><p className={styles.kicker}>{copy.kicker}</p><h2 id="disability-title" className={styles.title}>{copy.title}</h2></div>
-          <button type="button" className={styles.close} aria-label={copy.close} onClick={onClose}><X size={20} aria-hidden="true" /></button>
-        </header>
+        <RiskDetailHeader kicker={copy.kicker} closeLabel={copy.close} onClose={onClose} />
         <div className={styles.content}>
-          <p className={styles.badge}><ShieldCheck size={17} aria-hidden="true" />{copy.badge}</p>
-          <p className={styles.lead}>{copy.intro}</p>
+          <RiskDetailHero risk="disability" title={copy.title} intro={copy.intro} badge={<><ShieldCheck size={16} aria-hidden="true" />{copy.badge}</>} />
           <ul className={disabilityStyles.benefits}>
             {copy.benefits.map(([title, description], index) => (
               <li key={title}>
@@ -168,7 +165,7 @@ export function DisabilityDialog({ locale, theme, onClose, onMeeting }: Disabili
             <a href={DISABILITY_SOURCES.pension} target="_blank" rel="noreferrer noopener">{copy.pensionSource}</a>
             <a href={DISABILITY_SOURCES.degrees} target="_blank" rel="noreferrer noopener">{copy.degreesSource}</a>
           </div>
-          {onMeeting && <div className={styles.actions}><button type="button" className={styles.primary} onClick={onMeeting}><CalendarDays size={18} aria-hidden="true" />{copy.meetingCta}</button></div>}
+          {onMeeting && <RiskDetailMeeting label={copy.meetingCta} onClick={onMeeting} />}
         </div>
       </div>
     </dialog>

@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarDays, ShieldCheck, X } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { calculatePermanentInjuryBenefit } from "@/lib/permanentInjuryBenefit";
 import { PERMANENT_INJURY_COPY, PERMANENT_INJURY_SOURCES } from "./permanentInjuryCopy";
+import { RiskDetailHeader, RiskDetailHero, RiskDetailMeeting } from "./RiskDetailPresentation";
 import styles from "./sickLeave.module.css";
 import injuryStyles from "./permanentInjury.module.css";
 
@@ -68,6 +69,7 @@ function PermanentInjuryModel({ locale }: { locale: OnlineCardLocale }) {
         </table>
         <p className={styles.paragraph}>{copy.tableNote}</p>
       </details>
+      <div className={styles.sources}><a href={PERMANENT_INJURY_SOURCES.terms} target="_blank" rel="noreferrer noopener">{copy.termsSource}</a></div>
     </section>
   );
 }
@@ -103,13 +105,9 @@ export function PermanentInjuryDialog({ locale, theme, onClose, onMeeting }: Per
   return (
     <dialog id="permanent-injury-dialog" ref={dialogRef} className={styles.dialog} data-theme={theme} aria-labelledby="permanent-injury-title" onCancel={onClose}>
       <div className={styles.panel}>
-        <header className={styles.header}>
-          <div><p className={styles.kicker}>{copy.kicker}</p><h2 id="permanent-injury-title" className={styles.title}>{copy.title}</h2></div>
-          <button type="button" className={styles.close} aria-label={copy.close} onClick={onClose}><X size={20} aria-hidden="true" /></button>
-        </header>
+        <RiskDetailHeader kicker={copy.kicker} closeLabel={copy.close} onClose={onClose} />
         <div className={styles.content}>
-          <p className={styles.badge}><ShieldCheck size={17} aria-hidden="true" />{copy.badge}</p>
-          <p className={styles.lead}>{copy.intro}</p>
+          <RiskDetailHero risk="permanent-injury" title={copy.title} intro={copy.intro} badge={<><ShieldCheck size={16} aria-hidden="true" />{copy.badge}</>} />
           <div className={styles.twoColumns}>
             <section className={styles.card}><h3 className={injuryStyles.cardTitle}>{copy.assessmentTitle}</h3><p>{copy.assessmentText}</p></section>
             <section className={styles.card}><h3 className={injuryStyles.cardTitle}>{copy.progressionTitle}</h3><p>{copy.progressionText}</p></section>
@@ -131,18 +129,14 @@ export function PermanentInjuryDialog({ locale, theme, onClose, onMeeting }: Per
             <p className={styles.kicker}>{copy.recommendationKicker}</p>
             <h3 className={injuryStyles.recommendationTitle}>{copy.recommendationTitle}</h3><p className={styles.paragraph}>{copy.recommendationText}</p>
             <ul className={injuryStyles.advantages}>{copy.advantages.map(([title, description]) => <li key={title}><strong>{title}</strong><p>{description}</p></li>)}</ul>
+            <div className={styles.sources}><a href={PERMANENT_INJURY_SOURCES.comparison} target="_blank" rel="noreferrer noopener">{copy.comparisonSource}</a></div>
           </section>
           <PermanentInjuryModel locale={locale} />
           <section className={styles.section}>
             <h3>{copy.faqTitle}</h3>
             {copy.faqs.map(([question, answer]) => <details key={question} className={styles.details}><summary>{question}</summary><p className={styles.paragraph}>{answer}</p></details>)}
           </section>
-          <div className={styles.sources}>
-            <a href={PERMANENT_INJURY_SOURCES.progression} target="_blank" rel="noreferrer noopener">{copy.progressionSource}</a>
-            <a href={PERMANENT_INJURY_SOURCES.example} target="_blank" rel="noreferrer noopener">{copy.exampleSource}</a>
-            <a href={PERMANENT_INJURY_SOURCES.terms} target="_blank" rel="noreferrer noopener">{copy.termsSource}</a>
-          </div>
-          {onMeeting && <div className={styles.actions}><button type="button" className={styles.primary} onClick={onMeeting}><CalendarDays size={18} aria-hidden="true" />{copy.meetingCta}</button></div>}
+          {onMeeting && <RiskDetailMeeting label={copy.meetingCta} onClick={onMeeting} />}
         </div>
       </div>
     </dialog>

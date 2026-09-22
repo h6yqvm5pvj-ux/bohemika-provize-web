@@ -1,3 +1,8 @@
+export const SICK_LEAVE_SOURCES = {
+  cpp: "https://www.cpp.cz/zivotni-a-urazove-pojisteni/neon",
+  generali: "https://www.generaliceska.cz/zivotni-pojisteni/kalkulacka",
+};
+
 export const SICK_LEAVE_COPY = {
   cs: {
     title: "Pracovní neschopnost", kicker: "Ochrana vašeho příjmu", close: "Zavřít detail pracovní neschopnosti",
@@ -13,7 +18,7 @@ export const SICK_LEAVE_COPY = {
     retroExample: "Zpětně: 30 × 500 Kč", followingExample: "Následně: 16 × 500 Kč", exampleNote: "Zpětně neznamená, že peníze přijdou hned první den. Jde o dny, za které vznikne nárok na plnění.",
     recommendationTitle: "Jaké nastavení obvykle doporučuji",
     recommendation: "Pokud jste závislí na příjmu a nemáte velkou rezervu, obecně doporučuji zvážit variantu od 15. dne se zpětným plněním od 1. dne, pokud ji produkt nabízí pro nemoc i úraz.",
-    price: "Pokud je cenový rozdíl malý, širší ochrana může stát za to. Konkrétní cenu vždy porovnáme — závisí na produktu, věku, povolání i zdravotním stavu. Vyšší rezerva může umožnit delší karenční dobu.",
+    price: "Pokud je cenový rozdíl malý, širší ochrana může stát za to. Konkrétní cenu vždy porovnáme — závisí na produktu, věku, povolání i zdravotním stavu. Vyšší rezerva může umožnit delší karenční dobu. Porovnáme přitom vhodné varianty od více pojišťoven.",
     checksTitle: "Co spolu ještě zkontrolujeme",
     checks: [
       ["Čekací dobu od sjednání", "Čekací doba běží od začátku pojištění; karenční doba se týká konkrétní neschopnosti. U nemoci, úrazu či těhotenství se pravidla mohou lišit."],
@@ -40,6 +45,7 @@ export const SICK_LEAVE_COPY = {
     breakdown: "Jak se částka skládá", periods: ["15.–30. den", "31.–60. den", "61.–90. den"], daily: "Kč / den", reduced: "z redukovaného denního základu",
     assumptions: "Model používá měsíční základ × 12 / 365 bez vyloučených dní. Předpokládá trvající běžný nárok; nezohledňuje zvláštní situace, např. souběh s důchodem. Čistý příjem porovnává po 30denních měsících. Skutečná částka závisí na podkladech zaměstnavatele a ČSSZ.",
     sources: "Pravidla a zdroje", privateSource: "Příklad variant krytí · ČPP", privacy: "Zadané částky se používají jen pro výpočet v tomto okně.",
+    otherPrivateSource: "Další příklad krytí · Generali Česká",
   },
   en: {
     title: "Incapacity for work", kicker: "Protecting your income", close: "Close sick leave details",
@@ -55,7 +61,7 @@ export const SICK_LEAVE_COPY = {
     retroExample: "Retrospective: 30 × CZK 500", followingExample: "From day 15: 16 × CZK 500", exampleNote: "Retrospective cover does not mean money arrives on day one. It describes the days for which payment becomes due.",
     recommendationTitle: "The setup I usually recommend",
     recommendation: "If you depend on your income and have limited savings, I generally recommend considering cover from day 15 with payment back to day 1, where the product offers it for both illness and injury.",
-    price: "If the price difference is small, broader protection may be worthwhile. We will compare the actual price, which depends on the product, age, occupation and health. Larger savings may allow a longer qualifying period.",
+    price: "If the price difference is small, broader protection may be worthwhile. We will compare the actual price, which depends on the product, age, occupation and health. Larger savings may allow a longer qualifying period. We will compare suitable options from several insurers.",
     checksTitle: "What else we will check",
     checks: [
       ["Waiting period after taking out cover", "The initial waiting period runs from the start of the policy; the qualifying period concerns each absence. Rules may differ for illness, injury and pregnancy."],
@@ -82,6 +88,7 @@ export const SICK_LEAVE_COPY = {
     breakdown: "How the amount is calculated", periods: ["Days 15–30", "Days 31–60", "Days 61–90"], daily: "CZK / day", reduced: "of the reduced daily assessment base",
     assumptions: "The model uses monthly base × 12 / 365 without excluded days. It assumes ongoing ordinary eligibility and omits special cases such as pension recipients. Net income is compared in 30-day months. Actual amounts depend on employer and CSSA records.",
     sources: "Rules and sources", privateSource: "Example cover options · ČPP", privacy: "Amounts you enter are used only for the calculation in this window.",
+    otherPrivateSource: "Another cover example · Generali Česká (Czech)",
   },
   uk: {
     title: "Тимчасова непрацездатність", kicker: "Захист вашого доходу", close: "Закрити деталі непрацездатності",
@@ -97,7 +104,7 @@ export const SICK_LEAVE_COPY = {
     retroExample: "Від початку: 30 × 500 Kč", followingExample: "Від 15-го дня: 16 × 500 Kč", exampleNote: "Виплата від першого дня не означає надходження грошей одразу. Йдеться про дні, за які виникає право на виплату.",
     recommendationTitle: "Яке налаштування я зазвичай рекомендую",
     recommendation: "Якщо ви залежите від доходу та маєте невеликий резерв, я зазвичай рекомендую розглянути варіант від 15-го дня з виплатою від 1-го дня, якщо продукт пропонує його для хвороб і травм.",
-    price: "Якщо різниця в ціні невелика, ширший захист може бути доцільним. Ми порівняємо конкретну вартість: вона залежить від продукту, віку, професії та здоров’я. Більший резерв може дозволити довший мінімальний період.",
+    price: "Якщо різниця в ціні невелика, ширший захист може бути доцільним. Ми порівняємо конкретну вартість: вона залежить від продукту, віку, професії та здоров’я. Більший резерв може дозволити довший мінімальний період. Порівняємо відповідні варіанти від кількох страховиків.",
     checksTitle: "Що ще ми перевіримо",
     checks: [
       ["Період очікування після оформлення", "Початковий період очікування відраховується від початку страхування, а мінімальна тривалість стосується конкретного лікарняного. Правила для хвороби, травми чи вагітності можуть відрізнятися."],
@@ -124,5 +131,6 @@ export const SICK_LEAVE_COPY = {
     breakdown: "Як складається сума", periods: ["15–30-й день", "31–60-й день", "61–90-й день"], daily: "Kč / день", reduced: "зі зменшеної денної бази",
     assumptions: "Модель використовує місячну базу × 12 / 365 без виключених днів. Припускає звичайне чинне право на виплати та не враховує особливі випадки, наприклад пенсіонерів. Чистий дохід порівнюється за 30-денними місяцями. Фактичні суми залежать від даних роботодавця й ЧССЗ.",
     sources: "Правила та джерела", privateSource: "Приклад варіантів покриття · ČPP", privacy: "Введені суми використовуються лише для розрахунку в цьому вікні.",
+    otherPrivateSource: "Інший приклад покриття · Generali Česká (чеською)",
   },
 } as const;

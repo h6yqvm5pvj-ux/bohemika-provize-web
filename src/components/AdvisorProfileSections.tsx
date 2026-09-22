@@ -11,7 +11,9 @@ import {
   HousePlus,
   Landmark,
   Languages,
+  Pause,
   PlaneTakeoff,
+  Play,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -20,6 +22,7 @@ import type { CSSProperties } from "react";
 import { VigMetalModel } from "@/components/VigMetalModel";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 import minimalStyles from "./OnlineCardMinimal.module.css";
+import { useServiceIconMotion } from "./useServiceIconMotion";
 
 type PartnerInsurer = {
   label: string;
@@ -74,56 +77,56 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
 const ADVISOR_SERVICES = [
   {
     label: "Životní pojištění a zajištění příjmu",
-    artwork: "/images/online-card-services/life-v2.webp",
+    artwork: "/images/online-card-services/life-v4.webp",
     icon: HeartHandshake,
     iconClass: "text-blue-200",
     accentClass: "bg-blue-300/80",
   },
   {
     label: "Pojištění majetku a odpovědnosti",
-    artwork: "/images/online-card-services/property-v2.webp",
+    artwork: "/images/online-card-services/property-v4.webp",
     icon: HousePlus,
     iconClass: "text-emerald-200",
     accentClass: "bg-emerald-300/80",
   },
   {
     label: "Pojištění vozidel a flotil",
-    artwork: "/images/online-card-services/vehicle-v2.webp",
+    artwork: "/images/online-card-services/vehicle-v4.webp",
     icon: CarFront,
     iconClass: "text-sky-200",
     accentClass: "bg-sky-300/80",
   },
   {
     label: "Cestovní pojištění",
-    artwork: "/icons/icon_cestovko.webp",
+    artwork: "/images/online-card-services/travel-v4.webp",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",
   },
   {
     label: "Pojištění cizinců",
-    artwork: "/images/online-card-services/foreigners-v2.webp",
+    artwork: "/images/online-card-services/foreigners-v4.webp",
     icon: Languages,
     iconClass: "text-rose-200",
     accentClass: "bg-rose-300/80",
   },
   {
     label: "Investice",
-    artwork: "/images/online-card-services/investments-v2.webp",
+    artwork: "/images/online-card-services/investments-v4.webp",
     icon: ChartNoAxesCombined,
     iconClass: "text-cyan-200",
     accentClass: "bg-cyan-300/80",
   },
   {
     label: "Úvěry a hypotéky",
-    artwork: "/images/online-card-services/mortgage-v2.webp",
+    artwork: "/images/online-card-services/mortgage-v4.webp",
     icon: Landmark,
     iconClass: "text-lime-200",
     accentClass: "bg-lime-300/80",
   },
   {
     label: "Investiční zlato a stříbro",
-    artwork: "/images/investicni-zlato-slitky.png",
+    artwork: "/images/online-card-services/precious-metals-v4.webp",
     icon: Gem,
     iconClass: "text-amber-200",
     accentClass: "bg-amber-300/80",
@@ -162,6 +165,12 @@ const SERVICE_SUMMARIES: Record<OnlineCardLocale, readonly string[]> = {
     "Відчутна цінність у ваших руках.",
   ],
 };
+
+const SERVICE_MOTION_COPY = {
+  cs: { label: "Animace ikon", pause: "Pozastavit animace", play: "Spustit animace" },
+  en: { label: "Icon animations", pause: "Pause animations", play: "Play animations" },
+  uk: { label: "Анімація значків", pause: "Призупинити анімацію", play: "Увімкнути анімацію" },
+} as const;
 
 const COMPANY_PILLARS = [
   {
@@ -210,6 +219,8 @@ export function AdvisorProfileSections({
   minimal = false,
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
+  const { regionRef, allowed: motionAllowed, active: motionActive, running: motionRunning, toggle: toggleMotion } = useServiceIconMotion(minimal);
+  const motionCopy = SERVICE_MOTION_COPY[locale];
   const light = theme === "light";
   const connectedHero = connectToHero && flush;
   const revealAttrs = reveal
@@ -238,7 +249,7 @@ export function AdvisorProfileSections({
               </div>
               <p className={minimalStyles.sectionLead}>{copy.advisor.serviceLead}</p>
             </div>
-            <div className={minimalStyles.services}>
+            <div ref={regionRef} id="card-service-icons" className={minimalStyles.services} data-icon-motion={motionRunning ? "running" : "paused"} role="region" aria-label={copy.advisor.serviceKicker} tabIndex={0}>
               {ADVISOR_SERVICES.map((service, index) => {
                 const href = index === 0 ? lifeInsurancePageHref
                   : index === 2 ? vehicleInsurancePageHref
@@ -246,15 +257,17 @@ export function AdvisorProfileSections({
                       : index === 7 ? goldPageHref : undefined;
                 const content = (
                   <>
-                    <span className={minimalStyles.serviceArtwork} data-studio={service.artwork.endsWith("-v2.webp")} aria-hidden="true">
-                      <Image
-                        src={service.artwork}
-                        alt=""
-                        width={640}
-                        height={427}
-                        sizes="(max-width: 760px) 45vw, (max-width: 1100px) 43vw, 290px"
-                        className={minimalStyles.serviceIllustration}
-                      />
+                    <span className={minimalStyles.serviceArtwork} style={{ "--icon-delay": `${index * -0.65}s` } as CSSProperties} aria-hidden="true">
+                      <span className={minimalStyles.serviceSculpture}>
+                        <Image
+                          src={service.artwork}
+                          alt=""
+                          width={384}
+                          height={384}
+                          sizes="88px"
+                          className={minimalStyles.serviceIllustration}
+                        />
+                      </span>
                     </span>
                     <span className={minimalStyles.serviceCopy}>
                       <span className={minimalStyles.serviceLabel}>{copy.advisor.services[index]}</span>
@@ -271,13 +284,19 @@ export function AdvisorProfileSections({
                 );
               })}
             </div>
-            {onScheduleMeeting ? (
-              <div className={minimalStyles.sectionAction}>
+            <div className={`${minimalStyles.sectionAction} ${minimalStyles.serviceActions}`}>
+              {motionAllowed ? (
+                <button type="button" className={minimalStyles.serviceMotionToggle} aria-label={motionCopy.label} aria-pressed={motionActive} aria-controls="card-service-icons" onClick={toggleMotion}>
+                  {motionActive ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                  {motionActive ? motionCopy.pause : motionCopy.play}
+                </button>
+              ) : null}
+              {onScheduleMeeting ? (
                 <button type="button" className={minimalStyles.textLink} onClick={onScheduleMeeting}>
                   {copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" />
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </section>
 

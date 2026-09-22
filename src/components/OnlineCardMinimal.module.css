@@ -136,7 +136,8 @@
 .sectionHead { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 80px; margin-bottom: 46px; }
 .heading { margin: 20px 0 0; max-width: 650px; color: var(--card-ink); font-size: clamp(32px, 3.5vw, 48px); line-height: 1.16; letter-spacing: -.055em; font-weight: 500; text-wrap: balance; }
 .sectionLead { margin: 0; padding-top: 29px; color: var(--card-muted); font-size: 15px; line-height: 1.85; }
-.services { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+.services { display: grid; grid-template-columns: repeat(8, minmax(128px, 1fr)); gap: 10px; margin: -4px; padding: 4px 4px 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 4px; scrollbar-width: thin; scrollbar-color: var(--card-line) transparent; }
+.services:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 4px; border-radius: 16px; }
 .service {
   --card-bg: #0d161e;
   --card-surface: #14222d;
@@ -148,28 +149,48 @@
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  min-height: 286px;
-  padding: 22px;
+  min-width: 0;
+  min-height: 220px;
+  padding: 24px 12px 14px;
+  scroll-snap-align: start;
   overflow: hidden;
   border: 1px solid var(--card-line);
-  border-radius: 22px;
+  border-radius: 16px;
   background: var(--card-surface);
   color: var(--card-ink);
   text-decoration: none;
 }
-.serviceArtwork { position: relative; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; height: 166px; margin: -12px -12px 12px; }
-.serviceArtwork .serviceIllustration { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; transform: scale(1.04); transition: transform .55s cubic-bezier(.2,.8,.2,1); }
-.serviceArtwork[data-studio="true"] .serviceIllustration { mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent), linear-gradient(0deg, transparent, #000 6%, #000 98%, transparent); mask-composite: intersect; }
-.service:hover .serviceIllustration, .service:focus-visible .serviceIllustration { transform: scale(1.07); }
-.serviceCopy { position: relative; display: flex; flex: 1; flex-direction: column; gap: 8px; padding-top: 15px; border-top: 1px solid color-mix(in srgb, var(--card-line) 65%, transparent); }
+.serviceArtwork { position: relative; display: flex; align-items: center; justify-content: center; align-self: center; flex: 0 0 auto; width: 88px; max-width: 100%; height: 88px; margin: 0 auto 10px; perspective: 480px; pointer-events: none; mix-blend-mode: lighten; }
+.serviceSculpture { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; mask-image: linear-gradient(transparent, #000 12% 88%, transparent), linear-gradient(90deg, transparent, #000 12% 88%, transparent); mask-composite: intersect; animation: serviceSculptureFloat 7s ease-in-out infinite; animation-delay: var(--icon-delay, 0s); animation-play-state: paused; }
+.serviceArtwork .serviceIllustration { display: block; width: 100%; height: 100%; object-fit: contain; }
+.serviceSculpture::after { content: ""; position: absolute; inset: -20% -100%; background: linear-gradient(110deg, transparent 40%, #d3f5ff12 49%, #f5fcff20 50%, transparent 59%); mix-blend-mode: screen; opacity: 0; transform: translateX(-28%); animation: serviceSculptureGlint 7s ease-in-out infinite; animation-delay: var(--icon-delay, 0s); animation-play-state: paused; }
+.services[data-icon-motion="running"] .serviceSculpture, .services[data-icon-motion="running"] .serviceSculpture::after { animation-play-state: running; }
+@keyframes serviceSculptureFloat {
+  0%, 100% { transform: translateY(1px) rotateX(0) rotateY(-7deg) rotateZ(-1deg); }
+  50% { transform: translateY(-3px) rotateX(4deg) rotateY(7deg) rotateZ(1deg); }
+}
+@keyframes serviceSculptureGlint {
+  0%, 25%, 75%, 100% { opacity: 0; }
+  30% { transform: translateX(-28%); }
+  48% { opacity: .6; }
+  70% { transform: translateX(28%); }
+}
+.serviceCopy { position: relative; display: flex; flex: 1; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--card-line) 65%, transparent); }
 a.service { transition: transform .2s, border-color .2s, box-shadow .2s; }
-a.service:hover { transform: translateY(-4px); border-color: color-mix(in srgb, var(--card-accent) 45%, transparent); box-shadow: 0 14px 32px #1639460b; }
-.serviceLabel { display: block; max-width: 225px; min-height: 46px; font-size: 16px; font-weight: 500; line-height: 1.45; letter-spacing: -.025em; }
-.serviceSummary { display: block; max-width: 225px; color: var(--card-muted); font-size: 12px; font-weight: 400; line-height: 1.65; text-wrap: pretty; }
-.serviceNumber { position: absolute; top: 20px; left: 22px; color: var(--card-muted); opacity: .7; font-size: 10px; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
-.serviceArrow { position: absolute; top: 16px; right: 18px; width: 28px; height: 28px; padding: 6px; border: 1px solid var(--card-line); border-radius: 50%; background: color-mix(in srgb, var(--card-surface) 70%, transparent); stroke-width: 1.5; color: var(--card-muted); transition: color .2s, background .2s; }
+a.service:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--card-accent) 45%, transparent); box-shadow: 0 8px 20px #1639460b; }
+a.service:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 2px; }
+.serviceLabel { display: block; min-height: 3.9em; font-size: 13px; font-weight: 500; line-height: 1.3; letter-spacing: -.02em; text-wrap: pretty; }
+.serviceSummary { display: block; color: var(--card-muted); font-size: 11px; font-weight: 400; line-height: 1.5; text-wrap: pretty; }
+.serviceNumber { position: absolute; top: 12px; left: 12px; color: var(--card-muted); opacity: .7; font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.serviceArrow { position: absolute; top: 9px; right: 9px; width: 22px; height: 22px; padding: 4px; border: 1px solid var(--card-line); border-radius: 50%; background: color-mix(in srgb, var(--card-surface) 70%, transparent); stroke-width: 1.5; color: var(--card-muted); transition: color .2s, background .2s; }
 a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(--card-ink); color: var(--card-bg); }
 .sectionAction { display: flex; justify-content: flex-end; margin-top: 28px; }
+.serviceActions { align-items: center; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
+.serviceActions > .textLink { margin-left: auto; }
+.serviceMotionToggle { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 8px 0; border: 0; background: transparent; color: var(--card-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.serviceMotionToggle svg { width: 13px; height: 13px; }
+.serviceMotionToggle:hover { color: var(--card-ink); }
+.serviceMotionToggle:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 4px; border-radius: 4px; }
 .company { width: min(100% - 40px, 1440px); margin-inline: auto; border: 1px solid var(--card-line); border-radius: 30px; background: var(--card-soft); }
 .companyHead { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1.15fr; gap: 80px; align-items: center; min-height: 180px; margin-bottom: 48px; }
 .companyName { margin: 20px 0 0; font-size: clamp(46px, 5vw, 70px); font-weight: 600; letter-spacing: -.06em; line-height: 1.1; }
@@ -275,7 +296,6 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .heroSaveButton { padding-inline: 16px; }
   .personalIntro { gap: 44px; }
   .sectionHead, .companyHead, .officeGrid { gap: 40px; }
-  .services { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .vigBand { gap: 30px; padding-inline: 30px; }
 }
 @media (max-width: 1000px) {
@@ -333,14 +353,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .sectionHead { grid-template-columns: 1fr; gap: 20px; margin-bottom: 28px; }
   .sectionLead { padding: 0; font-size: 14px; }
   .heading { margin-top: 16px; font-size: 34px; text-wrap: pretty; }
-  .services { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
-  .service { min-height: 256px; padding: 16px 14px; border-radius: 18px; }
-  .serviceArtwork { height: 133px; margin: -5px -8px 8px; }
-  .serviceCopy { gap: 7px; padding-top: 12px; }
-  .serviceLabel { min-height: 38px; font-size: 13px; }
-  .serviceSummary { font-size: 10px; line-height: 1.6; }
-  .serviceNumber { left: 14px; top: 15px; font-size: 9px; }
-  .serviceArrow { right: 12px; top: 12px; width: 24px; height: 24px; padding: 5px; }
+  .services { grid-template-columns: repeat(8, minmax(152px, 1fr)); }
   .sectionAction { justify-content: flex-start; }
   .company { width: calc(100% - 20px); border-radius: 24px; }
   .companyHead { grid-template-columns: 1fr; gap: 28px; margin-bottom: 30px; }
@@ -384,9 +397,6 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .dialogHeader h2 { font-size: 25px; }
 }
 @media (max-width: 380px) {
-  .service { padding-inline: 12px; }
-  .serviceArtwork { height: 118px; }
-  .serviceLabel { font-size: 12px; }
   .hero .actions { align-items: stretch; }
   .hero .primaryButton, .heroSaveButton { flex: 1 1 100%; justify-content: center; }
   .exploreLink { max-width: 155px; }
@@ -398,6 +408,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   to { opacity: 1; transform: translateY(0); }
 }
 :global(:root[data-motion="off"]) .heroIdentity > * { animation: none !important; transition: none !important; }
+:global(:root[data-motion="off"]) .serviceSculpture, :global(:root[data-motion="off"]) .serviceSculpture::after { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .shell *, .shell *::before, .shell *::after, .dialog * { scroll-behavior: auto; transition: none !important; animation: none !important; }
 }

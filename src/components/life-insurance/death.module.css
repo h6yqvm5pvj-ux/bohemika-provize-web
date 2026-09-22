@@ -1,0 +1,17 @@
+.benefits { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin-top: 28px; padding: 0; list-style: none; }
+.benefit { position: relative; grid-column: span 2; min-width: 0; padding: 24px; border: 1px solid var(--border); border-radius: 22px; background: linear-gradient(150deg, var(--card), var(--surface)); }
+.benefit:nth-child(n + 4) { grid-column: span 3; }
+.benefit > svg { box-sizing: content-box; padding: 13px; margin-bottom: 26px; border: 1px solid var(--border); border-radius: 16px; color: var(--accent); background: var(--accent-bg); }
+.number { position: absolute; top: 28px; right: 24px; color: var(--muted); font-size: 12px; letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+.benefit h3 { font-size: 19px; font-weight: 500; line-height: 1.25; letter-spacing: -.03em; }
+.benefit p { margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+@media (max-width: 760px) {
+  .benefits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .benefit, .benefit:nth-child(n + 4) { grid-column: auto; }
+  .benefit:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 639px) {
+  .benefits { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .benefit { padding: 22px; }
+  .benefit > svg { margin-bottom: 18px; }
+}

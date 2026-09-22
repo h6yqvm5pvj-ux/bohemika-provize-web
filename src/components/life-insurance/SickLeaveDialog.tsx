@@ -1,10 +1,11 @@
 "use client";
 
-import { BadgeCheck, Calculator, CalendarDays, X } from "lucide-react";
+import { BadgeCheck, Calculator } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { SickLeaveCalculator } from "./SickLeaveCalculator";
-import { SICK_LEAVE_COPY } from "./sickLeaveCopy";
+import { SICK_LEAVE_COPY, SICK_LEAVE_SOURCES } from "./sickLeaveCopy";
+import { RiskDetailHeader, RiskDetailHero, RiskDetailMeeting } from "./RiskDetailPresentation";
 import styles from "./sickLeave.module.css";
 
 type SickLeaveDialogProps = {
@@ -50,18 +51,14 @@ export function SickLeaveDialog({ locale, theme, onClose, onMeeting }: SickLeave
 
   return <dialog id="sick-leave-dialog" ref={dialogRef} className={styles.dialog} data-theme={theme} aria-labelledby="sick-leave-title" onCancel={onClose}>
     <div className={styles.panel}>
-      <header className={styles.header}>
-        <div><p className={styles.kicker}>{copy.kicker}</p><h2 id="sick-leave-title" className={styles.title}>{copy.title}</h2></div>
-        <button type="button" className={styles.close} aria-label={copy.close} onClick={onClose}><X size={20} aria-hidden="true" /></button>
-      </header>
+      <RiskDetailHeader kicker={copy.kicker} closeLabel={copy.close} onClose={onClose} />
       <div className={styles.tabs} role="group" aria-label={copy.tabs}>
         <button type="button" aria-pressed={tab === "overview"} aria-controls="sick-leave-overview" onClick={() => changeTab("overview")}>{copy.overview}</button>
         <button ref={calculatorTabRef} type="button" aria-pressed={tab === "calculator"} aria-controls="sick-leave-calculator" onClick={() => changeTab("calculator")}>{copy.calculator}</button>
       </div>
       <div ref={contentRef} className={styles.content}>
+        <RiskDetailHero risk="sick-leave" title={copy.title} intro={tab === "overview" ? copy.intro : undefined} compact={tab === "calculator"} badge={tab === "overview" ? <><BadgeCheck size={16} aria-hidden="true" />{copy.badge}</> : undefined} />
         <div id="sick-leave-overview" hidden={tab !== "overview"}>
-          <p className={styles.badge}><BadgeCheck size={17} aria-hidden="true" />{copy.badge}</p>
-          <p className={styles.lead}>{copy.intro}</p>
           <p className={styles.paragraph}>{copy.coverage}</p>
           <div className={styles.actions}><button type="button" className={styles.primary} onClick={showCalculator}><Calculator size={18} aria-hidden="true" />{copy.calculateCta}</button></div>
           <section className={styles.section}>
@@ -75,7 +72,7 @@ export function SickLeaveDialog({ locale, theme, onClose, onMeeting }: SickLeave
             <div className={styles.example}>
               <h4>{copy.exampleTitle}</h4><p className={styles.paragraph}>{copy.exampleText}</p>
               <div className={styles.twoColumns}>
-                <div className={styles.exampleResult}><span>{copy.retroExample}</span><strong>{money(15000)}</strong></div>
+                <div className={`${styles.exampleResult} ${styles.exampleFeatured}`}><span>{copy.retroExample}</span><strong>{money(15000)}</strong></div>
                 <div className={styles.exampleResult}><span>{copy.followingExample}</span><strong>{money(8000)}</strong></div>
               </div>
               <p className={styles.paragraph}>{copy.exampleNote}</p>
@@ -86,10 +83,13 @@ export function SickLeaveDialog({ locale, theme, onClose, onMeeting }: SickLeave
             <h3>{copy.checksTitle}</h3>
             <ul className={styles.checks}>{copy.checks.map(([title, text]) => <li key={title}><h4>{title}</h4><p>{text}</p></li>)}</ul>
           </section>
-          <div className={styles.sources}><a href="https://www.cpp.cz/zivotni-a-urazove-pojisteni/neon" target="_blank" rel="noreferrer noopener">{copy.privateSource}</a></div>
+          <div className={styles.sources}>
+            <a href={SICK_LEAVE_SOURCES.cpp} target="_blank" rel="noreferrer noopener">{copy.privateSource}</a>
+            <a href={SICK_LEAVE_SOURCES.generali} target="_blank" rel="noreferrer noopener">{copy.otherPrivateSource}</a>
+          </div>
         </div>
         <div id="sick-leave-calculator" hidden={tab !== "calculator"}><SickLeaveCalculator locale={locale} /></div>
-        {onMeeting && <div className={styles.actions}><button type="button" className={styles.primary} onClick={onMeeting}><CalendarDays size={18} aria-hidden="true" />{copy.meetingCta}</button></div>}
+        {onMeeting && <RiskDetailMeeting label={copy.meetingCta} onClick={onMeeting} />}
       </div>
     </div>
   </dialog>;

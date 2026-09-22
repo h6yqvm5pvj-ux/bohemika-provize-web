@@ -1,12 +1,12 @@
 .cardTitle { font-size: 16px; line-height: 1.4; font-weight: 600; }
 .recommendationTitle { margin-top: 8px; }
 .advantages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 20px; }
-.advantages li { min-width: 0; padding-top: 16px; border-top: 1px solid var(--border); }
-.advantages strong { display: block; color: var(--accent); font-size: 26px; font-weight: 500; letter-spacing: -.04em; }
+.advantages li { min-width: 0; padding: 22px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); }
+.advantages strong { display: block; color: var(--accent); font-size: 20px; font-weight: 500; line-height: 1.3; letter-spacing: -.03em; }
 .advantages p { margin-top: 8px; font-size: 13px; line-height: 1.65; color: var(--muted); }
 .options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .options li { padding: 9px 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--accent); background: var(--card); font-size: 14px; font-weight: 600; }
-.model { padding: 24px; margin-top: 28px; border: 1px solid var(--border); border-radius: 22px; background: var(--card); }
+.model { padding: 28px; margin-top: 36px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 26px; background: linear-gradient(150deg, var(--accent-bg), var(--card) 65%); }
 .model h3 { font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -.03em; }
 .field { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; min-width: 0; font-size: 14px; font-weight: 600; }
 .field select { width: min(100%, 320px); min-height: 48px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); font-size: 16px; }
@@ -19,13 +19,15 @@
 .presets button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
 .comparison { display: grid; gap: 18px; margin-top: 24px; }
 .comparisonRow { padding: 18px; border-radius: 16px; background: var(--surface); }
-.comparisonRow:last-child { background: var(--accent-bg); }
+.comparisonRow:last-child { background: var(--spotlight); }
+.comparisonRow:last-child dt { color: var(--spotlight-muted); }
 .comparisonRow dt { font-size: 13px; color: var(--muted); }
 .comparisonRow dd { margin-top: 6px; color: var(--text); font-size: clamp(26px, 3.5vw, 36px); font-weight: 500; line-height: 1.2; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.comparisonRow:last-child dd { color: var(--accent); }
+.comparisonRow:last-child dd { color: var(--spotlight-accent); }
 .bar { height: 8px; margin-top: 14px; border-radius: 99px; background: var(--border); overflow: hidden; }
 .bar span { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
-.comparisonRow:last-child .bar span { background: var(--accent); }
+.comparisonRow:last-child .bar { background: #ffffff20; }
+.comparisonRow:last-child .bar span { background: var(--spotlight-accent); }
 .multiplier { margin-top: 16px; color: var(--accent); font-size: 14px; font-weight: 600; }
 .formula { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .table { width: 100%; margin-top: 16px; border-collapse: collapse; font-size: 13px; }
@@ -35,9 +37,8 @@
 .table td:last-child { color: var(--accent); font-weight: 600; white-space: nowrap; }
 @media (max-width: 639px) {
   .advantages { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .advantages li { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: start; gap: 12px; }
-  .advantages strong { font-size: 23px; }
-  .advantages p { margin: 0; }
+  .advantages li { padding: 20px; }
+  .advantages strong { font-size: 19px; }
   .model { padding: 16px; }
   .model h3 { font-size: 22px; }
   .field select { width: 100%; }

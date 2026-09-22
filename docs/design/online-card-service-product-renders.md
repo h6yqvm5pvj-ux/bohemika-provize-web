@@ -1,10 +1,12 @@
 # Online card service product renders
 
+Historical v2 set. On 2026-09-22, the public cards switched to the [compact Higgsfield v3 icon set](./online-card-service-icons-higgsfield-v3.md). The older assets and prompts below are retained for reference.
+
 ## Final studio background edit
 
 Use case: precise-object-edit. Edit this exact product image. Change ONLY the background. Replace all of the white or gray background, checkerboard pattern and white floor with a fully OPAQUE, perfectly UNIFORM dark navy backdrop, exact hex color #14222D (RGB 20,34,45). This solid color must reach all four image edges and corners. Remove the checkerboard through gaps and openings in the object as well. Preserve the photographed object exactly: same material, colors, fine textures, shape, dimensions, position and framing. Keep its realistic studio product-render character. A very restrained dark contact shadow directly under the object is fine. No halos, no glow, no gradients, no vignette, no reflections or decor in the background. Do not make a transparent image and do not draw any checkerboard. The final deliverable is a normal opaque RGB product image on the exact plain #14222D studio background. No text or new symbols. Keep the original 3:2 landscape framing.
 
-The active service illustrations follow the user's reference `public/images/investicni-zlato-slitky.png`: realistic materials and studio product rendering. The gold card uses that original image directly, without regeneration or modification.
+The v2 service illustrations followed the user's reference `public/images/investicni-zlato-slitky.png`: realistic materials and studio product rendering. The gold card used that original image directly, without regeneration or modification.
 
 The other seven subjects were created with the built-in imagegen tool, each using that same image as a style reference. Their final product renders use a solid `#14222D` studio background that matches the service cards in both page themes. The optimized WebP assets are stored as `public/images/online-card-services/*-v2.webp`. The previous cyan illustration set is retained separately and is no longer used by these cards.
 

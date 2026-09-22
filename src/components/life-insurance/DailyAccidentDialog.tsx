@@ -1,10 +1,10 @@
 "use client";
 
-import { Bandage, CalendarCheck, CalendarDays, ShieldPlus, TrendingUp, X } from "lucide-react";
-import Image from "next/image";
+import { Bandage, CalendarCheck, ShieldPlus, TrendingUp } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { DAILY_ACCIDENT_COPY, DAILY_ACCIDENT_SOURCES } from "./dailyAccidentCopy";
+import { RiskDetailHeader, RiskDetailHero, RiskDetailMeeting } from "./RiskDetailPresentation";
 import styles from "./sickLeave.module.css";
 import accidentStyles from "./dailyAccident.module.css";
 
@@ -42,15 +42,9 @@ export function DailyAccidentDialog({ locale, theme, onClose, onMeeting }: Daily
 
   return <dialog id="daily-accident-dialog" ref={dialogRef} className={styles.dialog} data-theme={theme} aria-labelledby="daily-accident-title" onCancel={onClose}>
     <div className={styles.panel}>
-      <header className={styles.header}>
-        <div><p className={styles.kicker}>{copy.kicker}</p><h2 id="daily-accident-title" className={styles.title}>{copy.title}</h2></div>
-        <button type="button" className={styles.close} aria-label={copy.close} onClick={onClose}><X size={20} aria-hidden="true" /></button>
-      </header>
+      <RiskDetailHeader kicker={copy.kicker} closeLabel={copy.close} onClose={onClose} />
       <div className={styles.content}>
-        <div className={accidentStyles.intro}>
-          <div><p className={styles.badge}><Bandage size={17} aria-hidden="true" />{copy.badge}</p><p className={styles.lead}>{copy.intro}</p></div>
-          <Image src="/images/life-insurance/daily-accident-recovery-transparent.webp" alt="" width={1200} height={800} sizes="(max-width: 639px) calc(100vw - 32px), 430px" className={accidentStyles.illustration} />
-        </div>
+        <RiskDetailHero risk="daily-accident" title={copy.title} intro={copy.intro} badge={<><Bandage size={16} aria-hidden="true" />{copy.badge}</>} />
         <section className={styles.section}>
           <h3>{copy.calculationTitle}</h3><p className={styles.paragraph}>{copy.calculation}</p>
           <p className={accidentStyles.formula}>{copy.formula}</p><p className={styles.paragraph}>{copy.formulaNote}</p>
@@ -71,26 +65,29 @@ export function DailyAccidentDialog({ locale, theme, onClose, onMeeting }: Daily
         </aside>
         <section className={styles.section} aria-labelledby="daily-accident-progression-title">
           <h3 id="daily-accident-progression-title">{copy.progressionTitle}</h3><p className={styles.paragraph}>{copy.progression}</p>
-          <table className={accidentStyles.table} aria-labelledby="daily-accident-progression-title">
-            <thead><tr><th scope="col">{copy.daysHeading}</th><th scope="col">{copy.rateHeading}</th></tr></thead>
-            <tbody>{PROGRESSION_RATES.map((rate, index) => <tr key={rate}><td>{copy.periods[index]}</td><td>{rate} %</td></tr>)}</tbody>
-          </table>
-          <p className={styles.paragraph}>{copy.progressionNote}</p>
-          <div className={styles.example}>
-            <h4>{copy.exampleTitle}</h4>
-            <div className={styles.twoColumns}>
-              <div className={styles.exampleResult}><span>{copy.withoutProgression}</span><strong>{money(30000)}</strong></div>
-              <div className={styles.exampleResult}><span>{copy.withProgression}</span><strong>{money(36000)}</strong></div>
+          <div className={accidentStyles.productExample}>
+            <p id="daily-accident-example-title" className={styles.kicker}>{copy.progressionExample}</p>
+            <table className={accidentStyles.table} aria-labelledby="daily-accident-example-title">
+              <thead><tr><th scope="col">{copy.daysHeading}</th><th scope="col">{copy.rateHeading}</th></tr></thead>
+              <tbody>{PROGRESSION_RATES.map((rate, index) => <tr key={rate}><td>{copy.periods[index]}</td><td><span className={accidentStyles.rate}><span className={accidentStyles.rateTrack} aria-hidden="true"><span style={{ width: `${rate / 5}%` }} /></span><span>{rate} %</span></span></td></tr>)}</tbody>
+            </table>
+            <p className={styles.paragraph}>{copy.progressionNote}</p>
+            <div className={styles.example}>
+              <h4>{copy.exampleTitle}</h4>
+              <div className={styles.twoColumns}>
+                <div className={styles.exampleResult}><span>{copy.withoutProgression}</span><strong>{money(30000)}</strong></div>
+                <div className={`${styles.exampleResult} ${styles.exampleFeatured}`}><span>{copy.withProgression}</span><strong>{money(36000)}</strong></div>
+              </div>
+              <p className={styles.paragraph}>{copy.exampleCalculation}</p><p className={styles.paragraph}>{copy.exampleNote}</p>
             </div>
-            <p className={styles.paragraph}>{copy.exampleCalculation}</p><p className={styles.paragraph}>{copy.exampleNote}</p>
+            <div className={styles.sources}><a href={`${DAILY_ACCIDENT_SOURCES.terms}#page=52`} target="_blank" rel="noreferrer noopener">{copy.termsSource}</a></div>
           </div>
         </section>
         <section className={styles.section}><h3>{copy.checkTitle}</h3><ul className={styles.checks}>{copy.checks.map(([title, description]) => <li key={title}><h4>{title}</h4><p>{description}</p></li>)}</ul></section>
         <div className={styles.sources}>
           <a href={DAILY_ACCIDENT_SOURCES.product} target="_blank" rel="noreferrer noopener">{copy.productSource}</a>
-          <a href={`${DAILY_ACCIDENT_SOURCES.terms}#page=52`} target="_blank" rel="noreferrer noopener">{copy.termsSource}</a>
         </div>
-        {onMeeting && <div className={styles.actions}><button type="button" className={styles.primary} onClick={onMeeting}><CalendarDays size={18} aria-hidden="true" />{copy.meetingCta}</button></div>}
+        {onMeeting && <RiskDetailMeeting label={copy.meetingCta} onClick={onMeeting} />}
       </div>
     </div>
   </dialog>;

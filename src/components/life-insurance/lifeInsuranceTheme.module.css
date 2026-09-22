@@ -90,13 +90,47 @@
 .heroCaption { max-width: 360px; margin: 10px auto 0; text-align: center; }
 .heroProtectionTitle { margin: 0; color: var(--life-ink); font-size: 16px; font-weight: 500; line-height: 1.4; letter-spacing: -.03em; text-wrap: balance; }
 .heroProtectionText { max-width: 42ch; margin: 8px auto 0; color: var(--life-muted); font-size: 12px; line-height: 1.6; text-wrap: pretty; }
-.coverageGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 28px; padding: 0; list-style: none; }
-.coverageItem { min-width: 0; border: 1px solid var(--life-line); border-radius: 20px; background: var(--life-surface); }
-.coverageCard { display: grid; grid-template-columns: 104px minmax(0, 1fr) 16px; align-items: center; gap: 18px; width: 100%; height: 100%; min-height: 142px; padding: 18px; border: 0; border-radius: inherit; background: transparent; text-align: left; color: var(--life-ink); }
+.statistics { position: relative; isolation: isolate; overflow: hidden; padding: 24px; border: 1px solid var(--life-line); border-radius: 26px; background: var(--life-soft); }
+.statisticsBackdrop { position: absolute; inset: 0; pointer-events: none; user-select: none; background: radial-gradient(ellipse at 100% 0, #5bc4e51a, transparent 65%); }
+.statisticsContent { position: relative; }
+.statisticsHeader { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: center; gap: 28px; }
+.statisticsIntro { min-width: 0; }
+.statisticsKicker { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--life-accent); font-size: 10px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; }
+.statisticsKicker svg { width: 16px; height: 16px; flex-shrink: 0; }
+.statistics .statisticsTitle { max-width: 18ch; margin: 10px 0 0; color: var(--life-ink); font-size: clamp(30px, 3.2vw, 42px); line-height: 1.12; text-wrap: balance; }
+.statisticsSummary { max-width: 47ch; margin: 10px 0 0; color: var(--life-muted); font-size: 14px; line-height: 1.6; }
+.statisticsSummary strong { color: var(--life-ink); font-weight: 600; white-space: nowrap; }
+.statisticsTotal { min-width: 0; text-align: center; }
+.statisticsMap { position: relative; width: 100%; max-width: 370px; margin: 0 auto; aspect-ratio: 5 / 3; transform: scale(1.2); }
+.statisticsMapShape { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
+.statisticsMapLabel { position: absolute; top: 48%; left: 49%; width: 82%; transform: translate(-50%, -50%); }
+.statisticsMapCount { margin: 0; color: var(--life-accent); font-size: clamp(36px, 4.5vw, 58px); font-weight: 600; line-height: 1; letter-spacing: -.065em; white-space: nowrap; }
+.statisticsDate { max-width: 36ch; margin: 7px auto 0; color: var(--life-muted); font-size: 9px; font-weight: 500; line-height: 1.5; letter-spacing: .08em; text-transform: uppercase; text-wrap: balance; }
+.statisticsDegrees { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.statisticsCard { display: grid; grid-template-areas: "level" "count" "range" "pension"; grid-template-rows: auto auto 1fr auto; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--life-line); border-radius: 16px; background: var(--life-surface); }
+.statisticsDegree { grid-area: level; place-self: start; margin: 0; padding: 5px 9px; border-radius: 6px; background: var(--life-tint); color: var(--life-accent); font-size: 10px; line-height: 1.4; letter-spacing: .12em; text-transform: uppercase; }
+.statisticsCardCount { grid-area: count; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; margin: 0; color: var(--life-ink); font-size: 32px; font-weight: 500; line-height: 1.1; letter-spacing: -.05em; }
+.statisticsCardCount span { color: var(--life-muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.statisticsRange { grid-area: range; display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--life-muted); font-size: 12px; line-height: 1.6; }
+.statisticsRange svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; color: var(--life-accent); }
+.statisticsPension { grid-area: pension; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--life-line); }
+.statisticsPension p:first-child { margin: 0; color: var(--life-muted); font-size: 10px; font-weight: 500; line-height: 1.5; letter-spacing: .1em; text-transform: uppercase; }
+.statisticsPension p:last-child { flex-shrink: 0; margin: 0; color: var(--life-accent); font-size: 23px; font-weight: 500; line-height: 1.2; letter-spacing: -.035em; white-space: nowrap; }
+.statisticsQuestion { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 16px; border-radius: 12px; background: var(--life-tint); }
+.statisticsQuestion svg { width: 24px; height: 24px; flex-shrink: 0; color: var(--life-accent); stroke-width: 1.5; }
+.statisticsQuestion p { margin: 0; color: var(--life-ink); font-size: 19px; font-weight: 500; line-height: 1.4; letter-spacing: -.03em; }
+.statisticsSources { margin: 10px 0 0; color: var(--life-muted); font-size: 11px; line-height: 1.7; }
+.coverageGrid { display: grid; grid-template-columns: repeat(8, minmax(128px, 1fr)); gap: 10px; margin: 28px -6px 0; padding: 6px 6px 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 6px; scrollbar-width: thin; scrollbar-color: var(--life-line) transparent; list-style: none; }
+.coverageItem { min-width: 0; scroll-snap-align: start; border: 1px solid var(--life-line); border-radius: 18px; background: var(--life-surface); }
+.coverageCard { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; width: 100%; height: 100%; min-height: 200px; padding: 14px; border: 0; border-radius: inherit; background: transparent; text-align: left; color: var(--life-ink); }
 button.coverageCard { cursor: pointer; transition: background .2s; }
 button.coverageCard:hover { background: var(--life-tint); }
 button.coverageCard:focus-visible { outline: 2px solid var(--life-accent); outline-offset: 4px; }
-.riskArtwork { display: block; min-width: 0; aspect-ratio: 1; }
+.coverageText { display: block; min-width: 0; width: 100%; }
+.coverageTitle { display: block; font-size: 14px; font-weight: 500; line-height: 1.35; letter-spacing: -.02em; text-wrap: pretty; }
+.coverageDetail { display: block; margin-top: 5px; color: var(--life-accent); font-size: 12px; line-height: 1.5; }
+.coverageArrow { position: absolute; top: 14px; right: 14px; width: 16px; height: 16px; color: var(--life-accent); }
+.riskArtwork { display: block; flex-shrink: 0; align-self: center; width: 88px; max-width: 100%; min-width: 0; margin-top: 4px; aspect-ratio: 1; }
 .riskArtwork img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .icon { color: var(--life-accent); background: var(--life-tint); }
 .navInner { display: flex; align-items: center; justify-content: space-between; gap: 24px; width: min(100% - 112px, 1200px); min-height: 90px; margin-inline: auto; }
@@ -114,21 +148,41 @@ button.coverageCard:focus-visible { outline: 2px solid var(--life-accent); outli
 @media (max-width: 1023px) {
   .heroLayout { gap: 24px; }
   .heroIntro { font-size: 15px; }
+  .statistics { padding: 22px; }
+  .statisticsHeader { gap: 24px; }
+  .statisticsMap { transform: translateY(-6px) scale(1.14); }
+  .statisticsCard { padding: 16px; }
+  .statisticsCardCount { font-size: 30px; }
+  .statisticsPension { flex-direction: column; align-items: flex-start; gap: 4px; }
 }
 @media (max-width: 900px) {
-  .coverageCard { grid-template-columns: 80px minmax(0, 1fr) 16px; gap: 12px; padding: 14px; }
   .hero { padding: 28px; }
   .article > section, .article > footer, .navInner { width: calc(100% - 48px); }
 }
 @media (max-width: 767px) {
   .heroLayout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .heroFigure { max-width: 280px; }
+  .statisticsHeader { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .statisticsDegrees { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 18px; }
+  .statisticsCard { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "level pension" "count pension" "range range"; grid-template-rows: auto auto auto; gap: 8px 12px; }
+  .statisticsPension { display: flex; flex-direction: column; justify-content: center; padding: 0 0 0 14px; border-top: 0; border-left: 1px solid var(--life-line); }
+  .statisticsPension p:first-child { max-width: 19ch; letter-spacing: .05em; }
+  .statisticsPension p:last-child { font-size: 23px; }
+  .statisticsRange { padding-top: 8px; border-top: 1px solid var(--life-line); }
 }
 @media (max-width: 639px) {
-  .coverageGrid { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 24px; }
-  .coverageCard { grid-template-columns: 84px minmax(0, 1fr) 16px; min-height: 116px; }
+  .coverageGrid { grid-template-columns: repeat(8, minmax(148px, 1fr)); margin-top: 24px; }
   .heroMotionToggle { min-height: 44px; }
   .content { padding-inline: 12px; }
+  .statistics { padding: 16px; }
+  .statistics .statisticsTitle { max-width: 19ch; }
+  .statisticsSummary { font-size: 13px; }
+  .statisticsMap { max-width: 300px; transform: translateY(-4px) scale(1.08); }
+  .statisticsCard { padding: 12px; }
+  .statisticsCardCount { column-gap: 5px; font-size: 28px; }
+  .statisticsQuestion { align-items: flex-start; gap: 10px; padding: 12px; }
+  .statisticsQuestion svg { width: 20px; height: 20px; margin-top: 2px; }
+  .statisticsQuestion p { font-size: 17px; }
   .hero { padding: 24px 20px; border-radius: 24px; }
   .heroTitle { margin-top: 16px; font-size: clamp(32px, 9vw, 42px); }
   .heroIntro { margin-top: 14px; }
@@ -145,7 +199,13 @@ button.coverageCard:focus-visible { outline: 2px solid var(--life-accent); outli
   .navBack span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 @media (max-width: 359px) {
-  .coverageCard { grid-template-columns: 68px minmax(0, 1fr) 14px; gap: 10px; padding: 12px; }
+  .statisticsCard { grid-template-columns: minmax(0, 1fr); grid-template-areas: "level" "count" "range" "pension"; grid-template-rows: auto auto 1fr auto; }
+  .statisticsRange { padding-top: 0; border-top: 0; }
+  .statisticsPension { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--life-line); }
+  .statisticsPension p:first-child { max-width: 18ch; font-size: 9px; overflow-wrap: normal; }
+  .statisticsPension p:last-child { flex-shrink: 0; margin: 0; font-size: 20px; white-space: nowrap; }
+  .coverageCard { gap: 10px; padding: 12px; }
+  .coverageArrow { top: 12px; right: 12px; }
   .navLogo { width: 100px; }
   .navLogo img { width: 100px; height: 100px; top: -51px; }
   .navTools { gap: 4px; }
