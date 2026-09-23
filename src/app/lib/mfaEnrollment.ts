@@ -1,6 +1,9 @@
 import type { TotpSecret, User } from "firebase/auth";
 
 export type MfaEnrollmentSecret = Pick<TotpSecret, "secretKey" | "generateQrCodeUrl"> & { challengeId: string };
+export class MfaEnrollmentRequestError extends Error {
+  constructor(message: string, readonly code: string, readonly status: number, readonly retryAfterSeconds = 0) { super(message); }
+}
 async function request(user: User, body: { action: "request" | "verify" | "complete"; challengeId?: string; code?: string }) {
   let response: Response;
   try {
@@ -8,9 +11,16 @@ async function request(user: User, body: { action: "request" | "verify" | "compl
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
       body: JSON.stringify(body), credentials: "omit", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(30_000),
     });
-  } catch { throw new Error("Server pro nastavení 2FA neodpovídá. Zkus to prosím znovu."); }
+  } catch { throw new MfaEnrollmentRequestError("Server pro nastavení 2FA neodpovídá. Zkus to prosím znovu.", "mfa/network", 0); }
   const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok !== true) throw new Error(typeof payload?.error === "string" ? payload.error : "Nastavení 2FA se nepodařilo ověřit.");
+  if (!response.ok || payload?.ok !== true) {
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    throw new MfaEnrollmentRequestError(
+      typeof payload?.error === "string" ? payload.error : "Nastavení 2FA se nepodařilo ověřit.",
+      typeof payload?.code === "string" ? payload.code : "mfa/unavailable", response.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(3600, Math.ceil(retryAfter)) : 0,
+    );
+  }
   return payload;
 }
 export async function requestMfaEmailCode(user: User): Promise<string> {

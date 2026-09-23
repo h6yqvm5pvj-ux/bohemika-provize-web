@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ context: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), config: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ getMfaEnrollmentContext: mocks.context }));
+vi.mock("@/lib/server/firebaseAuthEmail", () => ({ requireAuthEmailConfig: mocks.config,
+  FirebaseAuthEmailError: class extends Error { constructor(readonly code: string) { super("Odesílání e-mailů není správně nastavené. Kontaktuj podporu."); } },
+}));
 vi.mock("@/lib/server/mfaEnrollment", () => ({ requestMfaEnrollment: mocks.request, verifyMfaEnrollmentEmail: mocks.verify, finishMfaEnrollment: mocks.complete,
-  MfaEnrollmentError: class extends Error { constructor(readonly code: string, message: string, readonly status = 400) { super(message); } },
+  MfaEnrollmentError: class extends Error { constructor(readonly code: string, message: string, readonly status = 400, readonly retryAfterSeconds?: number) { super(message); } },
 }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.limit, getRequestIp: () => "127.0.0.1", applyRateLimitHeaders: () => {} }));
 import { POST } from "./route";
 import { MfaEnrollmentError } from "@/lib/server/mfaEnrollment";
+import { FirebaseAuthEmailError } from "@/lib/server/firebaseAuthEmail";
 const context = { uid: "synthetic", email: "synthetic@example.test", emailVerified: true, authTime: 1000 };
 const challengeId = "00000000-0000-4000-8000-000000000001";
 function request(body: unknown = { action: "request" }, headers: Record<string, string> = {}) {
@@ -54,5 +58,19 @@ describe("MFA email enrollment API", () => {
     mocks.verify.mockRejectedValue(new MfaEnrollmentError("mfa/expired", "Vyžádej nový kód.", 409));
     const response = await POST(request({ action: "verify", challengeId, code: "123456" }));
     expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: "mfa/expired", error: "Vyžádej nový kód." });
+  });
+  it("does not consume the user's email quota when delivery is not configured", async () => {
+    mocks.config.mockImplementation(() => { throw new FirebaseAuthEmailError("auth/configuration-not-found"); });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "auth/configuration-not-found", error: expect.stringContaining("Odesílání e-mailů") });
+    expect(mocks.limit).toHaveBeenCalledOnce(); // only the IP abuse limit
+    expect(mocks.request).not.toHaveBeenCalled();
+  });
+  it("preserves the remaining resend cooldown", async () => {
+    mocks.request.mockRejectedValue(new MfaEnrollmentError("mfa/resend-wait", "Chvíli počkej.", 429, 25));
+    const response = await POST(request());
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("25");
   });
 });

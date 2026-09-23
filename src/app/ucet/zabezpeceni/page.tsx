@@ -12,7 +12,7 @@ import { MfaCodeInput } from "@/components/account-setup/MfaCodeInput";
 import styles from "@/components/account-setup/authSurface.module.css";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
 import { initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, type Auth, type User } from "firebase/auth";
-import { completeMfaEnrollment, confirmMfaEmailCode, requestMfaEmailCode, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
+import { completeMfaEnrollment, confirmMfaEmailCode, requestMfaEmailCode, MfaEnrollmentRequestError, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
 import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
@@ -41,6 +41,33 @@ export default function TotpRecoveryPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyError, setCopyError] = useState(false);
   const [isMfaHelpOpen, setIsMfaHelpOpen] = useState(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
+  const [canRetrySetup, setCanRetrySetup] = useState(false);
+  const [useProductionSetup, setUseProductionSetup] = useState(false);
+
+  const showSetupError = useCallback((failure: unknown) => {
+    const requestError = failure instanceof MfaEnrollmentRequestError ? failure : null;
+    const localMailMissing = requestError?.code === "auth/configuration-not-found" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+    setUseProductionSetup(localMailMissing);
+    setError(requestError?.message ?? resolveAuthEmailErrorMessage(failure,
+      "Nastavení 2FA se nepodařilo zahájit. Zkus to znovu; pokud přihlášení vypršelo, vrať se na přihlášení."));
+    const seconds = requestError?.retryAfterSeconds ?? 0;
+    setRetrySeconds(seconds);
+    setRetryAt(seconds ? Date.now() + seconds * 1000 : 0);
+    setCanRetrySetup(requestError?.status !== 401);
+  }, []);
+
+  useEffect(() => {
+    if (!retryAt) return;
+    const timer = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+      setRetrySeconds(remaining);
+      if (!remaining) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [retryAt]);
 
   const requestEmail = useCallback(async (user: User) => {
     // The email endpoint accepts only a recent setup session and sends an inbox
@@ -98,8 +125,8 @@ export default function TotpRecoveryPage() {
       }
       setBusy(true);
       try { await continueSetup(user); }
-      catch {
-        if (!cancelled) setError("Nastavení 2FA se nepodařilo zahájit. Vrať se na přihlášení a zkus to znovu.");
+      catch (failure) {
+        if (!cancelled) showSetupError(failure);
       } finally {
         if (!cancelled) {
           setBusy(false);
@@ -113,7 +140,16 @@ export default function TotpRecoveryPage() {
       setupAuth.current = null; setupApp.current = null;
       if (auth && app) void signOut(auth).catch(() => {}).finally(() => deleteApp(app));
     };
-  }, [continueSetup, router]);
+  }, [continueSetup, router, showSetupError]);
+
+  async function retrySetup() {
+    const user = setupAuth.current?.currentUser;
+    if (busy || retrySeconds > 0 || !user) return;
+    setBusy(true); setError("");
+    try { await continueSetup(user); }
+    catch (failure) { showSetupError(failure); }
+    finally { setBusy(false); }
+  }
 
   async function start(event: FormEvent) {
     event.preventDefault(); if (busy) return;
@@ -126,6 +162,10 @@ export default function TotpRecoveryPage() {
       const { user } = await signInWithEmailAndPassword(setupAuth.current, email.trim(), password);
       await continueSetup(user);
     } catch (failure) {
+      if (failure instanceof MfaEnrollmentRequestError) {
+        showSetupError(failure);
+        return;
+      }
       const authCode = (failure as { code?: string }).code;
       setError(isAccountBlockedError(failure) ? ACCOUNT_BLOCKED_MESSAGE : authCode === "auth/multi-factor-auth-required"
         ? "Dvoufázové ověření už je zapnuté. Pro odblokování účtu kontaktuj administrátora a potom se přihlas běžným způsobem."
@@ -142,8 +182,8 @@ export default function TotpRecoveryPage() {
       if (!(await beginEnrollment(user))) {
         setError("E-mail ještě není ověřený. Otevři odkaz ve své schránce a potom klikni znovu.");
       }
-    } catch {
-      setError("Ověření se nepodařilo dokončit. Zkus to znovu; pokud přihlášení vypršelo, obnov stránku a přihlas se heslem.");
+    } catch (failure) {
+      showSetupError(failure);
     } finally { setBusy(false); }
   }
 
@@ -190,10 +230,10 @@ export default function TotpRecoveryPage() {
 
   async function resendInboxCode() {
     const user = setupAuth.current?.currentUser;
-    if (busy || !user) return;
+    if (busy || retrySeconds > 0 || !user) return;
     setBusy(true); setError("");
     try { setEmailChallengeId(await requestMfaEmailCode(user)); setSecret(null); setCode(""); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "Kód se nepodařilo odeslat."); }
+    catch (failure) { showSetupError(failure); }
     finally { setBusy(false); }
   }
 
@@ -204,12 +244,18 @@ export default function TotpRecoveryPage() {
     catch { setCopyError(true); }
   }
 
-  if (!entryReady || (!manualRecovery && !secret && !emailChallengeId && !awaitingEmail && !done)) {
-    return <AuthPage title={error ? "Nastavení se nepodařilo zahájit" : "Připravuji zabezpečení"}
-      description={error ? "Vrať se na přihlášení a zkus to znovu." : "Ověřuji rozpracované nastavení účtu."}
-      busy={!entryReady} icon={<ShieldCheck size={24} />}>
-      {error ? <p role="alert" className={`${styles.notice} ${styles.noticeError}`}>{error}</p>
+  if (useProductionSetup || !entryReady || ((!manualRecovery || canRetrySetup) && !secret && !emailChallengeId && !awaitingEmail && !done)) {
+    return <AuthPage title={useProductionSetup ? "Dokonči zabezpečení na Bohemka.App" : error ? "Nastavení se nepodařilo zahájit" : "Připravuji zabezpečení"}
+      description={useProductionSetup ? "Tato místní verze nemá nastavené odesílání potvrzovacích e-mailů." : error ? canRetrySetup ? "Přihlášení heslem proběhlo. Nastavení můžeš zkusit znovu tady." : "Pro pokračování se přihlas znovu." : "Ověřuji rozpracované nastavení účtu."}
+      busy={!entryReady || busy} icon={<ShieldCheck size={24} />}>
+      {useProductionSetup ? <>
+        <p className={styles.notice}>Na bohemka.app se přihlas stejným e-mailem a heslem. Potom potvrď kód z e-mailu a nastav novou ověřovací aplikaci.</p>
+        <a href="https://bohemka.app/login" className={`${styles.primary} ${styles.fullWidth}`}>Pokračovat na bohemka.app <ArrowRight size={18} aria-hidden="true" /></a>
+      </> : error ? <p role="alert" className={`${styles.notice} ${styles.noticeError}`}>{error}</p>
         : <p role="status" className={styles.hint}><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Chvíli strpení…</p>}
+      {canRetrySetup && !useProductionSetup && <button type="button" disabled={busy || retrySeconds > 0} onClick={() => void retrySetup()} className={`${styles.primary} ${styles.fullWidth}`}>
+        {busy ? "Připravuji…" : retrySeconds > 0 ? `Zkusit znovu za ${retrySeconds} s` : "Zkusit nastavení znovu"}
+      </button>}
       <Link href="/login" className={styles.backLink}><ArrowLeft size={16} aria-hidden="true" /> Zpět na přihlášení</Link>
     </AuthPage>;
   }
@@ -249,7 +295,7 @@ export default function TotpRecoveryPage() {
               onChange={value => { setCode(value); setError(""); }}
               describedBy="recovery-code-help recovery-error" />
             <p id="recovery-code-help" className={styles.hint}>V Authenticatoru otevři přidaný účet Bohemka.App. Jeho aktuální šestimístný kód opiš sem a klikni na „Potvrdit kód“.</p>
-            <button type="button" disabled={busy} className={styles.secondary} onClick={() => void resendInboxCode()}>Začít znovu s novým e-mailovým kódem</button>
+            <button type="button" disabled={busy || retrySeconds > 0} className={styles.secondary} onClick={() => void resendInboxCode()}>{retrySeconds > 0 ? `Nový kód za ${retrySeconds} s` : "Začít znovu s novým e-mailovým kódem"}</button>
           </div>
         </> : awaitingEmail ? <>
           <p role="status" className={styles.notice}>{emailRequested
@@ -266,7 +312,7 @@ export default function TotpRecoveryPage() {
               onChange={value => { setCode(value); setError(""); }} describedBy="mfa-email-help recovery-error" />
             <p id="mfa-email-help" className={styles.hint}>Kód platí 10 minut. Použij poslední doručený e-mail a zkontroluj i spam.</p>
           </div>
-          <button type="button" disabled={busy} className={styles.secondary} onClick={() => void resendInboxCode()}>Poslat nový kód</button>
+          <button type="button" disabled={busy || retrySeconds > 0} className={styles.secondary} onClick={() => void resendInboxCode()}>{retrySeconds > 0 ? `Nový kód za ${retrySeconds} s` : "Poslat nový kód"}</button>
         </> : <>
           <p className={styles.notice}>Nastavení ověřovací aplikace samo neodblokuje účet. Obnovení přístupu dokončí administrátor.</p>
           <div className={styles.fieldGroup}>

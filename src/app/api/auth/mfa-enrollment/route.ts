@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMfaEnrollmentContext } from "@/lib/server/firebaseAdmin";
+import { FirebaseAuthEmailError, requireAuthEmailConfig } from "@/lib/server/firebaseAuthEmail";
 import { finishMfaEnrollment, MfaEnrollmentError, requestMfaEnrollment, verifyMfaEnrollmentEmail } from "@/lib/server/mfaEnrollment";
 import { applyRateLimitHeaders, consumeRateLimit, getRequestIp } from "@/lib/server/rateLimit";
 
@@ -24,7 +25,10 @@ async function readBody(req: Request): Promise<Record<string, unknown> | null> {
 async function limit(key: string, scope: string, count: number) {
   const result = await consumeRateLimit({ namespace: `api:mfa-enrollment:${scope}`, key, limit: count, windowMs: 10 * 60_000 });
   if (result.allowed && result.store !== "unavailable") return null;
-  const response = json({ ok: false, error: "Příliš mnoho pokusů nebo dočasně nedostupné ověření. Zkus to později." }, result.store === "unavailable" ? 503 : 429);
+  const unavailable = result.store === "unavailable";
+  const response = json({ ok: false, code: unavailable ? "mfa/unavailable" : "mfa/rate-limited",
+    error: unavailable ? "Ověření je dočasně nedostupné. Zkus to za chvíli znovu."
+      : "Příliš mnoho pokusů o nastavení 2FA. Počkej na dokončení odpočtu a pokračuj zde." }, unavailable ? 503 : 429);
   applyRateLimitHeaders(response.headers, result); return response;
 }
 export async function POST(req: Request) {
@@ -41,13 +45,21 @@ export async function POST(req: Request) {
         typeof body.code !== "string" || !/^\d{6}$/.test(body.code))) return json({ ok: false, error: "Zadej všech šest číslic kódu." }, 400);
     let context;
     try { context = await getMfaEnrollmentContext(token); }
-    catch { return json({ ok: false, error: "Přihlas se znovu. Nastavení vyžaduje ověřený e-mail a účet bez existujícího 2FA." }, 401); }
+    catch { return json({ ok: false, code: "mfa/reauth-required", error: "Přihlas se znovu. Nastavení vyžaduje ověřený e-mail a účet bez existujícího 2FA." }, 401); }
+    // A missing mail configuration cannot send a code. Do not spend the user's
+    // limited email requests or replace an existing challenge in that case.
+    if (body.action === "request") requireAuthEmailConfig();
     const userLimit = await limit(context.uid, String(body.action), body.action === "request" ? 3 : 10); if (userLimit) return userLimit;
     if (body.action === "request") return json({ ok: true, ...await requestMfaEnrollment(context) });
     if (body.action === "verify") return json({ ok: true, ...await verifyMfaEnrollmentEmail(context, token, body.challengeId as string, body.code as string) });
     return json({ ok: true, ...await finishMfaEnrollment(context, token, body.challengeId as string, body.code as string) });
   } catch (error) {
-    if (error instanceof MfaEnrollmentError) return json({ ok: false, code: error.code, error: error.message }, error.status);
+    if (error instanceof MfaEnrollmentError) {
+      const response = json({ ok: false, code: error.code, error: error.message }, error.status);
+      if (error.retryAfterSeconds) response.headers.set("Retry-After", String(error.retryAfterSeconds));
+      return response;
+    }
+    if (error instanceof FirebaseAuthEmailError) return json({ ok: false, code: error.code, error: error.message }, 503);
     // No OTPs, enrollment secrets, tokens or provider responses in logs.
     return json({ ok: false, error: "Nastavení 2FA teď není dostupné. Zkus to prosím znovu." }, 503);
   }

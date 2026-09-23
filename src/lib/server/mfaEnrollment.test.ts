@@ -148,8 +148,11 @@ describe("fresh inbox proof before TOTP enrollment", () => {
   });
   it("invalidates the old proof when resending and enforces the cooldown", async () => {
     vi.useFakeTimers(); const c = await requestMfaEnrollment(context); const oldCode = code();
-    await expect(requestMfaEnrollment(context)).rejects.toMatchObject({ code: "mfa/resend-wait" });
-    vi.advanceTimersByTime(60_001); const next = await requestMfaEnrollment(context);
+    await expect(requestMfaEnrollment(context)).rejects.toMatchObject({ code: "mfa/resend-wait", retryAfterSeconds: 60 });
+    vi.advanceTimersByTime(35_000);
+    await expect(requestMfaEnrollment(context)).rejects.toMatchObject({ code: "mfa/resend-wait", retryAfterSeconds: 25 });
+    expect(challenge().id).toBe(c.challengeId);
+    vi.advanceTimersByTime(25_001); const next = await requestMfaEnrollment(context);
     expect(next.challengeId).not.toBe(c.challengeId);
     await expect(verifyMfaEnrollmentEmail(context, "token", c.challengeId, oldCode)).rejects.toThrow();
     expect(state.fetch).not.toHaveBeenCalled();

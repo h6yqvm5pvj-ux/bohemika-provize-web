@@ -33,4 +33,8 @@ describe("client MFA enrollment transport", () => {
     fetcher.mockRejectedValueOnce(new Error("private network details"));
     await expect(requestMfaEmailCode(user)).rejects.toThrow("Server pro nastavení 2FA neodpovídá");
   });
+  it("preserves rate limit details for an in-place retry countdown", async () => {
+    fetcher.mockResolvedValue(Response.json({ ok: false, code: "mfa/rate-limited", error: "Chvíli počkej." }, { status: 429, headers: { "Retry-After": "37" } }));
+    await expect(requestMfaEmailCode(user)).rejects.toMatchObject({ message: "Chvíli počkej.", code: "mfa/rate-limited", status: 429, retryAfterSeconds: 37 });
+  });
 });

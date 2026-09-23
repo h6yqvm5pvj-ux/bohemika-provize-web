@@ -24,7 +24,8 @@ vi.mock("firebase/auth", () => ({
   multiFactor: () => ({ getSession: mocks.session, enroll: mocks.enroll }),
   TotpMultiFactorGenerator: { generateSecret: mocks.secret, assertionForEnrollment: (secret: unknown, code: string) => ({ secret, code }) },
 }));
-vi.mock("@/app/lib/mfaEnrollment", () => ({ requestMfaEmailCode: mocks.requestCode, confirmMfaEmailCode: mocks.secret, completeMfaEnrollment: mocks.enroll }));
+vi.mock("@/app/lib/mfaEnrollment", async importOriginal => ({ ...await importOriginal<typeof import("@/app/lib/mfaEnrollment")>(), requestMfaEmailCode: mocks.requestCode, confirmMfaEmailCode: mocks.secret, completeMfaEnrollment: mocks.enroll }));
+import { MfaEnrollmentRequestError } from "@/app/lib/mfaEnrollment";
 import TotpRecoveryPage from "./page";
 
 describe("administrator-assisted recovery remains isolated from application sign-in", () => {
@@ -50,7 +51,7 @@ describe("administrator-assisted recovery remains isolated from application sign
     container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container);
     await act(async () => root.render(<TotpRecoveryPage />));
   });
-  afterEach(async () => { await act(async () => root.unmount()); container.remove(); window.history.replaceState(null, "", "/"); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+  afterEach(async () => { await act(async () => root.unmount()); container.remove(); window.history.replaceState(null, "", "/"); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
   async function input(id: string, value: string) {
     await act(async () => {
       const field = container.querySelector<HTMLInputElement>(`#${id}`)!;
@@ -102,6 +103,43 @@ describe("administrator-assisted recovery remains isolated from application sign
     expect(mocks.initAuth).not.toHaveBeenCalled();
     expect(mocks.secret).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("keeps the password session and retries a rate-limited setup after the countdown", async () => {
+    vi.useFakeTimers();
+    mocks.requestCode.mockRejectedValueOnce(new MfaEnrollmentRequestError("Příliš mnoho pokusů. Chvíli počkej.", "mfa/rate-limited", 429, 30));
+    await arriveFromLogin(false);
+    expect(container.textContent).toContain("Příliš mnoho pokusů");
+    const retry = container.querySelector<HTMLButtonElement>("button")!;
+    expect(retry.disabled).toBe(true);
+    expect(retry.textContent).toContain("30 s");
+    await act(async () => retry.click());
+    expect(mocks.requestCode).toHaveBeenCalledOnce();
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(retry.disabled).toBe(false);
+    await act(async () => retry.click());
+    expect(mocks.requestCode).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("#mfa-email-code")).not.toBeNull();
+    expect(mocks.login).not.toHaveBeenCalled();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+  });
+  it("shows the actual mail configuration problem without claiming a code was sent", async () => {
+    mocks.requestCode.mockRejectedValueOnce(new MfaEnrollmentRequestError("Odesílání e-mailů není správně nastavené. Kontaktuj podporu.", "auth/configuration-not-found", 503));
+    await arriveFromLogin(false);
+    expect(container.textContent).toContain("místní verze nemá nastavené odesílání");
+    expect(container.querySelector('a[href="https://bohemka.app/login"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("jsme odeslali");
+    expect(mocks.secret).not.toHaveBeenCalled();
+  });
+  it("does not retry an expired setup session or expose raw Firebase errors", async () => {
+    mocks.requestCode.mockRejectedValueOnce(new MfaEnrollmentRequestError("Přihlas se znovu.", "mfa/reauth-required", 401));
+    await arriveFromLogin(false);
+    expect(container.textContent).toContain("Přihlas se znovu.");
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.querySelector('a[href="/login"]')).not.toBeNull();
+    mocks.reload.mockRejectedValueOnce(new Error("private-provider-details"));
+    await arriveFromLogin(false);
+    expect(container.textContent).not.toContain("private-provider-details");
   });
   it("returns to login when the one-time setup session is gone after a reload", async () => {
     await arriveFromLogin();
@@ -293,7 +331,7 @@ describe("administrator-assisted recovery remains isolated from application sign
     mocks.reload.mockRejectedValue(new Error("expired"));
     await submit();
     expect(mocks.secret).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("Ověření se nepodařilo dokončit");
+    expect(container.textContent).toContain("Nastavení 2FA se nepodařilo zahájit");
   });
   it("rechecks the email from normal login and rejects a stale verified flag", async () => {
     mocks.reload.mockImplementation(async () => { mocks.auth.currentUser.emailVerified = false; });

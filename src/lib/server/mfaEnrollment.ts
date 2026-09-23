@@ -10,7 +10,7 @@ const LIFETIME_MS = 10 * 60_000;
 const MAX_ATTEMPTS = 5;
 type Context = Awaited<ReturnType<typeof getMfaEnrollmentContext>>;
 export class MfaEnrollmentError extends Error {
-  constructor(readonly code: string, message: string, readonly status = 400) { super(message); }
+  constructor(readonly code: string, message: string, readonly status = 400, readonly retryAfterSeconds?: number) { super(message); }
 }
 const expired = () => new MfaEnrollmentError("mfa/expired", "Potvrzení vypršelo nebo už bylo použito. Vyžádej si nový kód do e-mailu.", 409);
 const unavailable = () => new MfaEnrollmentError("mfa/unavailable", "Nastavení 2FA teď není dostupné. Zkus to prosím znovu.", 503);
@@ -86,8 +86,9 @@ export async function requestMfaEnrollment(context: Context) {
     const previous = (await tx.get(challenge)).data();
     assertBlock(data, context);
     if (previous?.state === "finalizing" && previous.finalizationStartedAtMs > now - 60_000) throw expired();
-    if (previous?.requestedAtMs > now - 60_000) {
-      throw new MfaEnrollmentError("mfa/resend-wait", "Před dalším odesláním kódu počkej jednu minutu.", 429);
+    if (previous && previous.requestedAtMs > now - 60_000) {
+      throw new MfaEnrollmentError("mfa/resend-wait", "Před dalším odesláním kódu chvíli počkej.", 429,
+        Math.max(1, Math.ceil((previous.requestedAtMs + 60_000 - now) / 1000)));
     }
     // This existing deny document also protects direct Firestore access and
     // prevents activation of this pending setup via Firebase's public enrollment API.
