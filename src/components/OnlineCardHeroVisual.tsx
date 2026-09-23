@@ -5,11 +5,11 @@ export function OnlineCardHeroVisual() {
   return (
     <div className={styles.heroScene} aria-hidden="true">
       <Image
-        src="/images/online-card-hero/bohemika-metal-logo-protection-v1.webp"
+        src="/icons/bohemika-chrome-symbol.png"
         alt=""
         fill
-        priority
-        unoptimized
+        sizes="(max-width: 760px) 60px, (max-width: 1000px) 220px, 300px"
+        preload
         draggable={false}
       />
     </div>
