@@ -190,6 +190,10 @@ describe("commission statement parsing helpers", () => {
   });
 
   it("maps known statement products to internal product metadata", () => {
+    expect(resolveStatementProduct("CPP_1C_II")).toMatchObject({
+      productKey: "cppAuto",
+      category: "auto",
+    });
     expect(resolveStatementProduct("CPP_NRF_LF")).toMatchObject({
       rawCode: "CPP_NRF_LF",
       label: "ČPP Životní pojištění NEON",

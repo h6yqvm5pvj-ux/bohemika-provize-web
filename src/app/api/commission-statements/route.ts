@@ -247,6 +247,7 @@ type ProcessingResult = {
 };
 
 const AUTO_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
+  CPP_1C_II: "cppAuto",
   CPP_ACPIII: "cppAuto",
   CPP_ACPIV: "cppAuto",
   CPP_ACPIVZ: "cppAuto",

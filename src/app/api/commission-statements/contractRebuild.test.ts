@@ -116,6 +116,49 @@ async function expectRebuilt(actorEmail: string) {
 }
 
 describe("rebuilding a contract from saved statements", () => {
+  it("rebuilds legacy CPP Auto premium changes and compares each renewal with its statement base", async () => {
+    setContext({ teamEmails: [owner] });
+    records.set(entryPath, {
+      contractNumber, productKey: "cppAuto", userEmail: owner,
+      frequencyRaw: "annual", position: "poradce5", originalPosition: "poradce5",
+      acquisitionType: "inherited", inputAmount: 5462, effectiveInputAmount: 5462,
+      calculationInputAmount: 5462, contractSignedDate: "2012-08-08", policyStartDate: "2012-08-14",
+      items: [{ title: "Následná provize", code: "B101", amount: 578.972 }], total: 578.972,
+    });
+    for (const [index, [year, code, base, commission]] of [
+      [2025, "B113", 7188, "761,93"], [2026, "B114", 7528, "797,97"],
+    ].entries()) {
+      const cells = [161887, contractNumber, "08.08.2012", "14.08.2012", "Testovací klient", "R", "CPP_1C_II", code, base, "", "10,60%", "5", commission, "0,00"];
+      records.set(`usersPrivate/${viewer}/commissionStatements/statement-${index + 1}`, {
+        statementNumber: String(index + 1), statementDate: `23.07.${year}`,
+        period: `01.06.${year} - 30.06.${year}`,
+        autoPremiumRows: [], autoPremiumContractNumbers: [],
+        html: `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`,
+      });
+    }
+    // The rebuild must repair stale statement indexes and stay repeatable.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await POST(request());
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, matchedStatements: 2, processedStatements: 2, processingResult: { errors: [] } });
+      const contract = records.get(entryPath)!;
+      expect(contract.premiumStatementHistory).toEqual([
+        expect.objectContaining({ commissionCode: "B113", anniversaryDate: "2025-08-14", previousAnnualPremium: 5462, newAnnualPremium: 7188, differenceAnnual: 1726 }),
+        expect.objectContaining({ commissionCode: "B114", anniversaryDate: "2026-08-14", previousAnnualPremium: 7188, newAnnualPremium: 7528, differenceAnnual: 340 }),
+      ]);
+      expect(contract.commissionPayouts).toEqual([
+        expect.objectContaining({ code: "B113", amount: 761.93, expectedAmount: 761.93, difference: 0, status: "paid" }),
+        expect.objectContaining({ code: "B114", amount: 797.97, expectedAmount: 797.97, difference: 0, status: "paid" }),
+      ]);
+      expect(contract).toMatchObject({ inputAmount: 5462, contractSignedDate: "2012-08-08", policyStartDate: "2012-08-14" });
+      for (let index = 1; index <= 2; index++) {
+        const statement = records.get(`usersPrivate/${viewer}/commissionStatements/statement-${index}`)!;
+        expect(statement.autoPremiumContractNumbers).toEqual([contractNumber]);
+        expect(statement.autoPremiumRows).toEqual([expect.objectContaining({ productKey: "cppAuto", productCode: "CPP_1C_II", premiumKind: "auto_change" })]);
+      }
+    }
+  });
+
   it("fills every acquisition installment from archived statements and preserves sources on repeated rebuilds", async () => {
     setContext({ teamEmails: [owner] });
     const calculation = calculateCppPPRbez(6989, "semiannual", "poradce5");
