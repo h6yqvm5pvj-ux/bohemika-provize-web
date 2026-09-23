@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ context: vi.fn(), config: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), config: vi.fn(), approved: vi.fn(), recover: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ getMfaEnrollmentContext: mocks.context }));
 vi.mock("@/lib/server/firebaseAuthEmail", () => ({ requireAuthEmailConfig: mocks.config,
   FirebaseAuthEmailError: class extends Error { constructor(readonly code: string) { super("Odesílání e-mailů není správně nastavené. Kontaktuj podporu."); } },
 }));
 vi.mock("@/lib/server/mfaEnrollment", () => ({ requestMfaEnrollment: mocks.request, verifyMfaEnrollmentEmail: mocks.verify, finishMfaEnrollment: mocks.complete,
+  hasApprovedMfaRecovery: mocks.approved, startApprovedMfaRecovery: mocks.recover,
   MfaEnrollmentError: class extends Error { constructor(readonly code: string, message: string, readonly status = 400, readonly retryAfterSeconds?: number) { super(message); } },
 }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.limit, getRequestIp: () => "127.0.0.1", applyRateLimitHeaders: () => {} }));
@@ -18,16 +19,18 @@ function request(body: unknown = { action: "request" }, headers: Record<string, 
 }
 beforeEach(() => {
   vi.resetAllMocks(); mocks.context.mockResolvedValue(context); mocks.limit.mockResolvedValue({ allowed: true, store: "firestore" });
+  mocks.approved.mockResolvedValue(false); mocks.recover.mockResolvedValue({ challengeId, secretKey: "SYNTHETIC" });
   mocks.request.mockResolvedValue({ challengeId }); mocks.verify.mockResolvedValue({ challengeId, secretKey: "SYNTHETIC" }); mocks.complete.mockResolvedValue({ enrolled: true });
 });
 describe("MFA email enrollment API", () => {
-  it.each(["request", "verify", "complete"])("authenticates and dispatches %s without issuing cookies", async action => {
-    const response = await POST(request({ action, ...(action === "request" ? {} : { challengeId, code: "012345" }) }));
+  it.each(["start", "request", "verify", "complete"])("authenticates and dispatches %s without issuing cookies", async action => {
+    const starting = action === "request" || action === "start";
+    const response = await POST(request({ action, ...(starting ? {} : { challengeId, code: "012345" }) }));
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.has("set-cookie")).toBe(false);
     expect(mocks.context).toHaveBeenCalledWith("synthetic-token");
-    const call = action === "request" ? mocks.request : action === "verify" ? mocks.verify : mocks.complete;
-    expect(call).toHaveBeenCalledWith(...(action === "request" ? [context] : [context, "synthetic-token", challengeId, "012345"]));
+    const call = starting ? mocks.request : action === "verify" ? mocks.verify : mocks.complete;
+    expect(call).toHaveBeenCalledWith(...(starting ? [context] : [context, "synthetic-token", challengeId, "012345"]));
   });
   it.each([
     [{ action: "request" }, { Authorization: "" }, 401],
@@ -36,6 +39,7 @@ describe("MFA email enrollment API", () => {
     [{ action: "request" }, { "Content-Type": "text/plain" }, 415],
     [{ action: "unknown" }, {}, 400],
     [{ action: "request", email: "foreign@example.test" }, {}, 400],
+    [{ action: "start", skipEmail: true }, {}, 400],
     [{ action: "verify", challengeId, code: "123" }, {}, 400],
     [{ action: "complete", challengeId, code: "123456", sessionInfo: "forged" }, {}, 400],
     ["not-json", {}, 400],
@@ -72,5 +76,15 @@ describe("MFA email enrollment API", () => {
     const response = await POST(request());
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("25");
+  });
+  it("uses only a server-approved recovery without spending email quota or sending email", async () => {
+    mocks.approved.mockResolvedValue(true);
+    const response = await POST(request({ action: "start" }));
+    expect(response.status).toBe(200);
+    expect(mocks.context).toHaveBeenCalledWith("synthetic-token");
+    expect(mocks.recover).toHaveBeenCalledWith(context, "synthetic-token");
+    expect(mocks.limit).toHaveBeenLastCalledWith(expect.objectContaining({ namespace: "api:mfa-enrollment:recovery", key: context.uid, limit: 3 }));
+    expect(mocks.config).not.toHaveBeenCalled(); expect(mocks.request).not.toHaveBeenCalled();
+    expect(response.headers.has("set-cookie")).toBe(false);
   });
 });

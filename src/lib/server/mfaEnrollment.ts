@@ -52,6 +52,43 @@ function assertBlock(data: FirebaseFirestore.DocumentData | undefined, context: 
       (isPersistentAccountBlock(data) && data?.reason !== "missing-totp") ||
       (id && data?.mfaEmailChallengeId !== id)) throw expired();
 }
+function recoveryApproved(data: FirebaseFirestore.DocumentData | undefined, context: Context) {
+  const approval = data?.mfaRecoveryApproval;
+  const now = Date.now();
+  return data?.reason === "missing-totp" && approval?.email === context.email &&
+    typeof approval.revocationGeneration === "string" && approval.revocationGeneration === data.revocation?.generation &&
+    Number.isSafeInteger(approval.approvedAtMs) && Number.isSafeInteger(approval.expiresAtMs) &&
+    approval.approvedAtMs <= now && approval.expiresAtMs > now &&
+    approval.expiresAtMs - approval.approvedAtMs <= 60 * 60_000;
+}
+
+/** Operator-only, account-scoped approval; never accepted from a browser body. */
+export async function hasApprovedMfaRecovery(context: Context) {
+  const { block } = refs(context);
+  const data = (await block.get()).data();
+  assertBlock(data, context);
+  return recoveryApproved(data, context);
+}
+
+export async function startApprovedMfaRecovery(context: Context, token: string) {
+  const { challenge, block } = refs(context);
+  const id = randomUUID(), now = Date.now();
+  await adminDb!.runTransaction(async tx => {
+    const data = (await tx.get(block)).data();
+    const previous = (await tx.get(challenge)).data();
+    assertBlock(data, context);
+    if (!recoveryApproved(data, context)) throw new MfaEnrollmentError("mfa/recovery-not-approved", "Obnovu musí znovu povolit administrátor.", 403);
+    if (previous?.state === "finalizing" && previous.finalizationStartedAtMs > now - 60_000) throw expired();
+    // Retain the existing exact-factor activation gate. The challenge records
+    // administrator approval explicitly; it does not claim fresh inbox proof.
+    tx.set(block, { ...data, mfaEmailConfirmationRequired: true, mfaEmailChallengeId: id,
+      mfaEmailConfirmedFactorUid: null });
+    tx.set(challenge, { id, uid: context.uid, email: context.email, authTime: context.authTime,
+      state: "starting", approvalMethod: "administrator-recovery", approvedAtMs: data!.mfaRecoveryApproval.approvedAtMs,
+      requestedAtMs: now, expiresAtMs: Math.min(now + LIFETIME_MS, data!.mfaRecoveryApproval.expiresAtMs) });
+  });
+  return startProviderEnrollment(context, token, id);
+}
 async function provider(action: "start" | "finalize", body: Record<string, unknown>) {
   const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!key) throw unavailable();
@@ -132,6 +169,11 @@ export async function verifyMfaEnrollmentEmail(context: Context, token: string, 
     if (outcome === "exhausted") throw expired();
     throw new MfaEnrollmentError("mfa/wrong-email-code", "Kód není správný. Použij kód z posledního potvrzovacího e-mailu.");
   }
+  return startProviderEnrollment(context, token, id);
+}
+
+async function startProviderEnrollment(context: Context, token: string, id: string) {
+  const { challenge, block } = refs(context);
   const response = await provider("start", { idToken: token, totpEnrollmentInfo: {} });
   const session = response?.totpSessionInfo;
   if (!session || typeof session.sharedSecretKey !== "string" || !/^[A-Z2-7]+$/.test(session.sharedSecretKey) ||
@@ -141,7 +183,8 @@ export async function verifyMfaEnrollmentEmail(context: Context, token: string, 
     const record = assertRecord((await tx.get(challenge)).data(), context, id);
     assertBlock((await tx.get(block)).data(), context, id);
     if (record.state !== "starting") throw expired();
-    tx.update(challenge, { state: "qr", encryptedSession, emailConfirmedAtMs: Date.now(), totpAttempts: 0,
+    tx.update(challenge, { state: "qr", encryptedSession,
+      ...(record.approvalMethod === "administrator-recovery" ? {} : { emailConfirmedAtMs: Date.now(), approvalMethod: "email" }), totpAttempts: 0,
       expiresAtMs: Math.min(record.expiresAtMs, Date.parse(session.finalizeEnrollmentTime) || record.expiresAtMs) });
   });
   return { challengeId: id, secretKey: session.sharedSecretKey as string };
@@ -181,7 +224,8 @@ export async function finishMfaEnrollment(context: Context, token: string, id: s
     if (record.state !== "finalizing") throw expired();
     tx.update(challenge, { state: "used", encryptedSession: FieldValue.delete(), factorUid: factors[0].uid });
     // Keep the administrator's block. Activation must match this exact factor.
-    tx.update(block, { mfaEmailConfirmedFactorUid: factors[0].uid });
+    tx.update(block, { mfaEmailConfirmedFactorUid: factors[0].uid,
+      ...(record.approvalMethod === "administrator-recovery" ? { mfaRecoveryApproval: FieldValue.delete() } : {}) });
   });
   return { enrolled: true as const };
 }

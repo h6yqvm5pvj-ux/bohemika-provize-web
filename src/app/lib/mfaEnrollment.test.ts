@@ -1,12 +1,19 @@
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment } from "./mfaEnrollment";
+import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, startMfaEnrollment } from "./mfaEnrollment";
 const fetcher = vi.fn(), getIdToken = vi.fn();
 const user = { email: "synthetic+account@example.test", getIdToken } as unknown as User;
 const challengeId = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal("fetch", fetcher); getIdToken.mockResolvedValue("synthetic-token"); });
 afterEach(() => vi.unstubAllGlobals());
 describe("client MFA enrollment transport", () => {
+  it("can start with either email confirmation or an administrator-approved QR, as decided by the server", async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId }));
+    expect(await startMfaEnrollment(user)).toEqual({ challengeId });
+    fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId, secretKey: "JBSWY3DPEHPK3PXP" }));
+    expect(await startMfaEnrollment(user)).toMatchObject({ challengeId, secret: { challengeId, secretKey: "JBSWY3DPEHPK3PXP" } });
+    expect(fetcher.mock.calls.map(call => JSON.parse(call[1].body))).toEqual([{ action: "start" }, { action: "start" }]);
+  });
   it("sends a bearer token with no application cookie and lets the server choose the recipient", async () => {
     fetcher.mockResolvedValue(Response.json({ ok: true, challengeId }));
     expect(await requestMfaEmailCode(user)).toBe(challengeId);

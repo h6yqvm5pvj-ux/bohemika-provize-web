@@ -12,7 +12,7 @@ import { MfaCodeInput } from "@/components/account-setup/MfaCodeInput";
 import styles from "@/components/account-setup/authSurface.module.css";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
 import { initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, type Auth, type User } from "firebase/auth";
-import { completeMfaEnrollment, confirmMfaEmailCode, requestMfaEmailCode, MfaEnrollmentRequestError, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
+import { completeMfaEnrollment, confirmMfaEmailCode, startMfaEnrollment, MfaEnrollmentRequestError, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
 import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
@@ -86,7 +86,9 @@ export default function TotpRecoveryPage() {
       setAwaitingEmail(true);
       return false;
     }
-    setEmailChallengeId(await requestMfaEmailCode(user));
+    const enrollment = await startMfaEnrollment(user);
+    setEmailChallengeId(enrollment.challengeId);
+    setSecret(enrollment.secret ?? null);
     setCode("");
     setAwaitingEmail(false);
     return true;
@@ -232,7 +234,7 @@ export default function TotpRecoveryPage() {
     const user = setupAuth.current?.currentUser;
     if (busy || retrySeconds > 0 || !user) return;
     setBusy(true); setError("");
-    try { setEmailChallengeId(await requestMfaEmailCode(user)); setSecret(null); setCode(""); }
+    try { await beginEnrollment(user); }
     catch (failure) { showSetupError(failure); }
     finally { setBusy(false); }
   }
@@ -295,7 +297,7 @@ export default function TotpRecoveryPage() {
               onChange={value => { setCode(value); setError(""); }}
               describedBy="recovery-code-help recovery-error" />
             <p id="recovery-code-help" className={styles.hint}>V Authenticatoru otevři přidaný účet Bohemka.App. Jeho aktuální šestimístný kód opiš sem a klikni na „Potvrdit kód“.</p>
-            <button type="button" disabled={busy || retrySeconds > 0} className={styles.secondary} onClick={() => void resendInboxCode()}>{retrySeconds > 0 ? `Nový kód za ${retrySeconds} s` : "Začít znovu s novým e-mailovým kódem"}</button>
+            <button type="button" disabled={busy || retrySeconds > 0} className={styles.secondary} onClick={() => void resendInboxCode()}>{retrySeconds > 0 ? `Zkusit znovu za ${retrySeconds} s` : "Začít nastavení znovu"}</button>
           </div>
         </> : awaitingEmail ? <>
           <p role="status" className={styles.notice}>{emailRequested

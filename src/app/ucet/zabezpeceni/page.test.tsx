@@ -7,7 +7,7 @@ import QRCode from "qrcode";
 const mocks = vi.hoisted(() => ({
   app: { name: "isolated-setup" },
   auth: { currentUser: { email: "synthetic@example.test", emailVerified: true, getIdToken: vi.fn(), reload: vi.fn() } },
-  reload: vi.fn(), sendEmail: vi.fn(), requestCode: vi.fn(),
+  reload: vi.fn(), sendEmail: vi.fn(), requestCode: vi.fn(), startEnrollment: vi.fn(),
   takeSetup: vi.fn(),
   initApp: vi.fn(), initAuth: vi.fn(), login: vi.fn(), session: vi.fn(), secret: vi.fn(), enroll: vi.fn(), signOut: vi.fn(), deleteApp: vi.fn(),
   qrUri: vi.fn(), qrDataUrl: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("firebase/auth", () => ({
   multiFactor: () => ({ getSession: mocks.session, enroll: mocks.enroll }),
   TotpMultiFactorGenerator: { generateSecret: mocks.secret, assertionForEnrollment: (secret: unknown, code: string) => ({ secret, code }) },
 }));
-vi.mock("@/app/lib/mfaEnrollment", async importOriginal => ({ ...await importOriginal<typeof import("@/app/lib/mfaEnrollment")>(), requestMfaEmailCode: mocks.requestCode, confirmMfaEmailCode: mocks.secret, completeMfaEnrollment: mocks.enroll }));
+vi.mock("@/app/lib/mfaEnrollment", async importOriginal => ({ ...await importOriginal<typeof import("@/app/lib/mfaEnrollment")>(), requestMfaEmailCode: mocks.requestCode, startMfaEnrollment: mocks.startEnrollment, confirmMfaEmailCode: mocks.secret, completeMfaEnrollment: mocks.enroll }));
 import { MfaEnrollmentRequestError } from "@/app/lib/mfaEnrollment";
 import TotpRecoveryPage from "./page";
 
@@ -41,6 +41,7 @@ describe("administrator-assisted recovery remains isolated from application sign
     mocks.login.mockResolvedValue({ user: mocks.auth.currentUser });
     mocks.session.mockResolvedValue("synthetic-session");
     mocks.requestCode.mockResolvedValue("00000000-0000-4000-8000-000000000001");
+    mocks.startEnrollment.mockImplementation(async user => ({ challengeId: await mocks.requestCode(user) }));
     mocks.secret.mockResolvedValue({ challengeId: "00000000-0000-4000-8000-000000000001", secretKey: "SYNTHETIC-SETUP-KEY", generateQrCodeUrl: mocks.qrUri });
     mocks.qrUri.mockReturnValue("otpauth://synthetic");
     mocks.qrDataUrl.mockResolvedValue("data:image/png;base64,c3ludGhldGlj");
@@ -140,6 +141,17 @@ describe("administrator-assisted recovery remains isolated from application sign
     mocks.reload.mockRejectedValueOnce(new Error("private-provider-details"));
     await arriveFromLogin(false);
     expect(container.textContent).not.toContain("private-provider-details");
+  });
+  it("goes directly from password sign-in to QR setup for an explicitly approved recovery", async () => {
+    const challengeId = "00000000-0000-4000-8000-000000000001";
+    mocks.startEnrollment.mockResolvedValueOnce({ challengeId, secret: { challengeId, secretKey: "SYNTHETIC-SETUP-KEY", generateQrCodeUrl: mocks.qrUri } });
+    await arriveFromLogin(false);
+    expect(container.querySelector("#recovery-code")).not.toBeNull();
+    expect(container.querySelector("#mfa-email-code")).toBeNull();
+    expect(mocks.requestCode).not.toHaveBeenCalled(); expect(mocks.sendEmail).not.toHaveBeenCalled();
+    await input("recovery-code", "012345"); await submit();
+    expect(mocks.enroll).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("Zabezpečení je nastavené");
   });
   it("returns to login when the one-time setup session is gone after a reload", async () => {
     await arriveFromLogin();

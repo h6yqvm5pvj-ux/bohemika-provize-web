@@ -4,7 +4,7 @@ export type MfaEnrollmentSecret = Pick<TotpSecret, "secretKey" | "generateQrCode
 export class MfaEnrollmentRequestError extends Error {
   constructor(message: string, readonly code: string, readonly status: number, readonly retryAfterSeconds = 0) { super(message); }
 }
-async function request(user: User, body: { action: "request" | "verify" | "complete"; challengeId?: string; code?: string }) {
+async function request(user: User, body: { action: "start" | "request" | "verify" | "complete"; challengeId?: string; code?: string }) {
   let response: Response;
   try {
     response = await fetch("/api/auth/mfa-enrollment", {
@@ -30,11 +30,21 @@ export async function requestMfaEmailCode(user: User): Promise<string> {
 }
 export async function confirmMfaEmailCode(user: User, challengeId: string, code: string): Promise<MfaEnrollmentSecret> {
   const result = await request(user, { action: "verify", challengeId, code });
+  return enrollmentSecret(user, result, challengeId);
+}
+export async function startMfaEnrollment(user: User): Promise<{ challengeId: string; secret?: MfaEnrollmentSecret }> {
+  const result = await request(user, { action: "start" });
+  if (typeof result.challengeId !== "string") throw new Error("Nepodařilo se zahájit nastavení 2FA.");
+  return { challengeId: result.challengeId,
+    ...(result.secretKey !== undefined ? { secret: enrollmentSecret(user, result, result.challengeId) } : {}) };
+}
+function enrollmentSecret(user: User, result: { challengeId?: unknown; secretKey?: unknown }, challengeId: string): MfaEnrollmentSecret {
   if (result.challengeId !== challengeId || typeof result.secretKey !== "string" || !/^[A-Z2-7]+$/.test(result.secretKey)) throw new Error("Nepodařilo se připravit QR kód.");
+  const secretKey = result.secretKey;
   return {
-    challengeId, secretKey: result.secretKey,
+    challengeId, secretKey,
     generateQrCodeUrl(accountName = user.email ?? "Bohemka.App", issuer = "Bohemka.App") {
-      const params = new URLSearchParams({ secret: result.secretKey, issuer, algorithm: "SHA1", digits: "6", period: "30" });
+      const params = new URLSearchParams({ secret: secretKey, issuer, algorithm: "SHA1", digits: "6", period: "30" });
       return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?${params}`;
     },
   };
