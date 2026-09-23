@@ -1,6 +1,6 @@
 # Kompaktní karty služeb — ikony Higgsfield v3
 
-Historická verze; aktuální minimalistické vizitky používají [ikony v4 s animací v CSS](./online-card-service-icons-higgsfield-v4.md).
+Aktuální sada minimalistických vizitek. Po porovnání se životním pojištěním se znovu používají tyto jemnější 3D ikony s průhledným pozadím. Nahrazují [skleněnou sadu v4](./online-card-service-icons-higgsfield-v4.md), která měla neprůhledné tmavé pozadí.
 
 - Datum: 2026-09-22.
 - Generování: Higgsfield plugin, model `gpt_image_2_5`, quality `high`, resolution `1k`, poměr `1:1`, pozadí `transparent`.
@@ -11,7 +11,9 @@ Historická verze; aktuální minimalistické vizitky používají [ikony v4 s a
 
 ## Rozložení
 
-Osm menších karet tvoří jeden řádek; při běžné šířce 1280 px a více jsou viditelné všechny. Na menších displejích řada vodorovně roluje, včetně ovládání klávesnicí. Ikony mají vyhrazený prostor 88 × 88 px. Výška celé řady v češtině na 1440 px je přibližně 255 px. Názvy, popisy a čtyři existující prokliky jsou zachované. Původní obrazové soubory zůstávají v projektu.
+Osm menších karet tvoří jeden řádek; při běžné šířce 1280 px a více jsou viditelné všechny. Na menších displejích řada vodorovně roluje, včetně ovládání klávesnicí. Ikony mají vyhrazený prostor 88 × 88 px. Výška celé řady v češtině na 1440 px je přibližně 245 px. Názvy, popisy a čtyři existující prokliky jsou zachované. Původní obrazové soubory zůstávají v projektu.
+
+Karty přebírají barvy aktuálního tématu: bílé ve světlém režimu a tmavě modré ve tmavém. Stejně jako karty rizik životního pojištění mají rádius 18 px, odsazení 14 px, vycentrované ikony, názvy 14 px, tyrkysové popisky 12 px a jednoduchou šipku vpravo nahoře. Číslování, dělicí čáry, masky a prolínání obrázků jsou odstraněné. Jemné natočení a pohyb ikon v CSS zůstává včetně možnosti pozastavení a respektování omezení pohybu; přejezd odlesku byl odstraněn.
 
 ## Soubory a generování
 
@@ -29,6 +31,8 @@ Osm menších karet tvoří jeden řádek; při běžné šířce 1280 px a víc
 ## Ověření
 
 Všechny výstupy vizuálně zkontrolovány v přehledu a v prohlížeči. Chrome: šířky 1440, 1280, 1024, 768, 390 a 320 px, světlý a tmavý režim, čeština, angličtina a ukrajinština. Osm scénářů prošlo bez chyb JavaScriptu, rozbitých obrázků, přetékajícího textu nebo vodorovného přetékání stránky. Ověřeno osm karet na jedné řádce, čtyři odkazy a posouvání včetně klávesnice a dosažení posledního odkazu. Cílený ESLint, TypeScript bez emitování a `git diff --check` prošly. Snímky, původní PNG a kontrolní report jsou v `.tmp/service-icons-v3/`.
+
+Po sjednocení vzhledu znovu prošlo osm scénářů rozložení včetně ověření barev obou témat, rádiusu karet, tyrkysových popisků a načtení všech průhledných ikon. Aktuální snímky a report jsou v `.tmp/service-cards-life-style/`.
 
 ## Společný finální prompt
 

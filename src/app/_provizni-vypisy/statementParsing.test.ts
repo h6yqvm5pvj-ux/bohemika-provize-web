@@ -356,6 +356,63 @@ describe("commission statement parsing helpers", () => {
     ).toBe("payment");
   });
 
+  it.each(["CPP_DOMX", "CPP_DOMX+2", "CPP_DOMEX+"])(
+    "recognizes the annual manager commission base for %s with quarterly premiums",
+    (product) => {
+      expect(
+        resolveStatementPremiumBasePeriod({
+          product,
+          statementBase: 3_096,
+          systemPaymentBase: 774,
+          systemFrequency: "quarterly",
+        })
+      ).toBe("annual");
+    }
+  );
+
+  it.each([
+    { statementBase: 3_096, systemPaymentBase: 258, systemFrequency: "monthly", expected: "annual" },
+    { statementBase: 3_096, systemPaymentBase: 1_548, systemFrequency: "semiannual", expected: "annual" },
+    { statementBase: 774, systemPaymentBase: 774, systemFrequency: "quarterly", expected: "payment" },
+    { statementBase: 3_200, systemPaymentBase: 774, systemFrequency: "quarterly", expected: "annual" },
+    { statementBase: 800, systemPaymentBase: 774, systemFrequency: "quarterly", expected: "payment" },
+  ])(
+    "resolves property base $statementBase against $systemPaymentBase $systemFrequency as $expected, including differing premiums",
+    ({ expected, ...input }) => {
+      expect(
+        resolveStatementPremiumBasePeriod({ product: "CPP_DOMX+2", ...input })
+      ).toBe(expected);
+    }
+  );
+
+  it.each([
+    { baseRule: "annual" as const, statementBase: 774, expected: "annual" },
+    { baseRule: "statement" as const, statementBase: 3_096, expected: "payment" },
+  ])("keeps an explicit property $baseRule rule authoritative", ({ baseRule, statementBase, expected }) => {
+    const mapping = createStatementProductMappingIndex([
+      {
+        code: "CPP_DOMX+2",
+        label: "ČPP DOMEX",
+        productKey: "domex",
+        category: "property",
+        baseRule,
+        isLifeSplit: false,
+        isInvestmentSection: false,
+        note: null,
+      },
+    ]);
+
+    expect(
+      resolveStatementPremiumBasePeriod({
+        product: "CPP_DOMX+2",
+        statementBase,
+        systemPaymentBase: 774,
+        systemFrequency: "quarterly",
+        mappingIndex: mapping,
+      })
+    ).toBe(expected);
+  });
+
   it("keeps an explicit statement-base override authoritative", () => {
     const mapping = createStatementProductMappingIndex([
       {

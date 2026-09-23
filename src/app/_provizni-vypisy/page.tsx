@@ -102,7 +102,8 @@ import { StatementProcessingSuccess, type StatementProcessingSuccessResult } fro
 import importStyles from "./statementImport.module.css";
 import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
-import { StatementContractHeader } from "./StatementContractHeader";
+import { StatementContractCard } from "./StatementContractCard";
+import { statementContractIsVerified } from "./statementContractReview";
 import detailStyles from "./statementContractDetail.module.css";
 
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
@@ -5361,7 +5362,6 @@ function LifeSplitContractCard({
           source: statementPrefillSource,
         })
       : null;
-  const [expanded, setExpanded] = useState(false);
   const [refreshConversionState, setRefreshConversionState] = useState<{
     status: StatementRefreshConversionStatus;
     message: string | null;
@@ -5429,19 +5429,31 @@ function LifeSplitContractCard({
         ],
       }
     : null;
+  const verified = statementContractIsVerified({
+    matched: Boolean(systemContract && matchedSystemContract(match)),
+    comparisons: amountComparisons,
+    baseComparisons: lifePremiumBaseComparisons,
+    hasWarnings: Boolean(
+      status.tone === "warn" || hasCareerIssue || timelinePositionMismatch ||
+      hasProductMismatch(expectedProductKey, systemContract) ||
+      correctionLabel || currentCorrectionInfo || missingB36Warning ||
+      missingClientCardCommissionWarning || premiumBaseNotice || coefficientOverride ||
+      (refreshBaseReview && refreshBaseReview.status !== "confirmed") ||
+      shouldShowStatementRefreshConversion ||
+      contract.rows.some(row => row.lifeSplitKind === "unknown" || row.commission < 0) ||
+      contract.b36Payments.some(payment => payment.isStorno) ||
+      (markedItem && markingControls?.markedItems[markedItem.key])
+    ),
+  });
   return (
-    <article className={detailStyles.card} data-expanded={expanded}>
-      {markedItem && (
-        <div className={detailStyles.marking}>
+      <StatementContractCard
+        verified={verified}
+        marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
-        </div>
-      )}
-      <StatementContractHeader
+        )}
         contractNumber={contract.contractNumber}
         client={contract.client || "Klient se doplní po spárování se systémem"}
         commission={total}
-        expanded={expanded}
-        onToggle={() => setExpanded(value => !value)}
         products={<>
             <span className={detailStyles.product}>
               <StatementProductLogo product={contractProductMeta} size="xs" />
@@ -5517,10 +5529,7 @@ function LifeSplitContractCard({
             )}
 
         </>}
-      />
-
-      {expanded && (
-        <div className={detailStyles.cardBody}>
+      >
           {tip > 0 && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
               ATP101: provize z TIPU. Párovat přes TIP vazbu, ne jako vlastní sjednání smlouvy.
@@ -5609,9 +5618,7 @@ function LifeSplitContractCard({
             b36HalfLabel={b36HalfLabel}
             pairedB36PaymentIndexes={pairedB36PaymentIndexes}
           />
-        </div>
-      )}
-    </article>
+      </StatementContractCard>
   );
 }
 
@@ -5741,7 +5748,6 @@ function OtherProductContractCard({
     calculatorPrefill && cppA101BatchQueueEligible
       ? { ...calculatorPrefill, cppA101QueueEligible: true }
       : calculatorPrefill;
-  const [expanded, setExpanded] = useState(false);
   const markedItem: MarkedDiscrepancyItem | null = markingControls
     ? {
         key: markedDiscrepancyKey({
@@ -5770,20 +5776,31 @@ function OtherProductContractCard({
       }
     : null;
 
+  const verified = statementContractIsVerified({
+    matched: Boolean(systemContract),
+    comparisons: amountComparisons,
+    baseComparisons: statementPremiumBaseComparison ? [statementPremiumBaseComparison] : [],
+    hasWarnings: Boolean(
+      hasUnknown || hasCareerIssue || timelinePositionMismatch ||
+      hasProductMismatch(expectedProductKey, systemContract) ||
+      correctionLabel || currentCorrectionInfo || missingB36Warning ||
+      autoPremiumChange || coefficientOverride ||
+      contract.rows.some(row => row.commission < 0) ||
+      contract.b36Payments.some(payment => payment.isStorno) ||
+      (markedItem && markingControls?.markedItems[markedItem.key])
+    ),
+  });
+
   return (
-    <article className={detailStyles.card} data-expanded={expanded}>
-      {markedItem && (
-        <div className={detailStyles.marking}>
+      <StatementContractCard
+        verified={verified}
+        marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
-        </div>
-      )}
-      <StatementContractHeader
+        )}
         contractNumber={contract.contractNumber}
         client={contract.client || "Klient nezjištěn"}
         commission={totalCommission}
         reserve={totalReserve}
-        expanded={expanded}
-        onToggle={() => setExpanded(value => !value)}
         products={<>
             {productMetas.map((product) => (
               <span
@@ -5860,10 +5877,7 @@ function OtherProductContractCard({
             )}
 
         </>}
-      />
-
-      {expanded && (
-        <div className={detailStyles.cardBody}>
+      >
           {notes.length > 0 && (
             <div className="space-y-1 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
               {notes.map((note) => (
@@ -5994,9 +6008,7 @@ function OtherProductContractCard({
             pairedB36PaymentIndexes={pairedB36PaymentIndexes}
             generalCommissionKindClass={generalCommissionKindClass}
           />
-        </div>
-      )}
-    </article>
+      </StatementContractCard>
   );
 }
 
@@ -6325,7 +6337,6 @@ function ManagerCommissionRowCard({
     "provizní položky",
     "provizních položek"
   );
-  const product = resolveStatementProduct(row.product);
   const products = uniqueProductMetasForRows(rowItems);
   const productLabel =
     products.length === 1
@@ -6420,28 +6431,40 @@ function ManagerCommissionRowCard({
       }
     : null;
 
-  return (
-    <article
-      className={`rounded-2xl border px-4 py-4 ${
-        hasStorno ? "border-rose-200 bg-rose-50/70" : "border-slate-200 bg-slate-50"
-      }`}
-    >
-      {markedItem && (
-        <div className="mb-3 flex justify-end">
-          <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
-        </div>
-      )}
+  const verified = statementContractIsVerified({
+    matched: Boolean(matchedContract && !matchNotice),
+    comparisons: rowComparisons,
+    baseComparisons: rowBaseComparisons,
+    hasWarnings: Boolean(
+      hasStorno || hasManagerCareerIssue ||
+      systemContractTimelinePositionMismatch(matchedContract) ||
+      rowComparisons.length !== rowItems.length ||
+      rowItems.some(item =>
+        item.commission < 0 ||
+        classifyGeneralCommissionCode(item.product, item.type).kind === "unknown" ||
+        hasProductMismatch(resolveStatementProduct(item.product).productKey, matchedContract)
+      ) ||
+      (markedItem && markingControls?.markedItems[markedItem.key])
+    ),
+  });
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h5 className="text-base font-bold text-slate-950">
-              Smlouva {displayContractNumber}
-            </h5>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-xs font-semibold text-slate-700">
-              <StatementProductLogo product={product} size="xs" />
-              {productLabel}
-            </span>
+  return (
+    <StatementContractCard
+      verified={verified}
+      marking={markingControls?.markingMode && markedItem && (
+        <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
+      )}
+      contractNumber={displayContractNumber}
+      client={row.client || "Klient nezjištěn"}
+      commission={group.commissionTotal}
+      reserve={group.reserveFundTotal}
+      products={products.map(item => (
+        <span key={item.rawCode} className={detailStyles.product}>
+          <StatementProductLogo product={item} size="xs" />
+          <span>{item.label} · {item.rawCode}</span>
+        </span>
+      ))}
+      badges={<>
             {codeLabels.map((code) => (
               <span
                 key={code}
@@ -6486,11 +6509,8 @@ function ManagerCommissionRowCard({
                 {statementCareerBadgeLabel(managerCareerCheck?.careers)}
               </span>
             )}
-          </div>
-
-          <div className="mt-1 text-[15px] font-semibold text-slate-800">
-            {row.client || "Klient nezjištěn"}
-          </div>
+      </>}
+    >
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
             <span>Uzavřeno: {row.signedAt || "—"}</span>
             <span>
@@ -6513,28 +6533,6 @@ function ManagerCommissionRowCard({
               <SjednatelExtranetLink href={extranetUrl} compact />
             </div>
           )}
-        </div>
-
-        <div className="grid shrink-0 grid-cols-2 gap-2 text-right">
-          <div className="rounded-xl bg-slate-950 px-3 py-2 text-white ring-1 ring-slate-800">
-            <div className="text-[11px] font-black uppercase tracking-wide !text-white opacity-100">
-              Provize
-            </div>
-            <div className="mt-1 whitespace-nowrap text-lg font-bold text-emerald-200">
-              {formatMoney(group.commissionTotal)} Kč
-            </div>
-          </div>
-          <div className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-950">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-rose-700">
-              Rez. fond
-            </div>
-            <div className="mt-1 whitespace-nowrap text-lg font-bold text-rose-900">
-              {formatMoney(group.reserveFundTotal)} Kč
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -6687,7 +6685,7 @@ function ManagerCommissionRowCard({
           onRequestStorno={onRequestSystemStorno}
         />
       )}
-    </article>
+    </StatementContractCard>
   );
 }
 

@@ -7,16 +7,17 @@ import {
   FactorId,
   multiFactor,
   reauthenticateWithCredential,
-  TotpMultiFactorGenerator,
-  type TotpSecret,
+  signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
 
 import { careerSignature, clearCareerDraft, restoreCareerDraft, saveCareerDraft } from "./careerDraft";
 
 import { auth } from "@/app/firebase-auth";
+import { clearServerSession } from "@/app/lib/authSession";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { ensureEmailVerifiedForMfaEnrollment, refreshEmailVerificationForMfa } from "@/app/lib/mfaEmailVerification";
+import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
 import type { Position } from "@/app/types/domain";
@@ -78,7 +79,6 @@ export const ACCOUNT_SETUP_STEPS: { id: AccountSetupStepId; label: string }[] = 
 const POSITION_SET = new Set<Position>(ACCOUNT_SETUP_POSITIONS.map((item) => item.id));
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MFA_ISSUER = "Bohemka.App";
-const MFA_FACTOR_LABEL = "Microsoft Authenticator";
 const MFA_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 const PHONE_STEP_INDEX = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "phone");
 const CAREER_STEP_INDEX = ACCOUNT_SETUP_STEPS.findIndex((step) => step.id === "career");
@@ -237,7 +237,8 @@ export function useAccountSetupFlow({
   const [mfaReady, setMfaReady] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaPassword, setMfaPassword] = useState("");
-  const [mfaSecret, setMfaSecret] = useState<TotpSecret | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<MfaEnrollmentSecret | null>(null);
+  const [mfaEmailChallengeId, setMfaEmailChallengeId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaQrDataUrl, setMfaQrDataUrl] = useState("");
   const [mfaQrLoading, setMfaQrLoading] = useState(false);
@@ -256,6 +257,7 @@ export function useAccountSetupFlow({
 
   const clearMfaDraft = useCallback(() => {
     setMfaSecret(null);
+    setMfaEmailChallengeId(null);
     setMfaCode("");
     setMfaQrDataUrl("");
     setMfaQrLoading(false);
@@ -363,7 +365,7 @@ export function useAccountSetupFlow({
         (factor) => factor.factorId === FactorId.TOTP
       ) ?? null;
     setMfaEnabled(Boolean(totpFactor));
-    setMfaEmailVerified(Boolean(activeUser.emailVerified));
+    setMfaEmailVerified(Boolean(totpFactor && activeUser.emailVerified));
     return Boolean(totpFactor);
   }, []);
 
@@ -857,11 +859,9 @@ export function useAccountSetupFlow({
         return;
       }
       setMfaAwaitingEmail(false);
-      setMfaEmailVerified(true);
+      setMfaEmailVerified(false);
       const enrollmentUser = auth.currentUser ?? activeUser;
-      const session = await multiFactor(enrollmentUser).getSession();
-      const secret = await TotpMultiFactorGenerator.generateSecret(session);
-      setMfaSecret(secret);
+      setMfaEmailChallengeId(await requestMfaEmailCode(enrollmentUser));
       setMfaPassword("");
       setMfaCode("");
       setInfo(null);
@@ -898,14 +898,11 @@ export function useAccountSetupFlow({
         setInfo("E-mail zatím není ověřený. Otevři odkaz ve schránce a vrať se sem.");
         return;
       }
-      setMfaEmailVerified(true);
-      const session = await multiFactor(user).getSession();
+      const challenge = await requestMfaEmailCode(user);
       if (!isCurrent()) return;
-      const secret = await TotpMultiFactorGenerator.generateSecret(session);
-      if (!isCurrent()) return;
-      setMfaSecret(secret);
+      setMfaEmailChallengeId(challenge);
       setMfaCode("");
-      setMfaEmailVerified(true);
+      setMfaEmailVerified(false);
       setMfaAwaitingEmail(false);
       setInfo(null);
     } catch (error) {
@@ -957,15 +954,14 @@ export function useAccountSetupFlow({
         setInfo("Před zapnutím 2FA ověř e-mail odkazem ve schránce a potom pokračuj.");
         return;
       }
-      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
-        mfaSecret,
-        verificationCode
-      );
-      await multiFactor(activeUser).enroll(assertion, MFA_FACTOR_LABEL);
-      await syncMfaState(activeUser);
+      await completeMfaEnrollment(activeUser, mfaSecret, verificationCode);
       setMfaPassword("");
       clearMfaDraft();
-      await markCompleted();
+      // Enrollment invalidates the old Firebase session. The pending account
+      // block also remains until administrator activation, so do not save a
+      // profile or create an application session with the pre-enrollment token.
+      await Promise.allSettled([clearServerSession(), signOut(auth)]);
+      window.location.replace("/login?reason=mfa-configured");
     } catch (confirmationError) {
       console.warn("[AccountSetupMFA] confirm enrollment failed", {
         code: (confirmationError as { code?: string })?.code,
@@ -983,7 +979,36 @@ export function useAccountSetupFlow({
     } finally {
       setMfaSaving(false);
     }
-  }, [clearMfaDraft, markCompleted, mfaCode, mfaSecret, syncMfaState, user]);
+  }, [clearMfaDraft, mfaCode, mfaSecret, user]);
+
+  const confirmMfaInbox = useCallback(async () => {
+    if (!user || auth.currentUser?.uid !== user.uid || !mfaEmailChallengeId || mfaSaving) return;
+    const generation = emailCheckGeneration.current;
+    const isCurrent = () => generation === emailCheckGeneration.current && auth.currentUser?.uid === user.uid;
+    if (!/^\d{6}$/.test(mfaCode)) { setError("Zadej všech šest číslic z potvrzovacího e-mailu."); return; }
+    setMfaSaving(true); setError(null);
+    try {
+      const secret = await confirmMfaEmailCode(user, mfaEmailChallengeId, mfaCode);
+      if (!isCurrent()) return;
+      setMfaSecret(secret);
+      setMfaEmailVerified(true); setMfaCode("");
+    } catch (error) { if (isCurrent()) setError(error instanceof Error ? error.message : "Potvrzení se nepodařilo ověřit."); }
+    finally { if (isCurrent()) setMfaSaving(false); }
+  }, [user, mfaEmailChallengeId, mfaSaving, mfaCode]);
+
+  const resendMfaInbox = useCallback(async () => {
+    if (!user || auth.currentUser?.uid !== user.uid || mfaSaving) return;
+    const generation = emailCheckGeneration.current;
+    const isCurrent = () => generation === emailCheckGeneration.current && auth.currentUser?.uid === user.uid;
+    setMfaSaving(true); setError(null);
+    try {
+      const challenge = await requestMfaEmailCode(user);
+      if (!isCurrent()) return;
+      setMfaEmailChallengeId(challenge); setMfaSecret(null); setMfaEmailVerified(false); setMfaCode("");
+    }
+    catch (error) { if (isCurrent()) setError(error instanceof Error ? error.message : "Kód se nepodařilo odeslat."); }
+    finally { if (isCurrent()) setMfaSaving(false); }
+  }, [user, mfaSaving]);
 
   const currentStep = ACCOUNT_SETUP_STEPS[stepIndex]?.id ?? "phone";
   const busy = phoneSaving || timelineSaving || mfaSaving || completionSaving;
@@ -1036,9 +1061,15 @@ export function useAccountSetupFlow({
       void resumeAfterEmailVerification();
       return;
     }
+    if (mfaEmailChallengeId) {
+      void confirmMfaInbox();
+      return;
+    }
     void startMfaEnrollment();
   }, [
     confirmMfaEnrollment,
+    confirmMfaInbox,
+    mfaEmailChallengeId,
     mfaAwaitingEmail,
     resumeAfterEmailVerification,
     currentStep,
@@ -1066,6 +1097,8 @@ export function useAccountSetupFlow({
       completedStepIds: ACCOUNT_SETUP_STEPS.filter(step => step.id === "phone" ? Boolean(savedPhone && savedIco) : step.id === "career" ? !needsCareerTimelineSetup : completed).map(step => step.id),
       careerDraftStatus,
       mfaAwaitingEmail,
+      mfaAwaitingEmailCode: Boolean(mfaEmailChallengeId && !mfaSecret),
+      onResendMfaEmailCode: resendMfaInbox,
       mfaEmailVerified,
       onComplete: closeCompletedSetup,
       onStepChange: (index: number) => {
@@ -1158,6 +1191,8 @@ export function useAccountSetupFlow({
       savedIco,
       careerDraftStatus,
       mfaAwaitingEmail,
+      mfaEmailChallengeId,
+      resendMfaInbox,
       mfaEmailVerified,
       closeCompletedSetup,
       completionSaving,

@@ -157,7 +157,7 @@ describe("login verification boundary", () => {
     expect(mocks.profile).not.toHaveBeenCalled();
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("kontaktuj administrátora");
-    expect(container.querySelector('a[href="/ucet/zabezpeceni"]')?.textContent).toContain("Nastavit dvoufázové ověření");
+    expect(container.querySelector('a[href="/ucet/zabezpeceni?recovery=1"]')?.textContent).toContain("Nastavit dvoufázové ověření");
   });
 
   it("continues a password login without TOTP directly to isolated setup", async () => {
@@ -199,6 +199,17 @@ describe("login verification boundary", () => {
     await enterPassword(); await submit();
     expectNotLoggedIn();
     expect(container.textContent).toContain("kontaktuj administrátora");
+  });
+
+  it.each(["TimeoutError", "TypeError"])("does not report a server %s as incorrect credentials", async name => {
+    fetchMock.mockRejectedValueOnce(Object.assign(new Error("synthetic network failure"), { name }));
+    await enterPassword(); await submit();
+    expectNotLoggedIn();
+    expect(mocks.password).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Server pro kontrolu přihlášení neodpovídá");
+    expect(container.textContent).not.toContain("Zkontroluj e-mail a heslo");
+    expect(fetchMock.mock.calls).toHaveLength(1);
+    expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
   });
 
   const requestPasswordReset = async () => {

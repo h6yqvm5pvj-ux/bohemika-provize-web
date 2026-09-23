@@ -24,6 +24,12 @@ export class AccountAccessConflict extends Error {
 const persistentFields = (data: FirebaseFirestore.DocumentData) =>
   JSON.stringify(Object.keys(data).filter(key => key !== "revocation").sort().map(key => [key, data[key]]));
 
+function emailConfirmationComplete(user: UserRecord, block: FirebaseFirestore.DocumentData) {
+  return block.mfaEmailConfirmationRequired !== true ||
+    (typeof block.mfaEmailConfirmedFactorUid === "string" &&
+      user.multiFactor?.enrolledFactors.some(f => f.factorId === "totp" && f.uid === block.mfaEmailConfirmedFactorUid) === true);
+}
+
 // The supplied Auth must use withFirestoreTokenRevocation, like adminAuth.
 export async function changeAdminAccountAccess({ auth, db, uid, actorUid, active }: {
   auth: Auth; db: Firestore; uid: string; actorUid: string; active: boolean;
@@ -45,6 +51,14 @@ export async function changeAdminAccountAccess({ auth, db, uid, actorUid, active
   await auth.updateUser(uid, { disabled: !active });
   const user = await auth.getUser(uid);
   if (user.disabled === active) throw new AccountAccessConflict("Stav účtu se mezitím změnil. Obnov přehled a zkus to znovu.");
+  if (active && hasTotpFactor(user) && !emailConfirmationComplete(user, barrier)) {
+    // Restore the setup block, retaining the email requirement and revocation.
+    await db.runTransaction(async tx => {
+      const current = (await tx.get(ref)).data();
+      if (current && persistentFields(current) === persistentFields(barrier)) tx.set(ref, { ...current, reason: "missing-totp" });
+    });
+    throw new AccountAccessConflict("Nastavení 2FA nebylo potvrzené kódem z e-mailu. Účet zůstává zablokovaný.");
+  }
   const finalBlock = await db.runTransaction(async tx => {
     const current = (await tx.get(ref)).data();
     if (!current || persistentFields(current) !== persistentFields(barrier)) {
@@ -54,6 +68,10 @@ export async function changeAdminAccountAccess({ auth, db, uid, actorUid, active
     if (!revocation) throw new Error("Chybí potvrzení zneplatnění relací.");
     const ready = active && !user.disabled && user.emailVerified && hasTotpFactor(user);
     const next = ready ? { revocation } : {
+      ...(current.mfaEmailConfirmationRequired === true ? {
+        mfaEmailConfirmationRequired: true, mfaEmailChallengeId: current.mfaEmailChallengeId ?? null,
+        mfaEmailConfirmedFactorUid: current.mfaEmailConfirmedFactorUid ?? null,
+      } : {}),
       revocation,
       reason: active ? "missing-totp" : "admin-block",
       blockedAtMs: Date.now(), blockedByUid: actorUid,

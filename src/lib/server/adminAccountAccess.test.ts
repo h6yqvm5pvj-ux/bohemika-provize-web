@@ -4,7 +4,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { AccountAccessConflict, changeAdminAccountAccess, getAdminAccountAccess } from "./adminAccountAccess";
 import { isPersistentAccountBlock } from "./tokenRevocation";
 
-const enrolled = { uid: "target", disabled: false, emailVerified: true, multiFactor: { enrolledFactors: [{ factorId: "totp" }] } };
+const enrolled = { uid: "target", disabled: false, emailVerified: true, multiFactor: { enrolledFactors: [{ factorId: "totp", uid: "enrolled-factor" }] } };
 const revocation = { validAfterSeconds: 123, generation: "00000000-0000-0000-0000-000000000001", pendingOperations: {} };
 let user: typeof enrolled, data: Record<string, any> | undefined;
 const raw = { getUser: vi.fn(), revokeRefreshTokens: vi.fn(), updateUser: vi.fn() };
@@ -97,5 +97,27 @@ describe("administrator activation and blocking", () => {
     await expect(change(true)).rejects.toBeInstanceOf(AccountAccessConflict);
     expect(raw.revokeRefreshTokens).not.toHaveBeenCalled();
     expect(raw.updateUser).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("activation requires fresh email approval for pending enrollment", () => {
+  it.each([null, "other-factor"])("rejects an unapproved or replaced factor (%s)", async approvedUid => {
+    data = { reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailConfirmedFactorUid: approvedUid };
+    await expect(change(true)).rejects.toBeInstanceOf(AccountAccessConflict);
+    expect(data).toMatchObject({ reason: "missing-totp", mfaEmailConfirmationRequired: true, revocation });
+  });
+  it("activates only the exact factor approved after fresh inbox confirmation", async () => {
+    data = { reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailConfirmedFactorUid: "enrolled-factor" };
+    expect((await change(true)).state).toBe("active");
+    expect(data).toEqual({ revocation });
+  });
+  it("retains the requirement during setup preparation and blocking", async () => {
+    user.multiFactor.enrolledFactors = [];
+    data = { reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailConfirmedFactorUid: null, mfaEmailChallengeId: "challenge" };
+    await change(true);
+    expect(data).toMatchObject({ reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailChallengeId: "challenge" });
+    await change(false);
+    expect(data).toMatchObject({ reason: "admin-block", mfaEmailConfirmationRequired: true, mfaEmailChallengeId: "challenge" });
   });
 });

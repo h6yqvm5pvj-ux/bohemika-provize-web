@@ -37,7 +37,7 @@ import {
   reauthenticateWithCredential,
   TotpMultiFactorGenerator,
   signInWithCustomToken,
-  type TotpSecret,
+  signOut,
 } from "firebase/auth";
 
 import { auth } from "../firebase";
@@ -53,6 +53,8 @@ import {
   readAdminImpersonationState,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
+import { clearServerSession } from "@/app/lib/authSession";
+import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
 import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
 import {
@@ -779,7 +781,8 @@ export default function SettingsPage() {
   const [mfaTotpLabel, setMfaTotpLabel] = useState<string | null>(null);
   const [mfaReauthCode, setMfaReauthCode] = useState("");
   const [mfaDisableConfirmOpen, setMfaDisableConfirmOpen] = useState(false);
-  const [mfaEnrollmentSecret, setMfaEnrollmentSecret] = useState<TotpSecret | null>(null);
+  const [mfaEnrollmentSecret, setMfaEnrollmentSecret] = useState<MfaEnrollmentSecret | null>(null);
+  const [mfaEmailChallengeId, setMfaEmailChallengeId] = useState<string | null>(null);
   const [mfaEnrollmentCode, setMfaEnrollmentCode] = useState("");
   const [mfaQrCodeDataUrl, setMfaQrCodeDataUrl] = useState("");
   const [mfaQrCodeLoading, setMfaQrCodeLoading] = useState(false);
@@ -1052,21 +1055,13 @@ export default function SettingsPage() {
   }, [onlineCardQrOpen]);
 
   const clearMfaDraft = () => {
+    setMfaEmailChallengeId(null);
     setMfaEnrollmentSecret(null);
     setMfaEnrollmentCode("");
     setMfaQrCodeDataUrl("");
     setMfaQrCodeLoading(false);
     setMfaQrCodeError(null);
     setMfaDisableConfirmOpen(false);
-  };
-
-  const recordMfaVerification = async (targetUser: FirebaseUser) => {
-    await fetchAuthedJsonOrThrow(targetUser, "/api/user/profile", {
-      method: "PATCH",
-      body: JSON.stringify({ mfaLastVerifiedPing: true }),
-    });
-    setMfaLastVerifiedAt(new Date().toISOString());
-    invalidateUserProfileCache(normalizeEmail(targetUser.email));
   };
 
   const syncMfaState = async (targetUser: FirebaseUser) => {
@@ -2834,7 +2829,7 @@ export default function SettingsPage() {
   };
 
   const handleStartMfaEnrollment = async () => {
-    if (!user) return;
+    if (!user || mfaBusy) return;
 
     setMfaBusy(true);
     setMfaStatus(null);
@@ -2845,8 +2840,10 @@ export default function SettingsPage() {
       setUser(activeUser);
       setMfaDisableConfirmOpen(false);
 
-      const reauthenticated = await reauthenticateForMfaChange(activeUser);
-      if (!reauthenticated) return;
+      if (!mfaEmailChallengeId) {
+        const reauthenticated = await reauthenticateForMfaChange(activeUser);
+        if (!reauthenticated) return;
+      }
 
       if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
         setMfaPassword("");
@@ -2857,15 +2854,15 @@ export default function SettingsPage() {
       }
 
       const enrollmentUser = auth.currentUser ?? activeUser;
-      const session = await multiFactor(enrollmentUser).getSession();
-      const secret = await TotpMultiFactorGenerator.generateSecret(session);
-
-      setMfaEnrollmentSecret(secret);
+      const challenge = await requestMfaEmailCode(enrollmentUser);
+      setMfaEmailChallengeId(challenge);
+      setMfaPassword("");
+      setMfaEnrollmentSecret(null);
       setMfaEnrollmentCode("");
       setMfaStatus({
         type: "info",
         message:
-          "Otevři Microsoft Authenticator, přidej účet pomocí setup key a zadej ověřovací kód.",
+          "Do e-mailu jsme poslali nový šestimístný kód. Zadej ho pro zobrazení QR kódu.",
       });
     } catch (error) {
       logMfaIssue("handleStartMfaEnrollment", error);
@@ -2882,13 +2879,13 @@ export default function SettingsPage() {
   };
 
   const handleConfirmMfaEnrollment = async () => {
-    if (!user || !mfaEnrollmentSecret) return;
+    if (!user || !mfaEmailChallengeId || mfaBusy) return;
 
     const otp = mfaEnrollmentCode.trim();
-    if (!otp) {
+    if (!/^\d{6}$/.test(otp)) {
       setMfaStatus({
         type: "error",
-        message: "Zadej jednorázový kód z aplikace Microsoft Authenticator.",
+        message: mfaEnrollmentSecret ? "Zadej šest číslic z Authenticatoru." : "Zadej šest číslic z potvrzovacího e-mailu.",
       });
       return;
     }
@@ -2902,26 +2899,16 @@ export default function SettingsPage() {
         setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
         return;
       }
-      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(
-        mfaEnrollmentSecret,
-        otp
-      );
-      await multiFactor(user).enroll(assertion, "Microsoft Authenticator");
-      await syncMfaState(user);
-      await recordMfaVerification(user).catch((error) => {
-        // Druhý faktor už je úspěšně zapnutý, proto výpadek profilu nezablokuje dokončení.
-        console.warn("Nepodařilo se uložit čas prvního 2FA ověření.", error);
-        setMfaLastVerifiedAt(new Date().toISOString());
-      });
-
-      setMfaPassword("");
-      setMfaReauthCode("");
-      setMfaDisableConfirmOpen(false);
-      clearMfaDraft();
-      setMfaStatus({
-        type: "success",
-        message: "2FA bylo úspěšně zapnuto.",
-      });
+      if (!mfaEnrollmentSecret) {
+        setMfaEnrollmentSecret(await confirmMfaEmailCode(user, mfaEmailChallengeId, otp));
+        setMfaEnrollmentCode("");
+        setMfaStatus({ type: "info", message: "E-mail potvrzen. Naskenuj QR kód a zadej aktuální kód z Authenticatoru." });
+        return;
+      }
+      await completeMfaEnrollment(user, mfaEnrollmentSecret, otp);
+      setMfaPassword(""); setMfaReauthCode(""); clearMfaDraft();
+      await Promise.allSettled([clearServerSession(), signOut(auth)]);
+      window.location.replace("/login?reason=mfa-configured");
     } catch (error) {
       logMfaIssue("handleConfirmMfaEnrollment", error);
       setMfaStatus({
@@ -4087,6 +4074,7 @@ export default function SettingsPage() {
                 accountSessionsStatus={accountSessionsStatus}
                 mfaPassword={mfaPassword}
                 mfaBusy={mfaBusy}
+                mfaAwaitingEmailCode={Boolean(mfaEmailChallengeId && !mfaEnrollmentSecret)}
                 mfaEnrollmentSecretKey={mfaEnrollmentSecret?.secretKey ?? null}
                 mfaEnrollmentCode={mfaEnrollmentCode}
                 mfaQrCodeDataUrl={mfaQrCodeDataUrl}

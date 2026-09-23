@@ -19,6 +19,10 @@ async function main() {
     const user = await auth.getUser(uid), ref = db.collection("accountBlocks").doc(uid), block = await ref.get();
     if (!block.exists || block.data()?.reason !== "missing-totp") throw new Error("Only missing-TOTP blocks can be recovered by this tool");
     const hasTotp = user.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp") === true;
+    if (mode === "activate" && block.data()?.mfaEmailConfirmationRequired === true &&
+        !user.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp" && factor.uid === block.data()?.mfaEmailConfirmedFactorUid)) {
+      throw new Error("Fresh email-confirmed enrollment is required before activation");
+    }
     if (mode === "activate" && (!hasTotp || !user.emailVerified)) throw new Error("Verified email and enrolled TOTP are required before activation");
     if (mode === "prepare" && hasTotp) throw new Error("TOTP is already enrolled; use activate after identity verification");
     if (!process.argv.includes("--apply")) {
@@ -29,6 +33,10 @@ async function main() {
     if (mode === "activate") {
       const current = await auth.getUser(uid);
       if (!current.emailVerified || !current.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp")) throw new Error("Account changed during recovery; persistent block retained");
+      if (block.data()?.mfaEmailConfirmationRequired === true &&
+          !current.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp" && factor.uid === block.data()?.mfaEmailConfirmedFactorUid)) {
+        throw new Error("Email-confirmed factor changed during recovery; persistent block retained");
+      }
       const blockFields = data => JSON.stringify(Object.keys(data).filter(key => key !== "revocation").sort().map(key => [key, data[key]]));
       await db.runTransaction(async tx => {
         const snapshot = await tx.get(ref), data = snapshot.data();

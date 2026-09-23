@@ -36,6 +36,7 @@ type OnlineCardMeetingStepperProps = {
   onSubmitted?: () => void;
   initialSelectedTopics?: MeetingTopicId[];
   initialStep?: 0 | 1;
+  initialMessage?: string;
   palette?: "default" | "bohemika";
 };
 
@@ -71,6 +72,7 @@ export function OnlineCardMeetingStepper({
   onSubmitted,
   initialSelectedTopics,
   initialStep = 0,
+  initialMessage = "",
   palette = "default",
 }: OnlineCardMeetingStepperProps) {
   const copy = ONLINE_CARD_COPY[locale].meeting;
@@ -78,7 +80,7 @@ export function OnlineCardMeetingStepper({
   const validInitialTopics = (initialSelectedTopics ?? []).filter((topic): topic is MeetingTopicId =>
     MEETING_TOPICS.some((availableTopic) => availableTopic.id === topic)
   );
-  const [form, setForm] = useState<MeetingFormDraft>(EMPTY_FORM);
+  const [form, setForm] = useState<MeetingFormDraft>(() => ({ ...EMPTY_FORM, message: initialMessage.slice(0, 1200) }));
   const [selectedTopics, setSelectedTopics] = useState<MeetingTopicId[]>(() => validInitialTopics);
   const [step, setStep] = useState(() => initialStep === 1 && validInitialTopics.length > 0 ? 1 : 0);
   const [submitting, setSubmitting] = useState(false);

@@ -1,5 +1,7 @@
 # Moderní 3D ikony služeb — Higgsfield v4
 
+Historická verze. Pro sjednocení s životním pojištěním používají minimalistické vizitky znovu [průhledné ikony v3](./online-card-service-icons-higgsfield-v3.md) a karty respektující zvolené téma. Níže je původní stav v4; její obrazové soubory zůstávají v projektu.
+
 - Datum: 2026-09-22.
 - Osm nových statických 3D renderů vytvořených přes Higgsfield, model `gpt_image_2_5`, quality `high`, resolution `1k`, poměr `1:1`, pozadí `opaque`. Vstupem byly odpovídající referenční ikony v3.
 - Styl: kouřové tyrkysové sklo, broušený kov, chrom a světlé akcenty; investiční slitky zůstávají zlaté a stříbrné.

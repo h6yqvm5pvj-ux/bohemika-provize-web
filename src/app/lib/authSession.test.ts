@@ -57,6 +57,11 @@ describe("safe post-login destinations", () => {
     "/login/",
     "/smlouvy/../login",
     "/%6cogin",
+    "/ucet/zabezpeceni",
+    "/ucet/zabezpeceni?recovery=1",
+    "/ucet/zabezpeceni/",
+    "/smlouvy/../ucet/zabezpeceni",
+    "/ucet/%7Aabezpeceni",
   ])("rejects unsafe or looping destination %j", (input) => {
     next(input);
     const result = resolveSafeLoginNextPath("/pomucky");

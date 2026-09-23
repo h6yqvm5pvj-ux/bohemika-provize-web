@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import type { CSSProperties } from "react";
+import { PartnerLogoSculpture } from "@/components/PartnerLogoSculpture";
 import { VigMetalModel } from "@/components/VigMetalModel";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 import minimalStyles from "./OnlineCardMinimal.module.css";
@@ -77,56 +78,56 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
 const ADVISOR_SERVICES = [
   {
     label: "Životní pojištění a zajištění příjmu",
-    artwork: "/images/online-card-services/life-v4.webp",
+    artwork: "/images/online-card-services/life-v3.webp",
     icon: HeartHandshake,
     iconClass: "text-blue-200",
     accentClass: "bg-blue-300/80",
   },
   {
     label: "Pojištění majetku a odpovědnosti",
-    artwork: "/images/online-card-services/property-v4.webp",
+    artwork: "/images/online-card-services/property-v3.webp",
     icon: HousePlus,
     iconClass: "text-emerald-200",
     accentClass: "bg-emerald-300/80",
   },
   {
     label: "Pojištění vozidel a flotil",
-    artwork: "/images/online-card-services/vehicle-v4.webp",
+    artwork: "/images/online-card-services/vehicle-v3.webp",
     icon: CarFront,
     iconClass: "text-sky-200",
     accentClass: "bg-sky-300/80",
   },
   {
     label: "Cestovní pojištění",
-    artwork: "/images/online-card-services/travel-v4.webp",
+    artwork: "/images/online-card-services/travel-v3.webp",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",
   },
   {
     label: "Pojištění cizinců",
-    artwork: "/images/online-card-services/foreigners-v4.webp",
+    artwork: "/images/online-card-services/foreigners-v3.webp",
     icon: Languages,
     iconClass: "text-rose-200",
     accentClass: "bg-rose-300/80",
   },
   {
     label: "Investice",
-    artwork: "/images/online-card-services/investments-v4.webp",
+    artwork: "/images/online-card-services/investments-v3.webp",
     icon: ChartNoAxesCombined,
     iconClass: "text-cyan-200",
     accentClass: "bg-cyan-300/80",
   },
   {
     label: "Úvěry a hypotéky",
-    artwork: "/images/online-card-services/mortgage-v4.webp",
+    artwork: "/images/online-card-services/mortgage-v3.webp",
     icon: Landmark,
     iconClass: "text-lime-200",
     accentClass: "bg-lime-300/80",
   },
   {
     label: "Investiční zlato a stříbro",
-    artwork: "/images/online-card-services/precious-metals-v4.webp",
+    artwork: "/images/online-card-services/precious-metals-v3.webp",
     icon: Gem,
     iconClass: "text-amber-200",
     accentClass: "bg-amber-300/80",
@@ -170,6 +171,12 @@ const SERVICE_MOTION_COPY = {
   cs: { label: "Animace ikon", pause: "Pozastavit animace", play: "Spustit animace" },
   en: { label: "Icon animations", pause: "Pause animations", play: "Play animations" },
   uk: { label: "Анімація значків", pause: "Призупинити анімацію", play: "Увімкнути анімацію" },
+} as const;
+
+const PARTNER_MOTION_COPY = {
+  cs: { label: "Animace log partnerů", pause: "Pozastavit efekty log", play: "Spustit efekty log" },
+  en: { label: "Partner logo animations", pause: "Pause logo effects", play: "Play logo effects" },
+  uk: { label: "Анімація логотипів партнерів", pause: "Призупинити ефекти логотипів", play: "Увімкнути ефекти логотипів" },
 } as const;
 
 const COMPANY_PILLARS = [
@@ -220,7 +227,15 @@ export function AdvisorProfileSections({
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const { regionRef, allowed: motionAllowed, active: motionActive, running: motionRunning, toggle: toggleMotion } = useServiceIconMotion(minimal);
+  const {
+    regionRef: partnerRegionRef,
+    allowed: partnerMotionAllowed,
+    active: partnerMotionActive,
+    running: partnerMotionRunning,
+    toggle: togglePartnerMotion,
+  } = useServiceIconMotion(minimal);
   const motionCopy = SERVICE_MOTION_COPY[locale];
+  const partnerMotionCopy = PARTNER_MOTION_COPY[locale];
   const light = theme === "light";
   const connectedHero = connectToHero && flush;
   const revealAttrs = reveal
@@ -273,7 +288,6 @@ export function AdvisorProfileSections({
                       <span className={minimalStyles.serviceLabel}>{copy.advisor.services[index]}</span>
                       <span className={minimalStyles.serviceSummary}>{SERVICE_SUMMARIES[locale][index]}</span>
                     </span>
-                    <span className={minimalStyles.serviceNumber} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                     {href ? <ArrowUpRight className={minimalStyles.serviceArrow} aria-hidden="true" /> : null}
                   </>
                 );
@@ -340,13 +354,21 @@ export function AdvisorProfileSections({
               <p className={minimalStyles.eyebrow}><span>03</span>{copy.advisor.partnersKicker}</p>
               <h2 id="card-partners-title" className={minimalStyles.heading}>{copy.advisor.partnersTitle}</h2>
             </div>
-            <div className={minimalStyles.partners}>
-              {PARTNER_INSURERS.map(insurer => (
+            <div ref={partnerRegionRef} id="card-partner-logos" className={minimalStyles.partners} data-logo-motion={partnerMotionRunning ? "running" : "paused"}>
+              {PARTNER_INSURERS.map((insurer, index) => (
                 <div key={insurer.label} className={`${minimalStyles.partner} ${insurer.darkTile ? minimalStyles.partnerDark : ""}`}>
-                  <Image src={insurer.logoPath} alt={insurer.label} width={160} height={66} sizes="(max-width: 760px) 100px, 180px" className={getPartnerLogoClassName(insurer)} />
+                  <PartnerLogoSculpture src={insurer.logoPath} label={insurer.label} imageClassName={getPartnerLogoClassName(insurer)} index={index} />
                 </div>
               ))}
             </div>
+            {partnerMotionAllowed ? (
+              <div className={minimalStyles.partnerActions}>
+                <button type="button" className={minimalStyles.serviceMotionToggle} aria-label={partnerMotionCopy.label} aria-pressed={partnerMotionActive} aria-controls="card-partner-logos" onClick={togglePartnerMotion}>
+                  {partnerMotionActive ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                  {partnerMotionActive ? partnerMotionCopy.pause : partnerMotionCopy.play}
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
       </>

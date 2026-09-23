@@ -28,7 +28,11 @@
 .backLink:hover { color: #fff; text-decoration: underline; text-underline-offset: 4px; }
 .backLink:focus-visible { outline: 2px solid #c4a4fc; outline-offset: 4px; border-radius: 4px; }
 .secretKey { display: block; margin: 12px 0; overflow-wrap: anywhere; user-select: all; font-family: monospace; font-size: 15px; line-height: 1.8; color: #f3ecff; }
-.codeField { font-family: monospace; font-size: 22px; text-align: center; letter-spacing: .4em; }
+.qrCode { display: block; width: 240px; max-width: 100%; height: auto; margin: 8px auto; border-radius: 10px; background: #fff; }
+.qrLoading { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 240px; margin: 8px 0; color: #b8aecb; font-size: 13px; }
+.manualSetup summary { cursor: pointer; font-weight: 500; }
+.manualSetup summary:focus-visible { outline: 2px solid #c4a4fc; outline-offset: 4px; border-radius: 4px; }
+.manualSetup[open] summary { margin-bottom: 10px; }
 .spinner { animation: authSpin 1s linear infinite; }
 @keyframes authSpin { to { transform: rotate(360deg); } }
 .field {

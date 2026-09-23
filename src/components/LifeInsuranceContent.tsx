@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleHelp,
+  FileCheck2,
   HeartHandshake,
   HeartPulse,
   Plus,
@@ -62,6 +63,10 @@ const CSSZ_COUNTS_URL = "https://www.cssz.cz/documents/20143/2955053/4%20Ukazate
 
 const LIFE_COPY = {
   cs: {
+    contactActions: {
+      review: { label: "Zkontrolovat moji smlouvu", message: "Chci zkontrolovat svou stávající smlouvu životního pojištění." },
+      options: { label: "Probrat moje možnosti", message: "Chci probrat možnosti životního pojištění podle své situace." },
+    },
     category: "Životní a úrazové pojištění", title: "Proč mít životní pojištění?", intro: "Když zdraví nebo schopnost pracovat nečekaně změní plány, správně nastavené pojištění pomáhá ochránit váš příjem, závazky i blízké.",
     protectionTitle: "Ochrana, která dává prostor soustředit se na to podstatné.", protectionText: "Pojištění nenahradí zdraví. Může ale pomoci zachovat finanční stabilitu v náročném období.", protectionFeatures: ["Příjem", "Závazky", "Rodina"],
     decisionKicker: "Než se rozhodnete", decisionTitle: "Položte si pár jednoduchých otázek.", decisionText: "Odpovědi pomohou určit, jakou ochranu a v jakém rozsahu skutečně potřebujete.",
@@ -79,6 +84,10 @@ const LIFE_COPY = {
     conclusion: "Životní pojištění nezabrání tomu, aby se něco stalo. Může ale výrazně zmírnit finanční následky, které taková situace přinese.", processKicker: "Jak budeme postupovat", processTitle: "Nejdříve vy. Potom pojištění.", processFirst: "Probereme vaši životní situaci, potřeby a rizika. Podle nich vybereme a nastavíme pojištění na míru.", processStrong: "Vysvětlím vám, co kryje, co nekryje a za jakých podmínek.", processRest: " Nabídku následně porovnáme s konkurencí, abyste přesně věděli, za co platíte a proč.", meetingCta: "Sjednat schůzku", meetingTitle: "Domluvte si termín", meetingDescription: "Nechte na sebe kontakt a poradce se vám brzy ozve.", closeForm: "Zavřít formulář", submitted: "Žádost byla odeslána.", thankYou: "Děkujeme, brzy se vám ozveme.", footer: "Nastavení pojištění vždy vychází z vaší konkrétní životní situace, příjmů, závazků a priorit.",
   },
   en: {
+    contactActions: {
+      review: { label: "Review my policy", message: "I would like to review my existing life insurance policy." },
+      options: { label: "Discuss my options", message: "I would like to discuss life insurance options for my situation." },
+    },
     category: "Life and accident insurance", title: "Why take out life insurance?", intro: "When your health or ability to work unexpectedly changes your plans, properly arranged insurance can help protect your income, commitments and loved ones.",
     protectionTitle: "Protection that lets you focus on what matters.", protectionText: "Insurance cannot replace health. It can, however, help maintain financial stability during a difficult period.", protectionFeatures: ["Income", "Commitments", "Family"],
     decisionKicker: "Before you decide", decisionTitle: "Ask yourself a few simple questions.", decisionText: "The answers will help determine the protection you actually need and its appropriate scope.",
@@ -96,6 +105,10 @@ const LIFE_COPY = {
     conclusion: "Life insurance will not prevent something from happening. It can, however, significantly reduce the financial consequences such a situation brings.", processKicker: "How we will proceed", processTitle: "You first. Then insurance.", processFirst: "We will discuss your life situation, needs and risks. Based on them, we will select and set up insurance tailored to you.", processStrong: "I will explain what is covered, what is not and under what conditions.", processRest: " We will then compare the offer with the competition, so you know exactly what you are paying for and why.", meetingCta: "Book a meeting", meetingTitle: "Arrange a time", meetingDescription: "Leave your contact details and your advisor will get back to you shortly.", closeForm: "Close form", submitted: "Your request has been sent.", thankYou: "Thank you. We will get back to you soon.", footer: "Insurance is always arranged according to your specific life situation, income, commitments and priorities.",
   },
   uk: {
+    contactActions: {
+      review: { label: "Перевірити мій договір", message: "Хочу перевірити свій чинний договір страхування життя." },
+      options: { label: "Обговорити мої можливості", message: "Хочу обговорити варіанти страхування життя відповідно до моєї ситуації." },
+    },
     category: "Страхування життя та від нещасних випадків", title: "Навіщо мати страхування життя?", intro: "Коли здоров’я або здатність працювати несподівано змінюють плани, правильно налаштоване страхування допомагає захистити ваш дохід, зобов’язання та близьких.",
     protectionTitle: "Захист, який дає змогу зосередитися на головному.", protectionText: "Страхування не замінить здоров’я. Але воно може допомогти зберегти фінансову стабільність у складний період.", protectionFeatures: ["Дохід", "Зобов’язання", "Родина"],
     decisionKicker: "Перед рішенням", decisionTitle: "Поставте собі кілька простих запитань.", decisionText: "Відповіді допоможуть визначити, який захист і в якому обсязі вам справді потрібен.",
@@ -123,6 +136,7 @@ type LifeInsuranceContentProps = {
 export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuranceContentProps) {
   const [meetingModalOpen, setMeetingModalOpen] = useState(false);
   const [meetingSubmitted, setMeetingSubmitted] = useState(false);
+  const [meetingIntent, setMeetingIntent] = useState<"review" | "options" | null>(null);
   const [activeRisk, setActiveRisk] = useState<(typeof COVERAGE_ITEMS)[number]["id"] | null>(null);
   const meetingDialogRef = useRef<HTMLDialogElement>(null);
   const meetingTriggerRef = useRef<HTMLButtonElement>(null);
@@ -131,6 +145,16 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
   const primaryTextClass = "text-[var(--life-ink)]";
   const bodyTextClass = "text-[var(--life-muted)]";
   const labelTextClass = "text-[var(--life-accent)]";
+
+  const openMeeting = (intent: typeof meetingIntent = null, trigger?: HTMLButtonElement) => {
+    meetingTriggerRef.current = trigger ?? (activeRisk
+      ? document.querySelector<HTMLButtonElement>(`button[aria-controls="${activeRisk}-dialog"]`)
+      : null);
+    setMeetingIntent(intent);
+    setActiveRisk(null);
+    setMeetingSubmitted(false);
+    setMeetingModalOpen(true);
+  };
 
   useEffect(() => {
     const dialog = meetingDialogRef.current;
@@ -161,6 +185,16 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
               <p className={`inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] sm:tracking-[0.25em] ${labelTextClass}`}><HeartHandshake className="h-3.5 w-3.5 shrink-0" /> {copy.category}</p>
               <h1 className={themeStyles.heroTitle}>{copy.title}</h1>
               <p className={themeStyles.heroIntro}>{copy.intro}</p>
+              {canRequestMeeting && <div className={themeStyles.heroActions}>
+                <button type="button" className={themeStyles.heroPrimary} aria-haspopup="dialog"
+                  onClick={event => openMeeting("review", event.currentTarget)}>
+                  <FileCheck2 aria-hidden="true" /><span>{copy.contactActions.review.label}</span>
+                </button>
+                <button type="button" className={themeStyles.heroSecondary} aria-haspopup="dialog"
+                  onClick={event => openMeeting("options", event.currentTarget)}>
+                  <span>{copy.contactActions.options.label}</span><ArrowUpRight aria-hidden="true" />
+                </button>
+              </div>}
               <ul className={themeStyles.heroFeatures}>
                 {[
                   [ShieldCheck, copy.protectionFeatures[0]],
@@ -379,12 +413,8 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
             <p className={`mt-5 text-base leading-relaxed sm:text-lg ${bodyTextClass}`}><strong className={primaryTextClass}>{copy.processStrong}</strong>{copy.processRest}</p>
             {canRequestMeeting ? (
               <button
-                ref={meetingTriggerRef}
                 type="button"
-                onClick={() => {
-                  setMeetingSubmitted(false);
-                  setMeetingModalOpen(true);
-                }}
+                onClick={event => openMeeting(null, event.currentTarget)}
                 className={`${themeStyles.primary} mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 sm:mt-7 sm:w-auto`}
               >
                 <CalendarDays className="h-4 w-4" />
@@ -401,56 +431,56 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "hospitalisation" && <HospitalisationDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "care" && <CareDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "serious-illness" && <SeriousIllnessDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "sick-leave" && <SickLeaveDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "daily-accident" && <DailyAccidentDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "disability" && <DisabilityDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {activeRisk === "permanent-injury" && <PermanentInjuryDialog
         locale={locale}
         theme={theme}
         onClose={() => setActiveRisk(null)}
-        onMeeting={canRequestMeeting ? () => { setActiveRisk(null); setMeetingSubmitted(false); setMeetingModalOpen(true); } : undefined}
+        onMeeting={canRequestMeeting ? () => openMeeting() : undefined}
       />}
 
       {meetingModalOpen && canRequestMeeting ? (
@@ -469,7 +499,7 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
                   </span>
                   <div>
                     <p className={`${themeStyles.meetingKicker} text-[11px] font-medium uppercase tracking-[0.2em]`}>{copy.meetingCta}</p>
-                    <h2 id="life-meeting-title" className={`${themeStyles.meetingTitle} mt-1 text-xl font-medium tracking-[-0.035em] sm:text-2xl`}>{copy.meetingTitle}</h2>
+                    <h2 id="life-meeting-title" className={`${themeStyles.meetingTitle} mt-1 text-xl font-medium tracking-[-0.035em] sm:text-2xl`}>{meetingIntent ? copy.contactActions[meetingIntent].label : copy.meetingTitle}</h2>
                     <p className={`${themeStyles.meetingDescription} mt-1 text-sm leading-relaxed`}>{copy.meetingDescription}</p>
                   </div>
                 </div>
@@ -501,6 +531,7 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
                     locale={locale}
                     initialSelectedTopics={["life-accident"]}
                     initialStep={1}
+                    initialMessage={meetingIntent ? copy.contactActions[meetingIntent].message : ""}
                     onSubmitted={() => setMeetingSubmitted(true)}
                   />
                 )}

@@ -4,8 +4,7 @@ import { isAuthenticationRevoked, isPersistentAccountBlock, revocationFromAccoun
 
 const denied = () => Object.assign(new Error("Pro ověření e-mailu se přihlas znovu."), { code: "auth/invalid-user-token" });
 
-/** Only authorizes sending an inbox link, never an application session or data access. */
-export async function getEmailSetupUser(auth: Auth, db: Firestore, token: string) {
+async function readSetupContext(auth: Auth, db: Firestore, token: string) {
   const decoded = await auth.verifyIdToken(token, true);
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (decoded.firebase?.sign_in_provider !== "password" ||
@@ -20,5 +19,18 @@ export async function getEmailSetupUser(auth: Auth, db: Firestore, token: string
   if (isAuthenticationRevoked(revocationFromAccountData(data), decoded.auth_time) ||
       (isPersistentAccountBlock(data) && data?.reason !== "missing-totp")) throw denied();
 
-  return { uid: user.uid, email: user.email, emailVerified: user.emailVerified };
+  return { user, authTime: decoded.auth_time, email: user.email };
+}
+
+/** Only authorizes sending an inbox link, never an application session or data access. */
+export async function getEmailSetupUser(auth: Auth, db: Firestore, token: string) {
+  const { user, email } = await readSetupContext(auth, db, token);
+  return { uid: user.uid, email, emailVerified: user.emailVerified };
+}
+
+/** Fresh password proof, with the same recovery restrictions as inbox verification. */
+export async function getMfaEnrollmentUser(auth: Auth, db: Firestore, token: string) {
+  const { user, email, authTime } = await readSetupContext(auth, db, token);
+  if (!user.emailVerified || (user.multiFactor?.enrolledFactors.length ?? 0) > 0) throw denied();
+  return { uid: user.uid, email, emailVerified: true, authTime };
 }

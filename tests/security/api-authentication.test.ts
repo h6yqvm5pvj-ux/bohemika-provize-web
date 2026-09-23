@@ -43,10 +43,12 @@ const publicRoutes = new Set([
   "online-card/meeting-request", "online-card/review", "gold",
 ]);
 const retiredRoutes = new Set(["contracts/sync-cpp-status"]);
-// This inbox-only endpoint must accept recent password sessions before email
-// verification and TOTP. Its real setup-token policy, revocation, blocks and
-// delivery limits are covered in src/app/api/auth/emailVerification.test.ts.
-const setupRoutes = new Set(["auth/email-verification-link"]);
+// Setup endpoints intentionally accept recent password sessions without TOTP.
+// They cannot issue application sessions or grant business-data access. Their
+// distinct email requirements, revocation, blocks and limits are covered in
+// src/app/api/auth/emailVerification.test.ts, auth/mfa-enrollment/route.test.ts
+// and src/lib/server/emailSetupSecurity.test.ts + mfaEnrollment.test.ts.
+const setupRoutes = new Set(["auth/email-verification-link", "auth/mfa-enrollment"]);
 const apiRoot = join(process.cwd(), "src/app/api");
 const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 

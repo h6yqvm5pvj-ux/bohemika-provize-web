@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   auth: { currentUser: null as User | null, languageCode: "" },
-  api: vi.fn(), enrolled: false, enroll: vi.fn(), send: vi.fn(), session: vi.fn(), secret: vi.fn(), reauthenticate: vi.fn(),
+  api: vi.fn(), enrolled: false, enroll: vi.fn(), send: vi.fn(), session: vi.fn(), secret: vi.fn(), reauthenticate: vi.fn(), requestCode: vi.fn(), signOut: vi.fn(), clearSession: vi.fn(),
 }));
+vi.mock("@/app/lib/mfaEnrollment", () => ({ requestMfaEmailCode: mocks.requestCode, confirmMfaEmailCode: mocks.secret, completeMfaEnrollment: mocks.enroll }));
+vi.mock("@/app/lib/authSession", () => ({ clearServerSession: mocks.clearSession }));
 vi.mock("@/app/firebase-auth", () => ({ auth: mocks.auth }));
 vi.mock("@/app/lib/authEmailRequest", () => ({ requestVerificationEmail: mocks.send }));
 vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.api }));
@@ -15,6 +17,7 @@ vi.mock("@/app/lib/userProfileCache", () => ({ invalidateUserProfileCache: vi.fn
 vi.mock("@/components/profile/useAresIcoLookup", () => ({ useAresIcoLookup: () => ({ status: "idle" }) }));
 vi.mock("qrcode", () => ({ default: { toDataURL: async () => "data:image/png;base64,test" } }));
 vi.mock("firebase/auth", () => ({
+  signOut: mocks.signOut,
   EmailAuthProvider: { credential: () => ({}) },
   FactorId: { TOTP: "totp" },
   multiFactor: () => ({ enrolledFactors: mocks.enrolled ? [{ factorId: "totp" }] : [], enroll: mocks.enroll, getSession: mocks.session }),
@@ -46,6 +49,7 @@ describe("account setup progress, drafts and email verification", () => {
     mocks.enrolled = false;
     mocks.api.mockResolvedValue({ ok: true });
     mocks.enroll.mockImplementation(async () => { mocks.enrolled = true; });
+    mocks.requestCode.mockResolvedValue("synthetic-challenge");
     mocks.session.mockResolvedValue("synthetic-session");
     mocks.secret.mockResolvedValue({ secretKey: "synthetic-secret", generateQrCodeUrl: () => "otpauth://synthetic" });
     container = document.createElement("div");
@@ -58,6 +62,12 @@ describe("account setup progress, drafts and email verification", () => {
 
   const start = async () => {
     await act(async () => flow.onMfaPasswordChange("synthetic-password"));
+    await act(async () => flow.onPrimaryAction());
+  };
+  const confirmEmailCode = async () => {
+    expect(flow.mfaSecretKey).toBeNull();
+    expect(flow.mfaAwaitingEmailCode).toBe(true);
+    await act(async () => flow.onMfaCodeChange("654321"));
     await act(async () => flow.onPrimaryAction());
   };
   it("stops after sending, then continues only once Firebase confirms verification", async () => {
@@ -73,7 +83,9 @@ describe("account setup progress, drafts and email verification", () => {
     await start();
     expect(user.getIdToken).toHaveBeenCalledWith(true);
     expect(mocks.send).toHaveBeenCalledOnce();
-    expect(mocks.secret).toHaveBeenCalledExactlyOnceWith("synthetic-session");
+    expect(mocks.secret).not.toHaveBeenCalled();
+    await confirmEmailCode();
+    expect(mocks.secret).toHaveBeenCalledExactlyOnceWith(user, "synthetic-challenge", "654321");
     expect(flow.mfaSecretKey).toBe("synthetic-secret");
   });
   it("keeps 2FA disabled and displays an email failure", async () => {
@@ -86,6 +98,7 @@ describe("account setup progress, drafts and email verification", () => {
   it("requires inbox verification again if the email changes before confirming the factor", async () => {
     user.emailVerified = true;
     await start();
+    await confirmEmailCode();
     expect(flow.mfaSecretKey).toBe("synthetic-secret");
     user.reload.mockImplementation(async () => { user.emailVerified = false; });
     await act(async () => flow.onMfaCodeChange("123456"));
@@ -101,6 +114,7 @@ describe("account setup progress, drafts and email verification", () => {
     expect(flow.mfaAwaitingEmail).toBe(true);
     user.emailVerified = true;
     await act(async () => window.dispatchEvent(new Event("focus")));
+    await confirmEmailCode();
     expect(flow.mfaSecretKey).toBe("synthetic-secret");
     expect(flow.mfaAwaitingEmail).toBe(false);
     expect(flow.mfaEmailVerified).toBe(true);
@@ -156,31 +170,29 @@ describe("account setup progress, drafts and email verification", () => {
     expect(flow.error).toContain("vyplň datum DO");
     expect(mocks.api).not.toHaveBeenCalled();
   });
-  it("keeps successful completion visible until the user opens the app", async () => {
+  it("returns new enrollment to login for activation without a stale profile save", async () => {
+    const navigate = vi.spyOn(window.location, "replace").mockImplementation(() => {});
     user.emailVerified = true;
     await start();
+    expect(flow.mfaSecretKey).toBeNull();
+    expect(flow.mfaEmailVerified).toBe(false);
+    await confirmEmailCode();
     await act(async () => flow.onMfaCodeChange("123456"));
     await act(async () => flow.onPrimaryAction());
+    expect(mocks.enroll).toHaveBeenCalledWith(user, expect.any(Object), "123456");
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(mocks.clearSession).toHaveBeenCalledOnce();
+    expect(mocks.signOut).toHaveBeenCalledWith(mocks.auth);
+    expect(navigate).toHaveBeenCalledWith("/login?reason=mfa-configured");
+  });
+  it("keeps an already secured account's completion visible until the user opens the app", async () => {
+    user.emailVerified = true; mocks.enrolled = true;
+    await start();
     expect(flow.completed).toBe(true);
     expect(flow.showWizard).toBe(true);
-    vi.useFakeTimers();
-    await act(async () => vi.advanceTimersByTime(5000));
-    expect(flow.showWizard).toBe(true);
+    expect(mocks.requestCode).not.toHaveBeenCalled();
     await act(async () => flow.onComplete());
     expect(flow.showWizard).toBe(false);
-  });
-  it("allows retrying the final save after 2FA is enrolled", async () => {
-    user.emailVerified = true;
-    await start();
-    mocks.api.mockRejectedValueOnce(new Error("Dočasný výpadek"));
-    await act(async () => flow.onMfaCodeChange("123456"));
-    await act(async () => flow.onPrimaryAction());
-    expect(flow.mfaEnabled).toBe(true);
-    expect(flow.completed).toBe(false);
-    expect(flow.showWizard).toBe(true);
-    expect(flow.error).toBe("Dočasný výpadek");
-    await act(async () => flow.onPrimaryAction());
-    expect(flow.completed).toBe(true);
   });
 
   it("does not restore another user's career draft", async () => {

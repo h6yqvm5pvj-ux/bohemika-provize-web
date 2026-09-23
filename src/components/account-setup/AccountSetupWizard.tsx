@@ -5,12 +5,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type ChangeEvent,
-  type ClipboardEvent,
-  type KeyboardEvent,
 } from "react";
 import {
-  Apple,
   BriefcaseBusiness,
   Building2,
   CheckCircle2,
@@ -23,17 +19,17 @@ import {
   Loader2,
   Landmark,
   PhoneCall,
-  Play,
   Plus,
   QrCode,
   ShieldCheck,
   Trash2,
   UserRound,
-  X,
 } from "lucide-react";
 
 import type { User } from "firebase/auth";
 import { PasswordField } from "./PasswordField";
+import { MfaHelpDialog } from "./MfaHelpDialog";
+import { MfaCodeInput } from "./MfaCodeInput";
 import { AccountSetupSuccess } from "./AccountSetupSuccess";
 import styles from "./authSurface.module.css";
 
@@ -61,6 +57,8 @@ type AccountSetupWizardProps = {
   completedStepIds: AccountSetupStepId[];
   careerDraftStatus: "none" | "saved" | "restored" | "unavailable";
   mfaAwaitingEmail: boolean;
+  mfaAwaitingEmailCode: boolean;
+  onResendMfaEmailCode: () => void;
   mfaEmailVerified: boolean;
   onComplete: () => void;
   onStepChange: (index: number) => void;
@@ -118,242 +116,15 @@ type AccountSetupWizardProps = {
   onPrimaryAction: () => void;
 };
 
-const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
-  "https://apps.apple.com/cz/app/microsoft-authenticator/id983156458";
-const MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL =
-  "https://play.google.com/store/apps/details?id=com.azure.authenticator";
-
 const ACCOUNT_SETUP_FIELD_CLASS = styles.field;
-const MFA_CODE_LENGTH = 6;
-
-type MfaCodeInputProps = {
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-};
-
-function MfaCodeInput({ value, disabled, onChange }: MfaCodeInputProps) {
-  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const code = value.replace(/\D/g, "").slice(0, MFA_CODE_LENGTH);
-
-  const focusDigit = (index: number) => {
-    window.requestAnimationFrame(() => inputRefs.current[index]?.focus());
-  };
-
-  const updateFromInput = (index: number, rawValue: string) => {
-    const enteredDigits = rawValue.replace(/\D/g, "");
-    if (!enteredDigits) {
-      onChange(`${code.slice(0, index)}${code.slice(index + 1)}`);
-      return;
-    }
-
-    const nextCode = `${code.slice(0, index)}${enteredDigits}${code.slice(
-      index + enteredDigits.length
-    )}`.slice(0, MFA_CODE_LENGTH);
-    onChange(nextCode);
-    focusDigit(Math.min(index + enteredDigits.length, MFA_CODE_LENGTH - 1));
-  };
-
-  const handleChange = (index: number, event: ChangeEvent<HTMLInputElement>) => {
-    updateFromInput(index, event.target.value);
-  };
-
-  const handlePaste = (index: number, event: ClipboardEvent<HTMLInputElement>) => {
-    const pastedDigits = event.clipboardData.getData("text").replace(/\D/g, "");
-    if (!pastedDigits) return;
-
-    event.preventDefault();
-    updateFromInput(index, pastedDigits);
-  };
-
-  const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowLeft" && index > 0) {
-      event.preventDefault();
-      focusDigit(index - 1);
-      return;
-    }
-    if (event.key === "ArrowRight" && index < MFA_CODE_LENGTH - 1) {
-      event.preventDefault();
-      focusDigit(index + 1);
-      return;
-    }
-    if (event.key === "Backspace" && !code[index] && index > 0) {
-      event.preventDefault();
-      onChange(code.slice(0, -1));
-      focusDigit(index - 1);
-    }
-  };
-
-  return (
-    <div
-      className="grid grid-cols-6 gap-2"
-      role="group"
-      aria-label="Šestimístný 2FA kód"
-    >
-      {Array.from({ length: MFA_CODE_LENGTH }, (_, index) => (
-        <input
-          key={index}
-          ref={(element) => {
-            inputRefs.current[index] = element;
-          }}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          autoComplete={index === 0 ? "one-time-code" : "off"}
-          aria-label={`Číslice ${index + 1} z ${MFA_CODE_LENGTH} 2FA kódu`}
-          value={code[index] ?? ""}
-          onChange={(event) => handleChange(index, event)}
-          onPaste={(event) => handlePaste(index, event)}
-          onKeyDown={(event) => handleKeyDown(index, event)}
-          onFocus={() => {
-            const firstEmptyIndex = Math.min(code.length, MFA_CODE_LENGTH - 1);
-            if (index > firstEmptyIndex) focusDigit(firstEmptyIndex);
-          }}
-          disabled={disabled}
-          className="h-12 min-w-0 w-full rounded-xl border border-white/18 bg-white/[0.06] p-0 text-center font-mono text-lg font-bold text-white outline-none transition focus:border-violet-200/70 focus:bg-white/[0.09] focus:ring-2 focus:ring-violet-200/20 disabled:cursor-not-allowed disabled:opacity-55 sm:h-14"
-        />
-      ))}
-    </div>
-  );
-}
-
-type MfaHelpDialogProps = {
-  onClose: () => void;
-};
-
-function MfaHelpDialog({ onClose }: MfaHelpDialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus(); }, []);
-  return (
-    <div
-      ref={dialogRef}
-      onKeyDown={event => {
-        if (event.key === "Escape") { event.stopPropagation(); onClose(); }
-        if (event.key !== "Tab") return;
-        const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button, a[href]") ?? []);
-        if (event.shiftKey && document.activeElement === elements[0]) { event.preventDefault(); elements.at(-1)?.focus(); }
-        else if (!event.shiftKey && document.activeElement === elements.at(-1)) { event.preventDefault(); elements[0]?.focus(); }
-      }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 py-5 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="mfa-help-title"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section className="relative max-h-full w-full max-w-4xl overflow-y-auto rounded-[28px] border border-violet-200/25 bg-[linear-gradient(145deg,#1b1030_0%,#100a20_58%,#0b0717_100%)] p-4 text-white shadow-[0_32px_90px_rgba(4,3,18,0.72),inset_0_1px_0_rgba(255,255,255,0.13)] sm:p-6">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/16 bg-white/[0.06] text-violet-100 transition hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80 sm:right-6 sm:top-6"
-          aria-label="Zavřít nápovědu"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
-
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_252px] lg:items-start">
-          <div className="pr-10 sm:pr-12 lg:pr-0">
-            <div className="inline-flex self-start items-center gap-2 rounded-full border border-sky-200/30 bg-sky-300/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-100">
-              <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
-              Rychlá nápověda
-            </div>
-            <h4 id="mfa-help-title" className="mt-6 text-xl font-bold tracking-[-0.02em] text-white sm:text-2xl">
-              Jak přidat Bohemka.App do Authenticatoru?
-            </h4>
-            <p className="mt-3 text-sm leading-relaxed text-violet-100/72">
-              Otevři si v mobilu nebo stáhni aplikaci{" "}
-              <strong className="font-semibold text-white">Microsoft Authenticator</strong>.
-              {" "}Pravděpodobně ji už máš, pokud využíváš portál SUS ČPP nebo KNZ
-              KOOPERATIVA.
-            </p>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <a
-                href={MICROSOFT_AUTHENTICATOR_APP_STORE_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
-                aria-label="Otevřít Microsoft Authenticator v App Store"
-              >
-                <Apple className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                App Store
-                <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
-              </a>
-              <a
-                href={MICROSOFT_AUTHENTICATOR_GOOGLE_PLAY_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-center gap-2 rounded-full border border-white/16 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-50 transition hover:bg-white/[0.11]"
-                aria-label="Otevřít Microsoft Authenticator v Google Play"
-              >
-                <Play className="h-3.5 w-3.5" strokeWidth={2.2} fill="currentColor" aria-hidden="true" />
-                Google Play
-                <ExternalLink className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
-              </a>
-            </div>
-
-            <div className="mt-8 border-t border-white/10 pt-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-200/70">
-                Postup nastavení
-              </p>
-              <ol className="mt-3 space-y-3">
-                <li className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-400/25 text-xs font-bold text-violet-50">
-                    1
-                  </span>
-                  <p className="pt-0.5 text-sm leading-relaxed text-violet-100/82">
-                    Otevři aplikaci. V jejím dolním pravém rohu najdi ikonu QR kódu.
-                  </p>
-                </li>
-                <li className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-400/25 text-xs font-bold text-violet-50">
-                    2
-                  </span>
-                  <p className="pt-0.5 text-sm leading-relaxed text-violet-100/82">
-                    Klikni na ni a namiř fotoaparátem na QR kód zobrazený v tomto okně.
-                  </p>
-                </li>
-                <li className="flex gap-3 rounded-2xl border border-emerald-200/20 bg-emerald-300/[0.08] p-3">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-400/25 text-xs font-bold text-emerald-50">
-                    3
-                  </span>
-                  <p className="pt-0.5 text-sm leading-relaxed text-emerald-50/88">
-                    Po naskenování je hotovo. V aplikaci najdeš unikátní šestimístný
-                    číselný kód, který se každých 30 vteřin mění. Zadej ho sem do
-                    aplikace.
-                  </p>
-                </li>
-              </ol>
-            </div>
-
-          </div>
-
-          <figure>
-            <div className="flex h-[380px] items-center justify-center sm:h-[440px] lg:h-[470px]">
-              <Image
-                src="/icons/microsoft-authenticator-qr-help-purple.png"
-                alt="Microsoft Authenticator s vyznačenou ikonou QR kódu v dolním pravém rohu"
-                width={853}
-                height={1844}
-                className="h-full w-full object-contain"
-              />
-            </div>
-            <figcaption className="px-1 pb-1 pt-2 text-center text-[11px] font-medium leading-relaxed text-violet-100/65">
-              Ikona QR kódu v Microsoft Authenticatoru
-            </figcaption>
-          </figure>
-        </div>
-      </section>
-    </div>
-  );
-}
 
 export function AccountSetupWizard({
   user,
   completedStepIds,
   careerDraftStatus,
   mfaAwaitingEmail,
+  mfaAwaitingEmailCode,
+  onResendMfaEmailCode,
   mfaEmailVerified,
   onComplete,
   onStepChange,
@@ -411,7 +182,6 @@ export function AccountSetupWizard({
   const [copyResult, setCopyResult] = useState<{ key: string; message: string } | null>(null);
   const copyStatus = copyResult?.key === mfaSecretKey ? copyResult?.message : null;
   const rootRef = useRef<HTMLDivElement>(null);
-  const helpTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
@@ -442,6 +212,8 @@ export function AccountSetupWizard({
           : "Pokračovat"
         : mfaAwaitingEmail
           ? mfaSaving ? "Ověřuji e-mail…" : "Ověřit e-mail a pokračovat"
+        : mfaAwaitingEmailCode
+          ? mfaSaving ? "Ověřuji kód…" : "Potvrdit e-mail a zobrazit QR"
         : mfaEnabled
           ? completionSaving
             ? "Dokončuji"
@@ -876,12 +648,18 @@ export function AccountSetupWizard({
                     <h3 className="font-semibold">Podívej se do své schránky</h3>
                     <p className="mt-2 text-sm leading-relaxed text-violet-100/80">Otevři ověřovací odkaz v e-mailu. Po návratu na tuto stránku ověření zkontrolujeme automaticky. Můžeš také použít tlačítko dole.</p>
                   </div>}
-                  {!mfaEnabled && !mfaSecretKey && !mfaAwaitingEmail ? (
+                  {mfaAwaitingEmailCode && <div className="space-y-3 rounded-xl border border-violet-300/25 bg-violet-400/10 p-4">
+                    <h3 className="font-semibold">Potvrď nastavení kódem z e-mailu</h3>
+                    <p className="text-sm leading-relaxed text-violet-100/80">Na {user.email} jsme odeslali nový kód. Potřebujeme ho i u dříve ověřené adresy. Platí 10 minut.</p>
+                    <MfaCodeInput id="setup-email-code" value={mfaCode} disabled={mfaSaving} label="kódu z e-mailu" onChange={onMfaCodeChange} />
+                    <button type="button" disabled={mfaSaving} className={styles.secondary} onClick={onResendMfaEmailCode}>Poslat nový kód</button>
+                  </div>}
+                  {!mfaEnabled && !mfaSecretKey && !mfaAwaitingEmail && !mfaAwaitingEmailCode ? (
                     <div className="rounded-2xl border border-white/14 bg-white/[0.05] px-3 py-3">
                       <p className="text-sm leading-relaxed text-violet-100/68">
-                        Nejdřív potvrď aktuální heslo. Pokud ještě nemáš ověřený
-                        e-mail, pošleme ti odkaz do schránky. Po jeho potvrzení
-                        se vrať sem a navážeme nastavením ověřovací aplikace.
+                        Nejdřív potvrď aktuální heslo. Potom ti do e-mailu pošleme
+                        jednorázový kód pro toto nastavení 2FA. QR kód zobrazíme
+                        až po jeho zadání.
                       </p>
                       <div className="mt-3 space-y-2">
                         <label htmlFor="setup-password" className="block text-sm font-medium text-violet-100">Aktuální heslo</label>
@@ -931,7 +709,8 @@ export function AccountSetupWizard({
                               <p className="text-base font-semibold text-white">Naskenuj QR kód</p>
                               <button
                                 type="button"
-                                onClick={(event) => { helpTrigger.current = event.currentTarget; setIsMfaHelpOpen(true); }}
+                                onClick={() => setIsMfaHelpOpen(true)}
+                                aria-haspopup="dialog"
                                 className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/25 bg-violet-300/10 px-2.5 py-1 text-[11px] font-semibold text-violet-50 transition hover:bg-violet-300/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-200/80"
                               >
                                 <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
@@ -955,7 +734,7 @@ export function AccountSetupWizard({
                           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-200/30 bg-emerald-300/12 text-sm font-bold text-emerald-50">
                             2
                           </span>
-                          <label className="block min-w-0 space-y-2 pt-0.5">
+                          <div className="min-w-0 flex-1 space-y-2 pt-0.5">
                             <span className="block text-base font-semibold text-white">
                               Zadej šestimístný kód
                             </span>
@@ -967,7 +746,7 @@ export function AccountSetupWizard({
                               disabled={mfaSaving}
                               onChange={onMfaCodeChange}
                             />
-                          </label>
+                          </div>
                         </div>
 
                         <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.03] p-4">
@@ -980,6 +759,7 @@ export function AccountSetupWizard({
                       </div>
                     </div>
                   ) : null}
+                  {!mfaEnabled && mfaSecretKey && <button type="button" disabled={mfaSaving} className={styles.secondary} onClick={onResendMfaEmailCode}>Začít znovu s novým e-mailovým kódem</button>}
                 </div>
               ) : null}
             {info ? <p role="status" className="mt-4 rounded-xl border border-violet-300/25 bg-violet-400/10 px-3 py-3 text-sm text-violet-100">{info}</p> : null}
@@ -999,7 +779,7 @@ export function AccountSetupWizard({
           </form>
         </div>
       )}
-      {isMfaHelpOpen ? <MfaHelpDialog onClose={() => { setIsMfaHelpOpen(false); helpTrigger.current?.focus(); }} /> : null}
+      {isMfaHelpOpen ? <MfaHelpDialog onClose={() => setIsMfaHelpOpen(false)} /> : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { LifeInsuranceContent } from "@/components/LifeInsuranceContent";
+import { LanguagePicker } from "@/components/life-insurance/LanguagePicker";
 import styles from "@/components/life-insurance/lifeInsuranceTheme.module.css";
 
 import {
@@ -14,12 +15,6 @@ import {
 type LifeInsuranceShellClientProps = {
   slug: string;
 };
-
-const LANGUAGE_OPTIONS: Array<{ id: OnlineCardLocale; label: string; shortLabel: string; flag: string }> = [
-  { id: "cs", label: "Čeština", shortLabel: "CZ", flag: "🇨🇿" },
-  { id: "en", label: "English", shortLabel: "EN", flag: "🇬🇧" },
-  { id: "uk", label: "Українська", shortLabel: "UK", flag: "🇺🇦" },
-];
 
 const SHELL_COPY = {
   cs: { back: "Zpět na vizitku", title: "Životní a úrazové pojištění", dark: "Tmavý", light: "Světlý", display: "Vzhled stránky", language: "Jazyk stránky" },
@@ -60,9 +55,7 @@ export default function LifeInsuranceShellClient({ slug }: LifeInsuranceShellCli
             >
               {lightMode ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
             </button>
-            <select className={styles.language} value={locale} onChange={event => setLocale(event.target.value as OnlineCardLocale)} aria-label={copy.language}>
-              {LANGUAGE_OPTIONS.map(option => <option key={option.id} value={option.id} lang={option.id}>{option.shortLabel}</option>)}
-            </select>
+            <LanguagePicker locale={locale} label={copy.language} onChange={setLocale} />
           </div>
         </div>
       </header>

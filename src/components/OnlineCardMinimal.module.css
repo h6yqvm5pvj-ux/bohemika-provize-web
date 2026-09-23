@@ -126,64 +126,51 @@
 .heroFoot svg { width: 14px; height: 14px; stroke-width: 1.5; }
 .heroFoot a:hover { color: #ecfaff; }
 .exploreLink > span { display: grid; width: 32px; height: 32px; place-items: center; border: 1px solid #c5e6f228; border-radius: 50%; }
-.personalIntro { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; padding-block: 72px; }
+.personalIntro { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; padding-block: 44px; }
 .introStatement { margin: 22px 0 0; font-size: clamp(25px, 2.3vw, 33px); font-weight: 500; line-height: 1.45; letter-spacing: -.035em; text-wrap: pretty; }
 .introBody { padding-top: 32px; color: var(--card-muted); font-size: 15px; line-height: 1.85; }
 .introBody p { margin: 0 0 18px; white-space: pre-line; }
 .introBody p:last-child { margin-bottom: 0; color: var(--card-ink); }
-.section { padding-block: 88px; border-top: 1px solid var(--card-line); scroll-margin-top: 88px; }
+.section { padding-block: 44px; border-top: 1px solid var(--card-line); scroll-margin-top: 88px; }
 .hero + .section { border-top: 0; }
-.sectionHead { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 80px; margin-bottom: 46px; }
+.sectionHead { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 80px; margin-bottom: 28px; }
 .heading { margin: 20px 0 0; max-width: 650px; color: var(--card-ink); font-size: clamp(32px, 3.5vw, 48px); line-height: 1.16; letter-spacing: -.055em; font-weight: 500; text-wrap: balance; }
 .sectionLead { margin: 0; padding-top: 29px; color: var(--card-muted); font-size: 15px; line-height: 1.85; }
 .services { display: grid; grid-template-columns: repeat(8, minmax(128px, 1fr)); gap: 10px; margin: -4px; padding: 4px 4px 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 4px; scrollbar-width: thin; scrollbar-color: var(--card-line) transparent; }
 .services:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 4px; border-radius: 16px; }
 .service {
-  --card-bg: #0d161e;
-  --card-surface: #14222d;
-  --card-ink: #f3f6fc;
-  --card-muted: #a7b6cb;
-  --card-line: #2b3b46;
-  --card-accent: #b1c6d0;
   position: relative;
   isolation: isolate;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   min-width: 0;
-  min-height: 220px;
-  padding: 24px 12px 14px;
+  min-height: 200px;
+  padding: 14px;
   scroll-snap-align: start;
   overflow: hidden;
   border: 1px solid var(--card-line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--card-surface);
   color: var(--card-ink);
   text-decoration: none;
 }
-.serviceArtwork { position: relative; display: flex; align-items: center; justify-content: center; align-self: center; flex: 0 0 auto; width: 88px; max-width: 100%; height: 88px; margin: 0 auto 10px; perspective: 480px; pointer-events: none; mix-blend-mode: lighten; }
-.serviceSculpture { position: relative; display: block; width: 100%; height: 100%; overflow: hidden; mask-image: linear-gradient(transparent, #000 12% 88%, transparent), linear-gradient(90deg, transparent, #000 12% 88%, transparent); mask-composite: intersect; animation: serviceSculptureFloat 7s ease-in-out infinite; animation-delay: var(--icon-delay, 0s); animation-play-state: paused; }
+.serviceArtwork { position: relative; display: flex; align-items: center; justify-content: center; align-self: center; flex: 0 0 auto; width: 88px; max-width: 100%; height: 88px; margin-top: 4px; perspective: 480px; pointer-events: none; }
+.serviceSculpture { position: relative; display: block; width: 100%; height: 100%; animation: serviceSculptureFloat 7s ease-in-out infinite; animation-delay: var(--icon-delay, 0s); animation-play-state: paused; }
 .serviceArtwork .serviceIllustration { display: block; width: 100%; height: 100%; object-fit: contain; }
-.serviceSculpture::after { content: ""; position: absolute; inset: -20% -100%; background: linear-gradient(110deg, transparent 40%, #d3f5ff12 49%, #f5fcff20 50%, transparent 59%); mix-blend-mode: screen; opacity: 0; transform: translateX(-28%); animation: serviceSculptureGlint 7s ease-in-out infinite; animation-delay: var(--icon-delay, 0s); animation-play-state: paused; }
-.services[data-icon-motion="running"] .serviceSculpture, .services[data-icon-motion="running"] .serviceSculpture::after { animation-play-state: running; }
+.services[data-icon-motion="running"] .serviceSculpture { animation-play-state: running; }
 @keyframes serviceSculptureFloat {
   0%, 100% { transform: translateY(1px) rotateX(0) rotateY(-7deg) rotateZ(-1deg); }
   50% { transform: translateY(-3px) rotateX(4deg) rotateY(7deg) rotateZ(1deg); }
 }
-@keyframes serviceSculptureGlint {
-  0%, 25%, 75%, 100% { opacity: 0; }
-  30% { transform: translateX(-28%); }
-  48% { opacity: .6; }
-  70% { transform: translateX(28%); }
-}
-.serviceCopy { position: relative; display: flex; flex: 1; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--card-line) 65%, transparent); }
-a.service { transition: transform .2s, border-color .2s, box-shadow .2s; }
-a.service:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--card-accent) 45%, transparent); box-shadow: 0 8px 20px #1639460b; }
+.serviceCopy { display: block; min-width: 0; width: 100%; }
+a.service { transition: background .2s; }
+a.service:hover { background: var(--card-tint); }
 a.service:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 2px; }
-.serviceLabel { display: block; min-height: 3.9em; font-size: 13px; font-weight: 500; line-height: 1.3; letter-spacing: -.02em; text-wrap: pretty; }
-.serviceSummary { display: block; color: var(--card-muted); font-size: 11px; font-weight: 400; line-height: 1.5; text-wrap: pretty; }
-.serviceNumber { position: absolute; top: 12px; left: 12px; color: var(--card-muted); opacity: .7; font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
-.serviceArrow { position: absolute; top: 9px; right: 9px; width: 22px; height: 22px; padding: 4px; border: 1px solid var(--card-line); border-radius: 50%; background: color-mix(in srgb, var(--card-surface) 70%, transparent); stroke-width: 1.5; color: var(--card-muted); transition: color .2s, background .2s; }
-a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(--card-ink); color: var(--card-bg); }
+.serviceLabel { display: block; font-size: 14px; font-weight: 500; line-height: 1.35; letter-spacing: -.02em; text-wrap: pretty; }
+.serviceSummary { display: block; margin-top: 5px; color: var(--card-accent); font-size: 12px; font-weight: 400; line-height: 1.5; text-wrap: pretty; }
+.serviceArrow { position: absolute; top: 14px; right: 14px; width: 16px; height: 16px; color: var(--card-accent); }
 .sectionAction { display: flex; justify-content: flex-end; margin-top: 28px; }
 .serviceActions { align-items: center; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
 .serviceActions > .textLink { margin-left: auto; }
@@ -192,7 +179,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
 .serviceMotionToggle:hover { color: var(--card-ink); }
 .serviceMotionToggle:focus-visible { outline: 2px solid var(--card-accent); outline-offset: 4px; border-radius: 4px; }
 .company { width: min(100% - 40px, 1440px); margin-inline: auto; border: 1px solid var(--card-line); border-radius: 30px; background: var(--card-soft); }
-.companyHead { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1.15fr; gap: 80px; align-items: center; min-height: 180px; margin-bottom: 48px; }
+.companyHead { position: relative; isolation: isolate; display: grid; grid-template-columns: 1fr 1.15fr; gap: 80px; align-items: center; min-height: 180px; margin-bottom: 32px; }
 .companyName { margin: 20px 0 0; font-size: clamp(46px, 5vw, 70px); font-weight: 600; letter-spacing: -.06em; line-height: 1.1; }
 .companyName span { color: var(--card-muted); font-weight: 300; }
 .companyIntro { padding-right: 30px; }
@@ -200,7 +187,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
 .ghostMark { position: absolute; z-index: -1; top: 50%; right: -12px; width: 280px; height: 340px; transform: translateY(-50%); object-fit: contain; opacity: .18; pointer-events: none; }
 .companyCopy { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 38px; padding-top: 32px; border-top: 1px solid var(--card-line); }
 .companyCopy p { margin: 0; color: var(--card-muted); font-size: 14px; line-height: 1.85; }
-.pillarsLabel { margin-top: 54px; }
+.pillarsLabel { margin-top: 36px; }
 .pillars { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin-top: 24px; gap: 28px; }
 .pillar { padding: 23px; border: 1px solid var(--card-line); border-radius: 20px; background: var(--card-bg); }
 .pillar > svg { width: 22px; height: 22px; margin-bottom: 19px; color: var(--card-accent); stroke-width: 1.4; }
@@ -210,12 +197,40 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
 .vigBand p { max-width: 480px; margin: 0; font-size: clamp(24px, 2.2vw, 30px); font-weight: 500; line-height: 1.45; letter-spacing: -.025em; }
 .vigBand p::before { content: ""; display: block; width: 28px; height: 2px; margin-bottom: 20px; background: #db2636; }
 .vigModel { height: 214px; }
-.partnersHead { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 34px; }
+.partnersHead { display: flex; align-items: end; justify-content: space-between; gap: 32px; margin-bottom: 24px; }
 .partnersHead .heading { max-width: 540px; font-size: 34px; }
 .partners { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 12px; }
-.partner { display: flex; align-items: center; justify-content: center; height: 106px; padding: 23px; border: 1px solid var(--card-line); border-radius: 17px; background: #fff; }
+.partner { --logo-shadow-rest: .16; --logo-shadow-raised: .09; display: flex; align-items: center; justify-content: center; height: 106px; padding: 14px; border: 1px solid var(--card-line); border-radius: 17px; background: #fff; transition: border-color .3s, box-shadow .3s; }
 .partner img { width: 100%; height: 100%; object-fit: contain; }
-.partnerDark { background: #172330; }
+.partnerDark { --logo-shadow-rest: .35; --logo-shadow-raised: .2; background: #172330; }
+.partnerLogoStage { display: block; width: 100%; height: 100%; perspective: 640px; pointer-events: none; transition: transform .4s cubic-bezier(.2,.7,.2,1); }
+.partnerLogoFilters { position: absolute; }
+.partnerLogoSculpture { position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d; transform: rotateX(6deg) rotateY(-6deg); animation: partnerLogoFloat 7s ease-in-out infinite; animation-delay: var(--logo-delay, 0s); animation-play-state: paused; }
+.partnerLogoFace, .partnerLogoDepth, .partnerLogoShadow, .partnerLogoSheen { position: absolute; inset: 0; display: block; backface-visibility: hidden; }
+.partnerLogoFace { transform: translateZ(1px); }
+.partnerLogoDepth { transform: translateZ(calc(var(--logo-depth) * -1.2px)); filter: var(--logo-alpha-filter) brightness(.68) saturate(.75); }
+.partnerLogoShadow { transform: translate3d(1px, 7px, -12px); filter: var(--logo-alpha-filter) brightness(0) blur(4px); opacity: var(--logo-shadow-rest); animation: partnerLogoShadowFloat 7s ease-in-out infinite; animation-delay: var(--logo-delay, 0s); animation-play-state: paused; }
+.partnerLogoSheen { transform: translateZ(1.5px); filter: var(--logo-alpha-filter) brightness(0) invert(1); opacity: 0; mask-image: linear-gradient(110deg, transparent 40%, #000 49% 51%, transparent 60%); mask-size: 300% 100%; mask-position: 100% 0; }
+.partners[data-logo-motion="running"] :is(.partnerLogoSculpture, .partnerLogoShadow) { animation-play-state: running; }
+.partnerActions { display: flex; justify-content: flex-end; margin-top: 12px; }
+@keyframes partnerLogoFloat {
+  0%, 100% { transform: translateY(2px) rotateX(6deg) rotateY(-6deg); }
+  50% { transform: translateY(-5px) rotateX(6deg) rotateY(-6deg); }
+}
+@keyframes partnerLogoShadowFloat {
+  0%, 100% { transform: translate3d(1px, 7px, -12px) scale(1); opacity: var(--logo-shadow-rest); }
+  50% { transform: translate3d(1px, 14px, -12px) scale(1.06); opacity: var(--logo-shadow-raised); }
+}
+@keyframes partnerLogoSheen {
+  0% { mask-position: 100% 0; opacity: 0; }
+  20%, 65% { opacity: .42; }
+  100% { mask-position: 0% 0; opacity: 0; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .partners[data-logo-motion="running"] .partner:hover { border-color: color-mix(in srgb, var(--card-accent) 35%, var(--card-line)); box-shadow: 0 9px 24px #1639460d; }
+  .partners[data-logo-motion="running"] .partner:hover .partnerLogoStage { transform: translateY(-1px) scale(1.035); }
+  .partners[data-logo-motion="running"] .partner:hover .partnerLogoSheen { animation: partnerLogoSheen 1s ease-in-out both; }
+}
 .officeGrid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 84px; align-items: center; }
 .officePhoto { position: relative; height: 400px; overflow: hidden; border-radius: 22px; background: var(--card-soft); }
 .officePhoto img { object-fit: cover; }
@@ -231,7 +246,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
 .address { display: flex; align-items: start; gap: 12px; margin: 27px 0 0; color: var(--card-muted); font-size: 14px; }
 .address svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 3px; stroke-width: 1.5; }
 .contactSection { position: relative; width: min(100% - 40px, 1440px); margin: 0 auto 40px; border: 1px solid var(--card-line); border-radius: 30px; background: radial-gradient(ellipse at 100% 0%, var(--card-tint), transparent 65%), var(--card-soft); }
-.contactHead { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 42px; }
+.contactHead { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 28px; }
 .contactHead .heading { max-width: 720px; font-size: clamp(38px, 4.5vw, 64px); }
 .contactGrid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 14px; }
 .contactItem { grid-column: span 2; min-width: 0; padding: 25px; border: 1px solid var(--card-line); border-radius: 20px; background: var(--card-surface); }
@@ -299,6 +314,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .vigBand { gap: 30px; padding-inline: 30px; }
 }
 @media (max-width: 1000px) {
+  .partners { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .hero::before { display: none; }
   .heroGrid { grid-template-columns: minmax(0, 1fr); gap: 8px; min-height: 0; }
   .heroIdentity { max-width: 600px; }
@@ -340,7 +356,7 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .hero .actions { margin-top: 24px; gap: 10px; }
   .hero .primaryButton { min-height: 50px; gap: 13px; padding-left: 16px; font-size: 11px; }
   .heroSaveButton { min-height: 50px; padding-inline: 13px; font-size: 11px; }
-  .personalIntro { grid-template-columns: 1fr; gap: 20px; padding-block: 44px; }
+  .personalIntro { grid-template-columns: 1fr; gap: 20px; padding-block: 28px; }
   .introStatement { font-size: 27px; }
   .introBody { padding-top: 0; font-size: 14px; }
   .heroBio { max-width: 450px; font-size: 13px; line-height: 1.8; }
@@ -349,14 +365,14 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .heroHighlights { align-items: flex-start; flex-direction: column; gap: 9px; }
   .heroScene { margin-top: -8px; }
   .heroFoot > a { flex-shrink: 0; }
-  .section { padding-block: 56px; scroll-margin-top: 72px; }
-  .sectionHead { grid-template-columns: 1fr; gap: 20px; margin-bottom: 28px; }
+  .section { padding-block: 28px; scroll-margin-top: 72px; }
+  .sectionHead { grid-template-columns: 1fr; gap: 20px; margin-bottom: 24px; }
   .sectionLead { padding: 0; font-size: 14px; }
   .heading { margin-top: 16px; font-size: 34px; text-wrap: pretty; }
   .services { grid-template-columns: repeat(8, minmax(152px, 1fr)); }
   .sectionAction { justify-content: flex-start; }
   .company { width: calc(100% - 20px); border-radius: 24px; }
-  .companyHead { grid-template-columns: 1fr; gap: 28px; margin-bottom: 30px; }
+  .companyHead { grid-template-columns: 1fr; gap: 28px; margin-bottom: 24px; }
   .companyName { font-size: 52px; }
   .companyIntro p { font-size: 21px; }
   .ghostMark { top: auto; bottom: -24px; right: -10px; width: 220px; height: 280px; transform: none; opacity: .16; }
@@ -372,13 +388,13 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .partnersHead .heading { font-size: 30px; }
   .partners { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .partners { gap: 8px; }
-  .partner { height: 80px; padding: 12px; border-radius: 10px; }
+  .partner { height: 80px; padding: 8px; border-radius: 10px; }
   .officeGrid { grid-template-columns: 1fr; gap: 30px; }
   .officeCopy { order: -1; }
   .officeCopy .heading { font-size: 34px; }
   .officePhoto { height: 290px; }
   .contactSection { width: calc(100% - 20px); margin-bottom: 20px; border-radius: 24px; }
-  .contactHead { display: block; margin-bottom: 30px; }
+  .contactHead { display: block; margin-bottom: 24px; }
   .contactHead > button { margin-top: 24px; }
   .contactGrid { grid-template-columns: 1fr 1fr; gap: 10px; }
   .contactItem { padding: 18px 16px; border-radius: 16px; }
@@ -396,6 +412,9 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   .dialogHeader { gap: 12px; }
   .dialogHeader h2 { font-size: 25px; }
 }
+@media (max-width: 480px) {
+  .partners { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
 @media (max-width: 380px) {
   .hero .actions { align-items: stretch; }
   .hero .primaryButton, .heroSaveButton { flex: 1 1 100%; justify-content: center; }
@@ -408,7 +427,9 @@ a.service:hover .serviceArrow { background: var(--card-ink); border-color: var(-
   to { opacity: 1; transform: translateY(0); }
 }
 :global(:root[data-motion="off"]) .heroIdentity > * { animation: none !important; transition: none !important; }
-:global(:root[data-motion="off"]) .serviceSculpture, :global(:root[data-motion="off"]) .serviceSculpture::after { animation: none !important; }
+:global(:root[data-motion="off"]) .serviceSculpture { animation: none !important; }
+:global(:root[data-motion="off"]) :is(.partnerLogoSculpture, .partnerLogoShadow, .partnerLogoSheen) { animation: none !important; }
+:global(:root[data-motion="off"]) .partnerLogoStage { transform: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .shell *, .shell *::before, .shell *::after, .dialog * { scroll-behavior: auto; transition: none !important; animation: none !important; }
 }

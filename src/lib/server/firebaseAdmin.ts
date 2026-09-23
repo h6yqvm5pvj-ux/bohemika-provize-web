@@ -5,7 +5,7 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getMessaging, type Messaging } from "firebase-admin/messaging";
 import { withAccountSecurityPolicy } from "./accountSecurityPolicy";
 import { isPersistentAccountBlock, withFirestoreTokenRevocation } from "./tokenRevocation";
-import { getEmailSetupUser } from "./emailSetupSecurity";
+import { getEmailSetupUser, getMfaEnrollmentUser } from "./emailSetupSecurity";
 
 type AdminCert = {
   projectId: string;
@@ -69,4 +69,9 @@ export const adminMessaging: Messaging | null = app ? getMessaging(app) : null;
 export async function getEmailVerificationUser(token: string) {
   if (!app || !adminDb) throw new Error("Firebase Admin není nakonfigurovaný.");
   return getEmailSetupUser(getAuth(app), adminDb, token);
+}
+
+export async function getMfaEnrollmentContext(token: string) {
+  if (!app || !adminDb) throw new Error("Firebase Admin není nakonfigurovaný.");
+  return getMfaEnrollmentUser(getAuth(app), adminDb, token);
 }

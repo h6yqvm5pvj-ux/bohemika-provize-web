@@ -649,6 +649,8 @@ export function AppLayout({
             completedStepIds={accountSetup.completedStepIds}
             careerDraftStatus={accountSetup.careerDraftStatus}
             mfaAwaitingEmail={accountSetup.mfaAwaitingEmail}
+            mfaAwaitingEmailCode={accountSetup.mfaAwaitingEmailCode}
+            onResendMfaEmailCode={accountSetup.onResendMfaEmailCode}
             mfaEmailVerified={accountSetup.mfaEmailVerified}
             onComplete={accountSetup.onComplete}
             onStepChange={accountSetup.onStepChange}

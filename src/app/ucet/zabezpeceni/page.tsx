@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Check, Copy, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Copy, LoaderCircle, Mail, ShieldCheck } from "lucide-react";
 import { AuthPage } from "@/components/account-setup/AuthPage";
 import { PasswordField } from "@/components/account-setup/PasswordField";
+import { TotpEnrollmentQrCode } from "@/components/account-setup/TotpEnrollmentQrCode";
+import { MfaHelpDialog } from "@/components/account-setup/MfaHelpDialog";
+import { MfaCodeInput } from "@/components/account-setup/MfaCodeInput";
 import styles from "@/components/account-setup/authSurface.module.css";
 import { initializeApp, deleteApp, type FirebaseApp } from "firebase/app";
-import { initializeAuth, inMemoryPersistence, multiFactor, signInWithEmailAndPassword, signOut, TotpMultiFactorGenerator, type Auth, type TotpSecret, type User } from "firebase/auth";
+import { initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signOut, type Auth, type User } from "firebase/auth";
+import { completeMfaEnrollment, confirmMfaEmailCode, requestMfaEmailCode, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import { firebaseApp } from "@/app/firebase-app";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError } from "@/lib/accountSecurity";
 import { resolveAuthEmailErrorMessage } from "@/lib/authEmailMessages";
@@ -18,11 +23,15 @@ import { requestVerificationEmail } from "@/app/lib/authEmailRequest";
 // Isolated Auth in memory: this recovery page cannot establish an application
 // session and does not access profiles, Firestore, or business APIs.
 export default function TotpRecoveryPage() {
+  const router = useRouter();
   const setupAuth = useRef<Auth | null>(null);
   const setupApp = useRef<FirebaseApp | null>(null);
+  const [entryReady, setEntryReady] = useState(false);
+  const [manualRecovery, setManualRecovery] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [secret, setSecret] = useState<TotpSecret | null>(null);
+  const [secret, setSecret] = useState<MfaEnrollmentSecret | null>(null);
+  const [emailChallengeId, setEmailChallengeId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -31,6 +40,7 @@ export default function TotpRecoveryPage() {
   const [emailRequested, setEmailRequested] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyError, setCopyError] = useState(false);
+  const [isMfaHelpOpen, setIsMfaHelpOpen] = useState(false);
 
   const requestEmail = useCallback(async (user: User) => {
     // The email endpoint accepts only a recent setup session and sends an inbox
@@ -49,13 +59,14 @@ export default function TotpRecoveryPage() {
       setAwaitingEmail(true);
       return false;
     }
-    const session = await multiFactor(user).getSession();
-    setSecret(await TotpMultiFactorGenerator.generateSecret(session));
+    setEmailChallengeId(await requestMfaEmailCode(user));
+    setCode("");
     setAwaitingEmail(false);
     return true;
   }, []);
 
   const continueSetup = useCallback(async (user: User) => {
+    setEmail(user.email ?? "");
     setPassword("");
     if (!(await beginEnrollment(user))) await requestEmail(user);
   }, [beginEnrollment, requestEmail]);
@@ -67,17 +78,33 @@ export default function TotpRecoveryPage() {
     void Promise.resolve().then(async () => {
       if (cancelled) return;
       const session = takePendingTotpSetupSession();
-      if (!session) return;
+      if (!session) {
+        // A reload loses the memory-only handoff. Only an explicit recovery
+        // link may show the administrator-assisted credential form.
+        if (new URLSearchParams(window.location.search).get("recovery") === "1") {
+          setManualRecovery(true);
+          setEntryReady(true);
+        } else {
+          router.replace("/login");
+        }
+        return;
+      }
       setupAuth.current = session.auth;
       setupApp.current = session.app;
       const user = session.auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
       setBusy(true);
       try { await continueSetup(user); }
       catch {
-        if (!cancelled) setError("Nastavení 2FA se nepodařilo zahájit. Přihlas se znovu na této stránce.");
+        if (!cancelled) setError("Nastavení 2FA se nepodařilo zahájit. Vrať se na přihlášení a zkus to znovu.");
       } finally {
-        if (!cancelled) setBusy(false);
+        if (!cancelled) {
+          setBusy(false);
+          setEntryReady(true);
+        }
       }
     });
     return () => {
@@ -86,7 +113,7 @@ export default function TotpRecoveryPage() {
       setupAuth.current = null; setupApp.current = null;
       if (auth && app) void signOut(auth).catch(() => {}).finally(() => deleteApp(app));
     };
-  }, [continueSetup]);
+  }, [continueSetup, router]);
 
   async function start(event: FormEvent) {
     event.preventDefault(); if (busy) return;
@@ -130,6 +157,10 @@ export default function TotpRecoveryPage() {
 
   async function enroll(event: FormEvent) {
     event.preventDefault(); if (busy || !secret || !setupAuth.current?.currentUser) return;
+    if (!/^[0-9]{6}$/.test(code)) {
+      setError("Zadej všech šest číslic z ověřovací aplikace.");
+      return;
+    }
     setBusy(true); setError("");
     try {
       const user = setupAuth.current.currentUser;
@@ -138,13 +169,32 @@ export default function TotpRecoveryPage() {
         await requestEmail(user);
         return;
       }
-      const assertion = TotpMultiFactorGenerator.assertionForEnrollment(secret, code.trim());
-      await multiFactor(user).enroll(assertion, "Autentizační aplikace");
-      setSecret(null); setCode(""); setDone(true);
+      await completeMfaEnrollment(user, secret, code);
+      setSecret(null); setEmailChallengeId(null); setCode(""); setDone(true);
       await signOut(setupAuth.current);
-    } catch {
-      setError("Kód se nepodařilo ověřit. Zadej aktuální šestimístný kód z ověřovací aplikace. Pokud platnost nastavení vypršela, obnov stránku a začni znovu.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Kód se nepodařilo ověřit. Zadej aktuální kód z ověřovací aplikace.");
     } finally { setBusy(false); }
+  }
+
+  async function confirmInbox(event: FormEvent) {
+    event.preventDefault();
+    const user = setupAuth.current?.currentUser;
+    if (busy || !user || !emailChallengeId) return;
+    if (!/^\d{6}$/.test(code)) { setError("Zadej všech šest číslic z potvrzovacího e-mailu."); return; }
+    setBusy(true); setError("");
+    try { setSecret(await confirmMfaEmailCode(user, emailChallengeId, code)); setCode(""); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "Potvrzení se nepodařilo ověřit."); }
+    finally { setBusy(false); }
+  }
+
+  async function resendInboxCode() {
+    const user = setupAuth.current?.currentUser;
+    if (busy || !user) return;
+    setBusy(true); setError("");
+    try { setEmailChallengeId(await requestMfaEmailCode(user)); setSecret(null); setCode(""); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "Kód se nepodařilo odeslat."); }
+    finally { setBusy(false); }
   }
 
   async function copySecret() {
@@ -154,32 +204,52 @@ export default function TotpRecoveryPage() {
     catch { setCopyError(true); }
   }
 
-  const title = done ? "Zabezpečení je nastavené" : secret ? "Přidej ověřovací aplikaci" : awaitingEmail ? "Ověř svůj e-mail" : "Obnov si zabezpečení";
+  if (!entryReady || (!manualRecovery && !secret && !emailChallengeId && !awaitingEmail && !done)) {
+    return <AuthPage title={error ? "Nastavení se nepodařilo zahájit" : "Připravuji zabezpečení"}
+      description={error ? "Vrať se na přihlášení a zkus to znovu." : "Ověřuji rozpracované nastavení účtu."}
+      busy={!entryReady} icon={<ShieldCheck size={24} />}>
+      {error ? <p role="alert" className={`${styles.notice} ${styles.noticeError}`}>{error}</p>
+        : <p role="status" className={styles.hint}><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Chvíli strpení…</p>}
+      <Link href="/login" className={styles.backLink}><ArrowLeft size={16} aria-hidden="true" /> Zpět na přihlášení</Link>
+    </AuthPage>;
+  }
+
+  const title = done ? "Zabezpečení je nastavené" : secret ? "Přidej ověřovací aplikaci" : awaitingEmail ? "Ověř svůj e-mail" : emailChallengeId ? "Potvrď nastavení 2FA" : "Obnov si zabezpečení";
   const description = done
     ? "Požádej administrátora o odblokování účtu. Potom se můžeš znovu přihlásit."
     : secret ? "Propoj svůj účet s Microsoft Authenticatorem nebo jinou aplikací pro jednorázové kódy."
       : awaitingEmail ? "Před nastavením 2FA potvrď, že e-mailová adresa patří tobě."
+      : emailChallengeId ? "Než zobrazíme QR kód, potvrď přístup ke své e-mailové schránce."
       : "Nové dvoufázové ověření nastav podle pokynů administrátora.";
   return <AuthPage title={title} description={description} busy={busy} tone={done ? "success" : "neutral"}
     icon={done ? <Check size={24} /> : <ShieldCheck size={24} />}>
     {done ? <Link href="/login" className={`${styles.primary} ${styles.fullWidth}`}>Přejít na přihlášení <ArrowRight size={18} aria-hidden="true" /></Link> :
-      <form onSubmit={secret ? enroll : awaitingEmail ? continueAfterEmail : start} className={styles.fields}>
+      <form onSubmit={secret ? enroll : awaitingEmail ? continueAfterEmail : emailChallengeId ? confirmInbox : start} className={styles.fields}>
         {secret ? <>
-          <div className={styles.notice}>
-            <p className={styles.label}>1. Přidej účet pomocí klíče</p>
-            <p className={styles.hint}>V ověřovací aplikaci zvol ruční zadání a vlož tento klíč. Klíč nikomu neposílej.</p>
-            <code className={styles.secretKey}>{secret.secretKey}</code>
-            <button type="button" onClick={() => void copySecret()} className={styles.secondary} disabled={busy}>
-              <Copy size={16} aria-hidden="true" />{copiedKey === secret.secretKey ? "Klíč zkopírován" : "Kopírovat klíč"}
+          <div className={styles.fieldGroup}>
+            <p className={styles.label}>1. Přidej Bohemka.App do Authenticatoru</p>
+            <p className={styles.hint}>V telefonu otevři Microsoft Authenticator, klepni na ikonu QR kódu a naskenuj kód níže.</p>
+            <button type="button" onClick={() => setIsMfaHelpOpen(true)} className={styles.secondary} aria-haspopup="dialog">
+              <CircleHelp size={17} aria-hidden="true" /> Návod s obrázkem
             </button>
-            <p role="status" className={styles.hint}>{copyError ? "Kopírování není dostupné. Označ a zkopíruj klíč ručně." : copiedKey === secret.secretKey ? "Klíč můžeš vložit do ověřovací aplikace." : ""}</p>
+            <TotpEnrollmentQrCode secret={secret} accountName={email.trim().toLowerCase() || "bohemika-user"} />
+            <details className={`${styles.notice} ${styles.manualSetup}`}>
+              <summary>Nemůžeš skenovat? Zadej klíč ručně</summary>
+              <p className={styles.hint}>V ověřovací aplikaci zvol ruční zadání a vlož tento klíč. Klíč nikomu neposílej.</p>
+              <code className={styles.secretKey}>{secret.secretKey}</code>
+              <button type="button" onClick={() => void copySecret()} className={styles.secondary} disabled={busy}>
+                <Copy size={16} aria-hidden="true" />{copiedKey === secret.secretKey ? "Klíč zkopírován" : "Kopírovat klíč"}
+              </button>
+              <p role="status" className={styles.hint}>{copyError ? "Kopírování není dostupné. Označ a zkopíruj klíč ručně." : copiedKey === secret.secretKey ? "Klíč můžeš vložit do ověřovací aplikace." : ""}</p>
+            </details>
           </div>
           <div className={styles.fieldGroup}>
             <label htmlFor="recovery-code" className={styles.label}>2. Zadej šestimístný kód</label>
-            <input id="recovery-code" name="one-time-code" className={`${styles.field} ${styles.codeField}`} value={code}
-              onChange={event => { setCode(event.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
-              inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} disabled={busy} aria-describedby="recovery-code-help recovery-error" />
-            <p id="recovery-code-help" className={styles.hint}>Použij aktuální kód z právě přidaného účtu.</p>
+            <MfaCodeInput id="recovery-code" value={code} required disabled={busy}
+              onChange={value => { setCode(value); setError(""); }}
+              describedBy="recovery-code-help recovery-error" />
+            <p id="recovery-code-help" className={styles.hint}>V Authenticatoru otevři přidaný účet Bohemka.App. Jeho aktuální šestimístný kód opiš sem a klikni na „Potvrdit kód“.</p>
+            <button type="button" disabled={busy} className={styles.secondary} onClick={() => void resendInboxCode()}>Začít znovu s novým e-mailovým kódem</button>
           </div>
         </> : awaitingEmail ? <>
           <p role="status" className={styles.notice}>{emailRequested
@@ -188,6 +258,15 @@ export default function TotpRecoveryPage() {
           <button type="button" onClick={() => void resendEmail()} disabled={busy} className={styles.secondary}>
             {emailRequested ? "Poslat ověřovací e-mail znovu" : "Poslat ověřovací e-mail"}
           </button>
+        </> : emailChallengeId ? <>
+          <p role="status" className={styles.notice}>Na {email} jsme odeslali jednorázový kód pro toto nastavení 2FA. Potvrzení potřebujeme i u dříve ověřené adresy.</p>
+          <div className={styles.fieldGroup}>
+            <label htmlFor="mfa-email-code" className={styles.label}>Kód z e-mailu</label>
+            <MfaCodeInput id="mfa-email-code" value={code} required disabled={busy} label="kódu z e-mailu"
+              onChange={value => { setCode(value); setError(""); }} describedBy="mfa-email-help recovery-error" />
+            <p id="mfa-email-help" className={styles.hint}>Kód platí 10 minut. Použij poslední doručený e-mail a zkontroluj i spam.</p>
+          </div>
+          <button type="button" disabled={busy} className={styles.secondary} onClick={() => void resendInboxCode()}>Poslat nový kód</button>
         </> : <>
           <p className={styles.notice}>Nastavení ověřovací aplikace samo neodblokuje účet. Obnovení přístupu dokončí administrátor.</p>
           <div className={styles.fieldGroup}>
@@ -206,9 +285,10 @@ export default function TotpRecoveryPage() {
         </>}
         <div id="recovery-error" role="alert" hidden={!error}>{error && <p className={`${styles.notice} ${styles.noticeError}`}>{error}</p>}</div>
         <button type="submit" disabled={busy} className={`${styles.primary} ${styles.fullWidth}`}>
-          {busy ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Ověřuji…</> : <>{secret ? "Potvrdit kód" : awaitingEmail ? "E-mail je ověřený, pokračovat" : "Pokračovat"}<ArrowRight size={18} aria-hidden="true" /></>}
+          {busy ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Ověřuji…</> : <>{secret ? "Potvrdit kód" : awaitingEmail ? "E-mail je ověřený, pokračovat" : emailChallengeId ? "Potvrdit e-mail a zobrazit QR" : "Pokračovat"}<ArrowRight size={18} aria-hidden="true" /></>}
         </button>
       </form>}
     {!done && <Link href="/login" className={styles.backLink}><ArrowLeft size={16} aria-hidden="true" /> Zpět na přihlášení</Link>}
+    {secret && isMfaHelpOpen && <MfaHelpDialog onClose={() => setIsMfaHelpOpen(false)} />}
   </AuthPage>;
 }

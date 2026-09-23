@@ -292,7 +292,8 @@ const resolveStatementPremiumBasePeriod = ({
 
   const fallback =
     fallbackPeriod ?? (productMeta.usesAnnualPremiumBase ? "annual" : "payment");
-  if (productMeta.category !== "auto") return fallback;
+  // Property statements can also quote an annual base for premiums paid in installments.
+  if (productMeta.category !== "auto" && productMeta.category !== "property") return fallback;
 
   const base = Number(statementBase);
   const paymentBase = Number(systemPaymentBase);

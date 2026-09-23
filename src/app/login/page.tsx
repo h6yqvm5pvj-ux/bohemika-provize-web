@@ -54,6 +54,7 @@ const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/invalid-login-credentials",
   "auth/invalid-email",
   "auth/network-request-failed",
+  "auth/login-check-unavailable",
   "auth/operation-not-allowed",
   "auth/timeout",
   "auth/unauthorized-continue-uri",
@@ -182,13 +183,18 @@ async function postLoginAttempt(
     headers.set("Authorization", `Bearer ${authToken}`);
   }
 
-  const response = await fetch("/api/auth/login-attempts", {
-    method: "POST",
-    headers,
-    cache: "no-store",
-    body: JSON.stringify({ action, email }),
-    signal: AbortSignal.timeout(15_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/auth/login-attempts", {
+      method: "POST",
+      headers,
+      cache: "no-store",
+      body: JSON.stringify({ action, email }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw Object.assign(new Error("Kontrola přihlášení není dostupná."), { code: "auth/login-check-unavailable" });
+  }
   const payload = (await response.json().catch(() => null)) as LoginAttemptResponse | null;
   if (payload && typeof payload === "object") return payload;
   throw new Error("Nepodařilo se ověřit bezpečnostní limit přihlášení.");
@@ -210,6 +216,7 @@ export default function LoginPage() {
   const passkeyLoading = passkeyStage !== null;
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [setupNotice, setSetupNotice] = useState<string | null>(null);
   const [resetStatus, setResetStatus] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
   const resetInFlight = useRef(false);
@@ -346,6 +353,9 @@ export default function LoginPage() {
     setIsIosDevice(detectIosDevice());
     if (new URLSearchParams(window.location.search).get("reason") === "account-blocked") {
       setError(ACCOUNT_BLOCKED_MESSAGE);
+    }
+    if (new URLSearchParams(window.location.search).get("reason") === "mfa-configured") {
+      setSetupNotice("2FA je nastavené. Požádej administrátora o aktivaci účtu a potom se přihlas heslem a kódem z Authenticatoru.");
     }
   }, []);
 
@@ -534,6 +544,8 @@ export default function LoginPage() {
           return null;
         });
         msg = buildLoginAttemptMessage(attemptState);
+      } else if (authErr?.code === "auth/login-check-unavailable") {
+        msg = "Server pro kontrolu přihlášení neodpovídá. Zkus to prosím za chvíli. Správnost e-mailu a hesla se nepodařilo ověřit.";
       } else if (authErr?.code === "auth/invalid-email") {
         msg = "Zadej platný e-mail.";
       } else if (authErr?.code === "auth/network-request-failed") {
@@ -795,13 +807,14 @@ export default function LoginPage() {
                 </div>
               )}
 
+              {setupNotice && <p role="status" className={surface.notice}>{setupNotice}</p>}
               {error && (
                 <p role="alert" className={`${surface.notice} ${surface.noticeError}`}>
                   {error}
                 </p>
               )}
               {error === ACCOUNT_BLOCKED_MESSAGE && (
-                <Link href="/ucet/zabezpeceni" className={surface.secondary}>
+                <Link href="/ucet/zabezpeceni?recovery=1" className={surface.secondary}>
                   Nastavit dvoufázové ověření (2FA)
                 </Link>
               )}

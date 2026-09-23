@@ -23,7 +23,7 @@ function normalizeLoginNextPath(value: string | null, origin: string): string | 
       // Removing dot segments can produce //host even from a /safe/..//host input.
       url.pathname.startsWith("//") || decodedPath.startsWith("//") ||
       hasUnsafeLoginPathCharacters(decodedPath) ||
-      decodedPath.replace(/\/+$/, "").toLowerCase() === "/login"
+      ["/login", "/ucet/zabezpeceni"].includes(decodedPath.replace(/\/+$/, "").toLowerCase())
     ) return null;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {

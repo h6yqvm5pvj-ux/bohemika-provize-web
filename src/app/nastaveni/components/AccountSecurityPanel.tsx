@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 
 import type { PasskeyCredentialSummary } from "@/app/lib/passkeys";
+import { MfaCodeInput } from "@/components/account-setup/MfaCodeInput";
 import { formatDateTime } from "../subscriptionSettings";
 
 const MICROSOFT_AUTHENTICATOR_APP_STORE_URL =
@@ -78,6 +79,7 @@ type AccountSecurityPanelProps = {
   accountSessionsStatus: InlineStatus | null;
   mfaPassword: string;
   mfaBusy: boolean;
+  mfaAwaitingEmailCode: boolean;
   mfaEnrollmentSecretKey: string | null;
   mfaEnrollmentCode: string;
   mfaQrCodeDataUrl: string;
@@ -139,6 +141,7 @@ export function AccountSecurityPanel({
   accountSessionsStatus,
   mfaPassword,
   mfaBusy,
+  mfaAwaitingEmailCode,
   mfaEnrollmentSecretKey,
   mfaEnrollmentCode,
   mfaQrCodeDataUrl,
@@ -614,11 +617,11 @@ export function AccountSecurityPanel({
           </div>
 
           <div className="space-y-3 px-3.5 py-4 sm:px-5 sm:py-5">
-            {!mfaEnabled && !mfaEnrollmentSecretKey && (
+            {!mfaEnabled && !mfaEnrollmentSecretKey && !mfaAwaitingEmailCode && (
               <>
                 <p className="text-xs leading-relaxed text-slate-500">
-                  Pokud ještě nemáš ověřený e-mail, pošleme ti odkaz do schránky.
-                  Po jeho potvrzení se vrať a znovu klikni na Zapnout 2FA.
+                  Po potvrzení hesla ti pošleme nový kód do e-mailu, i když byla adresa ověřena dříve.
+                  QR kód zobrazíme až po jeho zadání. Neověřená adresa nejprve vyžaduje potvrzení odkazu ve schránce.
                 </p>
                 <input
                   type="password"
@@ -639,6 +642,18 @@ export function AccountSecurityPanel({
               </>
             )}
 
+            {mfaAwaitingEmailCode && (
+              <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+                <label htmlFor="settings-mfa-email-code" className="block text-sm font-semibold text-slate-900">Kód z potvrzovacího e-mailu</label>
+                <p className="text-xs text-slate-600">Kód jsme poslali na {userEmail}. Platí 10 minut; zkontroluj i spam.</p>
+                <MfaCodeInput id="settings-mfa-email-code" value={mfaEnrollmentCode} disabled={mfaBusy}
+                  label="kódu z e-mailu" tone="light" onChange={onMfaEnrollmentCodeChange} />
+                <button type="button" disabled={mfaBusy} onClick={() => void onConfirmMfaEnrollment()}
+                  className="min-h-11 w-full rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white">Potvrdit e-mail a zobrazit QR</button>
+                <button type="button" disabled={mfaBusy} onClick={() => void onStartMfaEnrollment()}
+                  className="min-h-11 w-full rounded-xl border border-violet-200 px-4 py-2 text-sm text-violet-900">Poslat nový kód</button>
+              </div>
+            )}
             {mfaEnrollmentSecretKey && (
               <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3 sm:rounded-2xl">
                 <div className="flex items-start gap-2 text-xs leading-relaxed text-slate-700">
@@ -687,17 +702,7 @@ export function AccountSecurityPanel({
                   <p className="mt-2 break-all text-[10px] text-slate-600">{mfaQrCodeUri}</p>
                 </details>
 
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  className={fieldClass}
-                  placeholder="6místný kód z aplikace"
-                  value={mfaEnrollmentCode}
-                  onChange={(event) =>
-                    onMfaEnrollmentCodeChange(event.target.value.replace(/\D/g, "").slice(0, 8))
-                  }
-                />
+                <MfaCodeInput value={mfaEnrollmentCode} disabled={mfaBusy} tone="light" onChange={onMfaEnrollmentCodeChange} />
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <button
