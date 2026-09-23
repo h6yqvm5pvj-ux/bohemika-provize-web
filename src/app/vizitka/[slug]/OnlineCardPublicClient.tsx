@@ -413,7 +413,6 @@ export default function OnlineCardPublicClient({
                 {localizedCard.title ? <p className={styles.role}>{localizedCard.title}</p> : null}
               </div>
               <h1 id="card-name" className={styles.name}>{givenName}{surname ? <> <span className={styles.surname}>{surname}</span></> : null}</h1>
-              <p className={styles.heroBio}>{bioParagraphs[0] || copy.preview.noBio}</p>
               <div className={styles.actions}>
                 <button type="button" className={styles.primaryButton} onClick={openModal}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
                 <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
@@ -431,13 +430,10 @@ export default function OnlineCardPublicClient({
           </div>
         </section>
 
-        {bioParagraphs.length > 1 ? <section className={[styles.container, styles.personalIntro].join(" ")} aria-labelledby="card-about-title">
-          <div>
-            <h2 id="card-about-title" className={styles.eyebrow}>{copy.preview.about}</h2>
-            <p className={styles.introStatement}>{bioParagraphs[1]}</p>
-          </div>
+        {bioParagraphs.length > 0 ? <section className={[styles.container, styles.personalIntro].join(" ")} aria-labelledby="card-about-title">
+          <h2 id="card-about-title" className={styles.eyebrow}>{copy.preview.about}</h2>
           <div className={styles.introBody}>
-            {bioParagraphs.slice(2).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+            {bioParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
           </div>
         </section> : null}
 
