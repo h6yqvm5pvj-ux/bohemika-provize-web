@@ -1,5 +1,6 @@
 import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { profileAvatarFromRecord } from "@/lib/profileAvatar";
 import {
   resolveOnlineCardPendingTestimonials,
   resolveOnlineCardTestimonials,
@@ -129,7 +130,7 @@ const parseOnlineCard = (
 
 export async function loadOnlineCardBySlug(
   slug: string
-): Promise<PremiumOnlineCardValue | null> {
+): Promise<(PremiumOnlineCardValue & { profileAvatar: string }) | null> {
   if (!adminDb) return null;
   const usersCol = adminDb.collection("users");
   const snap = await usersCol.where("onlineCard.slug", "==", slug).limit(12).get();
@@ -141,6 +142,7 @@ export async function loadOnlineCardBySlug(
     if (!parsed || parsed.slug !== slug) continue;
     return {
       fullName: parsed.fullName,
+      profileAvatar: profileAvatarFromRecord(data),
       title: parsed.title,
       phone: parsed.phone,
       email: parsed.email,

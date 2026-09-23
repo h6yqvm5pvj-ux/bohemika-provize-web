@@ -8,6 +8,7 @@ import {
   ONLINE_CARD_SLUG_RE,
 } from "@/lib/server/onlineCard";
 import { resolveOnlineCardLocale } from "@/lib/onlineCardI18n";
+import { onlineCardShareImagePath } from "@/lib/server/onlineCardShareImage";
 import OnlineCardPublicClient from "./OnlineCardPublicClient";
 
 export const runtime = "nodejs";
@@ -75,6 +76,12 @@ export async function generateMetadata({
     card.location
   );
   const canonicalPath = `/vizitka/${normalizedSlug}`;
+  const shareImage = {
+    url: onlineCardShareImagePath(normalizedSlug, card),
+    width: 1200,
+    height: 630,
+    alt: [fullName, role, card.location].filter(Boolean).join(" · "),
+  };
 
   return {
     title,
@@ -90,7 +97,9 @@ export async function generateMetadata({
       url: canonicalPath,
       title,
       description,
+      images: [shareImage],
     },
+    twitter: { card: "summary_large_image", title, description, images: [shareImage] },
   };
 }
 

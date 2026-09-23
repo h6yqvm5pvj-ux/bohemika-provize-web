@@ -50,6 +50,7 @@ const nextConfig: NextConfig = {
     ),
   },
   outputFileTracingIncludes: {
+    "/vizitka/*/share-image": ["./public/fonts/LiberationSans-*.ttf"],
     "/api/contracts/attachment": [
       "./node_modules/pdfjs-dist/package.json",
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",

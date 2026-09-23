@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { OnlineCardTestimonials } from "@/components/OnlineCardTestimonials";
-import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
+import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 import { OnlineCardHeroVisual } from "@/components/OnlineCardHeroVisual";
 import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
 import styles from "@/components/OnlineCardMinimal.module.css";
@@ -555,7 +555,7 @@ export default function OnlineCardPublicClient({
               </div>
               <button type="button" onClick={closeModal} className={styles.iconButton} aria-label={copy.public.closeForm}><X aria-hidden="true" /></button>
             </div>
-            <OnlineCardMeetingStepper
+            <OnlineCardMeetingForm
               slug={slug}
               locale={locale}
               onSubmitted={() => {

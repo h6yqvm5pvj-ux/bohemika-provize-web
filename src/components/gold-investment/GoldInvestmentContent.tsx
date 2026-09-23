@@ -3,7 +3,7 @@
 import { ArrowUpRight, CalendarDays, ChartNoAxesCombined, CheckCircle2, Coins, Gem, Info, ShieldCheck, TrendingDown, TrendingUp, X } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
+import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 import styles from "./GoldInvestment.module.css";
 import themeStyles from "../life-insurance/lifeInsuranceTheme.module.css";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
@@ -379,7 +379,7 @@ export function GoldInvestmentContent({ advisorSlug, theme, locale }: GoldInvest
               </div>
               {meetingSubmitted ? <div className={`${themeStyles.success} ${styles.success}`} role="status">
                 <CheckCircle2 aria-hidden="true" /><div><p>{copy.submitted}</p><p>{copy.thankYou}</p></div>
-              </div> : <OnlineCardMeetingStepper slug={advisorSlug} locale={locale} palette="bohemika" initialSelectedTopics={["precious-metals"]} initialStep={1} onSubmitted={() => setMeetingSubmitted(true)} />}
+              </div> : <OnlineCardMeetingForm slug={advisorSlug} locale={locale} palette="bohemika" initialSelectedTopics={["precious-metals"]} onSubmitted={() => setMeetingSubmitted(true)} />}
             </div>
           </div>
         </dialog>

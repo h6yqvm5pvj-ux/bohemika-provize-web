@@ -19,7 +19,7 @@ import {
 import Image from "next/image";
 import themeStyles from "./life-insurance/lifeInsuranceTheme.module.css";
 import { useEffect, useRef, useState } from "react";
-import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
+import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 import { SickLeaveDialog } from "@/components/life-insurance/SickLeaveDialog";
 import { DailyAccidentDialog } from "@/components/life-insurance/DailyAccidentDialog";
 import { DeathDialog } from "@/components/life-insurance/DeathDialog";
@@ -525,12 +525,11 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale }: LifeInsuran
                     </div>
                   </div>
                 ) : (
-                  <OnlineCardMeetingStepper
+                  <OnlineCardMeetingForm
                     palette="bohemika"
                     slug={advisorSlug}
                     locale={locale}
                     initialSelectedTopics={["life-accident"]}
-                    initialStep={1}
                     initialMessage={meetingIntent ? copy.contactActions[meetingIntent].message : ""}
                     onSubmitted={() => setMeetingSubmitted(true)}
                   />

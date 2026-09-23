@@ -280,8 +280,11 @@ a.service:focus-visible { outline: 2px solid var(--card-accent); outline-offset:
 .dialogHeader h2 { margin: 12px 0 8px; font-size: 28px; font-weight: 450; line-height: 1.2; letter-spacing: -.035em; }
 .dialogHeader p:last-child { color: var(--card-muted); font-size: 13px; line-height: 1.7; }
 .dialog :global(form) { color: var(--card-ink); }
-.dialog :global(form) :is(p,label,span) { color: inherit; }
-.dialog :global(form) :is(input:not([type="checkbox"]),textarea) { border: 1px solid var(--card-line); border-radius: 12px; background: var(--card-surface); color: var(--card-ink); box-shadow: none; }
+.dialog :global(form) :is(p,label,legend,span) { color: inherit; }
+.dialog :global(form) :is(input:not([type="checkbox"]):not([type="radio"]),textarea) { border: 1px solid var(--card-line); border-radius: 12px; background: var(--card-surface); color: var(--card-ink); box-shadow: none; }
+.dialog :global(form) label:has(input[type="radio"]) { border-color: var(--card-line); }
+.dialog :global(form) label:has(input[type="radio"]:checked) { background: var(--card-soft); border-color: var(--card-accent); }
+.dialog :global(form) label:has(input[type="radio"]):focus-within { outline-color: var(--card-accent); }
 .dialog :global(form) :is(input,textarea)::placeholder { color: var(--card-muted); }
 .dialog :global(form) :is(div,span)[class*="border"] { border-color: var(--card-line); box-shadow: none; }
 .dialog :global(form) div[class*="bg-black"] { background: var(--card-soft); border-radius: 16px; }

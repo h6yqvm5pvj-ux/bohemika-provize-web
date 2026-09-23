@@ -3,7 +3,7 @@
 import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 
-import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
+import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 
 type MeetingEmbedClientProps = {
   slug: string;
@@ -28,7 +28,7 @@ export default function MeetingEmbedClient({ slug, advisorName }: MeetingEmbedCl
             Domluvte si termín
           </h1>
           <p className="mt-1 text-sm text-violet-100/75">
-            Vyplňte kontakt a zprávu. {advisorName} se vám v nejbližší době ozve.
+            Stačí jméno a telefon nebo e-mail. {advisorName} se vám v nejbližší době ozve.
           </p>
         </div>
 
@@ -55,7 +55,7 @@ export default function MeetingEmbedClient({ slug, advisorName }: MeetingEmbedCl
             </button>
           </div>
         ) : (
-          <OnlineCardMeetingStepper
+          <OnlineCardMeetingForm
             key={formKey}
             slug={slug}
             onSubmitted={() => setSubmitted(true)}

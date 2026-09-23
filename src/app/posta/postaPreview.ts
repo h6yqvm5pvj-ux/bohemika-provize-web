@@ -1558,6 +1558,7 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
   const { topics, message } = splitMeetingTopicsAndMessage(topicsRaw, messageRaw);
   const phoneHref = requesterPhone.replace(/[^\d+]/g, "");
   const phoneLink = phoneHref ? `tel:${phoneHref}` : "";
+  const preferredContactLabel = metadata.preferredContact === "phone" ? "Telefonem" : metadata.preferredContact === "email" ? "E-mailem" : "";
   const deliveredAt = formatDateTime(item.createdAtMs);
 
   return `
@@ -1814,8 +1815,9 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
             <div class="body-grid">
               <section class="panel">
                 <h2 class="panel-title">Kontakt</h2>
+                ${preferredContactLabel ? `<p>Preferovaný kontakt: ${preferredContactLabel}</p>` : ""}
                 <div class="contact-list">
-                  <div class="contact-row">
+                  ${requesterPhone ? `<div class="contact-row">
                     <div class="label">Telefon</div>
                     <div class="contact-text">
                       <div class="value-line">
@@ -1831,8 +1833,8 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
                         }
                       </div>
                     </div>
-                  </div>
-                  <div class="contact-row">
+                  </div>` : ""}
+                  ${requesterEmail ? `<div class="contact-row">
                     <div class="label">E-mail</div>
                     <div class="contact-text">
                       <div class="value">${
@@ -1841,7 +1843,7 @@ const buildOnlineCardMeetingRequestPreviewHtml = (item: MailboxItem): string | n
                           : "Neuvedeno"
                       }</div>
                     </div>
-                  </div>
+                  </div>` : ""}
                 </div>
               </section>
 

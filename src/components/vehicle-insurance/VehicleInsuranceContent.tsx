@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { OnlineCardMeetingStepper } from "@/components/OnlineCardMeetingStepper";
+import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import themeStyles from "../life-insurance/lifeInsuranceTheme.module.css";
 import styles from "./VehicleInsurance.module.css";
@@ -170,7 +170,7 @@ export function VehicleInsuranceContent({ advisorSlug, theme, locale }: VehicleI
             <div><p className={styles.eyebrow}>{copy.reviewKicker}</p><h2 id="vehicle-meeting-title" className={styles.dialogTitle}>{copy.meetingTitle}</h2><p className={styles.dialogDescription}>{copy.meetingDescription}</p></div>
             <button type="button" onClick={() => setMeetingModalOpen(false)} className={`${themeStyles.close} ${styles.close}`} aria-label={copy.closeForm}><X aria-hidden="true" /></button>
           </div>
-          {meetingSubmitted ? <div className={`${themeStyles.success} ${styles.success}`} role="status"><CheckCircle2 aria-hidden="true" /><div><p>{copy.submitted}</p><p>{copy.thankYou}</p></div></div> : <OnlineCardMeetingStepper slug={advisorSlug} locale={locale} palette="bohemika" initialSelectedTopics={["vehicle"]} initialStep={1} onSubmitted={() => setMeetingSubmitted(true)} />}
+          {meetingSubmitted ? <div className={`${themeStyles.success} ${styles.success}`} role="status"><CheckCircle2 aria-hidden="true" /><div><p>{copy.submitted}</p><p>{copy.thankYou}</p></div></div> : <OnlineCardMeetingForm slug={advisorSlug} locale={locale} palette="bohemika" initialSelectedTopics={["vehicle"]} onSubmitted={() => setMeetingSubmitted(true)} />}
         </div></div>
       </dialog> : null}
     </main>

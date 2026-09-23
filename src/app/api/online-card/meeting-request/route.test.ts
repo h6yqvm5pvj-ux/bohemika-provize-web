@@ -23,6 +23,36 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+describe("short meeting inquiries", () => {
+  it.each(["phone", "email"])("accepts only the preferred %s with no topic or message", async method => {
+    const payload = { ...body(), travel: undefined, preferredContact: method, phone: method === "phone" ? "+420 777 000 111" : "", email: method === "email" ? "Client@Example.test" : "" };
+    expect((await POST(request(payload))).status).toBe(200);
+    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ requester: expect.objectContaining({ preferredContact: method, topics: [], message: "" }) }));
+    expect(mocks.mailbox).toHaveBeenCalledWith(expect.objectContaining({
+      body: method === "phone" ? "Test Klient • +420 777 000 111" : "Test Klient • client@example.test",
+      metadata: expect.objectContaining({ preferredContact: method }),
+    }));
+    const namespaces = mocks.rateLimit.mock.calls.map(([arg]) => arg.namespace);
+    expect(namespaces).toContain(`api:online-card:meeting-request:${method}`);
+    expect(namespaces).not.toContain(`api:online-card:meeting-request:${method === "phone" ? "email" : "phone"}`);
+    expect(namespaces).toContain("api:online-card:meeting-request:card-daily");
+  });
+  it.each([
+    { phone: "", email: "" },
+    { preferredContact: "phone", phone: "", email: "client@example.test" },
+    { preferredContact: "email", phone: "+420777000111", email: "" },
+    { preferredContact: "sms" },
+    { phone: "abcdef", email: "" },
+    { phone: "123", email: "" },
+    { phone: "", email: "invalid" },
+    { fullName: "  ", phone: "+420777000111", email: "" },
+  ])("rejects unusable contacts before saving or notifying: %j", async invalid => {
+    expect((await POST(request({ ...body(), travel: undefined, ...invalid }))).status).toBe(400);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.mailbox).not.toHaveBeenCalled();
+  });
+});
+
 describe("travel inquiry delivery", () => {
   it("delivers the canonical plan only to the owner and records a server-side conversion", async () => {
     const response = await POST(request({ ...body(), ownerEmail: "attacker@example.test", topics: ["Fake"], message: "Fake summary" }));

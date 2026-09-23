@@ -7,6 +7,7 @@ import { recordOnlineCardAnalyticsEvent, resolveOnlineCardAnalyticsOwnerEmail } 
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import { parseTravelInquiry, travelInquiryMessage } from "@/lib/travelInsurance";
+import { isValidOnlineCardEmail, isValidOnlineCardPhone } from "@/lib/onlineCardContact";
 import {
   applyRateLimitHeaders,
   consumeRateLimit,
@@ -55,6 +56,7 @@ type IncomingBody = {
   fullName?: unknown;
   phone?: unknown;
   email?: unknown;
+  preferredContact?: unknown;
   message?: unknown;
   topics?: unknown;
   company?: unknown;
@@ -227,18 +229,18 @@ async function consumeMeetingAntiSpamLimits({
       limit: CONTACT_RATE_LIMIT,
       windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
     },
-    {
+    ...(email ? [{
       namespace: "api:online-card:meeting-request:email",
       key: `${slug}:${emailHash}`,
       limit: CONTACT_VALUE_RATE_LIMIT,
       windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
-    },
-    {
+    }] : []),
+    ...(phone ? [{
       namespace: "api:online-card:meeting-request:phone",
       key: `${slug}:${phoneHash}`,
       limit: CONTACT_VALUE_RATE_LIMIT,
       windowMs: CONTACT_RATE_LIMIT_WINDOW_MS,
-    },
+    }] : []),
   ];
 
   if (duplicateContentKey) {
@@ -453,6 +455,7 @@ export async function POST(req: NextRequest) {
       return withRateHeaders(NextResponse.json({ ok: false, error: parsedTravel.error } satisfies ApiError, { status: 400 }), rateLimit);
     }
     const travel = parsedTravel?.ok ? parsedTravel.value : null;
+    const preferredContact = travel?.preferredContact ?? body.preferredContact ?? (email ? "email" : "phone");
     const messageRaw = travel ? travelInquiryMessage(travel) : sanitizeText(body.message, 1200);
     const topicsRaw = travel ? ["Cestovní pojištění", travel.intent === "review" ? "Kontrola stávajícího pojištění" : "Příprava nabídky"] : sanitizeMeetingTopics(body.topics);
     const honeypot = sanitizeText(body.company, 120);
@@ -481,17 +484,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!phone || phone.length < 6) {
+    if (preferredContact !== "phone" && preferredContact !== "email") {
+      return withRateHeaders(NextResponse.json(
+        { ok: false, error: "Vyber prosím kontakt telefonem nebo e-mailem." } satisfies ApiError,
+        { status: 400 }
+      ), rateLimit);
+    }
+
+    if ((phone || preferredContact === "phone" || travel) && !isValidOnlineCardPhone(phone)) {
       return withRateHeaders(
         NextResponse.json(
-          { ok: false, error: "Vyplň prosím telefon." } satisfies ApiError,
+          { ok: false, error: "Vyplň prosím platné telefonní číslo." } satisfies ApiError,
           { status: 400 }
         ),
         rateLimit
       );
     }
 
-    if (!email || !EMAIL_RE.test(email)) {
+    if ((email || preferredContact === "email" || travel) && !isValidOnlineCardEmail(email)) {
       return withRateHeaders(
         NextResponse.json(
           { ok: false, error: "Vyplň prosím platný e-mail." } satisfies ApiError,
@@ -559,6 +569,7 @@ export async function POST(req: NextRequest) {
         fullName,
         phone,
         email,
+        preferredContact,
         topics,
         message,
         locale,
@@ -590,7 +601,7 @@ export async function POST(req: NextRequest) {
     }
 
     const mailboxTitle = travel ? "Nová poptávka cestovního pojištění" : "Nová žádost o schůzku";
-    const mailboxBody = `${fullName} (${phone}) • ${email}`;
+    const mailboxBody = [fullName, phone, email].filter(Boolean).join(" • ");
 
     await writeMailboxEntries({
       recipientEmails: [recipientEmail],
@@ -605,11 +616,12 @@ export async function POST(req: NextRequest) {
         requesterName: fullName,
         requesterPhone: phone,
         requesterEmail: email,
+        preferredContact,
         requesterTopics: topics.join("||"),
         requesterMessage: message,
         requesterLocale: locale,
         meetingOwnerName: owner.ownerName,
-        ...(travel ? { inquiryKind: "travel", preferredContact: travel.preferredContact } : {}),
+        ...(travel ? { inquiryKind: "travel" } : {}),
       },
     });
 
