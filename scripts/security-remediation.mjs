@@ -64,7 +64,7 @@ async function main() {
       }
       const targets = accounts.filter(account => !account.disabled && !hasTotp(account)).map(account => ({ uid: account.localId, disabled: false }));
       await safeWrite("plan.json", { project, bucket, createdAt: new Date().toISOString(), targets, tokenObjects }, true);
-      const summary = { mode, accounts: accounts.length, accountsToBlock: targets.length, eligibleAccounts: accounts.filter(account => !account.disabled && hasTotp(account) && account.emailVerified).length,
+      const summary = { mode, accounts: accounts.length, accountsRequiringSetup: targets.length, eligibleAccounts: accounts.filter(account => !account.disabled && hasTotp(account) && account.emailVerified).length,
         mailboxObjects: objects.length, tokensToRevoke: tokenObjects.length, tokenObjectsStillReferenced: tokenObjects.filter(object => referenced.has(object.name)).length,
         directMessages, encryptedMessages, attachmentCounts };
       await safeWrite("plan-summary.json", summary); console.log(JSON.stringify(summary)); return;
@@ -97,21 +97,23 @@ async function main() {
       const result = { mode, checkedAt: new Date().toISOString(), revoked, preserved, oldLinkStatuses, contentDownloaded: false, objectsDeleted: 0 };
       await safeWrite("tokens-result.json", result); console.log(JSON.stringify(result));
     } else if (mode === "accounts") {
-      let blocked = 0, skippedNewlyEnrolled = 0;
+      let setupRequired = 0, skipped = 0;
       for (const target of plan.targets) {
         const user = await auth.getUser(target.uid);
-        if (user.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp")) { skippedNewlyEnrolled++; continue; }
-        await db.collection("accountBlocks").doc(target.uid).set({ reason: "missing-totp", blockedAtMs: Date.now(), source: "security-remediation-2026-09-17" }, { merge: true });
-        await auth.updateUser(target.uid, { disabled: true });
+        if (user.disabled || user.multiFactor?.enrolledFactors.some(factor => factor.factorId === "totp")) { skipped++; continue; }
+        const ref = db.collection("accountBlocks").doc(target.uid);
+        const prepared = await db.runTransaction(async tx => {
+          const data = (await tx.get(ref)).data();
+          if (data && Object.keys(data).some(key => key !== "revocation") && data.reason !== "missing-totp") return false;
+          tx.set(ref, { ...data, reason: "missing-totp", source: "mfa-setup", mfaEmailConfirmationRequired: true });
+          return true;
+        });
+        if (!prepared) { skipped++; continue; }
         await auth.revokeRefreshTokens(target.uid);
-        const after = await auth.getUser(target.uid);
-        if (!after.disabled || !(await db.collection("accountBlocks").doc(target.uid).get()).exists) throw new Error("Account block verification failed");
-        blocked++;
+        setupRequired++;
       }
-      const remaining = (await listAccounts()).filter(account => !account.disabled && !hasTotp(account)).length;
-      const result = { mode, checkedAt: new Date().toISOString(), blocked, skippedNewlyEnrolled, activeWithoutTotp: remaining, accountsDeleted: 0 };
+      const result = { mode, checkedAt: new Date().toISOString(), setupRequired, skipped, accountsDisabled: 0, accountsDeleted: 0 };
       await safeWrite("accounts-result.json", result); console.log(JSON.stringify(result));
-      if (remaining) throw new Error("Active accounts without TOTP remain; prepare a fresh plan");
     } else {
       const accounts = await listAccounts(), objects = await listObjects();
       const result = { mode, checkedAt: new Date().toISOString(), accounts: accounts.length, disabled: accounts.filter(account => account.disabled).length,

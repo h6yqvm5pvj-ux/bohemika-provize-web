@@ -355,7 +355,7 @@ export default function LoginPage() {
       setError(ACCOUNT_BLOCKED_MESSAGE);
     }
     if (new URLSearchParams(window.location.search).get("reason") === "mfa-configured") {
-      setSetupNotice("2FA je nastavené. Požádej administrátora o aktivaci účtu a potom se přihlas heslem a kódem z Authenticatoru.");
+      setSetupNotice("2FA je nastavené. Přihlas se heslem a kódem z Authenticatoru.");
     }
   }, []);
 

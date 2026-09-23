@@ -1,10 +1,11 @@
 import type { Auth, DecodedIdToken, UserRecord } from "firebase-admin/auth";
-import { ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, hasTotpFactor, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE, TOTP_CUSTOM_TOKEN_CLAIM } from "@/lib/accountSecurity";
+import { ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, ACCOUNT_SETUP_REQUIRED_CODE, ACCOUNT_SETUP_REQUIRED_MESSAGE, hasTotpFactor, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE, TOTP_CUSTOM_TOKEN_CLAIM } from "@/lib/accountSecurity";
 
 export function assertAccountSecurity(user: UserRecord): void {
-  if (user.disabled || !user.emailVerified || !hasTotpFactor(user)) {
+  if (user.disabled) {
     throw Object.assign(new Error(ACCOUNT_BLOCKED_MESSAGE), { code: ACCOUNT_BLOCKED_CODE });
   }
+  if (!user.emailVerified || !hasTotpFactor(user)) throw Object.assign(new Error(ACCOUNT_SETUP_REQUIRED_MESSAGE), { code: ACCOUNT_SETUP_REQUIRED_CODE });
 }
 
 function hasMfaProof(token: DecodedIdToken): boolean {

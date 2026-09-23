@@ -19,7 +19,7 @@ import {
 import { recordAppSession, revokeAppSession } from "@/lib/server/appSessionRegistry";
 import { loadUserProfileForAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
-import { ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
+import { ACCOUNT_SETUP_REQUIRED_CODE, ACCOUNT_SETUP_REQUIRED_MESSAGE, ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,6 +129,11 @@ export async function POST(req: NextRequest) {
   try {
     decoded = await adminAuth.verifyIdToken(token, true);
   } catch (error: any) {
+    if (error?.code === ACCOUNT_SETUP_REQUIRED_CODE) {
+      return withCommonHeaders(NextResponse.json(
+        { ok: false, code: ACCOUNT_SETUP_REQUIRED_CODE, error: ACCOUNT_SETUP_REQUIRED_MESSAGE }, { status: 403 }
+      ));
+    }
     if (error?.code === MFA_REAUTH_REQUIRED_CODE) {
       return withCommonHeaders(NextResponse.json(
         { ok: false, code: MFA_REAUTH_REQUIRED_CODE, error: MFA_REAUTH_REQUIRED_MESSAGE }, { status: 401 }

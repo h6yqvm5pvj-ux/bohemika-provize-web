@@ -28,8 +28,8 @@ describe("mandatory TOTP boundary for every application token", () => {
     if (kind === "sms-only") account.multiFactor = { enrolledFactors: [{ factorId: "phone" } as never] };
     if (kind === "admin-without-totp") account.customClaims = { admin: true, adminRole: "owner" };
     raw.getUser.mockResolvedValue(account);
-    await expect(auth.verifyIdToken("token")).rejects.toMatchObject({ code: "auth/account-blocked" });
-    await expect(auth.createCustomToken(user.uid)).rejects.toMatchObject({ code: "auth/account-blocked" });
+    await expect(auth.verifyIdToken("token")).rejects.toMatchObject({ code: kind === "disabled" ? "auth/account-blocked" : "auth/security-setup-required" });
+    await expect(auth.createCustomToken(user.uid)).rejects.toMatchObject({ code: kind === "disabled" ? "auth/account-blocked" : "auth/security-setup-required" });
     expect(raw.createCustomToken).not.toHaveBeenCalled();
   });
   it.each([
@@ -48,7 +48,7 @@ describe("mandatory TOTP boundary for every application token", () => {
     raw.verifyIdToken.mockResolvedValue({ ...token, app_totp_enrolled: true, firebase: { sign_in_provider: "custom" } } as unknown as DecodedIdToken);
     await expect(auth.verifyIdToken("token")).resolves.toMatchObject({ uid: user.uid });
     raw.getUser.mockResolvedValue({ ...user, multiFactor: { enrolledFactors: [] } });
-    await expect(auth.verifyIdToken("same-token")).rejects.toMatchObject({ code: "auth/account-blocked" });
+    await expect(auth.verifyIdToken("same-token")).rejects.toMatchObject({ code: "auth/security-setup-required" });
   });
   it("adds custom proof only after checking the live account and persistent block", async () => {
     await auth.createCustomToken(user.uid, { otherClaim: true, app_totp_enrolled: false });

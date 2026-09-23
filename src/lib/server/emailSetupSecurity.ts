@@ -31,6 +31,6 @@ export async function getEmailSetupUser(auth: Auth, db: Firestore, token: string
 /** Fresh password proof, with the same recovery restrictions as inbox verification. */
 export async function getMfaEnrollmentUser(auth: Auth, db: Firestore, token: string) {
   const { user, email, authTime } = await readSetupContext(auth, db, token);
-  if (!user.emailVerified || (user.multiFactor?.enrolledFactors.length ?? 0) > 0) throw denied();
-  return { uid: user.uid, email, emailVerified: true, authTime };
+  if ((user.multiFactor?.enrolledFactors.length ?? 0) > 0) throw denied();
+  return { uid: user.uid, email, emailVerified: user.emailVerified, authTime };
 }

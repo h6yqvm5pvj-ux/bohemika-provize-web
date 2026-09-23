@@ -1,17 +1,17 @@
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, startMfaEnrollment } from "./mfaEnrollment";
-const fetcher = vi.fn(), getIdToken = vi.fn();
-const user = { email: "synthetic+account@example.test", getIdToken } as unknown as User;
+const fetcher = vi.fn(), getIdToken = vi.fn(), reload = vi.fn();
+const user = { email: "synthetic+account@example.test", getIdToken, reload } as unknown as User;
 const challengeId = "00000000-0000-4000-8000-000000000001";
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal("fetch", fetcher); getIdToken.mockResolvedValue("synthetic-token"); });
 afterEach(() => vi.unstubAllGlobals());
 describe("client MFA enrollment transport", () => {
-  it("can start with either email confirmation or an administrator-approved QR, as decided by the server", async () => {
+  it("always starts with email confirmation, ignoring retired bypass responses", async () => {
     fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId }));
     expect(await startMfaEnrollment(user)).toEqual({ challengeId });
     fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId, secretKey: "JBSWY3DPEHPK3PXP" }));
-    expect(await startMfaEnrollment(user)).toMatchObject({ challengeId, secret: { challengeId, secretKey: "JBSWY3DPEHPK3PXP" } });
+    expect(await startMfaEnrollment(user)).toEqual({ challengeId });
     expect(fetcher.mock.calls.map(call => JSON.parse(call[1].body))).toEqual([{ action: "start" }, { action: "start" }]);
   });
   it("sends a bearer token with no application cookie and lets the server choose the recipient", async () => {
@@ -26,9 +26,16 @@ describe("client MFA enrollment transport", () => {
     expect(uri.protocol).toBe("otpauth:"); expect(uri.hostname).toBe("totp");
     expect(decodeURIComponent(uri.pathname)).toBe("/Bohemka.App:synthetic+account@example.test");
     expect(Object.fromEntries(uri.searchParams)).toEqual({ secret: "JBSWY3DPEHPK3PXP", issuer: "Bohemka.App", algorithm: "SHA1", digits: "6", period: "30" });
-    fetcher.mockResolvedValueOnce(Response.json({ ok: true, enrolled: true }));
-    await completeMfaEnrollment(user, secret, "012345");
+    fetcher.mockResolvedValueOnce(Response.json({ ok: true, enrolled: true, signInToken: "synthetic-sign-in-token" }));
+    expect(await completeMfaEnrollment(user, secret, "012345")).toBe("synthetic-sign-in-token");
     expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ action: "complete", challengeId, code: "012345" });
+  });
+  it("refreshes newly verified email claims before requesting the QR", async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId, refreshEmailVerification: true }));
+    fetcher.mockResolvedValueOnce(Response.json({ ok: true, challengeId, secretKey: "JBSWY3DPEHPK3PXP" }));
+    await confirmMfaEmailCode(user, challengeId, "123456");
+    expect(reload).toHaveBeenCalledOnce(); expect(getIdToken).toHaveBeenCalledWith(true);
+    expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ action: "enroll", challengeId });
   });
   it("rejects a response for another challenge", async () => {
     fetcher.mockResolvedValue(Response.json({ ok: true, challengeId: "other", secretKey: "JBSWY3DPEHPK3PXP" }));

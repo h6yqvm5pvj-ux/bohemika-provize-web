@@ -292,6 +292,10 @@ async function createUserFromRequest(
     };
 
     const batch = adminDb.batch();
+    batch.set(adminDb.collection("accountBlocks").doc(authUser.uid), {
+      reason: "missing-totp", source: "account-creation", mfaEmailConfirmationRequired: true,
+      mfaEmailConfirmedFactorUid: null, setupPolicyVersion: 2,
+    });
     batch.set(adminDb.collection("users").doc(params.requestedCorporateEmail), publicProfile, {
       merge: false,
     });

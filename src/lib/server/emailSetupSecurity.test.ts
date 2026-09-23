@@ -14,13 +14,12 @@ describe("narrow MFA enrollment authentication", () => {
     expect(await getMfaEnrollmentUser(auth, db, "token")).toMatchObject({ uid: "synthetic", emailVerified: true, authTime: now() });
     expect(verifyIdToken).toHaveBeenCalledWith("token", true);
   });
-  it.each(["custom", "stale", "future", "no-email", "unverified", "disabled", "email-changed", "existing-totp", "existing-phone", "block", "revoked"])("rejects %s", async reason => {
+  it.each(["custom", "stale", "future", "no-email", "disabled", "email-changed", "existing-totp", "existing-phone", "block", "revoked"])("rejects %s", async reason => {
     const token = decoded(); const live: any = user();
     if (reason === "custom") token.firebase.sign_in_provider = "custom";
     if (reason === "stale") token.auth_time = now() - 601;
     if (reason === "future") token.auth_time = now() + 61;
     if (reason === "no-email") token.email = "";
-    if (reason === "unverified") live.emailVerified = false;
     if (reason === "disabled") live.disabled = true;
     if (reason === "email-changed") live.email = "someoneelse@example.test";
     if (reason === "existing-totp") live.multiFactor.enrolledFactors = [{ factorId: "totp" }];
@@ -30,6 +29,10 @@ describe("narrow MFA enrollment authentication", () => {
     else verifyIdToken.mockResolvedValue(token);
     getUser.mockResolvedValue(live);
     await expect(getMfaEnrollmentUser(auth, db, "token")).rejects.toThrow();
+  });
+  it("accepts an unverified address only for the inbox-code setup flow", async () => {
+    getUser.mockResolvedValue({ ...user(), emailVerified: false });
+    await expect(getMfaEnrollmentUser(auth, db, "token")).resolves.toMatchObject({ emailVerified: false });
   });
   it("permits setup under a missing-TOTP block but never ignores a revocation barrier", async () => {
     get.mockResolvedValue({ data: () => ({ reason: "missing-totp" }) });

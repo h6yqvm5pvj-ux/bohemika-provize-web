@@ -10,6 +10,7 @@ const state = vi.hoisted(() => {
         const result = await fn({
           get: async (ref: { path: string }) => ({ data: () => pending.get(ref.path) }),
           set: (ref: { path: string }, data: Record<string, any>) => pending.set(ref.path, { ...data }),
+          delete: (ref: { path: string }) => pending.delete(ref.path),
           update: (ref: { path: string }, data: Record<string, any>) => {
             const updated = { ...pending.get(ref.path), ...data };
             for (const key in updated) if (updated[key] === deleted) delete updated[key];
@@ -21,14 +22,14 @@ const state = vi.hoisted(() => {
       tail = next.then(() => undefined, () => undefined); return next;
     },
   };
-  return { records, db, deleted, send: vi.fn(), config: vi.fn(), getUser: vi.fn(), fetch: vi.fn() };
+  return { records, db, deleted, send: vi.fn(), config: vi.fn(), getUser: vi.fn(), verifyLink: vi.fn(), createCustomToken: vi.fn(), fetch: vi.fn() };
 });
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: { delete: () => state.deleted } }));
-vi.mock("./firebaseAdmin", () => ({ adminAuth: { getUser: state.getUser }, adminDb: state.db }));
+vi.mock("./firebaseAdmin", () => ({ adminAuth: { getUser: state.getUser, generateEmailVerificationLink: state.verifyLink, createCustomToken: state.createCustomToken }, adminDb: state.db }));
 vi.mock("./firebaseAuthEmail", () => ({ requireAuthEmailConfig: state.config }));
 vi.mock("./mfaEnrollmentEmail", () => ({ sendMfaEnrollmentCode: state.send }));
 vi.mock("@/lib/appSession", () => ({ resolveAppSessionSecret: () => "synthetic-test-secret" }));
-import { requestMfaEnrollment, verifyMfaEnrollmentEmail, finishMfaEnrollment, hasApprovedMfaRecovery, startApprovedMfaRecovery } from "./mfaEnrollment";
+import { requestMfaEnrollment, verifyMfaEnrollmentEmail, finishMfaEnrollment, resumeEmailConfirmedEnrollment } from "./mfaEnrollment";
 const context = { uid: "synthetic", email: "synthetic@example.test", emailVerified: true, authTime: 1000 };
 const challenge = () => [...state.records].find(([key]) => key.startsWith("authMfaEnrollments/"))![1];
 const block = () => state.records.get(`accountBlocks/${context.uid}`)!;
@@ -39,7 +40,9 @@ const start = async () => {
   await verifyMfaEnrollmentEmail(context, "private-token", c.challengeId, code()); return c;
 };
 beforeEach(() => {
-  vi.clearAllMocks(); state.records.clear();
+  vi.resetAllMocks(); state.records.clear();
+  state.createCustomToken.mockResolvedValue("synthetic-sign-in-token");
+  state.verifyLink.mockResolvedValue("https://auth.example.test/action?mode=verifyEmail&oobCode=synthetic-action-code");
   state.send.mockResolvedValue(undefined); state.config.mockReturnValue({});
   state.getUser.mockResolvedValue({ ...context, disabled: false, multiFactor: { enrolledFactors: [{ factorId: "totp", uid: "new-factor" }] } });
   state.fetch.mockImplementation(async (url: string) => url.includes(":start") ? startResponse() : Response.json({ idToken: "private-new-token", refreshToken: "private-refresh-token" }));
@@ -48,45 +51,50 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe("fresh inbox proof before TOTP enrollment", () => {
-  function approveRecovery() {
-    const generation = "00000000-0000-4000-8000-000000000001";
-    state.records.set(`accountBlocks/${context.uid}`, { reason: "missing-totp",
-      revocation: { validAfterSeconds: 900, generation, pendingOperations: {} },
-      mfaRecoveryApproval: { email: context.email, approvedAtMs: Date.now(), expiresAtMs: Date.now() + 3600_000, revocationGeneration: generation } });
-  }
-  it("allows one operator-approved recovery without mail and still requires a valid TOTP before activation", async () => {
-    approveRecovery();
-    expect(await hasApprovedMfaRecovery(context)).toBe(true);
-    const setup = await startApprovedMfaRecovery(context, "private-token");
-    expect(setup.secretKey).toBe("JBSWY3DPEHPK3PXP");
-    expect(challenge().approvalMethod).toBe("administrator-recovery");
-    expect(challenge()).not.toHaveProperty("emailConfirmedAtMs");
-    expect(state.config).not.toHaveBeenCalled(); expect(state.send).not.toHaveBeenCalled();
-    expect(block().reason).toBe("missing-totp"); expect(block().mfaEmailConfirmedFactorUid).toBeNull();
-    await finishMfaEnrollment(context, "private-token", setup.challengeId, "012345");
-    expect(block().reason).toBe("missing-totp"); expect(block().mfaEmailConfirmedFactorUid).toBe("new-factor");
-    expect(block()).not.toHaveProperty("mfaRecoveryApproval");
-    expect(await hasApprovedMfaRecovery(context)).toBe(false);
-    await expect(startApprovedMfaRecovery(context, "private-token")).rejects.toThrow();
+  it("requires a fresh inbox code even if a retired operator approval exists", async () => {
+    state.records.set(`accountBlocks/${context.uid}`, { reason: "missing-totp", mfaRecoveryApproval: { expiresAtMs: Date.now() + 3600_000 } });
+    const c = await requestMfaEnrollment(context);
+    expect(state.send).toHaveBeenCalledOnce();
+    await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).rejects.toThrow();
+    expect(state.createCustomToken).not.toHaveBeenCalled();
   });
-  it.each(["missing", "expired", "email", "reset", "revoked", "blocked", "too-long", "other-account"])("rejects %s recovery approval without contacting the provider", async scenario => {
-    approveRecovery(); let current = context;
-    if (scenario === "missing") delete block().mfaRecoveryApproval;
-    if (scenario === "expired") block().mfaRecoveryApproval.expiresAtMs = Date.now() - 1;
-    if (scenario === "email") block().mfaRecoveryApproval.email = "other@example.test";
-    if (scenario === "reset") block().revocation.generation = "00000000-0000-4000-8000-000000000002";
-    if (scenario === "revoked") block().revocation.validAfterSeconds = context.authTime + 1;
-    if (scenario === "blocked") block().reason = "admin-block";
-    if (scenario === "too-long") block().mfaRecoveryApproval.expiresAtMs = Date.now() + 3601_000;
-    if (scenario === "other-account") current = { ...context, uid: "another-account" };
-    await expect(startApprovedMfaRecovery(current, "private-token")).rejects.toThrow();
-    expect(state.fetch).not.toHaveBeenCalled(); expect(state.send).not.toHaveBeenCalled();
+  it("rejects a previously started enrollment approved without email", async () => {
+    const c = await start(); challenge().approvalMethod = "administrator-recovery";
+    await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).rejects.toThrow();
+    expect(state.createCustomToken).not.toHaveBeenCalled();
+    expect(block().reason).toBe("missing-totp");
   });
-  it("rechecks approval transactionally after the endpoint's eligibility check", async () => {
-    approveRecovery(); expect(await hasApprovedMfaRecovery(context)).toBe(true);
-    delete block().mfaRecoveryApproval;
-    await expect(startApprovedMfaRecovery(context, "private-token")).rejects.toThrow();
-    expect(state.fetch).not.toHaveBeenCalled();
+  it("confirms an unverified email only after its code and resumes QR creation with a refreshed token", async () => {
+    const unverified = { ...context, emailVerified: false };
+    state.getUser.mockResolvedValueOnce({ ...unverified, disabled: false, multiFactor: { enrolledFactors: [] } })
+      .mockResolvedValue({ ...context, disabled: false, multiFactor: { enrolledFactors: [] } });
+    const c = await requestMfaEnrollment(unverified);
+    await expect(resumeEmailConfirmedEnrollment(context, "token", c.challengeId)).rejects.toThrow();
+    expect(state.verifyLink).not.toHaveBeenCalled();
+    expect(await verifyMfaEnrollmentEmail(unverified, "token", c.challengeId, code())).toEqual({ challengeId: c.challengeId, refreshEmailVerification: true });
+    expect(state.verifyLink).toHaveBeenCalledWith(context.email);
+    expect(state.fetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(state.fetch.mock.calls[0][1].body)).toEqual({ oobCode: "synthetic-action-code" });
+    await expect(resumeEmailConfirmedEnrollment(unverified, "token", c.challengeId)).rejects.toThrow();
+    expect(await resumeEmailConfirmedEnrollment(context, "refreshed-token", c.challengeId)).toHaveProperty("secretKey");
+    expect(JSON.parse(state.fetch.mock.calls[1][1].body).idToken).toBe("refreshed-token");
+    expect(challenge().approvalMethod).toBe("email");
+    await expect(resumeEmailConfirmedEnrollment(context, "token", c.challengeId)).rejects.toThrow();
+  });
+  it("never marks an address verified for a wrong inbox code", async () => {
+    const unverified = { ...context, emailVerified: false };
+    const c = await requestMfaEnrollment(unverified);
+    const wrong = code() === "000000" ? "000001" : "000000";
+    await expect(verifyMfaEnrollmentEmail(unverified, "token", c.challengeId, wrong)).rejects.toThrow();
+    expect(state.verifyLink).not.toHaveBeenCalled(); expect(state.fetch).not.toHaveBeenCalled();
+  });
+  it.each(["email", "disabled", "factor"])("rechecks a changed %s before marking email verified", async reason => {
+    const unverified = { ...context, emailVerified: false };
+    const c = await requestMfaEnrollment(unverified);
+    state.getUser.mockResolvedValue({ ...unverified, email: reason === "email" ? "other@example.test" : context.email,
+      disabled: reason === "disabled", multiFactor: { enrolledFactors: reason === "factor" ? [{ factorId: "totp" }] : [] } });
+    await expect(verifyMfaEnrollmentEmail(unverified, "token", c.challengeId, code())).rejects.toThrow();
+    expect(state.verifyLink).not.toHaveBeenCalled(); expect(state.fetch).not.toHaveBeenCalled();
   });
   it("sends only to the authoritative email and stores a digest, never the OTP", async () => {
     const c = await requestMfaEnrollment(context);
@@ -134,22 +142,36 @@ describe("fresh inbox proof before TOTP enrollment", () => {
     await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).rejects.toThrow();
     expect(state.fetch).not.toHaveBeenCalled(); expect(block().mfaEmailConfirmedFactorUid).toBeNull();
   });
-  it("finalizes once, with the server-owned session, and approves only that factor without unblocking the account", async () => {
+  it("finalizes once, with the server-owned session, and removes only the setup gate and issues a sign-in token", async () => {
     const c = await start();
     const results = await Promise.allSettled([1, 2].map(() => finishMfaEnrollment(context, "token", c.challengeId, "012345")));
     expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
     expect(state.fetch).toHaveBeenCalledTimes(2);
     expect(JSON.parse(state.fetch.mock.calls[1][1].body)).toMatchObject({ totpVerificationInfo: { sessionInfo: "private-provider-session", verificationCode: "012345" } });
     expect(challenge()).not.toHaveProperty("encryptedSession");
-    expect(block()).toMatchObject({ reason: "missing-totp", mfaEmailConfirmedFactorUid: "new-factor" });
-    expect(results.find(result => result.status === "fulfilled")).toEqual({ status: "fulfilled", value: { enrolled: true } });
+    expect(block()).toBeUndefined();
+    expect(challenge().factorUid).toBe("new-factor");
+    expect(state.createCustomToken).toHaveBeenCalledExactlyOnceWith(context.uid);
+    expect(results.find(result => result.status === "fulfilled")).toEqual({ status: "fulfilled", value: { enrolled: true, signInToken: "synthetic-sign-in-token" } });
     await expect(finishMfaEnrollment(context, "token", c.challengeId, "012345")).rejects.toThrow();
+  });
+  it("preserves session revocation while automatically completing setup", async () => {
+    const revocation = { validAfterSeconds: 900, generation: "00000000-0000-4000-8000-000000000001", pendingOperations: {} };
+    state.records.set(`accountBlocks/${context.uid}`, { reason: "missing-totp", revocation });
+    const c = await start();
+    await finishMfaEnrollment(context, "token", c.challengeId, "123456");
+    expect(block()).toEqual({ revocation });
+  });
+  it("reports successful enrollment with a login fallback when token issuance fails", async () => {
+    const c = await start(); state.createCustomToken.mockRejectedValue(new Error("private-provider-error"));
+    await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).resolves.toEqual({ enrolled: true, signInToken: null });
+    expect(block()).toBeUndefined(); expect(challenge().state).toBe("used");
   });
   it("acknowledges a valid enrollment when the deadline passes during the provider call", async () => {
     vi.useFakeTimers(); const c = await start(); challenge().expiresAtMs = Date.now() + 100;
     state.fetch.mockImplementation(async () => { vi.advanceTimersByTime(200); return Response.json({}); });
-    await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).resolves.toEqual({ enrolled: true });
-    expect(block().mfaEmailConfirmedFactorUid).toBe("new-factor");
+    await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).resolves.toEqual({ enrolled: true, signInToken: "synthetic-sign-in-token" });
+    expect(block()).toBeUndefined();
     await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).rejects.toThrow();
   });
   it("does not leave a crashed finalization permanently blocking a subsequently reset account", async () => {
@@ -184,6 +206,7 @@ describe("fresh inbox proof before TOTP enrollment", () => {
     const c = await start();
     state.getUser.mockImplementation(async () => { block().reason = "admin-block"; return { ...context, multiFactor: { enrolledFactors: [{ uid: "new-factor", factorId: "totp" }] } }; });
     await expect(finishMfaEnrollment(context, "token", c.challengeId, "123456")).rejects.toThrow();
+    expect(state.createCustomToken).not.toHaveBeenCalled();
     expect(block().reason).toBe("admin-block"); expect(block().mfaEmailConfirmedFactorUid).toBeNull();
   });
   it("invalidates the old proof when resending and enforces the cooldown", async () => {

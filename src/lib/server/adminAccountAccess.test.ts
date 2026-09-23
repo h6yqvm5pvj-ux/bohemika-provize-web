@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Auth } from "firebase-admin/auth";
 import type { Firestore } from "firebase-admin/firestore";
-import { AccountAccessConflict, changeAdminAccountAccess, getAdminAccountAccess } from "./adminAccountAccess";
+import { AccountAccessConflict, changeAdminAccountAccess, getAdminAccountAccess, resetAccountMfa } from "./adminAccountAccess";
 import { isPersistentAccountBlock } from "./tokenRevocation";
 
 const enrolled = { uid: "target", disabled: false, emailVerified: true, multiFactor: { enrolledFactors: [{ factorId: "totp", uid: "enrolled-factor" }] } };
@@ -41,7 +41,7 @@ describe("admin account status includes all access barriers", () => {
   });
   it("reports setup access while waiting for TOTP and activation after enrollment", () => {
     expect(getAdminAccountAccess({ ...user, multiFactor: { enrolledFactors: [] } }, { reason: "missing-totp" })).toEqual({ state: "setup", reason: "mfa-enrollment" });
-    expect(getAdminAccountAccess(user, { reason: "missing-totp" })).toEqual({ state: "blocked", reason: "activation-required" });
+    expect(getAdminAccountAccess(user, { reason: "missing-totp" })).toEqual({ state: "setup", reason: "activation-required" });
     expect(getAdminAccountAccess({ ...user, emailVerified: false }, undefined)).toEqual({ state: "setup", reason: "email-verification" });
   });
 });
@@ -119,5 +119,22 @@ describe("activation requires fresh email approval for pending enrollment", () =
     expect(data).toMatchObject({ reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailChallengeId: "challenge" });
     await change(false);
     expect(data).toMatchObject({ reason: "admin-block", mfaEmailConfirmationRequired: true, mfaEmailChallengeId: "challenge" });
+  });
+});
+
+describe("MFA reset requires setup without disabling password sign-in", () => {
+  const reset = () => resetAccountMfa({ auth: raw as unknown as Auth, db, uid: "target", actorUid: "admin" });
+  it("removes the factor and old approvals but keeps the account enabled", async () => {
+    data = { reason: "missing-totp", mfaRecoveryApproval: {}, mfaEmailConfirmedFactorUid: "old", revocation };
+    expect(await reset()).toEqual({ state: "setup", reason: "mfa-enrollment" });
+    expect(user.disabled).toBe(false);
+    expect(raw.updateUser).toHaveBeenCalledExactlyOnceWith("target", { multiFactor: { enrolledFactors: null } });
+    expect(data).toMatchObject({ reason: "missing-totp", mfaEmailConfirmationRequired: true, mfaEmailConfirmedFactorUid: null, revocation });
+    expect(data).not.toHaveProperty("mfaRecoveryApproval");
+  });
+  it("preserves an independent admin block and disabled flag", async () => {
+    user.disabled = true; data = { reason: "admin-block", source: "admin-account-access", revocation };
+    expect((await reset()).state).toBe("blocked");
+    expect(user.disabled).toBe(true); expect(data?.reason).toBe("admin-block");
   });
 });

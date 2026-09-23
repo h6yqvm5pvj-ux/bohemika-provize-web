@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ context: vi.fn(), target: vi.fn(), change: vi.fn(), update: vi.fn(), send: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), target: vi.fn(), change: vi.fn(), reset: vi.fn(), update: vi.fn(), send: vi.fn() }));
 vi.mock("@/lib/server/adminAuth", () => ({ getAdminAuthContext: mocks.context, adminAuthErrorResponse: () => NextResponse.json({ ok: false }, { status: 403 }) }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ adminAuth: { getUserByEmail: mocks.target, updateUser: mocks.update }, adminDb: {} }));
 vi.mock("@/lib/server/firebaseAuthEmail", () => ({ sendFirebaseAuthEmail: mocks.send }));
-vi.mock("@/lib/server/adminAccountAccess", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/server/adminAccountAccess")>(), changeAdminAccountAccess: mocks.change }));
+vi.mock("@/lib/server/adminAccountAccess", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/server/adminAccountAccess")>(), changeAdminAccountAccess: mocks.change, resetAccountMfa: mocks.reset }));
 import { POST } from "./route";
 import { POST as markEmailVerified } from "@/app/api/auth/mark-email-verified/route";
 
@@ -25,6 +25,14 @@ describe("admin account access actions", () => {
     expect(mocks.context.mock.calls[0][1].minimumRole).toBe("admin");
     expect(mocks.target).not.toHaveBeenCalled();
     expect(mocks.change).not.toHaveBeenCalled();
+  });
+  it("resets MFA into mandatory setup without disabling the account", async () => {
+    mocks.reset.mockResolvedValue({ state: "setup", reason: "mfa-enrollment" });
+    const response = await POST(request("resetMfa"));
+    expect(response.status).toBe(200);
+    expect(mocks.reset).toHaveBeenCalledWith(expect.objectContaining({ uid: "target", actorUid: "admin" }));
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ access: { state: "setup" } });
   });
   it("prevents an administrator from blocking their own account", async () => {
     mocks.target.mockResolvedValue({ uid: "admin" });

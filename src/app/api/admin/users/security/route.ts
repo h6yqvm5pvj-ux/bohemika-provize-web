@@ -3,7 +3,7 @@ import { sendFirebaseAuthEmail } from "@/lib/server/firebaseAuthEmail";
 import { resolveAuthEmailErrorMessage, safeAuthEmailErrorCode } from "@/lib/authEmailMessages";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { AccountAccessConflict, changeAdminAccountAccess } from "@/lib/server/adminAccountAccess";
+import { AccountAccessConflict, changeAdminAccountAccess, resetAccountMfa } from "@/lib/server/adminAccountAccess";
 import {
   adminAuthErrorResponse,
   getAdminAuthContext,
@@ -163,18 +163,7 @@ export async function POST(req: NextRequest) {
       if (!adminDb) throw new Error("Databáze zabezpečení není dostupná.");
       const beforeFactorCount =
         targetUser.multiFactor?.enrolledFactors?.length ?? 0;
-      // Block direct Firestore access before revoking credentials. A failure in
-      // either service must leave the account blocked, never half-unprotected.
-      await adminDb.collection("accountBlocks").doc(targetUser.uid).set({
-        reason: "missing-totp", blockedAtMs: Date.now(), blockedByUid: ctx.adminUid,
-      }, { merge: true });
-      await adminAuth.updateUser(targetUser.uid, {
-        disabled: true,
-        multiFactor: {
-          enrolledFactors: null,
-        },
-      });
-      await adminAuth.revokeRefreshTokens(targetUser.uid);
+      const access = await resetAccountMfa({ auth: adminAuth, db: adminDb, uid: targetUser.uid, actorUid: ctx.adminUid });
       return NextResponse.json({
         ok: true,
         action,
@@ -182,7 +171,9 @@ export async function POST(req: NextRequest) {
         beforeFactorCount,
         afterFactorCount: 0,
         refreshTokensRevoked: true,
-        message: "2FA faktory byly odstraněny, účet zablokován a relace zneplatněny. Pro obnovení je nutné s administrátorem znovu nastavit TOTP.",
+        access,
+        message: access.state === "blocked" ? "2FA bylo resetováno. Samostatná blokace účtu zůstává zachovaná."
+          : "2FA bylo resetováno a relace zneplatněny. Účet zůstává aktivní: uživatel se přihlásí heslem, potvrdí kód z e-mailu a nastaví nové 2FA. Potom pokračuje automaticky.",
       });
     }
 

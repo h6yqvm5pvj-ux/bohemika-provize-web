@@ -4,7 +4,7 @@ export type MfaEnrollmentSecret = Pick<TotpSecret, "secretKey" | "generateQrCode
 export class MfaEnrollmentRequestError extends Error {
   constructor(message: string, readonly code: string, readonly status: number, readonly retryAfterSeconds = 0) { super(message); }
 }
-async function request(user: User, body: { action: "start" | "request" | "verify" | "complete"; challengeId?: string; code?: string }) {
+async function request(user: User, body: { action: "start" | "request" | "verify" | "enroll" | "complete"; challengeId?: string; code?: string }) {
   let response: Response;
   try {
     response = await fetch("/api/auth/mfa-enrollment", {
@@ -29,14 +29,18 @@ export async function requestMfaEmailCode(user: User): Promise<string> {
   return result.challengeId;
 }
 export async function confirmMfaEmailCode(user: User, challengeId: string, code: string): Promise<MfaEnrollmentSecret> {
-  const result = await request(user, { action: "verify", challengeId, code });
+  let result = await request(user, { action: "verify", challengeId, code });
+  if (result.challengeId === challengeId && result.refreshEmailVerification === true) {
+    await user.reload();
+    await user.getIdToken(true);
+    result = await request(user, { action: "enroll", challengeId });
+  }
   return enrollmentSecret(user, result, challengeId);
 }
-export async function startMfaEnrollment(user: User): Promise<{ challengeId: string; secret?: MfaEnrollmentSecret }> {
+export async function startMfaEnrollment(user: User): Promise<{ challengeId: string }> {
   const result = await request(user, { action: "start" });
   if (typeof result.challengeId !== "string") throw new Error("Nepodařilo se zahájit nastavení 2FA.");
-  return { challengeId: result.challengeId,
-    ...(result.secretKey !== undefined ? { secret: enrollmentSecret(user, result, result.challengeId) } : {}) };
+  return { challengeId: result.challengeId };
 }
 function enrollmentSecret(user: User, result: { challengeId?: unknown; secretKey?: unknown }, challengeId: string): MfaEnrollmentSecret {
   if (result.challengeId !== challengeId || typeof result.secretKey !== "string" || !/^[A-Z2-7]+$/.test(result.secretKey)) throw new Error("Nepodařilo se připravit QR kód.");
@@ -49,7 +53,8 @@ function enrollmentSecret(user: User, result: { challengeId?: unknown; secretKey
     },
   };
 }
-export async function completeMfaEnrollment(user: User, secret: MfaEnrollmentSecret, code: string): Promise<void> {
+export async function completeMfaEnrollment(user: User, secret: MfaEnrollmentSecret, code: string): Promise<string | null> {
   const result = await request(user, { action: "complete", challengeId: secret.challengeId, code });
-  if (result.enrolled !== true) throw new Error("Nastavení 2FA se nepodařilo potvrdit.");
+  if (result.enrolled !== true || (result.signInToken !== null && (typeof result.signInToken !== "string" || !result.signInToken))) throw new Error("Nastavení 2FA se nepodařilo potvrdit. Přihlas se znovu.");
+  return result.signInToken;
 }

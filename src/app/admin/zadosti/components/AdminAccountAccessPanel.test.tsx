@@ -33,7 +33,7 @@ describe("administrator account status control", () => {
   it("distinguishes setup-only access and explains that data remains inaccessible", async () => {
     const { container, button } = await render({ state: "setup", reason: "mfa-enrollment" });
     expect(container.textContent).toContain("Aktivní · nastavení 2FA");
-    expect(container.textContent).toContain("Přístup k datům je zatím uzavřený");
+    expect(container.textContent).toContain("bez ruční aktivace");
     expect(button.textContent).toBe("Zablokovat účet");
   });
   it.each([{ isSelf: true }, { busy: true }])("disables changes for %j", async options => {

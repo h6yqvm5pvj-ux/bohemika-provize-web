@@ -7,16 +7,14 @@ import {
   FactorId,
   multiFactor,
   reauthenticateWithCredential,
-  signOut,
   type User as FirebaseUser,
 } from "firebase/auth";
 
 import { careerSignature, clearCareerDraft, restoreCareerDraft, saveCareerDraft } from "./careerDraft";
 
 import { auth } from "@/app/firebase-auth";
-import { clearServerSession } from "@/app/lib/authSession";
+import { signInAfterMfaSetup } from "@/app/lib/mfaSetupSignIn";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
-import { ensureEmailVerifiedForMfaEnrollment, refreshEmailVerificationForMfa } from "@/app/lib/mfaEmailVerification";
 import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
@@ -229,7 +227,6 @@ export function useAccountSetupFlow({
   const [careerDraftStatus, setCareerDraftStatus] = useState<"none" | "saved" | "restored" | "unavailable">("none");
   const [mfaAwaitingEmail, setMfaAwaitingEmail] = useState(false);
   const [mfaEmailVerified, setMfaEmailVerified] = useState(false);
-  const emailCheckInFlight = useRef(false);
   const emailCheckGeneration = useRef(0);
   const [timelineSaving, setTimelineSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -850,14 +847,7 @@ export function useAccountSetupFlow({
 
       const credential = EmailAuthProvider.credential(activeUserEmail, currentPassword);
       await reauthenticateWithCredential(activeUser, credential);
-      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
-        setMfaPassword("");
-        clearMfaDraft();
-        setMfaAwaitingEmail(true);
-        setMfaEmailVerified(false);
-        setInfo("Ověřovací e-mail byl vyžádán. Otevři odkaz ve schránce (zkontroluj i spam) a vrať se sem. Doručení může trvat několik minut.");
-        return;
-      }
+      await activeUser.getIdToken(true);
       setMfaAwaitingEmail(false);
       setMfaEmailVerified(false);
       const enrollmentUser = auth.currentUser ?? activeUser;
@@ -884,51 +874,6 @@ export function useAccountSetupFlow({
     }
   }, [clearMfaDraft, markCompleted, mfaPassword, user]);
 
-  const resumeAfterEmailVerification = useCallback(async () => {
-    if (!user || auth.currentUser?.uid !== user.uid || !mfaAwaitingEmail || emailCheckInFlight.current) return;
-    const generation = emailCheckGeneration.current;
-    const isCurrent = () => generation === emailCheckGeneration.current && auth.currentUser?.uid === user.uid;
-    emailCheckInFlight.current = true;
-    setMfaSaving(true);
-    setError(null);
-    try {
-      const emailVerified = await refreshEmailVerificationForMfa(user);
-      if (!isCurrent()) return;
-      if (!emailVerified) {
-        setInfo("E-mail zatím není ověřený. Otevři odkaz ve schránce a vrať se sem.");
-        return;
-      }
-      const challenge = await requestMfaEmailCode(user);
-      if (!isCurrent()) return;
-      setMfaEmailChallengeId(challenge);
-      setMfaCode("");
-      setMfaEmailVerified(false);
-      setMfaAwaitingEmail(false);
-      setInfo(null);
-    } catch (error) {
-      if (isCurrent()) {
-        setMfaAwaitingEmail(false);
-        setError(resolveAccountSetupMfaErrorMessage(error, "Ověření e-mailu se nepodařilo zkontrolovat. Zkus to znovu."));
-      }
-    } finally {
-      emailCheckInFlight.current = false;
-      if (isCurrent()) setMfaSaving(false);
-    }
-  }, [mfaAwaitingEmail, user]);
-
-  useEffect(() => {
-    if (!mfaAwaitingEmail || !showWizard || stepIndex !== SECURITY_STEP_INDEX) return;
-    const check = () => {
-      if (document.visibilityState === "visible") void resumeAfterEmailVerification();
-    };
-    window.addEventListener("focus", check);
-    document.addEventListener("visibilitychange", check);
-    return () => {
-      window.removeEventListener("focus", check);
-      document.removeEventListener("visibilitychange", check);
-    };
-  }, [mfaAwaitingEmail, resumeAfterEmailVerification, showWizard, stepIndex]);
-
   useEffect(() => () => { emailCheckGeneration.current += 1; }, [user?.uid]);
 
   const confirmMfaEnrollment = useCallback(async () => {
@@ -947,21 +892,11 @@ export function useAccountSetupFlow({
     setError(null);
     try {
       const activeUser = auth.currentUser ?? user;
-      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
-        clearMfaDraft();
-        setMfaAwaitingEmail(true);
-        setMfaEmailVerified(false);
-        setInfo("Před zapnutím 2FA ověř e-mail odkazem ve schránce a potom pokračuj.");
-        return;
-      }
-      await completeMfaEnrollment(activeUser, mfaSecret, verificationCode);
+      const signInToken = await completeMfaEnrollment(activeUser, mfaSecret, verificationCode);
       setMfaPassword("");
       clearMfaDraft();
-      // Enrollment invalidates the old Firebase session. The pending account
-      // block also remains until administrator activation, so do not save a
-      // profile or create an application session with the pre-enrollment token.
-      await Promise.allSettled([clearServerSession(), signOut(auth)]);
-      window.location.replace("/login?reason=mfa-configured");
+      await signInAfterMfaSetup(signInToken);
+      window.location.replace("/");
     } catch (confirmationError) {
       console.warn("[AccountSetupMFA] confirm enrollment failed", {
         code: (confirmationError as { code?: string })?.code,
@@ -1057,10 +992,6 @@ export function useAccountSetupFlow({
       void confirmMfaEnrollment();
       return;
     }
-    if (mfaAwaitingEmail) {
-      void resumeAfterEmailVerification();
-      return;
-    }
     if (mfaEmailChallengeId) {
       void confirmMfaInbox();
       return;
@@ -1070,8 +1001,6 @@ export function useAccountSetupFlow({
     confirmMfaEnrollment,
     confirmMfaInbox,
     mfaEmailChallengeId,
-    mfaAwaitingEmail,
-    resumeAfterEmailVerification,
     currentStep,
     markCompleted,
     mfaEnabled,

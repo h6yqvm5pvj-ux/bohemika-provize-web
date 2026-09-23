@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMfaEnrollmentContext } from "@/lib/server/firebaseAdmin";
 import { FirebaseAuthEmailError, requireAuthEmailConfig } from "@/lib/server/firebaseAuthEmail";
-import { finishMfaEnrollment, hasApprovedMfaRecovery, MfaEnrollmentError, requestMfaEnrollment, startApprovedMfaRecovery, verifyMfaEnrollmentEmail } from "@/lib/server/mfaEnrollment";
+import { finishMfaEnrollment, MfaEnrollmentError, requestMfaEnrollment, resumeEmailConfirmedEnrollment, verifyMfaEnrollmentEmail } from "@/lib/server/mfaEnrollment";
 import { applyRateLimitHeaders, consumeRateLimit, getRequestIp } from "@/lib/server/rateLimit";
 
 export const runtime = "nodejs";
@@ -39,22 +39,21 @@ export async function POST(req: Request) {
     if (req.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() !== "application/json") return json({ ok: false }, 415);
     const ipLimit = await limit(getRequestIp(req), "ip", 40); if (ipLimit) return ipLimit;
     const body = await readBody(req);
-    if (!body || !["start", "request", "verify", "complete"].includes(String(body.action)) ||
+    if (!body || !["start", "request", "verify", "enroll", "complete"].includes(String(body.action)) ||
         Object.keys(body).some(key => !["action", "challengeId", "code"].includes(key))) return json({ ok: false }, 400);
     if (!["start", "request"].includes(String(body.action)) && (typeof body.challengeId !== "string" || !/^[a-f\d-]{36}$/.test(body.challengeId) ||
-        typeof body.code !== "string" || !/^\d{6}$/.test(body.code))) return json({ ok: false, error: "Zadej všech šest číslic kódu." }, 400);
+        (body.action !== "enroll" && (typeof body.code !== "string" || !/^\d{6}$/.test(body.code))))) return json({ ok: false, error: "Zadej všech šest číslic kódu." }, 400);
     let context;
     try { context = await getMfaEnrollmentContext(token); }
-    catch { return json({ ok: false, code: "mfa/reauth-required", error: "Přihlas se znovu. Nastavení vyžaduje ověřený e-mail a účet bez existujícího 2FA." }, 401); }
+    catch { return json({ ok: false, code: "mfa/reauth-required", error: "Pro nastavení 2FA se znovu přihlas heslem." }, 401); }
     // A missing mail configuration cannot send a code. Do not spend the user's
     // limited email requests or replace an existing challenge in that case.
     const starting = body.action === "start" || body.action === "request";
-    const approvedRecovery = body.action === "start" && await hasApprovedMfaRecovery(context);
-    if (starting && !approvedRecovery) requireAuthEmailConfig();
-    const userLimit = await limit(context.uid, starting ? approvedRecovery ? "recovery" : "request" : String(body.action), starting ? 3 : 10); if (userLimit) return userLimit;
-    if (approvedRecovery) return json({ ok: true, ...await startApprovedMfaRecovery(context, token) });
+    if (starting) requireAuthEmailConfig();
+    const userLimit = await limit(context.uid, starting ? "request" : String(body.action), starting ? 3 : 10); if (userLimit) return userLimit;
     if (starting) return json({ ok: true, ...await requestMfaEnrollment(context) });
     if (body.action === "verify") return json({ ok: true, ...await verifyMfaEnrollmentEmail(context, token, body.challengeId as string, body.code as string) });
+    if (body.action === "enroll") return json({ ok: true, ...await resumeEmailConfirmedEnrollment(context, token, body.challengeId as string) });
     return json({ ok: true, ...await finishMfaEnrollment(context, token, body.challengeId as string, body.code as string) });
   } catch (error) {
     if (error instanceof MfaEnrollmentError) {

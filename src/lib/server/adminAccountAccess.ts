@@ -13,7 +13,7 @@ export function getAdminAccountAccess(user: Pick<UserRecord, "disabled" | "email
   if (persistent && block?.reason !== "missing-totp") return { state: "blocked", reason: "persistent-block" };
   if (!user.emailVerified) return { state: "setup", reason: "email-verification" };
   if (!hasTotpFactor(user)) return { state: "setup", reason: "mfa-enrollment" };
-  if (persistent) return { state: "blocked", reason: "activation-required" };
+  if (persistent) return { state: "setup", reason: "activation-required" };
   return { state: "active", reason: null };
 }
 
@@ -28,6 +28,27 @@ function emailConfirmationComplete(user: UserRecord, block: FirebaseFirestore.Do
   return block.mfaEmailConfirmationRequired !== true ||
     (typeof block.mfaEmailConfirmedFactorUid === "string" &&
       user.multiFactor?.enrolledFactors.some(f => f.factorId === "totp" && f.uid === block.mfaEmailConfirmedFactorUid) === true);
+}
+
+export async function resetAccountMfa({ auth, db, uid, actorUid }: {
+  auth: Auth; db: Firestore; uid: string; actorUid: string;
+}): Promise<AdminAccountAccess> {
+  const ref = db.collection("accountBlocks").doc(uid);
+  await db.runTransaction(async tx => {
+    const before = (await tx.get(ref)).data();
+    const independentlyBlocked = isPersistentAccountBlock(before) && before?.reason !== "missing-totp";
+    const next: FirebaseFirestore.DocumentData = { ...before, ...(independentlyBlocked ? {} : { reason: "missing-totp", source: "mfa-setup", resetByUid: actorUid }),
+      mfaEmailConfirmationRequired: true, mfaEmailChallengeId: null, mfaEmailConfirmedFactorUid: null };
+    delete next.mfaRecoveryApproval;
+    tx.set(ref, next);
+  });
+  // Removing the factor revokes old sessions but does not disable password
+  // sign-in. An independent administrator block remains in force.
+  await auth.updateUser(uid, { multiFactor: { enrolledFactors: null } });
+  await auth.revokeRefreshTokens(uid);
+  const user = await auth.getUser(uid);
+  const block = await db.runTransaction(async tx => (await tx.get(ref)).data());
+  return getAdminAccountAccess(user, block);
 }
 
 // The supplied Auth must use withFirestoreTokenRevocation, like adminAuth.
@@ -57,7 +78,7 @@ export async function changeAdminAccountAccess({ auth, db, uid, actorUid, active
       const current = (await tx.get(ref)).data();
       if (current && persistentFields(current) === persistentFields(barrier)) tx.set(ref, { ...current, reason: "missing-totp" });
     });
-    throw new AccountAccessConflict("Nastavení 2FA nebylo potvrzené kódem z e-mailu. Účet zůstává zablokovaný.");
+    throw new AccountAccessConflict("Nastavení 2FA nebylo potvrzené kódem z e-mailu. Dokonči nastavení 2FA po potvrzení e-mailu.");
   }
   const finalBlock = await db.runTransaction(async tx => {
     const current = (await tx.get(ref)).data();

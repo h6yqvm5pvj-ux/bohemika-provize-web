@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ context: vi.fn(), config: vi.fn(), approved: vi.fn(), recover: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ context: vi.fn(), config: vi.fn(), resume: vi.fn(), request: vi.fn(), verify: vi.fn(), complete: vi.fn(), limit: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ getMfaEnrollmentContext: mocks.context }));
 vi.mock("@/lib/server/firebaseAuthEmail", () => ({ requireAuthEmailConfig: mocks.config,
   FirebaseAuthEmailError: class extends Error { constructor(readonly code: string) { super("Odesílání e-mailů není správně nastavené. Kontaktuj podporu."); } },
 }));
 vi.mock("@/lib/server/mfaEnrollment", () => ({ requestMfaEnrollment: mocks.request, verifyMfaEnrollmentEmail: mocks.verify, finishMfaEnrollment: mocks.complete,
-  hasApprovedMfaRecovery: mocks.approved, startApprovedMfaRecovery: mocks.recover,
+  resumeEmailConfirmedEnrollment: mocks.resume,
   MfaEnrollmentError: class extends Error { constructor(readonly code: string, message: string, readonly status = 400, readonly retryAfterSeconds?: number) { super(message); } },
 }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.limit, getRequestIp: () => "127.0.0.1", applyRateLimitHeaders: () => {} }));
@@ -19,7 +19,7 @@ function request(body: unknown = { action: "request" }, headers: Record<string, 
 }
 beforeEach(() => {
   vi.resetAllMocks(); mocks.context.mockResolvedValue(context); mocks.limit.mockResolvedValue({ allowed: true, store: "firestore" });
-  mocks.approved.mockResolvedValue(false); mocks.recover.mockResolvedValue({ challengeId, secretKey: "SYNTHETIC" });
+  mocks.resume.mockResolvedValue({ challengeId, secretKey: "SYNTHETIC" });
   mocks.request.mockResolvedValue({ challengeId }); mocks.verify.mockResolvedValue({ challengeId, secretKey: "SYNTHETIC" }); mocks.complete.mockResolvedValue({ enrolled: true });
 });
 describe("MFA email enrollment API", () => {
@@ -77,14 +77,15 @@ describe("MFA email enrollment API", () => {
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("25");
   });
-  it("uses only a server-approved recovery without spending email quota or sending email", async () => {
-    mocks.approved.mockResolvedValue(true);
+  it("requires email delivery configuration on every setup start", async () => {
     const response = await POST(request({ action: "start" }));
+    expect(response.status).toBe(200); expect(mocks.config).toHaveBeenCalledOnce();
+    expect(mocks.request).toHaveBeenCalledWith(context); expect(mocks.resume).not.toHaveBeenCalled();
+  });
+  it("resumes only a server-confirmed email challenge with the fresh bearer token", async () => {
+    const response = await POST(request({ action: "enroll", challengeId }));
     expect(response.status).toBe(200);
-    expect(mocks.context).toHaveBeenCalledWith("synthetic-token");
-    expect(mocks.recover).toHaveBeenCalledWith(context, "synthetic-token");
-    expect(mocks.limit).toHaveBeenLastCalledWith(expect.objectContaining({ namespace: "api:mfa-enrollment:recovery", key: context.uid, limit: 3 }));
-    expect(mocks.config).not.toHaveBeenCalled(); expect(mocks.request).not.toHaveBeenCalled();
-    expect(response.headers.has("set-cookie")).toBe(false);
+    expect(mocks.resume).toHaveBeenCalledWith(context, "synthetic-token", challengeId);
+    expect(mocks.request).not.toHaveBeenCalled(); expect(response.headers.has("set-cookie")).toBe(false);
   });
 });

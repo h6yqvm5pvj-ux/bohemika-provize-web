@@ -37,7 +37,6 @@ import {
   reauthenticateWithCredential,
   TotpMultiFactorGenerator,
   signInWithCustomToken,
-  signOut,
 } from "firebase/auth";
 
 import { auth } from "../firebase";
@@ -53,10 +52,8 @@ import {
   readAdminImpersonationState,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
-import { clearServerSession } from "@/app/lib/authSession";
+import { signInAfterMfaSetup } from "@/app/lib/mfaSetupSignIn";
 import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
-import { ensureEmailVerifiedForMfaEnrollment } from "@/app/lib/mfaEmailVerification";
-import { MFA_VERIFICATION_SENT_MESSAGE } from "@/lib/authEmailMessages";
 import {
   createPasskeyForUser,
   deletePasskeyForUser,
@@ -2845,13 +2842,7 @@ export default function SettingsPage() {
         if (!reauthenticated) return;
       }
 
-      if (!(await ensureEmailVerifiedForMfaEnrollment(activeUser))) {
-        setMfaPassword("");
-        setMfaEnrollmentSecret(null);
-        setMfaEnrollmentCode("");
-        setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
-        return;
-      }
+      await activeUser.getIdToken(true);
 
       const enrollmentUser = auth.currentUser ?? activeUser;
       const challenge = await requestMfaEmailCode(enrollmentUser);
@@ -2894,21 +2885,16 @@ export default function SettingsPage() {
     setMfaStatus(null);
 
     try {
-      if (!(await ensureEmailVerifiedForMfaEnrollment(user))) {
-        clearMfaDraft();
-        setMfaStatus({ type: "info", message: MFA_VERIFICATION_SENT_MESSAGE });
-        return;
-      }
       if (!mfaEnrollmentSecret) {
         setMfaEnrollmentSecret(await confirmMfaEmailCode(user, mfaEmailChallengeId, otp));
         setMfaEnrollmentCode("");
         setMfaStatus({ type: "info", message: "E-mail potvrzen. Naskenuj QR kód a zadej aktuální kód z Authenticatoru." });
         return;
       }
-      await completeMfaEnrollment(user, mfaEnrollmentSecret, otp);
+      const signInToken = await completeMfaEnrollment(user, mfaEnrollmentSecret, otp);
       setMfaPassword(""); setMfaReauthCode(""); clearMfaDraft();
-      await Promise.allSettled([clearServerSession(), signOut(auth)]);
-      window.location.replace("/login?reason=mfa-configured");
+      await signInAfterMfaSetup(signInToken);
+      window.location.replace("/nastaveni");
     } catch (error) {
       logMfaIssue("handleConfirmMfaEnrollment", error);
       setMfaStatus({

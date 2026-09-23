@@ -7,7 +7,7 @@ import { withFirestoreTokenRevocation } from "./auth-security.mjs";
 
 async function main() {
   const [mode, uid] = process.argv.slice(2);
-  if (!["prepare", "approve-recovery", "activate"].includes(mode) || !uid || uid.includes("/") || uid.length > 128) throw new Error("Use prepare|approve-recovery|activate UID [--apply]");
+  if (!["prepare", "activate"].includes(mode) || !uid || uid.includes("/") || uid.length > 128) throw new Error("Use prepare|activate UID [--apply]");
   nextEnv.loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
   const credentials = process.env.FIREBASE_ADMIN_CREDENTIALS ? JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS) : {
     projectId: process.env.FIREBASE_ADMIN_PROJECT_ID, clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
@@ -24,25 +24,9 @@ async function main() {
       throw new Error("Fresh email-confirmed enrollment is required before activation");
     }
     if (mode === "activate" && (!hasTotp || !user.emailVerified)) throw new Error("Verified email and enrolled TOTP are required before activation");
-    if ((mode === "prepare" || mode === "approve-recovery") && hasTotp) throw new Error("TOTP is already enrolled; use activate after identity verification");
-    if (mode === "approve-recovery" && (user.disabled || !user.emailVerified || !user.email ||
-        !block.data()?.revocation?.generation || Object.keys(block.data()?.revocation?.pendingOperations ?? {}).length > 0)) {
-      throw new Error("Recovery approval requires an enabled, verified account and a completed reset");
-    }
+    if (mode === "prepare" && hasTotp) throw new Error("TOTP is already enrolled; use activate after identity verification");
     if (!process.argv.includes("--apply")) {
       console.log(JSON.stringify({ mode, dryRun: true, eligible: true, businessAccessRemainsBlocked: mode !== "activate" })); return;
-    }
-    if (mode === "approve-recovery") {
-      const now = Date.now(), expiresAtMs = now + 60 * 60_000;
-      await db.runTransaction(async tx => {
-        const current = (await tx.get(ref)).data();
-        if (current?.reason !== "missing-totp" || current.revocation?.generation !== block.data()?.revocation?.generation ||
-            Object.keys(current.revocation?.pendingOperations ?? {}).length > 0) throw new Error("Account block changed during recovery");
-        tx.update(ref, { mfaRecoveryApproval: { email: user.email, approvedAtMs: now, expiresAtMs,
-          revocationGeneration: current.revocation.generation, source: "operator-approved-recovery" } });
-      });
-      console.log(JSON.stringify({ mode, applied: true, expiresAt: new Date(expiresAtMs).toISOString(), businessAccessRemainsBlocked: true }));
-      return;
     }
     await auth.revokeRefreshTokens(uid);
     await auth.updateUser(uid, { disabled: false });
