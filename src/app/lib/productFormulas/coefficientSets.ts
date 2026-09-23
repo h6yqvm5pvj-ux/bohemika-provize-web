@@ -149,7 +149,7 @@ export const minimumSupportedContractSignedDateForProduct = (
 ): string | null => {
   // Older ČPP Auto policies can be taken over for subsequent commissions.
   // Keep the ordinary-contract coefficient boundary unchanged.
-  if (product === "cppAuto" && acquisitionType === "inherited") return "2015-01-01";
+  if (product === "cppAuto" && acquisitionType === "inherited") return "2012-01-01";
   return product ? PRODUCT_MINIMUM_COEFFICIENT_VALID_FROM[product] ?? null : null;
 };
 

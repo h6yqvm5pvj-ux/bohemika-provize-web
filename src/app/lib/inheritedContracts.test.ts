@@ -27,7 +27,7 @@ describe("inherited commission entitlement", () => {
     expect(inheritedCommissionResult(result)).toEqual(result);
   });
 
-  it.each(["2015-01-01", "2024-05-01"])("uses the original position and only subsequent commissions for a policy from %s", (contractSignedDateIso) => {
+  it.each(["2012-01-01", "2012-08-08", "2015-01-01", "2024-05-01"])("uses the original position and only subsequent commissions for a policy from %s", (contractSignedDateIso) => {
     const calculate = (position: "poradce4" | "manazer8") => {
       const result = calculateCommission({ productKey: "cppAuto", position, inputAmount: 2000,
         frequencyRaw: "quarterly", contractSignedDateIso, commissionMode: "standard",

@@ -621,7 +621,7 @@ describe("inherited contract creation", () => {
     originalAdviserName: "  Původní Sjednatel  ", transferEffectiveDate: "2026-09-10", ...overrides,
   });
 
-  it.each(["2015-01-01", "2015-12-31", "2017-12-31"])("allows inherited ČPP Auto signed on %s and preserves its original dates", (signedDate) => {
+  it.each(["2012-01-01", "2012-08-08", "2014-12-31", "2015-01-01", "2015-12-31", "2017-12-31"])("allows inherited ČPP Auto signed on %s and preserves its original dates", (signedDate) => {
     expect(normalizedPayload(inherited({
       productKey: "cppAuto", frequencyRaw: "annual",
       contractSignedDate: signedDate, policyStartDate: signedDate,
@@ -633,13 +633,24 @@ describe("inherited contract creation", () => {
   });
 
   it.each([
-    { productKey: "cppAuto", acquisitionType: "inherited", contractSignedDate: "2014-12-31" },
+    { productKey: "cppAuto", acquisitionType: "inherited", contractSignedDate: "2011-12-31" },
+    { productKey: "cppAuto", acquisitionType: null, contractSignedDate: "2012-08-08" },
     { productKey: "cppAuto", acquisitionType: null, contractSignedDate: "2015-01-01" },
     { productKey: "neon", acquisitionType: "inherited", contractSignedDate: "2015-01-01" },
-  ])("keeps the date exception limited to inherited ČPP Auto from 2015: %j", (overrides) => {
+  ])("keeps the date exception limited to inherited ČPP Auto from 2012: %j", (overrides) => {
     const raw = overrides.acquisitionType === "inherited" ? inherited(overrides) : baseEntry(overrides);
     const result = normalizeCreateEntryPayload({ raw, ownerEmail, ownerUid });
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/datum sjednání|datem sjednání/) });
+  });
+
+  it("preserves separate original signing and start dates from 2012", () => {
+    expect(normalizedPayload(inherited({
+      productKey: "cppAuto", frequencyRaw: "annual", inputAmount: 5462,
+      contractSignedDate: "2012-08-08", policyStartDate: "2012-08-14",
+    }))).toMatchObject({
+      contractSignedDate: new Date("2012-08-08"), policyStartDate: new Date("2012-08-14"),
+      transferEffectiveDate: "2026-09-10", acquisitionType: "inherited",
+    });
   });
 
   it("stores manual original adviser details and original policy dates under the new owner", () => {

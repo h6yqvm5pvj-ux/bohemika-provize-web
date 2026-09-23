@@ -16,22 +16,22 @@ const baseContract: ContractDoc = {
 describe("contracts API validation", () => {
   const inheritedCpp: ContractDoc = {
     ...baseContract, productKey: "cppAuto", acquisitionType: "inherited",
-    contractSignedDate: new Date("2015-01-01"), policyStartDate: new Date("2015-02-01"),
+    contractSignedDate: new Date("2012-08-08"), policyStartDate: new Date("2012-08-14"),
   };
 
-  it("allows editing an inherited ČPP Auto contract from 2015", () => {
+  it("allows editing an inherited ČPP Auto contract from 2012", () => {
     expect(validateContractCoreInvariants(inheritedCpp, { clientName: "Petr Novak" })).toEqual({ ok: true });
-    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2015-01-31") })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2012-01-01") })).toEqual({ ok: true });
   });
 
-  it("rejects moving an inherited ČPP Auto contract before 2015", () => {
-    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2014-12-31") }))
-      .toMatchObject({ ok: false, error: expect.stringContaining("01. 01. 2015") });
+  it("rejects moving an inherited ČPP Auto contract before 2012", () => {
+    expect(validateContractCoreInvariants(inheritedCpp, { contractSignedDate: new Date("2011-12-31") }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("01. 01. 2012") });
   });
 
   it("uses the stored acquisition type when validating a date edit", () => {
     expect(validateContractCoreInvariants({ ...inheritedCpp, acquisitionType: null }, {
-      acquisitionType: "inherited", contractSignedDate: new Date("2015-01-01"),
+      acquisitionType: "inherited", contractSignedDate: new Date("2012-01-01"),
     })).toMatchObject({ ok: false, error: expect.stringContaining("01. 01. 2018") });
   });
 

@@ -72,6 +72,19 @@ describe("cashflow for inherited contracts", () => {
     expect(iso(after[0].date)).toBe("2022-04-25");
   });
 
+  it("continues a 2012 ČPP Auto policy from its next renewal after takeover", () => {
+    const rows = generateCashflow([base({
+      productKey: "cppAuto", frequencyRaw: "annual",
+      contractSignedDate: new Date(2012, 7, 8), policyStartDate: new Date(2012, 7, 14),
+      transferEffectiveDate: "2026-09-10",
+      items: [{ title: "Následná provize", amount: 578.97, code: "B101" }],
+    })]);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(iso(rows[0].date)).toBe("2027-09-25");
+    expect(rows[0].commissionCode).toBe("B115");
+    expect(rows.every(row => row.commissionCode?.startsWith("B") && row.amount === 578.97)).toBe(true);
+  });
+
   it("respects the end of a limited subsequent commission window", () => {
     const rows = generateCashflow([base({ productKey: "domex", transferEffectiveDate: "2026-01-01",
       items: [{ title: "Následná provize (z platby)", amount: 30 }],
