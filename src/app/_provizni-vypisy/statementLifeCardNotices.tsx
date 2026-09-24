@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, RefreshCw } from "lucide-react";
 import type { RefreshBaseReview } from "./statementRefreshBaseReview";
 
 import { coefficientSetLabel } from "@/app/lib/productFormulas/coefficientSets";
@@ -14,11 +14,17 @@ export type LifePremiumBaseNoticeKind =
   | "endorsement"
   | null;
 
-export function NeonRefreshBaseNotice({review}: {review: RefreshBaseReview}) {
+export function NeonRefreshBaseNotice({review, onConfirm, saving = false, error}: {
+  review: RefreshBaseReview;
+  onConfirm?: () => void;
+  saving?: boolean;
+  error?: string | null;
+}) {
   if (!review) return null;
   const confirmed = review.status === "confirmed";
   const Icon = confirmed ? CheckCircle2 : Info;
-  return <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${confirmed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
+  const canConfirm = !confirmed && review.statementRiskAnnual != null && Boolean(onConfirm);
+  return <div aria-busy={saving} className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${confirmed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
     <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
     <div>
       <div className="font-bold">{review.label}</div>
@@ -33,11 +39,22 @@ export function NeonRefreshBaseNotice({review}: {review: RefreshBaseReview}) {
           Základna tohoto refreshe zatím není doložená. Částky provizí zůstávají ve výpisu; kontrolu proti předběžnému výpočtu zatím nevyhodnocujeme jako chybu.
         </>}
         {!confirmed && (review.statementRiskAnnual != null ? <>
-          {" "}Tento výpis obsahuje rizikovou základnu {formatWholeMoney(review.statementRiskAnnual)} Kč ročně. Potvrzení se uloží při zpracování výpisu.
+          {" "}Tento výpis obsahuje rizikovou základnu {formatWholeMoney(review.statementRiskAnnual)} Kč ročně.
+          {canConfirm ? " Použitím této základny přepočítáš provize u smlouvy." : " Potvrzení se uloží při zpracování výpisu."}
         </> : <>
           {" "}Pro potvrzení potřebujeme výpis s rizikovou A101/B0301. A201 ani samotná B101 základnu refreshe nepotvrzují.
         </>)}
       </div>
+      {canConfirm && <button
+        type="button"
+        onClick={onConfirm}
+        disabled={saving}
+        className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-sky-950 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-wait disabled:opacity-60"
+      >
+        {saving ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4 shrink-0" aria-hidden="true" />}
+        {saving ? "Ukládám a přepočítávám…" : "Použít základnu z výpisu a přepočítat"}
+      </button>}
+      {error && <p role="alert" className="mt-2 font-semibold text-rose-800">{error}</p>}
     </div>
   </div>;
 }

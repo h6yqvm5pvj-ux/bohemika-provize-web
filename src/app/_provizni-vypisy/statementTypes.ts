@@ -501,6 +501,7 @@ export type MatchedSystemContract = {
 };
 
 export type ManualNeonRefreshConversionTarget = {
+  intent?: "confirm-base";
   statementId?: string | null;
   statementKey?: string;
   contract: MatchedSystemContract;

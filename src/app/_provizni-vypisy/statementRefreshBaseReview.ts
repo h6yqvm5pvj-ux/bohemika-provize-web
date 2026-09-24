@@ -1,4 +1,4 @@
-import { neonRefreshRiskAnnualPremiumBase } from "@/app/lib/commissionPayoutRules";
+import { isNeonStatementProductCode, neonRefreshRiskAnnualPremiumBase } from "@/app/lib/commissionPayoutRules";
 import type { CommissionRow, MatchedSystemContract } from "./statementTypes";
 
 export type RefreshBaseStatus = "confirmed" | "calculated" | "waiting";
@@ -31,7 +31,7 @@ export function neonRefreshBaseReview(contract: MatchedSystemContract | null, ro
     statementNumber: contract.refreshStatementResolvedStatementNumber ?? null,
     statementDate: contract.refreshStatementResolvedStatementDate ?? null,
     statementRiskAnnual: neonRefreshRiskAnnualPremiumBase(rows
-      .filter(row => row.commission > 0)
+      .filter(row => row.commission > 0 && isNeonStatementProductCode(row.product))
       .map(row => ({commissionCode: row.type, baseAmount: row.base}))),
   };
 }

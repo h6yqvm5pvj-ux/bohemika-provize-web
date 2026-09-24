@@ -14,7 +14,7 @@ export function buildNeonRefreshConversionRequest(
   const ownerEmail = target.contract.adviserEmail?.trim().toLowerCase();
   const entryId = target.contract.id?.trim();
   if (!ownerEmail || !entryId) {
-    throw new Error("Spárovaná smlouva nemá dostatek údajů pro převod na REFRESH.");
+    throw new Error("Spárovaná smlouva nemá dostatek údajů pro přepočet základny.");
   }
   const file = target.statementId ? null : files.find(
     (item) => statementDiscrepancyKey(item.statement) === target.statementKey
@@ -23,7 +23,9 @@ export function buildNeonRefreshConversionRequest(
     throw new Error("Zdrojový výpis není k dispozici. Načti jej prosím znovu.");
   }
   return {
-    action: "convert-neon-refresh-from-statement",
+    action: target.intent === "confirm-base"
+      ? "confirm-neon-refresh-base"
+      : "convert-neon-refresh-from-statement",
     ownerEmail,
     entryId,
     contractNumber: target.contractNumber,

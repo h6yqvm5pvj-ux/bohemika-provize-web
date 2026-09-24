@@ -24,6 +24,7 @@ import {
   lifeRiskAnnualPremiumBase,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
+  isNeonStatementProductCode,
   neonRefreshRiskAnnualPremiumBase,
 } from "@/app/lib/commissionPayoutRules";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
@@ -2392,11 +2393,13 @@ const buildNeonRefreshStatementBaseUpdate = ({
   payoutRows,
   coefficientSetOverride,
   allowStatementMarkedRefresh = false,
+  confirmExistingRefresh = false,
 }: {
   contract: ContractDoc;
   payoutRows: CommissionStatementPayoutRow[];
   coefficientSetOverride: CommissionCoefficientSet | null;
   allowStatementMarkedRefresh?: boolean;
+  confirmExistingRefresh?: boolean;
 }): NeonRefreshStatementBaseUpdate | null => {
   const productKey = contract.productKey;
   if (productKey !== "neon") return null;
@@ -2406,7 +2409,8 @@ const buildNeonRefreshStatementBaseUpdate = ({
   );
   if (
     !isNeonRefreshMissingOriginalInSystem(contract) &&
-    !(allowStatementMarkedRefresh && hasRefreshStatementRows)
+    !(allowStatementMarkedRefresh && hasRefreshStatementRows) &&
+    !(confirmExistingRefresh && contract.isRefresh === true)
   ) {
     return null;
   }
@@ -4425,12 +4429,13 @@ const processStatementWrites = async ({
   return result;
 };
 
-const handleManualNeonRefreshConversion = async ({
+const handleManualNeonRefreshFromStatement = async ({
   body,
   ctxEmail,
   actorEmail,
   teamEmails,
   canManageContractsAsAdmin,
+  confirmExistingRefresh = false,
   withRateLimit,
 }: {
   body: Record<string, unknown>;
@@ -4438,6 +4443,7 @@ const handleManualNeonRefreshConversion = async ({
   actorEmail: string;
   teamEmails: string[];
   canManageContractsAsAdmin: boolean;
+  confirmExistingRefresh?: boolean;
   withRateLimit: (response: NextResponse) => NextResponse;
 }) => {
   const statementId = safeStatementId(normalizeText(body.statementId, 80));
@@ -4448,7 +4454,7 @@ const handleManualNeonRefreshConversion = async ({
   if ((body.statementId != null && !statementId) || !ownerEmail || !entryId || entryId.includes("/") || !contractNumber) {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Chybí údaje pro převod smlouvy na REFRESH." },
+        { ok: false, error: "Chybí údaje pro přepočet základny smlouvy REFRESH." },
         { status: 400 }
       )
     );
@@ -4481,7 +4487,7 @@ const handleManualNeonRefreshConversion = async ({
   if (!html) {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Chybí HTML obsah výpisu pro převod na REFRESH." },
+        { ok: false, error: "Chybí HTML obsah výpisu pro přepočet základny REFRESH." },
         { status: 400 }
       )
     );
@@ -4523,12 +4529,17 @@ const handleManualNeonRefreshConversion = async ({
   if (contract.productKey !== "neon") {
     return withRateLimit(
       NextResponse.json(
-        { ok: false, error: "Na REFRESH z výpisu lze převést jen smlouvu ČPP Životní pojištění NEON." },
+        { ok: false, error: "Základnu REFRESH z výpisu lze použít jen pro smlouvu ČPP Životní pojištění NEON." },
         { status: 400 }
       )
     );
   }
-  if (contract.isRefresh === true) {
+  if (confirmExistingRefresh && contract.isRefresh !== true) {
+    return withRateLimit(NextResponse.json(
+      { ok: false, error: "Smlouva není vedená jako REFRESH. Obnov náhled výpisu." }, { status: 409 }
+    ));
+  }
+  if (!confirmExistingRefresh && contract.isRefresh === true) {
     return withRateLimit(NextResponse.json(
       { ok: false, error: "Smlouva už je vedená jako REFRESH. Obnov náhled výpisu." }, { status: 409 }
     ));
@@ -4538,13 +4549,13 @@ const handleManualNeonRefreshConversion = async ({
     (row) =>
       row.status !== "storno" &&
       row.source === "own" &&
-      isNeonRefreshStatementProductCode(row.productCode) &&
+      (confirmExistingRefresh ? isNeonStatementProductCode(row.productCode) : isNeonRefreshStatementProductCode(row.productCode)) &&
       normalizeContractNumber(row.contractNumber) === contractNumber
   );
   const hasNrfRow = payoutRows.some((row) =>
     isNeonRefreshStatementProductCode(row.productCode)
   );
-  if (!hasNrfRow) {
+  if (!confirmExistingRefresh && !hasNrfRow) {
     return withRateLimit(
       NextResponse.json(
         {
@@ -4563,6 +4574,7 @@ const handleManualNeonRefreshConversion = async ({
     payoutRows,
     coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
     allowStatementMarkedRefresh: true,
+    confirmExistingRefresh,
   });
   if (!refreshUpdate) {
     return withRateLimit(
@@ -4589,10 +4601,12 @@ const handleManualNeonRefreshConversion = async ({
   if (!statementChronologyCanOverwrite(incomingChronologyMs, refreshStatementResolvedChronologyMs(contract)) ||
       !statementChronologyCanOverwrite(incomingChronologyMs, coefficientSetOverrideStatementChronologyMs(contract))) {
     return withRateLimit(NextResponse.json(
-      { ok: false, error: "Smlouva už používá novější výpis. Použij jej i pro převod na REFRESH." }, { status: 409 }
+      { ok: false, error: "Smlouva už používá novější výpis. Použij jej i pro potvrzení základny REFRESH." }, { status: 409 }
     ));
   }
-  const refreshCommissionBase = {
+  const refreshCommissionBase = confirmExistingRefresh ? buildNeonRefreshStatementCommissionBase({
+    contract, statementUpdate: refreshUpdate, method: "cpp_neon_statement_manual_base_confirmation",
+  }) : {
     productKey: "neon",
     method: "cpp_neon_statement_manual_refresh_conversion",
     originalContractNumber: null,
@@ -4611,8 +4625,10 @@ const handleManualNeonRefreshConversion = async ({
   };
   const contractPatch: Record<string, unknown> = {
     isRefresh: true,
-    refreshOriginalContractNumber: null,
-    refreshOriginalMissingInSystem: true,
+    ...(!confirmExistingRefresh ? {
+      refreshOriginalContractNumber: null,
+      refreshOriginalMissingInSystem: true,
+    } : {}),
     requiresStatementRefresh: false,
     calculationInputAmount: refreshUpdate.statementMonthlyPremiumBase,
     refreshCommissionBase,
@@ -4620,7 +4636,8 @@ const handleManualNeonRefreshConversion = async ({
     result,
     total: refreshUpdate.total,
     managerOverrides: refreshUpdate.managerOverrides,
-    commissionCalculationStatus: "statement_resolved_refresh_missing_original",
+    commissionCalculationStatus: confirmExistingRefresh && contract.refreshOriginalMissingInSystem !== true
+      ? "statement_resolved_refresh_base" : "statement_resolved_refresh_missing_original",
     commissionBaseSource: "commission_statement",
     refreshStatementResolvedAtMs: nowMs,
     refreshStatementResolvedStatementId: statementId,
@@ -4663,7 +4680,7 @@ const handleManualNeonRefreshConversion = async ({
 
   const batch = entryRef.firestore.batch();
   batch.update(entryRef, withContractHistory(batch, entryRef, contract, contractPatch, {
-    actorEmail, title: "Převedeno na Refresh podle výpisu",
+    actorEmail, title: confirmExistingRefresh ? "Potvrzena základna Refresh podle výpisu" : "Převedeno na Refresh podle výpisu",
   }), { lastUpdateTime: entrySnap.updateTime! });
   await trackCashflowWrite(() => batch.commit());
 
@@ -5177,25 +5194,32 @@ export async function POST(req: NextRequest) {
       { status: error instanceof PremiumBaseResolutionError ? error.status : 500 }));
     }
   }
-  if (action === "convert-neon-refresh-from-statement") {
+  if (action === "convert-neon-refresh-from-statement" || action === "confirm-neon-refresh-base") {
     if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json(
       { ok: false, error: "Nemáš oprávnění upravovat základnu." }, { status: 403 }
     ));
     try {
-      return await handleManualNeonRefreshConversion({
+      return await handleManualNeonRefreshFromStatement({
         body,
         ctxEmail: ctx.email,
         actorEmail: ctx.actorEmail,
         teamEmails: ctx.teamEmails,
         canManageContractsAsAdmin:
           ctx.canManageContractsAsAdmin || adminRoleAtLeast(ctx.impersonation?.actorRole, "admin"),
+        confirmExistingRefresh: action === "confirm-neon-refresh-base",
         withRateLimit,
       });
     } catch (error) {
+      if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
+        return withRateLimit(NextResponse.json(
+          { ok: false, error: "Smlouva se mezitím změnila. Obnov náhled výpisu a zkus to znovu." }, { status: 409 }
+        ));
+      }
       console.error("Commission statements manual NEON refresh conversion failed:", error);
       return withRateLimit(
         NextResponse.json(
-          { ok: false, error: "Smlouvu se nepodařilo převést na REFRESH." },
+          { ok: false, error: action === "confirm-neon-refresh-base"
+            ? "Potvrzení základny se nepodařilo uložit." : "Smlouvu se nepodařilo převést na REFRESH." },
           { status: 500 }
         )
       );

@@ -24,6 +24,10 @@ const NEON_REFRESH_STATEMENT_PRODUCT_CODES = new Set([
 export const isNeonRefreshStatementProductCode = (value: unknown): boolean =>
   NEON_REFRESH_STATEMENT_PRODUCT_CODES.has(normalizedCommissionCode(value));
 
+export const isNeonStatementProductCode = (value: unknown): boolean =>
+  isNeonRefreshStatementProductCode(value) ||
+  ["CPP_N_LIFE", "CPP_NEON", "CPP_N_RISK"].includes(normalizedCommissionCode(value));
+
 /** REFRESH uses the risk A101/B0301 base. A201 and subsequent investment
  * commissions must never supply it, even when they are the only rows present.
  * Allow the same 12 Kč annual rounding tolerance as statement reconciliation.

@@ -7,7 +7,7 @@ import type {CommissionRow,MatchedSystemContract} from "./statementTypes";
 
 const contract: MatchedSystemContract = {id:"test",adviserEmail:"advisor@example.test",productKey:"neon",isRefresh:true,
   calculationInputAmount:1000,refreshCommissionBase:{calculationAnnualPremium:12000},inputAmount:2000};
-const row=(type:string,base:number,commission=100)=>({type,base,commission}) as CommissionRow;
+const row=(type:string,base:number,commission=100)=>({type,base,commission,product:"CPP_NEONRF"}) as CommissionRow;
 
 describe("REFRESH base evidence",()=>{
   it("keeps a confirmed risk base distinct from a smaller B101 base",()=>{
@@ -40,6 +40,10 @@ describe("REFRESH base evidence",()=>{
   it("uses risk A101 alongside larger A201 and ignores a reversed risk payment",()=>{
     expect(neonRefreshBaseReview(contract,[row("A201",60000),row("A101",12000)])?.statementRiskAnnual).toBe(12000);
     expect(neonRefreshBaseReview(contract,[row("A101",12000,-100),row("A201",60000)])?.statementRiskAnnual).toBeNull();
+  });
+
+  it("does not confirm from an unrelated product's risk row",()=>{
+    expect(neonRefreshBaseReview(contract,[{...row("A101",12000),product:"CPP_DOMX+2"}])?.statementRiskAnnual).toBeNull();
   });
 
   it("keeps a calculation from an original contract explicitly unconfirmed",()=>{

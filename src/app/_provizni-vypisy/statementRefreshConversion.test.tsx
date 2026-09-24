@@ -28,6 +28,15 @@ describe("REFRESH preview request", () => {
     expect(buildNeonRefreshConversionRequest({ ...target, statementId: "statement-0001" }, [])).toMatchObject({ statementId: "statement-0001" });
     expect(buildNeonRefreshConversionRequest({ ...target, statementId: "statement-0001" }, files)).not.toHaveProperty("html");
   });
+  it("sends confirmation for an existing refresh with the correct saved or preview source", () => {
+    const confirmation = { ...target, intent: "confirm-base" as const };
+    expect(buildNeonRefreshConversionRequest(confirmation, files)).toMatchObject({
+      action: "confirm-neon-refresh-base", html: files[1].html,
+    });
+    const saved = buildNeonRefreshConversionRequest({ ...confirmation, statementId: "statement-0001" }, []);
+    expect(saved).toMatchObject({ action: "confirm-neon-refresh-base", statementId: "statement-0001" });
+    expect(saved).not.toHaveProperty("html");
+  });
   it("does not silently take another statement if the source is missing", () => {
     expect(() => buildNeonRefreshConversionRequest({ ...target, statementKey: "missing" }, files)).toThrow("Načti jej prosím znovu");
   });

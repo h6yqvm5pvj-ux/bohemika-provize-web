@@ -5366,6 +5366,27 @@ function LifeSplitContractCard({
     status: StatementRefreshConversionStatus;
     message: string | null;
   }>({ status: "idle", message: null });
+  const [baseConfirmationState, setBaseConfirmationState] = useState<{
+    saving: boolean;
+    error: string | null;
+  }>({ saving: false, error: null });
+  const canConfirmRefreshBase = Boolean(
+    refreshBaseReview && refreshBaseReview.status !== "confirmed" &&
+    refreshBaseReview.statementRiskAnnual != null && (statementId || statementKey) && onConvertNeonRefresh
+  );
+  const handleConfirmRefreshBase = async () => {
+    if (!canConfirmRefreshBase || !systemContract || !onConvertNeonRefresh || baseConfirmationState.saving) return;
+    setBaseConfirmationState({ saving: true, error: null });
+    try {
+      await onConvertNeonRefresh({
+        intent: "confirm-base", statementId, statementKey,
+        contract: systemContract, contractNumber: contract.contractNumber,
+      });
+      setBaseConfirmationState({ saving: false, error: null });
+    } catch (error) {
+      setBaseConfirmationState({ saving: false, error: error instanceof Error ? error.message : "Potvrzení základny se nepodařilo uložit." });
+    }
+  };
   const isStatementNrfRefresh = isNeonRefreshStatementProductCode(
     reviewContract.productCode
   );
@@ -5583,7 +5604,12 @@ function LifeSplitContractCard({
             annualPremiumIncrease={hasLifePremiumIncrease ? lifeIncreaseAnnualPremium : null}
           />
           <LifeCoefficientOverrideNotice override={coefficientOverride} />
-          <NeonRefreshBaseNotice review={refreshBaseReview} />
+          <NeonRefreshBaseNotice
+            review={refreshBaseReview}
+            onConfirm={canConfirmRefreshBase ? () => { void handleConfirmRefreshBase(); } : undefined}
+            saving={baseConfirmationState.saving}
+            error={baseConfirmationState.error}
+          />
           <LifeCommissionBaseDifferenceNotice differences={refreshBaseDifferences} />
           <LifePremiumBaseNotice
             kind={premiumBaseNotice}
@@ -7662,19 +7688,20 @@ export default function CommissionStatementsPage() {
   };
 
   const convertNeonRefreshFromStatement = async ({
+    intent,
     statementId,
     statementKey,
     contract,
     contractNumber,
   }: ManualNeonRefreshConversionTarget): Promise<ManualNeonRefreshConversionResponse> => {
     if (!user) {
-      throw new Error("Pro převod smlouvy na REFRESH musíš být přihlášený.");
+      throw new Error("Pro přepočet základny smlouvy musíš být přihlášený.");
     }
 
     const ownerEmail = normalizeEmailForComparison(contract.adviserEmail);
     const entryId = normalizeText(contract.id);
     const requestBody = buildNeonRefreshConversionRequest(
-      { statementId, statementKey, contract, contractNumber },
+      { intent, statementId, statementKey, contract, contractNumber },
       statementFilesForProcessing
     );
 
@@ -7699,7 +7726,7 @@ export default function CommissionStatementsPage() {
       | ManualNeonRefreshConversionResponse
       | null;
     if (!response.ok || payload?.ok !== true) {
-      throw new Error(payload?.error || "Převod na REFRESH se nepodařilo uložit.");
+      throw new Error(payload?.error || "Přepočet základny se nepodařilo uložit.");
     }
 
     if (payload.contract) {

@@ -152,3 +152,89 @@ describe("REFRESH directly from a statement preview", () => {
     expect((await POST(request(changes))).status).toBeGreaterThanOrEqual(400); expect(writes).toEqual([]);
   });
 });
+
+describe("confirming the base of an existing REFRESH", () => {
+  const confirm = (changes: Record<string, unknown> = {}) => request({
+    action: "confirm-neon-refresh-base", html: html(row("A101",7840,"CPP_NEONRF")), ...changes,
+  });
+  beforeEach(() => {
+    Object.assign(records.get(entryPath)!, {
+      isRefresh: true, requiresStatementRefresh: true, refreshOriginalMissingInSystem: true,
+      commissionCalculationStatus: "provisional_refresh_missing_original", inputAmount: 1100,
+      managerChain: [{ email: "manager@example.test", position: "manazer10", commissionMode: "standard" }],
+    });
+  });
+
+  it("recalculates contract and manager commissions from the risk base and preserves actual premium and payouts", async () => {
+    const response = await POST(confirm({ calculationInputAmount:9999 }));
+    expect(response.status).toBe(200);
+    const patch=(await response.json()).contract;
+    expect(patch).toMatchObject({ calculationInputAmount:653.33, requiresStatementRefresh:false,
+      commissionBaseSource:"commission_statement", refreshStatementResolvedStatementNumber:"123",
+      refreshCommissionBase:{calculationAnnualPremium:7840,calculationMonthlyPremium:653.33,newMonthlyPremium:1100} });
+    const expected=calculateNeon(653.33,"poradce7",20,"accelerated","2023-04-13","historical");
+    expect(patch.items).toEqual(expected.items);expect(patch.total).toBe(expected.total);
+    expect(patch.result).toEqual({items:expected.items,total:expected.total});
+    expect(patch.managerOverrides).toEqual([expect.objectContaining({email:"manager@example.test",total:expect.any(Number)})]);
+    expect(patch.managerOverrides[0].total).toBeGreaterThan(0);
+    expect(records.get(entryPath)).toMatchObject({inputAmount:1100,isRefresh:true,
+      commissionPayouts:[{id:"existing-payout",amount:50}]});
+    expect(writes).toEqual([entryPath]);
+    expect(mocks.history.mock.calls[0][4]).toMatchObject({actorEmail:owner,title:"Potvrzena základna Refresh podle výpisu"});
+  });
+
+  it("preserves the original contract reference and calculation metadata",async()=>{
+    Object.assign(records.get(entryPath)!,{refreshOriginalMissingInSystem:false,requiresStatementRefresh:false,
+      refreshOriginalContractNumber:"9876543210",refreshCommissionBase:{originalContractNumber:"9876543210",originalMonthlyPremium:750,newMonthlyPremium:1100}});
+    const response=await POST(confirm({html:html(row("A101",7840,"CPP_N_LIFE"))}));
+    expect(response.status).toBe(200);
+    expect(records.get(entryPath)).toMatchObject({refreshOriginalContractNumber:"9876543210",refreshOriginalMissingInSystem:false,
+      commissionCalculationStatus:"statement_resolved_refresh_base",
+      refreshCommissionBase:{originalContractNumber:"9876543210",originalMonthlyPremium:750,calculationAnnualPremium:7840}});
+  });
+
+  it("uses saved evidence instead of replacement HTML, and is safe to retry",async()=>{
+    records.set(statementPath,{...header,html:html(row("A101",12000))});
+    for(let attempt=0;attempt<2;attempt++){
+      const response=await POST(confirm({statementId}));expect(response.status).toBe(200);
+      expect((await response.json()).contract).toMatchObject({calculationInputAmount:1000,refreshStatementResolvedStatementId:statementId});
+    }
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([{id:"existing-payout",amount:50}]);
+  });
+
+  it.each([row("A201",12000),row("B101",12000),row("A101",7840,"CPP_NEONRF",-100),
+    row("A101",7840)+row("B0301",12000),row("A101",7840,"CPP_DOMX+2")])("rejects invalid risk evidence",async rows=>{
+    expect((await POST(confirm({html:html(rows)}))).status).toBe(400);expect(writes).toEqual([]);
+  });
+
+  it("does not implicitly convert a regular contract",async()=>{
+    records.get(entryPath)!.isRefresh=false;
+    expect((await POST(confirm())).status).toBe(409);expect(writes).toEqual([]);
+  });
+
+  it("does not replace evidence from a newer statement",async()=>{
+    records.get(entryPath)!.refreshStatementResolvedStatementChronologyMs=Date.UTC(2026,11,1);
+    expect((await POST(confirm())).status).toBe(409);expect(writes).toEqual([]);
+  });
+
+  it("retains admin authority and actor identity during impersonation",async()=>{
+    setContext({email:"represented@example.test",actorEmail:actor,impersonation:{actorRole:"admin"}});
+    expect((await POST(confirm())).status).toBe(200);
+    expect(mocks.history.mock.calls[0][4].actorEmail).toBe(actor);
+  });
+
+  it.each([{email:"unrelated@example.test"},{accountType:"tipster"}])("rejects unauthorized confirmations",async context=>{
+    setContext(context);expect((await POST(confirm())).status).toBe(403);expect(writes).toEqual([]);
+  });
+
+  it("requires authentication",async()=>{
+    mocks.guard.mockResolvedValue({ok:false,response:NextResponse.json({},{status:401})});
+    expect((await POST(confirm())).status).toBe(401);expect(writes).toEqual([]);
+  });
+
+  it("reports concurrent edits without overwriting the contract",async()=>{
+    mocks.batch.mockImplementationOnce(()=>({update:vi.fn(),commit:async()=>{throw Object.assign(new Error("Changed"),{code:9});}}));
+    const response=await POST(confirm());expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("mezitím změnila");expect(writes).toEqual([]);
+  });
+});
