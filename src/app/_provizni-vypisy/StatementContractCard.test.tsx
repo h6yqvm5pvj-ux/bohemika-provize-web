@@ -77,20 +77,26 @@ describe("compact statement contracts", () => {
     { comparisons: [] },
     { matched: false },
     { hasWarnings: true },
-  ])("leaves unverified contracts open: %j", async (review) => {
+  ])("starts unverified contracts collapsed with review badges visible: %j", async (review) => {
     await render({ ...cleanReview, ...review });
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("table")).toBeNull();
+    expect(toggle().textContent).not.toContain("Vše sedí");
+    expect(toggle().textContent).toContain("Výsledek podrobné kontroly");
+    await act(async () => toggle().click());
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
     expect(container.querySelector("table")).not.toBeNull();
-    expect(toggle().textContent).not.toContain("Vše sedí");
   });
 
-  it("reveals new review issues and compacts the contract once resolved", async () => {
+  it("preserves the user's expansion choice when review results change", async () => {
     await render();
+    await render({ ...cleanReview, baseComparisons: [{ annualDifference: -100 }] });
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
     await act(async () => toggle().click());
+    await render();
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
     await act(async () => toggle().click());
     await render({ ...cleanReview, baseComparisons: [{ annualDifference: -100 }] });
-    expect(toggle().getAttribute("aria-expanded")).toBe("true");
-    await render();
     expect(toggle().getAttribute("aria-expanded")).toBe("false");
   });
 });

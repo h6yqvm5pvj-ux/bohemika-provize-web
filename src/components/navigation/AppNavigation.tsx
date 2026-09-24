@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { COMMISSION_STATEMENTS_ENABLED } from "@/app/_provizni-vypisy/statementFeature";
+import { canAccessPreparationSection } from "@/lib/preparationSections";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 
 export type ActivePage =
@@ -119,17 +120,7 @@ const TIPSTER_NAV_ITEM_CONFIGS: NavigationItemConfig[] = [
   { key: "cashflow", href: "/cashflow", icon: CalendarDays },
 ];
 
-const PREPARATION_SECTION_OWNER = "jakub.rauscher";
 const PREPARATION_GATED_NAV_KEYS = new Set<ActivePage>(["statements"]);
-
-const normalizeUserIdentifier = (value: string | null | undefined) =>
-  (value ?? "").trim().toLowerCase();
-
-const canAccessPreparationSectionsForUser = (userEmail: string) => {
-  const normalized = normalizeUserIdentifier(userEmail);
-  const localPart = normalized.split("@")[0] ?? "";
-  return normalized === PREPARATION_SECTION_OWNER || localPart === PREPARATION_SECTION_OWNER;
-};
 
 const buildNavigationItems = (
   configs: NavigationItemConfig[],
@@ -341,7 +332,7 @@ export function AppNavigation({
     };
   }, [mobileMenuOpen, embedded]);
   const canAccessPreparationSections =
-    canAccessPreparationSectionsForUser(userEmail);
+    canAccessPreparationSection(userEmail, "statements");
   const BlockedPreparationIcon = blockedPreparationItem?.icon ?? ReceiptText;
 
   if (embedded) {

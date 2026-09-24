@@ -40,6 +40,7 @@ import {
   type AdminRole,
 } from "@/lib/adminAccess";
 import { clearServerSession } from "@/app/lib/authSession";
+import { canAccessPreparationSection } from "@/lib/preparationSections";
 import { useAccountSetupFlow } from "@/components/account-setup/useAccountSetupFlow";
 import { AppNavigation, type ActivePage } from "@/components/navigation/AppNavigation";
 import { useIntranetUnreadCount } from "@/components/navigation/useIntranetUnreadCount";
@@ -104,17 +105,6 @@ const formatIsoDayCz = (value: string | null): string => {
   const date = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
-};
-
-const PREPARATION_SECTION_OWNER = "jakub.rauscher";
-
-const normalizeUserIdentifier = (value: string | null | undefined) =>
-  (value ?? "").trim().toLowerCase();
-
-const canAccessPreparationSectionsForUser = (userEmail: string | null | undefined) => {
-  const normalized = normalizeUserIdentifier(userEmail);
-  const localPart = normalized.split("@")[0] ?? "";
-  return normalized === PREPARATION_SECTION_OWNER || localPart === PREPARATION_SECTION_OWNER;
 };
 
 function PreparationSectionGate() {
@@ -571,7 +561,10 @@ export function AppLayout({
   const isAdminRequestsUser = adminRoleAtLeast(adminRole, "admin");
   const canAccessAdminArea = isAdminRequestsUser || canCreateUsers;
   const preparationSectionRouteDenied =
-    isPreparationSectionRoute && !canAccessPreparationSectionsForUser(user?.email);
+    isPreparationSectionRoute && !canAccessPreparationSection(
+      user?.email,
+      pathname === "/provizni-vypisy" ? "statements" : "clients"
+    );
   const shellFontClass = "font-mono";
   const subscriptionGraceUntilLabel = subscriptionEvaluation?.graceUntil
     ? formatIsoDayCz(subscriptionEvaluation.graceUntil)

@@ -143,6 +143,23 @@ describe("collapsible application navigation", () => {
     expect(props.onLogout).toHaveBeenCalledOnce();
   });
 
+  it("opens statements for the selected Hajek account in desktop and mobile navigation", async () => {
+    await render({ userEmail: "jindra.hajek@bohemika.eu" });
+    await click(sidebar().querySelector('a[href="/provizni-vypisy"]'));
+    expect(container.querySelector('[aria-labelledby="preparation-section-dialog-title"]')).toBeNull();
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList);
+    await render({ mobileMenuOpen: true });
+    await click(container.querySelector('#mobile-navigation a[href="/provizni-vypisy"]'));
+    expect(props.onCloseMobileMenu).toHaveBeenCalledOnce();
+    expect(container.querySelector('[aria-labelledby="preparation-section-dialog-title"]')).toBeNull();
+  });
+
+  it("retains the statements gate for the other Hajek account", async () => {
+    await render({ userEmail: "jindrich.hajek@bohemika.eu" });
+    await click(sidebar().querySelector('a[href="/provizni-vypisy"]'));
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Sekce je v přípravě");
+  });
+
   it("shows keyboard tooltips and dismisses them on Escape or scrolling", async () => {
     await render(); await click(toggle());
     const link = sidebar().querySelector<HTMLAnchorElement>('a[href="/smlouvy"]')!;
