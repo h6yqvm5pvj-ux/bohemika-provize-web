@@ -1,58 +1,114 @@
+"use client";
+
+import { Pause, Play } from "lucide-react";
 import Image from "next/image";
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
 import styles from "./OnlineCardMinimal.module.css";
 
-const chartBars = [
-  { x: 48, y: 207 },
-  { x: 112, y: 189 },
-  { x: 176, y: 167 },
-  { x: 240, y: 139 },
-  { x: 304, y: 101 },
-  { x: 368, y: 59 },
-];
-const chartLine = "M24 216 L88 192 L146 198 L218 143 L279 155 L348 101 L426 39";
+const POSTER = "/images/online-card-hero/glass-growth-poster-v1.webp";
+const VIDEO = "/videos/online-card-hero/glass-growth-loop-v1.mp4";
+const COPY = {
+  cs: { pause: "Pozastavit animaci", play: "Přehrát animaci" },
+  en: { pause: "Pause animation", play: "Play animation" },
+  uk: { pause: "Призупинити анімацію", play: "Відтворити анімацію" },
+} as const;
 
-export function OnlineCardHeroVisual() {
-  const chartId = useId();
+type DataSavingConnection = EventTarget & { saveData?: boolean };
+
+export function OnlineCardHeroVisual({ locale }: { locale: OnlineCardLocale }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const artworkId = useId();
+  const [choice, setChoice] = useState<"auto" | "play" | "still">("auto");
+  const [canAutoplay, setCanAutoplay] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const animate = !failed && !blocked && (choice === "play" || (choice === "auto" && canAutoplay));
+  const showVideo = animate && visible;
+  const copy = COPY[locale];
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const motion = window.matchMedia("(prefers-reduced-motion: no-preference)");
+    const connection = (navigator as Navigator & { connection?: DataSavingConnection }).connection;
+    let inView = false;
+    const updateAutoplay = () => setCanAutoplay(motion.matches && !connection?.saveData && document.documentElement.dataset.motion !== "off");
+    const updateVisibility = () => setVisible(inView && !document.hidden);
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      updateVisibility();
+    }, { threshold: 0.1 });
+    const settingsObserver = new MutationObserver(updateAutoplay);
+    observer.observe(root);
+    settingsObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
+    motion.addEventListener("change", updateAutoplay);
+    connection?.addEventListener("change", updateAutoplay);
+    document.addEventListener("visibilitychange", updateVisibility);
+    updateAutoplay();
+    return () => {
+      observer.disconnect();
+      settingsObserver.disconnect();
+      motion.removeEventListener("change", updateAutoplay);
+      connection?.removeEventListener("change", updateAutoplay);
+      document.removeEventListener("visibilitychange", updateVisibility);
+    };
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!showVideo || !video) return;
+    let current = true;
+    video.play().catch(() => {
+      if (current) setBlocked(true);
+    });
+    return () => {
+      current = false;
+      video.pause();
+    };
+  }, [showVideo]);
 
   return (
-    <div className={styles.heroScene} aria-hidden="true">
-      <svg className={styles.heroChart} viewBox="0 0 460 260" fill="none" focusable="false">
-        <defs>
-          <linearGradient id={`${chartId}-bar`} x1="0" y1="0" x2="1" y2="1">
-            <stop stopColor="#b6ecff" stopOpacity=".3" />
-            <stop offset="1" stopColor="#69bfdf" stopOpacity=".04" />
-          </linearGradient>
-          <linearGradient id={`${chartId}-area`} x1="0" y1="0" x2="0" y2="1">
-            <stop stopColor="#83daf7" stopOpacity=".12" />
-            <stop offset="1" stopColor="#83daf7" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id={`${chartId}-line`} x1="24" y1="216" x2="426" y2="39" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#75c6df" stopOpacity=".25" />
-            <stop offset="1" stopColor="#c5f1ff" stopOpacity=".85" />
-          </linearGradient>
-        </defs>
-        <path d="M24 82H432 M24 134H432 M24 186H432 M24 238H432" stroke="#bcecff" strokeOpacity=".07" />
-        <path d={`${chartLine} V238 H24Z`} fill={`url(#${chartId}-area)`} />
-        {chartBars.map(({ x, y }) => (
-          <g key={x}>
-            <rect x={x} y={y} width="34" height={238 - y} rx="3" fill={`url(#${chartId}-bar)`} stroke="#aae5fa" strokeOpacity=".22" />
-            <path d={`M${x} ${y} l8 -6 h34 l-8 6Z`} fill="#c8f0ff" fillOpacity=".18" />
-            <path d={`M${x + 34} ${y} l8 -6 V232 l-8 6Z`} fill="#70c2df" fillOpacity=".1" />
-          </g>
-        ))}
-        <path className={styles.heroChartLine} d={chartLine} stroke={`url(#${chartId}-line)`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="426" cy="39" r="8" fill="#b8eeff" fillOpacity=".08" />
-        <circle cx="426" cy="39" r="3" fill="#c5f1ff" fillOpacity=".9" />
-      </svg>
-      <Image
-        src="/icons/bohemika-chrome-symbol.png"
-        alt=""
-        fill
-        sizes="(max-width: 760px) 60px, (max-width: 1000px) 220px, 300px"
-        preload
-        draggable={false}
-      />
+    <div className={styles.heroScene} ref={rootRef} data-playing={showVideo && ready}>
+      <div id={artworkId} className={styles.heroArtwork} aria-hidden="true">
+        <Image src={POSTER} alt="" fill sizes="(max-width: 760px) 144px, (max-width: 1000px) 360px, 680px" preload draggable={false} />
+        {showVideo ? <video
+          ref={videoRef}
+          className={styles.heroVideo}
+          data-ready={ready}
+          src={VIDEO}
+          poster={POSTER}
+          muted
+          loop
+          playsInline
+          preload="none"
+          disablePictureInPicture
+          tabIndex={-1}
+          onPlaying={() => setReady(true)}
+          onError={() => setFailed(true)}
+        /> : null}
+      </div>
+      <div className={styles.heroMark} aria-hidden="true">
+        <Image src="/icons/bohemika-chrome-symbol.png" alt="" fill sizes="(max-width: 760px) 60px, 220px" preload draggable={false} />
+        <span className={styles.heroMarkReflection} />
+      </div>
+      {!failed ? <button
+        type="button"
+        className={styles.heroMotionToggle}
+        aria-label={animate ? copy.pause : copy.play}
+        title={animate ? copy.pause : copy.play}
+        aria-controls={artworkId}
+        onClick={() => {
+          setReady(false);
+          setBlocked(false);
+          setChoice(animate ? "still" : "play");
+        }}
+      >
+        {animate ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+      </button> : null}
     </div>
   );
 }

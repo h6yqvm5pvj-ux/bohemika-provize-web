@@ -418,7 +418,7 @@ export default function OnlineCardPublicClient({
                 <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
               </div>
             </div>
-            <OnlineCardHeroVisual />
+            <OnlineCardHeroVisual locale={locale} />
           </div>
           <div className={styles.heroFoot}>
             <div className={styles.heroHighlights}>
