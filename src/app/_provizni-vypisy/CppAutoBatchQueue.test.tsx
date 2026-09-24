@@ -50,7 +50,7 @@ describe("Kooperativa in the commission statement queue", () => {
     expect(mocks.uploadContractPdfAttachmentWithAuth).toHaveBeenCalledWith(expect.objectContaining({ ownerEmail: "represented@example.test", entryId: "entry-1", file }));
   });
 
-  it.each(["cppAuto", "domex", "kooperativaAuto"] as const)("preserves %s instead of coercing it to another insurer", product => {
+  it.each(["cppAuto", "domex", "kooperativaAuto", "uniqaAuto"] as const)("preserves %s instead of coercing it to another insurer", product => {
     const item = cppAutoBatchQueueItemFromPrefill({ ...prefill(), product });
     expect(item.product).toBe(product); expect(statementBatchQueueContractEntry(item).productKey).toBe(product);
   });
@@ -90,5 +90,55 @@ describe("Kooperativa in the commission statement queue", () => {
     } finally {
       await act(async () => root.unmount()); vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("UNIQA Auto in the commission statement queue", () => {
+  const uniqaPrefill = () => ({ ...statementCalculatorPrefill({
+    product: resolveStatementProduct("UNIQA_AUTO"), contractNumber:"5520123456",clientName:"Novák Jan",
+    signedAt:"01.09.2026",validFrom:"02.09.2026",statementBase:2796,
+    source:{statementId:"statement-uniqa",statementNumber:"123",statementChronologyMs:123456},
+  })!,cppA101QueueEligible:true });
+
+  it.each(["quarterly","semiannual","annual"] as const)("preserves UNIQA, %s payments and PDF through the queue and authenticated save",async frequency=>{
+    const source={...uniqaPrefill(),frequency};
+    expect(source).toMatchObject({product:"uniqaAuto",sourceProductCode:"UNIQA_AUTO",amountText:"2796"});
+    const file=new File(["synthetic PDF"],"uniqa.pdf",{type:"application/pdf"});
+    expect(isStatementBatchQueueAddMessage({...source,type:STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE,stornoDate:"",pdfFile:file})).toBe(true);
+    const item={...cppAutoBatchQueueItemFromPrefill(source),pdfFile:file};
+    expect(validateCppAutoBatchQueueItem(item)).toBeNull();
+    expect(cppAutoBatchQueueItemKey(item)).toBe("uniqaAuto:5520123456");
+    const result=await saveContractEntry({user:{} as User,ownerEmail:"represented@example.test",
+      entry:statementBatchQueueContractEntry(item),pdfFile:item.pdfFile,fallbackError:"Chyba uložení"});
+    expect(result).toMatchObject({ok:true,pdfAttachment:{status:"uploaded"}});
+    expect(mocks.requestContractsMutationWithAuth).toHaveBeenCalledWith(expect.objectContaining({
+      payload:{ownerEmail:"represented@example.test",entry:expect.objectContaining({productKey:"uniqaAuto",inputAmount:2796,
+        frequencyRaw:frequency,contractNumber:"5520123456",createdFromCommissionStatementId:"statement-uniqa"})},
+    }));
+    expect(mocks.uploadContractPdfAttachmentWithAuth).toHaveBeenCalledWith(expect.objectContaining({file,ownerEmail:"represented@example.test"}));
+  });
+
+  it("prevents unsupported monthly payments from being silently recalculated as quarterly",()=>{
+    const item={...cppAutoBatchQueueItemFromPrefill(uniqaPrefill()),frequency:"monthly" as const};
+    expect(validateCppAutoBatchQueueItem(item)).toContain("podporovanou frekvenci");
+  });
+
+  it("enables the embedded UNIQA form and shows UNIQA alongside other queued insurers",async()=>{
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);
+    const container=document.createElement("div"),root=createRoot(container);
+    try{
+      await act(async()=>root.render(<StatementCalculatorIframePanel prefill={uniqaPrefill()} onClose={()=>{}}/>));
+      const url=new URL(container.querySelector("iframe")!.getAttribute("src")!,"http://localhost");
+      expect(url.searchParams.get("product")).toBe("uniqaAuto");
+      expect(url.searchParams.get("cppA101QueueEligible")).toBe("1");
+      const onRun=vi.fn();
+      await act(async()=>root.render(<CppAutoBatchQueue items={[cppAutoBatchQueueItemFromPrefill(uniqaPrefill()),cppAutoBatchQueueItemFromPrefill(prefill())]}
+        isRunning={false} onUpdate={()=>{}} onRemove={()=>{}} onClearSaved={()=>{}} onRun={onRun}/>));
+      expect(container.textContent).toContain("UNIQA Auto");expect(container.textContent).toContain("Kooperativa Auto");
+      const uniqaCard=container.querySelector("article")!;
+      expect([...uniqaCard.querySelectorAll("select option")].map(option=>option.getAttribute("value"))).toEqual(["quarterly","semiannual","annual"]);
+      await act(async()=>[...container.querySelectorAll("button")].find(b=>b.textContent?.includes("Nahrát frontu"))!.click());
+      expect(onRun).toHaveBeenCalledOnce();
+    }finally{await act(async()=>root.unmount());vi.unstubAllGlobals();}
   });
 });

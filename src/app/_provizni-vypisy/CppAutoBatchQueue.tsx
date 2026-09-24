@@ -17,6 +17,7 @@ import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
 import { isStatementBatchQueueProduct, type StatementBatchQueueProduct } from "@/app/lib/statementBatchQueue";
 
 import type { StatementCalculatorPrefill } from "./statementPresentation";
+import { allowedFrequencies } from "../kalkulacka/calculatorHelpers";
 
 export type CppAutoBatchQueueStatus =
   | "ready"
@@ -185,6 +186,9 @@ export const validateCppAutoBatchQueueItem = (item: CppAutoBatchQueueItem): stri
 
   const amount = cppAutoBatchQueueAmount(item.amountText);
   if (!Number.isFinite(amount) || amount <= 0) return "Pojistné musí být větší než nula.";
+  if (!allowedFrequencies(item.product).includes(item.frequency)) {
+    return "Vyber podporovanou frekvenci platby pro tento produkt.";
+  }
 
   if (item.stornoDate.trim()) {
     const stornoDate = parseIsoDay(item.stornoDate);
@@ -423,10 +427,11 @@ export function CppAutoBatchQueue({
                     onChange={(event) => onUpdate(item.id, { frequency: event.target.value as PaymentFrequency })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   >
-                    <option value="monthly">měsíční</option>
-                    <option value="quarterly">čtvrtletní</option>
-                    <option value="semiannual">pololetní</option>
-                    <option value="annual">roční</option>
+                    {allowedFrequencies(item.product).map((frequency) => (
+                      <option key={frequency} value={frequency}>
+                        {{monthly:"měsíční",quarterly:"čtvrtletní",semiannual:"pololetní",annual:"roční"}[frequency]}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="text-xs font-bold text-slate-600">

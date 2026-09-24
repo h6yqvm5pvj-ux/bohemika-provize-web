@@ -1,9 +1,9 @@
 import type { PaymentFrequency, Product } from "@/app/types/domain";
 
-export type StatementBatchQueueProduct = Extract<Product, "cppAuto" | "domex" | "kooperativaAuto">;
+export type StatementBatchQueueProduct = Extract<Product, "cppAuto" | "domex" | "kooperativaAuto" | "uniqaAuto">;
 
 export const isStatementBatchQueueProduct = (value: unknown): value is StatementBatchQueueProduct =>
-  value === "cppAuto" || value === "domex" || value === "kooperativaAuto";
+  value === "cppAuto" || value === "domex" || value === "kooperativaAuto" || value === "uniqaAuto";
 
 // Keep the existing iframe message name compatible with already open forms.
 export const STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE = "bohemka:statement-cpp-a101-queue-add";
