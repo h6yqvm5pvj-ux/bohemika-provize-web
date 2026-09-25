@@ -442,7 +442,7 @@ describe("contracts create payload parsing", () => {
     expect(
       normalizeCreateEntryPayload({
         raw: baseEntry({
-          productKey: "flexi",
+          productKey: "maximaMaxEfekt",
           isRefresh: true,
           refreshOriginalContractNumber: "OLD123",
         }),
@@ -452,7 +452,7 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, DOMEX, ČPP Auto a Allianz Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, ČPP Auto a Allianz Auto.",
     });
 
     const allianzReplacementPayload = normalizedPayload(
@@ -611,6 +611,34 @@ describe("contracts create payload parsing", () => {
       ok: false,
       error: "Pole domexDetail.unknown není povolené.",
     });
+  });
+});
+
+describe("FLEXI renovation payload", () => {
+  const renovationEntry = (patch: Record<string, unknown> = {}) => baseEntry({
+    productKey: "flexi", isRefresh: true, refreshOriginalContractNumber: "OLD123",
+    inputAmount: 1_500, flexiRenovation: {
+      originalMonthlyPremium: 1_000, premiumIncreaseMonthly: 500, guaranteeStatus: "unknown",
+    }, ...patch,
+  });
+  it("preserves the actual premium and explicit renovation inputs", () => {
+    expect(normalizedPayload(renovationEntry())).toMatchObject({
+      inputAmount: 1_500, effectiveInputAmount: 1_500, isRefresh: true,
+      flexiRenovation: { originalMonthlyPremium: 1_000, premiumIncreaseMonthly: 500, guaranteeStatus: "unknown" },
+    });
+  });
+  it.each([
+    { flexiRenovation: null },
+    { flexiRenovation: { originalMonthlyPremium: 1_000, premiumIncreaseMonthly: -1, guaranteeStatus: "outside" } },
+    { flexiRenovation: { originalMonthlyPremium: 1_000, premiumIncreaseMonthly: 500, guaranteeStatus: "invalid" } },
+    { flexiRenovation: { originalMonthlyPremium: "1000", premiumIncreaseMonthly: 500, guaranteeStatus: "outside" } },
+    { inputAmount: 1_000 }, { effectiveInputAmount: 2_000 }, { isRefresh: false },
+    { productKey: "neon" }, { entryType: "endorsement" }, { refreshOriginalContractNumber: "ABC123" },
+  ])("rejects inconsistent renovation data %j", patch => {
+    expect(normalizeCreateEntryPayload({ raw: renovationEntry(patch), ownerEmail, ownerUid }).ok).toBe(false);
+  });
+  it("does not require renovation data for an ordinary FLEXI contract", () => {
+    expect(normalizedPayload(baseEntry({ productKey: "flexi" })).flexiRenovation).toBeNull();
   });
 });
 

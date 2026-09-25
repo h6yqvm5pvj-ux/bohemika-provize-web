@@ -369,6 +369,9 @@ export default function OnlineCardPublicClient({
   const nameParts = localizedCard.fullName.trim().split(/\s+/);
   const givenName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : localizedCard.fullName;
   const surname = nameParts.length > 1 ? nameParts.at(-1) : "";
+  const advisorInitials = [nameParts[0], nameParts.length > 1 ? nameParts.at(-1) : ""]
+    .map(part => part?.charAt(0) ?? "")
+    .join("");
   const bioParagraphs = localizedCard.bio.trim().split(/\n\s*\n/).filter(Boolean);
 
   return (
@@ -418,7 +421,7 @@ export default function OnlineCardPublicClient({
                 <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
               </div>
             </div>
-            <OnlineCardHeroVisual locale={locale} />
+            <OnlineCardHeroVisual />
           </div>
           <div className={styles.heroFoot}>
             <div className={styles.heroHighlights}>
@@ -431,9 +434,25 @@ export default function OnlineCardPublicClient({
         </section>
 
         {bioParagraphs.length > 0 ? <section className={[styles.container, styles.personalIntro].join(" ")} aria-labelledby="card-about-title">
-          <h2 id="card-about-title" className={styles.eyebrow}>{copy.preview.about}</h2>
-          <div className={styles.introBody}>
-            {bioParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          <div className={styles.introCard} data-single={bioParagraphs.length === 1}>
+            <div className={styles.introStatement}>
+              <h2 id="card-about-title" className={styles.eyebrow}>{copy.preview.about}</h2>
+              <blockquote className={styles.introQuote}>
+                <p>{bioParagraphs[0]}</p>
+              </blockquote>
+              <div className={styles.introAuthor}>
+                <span className={styles.introInitials} aria-hidden="true">{advisorInitials}</span>
+                <div>
+                  <p>{localizedCard.fullName}</p>
+                  {localizedCard.title ? <span>{localizedCard.title}</span> : null}
+                </div>
+              </div>
+            </div>
+            {bioParagraphs.length > 1 ? <div className={styles.introBody}>
+              {bioParagraphs.slice(1).map((paragraph, index) => (
+                <p key={index} className={index === bioParagraphs.length - 2 ? styles.introClosing : undefined}>{paragraph}</p>
+              ))}
+            </div> : null}
           </div>
         </section> : null}
 
@@ -502,28 +521,42 @@ export default function OnlineCardPublicClient({
           </section>
         ) : null}
 
-        <section id="contact" className={[styles.section, styles.contactSection].join(" ")} aria-labelledby="card-contact-title">
-          <div className={styles.container}>
+        <section id="contact" className={styles.contactSection} aria-labelledby="card-contact-title">
+          <div className={styles.contactLayout}>
             <div className={styles.contactHead}>
-              <div>
-                <p className={styles.eyebrow}>{copy.public.contact}</p>
-                <h2 id="card-contact-title" className={styles.heading}>{copy.public.scheduleTitle}</h2>
-              </div>
+              <p className={styles.eyebrow}>{copy.public.contact}</p>
+              <h2 id="card-contact-title" className={styles.heading}>{copy.public.scheduleTitle}</h2>
+              <p className={styles.contactLead}>{copy.public.contactIntro}</p>
               <button type="button" onClick={openModal} className={styles.primaryButton}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
             </div>
-            <dl className={styles.contactGrid}>
-              {contactItems.map(item => (
-                <div key={item.key} className={styles.contactItem}>
-                  <dt><item.icon aria-hidden="true" />{item.label}</dt>
-                  <dd>{item.value ? item.href ? (
-                    <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined} onClick={() => { if (item.analyticsEvent) trackOnlineCardEvent(slug, item.analyticsEvent); }}>{item.value}</a>
-                  ) : item.value : copy.public.notFilled}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className={styles.contactFooter}>
-              <button type="button" onClick={handleDownloadContactVCard} className={styles.textLink}><Download aria-hidden="true" />{copy.public.saveContact}</button>
-              <button type="button" onClick={handleShareOnlineCard} className={styles.textLink}><Share2 aria-hidden="true" />{copy.public.share}</button>
+            <div className={styles.contactDetails}>
+              <dl className={styles.contactGrid}>
+                {contactItems.slice(0, 2).map(item => (
+                  <div key={item.key} className={styles.contactItem} data-kind={item.key}>
+                    <dt><item.icon aria-hidden="true" />{item.label}</dt>
+                    <dd>{item.value && item.href ? (
+                      <a href={item.href} onClick={() => { if (item.analyticsEvent) trackOnlineCardEvent(slug, item.analyticsEvent); }}>
+                        <span>{item.key === "email" ? <>{item.value.slice(0, item.value.indexOf("@"))}<wbr />{item.value.slice(item.value.indexOf("@"))}</> : item.value}</span>
+                        <ArrowUpRight className={styles.contactArrow} aria-hidden="true" />
+                      </a>
+                    ) : item.value || copy.public.notFilled}</dd>
+                  </div>
+                ))}
+              </dl>
+              <dl className={styles.contactMeta}>
+                {contactItems.slice(2).map(item => (
+                  <div key={item.key} className={styles.contactMetaItem} data-kind={item.key}>
+                    <dt><item.icon aria-hidden="true" />{item.label}</dt>
+                    <dd>{item.value ? item.href ? (
+                      <a href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noreferrer noopener" : undefined} onClick={() => { if (item.analyticsEvent) trackOnlineCardEvent(slug, item.analyticsEvent); }}>{item.value}</a>
+                    ) : item.value : copy.public.notFilled}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className={styles.contactFooter}>
+                <button type="button" onClick={handleDownloadContactVCard} className={styles.textLink}><Download aria-hidden="true" />{copy.public.saveContact}</button>
+                <button type="button" onClick={handleShareOnlineCard} className={styles.textLink}><Share2 aria-hidden="true" />{copy.public.share}</button>
+              </div>
             </div>
           </div>
         </section>

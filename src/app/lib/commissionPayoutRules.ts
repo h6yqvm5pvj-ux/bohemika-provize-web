@@ -107,6 +107,8 @@ export const lifeRiskAnnualPremiumBase = (contract: {
   calculationInputAmount?: number | null;
   inputAmount?: number | null;
 } | null | undefined): number | null => {
+  // A renovation in the guarantee period with no increase has a real zero base.
+  if (contract?.refreshCommissionBase?.calculationMonthlyPremium === 0) return 0;
   const monthly = positiveAmount(contract?.refreshCommissionBase?.calculationMonthlyPremium) ??
     positiveAmount(contract?.calculationInputAmount) ?? positiveAmount(contract?.inputAmount);
   return monthly == null ? null : Math.round(monthly * 12 * 100) / 100;

@@ -77,7 +77,7 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
 
 const ADVISOR_SERVICES = [
   {
-    label: "Životní pojištění a zajištění příjmu",
+    label: "Životní a úrazové pojištění",
     artwork: "/images/online-card-services/life-v3.webp",
     icon: HeartHandshake,
     iconClass: "text-blue-200",
@@ -133,39 +133,6 @@ const ADVISOR_SERVICES = [
     accentClass: "bg-amber-300/80",
   },
 ];
-
-const SERVICE_SUMMARIES: Record<OnlineCardLocale, readonly string[]> = {
-  cs: [
-    "Pro vás i ty, na kterých vám záleží.",
-    "Domov a věci, které tvoří váš svět.",
-    "Pro každodenní cesty i celé flotily.",
-    "Za zážitky. S pojištěním na cestu.",
-    "Zdravotní pojištění pro život v Česku.",
-    "Vaše cíle. Váš investiční plán.",
-    "Od prvního plánu ke klíčům od bydlení.",
-    "Skutečná hodnota, kterou držíte v ruce.",
-  ],
-  en: [
-    "For you and the people who matter.",
-    "Your home and the things that make it yours.",
-    "For everyday journeys and entire fleets.",
-    "New experiences. Insurance for the journey.",
-    "Health insurance for life in Czechia.",
-    "Your goals. Your investment plan.",
-    "From the first plan to the keys to your home.",
-    "Tangible value you can hold in your hand.",
-  ],
-  uk: [
-    "Для вас і тих, хто вам дорогий.",
-    "Дім і речі, що створюють ваш світ.",
-    "Для щоденних поїздок і цілих автопарків.",
-    "За враженнями. Зі страхуванням у дорогу.",
-    "Медичне страхування для життя в Чехії.",
-    "Ваші цілі. Ваш інвестиційний план.",
-    "Від першого плану до ключів від оселі.",
-    "Відчутна цінність у ваших руках.",
-  ],
-};
 
 const SERVICE_MOTION_COPY = {
   cs: { label: "Animace ikon", pause: "Pozastavit animace", play: "Spustit animace" },
@@ -284,10 +251,7 @@ export function AdvisorProfileSections({
                         />
                       </span>
                     </span>
-                    <span className={minimalStyles.serviceCopy}>
-                      <span className={minimalStyles.serviceLabel}>{copy.advisor.services[index]}</span>
-                      <span className={minimalStyles.serviceSummary}>{SERVICE_SUMMARIES[locale][index]}</span>
-                    </span>
+                    <span className={minimalStyles.serviceLabel}>{copy.advisor.services[index]}</span>
                     {href ? <ArrowUpRight className={minimalStyles.serviceArrow} aria-hidden="true" /> : null}
                   </>
                 );
@@ -317,7 +281,9 @@ export function AdvisorProfileSections({
         <section id="company" className={`${minimalStyles.section} ${minimalStyles.company}`} aria-labelledby="card-company-title">
           <div className={minimalStyles.container}>
             <div className={minimalStyles.companyHead}>
-              <Image src="/images/bohemika-ghost-logo.png" alt="" aria-hidden="true" width={280} height={420} sizes="(max-width: 760px) 220px, 280px" className={minimalStyles.ghostMark} />
+              <div className={minimalStyles.ghostMark} aria-hidden="true">
+                <Image src="/images/bohemika-ghost-logo.png" alt="" fill sizes="(max-width: 760px) 220px, 280px" />
+              </div>
               <div>
                 <p className={minimalStyles.eyebrow}><span>02</span>{copy.advisor.aboutKicker}</p>
                 <h2 id="card-company-title" className={minimalStyles.companyName}>Bohemika <span>a.s.</span></h2>

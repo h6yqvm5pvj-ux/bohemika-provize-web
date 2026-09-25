@@ -37,6 +37,7 @@ import {
   productCoefficientValidityError,
 } from "../lib/productFormulas";
 import { calculateCommission } from "../lib/calculateCommission";
+import { calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
 import { isStatementBatchQueueProduct, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
 import {
   calculateNeonDecreaseStornoBase,
@@ -681,7 +682,7 @@ export default function CalculatorPage() {
   const [durationMonths, setDurationMonths] = useState<number | null>(null);
   const [maxCizinKomplexVariant, setMaxCizinKomplexVariant] =
     useState<MaxCizinKomplexVariant>("exclusiveStandard");
-  const [amountText, setAmountText] = useState<string>("");
+  const [regularAmountText, setAmountText] = useState<string>("");
   const [tipsterModeEnabled, setTipsterModeEnabled] = useState(false);
   const [tipsterModeSaving, setTipsterModeSaving] = useState(false);
   const [calculatorViewMode, setCalculatorViewMode] =
@@ -808,6 +809,21 @@ export default function CalculatorPage() {
   const [neonPdfDetailFields, setNeonPdfDetailFields] =
     useState<NeonPdfDetailEditorFields>(() => createEmptyNeonPdfDetailFields());
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
+  const [renovationOriginalPremiumText, setRenovationOriginalPremiumText] = useState("");
+  const [renovationIncreaseText, setRenovationIncreaseText] = useState("");
+  const [renovationGuaranteeStatus, setRenovationGuaranteeStatus] = useState<FlexiRenovationGuaranteeStatus>("unknown");
+  const flexiRenovationActive = product === "flexi" && refreshOriginalOpen;
+  const flexiRenovationBase = useMemo(() => {
+    if (!flexiRenovationActive || !renovationOriginalPremiumText.trim() || !renovationIncreaseText.trim()) return null;
+    return calculateFlexiRenovationBase({
+      originalMonthlyPremium: Number(renovationOriginalPremiumText),
+      premiumIncreaseMonthly: Number(renovationIncreaseText),
+      guaranteeStatus: renovationGuaranteeStatus,
+    });
+  }, [flexiRenovationActive, renovationOriginalPremiumText, renovationIncreaseText, renovationGuaranteeStatus]);
+  const amountText = flexiRenovationActive
+    ? flexiRenovationBase ? String(flexiRenovationBase.newMonthlyPremium) : ""
+    : regularAmountText;
   const [refreshOriginalContractNumber, setRefreshOriginalContractNumber] = useState("");
   const [refreshOriginalMissingInSystem, setRefreshOriginalMissingInSystem] = useState(false);
   const [refreshOriginalPdfLookupNumber, setRefreshOriginalPdfLookupNumber] =
@@ -858,6 +874,13 @@ export default function CalculatorPage() {
   } = useCalculatorProductPicker({
     product: hasSelectedProduct ? product : null,
     onProductSelect: (nextProduct) => {
+      if (nextProduct !== product && (product === "flexi" || nextProduct === "flexi")) {
+        setRefreshOriginalOpen(false);
+        setRefreshOriginalContractNumber("");
+        setRenovationOriginalPremiumText("");
+        setRenovationIncreaseText("");
+        setRenovationGuaranteeStatus("unknown");
+      }
       setProduct(nextProduct);
       setHasSelectedProduct(true);
       setPdfClientNameLoaded(false);
@@ -5264,7 +5287,9 @@ export default function CalculatorPage() {
       commissionMode: calculationMode,
       contractSignedDateIso: contractSignedDateForNeon,
       inputAmount:
-        product === "neon"
+        flexiRenovationActive
+          ? flexiRenovationBase?.calculationMonthlyPremium ?? 0
+          : product === "neon"
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
           : val,
       frequencyRaw: frequency,
@@ -5309,6 +5334,8 @@ export default function CalculatorPage() {
     durationYears,
     amountText,
     neonRefreshCommissionBase,
+    flexiRenovationActive,
+    flexiRenovationBase,
     contractSignedDateForNeon,
     comfortGradual,
     comfortPaymentText,
@@ -5317,6 +5344,11 @@ export default function CalculatorPage() {
   ]);
 
   useEffect(() => {
+    if (product !== "flexi") {
+      setRenovationOriginalPremiumText("");
+      setRenovationIncreaseText("");
+      setRenovationGuaranteeStatus("unknown");
+    }
     if (!supportsOriginalContractReplacement(product)) {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
@@ -5344,6 +5376,9 @@ export default function CalculatorPage() {
 
   const resetContractFormAfterSave = () => {
     setAmountText("");
+    setRenovationOriginalPremiumText("");
+    setRenovationIncreaseText("");
+    setRenovationGuaranteeStatus("unknown");
     setFrequency(allowedFrequencies(product)[0]);
     setDurationYears(
       product === "neon" || product === "maximaMaxEfekt"
@@ -6066,6 +6101,12 @@ export default function CalculatorPage() {
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
+    if (flexiRenovationActive && !flexiRenovationBase) {
+      const msg = "Pro renovaci zadej kladné původní měsíční pojistné a nezáporné navýšení (může být 0).";
+      setSaveMessage(msg);
+      setValidationError(msg);
+      return;
+    }
     const shouldReplaceOriginalContract = originalReplacementWorkflowActive;
     const isRefreshWithoutOriginalInSystem =
       shouldReplaceOriginalContract &&
@@ -6379,7 +6420,9 @@ export default function CalculatorPage() {
       }
 
       const calculationInputAmount =
-        shouldReplaceOriginalContract && product === "neon" && !isRefreshWithoutOriginalInSystem
+        flexiRenovationBase
+          ? flexiRenovationBase.calculationMonthlyPremium
+          : shouldReplaceOriginalContract && product === "neon" && !isRefreshWithoutOriginalInSystem
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? value
           : value;
       const autoPaidByPolicyStartDate = shouldAutoMarkPaidByPolicyStartDate(
@@ -6687,6 +6730,11 @@ export default function CalculatorPage() {
                 : null,
             paid: autoPaidByPolicyStartDate,
             isRefresh: shouldReplaceOriginalContract,
+            flexiRenovation: flexiRenovationBase ? {
+              originalMonthlyPremium: flexiRenovationBase.originalMonthlyPremium,
+              premiumIncreaseMonthly: flexiRenovationBase.premiumIncreaseMonthly,
+              guaranteeStatus: flexiRenovationBase.guaranteeStatus,
+            } : null,
             refreshOriginalMissingInSystem: isRefreshWithoutOriginalInSystem,
             requiresStatementRefresh: isRefreshWithoutOriginalInSystem,
             commissionCalculationStatus: isRefreshWithoutOriginalInSystem
@@ -6762,7 +6810,10 @@ export default function CalculatorPage() {
             ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ${replacementStornoDescription}.`
             : `Smlouva byla uložena jako ${originalReplacementLabel(product)}. Původní smlouva nebyla v systému nalezena, takže se automaticky nestornovala.`
           : "Smlouva byla uložena mezi sepsané.";
-      setSaveMessage(`${savedMessage}${pdfAttachmentMessage}`);
+      const renovationEstimateMessage = flexiRenovationBase?.provisional
+        ? " Provize renovace je orientační; podmínky ručení a případnou kompenzaci ověř podle provizního výpisu."
+        : "";
+      setSaveMessage(`${savedMessage}${renovationEstimateMessage}${pdfAttachmentMessage}`);
       setSaveSuccessFlash({
         contractNumber: contractNumber.trim() || null,
         clientName: clientName.trim() || null,
@@ -8175,7 +8226,9 @@ export default function CalculatorPage() {
     const signedDateForCalculation =
       contractSignedDateOverride ?? contractSignedDateForNeon;
     const inputAmount =
-      targetProduct === "neon" && amountOverride == null
+      targetProduct === "flexi" && flexiRenovationActive && amountOverride == null
+        ? flexiRenovationBase?.calculationMonthlyPremium ?? 0
+        : targetProduct === "neon" && amountOverride == null
         ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
         : val;
 
@@ -8809,6 +8862,7 @@ export default function CalculatorPage() {
                 allowedFrequencies={allowed}
                 comfortGradual={comfortGradual}
                 amountText={amountText}
+                amountReadOnly={flexiRenovationActive}
                 onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
                 onDurationYearsChange={(value) => {
                   if (endorsementPreviewContextActive && endorsementPreviewSource) {
@@ -8851,7 +8905,15 @@ export default function CalculatorPage() {
                 refreshOriginalLookupStatus={refreshOriginalLookup.status}
                 refreshOriginalLookupProgress={refreshOriginalLookup.progress}
                 refreshOriginalLookupAdviserName={refreshOriginalLookup.adviserName}
-                refreshOriginalInfoText={neonRefreshInfoText}
+                refreshOriginalInfoText={flexiRenovationBase
+                  ? `Základ pro výpočet provize: ${formatMoney(flexiRenovationBase.calculationMonthlyPremium)} měsíčně. Nové pojistné: ${formatMoney(flexiRenovationBase.newMonthlyPremium)} měsíčně.`
+                  : neonRefreshInfoText}
+                renovationOriginalPremiumText={renovationOriginalPremiumText}
+                renovationIncreaseText={renovationIncreaseText}
+                renovationGuaranteeStatus={renovationGuaranteeStatus}
+                onRenovationOriginalPremiumChange={setRenovationOriginalPremiumText}
+                onRenovationIncreaseChange={setRenovationIncreaseText}
+                onRenovationGuaranteeStatusChange={setRenovationGuaranteeStatus}
                 inlineEndorsementDraft={product === "neon" ? endorsementDraft : null}
                 onComfortGradualChange={setComfortGradual}
                 onAmountTextChange={setAmountText}
@@ -8885,6 +8947,7 @@ export default function CalculatorPage() {
                     setEndorsementPreviewSource(null);
                     setSaveMessage(null);
                   } else {
+                    if (flexiRenovationActive && flexiRenovationBase) setAmountText(amountText);
                     setRefreshOriginalMissingInSystem(false);
                     setRefreshOriginalPdfLookupNumber(null);
                   }

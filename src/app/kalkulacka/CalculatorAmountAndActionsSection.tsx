@@ -1,4 +1,5 @@
 "use client";
+import type { FlexiRenovationGuaranteeStatus } from "@/app/lib/flexiRenovation";
 
 import { RefreshCcw, Repeat2, Tag } from "lucide-react";
 import styles from "./calculatorForm.module.css";
@@ -38,6 +39,12 @@ type CalculatorAmountAndActionsSectionProps = {
   refreshOriginalLookupProgress: number;
   refreshOriginalLookupAdviserName: string | null;
   refreshOriginalInfoText?: string | null;
+  renovationOriginalPremiumText?: string;
+  renovationIncreaseText?: string;
+  renovationGuaranteeStatus?: FlexiRenovationGuaranteeStatus;
+  onRenovationOriginalPremiumChange?: (value: string) => void;
+  onRenovationIncreaseChange?: (value: string) => void;
+  onRenovationGuaranteeStatusChange?: (value: FlexiRenovationGuaranteeStatus) => void;
   inlineEndorsementDraft?: EndorsementDraft | null;
   onComfortGradualChange: (value: boolean) => void;
   onAmountTextChange: (value: string) => void;
@@ -75,6 +82,12 @@ export function CalculatorAmountAndActionsSection({
   refreshOriginalLookupProgress,
   refreshOriginalLookupAdviserName,
   refreshOriginalInfoText,
+  renovationOriginalPremiumText = "",
+  renovationIncreaseText = "",
+  renovationGuaranteeStatus = "unknown",
+  onRenovationOriginalPremiumChange,
+  onRenovationIncreaseChange,
+  onRenovationGuaranteeStatusChange,
   inlineEndorsementDraft,
   onComfortGradualChange,
   onAmountTextChange,
@@ -89,7 +102,8 @@ export function CalculatorAmountAndActionsSection({
   onSwitchToManualEntry,
 }: CalculatorAmountAndActionsSectionProps) {
   const showComfortControls = product === "comfortcc";
-  const showContractActionButtons = !tipsterModeEnabled && showContractActions;
+  const showContractActionButtons = !tipsterModeEnabled &&
+    (showContractActions || (product === "flexi" && showManualEntryOption));
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
   const showHeading = showAmountInput || showComfortControls;
   const tipContractActionButtonClass = styles.actionButton;
@@ -103,6 +117,7 @@ export function CalculatorAmountAndActionsSection({
   const originalReplacementButtonLabel = refreshOriginalOpen ? "Náhrada zapnutá" : "Náhrada";
   const replacementProductLabel = originalReplacementProductLabel(product);
   const replacementStornoDescription = originalReplacementStornoDescription(product);
+  const replacementSaveLabel = product === "flexi" ? "Renovaci" : "Náhradu";
 
   if (!showAmountInput && !showComfortControls && !showContractActionButtons && !showManualEntryButton) {
     return null;
@@ -201,7 +216,7 @@ export function CalculatorAmountAndActionsSection({
         {showContractActionButtons && (
           <div className="space-y-3">
             <div className={styles.contractActions}>
-              <button
+              {showContractActions && <button
                 type="button"
                 onClick={onOpenTipContractModal}
                 aria-pressed={hasTipContractConfig}
@@ -209,8 +224,8 @@ export function CalculatorAmountAndActionsSection({
               >
                 <Tag size={17} strokeWidth={2.4} className="shrink-0" aria-hidden="true" />
                 Smlouva z TIPU
-              </button>
-              {product === "neon" ? (
+              </button>}
+              {product === "neon" || product === "flexi" ? (
                 <button
                   type="button"
                   role="switch"
@@ -218,7 +233,7 @@ export function CalculatorAmountAndActionsSection({
                   onClick={onToggleRefreshOriginal}
                   className={styles.refreshSwitch}
                 >
-                  <span>Je smlouva Refresh?</span>
+                  <span>{product === "flexi" ? "Jedná se o renovaci?" : "Je smlouva Refresh?"}</span>
                   <span className={styles.refreshSwitchTrack} aria-hidden="true">
                     <span className={styles.refreshSwitchThumb} />
                   </span>
@@ -237,7 +252,7 @@ export function CalculatorAmountAndActionsSection({
                   {originalReplacementButtonLabel}
                 </button>
               )}
-              {isLifeProduct && !refreshOriginalOpen && (
+              {showContractActions && isLifeProduct && !refreshOriginalOpen && (
                 <button
                   type="button"
                   onClick={onPrepareEndorsement}
@@ -343,6 +358,48 @@ export function CalculatorAmountAndActionsSection({
             )}
             {canUseOriginalReplacement && refreshOriginalOpen && (
               <div className="mt-3 space-y-1.5">
+                {product === "flexi" && (
+                  <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1 text-xs font-semibold text-slate-700">
+                        <span>Pojistné z původní smlouvy (Kč / měsíc)</span>
+                        <input type="number" min="0.01" step="0.01" value={renovationOriginalPremiumText}
+                          onChange={(event) => onRenovationOriginalPremiumChange?.(event.target.value)}
+                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
+                        />
+                      </label>
+                      <label className="space-y-1 text-xs font-semibold text-slate-700">
+                        <span>Navýšení pojistného (Kč / měsíc)</span>
+                        <input type="number" min="0" step="0.01" value={renovationIncreaseText}
+                          onChange={(event) => onRenovationIncreaseChange?.(event.target.value)}
+                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
+                        />
+                      </label>
+                    </div>
+                    <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                      <span>Ručení za provizi původní smlouvy</span>
+                      <select value={renovationGuaranteeStatus}
+                        onChange={(event) => onRenovationGuaranteeStatusChange?.(event.target.value as FlexiRenovationGuaranteeStatus)}
+                        className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900">
+                        <option value="unknown">Neověřeno – orientačně s 50 %</option>
+                        <option value="outside">Po ručení – 50 % z původního pojistného</option>
+                        <option value="inside">V ručení – navýšení bez kompenzace</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-slate-700">
+                      {renovationGuaranteeStatus === "inside"
+                        ? "Zde se počítá provize z navýšení. Případná kompenzační provize za původní smlouvu není zahrnuta."
+                        : "Provize se počítá ze základu: 50 % původního pojistného + celé navýšení."}
+                      {" "}Použijí se běžné sazby a termíny výplaty FLEXI.
+                    </p>
+                    {renovationGuaranteeStatus === "unknown" && (
+                      <p className="text-xs font-semibold text-amber-800">Orientační výpočet: nárok na 50% provizi z původního pojistného ověř podle aktuálních provizních podmínek.</p>
+                    )}
+                    {renovationGuaranteeStatus === "inside" && (
+                      <p className="text-xs font-semibold text-amber-800">Orientační výpočet: kompenzaci případného storna původní provize je potřeba ověřit podle provizního výpisu.</p>
+                    )}
+                  </div>
+                )}
                 {product === "neon" && (
                   <label className="flex items-start gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-800">
                     <input
@@ -369,7 +426,7 @@ export function CalculatorAmountAndActionsSection({
                       : ""}
                   </p>
                 )}
-                {!refreshOriginalMissingInSystem && (
+                {showContractActions && !refreshOriginalMissingInSystem && (
                   <>
                     <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
                       Číslo původní smlouvy
@@ -427,7 +484,7 @@ export function CalculatorAmountAndActionsSection({
                 {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
                     {canSaveUnlinkedOriginal
-                      ? `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}. Náhradu lze uložit bez automatického storna původní smlouvy.`
+                      ? `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}. ${replacementSaveLabel} lze uložit bez automatického storna původní smlouvy.`
                       : `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}.`}
                   </p>
                 )}
@@ -438,7 +495,7 @@ export function CalculatorAmountAndActionsSection({
                     }`}
                   >
                     {canSaveUnlinkedOriginal
-                      ? "Původní smlouva s tímto číslem není evidována v systému Bohemka.App. Náhradu lze uložit bez automatického storna původní smlouvy."
+                      ? `Původní smlouva s tímto číslem není evidována v systému Bohemka.App. ${replacementSaveLabel} lze uložit bez automatického storna původní smlouvy.`
                       : "Smlouva s tímto číslem není evidována v systému Bohemka.App."}
                   </p>
                 )}

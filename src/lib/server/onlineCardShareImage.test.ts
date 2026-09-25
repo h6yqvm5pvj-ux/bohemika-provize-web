@@ -30,4 +30,29 @@ describe("share image assets", () => {
     fetchMock.mockRejectedValueOnce(new Error("Unavailable"));
     expect(await onlineCardSharePortrait(avatar)).toBeNull();
   });
+  it.each([undefined, "20"])("stops an oversized download even with an absent or false content-length (%s)", async contentLength => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(2_000_001));
+        controller.enqueue(new Uint8Array(10));
+        controller.close();
+      },
+      cancel,
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, {
+      headers: contentLength ? { "content-length": contentLength } : {},
+    })));
+    expect(await onlineCardSharePortrait(avatar)).toBeNull();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it("cancels a response rejected by its declared size without consuming the body", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, {
+      headers: { "content-length": "2000001" },
+    })));
+    expect(await onlineCardSharePortrait(avatar)).toBeNull();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });

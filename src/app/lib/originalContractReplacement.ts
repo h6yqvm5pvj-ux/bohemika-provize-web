@@ -3,12 +3,19 @@ import type { Product } from "@/app/types/domain";
 type OriginalContractReplacementCapability = {
   product: Product;
   productLabel: string;
-  workflowLabel: "Refresh" | "Náhrada";
+  workflowLabel: "Refresh" | "Náhrada" | "Renovace";
   canSaveUnlinkedOriginal: boolean;
   stornoTiming: "policyStart" | "previousDay";
 };
 
 export const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES = [
+  {
+    product: "flexi",
+    productLabel: "Kooperativa FLEXI",
+    workflowLabel: "Renovace",
+    canSaveUnlinkedOriginal: true,
+    stornoTiming: "policyStart",
+  },
   {
     product: "neon",
     productLabel: "ČPP Životní pojištění NEON",
@@ -43,7 +50,7 @@ export const ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS =
   ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES.map(({ product }) => product);
 
 export const ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL =
-  "ČPP Životní pojištění NEON, DOMEX, ČPP Auto a Allianz Auto";
+  "ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, ČPP Auto a Allianz Auto";
 
 const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITY_MAP = new Map<
   Product,
@@ -83,7 +90,7 @@ export function usesPreviousDayReplacementStorno(
 
 export function originalReplacementLabel(
   product: Product | null | undefined,
-): "Refresh" | "Náhrada" {
+): "Refresh" | "Náhrada" | "Renovace" {
   return replacementCapability(product)?.workflowLabel ?? "Náhrada";
 }
 

@@ -43,7 +43,7 @@ export const onlineCardLanguageMeta = (locale: OnlineCardLocale) =>
 
 const advisorServices = {
   cs: [
-    "Životní pojištění a zajištění příjmu",
+    "Životní a úrazové pojištění",
     "Pojištění majetku a odpovědnosti",
     "Pojištění vozidel a flotil",
     "Cestovní pojištění",
@@ -53,7 +53,7 @@ const advisorServices = {
     "Investiční zlato a stříbro",
   ],
   en: [
-    "Life insurance and income protection",
+    "Life and accident insurance",
     "Property and liability insurance",
     "Vehicle and fleet insurance",
     "Travel insurance and policy care",
@@ -63,7 +63,7 @@ const advisorServices = {
     "Investment gold and silver",
   ],
   uk: [
-    "Страхування життя та захист доходу",
+    "Страхування життя та від нещасних випадків",
     "Страхування майна та відповідальності",
     "Страхування транспортних засобів і автопарків",
     "Туристичне страхування та супровід договорів",
@@ -93,6 +93,7 @@ export const ONLINE_CARD_COPY = {
       scheduleMeeting: "Sjednat schůzku",
     },
     public: {
+      contactIntro: "Zavolejte mi nebo napište. Společně probereme, co právě potřebujete vyřešit.",
       share: "Sdílet vizitku",
       shareShort: "Sdílet",
       shareSuccess: "Odkaz na vizitku byl zkopírován do schránky.",
@@ -208,6 +209,7 @@ export const ONLINE_CARD_COPY = {
       advisorProfile: "Advisor profile", fullName: "Full name", fullNamePlaceholder: "Full name", title: "Role", titlePlaceholder: "Role / position", about: "About me", bioPlaceholder: "A short introduction for your public profile.", noBio: "No introduction has been added yet.", phone: "Phone", website: "Website", companyId: "Company ID", location: "Location", contact: "Contact", scheduleMeeting: "Book a meeting",
     },
     public: {
+      contactIntro: "Call or send me a message. We can talk through what you need help with.",
       share: "Share profile", shareShort: "Share", shareSuccess: "The profile link has been copied to your clipboard.", shareError: "The link could not be shared. Please copy it from the address bar.", saveContact: "Save contact", displayMode: "Profile appearance", dark: "Dark", light: "Light", language: "Profile language", office: "Office", noOfficePhotos: "No office photos have been added.", officeWelcome: "A space for calm decisions and personal meetings.", previousOfficePhoto: "Previous office photo", nextOfficePhoto: "Next office photo", showOfficePhoto: "Show office photo", openMaps: "Open in Google Maps", noOfficeAddress: "The office address has not been added.", contact: "Contact", notFilled: "Not provided", scheduleKicker: "Book a meeting", scheduleTitle: "Arrange an appointment", scheduleDescription: "Just your name and a phone number or email. A message is optional.", closeForm: "Close form", submitted: "Your request has been sent. We will get back to you soon.", onlineCardTitle: "Bohemika online profile",
       testimonialsKicker: "Client experiences", testimonialsTitle: "Trust is built through good experience", testimonialsContextFallback: "Bohemika client", writeReview: "Write a review", reviewPrompt: "Have you worked with us? We would appreciate a short review.", reviewTitle: "Write a review", reviewDescription: "Your review will appear only after the advisor approves it.", reviewName: "Name or initials", reviewNamePlaceholder: "For example, Jane K.", reviewContext: "Area of cooperation (optional)", reviewContextPlaceholder: "For example, insurance review", reviewText: "Your experience", reviewTextPlaceholder: "Briefly describe how the cooperation helped you…", reviewConsent: "I agree that this review may be published after the advisor approves it.", reviewSubmit: "Send for approval", reviewSubmitting: "Sending…", reviewSubmitted: "Thank you. Your review was sent for approval.", reviewValidation: "Please enter your name, review and consent to publication.", reviewGenericError: "The review could not be sent. Please try again.",
     },
@@ -223,6 +225,7 @@ export const ONLINE_CARD_COPY = {
       advisorProfile: "Профіль консультанта", fullName: "Ім’я та прізвище", fullNamePlaceholder: "Ім’я та прізвище", title: "Посада", titlePlaceholder: "Посада / роль", about: "Про мене", bioPlaceholder: "Коротко представте себе для публічного профілю.", noBio: "Опис ще не додано.", phone: "Телефон", website: "Вебсайт", companyId: "ІПН компанії", location: "Місто", contact: "Контакти", scheduleMeeting: "Записатися на зустріч",
     },
     public: {
+      contactIntro: "Зателефонуйте мені або напишіть. Разом обговоримо, з чим вам потрібна допомога.",
       share: "Поділитися профілем", shareShort: "Поділитися", shareSuccess: "Посилання на профіль скопійовано в буфер обміну.", shareError: "Не вдалося поділитися посиланням. Скопіюйте його з адресного рядка.", saveContact: "Зберегти контакт", displayMode: "Вигляд профілю", dark: "Темний", light: "Світлий", language: "Мова профілю", office: "Офіс", noOfficePhotos: "Фотографії офісу ще не додані.", officeWelcome: "Простір для спокійних рішень та особистих зустрічей.", previousOfficePhoto: "Попереднє фото офісу", nextOfficePhoto: "Наступне фото офісу", showOfficePhoto: "Показати фото офісу", openMaps: "Відкрити в Google Maps", noOfficeAddress: "Адресу офісу ще не вказано.", contact: "Контакти", notFilled: "Не вказано", scheduleKicker: "Записатися на зустріч", scheduleTitle: "Домовтеся про зустріч", scheduleDescription: "Достатньо імені та телефону або електронної пошти. Повідомлення необов’язкове.", closeForm: "Закрити форму", submitted: "Ваш запит надіслано. Ми зв’яжемося з вами найближчим часом.", onlineCardTitle: "Онлайн-профіль Bohemika",
       testimonialsKicker: "Досвід клієнтів", testimonialsTitle: "Довіра народжується з гарного досвіду", testimonialsContextFallback: "Клієнт Bohemika", writeReview: "Написати відгук", reviewPrompt: "Маєте досвід співпраці? Будемо вдячні за короткий відгук.", reviewTitle: "Написати відгук", reviewDescription: "Відгук з’явиться лише після схвалення консультантом.", reviewName: "Ім’я або ініціали", reviewNamePlaceholder: "Наприклад, Олена К.", reviewContext: "Напрям співпраці (необов’язково)", reviewContextPlaceholder: "Наприклад, перегляд страхування", reviewText: "Ваш досвід", reviewTextPlaceholder: "Коротко напишіть, чим вам допомогла співпраця…", reviewConsent: "Я погоджуюся на публікацію цього відгуку після схвалення консультантом.", reviewSubmit: "Надіслати на схвалення", reviewSubmitting: "Надсилаємо…", reviewSubmitted: "Дякуємо. Відгук надіслано на схвалення.", reviewValidation: "Вкажіть ім’я, текст відгуку та згоду на публікацію.", reviewGenericError: "Не вдалося надіслати відгук. Спробуйте ще раз.",
     },

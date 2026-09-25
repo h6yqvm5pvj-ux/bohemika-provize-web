@@ -149,6 +149,9 @@ export type ContractDoc = {
   refreshStatementResolvedStatementDate?: string | null;
   refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: {
+    guaranteeStatus?: "unknown" | "outside" | "inside";
+    originalCommissionRatio?: number;
+    provisional?: boolean;
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;
     calculationMethod?: "storno_60_60" | "motivational_48_percent" | string | null;

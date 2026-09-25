@@ -42,6 +42,7 @@ type CalculatorDurationAndFrequencySectionProps = {
   allowedFrequencies: PaymentFrequency[];
   comfortGradual: boolean;
   amountText: string;
+  amountReadOnly?: boolean;
   onToggleDurationHelp: () => void;
   onDurationYearsChange: (value: number | null) => void;
   onDurationMonthsChange: (value: number | null) => void;
@@ -70,6 +71,7 @@ export function CalculatorDurationAndFrequencySection({
   allowedFrequencies,
   comfortGradual,
   amountText,
+  amountReadOnly = false,
   onToggleDurationHelp,
   onDurationYearsChange,
   onDurationMonthsChange,
@@ -254,9 +256,11 @@ export function CalculatorDurationAndFrequencySection({
                 }`}
                 aria-label={amountLabel}
                 value={amountText}
+                readOnly={amountReadOnly}
                 onChange={(event) => onAmountTextChange(event.target.value)}
                 placeholder={product === "comfortcc" ? "Zadejte poplatek" : placeholderForAmount(product, frequency)}
               />
+              {amountReadOnly && <p className="text-xs text-slate-500">Součet původního pojistného a navýšení z renovace.</p>}
             </div>
 
             {pairAmountWithDuration

@@ -1,0 +1,356 @@
+{
+  "checkedAt": "2026-09-25T15:39:12.266554+00:00",
+  "deploymentChanged": false,
+  "productionAccountsChanged": false,
+  "businessDocumentsDownloaded": false,
+  "applicationTestsAfterDependencyUpdate": {
+    "success": true,
+    "passed": 4884,
+    "failed": 0,
+    "files": 334
+  },
+  "focusedTestsAfterPortraitFix": {
+    "passed": 9,
+    "newRegressionTests": 3,
+    "newRegressionTestsFailedBeforeFix": 3
+  },
+  "firebaseEmulatorTests": {
+    "success": true,
+    "passed": 303,
+    "failed": 0,
+    "skipped": 1,
+    "files": 10,
+    "skippedTest": "measures the three batch sizes on identical portfolios"
+  },
+  "revocationProof": {
+    "checkedAt": "2026-09-25T15:36:03.076Z",
+    "environment": "local-demo-emulators",
+    "beforeRevocation": 200,
+    "adminSdkRejectsRevokedToken": true,
+    "afterRevocation": 403,
+    "replayedCustomToken": 403,
+    "afterFreshLogin": 200,
+    "afterPersistentBlock": 403,
+    "revokedTokenStillReadsFirestore": false,
+    "productionAccess": false
+  },
+  "localHttp": {
+    "checkedAt": "2026-09-25T15:36:49.107Z",
+    "environment": "isolated-local-build-synthetic-configuration",
+    "checks": [
+      {
+        "path": "/login",
+        "status": 200,
+        "cspNonceMatches": true,
+        "noUnsafeScripts": true,
+        "noStore": true,
+        "noSniff": true
+      },
+      {
+        "path": "/ucet/akce",
+        "status": 200,
+        "cspNonceMatches": true,
+        "noUnsafeScripts": true,
+        "noStore": true,
+        "noSniff": true
+      },
+      {
+        "path": "/embed/zlato",
+        "status": 200,
+        "cspNonceMatches": true,
+        "noUnsafeScripts": true,
+        "noStore": true,
+        "noSniff": true
+      },
+      {
+        "path": "/admin",
+        "status": 307,
+        "redirectedToLogin": true
+      },
+      {
+        "path": "/smlouvy",
+        "status": 307,
+        "redirectedToLogin": true
+      },
+      {
+        "path": "/posta",
+        "status": 307,
+        "redirectedToLogin": true
+      },
+      {
+        "path": "/api/auth/password-reset/confirm",
+        "status": 403,
+        "rejected": true
+      },
+      {
+        "path": "/api/auth/password-reset/confirm",
+        "status": 415,
+        "rejected": true
+      }
+    ]
+  },
+  "typecheck": "passed",
+  "eslint": {
+    "errors": 0,
+    "preexistingWarnings": 4,
+    "changedFileWarnings": 0
+  },
+  "build": {
+    "status": "passed",
+    "framework": "Next.js 16.3.6",
+    "bundler": "Turbopack",
+    "platform": "macOS arm64",
+    "configuration": "isolated copy with synthetic Firebase configuration; no production credentials",
+    "authProxyRegistered": true
+  },
+  "liveFirebase": {
+    "checkedAt": "2026-09-25T15:29:46.946Z",
+    "rules": {
+      "firestore": {
+        "status": 200,
+        "matchesLocal": false,
+        "sourceSha256": "649f727f221b5cad19a3420168658b4020a0b82139fee314e91943314cc27cf2"
+      },
+      "storage": {
+        "status": 200,
+        "matchesLocal": false,
+        "sourceSha256": "e656d238ee388d951268ca38d1eca2dbf2f5fdc55ef4b20e22911413d36c935b"
+      }
+    },
+    "storage": {
+      "status": 200,
+      "uniformAccess": false,
+      "publicAccessPrevention": "inherited",
+      "softDeleteRetentionSeconds": "2592000",
+      "versioning": false,
+      "publicIam": {
+        "status": 200,
+        "bindings": 0
+      },
+      "objects": {
+        "complete": true,
+        "groups": {
+          "contract-pdfs": {
+            "objects": 1564,
+            "downloadToken": 0,
+            "publicAcl": 0
+          },
+          "other": {
+            "objects": 7,
+            "downloadToken": 0,
+            "publicAcl": 0
+          },
+          "mailbox": {
+            "objects": 17,
+            "downloadToken": 0,
+            "publicAcl": 0
+          },
+          "online-card/offices": {
+            "objects": 4,
+            "downloadToken": 4,
+            "publicAcl": 0
+          },
+          "profile-avatars": {
+            "objects": 2,
+            "downloadToken": 2,
+            "publicAcl": 0
+          }
+        }
+      }
+    },
+    "auth": {
+      "status": 200,
+      "emailPrivacy": true,
+      "mfaState": "ENABLED",
+      "disableSignup": "not-returned",
+      "disableDeletion": "not-returned",
+      "passwordPolicy": "not-returned"
+    },
+    "database": {
+      "status": 200,
+      "pitr": "POINT_IN_TIME_RECOVERY_ENABLED",
+      "deleteProtection": "DELETE_PROTECTION_ENABLED",
+      "location": "eur3",
+      "backups": {
+        "status": 403
+      }
+    },
+    "http": []
+  },
+  "liveIdentity": {
+    "checkedAt": "2026-09-25T15:30:37.799Z",
+    "accounts": 34,
+    "active": 34,
+    "activeWithoutVerifiedEmail": 10,
+    "activeWithoutTotp": 11,
+    "activeAdvisorsWithoutTotp": 6,
+    "activeClaimedAdmins": 2,
+    "activeClaimedAdminsWithoutTotp": 0,
+    "activeClaimedAdminsWithoutVerifiedEmail": 0,
+    "profiles": {
+      "documents": 32,
+      "orphanedProfileEmails": 0,
+      "uidMismatch": 0,
+      "profilesWithoutUid": 0
+    },
+    "limitations": "Counts of admin claims exclude email-only fallback roles; incomplete onboarding accounts may be among advisors without TOTP. No account was modified."
+  },
+  "liveBackups": {
+    "checkedAt": "2026-09-25T15:30:07.611Z",
+    "schedules": {
+      "status": 200,
+      "policies": [
+        {
+          "retention": "7257600s",
+          "daily": false,
+          "weekly": true
+        },
+        {
+          "retention": "1209600s",
+          "daily": true,
+          "weekly": false
+        }
+      ],
+      "complete": true
+    },
+    "backups": {
+      "status": 200,
+      "items": [
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-16T09:22:56.764886Z",
+          "expireTime": "2026-09-30T09:22:56.764886Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-08-30T22:47:31.932041Z",
+          "expireTime": "2026-11-22T22:47:31.932041Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-12T08:52:15.894416Z",
+          "expireTime": "2026-09-26T08:52:15.894416Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-18T10:33:57.741221Z",
+          "expireTime": "2026-10-02T10:33:57.741221Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-24T11:28:29.053733Z",
+          "expireTime": "2026-10-08T11:28:29.053733Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-13T09:01:33.393023Z",
+          "expireTime": "2026-12-06T09:01:33.393023Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-19T10:37:55.993999Z",
+          "expireTime": "2026-10-03T10:37:55.993999Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-13T09:01:33.393023Z",
+          "expireTime": "2026-09-27T09:01:33.393023Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-23T11:22:56.287769Z",
+          "expireTime": "2026-10-07T11:22:56.287769Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-15T09:13:50.777494Z",
+          "expireTime": "2026-09-29T09:13:50.777494Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-25T11:31:49.058854Z",
+          "expireTime": "2026-10-09T11:31:49.058854Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-22T11:15:27.967055Z",
+          "expireTime": "2026-10-06T11:15:27.967055Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-20T10:49:16.425246Z",
+          "expireTime": "2026-12-13T10:49:16.425246Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-20T10:49:16.425246Z",
+          "expireTime": "2026-10-04T10:49:16.425246Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-21T10:58:54.732923Z",
+          "expireTime": "2026-10-05T10:58:54.732923Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-14T09:07:05.045031Z",
+          "expireTime": "2026-09-28T09:07:05.045031Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-17T09:44:21.769641Z",
+          "expireTime": "2026-10-01T09:44:21.769641Z"
+        },
+        {
+          "state": "READY",
+          "snapshotTime": "2026-09-06T04:20:35.808866Z",
+          "expireTime": "2026-11-29T04:20:35.808866Z"
+        }
+      ],
+      "complete": true
+    }
+  },
+  "productionHttp": {
+    "verified": false,
+    "vercelMetadataStatus": 403,
+    "publicHeadLoginStatus": 429,
+    "publicHeadLoginMitigation": "Vercel challenge",
+    "frameworkVersion": "not verified"
+  },
+  "secretPatternScan": {
+    "checkedFiles": 1818,
+    "skippedFiles": 276,
+    "findings": [],
+    "envMode": "0o600",
+    "envIgnored": true,
+    "historyScanned": false
+  },
+  "npmAudit": {
+    "completed": false,
+    "reason": "automatic approval review rejected exporting dependency metadata to npm registry; explicit approval requested",
+    "knownVulnerabilityCount": null
+  },
+  "fileSha256": {
+    "package.json": "8ef558eae2640a5d95aa13831bd05a982e6a80a00d805feb23554d50d2c5dcf5",
+    "package-lock.json": "7e8864ba9167d8d95144d35a0421e9e71f45c273c2295cd603811246a2aa09dc",
+    "scripts/check-image-runtime.mjs": "96def1e55ee1a7535bd7fb5f52b7ff25e870b5de43082a31cd3c643764b52683",
+    "src/lib/server/onlineCardShareImage.ts": "9a13e56b59af92e58069e6d8713a4dce7d6bc6fc3e9384e337a363df2e65f024",
+    "src/lib/server/onlineCardShareImage.test.ts": "1a9f3cbc4ec605a326b02da546cbd348e2f4921ac556301915a2d1e77199e203",
+    "firestore.rules": "e0d6df50def19a1421a20ebdd09b034f4b449e3a12ae9f632c3643864c5e9bc9",
+    "src/lib/server/tokenRevocation.ts": "5461d8e85fcda1998bdc1249f0861bf56433c5aaf40d563e175df9cd8b70ff31",
+    "scripts/auth-security.mjs": "d220981a3075d33618a6c453c75d220541b1438f218d5f3ab157f92667ed09a4"
+  },
+  "sources": [
+    "https://github.com/vercel/next.js/security/advisories/GHSA-vcvr-r3jv-pc5j",
+    "https://nextjs.org/blog/nextjs-security-update-september-22-2026",
+    "https://nextjs.org/blog/upcoming-nextjs-security-release-september-2026"
+  ],
+  "limitations": [
+    "Current deployment version and environment not accessible with available Vercel permissions.",
+    "No current full npm audit.",
+    "No live account revocation or restore test.",
+    "Standalone Cloud Functions implementation and project-wide IAM not audited.",
+    "No exploit of the Next.js advisory was attempted or demonstrated.",
+    "Secret scan excludes Git history and binary or large files."
+  ]
+}

@@ -19,11 +19,11 @@ describe("original contract replacement capabilities", () => {
   );
 
   it("nepovolí Náhradu pro nepodporovaný produkt", () => {
-    expect(supportsOriginalContractReplacement("flexi")).toBe(false);
+    expect(supportsOriginalContractReplacement("maximaMaxEfekt")).toBe(false);
     expect(supportsOriginalContractReplacement(null)).toBe(false);
   });
 
-  it.each(["domex", "cppAuto", "allianzAuto"] as const)(
+  it.each(["flexi", "domex", "cppAuto", "allianzAuto"] as const)(
     "umožní uložit produkt %s i bez nalezené původní smlouvy",
     (product) => {
       expect(canSaveUnlinkedOriginalReplacement(product)).toBe(true);
@@ -41,6 +41,9 @@ describe("original contract replacement capabilities", () => {
 
   it("rozlišuje název workflow", () => {
     expect(originalReplacementLabel("neon")).toBe("Refresh");
+    expect(originalReplacementLabel("flexi")).toBe("Renovace");
+    expect(usesPreviousDayReplacementStorno("flexi")).toBe(false);
+    expect(originalReplacementStornoDescription("flexi")).toBe("ke dni počátku nové smlouvy");
     expect(originalReplacementLabel("allianzAuto")).toBe("Náhrada");
   });
 

@@ -542,7 +542,7 @@ export function generateCashflow(
     const lifeStornoBaseMonthlyPremium =
       typeof storedRefreshBaseMonthlyRaw === "number" &&
       Number.isFinite(storedRefreshBaseMonthlyRaw) &&
-      storedRefreshBaseMonthlyRaw > 0
+      storedRefreshBaseMonthlyRaw >= 0
         ? storedRefreshBaseMonthlyRaw
         : currentMonthlyPremium;
     const lifeRevisionBaseDate =

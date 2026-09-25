@@ -1,4 +1,5 @@
 import { POSITION_ORDER } from "@/app/kalkulacka/calculatorHelpers";
+import { calculateFlexiRenovationBase, type FlexiRenovationInput, type FlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import type { InheritedContractFields } from "@/app/lib/inheritedContracts";
 import { normalizeTransferEffectiveDate } from "./contractsApi.transfer";
 import { toDate } from "@/app/lib/formatters";
@@ -119,6 +120,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "maxdomovDetail",
   "paid",
   "isRefresh",
+  "flexiRenovation",
   "refreshOriginalContractNumber",
   "refreshOriginalMissingInSystem",
   "requiresStatementRefresh",
@@ -627,7 +629,10 @@ export type NormalizedManagerOverrideEntry = {
   total: number;
 };
 
-export type RefreshCommissionBasePayload = {
+export type RefreshCommissionBasePayload = FlexiRenovationBase & {
+  originalContractNumber: string | null;
+  refreshPolicyStartDateIso: string | null;
+} | {
   productKey: Product;
   method: "cpp_neon_5y_storno";
   calculationMethod: "storno_60_60" | "motivational_48_percent";
@@ -762,6 +767,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   allowedEmails: string[];
   createdAt: Date;
   isRefresh: boolean | null;
+  flexiRenovation: FlexiRenovationInput | null;
   refreshOriginalContractNumber: string | null;
   refreshOriginalMissingInSystem: boolean | null;
   requiresStatementRefresh: boolean | null;
@@ -1299,6 +1305,33 @@ export const normalizeCreateEntryPayload = ({
   );
   if (!commissionBaseSourceParsed.ok) return commissionBaseSourceParsed;
   const isRefresh = isRefreshParsed.value === true;
+  let flexiRenovation: FlexiRenovationInput | null = null;
+  const isFlexiRenovation = productParsed.value === "flexi" && isRefresh;
+  if (isFlexiRenovation || raw.flexiRenovation != null) {
+    if (!isFlexiRenovation || entryTypeParsed.value !== "contract") {
+      return { ok: false, error: "Údaje renovace jsou povolené jen pro novou smlouvu FLEXI s renovací." };
+    }
+    const renovation = raw.flexiRenovation;
+    if (!isPlainObject(renovation) ||
+      typeof renovation.originalMonthlyPremium !== "number" ||
+      typeof renovation.premiumIncreaseMonthly !== "number" ||
+      !["unknown", "outside", "inside"].includes(String(renovation.guaranteeStatus))) {
+      return { ok: false, error: "Pro renovaci FLEXI zadej původní měsíční pojistné, navýšení a stav ručení." };
+    }
+    const base = calculateFlexiRenovationBase(renovation as FlexiRenovationInput);
+    if (!base) {
+      return { ok: false, error: "Původní pojistné renovace musí být kladné a navýšení nezáporné." };
+    }
+    if (inputAmountParsed.value == null || Math.abs(inputAmountParsed.value - base.newMonthlyPremium) > 0.005 ||
+      (effectiveInputAmountParsed.value != null && Math.abs(effectiveInputAmountParsed.value - base.newMonthlyPremium) > 0.005)) {
+      return { ok: false, error: "Nové pojistné FLEXI musí odpovídat součtu původního pojistného a navýšení." };
+    }
+    flexiRenovation = {
+      originalMonthlyPremium: base.originalMonthlyPremium,
+      premiumIncreaseMonthly: base.premiumIncreaseMonthly,
+      guaranteeStatus: base.guaranteeStatus,
+    };
+  }
   const refreshOriginalMissingInSystem = refreshOriginalMissingParsed.value === true;
   const refreshOriginalContractNumber = refreshOriginalMissingInSystem
     ? null
@@ -1625,6 +1658,7 @@ export const normalizeCreateEntryPayload = ({
       allowedEmails: [ownerEmail],
       createdAt: new Date(),
       isRefresh: isRefreshParsed.value,
+      flexiRenovation,
       refreshOriginalContractNumber,
       refreshOriginalMissingInSystem: refreshOriginalMissingInSystem || null,
       requiresStatementRefresh: refreshOriginalMissingInSystem || null,

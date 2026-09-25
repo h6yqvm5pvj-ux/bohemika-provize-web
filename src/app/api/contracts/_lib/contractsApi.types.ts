@@ -9,6 +9,7 @@ import type {
   Product,
 } from "@/app/types/domain";
 import type { ProductInstitutionId } from "@/app/lib/productCatalog";
+import type { FlexiRenovationInput, FlexiRenovationGuaranteeStatus } from "@/app/lib/flexiRenovation";
 import type {
   CommissionAuditCodeFilter,
   CommissionAuditMode,
@@ -42,6 +43,7 @@ export type ContractDoc = {
   lifecycleStatus?: "active" | "storno" | "dozita" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
+  flexiRenovation?: FlexiRenovationInput | null;
   refreshOriginalContractNumber?: string | null;
   refreshOriginalMissingInSystem?: boolean | null;
   requiresStatementRefresh?: boolean | null;
@@ -54,6 +56,9 @@ export type ContractDoc = {
   refreshStatementResolvedStatementDate?: string | null;
   refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: {
+    guaranteeStatus?: FlexiRenovationGuaranteeStatus;
+    originalCommissionRatio?: number;
+    provisional?: boolean;
     productKey?: Product | null;
     method?: "cpp_neon_5y_storno" | string | null;
     calculationMethod?: "storno_60_60" | "motivational_48_percent" | string | null;

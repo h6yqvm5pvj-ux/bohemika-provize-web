@@ -6031,6 +6031,22 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
+                      {contract?.productKey === "flexi" && isRefreshContract && refreshCommissionBase?.method === "koop_flexi_renovation" && (
+                        <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm">
+                          <dt className={keyValueLabelClass}>Renovace FLEXI</dt>
+                          <dd className="mt-2 space-y-1 text-slate-700">
+                            <p>Původní č. smlouvy: {refreshOriginalContractNumber || "—"}</p>
+                            {refreshOriginalMissingInSystem && <p>Původní smlouva nebyla nalezena, automatické storno se neprovedlo.</p>}
+                            <p>Pojistné z původní smlouvy: {formatMoney(Number(refreshCommissionBase.originalMonthlyPremium))} / měsíc</p>
+                            <p>Navýšení pojistného: {formatMoney(Number(refreshCommissionBase.premiumIncreaseMonthly))} / měsíc</p>
+                            <p>Ručení původní smlouvy: {refreshCommissionBase.guaranteeStatus === "outside" ? "Po ručení" : refreshCommissionBase.guaranteeStatus === "inside" ? "V ručení" : "Neověřeno"}</p>
+                            <p className="font-semibold">Provizní základ: {formatMoney(Number(refreshCommissionBase.calculationMonthlyPremium))} / měsíc ({refreshCommissionBase.originalCommissionRatio === 0 ? "pouze navýšení" : "50 % původního pojistného + navýšení"})</p>
+                            {refreshCommissionBase.provisional && <p className="font-semibold text-amber-800">{refreshCommissionBase.guaranteeStatus === "inside"
+                              ? "Orientační výpočet z navýšení. Případná kompenzační provize za původní smlouvu není zahrnuta; ověř ji podle provizního výpisu."
+                              : "Orientační výpočet s 50% provizí z původního pojistného. Nárok ověř podle aktuálních provizních podmínek."}</p>}
+                          </dd>
+                        </div>
+                      )}
                       {isNeonRefreshContract && (
                         <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3">
                           <div className="flex justify-between gap-2">

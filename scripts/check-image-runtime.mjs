@@ -16,7 +16,7 @@ const nextVersion = require("next/package.json").version;
 // Resolve sharp from Next's own location as well as from our upload code.
 const nextRequire = createRequire(require.resolve("next/package.json"));
 const nextSharp = nextRequire("sharp");
-assert(atLeast(nextVersion, [16, 3, 3]), "Next.js must include the August 2026 security fixes (16.3.3+).");
+assert(atLeast(nextVersion, [16, 3, 6]), "Next.js must include the September 22, 2026 ImageResponse security fix (16.3.6+, GHSA-vcvr-r3jv-pc5j).");
 for (const [source, implementation] of [["application", sharp], ["next", nextSharp]]) {
   assert(atLeast(implementation.versions.sharp, [0, 35, 4]), `${source}: sharp 0.35.4+ is required.`);
   assert(atLeast(implementation.versions.heif, [1, 23, 2]), `${source}: native libheif 1.23.2+ is required.`);

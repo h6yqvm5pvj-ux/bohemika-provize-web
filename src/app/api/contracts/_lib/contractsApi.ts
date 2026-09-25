@@ -78,6 +78,7 @@ import type {
   UserTreeResult,
 } from "./contractsApi.types";
 import { calculateCommission } from "@/app/lib/calculateCommission";
+import { calculateFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { normalizeCommissionCoefficientSet } from "@/app/lib/productFormulas/coefficientSets";
 import {
   calculateNeonDecreaseStornoBase,
@@ -5088,6 +5089,17 @@ export async function handleContractsCreate(req: NextRequest) {
         ? normalizedEntry.payload.calculationInputAmount ?? normalizedEntry.payload.inputAmount
         : normalizedEntry.payload.inputAmount;
 
+    if (normalizedEntry.payload.flexiRenovation) {
+      const base = calculateFlexiRenovationBase(normalizedEntry.payload.flexiRenovation);
+      if (!base) return NextResponse.json({ ok: false, error: "Neplatné údaje renovace FLEXI." }, { status: 400 });
+      commissionInputAmount = base.calculationMonthlyPremium;
+      refreshCommissionBase = {
+        ...base,
+        originalContractNumber: normalizedEntry.payload.refreshOriginalContractNumber,
+        refreshPolicyStartDateIso: toIsoDay(normalizedEntry.payload.policyStartDate),
+      };
+    }
+
     const refreshWithoutOriginalInSystem =
       normalizedEntry.payload.entryType === "contract" &&
       normalizedEntry.payload.productKey === "neon" &&
@@ -5515,6 +5527,13 @@ export async function handleContractsCreate(req: NextRequest) {
       ...contractSearchIndexFieldsForContract(normalizedEntry.payload),
       calculationInputAmount: commissionInputAmount,
       refreshCommissionBase,
+      ...(normalizedEntry.payload.flexiRenovation ? {
+        refreshOriginalMissingInSystem: !refreshOriginalLink,
+        requiresStatementRefresh: false,
+        commissionCalculationStatus: normalizedEntry.payload.flexiRenovation.guaranteeStatus !== "outside"
+          ? "provisional_flexi_renovation" : "calculated_flexi_renovation",
+        commissionBaseSource: "calculator_flexi_renovation",
+      } : {}),
       position: trustedPosition,
       commissionMode: effectiveTrustedMode,
       items: trustedItems,
