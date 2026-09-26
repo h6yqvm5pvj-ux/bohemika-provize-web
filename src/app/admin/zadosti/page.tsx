@@ -84,6 +84,7 @@ import { useAdminUserDetail } from "./useAdminUserDetail";
 import type { AdminUsersResponse, AdminUsersRow, AdminUserSummary } from "./adminUsers";
 
 const AdminSecuritySection = dynamic(() => import("./components/AdminSecuritySection").then((module) => module.AdminSecuritySection));
+const AdminLoginActivitySection = dynamic(() => import("./components/AdminLoginActivitySection").then((module) => module.AdminLoginActivitySection));
 const AdminBroadcastSection = dynamic(() => import("./components/AdminBroadcastSection").then((module) => module.AdminBroadcastSection));
 const AdminSubscriptionsSection = dynamic(() => import("./components/AdminSubscriptionsSection").then((module) => module.AdminSubscriptionsSection));
 
@@ -4379,6 +4380,7 @@ export default function AdminRequestsPage() {
             }}
           />
         ) : null}
+        {isAllowedAdmin && activeAdminSection === "loginActivity" ? <AdminLoginActivitySection /> : null}
         {isAllowedAdmin && activeAdminSection === "security" ? (
           <AdminSecuritySection
             rows={adminSecurity.rows}

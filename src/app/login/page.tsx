@@ -176,7 +176,8 @@ function buildLoginAttemptMessage(payload: LoginAttemptResponse | null): string 
 async function postLoginAttempt(
   action: LoginAttemptAction,
   email: string,
-  authToken?: string
+  authToken?: string,
+  factor: "password" | "mfa" = "password"
 ): Promise<LoginAttemptResponse> {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (authToken) {
@@ -189,7 +190,7 @@ async function postLoginAttempt(
       method: "POST",
       headers,
       cache: "no-store",
-      body: JSON.stringify({ action, email }),
+      body: JSON.stringify({ action, email, factor }),
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -433,6 +434,7 @@ export default function LoginPage() {
 
       let msg = "Nepodařilo se ověřit jednorázový kód.";
       if (authErr?.code === "auth/invalid-verification-code") {
+        await postLoginAttempt("failure", email.trim().toLowerCase(), undefined, "mfa").catch(() => null);
         msg = "Neplatný 2FA kód. Zkus aktuální kód z aplikace.";
       } else if (authErr?.code === "auth/code-expired") {
         msg = "2FA kód vypršel. Zadej nový aktuální kód.";

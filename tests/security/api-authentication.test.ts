@@ -8,6 +8,7 @@ const doubles = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
   getUser: vi.fn(),
   isBlocked: vi.fn(),
+  createDeniedAudit: vi.fn(async () => undefined),
   databaseAccess: vi.fn(() => { throw new Error("Unauthenticated database access"); }),
   networkAccess: vi.fn(() => { throw new Error("Network is forbidden in security tests"); }),
 }));
@@ -17,7 +18,11 @@ vi.mock("@/lib/server/firebaseAdmin", async () => {
   return {
   adminAuth: withAccountSecurityPolicy({ verifyIdToken: doubles.verifyIdToken, getUser: doubles.getUser } as never, doubles.isBlocked),
   adminDb: {
-    collection: doubles.databaseAccess,
+    // Denied logins may create a minimal audit record. No read, update or
+    // delete method is exposed here; all business-data access still throws.
+    collection: (name: string) => name === "_authActivity"
+      ? { doc: () => ({ create: doubles.createDeniedAudit }) }
+      : doubles.databaseAccess(),
     collectionGroup: doubles.databaseAccess,
     doc: doubles.databaseAccess,
     runTransaction: doubles.databaseAccess,
@@ -123,6 +128,11 @@ describe.each([
     });
     expect(bearer === "missing" || bearer === "forged" ? [401] : [401, 403]).toContain(response.status);
     expect(doubles.databaseAccess).not.toHaveBeenCalled();
+    if (route === "auth/session" && method === "POST") {
+      expect(doubles.createDeniedAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: "denied", source: "web", identityVerified: false, email: null }));
+    } else {
+      expect(doubles.createDeniedAudit).not.toHaveBeenCalled();
+    }
     expect(doubles.networkAccess).not.toHaveBeenCalled();
     if (bearer === "missing") expect(doubles.verifyIdToken).not.toHaveBeenCalled();
     for (const call of doubles.verifyIdToken.mock.calls) expect(call[1]).toBe(true);

@@ -17,6 +17,7 @@ import {
   getRequestIp,
 } from "@/lib/server/rateLimit";
 import { recordAppSession, revokeAppSession } from "@/lib/server/appSessionRegistry";
+import { recordLoginFailure } from "@/lib/server/loginActivity";
 import { loadUserProfileForAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { evaluateSubscriptionFromProfile } from "@/lib/subscriptionAccess";
 import { ACCOUNT_SETUP_REQUIRED_CODE, ACCOUNT_SETUP_REQUIRED_MESSAGE, ACCOUNT_BLOCKED_CODE, ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
@@ -78,7 +79,7 @@ function clearAppSessionCookie(response: NextResponse): NextResponse {
   return response;
 }
 
-export async function POST(req: NextRequest) {
+async function createSession(req: NextRequest, audit: { email: string | null }) {
   const payload = await req.json().catch(() => null);
   const rememberThisDevice = parseRememberThisDevicePayload(payload);
 
@@ -165,6 +166,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  audit.email = email;
+
   const lockout = await getLoginAttemptStatus(req, email);
   if (lockout.locked) {
     return withCommonHeaders(buildLoginAttemptLockedResponse(lockout));
@@ -219,6 +222,16 @@ export async function POST(req: NextRequest) {
       )
     );
   }
+}
+
+export async function POST(req: NextRequest) {
+  const audit = { email: null as string | null };
+  const response = await createSession(req, audit);
+  if (response.status >= 400 && response.status !== 429) {
+    await recordLoginFailure(req, { source: "web", stage: "session", email: audit.email, identityVerified: !!audit.email,
+      reason: response.status >= 500 ? "service_unavailable" : response.status === 403 ? "access_denied" : "authentication_rejected" });
+  }
+  return response;
 }
 
 export async function DELETE(req: NextRequest) {

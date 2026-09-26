@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 
 import { getRequestIp } from "@/lib/server/rateLimit";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { buildLoginActivity, LOGIN_ACTIVITY_COLLECTION } from "./loginActivity";
 
 const MAX_USER_AGENT_LEN = 240;
 const MAX_LOCATION_PART_LEN = 80;
@@ -185,11 +186,13 @@ export async function recordAppSession({
 
   const nowMs = Date.now();
   const metadata = resolveSessionRequestMetadata(req);
-  await collection.doc(sessionId).create(
-    {
+  if (!adminDb) throw new Error("Úložiště relací není dostupné.");
+  const batch = adminDb.batch();
+  batch.create(collection.doc(sessionId), {
       uid,
       email: normalizeEmail(email),
       sessionId,
+      loginActivityRecorded: true,
       ...metadata,
       createdAt: FieldValue.serverTimestamp(),
       createdAtMs: nowMs,
@@ -198,8 +201,11 @@ export async function recordAppSession({
       expiresAtMs,
       revokedAtMs: null,
       revokedReason: null,
-    }
-  );
+    });
+  batch.create(adminDb.collection(LOGIN_ACTIVITY_COLLECTION).doc(), buildLoginActivity(req, {
+    outcome: "success", stage: "session", source: "web", email, identityVerified: true, reason: "session_created",
+  }, nowMs));
+  await batch.commit();
 }
 
 export async function touchAppSession({

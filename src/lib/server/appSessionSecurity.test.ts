@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verifyIdToken, getUser: mocks.getUser, createCustomToken: mocks.createCustomToken, revokeRefreshTokens: mocks.revokeRefreshTokens },
-  adminDb: { collection: mocks.collection, runTransaction: mocks.transaction },
+  adminDb: { collection: mocks.collection, runTransaction: mocks.transaction, batch: mocks.batch },
 }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () => "server-time", delete: () => "delete-field" } }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: async () => ({ allowed: true }), getRequestIp: () => "127.0.0.1", applyRateLimitHeaders: () => {} }));
@@ -58,7 +58,7 @@ function ref(path: string) {
   };
 }
 function collection(path: string) {
-  return { doc: (id: string) => ref(`${path}/${id}`),
+  return { doc: (id: string = crypto.randomUUID()) => ref(`${path}/${id}`),
     firestore: { runTransaction: mocks.transaction, batch: mocks.batch },
     where: (field: string, _op: string, value: number) => ({ get: async () => ({ docs: [...mocks.store].filter(([key, data]) => key.startsWith(path + "/") && Number(data[field]) > value).map(([key]) => snapshot(key)) }) }),
     orderBy: () => ({ limit: (count: number) => ({ get: async () => ({ docs: [...mocks.store.keys()].filter(key => key.startsWith(path + "/")).slice(0, count).map(snapshot) }) }) }),
@@ -75,7 +75,9 @@ beforeEach(() => {
   vi.stubEnv("APP_SESSION_SECRET", "local-test-secret-never-production");
   mocks.collection.mockImplementation(collection);
   mocks.transaction.mockImplementation(async (run) => run({ get: (r: { path: string }) => { mocks.read(r.path); return Promise.resolve(snapshot(r.path)); }, update: (r: { path: string }, data: Record<string, unknown>) => update(r.path, data) }));
-  mocks.batch.mockImplementation(() => { const writes: (() => void)[] = []; return { update: (r: { path: string }, data: Record<string, unknown>) => writes.push(() => update(r.path, data)), commit: async () => writes.forEach(write => write()) }; });
+  mocks.batch.mockImplementation(() => { const writes: (() => void)[] = []; return {
+    create: (r: { path: string }, data: Record<string, unknown>) => writes.push(() => { mocks.write(r.path, data); if (mocks.store.has(r.path)) throw new Error("already exists"); mocks.store.set(r.path, data); }),
+    update: (r: { path: string }, data: Record<string, unknown>) => writes.push(() => update(r.path, data)), commit: async () => writes.forEach(write => write()) }; });
   mocks.verifyIdToken.mockResolvedValue(decoded()); mocks.getUser.mockResolvedValue(baseUser);
   mocks.createCustomToken.mockResolvedValue("new-test-token"); mocks.revokeRefreshTokens.mockResolvedValue(undefined);
 });

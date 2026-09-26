@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { adminAuth } from "@/lib/server/firebaseAdmin";
+import { recordLoginFailure } from "@/lib/server/loginActivity";
+import { auditEmail } from "@/lib/server/loginActivityMetadata";
 import {
   buildLoginAttemptLockedResponse,
   clearLoginAttemptFailures,
@@ -137,11 +139,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const payload = body as { action?: unknown; email?: unknown };
+  const payload = body as { action?: unknown; email?: unknown; factor?: unknown };
   const action = normalizeAction(payload?.action);
   const email = normalizeLoginAttemptEmail(payload?.email);
 
-  if (!action || !email) {
+  if (!action || !auditEmail(email)) {
     return withEndpointHeaders(
       NextResponse.json({ ok: false, error: "Chybí akce nebo e-mail." }, { status: 400 })
     );
@@ -168,6 +170,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // A reported second-factor error is audit information, not another password
+  // failure. Do not change the existing password lockout behavior.
+  if (action === "failure" && payload.factor === "mfa") {
+    await recordLoginFailure(req, { source: "client_report", stage: "mfa", outcome: "reported_failure",
+      email, identityVerified: false, reason: "browser_reported_failure" });
+    return withEndpointHeaders(NextResponse.json({ ok: true }));
+  }
+
   const currentStatus = await getClientReportedLoginAttemptStatus(req, email);
   if (currentStatus.locked) {
     return withEndpointHeaders(buildLoginAttemptLockedResponse(currentStatus));
@@ -187,6 +197,8 @@ export async function POST(req: Request) {
 
   // Public client-reported failures must not create account-wide lockouts.
   const nextStatus = await recordClientReportedLoginAttemptFailure(req, email);
+  await recordLoginFailure(req, { source: "client_report", stage: payload.factor === "mfa" ? "mfa" : "password",
+    outcome: "reported_failure", email, identityVerified: false, reason: "browser_reported_failure" });
   if (nextStatus.locked) {
     return withEndpointHeaders(buildLoginAttemptLockedResponse(nextStatus));
   }

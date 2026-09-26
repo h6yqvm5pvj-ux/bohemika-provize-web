@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/server";
+import { recordLoginFailure } from "@/lib/server/loginActivity";
 
 import {
   PasskeyError,
@@ -17,13 +18,13 @@ type ApiError = { ok: false; error: string };
 
 function jsonError(error: unknown, fallback: string) {
   const status = error instanceof PasskeyError ? error.status : 500;
-  const message = error instanceof Error ? error.message : fallback;
+  const message = error instanceof PasskeyError ? error.message : fallback;
   return NextResponse.json({ ok: false, error: message } satisfies ApiError, {
     status,
   });
 }
 
-export async function POST(req: NextRequest) {
+async function authenticate(req: NextRequest) {
   try {
     const rateLimit = await consumeRateLimit({
       namespace: "api:passkeys:authentication",
@@ -55,7 +56,15 @@ export async function POST(req: NextRequest) {
     applyRateLimitHeaders(response.headers, rateLimit);
     return response;
   } catch (error) {
-    console.error("passkey authentication error", error);
+    console.warn("Passkey authentication rejected");
     return jsonError(error, "Přihlášení přes přístupový klíč se nepodařilo ověřit.");
   }
+}
+
+export async function POST(req: NextRequest) {
+  const response = await authenticate(req);
+  if (response.status >= 400 && response.status !== 429) {
+    await recordLoginFailure(req, { source: "web", stage: "passkey", reason: response.status >= 500 ? "service_unavailable" : "passkey_rejected" });
+  }
+  return response;
 }
