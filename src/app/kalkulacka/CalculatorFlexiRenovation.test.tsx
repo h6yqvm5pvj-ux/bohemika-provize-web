@@ -31,21 +31,57 @@ describe("FLEXI renovation form", () => {
     container.remove();
     vi.unstubAllGlobals();
   });
-  function Harness() {
-    const [open, setOpen] = useState(false);
-    const [original, setOriginal] = useState("1000");
-    const [increase, setIncrease] = useState("500");
+  function Harness({ newPremium = "", originalPremium = "1000", premiumIncrease = "500", initiallyOpen = false } = {}) {
+    const [open, setOpen] = useState(initiallyOpen);
+    const [original, setOriginal] = useState(originalPremium);
+    const [increase, setIncrease] = useState(premiumIncrease);
+    const [regularAmount, setRegularAmount] = useState(newPremium);
     const [guarantee, setGuarantee] = useState<FlexiRenovationGuaranteeStatus>("unknown");
-    const base = calculateFlexiRenovationBase({ originalMonthlyPremium: Number(original), premiumIncreaseMonthly: Number(increase), guaranteeStatus: guarantee });
+    const base = original.trim() && increase.trim()
+      ? calculateFlexiRenovationBase({ originalMonthlyPremium: Number(original), premiumIncreaseMonthly: Number(increase), guaranteeStatus: guarantee })
+      : null;
+    const amountText = base ? String(base.newMonthlyPremium) : regularAmount;
     return <>
       <CalculatorAmountAndActionsSection {...defaults} showAmountInput={false}
+        amountText={amountText} onAmountTextChange={setRegularAmount}
         refreshOriginalOpen={open} onToggleRefreshOriginal={() => setOpen(!open)}
         renovationOriginalPremiumText={original} onRenovationOriginalPremiumChange={setOriginal}
         renovationIncreaseText={increase} onRenovationIncreaseChange={setIncrease}
         renovationGuaranteeStatus={guarantee} onRenovationGuaranteeStatusChange={setGuarantee} />
       <output>{base?.newMonthlyPremium}/{base?.calculationMonthlyPremium}</output>
+      <output data-testid="new-premium">{amountText}</output>
     </>;
   }
+  const premiumInput = (label: string) => Array.from(container.querySelectorAll("label"))
+    .find((element) => element.textContent?.includes(label))!.querySelector("input")!;
+  const typePremium = async (label: string, value: string) => act(async () => {
+    const input = premiumInput(label);
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  it("recalculates the increase from the new premium when the original is edited or cleared", async () => {
+    await act(async () => root.render(<Harness newPremium="704" originalPremium="" premiumIncrease="" initiallyOpen />));
+    expect(container.querySelector('[data-testid="new-premium"]')?.textContent).toBe("704");
+    expect(premiumInput("Navýšení").value).toBe("");
+    for (const [original, increase] of [["500", "204"], ["600", "104"], ["704", "0"], ["800", "-96"], ["", ""], ["500.35", "203.65"]]) {
+      await typePremium("Pojistné z původní", original);
+      expect(premiumInput("Navýšení").value).toBe(increase);
+      expect(container.querySelector('[data-testid="new-premium"]')?.textContent).toBe("704");
+      if (original === "800" || original === "") expect(container.querySelector("output")?.textContent).toBe("/");
+    }
+  });
+
+  it("preserves manual premium entry and uses the current total after an increase is edited", async () => {
+    await act(async () => root.render(<Harness originalPremium="" premiumIncrease="" initiallyOpen />));
+    await typePremium("Pojistné z původní", "1000");
+    expect(premiumInput("Navýšení").value).toBe("");
+    await typePremium("Navýšení", "500");
+    expect(container.querySelector('[data-testid="new-premium"]')?.textContent).toBe("1500");
+    await typePremium("Pojistné z původní", "1200");
+    expect(premiumInput("Navýšení").value).toBe("300");
+    expect(container.querySelector('[data-testid="new-premium"]')?.textContent).toBe("1500");
+  });
   it("toggles renovation, exposes monthly amounts and changes the base with guarantee eligibility", async () => {
     await act(async () => root.render(<Harness />));
     const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;

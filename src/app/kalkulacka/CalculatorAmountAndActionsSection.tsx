@@ -364,7 +364,20 @@ export function CalculatorAmountAndActionsSection({
                       <label className="space-y-1 text-xs font-semibold text-slate-700">
                         <span>Pojistné z původní smlouvy (Kč / měsíc)</span>
                         <input type="number" min="0.01" step="0.01" value={renovationOriginalPremiumText}
-                          onChange={(event) => onRenovationOriginalPremiumChange?.(event.target.value)}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            onRenovationOriginalPremiumChange?.(value);
+                            const newPremium = Number(amountText);
+                            if (!Number.isFinite(newPremium) || newPremium <= 0) return;
+                            // Keep the known new premium even while the original input is cleared or invalid.
+                            onAmountTextChange(amountText);
+                            const originalPremium = Number(value);
+                            onRenovationIncreaseChange?.(
+                              value.trim() && Number.isFinite(originalPremium) && originalPremium > 0
+                                ? String(Math.round((newPremium - originalPremium) * 100) / 100)
+                                : ""
+                            );
+                          }}
                           className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
                         />
                       </label>

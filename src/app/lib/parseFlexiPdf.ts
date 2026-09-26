@@ -9,6 +9,8 @@ export type FlexiPdfResult = {
   durationYears?: number | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
+  isRefresh?: boolean;
+  refreshOriginalContractNumber?: string | null;
 };
 
 const toDateInput = (value: string | null | undefined): string | null => {
@@ -101,6 +103,17 @@ export async function parseFlexiPdf(file: File): Promise<FlexiPdfResult> {
   if (contractMatch) {
     const digits = contractMatch.replace(/\D+/g, "");
     if (digits) result.contractNumber = digits;
+  }
+
+  // Renovace: číslo nahrazované smlouvy je jiné než číslo nové smlouvy v záhlaví.
+  const renovationMatch = ascii.match(
+    /tato\s+smlouva\s+nahrazuje\s+puvodni\s+pojistnou\s+smlouvu\s+c\b\.?\s*:?\s*(\d(?:\s*\d){5,13}\b)?/
+  );
+  if (renovationMatch) {
+    result.isRefresh = true;
+    if (renovationMatch[1]) {
+      result.refreshOriginalContractNumber = renovationMatch[1].replace(/\s+/g, "");
+    }
   }
 
   // Jméno a příjmení pojistníka

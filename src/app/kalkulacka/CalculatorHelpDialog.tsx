@@ -106,7 +106,7 @@ export function CalculatorHelpDialog({
             <span className={styles.stepNumber} aria-hidden="true">3</span>
             <div>
               <h3>Klikni na „Uložit jako sepsáno“</h3>
-              <p>Nahrané PDF se přiloží k detailu smlouvy. Smlouva se promítne do produkce, výplat a dalších přehledů.</p>
+              <p>Otevře se rekapitulace s případnými upozorněními na neobvyklé údaje. Přes „Upravit“ se vrátíš k formuláři, přes „Souhlasí“ smlouvu uložíš. Nahrané PDF se přiloží k detailu smlouvy.</p>
             </div>
           </li>
         </ol>

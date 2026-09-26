@@ -132,6 +132,9 @@ import {
 } from "./endorsementCalculation";
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
+import { useContractReview } from "./useContractReview";
+import { buildContractReviewWarnings } from "./contractReview";
+import { CalculatorContractReviewModal } from "./CalculatorContractReviewModal";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
 
 import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
@@ -822,7 +825,7 @@ export default function CalculatorPage() {
     });
   }, [flexiRenovationActive, renovationOriginalPremiumText, renovationIncreaseText, renovationGuaranteeStatus]);
   const amountText = flexiRenovationActive
-    ? flexiRenovationBase ? String(flexiRenovationBase.newMonthlyPremium) : ""
+    ? flexiRenovationBase ? String(flexiRenovationBase.newMonthlyPremium) : regularAmountText
     : regularAmountText;
   const [refreshOriginalContractNumber, setRefreshOriginalContractNumber] = useState("");
   const [refreshOriginalMissingInSystem, setRefreshOriginalMissingInSystem] = useState(false);
@@ -972,6 +975,7 @@ export default function CalculatorPage() {
   const [unsupported, setUnsupported] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const { review: contractReview, requestReview, resolveReview } = useContractReview();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -1097,20 +1101,6 @@ export default function CalculatorPage() {
         .join(" ")}`;
       setSaveMessage(msg);
       setValidationError(msg);
-      return false;
-    }
-
-    if (contractDateWarnings.length === 0) return true;
-    if (typeof window === "undefined") return true;
-
-    const warningText = contractDateWarnings
-      .map((issue) => `• ${issue.message}`)
-      .join("\n");
-    const proceed = window.confirm(
-      `Pozor, datumy vypadají neobvykle:\n${warningText}\n\nChceš i přesto uložit?`
-    );
-    if (!proceed) {
-      setSaveMessage("Uložení zrušeno. Zkontroluj datumy.");
       return false;
     }
 
@@ -3403,7 +3393,13 @@ export default function CalculatorPage() {
         setAmountText(String(parsed.amount));
         applied += 1;
       }
-      if (parsedIsEndorsement) {
+      if (importProduct === "flexi") {
+        setRenovationOriginalPremiumText("");
+        setRenovationIncreaseText("");
+        setRenovationGuaranteeStatus("unknown");
+        if (typeof parsed.amount !== "number") setAmountText("");
+      }
+      if (parsedIsEndorsement || importProduct === "flexi") {
         setRefreshOriginalOpen(false);
         setRefreshOriginalContractNumber("");
         setRefreshOriginalMissingInSystem(false);
@@ -4135,6 +4131,9 @@ export default function CalculatorPage() {
     setContractSignedDate(parsedPdfTextValue(parsed, "contractSignedDate"));
     setStornoDate("");
     setAmountText(amount != null ? String(amount) : "");
+    setRenovationOriginalPremiumText("");
+    setRenovationIncreaseText("");
+    setRenovationGuaranteeStatus("unknown");
     if (parsedFrequency && allowedFrequencies(reviewProduct).includes(parsedFrequency)) {
       setFrequency(parsedFrequency);
     } else {
@@ -4603,6 +4602,9 @@ export default function CalculatorPage() {
             productDetected,
             detectionConfidence,
           });
+          if (importProduct === "flexi" && isReplacementPdf) {
+            rowWarnings.push("Pro renovaci FLEXI doplň pojistné z původní smlouvy; navýšení se dopočítá automaticky.");
+          }
           if (dateErrors.length > 0) {
             finishRow(
               index,
@@ -5749,6 +5751,66 @@ export default function CalculatorPage() {
 
   const saveContractEntry = useContractSave();
 
+  const reviewContractBeforeSave = () => {
+    const reviewYears = endorsementDraft ? endorsementDraft.durationYears : durationYears;
+    const reviewMonths = endorsementDraft ? endorsementDraft.durationMonths : durationMonths;
+    const amountLabel = product === "comfortcc"
+      ? comfortGradual ? "1 % z poplatku v 1. platbě" : "Poplatek"
+      : product === "conseqzenit" ? "Měsíční příspěvek klienta"
+      : isLifeProduct ? "Měsíční pojistné" : "Pojistné za platební období";
+    const rows = [
+      { label: "Klient", value: clientName.trim() },
+      { label: "Produkt", value: productLabel(product) },
+      { label: "Číslo smlouvy", value: contractNumber.trim() },
+      { label: "Typ záznamu", value: isInheritedContractMode ? "Převzatá smlouva" : endorsementDraft ? "Dodatek" : originalReplacementWorkflowActive ? originalReplacementLabel(product) : "Nová smlouva" },
+      { label: amountLabel, value: formatMoneyResult(parseNumber(amountText)) },
+      { label: "Frekvence plateb", value: frequencyLabel(frequency) },
+      { label: "Datum sjednání", value: formatIsoDay(contractSignedDate.trim()) },
+      { label: "Počátek", value: formatIsoDay(policyStartDate.trim()) },
+    ];
+    if (policyEndDate.trim()) rows.push({ label: "Konec smlouvy", value: formatIsoDay(policyEndDate.trim()) });
+    if (stornoDate.trim() && !endorsementDraft) rows.push({ label: "Datum storna", value: formatIsoDay(stornoDate.trim()) });
+    if (shouldShowDuration(product)) rows.push({ label: "Doba trvání", value: durationYearsLabel(reviewYears ?? normalizedDurationYears(product, reviewYears)) ?? "—" });
+    if (shouldShowDurationMonths(product)) rows.push({ label: "Doba trvání v měsících", value: String(normalizedDurationMonths(product, reviewMonths)) });
+    if (product === "comfortcc") {
+      rows.push({ label: "Pravidelná platba", value: formatMoneyResult(parseNumber(comfortPaymentText)) });
+      if (comfortGradual && parseNumber(comfortTargetAmountText) > 0) rows.push({ label: "Cílová částka", value: formatMoneyResult(parseNumber(comfortTargetAmountText)) });
+    }
+    if (originalReplacementWorkflowActive) {
+      rows.push({ label: "Původní smlouva", value: refreshOriginalMissingInSystem ? "Není v systému" : refreshOriginalContractNumber.trim() });
+    }
+    if (flexiRenovationBase) {
+      rows.push(
+        { label: "Původní měsíční pojistné", value: formatMoneyResult(flexiRenovationBase.originalMonthlyPremium) },
+        { label: "Měsíční navýšení", value: formatMoneyResult(flexiRenovationBase.premiumIncreaseMonthly) },
+      );
+    }
+    if (endorsementDraft) {
+      rows.push(
+        { label: "Původní pojistné", value: formatMoneyResult(endorsementDraft.previousPremiumAmount) },
+        { label: "Změna pojistného", value: formatMoneyResult(endorsementDraft.deltaAmount) },
+      );
+    }
+    if (isInheritedContractMode) rows.push({ label: "Datum převzetí", value: formatIsoDay(inheritedEffectiveDate) });
+    if (tipContractConfig) rows.push({ label: "Tipař a podíl", value: `${tipContractConfig.tipsterName || tipContractConfig.tipsterEmail || "Tipař"} · ${tipContractConfig.tipsterPercent} %` });
+    rows.push({ label: "Vlastník smlouvy", value: selectedSaveOwnerLabel });
+    if (importedContractPdfFile) rows.push({ label: "Přiložené PDF", value: importedContractPdfFile.name });
+    setValidationError(null);
+    setMissingFields([]);
+    return requestReview({
+      title: endorsementDraft ? "Rekapitulace dodatku" : "Rekapitulace smlouvy",
+      rows,
+      warnings: [
+        ...buildContractReviewWarnings({
+          product, clientName, contractNumber, amount: parseNumber(amountText), frequency,
+          originalContractNumber: originalReplacementWorkflowActive ? refreshOriginalContractNumber : null,
+          clientNameMatches: clientNameLookup.matches,
+        }),
+        ...contractDateWarnings.map((issue) => issue.message),
+      ],
+    });
+  };
+
   const handleSaveEndorsement = async () => {
     if (!user || !endorsementDraft) return;
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user.email);
@@ -5840,6 +5902,8 @@ export default function CalculatorPage() {
       setEndorsementDraftModalOpen(false);
       return;
     }
+
+    if (!(await reviewContractBeforeSave())) return;
 
     setSavingIncludesPdfAttachment(Boolean(importedContractPdfFile));
     setSavingStage("preparing");
@@ -6153,6 +6217,8 @@ export default function CalculatorPage() {
       return;
     }
     if (!validateTimelineBeforeSave()) return;
+
+    if (!skipDuplicateCheck && !(await reviewContractBeforeSave())) return;
 
     const neonNumberOrNull = (valueText: string) => {
       const trimmed = valueText.trim();
@@ -8585,6 +8651,7 @@ export default function CalculatorPage() {
   
     return (
     <AppLayout active="calc" embedded={statementEmbedMode}>
+      {contractReview && <CalculatorContractReviewModal review={contractReview} onResolve={resolveReview} />}
       <ContractSaveSuccessOverlay
         visible={Boolean(saveSuccessFlash)}
         celebrationKey={contractSaveCelebrationKey}
@@ -9118,6 +9185,8 @@ export default function CalculatorPage() {
               isAddContractMode &&
               hasSelectedProduct &&
               !saving &&
+              !contractReview &&
+              !pdfImporting &&
               !autoBulkImporting &&
               parseNumber(amountText) > 0 &&
               !autoHullSumNeedsInput &&
