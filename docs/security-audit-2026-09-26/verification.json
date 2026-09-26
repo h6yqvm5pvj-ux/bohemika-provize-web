@@ -1,0 +1,926 @@
+{
+  "checkedAt": "2026-09-26T08:05:02.411Z",
+  "projectId": "bohemikasmlouvy",
+  "productionChanges": false,
+  "findings": [
+    {
+      "id": "CF-01",
+      "severity": "high",
+      "status": "confirmed-open",
+      "title": "Team message handler lacks authentication and recipient authorization"
+    },
+    {
+      "id": "CF-02",
+      "severity": "high",
+      "status": "confirmed-open",
+      "title": "Public AI handler lacks authentication and application rate limits"
+    },
+    {
+      "id": "CF-03",
+      "severity": "high",
+      "status": "confirmed-open",
+      "title": "Five functions omit MFA, account eligibility and revocation checks"
+    },
+    {
+      "id": "IAM-01",
+      "severity": "high",
+      "status": "confirmed-open",
+      "title": "Shared Editor runtime and project-wide service account impersonation"
+    },
+    {
+      "id": "IAM-02",
+      "severity": "medium",
+      "status": "confirmed-open",
+      "title": "Two long-lived enabled service account keys"
+    },
+    {
+      "id": "CF-04",
+      "severity": "medium",
+      "status": "confirmed-open",
+      "title": "Webhook repeats entitlement extension for duplicate invoice",
+      "emptySecretFailOpen": "code-only; not observed in production"
+    }
+  ],
+  "cloudFunctions": {
+    "count": 12,
+    "firstGenerationCount": 0,
+    "globalFunctionListingComplete": true,
+    "unreachable": [],
+    "items": [
+      {
+        "name": "notifyAdminOnUserRequest",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.713655955Z",
+        "publicInvoker": false,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "notifyUnpaidContracts",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.248719174Z",
+        "publicInvoker": false,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "rsvVehicleLookup",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.369088930Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "cuzkLookupByAddress",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-08-14T12:44:53.550945668Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "sendTeamMessage",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.276089105Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "fakturoidWebhook",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.495040755Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "notifyAutoAnniversary",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.615750471Z",
+        "publicInvoker": false,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "aiAssistant",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.616344051Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "notifyManagerOnNewEntry",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-10T08:47:49.326811309Z",
+        "publicInvoker": false,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "sendTestPush",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.616018861Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "cuzkSuggestAddress",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-05-09T15:47:31.741720466Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      },
+      {
+        "name": "cuzkLookupByAdresniMisto",
+        "runtime": "nodejs22",
+        "updatedAt": "2026-08-14T12:44:45.161686520Z",
+        "publicInvoker": true,
+        "sharedEditorRuntime": true
+      }
+    ]
+  },
+  "humanCloudIdentity": {
+    "projectHumanOwners": 1,
+    "ownerAccountType": "personal-google-account",
+    "organizationAncestor": false,
+    "mfaStatus": "unverified-awaiting-account-settings-confirmation",
+    "additionalHumanBindingsInInspectedServicesAccountsAndSecrets": 0
+  },
+  "serviceAccounts": {
+    "listedCount": 3,
+    "perAccountPoliciesRead": true,
+    "projectDenyPoliciesCount": 0,
+    "sharedFunctionRuntimeSecretAccessCount": 4,
+    "userManagedKeys": [
+      {
+        "accountLabel": "firebase-adminsdk",
+        "enabled": true,
+        "createdAt": "2026-01-15T15:44:03Z",
+        "expiresAt": "9999-12-31T23:59:59Z",
+        "ageDays": 253
+      },
+      {
+        "accountLabel": "firebase-adminsdk",
+        "enabled": true,
+        "createdAt": "2026-01-17T19:07:50Z",
+        "expiresAt": "9999-12-31T23:59:59Z",
+        "ageDays": 251
+      }
+    ]
+  },
+  "verification": {
+    "productionHttpRequests": 40,
+    "productionStatuses": {
+      "400": 8,
+      "401": 14,
+      "403": 8,
+      "500": 10
+    },
+    "productionHttpResults": [
+      {
+        "name": "notifyAdminOnUserRequest",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyAdminOnUserRequest",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyUnpaidContracts",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyUnpaidContracts",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "rsvVehicleLookup",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "rsvVehicleLookup",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "DATAOVOZIDLECH_CALL_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "rsvVehicleLookup",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "rsvVehicleLookup",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "DATAOVOZIDLECH_CALL_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAddress",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAddress",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "ADDRESS_LOOKUP_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAddress",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAddress",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "ADDRESS_LOOKUP_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTeamMessage",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "missing",
+        "status": 400,
+        "bodyCode": "Chybí managerEmail.",
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTeamMessage",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 400,
+        "bodyCode": "Chybí managerEmail.",
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTeamMessage",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "missing",
+        "status": 400,
+        "bodyCode": "Chybí managerEmail.",
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTeamMessage",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 400,
+        "bodyCode": "Chybí managerEmail.",
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "fakturoidWebhook",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "missing",
+        "status": 401,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "fakturoidWebhook",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 401,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "fakturoidWebhook",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "missing",
+        "status": 401,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "fakturoidWebhook",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 401,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyAutoAnniversary",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyAutoAnniversary",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "aiAssistant",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "missing",
+        "status": 400,
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "aiAssistant",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 400,
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "aiAssistant",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "missing",
+        "status": 400,
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "aiAssistant",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 400,
+        "emptyInputRejected": true,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "notifyManagerOnNewEntry",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "notifyManagerOnNewEntry",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 403,
+        "emptyInputRejected": false,
+        "allowOrigin": null
+      },
+      {
+        "name": "sendTestPush",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTestPush",
+        "kind": "cloudfunctions",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "INTERNAL",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTestPush",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "sendTestPush",
+        "kind": "cloudrun",
+        "method": "POST",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "INTERNAL",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkSuggestAddress",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkSuggestAddress",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "SUGGEST_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkSuggestAddress",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkSuggestAddress",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "SUGGEST_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAdresniMisto",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAdresniMisto",
+        "kind": "cloudfunctions",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "CUZK_CALL_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAdresniMisto",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "missing",
+        "status": 401,
+        "bodyCode": "UNAUTHENTICATED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      },
+      {
+        "name": "cuzkLookupByAdresniMisto",
+        "kind": "cloudrun",
+        "method": "GET",
+        "auth": "invalid",
+        "status": 500,
+        "bodyCode": "CUZK_CALL_FAILED",
+        "emptyInputRejected": false,
+        "allowOrigin": "*"
+      }
+    ],
+    "offlineReproductionCases": 32,
+    "offlineMode": "exact deployed code, stubbed dependencies, no network",
+    "offlineSourceHashes": {
+      "default": "16ca381346eefcfa3708608444d68ddfc4e67a6c0c457de3545a5a70c7a4e1a3",
+      "cuzk": "c7a5052b4628eb7cd849fc1d1c4ff56017a10c25f249fa667aacbb036daa9212"
+    },
+    "offlineResults": [
+      {
+        "test": "aiAssistant missing authentication",
+        "status": 200,
+        "authChecks": 0,
+        "simulatedPaidApiCalls": 1
+      },
+      {
+        "test": "aiAssistant invalid authentication",
+        "status": 200,
+        "authChecks": 0,
+        "simulatedPaidApiCalls": 1
+      },
+      {
+        "test": "sendTeamMessage missing authentication and unrelated recipient",
+        "status": 200,
+        "authChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "sendTeamMessage invalid authentication and unrelated recipient",
+        "status": 200,
+        "authChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "cuzkSuggestAddress: no-mfa",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkSuggestAddress: unverified",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkSuggestAddress: revoked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkSuggestAddress: disabled",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkSuggestAddress: blocked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAddress: no-mfa",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAddress: unverified",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAddress: revoked",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAddress: disabled",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAddress: blocked",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAdresniMisto: no-mfa",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAdresniMisto: unverified",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAdresniMisto: revoked",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAdresniMisto: disabled",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "cuzkLookupByAdresniMisto: blocked",
+        "status": 400,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "rsvVehicleLookup: no-mfa",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "rsvVehicleLookup: unverified",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "rsvVehicleLookup: revoked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "rsvVehicleLookup: disabled",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "rsvVehicleLookup: blocked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 0
+      },
+      {
+        "test": "sendTestPush: no-mfa",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "sendTestPush: unverified",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "sendTestPush: revoked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "sendTestPush: disabled",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "sendTestPush: blocked",
+        "status": 200,
+        "reachedHandlerAfterAuth": true,
+        "checkRevoked": false,
+        "currentAccountChecks": 0,
+        "simulatedPushes": 1
+      },
+      {
+        "test": "webhook configured secret rejects missing authentication",
+        "status": 401,
+        "writes": 0
+      },
+      {
+        "test": "webhook fails open if configured secret is empty",
+        "status": 200,
+        "simulatedWrites": 1
+      },
+      {
+        "test": "webhook repeats entitlement extension for same invoice",
+        "statuses": [
+          200,
+          200
+        ],
+        "simulatedWrites": 2,
+        "secondPaidUntilLater": true
+      }
+    ]
+  },
+  "sourceArchives": [
+    {
+      "name": "notifyAdminOnUserRequest",
+      "status": 200,
+      "generation": "1778164018277638",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "notifyUnpaidContracts",
+      "status": 200,
+      "generation": "1778164066857269",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "rsvVehicleLookup",
+      "status": 200,
+      "generation": "1778164066714715",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "cuzkLookupByAddress",
+      "status": 200,
+      "generation": "1786711485728748",
+      "bytes": 66102,
+      "sha256": "abbc648b4230bb2a7329fd703803d93f1be1c1176ed0aa1a30c5ae9eaf008835"
+    },
+    {
+      "name": "sendTeamMessage",
+      "status": 200,
+      "generation": "1778164066641726",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "fakturoidWebhook",
+      "status": 200,
+      "generation": "1778164066545869",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "notifyAutoAnniversary",
+      "status": 200,
+      "generation": "1778164066778660",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "aiAssistant",
+      "status": 200,
+      "generation": "1778164017940077",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "notifyManagerOnNewEntry",
+      "status": 200,
+      "generation": "1778402813351910",
+      "bytes": 66040,
+      "sha256": "8466addb0c328073667b6a0a0b882ed2d8df939467bc50c6abbeb0a38b094a79"
+    },
+    {
+      "name": "sendTestPush",
+      "status": 200,
+      "generation": "1778164066560007",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "cuzkSuggestAddress",
+      "status": 200,
+      "generation": "1778164017817620",
+      "bytes": 65971,
+      "sha256": "184f458002dfe76267b41a9f7476daed4853fa1873f12f9f5a8e13374cd8b55f"
+    },
+    {
+      "name": "cuzkLookupByAdresniMisto",
+      "status": 200,
+      "generation": "1786711434192021",
+      "bytes": 66102,
+      "sha256": "abbc648b4230bb2a7329fd703803d93f1be1c1176ed0aa1a30c5ae9eaf008835"
+    }
+  ],
+  "limitations": {
+    "realUserTokensUsed": false,
+    "productionNotificationsSent": false,
+    "paidAiCallsMade": false,
+    "clientRecordsChanged": false,
+    "secretsValuesRead": false,
+    "incidentHistoryInvestigated": false,
+    "cloudAssetApi": {
+      "status": 403,
+      "reasons": [
+        "SERVICE_DISABLED"
+      ]
+    },
+    "standaloneCloudRunGlobalInventoryComplete": false,
+    "cloudRunUnreachableRegions": [
+      "europe-west15",
+      "me-central2",
+      "us-central2",
+      "us-east7",
+      "us-west8"
+    ]
+  },
+  "references": [
+    "https://firebase.google.com/docs/auth/admin/verify-id-tokens",
+    "https://docs.cloud.google.com/iam/docs/best-practices-service-accounts",
+    "https://docs.cloud.google.com/docs/authentication/mfa-requirement"
+  ],
+  "phase": "historical-before-remediation",
+  "currentStatusDocument": "remediation-verification.json"
+}

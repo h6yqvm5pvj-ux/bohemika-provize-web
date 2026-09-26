@@ -1,0 +1,106 @@
+{
+  "project": "bohemikasmlouvy",
+  "runtimeAccounts": {
+    "aiAssistant": "bf-ai-assist",
+    "sendTeamMessage": "bf-team",
+    "sendTestPush": "bf-test-push",
+    "cuzkSuggestAddress": "bf-cuzk-suggest",
+    "cuzkLookupByAddress": "bf-cuzk-address",
+    "cuzkLookupByAdresniMisto": "bf-cuzk-place",
+    "rsvVehicleLookup": "bf-vehicle",
+    "fakturoidWebhook": "bf-billing",
+    "notifyAdminOnUserRequest": "bf-notify-admin",
+    "notifyManagerOnNewEntry": "bf-notify-manager",
+    "notifyAutoAnniversary": "bf-notify-anniversary",
+    "notifyUnpaidContracts": "bf-notify-unpaid"
+  },
+  "buildAccount": "bf-build",
+  "customRoles": [
+    {
+      "roleId": "bohemikaFunctionsData",
+      "role": {
+        "title": "bohemikaFunctionsData",
+        "description": "Least privilege Cloud Functions runtime",
+        "stage": "GA",
+        "includedPermissions": [
+          "datastore.databases.get",
+          "datastore.databases.getMetadata",
+          "datastore.entities.get",
+          "datastore.entities.list",
+          "datastore.entities.create",
+          "datastore.entities.update"
+        ]
+      }
+    },
+    {
+      "roleId": "bohemikaFunctionsAuth",
+      "role": {
+        "title": "bohemikaFunctionsAuth",
+        "description": "Least privilege Cloud Functions runtime",
+        "stage": "GA",
+        "includedPermissions": [
+          "firebaseauth.users.get"
+        ]
+      }
+    },
+    {
+      "roleId": "bohemikaFunctionsMessaging",
+      "role": {
+        "title": "bohemikaFunctionsMessaging",
+        "description": "Least privilege Cloud Functions runtime",
+        "stage": "GA",
+        "includedPermissions": [
+          "cloudmessaging.messages.create"
+        ]
+      }
+    },
+    {
+      "roleId": "bohemikaAppRuntime",
+      "role": {
+        "title": "Bohemika application runtime",
+        "description": "Application data, account operations and messaging; no infrastructure administration",
+        "stage": "GA",
+        "includedPermissions": [
+          "datastore.databases.get",
+          "datastore.databases.getMetadata",
+          "datastore.entities.allocateIds",
+          "datastore.entities.create",
+          "datastore.entities.delete",
+          "datastore.entities.get",
+          "datastore.entities.list",
+          "datastore.entities.update",
+          "firebaseauth.configs.get",
+          "firebaseauth.users.create",
+          "firebaseauth.users.createSession",
+          "firebaseauth.users.delete",
+          "firebaseauth.users.get",
+          "firebaseauth.users.sendEmail",
+          "firebaseauth.users.update",
+          "cloudmessaging.messages.create",
+          "firebase.projects.get",
+          "resourcemanager.projects.get"
+        ]
+      }
+    },
+    {
+      "roleId": "bohemikaAppStorage",
+      "role": {
+        "title": "Bohemika application objects",
+        "description": "Application objects only; no ACL, bucket administration or deletion",
+        "stage": "GA",
+        "includedPermissions": [
+          "storage.buckets.get",
+          "storage.objects.create",
+          "storage.objects.delete",
+          "storage.objects.get",
+          "storage.objects.list",
+          "storage.objects.update"
+        ]
+      }
+    }
+  ],
+  "appStorageBucketScopes": [
+    "bohemikasmlouvy.firebasestorage.app"
+  ],
+  "operatorManagedConfiguration": true
+}

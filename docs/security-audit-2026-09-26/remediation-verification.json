@@ -1,0 +1,319 @@
+{
+  "checkedAt": "2026-09-26T08:47:25.725Z",
+  "projectId": "bohemikasmlouvy",
+  "phase": "after-cloud-remediation",
+  "productionChanges": true,
+  "findings": [
+    {
+      "id": "CF-01",
+      "status": "fixed-deployed-verified"
+    },
+    {
+      "id": "CF-02",
+      "status": "fixed-deployed-verified"
+    },
+    {
+      "id": "CF-03",
+      "status": "fixed-deployed-verified"
+    },
+    {
+      "id": "CF-04",
+      "status": "fixed-deployed-verified"
+    },
+    {
+      "id": "IAM-01",
+      "status": "fixed-deployed-verified"
+    },
+    {
+      "id": "IAM-02",
+      "status": "partial-new-key-configured-old-keys-still-enabled-awaiting-consumer-confirmation"
+    }
+  ],
+  "functions": [
+    {
+      "name": "notifyAdminOnUserRequest",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-notify-admin@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:57.875301564Z",
+      "publicInvoker": false
+    },
+    {
+      "name": "notifyUnpaidContracts",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-notify-unpaid@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:29:04.065058903Z",
+      "publicInvoker": false
+    },
+    {
+      "name": "rsvVehicleLookup",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-vehicle@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:56.715148950Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "cuzkLookupByAddress",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-cuzk-address@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:59.581437020Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "sendTeamMessage",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-team@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:26:35.193659095Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "fakturoidWebhook",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-billing@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:57.368577587Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "notifyAutoAnniversary",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-notify-anniversary@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:29:04.934337443Z",
+      "publicInvoker": false
+    },
+    {
+      "name": "aiAssistant",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-ai-assist@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:26:38.194591103Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "notifyManagerOnNewEntry",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-notify-manager@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:29:01.386482271Z",
+      "publicInvoker": false
+    },
+    {
+      "name": "sendTestPush",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-test-push@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:47.498247415Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "cuzkSuggestAddress",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-cuzk-suggest@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:51.452093737Z",
+      "publicInvoker": true
+    },
+    {
+      "name": "cuzkLookupByAdresniMisto",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "serviceAccount": "bf-cuzk-place@bohemikasmlouvy.iam.gserviceaccount.com",
+      "sourceHash": "902bad5edd3973e8b19aa0ee5f8ec6879d0eb435a41104ce645d277c7975078f",
+      "sourceMatches": true,
+      "secretVersionsPreserved": true,
+      "updateTime": "2026-09-26T08:28:51.618258773Z",
+      "publicInvoker": true
+    }
+  ],
+  "tests": {
+    "functionUnitAndHandlerTestsPassed": 58,
+    "firestoreEmulatorConcurrencyTestsPassed": 2,
+    "directProductionHttp": {
+      "checkedAt": "2026-09-26T08:31:24.744Z",
+      "count": 40,
+      "statuses": {
+        "401": 32,
+        "403": 8
+      },
+      "allUnauthorizedRejected": true
+    },
+    "typescript": "passed",
+    "lint": {
+      "errors": 0,
+      "existingWarnings": 4
+    },
+    "runtimeIdentitiesValidated": 12,
+    "applicationIam": {
+      "at": "2026-09-26T08:46:23.260Z",
+      "checks": [
+        {
+          "name": "application permissions allowed",
+          "ok": true
+        },
+        {
+          "name": "infrastructure permissions denied",
+          "ok": true
+        },
+        {
+          "name": "object operations allowed",
+          "ok": true
+        },
+        {
+          "name": "bucket and object ACL changes denied",
+          "ok": true
+        },
+        {
+          "name": "storage read/write",
+          "ok": true
+        },
+        {
+          "name": "storage metadata update",
+          "ok": true
+        },
+        {
+          "name": "storage cleanup",
+          "ok": true
+        },
+        {
+          "name": "firestore transaction",
+          "ok": true
+        },
+        {
+          "name": "firestore query",
+          "ok": true
+        },
+        {
+          "name": "firestore cleanup",
+          "ok": true
+        },
+        {
+          "name": "auth create/update/get",
+          "ok": true
+        },
+        {
+          "name": "local custom-token signing",
+          "ok": true
+        },
+        {
+          "name": "auth cleanup",
+          "ok": true
+        },
+        {
+          "name": "auth listUsers with narrow role",
+          "ok": true
+        }
+      ],
+      "appProjectRoles": [
+        "projects/bohemikasmlouvy/roles/bohemikaAppRuntime"
+      ],
+      "buckets": [
+        "bohemikasmlouvy.firebasestorage.app"
+      ]
+    }
+  },
+  "impersonationDenied": true,
+  "customTokenSigningWorks": true,
+  "keys": {
+    "newKeyConfiguredLocally": true,
+    "newKeyConfiguredVercelTargets": [
+      "production",
+      "preview",
+      "development"
+    ],
+    "newKeyGoogleApiVerified": true,
+    "legacyEnabledKeysRemaining": 2,
+    "productionWebDeploymentReceipt": ".tmp/cloud-fix-20260926/production-verification.json"
+  },
+  "cloudOwnerMfa": "unverified-requires-owner-account-settings-confirmation",
+  "limits": {
+    "paidAiCallsMade": false,
+    "realNotificationsSent": false,
+    "clientRecordsChanged": false,
+    "syntheticCanariesCleaned": true,
+    "historicalInvoiceBackfillComplete": false,
+    "fullCloudAssetInventoryAvailable": false,
+    "globalStandaloneRunInventoryComplete": false
+  },
+  "evidenceDirectory": ".tmp/cloud-fix-20260926",
+  "references": [
+    "https://firebase.google.com/docs/projects/iam/permissions",
+    "https://docs.cloud.google.com/storage/docs/access-control/iam-permissions",
+    "https://docs.cloud.google.com/docs/authentication/mfa-requirement"
+  ],
+  "sourceComparison": [
+    {
+      "file": "index.js",
+      "exact": false,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "a5c2a381f6009c77822ad58ea353f0f58e8d85db782674a7b578d69b5973d59c"
+    },
+    {
+      "file": "security.js",
+      "exact": true,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "0511f4f376548b63ea327be50da93b478d05edc132b3f51c74187a4b708bc482"
+    },
+    {
+      "file": "billing.js",
+      "exact": true,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "f7827957ecf37ae0a864e5178fa3c6fee97cf6e91509deb849096a0e7e829203"
+    },
+    {
+      "file": "runtime.js",
+      "exact": true,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "38fa9c6212cb68c45d2ddee325756a0ca67ecad65018d558ea5a2f31fc538646"
+    },
+    {
+      "file": "package.json",
+      "exact": true,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "db6c8afd1ada9f01590da48300bc22b888b8c7be600717827ef6a2cdbbc3894d"
+    },
+    {
+      "file": "package-lock.json",
+      "exact": true,
+      "ignoringTrailingWhitespace": true,
+      "repositorySha256": "084d8b4e7387f1f69833eb23af4cffee5deb43de158f33788d0b06879acfd3ca"
+    }
+  ]
+}

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import nextEnv from "@next/env";
-import { cert } from "firebase-admin/app";
+import { operatorCredential, operatorProjectId } from "./lib/google-operator-credentials.mjs";
 
 const root = process.cwd();
 const mode = process.argv[2] || "prepare";
@@ -16,16 +16,8 @@ const API = "https://firebaserules.googleapis.com/v1/";
 async function main() {
   if (!["prepare", "deploy", "verify"].includes(mode)) throw new Error("Use prepare, deploy or verify, optionally followed by a plan directory.");
   nextEnv.loadEnvConfig(root, false, { info() {}, error() {} });
-  const credentials = process.env.FIREBASE_ADMIN_CREDENTIALS
-    ? JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS)
-    : {
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      };
-  const projectId = credentials.projectId || credentials.project_id;
-  if (!projectId || !/^[a-z][a-z0-9-]+$/.test(projectId)) throw new Error("Missing or invalid Firebase project ID.");
-  const access = await cert(credentials).getAccessToken();
+  const projectId = operatorProjectId();
+  const access = await operatorCredential().getAccessToken();
   const call = async (path, method = "GET", body) => {
     const response = await fetch(API + path, {
       method, headers: { Authorization: `Bearer ${access.access_token}`, "Content-Type": "application/json" },
