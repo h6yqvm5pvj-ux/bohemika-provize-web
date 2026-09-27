@@ -39,6 +39,19 @@ const profile = {
   accountType: "advisor", canChangePosition: false, adminFunction: false,
 };
 
+describe("server-owned home production summaries", () => {
+  it("denies direct reads and edits, including for a client-side owner administrator", async () => {
+    const path = "hallOfFameOwners/synthetic-owner/homeProduction/synthetic-month";
+    await seed(path, { summary: { current: { immediate: 123 } } });
+    for (const claims of [{}, { admin: true, adminRole: "owner" }]) {
+      const ref = doc(actor(EMAIL, claims), path);
+      await assertFails(getDoc(ref));
+      await assertFails(setDoc(ref, { summary: { current: { immediate: 999 } } }));
+      await assertFails(deleteDoc(ref));
+    }
+  });
+});
+
 describe("mandatory verified TOTP and persistent account blocks", () => {
   const contract = { userEmail: EMAIL, userId: UID, managerEmailSnapshot: "", managerChain: [], managerOverrides: [] };
   it.each([

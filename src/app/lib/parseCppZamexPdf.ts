@@ -1,3 +1,4 @@
+import type { PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseCppZamexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 import { parseCppHafanPdf } from "./parseCppHafanPdf";
@@ -11,6 +12,6 @@ export type CppZamexPdfResult = {
   frequency?: PaymentFrequency | null;
 };
 
-export async function parseCppZamexPdf(file: File): Promise<CppZamexPdfResult> {
-  return parseCppHafanPdf(file);
+export async function parseCppZamexPdf(file: File, options: PdfReadOptions = {}): Promise<CppZamexPdfResult> {
+  return parseCppHafanPdf(file, options);
 }

@@ -1,3 +1,4 @@
+import { DataFreshness } from "./DataFreshness";
 import styles from "./homeWidgets.module.css";
 import Image from "next/image";
 import { WalletCards } from "lucide-react";
@@ -9,6 +10,9 @@ import { LoadingProgressPanel } from "./LoadingProgressPanel";
 type Props = {
   language: AppLanguage;
   loading: boolean;
+  error?: string | null;
+  updatedAt?: number | null;
+  deferred?: boolean;
   grossAmount: number;
   stornoFundAmount: number;
   netAmount: number;
@@ -44,6 +48,9 @@ const EXPECTED_PAYOUT_COPY: Record<
 export function ExpectedPayoutSection({
   language,
   loading,
+  error,
+  updatedAt,
+  deferred = false,
   grossAmount,
   stornoFundAmount,
   netAmount,
@@ -63,7 +70,8 @@ export function ExpectedPayoutSection({
       {!loading && <Image src="/images/money-wallet.png" alt="" width={1268} height={1241} aria-hidden="true" className={`${styles.ghost} ${styles.walletGhost}`} />}
       <div className={styles.content}>
         <h2 className={styles.title}><span className={styles.icon}><WalletCards aria-hidden="true" /></span>{copy.title}</h2>
-        {loading ? <div className="mt-5"><LoadingProgressPanel title={copy.loadingTitle} description={copy.loadingDescription} accentLabel={copy.loadingAccent} visual="money" /></div> : (
+        <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} dark />
+        {deferred ? <p className="mt-5 text-sm text-slate-300">Výplata se načte při zobrazení.</p> : error && !updatedAt ? null : loading && !updatedAt ? <div className="mt-5"><LoadingProgressPanel title={copy.loadingTitle} description={copy.loadingDescription} accentLabel={copy.loadingAccent} visual="money" /></div> : (
           <div className={styles.payoutLayout}>
             <div>
               <p className={`${styles.label} ${styles.payoutPeriod}`}>{copy.netPayout} · {payoutPeriodLabel}</p>

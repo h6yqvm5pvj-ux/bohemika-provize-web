@@ -4,7 +4,7 @@ import { extractOcrLinesFromPdf } from "./pdfOcr";
 
 const mocks = vi.hoisted(() => ({
   createWorker: vi.fn(), recognize: vi.fn(), parameters: vi.fn(), terminate: vi.fn(),
-  getDocument: vi.fn(), getPage: vi.fn(), render: vi.fn(), destroy: vi.fn(), cleanup: vi.fn(), viewport: vi.fn(),
+  getDocument: vi.fn(), getPage: vi.fn(), render: vi.fn(), cancelRender: vi.fn(), destroy: vi.fn(), cleanup: vi.fn(), viewport: vi.fn(),
 }));
 vi.mock("tesseract.js", () => ({ createWorker: mocks.createWorker, PSM: { AUTO: "3", SINGLE_BLOCK: "6" } }));
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({ GlobalWorkerOptions: {}, getDocument: mocks.getDocument }));
@@ -28,7 +28,7 @@ beforeEach(() => {
   mocks.parameters.mockResolvedValue({}); mocks.terminate.mockResolvedValue(undefined);
   mocks.destroy.mockResolvedValue(undefined);
   mocks.viewport.mockImplementation(({ scale }) => ({ width: 600 * scale, height: 800 * scale }));
-  mocks.render.mockReturnValue({ promise: Promise.resolve() });
+  mocks.render.mockReturnValue({ promise: Promise.resolve(), cancel: mocks.cancelRender });
   mocks.getPage.mockResolvedValue({ getViewport: mocks.viewport, render: mocks.render, cleanup: mocks.cleanup });
   mocks.getDocument.mockReturnValue({ promise: Promise.resolve({ numPages: 2, getPage: mocks.getPage }), destroy: mocks.destroy });
   mocks.recognize.mockResolvedValue({ data: { text: " Synthetic  text\n", blocks: [{ paragraphs: [{ lines: [{ words: [{ text: "Synthetic", bbox: { x0: 26, y0: 52, x1: 78, y1: 78 } }] }] }] }] } });
@@ -58,6 +58,24 @@ describe("PDF OCR processing and cleanup", () => {
     });
     await extractOcrLinesFromPdf(file(), { maxPages: 1, scale: 10 });
     expect(mocks.recognize).toHaveBeenCalledOnce();
+  });
+
+  it("renders only the requested pages, preserving their order without duplicates", async () => {
+    await extractOcrLinesFromPdf(file(), { pageNumbers: [2, 2, 0, 99, 1] });
+    expect(mocks.getPage.mock.calls.map(call => call[0])).toEqual([2, 1]);
+    expect(mocks.recognize).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels a stalled render before releasing its canvas", async () => {
+    const controller = new AbortController();
+    mocks.render.mockReturnValue({ promise: new Promise(() => {}), cancel: mocks.cancelRender });
+    const rejected = expect(extractOcrLinesFromPdf(file(), { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(mocks.render).toHaveBeenCalledOnce());
+    controller.abort(); await rejected;
+    expect(mocks.cancelRender).toHaveBeenCalledOnce();
+    expect(mocks.destroy).toHaveBeenCalledOnce();
+    expect(canvases[0].width).toBe(0);
+    expect(mocks.recognize).not.toHaveBeenCalled();
   });
 
   it("cleans the document when worker initialization rejects", async () => {

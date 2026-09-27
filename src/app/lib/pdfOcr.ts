@@ -20,6 +20,7 @@ export type PdfOcrPage = {
 
 export type PdfOcrOptions = {
   maxPages?: number;
+  pageNumbers?: number[];
   scale?: number;
   languages?: string | string[];
   onProgress?: (progress: PdfOcrProgress) => void;
@@ -135,7 +136,11 @@ export async function extractOcrLinesFromPdf(
     loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
     const doc = await wait(loadingTask.promise);
     const maxPages = Number.isFinite(options.maxPages) ? Math.max(1, Math.floor(options.maxPages!)) : DEFAULT_MAX_PAGES;
-    const totalPages = Math.min(doc.numPages, maxPages);
+    const pageNumbers = options.pageNumbers
+      ? [...new Set(options.pageNumbers)].filter(number => Number.isInteger(number) && number >= 1 && number <= doc.numPages).slice(0, maxPages)
+      : Array.from({ length: Math.min(doc.numPages, maxPages) }, (_, index) => index + 1);
+    const totalPages = doc.numPages;
+    if (pageNumbers.length === 0) return { text: "", lines: [], pages: [] };
     const requestedScale = Number.isFinite(options.scale) && options.scale! > 0 ? options.scale! : DEFAULT_OCR_SCALE;
     const languages = ocrLanguagesToTesseractValue(options.languages ?? DEFAULT_OCR_LANGUAGES);
     let activePage = 0;
@@ -169,7 +174,7 @@ export async function extractOcrLinesFromPdf(
 
     const pageTexts: string[] = [];
     const pages: PdfOcrPage[] = [];
-    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+    for (const pageNumber of pageNumbers) {
       activePage = pageNumber;
       reportProgress(options.onProgress, {
         page: pageNumber,
@@ -183,6 +188,7 @@ export async function extractOcrLinesFromPdf(
       const scale = Math.min(requestedScale, Math.sqrt(MAX_CANVAS_PIXELS / (base.width * base.height)), MAX_CANVAS_SIDE / base.width, MAX_CANVAS_SIDE / base.height);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
+      let renderTask: import("pdfjs-dist/legacy/build/pdf.mjs").RenderTask | undefined;
       try {
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
@@ -191,7 +197,8 @@ export async function extractOcrLinesFromPdf(
           throw new Error("Nepodařilo se připravit canvas pro OCR.");
         }
 
-        await wait(page.render({ canvas, canvasContext: context, viewport }).promise);
+        renderTask = page.render({ canvas, canvasContext: context, viewport });
+        await wait(renderTask.promise);
         if (options.removeTableLines) removeTableLines(context, canvas.width, canvas.height);
         const {
           data: { text, blocks },
@@ -210,6 +217,7 @@ export async function extractOcrLinesFromPdf(
           )),
         });
       } finally {
+        renderTask?.cancel?.();
         canvas.width = 0;
         canvas.height = 0;
         page.cleanup();

@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseCppCestovkoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -130,27 +131,13 @@ const pickContractNumberAroundHeading = (
   return null;
 };
 
-export async function parseCppCestovkoPdf(file: File): Promise<CppCestovkoPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseCppCestovkoPdf(file: File, options: PdfReadOptions = {}): Promise<CppCestovkoPdfResult> {
+  const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
 
-  for (let i = 1; i <= doc.numPages; i += 1) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
+  for (let i = 1; i <= doc.pages.length; i += 1) {
+    const page = doc.pages[i - 1];
+    const content = { items: page.items };
     const text = content.items
       .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
       .filter(Boolean)

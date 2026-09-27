@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseDomexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -228,7 +229,7 @@ const pickDomexPolicyContractNumber = (lines: string[], asciiLines: string[]): s
 };
 
 async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
-  const content = await page.getTextContent();
+  const content = { items: page.items };
   const rawItems = (content?.items ?? []) as Array<{
     str?: unknown;
     transform?: number[];
@@ -285,26 +286,12 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
     .filter(Boolean);
 }
 
-export async function parseDomexPdf(file: File): Promise<DomexPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): Promise<DomexPdfResult> {
+  const doc = await readPdfText(file, options);
   const lines: string[] = [];
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
+  for (let i = 1; i <= doc.pages.length; i++) {
+    const page = doc.pages[i - 1];
     const pageLines = await extractLayoutLinesFromPage(page);
     lines.push(...pageLines);
   }

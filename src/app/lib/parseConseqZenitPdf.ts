@@ -1,5 +1,6 @@
 import type { PaymentFrequency } from "../types/domain";
-import type { PdfOcrPage, PdfOcrProgress } from "./pdfOcr";
+import type { PdfOcrPage } from "./pdfOcr";
+import { readPdfText, type PdfReadOptions, type PdfDocumentText } from "./pdfDocumentText";
 
 export type ConseqZenitPdfResult = {
   productDetected: boolean;
@@ -13,13 +14,10 @@ export type ConseqZenitPdfResult = {
   clientBirthDate: string | null;
   targetAge: number | null;
   ocrTextUsed: boolean;
+  pdfImportWarnings?: string[];
 };
 
-export type ConseqZenitPdfOptions = {
-  allowOcr?: boolean;
-  onOcrStart?: () => void;
-  onOcrProgress?: (progress: PdfOcrProgress) => void;
-};
+export type ConseqZenitPdfOptions = PdfReadOptions;
 
 type Word = PdfOcrPage["words"][number];
 type Row = { words: Word[]; text: string; y: number };
@@ -152,48 +150,25 @@ export function parseConseqZenitPages(pages: PdfOcrPage[], ocrTextUsed = false):
   };
 }
 
-// Keep OCR-derived values out of text-only imports, including concurrent reads.
-const ocrCache = new WeakMap<File, Promise<ConseqZenitPdfResult>>();
-const textCache = new WeakMap<File, Promise<ConseqZenitPdfResult>>();
+const toConseqPages = (document: PdfDocumentText): PdfOcrPage[] => document.pages.map(page => {
+  const words = page.ocrWords ?? page.items.filter(item => item.str.trim()).map(item => {
+    const height = item.height || Math.abs(item.transform[3]) || 8;
+    return { text: item.str, x: item.transform[4], y: page.height - item.transform[5] - height, width: item.width, height };
+  });
+  return { words, text: words.map(word => word.text).join(" ") };
+});
 
-export function parseConseqZenitPdf(file: File, options: ConseqZenitPdfOptions = {}): Promise<ConseqZenitPdfResult> {
-  const cache = options.allowOcr === false ? textCache : ocrCache;
-  const existing = cache.get(file);
-  if (existing) return existing;
-  const pending = readPdf(file, options).catch((error) => { cache.delete(file); throw error; });
-  cache.set(file, pending);
-  return pending;
-}
-
-async function readPdf(file: File, options: ConseqZenitPdfOptions): Promise<ConseqZenitPdfResult> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  if (typeof window !== "undefined" && !pdfjs.GlobalWorkerOptions.workerSrc) pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  const pages: PdfOcrPage[] = [];
-  try {
-    for (let number = 1; number <= doc.numPages; number++) {
-      const page = await doc.getPage(number);
-      const viewport = page.getViewport({ scale: 1 });
-      const content = await page.getTextContent();
-      const words: Word[] = content.items.flatMap((item) => {
-        if (!("str" in item) || !item.str.trim()) return [];
-        const height = item.height || Math.abs(item.transform[3]) || 8;
-        return [{ text: item.str, x: item.transform[4], y: viewport.height - item.transform[5] - height, width: item.width, height }];
-      });
-      pages.push({ words, text: words.map((word) => word.text).join(" ") });
-    }
-  } finally {
-    await doc.destroy();
-  }
-  const parsed = parseConseqZenitPages(pages);
+export async function parseConseqZenitPdf(file: File, options: ConseqZenitPdfOptions = {}): Promise<ConseqZenitPdfResult> {
+  const readOptions = { ...options, allowOcr: options.allowOcr ?? true };
+  const document = await readPdfText(file, readOptions);
+  const parsed = parseConseqZenitPages(toConseqPages(document), document.ocrTextUsed);
+  if (document.warnings.length) parsed.pdfImportWarnings = document.warnings;
   if (parsed.clientName && parsed.amount != null && parsed.policyEndDate && parsed.policyStartDate && parsed.contractSignedDate && parsed.contractNumber) return parsed;
-  if (options.allowOcr === false || typeof document === "undefined") return parsed;
-  options.onOcrStart?.();
-  const { extractOcrLinesFromPdf } = await import("./pdfOcr");
-  // The signature protocol and the DPS form precede the contractual terms.
-  const ocr = await extractOcrLinesFromPdf(file, { maxPages: 2, removeTableLines: true, onProgress: options.onOcrProgress });
-  const combined = pages.map((page, index) => ocr.pages[index] ?? page);
-  const scanned = parseConseqZenitPages(combined, true);
+  if (document.ocrTextUsed || !readOptions.allowOcr || typeof globalThis.document === "undefined") return parsed;
+  // Partly readable DPS tables can still require OCR. Keep native values when
+  // both sources exist, and preserve the product-specific first-two-page scope.
+  const scannedDocument = await readPdfText(file, { ...readOptions, ocrPages: [1, 2] });
+  const scanned = parseConseqZenitPages(toConseqPages(scannedDocument), scannedDocument.ocrTextUsed);
   const clientBirthDate = parsed.clientBirthDate ?? scanned.clientBirthDate;
   const targetAge = parsed.targetAge ?? scanned.targetAge;
   return {
@@ -207,5 +182,6 @@ async function readPdf(file: File, options: ConseqZenitPdfOptions): Promise<Cons
     clientBirthDate,
     targetAge,
     policyEndDate: conseqZenitMaturityDate(clientBirthDate, targetAge),
+    ...(scannedDocument.warnings.length ? { pdfImportWarnings: scannedDocument.warnings } : {}),
   };
 }

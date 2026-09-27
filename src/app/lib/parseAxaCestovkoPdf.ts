@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseAxaCestovkoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -165,27 +166,13 @@ const pickTotalPremium = (lines: string[], asciiLines: string[]): number | null 
   return null;
 };
 
-export async function parseAxaCestovkoPdf(file: File): Promise<AxaCestovkoPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseAxaCestovkoPdf(file: File, options: PdfReadOptions = {}): Promise<AxaCestovkoPdfResult> {
+  const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
 
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const content = await page.getTextContent();
+  for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
+    const page = doc.pages[pageNumber - 1];
+    const content = { items: page.items };
     const text = content.items
       .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
       .filter(Boolean)

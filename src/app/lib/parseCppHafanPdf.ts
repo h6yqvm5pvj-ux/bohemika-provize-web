@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseCppHafanPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -91,9 +92,9 @@ const sortItems = (items: PositionedTextItem[]) =>
 async function extractPositionedItems(doc: any): Promise<PositionedTextItem[]> {
   const items: PositionedTextItem[] = [];
 
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const content = await page.getTextContent();
+  for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
+    const page = doc.pages[pageNumber - 1];
+    const content = { items: page.items };
     const rawItems = (content?.items ?? []) as Array<{
       str?: unknown;
       transform?: number[];
@@ -203,22 +204,8 @@ const findClientName = (items: PositionedTextItem[]): string | null => {
   return normalizeName(value);
 };
 
-export async function parseCppHafanPdf(file: File): Promise<CppHafanPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseCppHafanPdf(file: File, options: PdfReadOptions = {}): Promise<CppHafanPdfResult> {
+  const doc = await readPdfText(file, options);
   const items = await extractPositionedItems(doc);
   const fullText = items.map((item) => item.str).join("\n");
   const fullTextAscii = stripDiacritics(fullText);

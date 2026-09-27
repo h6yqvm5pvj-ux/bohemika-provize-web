@@ -1,0 +1,4 @@
+.status { margin: 8px 0; font-size: 12px; line-height: 1.5; color: #64748b; }
+.dark { color: #cbd5e1; }
+.warning { color: #92400e; }
+.dark.warning { color: #fde68a; }

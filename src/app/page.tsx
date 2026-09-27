@@ -77,10 +77,14 @@ import {
   type TeamLeaderboardEntry,
 } from "./home/types";
 
+import { DeferredHomeWidget } from "./home/components/DeferredHomeWidget";
+import { ExpectedPayoutSection } from "./home/components/ExpectedPayoutSection";
+
 const GoldWidget = dynamic(
   () => import("./home/components/GoldWidget").then((mod) => mod.GoldWidget),
   { ssr: false }
 );
+
 const ExpectedPayoutWidget = dynamic(
   () =>
     import("./home/components/ExpectedPayoutWidget").then(
@@ -602,6 +606,7 @@ export default function HomePage() {
     setUserMeta,
     myEntries,
     teamEntries,
+    monthlyLeaderboard,
     hasTeam,
     myPremiums,
     teamPremiums,
@@ -615,6 +620,11 @@ export default function HomePage() {
     teamImmediateSum,
     teamImmediatePrevSum,
     summaryLoading,
+    summaryError,
+    summaryUpdatedAt,
+    summaryRefreshing,
+    historyUpdatedAt,
+    historyError,
     tipSummaryLoading,
     tipSummaryError,
     historyLoading,
@@ -1111,6 +1121,7 @@ export default function HomePage() {
     goldData?.czkPerOz && goldChangePct != null ? (goldData.czkPerOz * goldChangePct) / 100 : null;
   const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
   const homeRefreshBusy =
+    summaryRefreshing ||
     summaryLoading ||
     tipSummaryLoading ||
     historyLoading ||
@@ -1179,6 +1190,9 @@ export default function HomePage() {
           <ProductionSummarySection
             language={language}
             loading={summaryLoading}
+            error={summaryError}
+            updatedAt={summaryUpdatedAt}
+            refreshing={summaryRefreshing}
             tipSummaryLoading={tipSummaryLoading}
             tipSummaryError={tipSummaryError}
             showTeamBox={showTeamBox}
@@ -1209,7 +1223,7 @@ export default function HomePage() {
             progress={progress}
             progressTone={progressTone}
             loading={summaryLoading || (showTeamBox && tipSummaryLoading)}
-            unavailable={showTeamBox && Boolean(tipSummaryError)}
+            unavailable={Boolean(summaryError) || (showTeamBox && Boolean(tipSummaryError))}
             isLiteUI={isLiteUI}
             onSaveGoal={saveMonthlyGoal}
           />
@@ -1217,22 +1231,29 @@ export default function HomePage() {
       case "expectedPayout":
         if (!showExpectedPayoutSection) return null;
         return (
-          <ExpectedPayoutWidget
-            language={language}
-            user={user}
-            advisorDataEmail={advisorDataEmail}
-            homeReloadKey={homeReloadKey}
-            periodLabel={`${monthLabelCapitalized} ${year}`}
-            isLiteUI={isLiteUI}
-            onLoadingChange={setExpectedPayoutLoading}
-          />
+          <DeferredHomeWidget key={`${user.uid}|${advisorDataEmail}`} placeholder={
+            <ExpectedPayoutSection language={language} loading deferred grossAmount={0} stornoFundAmount={0}
+              netAmount={0} periodLabel={`${monthLabelCapitalized} ${year}`} isLiteUI={isLiteUI} />
+          }>
+            <ExpectedPayoutWidget
+              language={language}
+              user={user}
+              advisorDataEmail={advisorDataEmail}
+              homeReloadKey={homeReloadKey}
+              periodLabel={`${monthLabelCapitalized} ${year}`}
+              isLiteUI={isLiteUI}
+              onLoadingChange={setExpectedPayoutLoading}
+            />
+          </DeferredHomeWidget>
         );
       case "leaderboard":
         if (!showLeaderboardSection) return null;
         return (
           <TeamLeaderboardSection
             language={language}
-            loading={historyLoading}
+            loading={lbRange === "month" ? summaryRefreshing : historyLoading}
+            updatedAt={lbRange === "month" ? summaryUpdatedAt : historyUpdatedAt}
+            error={lbRange === "month" ? summaryError : historyError}
             entries={leaderboardEntries}
             leaderboardLabel={leaderboardLabel}
             lbProductFilter={lbProductFilter}
@@ -1407,7 +1428,14 @@ export default function HomePage() {
   // ---------- žebříček týmu ----------
 
   const leaderboardEntries: TeamLeaderboardEntry[] = useMemo(() => {
-    if (!isManager || !hasTeam || teamEntries.length === 0) return [];
+    if (!isManager || !hasTeam) return [];
+    if (lbRange === "month" && monthlyLeaderboard) {
+      return monthlyLeaderboard.filter(row => lbProductFilter === "life" ? row.hasLife : row.hasOther).map(row => ({
+        email: row.email, name: cleanDisplayName(row.name) || nameFromEmail(row.email),
+        totalPremium: lbProductFilter === "life" ? row.life : row.other,
+      })).sort((a, b) => b.totalPremium - a.totalPremium);
+    }
+    if (teamEntries.length === 0) return [];
 
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -1484,7 +1512,7 @@ export default function HomePage() {
       .sort((a, b) => b.totalPremium - a.totalPremium);
 
     return rows;
-  }, [isManager, hasTeam, teamEntries, lbProductFilter, lbRange]);
+  }, [isManager, hasTeam, teamEntries, monthlyLeaderboard, lbProductFilter, lbRange]);
 
   const leaderboardLabel =
     lbProductFilter === "life"

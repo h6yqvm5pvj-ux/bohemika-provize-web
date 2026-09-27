@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 export type TerminationPolicyholderPdfData = {
   policyholderName: string;
   personalId: string;
@@ -204,23 +205,14 @@ export function extractTerminationPolicyholderFromLines(
 }
 
 export async function parseTerminationPolicyholderPdf(
-  file: File,
+  file: File, options: PdfReadOptions = {},
 ): Promise<TerminationPolicyholderPdfData> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-    }
-  }
-
-  const document = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const document = await readPdfText(file, options);
   const lines: string[] = [];
-  const pageCount = Math.min(document.numPages, 6);
+  const pageCount = Math.min(document.pages.length, 6);
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
+    const page = document.pages[pageNumber - 1];
+    const content = { items: page.items };
     content.items.forEach((item: unknown) => {
       const text =
         item && typeof item === "object" && "str" in item

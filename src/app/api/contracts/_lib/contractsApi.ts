@@ -1,4 +1,6 @@
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
+import { loadHomeProductionOwners, parseProductionWindow } from "@/lib/server/homeProduction";
+import { combineOwnerProduction } from "@/app/home/productionSummary";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
@@ -4064,7 +4066,7 @@ export async function handleContractsGet(
     namespace: "api:contracts:get",
     limit: CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
-  }, options);
+  }, { ...options, freshCashflowContext: options.freshCashflowContext || req.nextUrl.searchParams.get("homeSummary") === "1" });
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
@@ -4295,6 +4297,27 @@ export async function handleContractsGet(
     teamEmails,
     selectedSubordinates,
   });
+  if (search.get("homeSummary") === "1") {
+    const window = parseProductionWindow(search);
+    if (responseShape !== "home" || !window || cursor || hasContractListClientFilters(listFilters)) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné období souhrnu produkce." }, { status: 400 }));
+    }
+    const started = performance.now();
+    try {
+      const summaries = await loadHomeProductionOwners(adminDb!, owners, window, search.get("homeRefresh") === "1");
+      const summary = combineOwnerProduction(owners.map(owner => ({
+        email: owner, name: ownerNamesByEmail.get(owner) ?? null, summary: summaries.get(owner)!,
+      })), email, scopeParam === "team" ? "team" : "my");
+      return withRateLimit(NextResponse.json({
+        ok: true, scope: scopeParam, position, commissionMode: ctx.commissionMode,
+        hasTeam: teamEmails.length > 0, teamEmails, summary,
+        contracts: [], hasMore: false,
+      }, { headers: { "Cache-Control": "private, no-store", "Server-Timing": `home_production;dur=${(performance.now() - started).toFixed(1)}` } }));
+    } catch (error) {
+      console.warn("Měsíční souhrn produkce se nepodařilo načíst:", error);
+      return withRateLimit(NextResponse.json({ ok: false, error: "Produkci se nepodařilo načíst." }, { status: 503 }));
+    }
+  }
   const shouldFetchTeamInParallel = shouldFetchTeamContractsInParallel({
     scope: scopeParam,
     includeTeam,

@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 import type { PaymentFrequency } from "../types/domain";
 
 export type CppKomplexPdfResult = {
@@ -93,31 +94,19 @@ export function parseCppKomplexLines(lines: readonly string[]): CppKomplexPdfRes
   return result;
 }
 
-export async function parseCppKomplexPdf(file: File): Promise<CppKomplexPdfResult> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  if (typeof window !== "undefined" && !pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  }
-  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false });
-  try {
-    const document = await task.promise;
-    const lines: string[] = [];
-    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
-      const page = await document.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const rows: { y: number; items: { x: number; text: string }[] }[] = [];
-      for (const item of content.items) {
-        if (!("str" in item) || !item.str.trim()) continue;
-        const y = item.transform[5];
-        let row = rows.find(candidate => Math.abs(candidate.y - y) < 2);
-        if (!row) { row = { y, items: [] }; rows.push(row); }
-        row.items.push({ x: item.transform[4], text: item.str });
-      }
-      lines.push(...rows.sort((a, b) => b.y - a.y).map(row => row.items.sort((a, b) => a.x - b.x).map(item => item.text).join(" ")));
-      page.cleanup();
+export async function parseCppKomplexPdf(file: File, options: PdfReadOptions = {}): Promise<CppKomplexPdfResult> {
+  const document = await readPdfText(file, options);
+  const lines: string[] = [];
+  for (const page of document.pages) {
+    const rows: { y: number; items: { x: number; text: string }[] }[] = [];
+    for (const item of page.items) {
+      if (!item.str.trim()) continue;
+      const y = item.transform[5];
+      let row = rows.find(candidate => Math.abs(candidate.y - y) < 2);
+      if (!row) { row = { y, items: [] }; rows.push(row); }
+      row.items.push({ x: item.transform[4], text: item.str });
     }
-    return parseCppKomplexLines(lines);
-  } finally {
-    await task.destroy();
+    lines.push(...rows.sort((a, b) => b.y - a.y).map(row => row.items.sort((a, b) => a.x - b.x).map(item => item.text).join(" ")));
   }
+  return parseCppKomplexLines(lines);
 }

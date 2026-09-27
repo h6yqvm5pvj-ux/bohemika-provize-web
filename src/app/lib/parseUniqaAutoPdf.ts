@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseUniqaAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -231,7 +232,7 @@ const normalizeHullDeductibleText = (value: string | null | undefined): string |
 };
 
 const extractLayoutLinesFromPage = async (page: any): Promise<string[]> => {
-  const content = await page.getTextContent();
+  const content = { items: page.items };
   const rawItems = (content?.items ?? []) as Array<{
     str?: unknown;
     transform?: number[];
@@ -400,25 +401,11 @@ const extractUniqaVehicleMake = (lines: string[], asciiLines: string[]): string 
   return null;
 };
 
-export async function parseUniqaAutoPdf(file: File): Promise<UniqaAutoPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseUniqaAutoPdf(file: File, options: PdfReadOptions = {}): Promise<UniqaAutoPdfResult> {
+  const doc = await readPdfText(file, options);
   const lines: string[] = [];
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
+  for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
+    const page = doc.pages[pageNumber - 1];
     lines.push(...(await extractLayoutLinesFromPage(page)));
   }
 

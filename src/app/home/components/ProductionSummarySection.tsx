@@ -1,3 +1,4 @@
+import { DataFreshness } from "./DataFreshness";
 import { type UIEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowDownRight,
@@ -20,6 +21,9 @@ import type { ProductionPremiums } from "../productionPremiums";
 type Props = {
   language: AppLanguage;
   loading: boolean;
+  error?: string | null;
+  updatedAt?: number | null;
+  refreshing?: boolean;
   tipSummaryLoading?: boolean;
   tipSummaryError?: string | null;
   showTeamBox: boolean;
@@ -227,6 +231,9 @@ function ProductionColumn({
 export function ProductionSummarySection({
   language,
   loading,
+  error,
+  updatedAt,
+  refreshing,
   tipSummaryLoading = false,
   tipSummaryError = null,
   showTeamBox,
@@ -356,6 +363,8 @@ export function ProductionSummarySection({
     }
   };
 
+  if (error && !updatedAt) return <section className={containerShellClass}><p role="alert" className="p-6 text-sm">{error}</p></section>;
+
   const helpButton = (
     <button
       type="button"
@@ -456,7 +465,8 @@ export function ProductionSummarySection({
         {helpButton}
       </div>
       {helpDialog}
-      {loading ? (
+      <div className="px-5"><DataFreshness updatedAt={updatedAt} refreshing={refreshing} error={error} /></div>
+      {loading && !updatedAt ? (
         <div className={styles.loading}><LoadingProgressPanel title={copy.loadingTitle}
           description={showOnlyTeamProduction ? "Připravuji přehled týmových smluv a provizí." : copy.loadingDescription}
           accentLabel={copy.loadingAccent} visual="production" /></div>

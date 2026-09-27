@@ -56,7 +56,7 @@ describe("persistent hall aggregates", () => {
     invalidateHallContractChange(writer, source, { userEmail: owners[0] }, { userEmail: owners[1] });
     expect(writer.set.mock.calls.map(([reference]) => reference.path)).toEqual(owners.map((email) => `hallOfFameOwners/${hallParticipantId(email)}`));
   });
-  it.each(["inputAmount", "frequencyRaw", "productKey", "contractSignedDate", "createdAt", "acquisitionType"])("invalidates changes to %s", (field) => {
+  it.each(["inputAmount", "frequencyRaw", "productKey", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides"])("invalidates changes to %s", (field) => {
     const { writer, ref } = database();
     invalidateHallContractChange(writer, ref(`users/${owners[0]}/entries/contract`), { userEmail: owners[0] }, { [field]: "new" });
     expect(writer.set).toHaveBeenCalledOnce();

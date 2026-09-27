@@ -1,3 +1,7 @@
+import type { HomeProductionSummary, MonthlyLeaderboardRow } from "./productionSummary";
+import { isHomeProductionSummary } from "./productionSummary";
+import { startHomeTiming } from "./homePerformance";
+import { useCalendarMonth } from "./useCalendarMonth";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -64,9 +68,12 @@ export type ManagerOverrideSnapshot = {
 };
 
 type HomeCachePayload = {
+  summaryUpdatedAt: number;
+  historyUpdatedAt: number;
   userMeta: UserMeta | null;
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
+  monthlyLeaderboard: MonthlyLeaderboardRow[] | null;
   hasTeam: boolean;
   myPremiums: ProductionPremiums;
   teamPremiums: ProductionPremiums;
@@ -86,6 +93,7 @@ export type HomeDataState = {
   setUserMeta: React.Dispatch<React.SetStateAction<UserMeta | null>>;
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
+  monthlyLeaderboard: MonthlyLeaderboardRow[] | null;
   hasTeam: boolean;
   myPremiums: ProductionPremiums;
   teamPremiums: ProductionPremiums;
@@ -98,7 +106,12 @@ export type HomeDataState = {
   teamContractsCount: number;
   teamImmediateSum: number;
   teamImmediatePrevSum: number;
+  summaryUpdatedAt: number | null;
+  historyUpdatedAt: number | null;
+  summaryRefreshing: boolean;
+  historyError: string | null;
   summaryLoading: boolean;
+  summaryError: string | null;
   tipSummaryLoading: boolean;
   tipSummaryError: string | null;
   historyLoading: boolean;
@@ -121,6 +134,7 @@ type ContractsApiResponse = {
   position?: Position | null;
   hasTeam?: boolean;
   teamEmails?: string[];
+  summary?: HomeProductionSummary;
   contracts?: (EntryDoc & { adviserEmail?: string | null; adviserName?: string | null })[];
   hasMore?: boolean;
   nextCursorToken?: string | null;
@@ -157,7 +171,7 @@ type UserProfileApiResponse = {
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 // v5 could persist an apparent TIP zero after a failed request.
-const HOME_CACHE_VERSION = "v6-complete-tip-production";
+const HOME_CACHE_VERSION = "v8-home-freshness";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamHistoryRangeCache = new Map<
@@ -308,9 +322,11 @@ export function useHomeData({
   initialHasTeam = false,
   reloadKey = 0,
 }: UseHomeDataOptions): HomeDataState {
+  const calendarMonth = useCalendarMonth();
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
   const [teamEntries, setTeamEntries] = useState<EntryDoc[]>([]);
+  const [monthlyLeaderboard, setMonthlyLeaderboard] = useState<MonthlyLeaderboardRow[] | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
   const [myPremiums, setMyPremiums] = useState<ProductionPremiums>({ lifeMonthly: 0, otherAnnual: 0 });
   const [teamPremiums, setTeamPremiums] = useState<ProductionPremiums>({ lifeMonthly: 0, otherAnnual: 0 });
@@ -323,7 +339,12 @@ export function useHomeData({
   const [teamContractsCount, setTeamContractsCount] = useState(0);
   const [teamImmediateSum, setTeamImmediateSum] = useState(0);
   const [teamImmediatePrevSum, setTeamImmediatePrevSum] = useState(0);
+  const [summaryUpdatedAt, setSummaryUpdatedAt] = useState<number | null>(null);
+  const [historyUpdatedAt, setHistoryUpdatedAt] = useState<number | null>(null);
+  const [summaryRefreshing, setSummaryRefreshing] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [tipSummaryLoading, setTipSummaryLoading] = useState(true);
   const [tipSummaryError, setTipSummaryError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -332,13 +353,19 @@ export function useHomeData({
   const baseLoadCompletedRef = useRef(false);
   const uid = auth.currentUser?.uid ?? "";
   const identity = email ? `${uid}|${email.toLowerCase()}` : null;
-  const [stateIdentity, setStateIdentity] = useState(identity);
+  const dataIdentity = `${identity}|${calendarMonth}`;
+  const [stateIdentity, setStateIdentity] = useState(dataIdentity);
   const activeIdentity = useRef<string | null>(null);
-  if (stateIdentity !== identity) {
-    setStateIdentity(identity);
+  if (stateIdentity !== dataIdentity) {
+    setStateIdentity(dataIdentity);
+    setSummaryUpdatedAt(null);
+    setHistoryUpdatedAt(null);
+    setSummaryRefreshing(false);
+    setHistoryError(null);
     setUserMeta(null);
     setMyEntries([]);
     setTeamEntries([]);
+    setMonthlyLeaderboard(null);
     setHasTeam(false);
     setMyPremiums({ lifeMonthly: 0, otherAnnual: 0 });
     setTeamPremiums({ lifeMonthly: 0, otherAnnual: 0 });
@@ -352,6 +379,7 @@ export function useHomeData({
     setTeamImmediateSum(0);
     setTeamImmediatePrevSum(0);
     setSummaryLoading(Boolean(identity));
+    setSummaryError(null);
     setTipSummaryLoading(Boolean(identity));
     setTipSummaryError(null);
     setHistoryLoading(Boolean(identity));
@@ -369,7 +397,7 @@ export function useHomeData({
       return;
     }
 
-    const baseLoadKey = `${identity}|${initialHasTeam ? "team" : "solo"}|${
+    const baseLoadKey = `${identity}|${calendarMonth}|${initialHasTeam ? "team" : "solo"}|${
       loadPersonalHistory ? "history" : "summary"
     }|${reloadKey}`;
     const rangeOnlyChange =
@@ -380,10 +408,19 @@ export function useHomeData({
       const rangeController = new AbortController();
       const rangeIsCurrent = () => !rangeCancelled && activeIdentity.current === identity && (auth.currentUser?.uid ?? "") === uid;
       const safeMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
+      setHistoryError(null);
+      if (safeMonths === 0) {
+        setHistoryLoading(false);
+        return;
+      }
+      const finishLeaderboard = startHomeTiming("leaderboard");
       const cacheKey = teamHistoryRangeCacheKey(email, safeMonths, uid);
       const cached = teamHistoryRangeCache.get(cacheKey);
 
+      setTeamEntries(cached?.entries ?? []);
+      setHistoryUpdatedAt(cached?.ts ?? null);
       if (cached && Date.now() - cached.ts < TEAM_HISTORY_CACHE_TTL_MS) {
+        finishLeaderboard("success");
         setTeamEntries(cached.entries);
         setHistoryLoading(false);
         return () => {
@@ -396,12 +433,19 @@ export function useHomeData({
       void fetchTeamHistoryRange(email, safeMonths, rangeController.signal)
         .then((entries) => {
           if (!rangeIsCurrent()) return;
-          teamHistoryRangeCache.set(cacheKey, { ts: Date.now(), entries });
+          const updatedAt = Date.now();
+          teamHistoryRangeCache.set(cacheKey, { ts: updatedAt, entries });
           setTeamEntries(entries);
+          setHistoryUpdatedAt(updatedAt);
+          finishLeaderboard("success");
         })
         .catch((error) => {
           if (!rangeIsCurrent()) return;
+          finishLeaderboard("error");
+          setHistoryError("Žebříček se nepodařilo načíst. Zkuste obnovit stránku.");
           if ((error as { status?: number } | null)?.status === 403) {
+            teamHistoryRangeCache.delete(cacheKey);
+            setHistoryUpdatedAt(null);
             setTeamEntries([]);
           } else {
             console.error("Chyba při načítání historie týmové produkce:", error);
@@ -412,11 +456,19 @@ export function useHomeData({
         });
 
       return () => {
+        finishLeaderboard("cancelled");
         rangeCancelled = true;
         rangeController.abort();
       };
     }
 
+    setSummaryError(null);
+    setHistoryError(null);
+    setSummaryRefreshing(true);
+    const finishProduction = startHomeTiming("production");
+    const finishTip = startHomeTiming("productionTip");
+    const finishLeaderboard = startHomeTiming("leaderboard");
+    let productionReady = false;
     baseLoadKeyRef.current = baseLoadKey;
     baseLoadCompletedRef.current = false;
     let cancelled = false;
@@ -428,9 +480,12 @@ export function useHomeData({
 
     const applyCachedHomeState = (payload: HomeCachePayload) => {
       if (!isCurrent()) return;
+      setSummaryUpdatedAt(payload.summaryUpdatedAt);
+      setHistoryUpdatedAt(payload.historyUpdatedAt);
       setUserMeta(payload.userMeta);
       setMyEntries(payload.myEntries);
       setTeamEntries(payload.teamEntries);
+      setMonthlyLeaderboard(payload.monthlyLeaderboard ?? null);
       setHasTeam(payload.hasTeam);
       setMyPremiums(payload.myPremiums);
       setTeamPremiums(payload.teamPremiums);
@@ -490,6 +545,12 @@ export function useHomeData({
           assertCurrent();
           const params = new URLSearchParams({ scope, limit: "50" });
           params.set("shape", "home");
+          if (signedFromMs === summaryRangeStartMs && !cursor) {
+            params.set("homeSummary", "1");
+            if (reloadKey > 0) params.set("homeRefresh", "1");
+            params.set("summarySplit", String(monthStart.getTime()));
+            params.set("summaryTo", String(nextMonthStart.getTime()));
+          }
           if (Number.isFinite(signedFromMs)) {
             params.set("signedFrom", String(signedFromMs));
           }
@@ -646,11 +707,13 @@ export function useHomeData({
         // A seeded result stays coherent until the fresh regular summary is
         // ready. Never combine a new TIP amount with cached own/team amounts.
         const tipSummaryPromise = collectTipSummaryForRecentMonths().then(value => {
+          finishTip("success");
           tipSettled = true;
           stagedTipSummary = value;
           if (freshSummaryReady) publishTipState();
           return value;
         }, () => {
+          finishTip(controller.signal.aborted ? "cancelled" : "error");
           tipSettled = true;
           if (freshSummaryReady) publishTipState();
           return null;
@@ -661,6 +724,7 @@ export function useHomeData({
           hasTeamHint: boolean;
           teamEmailsHint: string[];
           positionHint: Position | null;
+          summary?: HomeProductionSummary;
         };
 
         const collectScope = async (
@@ -684,6 +748,10 @@ export function useHomeData({
                 ? response.teamEmails.map((it) => (it ?? "").toLowerCase()).filter(Boolean)
                 : [];
               positionHint = (response.position as Position | null | undefined) ?? null;
+            }
+            if (response.summary) {
+              if (!isHomeProductionSummary(response.summary) || response.hasMore !== false) throw new Error("Neúplný souhrn produkce.");
+              return { entries: [], hasTeamHint, teamEmailsHint, positionHint, summary: response.summary };
             }
             pages += 1;
 
@@ -810,10 +878,12 @@ export function useHomeData({
         let hasTeamValue =
           ownSummaryResult.hasTeamHint || (ownSummaryResult.teamEmailsHint?.length ?? 0) > 0;
         let teamSummaryEntries: EntryDoc[] = [];
+        let teamSummary: HomeProductionSummary | undefined;
         if (hasTeamValue) {
           try {
             const teamSummaryResult = await loadTeamSummary();
             teamSummaryEntries = teamSummaryResult.entries;
+            teamSummary = teamSummaryResult.summary;
             hasTeamValue = hasTeamValue || teamSummaryEntries.length > 0;
           } catch (teamErr) {
             if ((teamErr as { status?: number } | null)?.status === 403) {
@@ -825,29 +895,36 @@ export function useHomeData({
           }
         }
 
-        const ownMonth = summarizeOwnRange(
+        const ownMonth = ownSummaryResult.summary?.current ?? summarizeOwnRange(
           ownSummaryResult.entries,
           monthStart,
           nextMonthStart
         );
-        const ownPrevMonth = summarizeOwnRange(
+        const ownPrevMonth = ownSummaryResult.summary?.previous ?? summarizeOwnRange(
           ownSummaryResult.entries,
           previousMonthStart,
           monthStart
         );
-        const teamMonth = summarizeTeamRange(
+        const teamMonth = teamSummary?.current ?? summarizeTeamRange(
           teamSummaryEntries,
           monthStart,
           nextMonthStart
         );
-        const teamPrevMonth = summarizeTeamRange(
+        const teamPrevMonth = teamSummary?.previous ?? summarizeTeamRange(
           teamSummaryEntries,
           previousMonthStart,
           monthStart
         );
-        const ownPremiums = summarizeProductionPremiums(ownSummaryResult.entries, monthStart, nextMonthStart);
-        const teamPremiums = summarizeProductionPremiums(teamSummaryEntries, monthStart, nextMonthStart);
+        const ownPremiums = ownSummaryResult.summary?.current.premiums ?? summarizeProductionPremiums(ownSummaryResult.entries, monthStart, nextMonthStart);
+        const teamPremiums = teamSummary?.current.premiums ?? summarizeProductionPremiums(teamSummaryEntries, monthStart, nextMonthStart);
+        const productionUpdatedAt = Date.now();
         if (isCurrent()) {
+          productionReady = true;
+          setSummaryUpdatedAt(productionUpdatedAt);
+          setSummaryRefreshing(false);
+          finishProduction("success");
+          if (!loadTeamHistory) finishLeaderboard("success");
+          setMonthlyLeaderboard(teamSummary?.leaderboard ?? null);
           freshSummaryReady = true;
           setHasTeam(hasTeamValue);
           setMyPremiums(ownPremiums);
@@ -895,13 +972,16 @@ export function useHomeData({
 
         assertCurrent();
         const ownHistoryEntries = loadPersonalHistory ? ownHistoryResult.entries : [];
+        const historyFetchedAt = Date.now();
+        setHistoryUpdatedAt(historyFetchedAt);
+        finishLeaderboard("success");
         setMyEntries(ownHistoryEntries);
         setTeamEntries(filteredTeamEntries);
         setHasTeam(hasTeamValue);
         setHistoryLoading(false);
         teamHistoryRangeCache.set(
           teamHistoryRangeCacheKey(email, safeTeamHistoryMonths, uid),
-          { ts: Date.now(), entries: filteredTeamEntries }
+          { ts: historyFetchedAt, entries: filteredTeamEntries }
         );
         // History and regular production are usable while TIP is still loading.
         // Only the complete result may become the shared/persisted home cache.
@@ -910,6 +990,8 @@ export function useHomeData({
         if (!tipSummary) return null;
 
         const payload: HomeCachePayload = {
+          summaryUpdatedAt: productionUpdatedAt,
+          historyUpdatedAt: historyFetchedAt,
           userMeta: {
             position,
             commissionMode: myMode,
@@ -917,6 +999,7 @@ export function useHomeData({
           },
           myEntries: ownHistoryEntries,
           teamEntries: filteredTeamEntries,
+          monthlyLeaderboard: teamSummary?.leaderboard ?? null,
           hasTeam: hasTeamValue,
           myPremiums: ownPremiums,
           teamPremiums,
@@ -1033,7 +1116,29 @@ export function useHomeData({
         tipUpdatesAllowed = false;
         controller.abort();
         console.error("Chyba při načítání produkce:", e);
-        if (fallbackPayload) {
+        finishProduction("error");
+        finishTip("error");
+        finishLeaderboard("error");
+        if (productionReady) {
+          // A historical-range failure must not replace fresh monthly totals.
+          setHistoryError("Žebříček se nepodařilo načíst. Zkuste obnovit stránku.");
+          setHistoryUpdatedAt(null);
+          setTeamEntries([]);
+          setTipSummaryLoading(false);
+          if (!tipSettled) setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
+          return;
+        }
+        setSummaryError("Produkci se nepodařilo načíst. Obnovte prosím stránku.");
+        setHistoryError("Žebříček se nepodařilo načíst. Zkuste obnovit stránku.");
+        const accessDenied = (e as { status?: number } | null)?.status === 403;
+        if (accessDenied) {
+          invalidateHomeCache(email);
+          setSummaryUpdatedAt(null);
+          setHistoryUpdatedAt(null);
+          setTeamEntries([]);
+          setMonthlyLeaderboard(null);
+        }
+        if (fallbackPayload && !accessDenied) {
           applyCachedHomeState(fallbackPayload);
           setSummaryLoading(false);
           setHistoryLoading(false);
@@ -1043,6 +1148,7 @@ export function useHomeData({
         }
       } finally {
         if (isCurrent()) {
+          setSummaryRefreshing(false);
           baseLoadCompletedRef.current = true;
           setLoading(false);
           setSummaryLoading(false);
@@ -1053,16 +1159,20 @@ export function useHomeData({
 
     void load();
     return () => {
+      finishProduction("cancelled");
+      finishTip("cancelled");
+      finishLeaderboard("cancelled");
       cancelled = true;
       controller.abort();
     };
-  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths]);
+  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths, calendarMonth]);
 
   return {
     userMeta,
     setUserMeta,
     myEntries,
     teamEntries,
+    monthlyLeaderboard,
     hasTeam,
     myPremiums,
     teamPremiums,
@@ -1075,7 +1185,12 @@ export function useHomeData({
     teamContractsCount,
     teamImmediateSum,
     teamImmediatePrevSum,
+    summaryUpdatedAt,
+    historyUpdatedAt,
+    summaryRefreshing,
+    historyError,
     summaryLoading,
+    summaryError,
     tipSummaryLoading,
     tipSummaryError,
     historyLoading,

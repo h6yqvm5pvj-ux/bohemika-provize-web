@@ -35,10 +35,14 @@ type UseCashflowDataParams = {
   enabled?: boolean;
   reloadKey?: number;
   deferCalculation?: boolean;
+  /** Home computes only its payout totals in a dedicated worker. */
+  snapshotOnly?: boolean;
 };
 
 type UseCashflowDataResult = {
   rawSnapshot: CashflowSnapshot | null;
+  snapshotUpdatedAt: number | null;
+  error: string | null;
   calculationDeferred: boolean;
   loading: boolean;
   ready: boolean;
@@ -641,6 +645,7 @@ export function useCashflowData({
   enabled = true,
   reloadKey = 0,
   deferCalculation = false,
+  snapshotOnly = false,
 }: UseCashflowDataParams): UseCashflowDataResult {
   const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
   const [loading, setLoading] = useState(() => {
@@ -650,6 +655,10 @@ export function useCashflowData({
     if (!cachedRaw) return true;
     return !isSnapshotFresh(cachedRaw.ts, getContractsUpdatedAtMs());
   });
+  const [snapshotUpdatedAt, setSnapshotUpdatedAt] = useState<number | null>(null);
+  const requestKey = `${normalizeEmail(userEmail)}|${snapshotMode}|${reloadKey}`;
+  const [snapshotRequestKey, setSnapshotRequestKey] = useState<string | null>(null);
+  const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [snapshot, setSnapshot] = useState<CashflowSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
   const [ready, setReady] = useState(false);
@@ -658,8 +667,10 @@ export function useCashflowData({
   );
 
   useEffect(() => {
+    setError(null);
     if (!enabled || !userEmail) {
       setSnapshot(null);
+      setSnapshotUpdatedAt(null);
       setHasTeam(false);
       setLoading(false);
       setReady(false);
@@ -687,7 +698,9 @@ export function useCashflowData({
       }
       const hasCachedPayload = Boolean(cached?.payload);
       if (cached?.payload) {
+        setSnapshotRequestKey(requestKey);
         setSnapshot(cached.payload);
+        setSnapshotUpdatedAt(cached.ts);
         setHasTeam(cached.payload.hasAnyTeam);
         setReady(true);
       }
@@ -715,14 +728,19 @@ export function useCashflowData({
         });
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         if (cancelled) return;
+        setSnapshotRequestKey(requestKey);
         setSnapshot(payload);
+        setSnapshotUpdatedAt(contractsSnapshotCache[cacheKey]?.ts ?? Date.now());
         setHasTeam(payload.hasAnyTeam);
         setReady(true);
       } catch (error) {
         if (cancelled) return;
         console.error("Chyba při načítání cashflow:", error);
+        setSnapshotRequestKey(requestKey);
+        setError({ key: requestKey, message: "Podklady výplaty se nepodařilo načíst. Obnovte prosím stránku." });
         if (!hasCachedPayload) {
           setSnapshot(null);
+          setSnapshotUpdatedAt(null);
           setHasTeam(false);
         }
         setReady(true);
@@ -736,17 +754,17 @@ export function useCashflowData({
     return () => {
       cancelled = true;
     };
-  }, [userEmail, enabled, snapshotMode, reloadKey]);
+  }, [userEmail, enabled, snapshotMode, reloadKey, requestKey]);
 
   const currentEmail = normalizeEmail(userEmail);
   const snapshotMatchesCurrentUser = Boolean(
     snapshot && currentEmail && normalizeEmail(snapshot.email) === currentEmail
   );
-  const dataReady = ready && (!snapshot || snapshotMatchesCurrentUser);
+  const dataReady = ready && snapshotRequestKey === requestKey && (!snapshot || snapshotMatchesCurrentUser);
   const rawSnapshot = enabled && snapshotMatchesCurrentUser ? snapshot : null;
   // Small portfolios keep their existing synchronous display path.
-  const calculationDeferred = Boolean(deferCalculation && rawSnapshot &&
-    rawSnapshot.ownEntries.length + rawSnapshot.teamEntriesRaw.length >= 200);
+  const calculationDeferred = Boolean(rawSnapshot && (snapshotOnly || (deferCalculation &&
+    rawSnapshot.ownEntries.length + rawSnapshot.teamEntriesRaw.length >= 200)));
   const { cashflowItems, verificationInput } = useMemo(() => {
     if (calculationDeferred || !enabled || !snapshot || !snapshotMatchesCurrentUser) {
       return { cashflowItems: [], verificationInput: null };
@@ -774,9 +792,11 @@ export function useCashflowData({
   }, [calculationDeferred, enabled, productFilter, scopeFilter, snapshot, snapshotMatchesCurrentUser, tipsterMode]);
 
   return {
-    loading,
+    loading: loading || Boolean(enabled && currentEmail && snapshotRequestKey !== requestKey),
     ready: dataReady,
     rawSnapshot,
+    snapshotUpdatedAt: rawSnapshot ? snapshotUpdatedAt : null,
+    error: error?.key === requestKey ? error.message : null,
     calculationDeferred,
     cashflowItems,
     verificationInput,

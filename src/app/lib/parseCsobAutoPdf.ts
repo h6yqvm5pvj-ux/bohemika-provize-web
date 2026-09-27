@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseCsobAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -844,7 +845,7 @@ const extractAssistancePlan = (lines: string[], asciiLines: string[]): string =>
 };
 
 async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
-  const content = await page.getTextContent();
+  const content = { items: page.items };
   const rawItems = (content?.items ?? []) as Array<{
     str?: unknown;
     transform?: number[];
@@ -901,66 +902,45 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
     .filter(Boolean);
 }
 
-export async function parseCsobAutoPdf(file: File): Promise<CsobAutoPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+export async function parseCsobAutoPdf(file: File, options: PdfReadOptions = {}): Promise<CsobAutoPdfResult> {
+  const pdf = await readPdfText(file, options);
 
-  // Worker z public/ prohlížeče, aby se nic nestahovalo externě.
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
+  const allLines: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.pages.length; pageNumber++) {
+    const page = pdf.pages[pageNumber - 1];
+    const pageLines = await extractLayoutLinesFromPage(page);
+    allLines.push(...pageLines);
   }
 
-  const loadingTask = pdfjsLib.getDocument({ data: buffer });
-  const pdf = await loadingTask.promise;
+  const asciiLines = allLines.map((line) => stripDiacritics(line).toLowerCase());
 
-  try {
-    const allLines: string[] = [];
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-      const page = await pdf.getPage(pageNumber);
-      const pageLines = await extractLayoutLinesFromPage(page);
-      allLines.push(...pageLines);
-    }
+  const contractNumber = extractContractNumber(allLines, asciiLines);
+  const clientName = extractClientName(allLines, asciiLines);
+  const { contractSignedDate, policyStartDate } = extractDates(allLines, asciiLines);
+  const { frequency, amount } = extractFrequencyAndAmount(allLines, asciiLines);
+  const carLiabilityLimit = extractLiabilityLimit(allLines, asciiLines);
+  const { carHullSumInsured, carHullDeductible, carAddonGlass } = extractHullDetailsAndAddons(
+    allLines,
+    asciiLines
+  );
+  const carAssistancePlan = extractAssistancePlan(allLines, asciiLines);
+  const { carMake, carPlate, carVin, carOrv } = extractVehicleDetails(allLines, asciiLines);
 
-    const asciiLines = allLines.map((line) => stripDiacritics(line).toLowerCase());
-
-    const contractNumber = extractContractNumber(allLines, asciiLines);
-    const clientName = extractClientName(allLines, asciiLines);
-    const { contractSignedDate, policyStartDate } = extractDates(allLines, asciiLines);
-    const { frequency, amount } = extractFrequencyAndAmount(allLines, asciiLines);
-    const carLiabilityLimit = extractLiabilityLimit(allLines, asciiLines);
-    const { carHullSumInsured, carHullDeductible, carAddonGlass } = extractHullDetailsAndAddons(
-      allLines,
-      asciiLines
-    );
-    const carAssistancePlan = extractAssistancePlan(allLines, asciiLines);
-    const { carMake, carPlate, carVin, carOrv } = extractVehicleDetails(allLines, asciiLines);
-
-    return {
-      contractNumber,
-      clientName,
-      contractSignedDate,
-      policyStartDate,
-      frequency,
-      amount,
-      carLiabilityLimit,
-      carHullSumInsured,
-      carHullDeductible,
-      carAddonGlass,
-      carAssistancePlan,
-      carMake,
-      carPlate,
-      carVin,
-      carOrv,
-    };
-  } finally {
-    await pdf.cleanup();
-    await pdf.destroy();
-  }
+  return {
+    contractNumber,
+    clientName,
+    contractSignedDate,
+    policyStartDate,
+    frequency,
+    amount,
+    carLiabilityLimit,
+    carHullSumInsured,
+    carHullDeductible,
+    carAddonGlass,
+    carAssistancePlan,
+    carMake,
+    carPlate,
+    carVin,
+    carOrv,
+  };
 }

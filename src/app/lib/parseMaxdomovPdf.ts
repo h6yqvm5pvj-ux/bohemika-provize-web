@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseMaxdomovPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -158,7 +159,7 @@ function buildRowText(items: PositionedTextItem[]): string {
 }
 
 async function extractLayoutRowsFromPage(page: any): Promise<LayoutRow[]> {
-  const content = await page.getTextContent();
+  const content = { items: page.items };
   const rawItems = (content?.items ?? []) as Array<{
     str?: unknown;
     transform?: number[];
@@ -484,26 +485,12 @@ function applyOldMaxdomov3Fallback(
   result.amount ??= amount;
 }
 
-export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseMaxdomovPdf(file: File, options: PdfReadOptions = {}): Promise<MaxdomovPdfResult> {
+  const doc = await readPdfText(file, options);
   const result: MaxdomovPdfResult = {};
-  if (doc.numPages < 1) return result;
+  if (doc.pages.length < 1) return result;
 
-  const firstPage = await doc.getPage(1);
+  const firstPage = doc.pages[0];
   const firstPageRows = await extractLayoutRowsFromPage(firstPage);
   const firstPageText = rowsToText(firstPageRows);
   const firstPageAscii = stripDiacritics(firstPageText).toLowerCase();
@@ -511,13 +498,13 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   const getPageRows = async (pageNumber: number): Promise<LayoutRow[]> => {
     const existing = pageRowsByNumber.get(pageNumber);
     if (existing) return existing;
-    const rows = await extractLayoutRowsFromPage(await doc.getPage(pageNumber));
+    const rows = await extractLayoutRowsFromPage(doc.pages[pageNumber - 1]);
     pageRowsByNumber.set(pageNumber, rows);
     return rows;
   };
 
   if (/b\.\s+pojisteni\s+staveb/.test(firstPageAscii)) {
-    for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+    for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
       const pageRows = await getPageRows(pageNumber);
       const propertyType = findMainBuildingPropertyType(pageRows);
       const sumInsured = findMainBuildingSumInsured(pageRows);
@@ -541,7 +528,7 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
     }
   }
 
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+  for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
     const pageRows = await getPageRows(pageNumber);
     const householdType = findHouseholdType(pageRows);
     const householdSumInsured = findHouseholdSumInsured(pageRows);
@@ -623,7 +610,7 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
   const amount = parseAmount(amountLabel ? findTextBelowLabel(firstPageRows, amountLabel) : null);
   if (amount != null) result.amount = amount;
 
-  const lastPageRows = await getPageRows(doc.numPages);
+  const lastPageRows = await getPageRows(doc.pages.length);
   const lastPageText = rowsToText(lastPageRows);
   const lastPageAscii = stripDiacritics(lastPageText).toLowerCase();
 
@@ -646,7 +633,7 @@ export async function parseMaxdomovPdf(file: File): Promise<MaxdomovPdfResult> {
 
   applyOldMaxdomov3Fallback(result, {
     firstPageRows,
-    fourthPageRows: doc.numPages >= 4 ? await getPageRows(4) : null,
+    fourthPageRows: doc.pages.length >= 4 ? await getPageRows(4) : null,
     lastPageRows,
   });
 

@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 import { type PaymentFrequency } from "../types/domain";
 
 export type KooperativaCestovkoPdfResult = {
@@ -250,27 +251,14 @@ const pickDiscountedPremium = (
 };
 
 export async function parseKooperativaCestovkoPdf(
-  file: File
+  file: File, options: PdfReadOptions = {}
 ): Promise<KooperativaCestovkoPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-      }
-    } catch (error) {
-      console.warn("PDF worker src nebylo možné nastavit", error);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const doc = await readPdfText(file, options);
   const items: PositionedTextItem[] = [];
 
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const content = await page.getTextContent();
+  for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
+    const page = doc.pages[pageNumber - 1];
+    const content = { items: page.items };
     for (const rawItem of content.items ?? []) {
       if (!("str" in rawItem) || typeof rawItem.str !== "string") continue;
       const text = rawItem.str.trim();

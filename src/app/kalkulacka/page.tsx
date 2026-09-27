@@ -132,6 +132,7 @@ import {
 } from "./endorsementCalculation";
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
+import { withPdfImportTimeout } from "./pdfImportOperation";
 import { useContractReview } from "./useContractReview";
 import { buildContractReviewWarnings } from "./contractReview";
 import { CalculatorContractReviewModal } from "./CalculatorContractReviewModal";
@@ -238,7 +239,6 @@ const SETTINGS_KEYS = {
 };
 const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
 const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
-const PDF_OCR_IMPORT_TIMEOUT_MS = 120_000;
 const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
 const AUTO_BULK_IMPORT_MAX_FILES = 25;
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE = "2025-01-01";
@@ -348,7 +348,9 @@ const buildAutoBulkImportWarnings = ({
   productDetected: boolean;
   detectionConfidence: "high" | "medium" | null;
 }): string[] => {
-  const warnings: string[] = [];
+  const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
+    ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
   if (!productDetected) {
     warnings.push(
       `produkt se nepodařilo rozpoznat, použil se vybraný produkt ${productLabel(product)}`
@@ -505,33 +507,6 @@ const notifyStatementParentContractEvent = ({
     },
     window.location.origin
   );
-};
-
-const withPdfImportTimeout = async <T,>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  timeoutMessage: string,
-  isOcrActive?: () => boolean
-): Promise<T> => {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    const rejectTimeout = () => {
-      const error = new Error(timeoutMessage);
-      error.name = PDF_IMPORT_TIMEOUT_ERROR_NAME;
-      reject(error);
-    };
-    timeoutId = setTimeout(() => {
-      if (isOcrActive?.()) {
-        timeoutId = setTimeout(rejectTimeout, Math.max(1, PDF_OCR_IMPORT_TIMEOUT_MS - timeoutMs));
-      } else rejectTimeout();
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
 };
 
 const isPdfImportTimeoutError = (error: unknown): boolean =>
@@ -841,6 +816,8 @@ export default function CalculatorPage() {
   const [addContractHelpOpen, setAddContractHelpOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pdfImportRunIdRef = useRef(0);
+  const pdfImportAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => { pdfImportAbortRef.current?.abort(); }, []);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
@@ -3131,9 +3108,12 @@ export default function CalculatorPage() {
 
   const handlePdfImport = async (file: File | null) => {
     if (!file) return;
+    pdfImportAbortRef.current?.abort();
+    const importController = new AbortController();
+    pdfImportAbortRef.current = importController;
     const importRunId = pdfImportRunIdRef.current + 1;
     pdfImportRunIdRef.current = importRunId;
-    const isCurrentPdfImport = () => pdfImportRunIdRef.current === importRunId;
+    const isCurrentPdfImport = () => pdfImportRunIdRef.current === importRunId && !importController.signal.aborted;
     let allowPdfImportProgress = true;
     let ocrActive = false;
 
@@ -3150,7 +3130,8 @@ export default function CalculatorPage() {
     let productDetected = false;
     try {
       const detected = await withPdfImportTimeout(
-        detectProductFromPdfLazy(file, {
+        signal => detectProductFromPdfLazy(file, {
+          signal,
           allowOcr: !statementEmbedMode,
           onOcrStart: () => {
             ocrActive = true;
@@ -3165,7 +3146,8 @@ export default function CalculatorPage() {
         }),
         PDF_PRODUCT_DETECTION_TIMEOUT_MS,
         "Automatické rozpoznání produktu z PDF trvá moc dlouho.",
-        () => ocrActive
+        () => ocrActive,
+        importController.signal
       );
       if (!isCurrentPdfImport()) return;
       if (detected) {
@@ -3314,7 +3296,8 @@ export default function CalculatorPage() {
       }
 
       const parsed = await withPdfImportTimeout(
-        parseContractPdfByProduct(importProduct, file, {
+        signal => parseContractPdfByProduct(importProduct, file, {
+          signal,
           allowOcr: !statementEmbedMode,
           onOcrStart: () => {
             ocrActive = true;
@@ -3336,7 +3319,8 @@ export default function CalculatorPage() {
         }),
         PDF_DATA_IMPORT_TIMEOUT_MS,
         "Automatické čtení dat z PDF trvá moc dlouho.",
-        () => ocrActive
+        () => ocrActive,
+        importController.signal
       );
       if (!isCurrentPdfImport()) return;
       allowPdfImportProgress = false;
@@ -3944,9 +3928,11 @@ export default function CalculatorPage() {
       if (applied === 0 && importProduct !== "maxcizinkomplex") {
         try {
           const maxCizinParsed = await withPdfImportTimeout(
-            parseMaxCizinKomplexPdfLazy(file),
+            signal => parseMaxCizinKomplexPdfLazy(file, { signal, allowOcr: false }),
             5_000,
-            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho."
+            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho.",
+            undefined,
+            importController.signal
           );
           if (!isCurrentPdfImport()) return;
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
@@ -3986,9 +3972,11 @@ export default function CalculatorPage() {
       if (!importTimedOut && importProduct !== "maxcizinkomplex") {
         try {
           const maxCizinParsed = await withPdfImportTimeout(
-            parseMaxCizinKomplexPdfLazy(file),
+            signal => parseMaxCizinKomplexPdfLazy(file, { signal, allowOcr: false }),
             5_000,
-            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho."
+            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho.",
+            undefined,
+            importController.signal
           );
           if (!isCurrentPdfImport()) return;
           if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
@@ -4365,6 +4353,9 @@ export default function CalculatorPage() {
       message: "Čeká",
     }));
 
+    pdfImportAbortRef.current?.abort();
+    const batchController = new AbortController();
+    pdfImportAbortRef.current = batchController;
     setAutoBulkImportRows(rows);
     setAutoBulkImporting(true);
     setAutoBulkImportStatus(`Zpracovávám 0/${files.length}`);
@@ -4392,6 +4383,7 @@ export default function CalculatorPage() {
 
     try {
       for (let index = 0; index < files.length; index += 1) {
+        if (batchController.signal.aborted) break;
         const file = files[index];
         rows = updateAutoBulkRow(rows, index, {
           status: "processing",
@@ -4409,15 +4401,17 @@ export default function CalculatorPage() {
             },
           };
           const detected = await withPdfImportTimeout(
-            detectProductFromPdfLazy(file, batchOcrOptions),
+            signal => detectProductFromPdfLazy(file, { ...batchOcrOptions, signal }),
             PDF_PRODUCT_DETECTION_TIMEOUT_MS,
             "Rozpoznání produktu z PDF trvá moc dlouho.",
-            () => batchOcrActive
+            () => batchOcrActive,
+            batchController.signal
           ).catch((detectErr) => {
             console.warn("Batch import: detekce produktu selhala", detectErr);
             return null;
           });
 
+          if (batchController.signal.aborted) break;
           const productDetected = Boolean(detected);
           const detectionConfidence = detected?.confidence ?? null;
           const importProduct = detected
@@ -4469,12 +4463,14 @@ export default function CalculatorPage() {
           });
 
           const parsed = await withPdfImportTimeout(
-            parseContractPdfByProduct(importProduct, file, batchOcrOptions),
+            signal => parseContractPdfByProduct(importProduct, file, { ...batchOcrOptions, signal }),
             PDF_DATA_IMPORT_TIMEOUT_MS,
             "Automatické čtení dat z PDF trvá moc dlouho.",
-            () => batchOcrActive
+            () => batchOcrActive,
+            batchController.signal
           );
 
+          if (batchController.signal.aborted) break;
           if (!parsed) {
             finishRow(
               index,

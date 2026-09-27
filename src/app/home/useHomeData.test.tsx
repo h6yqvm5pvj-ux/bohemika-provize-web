@@ -14,6 +14,7 @@ vi.mock("./homeCacheStorage", () => ({
   readPersistedHomeCache: mocks.read, writePersistedHomeCache: mocks.write, clearPersistedHomeCache: mocks.clear,
 }));
 import { invalidateHomeCache, useHomeData, type EntryDoc } from "./useHomeData";
+import { combineOwnerProduction, summarizeOwnerProduction } from "./productionSummary";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -95,6 +96,65 @@ describe("home summaries independent of TIP completion", () => {
     vi.unstubAllGlobals();
   });
 
+
+  it("keeps the original freshness time when a forced refresh fails, then advances it only after success", async () => {
+    await render(); await settleSummaries();
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    const updatedAt = latest.summaryUpdatedAt;
+    expect(updatedAt).toBe(Date.now());
+    vi.setSystemTime(Date.now() + 60_000);
+    await render({ ...props, reloadKey: 1 });
+    expect(latest.summaryRefreshing).toBe(true);
+    expect(latest.summaryUpdatedAt).toBe(updatedAt);
+    await act(async () => contractCalls("my")[1].job.resolve(Response.json({ ok: false }, { status: 503 })));
+    expect(latest).toMatchObject({ summaryUpdatedAt: updatedAt, summaryRefreshing: false, myImmediateSum: 100 });
+    expect(latest.summaryError).toBeTruthy();
+    await render({ ...props, reloadKey: 2 });
+    await act(async () => {
+      contractCalls("my")[2].job.resolve(contracts(own)); contractCalls("team")[2].job.resolve(contracts(team));
+      tipCalls()[2].job.resolve(currentTips());
+    });
+    expect(latest.summaryUpdatedAt).toBe(Date.now());
+    expect(latest.summaryError).toBeNull();
+  });
+
+  it("does not show freshness or rows from a different historical period after a failed range request", async () => {
+    await render(); await settleSummaries();
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    await render({ ...props, teamHistoryMonths: 6 });
+    await act(async () => contractCalls("team")[1].job.resolve(contracts([entry("six-months", 4, 100)])));
+    expect(latest.historyUpdatedAt).toBe(Date.now());
+    await render({ ...props, teamHistoryMonths: 12 });
+    expect(latest.historyUpdatedAt).toBeNull();
+    expect(latest.teamEntries).toEqual([]);
+    await act(async () => contractCalls("team")[2].job.resolve(Response.json({ ok: false }, { status: 503 })));
+    expect(latest.historyError).toBeTruthy();
+    expect(latest.summaryError).toBeNull();
+    await render({ ...props, teamHistoryMonths: 6 });
+    expect(latest.historyError).toBeNull();
+    expect(latest.teamEntries[0].id).toBe("six-months");
+    expect(latest.historyUpdatedAt).toBe(Date.now());
+  });
+
+  it("retains fresh production when the initial historical fetch fails", async () => {
+    await render({ ...props, teamHistoryMonths: 6 }); await settleSummaries();
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    await act(async () => contractCalls("team")[1].job.resolve(Response.json({ ok: false }, { status: 503 })));
+    expect(latest).toMatchObject({ summaryError: null, summaryUpdatedAt: Date.now(), myImmediateSum: 100, historyUpdatedAt: null });
+    expect(latest.historyError).toBeTruthy();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it("clears cached freshness and leaderboard on denied access", async () => {
+    await render(); await settleSummaries();
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    await render({ ...props, reloadKey: 1 });
+    await act(async () => contractCalls("my")[1].job.resolve(Response.json({ ok: false }, { status: 403 })));
+    expect(latest.summaryUpdatedAt).toBeNull();
+    expect(latest.summaryError).toBeTruthy();
+    expect(latest.monthlyLeaderboard).toBeNull();
+  });
+
   it("publishes own/team totals and starts history while TIP is stalled, caching only the complete result", async () => {
     await render({ ...props, loadPersonalHistory: true, teamHistoryMonths: 6 });
     expect(calls).toHaveLength(3);
@@ -116,11 +176,54 @@ describe("home summaries independent of TIP completion", () => {
     expect(latest).toMatchObject({ tipSummaryLoading: false, tipSummaryError: null,
       myTipContractsCount: 2, myTipImmediateSum: 60, myTipImmediatePrevSum: 40 });
     expect(mocks.write).toHaveBeenCalledTimes(1);
-    expect(mocks.write.mock.calls[0][0]).toContain("v6-complete-tip-production|advisor-uid|advisor@example.test|");
+    expect(mocks.write.mock.calls[0][0]).toContain("v8-home-freshness|advisor-uid|advisor@example.test|");
     expect(mocks.write.mock.calls[0][1]).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60 });
     const query = tipCalls()[0].url.searchParams;
     expect(Object.fromEntries(query)).toEqual({ limit: "100", shape: "home", payoutFrom: String(day(7, 1)),
       productionFrom: String(day(7, 1)), productionTo: String(day(9, 1)) });
+  });
+
+  it("uses compact monthly sums without downloading contracts and requests history only on range selection", async () => {
+    await render();
+    const summary = (rows: EntryDoc[], scope: "my" | "team") => Response.json({ ok: true, hasTeam: true, hasMore: false,
+      summary: combineOwnerProduction([{ email: scope === "my" ? "advisor@example.test" : "team@example.test", name: "Poradce",
+        summary: summarizeOwnerProduction(rows, { from: day(7, 1), split: day(8, 1), to: day(9, 1) }) }], "advisor@example.test", scope) });
+    await act(async () => {
+      contractCalls("my")[0].job.resolve(summary(own, "my"));
+      contractCalls("team")[0].job.resolve(summary(team, "team"));
+      tipCalls()[0].job.resolve(currentTips());
+    });
+    expect(latest).toMatchObject({ myContractsCount: 1, myImmediateSum: 100, myImmediatePrevSum: 50,
+      teamImmediateSum: 200, teamImmediatePrevSum: 75, teamEntries: [], historyLoading: false });
+    expect(latest.monthlyLeaderboard).toEqual([{ email: "team@example.test", name: "Poradce", life: 0, other: 1000, hasLife: false, hasOther: true }]);
+    expect(contractCalls("my")[0].url.searchParams.get("homeSummary")).toBe("1");
+    expect(calls).toHaveLength(3);
+    await render({ ...props, teamHistoryMonths: 6 });
+    const historic = contractCalls("team")[1];
+    expect(historic.url.searchParams.has("homeSummary")).toBe(false);
+    await act(async () => historic.job.resolve(contracts(team)));
+    expect(latest.teamEntries).toHaveLength(2);
+    await render({ ...props, teamHistoryMonths: 0 });
+    expect(contractCalls("team")).toHaveLength(2);
+    expect(latest.monthlyLeaderboard?.[0].other).toBe(1000);
+  });
+
+  it("reports an incomplete monthly summary rather than caching apparent zero production", async () => {
+    await render();
+    await act(async () => contractCalls("my")[0].job.resolve(Response.json({ ok: true, hasMore: false, summary: { current: {} } })));
+    expect(latest.summaryError).toContain("Produkci se nepodařilo načíst");
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+  it("reloads the new calendar month after a page left open regains focus", async () => {
+    await render(); await settleSummaries();
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    vi.setSystemTime(new Date(2026, 9, 1, 0, 1));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const query = contractCalls("my")[1].url.searchParams;
+    expect(query.get("signedFrom")).toBe(String(day(8, 1)));
+    expect(query.get("summarySplit")).toBe(String(day(9, 1)));
+    expect(query.get("summaryTo")).toBe(String(day(10, 1)));
+    expect(latest.summaryLoading).toBe(true);
   });
 
   it("keeps complete own/team/history usable when TIP fails and never persists a fake zero", async () => {

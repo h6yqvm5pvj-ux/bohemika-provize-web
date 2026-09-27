@@ -1,3 +1,4 @@
+import { DataFreshness } from "./DataFreshness";
 import styles from "./homeWidgets.module.css";
 import { HeartPulse, Layers3, Trophy } from "lucide-react";
 import { AnimatedMoney } from "./AnimatedNumbers";
@@ -8,6 +9,8 @@ import { type TeamLeaderboardEntry } from "../types";
 type Props = {
   language: AppLanguage;
   loading: boolean;
+  updatedAt?: number | null;
+  error?: string | null;
   entries: TeamLeaderboardEntry[];
   leaderboardLabel: string;
   lbProductFilter: "life" | "other";
@@ -49,6 +52,8 @@ const TEAM_LEADERBOARD_COPY: Record<
 export function TeamLeaderboardSection({
   language,
   loading,
+  updatedAt,
+  error,
   entries,
   leaderboardLabel,
   lbProductFilter,
@@ -74,7 +79,8 @@ export function TeamLeaderboardSection({
           <button type="button" onClick={() => onRangeChange("year")} aria-pressed={lbRange === "year"}>{copy.year}</button>
         </div>
       </div>
-      {loading ? <div className={`${styles.empty} ${styles.loading}`} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</div>
+      <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} />
+      {error && !updatedAt ? null : loading && !updatedAt ? <div className={`${styles.empty} ${styles.loading}`} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</div>
         : entries.length === 0 ? <p className={styles.empty}>{copy.empty}</p>
         : <>
           <div className={styles.rankLegend}><span>{leaderboardLabel}</span><span>{copy.premium} · {lbProductFilter === "life" ? "měsíčně" : "ročně"}</span></div>

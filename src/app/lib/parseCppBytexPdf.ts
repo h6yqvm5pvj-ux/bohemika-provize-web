@@ -1,3 +1,4 @@
+import type { PdfReadOptions } from "./pdfDocumentText";
 import { type PaymentFrequency } from "../types/domain";
 import { parseCppHafanPdf } from "./parseCppHafanPdf";
 
@@ -10,6 +11,6 @@ export type CppBytexPdfResult = {
   frequency?: PaymentFrequency | null;
 };
 
-export async function parseCppBytexPdf(file: File): Promise<CppBytexPdfResult> {
-  return parseCppHafanPdf(file);
+export async function parseCppBytexPdf(file: File, options: PdfReadOptions = {}): Promise<CppBytexPdfResult> {
+  return parseCppHafanPdf(file, options);
 }

@@ -1,17 +1,13 @@
 import type { PaymentFrequency, Product } from "../types/domain";
 
 import { productLabel as productLabelFromCatalog } from "@/app/lib/productCatalog";
-import type { PdfOcrProgress } from "@/app/lib/pdfOcr";
+import { readPdfText, type PdfReadOptions } from "@/app/lib/pdfDocumentText";
 
 import { allowedFrequencies } from "./calculatorHelpers";
 
 export type ParsedContractPdf = Record<string, any>;
 
-type PdfParserOptions = {
-  allowOcr?: boolean;
-  onOcrStart?: () => void;
-  onOcrProgress?: (progress: PdfOcrProgress) => void;
-};
+type PdfParserOptions = PdfReadOptions;
 
 // The KOMPLEX document identifies the product, not the adviser's underwriting
 // commission arrangement. Keep an explicitly selected ÚPIS variant.
@@ -140,14 +136,14 @@ export async function detectProductFromPdfLazy(file: File, options: PdfParserOpt
   return detectProductFromPdf(file, options);
 }
 
-export async function parseMaxCizinKomplexPdfLazy(file: File): Promise<ParsedContractPdf> {
+export async function parseMaxCizinKomplexPdfLazy(file: File, options: PdfParserOptions = {}): Promise<ParsedContractPdf> {
   const { parseMaxCizinKomplexPdf } = await import(
     "../lib/parseMaxCizinKomplexPdf"
   );
-  return parseMaxCizinKomplexPdf(file);
+  return parseMaxCizinKomplexPdf(file, options);
 }
 
-export async function parseContractPdfByProduct(
+async function parseProduct(
   product: Product,
   file: File,
   options: PdfParserOptions = {}
@@ -156,7 +152,7 @@ export async function parseContractPdfByProduct(
     case "cppPPRbez":
     case "cppPPRs": {
       const { parseCppKomplexPdf } = await import("../lib/parseCppKomplexPdf");
-      return parseCppKomplexPdf(file);
+      return parseCppKomplexPdf(file, options);
     }
     case "conseqzenit": {
       const { parseConseqZenitPdf } = await import("../lib/parseConseqZenitPdf");
@@ -164,94 +160,112 @@ export async function parseContractPdfByProduct(
     }
     case "cppAuto": {
       const { parseCppAutoPdf } = await import("../lib/parseCppAutoPdf");
-      return parseCppAutoPdf(file);
+      return parseCppAutoPdf(file, options);
     }
     case "slaviaauto": {
       const { parseSlaviaAutoPdf } = await import("../lib/parseSlaviaAutoPdf");
-      return parseSlaviaAutoPdf(file);
+      return parseSlaviaAutoPdf(file, options);
     }
     case "allianzAuto": {
       const { parseAllianzAutoPdf } = await import("../lib/parseAllianzAutoPdf");
-      return parseAllianzAutoPdf(file);
+      return parseAllianzAutoPdf(file, options);
     }
     case "csobAuto": {
       const { parseCsobAutoPdf } = await import("../lib/parseCsobAutoPdf");
-      return parseCsobAutoPdf(file);
+      return parseCsobAutoPdf(file, options);
     }
     case "uniqaAuto": {
       const { parseUniqaAutoPdf } = await import("../lib/parseUniqaAutoPdf");
-      return parseUniqaAutoPdf(file);
+      return parseUniqaAutoPdf(file, options);
     }
     case "pillowAuto": {
       const { parsePillowAutoPdf } = await import("../lib/parsePillowAutoPdf");
-      return parsePillowAutoPdf(file);
+      return parsePillowAutoPdf(file, options);
     }
     case "kooperativaAuto": {
       const { parseKooperativaAutoPdf } = await import(
         "../lib/parseKooperativaAutoPdf"
       );
-      return parseKooperativaAutoPdf(file);
+      return parseKooperativaAutoPdf(file, options);
     }
     case "neon": {
       const { parseNeonPdf } = await import("../lib/parseNeonPdf");
-      return parseNeonPdf(file);
+      return parseNeonPdf(file, options);
     }
     case "flexi": {
       const { parseFlexiPdf } = await import("../lib/parseFlexiPdf");
-      return parseFlexiPdf(file);
+      return parseFlexiPdf(file, options);
     }
     case "domex":
     case "domexneuron": {
       const { parseDomexPdf } = await import("../lib/parseDomexPdf");
-      return parseDomexPdf(file);
+      return parseDomexPdf(file, options);
     }
     case "cppbytex": {
       const { parseCppBytexPdf } = await import("../lib/parseCppBytexPdf");
-      return parseCppBytexPdf(file);
+      return parseCppBytexPdf(file, options);
     }
     case "cpphafan": {
       const { parseCppHafanPdf } = await import("../lib/parseCppHafanPdf");
-      return parseCppHafanPdf(file);
+      return parseCppHafanPdf(file, options);
     }
     case "koopodzam": {
       const { parseKoopOdzamPdf } = await import("../lib/parseKoopOdzamPdf");
-      return parseKoopOdzamPdf(file);
+      return parseKoopOdzamPdf(file, options);
     }
     case "maxdomov": {
       const { parseMaxdomovPdf } = await import("../lib/parseMaxdomovPdf");
-      return parseMaxdomovPdf(file);
+      return parseMaxdomovPdf(file, options);
     }
     case "maxcizinkomplex":
-      return parseMaxCizinKomplexPdfLazy(file);
+      return parseMaxCizinKomplexPdfLazy(file, options);
     case "comfortcc": {
       const { parseComfortPdf } = await import("../lib/parseComfortPdf");
-      return parseComfortPdf(file);
+      return parseComfortPdf(file, options);
     }
     case "cppcestovko": {
       const { parseCppCestovkoPdf } = await import("../lib/parseCppCestovkoPdf");
-      return parseCppCestovkoPdf(file);
+      return parseCppCestovkoPdf(file, options);
     }
     case "axacestovko": {
       const { parseAxaCestovkoPdf } = await import("../lib/parseAxaCestovkoPdf");
-      return parseAxaCestovkoPdf(file);
+      return parseAxaCestovkoPdf(file, options);
     }
     case "koopcestovko": {
       const { parseKooperativaCestovkoPdf } = await import(
         "../lib/parseKooperativaCestovkoPdf"
       );
-      return parseKooperativaCestovkoPdf(file);
+      return parseKooperativaCestovkoPdf(file, options);
     }
     case "cppsimplex": {
       const { parseCppSimplexPdf } = await import("../lib/parseCppSimplexPdf");
-      return parseCppSimplexPdf(file);
+      return parseCppSimplexPdf(file, options);
     }
     case "zamex": {
       const { parseCppZamexPdf } = await import("../lib/parseCppZamexPdf");
-      return parseCppZamexPdf(file);
+      return parseCppZamexPdf(file, options);
     }
     default:
       return null;
   }
+}
+
+export async function parseContractPdfByProduct(
+  product: Product,
+  file: File,
+  options: PdfParserOptions = {},
+): Promise<ParsedContractPdf | null> {
+  if (!hasAutomatedPdfImport(product)) return null;
+  const readOptions = { ...options, allowOcr: options.allowOcr ?? true };
+  const parsed = await parseProduct(product, file, readOptions);
+  if (!parsed) return null;
+  const document = await readPdfText(file, readOptions);
+  const warnings = [...new Set([...(parsed.pdfImportWarnings ?? []), ...document.warnings])];
+  return {
+    ...parsed,
+    ...(document.ocrTextUsed ? { ocrTextUsed: true } : {}),
+    ...(warnings.length ? { pdfImportWarnings: warnings } : {}),
+  };
 }
 
 /**

@@ -17,7 +17,9 @@ export function markHallOwnerDirty(writer: Writer, db: Firestore, email: string)
   writer.set(ownerRef(db, email), { revision: randomUUID() });
 }
 
-const SOURCE_FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType"];
+// The revision also fences the home monthly production sums. Commission-only
+// edits must invalidate those even though the hall itself counts premiums.
+const SOURCE_FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides"];
 export function invalidateHallContractChange(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>): void {
   if (!SOURCE_FIELDS.some((field) => Object.hasOwn(patch, field) && JSON.stringify(before[field]) !== JSON.stringify(patch[field]))) return;
   const pathOwner = ref.parent.parent?.id ?? "";

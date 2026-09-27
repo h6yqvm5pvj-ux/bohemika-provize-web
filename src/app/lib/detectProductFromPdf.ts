@@ -1,5 +1,5 @@
 import { type Product } from "../types/domain";
-import type { ConseqZenitPdfOptions } from "./parseConseqZenitPdf";
+import { readPdfText, type PdfReadOptions, type PdfDocumentText } from "./pdfDocumentText";
 
 export type PdfProductDetection = {
   product: Product;
@@ -429,8 +429,8 @@ const DETECTION_RULES: DetectionRule[] = [
 ];
 
 const extractPageText = async (doc: any, pageNumber: number): Promise<string> => {
-  const page = await doc.getPage(pageNumber);
-  const content = await page.getTextContent();
+  const page = doc.pages[pageNumber - 1];
+  const content = { items: page.items };
   return content.items
     .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
     .filter(Boolean)
@@ -438,8 +438,8 @@ const extractPageText = async (doc: any, pageNumber: number): Promise<string> =>
 };
 
 const extractPageItems = async (doc: any, pageNumber: number): Promise<PositionedTextItem[]> => {
-  const page = await doc.getPage(pageNumber);
-  const content = await page.getTextContent();
+  const page = doc.pages[pageNumber - 1];
+  const content = { items: page.items };
   return (content.items ?? [])
     .map((item: any) => ({
       str: typeof item?.str === "string" ? item.str.replace(/\s+/g, " ").trim() : "",
@@ -454,7 +454,7 @@ const looksLikeOldMaxdomov3Layout = async (
   doc: any,
   ensurePageItems: (pageNumber: number) => Promise<PositionedTextItem[]>
 ): Promise<boolean> => {
-  if (doc.numPages < 5) return false;
+  if (doc.pages.length < 5) return false;
 
   const firstPageItems = await ensurePageItems(1);
   const fourthPageItems = await ensurePageItems(4);
@@ -489,37 +489,22 @@ const looksLikeOldMaxdomov3Layout = async (
   );
 };
 
-export async function detectProductFromPdf(file: File, options: ConseqZenitPdfOptions = {}): Promise<PdfProductDetection | null> {
+export async function detectProductFromPdf(file: File, options: PdfReadOptions = {}): Promise<PdfProductDetection | null> {
   if (!file) return null;
 
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
-  try {
-    return await detectProductInDocument(doc, file, options);
-  } finally {
-    await doc.destroy();
-  }
+  const doc = await readPdfText(file, { ...options, allowOcr: options.allowOcr ?? true });
+  const result = await detectProductInDocument(doc, file, options);
+  return result && doc.ocrTextUsed
+    ? { ...result, confidence: "medium", reason: `${result.reason} Text byl rozpoznán ze skenu; údaje ověř podle PDF.` }
+    : result;
 }
 
 async function detectProductInDocument(
-  doc: import("pdfjs-dist/legacy/build/pdf.mjs").PDFDocumentProxy,
+  doc: PdfDocumentText,
   file: File,
-  options: ConseqZenitPdfOptions,
+  options: PdfReadOptions,
 ): Promise<PdfProductDetection | null> {
-  if (doc.numPages < 1) return null;
+  if (doc.pages.length < 1) return null;
 
   const pageTextByNumber = new Map<number, { strict: string; loose: string }>();
   const pageItemsByNumber = new Map<number, PositionedTextItem[]>();
@@ -570,7 +555,7 @@ async function detectProductInDocument(
     for (const requirement of requirements) {
       if (requirement.page === "any") {
         let foundOnSomePage = false;
-        for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+        for (let pageNumber = 1; pageNumber <= doc.pages.length; pageNumber += 1) {
           const normalizedPageText = await ensurePageText(pageNumber);
           if (
             pageContainsText(
@@ -590,8 +575,8 @@ async function detectProductInDocument(
         continue;
       }
 
-      const requiredPage = requirement.page === "last" ? doc.numPages : requirement.page;
-      if (requiredPage < 1 || requiredPage > doc.numPages) {
+      const requiredPage = requirement.page === "last" ? doc.pages.length : requirement.page;
+      if (requiredPage < 1 || requiredPage > doc.pages.length) {
         matched = false;
         break;
       }
@@ -627,7 +612,7 @@ async function detectProductInDocument(
     };
   }
 
-  if (options.allowOcr !== false && typeof document !== "undefined" && [...pageTextByNumber.values()].every((page) => page.strict.length < 80)) {
+  if (doc.ocrTextUsed) {
     const { parseConseqZenitPdf } = await import("./parseConseqZenitPdf");
     const scanned = await parseConseqZenitPdf(file, options);
     if (scanned.productDetected) {

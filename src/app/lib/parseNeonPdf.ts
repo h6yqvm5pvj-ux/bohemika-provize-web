@@ -1,3 +1,4 @@
+import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseNeonPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -217,27 +218,13 @@ const pickMostFrequentContractNumber = (
 
 const DEATH_ACCIDENT_LABEL_REGEX = /(?:zakladni\s+pojisteni\s+pro\s+pripad\s+)?smrt(?:i)?\s+urazem/i;
 
-export async function parseNeonPdf(file: File): Promise<NeonPdfResult> {
-  const buffer = await file.arrayBuffer();
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-  if (typeof window !== "undefined" && pdfjsLib.GlobalWorkerOptions) {
-    try {
-      const workerSrc = "/pdf.worker.min.mjs";
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      }
-    } catch (err) {
-      console.warn("PDF worker src nebylo možné nastavit", err);
-    }
-  }
-
-  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Promise<NeonPdfResult> {
+  const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
+  for (let i = 1; i <= doc.pages.length; i++) {
+    const page = doc.pages[i - 1];
+    const content = { items: page.items };
     const text = content.items
       .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
       .filter(Boolean)

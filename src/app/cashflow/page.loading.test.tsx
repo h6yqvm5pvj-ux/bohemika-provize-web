@@ -49,6 +49,8 @@ describe("cashflow initial loading", () => {
       loading: true,
       ready: false,
       rawSnapshot: null,
+      snapshotUpdatedAt: null,
+      error: null,
       calculationDeferred: false,
       cashflowItems: [],
       verificationInput: null,

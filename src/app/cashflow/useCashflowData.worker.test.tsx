@@ -202,6 +202,18 @@ describe("actual cashflow data hook worker boundary", () => {
     expect(fetchMock).toHaveBeenCalledTimes(requests);
   });
 
+  it("provides inputs only for home without running a duplicate full calculation, even below the large-portfolio threshold", async () => {
+    email = addAccount(12);
+    signIn(email);
+    await render({ snapshotOnly: true });
+    await finishLoading();
+    expect(latest.ready).toBe(true);
+    expect(latest.rawSnapshot).not.toBeNull();
+    expect(latest.calculationDeferred).toBe(true);
+    expect(latest.cashflowItems).toEqual([]);
+    expect(generateCashflow).not.toHaveBeenCalled();
+  });
+
   it("does not read or expose data while disabled and clears an already loaded deferred snapshot", async () => {
     email = addAccount(200);
     signIn(email);
@@ -238,6 +250,21 @@ describe("actual cashflow data hook worker boundary", () => {
     expect(latest.rawSnapshot?.email).toBe(email);
     expect(latest.rawSnapshot?.ownEntries.every(entry => entry.userEmail === email)).toBe(true);
     expect(latest.calculationDeferred).toBe(true);
+  });
+
+  it("keeps a cached source timestamp and reports refresh failure instead of marking old inputs fresh", async () => {
+    email = addAccount(12); signIn(email);
+    await render({ snapshotOnly: true }); await finishLoading();
+    const firstUpdatedAt = latest.snapshotUpdatedAt;
+    expect(firstUpdatedAt).toBe(Date.now()); expect(latest.error).toBeNull();
+    await act(async () => root.unmount()); root = createRoot(container);
+    vi.setSystemTime(Date.now() + 60_000);
+    await render({ snapshotOnly: true }); await finishLoading();
+    expect(latest.snapshotUpdatedAt).toBe(firstUpdatedAt);
+    failures.add(email);
+    await render({ snapshotOnly: true, reloadKey: 1 }); await finishLoading();
+    expect(latest.error).toContain("nepodařilo načíst"); expect(latest.snapshotUpdatedAt).toBeNull();
+    expect(latest.ready).toBe(true); expect(latest.loading).toBe(false);
   });
 
   it("does not restore a late previous-account response after the next account has loaded", async () => {
