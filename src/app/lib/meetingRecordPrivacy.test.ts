@@ -26,17 +26,18 @@ afterEach(() => {
 });
 
 describe("account-bound meeting records", () => {
-  it("preserves all three inputs for navigation and a reload of the same account, without localStorage", () => {
+  it("preserves navigation in memory and discards sensitive inputs on reload", () => {
     for (const kind of kinds) {
       expect(writeMeetingRecord(kind, payload, owner())).toBe(true);
       expect(readMeetingRecord(kind, owner())).toEqual(payload);
     }
     expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
     const previous = owner();
     suspendMeetingRecordSession();
     expect(readMeetingRecord("lifeDraft", previous)).toBeNull();
     setMeetingRecordIdentity("advisor-a");
-    for (const kind of kinds) expect(readMeetingRecord(kind, owner())).toEqual(payload);
+    for (const kind of kinds) expect(readMeetingRecord(kind, owner())).toBeNull();
     expect(writeMeetingRecord("lifeDraft", payload, previous)).toBe(false);
   });
 

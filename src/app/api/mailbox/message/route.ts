@@ -542,10 +542,16 @@ export async function PATCH(req: NextRequest) {
         `message:${pair.localIdentity.messageId}`
       );
     } else {
-      commonUpdate.body = text || "Příloha bez textu.";
-      commonUpdate["metadata.messageText"] = text;
+      commonUpdate.encryptedContent = encryptMailboxJson(
+        { subject: normalizeText(pair.localData.title) || "Zpráva", messageText: text },
+        `message:${pair.localIdentity.messageId}`
+      );
     }
 
+    commonUpdate.title = "Šifrovaná zpráva";
+    commonUpdate.body = "Nová šifrovaná zpráva.";
+    commonUpdate["metadata.messageText"] = FieldValue.delete();
+    commonUpdate["metadata.encryptedContentVersion"] = 1;
     const batch = adminDb.batch();
     pair.copyRefs.forEach((ref) => batch.update(ref, commonUpdate));
     await batch.commit();

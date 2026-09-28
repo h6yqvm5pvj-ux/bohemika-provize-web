@@ -6,6 +6,7 @@ import { createJiti } from "jiti";
 nextEnv.loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
 const jiti = createJiti(import.meta.url, { alias: { "@": `${process.cwd()}/src` } });
 const { adminDb: db, adminAuth: auth } = jiti("../src/lib/server/firebaseAdmin.ts");
+const { openPrivateValue, clientCardContext } = jiti("../src/lib/server/privateEncryption.ts");
 const { clientSlugForName } = jiti("../src/app/_klienti/clientIdentity.ts");
 const { originalAdviserEmailForContract } = jiti("../src/app/api/contracts/_lib/contractsApi.transfer.ts");
 const { normalizeStoredContractPdfAttachment } = jiti("../src/lib/server/contractPdfStorage.ts");
@@ -24,8 +25,8 @@ async function run() {
   const snapshot = await db.collection("users").doc(adviserEmail).collection("entries").select(
     "clientName", "clientEmail", "clientPhone", "clientAddress", "entryType", "productKey", "originalAdviserEmail", "acquisitionType", "contractSignedDate", "createdAt", "contractPdfAttachment",
   ).get();
-  const saved = await db.collection("clientCardsPrivate").doc(account.uid).collection("cards").select("card.email").get();
-  const existing = new Set(saved.docs.filter(doc => doc.data().card?.email?.trim()).map(doc => doc.id));
+  const saved = await db.collection("clientCardsPrivate").doc(account.uid).collection("cards").select("card", "ownerUid").get();
+  const existing = new Set(saved.docs.filter(doc => doc.data().ownerUid === account.uid && openPrivateValue(doc.data().card, clientCardContext(account.uid, doc.id))?.email?.trim()).map(doc => doc.id));
   const groups = new Map();
   for (const source of snapshot.docs) {
     const data = source.data(), slug = clientSlugForName(data.clientName);

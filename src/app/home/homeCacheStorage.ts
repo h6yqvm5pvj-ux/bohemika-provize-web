@@ -41,49 +41,14 @@ export function clearPersistedHomeCache(email?: string | null): void {
   }
 }
 
-function purgeLegacyLocalStorageHomeCache(email?: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    removeHomeCacheKeys(window.localStorage, email);
-  } catch {
-    // Best effort legacy cleanup.
-  }
+// Home already maintains an identity-scoped, short-lived memory cache. Avoid a
+// second persistent copy of contracts, commissions and team information.
+export function readPersistedHomeCache<TPayload>(_cacheKey: string): PersistedHomeCache<TPayload> | null {
+  void _cacheKey;
+  clearPersistedHomeCache();
+  return null;
 }
-
-export function readPersistedHomeCache<TPayload>(
-  cacheKey: string
-): PersistedHomeCache<TPayload> | null {
-  if (typeof window === "undefined") return null;
-  purgeLegacyLocalStorageHomeCache();
-  try {
-    const raw = window.sessionStorage.getItem(`${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
-      ts?: unknown;
-      payload?: unknown;
-    };
-    if (typeof parsed.ts !== "number" || !parsed.payload) return null;
-    return {
-      ts: parsed.ts,
-      payload: parsed.payload as TPayload,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writePersistedHomeCache<TPayload>(
-  cacheKey: string,
-  payload: TPayload
-): void {
-  if (typeof window === "undefined") return;
-  purgeLegacyLocalStorageHomeCache();
-  try {
-    window.sessionStorage.setItem(
-      `${HOME_CACHE_STORAGE_PREFIX}${cacheKey}`,
-      JSON.stringify({ ts: Date.now(), payload })
-    );
-  } catch {
-    // ignore storage errors
-  }
+export function writePersistedHomeCache<TPayload>(_cacheKey: string, _payload: TPayload): void {
+  void _cacheKey; void _payload;
+  clearPersistedHomeCache();
 }

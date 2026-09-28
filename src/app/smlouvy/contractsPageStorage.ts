@@ -1,3 +1,4 @@
+import { privateMemory, purgePrivateBrowserCaches } from "@/app/lib/privateMemory";
 import {
   parseCommissionAuditCodeFilter,
   parseCommissionAuditMode,
@@ -58,9 +59,10 @@ export function readContractsCache(
   email: string | null | undefined
 ): ContractsCache | null {
   if (!email || typeof window === "undefined") return null;
+  purgePrivateBrowserCaches();
   const normalized = email.toLowerCase();
   try {
-    const raw = sessionStorage.getItem(CONTRACTS_CACHE_KEY);
+    const raw = privateMemory.getItem(CONTRACTS_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ContractsCache;
     if (parsed.userEmail !== normalized) return null;
@@ -78,7 +80,7 @@ export function readContractsCache(
 export function writeContractsCache(cache: ContractsCache) {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(CONTRACTS_CACHE_KEY, JSON.stringify(cache));
+    privateMemory.setItem(CONTRACTS_CACHE_KEY, JSON.stringify(cache));
   } catch {
     // best-effort cache
   }
@@ -88,11 +90,12 @@ export function readContractsViewState(
   userEmail: string | null | undefined
 ): ContractsViewState | null {
   if (typeof window === "undefined") return null;
+  purgePrivateBrowserCaches();
   const normalized = normalizeEmail(userEmail);
   if (!normalized) return null;
   try {
     const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
-    const raw = sessionStorage.getItem(key);
+    const raw = privateMemory.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<ContractsViewState>;
     return {
@@ -150,18 +153,19 @@ export function writeContractsViewState(
   state: Omit<ContractsViewState, "userEmail">
 ) {
   if (typeof window === "undefined") return;
+  purgePrivateBrowserCaches();
   const normalized = normalizeEmail(userEmail);
   if (!normalized) return;
   try {
     const key = `${CONTRACTS_VIEW_STATE_KEY}:${normalized}`;
-    sessionStorage.setItem(
+    privateMemory.setItem(
       key,
       JSON.stringify({
         ...state,
         userEmail: normalized,
       } satisfies ContractsViewState)
     );
-    sessionStorage.removeItem(CONTRACTS_VIEW_STATE_KEY);
+    privateMemory.removeItem(CONTRACTS_VIEW_STATE_KEY);
   } catch {
     // best effort
   }

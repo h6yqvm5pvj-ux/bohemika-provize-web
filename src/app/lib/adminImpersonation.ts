@@ -1,3 +1,4 @@
+import { clearPrivateMemory, purgePrivateBrowserCaches } from "./privateMemory";
 import {
   ADMIN_IMPERSONATION_HEADER,
   normalizeImpersonationEmail,
@@ -105,6 +106,8 @@ const broadcastChange = () => {
 };
 
 export function clearImpersonationCaches() {
+  clearPrivateMemory();
+  purgePrivateBrowserCaches();
   if (typeof window === "undefined") return;
   try {
     window.sessionStorage.removeItem("contracts_cache_v3");

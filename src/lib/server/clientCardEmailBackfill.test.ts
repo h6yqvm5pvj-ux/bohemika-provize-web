@@ -1,3 +1,5 @@
+import { openPrivateValue } from "./privateEncryption";
+import "../../../tests/helpers/privateEncryptionTestKey";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSnapshot, Firestore } from "firebase-admin/firestore";
 import { createEmptyClientCard } from "@/app/_klienti/clientCardData";
@@ -30,13 +32,15 @@ describe("permanent PDF email backfill", () => {
   });
   it("creates a persistent private card and records PDF provenance", async () => {
     expect(await saveClientCardEmail(db, adviser, readyPlan())).toBe("saved");
-    expect(set).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("/own-uid/cards/") }), expect.objectContaining({ ownerUid: adviser.uid, revision: 1, card: expect.objectContaining({ clientName: "Petr Novák", email: "petr@example.test" }), emailSource: expect.objectContaining({ contracts: [{ path: `users/${adviser.email}/entries/contract`, pdfSha256: "hash" }] }) }), { merge: true });
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("/own-uid/cards/") }), expect.objectContaining({ ownerUid: adviser.uid, revision: 1, card: expect.objectContaining({ privateEncryption: 1 }), emailSource: expect.objectContaining({ contracts: [{ path: `users/${adviser.email}/entries/contract`, pdfSha256: "hash" }] }) }));
+    expect(openPrivateValue(set.mock.calls[0][1].card, `${set.mock.calls[0][0].path}:card`)).toMatchObject({ clientName: "Petr Novák", email: "petr@example.test" });
   });
   it("keeps existing personal data while only filling a blank email", async () => {
     const card = { ...createEmptyClientCard("Petr Novák"), phone: "777 888 999", occupation: "Test" };
     get.mockResolvedValue({ data: () => ({ ownerUid: adviser.uid, card, revision: 4 }) });
     expect(await saveClientCardEmail(db, adviser, readyPlan())).toBe("saved");
-    expect(set.mock.calls[0][1]).toMatchObject({ card: { ...card, email: "petr@example.test" }, revision: 5 });
+    expect(set.mock.calls[0][1].revision).toBe(5);
+    expect(openPrivateValue(set.mock.calls[0][1].card, `${set.mock.calls[0][0].path}:card`)).toEqual({ ...card, email: "petr@example.test" });
   });
   it("preserves an email entered manually during the extraction", async () => {
     get.mockResolvedValue({ data: () => ({ ownerUid: adviser.uid, card: { ...createEmptyClientCard("Petr Novák"), email: "manual@example.test" }, revision: 1 }) });

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hallParticipantId } from "@/lib/server/hallOfFame";
 
-const mocks = vi.hoisted(() => ({ projections: new Map<string, Record<string, unknown>>(), verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn(), select: vi.fn(), impersonation: vi.fn() }));
+const mocks = vi.hoisted(() => ({ projections: new Map<string, Record<string, unknown>>(), verify: vi.fn(), access: vi.fn(), setup: vi.fn(), rate: vi.fn(), users: vi.fn(), group: vi.fn(), impersonation: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminAuth: { verifyIdToken: mocks.verify },
   adminDb: {
@@ -12,18 +12,11 @@ vi.mock("@/lib/server/firebaseAdmin", () => ({
       getAll: async (...refs: { path: string }[]) => refs.map(ref => ({ ref, data: () => mocks.projections.get(ref.path) })),
       set: (ref: { path: string }, data: Record<string, unknown>) => mocks.projections.set(ref.path, data),
     }),
-    collectionGroup: () => ({ where: (_field: string, _op: string, owners: string[]) => ({
-      select: (...fields: string[]) => {
-        mocks.select(...fields);
-        return { get: async () => {
-          const snapshot = await mocks.group(owners);
-          return { docs: snapshot.docs.map((doc: { data: () => Record<string, unknown> }) => ({
-            ...doc, data: () => Object.fromEntries(fields.map((field) => [field, doc.data()[field]])),
-          })) };
-        } };
-      },
-    }) }),
+
   },
+}));
+vi.mock("@/lib/server/hallOfFameEntries", () => ({
+  readHallEntryDocuments: async (_db: unknown, owners: string[]) => (await mocks.group(owners)).docs,
 }));
 vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorAccessError: mocks.access, getAdvisorSetupError: mocks.setup }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rate, applyRateLimitHeaders: vi.fn() }));
@@ -100,7 +93,6 @@ describe("global hall API access and periods", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(mocks.users).toHaveBeenCalledOnce();
     expect(mocks.group).toHaveBeenCalledOnce();
-    expect(mocks.select).toHaveBeenCalledExactlyOnceWith("userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType");
     mocks.access.mockResolvedValue({ status: 403, error: "Tipař nemá přístup", missing: [] });
     expect((await GET(request("hallOfFame&includePeriods=true"))).status).toBe(403);
     expect(mocks.users).toHaveBeenCalledOnce();

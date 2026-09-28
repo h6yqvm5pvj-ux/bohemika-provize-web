@@ -15,6 +15,7 @@ const jiti = createJiti(import.meta.url, {
   },
 });
 const { adminDb } = jiti("../src/lib/server/firebaseAdmin.ts");
+const { invalidateHallContractChange } = jiti("../src/lib/server/hallOfFameProjection.ts");
 const {
   contractListIndexFieldsForContract,
   contractSearchIndexFieldsForContract,
@@ -22,7 +23,7 @@ const {
   "../src/app/api/contracts/_lib/contractsApi.listFilters.ts"
 );
 
-const BATCH_LIMIT = 400;
+const BATCH_LIMIT = 150;
 const ENTRY_PAGE_SIZE = 300;
 
 const hasArg = (name) => process.argv.includes(name);
@@ -73,6 +74,7 @@ const commitPlanned = async (planned) => {
   let written = 0;
 
   for (const item of planned) {
+    invalidateHallContractChange(batch, item.ref, { userEmail: item.previousOwnerEmail }, item.patch);
     batch.set(item.ref, item.patch, { merge: true });
     inBatch += 1;
 
@@ -155,6 +157,7 @@ const main = async () => {
 
         planned.push({
           ownerEmail,
+          previousOwnerEmail: data.userEmail,
           entryId: entryDoc.id,
           contractNumber: data.contractNumber ?? null,
           patch,

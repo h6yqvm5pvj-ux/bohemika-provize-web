@@ -1,3 +1,4 @@
+import { openTipMailbox } from "@/lib/server/tipEncryption";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -215,7 +216,7 @@ export async function GET(req: NextRequest) {
     });
 
     const allItems = tipDocs.map((docSnap) => {
-      const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+      const data = openTipMailbox(docSnap.data() ?? {}, docSnap.id);
       const metadata =
         data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
           ? (data.metadata as Record<string, unknown>)

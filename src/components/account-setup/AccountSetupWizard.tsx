@@ -468,7 +468,7 @@ export function AccountSetupWizard({
                   </div>
 
                   {careerDraftStatus !== "none" && <p role="status" className="text-xs leading-relaxed text-violet-100/70">
-                    {careerDraftStatus === "restored" ? "Obnovili jsme rozepsanou kariéru z této karty prohlížeče." : careerDraftStatus === "saved" ? "Rozepsané změny jsou uložené v této kartě prohlížeče." : "Prohlížeč neumožňuje uložit rozepsané změny. Před obnovením stránky dokonči tento krok."}
+                    {careerDraftStatus === "restored" ? "Obnovili jsme rozepsané změny v této otevřené kartě." : careerDraftStatus === "saved" ? "Rozepsané změny zůstanou dostupné do obnovení nebo zavření této stránky. Dokonči krok, aby se uložily do profilu." : "Prohlížeč neumožňuje uložit rozepsané změny. Před obnovením stránky dokonči tento krok."}
                   </p>}
                   <div className="space-y-2.5">
                     {timelineDraft.map((row, rowIndex) => {

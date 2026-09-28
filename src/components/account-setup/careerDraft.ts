@@ -1,3 +1,4 @@
+import { privateMemory } from "@/app/lib/privateMemory";
 import type { AccountSetupTimelineItem } from "./useAccountSetupFlow";
 
 const key = (uid: string) => `bohemka:career-draft:${uid}`;
@@ -9,21 +10,22 @@ export function careerSignature(rows: AccountSetupTimelineItem[]) {
 }
 
 export function clearCareerDraft(uid: string) {
-  try { sessionStorage.removeItem(key(uid)); } catch { /* Storage may be unavailable. */ }
+  try { privateMemory.removeItem(key(uid)); } catch { /* Storage may be unavailable. */ }
 }
 
 export function saveCareerDraft(uid: string, baseline: string, rows: AccountSetupTimelineItem[]): boolean {
   if (!uid) return false;
   try {
-    sessionStorage.setItem(key(uid), JSON.stringify({ baseline, rows, savedAt: Date.now() }));
+    privateMemory.setItem(key(uid), JSON.stringify({ baseline, rows, savedAt: Date.now() }));
     return true;
   } catch { return false; }
 }
 
 export function restoreCareerDraft(uid: string, baseline: string, positions: Set<string>): AccountSetupTimelineItem[] | null {
   if (!uid) return null;
+  try { sessionStorage.removeItem(key(uid)); } catch { /* Obsolete plaintext draft. */ }
   try {
-    const raw = sessionStorage.getItem(key(uid));
+    const raw = privateMemory.getItem(key(uid));
     if (!raw) return null;
     if (raw.length > 100_000) throw new Error("oversized draft");
     const draft = JSON.parse(raw);

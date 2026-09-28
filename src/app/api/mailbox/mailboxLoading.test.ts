@@ -29,6 +29,7 @@ vi.mock("@/lib/server/firebaseAdmin", () => {
           .slice(0, limit)
           .map(([id, data]) => ({
             id,
+            ref: { path: `${path}/${id}` },
             data: () => fields ? Object.fromEntries(Object.entries(data).filter(([key]) => fields.includes(key))) : data,
           }));
         return { docs, empty: docs.length === 0, size: docs.length };

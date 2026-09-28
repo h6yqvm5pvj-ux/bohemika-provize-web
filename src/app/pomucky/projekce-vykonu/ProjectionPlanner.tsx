@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import type { User } from "firebase/auth";
+import { openPrivateBrowserStore, PrivateBrowserMigrationError } from "@/app/lib/privateBrowserStore";
+
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUpRight, CarFront, Check, ChevronDown, Copy, Heart, HelpCircle, House, Plus, Printer, RotateCcw, SlidersHorizontal, Sparkles, Target, Trash2, TrendingUp, UserRound, Users, X } from "lucide-react";
 import { POSITION_LABELS, formatMoney } from "@/app/lib/formatters";
@@ -35,28 +38,58 @@ function PositionField({ value, onChange, manager = false, label = "Kariérní p
   return <div className={styles.field}><label htmlFor={id}>{label}</label><select id={id} value={value} onChange={event => onChange(event.target.value as Position)}>{POSITIONS.filter(position => !manager || position.startsWith("manazer")).map(position => <option key={position} value={position}>{POSITION_LABELS[position]}</option>)}</select></div>;
 }
 
-export function ProjectionPlanner({ storageKey, initialPosition = "poradce1" }: { storageKey: string; initialPosition?: Position }) {
-  const [draft, setDraft] = useState<PlannerDraft>(() => {
-    const defaults = defaultSettings(initialPosition);
-    try { return readDraft(localStorage.getItem(storageKey), defaults); } catch { return { settings: defaults, baseline: null }; }
-  });
+export function ProjectionPlanner({ user, initialPosition = "poradce1" }: { user: User; initialPosition?: Position }) {
+  const [loaded, setLoaded] = useState<{ owner: User; draft: PlannerDraft; vault: Awaited<ReturnType<typeof openPrivateBrowserStore>> } | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [saveStatus, setSaveStatus] = useState("Plán je připravený");
+  const pending = useRef(Promise.resolve());
+  const saveState = useRef({ version: 0 });
+  useEffect(() => {
+    const activeSaves = saveState.current;
+    let active = true;
+    let vault: Awaited<ReturnType<typeof openPrivateBrowserStore>> | null = null;
+    void (async () => {
+      try {
+        vault = await openPrivateBrowserStore(user);
+        const raw = await vault.read();
+        if (!active) { vault.dispose(); return; }
+        setLoaded({ owner: user, vault, draft: readDraft(raw === null ? null : JSON.stringify(raw), defaultSettings(initialPosition)) });
+        setError("");
+      } catch (error) {
+        vault?.dispose();
+        if (active) setError(error instanceof PrivateBrowserMigrationError ? error.message : "Plán se nepodařilo bezpečně odemknout. Zkontroluj přihlášení a zkus to znovu.");
+      }
+    })();
+    return () => { active = false; activeSaves.version++; vault?.dispose(); };
+  }, [user, initialPosition, attempt]);
+  const save = useCallback((draft: PlannerDraft) => {
+    if (!loaded) return;
+    const activeSaves = saveState.current;
+    const version = ++activeSaves.version;
+    setSaveStatus("Šifruji a ukládám…");
+    pending.current = pending.current.catch(() => {}).then(() => loaded.vault.write({ version: 1, ...draft }))
+      .then(() => { if (version === activeSaves.version) setSaveStatus("Plán je uložený a šifrovaný"); })
+      .catch(() => { if (version === activeSaves.version) setSaveStatus("Změny se nepodařilo uložit. Zkus úpravu znovu."); });
+  }, [loaded]);
+  if (!loaded || loaded.owner !== user) return <div className={styles.loading} role="status">{error || "Bezpečně odemykám tvůj plán…"}{error && <button type="button" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Zkusit znovu</button>}</div>;
+  return <ProjectionPlannerEditor initialDraft={loaded.draft} onSave={save} saveStatus={saveStatus} />;
+}
+
+function ProjectionPlannerEditor({ initialDraft, onSave, saveStatus }: { initialDraft: PlannerDraft; onSave: (draft: PlannerDraft) => void; saveStatus: string }) {
+  const [draft, setDraft] = useState<PlannerDraft>(initialDraft);
   const { settings, baseline } = draft;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [metric, setMetric] = useState<ChartMetric>("annual");
   const [notice, setNotice] = useState("");
-  const [storageFailed, setStorageFailed] = useState(false);
   const helpRef = useRef<HTMLDialogElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const scenarioInputId = useId();
   const [scenarioName, setScenarioName] = useState("Výchozí plán");
 
   useEffect(() => {
-    const save = window.setTimeout(() => {
-      try { localStorage.setItem(storageKey, JSON.stringify({ version: 1, ...draft })); setStorageFailed(false); }
-      catch { setStorageFailed(true); }
-    }, 0);
-    return () => window.clearTimeout(save);
-  }, [draft, storageKey]);
+    if (draft !== initialDraft) onSave(draft);
+  }, [draft, initialDraft, onSave]);
 
   const update = (patch: Partial<ProjectionSettings>) => setDraft(previous => ({ ...previous, settings: { ...previous.settings, ...patch } }));
   const updateProduction = (key: ProductKey, value: number) => {
@@ -97,7 +130,7 @@ export function ProjectionPlanner({ storageKey, initialPosition = "poradce1" }: 
 
     <div className={styles.topbar}>
       <div className={styles.modeSwitch} aria-label="Typ projekce">{([{ value: "individual", label: "Moje produkce", icon: UserRound }, { value: "team", label: "Můj tým", icon: Users }] as const).map(({ value, label, icon: Icon }) => <button key={value} type="button" aria-pressed={settings.mode === value} onClick={() => update({ mode: value })}><Icon size={17} />{label}</button>)}</div>
-      <span className={styles.saveStatus}>{storageFailed ? <><HelpCircle size={14} />Uložení v prohlížeči není dostupné</> : <><Check size={14} />Plán se ukládá v tomto prohlížeči</>}</span>
+      <span className={styles.saveStatus}><><Check size={14} />{saveStatus}</></span>
     </div>
 
     <div className={styles.workspace}>
@@ -203,7 +236,7 @@ export function ProjectionPlanner({ storageKey, initialPosition = "poradce1" }: 
     <div className={styles.mobileResult}><div><span>Průměr v {settings.horizon}. roce</span><strong>{formatMoney(lastYear.total / 12)} <small>/ měs.</small></strong></div><a href="#projection-results">Zobrazit výhled<ArrowRight size={15} /></a></div>
     <div className={styles.notice} role="status" aria-live="polite">{notice && <><Check size={16} /><span>{notice}</span><button type="button" aria-label="Zavřít oznámení" onClick={() => setNotice("")}><X size={15} /></button></>}</div>
     <dialog ref={helpRef} className={styles.helpDialog} onClick={event => { if (event.target === event.currentTarget) helpRef.current?.close(); }} onClose={() => helpButtonRef.current?.focus()} aria-labelledby="projection-help-title"><div className={styles.helpContent}><div className={styles.sectionHeading}><h2 id="projection-help-title">Jak projekce funguje</h2><button type="button" className={styles.iconButton} aria-label="Zavřít nápovědu" onClick={() => helpRef.current?.close()}><X size={19} /></button></div>
-      <ol><li><strong>Zadej pravidelnou měsíční produkci.</strong> U života jde o součet měsíčního pojistného nově sjednaných smluv. U aut a majetku o součet jejich ročního pojistného. Například 3 nové životní smlouvy po 1 000 Kč měsíčně znamenají vstup 3 000 Kč.</li><li><strong>Nastav realistické předpoklady.</strong> Nová produkce se mění jednou za 12 měsíců podle zadaného růstu. Stornovost snižuje budoucí výplaty podle stáří smlouvy; nemodeluje vracení již vyplacené provize. Růst pojistného při péči je samostatný volitelný předpoklad.</li><li><strong>Porovnej plány.</strong> Ulož výchozí scénář a pak změň vstupy. Oba scénáře zobrazujeme se stejným začátkem a horizontem. Uložený plán i srovnání zůstávají v tomto prohlížeči pro tvůj účet.</li><li><strong>Sleduj svůj cíl.</strong> Hledáme první měsíc, kdy průměr za posledních 12 měsíců dosáhne cíle. Příjem se může později změnit. Údaj o potřebné produkci navíc zachovává pozice, produktový mix, růst i stornovost.</li><li><strong>Tým ukazuje tvůj příjem.</strong> Vlastní provize manažera doplňují kladné rozdílové provize z přímo zadaných poradců. Nejde o součet výdělků celého týmu a nepočítáme další patra struktury.</li></ol>
+      <ol><li><strong>Zadej pravidelnou měsíční produkci.</strong> U života jde o součet měsíčního pojistného nově sjednaných smluv. U aut a majetku o součet jejich ročního pojistného. Například 3 nové životní smlouvy po 1 000 Kč měsíčně znamenají vstup 3 000 Kč.</li><li><strong>Nastav realistické předpoklady.</strong> Nová produkce se mění jednou za 12 měsíců podle zadaného růstu. Stornovost snižuje budoucí výplaty podle stáří smlouvy; nemodeluje vracení již vyplacené provize. Růst pojistného při péči je samostatný volitelný předpoklad.</li><li><strong>Porovnej plány.</strong> Ulož výchozí scénář a pak změň vstupy. Oba scénáře zobrazujeme se stejným začátkem a horizontem. Uložený plán i srovnání zůstávají šifrované v tomto prohlížeči a otevřeš je po přihlášení ke svému účtu.</li><li><strong>Sleduj svůj cíl.</strong> Hledáme první měsíc, kdy průměr za posledních 12 měsíců dosáhne cíle. Příjem se může později změnit. Údaj o potřebné produkci navíc zachovává pozice, produktový mix, růst i stornovost.</li><li><strong>Tým ukazuje tvůj příjem.</strong> Vlastní provize manažera doplňují kladné rozdílové provize z přímo zadaných poradců. Nejde o součet výdělků celého týmu a nepočítáme další patra struktury.</li></ol>
       <p className={styles.finePrint}>Sazby vycházejí z výpočetních pravidel aplikace. Jde o model budoucích výplat, který nezaručuje konkrétní příjem.</p>
     </div></dialog>
     <ProjectionPrintReport settings={settings} result={result} baseline={baseline} comparison={comparison} selected={selected} />

@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import { setPrivateMemoryIdentity } from "@/app/lib/privateMemory";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "../app/firebase-auth";
@@ -282,6 +283,7 @@ export function AppLayout({
     }, AUTH_READY_TIMEOUT_MS);
 
     const unsub = onAuthStateChanged(auth, (u) => {
+      setPrivateMemoryIdentity(u?.uid ?? null);
       resolved = true;
       window.clearTimeout(readyFallbackTimer);
       setAuthInitTimedOut(false);

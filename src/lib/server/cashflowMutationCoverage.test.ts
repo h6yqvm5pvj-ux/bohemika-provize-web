@@ -33,7 +33,6 @@ const excludedWrites: Record<string, string[]> = {
     "processScheduledContractTransfers|item.ref|set",
   ],
   "src/app/api/team-overview/route.ts": [
-    "persistContractStatsToReadModel/commit|batch|commit",
     "invalidateTeamOverviewOwners/commit|batch|commit",
     "createEndCollaborationRequest|db|runTransaction",
     "approveEndCollaborationRequest|db|runTransaction",

@@ -1,3 +1,4 @@
+import { openTip, openTipMailbox } from "@/lib/server/tipEncryption";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
@@ -276,7 +277,7 @@ const loadLinkedContractSummary = async ({
 const parseTipsterTipDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
-  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const data = openTip(docSnap.data() ?? {}, docSnap.ref.path);
   const attachmentCount =
     typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
       ? Math.max(0, Math.round(data.attachmentCount))
@@ -317,7 +318,7 @@ const parseAdvisorTipDoc = (
   status: TipStatus,
   statusData: Record<string, unknown>
 ) => {
-  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const data = openTipMailbox(docSnap.data() ?? {}, docSnap.id);
   const metadata =
     data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
       ? (data.metadata as Record<string, unknown>)

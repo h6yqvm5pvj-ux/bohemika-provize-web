@@ -1,3 +1,4 @@
+import "../../../tests/helpers/privateEncryptionTestKey";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FieldValue, Timestamp, type DocumentReference, type Firestore } from "firebase-admin/firestore";
 import { clientSlugForName } from "@/app/_klienti/clientIdentity";

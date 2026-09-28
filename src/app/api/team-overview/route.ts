@@ -1,3 +1,4 @@
+import { readHallEntryDocuments } from "@/lib/server/hallOfFameEntries";
 import { loadHallOwnerStats } from "@/lib/server/hallOfFameProjection";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
@@ -5,17 +6,10 @@ import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAllBatched } from "@/lib/server/firestoreReads";
 import { toDate } from "@/app/lib/formatters";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
-  isLifeProduct,
-  productCategory,
-  productInstitutionLabel,
-} from "@/app/lib/productCatalog";
-import {
   type CommissionMode,
-  type PaymentFrequency,
   type Position,
   type Product,
 } from "@/app/types/domain";
@@ -27,10 +21,8 @@ import { adminRoleAtLeast, resolveAdminRoleFromClaims } from "@/lib/adminAccess"
 import { getAdvisorAccessError } from "@/lib/server/advisorSetupGuard";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
-import {
-  buildTeamOverviewReadModelDocuments,
-  TEAM_OVERVIEW_MODEL_VERSION,
-} from "@/lib/server/teamOverviewReadModel";
+import { loadTeamOverviewOwnerStats } from "@/lib/server/teamOverviewProjection";
+import { accumulateContractEntry, annualPremiumFromEntry, categorizeProduct, currentYearMonth, emptyContractStats, previousMonthToDateEnd } from "@/lib/server/teamOverviewStats";
 import {
   normalizeStoredTeamProductionGoals,
   normalizeTeamProductionGoalsInput,
@@ -40,8 +32,6 @@ import { buildTransferredContractData } from "@/app/api/contracts/_lib/contracts
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import type {
   AccountType,
-  AggregateMetrics,
-  Category,
   ContractStats,
   EndCollaborationRequestPayload,
   EndCollaborationRequestStatus,
@@ -61,7 +51,6 @@ const TEAM_OVERVIEW_RATE_LIMIT = 120;
 const TEAM_OVERVIEW_RATE_LIMIT_WINDOW_MS = 60_000;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT = 60;
 const TEAM_OVERVIEW_PATCH_RATE_LIMIT_WINDOW_MS = 60_000;
-const TEAM_OVERVIEW_MODEL_STALE_MS = 5 * 60 * 1000;
 const TEAM_OVERVIEW_TOTALS_COLLECTION = "teamOverviewTotals";
 const TEAM_OVERVIEW_MONTHLY_COLLECTION = "teamOverviewMonthly";
 const TEAM_PRODUCTION_GOALS_COLLECTION = "teamProductionGoals";
@@ -93,13 +82,6 @@ const POSITION_VALUES: Position[] = [
   "manazer10",
 ];
 const POSITION_SET = new Set<Position>(POSITION_VALUES);
-const BUSINESS_PRODUCTS = new Set<Product>([
-  "cppsimplex",
-  "kooppmop",
-  "cppPPRs",
-  "cppPPRbez",
-]);
-
 type ContractStatsByScope = {
   all: Record<string, ContractStats>;
   active: Record<string, ContractStats>;
@@ -281,122 +263,6 @@ function nameFromEmail(email: string | null | undefined): string {
     .join(" ");
 }
 
-function paymentsPerYear(freq?: PaymentFrequency | null): number {
-  switch (freq) {
-    case "monthly":
-      return 12;
-    case "quarterly":
-      return 4;
-    case "semiannual":
-      return 2;
-    default:
-      return 1;
-  }
-}
-
-function categorizeProduct(p?: Product | null): Category {
-  if (p && BUSINESS_PRODUCTS.has(p)) {
-    return "business";
-  }
-  if (p === "maxcizinkomplex") {
-    return "foreigners";
-  }
-
-  switch (productCategory(p)) {
-    case "life":
-      return "life";
-    case "auto":
-      return "auto";
-    case "property":
-      return "property";
-    case "travel":
-      return "travel";
-    case "comfort":
-      return "comfort";
-    default:
-      return "other";
-  }
-}
-
-function annualPremiumFromEntry(data: any, category: Category): number {
-  const raw = Number(data?.inputAmount ?? 0);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
-  const product = data?.productKey as Product | undefined;
-  if (isLifeProduct(product)) return raw * 12;
-  if (category === "comfort") return raw;
-  return raw * paymentsPerYear((data?.frequencyRaw ?? "annual") as PaymentFrequency);
-}
-
-function addAggregateContract(
-  metrics: AggregateMetrics,
-  annualPremium: number,
-  monthlyPremium: number
-): void {
-  metrics.contracts += 1;
-  metrics.annualPremium += annualPremium;
-  metrics.monthlyPremium += monthlyPremium;
-}
-
-function emptyCategoryCounts(): Record<Category, number> {
-  return {
-    life: 0,
-    auto: 0,
-    property: 0,
-    business: 0,
-    travel: 0,
-    foreigners: 0,
-    comfort: 0,
-    other: 0,
-  };
-}
-
-function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
-  return {
-    life: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    business: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-  };
-}
-
-function emptyAggregateMetrics(): AggregateMetrics {
-  return { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-}
-
-function emptyInstitutionByCategory(): Record<Category, Record<string, AggregateMetrics>> {
-  return {
-    life: {},
-    auto: {},
-    property: {},
-    business: {},
-    travel: {},
-    foreigners: {},
-    comfort: {},
-    other: {},
-  };
-}
-
-function emptyContractStats(): ContractStats {
-  return {
-    total: 0,
-    month: 0,
-    previousMonth: 0,
-    previousMonthToDate: 0,
-    monthMetrics: emptyAggregateMetrics(),
-    previousMonthMetrics: emptyAggregateMetrics(),
-    previousMonthToDateMetrics: emptyAggregateMetrics(),
-    monthCategoryMetrics: emptyCategoryMetrics(),
-    categories: emptyCategoryCounts(),
-    categoryMetrics: emptyCategoryMetrics(),
-    institutionMetrics: {},
-    institutionByCategory: emptyInstitutionByCategory(),
-  };
-}
-
 function emptyTipStats(): TipStats {
   return {
     total: 0,
@@ -407,228 +273,9 @@ function emptyTipStats(): TipStats {
   };
 }
 
-function cloneContractStats(source: ContractStats): ContractStats {
-  return {
-    total: source.total,
-    month: source.month,
-    previousMonth: source.previousMonth ?? 0,
-    previousMonthToDate: source.previousMonthToDate ?? source.previousMonth ?? 0,
-    monthMetrics: source.monthMetrics
-      ? { ...source.monthMetrics }
-      : emptyAggregateMetrics(),
-    previousMonthMetrics: source.previousMonthMetrics
-      ? { ...source.previousMonthMetrics }
-      : emptyAggregateMetrics(),
-    previousMonthToDateMetrics: source.previousMonthToDateMetrics
-      ? { ...source.previousMonthToDateMetrics }
-      : emptyAggregateMetrics(),
-    monthCategoryMetrics: {
-      life: { ...source.monthCategoryMetrics.life },
-      auto: { ...source.monthCategoryMetrics.auto },
-      property: { ...source.monthCategoryMetrics.property },
-      business: { ...source.monthCategoryMetrics.business },
-      travel: { ...source.monthCategoryMetrics.travel },
-      foreigners: { ...source.monthCategoryMetrics.foreigners },
-      comfort: { ...source.monthCategoryMetrics.comfort },
-      other: { ...source.monthCategoryMetrics.other },
-    },
-    categories: { ...source.categories },
-    categoryMetrics: {
-      life: { ...source.categoryMetrics.life },
-      auto: { ...source.categoryMetrics.auto },
-      property: { ...source.categoryMetrics.property },
-      business: { ...source.categoryMetrics.business },
-      travel: { ...source.categoryMetrics.travel },
-      foreigners: { ...source.categoryMetrics.foreigners },
-      comfort: { ...source.categoryMetrics.comfort },
-      other: { ...source.categoryMetrics.other },
-    },
-    institutionMetrics: Object.fromEntries(
-      Object.entries(source.institutionMetrics).map(([name, value]) => [
-        name,
-        { ...value },
-      ])
-    ),
-    institutionByCategory: {
-      life: Object.fromEntries(
-        Object.entries(source.institutionByCategory.life).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-      auto: Object.fromEntries(
-        Object.entries(source.institutionByCategory.auto).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-      property: Object.fromEntries(
-        Object.entries(source.institutionByCategory.property).map(
-          ([name, value]) => [name, { ...value }]
-        )
-      ),
-      business: Object.fromEntries(
-        Object.entries(source.institutionByCategory.business).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-      travel: Object.fromEntries(
-        Object.entries(source.institutionByCategory.travel).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-      foreigners: Object.fromEntries(
-        Object.entries(source.institutionByCategory.foreigners).map(
-          ([name, value]) => [name, { ...value }]
-        )
-      ),
-      comfort: Object.fromEntries(
-        Object.entries(source.institutionByCategory.comfort).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-      other: Object.fromEntries(
-        Object.entries(source.institutionByCategory.other).map(([name, value]) => [
-          name,
-          { ...value },
-        ])
-      ),
-    },
-  };
-}
-
 function finiteNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parseAggregateMetrics(value: unknown): AggregateMetrics {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { contracts: 0, annualPremium: 0, monthlyPremium: 0 };
-  }
-  const row = value as Record<string, unknown>;
-  return {
-    contracts: finiteNumber(row.contracts),
-    annualPremium: finiteNumber(row.annualPremium),
-    monthlyPremium: finiteNumber(row.monthlyPremium),
-  };
-}
-
-function parseCategoryCounts(value: unknown): Record<Category, number> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return emptyCategoryCounts();
-  }
-  const row = value as Record<string, unknown>;
-  return {
-    life: finiteNumber(row.life),
-    auto: finiteNumber(row.auto),
-    property: finiteNumber(row.property),
-    business: finiteNumber(row.business),
-    travel: finiteNumber(row.travel),
-    foreigners: finiteNumber(row.foreigners),
-    comfort: finiteNumber(row.comfort),
-    other: finiteNumber(row.other),
-  };
-}
-
-function parseCategoryMetrics(
-  value: unknown
-): Record<Category, AggregateMetrics> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return emptyCategoryMetrics();
-  }
-  const row = value as Record<string, unknown>;
-  return {
-    life: parseAggregateMetrics(row.life),
-    auto: parseAggregateMetrics(row.auto),
-    property: parseAggregateMetrics(row.property),
-    business: parseAggregateMetrics(row.business),
-    travel: parseAggregateMetrics(row.travel),
-    foreigners: parseAggregateMetrics(row.foreigners),
-    comfort: parseAggregateMetrics(row.comfort),
-    other: parseAggregateMetrics(row.other),
-  };
-}
-
-function parseInstitutionMetrics(
-  value: unknown
-): Record<string, AggregateMetrics> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  const row = value as Record<string, unknown>;
-  const out: Record<string, AggregateMetrics> = {};
-  for (const [name, rawMetrics] of Object.entries(row)) {
-    const trimmed = String(name ?? "").trim();
-    if (!trimmed) continue;
-    out[trimmed] = parseAggregateMetrics(rawMetrics);
-  }
-  return out;
-}
-
-function parseInstitutionByCategory(
-  value: unknown
-): Record<Category, Record<string, AggregateMetrics>> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return emptyInstitutionByCategory();
-  }
-  const row = value as Record<string, unknown>;
-  return {
-    life: parseInstitutionMetrics(row.life),
-    auto: parseInstitutionMetrics(row.auto),
-    property: parseInstitutionMetrics(row.property),
-    business: parseInstitutionMetrics(row.business),
-    travel: parseInstitutionMetrics(row.travel),
-    foreigners: parseInstitutionMetrics(row.foreigners),
-    comfort: parseInstitutionMetrics(row.comfort),
-    other: parseInstitutionMetrics(row.other),
-  };
-}
-
-function parseContractStatsFromTotalsDoc(data: Record<string, unknown>): ContractStats {
-  return {
-    total: finiteNumber(data.total),
-    month: 0,
-    previousMonth: 0,
-    previousMonthToDate: 0,
-    monthMetrics: emptyAggregateMetrics(),
-    previousMonthMetrics: emptyAggregateMetrics(),
-    previousMonthToDateMetrics: emptyAggregateMetrics(),
-    monthCategoryMetrics: emptyCategoryMetrics(),
-    categories: parseCategoryCounts(data.categories),
-    categoryMetrics: parseCategoryMetrics(data.categoryMetrics),
-    institutionMetrics: parseInstitutionMetrics(data.institutionMetrics),
-    institutionByCategory: parseInstitutionByCategory(data.institutionByCategory),
-  };
-}
-
-function currentYearMonth(now: Date): string {
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  return `${yyyy}-${mm}`;
-}
-
-function previousYearMonth(now: Date): string {
-  return currentYearMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-}
-
-function previousMonthToDateEnd(now: Date): number {
-  const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const previousYear = previousMonth.getFullYear();
-  const previousMonthIndex = previousMonth.getMonth();
-  const lastDay = new Date(previousYear, previousMonthIndex + 1, 0).getDate();
-  return new Date(
-    previousYear,
-    previousMonthIndex,
-    Math.min(now.getDate(), lastDay),
-    now.getHours(),
-    now.getMinutes(),
-    now.getSeconds(),
-    now.getMilliseconds()
-  ).getTime();
 }
 
 function monthDocId(ownerEmail: string, yearMonth: string): string {
@@ -1102,138 +749,6 @@ async function loadTeamContext(
   };
 }
 
-function accumulateContractEntry({
-  stats,
-  ownerEmail,
-  data,
-  previousMonthStart,
-  previousMonthToDateEndMs,
-  monthStart,
-  currentMonthToDateEnd,
-}: {
-  stats: Record<string, ContractStats>;
-  ownerEmail: string;
-  data: Record<string, unknown>;
-  previousMonthStart: number;
-  previousMonthToDateEndMs: number;
-  monthStart: number;
-  currentMonthToDateEnd: number;
-}) {
-  const current = stats[ownerEmail] ?? emptyContractStats();
-  current.total += 1;
-
-  const category = categorizeProduct(data.productKey as Product | undefined);
-  current.categories[category] = (current.categories[category] ?? 0) + 1;
-
-  const annualPremium = annualPremiumFromEntry(data, category);
-  const monthlyPremium = annualPremium / 12;
-
-  const byCategory = current.categoryMetrics[category] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
-  };
-  byCategory.contracts += 1;
-  byCategory.annualPremium += annualPremium;
-  byCategory.monthlyPremium += monthlyPremium;
-  current.categoryMetrics[category] = byCategory;
-
-  const institution =
-    productInstitutionLabel(data.productKey as Product | undefined, "Ostatní") ?? "Ostatní";
-  const byInstitution = current.institutionMetrics[institution] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
-  };
-  byInstitution.contracts += 1;
-  byInstitution.annualPremium += annualPremium;
-  byInstitution.monthlyPremium += monthlyPremium;
-  current.institutionMetrics[institution] = byInstitution;
-
-  const byInstitutionForCategory = current.institutionByCategory[category][institution] ?? {
-    contracts: 0,
-    annualPremium: 0,
-    monthlyPremium: 0,
-  };
-  byInstitutionForCategory.contracts += 1;
-  byInstitutionForCategory.annualPremium += annualPremium;
-  byInstitutionForCategory.monthlyPremium += monthlyPremium;
-  current.institutionByCategory[category][institution] = byInstitutionForCategory;
-
-  const signed = isInheritedContract(data) ? null : toDate(data.contractSignedDate ?? data.createdAt);
-  const ts = signed?.getTime();
-  if (ts != null && ts >= monthStart && ts <= currentMonthToDateEnd) {
-    current.month += 1;
-    addAggregateContract(current.monthMetrics, annualPremium, monthlyPremium);
-    addAggregateContract(
-      current.monthCategoryMetrics[category],
-      annualPremium,
-      monthlyPremium
-    );
-  } else if (ts != null && ts >= previousMonthStart && ts < monthStart) {
-    current.previousMonth += 1;
-    addAggregateContract(current.previousMonthMetrics, annualPremium, monthlyPremium);
-    if (ts <= previousMonthToDateEndMs) {
-      current.previousMonthToDate += 1;
-      addAggregateContract(
-        current.previousMonthToDateMetrics,
-        annualPremium,
-        monthlyPremium
-      );
-    }
-  }
-
-  stats[ownerEmail] = current;
-}
-
-function consumeOwnerEntry({
-  stats,
-  activeStats,
-  ownerSet,
-  data,
-  ownerEmailRaw,
-  entryId,
-  seen,
-  now,
-  previousMonthStart,
-  previousMonthToDateEndMs,
-  monthStart,
-  currentMonthToDateEnd,
-}: {
-  stats: Record<string, ContractStats>;
-  activeStats: Record<string, ContractStats>;
-  ownerSet: Set<string>;
-  data: Record<string, unknown>;
-  ownerEmailRaw: string | null | undefined;
-  entryId: string;
-  seen: Set<string>;
-  now: Date;
-  previousMonthStart: number;
-  previousMonthToDateEndMs: number;
-  monthStart: number;
-  currentMonthToDateEnd: number;
-}) {
-  const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? ownerEmailRaw);
-  if (!ownerEmail || !ownerSet.has(ownerEmail)) return;
-
-  const key = `${ownerEmail}___${entryId}`;
-  if (seen.has(key)) return;
-  seen.add(key);
-
-  const options = {
-    ownerEmail,
-    data,
-    previousMonthStart,
-    previousMonthToDateEndMs,
-    monthStart,
-    currentMonthToDateEnd,
-  };
-  accumulateContractEntry({ stats, ...options });
-  if (contractLifecycleStatus(data, now) === "active") {
-    accumulateContractEntry({ stats: activeStats, ...options });
-  }
-}
-
 function consumeTipsterContractEntry({
   stats,
   activeStats,
@@ -1280,59 +795,10 @@ function consumeTipsterContractEntry({
   }
 }
 
-async function buildContractStatsByOwnerFromEntries(
-  owners: string[]
-): Promise<ContractStatsByScope> {
-  if (!adminDb) {
-    throw new Error("Firebase Admin credentials are not configured.");
-  }
-
-  const db = adminDb;
-  const stats: ContractStatsByScope = { all: {}, active: {} };
-  if (owners.length === 0) return stats;
-
-  const ownerSet = new Set(owners.map((email) => normalizeEmail(email)).filter(Boolean));
-  const seen = new Set<string>();
-
-  const now = new Date();
-  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
-  const previousMonthToDateEndMs = previousMonthToDateEnd(now);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const currentMonthToDateEnd = now.getTime();
-
-  for (let i = 0; i < owners.length; i += FIRESTORE_IN_LIMIT) {
-    const chunk = owners.slice(i, i + FIRESTORE_IN_LIMIT);
-    if (chunk.length === 0) continue;
-
-    const groupSnap = await db
-      .collectionGroup("entries")
-      .where("userEmail", "in", chunk)
-      .get();
-
-    for (const docSnap of groupSnap.docs) {
-      consumeOwnerEntry({
-        stats: stats.all,
-        activeStats: stats.active,
-        ownerSet,
-        data: docSnap.data() as Record<string, unknown>,
-        ownerEmailRaw: docSnap.ref.parent.parent?.id ?? null,
-        entryId: docSnap.id,
-        seen,
-        now,
-        previousMonthStart,
-        previousMonthToDateEndMs,
-        monthStart,
-        currentMonthToDateEnd,
-      });
-    }
-  }
-
-  return stats;
-}
-
 async function buildContractStatsByTipsterFromEntries(
   tipsterEmails: string[],
-  fallbackOwnerEmails: string[]
+  fallbackOwnerEmails: string[],
+  now: Date,
 ): Promise<ContractStatsByScope> {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
@@ -1346,7 +812,6 @@ async function buildContractStatsByTipsterFromEntries(
   if (tipsterSet.size === 0) return stats;
 
   const seen = new Set<string>();
-  const now = new Date();
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -1439,7 +904,8 @@ function tipCreatedAtMs(data: Record<string, unknown>): number | null {
 }
 
 async function buildTipStatsByTipster(
-  tipsterEmails: string[]
+  tipsterEmails: string[],
+  now: Date,
 ): Promise<Record<string, TipStats>> {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
@@ -1451,7 +917,6 @@ async function buildTipStatsByTipster(
   );
   if (emails.length === 0) return stats;
 
-  const now = new Date();
   const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -1499,196 +964,6 @@ async function buildTipStatsByTipster(
   }
 
   return stats;
-}
-
-async function loadContractStatsFromReadModel(
-  owners: string[],
-  yearMonth: string,
-  previousMonth: string,
-  nowMs: number
-): Promise<{
-  stats: Record<string, ContractStats>;
-  activeStats: Record<string, ContractStats>;
-  ownersToRefresh: string[];
-}> {
-  if (!adminDb || owners.length === 0) {
-    return { stats: {}, activeStats: {}, ownersToRefresh: owners };
-  }
-
-  const db = adminDb;
-  const stats: Record<string, ContractStats> = {};
-  const activeStats: Record<string, ContractStats> = {};
-  const ownersToRefresh = new Set<string>();
-
-  const totalsRefs = owners.map((owner) =>
-    db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(owner)
-  );
-  const monthRefs = owners.map((owner) =>
-    db.collection(TEAM_OVERVIEW_MONTHLY_COLLECTION).doc(monthDocId(owner, yearMonth))
-  );
-  const previousMonthRefs = owners.map((owner) =>
-    db.collection(TEAM_OVERVIEW_MONTHLY_COLLECTION).doc(monthDocId(owner, previousMonth))
-  );
-
-  const [totalsSnaps, monthSnaps, previousMonthSnaps] = await Promise.all([
-    getAllBatched(db, totalsRefs),
-    getAllBatched(db, monthRefs),
-    getAllBatched(db, previousMonthRefs),
-  ]);
-
-  owners.forEach((owner, idx) => {
-    const totalsSnap = totalsSnaps[idx];
-    if (!totalsSnap?.exists) {
-      ownersToRefresh.add(owner);
-      return;
-    }
-
-    const totalsRaw = totalsSnap.data() as Record<string, unknown>;
-    const version = finiteNumber(totalsRaw.version);
-    const updatedAtMs = finiteNumber(totalsRaw.updatedAtMs);
-
-    if (version !== TEAM_OVERVIEW_MODEL_VERSION) {
-      ownersToRefresh.add(owner);
-      return;
-    }
-    if (!updatedAtMs || nowMs - updatedAtMs > TEAM_OVERVIEW_MODEL_STALE_MS) {
-      ownersToRefresh.add(owner);
-    }
-
-    const parsed = parseContractStatsFromTotalsDoc(totalsRaw);
-    const parsedActive = parseContractStatsFromTotalsDoc(
-      isPlainObject(totalsRaw.activeContractStats) ? totalsRaw.activeContractStats : {}
-    );
-    const monthSnap = monthSnaps[idx];
-    if (monthSnap?.exists) {
-      const monthRaw = monthSnap.data() as Record<string, unknown>;
-      const monthVersion = finiteNumber(monthRaw.version);
-      const monthKey = String(monthRaw.yearMonth ?? "").trim();
-      if (
-        monthVersion === TEAM_OVERVIEW_MODEL_VERSION &&
-        monthKey === yearMonth
-      ) {
-        parsed.month = finiteNumber(monthRaw.monthCount);
-        parsed.previousMonthToDate = finiteNumber(monthRaw.previousMonthToDateCount);
-        parsed.previousMonthToDateMetrics = parseAggregateMetrics(
-          monthRaw.previousMonthToDateMetrics
-        );
-        parsed.monthMetrics = parseAggregateMetrics(monthRaw.monthMetrics);
-        parsed.monthCategoryMetrics = parseCategoryMetrics(
-          monthRaw.monthCategoryMetrics
-        );
-        parsedActive.month = finiteNumber(monthRaw.activeMonthCount);
-        parsedActive.previousMonthToDate = finiteNumber(
-          monthRaw.activePreviousMonthToDateCount
-        );
-        parsedActive.previousMonthToDateMetrics = parseAggregateMetrics(
-          monthRaw.activePreviousMonthToDateMetrics
-        );
-        parsedActive.monthMetrics = parseAggregateMetrics(monthRaw.activeMonthMetrics);
-        parsedActive.monthCategoryMetrics = parseCategoryMetrics(
-          monthRaw.activeMonthCategoryMetrics
-        );
-      } else {
-        ownersToRefresh.add(owner);
-      }
-    } else {
-      ownersToRefresh.add(owner);
-    }
-
-    const previousMonthSnap = previousMonthSnaps[idx];
-    if (previousMonthSnap?.exists) {
-      const previousMonthRaw = previousMonthSnap.data() as Record<string, unknown>;
-      const previousMonthVersion = finiteNumber(previousMonthRaw.version);
-      const previousMonthKey = String(previousMonthRaw.yearMonth ?? "").trim();
-      if (
-        previousMonthVersion === TEAM_OVERVIEW_MODEL_VERSION &&
-        previousMonthKey === previousMonth
-      ) {
-        parsed.previousMonth = finiteNumber(previousMonthRaw.monthCount);
-        parsed.previousMonthMetrics = parseAggregateMetrics(previousMonthRaw.monthMetrics);
-        parsedActive.previousMonth = finiteNumber(previousMonthRaw.activeMonthCount);
-        parsedActive.previousMonthMetrics = parseAggregateMetrics(
-          previousMonthRaw.activeMonthMetrics
-        );
-      } else {
-        ownersToRefresh.add(owner);
-      }
-    } else {
-      ownersToRefresh.add(owner);
-    }
-
-    stats[owner] = parsed;
-    activeStats[owner] = parsedActive;
-  });
-
-  return { stats, activeStats, ownersToRefresh: [...ownersToRefresh] };
-}
-
-async function persistContractStatsToReadModel(
-  stats: Record<string, ContractStats>,
-  activeStats: Record<string, ContractStats>,
-  yearMonth: string,
-  previousMonth: string,
-  updatedAtMs: number
-): Promise<void> {
-  if (!adminDb) return;
-  const db = adminDb;
-
-  const entries = Object.entries(stats);
-  if (entries.length === 0) return;
-
-  let batch = db.batch();
-  let ops = 0;
-  const BATCH_LIMIT = 400;
-
-  const commit = async () => {
-    if (ops === 0) return;
-    await batch.commit();
-    batch = db.batch();
-    ops = 0;
-  };
-
-  for (const [ownerEmail, stat] of entries) {
-    const activeStat = activeStats[ownerEmail] ?? emptyContractStats();
-    const documents = buildTeamOverviewReadModelDocuments({
-      ownerEmail,
-      stat,
-      activeStat,
-      yearMonth,
-      previousMonth,
-      updatedAtMs,
-    });
-    const totalsRef = db.collection(TEAM_OVERVIEW_TOTALS_COLLECTION).doc(ownerEmail);
-    const monthRef = db
-      .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
-      .doc(monthDocId(ownerEmail, yearMonth));
-    const previousMonthRef = db
-      .collection(TEAM_OVERVIEW_MONTHLY_COLLECTION)
-      .doc(monthDocId(ownerEmail, previousMonth));
-
-    batch.set(
-      totalsRef,
-      documents.totals,
-      { merge: true }
-    );
-    batch.set(
-      monthRef,
-      documents.currentMonth,
-      { merge: true }
-    );
-    batch.set(
-      previousMonthRef,
-      documents.previousMonth,
-      { merge: true }
-    );
-
-    ops += 3;
-    if (ops >= BATCH_LIMIT) {
-      await commit();
-    }
-  }
-
-  await commit();
 }
 
 async function invalidateTeamOverviewOwners(ownerEmails: Iterable<string>): Promise<void> {
@@ -2945,11 +2220,8 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
     const stats = await loadHallOwnerStats(db, owners, now, async (batchOwners) => {
       const entries: HallProductionEntry[] = [];
       const ownerSet = new Set(batchOwners);
-      const snap = await db.collectionGroup("entries")
-        .where("userEmail", "in", batchOwners)
-        .select("userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType")
-        .get();
-      for (const doc of snap.docs) {
+      const docs = await readHallEntryDocuments(db, batchOwners, now);
+      for (const doc of docs) {
         const data = doc.data() as Record<string, unknown>;
         if (isInheritedContract(data)) continue;
         const signed = toDate(data.contractSignedDate ?? data.createdAt);
@@ -3138,54 +2410,15 @@ export async function GET(req: NextRequest) {
     );
 
     const now = new Date();
-    const nowMs = now.getTime();
     const yearMonth = currentYearMonth(now);
-    const previousMonthKey = previousYearMonth(now);
-    const productionGoalsPromise = loadTeamProductionGoals(email, yearMonth);
-
-    const readModel = await loadContractStatsFromReadModel(
-      advisorOwners,
-      yearMonth,
-      previousMonthKey,
-      nowMs
-    );
-    const contractCounts: Record<string, ContractStats> = {};
-    const activeContractCounts: Record<string, ContractStats> = {};
-    Object.entries(readModel.stats).forEach(([owner, stat]) => {
-      contractCounts[owner] = cloneContractStats(stat);
-    });
-    Object.entries(readModel.activeStats).forEach(([owner, stat]) => {
-      activeContractCounts[owner] = cloneContractStats(stat);
-    });
-
-    if (readModel.ownersToRefresh.length > 0) {
-      const rebuilt = await buildContractStatsByOwnerFromEntries(readModel.ownersToRefresh);
-      const rebuiltWithDefaults: Record<string, ContractStats> = {};
-      const rebuiltActiveWithDefaults: Record<string, ContractStats> = {};
-
-      readModel.ownersToRefresh.forEach((owner) => {
-        rebuiltWithDefaults[owner] = rebuilt.all[owner]
-          ? cloneContractStats(rebuilt.all[owner]!)
-          : emptyContractStats();
-        rebuiltActiveWithDefaults[owner] = rebuilt.active[owner]
-          ? cloneContractStats(rebuilt.active[owner]!)
-          : emptyContractStats();
-      });
-
-      await persistContractStatsToReadModel(
-        rebuiltWithDefaults,
-        rebuiltActiveWithDefaults,
-        yearMonth,
-        previousMonthKey,
-        nowMs
-      );
-      Object.entries(rebuiltWithDefaults).forEach(([owner, stat]) => {
-        contractCounts[owner] = stat;
-      });
-      Object.entries(rebuiltActiveWithDefaults).forEach(([owner, stat]) => {
-        activeContractCounts[owner] = stat;
-      });
-    }
+    const [ownerStats, tipsterContractStats, tipCounts, storedProductionGoals] = await Promise.all([
+      loadTeamOverviewOwnerStats(adminDb!, advisorOwners, now),
+      buildContractStatsByTipsterFromEntries(tipsterOwners, advisorOwners, now),
+      buildTipStatsByTipster(tipsterOwners, now),
+      loadTeamProductionGoals(email, yearMonth),
+    ]);
+    const contractCounts = ownerStats.all;
+    const activeContractCounts = ownerStats.active;
 
     owners.forEach((owner) => {
       if (!contractCounts[owner]) {
@@ -3196,17 +2429,12 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    const [tipsterContractStats, tipCounts] = await Promise.all([
-      buildContractStatsByTipsterFromEntries(tipsterOwners, advisorOwners),
-      buildTipStatsByTipster(tipsterOwners),
-    ]);
-
     tipsterOwners.forEach((tipsterEmail) => {
       contractCounts[tipsterEmail] = tipsterContractStats.all[tipsterEmail]
-        ? cloneContractStats(tipsterContractStats.all[tipsterEmail]!)
+        ? tipsterContractStats.all[tipsterEmail]!
         : emptyContractStats();
       activeContractCounts[tipsterEmail] = tipsterContractStats.active[tipsterEmail]
-        ? cloneContractStats(tipsterContractStats.active[tipsterEmail]!)
+        ? tipsterContractStats.active[tipsterEmail]!
         : emptyContractStats();
       if (!tipCounts[tipsterEmail]) {
         tipCounts[tipsterEmail] = emptyTipStats();
@@ -3217,7 +2445,6 @@ export async function GET(req: NextRequest) {
       );
     });
 
-    const storedProductionGoals = await productionGoalsPromise;
     const advisorOwnerSet = new Set(advisorOwners);
     const productionGoals: TeamProductionGoals = {
       ...storedProductionGoals,
@@ -3257,6 +2484,7 @@ export async function GET(req: NextRequest) {
     };
 
     const response = NextResponse.json(responseBody);
+    response.headers.set("Cache-Control", "private, no-store");
     applyRateLimitHeaders(response.headers, rateLimitResult);
     return response;
   } catch (err: any) {

@@ -1,5 +1,6 @@
+import { encryptPrivateFile, decryptPrivateFile } from "./privateStorage";
 import { createHash, randomUUID } from "node:crypto";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 
 import { getStorage } from "firebase-admin/storage";
 
@@ -224,9 +225,9 @@ async function uploadContractPdfToBucket({
     `${Date.now()}-${randomUUID()}-${safeOriginalName}`,
   ].join("/");
 
-  await bucket.file(objectPath).save(bytes, {
+  await bucket.file(objectPath).save(encryptPrivateFile(bytes, bucket.name, objectPath), {
     resumable: false,
-    contentType: "application/pdf",
+    contentType: "application/octet-stream",
     metadata: {
       cacheControl: "private, no-store, max-age=0",
       contentDisposition: contractPdfContentDisposition(safeOriginalName, false),
@@ -333,7 +334,9 @@ export async function downloadContractPdfAttachment(
         .bucket(bucketName)
         .file(attachment.storagePath)
         .download();
-      return bytes;
+      const plaintext = decryptPrivateFile(bytes, bucketName, attachment.storagePath);
+      if (!looksLikePdf(plaintext) || createHash("sha256").update(plaintext).digest("hex") !== attachment.sha256) throw new Error("Invalid stored PDF integrity");
+      return plaintext;
     } catch (error) {
       lastError = error;
       if (!isStorageNotFoundError(error)) throw error;
@@ -346,32 +349,8 @@ export async function downloadContractPdfAttachment(
 export async function createContractPdfAttachmentReadStream(
   attachment: StoredContractPdfAttachment
 ): Promise<ContractPdfAttachmentReadStream> {
-  const bucketCandidates = resolveStorageBucketCandidates(attachment.bucketName);
-  if (!bucketCandidates.length) {
-    throw new Error("Storage bucket není nakonfigurován.");
-  }
-
-  let lastError: unknown = null;
-  for (const bucketName of bucketCandidates) {
-    try {
-      const file = getStorage().bucket(bucketName).file(attachment.storagePath);
-      const [metadata] = await file.getMetadata();
-      const metadataSize = Number(metadata.size);
-
-      return {
-        stream: file.createReadStream(),
-        sizeBytes:
-          Number.isFinite(metadataSize) && metadataSize > 0
-            ? Math.floor(metadataSize)
-            : attachment.sizeBytes,
-      };
-    } catch (error) {
-      lastError = error;
-      if (!isStorageNotFoundError(error)) throw error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("PDF nebylo nalezeno.");
+  const bytes = await downloadContractPdfAttachment(attachment);
+  return { stream: Readable.from([bytes]), sizeBytes: bytes.length };
 }
 
 export async function deleteContractPdfAttachment(

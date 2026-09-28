@@ -1,3 +1,4 @@
+import { encryptPrivateFile } from "@/lib/server/privateStorage";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -313,10 +314,10 @@ export async function POST(req: NextRequest) {
       .slice(0, 120) || "dokument";
   const storagePath = `${TOOL_DOCUMENTS_STORAGE_PREFIX}/${section}/${docRef.id}/${Date.now()}-${safeFileName}`;
 
-  await getStorage().bucket(bucketName).file(storagePath).save(prepared.file.bytes, {
+  await getStorage().bucket(bucketName).file(storagePath).save(encryptPrivateFile(prepared.file.bytes, bucketName, storagePath), {
     resumable: false,
     metadata: {
-      contentType: prepared.file.contentType,
+      contentType: "application/octet-stream",
       cacheControl: "private, no-store, max-age=0",
     },
   });
@@ -437,10 +438,10 @@ export async function PATCH(req: NextRequest) {
         .slice(0, 120) || "dokument";
     const storagePath = `${TOOL_DOCUMENTS_STORAGE_PREFIX}/${section}/${id}/${Date.now()}-${safeFileName}`;
 
-    await getStorage().bucket(bucketName).file(storagePath).save(prepared.file.bytes, {
+    await getStorage().bucket(bucketName).file(storagePath).save(encryptPrivateFile(prepared.file.bytes, bucketName, storagePath), {
       resumable: false,
       metadata: {
-        contentType: prepared.file.contentType,
+        contentType: "application/octet-stream",
         cacheControl: "private, no-store, max-age=0",
       },
     });

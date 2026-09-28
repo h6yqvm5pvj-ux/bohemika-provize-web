@@ -1,3 +1,4 @@
+import { sealPrivateValue, openPrivateValue, clientCardContext } from "./privateEncryption";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { createEmptyClientCard, parseClientCardDraft } from "@/app/_klienti/clientCardData";
 import { clientIdentityKey, clientSlugForName } from "@/app/_klienti/clientIdentity";
@@ -29,7 +30,8 @@ export async function fillClientCardCompanyIdFromUploadedPdf(
   if (!slug || !attachment || attachment.sha256 !== expectedPdfSha256) return "stale";
   const cardRef = db.collection("clientCardsPrivate").doc(adviser.uid).collection("cards").doc(slug);
   const existing = (await cardRef.get()).data();
-  if (typeof existing?.card?.companyId === "string" && existing.card.companyId.trim()) return "existing";
+  const existingCard = parseClientCardDraft(openPrivateValue(existing?.card, clientCardContext(adviser.uid, slug)));
+  if (existingCard?.companyId.trim()) return "existing";
   const parsed = parseCppKomplexLines(await readClientEmailPdfLines(attachment));
   if (!parsed.clientName || clientIdentityKey(parsed.clientName) !== clientIdentityKey(contract.clientName)) return "conflict";
   if (!parsed.companyId) return "missing";
@@ -45,7 +47,7 @@ export async function fillClientCardCompanyIdFromUploadedPdf(
 
   return db.runTransaction(async transaction => {
     const saved = (await transaction.get(cardRef)).data();
-    const card = saved ? parseClientCardDraft(saved.card) : {
+    const card = saved ? parseClientCardDraft(openPrivateValue(saved.card, clientCardContext(adviser.uid, slug))) : {
       ...createEmptyClientCard(directory[0].name), phone: directory[0].phone,
       email: directory[0].email, permanentAddress: directory[0].address,
     };
@@ -57,13 +59,13 @@ export async function fillClientCardCompanyIdFromUploadedPdf(
     const updated = parseClientCardDraft({ ...card, companyId: parsed.companyId });
     if (!updated) throw new Error("Invalid extracted company ID");
     transaction.set(cardRef, {
-      ownerUid: adviser.uid, card: updated, revision: (saved?.revision ?? 0) + 1,
+      ...saved, ownerUid: adviser.uid, card: sealPrivateValue(updated, clientCardContext(adviser.uid, slug)), revision: (saved?.revision ?? 0) + 1,
       updatedAt: FieldValue.serverTimestamp(),
       companyIdSource: {
         kind: "contract-pdf", path: source.ref.path, pdfSha256: attachment.sha256,
         savedAt: FieldValue.serverTimestamp(),
       },
-    }, { merge: true });
+    });
     return "saved";
   });
 }

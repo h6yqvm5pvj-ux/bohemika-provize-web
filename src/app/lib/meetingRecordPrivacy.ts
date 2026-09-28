@@ -38,14 +38,14 @@ function decode<T>(raw: string | null, owner: MeetingRecordContext): T | null {
   } catch { return null; }
 }
 
-function discardRecords(keepOwner: MeetingRecordContext | null = null): void {
+function discardRecords(): void {
   memory.clear();
   if (typeof window === "undefined") return;
   try {
     const storage = window.sessionStorage;
     for (let index = storage.length - 1; index >= 0; index -= 1) {
       const key = storage.key(index);
-      if (key?.startsWith(PREFIX) && (!keepOwner || !decode(storage.getItem(key), keepOwner))) storage.removeItem(key);
+      if (key?.startsWith(PREFIX)) storage.removeItem(key);
     }
   } catch { /* The in-memory copy has already been removed. */ }
 }
@@ -63,10 +63,9 @@ export function setMeetingRecordIdentity(uid: string | null, impersonatedEmail =
   if (typeof window === "undefined") return;
   const email = impersonatedEmail.trim().toLowerCase();
   if (uid && context?.uid === uid && context.impersonatedEmail === email) return;
-  const previous = context;
   context = uid ? Object.freeze({ uid, impersonatedEmail: email, generation: ++generation }) : null;
-  // A reload may restore this account's tab; changing an active account always clears it.
-  discardRecords(previous ? null : context);
+  // No plaintext survives a reload or identity change.
+  discardRecords();
   listeners.forEach((listener) => listener());
 }
 
@@ -83,15 +82,13 @@ export function writeMeetingRecord(kind: MeetingRecordKind, payload: object, own
   const key = `${PREFIX}${kind}`;
   const raw = JSON.stringify({ uid: owner.uid, impersonatedEmail: owner.impersonatedEmail, savedAt: Date.now(), payload });
   memory.set(key, raw);
-  try { window.sessionStorage.setItem(key, raw); } catch { /* Navigation uses the memory copy. */ }
   return true;
 }
 
 export function readMeetingRecord<T>(kind: MeetingRecordKind, owner: MeetingRecordContext): T | null {
   if (typeof window === "undefined" || context !== owner) return null;
   const key = `${PREFIX}${kind}`;
-  let raw = memory.get(key) ?? null;
-  try { raw ??= window.sessionStorage.getItem(key); } catch { /* Use memory when storage is blocked. */ }
+  const raw = memory.get(key) ?? null;
   const payload = decode<T>(raw, owner);
   if (!payload) {
     memory.delete(key);

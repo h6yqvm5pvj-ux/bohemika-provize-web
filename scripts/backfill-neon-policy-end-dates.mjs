@@ -4,11 +4,13 @@ import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow
 
 import nextEnv from "@next/env";
 import { createJiti } from "jiti";
+import { fileURLToPath } from "node:url";
 
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
-const jiti = createJiti(import.meta.url);
+const jiti = createJiti(import.meta.url, { alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) } });
+const { invalidateHallContractChange } = jiti("../src/lib/server/hallOfFameProjection.ts");
 const { adminDb } = jiti("../src/lib/server/firebaseAdmin.ts");
 const {
   downloadContractPdfAttachment,
@@ -17,7 +19,7 @@ const {
 const { parseNeonPdf } = jiti("../src/app/lib/parseNeonPdf.ts");
 const { toDate } = jiti("../src/app/lib/formatters.ts");
 
-const BATCH_LIMIT = 300;
+const BATCH_LIMIT = 150;
 
 const hasArg = (name) => process.argv.includes(name);
 
@@ -76,6 +78,9 @@ const commitUpdates = async (updates) => {
   let written = 0;
 
   for (const update of updates) {
+    invalidateHallContractChange(batch, update.ref, { userEmail: update.storedOwnerEmail }, {
+      policyEndDate: dateFromIsoDay(update.policyEndDate),
+    });
     batch.update(update.ref, {
       policyEndDate: dateFromIsoDay(update.policyEndDate),
       updatedAt: new Date(),
@@ -198,6 +203,7 @@ const main = async () => {
 
       planned.push({
         ref: entry.ref,
+        storedOwnerEmail: entry.data.userEmail,
         ownerEmail: entry.ownerEmail,
         entryId: entry.id,
         contractNumber: storedContractNumber || parsedContractNumber,

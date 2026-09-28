@@ -1,4 +1,6 @@
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
+import { privateEncryptionRequired } from "@/lib/server/privateEncryption";
+import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -166,7 +168,7 @@ const normalizeAttachmentUrls = (
 const parseMailboxDoc = (
   docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
-  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const data = openPrivateRecord(docSnap.ref.path, docSnap.data() ?? {});
   const createdAtMs =
     (typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
       ? Math.round(data.createdAtMs)
@@ -227,7 +229,7 @@ const parseMailboxDoc = (
   let title = normalizeText(data.title) || "Bohemka.App";
   let body = normalizeText(data.body) || "Máš novou zprávu.";
 
-  if (data.encryptedContent != null) {
+  if (data.encryptedContent != null || (data.type === "direct_message" && privateEncryptionRequired())) {
     try {
       const decrypted = decryptMailboxJson<Record<string, unknown>>(
         data.encryptedContent,

@@ -1,3 +1,4 @@
+import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
     docs.push(...snap.docs);
   }
 
-  const reviews = docs.map((doc) => reviewDto(doc.data()));
+  const reviews = docs.map((doc) => reviewDto(openPrivateRecord(doc.ref.path, doc.data())));
 
   return withRateLimit(NextResponse.json({ ok: true, reviews }, { headers: { "Cache-Control": "private, no-store" } }));
 }

@@ -18,5 +18,6 @@ if (process.env.VERCEL_ENV === "production") {
     rateLimitTrustedIpHeader: "x-vercel-forwarded-for", memoryFallback: false,
     sessionSigningConfigured: !!(process.env.APP_SESSION_SECRET || process.env.AUTH_SESSION_SECRET || process.env.NEXTAUTH_SECRET || process.env.FIREBASE_ADMIN_PRIVATE_KEY),
     cronSecretConfigured: !!process.env.CRON_SECRET,
+    privateDataEncryptionRequired: process.env.PRIVATE_DATA_ENCRYPTION_REQUIRED === "true",
   }));
 }

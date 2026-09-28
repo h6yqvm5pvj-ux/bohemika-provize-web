@@ -1,3 +1,5 @@
+import { openPrivateValue } from "@/lib/server/privateEncryption";
+import "../../../../../tests/helpers/privateEncryptionTestKey";
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyClientCard, MAX_CLIENT_CARD_REQUEST_BYTES } from "@/app/_klienti/clientCardData";
@@ -145,8 +147,10 @@ describe("client card authorization and persistence", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, card, revision: 1 });
     expect(mocks.write).toHaveBeenCalledWith(`clientCardsPrivate/owner-uid/cards/${TEST_CLIENT_SLUG}`, {
-      ownerUid: owner.uid, card, revision: 1, updatedAt: "server-timestamp",
+      ownerUid: owner.uid, card: expect.objectContaining({ privateEncryption: 1 }), revision: 1, updatedAt: "server-timestamp",
     });
+    expect(openPrivateValue(mocks.write.mock.calls[0][1].card, `${mocks.write.mock.calls[0][0]}:card`)).toEqual(card);
+    expect(JSON.stringify(mocks.write.mock.calls[0][1])).not.toContain(card.clientName);
     expectPrivate(response);
   });
 
@@ -155,7 +159,8 @@ describe("client card authorization and persistence", () => {
     const edited = { ...card, birthNumber: "" };
     const response = await PUT(request("PUT", { card: edited, expectedRevision: 3 }), context());
     expect(await response.json()).toEqual({ ok: true, card: edited, revision: 4 });
-    expect(mocks.write).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ card: edited, revision: 4 }));
+    expect(openPrivateValue(mocks.write.mock.calls[0][1].card, `${mocks.write.mock.calls[0][0]}:card`)).toEqual(edited);
+    expect(mocks.write).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ card: expect.objectContaining({ privateEncryption: 1 }), revision: 4 }));
   });
 
   it("preserves IČO from older clients and lets current clients update or clear it", async () => {

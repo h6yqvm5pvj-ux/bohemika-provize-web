@@ -434,6 +434,12 @@ service cloud.firestore {
       allow create, update, delete: if isSignedIn() && (isAdmin());
     }
 
+    // Draft encryption keys are available only through the actor-bound server API.
+    // Client roles, including administrators, may never read or modify them.
+    match /documentDraftKeys/{document=**} {
+      allow read, write: if false;
+    }
+
     // ---------- fallback ----------
     match /{document=**} {
       allow read, write: if false;

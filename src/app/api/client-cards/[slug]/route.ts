@@ -1,3 +1,4 @@
+import { sealPrivateValue, openPrivateValue, clientCardContext } from "@/lib/server/privateEncryption";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -50,12 +51,12 @@ async function authorize(req: NextRequest, context: RouteContext) {
   // This collection is denied to every client by the existing Firestore
   // fallback rules. Only this authorized Admin SDK endpoint can access it.
   const ref = adminDb.collection("clientCardsPrivate").doc(ctx.uid).collection("cards").doc(slug);
-  return { ok: true as const, ctx, ref, db: adminDb };
+  return { ok: true as const, ctx, ref, slug, db: adminDb };
 }
 
-function storedCard(data: Record<string, unknown> | undefined, uid: string): ClientCardResponse {
+function storedCard(data: Record<string, unknown> | undefined, uid: string, slug: string): ClientCardResponse {
   if (!data) return { ok: true, card: null, revision: 0 };
-  const card = parseClientCardDraft(data.card);
+  const card = parseClientCardDraft(openPrivateValue(data.card, clientCardContext(uid, slug)));
   if (data.ownerUid !== uid || !card || !Number.isSafeInteger(data.revision) || Number(data.revision) < 1) {
     throw new Error("Invalid stored client card");
   }
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
     if (!access.ok) return access.response;
     const snap = await access.ref.get();
     return noStore(withRateLimitHeaders(
-      NextResponse.json(storedCard(snap.data(), access.ctx.uid)), access.ctx,
+      NextResponse.json(storedCard(snap.data(), access.ctx.uid, access.slug)), access.ctx,
     ));
   } catch {
     // Do not log request bodies or Firestore records containing personal data.
@@ -117,7 +118,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
     const saved = await access.db.runTransaction(async (transaction) => {
       const snap = await transaction.get(access.ref);
-      const current = storedCard(snap.data(), access.ctx.uid);
+      const current = storedCard(snap.data(), access.ctx.uid, access.slug);
       if (current.revision !== body.expectedRevision) return null;
       // Older open tabs do not send the new IČO field. Only an explicit blank
       // from a current form should clear an existing company identifier.
@@ -126,7 +127,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       const revision = current.revision + 1;
       transaction.set(access.ref, {
         ownerUid: access.ctx.uid,
-        card: updatedCard,
+        card: sealPrivateValue(updatedCard, clientCardContext(access.ctx.uid, access.slug)),
         revision,
         updatedAt: FieldValue.serverTimestamp(),
       });

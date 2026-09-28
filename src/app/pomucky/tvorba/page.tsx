@@ -1,22 +1,50 @@
 "use client";
 
+import { privateMemory, purgePrivateBrowserCaches } from "@/app/lib/privateMemory";
+
 import Image from "next/image";
 import {
   useEffect,
+  useEffectEvent,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  Heading2,
+  Pilcrow,
+  List,
+  ListOrdered,
+  ChevronDown,
+  ChevronRight,
+  SlidersHorizontal,
+  WandSparkles,
+  Pipette,
+  type LucideIcon,
   AlignCenter,
   AlignJustify,
   AlignLeft,
   AlignRight,
-  Briefcase,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  FileText,
+  Plus,
+  FilePlus2,
+  Save,
+  Settings2,
+  ContactRound as UserCardIcon,
   Download,
-  Hash,
   ImagePlus,
   Loader2,
   Lock,
@@ -26,7 +54,6 @@ import {
   Sparkles,
   Trash2,
   Type,
-  User,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -35,126 +62,21 @@ import { resolveUserProfilePatchRequest } from "@/app/lib/adminImpersonation";
 import {
   effectiveUserEmail,
   useEffectiveUserEmail,
+  useAdminImpersonationState,
 } from "@/app/lib/useAdminImpersonation";
 import { auth } from "@/app/firebase-auth";
-import { systemCondensedFont, systemSansFont, systemSerifFont } from "@/lib/fonts";
+import { systemCondensedFont, systemSansFont } from "@/lib/fonts";
+
+import { fittedImageSize, formatBytes, optimizeImage, pdfFilename, PDF_QUALITY_PRESETS, type DocumentPage, type PlacedImage, type PdfQualityPreset } from "./documentModel";
+import { createDocumentPdf, downloadPdfUrl } from "./documentPdf";
+import styles from "./tvorba.module.css";
+import { ContactQrCode } from "./ContactQrCode";
+import { contactQr, onlineCardUrl, type ContactDetails } from "./contactQr";
+import { useDocumentDraft } from "./useDocumentDraft";
+import { paginateEditor } from "./paginateEditor";
 
 const modernSans = systemSansFont;
-const modernDisplay = systemSansFont;
-const modernSerif = systemSerifFont;
 const modernPoster = systemCondensedFont;
-const modernPoppins = systemSansFont;
-const modernOutfit = systemSansFont;
-const modernMontserrat = systemSansFont;
-const modernJakarta = systemSansFont;
-const modernDmSans = systemSansFont;
-
-let html2pdfPromise: Promise<any> | null = null;
-
-async function getHtml2Pdf() {
-  if (!html2pdfPromise) {
-    html2pdfPromise = import("html2pdf.js").then((mod: unknown) => {
-      const m = mod as { default?: unknown } & Record<string, unknown>;
-      return m.default ?? m;
-    });
-  }
-  return html2pdfPromise;
-}
-
-function stripUnsupportedColorFunctions(input: string): string {
-  return input.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
-}
-
-function copyComputedStyle(source: HTMLElement, target: HTMLElement) {
-  const computed = window.getComputedStyle(source);
-  const styleText = Array.from(computed)
-    .map((prop) => `${prop}: ${computed.getPropertyValue(prop)};`)
-    .join(" ");
-  target.setAttribute("style", styleText);
-}
-
-function buildExportClone(sourceRoot: HTMLElement): HTMLElement {
-  const cloneRoot = sourceRoot.cloneNode(true) as HTMLElement;
-  const sourceNodes = [
-    sourceRoot,
-    ...Array.from(sourceRoot.querySelectorAll<HTMLElement>("*")),
-  ];
-  const targetNodes = [
-    cloneRoot,
-    ...Array.from(cloneRoot.querySelectorAll<HTMLElement>("*")),
-  ];
-
-  sourceNodes.forEach((sourceNode, idx) => {
-    const targetNode = targetNodes[idx];
-    if (!targetNode) return;
-    copyComputedStyle(sourceNode, targetNode);
-  });
-
-  const sourceInputs = sourceRoot.querySelectorAll<
-    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-  >("input, textarea, select");
-  const targetInputs = cloneRoot.querySelectorAll<
-    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-  >("input, textarea, select");
-
-  sourceInputs.forEach((sourceInput, idx) => {
-    const targetInput = targetInputs[idx];
-    if (!targetInput) return;
-    if (
-      targetInput instanceof HTMLInputElement ||
-      targetInput instanceof HTMLTextAreaElement
-    ) {
-      targetInput.value = sourceInput.value;
-    }
-    if (
-      sourceInput instanceof HTMLInputElement &&
-      targetInput instanceof HTMLInputElement
-    ) {
-      targetInput.checked = sourceInput.checked;
-    }
-    if (
-      sourceInput instanceof HTMLSelectElement &&
-      targetInput instanceof HTMLSelectElement
-    ) {
-      targetInput.value = sourceInput.value;
-    }
-  });
-
-  return cloneRoot;
-}
-
-function replaceFormFieldsForExport(root: HTMLElement) {
-  const controls = Array.from(
-    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-      "input, textarea, select"
-    )
-  );
-
-  controls.forEach((control) => {
-    const value =
-      control instanceof HTMLSelectElement
-        ? control.options[control.selectedIndex]?.text ?? ""
-        : control.value ?? "";
-
-    const span = document.createElement("span");
-    span.textContent = value;
-    span.setAttribute("style", control.getAttribute("style") ?? "");
-    if (control.className) span.className = control.className;
-    span.style.display = "inline-block";
-    span.style.whiteSpace = "nowrap";
-    span.style.overflow = "hidden";
-    span.style.textOverflow = "clip";
-    span.style.border = "none";
-    span.style.background = "transparent";
-    span.style.outline = "none";
-    span.style.pointerEvents = "none";
-    span.style.verticalAlign = "middle";
-    span.style.lineHeight = "1.25";
-    span.style.height = "auto";
-
-    control.replaceWith(span);
-  });
-}
 
 function nameFromEmail(email: string): string {
   const local = email.split("@")[0] ?? "";
@@ -166,7 +88,7 @@ function nameFromEmail(email: string): string {
 }
 
 const DEFAULT_EDITOR_HTML = `
-  <h1 style="font-size:28px;font-weight:700;margin:0 0 14px 0;">Název dokumentu</h1>
+  <h1 style="font-size:32px;font-weight:700;letter-spacing:-0.035em;margin:0 0 20px 0;">Název dokumentu</h1>
   <p style="margin:0 0 12px 0;">Sem napiš svůj text. Můžeš používat tučné písmo, odrážky i číslované seznamy.</p>
   <ul style="margin:0 0 12px 18px;">
     <li>První bod</li>
@@ -176,11 +98,13 @@ const DEFAULT_EDITOR_HTML = `
   <p style="margin:0;">Tip: výsledný dokument stáhneš kliknutím na tlačítko „Stáhnout PDF“.</p>
 `;
 
-function ToolbarButton({
-  label,
-  onClick,
+function EditorToolButton({
+  label, icon: Icon, active, showLabel = false, onClick,
 }: {
   label: string;
+  icon: LucideIcon;
+  active?: boolean;
+  showLabel?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -188,9 +112,13 @@ function ToolbarButton({
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
-      className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
+      className={styles.toolButton}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
     >
-      {label}
+      <Icon size={16} strokeWidth={1.8} />
+      {showLabel && <span>{label}</span>}
     </button>
   );
 }
@@ -247,14 +175,7 @@ function ensureClosingSignature(input: string, signatureName: string): string {
   return normalized ? `${normalized}\n\n${closing}` : closing;
 }
 
-type FooterProfile = {
-  fullName: string;
-  jobTitle: string;
-  companyId: string;
-  phone: string;
-  email: string;
-  officeAddress: string;
-};
+type FooterProfile = ContactDetails;
 
 type UserProfileApiResponse = {
   ok?: boolean;
@@ -268,16 +189,6 @@ type AiAssistantApiResponse = {
   ok?: boolean;
   reply?: string;
   error?: string;
-};
-
-type PlacedImage = {
-  id: string;
-  src: string;
-  alt: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 };
 
 type ImageInteraction = {
@@ -322,68 +233,19 @@ type AiDocType = "dopis" | "email" | "shrnutí";
 type AiTone = "formální" | "přátelský" | "obchodní";
 type AiLength = "krátký" | "střední" | "dlouhý";
 type AiAddressing = "vykání" | "tykání";
-type PdfQualityPreset = "high" | "medium" | "low";
 
 const FONT_OPTIONS: FontOption[] = [
   {
     key: "manrope",
-    label: "Manrope",
+    label: "Moderní bezpatkové",
     css: `${modernSans.style.fontFamily}, Arial, Helvetica, sans-serif`,
     commandValue: modernSans.style.fontFamily,
   },
   {
-    key: "space",
-    label: "Space Grotesk",
-    css: `${modernDisplay.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernDisplay.style.fontFamily,
-  },
-  {
-    key: "playfair",
-    label: "Playfair Display",
-    css: `${modernSerif.style.fontFamily}, Georgia, serif`,
-    commandValue: modernSerif.style.fontFamily,
-  },
-  {
     key: "bebas",
-    label: "Bebas Neue",
+    label: "Úzké bezpatkové",
     css: `${modernPoster.style.fontFamily}, 'Arial Narrow', sans-serif`,
     commandValue: modernPoster.style.fontFamily,
-  },
-  {
-    key: "poppins",
-    label: "Poppins",
-    css: `${modernPoppins.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernPoppins.style.fontFamily,
-  },
-  {
-    key: "outfit",
-    label: "Outfit",
-    css: `${modernOutfit.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernOutfit.style.fontFamily,
-  },
-  {
-    key: "montserrat",
-    label: "Montserrat",
-    css: `${modernMontserrat.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernMontserrat.style.fontFamily,
-  },
-  {
-    key: "jakarta",
-    label: "Plus Jakarta Sans",
-    css: `${modernJakarta.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernJakarta.style.fontFamily,
-  },
-  {
-    key: "dm-sans",
-    label: "DM Sans",
-    css: `${modernDmSans.style.fontFamily}, Arial, Helvetica, sans-serif`,
-    commandValue: modernDmSans.style.fontFamily,
-  },
-  {
-    key: "inter",
-    label: "Inter",
-    css: "Inter, Arial, Helvetica, sans-serif",
-    commandValue: "Inter",
   },
   {
     key: "georgia",
@@ -455,39 +317,7 @@ const FONT_OPTIONS: FontOption[] = [
 
 const DEFAULT_FONT_KEY = FONT_OPTIONS[0]?.key ?? "manrope";
 const AI_ASSISTANT_ENDPOINT = "/api/ai-assistant";
-const PDF_QUALITY_PRESETS: Record<
-  PdfQualityPreset,
-  {
-    label: string;
-    helperText: string;
-    renderScale: number;
-    imageQuality: number;
-    imageCompression: "FAST" | "MEDIUM" | "SLOW";
-  }
-> = {
-  high: {
-    label: "Vysoká",
-    helperText: "Nejostřejší výstup, větší velikost souboru.",
-    renderScale: 3.2,
-    imageQuality: 0.92,
-    imageCompression: "SLOW",
-  },
-  medium: {
-    label: "Střední",
-    helperText: "Doporučeno: dobrý poměr kvalita/velikost.",
-    renderScale: 2.5,
-    imageQuality: 0.82,
-    imageCompression: "MEDIUM",
-  },
-  low: {
-    label: "Nízká",
-    helperText: "Nejmenší soubor, nižší ostrost detailů.",
-    renderScale: 1.8,
-    imageQuality: 0.68,
-    imageCompression: "FAST",
-  },
-};
-const PDF_QUALITY_ORDER: PdfQualityPreset[] = ["high", "medium", "low"];
+const PDF_QUALITY_ORDER: PdfQualityPreset[] = ["low", "medium", "high"];
 const DEFAULT_PDF_QUALITY_PRESET: PdfQualityPreset = "medium";
 
 const TEXT_COLOR_PALETTE = [
@@ -526,33 +356,6 @@ const waitNextFrame = () =>
     requestAnimationFrame(() => resolve());
   });
 
-const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      if (!result) {
-        reject(new Error("Soubor se nepodařilo načíst."));
-        return;
-      }
-      resolve(result);
-    };
-    reader.onerror = () => reject(new Error("Soubor se nepodařilo načíst."));
-    reader.readAsDataURL(file);
-  });
-
-const getImageNaturalSize = (src: string) =>
-  new Promise<{ width: number; height: number }>((resolve, reject) => {
-    const img = new window.Image();
-    img.onload = () => {
-      const width = img.naturalWidth || img.width || 1;
-      const height = img.naturalHeight || img.height || 1;
-      resolve({ width, height });
-    };
-    img.onerror = () => reject(new Error("Obrázek se nepodařilo načíst."));
-    img.src = src;
-  });
-
 const normalizeEmail = (email?: string | null) =>
   (email ?? "").trim().toLowerCase();
 
@@ -561,7 +364,8 @@ const footerStorageKey = (email?: string | null) =>
 
 function readLocalFooterProfile(email?: string | null): FooterProfile | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(footerStorageKey(email));
+  purgePrivateBrowserCaches();
+  const raw = privateMemory.getItem(footerStorageKey(email));
   if (!raw) return null;
   try {
     const data = JSON.parse(raw) as Partial<FooterProfile>;
@@ -580,10 +384,10 @@ function readLocalFooterProfile(email?: string | null): FooterProfile | null {
 
 function writeLocalFooterProfile(email: string | null, profile: FooterProfile) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(footerStorageKey(email), JSON.stringify(profile));
+  privateMemory.setItem(footerStorageKey(email), JSON.stringify(profile));
   // Pro nepřihlášený stav držíme i anonymní draft.
   if (!email) {
-    window.localStorage.setItem(footerStorageKey("anon"), JSON.stringify(profile));
+    privateMemory.setItem(footerStorageKey("anon"), JSON.stringify(profile));
   }
 }
 
@@ -602,16 +406,26 @@ async function syncFooterProfileToCloud(
 }
 
 export default function TvorbaPage() {
+  const [session, setSession] = useState<{ user: FirebaseUser | null } | null>(null);
+  const owner = useEffectiveUserEmail(session?.user?.email);
+  const impersonation = useAdminImpersonationState();
+  useEffect(() => onAuthStateChanged(auth, user => setSession({ user })), []);
+  if (!session) return <AppLayout active="tools"><p role="status">Načítám dokument…</p></AppLayout>;
+  if (!session.user) return <AppLayout active="tools"><p role="status">Pro tvorbu dokumentu a otevření konceptu se přihlas.</p></AppLayout>;
+  if (impersonation || normalizeEmail(owner) !== normalizeEmail(session.user.email)) return <AppLayout active="tools"><p role="status">Soukromé koncepty jsou přístupné pouze autorovi. Ukonči režim zastoupení uživatele.</p></AppLayout>;
+  return <TvorbaWorkspace key={session.user.uid} authUser={session.user} effectiveProfileEmail={owner} />;
+}
+
+function TvorbaWorkspace({ authUser, effectiveProfileEmail }: { authUser: FirebaseUser; effectiveProfileEmail: string | null | undefined }) {
   const previewViewportRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedEditorRangeRef = useRef<Range | null>(null);
   const editorStageRef = useRef<HTMLDivElement | null>(null);
-  const headerTitleRef = useRef<HTMLDivElement | null>(null);
   const imageUploadRef = useRef<HTMLInputElement | null>(null);
   const textColorInputRef = useRef<HTMLInputElement | null>(null);
-  const fontMenuRef = useRef<HTMLDivElement | null>(null);
   const textPaletteRef = useRef<HTMLDivElement | null>(null);
+  const pdfDialogRef = useRef<HTMLDivElement | null>(null);
   const imageInteractionRef = useRef<ImageInteraction | null>(null);
 
   const [fullName, setFullName] = useState("");
@@ -620,13 +434,34 @@ export default function TvorbaPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [officeAddress, setOfficeAddress] = useState("");
-  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
-  const effectiveProfileEmail = useEffectiveUserEmail(authUser?.email);
+  const [showContactQr, setShowContactQr] = useState(true);
+  const [profileCard, setProfileCard] = useState<{ owner: string; url: string } | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [fontSizePx, setFontSizePx] = useState(15);
   const [fontFamilyKey, setFontFamilyKey] = useState(DEFAULT_FONT_KEY);
   const [textColor, setTextColor] = useState("#1f2937");
   const [headerDocTitle, setHeaderDocTitle] = useState("Podpisem to pro nás nekončí");
+  const [documentTitle, setDocumentTitle] = useState("Nový dokument");
+  const [pages, setPages] = useState<DocumentPage[]>([{
+    id: "first-page", html: DEFAULT_EDITOR_HTML, images: [], fontSize: 15,
+    fontKey: DEFAULT_FONT_KEY, fontFamily: FONT_OPTIONS[0].css, color: "#1f2937",
+  }]);
+  const [activePageId, setActivePageId] = useState("first-page");
+  const [removedPage, setRemovedPage] = useState<{ page: DocumentPage; index: number } | null>(null);
+  const [contentOverflow, setContentOverflow] = useState(false);
+  const [autoPaginate, setAutoPaginate] = useState(true);
+  const [paginationStatus, setPaginationStatus] = useState<string | null>(null);
+  const [paginationError, setPaginationError] = useState<string | null>(null);
+  const [newDocumentConfirm, setNewDocumentConfirm] = useState(false);
+  const [previousDocument, setPreviousDocument] = useState<{ pages: DocumentPage[]; activePageId: string; title: string; header: string } | null>(null);
+  const composingRef = useRef(false);
+  const failedPaginationRef = useRef<string | null>(null);
+  const [imageImporting, setImageImporting] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState({ done: 0, total: 1 });
+  const [lastExport, setLastExport] = useState<{ url: string; filename: string; bytes: number; pages: number } | null>(null);
+  const exportBusyRef = useRef(false);
+  const imageBusyRef = useRef(false);
   const [placedImages, setPlacedImages] = useState<PlacedImage[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
 
@@ -656,7 +491,7 @@ export default function TvorbaPage() {
   const [aiResult, setAiResult] = useState("");
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [textPaletteOpen, setTextPaletteOpen] = useState(false);
-  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+  const [imageDragOver, setImageDragOver] = useState(false);
   const [textAlignMode, setTextAlignMode] = useState<TextAlignMode>("left");
   const [inlineStyleState, setInlineStyleState] = useState<InlineStyleState>({
     bold: false,
@@ -665,6 +500,7 @@ export default function TvorbaPage() {
     strikeThrough: false,
   });
   const [previewScale, setPreviewScale] = useState(1);
+  const [previewFit, setPreviewFit] = useState(true);
   const [previewBaseSize, setPreviewBaseSize] = useState({ width: 0, height: 0 });
   const selectedFontOption =
     FONT_OPTIONS.find((option) => option.key === fontFamilyKey) ?? FONT_OPTIONS[0];
@@ -674,6 +510,167 @@ export default function TvorbaPage() {
   const previewFrameHeight =
     previewBaseSize.height > 0 ? previewBaseSize.height * previewScale : null;
 
+  const selectedImage = placedImages.find(image => image.id === activeImageId);
+  const activePageIndex = pages.findIndex(page => page.id === activePageId);
+  const snapshotPages = () => pages.map(page => page.id === activePageId ? {
+    ...page, html: editorRef.current?.innerHTML ?? page.html, images: placedImages,
+    fontSize: fontSizePx, fontKey: fontFamilyKey, fontFamily: selectedFontOption.css, color: textColor,
+  } : page);
+
+  const activatePage = (page: DocumentPage, nextPages: DocumentPage[]) => {
+    if (exportBusyRef.current || imageBusyRef.current) return;
+    setPages(nextPages);
+    setActivePageId(page.id);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = page.html;
+      editorRef.current.scrollTop = 0;
+    }
+    setPlacedImages(page.images);
+    setFontSizePx(page.fontSize);
+    setFontFamilyKey(page.fontKey);
+    setTextColor(page.color);
+    setActiveImageId(null);
+    savedEditorRangeRef.current = null;
+    imageInteractionRef.current = null;
+    setErrorText(null);
+  };
+
+  const addPage = (duplicate = false) => {
+    const current = snapshotPages();
+    const page: DocumentPage = {
+      ...current[activePageIndex], id: crypto.randomUUID(),
+      html: duplicate ? current[activePageIndex].html : "<p><br></p>",
+      images: duplicate ? current[activePageIndex].images.map(image => ({ ...image, id: crypto.randomUUID() })) : [],
+    };
+    current.splice(activePageIndex + 1, 0, page);
+    activatePage(page, current);
+  };
+
+  const movePage = (direction: -1 | 1) => {
+    const current = snapshotPages();
+    const target = activePageIndex + direction;
+    if (target < 0 || target >= current.length) return;
+    [current[activePageIndex], current[target]] = [current[target], current[activePageIndex]];
+    setPages(current);
+  };
+
+  const removePage = () => {
+    if (pages.length <= 1) return;
+    const current = snapshotPages();
+    const [removed] = current.splice(activePageIndex, 1);
+    setRemovedPage({ page: removed, index: activePageIndex });
+    activatePage(current[Math.min(activePageIndex, current.length - 1)], current);
+  };
+
+  const restorePage = () => {
+    if (!removedPage) return;
+    const current = snapshotPages();
+    current.splice(removedPage.index, 0, removedPage.page);
+    activatePage(removedPage.page, current);
+    setRemovedPage(null);
+  };
+
+  const draftState = useMemo(() => ({
+    title: documentTitle, header: headerDocTitle, activePageId, quality: pdfQualityPreset, showContactQr, autoPaginate,
+    pages: pages.map(page => page.id === activePageId ? {
+      ...page, images: placedImages, fontSize: fontSizePx, fontKey: fontFamilyKey, fontFamily: selectedFontOption.css, color: textColor,
+    } : page),
+  }), [documentTitle, headerDocTitle, activePageId, pdfQualityPreset, showContactQr, autoPaginate, pages, placedImages, fontSizePx, fontFamilyKey, selectedFontOption.css, textColor]);
+  const draft = useDocumentDraft(authUser, draftState, editorRef, saved => {
+    activatePage(saved.pages.find(page => page.id === saved.activePageId) || saved.pages[0], saved.pages);
+    setDocumentTitle(saved.title);
+    setHeaderDocTitle(saved.header);
+    setPdfQualityPreset(saved.quality);
+    setShowContactQr(saved.showContactQr);
+    setAutoPaginate(saved.autoPaginate);
+  });
+
+  const startNewDocument = () => {
+    setPreviousDocument({ pages: snapshotPages(), activePageId, title: documentTitle, header: headerDocTitle });
+    const page: DocumentPage = { id: crypto.randomUUID(), html: "<p><br></p>", images: [], fontSize: 15, fontKey: DEFAULT_FONT_KEY, fontFamily: FONT_OPTIONS[0].css, color: "#1f2937" };
+    activatePage(page, [page]);
+    setDocumentTitle("Nový dokument");
+    setRemovedPage(null);
+    setNewDocumentConfirm(false);
+    setLastExport(null);
+    setPaginationStatus(null);
+    setPdfPassword("");
+    setPdfPasswordEnabled(false);
+  };
+
+  const splitOverflow = () => {
+    const editor = editorRef.current;
+    if (!editor || !draft.ready || exportBusyRef.current || imageBusyRef.current || composingRef.current) return;
+    if (editor.innerHTML === failedPaginationRef.current) return;
+    if (editor.scrollHeight <= editor.clientHeight + 2 && editor.scrollWidth <= editor.clientWidth + 2) return;
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && editor.contains(selection.anchorNode)) return;
+    const current = snapshotPages();
+    const source = current[activePageIndex];
+    const flowId = source.flowId || source.id;
+    let end = activePageIndex + 1;
+    while (end < current.length && current[end].flowId === flowId && !current[end].images.length &&
+      current[end].fontSize === source.fontSize && current[end].fontKey === source.fontKey && current[end].color === source.color) end++;
+    const marker = document.createElement("span");
+    marker.setAttribute("data-pagination-caret", "true");
+    const hadFocus = document.activeElement === editor;
+    if (hadFocus && selection?.rangeCount && editor.contains(selection.anchorNode)) {
+      const range = selection.getRangeAt(0).cloneRange();
+      range.collapse(false);
+      range.insertNode(marker);
+    }
+    try {
+      const parts = paginateEditor(editor, editor.innerHTML + current.slice(activePageIndex + 1, end).map(page => page.html).join(""));
+      if (parts.length <= 1) return;
+      const caretPage = Math.max(0, parts.findIndex(html => html.includes("data-pagination-caret")));
+      const generated = parts.map((html, index): DocumentPage => ({
+        ...source, id: activePageIndex + index < end ? current[activePageIndex + index].id : crypto.randomUUID(),
+        flowId, images: index === 0 ? source.images : [],
+        html: html.replace(/<span data-pagination-caret="true"><\/span>/g, ""),
+      }));
+      current.splice(activePageIndex, end - activePageIndex, ...generated);
+      activatePage({ ...generated[caretPage], html: parts[caretPage] }, current);
+      const cursor = editor.querySelector("[data-pagination-caret]");
+      if (cursor && hadFocus) {
+        editor.focus({ preventScroll: true });
+        const range = document.createRange();
+        range.setStartBefore(cursor); range.collapse(true); cursor.remove();
+        selection?.removeAllRanges(); selection?.addRange(range);
+        savedEditorRangeRef.current = range.cloneRange();
+      } else cursor?.remove();
+      setPaginationError(null);
+      setPaginationStatus(`Text byl rozdělen do ${parts.length} stran. Formátování zůstalo zachované.`);
+      return current;
+    } catch (error) {
+      setPaginationError(error instanceof Error ? error.message : "Text se nepodařilo rozdělit.");
+      marker.remove();
+      failedPaginationRef.current = editor.innerHTML;
+    } finally { marker.remove(); }
+  };
+  const autoSplit = useEffectEvent(() => { if (autoPaginate) splitOverflow(); });
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const measure = () => {
+      const overflow = editor.scrollHeight > editor.clientHeight + 2 || editor.scrollWidth > editor.clientWidth + 2;
+      setContentOverflow(overflow);
+      clearTimeout(timer);
+      if (overflow) timer = setTimeout(() => autoSplit(), 350);
+    };
+    const observer = new MutationObserver(measure);
+    const resizeObserver = new ResizeObserver(measure);
+    observer.observe(editor, { childList: true, subtree: true, characterData: true, attributes: true });
+    resizeObserver.observe(editor);
+    measure();
+    return () => { observer.disconnect(); resizeObserver.disconnect(); clearTimeout(timer); };
+  }, []);
+
+  useEffect(() => { if (draft.ready && autoPaginate) autoSplit(); }, [draft.ready, autoPaginate]);
+
+  useEffect(() => () => { if (lastExport) URL.revokeObjectURL(lastExport.url); }, [lastExport]);
+
   const collectFooterProfile = (): FooterProfile => ({
     fullName: fullName.trim(),
     jobTitle: jobTitle.trim(),
@@ -682,6 +679,9 @@ export default function TvorbaPage() {
     email: email.trim(),
     officeAddress: officeAddress.trim(),
   });
+
+  const currentCardUrl = profileCard && profileCard.owner === effectiveProfileEmail ? profileCard.url : "";
+  const qrContact = showContactQr ? contactQr(collectFooterProfile(), currentCardUrl) : null;
 
   const applyFooterProfile = (profile: Partial<FooterProfile>, fallbackEmail?: string) => {
     setFullName(profile.fullName ?? "");
@@ -886,14 +886,6 @@ export default function TvorbaPage() {
   }, [fontSizePx, selectedFontOption.css, textColor]);
 
   useEffect(() => {
-    const titleNode = headerTitleRef.current;
-    if (!titleNode) return;
-    if (titleNode.textContent !== headerDocTitle) {
-      titleNode.textContent = headerDocTitle;
-    }
-  }, [headerDocTitle]);
-
-  useEffect(() => {
     if (!textPaletteOpen) return;
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -906,32 +898,27 @@ export default function TvorbaPage() {
   }, [textPaletteOpen]);
 
   useEffect(() => {
-    if (!fontMenuOpen) return;
-    const handleOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (fontMenuRef.current?.contains(target)) return;
-      setFontMenuOpen(false);
-    };
-    window.addEventListener("mousedown", handleOutsideClick);
-    return () => window.removeEventListener("mousedown", handleOutsideClick);
-  }, [fontMenuOpen]);
-
-  useEffect(() => {
     if (!pdfSettingsOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(pdfDialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex="0"]'
+    ) ?? []);
+    focusable()[0]?.focus();
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setPdfSettingsOpen(false);
       }
+      if (event.key === "Tab") {
+        const items = focusable();
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     };
     window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
+    return () => { window.removeEventListener("keydown", handleEscape); previousFocus?.focus(); };
   }, [pdfSettingsOpen]);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setAuthUser);
-    return () => unsub();
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -939,6 +926,7 @@ export default function TvorbaPage() {
         const activeUser = authUser;
         const normalized = effectiveProfileEmail;
         if (!activeUser || !normalized) {
+          setProfileCard(null);
           setUserEmail(null);
           const localProfile = readLocalFooterProfile(null);
           if (localProfile) applyFooterProfile(localProfile);
@@ -965,6 +953,7 @@ export default function TvorbaPage() {
             cancelled ||
             effectiveUserEmail(auth.currentUser?.email) !== normalized
           ) return;
+          setProfileCard({ owner: normalized, url: onlineCardUrl(payload.profile, window.location.origin) });
           const profile = payload.profile?.tvorbaFooterProfile;
           if (!profile) return;
 
@@ -1055,7 +1044,7 @@ export default function TvorbaPage() {
       const baseWidth = Math.max(1, page.offsetWidth);
       const baseHeight = Math.max(1, page.offsetHeight);
       const availableWidth = Math.max(1, viewport.clientWidth - 24);
-      const nextScale = Math.min(1, availableWidth / baseWidth);
+      const nextScale = previewFit ? Math.min(1, availableWidth / baseWidth) : 1;
 
       setPreviewBaseSize((prev) =>
         prev.width === baseWidth && prev.height === baseHeight
@@ -1084,7 +1073,7 @@ export default function TvorbaPage() {
       observer.disconnect();
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, []);
+  }, [previewFit]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1270,7 +1259,6 @@ export default function TvorbaPage() {
   const handleSelectFont = (option: FontOption) => {
     setFontFamilyKey(option.key);
     applyFontFamily(option);
-    setFontMenuOpen(false);
   };
 
   const applyFontSize = (px: number) => {
@@ -1442,6 +1430,7 @@ export default function TvorbaPage() {
   ) => {
     event.preventDefault();
     event.stopPropagation();
+    if (exportBusyRef.current) return;
 
     const stage = editorStageRef.current;
     if (!stage) return;
@@ -1478,265 +1467,98 @@ export default function TvorbaPage() {
     imageUploadRef.current?.click();
   };
 
-  const handleImageFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setErrorText("Vybraný soubor není obrázek.");
-      return;
-    }
-
+  const insertImageFiles = async (files: File[]) => {
+    if (imageBusyRef.current || exportBusyRef.current || !files.length) return;
+    imageBusyRef.current = true;
+    setImageImporting(true);
+    setImageStatus(null);
+    setErrorText(null);
+    let originalBytes = 0;
+    let optimizedBytes = 0;
+    let inserted = 0;
     try {
-      const src = await readFileAsDataUrl(file);
-      const { width: naturalWidth, height: naturalHeight } = await getImageNaturalSize(src);
-      const stage = editorStageRef.current;
-      const stageWidth = Math.max(300, stage?.clientWidth ?? 640);
-      const stageHeight = Math.max(300, stage?.clientHeight ?? 730);
-
-      const maxWidth = Math.min(260, Math.max(120, stageWidth - 24));
-      const startWidth = clampNumber(naturalWidth, 120, maxWidth);
-      const ratio = naturalHeight / Math.max(1, naturalWidth);
-      const startHeight = clampNumber(startWidth * ratio, 90, Math.max(120, stageHeight - 20));
-
-      const imageId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `img-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-      setPlacedImages((prev) => {
-        const offset = (prev.length % 5) * 14;
-        const nextX = clampNumber(16 + offset, 0, Math.max(0, stageWidth - startWidth));
-        const nextY = clampNumber(16 + offset, 0, Math.max(0, stageHeight - startHeight));
-        return [
-          ...prev,
-          {
-            id: imageId,
-            src,
-            alt: file.name || "Vložený obrázek",
-            x: nextX,
-            y: nextY,
-            width: startWidth,
-            height: startHeight,
-          },
-        ];
-      });
-      setActiveImageId(imageId);
-      setErrorText(null);
+      for (const file of files) {
+        const optimized = await optimizeImage(file);
+        const stage = editorStageRef.current;
+        const stageWidth = stage?.clientWidth || 688;
+        const stageHeight = stage?.clientHeight || 760;
+        const size = fittedImageSize(optimized.width, optimized.height, 300, stageHeight - 32);
+        const lastBlock = editorRef.current?.lastElementChild as HTMLElement | null;
+        const textBottom = lastBlock ? lastBlock.offsetTop + lastBlock.offsetHeight + 20 : 16;
+        const id = crypto.randomUUID();
+        setPlacedImages(previous => [...previous, {
+          id, src: optimized.src, alt: file.name || "Vložený obrázek",
+          x: Math.min(16 + (previous.length % 5) * 14, stageWidth - size.width),
+          y: Math.min(textBottom + (previous.length % 5) * 14, stageHeight - size.height),
+          ...size,
+        }]);
+        setActiveImageId(id);
+        originalBytes += optimized.originalBytes;
+        optimizedBytes += optimized.bytes;
+        inserted++;
+      }
     } catch (error) {
-      console.error("Nepodařilo se vložit obrázek:", error);
-      setErrorText("Obrázek se nepodařilo načíst.");
+      setErrorText(error instanceof Error ? error.message : "Obrázek se nepodařilo načíst.");
+    } finally {
+      if (inserted) setImageStatus(`Obrázky vloženy: ${inserted} · ${formatBytes(originalBytes)} → ${formatBytes(optimizedBytes)}`);
+      imageBusyRef.current = false;
+      setImageImporting(false);
     }
   };
 
+  const handleImageFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    await insertImageFiles(files);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (downloading) return;
+    const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+    if (files.length) { void insertImageFiles(files); return; }
+    // Strip foreign page layouts and remote images; use the document's own typography.
+    document.execCommand("insertHTML", false, plainTextToEditorHtml(event.clipboardData.getData("text/plain")));
+    syncFormattingState();
+  };
+
   const handleDownloadPdf = async () => {
-    if (!pageRef.current) return;
+    if (!pageRef.current || exportBusyRef.current || imageBusyRef.current) return;
     const normalizedPdfPassword = pdfPassword.trim();
     if (pdfPasswordEnabled && !normalizedPdfPassword) {
       setErrorText("Pro zaheslování PDF zadej heslo v Nastavení PDF.");
       setPdfSettingsOpen(true);
       return;
     }
+    const exportPages = (autoPaginate ? splitOverflow() : undefined) || snapshotPages();
+    exportBusyRef.current = true;
     setDownloading(true);
     setErrorText(null);
-    let cleanup: (() => void) | null = null;
-
+    setExportProgress({ done: 0, total: exportPages.length });
     try {
       imageInteractionRef.current = null;
       document.body.style.userSelect = "";
       setActiveImageId(null);
       await waitNextFrame();
-      await waitNextFrame();
-
-      const html2pdf = await getHtml2Pdf();
-      const now = new Date();
-      const filename = `tvorba_${now.toISOString().slice(0, 10)}.pdf`;
-      const qualityConfig = PDF_QUALITY_PRESETS[pdfQualityPreset];
-      const source = pageRef.current;
-      const rect = source.getBoundingClientRect();
-
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "fixed";
-      wrapper.style.left = "-10000px";
-      wrapper.style.top = "0";
-      wrapper.style.width = `${Math.ceil(rect.width)}px`;
-      wrapper.style.height = `${Math.ceil(rect.height)}px`;
-      wrapper.style.overflow = "hidden";
-      wrapper.style.pointerEvents = "none";
-
-      const exportNode = buildExportClone(source);
-      replaceFormFieldsForExport(exportNode);
-      exportNode
-        .querySelectorAll<HTMLElement>("[data-export-ignore='1']")
-        .forEach((node) => node.remove());
-      const exportEditables = Array.from(
-        exportNode.querySelectorAll<HTMLElement>("[contenteditable]")
-      );
-      exportEditables.forEach((editable) => {
-        editable.removeAttribute("contenteditable");
-        editable.removeAttribute("spellcheck");
-        editable.style.setProperty("caret-color", "transparent", "important");
+      const blob = await createDocumentPdf({
+        source: pageRef.current, pages: exportPages, title: documentTitle.trim() || "Dokument", author: fullName,
+        quality: pdfQualityPreset, password: pdfPasswordEnabled ? normalizedPdfPassword : undefined,
+        contact: qrContact,
+        onProgress: (done, total) => setExportProgress({ done, total }),
       });
-
-      const exportEditorFrame = exportNode.querySelector<HTMLElement>(
-        "[data-editor-frame='1']"
-      );
-      if (exportEditorFrame) {
-        exportEditorFrame.style.setProperty("border", "0", "important");
-        exportEditorFrame.style.setProperty("border-top", "0", "important");
-        exportEditorFrame.style.setProperty("border-right", "0", "important");
-        exportEditorFrame.style.setProperty("border-bottom", "0", "important");
-        exportEditorFrame.style.setProperty("border-left", "0", "important");
-        exportEditorFrame.style.setProperty("background", "transparent", "important");
-        exportEditorFrame.style.setProperty("border-radius", "0", "important");
-        exportEditorFrame.style.setProperty("box-shadow", "none", "important");
-        exportEditorFrame.style.setProperty("outline", "none", "important");
-      }
-      const exportHeaderTitleWrap = exportNode.querySelector<HTMLElement>(
-        "[data-header-title-wrap='1']"
-      );
-      if (exportHeaderTitleWrap) {
-        exportHeaderTitleWrap.style.setProperty("max-width", "66mm", "important");
-        exportHeaderTitleWrap.style.setProperty("overflow", "visible", "important");
-      }
-      const exportHeaderTitle = exportNode.querySelector<HTMLElement>("[data-header-title='1']");
-      if (exportHeaderTitle) {
-        exportHeaderTitle.style.setProperty("white-space", "normal", "important");
-        exportHeaderTitle.style.setProperty("overflow", "visible", "important");
-        exportHeaderTitle.style.setProperty("text-overflow", "clip", "important");
-        exportHeaderTitle.style.setProperty("overflow-wrap", "anywhere", "important");
-        exportHeaderTitle.style.setProperty("display", "block", "important");
-        exportHeaderTitle.style.setProperty("line-height", "1.45", "important");
-        exportHeaderTitle.style.setProperty("min-height", "8mm", "important");
-        exportHeaderTitle.style.setProperty("padding-bottom", "1mm", "important");
-        exportHeaderTitle.style.setProperty("width", "58mm", "important");
-      }
-      const exportFooterGrid = exportNode.querySelector<HTMLElement>("[data-footer-grid='1']");
-      if (exportFooterGrid) {
-        exportFooterGrid.style.setProperty(
-          "grid-template-columns",
-          "56mm 56mm 62mm",
-          "important"
-        );
-        exportFooterGrid.style.setProperty("column-gap", "4mm", "important");
-        exportFooterGrid.style.setProperty("font-size", "10.5px", "important");
-        exportFooterGrid.style.setProperty("line-height", "1.2", "important");
-      }
-      exportNode.querySelectorAll<HTMLElement>("[data-footer-value='1']").forEach((el) => {
-        el.style.setProperty("white-space", "nowrap", "important");
-        el.style.setProperty("overflow-wrap", "normal", "important");
-        el.style.setProperty("word-break", "keep-all", "important");
-      });
-      exportNode.querySelectorAll<HTMLElement>("*").forEach((el) => {
-        const styleText = el.getAttribute("style") ?? "";
-        if (!/dashed/i.test(styleText)) return;
-        el.style.setProperty("border", "0", "important");
-      });
-      exportNode.querySelectorAll<HTMLElement>("[data-image-item='1']").forEach((el) => {
-        el.style.setProperty("box-shadow", "none", "important");
-        el.style.setProperty("outline", "none", "important");
-      });
-      exportNode.style.width = "210mm";
-      exportNode.style.height = "297mm";
-      exportNode.style.minHeight = "297mm";
-      exportNode.style.maxHeight = "297mm";
-      exportNode.style.overflow = "hidden";
-      exportNode.style.boxShadow = "none";
-      exportNode.style.margin = "0";
-      wrapper.appendChild(exportNode);
-      document.body.appendChild(wrapper);
-      cleanup = () => wrapper.remove();
-
-      const opt: any = {
-        image: { type: "jpeg", quality: qualityConfig.imageQuality },
-        html2canvas: {
-          scale: qualityConfig.renderScale,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          width: Math.ceil(rect.width),
-          height: Math.ceil(rect.height),
-          windowWidth: Math.ceil(rect.width),
-          windowHeight: Math.ceil(rect.height),
-          onclone: (doc: Document) => {
-            doc.querySelectorAll("link[rel='stylesheet']").forEach((n) => n.remove());
-            doc.querySelectorAll("style").forEach((node) => {
-              const original = node.textContent ?? "";
-              node.textContent = stripUnsupportedColorFunctions(original);
-            });
-            doc.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
-              const inline = el.getAttribute("style");
-              if (!inline) return;
-              if (/(?:oklch|lab)\(/i.test(inline)) {
-                el.setAttribute("style", stripUnsupportedColorFunctions(inline));
-              }
-            });
-          },
-        },
-      };
-
-      const worker = (html2pdf() as any).from(exportNode).set(opt).toCanvas();
-      const canvas = (await worker.get("canvas")) as HTMLCanvasElement;
-      const jspdfMod = await import("jspdf");
-      const PdfCtor = (jspdfMod as { jsPDF?: any }).jsPDF;
-      const pdfOptions: Record<string, unknown> = {
-        unit: "mm",
-        format: "a4",
-        orientation: "portrait",
-        compress: true,
-        precision: 10,
-      };
-      if (pdfPasswordEnabled && normalizedPdfPassword) {
-        pdfOptions.encryption = {
-          userPassword: normalizedPdfPassword,
-          ownerPassword: normalizedPdfPassword,
-          userPermissions: ["print", "modify", "copy", "annot-forms"],
-        };
-      }
-      const pdf = new PdfCtor(pdfOptions);
-      const image = canvas.toDataURL("image/jpeg", qualityConfig.imageQuality);
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
-      const canvasWidth = Math.max(1, canvas.width);
-      const canvasHeight = Math.max(1, canvas.height);
-      const canvasAspect = canvasWidth / canvasHeight;
-      const pageAspect = pageWidthMm / pageHeightMm;
-
-      let renderWidthMm = pageWidthMm;
-      let renderHeightMm = pageHeightMm;
-      if (canvasAspect > pageAspect) {
-        renderHeightMm = pageWidthMm / canvasAspect;
-      } else {
-        renderWidthMm = pageHeightMm * canvasAspect;
-      }
-
-      const offsetX = (pageWidthMm - renderWidthMm) / 2;
-      const offsetY = (pageHeightMm - renderHeightMm) / 2;
-      pdf.addImage(
-        image,
-        "JPEG",
-        offsetX,
-        offsetY,
-        renderWidthMm,
-        renderHeightMm,
-        undefined,
-        qualityConfig.imageCompression
-      );
-      pdf.save(filename);
+      const result = { url: URL.createObjectURL(blob), filename: pdfFilename(documentTitle), bytes: blob.size, pages: exportPages.length };
+      setLastExport(result);
+      downloadPdfUrl(result.url, result.filename);
       if (pdfPasswordEnabled) {
         setPdfPassword("");
         setPdfPasswordEnabled(false);
-        setPdfSaveStatus("Jednorázové heslo bylo použito a smazáno.");
-        window.setTimeout(() => setPdfSaveStatus(null), 2600);
       }
-      cleanup();
-      cleanup = null;
     } catch (error) {
       console.error("Nepodařilo se stáhnout PDF:", error);
-      setErrorText("PDF se nepodařilo vygenerovat. Zkus to prosím znovu.");
+      setErrorText(error instanceof Error ? error.message : "PDF se nepodařilo vygenerovat. Zkus to prosím znovu.");
     } finally {
+      exportBusyRef.current = false;
       setDownloading(false);
-      if (cleanup) cleanup();
     }
   };
 
@@ -1774,543 +1596,229 @@ export default function TvorbaPage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-[1360px] space-y-7">
-        <div className="grid items-start gap-6 xl:grid-cols-[332px_1fr]">
-          <aside className="w-full max-w-[332px] xl:sticky xl:top-6 rounded-[30px] border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_24px_64px_rgba(15,23,42,0.18)] space-y-4">
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Type className="h-4 w-4 text-slate-600" />
-                <h2 className="text-sm font-semibold text-slate-900">Editor obsahu</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <ToolbarButton label="Nadpis" onClick={() => applyFormatBlock("H2")} />
-                <ToolbarButton label="Odrážky" onClick={() => applyList(false)} />
-              </div>
-              <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyInlineStyle("bold")}
-                  className={`inline-flex h-10 w-14 items-center justify-center text-3xl font-semibold transition ${
-                    inlineStyleState.bold
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Tučně"
-                  title="Tučně"
-                >
-                  <span className="text-[34px] leading-none">B</span>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyInlineStyle("italic")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
-                    inlineStyleState.italic
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Kurzíva"
-                  title="Kurzíva"
-                >
-                  <span className="text-[34px] italic leading-none">I</span>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyInlineStyle("underline")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
-                    inlineStyleState.underline
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Podtržení"
-                  title="Podtržení"
-                >
-                  <span className="text-[34px] underline leading-none">U</span>
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyInlineStyle("strikeThrough")}
-                  className={`inline-flex h-10 w-14 items-center justify-center border-l border-slate-300 text-3xl transition ${
-                    inlineStyleState.strikeThrough
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Přeškrtnutí"
-                  title="Přeškrtnutí"
-                >
-                  <span className="text-[34px] line-through leading-none">S</span>
-                </button>
-              </div>
-              <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyTextAlign("left")}
-                  className={`inline-flex h-10 w-16 items-center justify-center transition ${
-                    textAlignMode === "left"
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Zarovnat vlevo"
-                  title="Zarovnat vlevo"
-                >
-                  <AlignLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyTextAlign("center")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
-                    textAlignMode === "center"
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Zarovnat na střed"
-                  title="Zarovnat na střed"
-                >
-                  <AlignCenter className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyTextAlign("right")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
-                    textAlignMode === "right"
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Zarovnat vpravo"
-                  title="Zarovnat vpravo"
-                >
-                  <AlignRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => applyTextAlign("justify")}
-                  className={`inline-flex h-10 w-16 items-center justify-center border-l border-slate-300 transition ${
-                    textAlignMode === "justify"
-                      ? "bg-blue-500/85 text-white"
-                      : "bg-transparent text-slate-900 hover:bg-white"
-                  }`}
-                  aria-label="Zarovnat do bloku"
-                  title="Zarovnat do bloku"
-                >
-                  <AlignJustify className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <label className="w-[84px] text-xs font-semibold text-slate-600">Font</label>
-                  <div ref={fontMenuRef} className="relative flex-1">
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setFontMenuOpen((prev) => !prev)}
-                      className="inline-flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none transition hover:border-slate-900"
-                      style={{ fontFamily: selectedFontOption.css }}
-                      aria-label="Vybrat font"
-                    >
-                      <span>{selectedFontOption.label}</span>
-                      <span className="ml-2 text-[10px] text-slate-600">{fontMenuOpen ? "▲" : "▼"}</span>
-                    </button>
-                    {fontMenuOpen && (
-                      <div className="absolute left-0 top-9 z-30 min-w-[224px] overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_16px_32px_rgba(15,23,42,0.25)] ">
-                        {FONT_OPTIONS.map((option) => {
-                          const isSelected = option.key === fontFamilyKey;
-                          return (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => handleSelectFont(option)}
-                              className={`flex w-full items-center justify-between px-3 py-2 text-left text-[18px] leading-none transition ${
-                                isSelected
-                                  ? "bg-blue-100 text-slate-900"
-                                  : "text-slate-900 hover:bg-white"
-                              }`}
-                              style={{ fontFamily: option.css }}
-                            >
-                              <span>{option.label}</span>
-                              {isSelected && <span className="text-xs font-semibold text-slate-700">✓</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label className="w-[84px] text-xs font-semibold text-slate-600">Velikost textu</label>
-                  <select
-                    value={fontSizePx}
-                    onChange={(e) => {
-                      const next = Number(e.target.value) || 15;
-                      setFontSizePx(next);
-                      applyFontSize(next);
-                    }}
-                    className="w-[94px] rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
-                  >
-                    {[12, 14, 15, 16, 18, 20, 24, 28, 32].map((size) => (
-                      <option key={size} value={size} className="text-slate-900">
-                        {size}px
-                      </option>
-                    ))}
-                  </select>
-
-                  <div ref={textPaletteRef} className="relative">
-                    <button
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setTextPaletteOpen((prev) => !prev)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white transition hover:border-slate-900"
-                      aria-label="Barva textu"
-                      title="Barva textu"
-                    >
-                      <span
-                        className="h-4 w-4 rounded-sm border border-slate-300"
-                        style={{ backgroundColor: textColor }}
-                      />
-                    </button>
-
-                    <input
-                      ref={textColorInputRef}
-                      type="color"
-                      value={textColor}
-                      onChange={(e) => applyAndStoreTextColor(e.target.value, true)}
-                      className="sr-only"
-                      aria-label="Vlastní barva textu"
-                    />
-
-                    {textPaletteOpen && (
-                      <div className="absolute right-0 top-10 z-30 w-[226px] rounded-xl border border-slate-300 bg-white p-2 shadow-[0_16px_32px_rgba(15,23,42,0.24)] ">
-                        <div className="grid grid-cols-8 gap-1.5">
-                          {TEXT_COLOR_PALETTE.map((color) => {
-                            const isSelected = textColor.toLowerCase() === color.toLowerCase();
-                            return (
-                              <button
-                                key={color}
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => applyAndStoreTextColor(color, true)}
-                                className="h-6 w-6 rounded-md border transition"
-                                style={{
-                                  backgroundColor: color,
-                                  borderColor: isSelected ? "#3b82f6" : "rgba(148,163,184,0.45)",
-                                  boxShadow: isSelected ? "0 0 0 1px rgba(59,130,246,0.85)" : "none",
-                                }}
-                                aria-label={`Nastavit barvu ${color}`}
-                                title={color}
-                              />
-                            );
-                          })}
-                        </div>
-                        <div className="mt-2 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => textColorInputRef.current?.click()}
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
-                          >
-                            Vlastní
-                          </button>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => void handlePickColorBySample()}
-                            className="rounded-lg border border-slate-900 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-black"
-                          >
-                            Pipeta
-                          </button>
-                          <span className="ml-auto rounded-md border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-800">
-                            {textColor.toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={handleInsertImageClick}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-                >
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  Vložit obrázek
-                </button>
-                <button
-                  type="button"
-                  onClick={removeActiveImage}
-                  disabled={!activeImageId}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Smazat vybraný
-                </button>
-              </div>
-              <input
-                ref={imageUploadRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => void handleImageFileChange(e)}
-              />
-            </section>
-
-            <section className="space-y-2">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={aiPanelOpen}
-                onClick={() => {
-                  setAiPanelOpen((prev) => !prev);
-                  setTextPaletteOpen(false);
-                  setFontMenuOpen(false);
-                }}
-                className="inline-flex w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:border-slate-900 hover:bg-white"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-slate-600" />
-                  AI asistent
-                </span>
-                <span
-                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
-                    aiPanelOpen
-                      ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
-                      : "border-slate-300 bg-slate-200"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                      aiPanelOpen ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </span>
-              </button>
-
-              {aiPanelOpen && (
-                <div className="space-y-3 rounded-2xl border border-slate-300 bg-slate-50/70 p-3">
-                  <textarea
-                    value={aiPrompt}
-                    onChange={(e) => {
-                      setAiPrompt(e.target.value);
-                      setAiError(null);
-                    }}
-                    placeholder="Co chceš napsat? Např. klientský dopis o doplnění podkladů."
-                    rows={4}
-                    className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
-                  />
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <select
-                      value={aiDocType}
-                      onChange={(e) => setAiDocType(e.target.value as AiDocType)}
-                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
-                    >
-                      <option value="dopis" className="text-slate-900">
-                        Dopis
-                      </option>
-                      <option value="email" className="text-slate-900">
-                        E-mail
-                      </option>
-                      <option value="shrnutí" className="text-slate-900">
-                        Shrnutí
-                      </option>
+      {!draft.ready && (draft.status === "error" ? <div role="alert" className={styles.documentNotice}>
+        <div><strong>Koncept se nepodařilo bezpečně otevřít.</strong><span>{draft.errorMessage}</span></div>
+        <button type="button" onClick={draft.retry}>Zkusit načíst znovu</button>
+      </div> : <p role="status" className={styles.loadingDraft}><Loader2 size={16} className="animate-spin" /> Ověřuji autora a načítám koncept…</p>)}
+      <div className={styles.workspace} inert={!draft.ready} style={!draft.ready ? { visibility: "hidden" } : undefined}>
+        <header className={styles.workspaceHeader}>
+          <div>
+            <span className={styles.eyebrow}>BOHEMIKA / DOKUMENTY</span>
+            <h1>Tvorba PDF<span>.</span></h1>
+            <p>Od prvního slova po dokument, který rád pošleš dál.</p>
+          </div>
+          <div className={styles.headerActions}>
+            <span className={styles.formatBadge}><FileText size={15} /> A4 · {pages.length} {pages.length === 1 ? "strana" : pages.length < 5 ? "strany" : "stran"}</span>
+            <button type="button" className={styles.secondaryButton} disabled={downloading || imageImporting} onClick={() => setNewDocumentConfirm(value => !value)}><FilePlus2 size={16} /> Nový dokument</button>
+            <button type="button" className={styles.primaryButton} disabled={downloading || imageImporting} onClick={() => void handleDownloadPdf()}>
+              {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {downloading ? `Připravuji ${exportProgress.done}/${exportProgress.total}` : "Stáhnout PDF"}
+            </button>
+          </div>
+        </header>
+        <fieldset disabled={downloading} className={styles.documentSettings}>
+          <label>Název souboru<input maxLength={100} value={documentTitle} onChange={event => setDocumentTitle(event.target.value)} /><span>.pdf</span></label>
+          <label>Text v hlavičce<input maxLength={110} value={headerDocTitle} onChange={event => setHeaderDocTitle(event.target.value)} /></label>
+          <button type="button" className={styles.secondaryButton} onClick={() => { setPdfSettingsOpen(true); setFooterSettingsOpen(true); }}><UserCardIcon /> Moje vizitka</button>
+        </fieldset>
+        <div className={styles.draftBar}>
+          <span role="status" aria-live="polite" data-draft-status={draft.status}>
+            {draft.status === "saving" ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />}
+            {draft.status === "error" ? "Koncept se nepodařilo uložit." : draft.status === "saving" ? "Ukládám koncept…" : "Koncept je šifrovaný · přístup pouze autor"}
+            {draft.status === "error" && <button type="button" onClick={draft.retry}>Zkusit uložit znovu</button>}
+          </span>
+          <button type="button" className={styles.saveDraftButton} disabled={downloading || imageImporting} onClick={draft.saveNow}><Save size={13} /> Uložit koncept</button>
+          {draft.restoredAt && <small>Navazuješ na uložený dokument z {new Date(draft.restoredAt).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}.</small>}
+        </div>
+        {newDocumentConfirm && <div className={styles.documentNotice}>
+          <div><strong>Začít nový dokument?</strong><span>Současný koncept se nahradí prázdným dokumentem. Hotovou verzi si nejdřív stáhni.</span></div>
+          <button type="button" disabled={downloading || imageImporting} onClick={startNewDocument}>Vytvořit prázdný</button>
+          <button type="button" onClick={() => setNewDocumentConfirm(false)}>Zrušit</button>
+        </div>}
+        {previousDocument && <div className={styles.undo}>Nový dokument je připravený. <button type="button" disabled={downloading || imageImporting} onClick={() => {
+          activatePage(previousDocument.pages.find(page => page.id === previousDocument.activePageId) || previousDocument.pages[0], previousDocument.pages);
+          setDocumentTitle(previousDocument.title); setHeaderDocTitle(previousDocument.header); setPreviousDocument(null);
+        }}>Vrátit předchozí dokument</button></div>}
+        {errorText && <p role="alert" className={styles.error}>{errorText}</p>}
+        {lastExport && !downloading && <div className={styles.exportResult} role="status">
+          <CheckCircle2 size={21} />
+          <div><strong>PDF je připravené · {formatBytes(lastExport.bytes)}</strong><span>{lastExport.filename} · počet stran: {lastExport.pages}. Po dalších úpravách stáhni novou verzi.</span></div>
+          <a href={lastExport.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> Otevřít</a>
+          <a href={lastExport.url} download={lastExport.filename}><Download size={14} /> Stáhnout znovu</a>
+        </div>}
+        {downloading && <div className={styles.progress} role="status" aria-live="polite">
+          <span>Připravuji PDF · hotovo {exportProgress.done} z {exportProgress.total} stran</span>
+          <progress value={exportProgress.done} max={exportProgress.total} aria-label="Průběh tvorby PDF" />
+        </div>}
+        <div className={styles.editorLayout}>
+          <aside className={styles.sidebar} aria-label="Nástroje dokumentu">
+            <div className={styles.panelHeader}>
+              <span className={styles.panelHeaderIcon}><SlidersHorizontal size={19} /></span>
+              <div><h2>Nástroje dokumentu</h2><p>Vše pro tvůj dokument.</p></div>
+              <span className={styles.panelPage} title={`Upravuješ stranu ${activePageIndex + 1}`}>{activePageIndex + 1}</span>
+            </div>
+            <fieldset disabled={downloading} className={styles.controls}>
+              <section className={styles.panelSection} aria-labelledby="text-tools-title">
+                <div className={styles.sectionHeading}><Type size={15} /><h3 id="text-tools-title">Typografie</h3></div>
+                <label className={styles.panelField}>
+                  <span>Písmo</span>
+                  <div className={styles.selectWrap}>
+                    <select value={fontFamilyKey} onMouseDown={storeEditorSelection} onChange={event => { const option = FONT_OPTIONS.find(font => font.key === event.target.value); if (option) handleSelectFont(option); }} style={{ fontFamily: selectedFontOption.css }}>
+                      {FONT_OPTIONS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
                     </select>
-
-                    <select
-                      value={aiTone}
-                      onChange={(e) => setAiTone(e.target.value as AiTone)}
-                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
-                    >
-                      <option value="formální" className="text-slate-900">
-                        Formální
-                      </option>
-                      <option value="obchodní" className="text-slate-900">
-                        Obchodní
-                      </option>
-                      <option value="přátelský" className="text-slate-900">
-                        Přátelský
-                      </option>
-                    </select>
-
-                    <select
-                      value={aiLength}
-                      onChange={(e) => setAiLength(e.target.value as AiLength)}
-                      className="rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
-                    >
-                      <option value="krátký" className="text-slate-900">
-                        Krátký
-                      </option>
-                      <option value="střední" className="text-slate-900">
-                        Střední
-                      </option>
-                      <option value="dlouhý" className="text-slate-900">
-                        Dlouhý
-                      </option>
-                    </select>
+                    <ChevronDown size={14} aria-hidden="true" />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      value={aiClientName}
-                      onChange={(e) => setAiClientName(e.target.value)}
-                      placeholder="Jméno klienta"
-                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
-                    />
-                    <input
-                      value={aiContractNumber}
-                      onChange={(e) => setAiContractNumber(e.target.value)}
-                      placeholder="Číslo smlouvy"
-                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
-                    />
-                    <input
-                      value={aiProductName}
-                      onChange={(e) => setAiProductName(e.target.value)}
-                      placeholder="Produkt"
-                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
-                    />
-                    <input
-                      value={aiGoal}
-                      onChange={(e) => setAiGoal(e.target.value)}
-                      placeholder="Cíl textu"
-                      className="rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
-                    />
-                  </div>
-
-                  <div className="space-y-2 rounded-xl border border-slate-300 bg-white p-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-[11px] font-semibold text-slate-600">Oslovení</label>
-                      <select
-                        value={aiAddressing}
-                        onChange={(e) => setAiAddressing(e.target.value as AiAddressing)}
-                        className="w-[120px] rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
-                      >
-                        <option value="vykání" className="text-slate-900">
-                          Vykání
-                        </option>
-                        <option value="tykání" className="text-slate-900">
-                          Tykání
-                        </option>
+                </label>
+                <div className={styles.fieldPair}>
+                  <label className={styles.panelField}>
+                    <span>Velikost</span>
+                    <div className={styles.selectWrap}>
+                      <select value={fontSizePx} onMouseDown={storeEditorSelection} onChange={event => { const next = Number(event.target.value) || 15; setFontSizePx(next); applyFontSize(next); }}>
+                        {[12, 14, 15, 16, 18, 20, 24, 28, 32].map(size => <option key={size} value={size}>{size} px</option>)}
                       </select>
+                      <ChevronDown size={14} aria-hidden="true" />
                     </div>
-                    <div className="flex items-center justify-between gap-3 text-[11px] text-slate-800">
-                      <span>Zahrnout aktuální text z editoru jako kontext</span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={aiUseCurrentContext}
-                        onClick={() => setAiUseCurrentContext((prev) => !prev)}
-                        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition ${
-                          aiUseCurrentContext
-                            ? "border-slate-900 bg-blue-500/75 shadow-[0_0_0_1px_rgba(147,197,253,0.35)]"
-                            : "border-slate-300 bg-slate-200"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                            aiUseCurrentContext ? "translate-x-6" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </div>
+                  </label>
+                  <div ref={textPaletteRef} className={`${styles.panelField} ${styles.colorField}`}>
+                    <span>Barva textu</span>
+                    <button type="button" className={styles.colorTrigger} onMouseDown={event => event.preventDefault()} onClick={() => setTextPaletteOpen(open => !open)} aria-label="Barva textu" aria-expanded={textPaletteOpen} aria-controls="text-color-palette">
+                      <i style={{ backgroundColor: textColor }} /><span>{textColor.toUpperCase()}</span><ChevronDown size={13} />
+                    </button>
+                    <input ref={textColorInputRef} type="color" value={textColor} onChange={event => applyAndStoreTextColor(event.target.value, true)} className="sr-only" aria-label="Vlastní barva textu" />
+                    {textPaletteOpen && <div id="text-color-palette" className={styles.colorPopover} onKeyDown={event => { if (event.key === "Escape") { setTextPaletteOpen(false); event.stopPropagation(); } }}>
+                      <div className={styles.swatchGrid}>
+                        {TEXT_COLOR_PALETTE.map(color => <button type="button" key={color} onMouseDown={event => event.preventDefault()} onClick={() => applyAndStoreTextColor(color, true)} aria-pressed={textColor.toLowerCase() === color} aria-label={`Nastavit barvu ${color}`} title={color} style={{ backgroundColor: color }} />)}
+                      </div>
+                      <div className={styles.paletteActions}>
+                        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => textColorInputRef.current?.click()}>Vlastní barva</button>
+                        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => void handlePickColorBySample()}><Pipette size={13} /> Pipeta</button>
+                      </div>
+                    </div>}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateAiText()}
-                    disabled={aiLoading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {aiLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                    {aiLoading ? "AI generuje…" : "Generovat text"}
-                  </button>
-
-                  {aiError && <p className="text-xs text-rose-700">{aiError}</p>}
-
-                  {aiResult && (
-                    <div className="space-y-2 rounded-xl border border-slate-300 bg-white p-2.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-600">
-                        Návrh AI
-                      </p>
-                      <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 text-xs text-slate-900 whitespace-pre-wrap">
-                        {aiResult}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={insertAiResultIntoEditor}
-                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 transition hover:border-slate-900 hover:text-slate-900"
-                        >
-                          Vložit do kurzoru
-                        </button>
-                        <button
-                          type="button"
-                          onClick={replaceEditorWithAiResult}
-                          className="rounded-lg border border-slate-900 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-black"
-                        >
-                          Nahradit celý text
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              )}
-            </section>
+                <div className={styles.formatGroup}>
+                  <span className={styles.fieldCaption}>Styl písma</span>
+                  <div className={styles.segmentedTools} role="group" aria-label="Styl písma">
+                    <EditorToolButton label="Tučně" icon={Bold} active={inlineStyleState.bold} onClick={() => applyInlineStyle("bold")} />
+                    <EditorToolButton label="Kurzíva" icon={Italic} active={inlineStyleState.italic} onClick={() => applyInlineStyle("italic")} />
+                    <EditorToolButton label="Podtržení" icon={Underline} active={inlineStyleState.underline} onClick={() => applyInlineStyle("underline")} />
+                    <EditorToolButton label="Přeškrtnutí" icon={Strikethrough} active={inlineStyleState.strikeThrough} onClick={() => applyInlineStyle("strikeThrough")} />
+                  </div>
+                </div>
+                <div className={styles.formatGroup}>
+                  <span className={styles.fieldCaption}>Zarovnání</span>
+                  <div className={styles.segmentedTools} role="group" aria-label="Zarovnání textu">
+                    <EditorToolButton label="Zarovnat vlevo" icon={AlignLeft} active={textAlignMode === "left"} onClick={() => applyTextAlign("left")} />
+                    <EditorToolButton label="Zarovnat na střed" icon={AlignCenter} active={textAlignMode === "center"} onClick={() => applyTextAlign("center")} />
+                    <EditorToolButton label="Zarovnat vpravo" icon={AlignRight} active={textAlignMode === "right"} onClick={() => applyTextAlign("right")} />
+                    <EditorToolButton label="Zarovnat do bloku" icon={AlignJustify} active={textAlignMode === "justify"} onClick={() => applyTextAlign("justify")} />
+                  </div>
+                </div>
+                <div className={styles.formatGroup}>
+                  <span className={styles.fieldCaption}>Struktura textu</span>
+                  <div className={styles.blockTools}>
+                    <EditorToolButton label="Odstavec" icon={Pilcrow} showLabel onClick={() => applyFormatBlock("P")} />
+                    <EditorToolButton label="Nadpis" icon={Heading2} showLabel onClick={() => applyFormatBlock("H2")} />
+                    <EditorToolButton label="Odrážky" icon={List} showLabel onClick={() => applyList(false)} />
+                    <EditorToolButton label="Číslování" icon={ListOrdered} showLabel onClick={() => applyList(true)} />
+                  </div>
+                </div>
+              </section>
 
-            <section className="space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPdfSettingsOpen(true);
-                  setTextPaletteOpen(false);
-                  setFontMenuOpen(false);
-                }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black"
-              >
-                Nastavení PDF
-              </button>
-              <p className="text-xs text-slate-600">Kvalita: {selectedPdfQuality.label}</p>
-              {pdfPasswordEnabled && (
-                <p className="text-xs text-emerald-700">PDF bude zaheslované.</p>
-              )}
-            </section>
+              <section className={styles.panelSection} aria-labelledby="image-tools-title">
+                <div className={styles.sectionHeading}><ImagePlus size={15} /><h3 id="image-tools-title">Obrázky</h3>{placedImages.length > 0 && <span className={styles.sectionCount}>{placedImages.length}</span>}</div>
+                <button type="button" className={styles.imageDropzone} disabled={imageImporting} data-dragging={imageDragOver} onClick={handleInsertImageClick}
+                  onDragOver={event => { event.preventDefault(); if (!imageImporting && !downloading) setImageDragOver(true); }}
+                  onDragLeave={() => setImageDragOver(false)}
+                  onDrop={event => { event.preventDefault(); setImageDragOver(false); void insertImageFiles(Array.from(event.dataTransfer.files)); }}>
+                  <span className={styles.uploadIcon}>{imageImporting ? <Loader2 size={19} className="animate-spin" /> : <ImagePlus size={19} />}</span>
+                  <strong>{imageImporting ? "Zmenšuji obrázky…" : imageDragOver ? "Pusť obrázek sem" : "Vložit obrázek"}</strong>
+                  <span>Vyber soubor nebo ho přetáhni sem.</span>
+                </button>
+                <input ref={imageUploadRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp" multiple className="hidden" onChange={event => void handleImageFileChange(event)} />
+                <div className={styles.imageHint}><CheckCircle2 size={12} /><span>Automatická komprese</span><span>·</span><span>Lze vložit i ze schránky</span></div>
+                {selectedImage && <div className={styles.selectedImage}>
+                  <Image src={selectedImage.src} alt="" width={34} height={34} unoptimized />
+                  <div><span>Vybraný obrázek</span><strong title={selectedImage.alt}>{selectedImage.alt}</strong></div>
+                  <button type="button" onClick={removeActiveImage} aria-label="Smazat vybraný obrázek" title="Smazat vybraný obrázek"><Trash2 size={15} /></button>
+                </div>}
+                {imageStatus && <p className={styles.imageStatus} role="status">{imageStatus}</p>}
+              </section>
 
-            <section className="space-y-2">
-              <button
-                type="button"
-                onClick={() => void handleDownloadPdf()}
-                disabled={downloading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(15,23,42,0.26)] transition hover:bg-black disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Download className="h-4 w-4" />
-                {downloading ? "Generuji PDF…" : "Stáhnout PDF"}
-              </button>
-              {errorText && <p className="text-xs text-rose-700">{errorText}</p>}
-            </section>
+              <section className={styles.panelSection}>
+                <button type="button" className={styles.aiToggle} aria-expanded={aiPanelOpen} aria-controls="ai-writing-panel" onClick={() => { setAiPanelOpen(open => !open); setTextPaletteOpen(false); }}>
+                  <span className={styles.aiIcon}><Sparkles size={18} /></span>
+                  <span><strong>AI asistent</strong><small>Pomůže s prvním návrhem</small></span>
+                  <ChevronDown size={16} className={styles.accordionChevron} />
+                </button>
+                {aiPanelOpen && <div id="ai-writing-panel" className={styles.aiPanel}>
+                  <label className={styles.panelField}><span>Co chceš napsat?</span><textarea value={aiPrompt} onChange={event => { setAiPrompt(event.target.value); setAiError(null); }} placeholder="Např. dopis klientovi o doplnění podkladů…" rows={4} /></label>
+                  <div className={styles.fieldPair}>
+                    <label className={styles.panelField}><span>Typ textu</span><select value={aiDocType} onChange={event => setAiDocType(event.target.value as AiDocType)}><option value="dopis">Dopis</option><option value="email">E-mail</option><option value="shrnutí">Shrnutí</option></select></label>
+                    <label className={styles.panelField}><span>Tón</span><select value={aiTone} onChange={event => setAiTone(event.target.value as AiTone)}><option value="formální">Formální</option><option value="obchodní">Obchodní</option><option value="přátelský">Přátelský</option></select></label>
+                    <label className={styles.panelField}><span>Délka</span><select value={aiLength} onChange={event => setAiLength(event.target.value as AiLength)}><option value="krátký">Krátká</option><option value="střední">Střední</option><option value="dlouhý">Dlouhá</option></select></label>
+                    <label className={styles.panelField}><span>Oslovení</span><select value={aiAddressing} onChange={event => setAiAddressing(event.target.value as AiAddressing)}><option value="vykání">Vykání</option><option value="tykání">Tykání</option></select></label>
+                  </div>
+                  <details className={styles.aiDetails}>
+                    <summary>Upřesnit zadání<ChevronDown size={13} /></summary>
+                    <label className={styles.panelField}><span>Jméno klienta</span><input value={aiClientName} onChange={event => setAiClientName(event.target.value)} placeholder="Jméno a příjmení" /></label>
+                    <label className={styles.panelField}><span>Číslo smlouvy</span><input value={aiContractNumber} onChange={event => setAiContractNumber(event.target.value)} /></label>
+                    <label className={styles.panelField}><span>Produkt</span><input value={aiProductName} onChange={event => setAiProductName(event.target.value)} /></label>
+                    <label className={styles.panelField}><span>Cíl textu</span><input value={aiGoal} onChange={event => setAiGoal(event.target.value)} placeholder="Čeho má text dosáhnout?" /></label>
+                  </details>
+                  <label className={styles.contextCheckbox}><input type="checkbox" checked={aiUseCurrentContext} onChange={event => setAiUseCurrentContext(event.target.checked)} /><span>Vycházet z aktuálního textu</span></label>
+                  <button type="button" className={styles.aiGenerate} onClick={() => void handleGenerateAiText()} disabled={aiLoading}>{aiLoading ? <Loader2 size={15} className="animate-spin" /> : <WandSparkles size={15} />}{aiLoading ? "Připravuji návrh…" : "Vytvořit návrh textu"}</button>
+                  {aiError && <p role="alert" className={styles.panelError}>{aiError}</p>}
+                  {aiResult && <div className={styles.aiResult}>
+                    <span>NÁVRH TEXTU</span><div>{aiResult}</div>
+                    <div className={styles.aiResultActions}><button type="button" onClick={insertAiResultIntoEditor}>Vložit do kurzoru</button><button type="button" onClick={replaceEditorWithAiResult}>Nahradit text</button></div>
+                  </div>}
+                </div>}
+              </section>
+
+              <section className={styles.panelSection}>
+                <button type="button" className={styles.settingsRow} onClick={() => { setPdfSettingsOpen(true); setTextPaletteOpen(false); }} aria-label="Nastavení PDF">
+                  <span className={styles.settingsIcon}><Settings2 size={18} /></span>
+                  <span><strong>Nastavení PDF</strong><small>{selectedPdfQuality.label} <span>·</span> {pdfPasswordEnabled ? "S heslem" : "Bez hesla"}</small></span>
+                  {pdfPasswordEnabled ? <Lock size={14} /> : <ChevronRight size={16} />}
+                </button>
+              </section>
+            </fieldset>
           </aside>
 
-          <section className="overflow-auto">
-            <div className="mx-auto w-fit overflow-hidden rounded-[24px] border border-slate-300/90 bg-white shadow-[0_20px_52px_rgba(15,23,42,0.22)]">
-              <div className="flex items-center gap-2 border-b border-[#1e293b] bg-[#0b1220] px-4 py-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#fb7185]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
-                <span className="ml-2 truncate rounded bg-[#1f2937] px-2 py-0.5 text-[10px] font-medium text-[#cbd5e1]">
-                  Bohemika.App PDF export preview
-                </span>
+          <section className={styles.previewSection} aria-label="Dokument">
+            <fieldset disabled={downloading || imageImporting} className={styles.pageTools}>
+              <div className={styles.pageTabs} aria-label="Stránky dokumentu">
+                {pages.map((page, index) => <button type="button" key={page.id} aria-label={`Strana ${index + 1}`} aria-current={page.id === activePageId ? "page" : undefined} onClick={() => { const current = snapshotPages(); activatePage(current[index], current); }}>
+                  <FileText size={16} /> Strana {index + 1}
+                </button>)}
+                <button type="button" onClick={() => addPage()} className={styles.addPage}><Plus size={16} /> Přidat stranu</button>
               </div>
-              <div ref={previewViewportRef} className="bg-slate-100/80 p-3">
+              <div className={styles.pageActions}>
+                <span>STRANA {activePageIndex + 1} Z {pages.length}</span>
+                <button type="button" title="Posunout stranu doleva" aria-label="Posunout stranu doleva" disabled={activePageIndex === 0} onClick={() => movePage(-1)}><ArrowLeft size={16} /></button>
+                <button type="button" title="Posunout stranu doprava" aria-label="Posunout stranu doprava" disabled={activePageIndex === pages.length - 1} onClick={() => movePage(1)}><ArrowRight size={16} /></button>
+                <button type="button" onClick={() => addPage(true)}><Copy size={15} /> Duplikovat</button>
+                <button type="button" disabled={pages.length === 1} onClick={removePage} aria-label="Smazat aktuální stranu"><Trash2 size={15} /></button>
+              </div>
+              {removedPage && <div className={styles.undo}>Strana byla odebrána. <button type="button" onClick={restorePage}>Vrátit zpět</button></div>}
+              <div className={styles.paginationOptions}>
+                <label><input type="checkbox" checked={autoPaginate} onChange={event => { setAutoPaginate(event.target.checked); setPaginationError(null); failedPaginationRef.current = null; }} /> Automatické stránkování</label>
+                <span>Dlouhý text pokračuje na další straně.</span>
+              </div>
+            </fieldset>
+            {paginationStatus && !contentOverflow && <div className={styles.paginationNotice} role="status"><CheckCircle2 size={14} />{paginationStatus}<button type="button" aria-label="Skrýt oznámení o stránkování" onClick={() => setPaginationStatus(null)}>×</button></div>}
+            {contentOverflow && <div role="alert" className={styles.overflowWarning}>{paginationError || "Text přesahuje stránku. Rozděl jej do dalších stran nebo zmenši písmo."} <button type="button" disabled={downloading || imageImporting} onClick={() => { failedPaginationRef.current = null; splitOverflow(); }}>Rozdělit text do stran</button></div>}
+            <div className={styles.previewShell}>
+              <div className={styles.previewBar}>
+                <span><span className={styles.liveDot} /> Živý náhled</span>
+                <div className={styles.zoomControls}>
+                  <span>A4 · {Math.round(previewScale * 100)} %</span>
+                  <button type="button" aria-pressed={previewFit} onClick={() => setPreviewFit(true)}>Přizpůsobit</button>
+                  <button type="button" aria-pressed={!previewFit} onClick={() => setPreviewFit(false)}>100 %</button>
+                </div>
+              </div>
+              <div ref={previewViewportRef} className={styles.previewViewport}>
                 <div
                   className="relative mx-auto"
                   style={{
@@ -2326,46 +1834,33 @@ export default function TvorbaPage() {
                   >
                     <div
                       ref={pageRef}
-                      className="relative w-[210mm] min-h-[297mm] overflow-hidden bg-white text-slate-900 shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
+                      className={styles.paper}
                     >
-                <header className="relative h-[42mm] border-b border-slate-200 px-[14mm] py-[1mm] flex items-center">
-                  <Image
-                    src="/icons/nadpislogo.jpg"
-                    alt="Bohemika logo"
-                    width={3840}
-                    height={2457}
-                    className="h-[46mm] w-auto object-contain"
-                    priority
-                  />
-                  <div data-header-title-wrap="1" className="absolute right-[14mm] top-[8mm] text-right">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                      Bohemika a.s.
-                    </p>
-                    <div
-                      ref={headerTitleRef}
-                      data-header-title="1"
-                      contentEditable
-                      suppressContentEditableWarning
-                      onInput={(e) => setHeaderDocTitle((e.currentTarget.textContent ?? "").trim())}
-                      className="w-[56mm] bg-transparent p-0 text-right text-sm font-semibold leading-[1.35] text-slate-800 outline-none"
-                      aria-label="Nadpis dokumentu v hlavičce"
-                    >
-                      {headerDocTitle}
-                    </div>
+                <div className={styles.paperAccent} aria-hidden="true" />
+                <header className={styles.paperHeader}>
+                  <Image src="/icons/nadpislogo.jpg" alt="Bohemika – finanční poradenství" width={320} height={205} className={styles.brandLogo} priority />
+                  <div className={styles.paperHeading}>
+                    <span><i /> PŘIPRAVENO PRO VÁS</span>
+                    <div>{headerDocTitle}</div>
                   </div>
                 </header>
-
-                <main className="px-[14mm] pt-[8mm] pb-[44mm]">
+                <main className={styles.paperBody}>
                   <div
                     ref={editorStageRef}
-                    className="relative min-h-[193mm]"
+                    className={styles.editorStage}
                     onMouseDown={() => setActiveImageId(null)}
                   >
                     <div
                       ref={editorRef}
-                      contentEditable
+                      contentEditable={!downloading}
                       suppressContentEditableWarning
                       data-editor-frame="1"
+                      role="textbox"
+                      aria-label={`Obsah strany ${activePageIndex + 1}`}
+                      aria-multiline="true"
+                      onPaste={handlePaste}
+                      onCompositionStart={() => { composingRef.current = true; }}
+                      onCompositionEnd={() => { composingRef.current = false; if (autoPaginate) splitOverflow(); }}
                       style={{
                         fontSize: `${fontSizePx}px`,
                         fontFamily: selectedFontOption.css,
@@ -2374,7 +1869,7 @@ export default function TvorbaPage() {
                       onKeyUp={syncFormattingState}
                       onMouseUp={syncFormattingState}
                       onMouseDown={() => setActiveImageId(null)}
-                      className="min-h-[193mm] rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 leading-relaxed text-slate-800 outline-none [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5"
+                      className={styles.editor}
                     />
                     <div className="pointer-events-none absolute inset-0" data-image-layer="1">
                       {placedImages.map((image) => {
@@ -2384,7 +1879,7 @@ export default function TvorbaPage() {
                             key={image.id}
                             data-image-item="1"
                             onMouseDown={(event) => startImageInteraction(event, image.id, "move")}
-                            className="pointer-events-auto absolute relative overflow-visible bg-transparent"
+                            className="pointer-events-auto absolute overflow-visible bg-transparent"
                             style={{
                               left: `${image.x}px`,
                               top: `${image.y}px`,
@@ -2439,70 +1934,24 @@ export default function TvorbaPage() {
                   </div>
                 </main>
 
-                <footer className="absolute inset-x-0 bottom-0 h-[26mm] border-t border-slate-200 bg-slate-50/95 px-[12mm] py-[4mm]">
-                  <div className="flex h-full items-center justify-center">
-                    <div
-                      data-footer-grid="1"
-                      className="grid grid-cols-[56mm_56mm_62mm] gap-x-[4mm] text-left text-[10.5px] leading-[1.2] text-slate-700"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <User className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {fullName || "—"}
-                          </span>
-                        </div>
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <Briefcase className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {jobTitle || "—"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <Phone className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {phone || "—"}
-                          </span>
-                        </div>
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <Mail className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {email || "—"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <Hash className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {companyId ? `IČ: ${companyId}` : "IČ: —"}
-                          </span>
-                        </div>
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="inline-flex w-4 items-center justify-center text-slate-500">
-                            <MapPin className="h-3.5 w-3.5" />
-                          </span>
-                          <span data-footer-value="1" className="whitespace-nowrap">
-                            {officeAddress || "—"}
-                          </span>
-                        </div>
-                      </div>
+                <footer className={styles.paperFooter}>
+                  <div className={styles.businessCard} data-has-qr={Boolean(qrContact)}>
+                    <div className={styles.advisorIdentity}>
+                      <span className={styles.advisorAvatar}>{(fullName.trim() || "Bohemika").split(/\s+/).slice(0, 2).map(name => name[0]).join("").toUpperCase()}</span>
+                      <div><span className={styles.cardEyebrow}>JSEM TU PRO VÁS</span><strong>{fullName.trim() || "Bohemika a.s."}</strong><span>{jobTitle.trim() || "Finanční poradenství"}</span>{companyId.trim() && <small>IČ: {companyId.trim()}</small>}</div>
                     </div>
+                    <div className={styles.advisorContacts}>
+                      {phone.trim() && <div><Phone size={12} /><span>{phone.trim()}</span></div>}
+                      {email.trim() && <div><Mail size={12} /><span>{email.trim()}</span></div>}
+                      {officeAddress.trim() && <div><MapPin size={12} /><span>{officeAddress.trim()}</span></div>}
+                      {!phone.trim() && !email.trim() && !officeAddress.trim() && <span>Podpisem to pro nás nekončí.</span>}
+                    </div>
+                    {qrContact && <div className={styles.contactQr}>
+                      <div data-contact-qr="1" className={styles.qrImage}><ContactQrCode payload={qrContact.payload} /></div>
+                      <span>{qrContact.label}</span>
+                    </div>}
                   </div>
+                  <div className={styles.paperFolio}><span>BOHEMIKA · FINANČNÍ PORADENSTVÍ</span><span data-page-number="1">{activePageIndex + 1} / {pages.length}</span></div>
                 </footer>
                     </div>
                   </div>
@@ -2518,14 +1967,18 @@ export default function TvorbaPage() {
             onMouseDown={() => setPdfSettingsOpen(false)}
           >
             <div
+              ref={pdfDialogRef}
               className="w-full max-w-[560px] max-h-[92vh] overflow-y-auto rounded-2xl border border-slate-300 bg-gradient-to-br from-white via-slate-50 to-[#eef2ff] p-4 shadow-[0_30px_84px_rgba(15,23,42,0.32)]"
               onMouseDown={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pdf-settings-title"
             >
               <div className="mb-4 flex items-start justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">Nastavení PDF</h2>
+                  <h2 id="pdf-settings-title" className="text-base font-semibold text-slate-900">Nastavení PDF</h2>
                   <p className="mt-1 text-xs text-slate-600">
-                    Bezpečnost exportu a správa údajů v patičce.
+                    Komprese, jednorázové heslo a tvoje kontaktní vizitka.
                   </p>
                 </div>
                 <button
@@ -2539,6 +1992,7 @@ export default function TvorbaPage() {
               </div>
 
               <div className="space-y-3">
+                {errorText && <p role="alert" className={styles.error}>{errorText}</p>}
                 <div className="rounded-xl border border-slate-300 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.08)]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -2556,6 +2010,7 @@ export default function TvorbaPage() {
                       type="button"
                       role="switch"
                       aria-checked={pdfPasswordEnabled}
+                      aria-label="Zaheslovat PDF"
                       onClick={() => {
                         setPdfSaveStatus(null);
                         setPdfPasswordEnabled((prev) => {
@@ -2581,6 +2036,7 @@ export default function TvorbaPage() {
                     <div className="mt-3 space-y-2 border-t border-slate-300 pt-3">
                       <input
                         type="password"
+                        aria-label="Heslo pro otevření PDF"
                         value={pdfPassword}
                         onChange={(event) => {
                           setPdfPassword(event.target.value);
@@ -2604,6 +2060,7 @@ export default function TvorbaPage() {
                           <button
                             key={quality}
                             type="button"
+                            aria-pressed={isSelected}
                             onClick={() => {
                               setPdfQualityPreset(quality);
                               setPdfSaveStatus(null);
@@ -2645,12 +2102,18 @@ export default function TvorbaPage() {
 
                 {footerSettingsOpen && (
                   <div className="space-y-3 rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.08)]">
-                    <h3 className="text-sm font-semibold text-slate-900">Patička dokumentu</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">Vizitka na každé straně</h3>
+                    <div className={styles.qrSettings}>
+                      <label><input type="checkbox" checked={showContactQr} onChange={event => setShowContactQr(event.target.checked)} /> QR kód ve vizitce</label>
+                      <p>{currentCardUrl ? "QR otevře tvoji aktivní online vizitku. V PDF na něj lze také kliknout." : "QR umožní uložit tvoje kontaktní údaje přímo do telefonu. Doplň jméno, telefon nebo e-mail."}</p>
+                    </div>
                     <div className="space-y-2">
                       <input
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="Jméno a příjmení"
+                        maxLength={80}
                         placeholder="Jméno a příjmení"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
@@ -2658,6 +2121,8 @@ export default function TvorbaPage() {
                         value={jobTitle}
                         onChange={(e) => setJobTitle(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="Pozice"
+                        maxLength={80}
                         placeholder="Pozice"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
@@ -2665,6 +2130,8 @@ export default function TvorbaPage() {
                         value={companyId}
                         onChange={(e) => setCompanyId(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="IČ"
+                        maxLength={80}
                         placeholder="IČ"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
@@ -2672,6 +2139,8 @@ export default function TvorbaPage() {
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="Mobil"
+                        maxLength={80}
                         placeholder="Mobil"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
@@ -2679,6 +2148,8 @@ export default function TvorbaPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="E-mail"
+                        maxLength={80}
                         placeholder="E-mail"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />
@@ -2686,6 +2157,8 @@ export default function TvorbaPage() {
                         value={officeAddress}
                         onChange={(e) => setOfficeAddress(e.target.value)}
                         onBlur={() => void persistFooterDraft(true)}
+                        aria-label="Adresa kanceláře"
+                        maxLength={120}
                         placeholder="Adresa kanceláře"
                         className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-slate-900"
                       />

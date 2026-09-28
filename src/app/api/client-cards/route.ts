@@ -1,3 +1,4 @@
+import { openPrivateValue, clientCardContext } from "@/lib/server/privateEncryption";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessClientCards } from "@/app/_klienti/clientAccess";
 import { parseClientCardDraft } from "@/app/_klienti/clientCardData";
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
     const snapshot = await adminDb.collection("clientCardsPrivate").doc(ctx.uid).collection("cards").get();
     const cards: ClientCardSummary[] = snapshot.docs.map((doc) => {
       const data = doc.data();
-      const card = parseClientCardDraft(data.card);
+      const card = parseClientCardDraft(openPrivateValue(data.card, clientCardContext(ctx.uid, doc.id)));
       if (data.ownerUid !== ctx.uid || !card || !isClientCardSlug(doc.id)) throw new Error("Invalid client card");
       // The directory never receives birth numbers or identity documents.
       return { slug: doc.id, clientName: card.clientName, phone: card.phone, email: card.email, permanentAddress: card.permanentAddress };

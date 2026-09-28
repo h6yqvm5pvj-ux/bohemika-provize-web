@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withRateLimitHeaders, type AuthedRateLimitContext } from "@/lib/server/apiEntryGuard";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASHFLOW_SHADOW_VERSION } from "@/app/cashflow/shadowProtocol";
 
@@ -137,4 +138,14 @@ describe.each([
     if (bearer === "missing") expect(doubles.verifyIdToken).not.toHaveBeenCalled();
     for (const call of doubles.verifyIdToken.mock.calls) expect(call[1]).toBe(true);
   });
+});
+
+it("keeps decrypted authenticated responses out of browser and shared caches", () => {
+  const response = NextResponse.json({ private: "synthetic" }, { headers: { "Cache-Control": "public, max-age=3600", Vary: "Origin" } });
+  withRateLimitHeaders(response, { rateLimit: {} } as AuthedRateLimitContext);
+  expect(response.headers.get("Cache-Control")).toContain("private, no-store");
+  expect(response.headers.get("Vary")).toBe("Origin, Authorization, Cookie");
+  const wildcard = NextResponse.json({}, { headers: { Vary: "*" } });
+  withRateLimitHeaders(wildcard, { rateLimit: {} } as AuthedRateLimitContext);
+  expect(wildcard.headers.get("Vary")).toBe("*");
 });

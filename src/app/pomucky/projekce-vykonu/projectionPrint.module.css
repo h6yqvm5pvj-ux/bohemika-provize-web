@@ -6,9 +6,9 @@
 }
 
 @media print {
-  :global(html:has([data-projection-print])) { min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
-  :global(body:has(> [data-projection-print])) { margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
-  :global(body:has(> [data-projection-print]) > :not([data-projection-print])) { display: none !important; }
+  :global(html):has(.report) { min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
+  :global(body):has(> .report) { margin: 0 !important; padding: 0 !important; min-height: 0 !important; height: auto !important; overflow: visible !important; background: white !important; }
+  :global(body):has(> .report) > :not(.report) { display: none !important; }
   .report { display: block !important; page: projection; width: 186mm; margin: 0; padding: 0; color: #25382d; background: white; font: 9pt/1.45 Arial, Helvetica, sans-serif; font-variant-numeric: tabular-nums; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .report *, .report *::before, .report *::after { box-sizing: border-box; box-shadow: none !important; text-shadow: none !important; animation: none !important; transition: none !important; }
   .report h1, .report h2, .report h3, .report p, .report dl, .report dd { margin: 0; }

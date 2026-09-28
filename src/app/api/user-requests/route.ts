@@ -1,3 +1,4 @@
+import { openPrivateRecord, sealPrivateRecord } from "@/lib/server/privateRecords";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
@@ -329,7 +330,7 @@ const parseRequestDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ): UserRequestPayload | null => {
   if (!docSnap.exists) return null;
-  const data = docSnap.data() as Record<string, unknown>;
+  const data = openPrivateRecord(docSnap.ref.path, docSnap.data() ?? {});
   const requesterEmail = normalizeEmail(data.requesterEmail);
   const subject = parseSubject(data.subject);
   const requestedCorporateEmailRaw = normalizeEmail(data.requestedCorporateEmail);
@@ -790,7 +791,7 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    await docRef.set(createPayload);
+    await docRef.set(sealPrivateRecord(docRef.path, createPayload));
   } catch (error) {
     await cleanupScreenshots(screenshots);
     console.error("User request create failed after screenshot upload:", error);
@@ -934,7 +935,7 @@ export async function PATCH(req: NextRequest) {
   await adminDb.runTransaction(async (tx) => {
     tx.set(
       requestRef,
-      {
+      sealPrivateRecord(requestRef.path, {
         status: parsed.status,
         feedback: parsed.feedback,
         decidedAt: parsed.status === "needsInfo" ? null : now,
@@ -944,7 +945,7 @@ export async function PATCH(req: NextRequest) {
           parsed.status === "accepted" ? createdUser?.email ?? null : null,
         createdUserUid:
           parsed.status === "accepted" ? createdUser?.uid ?? null : null,
-      },
+      }),
       { merge: true }
     );
   });
@@ -1007,6 +1008,9 @@ export async function PUT(req: NextRequest) {
 
   const requestRef = adminDb.collection(USER_REQUESTS_COLLECTION).doc(parsed.id);
   const existingSnap = await requestRef.get();
+  if (existingSnap.exists && normalizeEmail(existingSnap.data()?.requesterEmail) !== ctx.email) {
+    return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Nemáš oprávnění upravit tuto žádost." }, { status: 403 }), ctx);
+  }
   const existingRequest = parseRequestDoc(existingSnap);
   if (!existingRequest) {
     return withRateLimitHeaders(
@@ -1097,7 +1101,7 @@ export async function PUT(req: NextRequest) {
     await adminDb.runTransaction(async (tx) => {
       tx.set(
         requestRef,
-        {
+        sealPrivateRecord(requestRef.path, {
         subject: parsed.subject,
         requestedCorporateEmail: parsed.requestedCorporateEmail,
         requestedFullName: parsed.requestedUserDraft?.fullName ?? null,
@@ -1112,7 +1116,7 @@ export async function PUT(req: NextRequest) {
         decidedAt: null,
           decidedByEmail: null,
           screenshots: [...keptScreenshots, ...uploadedScreenshots],
-        },
+        }),
         { merge: true }
       );
     });

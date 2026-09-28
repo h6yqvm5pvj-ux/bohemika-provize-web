@@ -1,3 +1,4 @@
+import { decryptPrivateFile } from "@/lib/server/privateStorage";
 import { NextResponse, type NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -268,7 +269,7 @@ async function downloadStorageFile({
   for (const candidate of storageBucketCandidates(bucketName)) {
     try {
       const [downloaded] = await getStorage().bucket(candidate).file(path).download();
-      return downloaded;
+      return decryptPrivateFile(downloaded, candidate, path);
     } catch (error) {
       lastError = error;
       if (!isStorageNotFoundError(error)) break;

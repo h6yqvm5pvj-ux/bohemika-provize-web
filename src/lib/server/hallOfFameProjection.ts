@@ -5,7 +5,7 @@ import { aggregateHallEntries, hallDayKey, hallParticipantId, HALL_PERIOD_MONTHS
 import type { HallPeriod } from "@/app/sin-slavy/hallOfFame.types";
 
 const COLLECTION = "hallOfFameOwners";
-const VERSION = 1;
+const VERSION = 2;
 const PERIODS = Object.keys(HALL_PERIOD_MONTHS) as HallPeriod[];
 type Writer = { set(ref: DocumentReference, data: Record<string, unknown>): unknown };
 type OwnerStats = Record<HallPeriod, HallStats>;
@@ -17,9 +17,9 @@ export function markHallOwnerDirty(writer: Writer, db: Firestore, email: string)
   writer.set(ownerRef(db, email), { revision: randomUUID() });
 }
 
-// The revision also fences the home monthly production sums. Commission-only
-// edits must invalidate those even though the hall itself counts premiums.
-const SOURCE_FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides"];
+// The revision also fences home production and the team's active portfolio.
+// Commission and lifecycle edits invalidate their aggregates in the same write.
+const SOURCE_FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides", "status", "policyStartDate", "policyEndDate", "durationYears", "durationMonths"];
 export function invalidateHallContractChange(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>): void {
   if (!SOURCE_FIELDS.some((field) => Object.hasOwn(patch, field) && JSON.stringify(before[field]) !== JSON.stringify(patch[field]))) return;
   const pathOwner = ref.parent.parent?.id ?? "";
@@ -39,7 +39,7 @@ function validStats(value: unknown): value is OwnerStats {
   });
 }
 
-/** Persist only four small category aggregates per owner. A normal cold server
+/** Persist small category aggregates for four periods per owner. A normal cold server
  * reads these documents; only changed owners need their contracts read again.
  * The Czech day key rebuilds date-sensitive periods after midnight. */
 export async function loadHallOwnerStats(
@@ -65,24 +65,45 @@ export async function loadHallOwnerStats(
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(8, Math.ceil(missing.length / 10)) }, async () => {
     while (next < missing.length) {
-      const batch = missing.slice(next, next += 10);
-      const entries = await readEntries(batch.map(({ email }) => email));
-      const aggregate = aggregateHallEntries(entries, now);
-      const projections = batch.map(({ email }) => Object.fromEntries(PERIODS.map((period) => [period, aggregate[period][email] ?? { categoryMetrics: {} }])) as OwnerStats);
-      batch.forEach(({ email }, index) => apply(email, projections[index]));
-      try {
-        await db.runTransaction(async (tx) => {
-          const current = await tx.getAll(...batch.map(({ ref }) => ref));
-          batch.forEach(({ ref, revision }, index) => {
-            // A write during the scan must leave its dirty revision in place.
-            if ((current[index].data()?.revision ?? null) !== revision) return;
-            tx.set(ref, { version: VERSION, day, revision, stats: projections[index] });
+      let batch = missing.slice(next, next += 10);
+      for (let attempt = 0; batch.length && attempt < 3; attempt++) {
+        const entries = await readEntries(batch.map(({ email }) => email));
+        const aggregate = aggregateHallEntries(entries, now);
+        const projections = batch.map(({ email }) => Object.fromEntries(PERIODS.map((period) => [period, aggregate[period][email] ?? { categoryMetrics: {} }])) as OwnerStats);
+        let changed: typeof batch;
+        try {
+          changed = await db.runTransaction(async (tx) => {
+            const current = await tx.getAll(...batch.map(({ ref }) => ref));
+            const retry: typeof batch = [];
+            batch.forEach(({ email, ref, revision }, index) => {
+              const latestRevision = current[index].data()?.revision ?? null;
+              if (latestRevision !== revision) {
+                retry.push({ email, ref, revision: latestRevision });
+                return;
+              }
+              tx.set(ref, { version: VERSION, day, revision, stats: projections[index] });
+            });
+            return retry;
           });
+        } catch (error) {
+          // Cache persistence is optional, revision validation is not. Keep the
+          // former read-only fallback, but independently verify the source first.
+          const current = await getAllBatched(db, batch.map(({ ref }) => ref));
+          changed = batch.flatMap((owner, index) => {
+            const revision = current[index].data()?.revision ?? null;
+            return revision === owner.revision ? [] : [{ ...owner, revision }];
+          });
+          console.warn("Uložení součtů síně slávy se nezdařilo:", error);
+        }
+        const changedOwners = new Set(changed.map(({ email }) => email));
+        batch.forEach(({ email }, index) => {
+          if (!changedOwners.has(email)) apply(email, projections[index]);
         });
-      } catch (error) {
-        // The freshly computed result is still usable; never cache a partial scan.
-        console.warn("Uložení součtů síně slávy se nezdařilo:", error);
+        batch = changed;
       }
+      // Neither durable nor process-local caches may turn a concurrent mutation
+      // or failed validation into a successful but outdated ranking.
+      if (batch.length) throw new Error("Výsledky síně slávy se právě mění. Zopakujte načtení.");
     }
   }));
   return stats;

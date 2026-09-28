@@ -1,3 +1,4 @@
+import { sealTip } from "@/lib/server/tipEncryption";
 import { randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -389,7 +390,6 @@ const sendDirectMessagePushNotification = async ({
   recipientMessageId,
   senderEmail,
   senderName,
-  subject,
   isTipsterTip,
 }: {
   req: NextRequest;
@@ -407,7 +407,7 @@ const sendDirectMessagePushNotification = async ({
 
   const actorName = normalizeText(senderName) || nameFromEmail(senderEmail);
   const notificationTitle = isTipsterTip ? `Nový TIP od ${actorName}` : "Nová zpráva v poště";
-  const body = isTipsterTip ? subject || "Přišel nový tip." : `${actorName} ti posílá zprávu! 📩`;
+  const body = isTipsterTip ? "Podrobnosti najdeš po přihlášení v tipech." : `${actorName} ti posílá zprávu! 📩`;
   const deepLink = isTipsterTip
     ? `/tipy/${encodeURIComponent(recipientMessageId)}`
     : `/posta?messageId=${encodeURIComponent(recipientMessageId)}`;
@@ -430,7 +430,7 @@ const sendDirectMessagePushNotification = async ({
         messageId: recipientMessageId,
         senderEmail: normalizeEmail(senderEmail),
         senderName: actorName,
-        subject: isTipsterTip ? subject.slice(0, 120) : "",
+        subject: "",
         createdAt: createdAtIso,
         deepLink,
       },
@@ -1153,9 +1153,7 @@ export async function POST(req: NextRequest) {
     const conversationId = isTipsterTip
       ? null
       : mailboxConversationId(ctx.email, recipient.email);
-    const encryptedContent = isTipsterTip
-      ? null
-      : encryptMailboxJson(
+    const encryptedContent = encryptMailboxJson(
           { subject, messageText },
           `message:${messageId}`
         );
@@ -1166,7 +1164,6 @@ export async function POST(req: NextRequest) {
     });
     uploadedAttachments = attachments;
     const publicAttachments = toPublicAttachments(attachments);
-    const messagePreview = messageText || "Příloha bez textu.";
 
     const recipientMailbox = adminDb
       .collection("usersPrivate")
@@ -1221,9 +1218,7 @@ export async function POST(req: NextRequest) {
       attachmentCount: attachments.length,
       attachments,
       deliveredAtMs: createdAtMs,
-      ...(isTipsterTip
-        ? { messageText }
-        : { encryptedContentVersion: encryptedContent?.version ?? 1 }),
+      encryptedContentVersion: encryptedContent.version,
     };
 
     const recipientConversationSnapshot = recipientConversationRef
@@ -1234,8 +1229,8 @@ export async function POST(req: NextRequest) {
     batch.set(recipientRef, {
       recipientEmail: recipient.email,
       type: "direct_message",
-      title: isTipsterTip ? subject : "Šifrovaná zpráva",
-      body: isTipsterTip ? messagePreview : "Nová šifrovaná zpráva.",
+      title: "Šifrovaná zpráva",
+      body: "Nová šifrovaná zpráva.",
       ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: recipientDeepLink,
       read: false,
@@ -1252,8 +1247,8 @@ export async function POST(req: NextRequest) {
     batch.set(senderRef, {
       recipientEmail: ctx.email,
       type: "direct_message",
-      title: isTipsterTip ? subject : "Šifrovaná zpráva",
-      body: isTipsterTip ? messagePreview : "Nová šifrovaná zpráva.",
+      title: "Šifrovaná zpráva",
+      body: "Nová šifrovaná zpráva.",
       ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: senderDeepLink,
       read: true,
@@ -1323,7 +1318,7 @@ export async function POST(req: NextRequest) {
       }
     }
     if (tipRef) {
-      batch.set(tipRef, {
+      batch.set(tipRef, sealTip({
         tipsterEmail: ctx.email,
         tipsterName: senderName,
         recipientEmail: recipient.email,
@@ -1341,7 +1336,7 @@ export async function POST(req: NextRequest) {
         senderMailboxId: senderRef.id,
         createdAtMs,
         createdAt: FieldValue.serverTimestamp(),
-      });
+      }, tipRef.path));
     }
     await batch.commit();
 

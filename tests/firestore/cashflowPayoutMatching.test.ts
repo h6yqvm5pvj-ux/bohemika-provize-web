@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EntryDoc } from "../../src/app/cashflow/types";
 import { generateCashflow } from "../../src/app/cashflow/generator";
+import { openPrivateRecord } from "../../src/lib/server/privateRecords";
 
 const state = vi.hoisted(() => ({ db: null as Firestore | null }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
@@ -91,9 +92,9 @@ describe("C payout matching through real Firestore transactions and contract API
     expect(items.find(item => item.commissionPayoutKey === "own-c1")).toMatchObject({ amount: 320, commissionCode: "C101", payoutPlanStatus: "matched", matchedPlannedCode: "B101" });
     expect(items.some(item => item.commissionCode === "B101")).toBe(false);
     const history = await state.db!.collection("contractHistories").doc(stored.contractHistoryId).collection("events").get();
-    const matchingEvents = history.docs.map(doc => doc.data()).filter(event => event.title === "Upraveno přiřazení výplaty v cashflow");
+    const matchingEvents = history.docs.map(doc => openPrivateRecord(doc.ref.path, doc.data())).filter(event => event.title === "Upraveno přiřazení výplaty v cashflow");
     expect(matchingEvents).toHaveLength(2);
-    expect(matchingEvents.every(event => event.changes.length === 0)).toBe(true);
+    expect(matchingEvents.every(event => Array.isArray(event.changes) && event.changes.length === 0)).toBe(true);
   });
   it("commits only one of two simultaneous assignments to the same target", async () => {
     const initial = await preview();

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 import { aggregateHallEntries, hallParticipantId, type HallProductionEntry } from "./hallOfFame";
 import { invalidateHallContractChange, loadHallOwnerStats, markHallOwnerDirty } from "./hallOfFameProjection";
@@ -15,6 +15,8 @@ function database() {
   const db = { collection: (name: string) => ({ doc: (id: string) => ref(`${name}/${id}`) }), getAll: vi.fn(async (...refs: { path: string }[]) => refs.map(snapshot)), runTransaction: vi.fn(async (run: (transaction: typeof tx) => Promise<void>) => run(tx)) };
   return { db: db as unknown as Firestore, rows, writer: { set }, ref: ref as unknown as (path: string) => DocumentReference };
 }
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("persistent hall aggregates", () => {
   it("uses the persisted totals on another load without reading any contracts", async () => {
@@ -37,16 +39,30 @@ describe("persistent hall aggregates", () => {
     expect(result.month[owners[0]].categoryMetrics).toEqual({});
     expect(result.month[owners[1]].categoryMetrics.business?.contracts).toBe(1);
   });
-  it("never replaces a revision written while its contracts are being scanned", async () => {
+  it("retries only owners changed during the scan and returns their fresh totals", async () => {
     const { db, rows, writer } = database();
-    await loadHallOwnerStats(db, [owners[0]], now, async () => {
+    const read = vi.fn(async () => owners.map(owner => entry(owner)));
+    read.mockImplementationOnce(async () => {
       markHallOwnerDirty(writer, db, owners[0]);
-      return [entry(owners[0])];
+      return owners.map(owner => entry(owner));
+    }).mockImplementationOnce(async () => []);
+    const result = await loadHallOwnerStats(db, owners, now, read);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenLastCalledWith([owners[0]]);
+    expect(result.month[owners[0]].categoryMetrics).toEqual({});
+    expect(result.month[owners[1]].categoryMetrics.business?.contracts).toBe(1);
+    expect(rows.get(`hallOfFameOwners/${hallParticipantId(owners[0])}`)?.stats).toBeTruthy();
+    expect(await loadHallOwnerStats(db, owners, now, read)).toEqual(result);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("fails a continuously changing scan instead of returning stale results", async () => {
+    const { db, rows, writer } = database();
+    const read = vi.fn(async () => {
+      markHallOwnerDirty(writer, db, owners[0]); return [entry(owners[0])];
     });
+    await expect(loadHallOwnerStats(db, [owners[0]], now, read)).rejects.toThrow("právě mění");
+    expect(read).toHaveBeenCalledTimes(3);
     expect(rows.get(`hallOfFameOwners/${hallParticipantId(owners[0])}`)).toEqual({ revision: expect.any(String) });
-    const read = vi.fn(async () => []);
-    await loadHallOwnerStats(db, [owners[0]], now, read);
-    expect(read).toHaveBeenCalledOnce();
   });
   it("invalidates both sides of a transfer and skips unrelated changes", () => {
     const { writer, ref } = database();
@@ -56,7 +72,7 @@ describe("persistent hall aggregates", () => {
     invalidateHallContractChange(writer, source, { userEmail: owners[0] }, { userEmail: owners[1] });
     expect(writer.set.mock.calls.map(([reference]) => reference.path)).toEqual(owners.map((email) => `hallOfFameOwners/${hallParticipantId(email)}`));
   });
-  it.each(["inputAmount", "frequencyRaw", "productKey", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides"])("invalidates changes to %s", (field) => {
+  it.each(["inputAmount", "frequencyRaw", "productKey", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides", "status", "policyStartDate", "policyEndDate", "durationYears", "durationMonths"])("invalidates changes to %s", (field) => {
     const { writer, ref } = database();
     invalidateHallContractChange(writer, ref(`users/${owners[0]}/entries/contract`), { userEmail: owners[0] }, { [field]: "new" });
     expect(writer.set).toHaveBeenCalledOnce();
@@ -76,13 +92,31 @@ describe("persistent hall aggregates", () => {
     await expect(loadHallOwnerStats(db, owners, now, async () => { throw new Error("unavailable"); })).rejects.toThrow("unavailable");
     expect(rows.size).toBe(0);
   });
-  it("still returns the computed totals if persisting them fails", async () => {
-    const { db } = database();
+  it("can return verified results when only cache persistence fails", async () => {
+    const { db, rows } = database();
     vi.mocked(db.runTransaction).mockRejectedValue(new Error("unavailable"));
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await loadHallOwnerStats(db, [owners[0]], now, async () => [entry(owners[0])]);
     expect(result.month[owners[0]].categoryMetrics.business?.annualPremium).toBe(12000);
-    expect(warning).toHaveBeenCalledOnce();
-    warning.mockRestore();
+    expect(db.getAll).toHaveBeenCalledTimes(2); expect(rows.size).toBe(0);
+  });
+  it("does not return unverifiable results when both transaction and revision read fail", async () => {
+    const { db } = database();
+    vi.mocked(db.runTransaction).mockRejectedValue(new Error("write unavailable"));
+    vi.mocked(db.getAll).mockImplementationOnce(async (...refs: any[]) => refs.map(ref => ({ ref, data: () => undefined })) as any)
+      .mockRejectedValueOnce(new Error("read unavailable"));
+    await expect(loadHallOwnerStats(db, [owners[0]], now, async () => [entry(owners[0])])).rejects.toThrow("read unavailable");
+  });
+  it("retries a concurrent mutation even when cache writes fail", async () => {
+    const { db, writer } = database();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(db.runTransaction).mockRejectedValue(new Error("unavailable"));
+    const read = vi.fn(async () => [] as HallProductionEntry[]);
+    read.mockImplementationOnce(async () => {
+      markHallOwnerDirty(writer, db, owners[0]); return [entry(owners[0])];
+    });
+    const result = await loadHallOwnerStats(db, [owners[0]], now, read);
+    expect(result.month[owners[0]].categoryMetrics).toEqual({});
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

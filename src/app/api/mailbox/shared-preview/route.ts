@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { buildMailboxPreviewHtml } from "@/app/posta/postaPreview";
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { openPrivateRecord } from "@/lib/server/privateRecords";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +116,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const metadata = structuredMetadataFromPayload(data);
+    const readableData = openPrivateRecord(docSnap.ref.path, data);
+    const metadata = structuredMetadataFromPayload(readableData);
     const html = metadata
       ? buildMailboxPreviewHtml({
           id: payloadId,

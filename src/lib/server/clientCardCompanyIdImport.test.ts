@@ -1,3 +1,5 @@
+import { openPrivateValue } from "./privateEncryption";
+import "../../../tests/helpers/privateEncryptionTestKey";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
 import { createEmptyClientCard } from "@/app/_klienti/clientCardData";
@@ -34,15 +36,17 @@ describe("KOMPLEX company ID after PDF upload", () => {
     expect(await run()).toBe("saved");
     expect(mocks.readPdf).toHaveBeenCalledWith(attachment);
     expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ path: expect.stringContaining("/own-uid/cards/") }), expect.objectContaining({
-      ownerUid: adviser.uid, revision: 1, card: expect.objectContaining({ clientName: contract.clientName, companyId: "00123456", birthNumber: "" }),
+      ownerUid: adviser.uid, revision: 1, card: expect.objectContaining({ privateEncryption: 1 }),
       companyIdSource: expect.objectContaining({ pdfSha256: attachment.sha256 }),
-    }), { merge: true });
+    }));
+    expect(openPrivateValue(mocks.set.mock.calls[0][1].card, `${mocks.set.mock.calls[0][0].path}:card`)).toMatchObject({ clientName: contract.clientName, companyId: "00123456", birthNumber: "" });
   });
   it("preserves manually entered personal data and birth number", async () => {
     const card = { ...createEmptyClientCard(contract.clientName), birthNumber: "850101/1234", phone: "777123456", occupation: "Podnikatel" };
     mocks.txGet.mockResolvedValue({ data: () => ({ ownerUid: adviser.uid, revision: 4, card }) });
     expect(await run()).toBe("saved");
-    expect(mocks.set.mock.calls[0][1]).toMatchObject({ card: { ...card, companyId: "00123456" }, revision: 5 });
+    expect(mocks.set.mock.calls[0][1].revision).toBe(5);
+    expect(openPrivateValue(mocks.set.mock.calls[0][1].card, `${mocks.set.mock.calls[0][0].path}:card`)).toEqual({ ...card, companyId: "00123456" });
   });
   it("does not overwrite an IČO entered while the PDF was being read", async () => {
     mocks.txGet.mockResolvedValue({ data: () => ({ ownerUid: adviser.uid, revision: 2, card: { ...createEmptyClientCard(contract.clientName), companyId: "87654321" } }) });
@@ -50,7 +54,7 @@ describe("KOMPLEX company ID after PDF upload", () => {
     expect(mocks.set).not.toHaveBeenCalled();
   });
   it("skips parsing when the card already has an IČO", async () => {
-    mocks.get.mockImplementation(async path => path.startsWith("users/") ? snapshot() : { data: () => ({ card: { companyId: "87654321" } }) });
+    mocks.get.mockImplementation(async path => path.startsWith("users/") ? snapshot() : { data: () => ({ ownerUid: adviser.uid, card: { ...createEmptyClientCard(contract.clientName), companyId: "87654321" } }) });
     expect(await run()).toBe("existing");
     expect(mocks.readPdf).not.toHaveBeenCalled();
   });
@@ -88,6 +92,6 @@ describe("KOMPLEX company ID after PDF upload", () => {
   it("preserves contact details from the directory when making a new card", async () => {
     mocks.get.mockImplementation(async path => path.startsWith("users/") ? snapshot({ clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Testovací 10" }) : { data: () => undefined });
     expect(await run()).toBe("saved");
-    expect(mocks.set.mock.calls[0][1].card).toMatchObject({ phone: "777123456", email: "client@example.test", permanentAddress: "Testovací 10" });
+    expect(openPrivateValue(mocks.set.mock.calls[0][1].card, `${mocks.set.mock.calls[0][0].path}:card`)).toMatchObject({ phone: "777123456", email: "client@example.test", permanentAddress: "Testovací 10" });
   });
 });

@@ -1,3 +1,5 @@
+import { openPrivateValue, sealPrivateValue } from "./privateEncryption";
+import "../../../tests/helpers/privateEncryptionTestKey";
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { clientNotesFirestore } from "../../../tests/helpers/clientNotesFirestore";
@@ -58,6 +60,12 @@ beforeEach(() => {
 });
 
 describe("private client notes and reminders", () => {
+  it("creates and reads encrypted notes after plaintext compatibility is disabled", async () => {
+    vi.stubEnv("PRIVATE_DATA_ENCRYPTION_REQUIRED", "true");
+    const saved = await create();
+    const response = await GET(request(), context());
+    expect((await response.json()).notes).toEqual([saved.note]);
+  });
   it.each([401, 403, 429])("enforces the entry guard (%s) on every method", async status => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ error: "rejected" }, { status }) });
     for (const [method, handler] of [["GET", GET], ["POST", POST], ["PATCH", PATCH], ["DELETE", DELETE]] as const) {
@@ -83,6 +91,8 @@ describe("private client notes and reminders", () => {
     expect(saved.note).toMatchObject({ id: noteId, revision: 1, authorEmail: owner.email, kind: "call" });
     expect(store.records.get(queuePath)).toMatchObject({ recipientEmail: owner.email, ownerUid: owner.uid, revision: 1, reminderAtMs: due });
     expect(store.records.get(cardPath)).toEqual(card);
+    expect(JSON.stringify(store.records.get(notePath))).not.toContain(input.text);
+    expect(JSON.stringify(store.records.get(queuePath))).not.toContain(input.clientName);
     expect(mocks.guard).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ allowImpersonation: false }));
     const response = await GET(request(), context());
     expect(response.headers.get("Cache-Control")).toContain("private");
@@ -139,7 +149,7 @@ describe("private client notes and reminders", () => {
     await PATCH(request("PATCH", { ...input, expectedRevision: 1, text: "Nové informace" }), context());
     expect((await PATCH(request("PATCH", { ...input, expectedRevision: 1 }), context())).status).toBe(409);
     expect((await DELETE(request("DELETE", { noteId, expectedRevision: 1 }), context())).status).toBe(409);
-    expect(store.records.get(notePath)?.text).toBe("Nové informace");
+    expect(openPrivateValue(store.records.get(notePath)?.text, `${notePath}:text`)).toBe("Nové informace");
   });
 
   it("deletes the note and cancels its delivery", async () => {
@@ -154,7 +164,7 @@ describe("private client notes and reminders", () => {
     await create();
     const base = store.records.get(notePath)!;
     for (let index = 0; index < 55; index++) {
-      store.records.set(notePath.replace(noteId, `older-${index}`), { ...base, createdAtMs: Number(base.createdAtMs) - index - 1 });
+      store.records.set(notePath.replace(noteId, `older-${index}`), { ...base, text: sealPrivateValue(input.text, `${notePath.replace(noteId, `older-${index}`)}:text`), createdAtMs: Number(base.createdAtMs) - index - 1 });
     }
     const first = await (await GET(request("GET", undefined, "?noteId=older-54"), context())).json();
     expect(first.notes).toHaveLength(50);
@@ -169,7 +179,7 @@ describe("private client notes and reminders", () => {
     await create();
     expect((await run()).mailboxWritten).toBe(1);
     expect(mocks.mailbox).toHaveBeenCalledWith(expect.objectContaining({
-      recipientEmail: owner.email, body: input.text, type: "client_note_reminder", deepLink: clientNoteDeepLink(slug, noteId),
+      recipientEmail: owner.email, body: "Podrobnosti najdeš v soukromé poznámce klienta.", type: "client_note_reminder", deepLink: clientNoteDeepLink(slug, noteId),
     }));
     expect(mocks.push).toHaveBeenCalledWith(expect.objectContaining({
       tokens: ["token-one"], data: expect.objectContaining({ deepLink: clientNoteDeepLink(slug, noteId) }),
@@ -177,6 +187,8 @@ describe("private client notes and reminders", () => {
     expect(store.records.get(notePath)).toMatchObject({ reminderEnabled: false, reminderAtMs: null, reminderSentAtMs: due + 1000, revision: 2 });
     await run();
     expect(mocks.mailbox).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mocks.mailbox.mock.calls)).not.toContain(input.text);
+    expect(JSON.stringify(mocks.push.mock.calls)).not.toContain(input.text);
     expect(mocks.push).toHaveBeenCalledTimes(1);
   });
 
@@ -184,6 +196,8 @@ describe("private client notes and reminders", () => {
     await create();
     await Promise.all([run(), run()]);
     expect(mocks.mailbox).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mocks.mailbox.mock.calls)).not.toContain(input.text);
+    expect(JSON.stringify(mocks.push.mock.calls)).not.toContain(input.text);
     expect(mocks.push).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +260,8 @@ describe("private client notes and reminders", () => {
     });
     await run();
     expect(store.records.get(queuePath)).toMatchObject({ revision: 2, reminderAtMs: due + 86_400_000 });
-    expect(store.records.get(notePath)).toMatchObject({ reminderEnabled: true, text: "Nový termín" });
+    expect(store.records.get(notePath)).toMatchObject({ reminderEnabled: true });
+    expect(openPrivateValue(store.records.get(notePath)?.text, `${notePath}:text`)).toBe("Nový termín");
   });
 });
 

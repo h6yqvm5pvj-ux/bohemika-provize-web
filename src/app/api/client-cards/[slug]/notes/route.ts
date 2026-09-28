@@ -1,3 +1,4 @@
+import { sealPrivateValue } from "@/lib/server/privateEncryption";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { canAccessClientCards } from "@/app/_klienti/clientAccess";
@@ -75,11 +76,11 @@ export async function GET(req: NextRequest, context: Context) {
     const [snapshot, focused] = await Promise.all([
       query.get(), noteId ? access.notesRef.doc(noteId).get() : Promise.resolve(null),
     ]);
-    const notes = snapshot.docs.slice(0, PAGE_SIZE).map(doc => clientNoteDto(doc.id, doc.data(), access.ctx.uid));
+    const notes = snapshot.docs.slice(0, PAGE_SIZE).map(doc => clientNoteDto(doc.id, doc.data(), access.ctx.uid, doc.ref.path));
     return noStore(withRateLimitHeaders(NextResponse.json({
       ok: true, notes,
       nextCursor: snapshot.size > PAGE_SIZE ? notes.at(-1)!.id : null,
-      focusedNote: focused?.exists ? clientNoteDto(focused.id, focused.data()!, access.ctx.uid) : null,
+      focusedNote: focused?.exists ? clientNoteDto(focused.id, focused.data()!, access.ctx.uid, focused.ref.path) : null,
     }), access.ctx));
   } catch { return errorResponse(500, "Historii jednání se nepodařilo načíst."); }
 }
@@ -110,7 +111,7 @@ async function mutate(req: NextRequest, context: Context) {
     const result = await access.db.runTransaction(async transaction => {
       const snap = await transaction.get(ref);
       const data = snap.data();
-      const current = snap.exists ? clientNoteDto(snap.id, data!, access.ctx.uid) : null;
+      const current = snap.exists ? clientNoteDto(snap.id, data!, access.ctx.uid, ref.path) : null;
       if (creating && current && current.revision === 1 && normalized?.ok &&
           current.text === normalized.value.text && current.kind === normalized.value.kind &&
           current.reminderEnabled === normalized.value.reminderEnabled && current.reminderAtMs === normalized.value.reminderAtMs) {
@@ -131,14 +132,15 @@ async function mutate(req: NextRequest, context: Context) {
         createdAtMs: current?.createdAtMs ?? nowMs, updatedAtMs: nowMs, revision,
         reminderSentAtMs: normalized.value.reminderEnabled ? null : current?.reminderSentAtMs ?? null,
       };
-      transaction.set(ref, { ...next, updatedAt: FieldValue.serverTimestamp() });
+      const stored = { ...next, text: sealPrivateValue(next.text, `${ref.path}:text`), updatedAt: FieldValue.serverTimestamp() };
+      transaction.set(ref, stored);
       if (next.reminderEnabled) {
         transaction.set(queueRef, {
           ownerUid: access.ctx.uid, recipientEmail: access.ctx.email, slug: access.slug, noteId: snap.id,
-          clientName, reminderAtMs: next.reminderAtMs, revision,
+          clientName: sealPrivateValue(clientName, `${queueRef.path}:clientName`), reminderAtMs: next.reminderAtMs, revision,
         });
       } else transaction.delete(queueRef);
-      return { ok: true as const, note: clientNoteDto(snap.id, next, access.ctx.uid) };
+      return { ok: true as const, note: clientNoteDto(snap.id, stored, access.ctx.uid, ref.path) };
     });
     if (!result) return errorResponse(409, "Poznámka byla mezitím změněna nebo odstraněna. Načti historii znovu.");
     return noStore(withRateLimitHeaders(NextResponse.json(result), access.ctx));

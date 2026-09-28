@@ -1,3 +1,4 @@
+import { sealPrivateValue, openPrivateValue, clientCardContext } from "./privateEncryption";
 import { FieldValue, type DocumentSnapshot, type Firestore } from "firebase-admin/firestore";
 import { createEmptyClientCard, parseClientCardDraft } from "@/app/_klienti/clientCardData";
 import { clientSlugForName } from "@/app/_klienti/clientIdentity";
@@ -32,7 +33,7 @@ export async function saveClientCardEmail(db: Firestore, adviser: { email: strin
   const ref = db.collection("clientCardsPrivate").doc(adviser.uid).collection("cards").doc(slug);
   return db.runTransaction(async transaction => {
     const saved = (await transaction.get(ref)).data();
-    const card = saved ? parseClientCardDraft(saved.card) : {
+    const card = saved ? parseClientCardDraft(openPrivateValue(saved.card, clientCardContext(adviser.uid, slug))) : {
       ...createEmptyClientCard(plan.directory.name), phone: plan.directory.phone, permanentAddress: plan.directory.address,
     };
     if (!card || (saved && (saved.ownerUid !== adviser.uid || !Number.isSafeInteger(saved.revision) || saved.revision < 1 || saved.revision >= Number.MAX_SAFE_INTEGER))) throw new Error("Invalid saved client card");
@@ -48,7 +49,7 @@ export async function saveClientCardEmail(db: Firestore, adviser: { email: strin
     const updated = parseClientCardDraft({ ...card, email: plan.email });
     if (!updated) throw new Error("Invalid extracted client email");
     transaction.set(ref, {
-      ownerUid: adviser.uid, card: updated, revision: (saved?.revision ?? 0) + 1,
+      ...saved, ownerUid: adviser.uid, card: sealPrivateValue(updated, clientCardContext(adviser.uid, slug)), revision: (saved?.revision ?? 0) + 1,
       updatedAt: FieldValue.serverTimestamp(),
       emailSource: {
         kind: "contract-email-backfill", version: 1, savedAt: FieldValue.serverTimestamp(),
@@ -57,7 +58,7 @@ export async function saveClientCardEmail(db: Firestore, adviser: { email: strin
           pdfSha256: source.result?.status === "found" ? source.snapshot.data()?.contractPdfAttachment?.sha256 ?? null : null,
         })),
       },
-    }, { merge: true });
+    });
     return "saved";
   });
 }

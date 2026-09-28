@@ -1,5 +1,6 @@
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { openPrivateRecord, sealPrivateRecord } from "@/lib/server/privateRecords";
 import { createHash, randomUUID } from "node:crypto";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { toDate } from "@/app/lib/formatters";
@@ -40,7 +41,7 @@ export function reviewDto(data: Record<string, unknown>): AnniversaryReview {
 
 export async function readReviewHistory(db: Firestore, ownerEmail: string, entryId: string, before: number | null) {
   const review = await db.collection(REVIEWS_COLLECTION).doc(reviewDocId(ownerEmail, entryId)).get();
-  const data = review.data() ?? {};
+  const data = openPrivateRecord(`${REVIEWS_COLLECTION}/${reviewDocId(ownerEmail, entryId)}`, review.data() ?? {});
   if (!safeId(data.historyId)) {
     const legacy = legacyHistory(data);
     return { history: legacy && (before === null || legacy.sequence < before) ? [legacy] : [], hasMore: false, nextCursor: null };
@@ -49,7 +50,7 @@ export async function readReviewHistory(db: Firestore, ownerEmail: string, entry
   if (before !== null) query = query.where("sequence", "<", before);
   const snap = await query.limit(HISTORY_PAGE_SIZE + 1).get();
   const history = snap.docs.slice(0, HISTORY_PAGE_SIZE).map(doc => {
-    const event = doc.data();
+    const event = openPrivateRecord(`${HISTORIES_COLLECTION}/${data.historyId}/events/${doc.id}`, doc.data());
     return {
       id: doc.id, sequence: event.sequence as number,
       kind: event.kind as AnniversaryHistoryEvent["kind"],
@@ -89,7 +90,7 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
   return trackCashflowWrite(() => db.runTransaction(async tx => {
     const [snapshot, contract] = await Promise.all([tx.get(ref), tx.get(contractRef)]);
     if (!contract.exists) throw new ReviewMutationError("Smlouva nebyla nalezena. Obnov Radar.", 404);
-    const current = snapshot.data() ?? {};
+    const current = openPrivateRecord(ref.path, snapshot.data() ?? {});
     // The stable pointer is copied with the review during an ownership transfer.
     const historyId = safeId(current.historyId) ? current.historyId : newHistoryId;
     const events = db.collection(HISTORIES_COLLECTION).doc(historyId).collection("events");
@@ -114,10 +115,12 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
     const legacy = !current.historyId ? legacyHistory(current) : null;
     let count = Number(current.historyCount) || 0;
     if (legacy) {
-      tx.set(events.doc("legacy"), legacy);
+      const legacyRef = events.doc("legacy");
+      tx.set(legacyRef, sealPrivateRecord(legacyRef.path, { ...legacy }));
       count = 1;
     }
     const next: Record<string, unknown> = {
+      privateReviewPath: current.privateReviewPath ?? ref.path,
       ownerEmail: mutation.ownerEmail, entryId: mutation.entryId,
       contractNumber: mutation.contractNumber ?? current.contractNumber ?? null,
       occurrenceKey, historyId, historyCount: count + 1,
@@ -163,8 +166,8 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
       note: workflowAction ? null : text(next.note), meetingAt: kind === "contact" ? text(next.meetingAt) : null,
       actorEmail, createdAtMs: Date.now(),
     };
-    tx.set(eventRef, { ...event, fingerprint });
-    tx.set(ref, next, { merge: true });
+    tx.set(eventRef, sealPrivateRecord(eventRef.path, { ...event, fingerprint }));
+    tx.set(ref, sealPrivateRecord(ref.path, next), { merge: true });
     const outcomeLabels: Record<string, string> = { reached: "Kontaktován", no_answer: "Nezastižen", meeting: "Domluvena schůzka", ignore: "Nekontaktovat" };
     const kindLabels: Record<string, string> = { contact: "Kontakt s klientem", completed: "Výročí dokončeno", reopened: "Výročí vráceno k řešení", reviewed: "Výročí zkontrolováno", note: "Poznámka k výročí" };
     tx.set(contractRef, withContractHistory(tx, contractRef, contract.data() ?? {}, {}, {

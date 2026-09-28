@@ -1,3 +1,4 @@
+import { encryptPrivateFile, decryptPrivateFile } from "./privateStorage";
 import { createHash, randomUUID } from "node:crypto";
 
 import { getStorage } from "firebase-admin/storage";
@@ -216,9 +217,9 @@ export async function uploadUserRequestScreenshot({
   for (const bucketName of bucketCandidates) {
     try {
       const bucket = getStorage().bucket(bucketName);
-      await bucket.file(storagePath).save(screenshot.bytes, {
+      await bucket.file(storagePath).save(encryptPrivateFile(screenshot.bytes, bucket.name, storagePath), {
         resumable: false,
-        contentType: screenshot.contentType,
+        contentType: "application/octet-stream",
         metadata: {
           cacheControl: "private, no-store, max-age=0",
           metadata: {
@@ -261,7 +262,9 @@ export async function downloadUserRequestScreenshot(
         .bucket(bucketName)
         .file(screenshot.storagePath)
         .download();
-      return bytes;
+      const plaintext = decryptPrivateFile(bytes, bucketName, screenshot.storagePath);
+      if (createHash("sha256").update(plaintext).digest("hex") !== screenshot.sha256) throw new Error("Invalid screenshot integrity");
+      return plaintext;
     } catch (error) {
       lastError = error;
       if (!isStorageNotFoundError(error)) break;

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { clearPrivateMemory, privateMemory } from "@/app/lib/privateMemory";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { User } from "firebase/auth";
@@ -42,6 +43,7 @@ describe("account setup progress, drafts and email verification", () => {
   }
   beforeEach(async () => {
     vi.resetAllMocks();
+    clearPrivateMemory();
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     user = { uid: "synthetic-account", email: "synthetic@example.test", emailVerified: false, reload: vi.fn().mockResolvedValue(undefined), getIdToken: vi.fn().mockResolvedValue("synthetic-token") };
@@ -130,8 +132,10 @@ describe("account setup progress, drafts and email verification", () => {
     await act(async () => flow.onTimelineRowChange(row.id, { position: "poradce3" }));
     await act(async () => flow.onStepChange(2));
     expect(flow.currentStep).toBe("career");
-    expect(sessionStorage.length).toBe(1);
+    expect(sessionStorage.length).toBe(0);
+    expect(privateMemory.getItem(`bohemka:career-draft:${user.uid}`)).not.toBeNull();
     await act(async () => flow.resetForMissingUser());
+    expect(privateMemory.getItem(`bohemka:career-draft:${user.uid}`)).toBeNull();
     expect(sessionStorage.length).toBe(0);
   });
   it("requires an end date when the advisor unchecks the current-position option", async () => {
@@ -182,7 +186,7 @@ describe("account setup progress, drafts and email verification", () => {
     await act(async () => flow.onBack());
     await act(async () => flow.onTimelineRowChange(flow.timelineDraft[0].id, { position: "poradce4" }));
     expect(flow.timelineDraft[0].position).toBe("poradce4");
-    expect(flow.careerDraftStatus).toBe("unavailable");
+    expect(flow.careerDraftStatus).toBe("saved");
   });
 
 });

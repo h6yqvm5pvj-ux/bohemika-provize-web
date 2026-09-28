@@ -1,3 +1,4 @@
+import { openTip } from "@/lib/server/tipEncryption";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
@@ -111,7 +112,7 @@ const normalizeTipStatus = (value: unknown): "pending" | "contracted" | "failed"
 const parseTipDoc = (
   docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
-  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+  const data = openTip(docSnap.data() ?? {}, docSnap.ref.path);
   const attachmentCount =
     typeof data.attachmentCount === "number" && Number.isFinite(data.attachmentCount)
       ? Math.max(0, Math.round(data.attachmentCount))

@@ -1,0 +1,83 @@
+import "../../../../../tests/helpers/privateEncryptionTestKey";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+import type { Firestore } from "firebase-admin/firestore";
+import { privateFirestore } from "../../../../../tests/helpers/privateFirestore";
+
+const mocks = vi.hoisted(() => ({ db: null as Firestore | null, guard: vi.fn(), push: vi.fn() }));
+vi.mock("@/lib/server/firebaseAdmin", () => ({ get adminDb() { return mocks.db; }, adminMessaging: { sendEachForMulticast: mocks.push } }));
+vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard }));
+vi.mock("@/lib/server/cashflowMutationTracking", () => ({ withCashflowMutation: (_: string, run: () => unknown) => run(), trackCashflowWrite: (run: () => unknown) => run() }));
+vi.mock("@/lib/server/hallOfFameProjection", () => ({ invalidateHallContractChange: vi.fn() }));
+vi.mock("@/lib/server/clientContractIndex", () => ({ writeClientContractLink: vi.fn() }));
+import { GET, POST, PATCH, DELETE } from "./route";
+import { withContractHistory, readContractHistory } from "@/lib/server/contractHistory";
+import { runContractNoteReminders } from "@/lib/server/contractNoteReminders";
+import { sealPrivateRecord, openPrivateRecord } from "@/lib/server/privateRecords";
+
+const owner = "owner@example.test", other = "other@example.test";
+const contractPath = `users/${owner}/entries/entry`;
+let store: ReturnType<typeof privateFirestore>;
+const asUser = (email: string) => mocks.guard.mockResolvedValue({ ok: true, ctx: { email, actorEmail: email, contractAccessEmails: [], canManageContractsAsAdmin: false }, withRateLimit: (r: NextResponse) => r });
+const request = (method: string, data: Record<string, unknown> = {}, ownerEmail = owner) => new NextRequest(`https://example.test/api/contracts/notes?ownerEmail=${ownerEmail}&entryId=entry`, { method, ...(method !== "GET" ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ownerEmail, entryId: "entry", ...data }) } : {}) });
+beforeEach(() => {
+  vi.clearAllMocks(); store = privateFirestore(); mocks.db = store.db; asUser(owner);
+  store.records.set(contractPath, sealPrivateRecord(contractPath, { userEmail: owner, clientName: "Private client", contractNumber: "Private number", note: "Sensitive legacy note" }));
+  mocks.push.mockResolvedValue({ successCount: 1, failureCount: 0, responses: [{ success: true }] });
+  vi.stubEnv("PRIVATE_DATA_ENCRYPTION_REQUIRED", "true");
+});
+describe("encrypted contract notes, history and reminders", () => {
+  it("protects create/edit/delete history and denies a different owner", async () => {
+    const created = await POST(request("POST", { text: "Sensitive initial" }));
+    expect(created.status).toBe(200);
+    const id = (await created.json()).note.id;
+    expect((await (await GET(request("GET"))).json()).notes).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Sensitive initial" }), expect.objectContaining({ text: "Sensitive legacy note" })]));
+    asUser(other);
+    expect((await GET(request("GET"))).status).toBe(403);
+    expect((await PATCH(request("PATCH", { noteId: id, text: "Forged edit" }))).status).toBe(403);
+    asUser(owner);
+    expect((await PATCH(request("PATCH", { noteId: id, text: "Sensitive updated" }))).status).toBe(200);
+    const ref = store.db.doc(contractPath);
+    let history = await readContractHistory(ref, store.records.get(contractPath)!, null);
+    expect(JSON.stringify(history)).toContain("Sensitive initial");
+    expect(JSON.stringify(history)).toContain("Sensitive updated");
+    expect((await DELETE(request("DELETE", { noteId: id }))).status).toBe(200);
+    history = await readContractHistory(ref, store.records.get(contractPath)!, null);
+    expect(history.events.some(e => e.changes.some(c => c.before === "Sensitive updated" && c.after === null))).toBe(true);
+    expect(JSON.stringify([...store.records])).not.toContain("Sensitive");
+  });
+  it("keeps notes and inline legacy content across transfer; push carries no sensitive text", async () => {
+    const now = Date.now();
+    const response = await POST(request("POST", { text: "Sensitive reminder", reminderEnabled: true, reminderAtMs: now + 1000 }));
+    const id = (await response.json()).note.id;
+    const source = store.db.doc(contractPath);
+    const destination = `users/${other}/entries/entry`;
+    const original = store.records.get(contractPath)!;
+    const batch = store.db.batch();
+    const transferred = withContractHistory(batch, source, original, { ...original, userEmail: other }, { actorEmail: owner, kind: "transfer", changes: [{ label: "Správce", before: owner, after: other }] });
+    batch.set(store.db.doc(destination), transferred); batch.delete(source); await batch.commit();
+    expect(openPrivateRecord(destination, transferred).note).toBe("Sensitive legacy note");
+    expect((await GET(request("GET", {}, other))).status).toBe(403);
+    asUser(other);
+    const notes = await (await GET(request("GET", {}, other))).json();
+    expect(notes.notes).toEqual(expect.arrayContaining([expect.objectContaining({ id, text: "Sensitive reminder" })]));
+    store.records.set(`users/${other}`, { fcmToken: "synthetic-device" });
+    const result = await runContractNoteReminders(new NextRequest("https://example.test/api/cron/contract-note-reminders"), new Date(now + 2000));
+    expect(result).toMatchObject({ claimed: 1, mailboxWritten: 1, pushSuccessCount: 1, failed: 0 });
+    const pushed = JSON.stringify(mocks.push.mock.calls);
+    expect(pushed).not.toMatch(/Sensitive|Private client|Private number/);
+    expect(pushed).toContain(encodeURIComponent(other));
+    expect(JSON.stringify([...store.records])).not.toContain("Sensitive");
+  });
+  it("blocks ciphertext copied from another note and writes nothing with a missing key", async () => {
+    const response = await POST(request("POST", { text: "Sensitive one" }));
+    const id = (await response.json()).note.id;
+    const stored = store.records.get(`${contractPath}/contractNotes/${id}`)!;
+    store.records.set(`${contractPath}/contractNotes/copied`, { ...stored });
+    await expect(GET(request("GET"))).rejects.toThrow();
+    const before = JSON.stringify([...store.records]);
+    vi.stubEnv("MAILBOX_ENCRYPTION_KEY", "");
+    await expect(POST(request("POST", { text: "Must not save" }))).rejects.toThrow();
+    expect(JSON.stringify([...store.records])).toBe(before);
+  });
+});

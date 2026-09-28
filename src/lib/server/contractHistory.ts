@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { FieldPath, type DocumentReference } from "firebase-admin/firestore";
 import { contractHistoryChanges, legacyContractHistory, type ContractHistoryEvent } from "@/app/lib/contractHistory";
 import { contractNoteLocationRef } from "./contractNoteLocation";
+import { openPrivateRecord, sealPrivateRecord } from "./privateRecords";
 
 export const CONTRACT_HISTORIES_COLLECTION = "contractHistories";
 type Writer = { set(ref: DocumentReference, data: Record<string, unknown>): unknown; delete(ref: DocumentReference): unknown };
@@ -14,23 +15,30 @@ const safeId = (id: unknown): id is string => typeof id === "string" && /^[\w-]{
  * caller must guard the source snapshot with lastUpdateTime (including deletes
  * on transfer), so concurrent edits cannot fork or overwrite the history. */
 export function withContractHistory(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>, input: EventInput): Record<string, unknown> {
+  before = openPrivateRecord(ref.path, before);
+  // Transfer patches can contain the encrypted inline note from the source.
+  const sealedPatch = sealPrivateRecord(ref.path, { ...before, ...patch });
+  patch = { ...patch, ...(Object.hasOwn(sealedPatch, "note") ? { note: sealedPatch.note } : {}) };
+  const readablePatch = openPrivateRecord(ref.path, { ...sealedPatch, ...patch });
   writeClientContractLink(writer, ref, before, patch, input.kind === "transfer");
   invalidateHallContractChange(writer, ref, before, patch);
-  const changes = input.changes ?? contractHistoryChanges(before, patch);
+  const changes = input.changes ?? contractHistoryChanges(before, Object.fromEntries(Object.keys(patch).map(key => [key, readablePatch[key]])));
   if (!changes.length && !input.kind) return patch;
   const hasHistory = safeId(before.contractHistoryId);
   const historyId = hasHistory ? before.contractHistoryId as string : randomUUID();
   const events = ref.firestore.collection(CONTRACT_HISTORIES_COLLECTION).doc(historyId).collection("events");
   if (!hasHistory && input.kind !== "created") {
     for (const event of legacyContractHistory(before)) {
-      writer.set(events.doc(event.id), { ...event, sortAtMs: event.atMs ?? 0 });
+      const eventRef = events.doc(event.id);
+      writer.set(eventRef, sealPrivateRecord(eventRef.path, { ...event, sortAtMs: event.atMs ?? 0 }));
     }
   }
   const event: ContractHistoryEvent = {
     id: randomUUID(), kind: input.kind ?? "updated", title: input.title ?? "Úprava smlouvy",
     actorEmail: input.actorEmail, atMs: input.atMs ?? Date.now(), changes,
   };
-  writer.set(events.doc(event.id), { ...event, sortAtMs: event.atMs ?? 0 });
+  const eventRef = events.doc(event.id);
+  writer.set(eventRef, sealPrivateRecord(eventRef.path, { ...event, sortAtMs: event.atMs ?? 0 }));
   let notesFields = {};
   if (input.kind === "transfer") {
     const notesPath = typeof before.contractNotesPath === "string" ? before.contractNotesPath : ref.path;
@@ -44,6 +52,7 @@ export function withContractHistory(writer: Writer, ref: DocumentReference, befo
 }
 
 export async function readContractHistory(ref: DocumentReference, contract: Record<string, unknown>, cursor: string | null) {
+  contract = openPrivateRecord(ref.path, contract);
   if (!safeId(contract.contractHistoryId)) return { events: legacyContractHistory(contract).reverse(), nextCursor: null };
   const events = ref.firestore.collection(CONTRACT_HISTORIES_COLLECTION).doc(contract.contractHistoryId).collection("events");
   let query = events.orderBy("sortAtMs", "desc").orderBy(FieldPath.documentId(), "desc");
@@ -57,7 +66,7 @@ export async function readContractHistory(ref: DocumentReference, contract: Reco
   const last = page.at(-1);
   return {
     events: page.map(doc => {
-      const { kind, title, actorEmail, atMs, changes } = doc.data();
+      const { kind, title, actorEmail, atMs, changes } = openPrivateRecord(doc.ref.path, doc.data());
       return { id: doc.id, kind, title, actorEmail, atMs, changes } as ContractHistoryEvent;
     }),
     nextCursor: snap.size > 25 && last ? Buffer.from(JSON.stringify([last.data().sortAtMs, last.id])).toString("base64url") : null,

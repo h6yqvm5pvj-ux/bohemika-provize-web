@@ -1,0 +1,420 @@
+{
+  "checkedAt": "2026-09-28T12:43:57.967Z",
+  "production": {
+    "id": "dpl_3fdNmsNXRDyoZwKg4Ty33DyJ6PSw",
+    "domain": "bohemka.app",
+    "strictEncryption": true,
+    "checks": [
+      {
+        "path": "/login",
+        "status": 200,
+        "strictCsp": true
+      },
+      {
+        "path": "/ucet/zabezpeceni",
+        "status": 200,
+        "strictCsp": true
+      },
+      {
+        "path": "/pomucky/tvorba",
+        "status": 307,
+        "denied": true
+      },
+      {
+        "path": "/pomucky/projekce-vykonu",
+        "status": 307,
+        "denied": true
+      },
+      {
+        "path": "/smlouvy",
+        "status": 307,
+        "denied": true
+      },
+      {
+        "path": "/api/user-requests",
+        "status": 401,
+        "denied": true
+      },
+      {
+        "path": "/api/mailbox/shared-preview?payloadId=synthetic-check",
+        "status": 401,
+        "denied": true
+      },
+      {
+        "path": "/api/contracts/notes?ownerEmail=synthetic@example.test&entryId=synthetic",
+        "status": 401,
+        "denied": true
+      },
+      {
+        "path": "/api/contracts/history?ownerEmail=synthetic@example.test&entryId=synthetic",
+        "status": 401,
+        "denied": true
+      },
+      {
+        "path": "/api/client-cards",
+        "status": 401,
+        "denied": true
+      },
+      {
+        "path": "/api/document-drafts/key",
+        "status": 401,
+        "denied": true
+      }
+    ]
+  },
+  "migration": {
+    "database": {
+      "checkedAt": "2026-09-28T12:26:33.063Z",
+      "project": "bohemikasmlouvy",
+      "readOnly": true,
+      "checked": 5336,
+      "pending": 0,
+      "failed": 0
+    },
+    "files": {
+      "completedAt": "2026-09-28T12:30:59.992Z",
+      "mode": "verify",
+      "id": "dpl_DRVTbxkPx9FB1ThEF1rZwDNF6qCC",
+      "checked": 1568,
+      "pending": 0,
+      "written": 0,
+      "failed": 0
+    }
+  },
+  "authenticatedSmoke": {
+    "deploymentId": "dpl_3fdNmsNXRDyoZwKg4Ty33DyJ6PSw",
+    "checks": [
+      "A:real-TOTP-authentication",
+      "B:real-TOTP-authentication",
+      "A:draft-key-200",
+      "B:isolated-draft-key-200",
+      "A:stable-draft-key",
+      "draft-key-no-store",
+      "draft-key-query-owner-rejected",
+      "draft-key-body-owner-rejected",
+      "draft-key-encrypted-at-rest",
+      "runtime-key-matches-migration-key",
+      "draft-key-direct-firestore-denied-even-author",
+      "A:card-create-200",
+      "A:card-readable",
+      "B:cannot-read-A-card",
+      "card-encrypted-at-rest",
+      "card-no-store",
+      "contract-profile-ready-200",
+      "contract-note-create-200: no JSON error",
+      "contract-note-author-readable",
+      "contract-note-other-author-denied",
+      "contract-note-encrypted-at-rest",
+      "contract-history-author-readable",
+      "contract-history-other-author-denied",
+      "contract-PDF-upload-200",
+      "contract-PDF-encrypted-at-rest",
+      "contract-PDF-author-download-roundtrip",
+      "contract-PDF-other-author-denied"
+    ],
+    "cleanup": {
+      "checkedAt": "2026-09-28T12:43:52.497Z",
+      "syntheticAccountsCleaned": 2,
+      "created": 2,
+      "cleanupComplete": true
+    }
+  },
+  "serviceKeys": {
+    "checkedAt": "2026-09-28T12:38:35.576Z",
+    "enabled": 1,
+    "disabled": 2,
+    "targets": [
+      {
+        "target": "production",
+        "matchesCurrentKey": true,
+        "branchOverrides": 0
+      },
+      {
+        "target": "preview",
+        "matchesCurrentKey": true,
+        "branchOverrides": 0
+      },
+      {
+        "target": "development",
+        "matchesCurrentKey": true,
+        "branchOverrides": 0
+      }
+    ],
+    "reversible": true
+  },
+  "temporaryWorker": {
+    "checkedAt": "2026-09-28T12:39:41.191Z",
+    "workerId": "dpl_DRVTbxkPx9FB1ThEF1rZwDNF6qCC",
+    "temporaryWorkerDeleted": true,
+    "syntheticAccountsDeleted": 2,
+    "credentialFilesRemoved": true,
+    "productionId": "dpl_3fdNmsNXRDyoZwKg4Ty33DyJ6PSw"
+  },
+  "functions": [
+    {
+      "checkedAt": "2026-09-28T12:25:37.157Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/aiAssistant",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:39.499Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/sendTeamMessage",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:41.859Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/sendTestPush",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:44.140Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/cuzkSuggestAddress",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:46.357Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/cuzkLookupByAddress",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:48.643Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/cuzkLookupByAdresniMisto",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:50.782Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/rsvVehicleLookup",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:53.104Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/fakturoidWebhook",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": true,
+      "checks": [
+        {
+          "status": 401,
+          "denied": true
+        },
+        {
+          "status": 401,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:25:56.843Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/notifyAdminOnUserRequest",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": false,
+      "checks": [
+        {
+          "status": 403,
+          "denied": true
+        },
+        {
+          "status": 403,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:26:00.364Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/notifyManagerOnNewEntry",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": false,
+      "checks": [
+        {
+          "status": 403,
+          "denied": true
+        },
+        {
+          "status": 403,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:26:03.021Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/notifyAutoAnniversary",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": false,
+      "checks": [
+        {
+          "status": 403,
+          "denied": true
+        },
+        {
+          "status": 403,
+          "denied": true
+        }
+      ]
+    },
+    {
+      "checkedAt": "2026-09-28T12:26:05.824Z",
+      "name": "projects/bohemikasmlouvy/locations/europe-central2/functions/notifyUnpaidContracts",
+      "state": "ACTIVE",
+      "sourceSha256": "745fb3e80ed07eb7bd51cfec62f1664ab4d690b929f43d5c11e314183b17a6e3",
+      "triggerPreserved": true,
+      "identitiesPreserved": true,
+      "invocationPolicyPreserved": true,
+      "publicInvoker": false,
+      "checks": [
+        {
+          "status": 403,
+          "denied": true
+        },
+        {
+          "status": 403,
+          "denied": true
+        }
+      ]
+    }
+  ],
+  "audit": {
+    "web": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "functions": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    }
+  },
+  "tests": {
+    "isolatedWebFullSuite": 5251,
+    "finalChangedAreaTests": 38,
+    "firestoreAndAuth": 328,
+    "cloudFunctions": 62,
+    "temporaryWorker": 5
+  }
+}

@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { sealPrivateRecord } from "./privateRecords";
 
 const MAILBOX_MAX_RECIPIENTS = 500;
 const TITLE_MAX_LEN = 120;
@@ -118,7 +119,7 @@ export async function writeMailboxEntries({
       .collection("mailbox")
       .doc();
 
-    batch.set(docRef, {
+    batch.set(docRef, sealPrivateRecord(docRef.path, {
       recipientEmail: email,
       type: cleanType,
       title: cleanTitle,
@@ -130,7 +131,7 @@ export async function writeMailboxEntries({
       createdAtMs: nowMs,
       createdAt: FieldValue.serverTimestamp(),
       ...(cleanMetadata ? { metadata: cleanMetadata } : {}),
-    });
+    }));
   });
 
   await batch.commit();
@@ -179,7 +180,7 @@ export async function writeMailboxEntryOnce({
     const existing = await transaction.get(docRef);
     if (existing.exists) return { written: false };
 
-    transaction.set(docRef, {
+    transaction.set(docRef, sealPrivateRecord(docRef.path, {
       recipientEmail: email,
       type: cleanType,
       title: cleanTitle,
@@ -191,7 +192,7 @@ export async function writeMailboxEntryOnce({
       createdAtMs: nowMs,
       createdAt: FieldValue.serverTimestamp(),
       ...(cleanMetadata ? { metadata: cleanMetadata } : {}),
-    });
+    }));
 
     return { written: true };
   });

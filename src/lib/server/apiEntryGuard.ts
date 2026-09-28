@@ -261,6 +261,18 @@ export async function requireAuthedRateLimited(
 
 export function withRateLimitHeaders(response: NextResponse, ctx: AuthedRateLimitContext): NextResponse {
   applyRateLimitHeaders(response.headers, ctx.rateLimit);
+  // Authenticated responses may contain decrypted personal data. Never persist
+  // them in a browser/CDN cache, including when an endpoint forgets this header.
+  response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
+  response.headers.set("Pragma", "no-cache");
+  response.headers.set("Expires", "0");
+  const vary = (response.headers.get("Vary") ?? "").split(",").map(value => value.trim()).filter(Boolean);
+  if (!vary.includes("*")) {
+    for (const name of ["Authorization", "Cookie"]) {
+      if (!vary.some(value => value.toLowerCase() === name.toLowerCase())) vary.push(name);
+    }
+    response.headers.set("Vary", vary.join(", "));
+  }
   return response;
 }
 

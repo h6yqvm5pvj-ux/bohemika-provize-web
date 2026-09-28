@@ -1,3 +1,4 @@
+import { clearPrivateMemory, purgePrivateBrowserCaches } from "./privateMemory";
 import { clearLegacyClientCards } from "./clientCardPrivacy";
 import { clearContractTerminationPrefills } from "./contractTerminationPrivacy";
 import { clearMeetingRecords } from "./meetingRecordPrivacy";
@@ -79,6 +80,8 @@ export async function createServerSessionFromToken(
 }
 
 export async function clearServerSession(): Promise<void> {
+  clearPrivateMemory();
+  purgePrivateBrowserCaches();
   clearMeetingRecords();
   clearContractTerminationPrefills();
   clearLegacyClientCards();

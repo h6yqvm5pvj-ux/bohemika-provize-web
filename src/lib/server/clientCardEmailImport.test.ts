@@ -1,3 +1,4 @@
+import "../../../tests/helpers/privateEncryptionTestKey";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
 import { createEmptyClientCard } from "@/app/_klienti/clientCardData";

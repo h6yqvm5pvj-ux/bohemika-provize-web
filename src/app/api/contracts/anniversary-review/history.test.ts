@@ -1,3 +1,4 @@
+import "../../../../../tests/helpers/privateEncryptionTestKey";
 import type { Firestore } from "firebase-admin/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { appendReviewHistory, readReviewHistory, reviewDto, type ReviewMutation } from "./history";
@@ -137,6 +138,8 @@ describe("persistent anniversary contact history", () => {
     expect(history.history.map(event => event.contactOutcome)).toEqual(["meeting", "reached", "no_answer"]);
     expect(history.history.map(event => event.note)).toEqual(["Přinese smlouvu", "Probrat krytí", "Zkusit později"]);
     expect(history.history[0]).toMatchObject({ actorEmail: "manager@example.test", createdAtMs: Date.parse("2026-09-11T12:00:00Z"), meetingAt: "2026-09-15T14:00" });
+    const stored = JSON.stringify([...docs]);
+    expect(stored).not.toMatch(/Přinese smlouvu|Probrat krytí|Zkusit později|2026-09-15T14:00/);
     expect(history.history[2].createdAtMs).toBe(Date.parse("2026-09-07T09:00:00Z"));
     expect(reviewDto(docs.get(reviewPath)!)).not.toHaveProperty("historyId");
   });

@@ -1,3 +1,5 @@
+import { openPrivateValue, clientCardContext } from "./privateEncryption";
+import { parseClientCardDraft } from "@/app/_klienti/clientCardData";
 import type { DocumentSnapshot, Firestore } from "firebase-admin/firestore";
 import { clientSlugForName } from "@/app/_klienti/clientIdentity";
 import { originalAdviserEmailForContract } from "@/app/api/contracts/_lib/contractsApi.transfer";
@@ -24,7 +26,8 @@ export async function fillClientCardEmailFromUploadedPdf(
   const attachment = normalizeStoredContractPdfAttachment(contract.contractPdfAttachment);
   if (!slug || !attachment || attachment.sha256 !== expectedPdfSha256) return "stale";
   const saved = (await db.collection("clientCardsPrivate").doc(adviser.uid).collection("cards").doc(slug).get()).data();
-  if (typeof saved?.card?.email === "string" && saved.card.email.trim()) return "existing";
+  const existingCard = parseClientCardDraft(openPrivateValue(saved?.card, clientCardContext(adviser.uid, slug)));
+  if (existingCard?.email.trim()) return "existing";
 
   // Read only this client's own indexed links, preserving existing phone and
   // address when creating a card. Never enumerate the entire portfolio here.

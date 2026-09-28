@@ -19,12 +19,12 @@ async function claim(ref: Ref, nowMs: number): Promise<ClaimedReminder | null> {
     const snap = await transaction.get(ref);
     if (!snap.exists) return null;
     const data = snap.data()!;
-    const queue = parseClientNoteQueue(data);
+    const queue = parseClientNoteQueue(data, ref.path);
     if (!queue || ref.id !== clientNoteQueueId(clientNotePath(queue))) { transaction.delete(ref); return null; }
     if (queue.reminderAtMs > nowMs || Number(data.claimUntilMs) > nowMs) return null;
     const noteRef = db.doc(clientNotePath(queue));
     const noteSnap = await transaction.get(noteRef);
-    const note = noteSnap.exists ? clientNoteDto(noteSnap.id, noteSnap.data()!, queue.ownerUid) : null;
+    const note = noteSnap.exists ? clientNoteDto(noteSnap.id, noteSnap.data()!, queue.ownerUid, noteRef.path) : null;
     if (!note || !note.reminderEnabled || note.reminderAtMs !== queue.reminderAtMs || note.revision !== queue.revision) {
       transaction.delete(ref);
       return null;
@@ -108,11 +108,11 @@ export async function runClientNoteReminders(now = new Date()) {
       ]);
       if (!await stillCurrent(reminder)) continue;
       const deepLink = clientNoteDeepLink(reminder.slug, reminder.noteId);
-      const title = `Připomínka: ${reminder.clientName}`.slice(0, 120);
+      const title = "Připomínka jednání s klientem";
       const mailbox = await writeMailboxEntryOnce({
         recipientEmail: reminder.recipientEmail,
         entryId: `client-note-${reminder.ref.id}-${reminder.revision}`,
-        type: "client_note_reminder", title, body: reminder.text, deepLink,
+        type: "client_note_reminder", title, body: "Podrobnosti najdeš v soukromé poznámce klienta.", deepLink,
         metadata: { clientSlug: reminder.slug, noteId: reminder.noteId, reminderAtMs: reminder.reminderAtMs },
         createdAtMs: nowMs,
       });
@@ -130,7 +130,7 @@ export async function runClientNoteReminders(now = new Date()) {
       else {
         try {
           const push = await adminMessaging.sendEachForMulticast({
-            tokens, notification: { title, body: reminder.text.length > 180 ? `${reminder.text.slice(0, 179)}…` : reminder.text },
+            tokens, notification: { title, body: "Podrobnosti najdeš v soukromé poznámce klienta." },
             data: { type: "client_note_reminder", clientSlug: reminder.slug, noteId: reminder.noteId, deepLink },
             webpush: {
               fcmOptions: { link: `${publicOrigin()}${deepLink}` },

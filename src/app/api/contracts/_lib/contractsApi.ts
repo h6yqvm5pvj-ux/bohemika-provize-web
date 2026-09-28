@@ -7,6 +7,7 @@ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { isInheritedContract, inheritedCommissionResult, withInheritedCommissionItems } from "@/app/lib/inheritedContracts";
 // src/app/api/contracts/route.ts
 import { NextResponse, type NextRequest } from "next/server";
@@ -652,6 +653,7 @@ const toContractResponseItem = (
   adviserName?: string | null,
   ownerContext?: ContractOwnerPositionContext | null
 ): ContractResponseItem => {
+  data = openPrivateRecord(`users/${normalizeEmail(ownerEmail)}/entries/${docId}`, data) as ContractDoc;
   data = withInheritedCommissionItems(data);
   const normalizedOwner = normalizeEmail(ownerEmail);
   const signedDate = toDate(data.contractSignedDate);

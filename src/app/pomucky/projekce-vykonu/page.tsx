@@ -32,6 +32,6 @@ export default function ProjectionPage() {
   }, [user, effectiveEmail]);
 
   return <AppLayout active="tools">
-    {user && effectiveEmail && profile?.email === effectiveEmail ? <ProjectionPlanner key={`${user.uid}:${effectiveEmail}`} storageKey={`bohemika:projection:v1:${user.uid}:${effectiveEmail}`} initialPosition={profile.position} /> : <div className={styles.loading} role="status">{user ? "Připravuji tvůj plán…" : "Projekce výkonu je dostupná po přihlášení."}</div>}
+    {user && effectiveEmail && profile?.email === effectiveEmail ? <ProjectionPlanner key={`${user.uid}:${effectiveEmail}`} user={user} initialPosition={profile.position} /> : <div className={styles.loading} role="status">{user ? "Připravuji tvůj plán…" : "Projekce výkonu je dostupná po přihlášení."}</div>}
   </AppLayout>;
 }

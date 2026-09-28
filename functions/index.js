@@ -1009,12 +1009,6 @@ function shouldSendUnpaidReminder(userData, signature, now = new Date()) {
 
 const ADMIN_REQUEST_NOTIFICATION_EMAILS = ["jakub.rauscher@bohemika.eu"];
 
-function getUserRequestSubjectLabel(subjectRaw) {
-  const subject = String(subjectRaw || "").trim().toLowerCase();
-  if (subject === "userCreation") return "Založení uživatele";
-  return "Jiná žádost";
-}
-
 exports.notifyAdminOnUserRequest = onDocumentCreated(
   { document: "userRequests/{requestId}", ...runtimeOptions("notifyAdminOnUserRequest") },
   async (event) => {
@@ -1025,22 +1019,14 @@ exports.notifyAdminOnUserRequest = onDocumentCreated(
     const requesterEmail = String(requestData.requesterEmail || "").trim().toLowerCase();
     if (!requesterEmail) return;
 
-    const requesterName = formatUserNameFromEmail(requesterEmail) || requesterEmail;
-    const subjectLabel = getUserRequestSubjectLabel(requestData.subject);
     const priority = String(requestData.priority || "normal").trim().toLowerCase();
     const isUrgent = priority === "urgent";
     const requestId = String(event.params?.requestId || "").trim();
-    const messageRaw = String(requestData.message || "").trim();
-    const messagePreview =
-      messageRaw.length > 110 ? `${messageRaw.slice(0, 107)}...` : messageRaw;
 
     const title = isUrgent
       ? "🚨 URGENTNÍ nová žádost od uživatele"
       : "Nová žádost od uživatele";
-    const bodyBase = `${requesterName} • ${subjectLabel}`;
-    const body = messagePreview
-      ? `${isUrgent ? "🚨 URGENTNÍ: " : ""}${bodyBase} — ${messagePreview}`
-      : `${isUrgent ? "🚨 URGENTNÍ: " : ""}${bodyBase}`;
+    const body = "Podrobnosti nové žádosti zobrazíš po přihlášení do aplikace.";
 
     const db = admin.firestore();
 
@@ -1065,9 +1051,6 @@ exports.notifyAdminOnUserRequest = onDocumentCreated(
           data: {
             type: "user_request_created",
             requestId,
-            requesterEmail,
-            requesterName,
-            subject: String(requestData.subject || "").trim(),
             priority: isUrgent ? "urgent" : "normal",
             urgent: isUrgent ? "1" : "0",
           },
@@ -1238,15 +1221,12 @@ exports.notifyAutoAnniversary = onSchedule(
         if (!fcmToken) continue;
 
         const productKey = entry.productKey || "";
-        const productName = getProductDisplayName(productKey);
-        const contractNumber = String(entry.contractNumber || "bez čísla smlouvy").trim();
-        const clientName = String(entry.clientName || "neznámý klient").trim();
 
         const message = {
           token: fcmToken,
           notification: {
             title: "📅 Blíží se výročí smlouvy",
-            body: `Za 65 dní bude mít smlouva ${anniversaryNumber}. výročí! ${contractNumber}, ${productName}, klient ${clientName}.`
+            body: "Blíží se výročí smlouvy. Podrobnosti najdeš po přihlášení v aplikaci."
           },
           data: { entryId: doc.id || "", productKey },
           apns: { payload: { aps: { sound: "default", badge: 1 } } }
@@ -1314,24 +1294,13 @@ exports.notifyUnpaidContracts = onSchedule(
         if (!shouldSendUnpaidReminder(userData, unpaidSignature, now)) continue;
 
         const oldest = unpaidEntries[0];
-        const productName = getProductDisplayName(oldest.productKey);
-        const contractNumber = String(oldest.contractNumber || "").trim() || "bez čísla";
-        const clientName = String(oldest.clientName || "").trim();
         const unpaidCount = unpaidEntries.length;
-
-        const detail = clientName
-          ? `${productName}, ${contractNumber}, klient ${clientName}`
-          : `${productName}, ${contractNumber}`;
-
-        const body = unpaidCount === 1
-          ? `Máš 1 nezaplacenou smlouvu: ${detail}`
-          : `Máš ${unpaidCount} nezaplacené smlouvy. Nejstarší: ${detail}`;
 
         const message = {
           token: fcmToken,
           notification: {
             title: "💸 Nezaplacené smlouvy",
-            body,
+            body: "Máš nezaplacené smlouvy. Podrobnosti najdeš po přihlášení v aplikaci.",
           },
           data: {
             type: "unpaid_contracts",

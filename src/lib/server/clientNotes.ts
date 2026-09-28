@@ -1,3 +1,4 @@
+import { openPrivateValue } from "./privateEncryption";
 import { createHash } from "node:crypto";
 import { CLIENT_NOTE_KINDS, isClientNoteId, type ClientNote } from "@/app/_klienti/clientNotes";
 import { isClientCardSlug } from "@/app/_klienti/clientIdentity";
@@ -5,7 +6,9 @@ import { isClientCardSlug } from "@/app/_klienti/clientIdentity";
 export const CLIENT_NOTE_REMINDERS_COLLECTION = "clientNoteReminders";
 export const clientNoteQueueId = (notePath: string) => createHash("sha256").update(notePath).digest("hex");
 
-export function clientNoteDto(id: string, data: Record<string, unknown>, uid: string): ClientNote {
+export function clientNoteDto(id: string, data: Record<string, unknown>, uid: string, path: string): ClientNote {
+  if (data.ownerUid !== uid) throw new Error("Invalid note owner");
+  data = { ...data, text: openPrivateValue(data.text, `${path}:text`) };
   if (data.ownerUid !== uid || !isClientNoteId(id) || typeof data.text !== "string" ||
       typeof data.kind !== "string" || !Object.hasOwn(CLIENT_NOTE_KINDS, data.kind) ||
       !Number.isSafeInteger(data.revision) || Number(data.revision) < 1 ||
@@ -32,7 +35,8 @@ export type ClientNoteQueue = {
   revision: number;
 };
 
-export function parseClientNoteQueue(data: Record<string, unknown>): ClientNoteQueue | null {
+export function parseClientNoteQueue(data: Record<string, unknown>, path: string): ClientNoteQueue | null {
+  data = { ...data, clientName: openPrivateValue(data.clientName, `${path}:clientName`) };
   if (typeof data.ownerUid !== "string" || !data.ownerUid || /[/]/.test(data.ownerUid) ||
       typeof data.recipientEmail !== "string" || !/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(data.recipientEmail) ||
       typeof data.slug !== "string" || !isClientCardSlug(data.slug) || !isClientNoteId(data.noteId) ||

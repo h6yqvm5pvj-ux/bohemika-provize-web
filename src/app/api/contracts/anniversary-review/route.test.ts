@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.guard.mockResolvedValue({ ok: true, ctx: { email: "own@example.test", actorEmail: "actor@example.test", contractAccessEmails: team, accountType: "advisor" }, withRateLimit: (response: NextResponse) => response });
   mocks.where.mockImplementation((_field, _operator, owners: string[]) => ({ get: () => mocks.get(owners) }));
-  mocks.get.mockImplementation(async (owners: string[]) => ({ docs: owners.map(owner => ({ data: () => ({ ownerEmail: owner, entryId: "same-id", occurrenceKey: "2026-09-10", contactOutcome: "meeting", note: "Test note" }) })) }));
+  mocks.get.mockImplementation(async (owners: string[]) => ({ docs: owners.map(owner => ({ ref: { path: `anniversaryReviews/${owner}__same-id` }, data: () => ({ ownerEmail: owner, entryId: "same-id", occurrenceKey: "2026-09-10", contactOutcome: "meeting", note: "Test note" }) })) }));
   mocks.history.mockResolvedValue({ history: [], hasMore: false, nextCursor: null });
   mocks.append.mockResolvedValue({ ownerEmail: "own@example.test", entryId: "contract-1", historyCount: 1, handled: true });
 });

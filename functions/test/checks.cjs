@@ -9,14 +9,15 @@ const generation = "12345678-1234-1234-1234-123456789abc";
 function memory(initial = {}) {
   const rows = new Map(Object.entries(initial)); let tail = Promise.resolve();
   const snapshot = path => ({ exists: rows.has(path), id: path.split("/").at(-1), ref: ref(path), data: () => rows.get(path) });
-  const ref = path => ({ path, get: async () => snapshot(path) });
+  const ref = path => ({ path, get: async () => snapshot(path), collection: name => db.collection(`${path}/${name}`),
+    set: async (value, options) => rows.set(path, options?.merge ? { ...rows.get(path), ...value } : value) });
   const db = { rows, collection(name) {
     const query = (filters = [], max = Infinity) => ({
       doc: id => ref(`${name}/${id}`),
       where: (field, op, value) => { assert.equal(op, "=="); return query([...filters, [field,value]], max); },
       limit: n => query(filters, n),
       async get() {
-        const docs = [...rows].filter(([k,v]) => k.startsWith(name + "/") && k.split("/").length === 2 && filters.every(([f,w]) => v[f] === w)).slice(0,max).map(([k]) => snapshot(k));
+        const docs = [...rows].filter(([k,v]) => k.startsWith(name + "/") && k.split("/").length === name.split("/").length + 1 && filters.every(([f,w]) => v[f] === w)).slice(0,max).map(([k]) => snapshot(k));
         return { empty: !docs.length, docs };
       },
     });
@@ -89,13 +90,40 @@ function handlers(f) {
   "firebase-functions/v2/firestore":{onDocumentCreated:capture},"firebase-functions/v2":{setGlobalOptions(){}},"firebase-functions/v2/https":{onRequest:capture},
   "firebase-functions/params":{defineSecret:()=>({value:()=>"synthetic-secret"})},"firebase-functions/v2/scheduler":{onSchedule:capture},
   "./security":require("../security"),"./billing":require("../billing"),"./runtime":require("../runtime")};
- const exports={};vm.runInNewContext(fs.readFileSync(require.resolve("../index"),"utf8"),{exports,require:name=>{if(!modules[name])throw new Error(name);return modules[name];},console:{log(){},warn(){},error(){}}},{timeout:1000});return exports;
+ const exports={};vm.runInNewContext(fs.readFileSync(require.resolve("../index"),"utf8"),{exports,...(f.Date?{Date:f.Date}:{}),require:name=>{if(!modules[name])throw new Error(name);return modules[name];},console:{log(){},warn(){},error(){}}},{timeout:1000});return exports;
 }
 async function invoke(fn,req) {
  const result={status:200,headers:{},body:null};const res={set(k,v){result.headers[k]=v;return this;},status(v){result.status=v;return this;},json(v){result.body=v;return this;},send(v){result.body=v;return this;}};
  await fn(req,res);return result;
 }
+for (const message of ["Sensitive request content", { privateEncryption: 1, payload: "encrypted" }]) test("user request push contains no request text or author identity", async () => {
+ const f=fixture();f.db.rows.set("users/jakub.rauscher@bohemika.eu",{fcmToken:"synthetic-admin-device"});
+ await handlers(f).notifyAdminOnUserRequest({params:{requestId:"synthetic-request"},data:{data:()=>({requesterEmail:"sensitive-author@example.invalid",subject:"problem",priority:"urgent",message})}});
+ assert.equal(f.calls.push.length,1);
+ const payload=JSON.stringify(f.calls.push[0]);
+ assert.ok(!/Sensitive|sensitive-author|\[object Object\]|encrypted/.test(payload));
+ assert.equal(f.calls.push[0].data.requestId,"synthetic-request");
+});
 const protectedFunctions=["aiAssistant","sendTeamMessage","sendTestPush","cuzkSuggestAddress","cuzkLookupByAddress","cuzkLookupByAdresniMisto","rsvVehicleLookup"];
+test("scheduled anniversary push hides client name and contract number", async () => {
+ const f=fixture();
+ f.Date=class extends Date { constructor(...args){ super(...(args.length?args:["2026-09-28T12:00:00Z"])); } };
+ const start=new f.Date("2024-12-02T00:00:00Z");
+ f.db.collectionGroup=()=>({where:()=>({get:async()=>({docs:[{id:"synthetic-entry",data:()=>({policyStartDate:{toDate:()=>start},productKey:"cppAuto",clientName:"Sensitive client",contractNumber:"Sensitive number"}),ref:{parent:{parent:{get:async()=>({exists:true,data:()=>({fcmToken:"synthetic-device"})})}}}}]})})});
+ await handlers(f).notifyAutoAnniversary();
+ assert.equal(f.calls.push.length,1);
+ assert.ok(!JSON.stringify(f.calls.push).includes("Sensitive"));
+ assert.equal(f.calls.push[0].data.entryId,"synthetic-entry");
+});
+test("scheduled unpaid push hides client details and preserves reminder state", async () => {
+ const f=fixture();
+ f.db.rows.set("users/recipient@example.invalid/entries/synthetic-entry",{clientName:"Sensitive client",contractNumber:"Sensitive number",productKey:"cppAuto",policyStartDate:"2020-01-01",isPaid:false,createdAt:"2020-01-01"});
+ await handlers(f).notifyUnpaidContracts();
+ assert.equal(f.calls.push.length,1);
+ assert.ok(!JSON.stringify(f.calls.push).includes("Sensitive"));
+ assert.equal(f.calls.push[0].data.firstEntryId,"synthetic-entry");
+ assert.equal(f.db.rows.get("users/recipient@example.invalid").unpaidReminderState.lastCount,1);
+});
 for(const name of protectedFunctions) for(const kind of ["missing","invalid","missingMfa","revoked"]) test(`${name} rejects ${kind} before side effects`,async()=>{
  const f=fixture();rejects[kind](f);f.req.method=name.startsWith("cuzk")||name==="rsvVehicleLookup"?"GET":"POST";
  f.req.body={prompt:"test",managerEmail:f.token.email,message:"test",target:"selected",recipients:["recipient@example.invalid"]};f.req.query={vin:"SYNTHETICVIN12345"};

@@ -1,5 +1,6 @@
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { openPrivateRecord, sealPrivateRecord } from "@/lib/server/privateRecords";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -75,8 +76,10 @@ const numberOrNull = (value: unknown): number | null =>
 const noteDto = (
   id: string,
   data: Record<string, unknown>,
+  path: string,
   legacy = false
 ): ContractNoteDto => {
+  data = openPrivateRecord(path, data);
   const nowMs = Date.now();
   const createdAtMs =
     numberOrNull(data.createdAtMs) ?? toMillis(data.createdAt) ?? nowMs;
@@ -193,7 +196,7 @@ const authorizeContract = async ({
 
   return {
     ok: true as const,
-    contract,
+    contract: openPrivateRecord(contractRef.path, contract) as ContractDoc,
     contractRef,
     contractSnap,
     notesRef: (typeof contract.contractNotesPath === "string" && /^users\/[^/]+\/entries\/[^/]+$/.test(contract.contractNotesPath)
@@ -212,7 +215,7 @@ export async function GET(req: NextRequest) {
 
   const snapshot = await access.notesRef.orderBy("createdAtMs", "desc").limit(100).get();
   const notes = snapshot.docs
-    .map((docSnap) => noteDto(docSnap.id, docSnap.data()))
+    .map((docSnap) => noteDto(docSnap.id, docSnap.data(), docSnap.ref.path))
     .filter((note) => note.text);
 
   const legacyText =
@@ -288,8 +291,9 @@ export async function POST(req: NextRequest) {
     updatedAt: FieldValue.serverTimestamp(),
   };
   const batch = adminDb!.batch();
-  batch.create(noteRef, data);
-  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, {}, {
+  const sealedData = sealPrivateRecord(noteRef.path, data);
+  batch.create(noteRef, sealedData);
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contractSnap.data()!, {}, {
     actorEmail: access.actorEmail, kind: "note", title: "Přidána poznámka",
     changes: [
       { label: "Poznámka", before: null, after: normalized.value.text },
@@ -300,7 +304,7 @@ export async function POST(req: NextRequest) {
   if (conflict) return conflict;
 
   return access.withRateLimit(
-    NextResponse.json({ ok: true, note: noteDto(noteRef.id, data) })
+    NextResponse.json({ ok: true, note: noteDto(noteRef.id, sealedData, noteRef.path) })
   );
   });
 }
@@ -345,7 +349,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const nowMs = Date.now();
-  const existingData = (existingSnap.data() ?? {}) as Record<string, unknown>;
+  const existingData = openPrivateRecord(noteRef.path, existingSnap.data() ?? {});
   const createdAtMs =
     numberOrNull(existingData.createdAtMs) ??
     toMillis(existingData.createdAt) ??
@@ -390,8 +394,9 @@ export async function PATCH(req: NextRequest) {
         }),
   };
   const batch = adminDb!.batch();
-  batch.set(noteRef, updateData, { merge: true });
-  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, noteId === "legacy" ? { note: "" } : {}, {
+  const sealedUpdate = sealPrivateRecord(noteRef.path, updateData);
+  batch.set(noteRef, sealedUpdate, { merge: true });
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contractSnap.data()!, noteId === "legacy" ? { note: "" } : {}, {
     actorEmail: access.actorEmail, kind: "note", title: "Upravena poznámka",
     changes: [
       { label: "Poznámka", before: String(existingData.text ?? legacyText), after: normalized.value.text },
@@ -406,9 +411,9 @@ export async function PATCH(req: NextRequest) {
       ok: true,
       note: noteDto(noteId, {
         ...existingData,
-        ...updateData,
+        ...sealedUpdate,
         createdAtMs,
-      }),
+      }, noteRef.path),
     })
   );
   });
@@ -448,9 +453,9 @@ export async function DELETE(req: NextRequest) {
 
   const batch = adminDb!.batch();
   if (noteSnap.exists) batch.delete(noteRef);
-  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contract, noteId === "legacy" ? { note: "" } : {}, {
+  batch.update(access.contractRef, withContractHistory(batch, access.contractRef, access.contractSnap.data()!, noteId === "legacy" ? { note: "" } : {}, {
     actorEmail: access.actorEmail, kind: "note", title: "Odstraněna poznámka",
-    changes: [{ label: "Poznámka", before: String(noteSnap.data()?.text ?? access.contract.note ?? ""), after: null }],
+    changes: [{ label: "Poznámka", before: String(openPrivateRecord(noteRef.path, noteSnap.data() ?? {}).text ?? access.contract.note ?? ""), after: null }],
   }), { lastUpdateTime: access.contractSnap.updateTime! });
   const conflict = await commitNotes(batch, access.withRateLimit);
   if (conflict) return conflict;

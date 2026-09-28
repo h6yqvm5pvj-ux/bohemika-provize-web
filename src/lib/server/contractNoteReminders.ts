@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntryOnce } from "@/lib/server/mailbox";
+import { openPrivateRecord } from "./privateRecords";
 import {
   collectPushTokens,
   isPermanentInvalidPushTokenCode,
@@ -14,7 +15,6 @@ import {
   type ContractNoteReminderCandidate,
   contractNoteReminderDeepLink,
   contractNoteReminderMailboxId,
-  contractNoteReminderTitle,
   resolveContractNoteReminderCandidate,
 } from "@/lib/server/contractNoteReminderLogic";
 
@@ -120,7 +120,7 @@ const claimReminder = async (
   return adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists) return null;
-    const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+    const data = openPrivateRecord(ref.path, snapshot.data() ?? {});
     const notesParent = ref.parent.parent;
     if (!notesParent) return null;
     const location = (await transaction.get(contractNoteLocationRef(notesParent))).data();
@@ -256,11 +256,9 @@ const sendPush = async ({
     };
   }
 
-  const title = contractNoteReminderTitle(reminder);
+  const title = "Připomínka ke smlouvě";
   const deepLink = contractNoteReminderDeepLink(reminder);
-  const body = reminder.text.length > 180
-    ? `${reminder.text.slice(0, 179).trimEnd()}…`
-    : reminder.text;
+  const body = "Máš naplánovanou připomínku. Podrobnosti zobrazíš po přihlášení.";
   let successCount = 0;
   let failureCount = 0;
   const invalidTokens: string[] = [];
@@ -276,7 +274,6 @@ const sendPush = async ({
           ownerEmail: reminder.ownerEmail,
           entryId: reminder.entryId,
           noteId: reminder.noteId,
-          contractNumber: reminder.contractNumber,
           deepLink,
         },
         webpush: {
@@ -337,7 +334,9 @@ export async function runContractNoteReminders(
   const origin = resolvePublicAppOrigin(req);
 
   for (const docSnapshot of snapshot.docs) {
-    const reminder = await claimReminder(docSnapshot.ref, nowMs);
+    let reminder: ClaimedReminder | null;
+    try { reminder = await claimReminder(docSnapshot.ref, nowMs); }
+    catch { result.failed += 1; continue; }
     if (!reminder) continue;
     result.claimed += 1;
 
@@ -347,17 +346,14 @@ export async function runContractNoteReminders(
           recipientEmail: reminder.recipientEmail,
         entryId: contractNoteReminderMailboxId(reminder),
         type: "contract_note_reminder",
-        title: contractNoteReminderTitle(reminder),
-        body: reminder.text,
+        title: "Připomínka ke smlouvě",
+        body: "Máš naplánovanou připomínku. Podrobnosti zobrazíš po přihlášení.",
         deepLink,
         metadata: {
           ownerEmail: reminder.ownerEmail,
           recipientEmail: reminder.recipientEmail,
           entryId: reminder.entryId,
           noteId: reminder.noteId,
-          contractNumber: reminder.contractNumber,
-          clientName: reminder.clientName,
-          productKey: reminder.productKey,
           reminderAtMs: reminder.reminderAtMs,
         },
         createdAtMs: nowMs,

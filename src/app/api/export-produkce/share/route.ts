@@ -1,3 +1,4 @@
+import { sealPrivateRecord } from "@/lib/server/privateRecords";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
     const sharedPreviewRef = adminDb.collection("mailboxSharedPayloads").doc();
     const createdAtMs = Date.now();
 
-    await sharedPreviewRef.set({
+    await sharedPreviewRef.set(sealPrivateRecord(sharedPreviewRef.path, {
       type: "production_export_share",
       senderEmail: ctx.email,
       senderName,
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
       snapshot,
       createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
-    });
+    }));
 
     const withNote = noteText ? ` Zpráva: ${noteText}` : "";
     const bodyText =

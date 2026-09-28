@@ -17,6 +17,7 @@ const scripts = [
   "backfill-installment-commission-codes.mjs",
   "backfill-auto-subsequent-commission-items.mjs",
   "migrate-users-private-fields.mjs",
+  "migrate-private-data-encryption.mjs",
   "set-document-specialist.mjs",
   "set-online-card-slug.mjs",
   "backfill-contract-refs-team-overview.mjs",

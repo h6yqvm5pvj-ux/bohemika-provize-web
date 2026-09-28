@@ -1,3 +1,5 @@
+import { isPrivateSystemMessage } from "./privateRecords";
+import { openPrivateValue } from "./privateEncryption";
 import { randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { type NextRequest } from "next/server";
@@ -144,8 +146,8 @@ const parseReminderDoc = (
     return null;
   }
 
-  const title = clampText(normalizeText(data.title) || "Připomínka z pošty", 90);
-  const body = clampText(normalizeText(data.body) || "Máš odloženou zprávu v poště.", 160);
+  const title = "Připomínka z pošty";
+  const body = "Máš odloženou zprávu. Podrobnosti zobrazíš po přihlášení.";
   const messageId = ref.id;
 
   return {
@@ -184,19 +186,13 @@ const parseReplyReminderDoc = (
     (sentAtMs && sentAtMs >= replyReminderAtMs) ||
     (skippedAtMs && skippedAtMs >= replyReminderAtMs)
   ) return null;
-  const counterpartName = normalizeText(metadata?.groupName) ||
-    normalizeText(metadata?.recipientName) ||
-    "adresáta";
   return {
     ref,
     messageId: ref.id,
     recipientEmail,
     type: normalizeText(data.type) || "direct_message",
-    title: clampText(`Bez odpovědi: ${counterpartName}`, 90),
-    body: clampText(
-      normalizeText(data.body) || "Na tuto zprávu zatím nikdo neodpověděl.",
-      160
-    ),
+    title: "Připomínka odpovědi",
+    body: "Na odeslanou zprávu zatím nepřišla odpověď. Podrobnosti zobrazíš po přihlášení.",
     deepLink: `/posta?messageId=${encodeURIComponent(ref.id)}&source=reply-reminder`,
     snoozedUntilMs: replyReminderAtMs,
     kind: "reply",
@@ -238,7 +234,8 @@ async function claimReminder(
     const snap = await transaction.get(ref);
     if (!snap.exists) return null;
 
-    const data = (snap.data() ?? {}) as Record<string, unknown>;
+    const data: Record<string, unknown> = { ...snap.data() };
+    if (isPrivateSystemMessage(data.type)) data.metadata = openPrivateValue(data.metadata, `${ref.path}:metadata`);
     const claimed =
       parseReplyReminderDoc(ref, data, nowMs) ?? parseReminderDoc(ref, data, nowMs);
     if (!claimed) return null;
@@ -558,7 +555,9 @@ export async function runDueMailboxSnoozeReminders(
   let pushFailureCount = 0;
 
   for (const ref of due.refs) {
-    const reminder = await claimReminder(ref, nowMs);
+    let reminder: ClaimedMailboxReminder | null;
+    try { reminder = await claimReminder(ref, nowMs); }
+    catch { failed += 1; continue; }
     if (!reminder) {
       skipped += 1;
       continue;
