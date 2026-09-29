@@ -30,6 +30,7 @@
     "emoji-picker-react": "^4.19.1",
     "firebase": "^12.6.0",
     "firebase-admin": "^13.6.0",
+    "google-auth-library": "9.15.1",
     "html2canvas-pro": "^2.0.2",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",

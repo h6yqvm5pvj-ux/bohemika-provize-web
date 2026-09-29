@@ -111,3 +111,16 @@ Profile photos accept JPG, PNG, and WEBP. The image optimizer only accepts remot
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+
+## Frequent web notifications on Vercel Hobby
+
+Daily jobs are managed by `vercel.json`. Subdaily admin broadcasts and mailbox
+reminders are managed by `web-scheduler.json` in the existing Google Cloud project.
+After deploying the website, run `node scripts/deploy-web-scheduler.mjs --apply`
+with the authorized Firebase operator login, then verify with `--check`. Without
+an argument the script only reads configuration and shows the plan. The jobs use
+Google-signed OIDC tokens with an exact audience and the pinned service account;
+no Vercel secret is exported. Updating a job preserves an intentional paused state,
+which `--check` reports as not enabled. The two Firebase function schedules are not
+managed by this script.

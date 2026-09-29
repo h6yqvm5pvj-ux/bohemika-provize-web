@@ -1,0 +1,18 @@
+{
+  "projectId": "bohemikasmlouvy",
+  "location": "europe-central2",
+  "origin": "https://bohemka.app",
+  "jobs": [
+    {
+      "id": "bohemika-web-admin-broadcasts",
+      "path": "/api/cron/admin-broadcasts",
+      "schedule": "* * * * *"
+    },
+    {
+      "id": "bohemika-web-mailbox-snooze-reminders",
+      "path": "/api/cron/mailbox-snooze-reminders",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "serviceAccountEmail": "579896350733-compute@developer.gserviceaccount.com"
+}

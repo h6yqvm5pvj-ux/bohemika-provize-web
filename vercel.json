@@ -16,20 +16,12 @@
       "schedule": "15 7 * * *"
     },
     {
-      "path": "/api/cron/mailbox-snooze-reminders",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/contract-note-reminders",
       "schedule": "45 7 * * *"
     },
     {
       "path": "/api/cron/password-change-notices",
       "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/admin-broadcasts",
-      "schedule": "* * * * *"
     }
   ]
 }
