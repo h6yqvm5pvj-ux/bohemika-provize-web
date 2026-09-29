@@ -1,5 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
+
+import { openPreviewWindow } from "@/lib/openPreviewWindow";
 import dynamic from "next/dynamic";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 
@@ -1694,7 +1696,7 @@ export default function CalculatorPage() {
 
     let openedWindow: Window | null = null;
     if (action === "open") {
-      openedWindow = window.open("", "_blank", "noopener,noreferrer");
+      openedWindow = openPreviewWindow();
       if (!openedWindow) {
         setNeonPreviewError("Prohlížeč zablokoval otevření nové karty s PDF.");
         return;

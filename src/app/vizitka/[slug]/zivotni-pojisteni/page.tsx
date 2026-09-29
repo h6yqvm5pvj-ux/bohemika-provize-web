@@ -1,3 +1,4 @@
+import { resolveOnlineCardLocale } from "@/lib/onlineCardI18n";
 import { notFound } from "next/navigation";
 
 import LifeInsuranceShellClient from "./LifeInsuranceShellClient";
@@ -13,15 +14,19 @@ export const dynamic = "force-dynamic";
 
 export default async function OnlineCardLifeInsurancePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ lang?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const { lang } = await searchParams;
+  const initialLocale = resolveOnlineCardLocale(Array.isArray(lang) ? lang[0] : lang);
   const normalizedSlug = normalizeOnlineCardSlug(slug);
   if (!normalizedSlug || !ONLINE_CARD_SLUG_RE.test(normalizedSlug)) notFound();
 
   const card = await loadOnlineCardBySlug(normalizedSlug);
   if (!card) notFound();
 
-  return <LifeInsuranceShellClient slug={normalizedSlug} />;
+  return <LifeInsuranceShellClient slug={normalizedSlug} initialLocale={initialLocale} />;
 }

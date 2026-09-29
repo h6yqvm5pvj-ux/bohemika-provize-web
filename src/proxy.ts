@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { STATEMENT_TOGGLE_SCRIPT, SCENARIO_FIT_SCRIPT } from "@/lib/previewScripts";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
@@ -7,6 +9,10 @@ import { verifyActiveAppSession } from "@/lib/server/activeAppSession";
 import { AUTH_EMAIL_ACTION_PATH } from "@/lib/authEmailAction";
 import { OCR_WORKER_CSP } from "@/lib/ocrWorkerPolicy";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
+
+const previewScriptHash = (script: string) => `'sha256-${createHash("sha256").update(script).digest("base64")}'`;
+const STATEMENT_SCRIPT_HASH = previewScriptHash(STATEMENT_TOGGLE_SCRIPT);
+const SCENARIO_SCRIPT_HASH = previewScriptHash(SCENARIO_FIT_SCRIPT);
 
 const CONNECT_SRC = [
   "'self'",
@@ -94,12 +100,14 @@ function buildStaticCsp(frameAncestors = "'none'", frameSrc = FRAME_SRC): string
 function buildStrictNonceCsp(
   nonce: string,
   frameAncestors = "'none'",
-  frameSrc = FRAME_SRC
+  frameSrc = FRAME_SRC,
+  previewScriptHashes: string[] = []
 ): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
+    ...previewScriptHashes,
     ...(process.env.NODE_ENV !== "production" ? ["'unsafe-eval'"] : []),
   ].join(" ");
 
@@ -267,12 +275,16 @@ export async function proxy(req: NextRequest) {
     pathname === "/pomucky/srovnavac-trvalych-nasledku" &&
     req.nextUrl.searchParams.get("embed") === "1" &&
     req.nextUrl.searchParams.get("preset") === "neon-oneguard-10x";
+  const isWeeklyReportEmbed =
+    pathname === "/muj-tym/tydenni-report" &&
+    req.nextUrl.searchParams.get("source") === "weekly-report" &&
+    req.nextUrl.searchParams.get("embed") === "mailbox";
   const isVigModelEmbed = pathname === "/models/vig/index.html";
   const isVigModelScript =
     pathname === "/models/vig/bootstrap.js" || pathname === "/models/vig/viewer.js";
   const isSameOriginEmbed =
     isContractDetailEmbed || isTipDetailEmbed || isAresEmbed || isStatementCalculatorEmbed || isOnlineCardEmbed ||
-    isToolsComparisonEmbed || isVigModelEmbed;
+    isToolsComparisonEmbed || isWeeklyReportEmbed || isVigModelEmbed;
   const frameAncestors = isMeetingEmbed
     ? getMeetingEmbedFrameAncestors()
     : isSameOriginEmbed
@@ -285,7 +297,14 @@ export async function proxy(req: NextRequest) {
   const frameSrc = pathname === "/cuzk" || pathname === "/cuzk/"
     ? `${FRAME_SRC} https://www.google.com/maps https://www.google.com/maps/`
     : FRAME_SRC;
-  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors, frameSrc);
+  // srcDoc inherits this policy. Authorize only the fixed preview code, while
+  // imported scripts and event handlers stay blocked in scripts-only sandboxes.
+  const previewScriptHashes = pathname === "/cashflow" || /^\/smlouvy\/[^/]+\/?$/.test(pathname)
+    ? [STATEMENT_SCRIPT_HASH]
+    : pathname === "/pomucky/srovnavac-trvalych-nasledku"
+      ? [SCENARIO_SCRIPT_HASH]
+      : [];
+  const strictCsp = buildStrictNonceCsp(nonce, frameAncestors, frameSrc, previewScriptHashes);
   requestHeaders.set("Content-Security-Policy", strictCsp);
 
   const earlyRedirect =

@@ -1,0 +1,46 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const {chromium}=require('../contract-filter-check/tools/node_modules/playwright');
+const out=path.join(process.cwd(),'.tmp/web-audit-20260929');
+const base='http://127.0.0.1:3000';
+async function main(){
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--no-first-run']});
+ const results={browser:await browser.version(),pages:[],http:[],forms:[]};
+ try {
+  const routes=['/login','/ucet/akce','/ucet/zabezpeceni','/embed/pojisteni-vozidla?advisor=jakub-rauscher','/embed/zivotni-pojisteni?advisor=jakub-rauscher','/embed/zlato?advisor=jakub-rauscher','/vizitka/jakub-rauscher','/vizitka/jakub-rauscher/pojisteni-vozidla','/vizitka/jakub-rauscher/zivotni-pojisteni','/vizitka/jakub-rauscher/cestovni-pojisteni','/vizitka/jakub-rauscher/zlato','/stranka-ktera-neexistuje-audit'];
+  for(const width of [1440,390]){
+   const context=await browser.newContext({viewport:{width,height:900},serviceWorkers:'block'});
+   await context.route('**/*',route=>{
+    const req=route.request(),url=new URL(req.url());
+    if(url.origin!==base) return route.abort();
+    if(!['GET','HEAD'].includes(req.method())) return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"requestId":"synthetic-audit"}'});
+    return route.continue();
+   });
+   const page=await context.newPage();
+   for(const pathname of routes){
+    const errors=[],consoleErrors=[],failed=[];
+    const onError=e=>errors.push(e.message);const onConsole=m=>{if(m.type()==='error')consoleErrors.push(m.text().slice(0,600));};
+    const onResponse=r=>{if(r.status()>=400)failed.push({url:r.url().replace(base,''),status:r.status()});};
+    page.on('pageerror',onError);page.on('console',onConsole);page.on('response',onResponse);
+    try{
+     const response=await page.goto(base+pathname,{waitUntil:'domcontentloaded',timeout:45000});
+     await page.waitForTimeout(1400);
+     const state=await page.evaluate(()=>({title:document.title,lang:document.documentElement.lang,viewport:document.querySelector('meta[name=viewport]')?.content,width:innerWidth,scrollWidth:document.documentElement.scrollWidth,h1:[...document.querySelectorAll('h1')].map(x=>x.innerText),text:document.body.innerText.slice(0,500),brokenImages:[...document.images].filter(x=>x.complete&&!x.naturalWidth).map(x=>x.getAttribute('src')),unlabelledInputs:[...document.querySelectorAll('input,select,textarea')].filter(x=>x.type!=='hidden'&&x.getClientRects().length&&!x.labels?.length&&!x.getAttribute('aria-label')&&!x.getAttribute('aria-labelledby')).map(x=>({tag:x.tagName,type:x.type,placeholder:x.placeholder})),overflows:[...document.querySelectorAll('body *')].filter(x=>x.getBoundingClientRect().right>innerWidth+3&&getComputedStyle(x).position!=='fixed').slice(0,8).map(x=>({tag:x.tagName,cls:String(x.className).slice(0,120)}))}));
+     const entry={pathname,width,status:response.status(),url:page.url().replace(base,''),...state,errors,consoleErrors,failed};results.pages.push(entry);
+     await page.screenshot({path:path.join(out,`${width}-${pathname.split('?')[0].replace(/\//g,'_')}.png`),fullPage:false});
+     console.log(JSON.stringify({path:pathname,width,status:response.status(),overflow:state.scrollWidth>width,errors:errors.length,consoleErrors:consoleErrors.length,failed:failed.length}));
+    }catch(e){results.pages.push({pathname,width,error:e.message});console.log(pathname+': '+e.message);}
+    page.off('pageerror',onError);page.off('console',onConsole);page.off('response',onResponse);
+   }
+   await context.close();
+  }
+  const http=await browser.newContext();
+  const inventory=JSON.parse(fs.readFileSync(path.join(out,'inventory.json'),'utf8'));
+  for(const pathname of [...inventory.routes.filter(r=>!r.path.includes('[')).map(r=>r.path),'/provize/bytexprovize.pdf','/provize/csobauto.jpg']){
+   const response=await http.request.get(base+pathname,{maxRedirects:0,timeout:30000});
+   results.http.push({pathname,status:response.status(),location:response.headers().location,frameOptions:response.headers()['x-frame-options']});
+  }
+  await http.close();
+ }finally{fs.writeFileSync(path.join(out,'browser.json'),JSON.stringify(results,null,2));await browser.close();}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

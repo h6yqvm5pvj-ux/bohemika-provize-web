@@ -1,0 +1,55 @@
+{
+  "commit": "268e8ebf287088c5ada2a53b4a12c78b985f80b5",
+  "applicationTests": {
+    "files": 377,
+    "passed": 5366
+  },
+  "firestoreAuthEmulators": {
+    "files": 15,
+    "passed": 328,
+    "skipped": 1,
+    "skipReason": "Optional CASHFLOW_PAGINATION_BENCHMARK not enabled",
+    "project": "demo-bohemika-rules"
+  },
+  "typescript": "passed; --noEmit --incremental false",
+  "eslint": {
+    "errors": 0,
+    "warnings": 4
+  },
+  "productionBuild": {
+    "result": "passed",
+    "isolatedCopy": true,
+    "syntheticConfiguration": true,
+    "turbopackRootAdjustedToResolveSharedNodeModules": true,
+    "initialCopyFailure": "Test helpers initially omitted from copied tree; copied and full build passed",
+    "next": "16.3.6",
+    "sharp": "0.35.4",
+    "libheif": "1.23.2",
+    "proxyRegistration": "passed"
+  },
+  "dependencyAudit": {
+    "result": "completed after explicit user approval",
+    "vulnerabilities": {
+      "moderate": 1,
+      "high": 0,
+      "critical": 0
+    },
+    "package": "nodemailer",
+    "version": "9.1.1",
+    "advisory": "GHSA-6vj9-mwq6-2f5v",
+    "activeUsageFound": false
+  },
+  "applicationSourceChanges": false,
+  "productionWrites": false,
+  "productionForm": {
+    "form": {
+      "emptyBlocked": true,
+      "failedRequestRetainsFields": true,
+      "retrySucceeded": true,
+      "requests": 2,
+      "escapeCloses": true
+    },
+    "url": "http://127.0.0.1:3109/embed/pojisteni-vozidla?advisor=audit-advisor",
+    "actualPageErrors": []
+  }
+}

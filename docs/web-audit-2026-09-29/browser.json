@@ -1,0 +1,1127 @@
+{
+  "browser": "154.0.8037.58",
+  "pages": [
+    {
+      "pathname": "/login",
+      "width": 1440,
+      "status": 200,
+      "url": "/login",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Vítej zpátky"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=jfmmouNzFeLXtK2jw3wEQ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=jfmmouNzFeLXtK2jw3wEQ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/ucet/akce",
+      "width": 1440,
+      "status": 200,
+      "url": "/ucet/akce",
+      "title": "Potvrzení účtu | Bohemka.App",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes",
+      "scrollWidth": 1440,
+      "h1": [
+        "Kontroluji odkaz…"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=jfmmouNzFeLXtK2jw3wEQ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=RUrAFdkfFNa1aKnBAzAbs' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=RUrAFdkfFNa1aKnBAzAbs' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/ucet/zabezpeceni",
+      "width": 1440,
+      "status": 200,
+      "url": "/ucet/zabezpeceni",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Připravuji zabezpečení"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=0P4R269u8JrJQAfqseG25' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=0P4R269u8JrJQAfqseG25' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/pojisteni-vozidla?advisor=jakub-rauscher",
+      "width": 1440,
+      "status": 200,
+      "url": "/embed/pojisteni-vozidla?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Vaše auto.\nVýhodnější pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=Hn5qg04MVUm-tt_8pp33M' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=Hn5qg04MVUm-tt_8pp33M' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/zivotni-pojisteni?advisor=jakub-rauscher",
+      "width": 1440,
+      "status": 200,
+      "url": "/embed/zivotni-pojisteni?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Proč mít životní pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=P8s9izJTGAX9K4WeNpjZv' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=P8s9izJTGAX9K4WeNpjZv' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/zlato?advisor=jakub-rauscher",
+      "width": 1440,
+      "status": 200,
+      "url": "/embed/zlato?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Proč investovat do zlata?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=_-sS7PukbOKzMvxzBXxQr' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=_-sS7PukbOKzMvxzBXxQr' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher",
+      "width": 1440,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher",
+      "title": "Jakub Rauscher | Manažer",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Jakub Rauscher"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [
+        "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+      ],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/pojisteni-vozidla",
+      "width": 1440,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/pojisteni-vozidla",
+      "title": "Pojištění vozidel | Praktický průvodce",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Vaše auto.\nVýhodnější pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=SzGCovhJOfldpzhp98TSM' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/zivotni-pojisteni",
+      "width": 1440,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/zivotni-pojisteni",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Proč mít životní pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/cestovni-pojisteni",
+      "width": 1440,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/cestovni-pojisteni",
+      "title": "Cestovní pojištění podle vaší cesty | Jakub Rauscher",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Dovolená podle vás.\nPojištění taky."
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/zlato",
+      "width": 1440,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/zlato",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "Proč investovat do zlata?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=PYH2c3iv8G1JiVwCXyO04' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/stranka-ktera-neexistuje-audit",
+      "width": 1440,
+      "status": 404,
+      "url": "/stranka-ktera-neexistuje-audit",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 1440,
+      "h1": [
+        "404"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "failed": [
+        {
+          "url": "/stranka-ktera-neexistuje-audit",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "pathname": "/login",
+      "width": 390,
+      "status": 200,
+      "url": "/login",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Vítej zpátky"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=BVcXnVgMS9EhL9A6G3ILz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=BVcXnVgMS9EhL9A6G3ILz' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/ucet/akce",
+      "width": 390,
+      "status": 200,
+      "url": "/ucet/akce",
+      "title": "Potvrzení účtu | Bohemka.App",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes",
+      "scrollWidth": 390,
+      "h1": [
+        "Kontroluji odkaz…"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=rW_1C0-2_Q4wIaUsriFLU' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=rW_1C0-2_Q4wIaUsriFLU' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/ucet/zabezpeceni",
+      "width": 390,
+      "status": 200,
+      "url": "/ucet/zabezpeceni",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Připravuji zabezpečení"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=cIpFP3mCiqnrFmEG2YkZQ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=cIpFP3mCiqnrFmEG2YkZQ' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/pojisteni-vozidla?advisor=jakub-rauscher",
+      "width": 390,
+      "status": 200,
+      "url": "/embed/pojisteni-vozidla?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Vaše auto.\nVýhodnější pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=wjsBBvTWgiznINjPbIXYX' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=wjsBBvTWgiznINjPbIXYX' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/zivotni-pojisteni?advisor=jakub-rauscher",
+      "width": 390,
+      "status": 200,
+      "url": "/embed/zivotni-pojisteni?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Proč mít životní pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [
+        {
+          "tag": "IMG",
+          "cls": "pointer-events-none absolute -bottom-8 -right-8 z-[1] h-44 w-auto select-none object-contain drop-shadow-[0_24px_28px_rg"
+        },
+        {
+          "tag": "LI",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageItem"
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageCard"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__riskArtwork"
+        },
+        {
+          "tag": "IMG",
+          "cls": ""
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageText"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageTitle"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageDetail"
+        }
+      ],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=L0X6WvTWdxnsV4y6hGlN_' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=L0X6WvTWdxnsV4y6hGlN_' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/embed/zlato?advisor=jakub-rauscher",
+      "width": 390,
+      "status": 200,
+      "url": "/embed/zlato?advisor=jakub-rauscher",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Proč investovat do zlata?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=o7AqmyfVvmxaXn_HU9SoU' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher",
+      "width": 390,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher",
+      "title": "Jakub Rauscher | Manažer",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Jakub Rauscher"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [
+        {
+          "tag": "A",
+          "cls": "OnlineCardMinimal-module__aJH5Mq__service"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "OnlineCardMinimal-module__aJH5Mq__serviceArtwork"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "OnlineCardMinimal-module__aJH5Mq__serviceSculpture"
+        },
+        {
+          "tag": "IMG",
+          "cls": "OnlineCardMinimal-module__aJH5Mq__serviceIllustration"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "OnlineCardMinimal-module__aJH5Mq__serviceLabel"
+        },
+        {
+          "tag": "svg",
+          "cls": "[object SVGAnimatedString]"
+        },
+        {
+          "tag": "path",
+          "cls": "[object SVGAnimatedString]"
+        },
+        {
+          "tag": "path",
+          "cls": "[object SVGAnimatedString]"
+        }
+      ],
+      "errors": [
+        "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+      ],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=o7AqmyfVvmxaXn_HU9SoU' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE",
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=i8eA5bv4HCd6fioxW5B5I' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/pojisteni-vozidla",
+      "width": 390,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/pojisteni-vozidla",
+      "title": "Pojištění vozidel | Praktický průvodce",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Vaše auto.\nVýhodnější pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "WebSocket connection to 'ws://127.0.0.1:3000/_next/hmr?id=xKJ1bAXlCVfiJNrJ99HOd' failed: Error during WebSocket handshake: net::ERR_INVALID_HTTP_RESPONSE"
+      ],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/zivotni-pojisteni",
+      "width": 390,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/zivotni-pojisteni",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Proč mít životní pojištění?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [
+        {
+          "tag": "IMG",
+          "cls": "pointer-events-none absolute -bottom-8 -right-8 z-[1] h-44 w-auto select-none object-contain drop-shadow-[0_24px_28px_rg"
+        },
+        {
+          "tag": "LI",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageItem"
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageCard"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__riskArtwork"
+        },
+        {
+          "tag": "IMG",
+          "cls": ""
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageText"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageTitle"
+        },
+        {
+          "tag": "SPAN",
+          "cls": "lifeInsuranceTheme-module__HMEVBW__coverageDetail"
+        }
+      ],
+      "errors": [],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/cestovni-pojisteni",
+      "width": 390,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/cestovni-pojisteni",
+      "title": "Cestovní pojištění podle vaší cesty | Jakub Rauscher",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Dovolená podle vás.\nPojištění taky."
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/vizitka/jakub-rauscher/zlato",
+      "width": 390,
+      "status": 200,
+      "url": "/vizitka/jakub-rauscher/zlato",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "Proč investovat do zlata?"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [],
+      "failed": []
+    },
+    {
+      "pathname": "/stranka-ktera-neexistuje-audit",
+      "width": 390,
+      "status": 404,
+      "url": "/stranka-ktera-neexistuje-audit",
+      "title": "Bohemika SmartApp",
+      "lang": "cs",
+      "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
+      "scrollWidth": 390,
+      "h1": [
+        "404"
+      ],
+      "brokenImages": [],
+      "unlabelledInputs": [],
+      "overflows": [],
+      "errors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "failed": [
+        {
+          "url": "/stranka-ktera-neexistuje-audit",
+          "status": 404
+        }
+      ]
+    }
+  ],
+  "http": [
+    {
+      "pathname": "/admin/data-health",
+      "status": 307,
+      "location": "/login?next=%2Fadmin%2Fdata-health",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/admin/provizni-vypisy/produktova-mapa",
+      "status": 307,
+      "location": "/login?next=%2Fadmin%2Fprovizni-vypisy%2Fproduktova-mapa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/admin/zadosti",
+      "status": 307,
+      "location": "/login?next=%2Fadmin%2Fzadosti",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/cashflow",
+      "status": 307,
+      "location": "/login?next=%2Fcashflow",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/cuzk",
+      "status": 307,
+      "location": "/login?next=%2Fcuzk",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/embed/pojisteni-vozidla",
+      "status": 200,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/embed/zivotni-pojisteni",
+      "status": 200,
+      "frameOptions": "SAMEORIGIN"
+    },
+    {
+      "pathname": "/embed/zlato",
+      "status": 200,
+      "frameOptions": "SAMEORIGIN"
+    },
+    {
+      "pathname": "/intranet",
+      "status": 307,
+      "location": "/login?next=%2Fintranet",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/jakubrauscher",
+      "status": 200,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/kalkulacka",
+      "status": 307,
+      "location": "/login?next=%2Fkalkulacka",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/klienti",
+      "status": 307,
+      "location": "/login?next=%2Fklienti",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/login",
+      "status": 200,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/muj-tym",
+      "status": 307,
+      "location": "/login?next=%2Fmuj-tym",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/muj-tym/sin-slavy",
+      "status": 307,
+      "location": "/login?next=%2Fmuj-tym%2Fsin-slavy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/muj-tym/tydenni-report",
+      "status": 307,
+      "location": "/login?next=%2Fmuj-tym%2Ftydenni-report",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/nastaveni",
+      "status": 307,
+      "location": "/login?next=%2Fnastaveni",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/",
+      "status": 307,
+      "location": "/login",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/ares",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fares",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/argumenty",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fargumenty",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fcestovni-pojisteni-cpp-vs-kooperativa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/data-o-vozidle",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdata-o-vozidle",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/allianz",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fallianz",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/cpp",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcpp",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/csob",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fcsob",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/kooperativa",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fkooperativa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/pillow",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fpillow",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/slavia",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Fslavia",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/auto/uniqa",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fauto%2Funiqa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek/allianz",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fallianz",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek/cpp",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fcpp",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek/kooperativa",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fkooperativa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek/maxima",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fmaxima",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/majetek/pillow",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fmajetek%2Fpillow",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni/allianz",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fallianz",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni/cpp",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fcpp",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni/kooperativa",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fkooperativa",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni/maxima",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fmaxima",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/dokumenty/zivotni-pojisteni/pillow",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fdokumenty%2Fzivotni-pojisteni%2Fpillow",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/export-produkce",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fexport-produkce",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/hypoteka-vlastni-zdroje",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fhypoteka-vlastni-zdroje",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/invalidita",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Finvalidita",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/invalidni-duchod",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Finvalidni-duchod",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/jak-stiham-vypoved-smlouvy",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fjak-stiham-vypoved-smlouvy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/karta-klienta",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fkarta-klienta",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/naceneni-celniho-skla",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fnaceneni-celniho-skla",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/naceneni-vozidla",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fnaceneni-vozidla",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/nahrada-smlouvy",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fnahrada-smlouvy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/nastaveni-zivotniho-pojisteni",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fnastaveni-zivotniho-pojisteni",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/neon-life-vs-metlife-oneguard",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fneon-life-vs-metlife-oneguard",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/plan-produkce",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fplan-produkce",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/pracovni-neschopenka",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fpracovni-neschopenka",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/projekce-vykonu",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fprojekce-vykonu",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/proklepka-vozidla",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fproklepka-vozidla",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/radar-vyroci",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fradar-vyroci",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/skolici-materialy",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fskolici-materialy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/srovnani-nabidek",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fsrovnani-nabidek",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/srovnavac-odpovednosti-obcana",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fsrovnavac-odpovednosti-obcana",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/srovnavac-pracovni-neschopnosti",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fsrovnavac-pracovni-neschopnosti",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/srovnavac-trvalych-nasledku",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fsrovnavac-trvalych-nasledku",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/statistika",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fstatistika",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/struktura",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fstruktura",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/tipar",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Ftipar",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/tvorba",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Ftvorba",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/vypoved-smlouvy",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fvypoved-smlouvy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/zaznam",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fzaznam",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/zaznam/vysledky",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/zaznam/vysledky-auto",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fzaznam%2Fvysledky-auto",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/zlato",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fzlato",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/pomucky/zprava-tymu",
+      "status": 307,
+      "location": "/login?next=%2Fpomucky%2Fzprava-tymu",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/posta",
+      "status": 307,
+      "location": "/login?next=%2Fposta",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/provizni-vypisy",
+      "status": 307,
+      "location": "/login?next=%2Fprovizni-vypisy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/sin-slavy",
+      "status": 307,
+      "location": "/login?next=%2Fsin-slavy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/smlouvy",
+      "status": 307,
+      "location": "/login?next=%2Fsmlouvy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/tipy",
+      "status": 307,
+      "location": "/login?next=%2Ftipy",
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/ucet/akce",
+      "status": 200,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/ucet/zabezpeceni",
+      "status": 200,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/provize/bytexprovize.pdf",
+      "status": 404,
+      "frameOptions": "DENY"
+    },
+    {
+      "pathname": "/provize/csobauto.jpg",
+      "status": 200,
+      "frameOptions": "DENY"
+    }
+  ],
+  "forms": [],
+  "notes": [
+    "Signed-out local development server; write requests intercepted.",
+    "HMR WebSocket failures are development/test artifacts.",
+    "serviceWorkers:block causes an injected-script error in the sandboxed VIG frame; not classified as an application error.",
+    "Short visual snapshots do not measure completed data loading or production performance."
+  ]
+}

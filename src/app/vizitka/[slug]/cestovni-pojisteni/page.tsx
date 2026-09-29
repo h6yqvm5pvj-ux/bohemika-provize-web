@@ -1,3 +1,4 @@
+import { resolveOnlineCardLocale } from "@/lib/onlineCardI18n";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
@@ -7,7 +8,7 @@ import TravelInsuranceClient from "./TravelInsuranceClient";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const loadCard = cache(loadOnlineCardBySlug);
-type Props = { params: Promise<{ slug: string }> };
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ lang?: string | string[] }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const slug = normalizeOnlineCardSlug((await params).slug);
@@ -18,10 +19,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title, description, alternates: { canonical: `/vizitka/${slug}/cestovni-pojisteni` }, openGraph: { title, description, type: "website", locale: "cs_CZ" } };
 }
 
-export default async function TravelInsurancePage({ params }: Props) {
+export default async function TravelInsurancePage({ params, searchParams }: Props) {
   const slug = normalizeOnlineCardSlug((await params).slug);
   if (slug.length < 3 || !ONLINE_CARD_SLUG_RE.test(slug)) notFound();
   const card = await loadCard(slug);
   if (!card) notFound();
-  return <TravelInsuranceClient slug={slug} advisorName={card.fullName} advisorPhone={card.phone} />;
+  const { lang } = await searchParams;
+  const returnLocale = resolveOnlineCardLocale(Array.isArray(lang) ? lang[0] : lang);
+  return <TravelInsuranceClient returnLocale={returnLocale} slug={slug} advisorName={card.fullName} advisorPhone={card.phone} />;
 }

@@ -3330,17 +3330,6 @@ function FillablePdfPreview({
     window.setTimeout(() => window.print(), 0);
   };
 
-  const openUploadPage = () => {
-    if (!config.uploadUrl) return;
-
-    const uploadWindow = window.open(config.uploadUrl, "_blank", "noopener,noreferrer");
-    if (uploadWindow) {
-      return;
-    }
-
-    window.location.href = config.uploadUrl;
-  };
-
   const updateField = (key: string, value: string) => {
     setFields((prev) => ({
       ...prev,
@@ -3493,14 +3482,15 @@ function FillablePdfPreview({
             Tisk
           </button>
           {config.uploadUrl ? (
-            <button
-              type="button"
-              onClick={openUploadPage}
+            <a
+              href={config.uploadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
             >
               <Send className="h-4 w-4" />
               Nahrát výpověď
-            </button>
+            </a>
           ) : null}
         </div>
       </div>

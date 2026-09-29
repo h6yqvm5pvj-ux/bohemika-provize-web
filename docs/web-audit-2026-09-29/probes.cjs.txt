@@ -1,0 +1,73 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ts=require('typescript');
+const {NextRequest}=require('next/server');
+const {chromium}=require('../contract-filter-check/tools/node_modules/playwright');
+const out=path.join(process.cwd(),'.tmp/web-audit-20260929');
+const evidence=[];
+function declaration(file,name){
+ const code=fs.readFileSync(file,'utf8'),source=ts.createSourceFile(file,code,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let found;
+ const visit=node=>{if(ts.isVariableDeclaration(node)&&node.name.getText(source)===name)found=node;ts.forEachChild(node,visit);};visit(source);assert.ok(found,name);
+ evidence.push({file,name,line:source.getLineAndCharacterOfPosition(found.getStart(source)).line+1});
+ return ts.transpileModule('const '+found.getText(source)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+}
+const stubs={
+ '@/lib/appSession':{APP_SESSION_COOKIE_NAME:'bohemika_app_session'},
+ '@/lib/server/activeAppSession':{verifyActiveAppSession:async()=>({ok:true,session:{}})},
+ '@/lib/authEmailAction':{AUTH_EMAIL_ACTION_PATH:'/ucet/akce'},
+ '@/lib/ocrWorkerPolicy':{OCR_WORKER_CSP:"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'"},
+ '@/app/_klienti/clientFeature':{CLIENT_CARDS_ENABLED:true},
+};
+const moduleObject={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/proxy.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:moduleObject.exports,module:moduleObject,require:id=>id==='next/server'?require(id):assert.ok(Object.hasOwn(stubs,id),id)||stubs[id],process:{env:{NODE_ENV:'production'}},crypto:require('node:crypto').webcrypto,Uint8Array,btoa,Headers,console});
+async function headers(pathname){const res=await moduleObject.exports.proxy(new NextRequest('http://127.0.0.1:3999'+pathname));return Object.fromEntries([...res.headers].filter(([key])=>!key.startsWith('x-middleware')));}
+function getFunction(file,name){return vm.runInNewContext(declaration(file,name)+name,{Date});}
+const statementHtml='<!doctype html><html><head></head><body><a href="javascript:toggleLayer(\'detail\')">Rozbalit položky</a><div id="detail" style="display:none">Testovací detail</div></body></html>';
+const statementCases=[['cashflow','src/app/cashflow/page.tsx'],['contract','src/app/smlouvy/[id]/page.tsx']].map(([name,file])=>({name,html:getFunction(file,'buildInteractiveStatementHtml')(statementHtml)}));
+const scenario=vm.runInNewContext(declaration('src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx','scenarioPreviewSrcDoc')+'scenarioPreviewSrcDoc',{scenarioModalOpen:true,scenarioStep:1,buildScenarioPdfExportHtml:()=>'<div class="pdf-page" style="width:794px;height:1123px">Testovací PDF</div>',Date});
+const handlers={neon:declaration('src/app/kalkulacka/page.tsx','handleNeonDocumentAction'),plan:declaration('src/app/pomucky/plan-produkce/page.tsx','handleOpenPreviewInNewTab'),upload:declaration('src/app/pomucky/vypoved-smlouvy/page.tsx','openUploadPage')};
+const escapeAttr=s=>s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+async function main(){
+ const result={browser:null,evidence,csp:[],popups:[],frameHeaders:[]};
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});result.browser=await browser.version();
+ try{
+  for(const [name,html,sandbox] of [...statementCases.map(x=>[x.name,x.html,'allow-scripts']),['scenario',scenario,null]]){
+   for(const strict of [true,false]){
+    const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'}),page=await context.newPage(),errors=[];
+    page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+    await context.route('**/*',async route=>{if(route.request().url()==='http://127.0.0.1:3999/probe')return route.fulfill({status:200,headers:strict?await headers('/cashflow'):{},contentType:'text/html',body:`<!doctype html><html><body><iframe style="width:350px;height:500px" ${sandbox?'sandbox="'+sandbox+'"':''} srcdoc="${escapeAttr(html)}"></iframe></body></html>`});return route.abort();});
+    await page.goto('http://127.0.0.1:3999/probe');
+     console.log(JSON.stringify({name,strict,frames:page.frames().map(f=>f.url()),errors,body:(await page.content()).slice(0,500)}));
+     await page.waitForTimeout(300);
+    if(name!=='scenario')await page.frames()[1].evaluate(()=>{const link=document.querySelector('a');if(!link)throw new Error('Missing probe link: '+document.body.innerHTML);link.click();});
+    await page.waitForTimeout(150);
+    const state=await page.frames()[1].evaluate(()=>({toggleFunction:typeof window.toggleLayer,detailDisplay:document.querySelector('#detail')?getComputedStyle(document.querySelector('#detail')).display:null,transform:document.querySelector('.preview-scale')?getComputedStyle(document.querySelector('.preview-scale')).transform:null,scrollWidth:document.documentElement.scrollWidth,width:innerWidth}));
+    result.csp.push({name,strict,...state,errors});
+    if(name==='scenario')assert.equal(state.transform==='none',strict);else assert.equal(state.detailDisplay,strict?'none':'block');
+    await page.screenshot({path:path.join(out,`probe-${name}-${strict?'blocked':'control'}.png`)});await context.close();
+   }
+  }
+  for(const pathname of ['/muj-tym/tydenni-report?source=weekly-report&embed=mailbox','/kalkulacka?prefill=commission-statement','/smlouvy/example?embedded=1','/pomucky/naceneni-celniho-skla'])result.frameHeaders.push({path:pathname,...await headers(pathname)});
+  const context=await browser.newContext({serviceWorkers:'allow'}),page=await context.newPage(),frameErrors=[];
+  page.on('console',m=>{if(m.type()==='error')frameErrors.push(m.text());});
+  await context.route('**/*',async route=>{
+   const pathname=new URL(route.request().url()).pathname;
+   return route.fulfill({status:200,headers:await headers(pathname),contentType:'text/html',body:pathname==='/posta'?'<iframe src="/muj-tym/tydenni-report?source=weekly-report&embed=mailbox"></iframe>':'<h1>Testovací týdenní report</h1>'});
+  });
+  await page.goto('http://127.0.0.1:3999/posta');await page.waitForTimeout(200);result.weeklyFrame={errors:frameErrors,frames:page.frames().map(x=>x.url())};assert.ok(frameErrors.some(x=>x.includes('frame-ancestors')));await context.close();
+  for(const name of ['neon','plan','upload']){
+   const context=await browser.newContext({serviceWorkers:'allow'}),page=await context.newPage();
+   await context.route('**/*',async route=>{
+    if(new URL(route.request().url()).pathname==='/target')return route.fulfill({contentType:'text/html',body:'<h1>Místní cíl</h1>'});
+    const h=await headers('/kalkulacka'),nonce=h['content-security-policy'].match(/nonce-([^']+)/)[1];
+    const common=`window.audit={blobRequests:0};const setNeonPreviewError=t=>window.audit.error=t;const setErrorText=t=>window.audit.error=t;const setNeonDocAction=()=>{};const user={uid:'synthetic'};const neonTermsPreviewUrl='/fake';const neonPeriod='2026';const requestBlobWithAuth=async()=>{window.audit.blobRequests++;return new Response(new Blob(['synthetic'],{type:'application/pdf'}))};const previewHtml='<h1>Testovací plán</h1>';const config={uploadUrl:'http://127.0.0.1:3999/target'};`;
+    return route.fulfill({headers:h,contentType:'text/html',body:`<button id="run">Spustit</button><script nonce="${nonce}">${common}${handlers[name]}document.querySelector('#run').onclick=()=>${name==='neon'?"handleNeonDocumentAction('open')":name==='plan'?'handleOpenPreviewInNewTab()':'openUploadPage()'};</script>`});
+   });
+   await page.goto('http://127.0.0.1:3999/probe');const opened=context.waitForEvent('page');await page.locator('#run').click();const popup=await opened;await page.waitForTimeout(200);
+   const state=await page.evaluate(()=>window.audit??null);result.popups.push({name,state,originalUrl:page.url(),popupUrl:popup.url()});
+   if(name==='upload')assert.equal(page.url(),popup.url());else assert.match(state.error,/zablokoval/);
+   await context.close();
+  }
+ }finally{fs.writeFileSync(path.join(out,'probes.json'),JSON.stringify(result,null,2));await browser.close();}
+ console.log(JSON.stringify(result,null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

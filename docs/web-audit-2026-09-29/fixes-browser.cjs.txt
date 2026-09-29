@@ -1,0 +1,99 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const ts=require('typescript');
+const {NextRequest}=require('next/server');
+const {chromium}=require('../contract-filter-check/tools/node_modules/playwright');
+const root=process.cwd(),out=path.join(root,'.tmp/web-audit-20260929');
+const cache=new Map();
+const stubs={
+ '@/lib/appSession':{APP_SESSION_COOKIE_NAME:'bohemika_app_session'},
+ '@/lib/server/activeAppSession':{verifyActiveAppSession:async()=>({ok:true,session:{}})},
+ '@/lib/authEmailAction':{AUTH_EMAIL_ACTION_PATH:'/ucet/akce'},
+ '@/lib/ocrWorkerPolicy':{OCR_WORKER_CSP:"default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'"},
+ '@/app/_klienti/clientFeature':{CLIENT_CARDS_ENABLED:true},
+};
+function load(file){
+ const absolute=path.resolve(file);if(cache.has(absolute))return cache.get(absolute);
+ const module={exports:{}};cache.set(absolute,module.exports);
+ const requireLocal=id=>{
+  if(stubs[id])return stubs[id];
+  if(id.startsWith('@/'))return load(path.join(root,'src',id.slice(2))+'.ts');
+  if(id.startsWith('.'))return load(path.resolve(path.dirname(absolute),id)+'.ts');
+  return require(id);
+ };
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(absolute,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:module.exports,module,require:requireLocal,process:{env:{NODE_ENV:'production'}},crypto:require('node:crypto').webcrypto,Uint8Array,btoa,Headers,console});return module.exports;
+}
+function declaration(file,name){
+ const code=fs.readFileSync(file,'utf8'),source=ts.createSourceFile(file,code,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let found;
+ const visit=node=>{if(ts.isVariableDeclaration(node)&&node.name.getText(source)===name)found=node;ts.forEachChild(node,visit);};visit(source);assert.ok(found,name);
+ return ts.transpileModule('const '+found.getText(source)+';',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+}
+const proxy=load('src/proxy.ts').proxy;
+async function headers(url){const res=await proxy(new NextRequest(url));return Object.fromEntries([...res.headers].filter(([key])=>!key.startsWith('x-middleware')));}
+const {buildInteractiveStatementHtml}=load('src/lib/statementPreview.ts');
+const scripts=load('src/lib/previewScripts.ts');
+const {openPreviewWindow}=load('src/lib/openPreviewWindow.ts');
+const statement=buildInteractiveStatementHtml(`<!doctype html><html><head></head><body><a href="javascript:toggleLayer('detail')">Rozbalit položky</a><div id="detail" style="display:none">Testovací detail</div><script>window.attacked=true;</script><button onclick="window.attacked=true">untrusted</button></body></html>`);
+const scenario=vm.runInNewContext(declaration('src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx','scenarioPreviewSrcDoc')+'scenarioPreviewSrcDoc',{...scripts,scenarioModalOpen:true,scenarioStep:1,buildScenarioPdfExportHtml:()=>'<div class="pdf-page" style="width:794px;height:1123px">Testovací PDF</div>',Date});
+const handlers={neon:declaration('src/app/kalkulacka/page.tsx','handleNeonDocumentAction'),plan:declaration('src/app/pomucky/plan-produkce/page.tsx','handleOpenPreviewInNewTab')};
+const escapeAttr=s=>s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const origin='http://127.0.0.1:3999';
+async function main(){
+ const result={browser:null,previews:[],popups:[],frames:[]};
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--no-first-run']});result.browser=await browser.version();
+ try{
+  for(const [name,html,routePath] of [['cashflow',statement,'/cashflow'],['contract',statement,'/smlouvy/example'],['scenario',scenario,'/pomucky/srovnavac-trvalych-nasledku']]){
+   const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();
+   await context.route('**/*',async route=>{
+    if(route.request().url()!==origin+routePath)return route.abort();
+    return route.fulfill({headers:await headers(origin+routePath),contentType:'text/html; charset=utf-8',body:`<!doctype html><iframe style="width:350px;height:500px" sandbox="allow-scripts" srcdoc="${escapeAttr(html)}"></iframe>`});
+   });
+   await page.goto(origin+routePath);const frame=page.frames()[1];
+   if(name!=='scenario'){
+    await frame.locator('a').click();assert.equal(await frame.locator('#detail').evaluate(e=>getComputedStyle(e).display),'block');
+    await frame.locator('a').press('Enter');assert.equal(await frame.locator('#detail').evaluate(e=>getComputedStyle(e).display),'none');
+    await frame.locator('button').click();assert.equal(await frame.evaluate(()=>window.attacked===true),false);
+   }
+   const state=await frame.evaluate(()=>({isolated:(()=>{try{void parent.document;return false}catch{return true}})(),transform:document.querySelector('.preview-scale')?getComputedStyle(document.querySelector('.preview-scale')).transform:null,scrollWidth:document.documentElement.scrollWidth,width:innerWidth}));
+   assert.ok(state.isolated);
+   if(name==='scenario'){
+    assert.notEqual(state.transform,'none');assert.ok(state.scrollWidth<=state.width);
+    await page.locator('iframe').evaluate(e=>e.style.width='280px');await page.waitForTimeout(80);
+    assert.ok(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+   }
+   result.previews.push({name,...state,untrustedScriptsBlocked:name!=='scenario'?true:undefined});
+   await page.screenshot({path:path.join(out,`fixed-${name}.png`)});await context.close();
+  }
+  for(const [name,pathToFrame,allowed,foreign] of [
+   ['mailbox','/muj-tym/tydenni-report?source=weekly-report&embed=mailbox',true,false],
+   ['ordinary','/muj-tym/tydenni-report',false,false],
+   ['foreign','/muj-tym/tydenni-report?source=weekly-report&embed=mailbox',false,true]
+  ]){
+   const context=await browser.newContext(),page=await context.newPage();
+   await context.route('**/*',async route=>{
+    const url=new URL(route.request().url());
+    if(url.pathname==='/parent')return route.fulfill({contentType:'text/html; charset=utf-8',body:`<iframe src="${origin}${pathToFrame}"></iframe>`});
+    return route.fulfill({headers:await headers(url.href),contentType:'text/html; charset=utf-8',body:'<h1>Testovací týdenní report</h1>'});
+   });
+   await page.goto((foreign?'http://localhost:3998':origin)+'/parent');await page.waitForTimeout(100);
+   const loaded=await page.frames()[1].getByRole('heading',{name:'Testovací týdenní report',exact:true}).count()>0;assert.equal(loaded,allowed);result.frames.push({name,loaded});await context.close();
+  }
+  for(const name of ['neon','plan'])for(const blocked of [false,true]){
+   const context=await browser.newContext(),page=await context.newPage();
+   await context.route('**/*',async route=>{
+    const h=await headers(origin+'/kalkulacka'),nonce=h['content-security-policy'].match(/nonce-([^']+)/)[1];
+    const common=`window.audit={blobRequests:0};const openPreviewWindow=${openPreviewWindow.toString()};const setNeonPreviewError=t=>window.audit.error=t;const setErrorText=t=>window.audit.error=t;const setNeonDocAction=()=>{};const user={uid:'synthetic'};const neonTermsPreviewUrl='/fake';const neonPeriod='2026';const requestBlobWithAuth=async()=>{window.audit.blobRequests++;return new Response(new Blob(['synthetic'],{type:'application/pdf'}))};const previewHtml='<h1>Testovací plán</h1>';`;
+    return route.fulfill({headers:h,contentType:'text/html; charset=utf-8',body:`<button id="run">Spustit</button><script nonce="${nonce}">${common}${handlers[name]}${blocked?'window.open=()=>null;':''}document.querySelector('#run').onclick=()=>${name==='neon'?"handleNeonDocumentAction('open')":'handleOpenPreviewInNewTab()'};</script>`});
+   });
+   await page.goto(origin+'/probe');const opened=blocked?null:context.waitForEvent('page');await page.locator('#run').click();const popup=opened?await opened:null;await page.waitForTimeout(150);
+   const state=await page.evaluate(()=>window.audit);assert.equal(page.url(),origin+'/probe');
+   if(blocked){assert.match(state.error,/zablokoval/);assert.equal(state.blobRequests,0);assert.equal(context.pages().length,1);}
+   else{assert.equal(state.error,null);assert.ok(popup.url().startsWith('blob:'));if(name==='neon')assert.equal(state.blobRequests,1);else{assert.equal(await popup.locator('h1').textContent(),'Testovací plán');assert.equal(await popup.evaluate(()=>window.opener),null);}}
+   result.popups.push({name,blocked,...state,originalUrl:page.url(),popupUrl:popup?.url().replace(/blob:.*/, 'blob:local-preview')});await context.close();
+  }
+  const uploadSource=fs.readFileSync('src/app/pomucky/vypoved-smlouvy/page.tsx','utf8');
+  assert.match(uploadSource,/<a\s+href=\{config.uploadUrl\}\s+target="_blank"\s+rel="noopener noreferrer"/);assert.doesNotMatch(uploadSource,/window.location.href = config.uploadUrl/);
+  result.uploadLink={nativeNewTab:true,originalFormRetained:true};
+ }finally{fs.writeFileSync(path.join(out,'fixes-browser.json'),JSON.stringify(result,null,2));await browser.close();}
+ console.log(JSON.stringify(result,null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

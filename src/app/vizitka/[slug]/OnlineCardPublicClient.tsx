@@ -1,5 +1,7 @@
 "use client";
 
+import { onlineCardHref, replaceOnlineCardLocale } from "@/lib/onlineCardNavigation";
+
 import {
   ArrowDown,
   ArrowUpRight,
@@ -229,13 +231,7 @@ export default function OnlineCardPublicClient({
 
   const selectLocale = (nextLocale: OnlineCardLocale) => {
     setLocale(nextLocale);
-    const url = new URL(window.location.href);
-    if (nextLocale === "cs") {
-      url.searchParams.delete("lang");
-    } else {
-      url.searchParams.set("lang", nextLocale);
-    }
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    replaceOnlineCardLocale(nextLocale);
   };
 
   useEffect(() => {
@@ -467,10 +463,10 @@ export default function OnlineCardPublicClient({
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
-          goldPageHref={"/vizitka/" + slug + "/zlato"}
-          lifeInsurancePageHref={"/vizitka/" + slug + "/zivotni-pojisteni"}
-          vehicleInsurancePageHref={"/vizitka/" + slug + "/pojisteni-vozidla"}
-          travelInsurancePageHref={"/vizitka/" + slug + "/cestovni-pojisteni"}
+          goldPageHref={onlineCardHref(`/vizitka/${slug}/zlato`, locale)}
+          lifeInsurancePageHref={onlineCardHref(`/vizitka/${slug}/zivotni-pojisteni`, locale)}
+          vehicleInsurancePageHref={onlineCardHref(`/vizitka/${slug}/pojisteni-vozidla`, locale)}
+          travelInsurancePageHref={onlineCardHref(`/vizitka/${slug}/cestovni-pojisteni`, locale)}
           useMetalVig
         />
         <OnlineCardTestimonials slug={slug} testimonials={localizedCard.testimonials} locale={locale} theme={theme} mode="showcase" minimal />

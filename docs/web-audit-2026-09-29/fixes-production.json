@@ -1,0 +1,26 @@
+{
+  "notFound": {
+    "status": 404,
+    "language": "cs"
+  },
+  "viewport": "width=device-width, initial-scale=1, minimum-scale=1",
+  "zoom": {
+    "initial": 1,
+    "enlarged": 2.000000238418579,
+    "returned": 1
+  },
+  "bytex": {
+    "status": 200,
+    "bytes": 116855,
+    "matchesSuppliedDocument": true
+  },
+  "form": {
+    "emptyBlocked": true,
+    "failedRequestRetainsFields": true,
+    "retrySucceeded": true,
+    "requests": 2,
+    "escapeCloses": true
+  },
+  "url": "http://127.0.0.1:3109/embed/pojisteni-vozidla?advisor=audit-advisor",
+  "actualPageErrors": []
+}

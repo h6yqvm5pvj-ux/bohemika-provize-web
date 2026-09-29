@@ -1154,20 +1154,9 @@ export default function WindshieldValuationPage() {
 
                           <div className="p-3">
                             {selectedAutoKellyPreviewUrl ? (
-                              <>
-                                <div className="h-[360px] overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                                  <iframe
-                                    key={selectedAutoKellyPreviewUrl}
-                                    title={`AutoKelly ${selectedAutoKellyOffer.code || selectedAutoKellyOffer.name}`}
-                                    src={selectedAutoKellyPreviewUrl}
-                                    className="h-full w-full bg-white"
-                                    sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
-                                  />
-                                </div>
-                                <p className="mt-2 text-xs text-slate-500">
-                                  Pokud AutoKelly náhled blokuje, otevři položku přes tlačítko výše.
-                                </p>
-                              </>
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                                Fotografie, dostupnost a úplné parametry této položky najdeš přes odkaz „Otevřít v AutoKelly“.
+                              </div>
                             ) : (
                               <div className="rounded-lg border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-600">
                                 AutoKelly u této položky neposlalo detailní odkaz.

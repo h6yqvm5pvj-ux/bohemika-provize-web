@@ -1,6 +1,8 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
+import { buildInteractiveStatementHtml } from "@/lib/statementPreview";
+
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -359,58 +361,6 @@ const statementDisplayTitle = (statement: ContractCommissionStatementDetail): st
   return statement.fileName || "Provizní výpis";
 };
 
-const buildInteractiveStatementHtml = (html: string): string => {
-  const previewStyle = `<style>
-html {
-  background: #ffffff !important;
-}
-body {
-  width: 715px !important;
-  max-width: 100% !important;
-  margin: 0 auto !important;
-  box-sizing: border-box !important;
-  background: #ffffff !important;
-}
-body > table.vypis_table {
-  margin: 0 auto !important;
-}
-a[href^="javascript:toggleLayer"] {
-  cursor: pointer;
-}
-</style>`;
-  const toggleScript = `<script>
-(function () {
-  window.toggleLayer = function (whichLayer) {
-    var elem = document.getElementById(whichLayer);
-    if (!elem) return false;
-    var currentDisplay = elem.style.display || window.getComputedStyle(elem).display;
-    elem.style.display = currentDisplay === "none" ? "block" : "none";
-    return false;
-  };
-
-  document.addEventListener("click", function (event) {
-    var target = event.target;
-    var link = target && target.closest ? target.closest("a[href^='javascript:toggleLayer']") : null;
-    if (!link) return;
-
-    var href = link.getAttribute("href") || "";
-    var match = href.match(/toggleLayer\\((?:'|")?([^'")]+)(?:'|")?\\)/);
-    if (!match || !match[1]) return;
-
-    event.preventDefault();
-    window.toggleLayer(match[1]);
-  });
-})();
-</script>`;
-  const htmlWithStyle = /<\/head>/i.test(html)
-    ? html.replace(/<\/head>/i, `${previewStyle}</head>`)
-    : `${previewStyle}${html}`;
-
-  if (/<\/body>/i.test(htmlWithStyle)) {
-    return htmlWithStyle.replace(/<\/body>/i, `${toggleScript}</body>`);
-  }
-  return `${htmlWithStyle}${toggleScript}`;
-};
 
 function CommissionStatementPreviewModal({
   statement,

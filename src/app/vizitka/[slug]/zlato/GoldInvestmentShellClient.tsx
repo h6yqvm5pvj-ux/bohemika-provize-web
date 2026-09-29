@@ -1,5 +1,7 @@
 "use client";
 
+import { onlineCardHref, replaceOnlineCardLocale } from "@/lib/onlineCardNavigation";
+
 import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import Image from "next/image";
@@ -13,6 +15,7 @@ import {
 
 type GoldInvestmentShellClientProps = {
   slug: string;
+  initialLocale?: OnlineCardLocale;
 };
 
 const LANGUAGE_OPTIONS: Array<{ id: OnlineCardLocale; label: string; shortLabel: string; flag: string }> = [
@@ -27,9 +30,13 @@ const SHELL_COPY = {
   uk: { back: "Назад до профілю", title: "Інвестиційне золото та срібло", dark: "Темна", light: "Світла", display: "Вигляд сторінки", language: "Мова сторінки" },
 } as const;
 
-export default function GoldInvestmentShellClient({ slug }: GoldInvestmentShellClientProps) {
+export default function GoldInvestmentShellClient({ slug, initialLocale = "cs" }: GoldInvestmentShellClientProps) {
   const [theme, setTheme] = useState<"dark" | "light">("light");
-  const [locale, setLocale] = useState<OnlineCardLocale>("cs");
+  const [locale, setLocale] = useState<OnlineCardLocale>(initialLocale);
+  const selectLocale = (nextLocale: OnlineCardLocale) => {
+    setLocale(nextLocale);
+    replaceOnlineCardLocale(nextLocale);
+  };
   const copy = SHELL_COPY[locale];
   const lightMode = theme === "light";
 
@@ -42,11 +49,11 @@ export default function GoldInvestmentShellClient({ slug }: GoldInvestmentShellC
       <header className={styles.toolbar}>
         <div className={styles.navInner}>
           <div className={styles.navIdentity}>
-            <a href={`/vizitka/${slug}`} className={styles.navBack}>
+            <a href={onlineCardHref(`/vizitka/${slug}`, locale)} className={styles.navBack}>
               <ArrowLeft aria-hidden="true" />
               <span>{copy.back}</span>
             </a>
-            <a href={`/vizitka/${slug}`} className={styles.navLogo} aria-label="Bohemika">
+            <a href={onlineCardHref(`/vizitka/${slug}`, locale)} className={styles.navLogo} aria-label="Bohemika">
               <Image src={lightMode ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"} alt="Bohemika" width={168} height={168} priority />
             </a>
           </div>
@@ -60,7 +67,7 @@ export default function GoldInvestmentShellClient({ slug }: GoldInvestmentShellC
             >
               {lightMode ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
             </button>
-            <select className={styles.language} value={locale} onChange={event => setLocale(event.target.value as OnlineCardLocale)} aria-label={copy.language}>
+            <select className={styles.language} value={locale} onChange={event => selectLocale(event.target.value as OnlineCardLocale)} aria-label={copy.language}>
               {LANGUAGE_OPTIONS.map(option => <option key={option.id} value={option.id} lang={option.id}>{option.shortLabel}</option>)}
             </select>
           </div>

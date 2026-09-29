@@ -1,5 +1,7 @@
 "use client";
 
+import { onlineCardHref, replaceOnlineCardLocale } from "@/lib/onlineCardNavigation";
+
 import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import Image from "next/image";
@@ -14,6 +16,7 @@ import {
 
 type LifeInsuranceShellClientProps = {
   slug: string;
+  initialLocale?: OnlineCardLocale;
 };
 
 const SHELL_COPY = {
@@ -22,9 +25,13 @@ const SHELL_COPY = {
   uk: { back: "Назад до профілю", title: "Страхування життя та від нещасних випадків", dark: "Темна", light: "Світла", display: "Вигляд сторінки", language: "Мова сторінки" },
 } as const;
 
-export default function LifeInsuranceShellClient({ slug }: LifeInsuranceShellClientProps) {
+export default function LifeInsuranceShellClient({ slug, initialLocale = "cs" }: LifeInsuranceShellClientProps) {
   const [theme, setTheme] = useState<"dark" | "light">("light");
-  const [locale, setLocale] = useState<OnlineCardLocale>("cs");
+  const [locale, setLocale] = useState<OnlineCardLocale>(initialLocale);
+  const selectLocale = (nextLocale: OnlineCardLocale) => {
+    setLocale(nextLocale);
+    replaceOnlineCardLocale(nextLocale);
+  };
   const copy = SHELL_COPY[locale];
   const lightMode = theme === "light";
 
@@ -37,11 +44,11 @@ export default function LifeInsuranceShellClient({ slug }: LifeInsuranceShellCli
       <header className={styles.toolbar}>
         <div className={styles.navInner}>
           <div className={styles.navIdentity}>
-            <a href={`/vizitka/${slug}`} className={styles.navBack}>
+            <a href={onlineCardHref(`/vizitka/${slug}`, locale)} className={styles.navBack}>
               <ArrowLeft aria-hidden="true" />
               <span>{copy.back}</span>
             </a>
-            <a href={`/vizitka/${slug}`} className={styles.navLogo} aria-label="Bohemika">
+            <a href={onlineCardHref(`/vizitka/${slug}`, locale)} className={styles.navLogo} aria-label="Bohemika">
               <Image src={lightMode ? "/icons/bohemikalogo.png" : "/icons/bhmkwhite.png"} alt="Bohemika" width={168} height={168} priority />
             </a>
           </div>
@@ -55,7 +62,7 @@ export default function LifeInsuranceShellClient({ slug }: LifeInsuranceShellCli
             >
               {lightMode ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
             </button>
-            <LanguagePicker locale={locale} label={copy.language} onChange={setLocale} />
+            <LanguagePicker locale={locale} label={copy.language} onChange={selectLocale} />
           </div>
         </div>
       </header>

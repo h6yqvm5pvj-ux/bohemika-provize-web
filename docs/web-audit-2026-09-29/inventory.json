@@ -1,0 +1,383 @@
+{
+  "pageFiles": 91,
+  "apiFiles": 123,
+  "sourceFiles": 1100,
+  "assetReferences": 427,
+  "missingAssets": [
+    {
+      "file": "src/app/kalkulacka/page.tsx",
+      "line": 431,
+      "url": "/provize/bytexprovize.pdf",
+      "exists": false
+    }
+  ],
+  "routes": [
+    {
+      "file": "src/app/admin/data-health/page.tsx",
+      "path": "/admin/data-health"
+    },
+    {
+      "file": "src/app/admin/provizni-vypisy/produktova-mapa/page.tsx",
+      "path": "/admin/provizni-vypisy/produktova-mapa"
+    },
+    {
+      "file": "src/app/admin/zadosti/page.tsx",
+      "path": "/admin/zadosti"
+    },
+    {
+      "file": "src/app/cashflow/page.tsx",
+      "path": "/cashflow"
+    },
+    {
+      "file": "src/app/cuzk/page.tsx",
+      "path": "/cuzk"
+    },
+    {
+      "file": "src/app/embed/pojisteni-vozidla/page.tsx",
+      "path": "/embed/pojisteni-vozidla"
+    },
+    {
+      "file": "src/app/embed/schuzka/[slug]/page.tsx",
+      "path": "/embed/schuzka/[slug]"
+    },
+    {
+      "file": "src/app/embed/zivotni-pojisteni/page.tsx",
+      "path": "/embed/zivotni-pojisteni"
+    },
+    {
+      "file": "src/app/embed/zlato/page.tsx",
+      "path": "/embed/zlato"
+    },
+    {
+      "file": "src/app/intranet/page.tsx",
+      "path": "/intranet"
+    },
+    {
+      "file": "src/app/jakubrauscher/page.tsx",
+      "path": "/jakubrauscher"
+    },
+    {
+      "file": "src/app/kalkulacka/page.tsx",
+      "path": "/kalkulacka"
+    },
+    {
+      "file": "src/app/klienti/[slug]/page.tsx",
+      "path": "/klienti/[slug]"
+    },
+    {
+      "file": "src/app/klienti/page.tsx",
+      "path": "/klienti"
+    },
+    {
+      "file": "src/app/login/page.tsx",
+      "path": "/login"
+    },
+    {
+      "file": "src/app/muj-tym/page.tsx",
+      "path": "/muj-tym"
+    },
+    {
+      "file": "src/app/muj-tym/sin-slavy/page.tsx",
+      "path": "/muj-tym/sin-slavy"
+    },
+    {
+      "file": "src/app/muj-tym/tydenni-report/page.tsx",
+      "path": "/muj-tym/tydenni-report"
+    },
+    {
+      "file": "src/app/nastaveni/page.tsx",
+      "path": "/nastaveni"
+    },
+    {
+      "file": "src/app/page.tsx",
+      "path": "/"
+    },
+    {
+      "file": "src/app/pomucky/ares/page.tsx",
+      "path": "/pomucky/ares"
+    },
+    {
+      "file": "src/app/pomucky/argumenty/page.tsx",
+      "path": "/pomucky/argumenty"
+    },
+    {
+      "file": "src/app/pomucky/cestovni-pojisteni-cpp-vs-kooperativa/page.tsx",
+      "path": "/pomucky/cestovni-pojisteni-cpp-vs-kooperativa"
+    },
+    {
+      "file": "src/app/pomucky/data-o-vozidle/page.tsx",
+      "path": "/pomucky/data-o-vozidle"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/allianz/page.tsx",
+      "path": "/pomucky/dokumenty/auto/allianz"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/cpp/page.tsx",
+      "path": "/pomucky/dokumenty/auto/cpp"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/csob/page.tsx",
+      "path": "/pomucky/dokumenty/auto/csob"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/kooperativa/page.tsx",
+      "path": "/pomucky/dokumenty/auto/kooperativa"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/page.tsx",
+      "path": "/pomucky/dokumenty/auto"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/pillow/page.tsx",
+      "path": "/pomucky/dokumenty/auto/pillow"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/slavia/page.tsx",
+      "path": "/pomucky/dokumenty/auto/slavia"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/auto/uniqa/page.tsx",
+      "path": "/pomucky/dokumenty/auto/uniqa"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/allianz/page.tsx",
+      "path": "/pomucky/dokumenty/majetek/allianz"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/cpp/page.tsx",
+      "path": "/pomucky/dokumenty/majetek/cpp"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/kooperativa/page.tsx",
+      "path": "/pomucky/dokumenty/majetek/kooperativa"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/maxima/page.tsx",
+      "path": "/pomucky/dokumenty/majetek/maxima"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/page.tsx",
+      "path": "/pomucky/dokumenty/majetek"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/majetek/pillow/page.tsx",
+      "path": "/pomucky/dokumenty/majetek/pillow"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/page.tsx",
+      "path": "/pomucky/dokumenty"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/allianz/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni/allianz"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/cpp/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni/cpp"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/kooperativa/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni/kooperativa"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/maxima/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni/maxima"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni"
+    },
+    {
+      "file": "src/app/pomucky/dokumenty/zivotni-pojisteni/pillow/page.tsx",
+      "path": "/pomucky/dokumenty/zivotni-pojisteni/pillow"
+    },
+    {
+      "file": "src/app/pomucky/export-produkce/page.tsx",
+      "path": "/pomucky/export-produkce"
+    },
+    {
+      "file": "src/app/pomucky/hypoteka-vlastni-zdroje/page.tsx",
+      "path": "/pomucky/hypoteka-vlastni-zdroje"
+    },
+    {
+      "file": "src/app/pomucky/invalidita/page.tsx",
+      "path": "/pomucky/invalidita"
+    },
+    {
+      "file": "src/app/pomucky/invalidni-duchod/page.tsx",
+      "path": "/pomucky/invalidni-duchod"
+    },
+    {
+      "file": "src/app/pomucky/jak-stiham-vypoved-smlouvy/page.tsx",
+      "path": "/pomucky/jak-stiham-vypoved-smlouvy"
+    },
+    {
+      "file": "src/app/pomucky/karta-klienta/page.tsx",
+      "path": "/pomucky/karta-klienta"
+    },
+    {
+      "file": "src/app/pomucky/naceneni-celniho-skla/page.tsx",
+      "path": "/pomucky/naceneni-celniho-skla"
+    },
+    {
+      "file": "src/app/pomucky/naceneni-vozidla/page.tsx",
+      "path": "/pomucky/naceneni-vozidla"
+    },
+    {
+      "file": "src/app/pomucky/nahrada-smlouvy/page.tsx",
+      "path": "/pomucky/nahrada-smlouvy"
+    },
+    {
+      "file": "src/app/pomucky/nastaveni-zivotniho-pojisteni/page.tsx",
+      "path": "/pomucky/nastaveni-zivotniho-pojisteni"
+    },
+    {
+      "file": "src/app/pomucky/neon-life-vs-metlife-oneguard/page.tsx",
+      "path": "/pomucky/neon-life-vs-metlife-oneguard"
+    },
+    {
+      "file": "src/app/pomucky/page.tsx",
+      "path": "/pomucky"
+    },
+    {
+      "file": "src/app/pomucky/plan-produkce/page.tsx",
+      "path": "/pomucky/plan-produkce"
+    },
+    {
+      "file": "src/app/pomucky/pracovni-neschopenka/page.tsx",
+      "path": "/pomucky/pracovni-neschopenka"
+    },
+    {
+      "file": "src/app/pomucky/projekce-vykonu/page.tsx",
+      "path": "/pomucky/projekce-vykonu"
+    },
+    {
+      "file": "src/app/pomucky/proklepka-vozidla/page.tsx",
+      "path": "/pomucky/proklepka-vozidla"
+    },
+    {
+      "file": "src/app/pomucky/radar-vyroci/page.tsx",
+      "path": "/pomucky/radar-vyroci"
+    },
+    {
+      "file": "src/app/pomucky/skolici-materialy/page.tsx",
+      "path": "/pomucky/skolici-materialy"
+    },
+    {
+      "file": "src/app/pomucky/srovnani-nabidek/page.tsx",
+      "path": "/pomucky/srovnani-nabidek"
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-odpovednosti-obcana/page.tsx",
+      "path": "/pomucky/srovnavac-odpovednosti-obcana"
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-pracovni-neschopnosti/page.tsx",
+      "path": "/pomucky/srovnavac-pracovni-neschopnosti"
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx",
+      "path": "/pomucky/srovnavac-trvalych-nasledku"
+    },
+    {
+      "file": "src/app/pomucky/statistika/page.tsx",
+      "path": "/pomucky/statistika"
+    },
+    {
+      "file": "src/app/pomucky/struktura/page.tsx",
+      "path": "/pomucky/struktura"
+    },
+    {
+      "file": "src/app/pomucky/tipar/page.tsx",
+      "path": "/pomucky/tipar"
+    },
+    {
+      "file": "src/app/pomucky/tvorba/page.tsx",
+      "path": "/pomucky/tvorba"
+    },
+    {
+      "file": "src/app/pomucky/vypoved-smlouvy/page.tsx",
+      "path": "/pomucky/vypoved-smlouvy"
+    },
+    {
+      "file": "src/app/pomucky/zaznam/page.tsx",
+      "path": "/pomucky/zaznam"
+    },
+    {
+      "file": "src/app/pomucky/zaznam/vysledky/page.tsx",
+      "path": "/pomucky/zaznam/vysledky"
+    },
+    {
+      "file": "src/app/pomucky/zaznam/vysledky-auto/page.tsx",
+      "path": "/pomucky/zaznam/vysledky-auto"
+    },
+    {
+      "file": "src/app/pomucky/zlato/page.tsx",
+      "path": "/pomucky/zlato"
+    },
+    {
+      "file": "src/app/pomucky/zprava-tymu/page.tsx",
+      "path": "/pomucky/zprava-tymu"
+    },
+    {
+      "file": "src/app/posta/page.tsx",
+      "path": "/posta"
+    },
+    {
+      "file": "src/app/provizni-vypisy/page.tsx",
+      "path": "/provizni-vypisy"
+    },
+    {
+      "file": "src/app/sin-slavy/page.tsx",
+      "path": "/sin-slavy"
+    },
+    {
+      "file": "src/app/smlouvy/[id]/page.tsx",
+      "path": "/smlouvy/[id]"
+    },
+    {
+      "file": "src/app/smlouvy/page.tsx",
+      "path": "/smlouvy"
+    },
+    {
+      "file": "src/app/tipy/[id]/page.tsx",
+      "path": "/tipy/[id]"
+    },
+    {
+      "file": "src/app/tipy/page.tsx",
+      "path": "/tipy"
+    },
+    {
+      "file": "src/app/ucet/akce/page.tsx",
+      "path": "/ucet/akce"
+    },
+    {
+      "file": "src/app/ucet/zabezpeceni/page.tsx",
+      "path": "/ucet/zabezpeceni"
+    },
+    {
+      "file": "src/app/vizitka/[slug]/cestovni-pojisteni/page.tsx",
+      "path": "/vizitka/[slug]/cestovni-pojisteni"
+    },
+    {
+      "file": "src/app/vizitka/[slug]/page.tsx",
+      "path": "/vizitka/[slug]"
+    },
+    {
+      "file": "src/app/vizitka/[slug]/pojisteni-vozidla/page.tsx",
+      "path": "/vizitka/[slug]/pojisteni-vozidla"
+    },
+    {
+      "file": "src/app/vizitka/[slug]/zivotni-pojisteni/page.tsx",
+      "path": "/vizitka/[slug]/zivotni-pojisteni"
+    },
+    {
+      "file": "src/app/vizitka/[slug]/zlato/page.tsx",
+      "path": "/vizitka/[slug]/zlato"
+    }
+  ],
+  "fileConventionAssets": [
+    "/favicon.ico is served from src/app/favicon.ico"
+  ]
+}

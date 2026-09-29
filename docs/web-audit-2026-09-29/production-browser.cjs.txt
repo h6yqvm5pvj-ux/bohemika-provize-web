@@ -1,0 +1,39 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium}=require('../contract-filter-check/tools/node_modules/playwright');
+const out=path.join(process.cwd(),'.tmp/web-audit-20260929');
+async function main(){
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--no-first-run']});
+ const context=await browser.newContext({viewport:{width:390,height:844}});
+ let meetingAttempts=0;const bodies=[];const errors=[];const result={};
+ await context.route('**/*',route=>{
+  const req=route.request(),url=new URL(req.url());
+  if(url.origin!=='http://127.0.0.1:3109')return route.abort();
+  if(req.method()==='POST'&&url.pathname==='/api/online-card/meeting-request'){
+   meetingAttempts++;bodies.push(JSON.parse(req.postData()));
+   return route.fulfill({status:meetingAttempts===1?503:200,contentType:'application/json',body:JSON.stringify(meetingAttempts===1?{ok:false,error:'Testovací výpadek služby'}:{ok:true,requestId:'synthetic-audit'})});
+  }
+  if(!['GET','HEAD'].includes(req.method()))return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'});
+  return route.continue();
+ });
+ const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push({message:e.message,stack:e.stack}));
+ try{
+  await page.goto('http://127.0.0.1:3109/embed/pojisteni-vozidla?advisor=audit-advisor',{waitUntil:'networkidle'});
+  await page.getByRole('button',{name:'Nezávazně zkontrolovat smlouvu',exact:true}).first().waitFor();
+  await page.getByRole('button',{name:'Nezávazně zkontrolovat smlouvu',exact:true}).first().click();
+  const dialog=page.getByRole('dialog');await dialog.waitFor();
+  const name=dialog.locator('input[name="fullName"]'),phone=dialog.locator('input[name="phone"]');
+  await dialog.locator('button[type="submit"]').click();assert.equal(meetingAttempts,0);
+  await name.fill('Audit Testovací');await phone.fill('777000111');
+  await dialog.locator('button[type="submit"]').click();await dialog.getByRole('alert').waitFor();
+  assert.equal(await name.inputValue(),'Audit Testovací');assert.equal(await phone.inputValue(),'777000111');
+  result.form={emptyBlocked:true,failedRequestRetainsFields:true};
+  await dialog.locator('button[type="submit"]').click();
+  await dialog.getByText('Žádost byla odeslána.',{exact:true}).waitFor();
+  result.form.retrySucceeded=true;result.form.requests=meetingAttempts;
+  await page.keyboard.press('Escape');result.form.escapeCloses=!(await dialog.isVisible());
+  result.url=page.url();
+  result.actualPageErrors=errors;
+ }finally{result.actualPageErrors=errors;fs.writeFileSync(path.join(out,'final-browser.json'),JSON.stringify(result,null,2));await context.close();await browser.close();}
+ console.log(JSON.stringify(result,null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

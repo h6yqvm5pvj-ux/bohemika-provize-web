@@ -1,0 +1,182 @@
+{
+  "browser": "154.0.8037.58",
+  "evidence": [
+    {
+      "file": "src/app/cashflow/page.tsx",
+      "name": "buildInteractiveStatementHtml",
+      "line": 111
+    },
+    {
+      "file": "src/app/smlouvy/[id]/page.tsx",
+      "name": "buildInteractiveStatementHtml",
+      "line": 362
+    },
+    {
+      "file": "src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx",
+      "name": "scenarioPreviewSrcDoc",
+      "line": 4167
+    },
+    {
+      "file": "src/app/kalkulacka/page.tsx",
+      "name": "handleNeonDocumentAction",
+      "line": 1692
+    },
+    {
+      "file": "src/app/pomucky/plan-produkce/page.tsx",
+      "name": "handleOpenPreviewInNewTab",
+      "line": 824
+    },
+    {
+      "file": "src/app/pomucky/vypoved-smlouvy/page.tsx",
+      "name": "openUploadPage",
+      "line": 3333
+    }
+  ],
+  "csp": [
+    {
+      "name": "cashflow",
+      "strict": true,
+      "toggleFunction": "undefined",
+      "detailDisplay": "none",
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "errors": [
+        "Executing inline script violates the following Content Security Policy directive 'script-src 'self' 'nonce-HSTBi+70SdbLo6uy5PBCpA==' 'strict-dynamic''. Either the 'unsafe-inline' keyword, a hash ('sha256-rexvLRKicU9SJ0ezBTqZk2i5HMTrsOvRch0XIBbFczY='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
+        "Running the JavaScript URL violates the following Content Security Policy directive 'script-src 'self' 'nonce-HSTBi+70SdbLo6uy5PBCpA==' 'strict-dynamic''. Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked."
+      ]
+    },
+    {
+      "name": "cashflow",
+      "strict": false,
+      "toggleFunction": "function",
+      "detailDisplay": "block",
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "errors": []
+    },
+    {
+      "name": "contract",
+      "strict": true,
+      "toggleFunction": "undefined",
+      "detailDisplay": "none",
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "errors": [
+        "Executing inline script violates the following Content Security Policy directive 'script-src 'self' 'nonce-WnfGjphmfpnoreodqTGWkQ==' 'strict-dynamic''. Either the 'unsafe-inline' keyword, a hash ('sha256-rexvLRKicU9SJ0ezBTqZk2i5HMTrsOvRch0XIBbFczY='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked.",
+        "Running the JavaScript URL violates the following Content Security Policy directive 'script-src 'self' 'nonce-WnfGjphmfpnoreodqTGWkQ==' 'strict-dynamic''. Either the 'unsafe-inline' keyword, a hash ('sha256-...'), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The action has been blocked."
+      ]
+    },
+    {
+      "name": "contract",
+      "strict": false,
+      "toggleFunction": "function",
+      "detailDisplay": "block",
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "errors": []
+    },
+    {
+      "name": "scenario",
+      "strict": true,
+      "toggleFunction": "undefined",
+      "detailDisplay": null,
+      "transform": "none",
+      "scrollWidth": 806,
+      "width": 350,
+      "errors": [
+        "Executing inline script violates the following Content Security Policy directive 'script-src 'self' 'nonce-RKrgWPxLnJ53sPGBOGb/lA==' 'strict-dynamic''. Either the 'unsafe-inline' keyword, a hash ('sha256-zeda70N4NoxEJhv9HXNNug6R+nIqoumMz5zh6+4rqQg='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+      ]
+    },
+    {
+      "name": "scenario",
+      "strict": false,
+      "toggleFunction": "undefined",
+      "detailDisplay": null,
+      "transform": "matrix(0.410579, 0, 0, 0.410579, 0, 0)",
+      "scrollWidth": 350,
+      "width": 350,
+      "errors": []
+    }
+  ],
+  "popups": [
+    {
+      "name": "neon",
+      "state": {
+        "blobRequests": 0,
+        "error": "ProhlĂ­ĹľeÄŤ zablokoval otevĹ™enĂ­ novĂ© karty s PDF."
+      },
+      "originalUrl": "http://127.0.0.1:3999/probe",
+      "popupUrl": "about:blank"
+    },
+    {
+      "name": "plan",
+      "state": {
+        "blobRequests": 0,
+        "error": "ProhlĂ­ĹľeÄŤ zablokoval otevĹ™enĂ­ novĂ©ho panelu s nĂˇhledem."
+      },
+      "originalUrl": "http://127.0.0.1:3999/probe",
+      "popupUrl": "blob:http://127.0.0.1:3999/bae766c8-88ed-4e8c-9156-ae1c55657162"
+    },
+    {
+      "name": "upload",
+      "state": null,
+      "originalUrl": "http://127.0.0.1:3999/target",
+      "popupUrl": "http://127.0.0.1:3999/target"
+    }
+  ],
+  "frameHeaders": [
+    {
+      "path": "/muj-tym/tydenni-report?source=weekly-report&embed=mailbox",
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-tD9vlyr6Zx7obo16qMNSBw==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+      "expires": "0",
+      "pragma": "no-cache",
+      "vary": "Authorization, Cookie",
+      "x-frame-options": "DENY",
+      "x-robots-tag": "noindex, nofollow, noarchive"
+    },
+    {
+      "path": "/kalkulacka?prefill=commission-statement",
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-HaQduA0pq4m5Qc8PsQavTw==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+      "expires": "0",
+      "pragma": "no-cache",
+      "vary": "Authorization, Cookie",
+      "x-frame-options": "SAMEORIGIN",
+      "x-robots-tag": "noindex, nofollow, noarchive"
+    },
+    {
+      "path": "/smlouvy/example?embedded=1",
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-sm4L5L6eImaVXC7+Kvm/bg==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+      "expires": "0",
+      "pragma": "no-cache",
+      "vary": "Authorization, Cookie",
+      "x-frame-options": "SAMEORIGIN",
+      "x-robots-tag": "noindex, nofollow, noarchive"
+    },
+    {
+      "path": "/pomucky/naceneni-celniho-skla",
+      "cache-control": "private, no-store, max-age=0, must-revalidate",
+      "content-security-policy": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; frame-src 'self' https://*.firebaseapp.com https://*.web.app; worker-src 'self' blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'nonce-QleybE5sC9ba0CtlWLMiWA==' 'strict-dynamic'; script-src-attr 'none'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.gstatic.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://query1.finance.yahoo.com https://api.frankfurter.app https://stooq.com https://stooq.pl https://prices.lbma.org.uk https://data-asg.goldprice.org https://api.gold-api.com https://cdn.jsdelivr.net https://wsextra.cpp.cz https://europe-central2-bohemikasmlouvy.cloudfunctions.net; upgrade-insecure-requests",
+      "expires": "0",
+      "pragma": "no-cache",
+      "vary": "Authorization, Cookie",
+      "x-frame-options": "DENY",
+      "x-robots-tag": "noindex, nofollow, noarchive"
+    }
+  ],
+  "weeklyFrame": {
+    "errors": [
+      "Framing 'http://127.0.0.1:3999/' violates the following Content Security Policy directive: \"frame-ancestors 'none'\". The request has been blocked.\n"
+    ],
+    "frames": [
+      "http://127.0.0.1:3999/posta",
+      "chrome-error://chromewebdata/"
+    ]
+  }
+}

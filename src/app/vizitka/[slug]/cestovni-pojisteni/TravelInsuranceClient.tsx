@@ -1,5 +1,8 @@
 "use client";
 
+import { onlineCardHref } from "@/lib/onlineCardNavigation";
+import type { OnlineCardLocale } from "@/lib/onlineCardI18n";
+
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BriefcaseBusiness, CarFront, Check, CheckCircle2, ChevronDown, Compass, FileCheck2, LifeBuoy, Loader2, MapPin, Mountain, Phone, Plane, ShieldCheck, Snowflake, Sun, UsersRound, Waves } from "lucide-react";
 import { trackOnlineCardEvent, trackOnlineCardVisit } from "@/lib/onlineCardTracking";
@@ -14,7 +17,7 @@ function Field({ id, label, hint, children }: { id: string; label: string; hint?
   return <div className={styles.field}><label htmlFor={id}>{label}</label>{children}{hint && <small id={`${id}-hint`}>{hint}</small>}</div>;
 }
 
-export default function TravelInsuranceClient({ slug, advisorName, advisorPhone }: { slug: string; advisorName: string; advisorPhone: string }) {
+export default function TravelInsuranceClient({ slug, advisorName, advisorPhone, returnLocale = "cs" }: { slug: string; advisorName: string; advisorPhone: string; returnLocale?: OnlineCardLocale }) {
   const [trip, setTrip] = useState<TravelDraft>(() => ({ ...EMPTY_TRAVEL_DRAFT, activities: [] }));
   const [step, setStep] = useState(0);
   const [started, setStarted] = useState(false);
@@ -94,8 +97,8 @@ export default function TravelInsuranceClient({ slug, advisorName, advisorPhone 
 
   return <main className={styles.page}>
     <header className={styles.header}>
-      <a className={styles.back} href={`/vizitka/${slug}`}><ArrowLeft size={17} /><span>Zpět na vizitku</span></a>
-      <a className={styles.advisor} href={`/vizitka/${slug}`}><span className={styles.avatar}>{advisorName.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span><span>{advisorName}<small>Váš osobní poradce</small></span></a>
+      <a className={styles.back} href={onlineCardHref(`/vizitka/${slug}`, returnLocale)}><ArrowLeft size={17} /><span>Zpět na vizitku</span></a>
+      <a className={styles.advisor} href={onlineCardHref(`/vizitka/${slug}`, returnLocale)}><span className={styles.avatar}>{advisorName.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span><span>{advisorName}<small>Váš osobní poradce</small></span></a>
       {phoneHref && <a className={styles.phone} href={`tel:${phoneHref}`} onClick={() => void trackOnlineCardEvent(slug, "phone_click")}><Phone size={16} /><span>Zavolat</span></a>}
     </header>
 
@@ -127,7 +130,7 @@ export default function TravelInsuranceClient({ slug, advisorName, advisorPhone 
 
       <section ref={guideRef} className={styles.guide} aria-labelledby="travel-guide-title">
         <div className={styles.guideTop}><div><p className={styles.eyebrow}>VÁŠ CESTOVNÍ PLÁN</p><h2 id="travel-guide-title">Dobré pojištění začíná vaší cestou.</h2></div><span className={styles.privateNote}><ShieldCheck size={16} /> Nezávazně, bez registrace</span></div>
-        {submitted ? <div className={styles.success} role="status"><CheckCircle2 size={48} /><h2 ref={stepHeading} tabIndex={-1}>Poptávka je u vašeho poradce.</h2><p>{advisorName} dostal údaje o cestě i vaše plány. Ozve se vám a upřesní nabídku nebo kontrolu stávajícího pojištění.</p><p className={styles.finePrint}>Odesláním poptávky ještě nevzniká pojištění.</p><a className={styles.primary} href={`/vizitka/${slug}`}>Zpět na vizitku <ArrowRight size={17} /></a></div> : <>
+        {submitted ? <div className={styles.success} role="status"><CheckCircle2 size={48} /><h2 ref={stepHeading} tabIndex={-1}>Poptávka je u vašeho poradce.</h2><p>{advisorName} dostal údaje o cestě i vaše plány. Ozve se vám a upřesní nabídku nebo kontrolu stávajícího pojištění.</p><p className={styles.finePrint}>Odesláním poptávky ještě nevzniká pojištění.</p><a className={styles.primary} href={onlineCardHref(`/vizitka/${slug}`, returnLocale)}>Zpět na vizitku <ArrowRight size={17} /></a></div> : <>
           <ol className={styles.steps}>{STEPS.map((label, index) => <li key={label} data-active={step === index} data-done={step > index}><button type="button" disabled={index > step || submitting} onClick={() => { setStarted(true); navigate(index); }} aria-current={step === index ? "step" : undefined}><span>{step > index ? <Check size={15} /> : index + 1}</span>{label}</button></li>)}</ol>
           <form onSubmit={continueForm} noValidate>
             <fieldset disabled={submitting} className={styles.formFields}>
@@ -180,7 +183,7 @@ export default function TravelInsuranceClient({ slug, advisorName, advisorPhone 
           ["Je odesláním poptávky cesta pojištěná?", "Ještě ne. Poptávka zahájí konzultaci. Vznik a počátek pojištění se řídí následně sjednanou smlouvou a podmínkami úhrady pojistného."],
         ].map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={17} /></summary><p>{answer}</p></details>)}
       </div></section>
-      <footer className={styles.bottom}><span>Cestovní pojištění · {advisorName}</span><a href={`/vizitka/${slug}`}>Zpět na vizitku <ArrowUpRight size={14} /></a></footer>
+      <footer className={styles.bottom}><span>Cestovní pojištění · {advisorName}</span><a href={onlineCardHref(`/vizitka/${slug}`, returnLocale)}>Zpět na vizitku <ArrowUpRight size={14} /></a></footer>
     </div>
     <div className={styles.mobileBar}>{phoneHref && <a href={`tel:${phoneHref}`} aria-label="Zavolat poradci" onClick={() => void trackOnlineCardEvent(slug, "phone_click")}><Phone size={19} /></a>}<button onClick={() => start(intent)} disabled={submitting}>{started ? "Zpět k mému plánu" : "Připravit můj plán"}<ArrowRight size={16} /></button></div>
   </main>;

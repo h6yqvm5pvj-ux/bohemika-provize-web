@@ -1,5 +1,7 @@
 "use client";
 
+import { openPreviewWindow } from "@/lib/openPreviewWindow";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
@@ -823,13 +825,16 @@ export default function PlanProdukcePage() {
 
   const handleOpenPreviewInNewTab = () => {
     if (!previewHtml || typeof window === "undefined") return;
-    const blob = new Blob([previewHtml], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    const opened = openPreviewWindow();
     if (!opened) {
       setErrorText("Prohlížeč zablokoval otevření nového panelu s náhledem.");
+      return;
     }
+    setErrorText(null);
+    const blob = new Blob([previewHtml], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    opened.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   useEffect(() => {

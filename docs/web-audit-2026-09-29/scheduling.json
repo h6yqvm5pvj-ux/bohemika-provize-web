@@ -1,0 +1,11 @@
+{
+  "adminBroadcastCronConfigured": false,
+  "snooze": {
+    "cron": "30 7 * * *",
+    "created": "2026-09-29T08:00:00.000Z",
+    "due": "2026-09-30T08:00:00.000Z",
+    "nextConfiguredRun": "2026-10-01T07:30:00.000Z",
+    "delayHours": 23.5
+  },
+  "scope": "Configuration in repository; independent production schedulers not inspected"
+}

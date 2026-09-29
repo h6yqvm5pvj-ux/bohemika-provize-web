@@ -1,6 +1,8 @@
 // src/app/pomucky/srovnavac-trvalych-nasledku/page.tsx
 "use client";
 
+import { SCENARIO_FIT_SCRIPT } from "@/lib/previewScripts";
+
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -4165,7 +4167,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
   const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
   const scenarioPreviewSrcDoc = scenarioModalOpen && scenarioStep === 1
-    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${buildScenarioPdfExportHtml(new Date().toLocaleString("cs-CZ"))}</div></div><script>function fit(){const s=Math.min(1,(innerWidth-24)/794),c=document.querySelector('.preview-scale'),h=document.querySelector('.preview-holder');c.style.transform='scale('+s+')';h.style.width=794*s+'px';h.style.height=c.scrollHeight*s+'px'}fit();addEventListener('load',fit);addEventListener('resize',fit);</script></body></html>` : "";
+    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${buildScenarioPdfExportHtml(new Date().toLocaleString("cs-CZ"))}</div></div><script>${SCENARIO_FIT_SCRIPT}</script></body></html>` : "";
 
 
   return (
@@ -4419,6 +4421,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       <iframe
                         title="Náhled klientského PDF výstupu"
                         srcDoc={scenarioPreviewSrcDoc}
+                        sandbox="allow-scripts"
+                        referrerPolicy="no-referrer"
                         className="h-[calc(94vh-205px)] min-h-[350px] w-full bg-white"
                       />
                     </div>

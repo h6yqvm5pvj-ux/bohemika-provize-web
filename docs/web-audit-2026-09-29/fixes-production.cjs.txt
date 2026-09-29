@@ -1,0 +1,60 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium}=require('../contract-filter-check/tools/node_modules/playwright');
+const out=path.join(process.cwd(),'.tmp/web-audit-20260929');
+async function main(){
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--disable-background-networking','--no-first-run']});
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ let meetingAttempts=0;const bodies=[];const errors=[];const result={};
+ await context.route('**/*',route=>{
+  const req=route.request(),url=new URL(req.url());
+  if(url.origin!=='http://127.0.0.1:3109')return route.abort();
+  if(req.method()==='POST'&&url.pathname==='/api/online-card/meeting-request'){
+   meetingAttempts++;bodies.push(JSON.parse(req.postData()));
+   return route.fulfill({status:meetingAttempts===1?503:200,contentType:'application/json',body:JSON.stringify(meetingAttempts===1?{ok:false,error:'Testovací výpadek služby'}:{ok:true,requestId:'synthetic-audit'})});
+  }
+  if(!['GET','HEAD'].includes(req.method()))return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'});
+  return route.continue();
+ });
+ const page=await context.newPage();page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push({message:e.message,stack:e.stack}));
+ try{
+  const missing=await page.goto('http://127.0.0.1:3109/audit-neexistujici-stranka',{waitUntil:'networkidle'});
+  assert.equal(missing.status(),404);
+  await page.getByRole('heading',{name:'Stránka nebyla nalezena'}).waitFor();
+  result.notFound={status:missing.status(),language:await page.locator('html').getAttribute('lang')};
+  result.viewport=await page.locator('meta[name="viewport"]').getAttribute('content');
+  assert.match(result.viewport,/minimum-scale=1/);assert.doesNotMatch(result.viewport,/maximum-scale=1|user-scalable=no/);
+  const cdp=await context.newCDPSession(page);
+  const scale=()=>page.evaluate(()=>visualViewport.scale);
+  const initial=await scale();
+  await cdp.send('Input.synthesizePinchGesture',{x:195,y:300,scaleFactor:2,relativeSpeed:400,gestureSourceType:'touch'});
+  await page.waitForTimeout(150);const enlarged=await scale();assert.ok(enlarged>1.5);
+  await cdp.send('Input.synthesizePinchGesture',{x:95,y:150,scaleFactor:0.5,relativeSpeed:400,gestureSourceType:'touch'});
+  await page.waitForTimeout(150);
+  await cdp.send('Input.synthesizePinchGesture',{x:195,y:300,scaleFactor:0.5,relativeSpeed:400,gestureSourceType:'touch'});
+  await page.waitForTimeout(150);const returned=await scale();assert.ok(Math.abs(returned-1)<0.01);
+  result.zoom={initial,enlarged,returned};
+  await page.screenshot({path:path.join(out,'fixed-404-mobile.png')});
+  const pdf=await context.request.get('http://127.0.0.1:3109/provize/bytexprovize.pdf');
+  assert.equal(pdf.status(),200);assert.match(pdf.headers()['content-type'],/application\/pdf/);
+  const bytes=await pdf.body();assert.deepEqual(bytes,fs.readFileSync('public/provize/bytexprovize.pdf'));
+  result.bytex={status:pdf.status(),bytes:bytes.length,matchesSuppliedDocument:true};
+  await page.goto('http://127.0.0.1:3109/embed/pojisteni-vozidla?advisor=audit-advisor',{waitUntil:'networkidle'});
+  await page.getByRole('button',{name:'Nezávazně zkontrolovat smlouvu',exact:true}).first().waitFor();
+  await page.getByRole('button',{name:'Nezávazně zkontrolovat smlouvu',exact:true}).first().click();
+  const dialog=page.getByRole('dialog');await dialog.waitFor();
+  const name=dialog.locator('input[name="fullName"]'),phone=dialog.locator('input[name="phone"]');
+  await dialog.locator('button[type="submit"]').click();assert.equal(meetingAttempts,0);
+  await name.fill('Audit Testovací');await phone.fill('777000111');
+  await dialog.locator('button[type="submit"]').click();await dialog.getByRole('alert').waitFor();
+  assert.equal(await name.inputValue(),'Audit Testovací');assert.equal(await phone.inputValue(),'777000111');
+  result.form={emptyBlocked:true,failedRequestRetainsFields:true};
+  await dialog.locator('button[type="submit"]').click();
+  await dialog.getByText('Žádost byla odeslána.',{exact:true}).waitFor();
+  result.form.retrySucceeded=true;result.form.requests=meetingAttempts;
+  await page.keyboard.press('Escape');result.form.escapeCloses=!(await dialog.isVisible());
+  result.url=page.url();
+  result.actualPageErrors=errors;
+ }finally{result.actualPageErrors=errors;fs.writeFileSync(path.join(out,'fixes-production.json'),JSON.stringify(result,null,2));await context.close();await browser.close();}
+ console.log(JSON.stringify(result,null,2));
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

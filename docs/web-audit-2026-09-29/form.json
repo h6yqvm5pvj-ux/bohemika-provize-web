@@ -1,0 +1,11 @@
+{
+  "form": {
+    "emptyBlocked": true,
+    "failedRequestRetainsFields": true,
+    "retrySucceeded": true,
+    "requests": 2,
+    "escapeCloses": true
+  },
+  "url": "http://127.0.0.1:3109/embed/pojisteni-vozidla?advisor=audit-advisor",
+  "actualPageErrors": []
+}

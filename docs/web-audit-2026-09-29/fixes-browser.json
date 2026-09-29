@@ -1,0 +1,78 @@
+{
+  "browser": "154.0.8037.58",
+  "previews": [
+    {
+      "name": "cashflow",
+      "isolated": true,
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "untrustedScriptsBlocked": true
+    },
+    {
+      "name": "contract",
+      "isolated": true,
+      "transform": null,
+      "scrollWidth": 350,
+      "width": 350,
+      "untrustedScriptsBlocked": true
+    },
+    {
+      "name": "scenario",
+      "isolated": true,
+      "transform": "matrix(0.410579, 0, 0, 0.410579, 0, 0)",
+      "scrollWidth": 350,
+      "width": 350
+    }
+  ],
+  "popups": [
+    {
+      "name": "neon",
+      "blocked": false,
+      "blobRequests": 1,
+      "error": null,
+      "originalUrl": "http://127.0.0.1:3999/probe",
+      "popupUrl": "blob:local-preview"
+    },
+    {
+      "name": "neon",
+      "blocked": true,
+      "blobRequests": 0,
+      "error": "Prohlížeč zablokoval otevření nové karty s PDF.",
+      "originalUrl": "http://127.0.0.1:3999/probe"
+    },
+    {
+      "name": "plan",
+      "blocked": false,
+      "blobRequests": 0,
+      "error": null,
+      "originalUrl": "http://127.0.0.1:3999/probe",
+      "popupUrl": "blob:local-preview"
+    },
+    {
+      "name": "plan",
+      "blocked": true,
+      "blobRequests": 0,
+      "error": "Prohlížeč zablokoval otevření nového panelu s náhledem.",
+      "originalUrl": "http://127.0.0.1:3999/probe"
+    }
+  ],
+  "frames": [
+    {
+      "name": "mailbox",
+      "loaded": true
+    },
+    {
+      "name": "ordinary",
+      "loaded": false
+    },
+    {
+      "name": "foreign",
+      "loaded": false
+    }
+  ],
+  "uploadLink": {
+    "nativeNewTab": true,
+    "originalFormRetained": true
+  }
+}
