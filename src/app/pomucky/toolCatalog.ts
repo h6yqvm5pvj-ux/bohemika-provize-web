@@ -84,6 +84,7 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
   ],
   "radar-vyroci": ["retence", "obvolání", "konec smlouvy", "klienti", "servis"],
   tvorba: ["editor", "dopis", "formulář", "šablona", "pdf"],
+  "srovnani-nabidek": ["srovnání", "porovnání", "nabídky", "smlouvy", "konkurence", "editor", "pdf", "pojišťovna"],
   "online-vizitka": ["profil", "web", "qr", "kontakt", "osobní stránka"],
   "hypoteka-vlastni-zdroje": [
     "hypo",
@@ -233,6 +234,14 @@ export function toolMatchesSearchQuery(
 }
 
 export const TOOL_CATALOG: ToolCatalogEntry[] = [
+  {
+    key: "srovnani-nabidek",
+    category: "Obecné",
+    title: "Srovnání nabídek",
+    description: "Vlastní srovnání stávající smlouvy a nových nabídek. Libovolné položky, loga, ikony a PDF s vizitkou.",
+    href: "/pomucky/srovnani-nabidek",
+    news: { kind: "new", summary: "Volný editor srovnání smluv s výběrem pojišťoven, vlastními řádky, více nabídkami a PDF s kontaktní vizitkou a QR kódem." },
+  },
   {
     key: "argumenty",
     category: "Obecné",

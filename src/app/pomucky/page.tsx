@@ -160,6 +160,7 @@ const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
   "nahrada-smlouvy": RefreshCcw,
   "radar-vyroci": CalendarClock,
   tvorba: PenTool,
+  "srovnani-nabidek": Scale,
   "online-vizitka": WalletCards,
   "hypoteka-vlastni-zdroje": PiggyBank,
   statistika: BarChart3,

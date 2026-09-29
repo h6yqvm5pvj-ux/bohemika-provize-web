@@ -416,6 +416,7 @@ export function AppNavigation({
           </header>
         ) : null}
         <header
+          data-app-navigation-header
           className={`${styles.mobileHeader} ${shellFontClass}`}
         >
           <div className="flex min-w-0 items-center gap-2">

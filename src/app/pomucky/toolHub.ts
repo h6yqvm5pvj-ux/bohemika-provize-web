@@ -10,6 +10,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "nahrada-smlouvy",
   "radar-vyroci",
   "tvorba",
+  "srovnani-nabidek",
   "online-vizitka",
   "hypoteka-vlastni-zdroje",
   "statistika",

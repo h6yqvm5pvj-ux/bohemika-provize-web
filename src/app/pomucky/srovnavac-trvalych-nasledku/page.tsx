@@ -30,6 +30,7 @@ import { ComparisonLoading } from "./ComparisonLoading";
 import { InsurerPicker } from "./InsurerPicker";
 import { buildClientReport, type PdfAppendix } from "./clientReport";
 import { ParameterField } from "./ParameterField";
+import { PROGRESSION_LABELS } from "./progressionOptions";
 
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney } from "@/app/lib/formatters";
@@ -3166,7 +3167,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     if (preset === "neon-oneguard-10x") {
       setPresetCardKeys(["cpp-10x", "metlife-oneguard"]);
       setSelectedInsurers([]);
-      setSelectedProgressions(["10× progrese"]);
+      setSelectedProgressions([PROGRESSION_LABELS["10x"]]);
       setProductPickerConfirmed(true);
     }
   }, []);
@@ -3325,7 +3326,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-10x",
         insurer: "ČPP Životní pojištění NEON 2023–2026",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payout,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCppNeon10xTablePreview(normalizedPercent),
@@ -3334,7 +3335,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-5x",
         insurer: "ČPP Životní pojištění NEON 2023–2026",
-        badges: ["5× progrese"],
+        badges: [PROGRESSION_LABELS["5x"]],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
@@ -3346,7 +3347,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-neon-top-2022-06",
         insurer: "ČPP Životní pojištění NEON",
-        badges: ["2019–01.06.2022", "TOP progrese 5×"],
+        badges: ["2019–01.06.2022", PROGRESSION_LABELS["top5x"]],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildGeneric5xMultiplierTablePreview(
@@ -3358,7 +3359,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-top-5x",
         insurer: "ČPP Evoluce",
-        badges: ["16.07.2015–2016", "TOP progrese 5×"],
+        badges: ["16.07.2015–2016", PROGRESSION_LABELS["top5x"]],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
@@ -3366,7 +3367,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-plus-2020-top-5x",
         insurer: "ČPP Evoluce PLUS",
-        badges: ["2016–2020", "TOP progrese 5×"],
+        badges: ["2016–2020", PROGRESSION_LABELS["top5x"]],
         payout: payout5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
@@ -3374,7 +3375,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-5x",
         insurer: "ČPP Evoluce",
-        badges: ["16.07.2015–2016", "5× progrese"],
+        badges: ["16.07.2015–2016", PROGRESSION_LABELS["5x"]],
         payout: payoutCppEvoluce5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
         tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
@@ -3382,7 +3383,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "cpp-evoluce-2015-5x",
         insurer: "ČPP Evoluce",
-        badges: ["01.01.2014–01.01.2015", "5× progrese"],
+        badges: ["01.01.2014–01.01.2015", PROGRESSION_LABELS["5x"]],
         payout: payoutCppEvoluce5x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
         tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
@@ -3390,7 +3391,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-domino",
         insurer: "UNIQA Domino",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutUniqa,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildUniqaDominoTablePreview(normalizedPercent),
@@ -3398,7 +3399,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-logika-2019",
         insurer: "UNIQA Logika 2019",
-        badges: ["4× progrese"],
+        badges: [PROGRESSION_LABELS["4x"]],
         payout: payoutUniqaLogika2019,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildUniqaLogika20194xTablePreview(normalizedPercent),
@@ -3406,7 +3407,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-logika-2019-6x",
         insurer: "UNIQA Logika 2019",
-        badges: ["6× progrese"],
+        badges: [PROGRESSION_LABELS["6x"]],
         payout: payoutUniqaLogika20196x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier6x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildUniqaLogika20196xTablePreview(normalizedPercent),
@@ -3414,7 +3415,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-logika-2019-10x",
         insurer: "UNIQA Logika 2019",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutUniqaLogika201910x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildUniqaLogika201910xTablePreview(normalizedPercent),
@@ -3422,7 +3423,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-logika-2020-10x",
         insurer: "UNIQA Logika 2020",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutUniqaLogika202010x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2020Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildUniqaLogika202010xTablePreview(normalizedPercent),
@@ -3430,7 +3431,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-activelife-2019-324-324u",
         insurer: "UNIQA ActiveLife 2019",
-        badges: ["Tarify 324/324U", "5× progrese"],
+        badges: ["Tarify 324/324U", PROGRESSION_LABELS["5x"]],
         payout: payoutUniqaActiveLife2019324,
         info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019324Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3442,7 +3443,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-activelife-2019-325-325u",
         insurer: "UNIQA ActiveLife 2019",
-        badges: ["Tarify 325/325U", "5× progrese"],
+        badges: ["Tarify 325/325U", PROGRESSION_LABELS["5x"]],
         payout: payoutUniqaActiveLife2019325,
         info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019325Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3454,7 +3455,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-symfonie-2021-324-324u",
         insurer: "UNIQA Symfonie 2021",
-        badges: ["Tarify 324 a 324U", "5× progrese"],
+        badges: ["Tarify 324 a 324U", PROGRESSION_LABELS["5x"]],
         payout: payoutUniqaSymfonie2021,
         info: `Tarify 324 a 324U: ${formatMoney(sumInsuredValue)} × ${uniqaSymfonie2021Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3466,7 +3467,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "axa-active-life-2016-2021-324-324u",
         insurer: "AXA Active Life 2016-2021",
-        badges: ["Tarify 324/324U", "5× progrese"],
+        badges: ["Tarify 324/324U", PROGRESSION_LABELS["5x"]],
         payout: payoutAxaActiveLife324324u,
         info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife324324uPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3478,7 +3479,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "axa-active-life-2016-2021-325-325u",
         insurer: "AXA Active Life 2016-2021",
-        badges: ["Tarify 325/325U", "5× progrese"],
+        badges: ["Tarify 325/325U", PROGRESSION_LABELS["5x"]],
         payout: payoutAxaActiveLife325325u,
         info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife325325uPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3490,7 +3491,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "uniqa-zivot-radost",
         insurer: "UNIQA Život & radost 2026",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutUniqaZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3502,7 +3503,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "koop-flexi",
         insurer: "Kooperativa Životní pojištění FLEXI 2026",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutKooperativaFlexi,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
         tablePreview: buildHalfStepValueTablePreview(
@@ -3514,7 +3515,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "koop-flexi-4x",
         insurer: "Kooperativa Životní pojištění FLEXI 2026",
-        badges: ["4× progrese"],
+        badges: [PROGRESSION_LABELS["4x"]],
         payout: payoutKooperativaFlexi4,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
         tablePreview: buildKooperativaFlexi4xTablePreview(normalizedPercent),
@@ -3522,7 +3523,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "koop-na-prani-tn4",
         insurer: "Kooperativa NA PŘÁNÍ",
-        badges: ["4× progrese"],
+        badges: [PROGRESSION_LABELS["4x"]],
         payout: payoutKooperativaNaPraniTn4,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn4Percent}% (TN4).`,
         tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
@@ -3530,7 +3531,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "koop-na-prani-tn8",
         insurer: "Kooperativa NA PŘÁNÍ",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutKooperativaNaPraniTn8,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn8Percent}% (TN8).`,
         tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
@@ -3538,7 +3539,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "metlife-oneguard",
         insurer: "MetLife OneGuard",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutMetlifeOneGuard,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeOneGuardPercent}%.`,
         tablePreview: buildMetlifeCoefficientTablePreview(
@@ -3550,7 +3551,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "metlife-garde5",
         insurer: "MetLife Garde 5.0",
-        badges: ["2018", "10× progrese"],
+        badges: ["2018", PROGRESSION_LABELS["10x"]],
         payout: payoutMetlifeGarde5,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde5Percent}%.`,
         tablePreview: buildMetlifeCoefficientTablePreview(
@@ -3563,7 +3564,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "metlife-garde6",
         insurer: "MetLife Garde 6.0",
-        badges: ["2021–2024", "10× progrese"],
+        badges: ["2021–2024", PROGRESSION_LABELS["10x"]],
         payout: payoutMetlifeGarde6,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde6Percent}%.`,
         tablePreview: buildMetlifeCoefficientTablePreview(
@@ -3575,7 +3576,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "csob-nas-zivot",
         insurer: "ČSOB Náš Život",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutCsobNasZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3587,7 +3588,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "csob-forte",
         insurer: "ČSOB Forte 2016-2019",
-        badges: ["6× progrese"],
+        badges: [PROGRESSION_LABELS["6x"]],
         payout: payoutCsobForte,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobForteMultiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildCsobForteTablePreview(normalizedPercent),
@@ -3595,7 +3596,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "kb-elan-2025-10",
         insurer: "KB Elán",
-        badges: ["15.10.2025", "8× progrese"],
+        badges: ["15.10.2025", PROGRESSION_LABELS["8x"]],
         payout: payoutKbElan202510,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kbElan202510Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3607,7 +3608,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "generali-muj-zivot",
         insurer: "Generali Můj Život 2 2024",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutGeneraliMujZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3619,7 +3620,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "generali-bel-mondo-20-2023-2024",
         insurer: "Generali Bel Mondo 20 2023-2024",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutGeneraliBelMondo20232024,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20232024Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3631,7 +3632,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "generali-bel-mondo-20-2020-2022",
         insurer: "Generali Bel Mondo 20 2020-2022",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutGeneraliBelMondo20202022,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20202022Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3643,7 +3644,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "generali-allegro-20-2023-2024",
         insurer: "Generali Allegro 20 2023-2024",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutGeneraliAllegro20232024,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20232024Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3655,7 +3656,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "generali-allegro-20-2020-2022",
         insurer: "Generali Allegro 20 2020-2022",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutGeneraliAllegro20202022,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20202022Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3667,7 +3668,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "nn-orange",
         insurer: "NN Orange RISK",
-        badges: ["2023–18.03.2025", "5× progrese"],
+        badges: ["2023–18.03.2025", PROGRESSION_LABELS["5x"]],
         payout: payoutNnOrange,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3679,7 +3680,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "nn-orange-2025-09",
         insurer: "NN Orange RISK",
-        badges: ["02.09.2025–2026", "5× progrese"],
+        badges: ["02.09.2025–2026", PROGRESSION_LABELS["5x"]],
         payout: payoutNnOrange,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3691,7 +3692,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "nn-orange-10x",
         insurer: "NN Orange RISK",
-        badges: ["02.09.2025–2026", "10× progrese"],
+        badges: ["02.09.2025–2026", PROGRESSION_LABELS["10x"]],
         payout: payoutNnOrange10x,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3703,7 +3704,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "nn-orange-10x-2025-03",
         insurer: "NN Orange RISK",
-        badges: ["2023–18.03.2025", "10× progrese"],
+        badges: ["2023–18.03.2025", PROGRESSION_LABELS["10x"]],
         payout: payoutNnOrange10x202503,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10x202503Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3715,7 +3716,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "nn-zivot-2019-06",
         insurer: "NN Život 6/2019",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutNnZivot201906,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnZivot201906Percent}%.`,
         tablePreview: buildPercentValueTablePreview(
@@ -3727,7 +3728,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "you-plus-4u-2025",
         insurer: "YOU PLUS 4U 2021-2025",
-        badges: ["8,5× progrese"],
+        badges: [PROGRESSION_LABELS["8.5x"]],
         payout: payoutYouPlus4u2025,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025Percent}%.`,
         infoSections: YOU_PLUS_4U_2025_T2K_INFO_SECTIONS,
@@ -3740,7 +3741,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "you-plus-4u-2025-t3k",
         insurer: "YOU PLUS 4U 2021-2025",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutYouPlus4u2025T3k,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025T3kPercent}%.`,
         infoSections: YOU_PLUS_4U_2025_T3K_INFO_SECTIONS,
@@ -3753,7 +3754,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "you-plus-4u-2020",
         insurer: "YOU PLUS 4U 2020",
-        badges: ["6× progrese"],
+        badges: [PROGRESSION_LABELS["6x"]],
         payout: payoutYouPlus4u2020,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2020Percent}%.`,
         infoSections: YOU_PLUS_4U_2020_INFO_SECTIONS,
@@ -3766,7 +3767,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "maxima-maxefekt",
         insurer: "Maxima MAXEFEKT 6.0",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutMaximaMaxefekt,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildMaximaMaxefektTablePreview(normalizedPercent),
@@ -3774,7 +3775,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "allianz-zivot",
         insurer: "Allianz Život",
-        badges: ["27.05.2022–28.11.2025", "8× progrese"],
+        badges: ["27.05.2022–28.11.2025", PROGRESSION_LABELS["8x"]],
         payout: payoutAllianzZivot,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
         tablePreview: buildAnchorValueTablePreview(
@@ -3786,7 +3787,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "allianz-zivot-2021-06",
         insurer: "Allianz Život",
-        badges: ["01.01.2017–18.06.2021", "8× progrese"],
+        badges: ["01.01.2017–18.06.2021", PROGRESSION_LABELS["8x"]],
         payout: payoutAllianzZivot202106,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivot202106Percent}%.`,
         tablePreview: buildAnchorValueTablePreview(
@@ -3798,7 +3799,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "allianz-partners-2026",
         insurer: "Allianz Partners 2025–2026",
-        badges: ["8× progrese"],
+        badges: [PROGRESSION_LABELS["8x"]],
         payout: payoutAllianzPartners2026,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzPartners2026Percent}%.`,
         infoSections: ALLIANZ_PARTNERS_2026_INFO_SECTIONS,
@@ -3807,7 +3808,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "simplea-2",
         insurer: "Simplea 2.0",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutSimplea,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${formatPercent(normalizedPercent)}.`,
         tablePreview: buildSimpleaTablePreview(normalizedPercent),
@@ -3815,7 +3816,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       {
         key: "pillow-uraz-nemoc",
         insurer: "Pillow Úraz Nemoc",
-        badges: ["10× progrese"],
+        badges: [PROGRESSION_LABELS["10x"]],
         payout: payoutPillow,
         info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${pillowMultiplier}.`,
         tablePreview: buildAnchorMultiplierTablePreview(
