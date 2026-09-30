@@ -1,7 +1,8 @@
 import { getStorage } from "firebase-admin/storage";
 
-const MAILBOX_MESSAGE_ID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Compose also accepts non-UUID client retry keys. Rejected attempts must be
+// able to remove their freshly uploaded objects for every accepted key format.
+const MAILBOX_MESSAGE_ID_RE = /^[A-Za-z0-9_-]{16,100}$/;
 const EMAIL_RE = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/;
 
 export type MailboxStorageObject = {

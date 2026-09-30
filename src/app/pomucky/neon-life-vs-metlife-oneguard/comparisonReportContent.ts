@@ -1,6 +1,15 @@
 import { Children, isValidElement, type ReactNode } from "react";
 
-export type ReportBlock = { text: string; kind: "body" | "heading" | "quote"; href?: string; cells?: string[] };
+export type ReportRun = { text: string; bold?: boolean; highlight?: boolean };
+export type ReportBlock = {
+  text: string;
+  kind: "body" | "heading" | "quote";
+  href?: string;
+  cells?: string[];
+  cellTones?: string[];
+  decoration?: "tiles" | "callout";
+  runs?: ReportRun[];
+};
 export type ReportSummary = { status: string; title: string; tone: string };
 export type ComparisonReportRow = {
   id: string;
@@ -25,18 +34,41 @@ export function reportBlocks(node: ReactNode): ReportBlock[] {
   if (node.props["data-report-text"]) return [{ text: node.props["data-report-text"], kind: "body" }];
   if (node.props["aria-hidden"] || typeof node.type !== "string" || ["button", "svg"].includes(node.type)) return [];
   const children = Children.toArray(node.props.children);
-  const hasBlocks = children.some(child => isValidElement(child) && typeof child.type === "string" && BLOCK_TAGS.has(child.type));
-  if (hasBlocks) return children.flatMap(reportBlocks);
+  const className = node.props.className ?? "";
   const parts = children.flatMap(reportBlocks);
+  // Preserve the side-by-side value tiles, including green/red coverage states.
+  // Longer grids of paragraphs remain normal blocks so they can paginate.
+  if (/\bgrid\b/.test(className) && children.length > 1) {
+    const cells = children.map(child => reportBlocks(child).map(part => part.text).join(" ")).filter(Boolean);
+    if (cells.length > 1 && cells.every(cell => cell.length < 100)) {
+      const cellTones = children.filter(child => reportBlocks(child).length > 0).map(child => {
+        const classes = isValidElement<{ className?: string }>(child) ? child.props.className ?? "" : "";
+        return /(?:bg|border)-(?:emerald|green)-/.test(classes) ? "positive"
+          : /(?:bg|border)-(?:rose|red)-/.test(classes) ? "caution"
+          : /(?:bg|border)-(?:sky|blue)-/.test(classes) ? "info" : "neutral";
+      });
+      return [{ text: cells.join(" "), kind: "body", cells, cellTones, decoration: "tiles" }];
+    }
+  }
+  const hasBlocks = children.some(child => isValidElement(child) && typeof child.type === "string" && BLOCK_TAGS.has(child.type));
+  if (hasBlocks) return parts;
   // Separate adjacent source links so each retains its own destination in PDF.
   if (parts.filter(part => part.href).length > 1) return parts;
   const text = clean(parts.map(part => part.text).join(" "));
   if (!text) return [];
   const href = node.type === "a" ? node.props.href : parts.find(part => part.href)?.href;
-  const className = node.props.className ?? "";
   const cells = /(?:\bgrid\b|justify-between)/.test(className) && parts.length > 1 ? parts.map(part => part.text) : undefined;
-  const isHeading = /^h[2-4]$/.test(node.type) || (node.type === "div" && /font-(bold|semibold)/.test(className) && text.length < 90 && !cells);
-  return [{ text, kind: isHeading ? "heading" : node.type === "blockquote" ? "quote" : "body", ...(href ? { href } : {}), ...(cells ? { cells } : {}) }];
+  const callout = node.type === "div" && /\bborder\b/.test(className) && !cells;
+  const bold = ["strong", "b", "mark"].includes(node.type) || /font-(bold|semibold|black)/.test(className);
+  const isHeading = /^h[2-4]$/.test(node.type) || (["div", "p", "span"].includes(node.type) && bold && text.length < 90 && !cells && !callout);
+  const runs = parts.flatMap((part, index) => [
+    ...(index ? [{ text: " " }] : []),
+    ...(part.runs ?? [{ text: part.text }]),
+  ]).map(run => ({ ...run, ...(bold ? { bold: true } : {}), ...(node.type === "mark" ? { highlight: true } : {}) }));
+  return [{ text, kind: isHeading ? "heading" : node.type === "blockquote" ? "quote" : "body",
+    ...(href ? { href } : {}), ...(cells ? { cells } : {}), ...(callout ? { decoration: "callout" as const } : {}),
+    ...(runs.some(run => run.bold || run.highlight) ? { runs } : {}),
+  }];
 }
 
 export function reportDetailBlocks(node: ReactNode): ReportBlock[] {

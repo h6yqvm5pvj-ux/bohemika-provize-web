@@ -44,7 +44,7 @@ export type AdvisorSetupError = {
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-function resolveAccountType(data: Record<string, unknown> | null): AccountType {
+export function resolveAccountType(data: Record<string, unknown> | null): AccountType {
   const raw =
     typeof data?.accountType === "string"
       ? data.accountType

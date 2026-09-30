@@ -78,6 +78,25 @@ describe("mailbox attachment storage cleanup", () => {
     ).toBe(false);
   });
 
+  it("povolí úklid pro ne-UUID klíč odeslání, ale zachová kontrolu vlastníka a cesty", () => {
+    const messageId = "legacy_retry_key_1234";
+    const path = `mailbox/${messageId}/attachment.bin`;
+    const metadata = {
+      messageId,
+      senderEmail: "sender@example.com",
+      recipientEmail: "recipient@example.com",
+      attachments: [{ path }],
+    };
+    expect(parseMailboxAttachmentCleanupCandidate(metadata, "recipient@example.com")?.storageObjects)
+      .toEqual([{ messageId, path, bucketName: undefined }]);
+    expect(parseMailboxAttachmentCleanupCandidate(metadata, "stranger@example.com")).toBeNull();
+    expect(isSafeMailboxStoragePath(`mailbox/${messageId}/../other/file`, messageId)).toBe(false);
+    expect(isSafeMailboxStoragePath(`mailbox/${messageId}/file`, `${messageId}/..`)).toBe(false);
+    for (const invalidId of ["short", "a".repeat(101), "a".repeat(15)]) {
+      expect(isSafeMailboxStoragePath(`mailbox/${invalidId}/file`, invalidId)).toBe(false);
+    }
+  });
+
   it("podporuje bezpečný úklid příloh skupinové zprávy", () => {
     const candidate = parseMailboxAttachmentCleanupCandidate(
       {
@@ -123,8 +142,8 @@ describe("mailbox attachment storage cleanup", () => {
         bucketName: "foreign-project.appspot.com",
       },
       {
-        messageId: "not-a-message-id",
-        path: "mailbox/not-a-message-id/file.pdf",
+        messageId: "short-id",
+        path: "mailbox/short-id/file.pdf",
         bucketName: "demo.firebasestorage.app",
       },
     ]);

@@ -54,7 +54,7 @@ const mocks = vi.hoisted(() => {
   return { store, db, writes, projections, reads, mailbox, guard: vi.fn(), push: vi.fn(), writeMailbox: vi.fn() };
 });
 
-vi.mock("@/lib/server/firebaseAdmin",()=>({adminDb:mocks.db,adminMessaging:{sendEachForMulticast:mocks.push}}));
+vi.mock("@/lib/server/firebaseAdmin",()=>({adminDb:mocks.db,adminAuth:{getUserByEmail:async(email:string)=>({uid:email,email})},adminMessaging:{sendEachForMulticast:mocks.push}}));
 vi.mock("@/lib/server/apiEntryGuard",()=>({requireAdvisorAuthedRateLimited:mocks.guard,withRateLimitHeaders:(response:NextResponse)=>response}));
 vi.mock("firebase-admin/firestore",()=>({FieldPath:{documentId:()=>"__name__"},Timestamp:{fromMillis:(value:number)=>value},FieldValue:{serverTimestamp:()=>123456}}));
 vi.mock("firebase-admin/storage",()=>({getStorage:vi.fn()}));
@@ -276,6 +276,11 @@ describe('badge Specialista a vybrané řešení',()=>{
 const notify=()=>sendDiscussionCommentNotifications({postId:'post',commentId:'new-comment',section:'pomoc',sectionLabel:'Pomoc',postAuthorEmail:owner,commenterEmail:viewer,commenterName:'Petr',origin:'https://example.test'});
 
 describe('sledování diskusí',()=>{
+  beforeEach(() => {
+    for (const email of [owner, viewer, 'watcher@example.test']) {
+      mocks.store.set(`users/${email}`, { email });
+    }
+  });
   it('upozorní autora i sledující bez duplicit a bez vlastního komentáře',async()=>{
     post();mocks.store.set(statePath('post',owner),{following:true});mocks.store.set(statePath(),{following:true});mocks.store.set(statePath('post','watcher@example.test'),{following:true});
     await notify();expect(mocks.writeMailbox.mock.calls.map(call=>call[0].recipientEmail).sort()).toEqual([owner,'watcher@example.test'].sort());

@@ -52,10 +52,20 @@ export function AnimatedNumber({
 export function AnimatedMoney({
   value,
   duration = 800,
+  currencyClassName,
 }: {
   value: number;
   duration?: number;
+  currencyClassName?: string;
 }) {
   const animated = useAnimatedNumber(value, duration);
+  if (currencyClassName) {
+    return (
+      <span>
+        {formatMoney(animated, { currencyLabel: "" })}
+        <span className={currencyClassName}>Kč</span>
+      </span>
+    );
+  }
   return <span>{formatMoney(animated)}</span>;
 }

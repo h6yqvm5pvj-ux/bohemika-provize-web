@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
+import { loadIntranetNotificationProfile } from "@/lib/server/intranetNotificationAudience";
 import {
   prepareIntranetWallAttachmentFile,
   type PreparedIntranetWallAttachmentFile,
@@ -403,28 +404,25 @@ const loadIntranetPushRecipients = async ({
   if (!adminDb) return [];
   const usersSnap = await adminDb.collection("users").get();
 
-  const candidates = new Map<string, Record<string, unknown>>();
+  const candidates = new Map<string, string>();
   for (const doc of usersSnap.docs) {
     const profile = (doc.data() as Record<string, unknown> | undefined) ?? {};
     const email = normalizeEmail(profile.email) || normalizeEmail(doc.id);
     if (!email || email === authorEmail || candidates.has(email)) continue;
     if (!isIntranetPushEnabledForSection(profile, section)) continue;
-    candidates.set(email, profile);
+    candidates.set(email, normalizeText(profile.userId));
     if (candidates.size >= INTRANET_PUSH_MAX_RECIPIENTS) break;
   }
 
   if (candidates.size === 0) return [];
-  const privateCol = adminDb.collection("usersPrivate");
   const recipients = await Promise.all(
-    [...candidates.entries()].map(async ([email, publicProfile]) => {
-      const privateSnap = await privateCol.doc(email).get();
-      const mergedProfile = {
-        ...publicProfile,
-        ...((privateSnap.data() as Record<string, unknown> | undefined) ?? {}),
-      };
-      if (!isIntranetPushEnabledForSection(mergedProfile, section)) return null;
+    [...candidates].map(async ([email, uid]) => {
+      // Use the same current, canonical profile and role policy as wall access.
+      // A stale duplicate profile or enabled notifications cannot grant access.
+      const profile = await loadIntranetNotificationProfile(email, uid);
+      if (!profile || !isIntranetPushEnabledForSection(profile, section)) return null;
 
-      const tokens = collectPushTokens(mergedProfile).slice(
+      const tokens = collectPushTokens(profile).slice(
         0,
         INTRANET_PUSH_MAX_TOKENS_PER_USER
       );

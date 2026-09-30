@@ -51,7 +51,15 @@ beforeEach(() => {
   mocks.collection.mockImplementation(node);
   mocks.batch.mockImplementation(() => {
     const writes: [string, Data][] = [];
-    return { set: (ref: { path: string }, data: Data) => writes.push([ref.path, data]), commit: async () => writes.forEach(([path, data]) => records.set(path, data)) };
+    const creates = new Set<string>();
+    return {
+      set: (ref: { path: string }, data: Data) => writes.push([ref.path, data]),
+      create: (ref: { path: string }, data: Data) => { creates.add(ref.path); writes.push([ref.path, data]); },
+      commit: async () => {
+        if ([...creates].some(path => records.has(path))) throw Object.assign(new Error("Exists"), { code: 6 });
+        writes.forEach(([path, data]) => records.set(path, data));
+      },
+    };
   });
   mocks.setup.mockResolvedValue({ accountType: "tipster", profile: { tipRecipientEmail: advisor } });
   mocks.push.mockResolvedValue({}); asUser(author);

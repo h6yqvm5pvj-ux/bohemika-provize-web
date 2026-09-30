@@ -37,6 +37,9 @@ const statementPath = `usersPrivate/${viewer}/commissionStatements/statement-1`;
 const records = new Map<string, Record<string, unknown>>();
 const reads: string[] = [];
 const writes: string[] = [];
+const versions = new Map<string, number>();
+let beforeReset: (() => void) | undefined;
+let beforeReplayCommit: (() => void) | undefined;
 const baseContext = {
   email: viewer,
   actorEmail: viewer,
@@ -55,20 +58,34 @@ const request = (changes: Record<string, unknown> = {}) => new NextRequest("http
   method: "POST",
   body: JSON.stringify({ action: "rebuild-contract-from-statements", ownerEmail: owner, entryId: "entry-1", contractNumber, ...changes }),
 });
-const snapshot = (path: string) => ({
-  id: path.split("/").at(-1)!, ref: document(path), exists: records.has(path), updateTime: 1,
-  data: () => records.has(path) ? structuredClone(records.get(path)) : undefined,
-});
+const snapshot = (path: string) => {
+  const data = structuredClone(records.get(path));
+  return {
+    id: path.split("/").at(-1)!, ref: document(path), exists: records.has(path), updateTime: versions.get(path) ?? 0,
+    data: () => structuredClone(data),
+  };
+};
 const write = (path: string, patch: Record<string, unknown>) => {
   writes.push(path);
   records.set(path, { ...records.get(path), ...structuredClone(patch) });
+  versions.set(path, (versions.get(path) ?? 0) + 1);
 };
 function document(path: string) {
   return {
     path, id: path.split("/").at(-1)!,
     collection: (name: string) => collection(`${path}/${name}`),
     get: async () => { reads.push(path); return snapshot(path); },
-    set: async (patch: Record<string, unknown>) => write(path, patch),
+    set: async (patch: Record<string, unknown>) => {
+      beforeReset?.(); beforeReset = undefined;
+      write(path, patch);
+    },
+    update: async (patch: Record<string, unknown>, precondition?: { lastUpdateTime: number }) => {
+      beforeReset?.(); beforeReset = undefined;
+      if (precondition && precondition.lastUpdateTime !== (versions.get(path) ?? 0)) {
+        throw Object.assign(new Error("Concurrent contract change"), { code: 9 });
+      }
+      write(path, patch);
+    },
   };
 }
 function collection(path: string) {
@@ -82,15 +99,28 @@ function collection(path: string) {
 }
 
 beforeEach(() => {
-  vi.resetAllMocks(); records.clear(); reads.length = 0; writes.length = 0;
+  vi.resetAllMocks(); records.clear(); versions.clear(); beforeReset = undefined; beforeReplayCommit = undefined; reads.length = 0; writes.length = 0;
   setContext();
   mocks.collection.mockImplementation(collection);
   mocks.doc.mockImplementation(document);
   mocks.history.mockImplementation((_batch, _ref, _before, patch) => patch);
   mocks.batch.mockImplementation(() => {
     const pending: (() => void)[] = [];
+    const checks: (() => void)[] = [];
     const set = (ref: { path: string }, patch: Record<string, unknown>) => pending.push(() => write(ref.path, patch));
-    return { set, update: set, commit: async () => pending.forEach(work => work()) };
+    const update = (ref: { path: string }, patch: Record<string, unknown>, precondition?: { lastUpdateTime: number }) => {
+      checks.push(() => {
+        if (precondition && precondition.lastUpdateTime !== (versions.get(ref.path) ?? 0)) {
+          throw Object.assign(new Error("Concurrent contract change"), { code: 9 });
+        }
+      });
+      set(ref, patch);
+    };
+    return { set, update, commit: async () => {
+      beforeReplayCommit?.(); beforeReplayCommit = undefined;
+      checks.forEach(check => check());
+      pending.forEach(work => work());
+    } };
   });
   records.set(entryPath, { contractNumber, productKey: "neon", userEmail: owner, commissionPayouts: [] });
   records.set(statementPath, {
@@ -113,6 +143,20 @@ async function expectRebuilt(actorEmail: string) {
   expect(reads).toContain(`usersPrivate/${viewer}/commissionStatements`);
   expect(reads).not.toContain(`usersPrivate/${actor}/commissionStatements`);
   expect(reads).not.toContain(`usersPrivate/${owner}/commissionStatements`);
+}
+
+function setAutoStatement(code = "A1", base = 6000, year = 2026) {
+  records.get(entryPath)!.initialCommissionBase ??= { statementId: null, resolvedBy: owner, paymentPremium: 5000, annualPremium: 5000 };
+  Object.assign(records.get(entryPath)!, {
+    productKey: "cppAuto", frequencyRaw: "annual", position: "poradce5", originalPosition: "poradce5",
+    inputAmount: 5000, calculationInputAmount: 5000, effectiveInputAmount: 5000,
+    createdFromCommissionStatement: true, contractSignedDate: "2025-01-01", policyStartDate: "2025-01-01",
+  });
+  const cells = [1, contractNumber, "01.01.2025", "01.01.2025", "Testovací klient", "R", "CPP_1C_II", code, base, "", "10,60%", "5", "600,00", "0,00"];
+  records.set(statementPath, {
+    statementNumber: "1", statementDate: `23.04.${year}`, period: `01.03.${year} - 31.03.${year}`,
+    html: `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`,
+  });
 }
 
 describe("rebuilding a contract from saved statements", () => {
@@ -240,5 +284,197 @@ describe("rebuilding a contract from saved statements", () => {
     expect(await response.json()).toMatchObject({ matchedStatements: 0, reset: null });
     expect(writes).toEqual([]);
     expect(records.get(entryPath)).toEqual(before);
+  });
+
+  it.each(["team", "historical-manager", "impersonation"])("preserves foreign, unattributed and manual records during %s rebuild", async mode => {
+    if (mode === "team") setContext({ teamEmails: [owner] });
+    if (mode === "historical-manager") records.get(entryPath)!.managerChain = [{ email: viewer }];
+    if (mode === "impersonation") setContext({ actorEmail: actor, isImpersonating: true, impersonation: { actorRole: "admin" } });
+    const protectedPayouts = [
+      { key: "foreign", statementId: "other-statement", writtenBy: owner, amount: -55, status: "storno" },
+      { key: "unknown", statementId: "statement-1", amount: 72 },
+      { key: "manual", writtenBy: viewer, amount: 90 },
+      { statementId: "legacy-malformed", writtenBy: owner, amount: 12 },
+    ];
+    const protectedHistory = [
+      { key: "foreign-history", statementId: "other-statement", writtenBy: owner },
+      { key: "unknown-history", statementId: "statement-1" },
+    ];
+    Object.assign(records.get(entryPath)!, {
+      commissionPayouts: [...protectedPayouts, { key: "own-stale", statementId: "old", writtenBy: ` ${viewer.toUpperCase()} `, amount: 1 }],
+      premiumStatementHistory: [...protectedHistory, { key: "own-history", statementId: "old", writtenBy: viewer }],
+    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await POST(request());
+      expect(response.status).toBe(200);
+      const contract = records.get(entryPath)!;
+      expect(contract.commissionPayouts).toEqual([...protectedPayouts, expect.objectContaining({ amount: 2228, writtenBy: viewer })]);
+      expect(contract.premiumStatementHistory).toEqual(protectedHistory);
+      expect(contract.commissionStornoSummary).toMatchObject({ totalAmount: -55, count: 1 });
+    }
+  });
+
+  it("does not replace a foreign payout with an identical generated key", async () => {
+    setContext({ teamEmails: [owner] });
+    await expectRebuilt(viewer);
+    const foreign = { ...(records.get(entryPath)!.commissionPayouts as Record<string, unknown>[])[0], writtenBy: owner, amount: 999 };
+    records.get(entryPath)!.commissionPayouts = [foreign];
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([foreign, expect.objectContaining({ writtenBy: viewer, amount: 2228 })]);
+  });
+
+  it("does not trim protected payouts when the shared array has reached its limit", async () => {
+    setContext({ teamEmails: [owner] });
+    const foreign = Array.from({ length: 400 }, (_, index) => ({ key: `foreign-${index}`, statementId: `foreign-statement-${index}`, writtenBy: owner, amount: index + 1 }));
+    records.get(entryPath)!.commissionPayouts = foreign;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual(foreign);
+    log.mockRestore();
+  });
+
+  it("preserves foreign and unowned shared provenance even for the same statement ID", async () => {
+    setContext({ teamEmails: [owner] });
+    const base = { statementId: "statement-1", resolvedBy: owner, paymentPremium: 900, rowId: "base-row" };
+    const pointer = { premiumUpdatedFromStatementId: "statement-1", premiumUpdatedFromStatementAtMs: 80, premiumUpdatedFromStatementChronologyMs: 9999999999999 };
+    Object.assign(records.get(entryPath)!, { initialCommissionBase: base, ...pointer,
+      premiumStatementHistory: [{ key: "foreign", statementId: "statement-1", writtenBy: owner, rowId: "base-row" }] });
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)).toMatchObject({ initialCommissionBase: base, ...pointer });
+  });
+
+  it("rejects a stale reset before it can erase a concurrently added foreign payout", async () => {
+    setContext({ teamEmails: [owner] });
+    const foreign = { key: "concurrent", statementId: "other", writtenBy: owner, amount: 543 };
+    beforeReset = () => write(entryPath, { commissionPayouts: [foreign] });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([foreign]);
+    expect(writes).toEqual([entryPath]);
+    log.mockRestore();
+  });
+
+  it("also protects a foreign payout added between replay read and commit", async () => {
+    setContext({ teamEmails: [owner] });
+    const foreign = { key: "concurrent-replay", statementId: "other", writtenBy: owner, amount: 543 };
+    beforeReplayCommit = () => write(entryPath, { commissionPayouts: [foreign] });
+    expect((await POST(request())).status).toBe(409);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([foreign]);
+    expect(writes).toEqual([entryPath, entryPath]);
+  });
+
+  it("preserves identical foreign premium keys and semantic rows on repeated rebuilds", async () => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement();
+    expect((await POST(request())).status).toBe(200);
+    const generated = (records.get(entryPath)!.premiumStatementHistory as Record<string, unknown>[])[0];
+    expect(generated).toMatchObject({ premiumKind: "auto_initial", writtenBy: viewer });
+    const foreign = [
+      { ...generated, writtenBy: owner },
+      { ...generated, key: "same-semantic-row", writtenBy: "another@example.test" },
+      { ...generated, key: "unattributed", writtenBy: null },
+    ];
+    records.get(entryPath)!.premiumStatementHistory = foreign;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect((await POST(request())).status).toBe(200);
+      expect(records.get(entryPath)!.premiumStatementHistory).toEqual([
+        ...foreign, expect.objectContaining({ writtenBy: viewer, newPremium: 6000 }),
+      ]);
+    }
+  });
+
+  it("does not evict foreign premium history at its shared retention limit", async () => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement();
+    const history = Array.from({ length: 120 }, (_, index) => ({ key: `foreign-${index}`, statementId: `foreign-${index}`, writtenBy: owner }));
+    Object.assign(records.get(entryPath)!, {
+      premiumStatementHistory: history,
+      commissionPayouts: [{ key: "own", statementId: "statement-1", writtenBy: viewer, amount: 123 }],
+      initialCommissionBase: { statementId: "statement-1", writtenBy: viewer, paymentPremium: 6000 },
+      premiumUpdatedFromStatementId: "statement-1", premiumUpdatedFromStatementWrittenBy: viewer,
+      premiumUpdatedFromStatementAtMs: 100, premiumUpdatedFromStatementChronologyMs: 200,
+    });
+    const before = structuredClone(records.get(entryPath));
+    expect((await POST(request())).status).toBe(409);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).toEqual([]);
+  });
+
+  it("reserves protected payout capacity while applying retention to the caller's records", async () => {
+    setContext({ teamEmails: [owner] });
+    const foreign = Array.from({ length: 399 }, (_, index) => ({ key: `foreign-${index}`, statementId: `foreign-${index}`, writtenBy: owner, amount: index + 1 }));
+    records.get(entryPath)!.commissionPayouts = foreign;
+    records.set(statementPath.replace("statement-1", "statement-2"), {
+      statementNumber: "2", statementDate: "23.05.2026", period: "01.04.2026 - 30.04.2026",
+      html: `<div id="ostatni_platby"><table><tr><td>Doplatek smlouvy ${contractNumber} 50 % provize B36</td><td>3 000,00</td></tr></table></div>`,
+    });
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([...foreign, expect.objectContaining({ statementId: "statement-2", writtenBy: viewer })]);
+  });
+
+  it("regenerates an owned initial base even when the calculation amounts stay the same", async () => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement();
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.initialCommissionBase).toMatchObject({ paymentPremium: 6000, writtenBy: viewer });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ reset: { initialCommissionBaseCleared: true } });
+    expect(records.get(entryPath)!.initialCommissionBase).toMatchObject({ paymentPremium: 6000, writtenBy: viewer });
+  });
+
+  it.each([owner, undefined])("preserves an initial base with protected source author %s during replay", async writtenBy => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement();
+    const base = { statementId: "statement-1", rowId: "1", resolvedBy: viewer, paymentPremium: 7777, ...(writtenBy ? { writtenBy } : {}) };
+    records.get(entryPath)!.initialCommissionBase = base;
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.initialCommissionBase).toEqual(base);
+    expect(records.get(entryPath)!.premiumStatementHistory).toEqual([expect.objectContaining({ writtenBy: viewer, newPremium: 6000 })]);
+  });
+
+  it("keeps foreign premium history as the basis for calculating the next premium change", async () => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement("A1", 6000, 2025);
+    expect((await POST(request())).status).toBe(200);
+    const foreign = { ...(records.get(entryPath)!.premiumStatementHistory as Record<string, unknown>[])[0], statementId: "foreign", writtenBy: owner };
+    records.get(entryPath)!.premiumStatementHistory = [foreign];
+    setAutoStatement("B101", 6500, 2026);
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.premiumStatementHistory).toEqual([
+      foreign, expect.objectContaining({ writtenBy: viewer, previousAnnualPremium: 6000, newAnnualPremium: 6500, differenceAnnual: 500 }),
+    ]);
+    expect(records.get(entryPath)).toMatchObject({ premiumUpdatedFromStatementWrittenBy: viewer });
+    const repeat = await POST(request());
+    expect(repeat.status).toBe(200);
+    expect(await repeat.json()).toMatchObject({ reset: { statementPremiumPointerCleared: true } });
+  });
+
+  it("stores nullable provenance when an unattributed initial history row supplies the base", async () => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement();
+    expect((await POST(request())).status).toBe(200);
+    const unattributed = { ...(records.get(entryPath)!.premiumStatementHistory as Record<string, unknown>[])[0] };
+    delete unattributed.writtenBy;
+    Object.assign(records.get(entryPath)!, { premiumStatementHistory: [unattributed], initialCommissionBase: null });
+    expect((await POST(request())).status).toBe(200);
+    expect(records.get(entryPath)!.initialCommissionBase).toMatchObject({ paymentPremium: 6000, writtenBy: null });
+    expect(Object.values(records.get(entryPath)!.initialCommissionBase as Record<string, unknown>)).not.toContain(undefined);
+    expect(records.get(entryPath)!.premiumStatementHistory).toEqual([unattributed, expect.objectContaining({ writtenBy: viewer })]);
+  });
+
+  it.each([owner, undefined])("keeps a newer premium pointer from protected author %s during older replay", async writtenBy => {
+    setContext({ teamEmails: [owner] });
+    setAutoStatement("B101", 6500, 2026);
+    const pointer = { premiumUpdatedFromStatementId: "newer", premiumUpdatedFromStatementAtMs: 200,
+      premiumUpdatedFromStatementChronologyMs: Date.UTC(2027, 0, 1), ...(writtenBy ? { premiumUpdatedFromStatementWrittenBy: writtenBy } : {}) };
+    Object.assign(records.get(entryPath)!, pointer);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ reset: { statementPremiumPointerCleared: false } });
+    expect(records.get(entryPath)).toMatchObject(pointer);
+    expect(records.get(entryPath)!.premiumStatementHistory).toEqual([expect.objectContaining({ writtenBy: viewer, premiumKind: "auto_change" })]);
   });
 });

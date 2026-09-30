@@ -50,6 +50,7 @@ describe("comparison PDF", () => {
     }
     expect(text).toContain(compact("Co znamená premaligní a in situ?"));
     for (const page of pages) {
+      expect(page.width).toBeGreaterThan(page.height);
       expect(page.text).toContain("Bohemika a.s.");
       for (const item of page.items) {
         expect(item.transform[4], item.str).toBeGreaterThanOrEqual(35);
@@ -91,6 +92,25 @@ describe("comparison PDF", () => {
     await expect(createComparisonPdf({ rows: [COMPARISON_ROWS[0].report], advisor, origin: "https://example.test", scopeLabel: "Výběr" })).rejects.toThrow("podklady PDF");
     expect(await generate([COMPARISON_ROWS[0].report])).toHaveLength(2);
   });
+
+  it("paginates oversized value tiles without dropping either column", async () => {
+    const row = structuredClone(COMPARISON_ROWS[0].report);
+    const cells = [`${"Levá buňka. ".repeat(160)}KONEC LEVÉ`, `${"Pravá buňka. ".repeat(180)}KONEC PRAVÉ`];
+    row.neon.blocks = [{ kind: "heading", text: "Podrobná tabulka" }, { kind: "body", text: cells.join(" "), cells, decoration: "tiles", cellTones: ["positive", "caution"] }];
+    const pages = await generate([row]);
+    const text = compact(pages.map(page => page.text).join(" "));
+    // A page header or the other column can occur between the two words in
+    // extracted reading order when a cell continues onto the next sheet.
+    expect(text.match(/Levá/g)).toHaveLength(160);
+    expect(text.match(/Pravá/g)).toHaveLength(180);
+    expect(text.match(/buňka\./g)).toHaveLength(340);
+    expect(text).toContain("KONECLEVÉ");
+    expect(text).toContain("KONECPRAVÉ");
+    for (const page of pages) for (const item of page.items) {
+      expect(item.transform[4] + item.width, item.str).toBeLessThan(page.width - 30);
+      expect(item.transform[5], item.str).toBeGreaterThan(20);
+    }
+  }, 30_000);
 
   it("keeps a long advisor profile inside the page without colliding with the cover navigation", async () => {
     const longAdvisor = { ...advisor, fullName: "W".repeat(120), title: "Poradenství pro domácnosti a podnikatele. ".repeat(3), email: `${"advisor".repeat(18)}@example.test` };
@@ -165,7 +185,14 @@ describe("report source and advisor", () => {
   });
   it("preserves nested values, quotations and source links without interactive button text", () => {
     expect(reportBlocks(<div><h3>Podmínky</h3><p>Plní <strong>25 %</strong> částky.</p><blockquote>„Citace podmínek.“</blockquote><a href="https://example.test">Zdroj</a><button>Otevřít</button></div>)).toEqual([
-      { kind: "heading", text: "Podmínky" }, { kind: "body", text: "Plní 25 % částky." }, { kind: "quote", text: "„Citace podmínek.“" }, { kind: "body", text: "Zdroj", href: "https://example.test" },
+      { kind: "heading", text: "Podmínky" }, { kind: "body", text: "Plní 25 % částky.", runs: [{ text: "Plní" }, { text: " " }, { text: "25 %", bold: true }, { text: " " }, { text: "částky." }] }, { kind: "quote", text: "„Citace podmínek.“" }, { kind: "body", text: "Zdroj", href: "https://example.test" },
+    ]);
+  });
+  it("retains the website's highlighted exclusions and coverage states in value tiles", () => {
+    const quote = reportBlocks(<blockquote>Výluka <mark>v čekací době</mark>.</blockquote>)[0];
+    expect(quote).toMatchObject({ kind: "quote", runs: expect.arrayContaining([{ text: "v čekací době", bold: true, highlight: true }]) });
+    expect(reportBlocks(<div className="grid grid-cols-3"><div className="border-rose-200">1. stupeň</div><div className="border-rose-200">2. stupeň</div><div className="border-emerald-200">3. stupeň</div></div>)).toEqual([
+      { kind: "body", text: "1. stupeň 2. stupeň 3. stupeň", cells: ["1. stupeň", "2. stupeň", "3. stupeň"], cellTones: ["caution", "caution", "positive"], decoration: "tiles" },
     ]);
   });
   it("uses the advisor's saved business card and suppresses unpublished card links", () => {

@@ -1,6 +1,7 @@
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntryOnce } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
+import { loadIntranetNotificationProfile } from "@/lib/server/intranetNotificationAudience";
 import type { IntranetSectionKey } from "@/app/intranet/sections";
 
 const emailOf = (value: unknown) => typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -43,9 +44,10 @@ export async function sendDiscussionCommentNotifications({ postId, commentId, se
   const title = `Intranet • ${sectionLabel}`;
   for (let offset = 0; offset < emails.length; offset += 50) {
     const batch = emails.slice(offset, offset + 50);
-    const snapshots = await db.getAll(...batch.flatMap(email => [db.collection("users").doc(email), db.collection("usersPrivate").doc(email)]));
-    const results = await Promise.allSettled(batch.map(async (email, index) => {
-      const profile = { ...snapshots[index * 2].data(), ...snapshots[index * 2 + 1].data() };
+    const results = await Promise.allSettled(batch.map(async (email) => {
+      // Following/author state can outlive a role change or a deleted profile.
+      const profile = await loadIntranetNotificationProfile(email);
+      if (!profile) return;
       const channels = discussionNotificationChannels(profile, section, recipients.get(email) === true);
       if (!channels.inbox) return;
       const body = email === owner

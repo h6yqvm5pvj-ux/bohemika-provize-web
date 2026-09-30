@@ -5,6 +5,7 @@ import {
   buildAdvisorSetupResponse,
   getAdvisorSetupError,
   loadUserProfileForAdvisorSetup,
+  resolveAccountType,
 } from "@/lib/server/advisorSetupGuard";
 import {
   buildLoginAttemptLockedResponse,
@@ -49,16 +50,6 @@ export type IpRateLimitContext = {
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
-
-const resolveAccountType = (data: Record<string, unknown> | null): "advisor" | "tipster" => {
-  const raw =
-    typeof data?.accountType === "string"
-      ? data.accountType
-      : typeof data?.userRole === "string"
-        ? data.userRole
-        : "";
-  return raw.trim().toLowerCase() === "tipster" ? "tipster" : "advisor";
-};
 
 export function readBearerToken(req: NextRequest): string {
   const authHeader = req.headers.get("authorization") ?? "";

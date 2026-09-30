@@ -81,6 +81,13 @@ import {
 } from "./premiumHistoryStatements";
 import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
 import { commissionStatementIdentityKey } from "./statementIdentity";
+import {
+  mergeRebuiltStatementRecords,
+  ownsStatementRecord,
+  remainingStatementRebuildCapacity,
+  statementRecordArray,
+  StatementRebuildCapacityError,
+} from "./statementRebuildScope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1683,53 +1690,43 @@ type ContractStatementRebuildResetSummary = {
 const resetContractStatementDerivedFields = async ({
   ref,
   contract,
+  updateTime,
   ctxEmail,
   nowMs,
 }: {
   ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
   contract: ContractDoc;
+  updateTime: FirebaseFirestore.Timestamp;
   ctxEmail: string;
   nowMs: number;
 }): Promise<ContractStatementRebuildResetSummary> => {
-  const existingPayouts = contractPayoutArray(contract);
-  const keptPayouts = existingPayouts.filter((payout) => !normalizeText(payout.statementId, 80));
-  const existingPremiumHistory = contractPremiumHistoryArray(contract);
+  const existingPayouts = statementRecordArray(contract.commissionPayouts);
+  const keptPayouts = existingPayouts.filter((payout) => !ownsStatementRecord(payout, ctxEmail));
+  const existingPremiumHistory = statementRecordArray(contract.premiumStatementHistory);
   const keptPremiumHistory = existingPremiumHistory.filter(
-    (entry) => !normalizeText(entry.statementId, 80)
+    (entry) => !ownsStatementRecord(entry, ctxEmail)
   );
   const initialCommissionBase =
-    (contract as { initialCommissionBase?: { statementId?: unknown } | null })
+    (contract as { initialCommissionBase?: { statementId?: unknown; writtenBy?: unknown } | null })
       .initialCommissionBase ?? null;
-  const initialCommissionBaseCleared = Boolean(
-    initialCommissionBase && normalizeText(initialCommissionBase.statementId, 80)
-  );
-  const statementPremiumPointerCleared = Boolean(
-    normalizeText(
-      (contract as { premiumUpdatedFromStatementId?: unknown }).premiumUpdatedFromStatementId,
-      80
-    ) ||
-      toMillis(
-        (contract as { premiumUpdatedFromStatementChronologyMs?: unknown })
-          .premiumUpdatedFromStatementChronologyMs
-      ) != null ||
-      toMillis(
-        (contract as { premiumUpdatedFromStatementAtMs?: unknown }).premiumUpdatedFromStatementAtMs
-      ) != null
-  );
+  // Legacy IDs are user-scoped and resolvedBy identifies the applying actor,
+  // not necessarily the source author. Preserve provenance without an author.
+  const initialCommissionBaseCleared = ownsStatementRecord(initialCommissionBase, ctxEmail);
+  const statementPremiumPointerCleared = ownsStatementRecord({
+    statementId: contract.premiumUpdatedFromStatementId,
+    writtenBy: (contract as { premiumUpdatedFromStatementWrittenBy?: unknown }).premiumUpdatedFromStatementWrittenBy,
+  }, ctxEmail);
   const wasCreatedFromStatement = autoContractWasCreatedFromCommissionStatement(contract);
   const statementCreatedFlagPersisted =
     wasCreatedFromStatement && contract.createdFromCommissionStatement !== true;
   const patch: Record<string, unknown> = {
     commissionPayouts: keptPayouts,
     commissionStornoSummary: commissionStornoSummaryFromPayouts({
-      payouts: keptPayouts,
+      payouts: contractPayoutArray({ commissionPayouts: keptPayouts } as ContractDoc),
       nowMs,
       writtenBy: ctxEmail,
     }),
     premiumStatementHistory: keptPremiumHistory,
-    premiumUpdatedFromStatementAtMs: null,
-    premiumUpdatedFromStatementChronologyMs: null,
-    premiumUpdatedFromStatementId: null,
     commissionStatementRebuiltAtMs: nowMs,
     commissionStatementRebuiltBy: ctxEmail,
     updatedAt: new Date(nowMs),
@@ -1738,11 +1735,17 @@ const resetContractStatementDerivedFields = async ({
   if (initialCommissionBaseCleared) {
     patch.initialCommissionBase = null;
   }
+  if (statementPremiumPointerCleared) {
+    patch.premiumUpdatedFromStatementAtMs = null;
+    patch.premiumUpdatedFromStatementChronologyMs = null;
+    patch.premiumUpdatedFromStatementId = null;
+    patch.premiumUpdatedFromStatementWrittenBy = null;
+  }
   if (statementCreatedFlagPersisted) {
     patch.createdFromCommissionStatement = true;
   }
 
-  await trackCashflowWrite(() => ref.set(patch, { merge: true }));
+  await trackCashflowWrite(() => ref.update(patch, { lastUpdateTime: updateTime }));
 
   return {
     payoutRecordsRemoved: existingPayouts.length - keptPayouts.length,
@@ -3782,6 +3785,7 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail,
   forcedContractEntryId,
   canManageContractsAsAdmin = false,
+  preserveOtherStatementAuthors = false,
 }: {
   docId: string;
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -3802,6 +3806,7 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail?: string | null;
   forcedContractEntryId?: string | null;
   canManageContractsAsAdmin?: boolean;
+  preserveOtherStatementAuthors?: boolean;
 }): Promise<ProcessingResult> => {
   const result = emptyProcessingResult();
   const normalizedOnlyContractNumber = normalizeContractNumber(onlyContractNumber);
@@ -4016,7 +4021,13 @@ const processStatementWrites = async ({
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
     const premiumHistoryEntries = detectedPremiumHistoryEntries;
     const premiumHistoryEntriesForMerge = premiumHistoryEntries;
-    const premiumMerge = mergePremiumHistoryRecordsForStatement(
+    const premiumMerge = preserveOtherStatementAuthors ? mergeRebuiltStatementRecords({
+      existing: contract.premiumStatementHistory,
+      incoming: premiumHistoryEntriesForMerge,
+      writer: ctxEmail,
+      maxCount: MAX_STORED_PREMIUM_HISTORY,
+      merge: mergePremiumHistoryRecordsForStatement,
+    }) : mergePremiumHistoryRecordsForStatement(
       existingPremiumHistory,
       premiumHistoryEntriesForMerge,
       MAX_STORED_PREMIUM_HISTORY
@@ -4038,16 +4049,23 @@ const processStatementWrites = async ({
         contractPremiumRows.length - backfilledPremiumAddedCount
       );
     }
-    const autoInitialCommissionBaseUpdate = buildAutoInitialCommissionBaseUpdate({
+    const existingInitialBase = (contract as {
+      initialCommissionBase?: { statementId?: unknown; writtenBy?: unknown } | null;
+    }).initialCommissionBase;
+    const protectsInitialBase = preserveOtherStatementAuthors && existingInitialBase &&
+      normalizeText(existingInitialBase.statementId, 80) &&
+      !ownsStatementRecord(existingInitialBase, ctxEmail);
+    const autoInitialCommissionBaseUpdate = protectsInitialBase ? null : buildAutoInitialCommissionBaseUpdate({
       contract,
-      premiumHistory: premiumMerge.merged,
+      premiumHistory: contractPremiumHistoryArray({ premiumStatementHistory: premiumMerge.merged } as ContractDoc),
       coefficientSetOverride: canApplyCoefficientSetOverride
         ? coefficientSetOverride?.coefficientSet ?? null
         : null,
     });
     const shouldApplyAutoInitialCommissionBaseUpdate =
       autoInitialCommissionBaseUpdate != null &&
-      (contract.commissionBaseSource !== "commission_statement_auto_initial" ||
+      ((preserveOtherStatementAuthors && !existingInitialBase) ||
+        contract.commissionBaseSource !== "commission_statement_auto_initial" ||
         Math.abs(
           (finiteMoneyOrNull(contract.calculationInputAmount) ?? 0) -
             autoInitialCommissionBaseUpdate.statementPaymentPremiumBase
@@ -4131,7 +4149,13 @@ const processStatementWrites = async ({
         correctionInfo: payoutCorrectionInfoByRowKey.get(row.rowKey) ?? null,
       })
     );
-    const payoutMerge = mergePayoutRecordsByKey(
+    const payoutMerge = preserveOtherStatementAuthors ? mergeRebuiltStatementRecords({
+      existing: contract.commissionPayouts,
+      incoming: incomingPayouts,
+      writer: ctxEmail,
+      maxCount: MAX_STORED_CONTRACT_PAYOUTS,
+      merge: mergePayoutRecordsByKey,
+    }) : mergePayoutRecordsByKey(
       contractPayoutArray(contract),
       incomingPayouts,
       MAX_STORED_CONTRACT_PAYOUTS
@@ -4200,6 +4224,7 @@ const processStatementWrites = async ({
         commissionCode: autoInitialCommissionBaseUpdate.statementHistoryEntry.commissionCode,
         productCode: autoInitialCommissionBaseUpdate.statementHistoryEntry.productCode,
         rowId: autoInitialCommissionBaseUpdate.statementHistoryEntry.rowId,
+        writtenBy: normalizeEmail(autoInitialCommissionBaseUpdate.statementHistoryEntry.writtenBy) || null,
         resolvedAtMs: nowMs,
         resolvedBy: ctxEmail,
       };
@@ -4234,7 +4259,7 @@ const processStatementWrites = async ({
       updatePayload.refreshStatementResolvedStatementChronologyMs = statementChronologyMs;
     }
     const commissionStornoSummary = commissionStornoSummaryFromPayouts({
-      payouts: payoutMerge.merged,
+      payouts: contractPayoutArray({ commissionPayouts: payoutMerge.merged } as ContractDoc),
       nowMs,
       writtenBy: ctxEmail,
     });
@@ -4253,6 +4278,7 @@ const processStatementWrites = async ({
         updatePayload.premiumUpdatedFromStatementAtMs = nowMs;
         updatePayload.premiumUpdatedFromStatementChronologyMs = statementChronologyMs;
         updatePayload.premiumUpdatedFromStatementId = docId;
+        updatePayload.premiumUpdatedFromStatementWrittenBy = ctxEmail;
       }
     } else if (premiumMerge.merged.length > 0) {
       updatePayload.premiumStatementHistory = premiumMerge.merged;
@@ -4903,10 +4929,26 @@ const handleContractStatementRebuild = async ({
     );
   }
 
+  // Reject known capacity conflicts before removing any of this writer's data.
+  // Replay also enforces these limits in case another writer fills them later.
+  if (
+    (remainingStatementRebuildCapacity(contract.commissionPayouts, ctxEmail, MAX_STORED_CONTRACT_PAYOUTS) === 0 &&
+      statementItems.some(item => extractCommissionPayoutRowsFromStoredHtml(item.html)
+        .some(row => normalizeContractNumber(row.contractNumber) === contractNumber))) ||
+    (remainingStatementRebuildCapacity(contract.premiumStatementHistory, ctxEmail, MAX_STORED_PREMIUM_HISTORY) === 0 &&
+      statementItems.some(item => [
+        ...extractAutoPremiumRowsFromStoredHtml(item.html),
+        ...extractLifePremiumIncreaseRowsFromStoredHtml(item.html),
+      ].some(row => normalizeContractNumber(row.contractNumber) === contractNumber)))
+  ) {
+    throw new StatementRebuildCapacityError();
+  }
+
   const nowMs = Date.now();
   const reset = await resetContractStatementDerivedFields({
     ref: entryRef,
     contract,
+    updateTime: entrySnap.updateTime!,
     ctxEmail,
     nowMs,
   });
@@ -4933,6 +4975,7 @@ const handleContractStatementRebuild = async ({
       forcedContractOwnerEmail: ownerEmail,
       forcedContractEntryId: entryId,
       canManageContractsAsAdmin,
+      preserveOtherStatementAuthors: true,
     });
     addProcessingResult(processingResult, result);
     processedStatements += 1;
@@ -5259,6 +5302,14 @@ export async function POST(req: NextRequest) {
         withRateLimit,
       });
     } catch (error) {
+      if (error instanceof StatementRebuildCapacityError) {
+        return withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: 409 }));
+      }
+      if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
+        return withRateLimit(NextResponse.json(
+          { ok: false, error: "Smlouva se mezitím změnila. Obnov ji a spusť přepočet znovu." }, { status: 409 }
+        ));
+      }
       console.error("Commission statements contract rebuild failed:", error);
       return withRateLimit(
         NextResponse.json(

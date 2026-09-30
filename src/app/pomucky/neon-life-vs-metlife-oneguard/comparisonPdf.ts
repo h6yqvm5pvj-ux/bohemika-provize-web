@@ -1,17 +1,16 @@
 import type { jsPDF } from "jspdf";
 import { formatComparisonMeetingDate, normalizeComparisonPersonalization, prioritizeComparisonRows, type ComparisonPersonalization } from "./comparisonPersonalization";
-import type { ComparisonReportRow, ReportAdvisor, ReportBlock, ReportSummary } from "./comparisonReportContent";
+import type { ComparisonReportRow, ReportAdvisor, ReportBlock, ReportRun, ReportSummary } from "./comparisonReportContent";
 
 const FONT = "LiberationSans";
-const INK = "#23364b";
-const MUTED = "#52657a";
-const NAVY = "#192e46";
-const BLUE = "#276b94";
-const PURPLE = "#694c87";
-const LINE = "#dce4ed";
+const INK = "#40556c";
+const MUTED = "#65758b";
+const NAVY = "#293c50";
+const BLUE = "#245d83";
+const PURPLE = "#654581";
+const LINE = "#e3e8ef";
 const MARGIN = 36;
-const TOP = 100;
-const BOTTOM = 777;
+const TOP = 88;
 const TONES: Record<string, { ink: string; fill: string }> = {
   positive: { ink: "#175b3b", fill: "#e8f5ed" },
   caution: { ink: "#982c45", fill: "#fcecf0" },
@@ -60,16 +59,20 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
       width: 280, margin: 1, errorCorrectionLevel: "M", color: { dark: NAVY, light: "#ffffff" },
     })) : Promise.resolve(""),
   ]);
-  const pdf = new Pdf({ unit: "pt", format: "a4", compress: true, putOnlyUsedFonts: true });
+  const pdf = new Pdf({ unit: "pt", format: "a4", orientation: "landscape", compress: true, putOnlyUsedFonts: true });
   for (const [style, bytes] of [["normal", regular], ["bold", bold]] as const) {
     pdf.addFileToVFS(`${FONT}-${style}.ttf`, base64(bytes));
     pdf.addFont(`${FONT}-${style}.ttf`, FONT, style);
   }
   pdf.setProperties({ title: "NEON Life vs. MetLife OneGuard – podrobné srovnání", author: options.advisor.fullName || options.advisor.email, creator: "Bohemika a.s.", subject: options.scopeLabel });
   const width = pdf.internal.pageSize.getWidth() - MARGIN * 2;
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const BOTTOM = pageHeight - 48;
   const right = MARGIN + width;
-  const colWidth = (width - 16) / 2;
-  const innerWidth = colWidth - 26;
+  const COLUMN_GAP = 14;
+  const topicWidth = (width - COLUMN_GAP * 2) * .27;
+  const colWidth = (width - topicWidth - COLUMN_GAP * 2) / 2;
+  const innerWidth = colWidth - 28;
   const date = (options.generatedAt ?? new Date()).toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
   const destinations: Array<{ pageNumber: number; top: number }> = [];
 
@@ -104,37 +107,76 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
   function rule(x: number, y: number, w: number, color = LINE) {
     pdf.setDrawColor(color); pdf.setLineWidth(0.6); pdf.line(x, y, x + w, y);
   }
+  function fittedImage(bytes: Uint8Array, format: "JPEG" | "PNG", x: number, y: number, w: number, h: number, alias: string) {
+    const dimensions = pdf.getImageProperties(bytes);
+    const scale = Math.min(w / dimensions.width, h / dimensions.height);
+    const imageWidth = dimensions.width * scale, imageHeight = dimensions.height * scale;
+    pdf.addImage(bytes, format, x, y + (h - imageHeight) / 2, imageWidth, imageHeight, alias);
+  }
   function letterhead() {
-    pdf.addImage(logo, "JPEG", MARGIN, 24, 72, 46, "bohemika-logo");
-    rightText("Bohemika a.s.", right, 28, 11, "bold");
-    rightText("Finanční poradenství", right, 44, 9, "normal", MUTED);
-    rightText(`Srovnání životního pojištění  /  ${date}`, right, 62, 8.5, "normal", MUTED);
-    rule(MARGIN, 85, width); rule(MARGIN, 85, 42, BLUE);
+    fittedImage(logo, "JPEG", MARGIN, 24, 66, 39, "bohemika-logo");
+    rightText("Bohemika a.s.", right, 29, 10, "bold", NAVY);
+    rightText(`Životní pojištění  /  Srovnání k ${date}`, right, 47, 8, "normal", MUTED);
+    rule(MARGIN, 77, width);
+    rule(MARGIN, 77, 31, PURPLE); rule(MARGIN + 34, 77, 31, BLUE);
   }
   function newPage() { pdf.addPage(); letterhead(); return TOP; }
   function titleHeight(row: ComparisonReportRow, continuation = false) {
-    return Math.max(32, lines(row.title, 17, width - 56, "bold").length * 23.8) + 13 + (pinnedIds.has(row.id) || continuation ? 16 : 0);
+    return Math.max(28, lines(row.title, 18, width - 53, "bold").length * 25.2) + 14 + (pinnedIds.has(row.id) || continuation ? 16 : 0);
   }
   function topicTitle(row: ComparisonReportRow, index: number, y: number, continuation = false) {
     const bottom = y + titleHeight(row, continuation);
     const label = [pinnedIds.has(row.id) ? "DŮLEŽITÉ PRO KLIENTA" : "", continuation ? "POKRAČOVÁNÍ DETAILU" : ""].filter(Boolean).join(" · ");
-    if (label) { text(label, MARGIN + 47, y, 8, "bold", pinnedIds.has(row.id) ? PURPLE : BLUE); y += 16; }
-    panel(MARGIN, y, 32, 32, NAVY, undefined, 8);
-    text(String(index + 1).padStart(2, "0"), MARGIN + 7, y + 8, 13, "bold", "#ffffff");
-    paragraph(row.title, MARGIN + 47, y + 3, width - 56, 17, "bold");
+    if (label) { text(label, MARGIN + 49, y, 7.5, "bold", pinnedIds.has(row.id) ? PURPLE : BLUE); y += 16; }
+    panel(MARGIN, y, 32, 29, "#f4eff8", "#e7dff0", 7);
+    text(String(index + 1).padStart(2, "0"), MARGIN + 7, y + 7, 13, "bold", PURPLE);
+    paragraph(row.title, MARGIN + 49, y + 2, width - 53, 18, "bold", NAVY);
     return bottom;
   }
 
-  type Block = { lines: string[]; size: number; weight: string; color: string; kind: ReportBlock["kind"]; cells?: string[][]; href?: string; gap: number; padding: number };
+  function wrapRuns(runs: ReportRun[], size: number, space: number, weight: string): ReportRun[][] {
+    const result: ReportRun[][] = [[]];
+    let used = 0;
+    const nextLine = () => { result.push([]); used = 0; };
+    const append = (run: ReportRun, value: string) => {
+      font(size, run.bold ? "bold" : weight);
+      const runWidth = pdf.getTextWidth(value);
+      const previous = result.at(-1)!.at(-1);
+      if (previous && previous.bold === run.bold && previous.highlight === run.highlight) previous.text += value;
+      else result.at(-1)!.push({ ...run, text: value });
+      used += runWidth;
+    };
+    for (const run of runs) for (const token of run.text.match(/\s+|\S+/g) ?? []) {
+      font(size, run.bold ? "bold" : weight);
+      if (!token.trim()) {
+        if (used > 0 && used + pdf.getTextWidth(" ") < space) append(run, " ");
+        continue;
+      }
+      if (used > 0 && used + pdf.getTextWidth(token) > space) nextLine();
+      if (pdf.getTextWidth(token) <= space) append(run, token);
+      else for (const character of token) {
+        if (used + pdf.getTextWidth(character) > space && used > 0) nextLine();
+        append(run, character);
+      }
+    }
+    return result.filter(line => line.length > 0);
+  }
+  type Block = {
+    lines: string[]; size: number; weight: string; color: string; kind: ReportBlock["kind"];
+    cells?: string[][]; cellTones?: string[]; decoration?: ReportBlock["decoration"];
+    runs?: ReportRun[][]; href?: string; gap: number; padding: number;
+  };
   function layout(blocks: ReportBlock[], space: number): Block[] {
     return blocks.map(block => {
-      const size = block.kind === "heading" ? 10 : 9.6;
+      const size = block.cells ? 9 : block.kind === "heading" ? 10 : 9.6;
       const weight = block.kind === "heading" ? "bold" : "normal";
-      const padding = block.kind === "quote" || block.cells ? 7 : 0;
-      return { lines: lines(block.text, size, space - padding * 2, weight), size, weight, kind: block.kind,
+      const padding = block.cells ? 4 : block.kind === "quote" || block.decoration === "callout" ? 7 : 0;
+      const runs = block.runs ? wrapRuns(block.runs, size, space - padding * 2, weight) : undefined;
+      return { lines: runs ? runs.map(line => line.map(run => run.text).join("")) : lines(block.text, size, space - padding * 2, weight), size, weight, kind: block.kind,
         color: block.href ? BLUE : block.kind === "quote" ? MUTED : INK,
-        cells: block.cells?.map(cell => lines(cell, size, (space - 14) / block.cells!.length - 8, "bold")),
-        href: block.href ? safeUrl(block.href, options.origin) : undefined, gap: block.cells ? 3 : 8, padding };
+        cells: block.cells?.map(cell => lines(cell, size, space / block.cells!.length - 12, "bold")),
+        cellTones: block.cellTones, decoration: block.decoration, runs,
+        href: block.href ? safeUrl(block.href, options.origin) : undefined, gap: block.cells ? 3 : block.href ? 4 : 8, padding };
     });
   }
   function blockHeight(block: Block) {
@@ -147,13 +189,24 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
       const block = queue[0];
       const height = blockHeight(block);
       const next = queue[1];
-      const keepNext = block.kind === "heading" && next ? Math.min(2, next.lines.length) * next.size * 1.4 : 0;
+      const nextLineCount = next ? next.cells ? Math.max(...next.cells.map(cell => cell.length)) : next.lines.length : 0;
+      const keepNext = block.kind === "heading" && next
+        ? nextLineCount <= 4 ? blockHeight(next) : 2 * next.size * 1.4 + next.padding * 2
+        : 0;
       if (height + keepNext > available) {
-        if (picked.length || block.cells) break;
+        // A heading may be followed by a partial paragraph; otherwise reserving
+        // two lines for it would still leave the heading alone at the page end.
+        if (picked.length && picked.at(-1)?.kind !== "heading") break;
+        if (block.kind === "heading" && height <= available && next) break;
         const count = Math.floor((available - block.padding * 2 - block.gap) / (block.size * 1.4));
         if (count <= 0) break;
-        picked.push({ ...block, lines: block.lines.splice(0, count) });
-        if (!block.lines.length) queue.shift();
+        if (block.cells) {
+          picked.push({ ...block, cells: block.cells.map(cell => cell.splice(0, count)) });
+          if (block.cells.every(cell => !cell.length)) queue.shift();
+        } else {
+          picked.push({ ...block, lines: block.lines.splice(0, count), runs: block.runs?.splice(0, count) });
+          if (!block.lines.length) queue.shift();
+        }
         break;
       }
       picked.push(queue.shift()!); available -= height;
@@ -164,12 +217,29 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
     for (const block of blocks) {
       const h = blockHeight(block) - block.gap;
       if (block.kind === "quote") {
-        panel(x, y, space, h, "#f2f5f9", undefined, 4);
-        pdf.setFillColor("#8da8c0"); pdf.rect(x, y + 5, 2, h - 10, "F");
-      } else if (block.cells) panel(x, y, space, h, "#f1f5f9", undefined, 4);
+        panel(x, y, space, h, "#f5f7fa", undefined, 2);
+        pdf.setFillColor("#a2b4c6"); pdf.rect(x, y + 5, 1.5, Math.max(1, h - 10), "F");
+      } else if (block.decoration === "callout") panel(x, y, space, h, "#f8fafc", LINE, 4);
+      else if (block.cells && block.decoration !== "tiles") panel(x, y, space, h, "#f1f5f8", undefined, 3);
       if (block.cells) {
-        const cellWidth = (space - 14) / block.cells.length;
-        block.cells.forEach((cell, column) => cell.forEach((line, index) => text(line, x + 7 + column * cellWidth, y + 7 + index * block.size * 1.4, block.size, "bold", column ? BLUE : INK)));
+        const cellWidth = space / block.cells.length;
+        block.cells.forEach((cell, column) => {
+          const tone = TONES[block.cellTones?.[column] ?? "neutral"];
+          if (block.decoration === "tiles") panel(x + column * cellWidth, y, cellWidth - 3, h, tone.fill, undefined, 3);
+          cell.forEach((line, index) => text(line, x + 5 + column * cellWidth, y + block.padding + index * block.size * 1.4, block.size, "bold", block.decoration === "tiles" ? tone.ink : column ? BLUE : INK));
+        });
+      } else if (block.runs) {
+        block.runs.forEach((line, index) => {
+          let rx = x + block.padding;
+          const ry = y + block.padding + index * block.size * 1.4;
+          for (const run of line) {
+            font(block.size, run.bold ? "bold" : block.weight);
+            const runWidth = pdf.getTextWidth(run.text);
+            if (run.highlight) { pdf.setFillColor("#f1e6ed"); pdf.rect(rx, ry - 1, runWidth, block.size * 1.2, "F"); }
+            text(run.text, rx, ry, block.size, run.bold ? "bold" : block.weight, run.highlight ? "#85374f" : block.color);
+            rx += runWidth;
+          }
+        });
       } else {
         block.lines.forEach((line, index) => text(line, x + block.padding, y + block.padding + index * block.size * 1.4, block.size, block.weight, block.color));
       }
@@ -180,18 +250,19 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
   }
   function summaryHeight(summary: ReportSummary, first: boolean) {
     const badge = lines(summary.status || "Není v nabídce", 9, innerWidth - 25, "bold").length * 12.6 + 10;
-    return 37 + badge + (first ? 12 + lines(summary.title, 11, innerWidth, "bold").length * 15.4 : 0) + 13;
+    return 44 + badge + (first && summary.title !== "Není v nabídce" ? 10 + lines(summary.title, 11, innerWidth, "bold").length * 15.4 : 0) + 14;
   }
   function drawSummary(summary: ReportSummary, column: number, x: number, y: number, first: boolean) {
     const accent = column ? BLUE : PURPLE;
-    text(column ? "METLIFE" : "ČPP", x + 13, y + 13, 8, "bold", accent);
-    rightText(column ? "OneGuard" : "NEON Life", x + colWidth - 13, y + 11, 11, "bold", accent);
+    text(column ? "OneGuard" : "NEON Life", x + 14, y + 11, 15, "bold", accent);
+    text(column ? "METLIFE" : "ČPP", x + 14, y + 31, 7, "bold", MUTED);
+    rightText(column ? "09/2024" : "04/2026", x + colWidth - 14, y + 31, 7, "normal", MUTED);
     const tone = TONES[summary.tone] ?? TONES.neutral;
     const wrapped = lines(summary.status || "Není v nabídce", 9, innerWidth - 25, "bold");
     font(9, "bold");
     const badgeWidth = Math.min(innerWidth, Math.max(...wrapped.map(line => pdf.getTextWidth(line))) + 25);
-    panel(x + 13, y + 37, badgeWidth, wrapped.length * 12.6 + 10, tone.fill, undefined, 4);
-    const cx = x + 21, cy = y + 47;
+    panel(x + 14, y + 44, badgeWidth, wrapped.length * 12.6 + 10, tone.fill, undefined, 3);
+    const cx = x + 22, cy = y + 54;
     pdf.setDrawColor(tone.ink); pdf.setLineWidth(1);
     if (summary.tone === "positive") { pdf.line(cx - 2, cy, cx, cy + 2); pdf.line(cx, cy + 2, cx + 4, cy - 3); }
     else {
@@ -200,8 +271,10 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
         pdf.line(cx + 1, cy, cx + 1, cy + 2); pdf.setFillColor(tone.ink); pdf.circle(cx + 1, cy - 1.5, 0.45, "F");
       } else pdf.line(cx - 1, cy, cx + 3, cy);
     }
-    wrapped.forEach((line, index) => text(line, x + 31, y + 42 + index * 12.6, 9, "bold", tone.ink));
-    if (first) paragraph(summary.title, x + 13, y + 37 + wrapped.length * 12.6 + 22, innerWidth, 11, "bold");
+    wrapped.forEach((line, index) => text(line, x + 32, y + 49 + index * 12.6, 9, "bold", tone.ink));
+    // The shared summary uses this fallback when the web card has nested
+    // headings. The real availability is already in its badge and detail body.
+    if (first && summary.title !== "Není v nabídce") paragraph(summary.title, x + 14, y + 44 + wrapped.length * 12.6 + 20, innerWidth, 11, "bold");
   }
 
   // Personal notes remain separate from the product information. Allocate all
@@ -242,62 +315,77 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
   }
 
   // Reserve contents pages before laying out themes so their links stay correct.
-  const contents: Array<{ rowIndex: number; page: number; y: number; height: number }> = [];
-  const contentsTextWidth = (row: ComparisonReportRow) => width - (pinnedIds.has(row.id) ? 160 : 92);
+  const contents: Array<{ rowIndex: number; page: number; x: number; y: number; height: number }> = [];
+  const contentsWidth = (width - 28) / 2;
+  const contentsTextWidth = (row: ComparisonReportRow) => contentsWidth - (pinnedIds.has(row.id) ? 139 : 72);
   if (rows.length > 1) {
-    let cy = newPage() + 70;
+    const heights = rows.map(row => Math.max(30, lines(row.title, 10.2, contentsTextWidth(row), pinnedIds.has(row.id) ? "bold" : "normal").length * 14.28 + 14));
+    const start = TOP + 76;
+    const columnHeight = Math.min(BOTTOM - start, Math.ceil(heights.reduce((sum, h) => sum + h, 0) / 2) + Math.max(...heights));
+    let cy = newPage() + 76, column = 0;
     rows.forEach((row, rowIndex) => {
-      const height = Math.max(27, lines(row.title, 10.2, contentsTextWidth(row), pinnedIds.has(row.id) ? "bold" : "normal").length * 14.28 + 12);
-      if (cy + height > BOTTOM - 12) cy = newPage() + 70;
-      contents.push({ rowIndex, page: pdf.getNumberOfPages(), y: cy, height }); cy += height;
+      const height = heights[rowIndex];
+      if (cy + height > start + columnHeight && cy > start) {
+        if (column === 0) { column = 1; cy = start; }
+        else { column = 0; cy = newPage() + 76; }
+      }
+      contents.push({ rowIndex, page: pdf.getNumberOfPages(), x: MARGIN + column * (contentsWidth + 28), y: cy, height }); cy += height;
     });
   }
 
   let y = newPage();
   for (const [index, row] of rows.entries()) {
-    const intro = layout(row.topic.slice(0, 1), width);
-    const context = layout(row.topic.slice(1), width - 24);
-    const queues = [layout(row.neon.blocks, innerWidth), layout(row.metlife.blocks, innerWidth)];
+    const contextualLinks = row.appendix.every(block => block.href && block.kind === "body") ? row.appendix : [];
+    const sourceNotes: ReportBlock[] = [];
+    const productBlocks = [row.neon, row.metlife].map((product, column) => {
+      const blocks = [...product.blocks];
+      const sources: ReportBlock[] = [];
+      // Keep short source references together in the context column instead
+      // of producing a continuation sheet containing only a source link.
+      while (blocks.at(-1)?.href && blocks.at(-1)!.text.length < 90) sources.unshift(blocks.pop()!);
+      if (sources.length) sourceNotes.push({ kind: "heading", text: `Zdroje · ${column ? "OneGuard" : "NEON Life"}` }, ...sources);
+      return blocks;
+    });
+    const intro = layout(row.topic.slice(0, 1), topicWidth - 24);
+    const context = layout([...row.topic.slice(1), ...contextualLinks, ...sourceNotes], topicWidth - 24);
+    const queues = productBlocks.map(blocks => layout(blocks, innerWidth));
     const summaries = [row.neon.summary, row.metlife.summary];
     const head = Math.max(...summaries.map(value => summaryHeight(value, true)));
-    const topicSize = titleHeight(row) + measure(intro) + (context.length ? measure(context) + 22 : 0) + 12;
-    const totalSize = topicSize + head + Math.max(...queues.map(measure)) + 14;
+    const totalSize = titleHeight(row) + Math.max(measure(intro) + measure(context) + 55, head + Math.max(...queues.map(measure))) + 14;
     if (y > TOP && y + totalSize > BOTTOM) y = newPage();
     destinations.push({ pageNumber: pdf.getNumberOfPages(), top: y });
     y = topicTitle(row, index, y);
-    while (intro.length) {
-      const picked = take(intro, BOTTOM - y);
-      y = drawBlocks(picked, MARGIN, y, width);
-      if (intro.length) y = topicTitle(row, index, newPage(), true);
-    }
-    while (context.length) {
-      if (y + 90 > BOTTOM) y = topicTitle(row, index, newPage(), true);
-      const picked = take(context, BOTTOM - y - 18);
-      const h = measure(picked) + 16;
-      panel(MARGIN, y, width, h, "#f2f6fa", undefined, 6);
-      drawBlocks(picked, MARGIN + 12, y + 10, width - 24); y += h + 8;
-      if (context.length) y = topicTitle(row, index, newPage(), true);
-    }
-    y += 10;
     let first = true;
     do {
       const header = Math.max(...summaries.map(value => summaryHeight(value, first)));
       if (y + header + 65 > BOTTOM) y = topicTitle(row, index, newPage(), true);
       const picked = queues.map(queue => take(queue, BOTTOM - y - header - 14));
-      const height = header + Math.max(...picked.map(measure)) + 14;
+      const pickedIntro = take(intro, BOTTOM - y - 42);
+      const pickedContext = intro.length ? [] : take(context, BOTTOM - y - measure(pickedIntro) - 56);
+      const contextHeight = pickedContext.length ? measure(pickedContext) + 18 : 0;
+      const height = Math.max(header + Math.max(...picked.map(measure)) + 14, 32 + measure(pickedIntro) + contextHeight);
+      panel(MARGIN, y, topicWidth, height, "#fafafd", LINE, 7);
+      text("SOUVISLOSTI A ROZDÍLY", MARGIN + 12, y + 13, 7.5, "bold", "#81758f");
+      const contextY = drawBlocks(pickedIntro, MARGIN + 12, y + 33, topicWidth - 24);
+      if (pickedContext.length) {
+        panel(MARGIN + 6, contextY, topicWidth - 12, contextHeight, "#f0f2f7", undefined, 5);
+        drawBlocks(pickedContext, MARGIN + 12, contextY + 9, topicWidth - 24);
+      } else if (!first && !pickedIntro.length) {
+        paragraph("Souvislosti najdete na předchozí straně.", MARGIN + 12, contextY, topicWidth - 24, 9, "normal", MUTED);
+      }
       picked.forEach((blocks, column) => {
-        const x = MARGIN + column * (colWidth + 16);
-        panel(x, y, colWidth, !first && !blocks.length ? header + 31 : height, "#ffffff", LINE, 8);
-        rule(x + 13, y + 30, innerWidth, column ? "#c8dfeE" : "#ded2e9");
+        const x = MARGIN + topicWidth + COLUMN_GAP + column * (colWidth + COLUMN_GAP);
+        panel(x, y, colWidth, height, "#ffffff", LINE, 7);
+        pdf.setFillColor(column ? BLUE : PURPLE); pdf.rect(x + 14, y, 32, 2, "F");
         drawSummary(summaries[column], column, x, y, first);
-        if (!first && !blocks.length) text("Podrobnosti na předchozí straně.", x + 13, y + header, 9, "normal", MUTED);
-        else drawBlocks(blocks, x + 13, y + header, innerWidth);
+        if (!first && !blocks.length) text("Podrobnosti na předchozí straně.", x + 14, y + header, 9, "normal", MUTED);
+        else drawBlocks(blocks, x + 14, y + header, innerWidth);
       });
       y += height; first = false;
-      if (queues.some(queue => queue.length)) y = topicTitle(row, index, newPage(), true);
-    } while (queues.some(queue => queue.length));
+      if (intro.length || context.length || queues.some(queue => queue.length)) y = topicTitle(row, index, newPage(), true);
+    } while (intro.length || context.length || queues.some(queue => queue.length));
 
-    if (row.appendix.length) {
+    if (row.appendix.length && !contextualLinks.length) {
       const queue = layout(row.appendix, width - 26);
       y += 14;
       if (measure(queue) + 24 > BOTTOM - y && measure(queue) + 24 < BOTTOM - TOP - titleHeight(row) - 16) y = topicTitle(row, index, newPage(), true);
@@ -312,78 +400,87 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
     y += 28;
   }
 
-  // Cover: strong title, paired product identities and a real advisor signature.
+  // Keep the page's product identities, wording and soft violet/blue surfaces.
   pdf.setPage(1);
-  panel(MARGIN, 110, width, 223, NAVY, undefined, 13);
-  pdf.setDrawColor("#345370"); pdf.setLineWidth(1);
-  pdf.circle(right - 66, 173, 37, "S"); pdf.circle(right - 62, 236, 42, "S");
-  pdf.setDrawColor("#72bddc"); pdf.setLineWidth(1.7);
-  pdf.lines([[23, 0], [0, 21], [-11.5, 12], [-11.5, -12], [0, -21]], right - 78, 156, [1, 1], "S", true);
-  pdf.lines([[21, 0], [0, 19], [-10.5, 11], [-10.5, -11], [0, -19]], right - 73, 222, [1, 1], "S", true);
-  text("ŽIVOTNÍ POJIŠTĚNÍ / PODROBNÉ SROVNÁNÍ", MARGIN + 22, 134, 9, "bold", "#b3d5e8");
-  text("NEON Life", MARGIN + 22, 167, 38, "bold", "#ffffff");
-  text("vs. OneGuard", MARGIN + 22, 214, 34, "bold", "#ffffff");
-  rule(MARGIN + 22, 273, width - 44, "#3e5871");
-  const topicCount = `${rows.length} ${rows.length === 1 ? "téma" : rows.length < 5 ? "témata" : "témat"}`;
-  text(topicCount, MARGIN + 22, 291, 12, "bold", "#ffffff");
-  text("Krytí · podmínky · příklady plnění", MARGIN + 111, 293, 10, "normal", "#c7d9e8");
+  text("ŽIVOTNÍ POJIŠTĚNÍ POD LUPOU", MARGIN, 105, 8.5, "bold", "#8a78a3");
+  text("NEON Life", MARGIN, 132, 34, "bold", NAVY);
+  font(34, "bold");
+  const versusX = MARGIN + pdf.getTextWidth("NEON Life") + 13;
+  text("vs.", versusX, 137, 27, "normal", "#b4a7c6");
+  font(27);
+  text("OneGuard", versusX + pdf.getTextWidth("vs.") + 13, 132, 34, "bold", NAVY);
+  text("Rozdíly v krytí, podmínkách a plnění. Přehledně vedle sebe.", MARGIN, 180, 11, "normal", MUTED);
+  const topicCount = `${rows.length} ${rows.length === 1 ? "srovnávané téma" : rows.length < 5 ? "srovnávaná témata" : "srovnávaných témat"}`;
+  text(topicCount, MARGIN, 207, 9, "bold", MUTED);
+  text("2 pojistné produkty", MARGIN + 168, 207, 9, "normal", MUTED);
+
+  // The same paired shields as the web hero, drawn as crisp PDF vectors.
+  const artX = right - 115, artY = 108;
+  panel(artX + 48, artY, 60, 76, "#edf5fb", "#d5e4ef", 18);
+  panel(artX, artY + 20, 60, 76, "#f1ecf8", "#e0d6ec", 18);
+  pdf.setDrawColor("#91b6d0"); pdf.setLineWidth(1.8);
+  pdf.lines([[13, -5], [13, 5], [-2, 21], [-11, 9], [-11, -9], [-2, -21]], artX + 65, artY + 21, [1, 1], "S", true);
+  pdf.line(artX + 72, artY + 36, artX + 77, artY + 41); pdf.line(artX + 77, artY + 41, artX + 86, artY + 30);
+  pdf.setDrawColor("#ae95c3");
+  pdf.lines([[9, -5], [9, 5], [9, -5], [9, 5], [0, 9], [-18, 18], [-18, -18], [0, -9]], artX + 12, artY + 42, [1, 1], "S", true);
+  pdf.lines([[7, 0], [4, -7], [6, 15], [4, -8], [6, 0]], artX + 17, artY + 56, [1, 1], "S", false);
+
+  const coverColWidth = (width - 18) / 2;
   for (let column = 0; column < 2; column++) {
-    const x = MARGIN + column * (colWidth + 16);
-    panel(x, 350, colWidth, 76, "#ffffff", LINE, 8);
-    if (!column) pdf.addImage(cppLogo, "PNG", x + 12, 369, 57, 35, "cpp-logo");
-    else pdf.addImage(metlifeLogo, "PNG", x + 12, 380, 68, 15, "metlife-logo");
-    text(column ? "OneGuard" : "NEON Life", x + 90, 367, 14, "bold", column ? BLUE : PURPLE);
-    text(`Podmínky ${column ? "09/2024" : "04/2026"}`, x + 90, 392, 9, "normal", MUTED);
+    const x = MARGIN + column * (coverColWidth + 18);
+    panel(x, 244, coverColWidth, 87, column ? "#f3f8fc" : "#f8f5fb", column ? "#dde8f1" : "#e7e0f0", 10);
+    panel(x + 14, 263, 70, 46, "#ffffff", LINE, 7);
+    fittedImage(column ? metlifeLogo : cppLogo, "PNG", x + 21, 269, 56, 34, column ? "metlife-logo" : "cpp-logo");
+    text(column ? "MetLife" : "Česká podnikatelská pojišťovna", x + 99, 258, 8.5, "normal", MUTED);
+    text(column ? "OneGuard" : "NEON Life", x + 99, 276, 20, "bold", NAVY);
+    text(`Pojistné podmínky ${column ? "09/2024" : "04/2026"}`, x + 99, 305, 8.5, "normal", MUTED);
   }
+  panel(MARGIN + width / 2 - 12, 275, 24, 24, "#ffffff", LINE, 12);
+  text("vs.", MARGIN + width / 2 - 6, 282, 9, "normal", MUTED);
+
+  text(singleLine(options.scopeLabel, width - 170, 9), MARGIN, 349, 9, "normal", MUTED);
+  if (personalization.clientName) text(singleLine(`Pro klienta: ${personalization.clientName}`, width - (meetingDate ? 175 : 0), 10), MARGIN, 371, 10, "bold", PURPLE);
+  if (meetingDate) rightText(`Schůzka: ${meetingDate}`, right, 372, 9, "normal", MUTED);
 
   const advisor = options.advisor;
-  text("PŘIPRAVIL PRO VÁS", MARGIN, 451, 9, "bold", BLUE);
-  const contactWidth = width - (qr ? 151 : 40);
+  const contactWidth = width - (qr ? 145 : 40);
   const contactRows = [advisor.phone, advisor.email, advisor.ico ? `IČO: ${advisor.ico}` : ""].filter(Boolean);
-  const nameHeight = lines(advisor.fullName || advisor.email, 21, contactWidth, "bold").length * 29.4;
-  const roleHeight = lines(advisor.title, 10, contactWidth).length * 14;
-  const contactsHeight = contactRows.reduce((sum, value) => sum + lines(value, 10, contactWidth).length * 14 + 7, 0);
-  const cardHeight = Math.max(178, 49 + nameHeight + roleHeight + contactsHeight);
-  let cardY = 474;
-  // Unusually long profile details get their own page instead of being clipped.
-  if (cardY + cardHeight > 670) { newPage(); cardY = TOP + 27; text("VÁŠ PORADCE", MARGIN, TOP, 10, "bold", BLUE); }
-  panel(MARGIN, cardY, width, cardHeight, "#f3f6fa", LINE, 10);
-  pdf.setFillColor("#70b8d8"); pdf.roundedRect(MARGIN, cardY + 17, 3, cardHeight - 34, 1, 1, "F");
-  let cy = paragraph(advisor.fullName || advisor.email, MARGIN + 20, cardY + 22, contactWidth, 21, "bold");
-  cy = paragraph(advisor.title, MARGIN + 20, cy + 5, contactWidth, 10, "normal", MUTED) + 15;
-  rule(MARGIN + 20, cy, contactWidth); cy += 13;
+  const nameHeight = lines(advisor.fullName || advisor.email, 17, contactWidth, "bold").length * 23.8;
+  const roleHeight = lines(advisor.title, 9, contactWidth).length * 12.6;
+  const contactsHeight = contactRows.reduce((sum, value) => sum + lines(value, 9, contactWidth).length * 12.6 + 3, 0);
+  const cardHeight = Math.max(132, 48 + nameHeight + roleHeight + contactsHeight);
+  let cardY = 390;
+  // Preserve full contact details on a separate page for unusually long profiles.
+  if (cardY + cardHeight > BOTTOM - 22) { newPage(); cardY = TOP + 26; text("VÁŠ PORADCE", MARGIN, TOP, 9, "bold", PURPLE); }
+  panel(MARGIN, cardY, width, cardHeight, "#f8f7fb", "#e7e0ed", 8);
+  text("PŘIPRAVIL PRO VÁS", MARGIN + 16, cardY + 12, 7, "bold", PURPLE);
+  let cy = paragraph(advisor.fullName || advisor.email, MARGIN + 16, cardY + 29, contactWidth, 17, "bold", NAVY);
+  cy = paragraph(advisor.title, MARGIN + 16, cy + 3, contactWidth, 9, "normal", MUTED) + 7;
   for (const value of contactRows) {
-    const end = paragraph(value, MARGIN + 20, cy, contactWidth, 10, "normal", value.startsWith("IČO:") ? MUTED : INK);
+    const end = paragraph(value, MARGIN + 16, cy, contactWidth, 9, "normal", value.startsWith("IČO:") ? MUTED : INK);
     const href = value === advisor.email ? `mailto:${advisor.email}` : value === advisor.phone ? `tel:${advisor.phone.replace(/[^+\d]/g, "")}` : undefined;
-    if (href) pdf.link(MARGIN + 20, cy, contactWidth, end - cy, { url: href });
-    cy = end + 7;
+    if (href) pdf.link(MARGIN + 16, cy, contactWidth, end - cy, { url: href });
+    cy = end + 3;
   }
   if (qr) {
-    panel(right - 115, cardY + 22, 94, 94, "#ffffff", undefined, 7);
-    pdf.addImage(qr, "PNG", right - 107, cardY + 30, 78, 78);
-    text("Zůstaňme v kontaktu", right - 116, cardY + 128, 8.5, "bold", BLUE);
-    text("Moje online vizitka", right - 109, cardY + 144, 8.5, "normal", MUTED);
-    pdf.link(right - 119, cardY + 22, 104, 137, { url: advisor.cardUrl });
+    panel(right - 111, cardY + 13, 80, 80, "#ffffff", undefined, 5);
+    pdf.addImage(qr, "PNG", right - 104, cardY + 20, 66, 66);
+    text("Moje online vizitka", right - 112, cardY + 101, 8.5, "normal", PURPLE);
+    pdf.link(right - 116, cardY + 13, 90, 102, { url: advisor.cardUrl });
   }
   if (pdf.getCurrentPageInfo().pageNumber !== 1) {
     const advisorPage = pdf.getCurrentPageInfo().pageNumber;
-    pdf.setPage(1); panel(MARGIN, 474, width, 178, "#f3f6fa", LINE, 10);
-    text("Váš poradce", MARGIN + 20, 496, 18, "bold");
-    paragraph(advisor.fullName || advisor.email, MARGIN + 20, 529, width - 40, 12);
-    text(`Kompletní vizitka a kontakty na straně ${advisorPage} →`, MARGIN + 20, 616, 10, "bold", BLUE);
-    pdf.link(MARGIN, 474, width, 178, { pageNumber: advisorPage });
+    pdf.setPage(1); panel(MARGIN, 390, width, 132, "#f8f7fb", "#e7e0ed", 8);
+    text("PŘIPRAVIL PRO VÁS", MARGIN + 16, 405, 7, "bold", PURPLE);
+    paragraph(advisor.fullName || advisor.email, MARGIN + 16, 428, width - 32, 12);
+    text(`Kompletní vizitka a kontakty na straně ${advisorPage} →`, MARGIN + 16, 500, 10, "bold", PURPLE);
+    pdf.link(MARGIN, 390, width, 132, { pageNumber: advisorPage });
   }
-  if (personalization.clientName || meetingDate) {
-    const nameWidth = meetingDate ? width - 153 : width;
-    if (personalization.clientName) text(singleLine(`Pro klienta: ${personalization.clientName}`, nameWidth, 10), MARGIN, 680, 10, "normal", BLUE);
-    if (meetingDate) rightText(`Schůzka: ${meetingDate}`, right, 681, 9, "normal", MUTED);
-    paragraph(options.scopeLabel, MARGIN, 703, width, 8.5, "normal", MUTED);
-  } else paragraph(options.scopeLabel, MARGIN, 685, width, 9, "normal", MUTED);
   const target = personalPage ? { pageNumber: personalPage, top: TOP } : contents.length ? { pageNumber: contents[0].page, top: TOP } : destinations[0];
-  panel(MARGIN, 725, width, 39, "#eaf2f8", undefined, 6);
-  text(personalPage ? "Otevřít srovnání pro klienta" : rows.length > 1 ? "Prohlédnout obsah srovnání" : rows[0].title, MARGIN + 13, 738, 10, "bold", BLUE);
-  rightText("→", right - 14, 732, 18, "normal", BLUE);
-  pdf.link(MARGIN, 725, width, 39, target);
+  const navigationTitle = personalPage ? "Otevřít srovnání pro klienta" : rows.length > 1 ? "Prohlédnout obsah srovnání" : rows[0].title;
+  text(singleLine(navigationTitle, width - 45, 9), MARGIN, BOTTOM - 7, 9, "bold", PURPLE);
+  rightText("→", right, BOTTOM - 11, 16, "normal", PURPLE);
+  pdf.link(MARGIN, BOTTOM - 11, width, 19, target);
 
   let contentsPage = 0;
   for (const entry of contents) {
@@ -394,23 +491,25 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
       text("Obsah srovnání", MARGIN, TOP + 19, 25, "bold");
       text(pinnedIds.size ? "Připnutá témata jsou první. Kliknutím otevřete podrobnosti." : "Vyberte téma a přejděte rovnou k podrobnostem.", MARGIN, TOP + 51, 9.5, "normal", MUTED);
     }
-    const { rowIndex: index, height, y: rowY } = entry;
+    const { rowIndex: index, height, x, y: rowY } = entry;
+    const contentsRight = x + contentsWidth;
     const important = pinnedIds.has(rows[index].id);
-    if (important || index % 2 === 0) panel(MARGIN, rowY, width, height, important ? "#f4eef9" : "#f3f6fa", undefined, 4);
-    text(String(index + 1).padStart(2, "0"), MARGIN + 10, rowY + 8, 9, "bold", BLUE);
-    paragraph(rows[index].title, MARGIN + 41, rowY + 7, contentsTextWidth(rows[index]), 10.2, important ? "bold" : "normal");
-    if (important) text("PŘIPNUTO", right - 101, rowY + 10, 7, "bold", PURPLE);
-    rightText(String(destinations[index].pageNumber).padStart(2, "0"), right - 12, rowY + 8, 10, "bold", BLUE);
-    pdf.link(MARGIN, rowY, width, height, destinations[index]);
+    if (important) panel(x, rowY, contentsWidth, height, "#f4eef9", undefined, 4);
+    else rule(x, rowY + height, contentsWidth);
+    text(String(index + 1).padStart(2, "0"), x + 8, rowY + 8, 9, "bold", PURPLE);
+    paragraph(rows[index].title, x + 33, rowY + 7, contentsTextWidth(rows[index]), 10.2, important ? "bold" : "normal");
+    if (important) text("PŘIPNUTO", contentsRight - 89, rowY + 10, 7, "bold", PURPLE);
+    rightText(String(destinations[index].pageNumber).padStart(2, "0"), contentsRight - 8, rowY + 8, 10, "bold", BLUE);
+    pdf.link(x, rowY, contentsWidth, height, destinations[index]);
   }
 
   const total = pdf.getNumberOfPages();
   for (let page = 1; page <= total; page++) {
-    pdf.setPage(page); rule(MARGIN, 793, width); rule(MARGIN, 793, width * page / total, "#7caecb");
+    pdf.setPage(page); rule(MARGIN, pageHeight - 37, width);
     const footer = [advisor.fullName || advisor.email, advisor.phone].filter(Boolean).join(" · ");
-    text(singleLine(footer, width - 90, 8), MARGIN, 804, 8, "normal", MUTED);
-    rightText(`${String(page).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, right, 804, 8, "bold", BLUE);
-    if (contents.length && page > 1 && page !== contents[0].page) pdf.link(right - 65, 799, 65, 22, { pageNumber: contents[0].page, top: TOP });
+    text(singleLine(footer, width - 90, 8), MARGIN, pageHeight - 27, 8, "normal", MUTED);
+    rightText(`${String(page).padStart(2, "0")} / ${String(total).padStart(2, "0")}`, right, pageHeight - 27, 8, "bold", BLUE);
+    if (contents.length && page > 1 && page !== contents[0].page) pdf.link(right - 65, pageHeight - 30, 65, 22, { pageNumber: contents[0].page, top: TOP });
   }
   return pdf;
 }

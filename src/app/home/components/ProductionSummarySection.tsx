@@ -201,7 +201,7 @@ function ProductionColumn({
       <div className={styles.commission}>
         <p className={styles.label}>{commissionLabel}</p>
         <p className={styles.amount} aria-label={amountPending ? "Načítám TIP produkci" : amountUnavailable ? "Částka není k dispozici" : undefined}>
-          {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} />}</p>
+          {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} currencyClassName={styles.currency} />}</p>
         <div className={styles.commissionFooter}>
           {amountPending || amountUnavailable ? <p role="status" className="text-xs leading-relaxed text-slate-600">
             {amountPending ? "Načítám TIP produkci…" : "TIP produkce není k dispozici."}

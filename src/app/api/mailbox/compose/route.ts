@@ -487,6 +487,124 @@ const resolveSenderName = async (senderEmail: string, senderUid: string): Promis
   return nameFromEmail(senderEmail);
 };
 
+class MailboxMessageConflictError extends Error {
+  constructor() {
+    super("Tento identifikátor požadavku už byl použit pro jinou zprávu.");
+  }
+}
+
+const isAlreadyExistsError = (error: unknown): boolean =>
+  isPlainObject(error) &&
+  (error.code === 6 || error.code === "already-exists" || error.code === "ALREADY_EXISTS");
+
+type ComposeReplayRequest = {
+  senderEmail: string;
+  recipients: { email: string; name: string }[];
+  clientRequestId: string;
+  senderMailboxId?: string;
+  groupConversation: boolean;
+  requestedConversationId?: string;
+  groupName?: string;
+  createGroupOnly?: boolean;
+  isTipsterTip?: boolean;
+};
+
+// A retry may return only the actor's original sent copy, never a received
+// message or another delivery mode that happens to use the same document ID.
+async function loadComposeReplay(request: ComposeReplayRequest) {
+  const senderMailboxId = request.senderMailboxId || request.clientRequestId;
+  if (!senderMailboxId) return null;
+  const snapshot = await adminDb!
+    .collection("usersPrivate")
+    .doc(request.senderEmail)
+    .collection("mailbox")
+    .doc(senderMailboxId)
+    .get();
+  if (!snapshot.exists) return null;
+  const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+  const metadata = isPlainObject(data.metadata) ? data.metadata : {};
+  const storedRecipients = request.groupConversation
+    ? Array.isArray(metadata.recipientEmails)
+      ? metadata.recipientEmails.map(normalizeEmail).sort()
+      : []
+    : [normalizeEmail(metadata.recipientEmail)];
+  const recipientEmails = request.recipients.map(recipient => recipient.email);
+  const expectedRecipients = [...recipientEmails].sort();
+  if (
+    data.type !== "direct_message" ||
+    metadata.mailboxDirection !== "sent" ||
+    normalizeEmail(metadata.senderEmail) !== request.senderEmail ||
+    (metadata.groupConversation === true) !== request.groupConversation ||
+    (metadata.tipsterTip === true) !== (request.isTipsterTip === true) ||
+    (metadata.groupCreatedEvent === true) !== (request.createGroupOnly === true) ||
+    storedRecipients.length !== expectedRecipients.length ||
+    storedRecipients.some((email, index) => email !== expectedRecipients[index]) ||
+    (request.requestedConversationId &&
+      normalizeText(metadata.conversationId) !== request.requestedConversationId)
+  ) {
+    throw new MailboxMessageConflictError();
+  }
+  const attachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+  return {
+    ok: true,
+    recipientEmail: request.recipients[0]?.email,
+    recipientName: request.recipients[0]?.name,
+    ...(request.groupConversation
+      ? { recipientEmails, groupName: normalizeText(metadata.groupName) || request.groupName }
+      : { tipId: normalizeText(metadata.tipId) || null }),
+    attachments: attachments.length,
+    attachmentItems: toPublicAttachments(attachments as MailboxAttachment[]),
+    messageId: normalizeText(metadata.messageId) || senderMailboxId,
+    recipientMailboxId: request.groupConversation
+      ? snapshot.id
+      : normalizeText(metadata.pairedMailboxId) || senderMailboxId,
+    senderMailboxId: snapshot.id,
+    conversationId: normalizeText(metadata.conversationId) || null,
+    deliveredAtMs:
+      typeof metadata.deliveredAtMs === "number" && Number.isFinite(metadata.deliveredAtMs)
+        ? metadata.deliveredAtMs
+        : typeof data.createdAtMs === "number" && Number.isFinite(data.createdAtMs)
+          ? data.createdAtMs
+          : Date.now(),
+  };
+}
+
+async function rollbackComposeAttachments(
+  attachments: MailboxAttachment[],
+  messageId: string,
+  mailboxDocumentPaths: string[]
+) {
+  if (attachments.length === 0) return;
+  try {
+    // The SDK can retry a committed write after losing its response and then
+    // report ALREADY_EXISTS. Preserve files referenced by any persisted copy.
+    const snapshots = await Promise.all(
+      mailboxDocumentPaths.map((path) => adminDb!.doc(path).get())
+    );
+    const referencedPaths = new Set<string>();
+    for (const snapshot of snapshots) {
+      const metadata = snapshot.data()?.metadata;
+      if (!isPlainObject(metadata) || !Array.isArray(metadata.attachments)) continue;
+      for (const attachment of metadata.attachments) {
+        if (isPlainObject(attachment) && typeof attachment.path === "string") {
+          referencedPaths.add(attachment.path);
+        }
+      }
+    }
+    const cleanup = await deleteMailboxStorageObjects(
+      attachments
+        .filter(({ path }) => !referencedPaths.has(path))
+        .map(({ path, bucketName }) => ({ messageId, path, bucketName }))
+    );
+    if (cleanup.failed > 0) console.error("Mailbox compose upload rollback failed.", cleanup);
+  } catch (error) {
+    console.error(
+      "Mailbox compose could not verify or clean up failed uploads; unverified files were preserved.",
+      error
+    );
+  }
+}
+
 async function composeGroupMessage({
   req,
   senderEmail,
@@ -569,48 +687,17 @@ async function composeGroupMessage({
   groupName = groupName.slice(0, GROUP_NAME_MAX_LEN) || "Skupinová konverzace";
 
   const messageId = clientRequestId || randomUUID();
-  const senderMailbox = adminDb
-    .collection("usersPrivate")
-    .doc(senderEmail)
-    .collection("mailbox");
-  const existingSenderSnapshot = clientRequestId
-    ? await senderMailbox.doc(messageId).get()
-    : null;
-  if (existingSenderSnapshot?.exists) {
-    const existingData = (existingSenderSnapshot.data() ?? {}) as Record<string, unknown>;
-    const metadata = isPlainObject(existingData.metadata) ? existingData.metadata : {};
-    const storedRecipients = Array.isArray(metadata.recipientEmails)
-      ? metadata.recipientEmails.map(normalizeEmail).filter(Boolean).sort()
-      : [];
-    const requestedRecipients = [...recipientEmails].sort();
-    if (
-      storedRecipients.length !== requestedRecipients.length ||
-      storedRecipients.some((email, index) => email !== requestedRecipients[index])
-    ) {
-      throw new Error("Tento požadavek už byl použit pro jiné příjemce.");
-    }
-    const storedAttachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
-    return {
-      ok: true,
-      recipientEmail: recipients[0]?.email,
-      recipientName: recipients[0]?.name,
-      recipientEmails,
-      groupName: normalizeText(metadata.groupName) || groupName,
-      attachments: storedAttachments.length,
-      attachmentItems: toPublicAttachments(storedAttachments as MailboxAttachment[]),
-      messageId: normalizeText(metadata.messageId) || messageId,
-      recipientMailboxId: messageId,
-      senderMailboxId: existingSenderSnapshot.id,
-      conversationId: normalizeText(metadata.conversationId) || conversationId,
-      deliveredAtMs:
-        typeof metadata.deliveredAtMs === "number" && Number.isFinite(metadata.deliveredAtMs)
-          ? metadata.deliveredAtMs
-          : Date.now(),
-    };
-  }
+  const replayRequest: ComposeReplayRequest = {
+    senderEmail, recipients, clientRequestId, groupConversation: true,
+    requestedConversationId, groupName, createGroupOnly,
+  };
+  const replay = await loadComposeReplay(replayRequest);
+  if (replay) return replay;
+  replayRequest.senderMailboxId = messageId;
 
   let attachments: MailboxAttachment[] = [];
   let committed = false;
+  let mailboxDocumentPaths: string[] = [];
   try {
     attachments = await uploadAttachmentsToStorage({
       messageId,
@@ -634,6 +721,7 @@ async function composeGroupMessage({
           .doc(messageId),
       ])
     );
+    mailboxDocumentPaths = [...mailboxRefs.values()].map(ref => ref.path);
     const recipientConversationSnapshots = await Promise.all(
       recipients.map(async (recipient) => {
         const ref = adminDb!
@@ -667,7 +755,8 @@ async function composeGroupMessage({
     const batch = adminDb.batch();
     participants.forEach((participant) => {
       const senderCopy = participant.email === senderEmail;
-      batch.set(mailboxRefs.get(participant.email)!, {
+      // Every copy must be new. A collision aborts the entire delivery batch.
+      batch.create(mailboxRefs.get(participant.email)!, {
         recipientEmail: participant.email,
         type: "direct_message",
         title: "Šifrovaná zpráva",
@@ -786,9 +875,16 @@ async function composeGroupMessage({
     };
   } catch (error) {
     if (!committed && attachments.length > 0) {
-      await deleteMailboxStorageObjects(
-        attachments.map(({ path, bucketName }) => ({ messageId, path, bucketName }))
-      ).catch(() => undefined);
+      await rollbackComposeAttachments(attachments, messageId, mailboxDocumentPaths);
+    }
+    if (isAlreadyExistsError(error)) {
+      try {
+        const replay = await loadComposeReplay(replayRequest);
+        if (replay) return replay;
+      } catch {
+        // A failed replay lookup must not expose backend details to the sender.
+      }
+      throw new MailboxMessageConflictError();
     }
     throw error;
   }
@@ -818,6 +914,7 @@ export async function POST(req: NextRequest) {
   let uploadedAttachments: MailboxAttachment[] = [];
   let uploadedMessageId = "";
   let mailboxDocumentPaths: string[] = [];
+  let replayRequest: ComposeReplayRequest | null = null;
 
   try {
     form = await req.formData();
@@ -1072,7 +1169,7 @@ export async function POST(req: NextRequest) {
                 ? error.message
                 : "Skupinovou zprávu se nepodařilo odeslat.",
           },
-          { status: 400 }
+          { status: error instanceof MailboxMessageConflictError ? 409 : 400 }
         ),
         ctx
       );
@@ -1092,60 +1189,12 @@ export async function POST(req: NextRequest) {
     }
 
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
-    if (clientRequestId) {
-      const existingSenderSnapshot = await adminDb
-        .collection("usersPrivate")
-        .doc(ctx.email)
-        .collection("mailbox")
-        .doc(clientRequestId)
-        .get();
-      if (existingSenderSnapshot.exists) {
-        const existingData = (existingSenderSnapshot.data() ?? {}) as Record<string, unknown>;
-        const existingMetadataRaw = existingData.metadata;
-        const existingMetadata =
-          existingMetadataRaw &&
-          typeof existingMetadataRaw === "object" &&
-          !Array.isArray(existingMetadataRaw)
-            ? (existingMetadataRaw as Record<string, unknown>)
-            : {};
-        const storedRecipientEmail = normalizeEmail(existingMetadata.recipientEmail);
-        if (storedRecipientEmail && storedRecipientEmail !== recipient.email) {
-          return withRateLimitHeaders(
-            NextResponse.json(
-              { ok: false, error: "Tento požadavek už byl použit pro jiného příjemce." },
-              { status: 409 }
-            ),
-            ctx
-          );
-        }
-        const storedAttachments = Array.isArray(existingMetadata.attachments)
-          ? existingMetadata.attachments
-          : [];
-        const storedDeliveredAtMs =
-          typeof existingMetadata.deliveredAtMs === "number" &&
-          Number.isFinite(existingMetadata.deliveredAtMs)
-            ? existingMetadata.deliveredAtMs
-            : typeof existingData.createdAtMs === "number" && Number.isFinite(existingData.createdAtMs)
-              ? existingData.createdAtMs
-              : Date.now();
-        return withRateLimitHeaders(
-          NextResponse.json({
-            ok: true,
-            recipientEmail: recipient.email,
-            recipientName: recipient.name,
-            attachments: storedAttachments.length,
-            attachmentItems: toPublicAttachments(storedAttachments as MailboxAttachment[]),
-            messageId: normalizeText(existingMetadata.messageId) || clientRequestId,
-            recipientMailboxId: normalizeText(existingMetadata.pairedMailboxId) || clientRequestId,
-            senderMailboxId: existingSenderSnapshot.id,
-            tipId: normalizeText(existingMetadata.tipId) || null,
-            conversationId: normalizeText(existingMetadata.conversationId) || null,
-            deliveredAtMs: storedDeliveredAtMs,
-          }),
-          ctx
-        );
-      }
-    }
+    replayRequest = {
+      senderEmail: ctx.email, recipients: [recipient], clientRequestId,
+      groupConversation: false, isTipsterTip: clientMetadata.tipsterTip === true,
+    };
+    const replay = await loadComposeReplay(replayRequest);
+    if (replay) return withRateLimitHeaders(NextResponse.json(replay), ctx);
     const createdAtMs = Date.now();
     const messageId = clientRequestId || randomUUID();
     uploadedMessageId = messageId;
@@ -1202,6 +1251,7 @@ export async function POST(req: NextRequest) {
             .doc()
         : null;
     mailboxDocumentPaths = [recipientRef.path, senderRef.path];
+    replayRequest.senderMailboxId = senderRef.id;
     const recipientDeepLink = tipRef ? `/tipy/${encodeURIComponent(recipientRef.id)}` : "/posta";
     const senderDeepLink = tipRef ? `/tipy/${encodeURIComponent(tipRef.id)}` : "/posta";
 
@@ -1226,7 +1276,9 @@ export async function POST(req: NextRequest) {
       : null;
 
     const batch = adminDb.batch();
-    batch.set(recipientRef, {
+    // Enforce nonexistence at commit, including concurrent sends and deleted
+    // sender copies. Pre-reading the sender alone cannot protect the recipient.
+    batch.create(recipientRef, {
       recipientEmail: recipient.email,
       type: "direct_message",
       title: "Šifrovaná zpráva",
@@ -1244,7 +1296,7 @@ export async function POST(req: NextRequest) {
         pairedMailboxId: senderRef.id,
       },
     });
-    batch.set(senderRef, {
+    batch.create(senderRef, {
       recipientEmail: ctx.email,
       type: "direct_message",
       title: "Šifrovaná zpráva",
@@ -1371,35 +1423,21 @@ export async function POST(req: NextRequest) {
       ctx
     );
   } catch (error) {
-    if (uploadedAttachments.length > 0) {
-      let shouldRollbackUploads = mailboxDocumentPaths.length === 0;
-      if (mailboxDocumentPaths.length > 0) {
-        try {
-          const snapshots = await Promise.all(
-            mailboxDocumentPaths.map((path) => adminDb!.doc(path).get())
-          );
-          shouldRollbackUploads = snapshots.every((snapshot) => !snapshot.exists);
-        } catch (verificationError) {
-          shouldRollbackUploads = false;
-          console.error(
-            "Mailbox compose could not verify whether failed message was committed; uploaded files were preserved.",
-            verificationError
-          );
-        }
+    const alreadyExists = isAlreadyExistsError(error);
+    await rollbackComposeAttachments(uploadedAttachments, uploadedMessageId, mailboxDocumentPaths);
+    if (alreadyExists && replayRequest) {
+      try {
+        const replay = await loadComposeReplay(replayRequest);
+        if (replay) return withRateLimitHeaders(NextResponse.json(replay), ctx);
+      } catch {
+        // No verified sent copy: retain a generic conflict, never backend paths.
       }
-
-      if (shouldRollbackUploads) {
-        const cleanup = await deleteMailboxStorageObjects(
-          uploadedAttachments.map(({ path, bucketName }) => ({
-            messageId: uploadedMessageId,
-            path,
-            bucketName,
-          }))
-        );
-        if (cleanup.failed > 0) {
-          console.error("Mailbox compose upload rollback failed.", cleanup);
-        }
-      }
+    }
+    if (alreadyExists || error instanceof MailboxMessageConflictError) {
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: false, error: new MailboxMessageConflictError().message }, { status: 409 }),
+        ctx
+      );
     }
     console.error("POST /api/mailbox/compose failed", error);
     return withRateLimitHeaders(
