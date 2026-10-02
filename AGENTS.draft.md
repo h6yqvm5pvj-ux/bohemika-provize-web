@@ -219,7 +219,7 @@ Pro čistě dokumentační změnu ověř odkazy, příkazy, faktickou shodu a di
 
 ## 13. Nejasnosti a meze ověření
 
-- Aktuální produkční environment, IAM, nasazené rules/indexy, retence/zálohy, dostupnost integrací a dokončení migrací nebyly živě ověřeny. Nezaměňuj záznam o dřívějším nasazení za aktuální stav.
+- Záznam konkrétního nasazení, pravidel/indexů a dokončené databázové migrace z 2. 10. 2026 je v `docs/business-data-encryption.md`. IAM, retenci/zálohy, dostupnost integrací a aktuální stav dalších prostředí vždy ověř samostatně. Nezaměňuj záznam o dřívějším nasazení za aktuální stav.
 - Kořenový Node runtime není připnutý v manifestu; neexistuje nalezená verzovaná `.env.example` ani úplný centrální seznam konfigurace. Požadavky konkrétní funkce ověř v jejím kódu.
 - Legacy identity, role aliasy, e-mailové klíče a výjimky přetrvávají. Jednotná matice práv pro všechna API není deklarována na jednom místě; rozhoduje konkrétní serverová kontrola a resource policy.
 - Část dokumentace je historická a README obsahuje i původní create-next-app text. Zdrojový kód, manifesty, pravidla a testy mají při rozporu přednost pro popis současné implementace.

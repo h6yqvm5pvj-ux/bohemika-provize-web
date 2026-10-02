@@ -1,6 +1,6 @@
 # Šifrování smluv, výpisů a poptávek
 
-Tato změna rozšiřuje aplikační šifrování uloženého obsahu. Je připravená v kódu; tento dokument nepotvrzuje nasazení ani převod produkčních dat.
+Tato změna rozšiřuje aplikační šifrování uloženého obsahu. Záznam nasazení a ověření produkčních dat z 2. 10. 2026 je na konci dokumentu; při dalších změnách je nutné stav znovu ověřit.
 
 ## Rozsah
 
@@ -44,3 +44,12 @@ Pro toto rozšíření databázových polí lze náhled i převod omezit přepí
 Používat `adminDb`; nepřistupovat k interním SDK handleům. Chráněné pole zapisovat celé, nepoužívat vnořené field-path aktualizace ani `arrayUnion`/inkrementy. `merge: true` vrstva převádí na masku, která chráněné mapy nahrazuje atomicky. Interní `_businessLookup_*` nesmí být vstupem z API ani výstupem klientovi. Nepodporované SDK cesty obcházející šifrování explicitně selžou. Nové chráněné pole musí mít posouzené čtení, zápisy, dotazy, kopie, migraci a indexy.
 
 Ověření: `npx tsc --noEmit --incremental false`, `npm run lint`, `npm test`, `npm run test:rules` (lokální Java a demo Auth/Firestore emulátory). `tests/firestore/businessDataEncryption.test.ts` ověřuje fyzické ukládání, čtení API, cizí přístup, transakce, převody, historii, staré i nové dotazy a migraci. Jednotkové testy ověřují manipulaci ciphertextu, kontext, klíče, rotaci a bezpečný migrační režim.
+
+## Produkční převod – 2. 10. 2026
+
+- Produkční web na `bohemka.app` prošel sestavením, kontrolou autentizační proxy a porovnáním otisků obou klíčů. Nasazeny a zpětně ověřeny jsou Firestore pravidla a nové indexy i změněná funkce `notifyUnpaidContracts`; její role, trigger a privátní invokační politika zůstaly zachované.
+- Schválená databázová migrace zapsala **13 307 dokumentů**, bez chyb. Další čtyři naplánované položky při transakčním novém načtení již nevyžadovaly zápis. Přesun ID nároků proběhl transakčně.
+- Následný samostatný čtecí průchod ověřil **15 766 dokumentů**, **0 zbývajících převodů**, **0 chyb**. Teprve po této kontrole se zapíná produkční `BUSINESS_DATA_ENCRYPTION_REQUIRED=true` a provádí závěrečné nasazení.
+- Dva dočasné syntetické účty se skutečným TOTP ověřily čtení, hledání a úpravu smlouvy přes API, šifrování fyzicky uložených údajů a klientského indexu, historii i načtení zašifrovaného HTML výpisu. Cizí čtení a zápis i podvržený interní index byly odmítnuté. Oba účty a jejich testovací data byly uklizené.
+- Převod použil `--documents-only --document-concurrency=8`. Souborové úložiště a historické zálohy nebyly tímto převodem měněny ani zahrnuty do uvedeného počtu ověřených dokumentů.
+- Lokální kontroly: 5 483 testů aplikace, 336 testů Auth/Firestore (jeden nepovinný benchmark přeskočen), 62 testů Functions, typecheck a produkční build Webpack. Závěrečné doplnění migračních přepínačů prošlo 15 cílenými testy, typecheckem a lintem. Lint celého projektu měl čtyři původní upozornění a žádné chyby.
