@@ -37,6 +37,8 @@ Chybějící klíč nevede k zápisu plaintextu. Zapnutí nového povinného re�
 
 Historické zálohy, exporty, starší generace souborů a již doručené push zprávy tato migrace neodstraní. Jejich retenci je nutné ověřit u poskytovatele; produkční data ani zálohy se v rámci lokální opravy nemažou.
 
+Pro toto rozšíření databázových polí lze náhled i převod omezit přepínačem `--documents-only`; výstup pak výslovně uvádí `filesSkipped: true` a nepotvrzuje kontrolu Storage. `--document-concurrency=8` zrychluje převod omezeným souběhem samostatných transakcí (výchozí hodnota 1, povolené 1/2/4/8/16). Každá transakce stále znovu načítá aktuální data a zachovává stejné kontroly konfliktů.
+
 ## Vývoj a ověření
 
 Používat `adminDb`; nepřistupovat k interním SDK handleům. Chráněné pole zapisovat celé, nepoužívat vnořené field-path aktualizace ani `arrayUnion`/inkrementy. `merge: true` vrstva převádí na masku, která chráněné mapy nahrazuje atomicky. Interní `_businessLookup_*` nesmí být vstupem z API ani výstupem klientovi. Nepodporované SDK cesty obcházející šifrování explicitně selžou. Nové chráněné pole musí mít posouzené čtení, zápisy, dotazy, kopie, migraci a indexy.

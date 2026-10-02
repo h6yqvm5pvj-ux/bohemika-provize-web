@@ -23,6 +23,9 @@ export async function main() {
   const { sealPrivateValue, openPrivateValue } = jiti("../src/lib/server/privateEncryption.ts");
   if (!db) throw new Error("Missing database configuration");
   const apply = process.argv.includes("--apply");
+  const documentsOnly = process.argv.includes("--documents-only");
+  const documentConcurrency = Number(process.argv.find(arg => arg.startsWith("--document-concurrency="))?.split("=")[1] ?? 1);
+  if (![1, 2, 4, 8, 16].includes(documentConcurrency)) throw new Error("Invalid --document-concurrency; use 1, 2, 4, 8 or 16");
   const fileConcurrency = Number(process.argv.find(arg => arg.startsWith("--file-concurrency="))?.slice(19) ?? 4);
   if (![1, 2, 4, 8, 16].includes(fileConcurrency)) throw new Error("Invalid --file-concurrency; use 1, 2, 4, 8 or 16");
   // Preserve a 160 MiB ceiling for source buffers as concurrency increases.
@@ -39,7 +42,7 @@ export async function main() {
   if (apply && expectedIndexFingerprint !== indexFingerprint) throw new Error("--index-key-fingerprint must match the deployed business index key fingerprint");
   // Validate secret configuration before any data access or writes.
   if (openPrivateValue(sealPrivateValue("preflight", "migration-check"), "migration-check") !== "preflight") throw new Error("Encryption preflight failed");
-  const stats = { mode: apply ? "apply" : "preview", documentsChecked: 0, documentsPending: 0, documentsWritten: 0, filesChecked: 0, filesPending: 0, filesWritten: 0, failed: 0 };
+  const stats = { mode: apply ? "apply" : "preview", filesSkipped: documentsOnly, documentsChecked: 0, documentsPending: 0, documentsWritten: 0, filesChecked: 0, filesPending: 0, filesWritten: 0, failed: 0 };
   const progress = setInterval(() => console.error(JSON.stringify({ progress: true, ...stats })), 30_000);
   progress.unref();
   try {
@@ -61,10 +64,10 @@ export async function main() {
       let query = source.orderBy("__name__").limit(100);
       if (cursor) query = query.startAfter(cursor);
       const page = await query.get();
-      for (const doc of page.docs) {
+      const processDocument = async doc => {
         stats.documentsChecked++;
         try {
-          if (!planLegacyClaimMigration(doc.ref.path, doc.data()) && !planPrivateDataMigration(doc.ref.path, doc.data())) continue;
+          if (!planLegacyClaimMigration(doc.ref.path, doc.data()) && !planPrivateDataMigration(doc.ref.path, doc.data())) return;
           stats.documentsPending++;
           if (apply) {
             const written = await trackCashflowScriptWrite(() => db.runTransaction(async tx => {
@@ -93,12 +96,16 @@ export async function main() {
             if (written) stats.documentsWritten++;
           }
         } catch { stats.failed++; }
+      };
+      for (let offset = 0; offset < page.docs.length; offset += documentConcurrency) {
+        await Promise.all(page.docs.slice(offset, offset + documentConcurrency).map(processDocument));
       }
       if (page.size < 100) break;
       cursor = page.docs.at(-1);
     }
   }
   // Exact private prefixes only. Avatars and public business cards are excluded.
+  if (!documentsOnly) {
   const buckets = resolveStorageBucketCandidates();
   if (!buckets.length) throw new Error("Missing storage configuration");
   for (const bucketName of buckets) {
@@ -147,6 +154,7 @@ export async function main() {
         }
       }
     } catch { stats.failed++; }
+  }
   }
   console.log(JSON.stringify(stats, null, 2));
   if (stats.failed) process.exitCode = 1;

@@ -80,6 +80,36 @@ beforeEach(() => {
 });
 afterEach(() => { process.argv = argv; process.exitCode = 0; vi.restoreAllMocks(); });
 describe("private data migration executor", () => {
+  it("can scope a rollout to documents without accessing Storage", async () => {
+    process.argv.push("--documents-only");
+    mocks.bucket = { exists: vi.fn(() => { throw new Error("Storage must not be accessed"); }) };
+    expect(await main()).toMatchObject({ filesSkipped: true, documentsPending: 1, filesChecked: 0, failed: 0 });
+    expect(mocks.bucket.exists).not.toHaveBeenCalled();
+    expect(writes).toBe(0);
+  });
+  it("bounds document concurrency and preserves independent transactional writes", async () => {
+    for (let i = 0; i < 13; i++) records.set(`users/owner/entries/${i}`, { clientName: `Synthetic ${i}` });
+    const transaction = mocks.db.runTransaction as (work: (tx: object) => Promise<boolean>) => Promise<boolean>;
+    let active = 0, peak = 0;
+    mocks.db.runTransaction = async (work: (tx: object) => Promise<boolean>) => {
+      active++; peak = Math.max(peak, active);
+      try { await new Promise<void>(resolve => setImmediate(resolve)); return await transaction(work); }
+      finally { active--; }
+    };
+    process.argv.push("--apply", "--compatible-code-deployed", "--documents-only", "--document-concurrency=4");
+    expect(await main()).toMatchObject({ documentsWritten: 14, filesSkipped: true, failed: 0 });
+    expect(peak).toBe(4);
+    for (let i = 0; i < 13; i++) {
+      const path = `users/owner/entries/${i}`;
+      expect(business.openBusinessRecord(path, records.get(path)!)).toEqual({ clientName: `Synthetic ${i}` });
+    }
+    expect(await main()).toMatchObject({ documentsPending: 0, failed: 0 });
+  });
+  it.each(["0", "3", "100", "invalid"])("rejects unsafe document concurrency %s before writes", async value => {
+    process.argv.push(`--document-concurrency=${value}`);
+    await expect(main()).rejects.toThrow("--document-concurrency");
+    expect(writes).toBe(0);
+  });
   it("defaults to a read-only preview and logs counts without customer data", async () => {
     const before = Buffer.from(bytes);
     expect(await main()).toMatchObject({ mode: "preview", documentsPending: 1, filesPending: 1, failed: 0 });
