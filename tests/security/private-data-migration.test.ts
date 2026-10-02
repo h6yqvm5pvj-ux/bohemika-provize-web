@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as encryption from "@/lib/server/privateEncryption";
 import * as storage from "@/lib/server/privateStorage";
 import * as migration from "@/lib/server/privateDataMigration";
+import * as business from "@/lib/server/businessDataEncryption";
 
 const mocks = vi.hoisted(() => ({ db: {} as Record<string, unknown>, bucket: {} as Record<string, unknown>, load: vi.fn() }));
 vi.mock("@next/env", () => ({ default: { loadEnvConfig: () => {} } }));
@@ -36,11 +37,16 @@ beforeEach(() => {
   records.set(cardPath, { ownerUid: "owner", revision: 1, card: { birthNumber: "synthetic-private-number" } });
   mocks.db = {
     projectId: "demo-private-encryption", collection: query, collectionGroup: query,
+    doc: (path: string) => ({ path }),
     runTransaction: async (work: (tx: object) => Promise<boolean>) => {
       // A newer edit must be preserved by the migration's transaction re-read.
       const original = records.get(cardPath)!;
       if (original.revision === 1) records.set(cardPath, { ...original, revision: 2, card: { birthNumber: "newer-private-number" } });
-      return work({ get: async (ref: { path: string }) => snapshot(ref.path), set: (ref: { path: string }, data: Data) => { writes++; records.set(ref.path, data); } });
+      return work({ get: async (ref: { path: string }) => snapshot(ref.path),
+        set: (ref: { path: string }, data: Data) => { writes++; records.set(ref.path, data); },
+        create: (ref: { path: string }, data: Data) => { if (records.has(ref.path)) throw new Error("Already exists"); writes++; records.set(ref.path, data); },
+        delete: (ref: { path: string }) => { writes++; records.delete(ref.path); },
+      });
     },
   };
   const file = {
@@ -59,14 +65,16 @@ beforeEach(() => {
     getFilesStream: async function* ({ prefix }: { prefix: string }) { if (pdfPath.startsWith(prefix)) yield file; },
   };
   mocks.load.mockImplementation((path: string) => {
+    if (path.endsWith("businessDataFirestore.ts")) return { rawBusinessMigrationDatabase: (db: unknown) => db };
     if (path.endsWith("firebaseAdmin.ts")) return { adminDb: mocks.db };
     if (path.endsWith("privateDataMigration.ts")) return migration;
+    if (path.endsWith("businessDataEncryption.ts")) return business;
     if (path.endsWith("privateStorage.ts")) return storage;
     if (path.endsWith("privateEncryption.ts")) return encryption;
     if (path.endsWith("contractPdfStorage.ts")) return { resolveStorageBucketCandidates: () => ["synthetic-bucket"] };
     throw new Error("Unexpected import");
   });
-  process.argv = ["node", "migration", "--project=demo-private-encryption", `--key-fingerprint=${createHash("sha256").update(Buffer.alloc(32, 71)).digest("hex")}`];
+  process.argv = ["node", "migration", "--project=demo-private-encryption", `--key-fingerprint=${createHash("sha256").update(Buffer.alloc(32, 71)).digest("hex")}`, `--index-key-fingerprint=${createHash("sha256").update(Buffer.alloc(32, 83)).digest("hex")}`];
   process.exitCode = 0;
   vi.spyOn(console, "log").mockImplementation(() => {});
 });
@@ -101,6 +109,30 @@ describe("private data migration executor", () => {
     process.argv.push("--apply", "--compatible-code-deployed"); concurrentFileChange = true;
     expect(await main()).toMatchObject({ filesWritten: 0, failed: 1 });
     expect(bytes.toString()).toBe("newer-file");
+  });
+  it("moves legacy claim identifiers and refuses to overwrite a conflicting destination", async () => {
+    const oldPath = "contractNumberClaims/synthetic-contract";
+    const claim = { contractNumberNormalized: "synthetic-contract", entryPath: "users/owner/entries/one" };
+    records.set(oldPath, claim);
+    const move = business.planLegacyClaimMigration(oldPath, claim)!;
+    records.set(move.path, { ...move.data, entryPath: "users/other/entries/two" });
+    process.argv.push("--apply", "--compatible-code-deployed");
+    expect(await main()).toMatchObject({ failed: 1 });
+    expect(records.has(oldPath)).toBe(true);
+    records.delete(move.path);
+    expect(await main()).toMatchObject({ failed: 0 });
+    expect(records.has(oldPath)).toBe(false);
+    expect(business.openBusinessRecord(move.path, records.get(move.path)!)).toEqual(claim);
+    expect(await main()).toMatchObject({ documentsPending: 0, failed: 0 });
+  });
+  it("requires the deployed index key fingerprint and validates keys even for preview", async () => {
+    process.argv.push("--apply", "--compatible-code-deployed");
+    process.argv = process.argv.filter(arg => !arg.startsWith("--index-key-fingerprint="));
+    await expect(main()).rejects.toThrow("--index-key-fingerprint");
+    process.argv = ["node", "migration", "--project=demo-private-encryption"];
+    vi.stubEnv("BUSINESS_DATA_INDEX_KEY", "invalid");
+    await expect(main()).rejects.toThrow("index key");
+    expect(writes).toBe(0);
   });
   it.each([4, 8])("bounds file concurrency to %i and finishes other files after one failure", async concurrency => {
     let active = 0, peak = 0;
@@ -142,10 +174,14 @@ describe("private data migration executor", () => {
       ["userRequests/request", { message: "Sensitive request" }],
       ["mailboxSharedPayloads/payload", { snapshot: { name: "Sensitive export" } }],
       ["usersPrivate/owner@example.test/mailbox/message", { type: "production_plan_share", title: "Sensitive plan", body: "Sensitive body", metadata: { noteText: "Sensitive metadata" } }],
+      ["onlineCardMeetingRequests/request", { requester: { fullName: "Sensitive enquiry" }, travel: { note: "Sensitive travel" } }],
+      ["usersPrivate/owner@example.test/mailbox/enquiry", { type: "online_card_meeting_request", title: "Sensitive enquiry", metadata: { requesterName: "Sensitive name" } }],
+      ["usersPrivate/owner@example.test/commissionStatements/statement", { html: "Sensitive HTML", autoPremiumRows: [{ contractNumber: "Sensitive number" }] }],
+      ["users/owner@example.test/entries/business", { clientName: "Sensitive client", contractNumber: "Sensitive number" }],
     ] as const;
     for (const [path, data] of added) records.set(path, data);
     process.argv.push("--apply", "--compatible-code-deployed");
-    expect(await main()).toMatchObject({ documentsWritten: 9, failed: 0 });
+    expect(await main()).toMatchObject({ documentsWritten: 13, failed: 0 });
     expect(JSON.stringify([...records])).not.toContain("Sensitive");
     expect(await main()).toMatchObject({ documentsPending: 0, filesPending: 0, failed: 0 });
   });

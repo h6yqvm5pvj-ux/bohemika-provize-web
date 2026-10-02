@@ -3,6 +3,10 @@
 import { createHash } from "node:crypto";
 
 if (process.env.VERCEL_ENV === "production") {
+  const indexKey = process.env.BUSINESS_DATA_INDEX_KEY?.trim() ?? "";
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(indexKey) || Buffer.from(indexKey, "base64").length !== 32) {
+    throw new Error("Production business-data index key is missing or invalid");
+  }
   const raw = process.env.MAILBOX_ENCRYPTION_KEY?.trim() || "";
   if (!/^[A-Za-z0-9+/]{43}=$/.test(raw) || Buffer.from(raw, "base64").length !== 32) {
     throw new Error("Production mailbox encryption key is missing or invalid");
@@ -13,6 +17,8 @@ if (process.env.VERCEL_ENV === "production") {
     throw new Error("Production rate limiting must use the platform-controlled IP header");
   }
   console.log(JSON.stringify({ productionSecurityConfig: true,
+    businessIndexKeyFingerprint: createHash("sha256").update(Buffer.from(indexKey, "base64")).digest("hex"),
+    businessDataEncryptionRequired: process.env.BUSINESS_DATA_ENCRYPTION_REQUIRED === "true",
     mailboxKeyFingerprint: createHash("sha256").update(Buffer.from(raw, "base64")).digest("hex"),
     mailboxKeyId: process.env.MAILBOX_ENCRYPTION_KEY_ID?.trim() || "v1",
     rateLimitTrustedIpHeader: "x-vercel-forwarded-for", memoryFallback: false,

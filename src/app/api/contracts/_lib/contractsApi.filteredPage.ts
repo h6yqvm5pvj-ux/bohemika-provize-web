@@ -3,6 +3,7 @@ import { contractMatchesListFilters, contractSortDate } from "./contractsApi.lis
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
 import { prepareContractSearch } from "@/app/lib/contractSearch";
 import { canUseProjectedContractSearch, CONTRACT_SEARCH_PROJECTION } from "./contractsApi.projectedSearch";
+import { filterStatementDerivedContractDataForViewer, type StatementDataViewer } from "./contractsApi.statementVisibility";
 
 // These fields cover search, lifecycle, anniversaries, products and replacements.
 // Commission checks use full records because their cashflow calculation needs the complete input.
@@ -12,12 +13,13 @@ export const CONTRACT_FILTER_PROJECTION = [
   "isRefresh", "refreshOriginalContractNumber", "refreshCommissionBase", "userEmail",
 ] as const;
 
-export async function readFilteredContractPage({ db, owners, filters, cursor, pageSize }: {
+export async function readFilteredContractPage({ db, owners, filters, cursor, pageSize, viewer }: {
   db: Firestore;
   owners: string[];
   filters: ContractListFilters;
   cursor: { ts: number; key: string | null } | null;
   pageSize: number;
+  viewer: StatementDataViewer;
 }): Promise<{ doc: DocumentSnapshot; ownerEmail: string }[]> {
   const project = filters.commissionAuditMode === "off";
   const projection = canUseProjectedContractSearch(filters) ? CONTRACT_SEARCH_PROJECTION : CONTRACT_FILTER_PROJECTION;
@@ -34,7 +36,7 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
   // Filter before pagination: a rare match can be older than the query batch limit.
   // Stored category/lifecycle/paid indexes may also be absent on legacy entries.
   const candidates = snapshots.flatMap(({ ownerEmail, snapshot }) => snapshot.docs.map(doc => {
-    const data = doc.data() as ContractDoc;
+    const data = filterStatementDerivedContractDataForViewer({ contract: doc.data() as ContractDoc, ownerEmail, ...viewer });
     return { doc, ownerEmail, snapshot, data, ts: contractSortDate(data)?.getTime() ?? null, key: `${ownerEmail}___${doc.id}` };
   })).filter(item => {
     if (cursor?.ts) {

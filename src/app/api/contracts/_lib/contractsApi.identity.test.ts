@@ -92,7 +92,9 @@ describe("contracts create identity helpers", () => {
   it("normalizes contract numbers and claim document IDs", () => {
     expect(normalizeContractNumber(" 001 23 / ab ")).toBe("00123/ab");
     expect(normalizeContractNumberLoose(" 001 23 / ab ")).toBe("123/ab");
-    expect(contractNumberClaimDocId(" CPP 12/34 ")).toBe("cpp12%2F34");
+    expect(contractNumberClaimDocId(" CPP 12/34 ")).toMatch(/^b1_[a-f0-9]{64}$/);
+    expect(contractNumberClaimDocId(" CPP 12/34 ")).toBe(contractNumberClaimDocId("cpp12/34"));
+    expect(contractNumberClaimDocId(" CPP 12/34 ")).not.toContain("cpp12%2F34");
   });
 
   it("normalizes duplicate lookup inputs", () => {

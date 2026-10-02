@@ -80,4 +80,24 @@ describe("encrypted contract notes, history and reminders", () => {
     await expect(POST(request("POST", { text: "Must not save" }))).rejects.toThrow();
     expect(JSON.stringify([...store.records])).toBe(before);
   });
+  it("rejects a recreated source root while preserving the current owner's notes", async () => {
+    const created = await POST(request("POST", { text: "Transferred private note" }));
+    const id = (await created.json()).note.id;
+    const original = store.records.get(contractPath)!;
+    const source = store.db.doc(contractPath);
+    const destination = store.db.doc(`users/${other}/entries/entry`);
+    const batch = store.db.batch();
+    batch.create(destination, withContractHistory(batch, source, original, { ...original, userEmail: other }, {
+      actorEmail: owner, kind: "transfer", changes: [{ label: "Správce", before: owner, after: other }],
+    }));
+    batch.delete(source); await batch.commit();
+    store.records.set(contractPath, { userEmail: owner, contractNumber: "other-number" });
+    expect((await GET(request("GET"))).status).toBe(409);
+    expect((await POST(request("POST", { text: "Forged new note" }))).status).toBe(409);
+    expect((await PATCH(request("PATCH", { noteId: id, text: "Forged edit" }))).status).toBe(409);
+    expect((await DELETE(request("DELETE", { noteId: id }))).status).toBe(409);
+    asUser(other);
+    expect((await (await GET(request("GET", {}, other))).json()).notes)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id, text: "Transferred private note" })]));
+  });
 });

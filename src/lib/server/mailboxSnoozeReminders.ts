@@ -1,5 +1,4 @@
-import { isPrivateSystemMessage } from "./privateRecords";
-import { openPrivateValue } from "./privateEncryption";
+import { isPrivateSystemMessage, openPrivateRecord } from "./privateRecords";
 import { randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { type NextRequest } from "next/server";
@@ -235,7 +234,7 @@ async function claimReminder(
     if (!snap.exists) return null;
 
     const data: Record<string, unknown> = { ...snap.data() };
-    if (isPrivateSystemMessage(data.type)) data.metadata = openPrivateValue(data.metadata, `${ref.path}:metadata`);
+    if (isPrivateSystemMessage(data.type)) data.metadata = openPrivateRecord(ref.path, { type: data.type, metadata: data.metadata }).metadata;
     const claimed =
       parseReplyReminderDoc(ref, data, nowMs) ?? parseReminderDoc(ref, data, nowMs);
     if (!claimed) return null;

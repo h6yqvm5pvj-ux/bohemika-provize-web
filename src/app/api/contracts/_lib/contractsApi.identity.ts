@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { businessLookupToken } from "@/lib/server/businessDataEncryption";
 
 import { toDate } from "@/app/lib/formatters";
 
@@ -114,7 +115,7 @@ export const normalizeContractNumberLoose = (
 
 export const contractNumberClaimDocId = (
   value: string | null | undefined
-): string => encodeURIComponent(normalizeContractNumber(value).toLowerCase());
+): string => `b1_${businessLookupToken("contract-claim", normalizeContractNumber(value).toLowerCase())}`;
 
 export const normalizeContractEntryType = (
   value: unknown

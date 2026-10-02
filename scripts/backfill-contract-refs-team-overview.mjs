@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { businessDataFirestore } from "./business-data-firestore.mjs";
 
 import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
 
@@ -243,7 +244,7 @@ async function main() {
       credential: cert(credentials),
     });
 
-  const db = getFirestore(app);
+  const db = businessDataFirestore(getFirestore(app));
   const usersSnap = await db.collection("users").select().get();
 
   const now = new Date();

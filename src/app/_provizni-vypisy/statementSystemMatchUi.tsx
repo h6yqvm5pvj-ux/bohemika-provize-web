@@ -57,11 +57,11 @@ export function SystemMatchBadge({
     match.status === "matched"
       ? resolvedContract
         ? "ok"
-        : "warn"
+        : "info"
       : match.status === "loading"
         ? "info"
         : match.status === "not_found"
-          ? "warn"
+          ? "info"
           : "error";
 
   const label =

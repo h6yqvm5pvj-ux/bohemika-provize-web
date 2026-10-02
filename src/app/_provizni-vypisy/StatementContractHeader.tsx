@@ -25,8 +25,8 @@ export function StatementContractHeader({
       <span className={styles.identity}>
         <span className={styles.contractNumber}>Smlouva {contractNumber || "—"}</span>
         <span className={styles.clientName}>{client}</span>
-        <span className={styles.products}>{products}</span>
       </span>
+      <span className={styles.products}>{products}</span>
       <span className={styles.amounts}>
         <span className={styles.amount}>
           <span>Provize celkem</span>
@@ -40,7 +40,7 @@ export function StatementContractHeader({
         )}
       </span>
       <span className={styles.chevron}><ChevronDown size={17} aria-hidden="true" /></span>
-      <span className={styles.badges}>
+      <span className={styles.badges} data-verified={verified}>
         {!expanded && verified
           ? <span className={styles.badge} data-tone="ok"><CheckCircle2 size={13} aria-hidden="true" />Vše sedí</span>
           : badges}

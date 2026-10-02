@@ -1,11 +1,13 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFilteredContractPage, CONTRACT_FILTER_PROJECTION } from "./contractsApi.filteredPage";
+import { readFilteredContractPage as readPage, CONTRACT_FILTER_PROJECTION } from "./contractsApi.filteredPage";
 import { CONTRACT_SEARCH_PROJECTION } from "./contractsApi.projectedSearch";
 import { parseContractListFilters } from "./contractsApi.listFilters";
 import type { ContractDoc } from "./contractsApi.types";
 
 const owner = "owner@example.test";
+const readFilteredContractPage = (options: Omit<Parameters<typeof readPage>[0], "viewer">) =>
+  readPage({ ...options, viewer: { viewerEmail: owner, teamEmails: [] } });
 type RecordItem = { id: string; owner: string; data: ContractDoc };
 const record = (id: string, data: Partial<ContractDoc> = {}, user = owner): RecordItem => ({ id, owner: user, data: {
   clientName: "Jan Novák", productKey: "cppAuto", paid: true, contractSignedDate: "2026-09-10", policyStartDate: "2025-09-20", ...data,
@@ -92,7 +94,7 @@ describe("complete filtered contract pagination", () => {
   });
 
   it("retains full commission inputs and filters differences before pagination", async () => {
-    const { db, state } = database([record("normal"), record("difference", { commissionPayouts: [{ key: "difference", code: "A101", amount: 10, expectedAmount: 100, difference: -90, status: "difference" }] })]);
+    const { db, state } = database([record("normal"), record("difference", { commissionPayouts: [{ key: "difference", code: "A101", amount: 10, expectedAmount: 100, difference: -90, status: "difference", writtenBy: owner }] })]);
     const matches = await readFilteredContractPage({ db, owners: [owner], filters: filter({ commissionAudit: "difference", commissionCode: "a101" }), cursor: null, pageSize: 1 });
     expect(matches.map(item => item.doc.id)).toEqual(["difference"]); expect(state.fields).toEqual([]); expect(state.hydrated).toEqual([]);
   });

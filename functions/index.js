@@ -1280,8 +1280,6 @@ exports.notifyUnpaidContracts = onSchedule(
           unpaidEntries.push({
             id: entryDoc.id,
             productKey: entry.productKey || "",
-            contractNumber: entry.contractNumber || "",
-            clientName: entry.clientName || "",
             createdAt: entry.createdAt || null,
           });
         }

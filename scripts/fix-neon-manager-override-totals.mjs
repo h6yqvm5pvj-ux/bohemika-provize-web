@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { businessDataFirestore } from "./business-data-firestore.mjs";
 
 import { withCashflowScriptMutation, trackCashflowScriptWrite } from "./cashflow-mutation.mjs";
 
@@ -114,7 +115,7 @@ async function main() {
   if (!creds) throw new Error("Missing FIREBASE_ADMIN_* credentials.");
 
   const app = getApps()[0] ?? initializeApp({ credential: cert(creds) });
-  const db = getFirestore(app);
+  const db = businessDataFirestore(getFirestore(app));
 
   const snap = await db.collectionGroup("entries").get();
 

@@ -5,6 +5,10 @@ import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
+import { authorizeContractNoteLocation, assertContractNoteNamespaceAvailable } from "@/lib/server/contractNoteLocation";
+import { isSafeContractNoteId } from "../notes/contractNotes";
+import { projectTipMatchData, projectTipMatchResponse } from "./contractsApi.tipProjection";
+import { filterStatementDerivedContractDataForViewer, type StatementDataViewer } from "./contractsApi.statementVisibility";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { openPrivateRecord } from "@/lib/server/privateRecords";
@@ -174,7 +178,6 @@ import {
 import {
   buildFindAllowedOwnerSet,
   canManageContractOwner,
-  canViewStatementDerivedRecord,
   extractEmailFromUnknown,
   hasContractAccess,
   type ContractFindScope,
@@ -689,61 +692,6 @@ const toContractResponseItem = (
   };
 };
 
-const filterStatementDerivedContractDataForViewer = ({
-  contract,
-  viewerEmail,
-  teamEmails,
-  canViewAllStatementDerivedRecords = false,
-}: {
-  contract: ContractResponseItem;
-  viewerEmail: string;
-  teamEmails: string[];
-  canViewAllStatementDerivedRecords?: boolean;
-}): ContractResponseItem => {
-  const originalAdviserEmail = normalizeEmail(contract.originalAdviserEmail);
-  const servicingOwnerEmail =
-    normalizeEmail(contract.servicingOwnerEmail) ||
-    normalizeEmail(contract.commissionOwnerEmail) ||
-    normalizeEmail(contract.userEmail) ||
-    normalizeEmail(contract.adviserEmail);
-  const transferred = Boolean(
-    originalAdviserEmail &&
-      servicingOwnerEmail &&
-      originalAdviserEmail !== servicingOwnerEmail
-  );
-  const canViewRecord = (record: {
-    writtenBy?: string | null;
-    writtenAtMs?: number | null;
-  }) =>
-    canViewStatementDerivedRecord({
-      viewerEmail,
-      teamEmails,
-      writtenBy: record.writtenBy,
-      canViewAllStatementDerivedRecords,
-    }) ||
-    // Po převodu musí být staré výplaty dál viditelné jako vypořádané,
-    // jinak by cashflow mohlo tutéž provizi předpovědět novému správci podruhé.
-    (transferred && normalizeEmail(record.writtenBy) === originalAdviserEmail);
-
-  return {
-    ...contract,
-    // Starší záznamy bez autora schováváme také: nelze bezpečně určit, komu patří.
-    commissionPayouts: Array.isArray(contract.commissionPayouts)
-      ? contract.commissionPayouts.filter(canViewRecord)
-      : [],
-    cashflowPayoutMatches: Array.isArray(contract.cashflowPayoutMatches)
-      ? contract.cashflowPayoutMatches.filter(canViewRecord)
-      : [],
-    premiumStatementHistory: Array.isArray(contract.premiumStatementHistory)
-      ? contract.premiumStatementHistory.filter(canViewRecord)
-      : [],
-    premiumStatementBaseResolutions: Array.isArray(contract.premiumStatementBaseResolutions)
-      ? contract.premiumStatementBaseResolutions.filter(canViewRecord)
-      : [],
-    // Souhrn může zahrnovat i skryté manažerské zápisy, proto jej neposíláme.
-    commissionStornoSummary: null,
-  };
-};
 
 const toContractListResponseItem = ({
   docId,
@@ -1111,11 +1059,13 @@ const loadLifePremiumChangesForFindMatch = async ({
   contract,
   adviserName,
   ownerContext,
+  canReadEntry,
 }: {
   ownerEmail: string;
   contract: ContractResponseItem;
   adviserName?: string | null;
   ownerContext?: ContractOwnerPositionContext | null;
+  canReadEntry: (data: ContractDoc) => boolean;
 }): Promise<ContractLifePremiumChange[]> => {
   const productKey = contract.productKey as Product | undefined;
   const contractNumber = (contract.contractNumber ?? "").trim();
@@ -1131,11 +1081,13 @@ const loadLifePremiumChangesForFindMatch = async ({
       .where("contractNumber", "==", contractNumber)
       .get();
 
-    const timelineEntries = timelineSnap.docs.map((snap) =>
+    const timelineEntries = timelineSnap.docs.filter((snap) => canReadEntry(snap.data() as ContractDoc)).map((snap) =>
       toContractResponseItem(
         snap.id,
         ownerEmail,
-        snap.data() as ContractDoc,
+        // Premium history never needs a sibling's private note, even if the
+        // anchor has broader access than this particular sibling.
+        projectTipMatchData(snap.data() as ContractDoc),
         adviserName,
         ownerContext
       )
@@ -1181,9 +1133,11 @@ const loadLifePremiumChangesForFindMatch = async ({
 const resolveRefreshOriginalPremiumInfo = async ({
   ownerEmail,
   contract,
+  canReadEntry,
 }: {
   ownerEmail: string;
   contract: ContractResponseItem;
+  canReadEntry: (data: ContractDoc) => boolean;
 }): Promise<{
   premiumAmount: number;
   stornoBasePremiumAmount: number;
@@ -1193,6 +1147,7 @@ const resolveRefreshOriginalPremiumInfo = async ({
     ownerEmail,
     contract,
     adviserName: contract.adviserName ?? null,
+    canReadEntry,
   });
   const latestPremiumChange = [...changes]
     .reverse()
@@ -3266,6 +3221,7 @@ const getCachedUserTree = async (): Promise<UserTreeResult> => {
 
 async function fetchContractsForOwners(
   owners: string[],
+  viewer: StatementDataViewer,
   cursor: ParsedCursor | null,
   pageSize: number,
   filters?: ContractListFilters,
@@ -3361,7 +3317,7 @@ async function fetchContractsForOwners(
   // Complete filtering for combinations, including matches beyond indexed query limits.
   if (filters && (hasContractListClientFilters({ ...filters, query: "" }) ||
     (owners.length > 1 && filters.query.trim().length > 0))) {
-    const matches = await readFilteredContractPage({ db, owners, filters, cursor, pageSize });
+    const matches = await readFilteredContractPage({ db, owners, filters, cursor, pageSize, viewer });
     const list = matches.slice(0, pageSize).map(({ doc, ownerEmail }) => toContractListResponseItem({
       docId: doc.id, ownerEmail, data: doc.data() as ContractDoc, shape: responseShape,
       adviserName: ownerNames?.get(ownerEmail) ?? null,
@@ -3403,6 +3359,7 @@ async function fetchContractsForOwners(
     };
 
     const pushOwnerDoc = (docId: string, data: ContractDoc) => {
+      data = filterStatementDerivedContractDataForViewer({ contract: data, ownerEmail, ...viewer });
       if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
       if (
         filtersActive &&
@@ -3514,6 +3471,7 @@ async function fetchContractsForOwners(
   }
 
   const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
+    data = filterStatementDerivedContractDataForViewer({ contract: data, ownerEmail, ...viewer });
     if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
     if (
       filtersActive &&
@@ -4091,6 +4049,9 @@ export async function handleContractsGet(
   }
 
   if (detailRequested && detailOwnerEmail && detailEntryId) {
+    if (!isSafeContractNoteId(detailEntryId)) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné ID smlouvy." }, { status: 400 }));
+    }
     const detailRef = adminDb
       ?.collection("users")
       .doc(detailOwnerEmail)
@@ -4156,7 +4117,10 @@ export async function handleContractsGet(
           .collection("entries")
           .where("contractNumber", "==", contractNumber)
           .get();
-        const timelineEntries = (timelineSnap?.docs ?? []).map((snap) =>
+        const timelineEntries = (timelineSnap?.docs ?? []).filter((snap) => hasContractAccess({
+          viewerEmail: email, teamEmails: contractAccessEmails,
+          ownerEmail: detailOwnerEmail, contract: snap.data() as ContractDoc,
+        })).map((snap) =>
           filterStatementDerivedContractDataForViewer({
             contract: toContractResponseItem(
               snap.id,
@@ -4334,11 +4298,16 @@ export async function handleContractsGet(
 
   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
   let teamRes: Awaited<ReturnType<typeof fetchContractsForOwners>> | null = null;
+  const statementViewer: StatementDataViewer = {
+    viewerEmail: email, teamEmails,
+    canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
+  };
 
   if (shouldFetchTeamInParallel) {
     [primaryRes, teamRes] = await Promise.all([
       fetchContractsForOwners(
         owners,
+        statementViewer,
         cursor,
         pageSize,
         listFilters,
@@ -4348,6 +4317,7 @@ export async function handleContractsGet(
       ),
       fetchContractsForOwners(
         teamEmails,
+        statementViewer,
         null,
         pageSize,
         undefined,
@@ -4359,6 +4329,7 @@ export async function handleContractsGet(
   } else {
     primaryRes = await fetchContractsForOwners(
       owners,
+      statementViewer,
       cursor,
       pageSize,
       listFilters,
@@ -4369,6 +4340,7 @@ export async function handleContractsGet(
     if (includeTeam && teamEmails.length > 0) {
       teamRes = await fetchContractsForOwners(
         teamEmails,
+        statementViewer,
         null,
         pageSize,
         undefined,
@@ -4541,11 +4513,15 @@ const resolveContractsFindContracts = async ({
       if (seenKeys.has(itemKey)) continue;
       seenKeys.add(itemKey);
       const ownerProfile = await resolveOwnerProfileForFind(context, ownerFromPath);
-      const item = filterStatementDerivedContractDataForViewer({
+      const tipOnly = scope === "tip" && !hasContractAccess({
+        viewerEmail: context.email, teamEmails: context.teamEmails,
+        ownerEmail: ownerFromPath, contract,
+      }) && !context.canViewAllStatementDerivedRecords;
+      const visibleItem = filterStatementDerivedContractDataForViewer({
         contract: toContractResponseItem(
           snap.id,
           ownerFromPath,
-          contract,
+          tipOnly ? projectTipMatchData(contract) : contract,
           normalizeOptionalDisplayName(ownerProfile?.name) ?? null,
           ownerProfile
         ),
@@ -4553,12 +4529,17 @@ const resolveContractsFindContracts = async ({
         teamEmails: context.teamEmails,
         canViewAllStatementDerivedRecords: context.canViewAllStatementDerivedRecords,
       });
+      const item = tipOnly ? projectTipMatchResponse(visibleItem) : visibleItem;
       if (item.productKey && LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)) {
         item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
           ownerEmail: ownerFromPath,
           contract: item,
           adviserName: item.adviserName ?? null,
           ownerContext: ownerProfile,
+          canReadEntry: (data) => context.canViewAllStatementDerivedRecords || hasContractAccess({
+            viewerEmail: context.email, teamEmails: context.teamEmails,
+            ownerEmail: ownerFromPath, contract: data,
+          }) || (scope === "tip" && normalizeEmail(data.tipContractTipsterEmail) === normalizeEmail(context.email)),
         });
       }
       contracts.push(item);
@@ -4936,7 +4917,7 @@ export async function handleContractsCreate(req: NextRequest) {
     if (ctx.accountType === "tipster") {
       return withRateLimit(tipsterContractsMutationResponse());
     }
-    const { email, uid, teamEmails } = ctx;
+    const { email, uid, teamEmails, contractAccessEmails } = ctx;
 
     let body: unknown;
     try {
@@ -5236,6 +5217,10 @@ export async function handleContractsCreate(req: NextRequest) {
               const originalPremiumInfo = await resolveRefreshOriginalPremiumInfo({
                 ownerEmail: targetOwnerEmail,
                 contract: originalItem,
+                canReadEntry: (contract) => hasContractAccess({
+                  viewerEmail: email, teamEmails: contractAccessEmails,
+                  ownerEmail: targetOwnerEmail, contract,
+                }),
               });
               const refreshBase = originalPremiumInfo
                 ? calculateNeonRefreshCommissionBase({
@@ -5611,6 +5596,7 @@ export async function handleContractsCreate(req: NextRequest) {
     if (idempotentEntryRef) {
       const existingIdempotentSnap = await idempotentEntryRef.get();
       if (existingIdempotentSnap.exists) {
+        await authorizeContractNoteLocation(idempotentEntryRef, existingIdempotentSnap.data() ?? {});
         return withRateLimit(idempotentReplayResponse(existingIdempotentSnap, trustedPayload));
       }
     }
@@ -5671,6 +5657,7 @@ export async function handleContractsCreate(req: NextRequest) {
         };
 
         await trackCashflowWrite(() => db.runTransaction(async (tx) => {
+          await assertContractNoteNamespaceAvailable(createdRef, ref => tx.get(ref));
           const claimSnap = await tx.get(claimRef);
           let refreshOriginalSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null = null;
           for (const duplicateRef of duplicateGuardRefs) {
@@ -5815,16 +5802,17 @@ export async function handleContractsCreate(req: NextRequest) {
           }
         }));
       } else {
-        const batch = db.batch();
-        batch.create(createdRef, withContractHistory(batch, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
-        applyContractRefToBatch({
-          batch,
-          ownerEmail: targetOwnerEmail,
-          entryId: createdRef.id,
-          contractNumber: trustedPayload.contractNumber,
-          productKey: trustedPayload.productKey,
-        });
-        await trackCashflowWrite(() => batch.commit());
+        await trackCashflowWrite(() => db.runTransaction(async (batch) => {
+          await assertContractNoteNamespaceAvailable(createdRef, ref => batch.get(ref));
+          batch.create(createdRef, withContractHistory(batch, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
+          applyContractRefToBatch({
+            batch,
+            ownerEmail: targetOwnerEmail,
+            entryId: createdRef.id,
+            contractNumber: trustedPayload.contractNumber,
+            productKey: trustedPayload.productKey,
+          });
+        }));
       }
 
       try {
@@ -5956,6 +5944,10 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
   } catch (unexpectedErr: any) {
+    if (unexpectedErr?.statusCode === 409) {
+      const response = NextResponse.json({ ok: false, error: unexpectedErr.message }, { status: 409 });
+      return withRateLimit ? withRateLimit(response) : response;
+    }
     const message =
       typeof unexpectedErr?.message === "string" && unexpectedErr.message.trim()
         ? unexpectedErr.message.trim()
@@ -6301,6 +6293,9 @@ async function executeApprovedContractTransfer({
       );
     }
 
+    await Promise.all(currentSourceSnaps.map((snap, index) =>
+      authorizeContractNoteLocation(resolvedEntries[index]!.ref, snap.data() ?? {}, ref => tx.get(ref))
+    ));
     currentSourceSnaps.forEach((sourceSnap, index) => {
       const resolved = resolvedEntries[index]!;
       const currentData = (sourceSnap.data() ?? {}) as ContractDoc;
@@ -6449,6 +6444,14 @@ export async function handleContractsPatch(
     body && typeof body === "object" && !Array.isArray(body)
       ? body
       : {};
+  const suppliedEntryIds: unknown[] = [
+    ...(body.entryId != null ? [body.entryId] : []),
+    ...(Array.isArray(body.entryIds) ? body.entryIds : []),
+    ...(Array.isArray(body.entries) ? body.entries.map((item: { entryId?: unknown } | null) => item?.entryId) : []),
+  ];
+  if (suppliedEntryIds.some(id => !isSafeContractNoteId(typeof id === "string" ? id.trim() : id))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné ID smlouvy." }, { status: 400 }));
+  }
   if (forcedAction) {
     body.action = forcedAction;
   }
@@ -6939,6 +6942,9 @@ export async function handleContractsPatch(
           );
         }
 
+        await Promise.all(currentSourceSnaps.map((snap, index) =>
+          authorizeContractNoteLocation(resolvedEntries[index]!.ref, snap.data() ?? {}, ref => tx.get(ref))
+        ));
         currentSourceSnaps.forEach((sourceSnap, index) => {
           const resolved = resolvedEntries[index]!;
           const currentData = (sourceSnap.data() ?? {}) as ContractDoc;
@@ -7067,7 +7073,7 @@ export async function handleContractsPatch(
       const entryId =
         typeof body?.entryId === "string" ? body.entryId.trim() : "";
 
-      if (!ownerEmail || !entryId) {
+      if (!ownerEmail || !isSafeContractNoteId(entryId)) {
         return NextResponse.json(
           { ok: false, error: "Chybí ownerEmail nebo entryId." },
           { status: 400 }
@@ -7668,7 +7674,7 @@ export async function handleContractsPatch(
   for (const item of entries) {
     const owner = normalizeEmail(item.ownerEmail);
     const entryId = item.entryId as string | undefined;
-    if (!owner || !entryId) continue;
+    if (!owner || !isSafeContractNoteId(entryId)) continue;
     if (!allowedOwners.has(owner)) continue;
 
     const entryRef = adminDb
@@ -7745,6 +7751,9 @@ export async function handleContractsDelete(req: NextRequest) {
   if (entries.length === 0) {
     return NextResponse.json({ ok: false, error: "Chybí položky ke smazání." }, { status: 400 });
   }
+  if (entries.some((item: { entryId?: unknown } | null) => !isSafeContractNoteId(item?.entryId))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné ID smlouvy." }, { status: 400 }));
+  }
   if (!adminDb) {
     return NextResponse.json(
       { ok: false, error: "Server není správně nakonfigurován." },
@@ -7772,7 +7781,7 @@ export async function handleContractsDelete(req: NextRequest) {
   for (const item of entries) {
     const owner = normalizeEmail(item.ownerEmail);
     const entryId = item.entryId as string | undefined;
-    if (!owner || !entryId) continue;
+    if (!owner || !isSafeContractNoteId(entryId)) continue;
     if (!allowedOwners.has(owner)) continue;
 
     const entryRef = db

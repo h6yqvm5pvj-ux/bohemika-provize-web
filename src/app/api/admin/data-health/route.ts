@@ -1,4 +1,5 @@
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
+import { businessLookupToken } from "@/lib/server/businessDataEncryption";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { readFile } from "node:fs/promises";
@@ -254,7 +255,7 @@ const contractRefDocId = (ownerEmail: string, entryId: string): string =>
   `${normalizeEmail(ownerEmail)}___${normalizeText(entryId)}`;
 
 const contractNumberClaimDocId = (contractNumber: string): string =>
-  encodeURIComponent(normalizeContractNumber(contractNumber).toLowerCase());
+  `b1_${businessLookupToken("contract-claim", normalizeContractNumber(contractNumber).toLowerCase())}`;
 
 const tipPayoutSourceKey = (ownerEmail: string, entryId: string): string =>
   `${normalizeEmail(ownerEmail)}___${normalizeText(entryId)}`;

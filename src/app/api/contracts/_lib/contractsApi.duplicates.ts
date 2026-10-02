@@ -277,7 +277,10 @@ export const applyContractRefToBatch = ({
   contractNumber,
   productKey,
 }: {
-  batch: FirebaseFirestore.WriteBatch;
+  batch: {
+    set(ref: FirebaseFirestore.DocumentReference, data: FirebaseFirestore.DocumentData, options: FirebaseFirestore.SetOptions): unknown;
+    delete(ref: FirebaseFirestore.DocumentReference): unknown;
+  };
   ownerEmail: string;
   entryId: string;
   contractNumber: string | null | undefined;

@@ -12,7 +12,7 @@ export function InsurerPicker({ groups, selected, expanded, onToggleOption, onTo
   onToggleExpanded: (name: string) => void; getLogo: (name: string) => string | null;
   compact?: boolean;
   searchQuery?: string;
-  layout?: "centered";
+  layout?: "centered" | "comparison";
 }) {
   const [query, setQuery] = useState("");
   const term = normalize(searchQuery ?? query);

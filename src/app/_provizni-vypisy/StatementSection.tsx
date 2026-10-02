@@ -9,16 +9,17 @@ export const statementContractCount = (count: number) =>
   `${count} ${count === 1 ? "smlouva" : count >= 2 && count <= 4 ? "smlouvy" : "smluv"}`;
 
 export function StatementSection({
-  title, icon: Icon, tone = "neutral", count, amount, description, badge,
+  title, icon: Icon, tone = "neutral", count, amount, description, badge, badgeTone = "warning",
   expanded, onToggle, children, showTitle = true,
 }: {
   title: string;
   icon: LucideIcon;
-  tone?: "neutral" | "life" | "auto" | "property" | "travel" | "warning" | "storno" | "manager";
+  tone?: "neutral" | "life" | "auto" | "property" | "travel" | "warning" | "storno" | "manager" | "unpaired";
   count: number;
   amount: number;
   description?: string;
   badge?: ReactNode;
+  badgeTone?: "warning" | "info";
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -34,7 +35,7 @@ export function StatementSection({
           <span className={styles.sectionMeta}>{statementContractCount(count)}{description && <span className={styles.sectionDescription}>{description}</span>}</span>
         </span>
         <span className={styles.sectionNumbers}>
-          {badge && <span className={styles.sectionBadge}>{badge}</span>}
+          {badge && <span className={styles.sectionBadge} data-tone={badgeTone}>{badge}</span>}
           <span className={styles.sectionAmount}>{formatMoney(amount)} <span>Kč</span></span>
         </span>
         <span className={styles.sectionChevron}><ChevronDown size={16} aria-hidden="true" /></span>

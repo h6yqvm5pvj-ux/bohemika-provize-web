@@ -21,6 +21,7 @@ import {
   HeartPulse,
   House,
   ListChecks,
+  Link2Off,
   Loader2,
   Plane,
   Printer,
@@ -250,7 +251,6 @@ import {
   setActiveStatementProductMapping,
   statementCorrectionSortValue,
   statementPaymentBundleCount,
-  statementProductCategoryLabel,
   toDateInputValue,
   usesIndependentStatementCommissionBase,
 } from "./statementParsing";
@@ -3053,7 +3053,6 @@ const lifeSplitContractUncertaintyCount = (
   const expectedProductKey = resolveStatementProduct(reviewContract.productCode).productKey;
   let count = 0;
 
-  if (isUnpairedContractMatch(match)) count += 1;
   if (hasProductMismatch(expectedProductKey, systemContract)) count += 1;
   if (systemContract && !tipOnlyContract) {
     count += statementCareerIssueCount(reviewContract.rows, systemContractPositionRaw(systemContract));
@@ -3117,7 +3116,6 @@ const otherProductContractUncertaintyCount = (
     productMetas.length === 1 ? productMetas[0]?.productKey ?? null : null;
   let count = 0;
 
-  if (isUnpairedContractMatch(match)) count += 1;
   if (hasProductMismatch(expectedProductKey, systemContract)) count += 1;
   if (systemContract && !tipOnlyContract) {
     count += statementCareerIssueCount(reviewContract.rows, systemContractPositionRaw(systemContract));
@@ -4298,82 +4296,6 @@ const uncertaintyCountLabel = (count: number): string => {
   return `${count} nejasností`;
 };
 
-const contractMatchDiscrepancyIssue = ({
-  statementKey,
-  category,
-  keyPrefix,
-  scope,
-  contractNumber,
-  client,
-  product,
-  match,
-}: {
-  statementKey: string;
-  category: string;
-  keyPrefix: string;
-  scope: ContractMatchScope;
-  contractNumber: string | null | undefined;
-  client: string;
-  product: string;
-  match: ContractMatchState | null;
-}): StatementDiscrepancyIssue | null => {
-  if (!isUnpairedContractMatch(match)) return null;
-
-  if (match?.status === "not_found") {
-    return {
-      key: discrepancyIssueKey(statementKey, keyPrefix, scope, contractNumber, "not-found"),
-      statementKey,
-      source: "auto",
-      severity: "warning",
-      category,
-      scope,
-      contractNumber: normalizeText(contractNumber) || null,
-      client: normalizeText(client) || "—",
-      product: normalizeText(product) || "—",
-      title: "Smlouva není nalezená v systému",
-      details: ["Ověřit číslo smlouvy, poradce nebo ruční dopárování před opravou výpisu."],
-    };
-  }
-
-  if (match?.status === "error") {
-    return {
-      key: discrepancyIssueKey(statementKey, keyPrefix, scope, contractNumber, "match-error"),
-      statementKey,
-      source: "auto",
-      severity: "warning",
-      category,
-      scope,
-      contractNumber: normalizeText(contractNumber) || null,
-      client: normalizeText(client) || "—",
-      product: normalizeText(product) || "—",
-      title: "Smlouvu se nepodařilo ověřit vůči systému",
-      details: [match.error || "Párování smlouvy v systému skončilo chybou."],
-    };
-  }
-
-  if (match?.status === "matched" && !matchedSystemContract(match)) {
-    const examples = match.contracts
-      .slice(0, 3)
-      .map((contract) => contract.clientName || contract.contractNumber || contract.id)
-      .filter(Boolean);
-    return {
-      key: discrepancyIssueKey(statementKey, keyPrefix, scope, contractNumber, "multiple"),
-      statementKey,
-      source: "auto",
-      severity: "warning",
-      category,
-      scope,
-      contractNumber: normalizeText(contractNumber) || null,
-      client: normalizeText(client) || "—",
-      product: normalizeText(product) || "—",
-      title: `Více shod v systému (${match.contracts.length})`,
-      details: examples.length > 0 ? [`Nalezené shody: ${examples.join("; ")}`] : [],
-    };
-  }
-
-  return null;
-};
-
 const careerPositionDiscrepancyIssue = ({
   statementKey,
   category,
@@ -4537,7 +4459,6 @@ const buildStatementDiscrepancyIssues = (
 ): StatementDiscrepancyIssue[] => {
   const statementKey = statementDiscrepancyKey(statement);
   const issues: StatementDiscrepancyIssue[] = [];
-  const managerMatchIssueKeys = new Set<string>();
 
   const addIssue = (issue: StatementDiscrepancyIssue | null) => {
     if (!issue || issues.some((existing) => existing.key === issue.key)) return;
@@ -4618,18 +4539,6 @@ const buildStatementDiscrepancyIssues = (
     const reviewContract = statementReviewContract;
     const expectedProductKey = productMeta.productKey;
 
-    addIssue(
-      contractMatchDiscrepancyIssue({
-        statementKey,
-        category,
-        keyPrefix: "life-match",
-        scope: matchScope,
-        contractNumber: contract.contractNumber,
-        client: contract.client,
-        product: productLabel,
-        match,
-      })
-    );
 
     if (hasProductMismatch(expectedProductKey, systemContract)) {
       addIssue({
@@ -4849,18 +4758,6 @@ const buildStatementDiscrepancyIssues = (
     const expectedProductKey =
       productMetas.length === 1 ? productMetas[0]?.productKey ?? null : null;
 
-    addIssue(
-      contractMatchDiscrepancyIssue({
-        statementKey,
-        category,
-        keyPrefix: "other-match",
-        scope: matchScope,
-        contractNumber: contract.contractNumber,
-        client: contract.client,
-        product: productLabel,
-        match,
-      })
-    );
 
     if (hasProductMismatch(expectedProductKey, systemContract)) {
       addIssue({
@@ -5043,31 +4940,6 @@ const buildStatementDiscrepancyIssues = (
           scope: "team",
         });
       }
-
-      const matchNotice = managerCommissionMatchNotice(match);
-      if (!matchNotice) continue;
-
-      const key = discrepancyIssueKey(statementKey, "manager-match", advisor.advisorNumber, row.contractNumber);
-      if (managerMatchIssueKeys.has(key)) continue;
-      managerMatchIssueKeys.add(key);
-
-      addIssue({
-        key,
-        statementKey,
-        source: "auto",
-        severity: matchNotice.tone === "rose" ? "error" : "warning",
-        category: "Provize manažera",
-        scope: "team",
-        contractNumber: row.contractNumber || null,
-        client: row.client || "—",
-        product: `${resolveStatementProduct(row.product).label} · ${row.product}`,
-        title: matchNotice.title,
-        details: [
-          `Poradce: ${advisor.advisorName || advisor.advisorNumber}`,
-          ...matchNotice.lines,
-        ],
-        statementAmount: row.commission,
-      });
     }
   }
 
@@ -5091,18 +4963,6 @@ const buildStatementDiscrepancyIssues = (
   for (const row of statement.stornoRows) {
     const match = contractMatchForNumber(matchesByContractNumber, row.contractNumber);
     const product = `${resolveStatementProduct(row.product).label} · ${row.product}`;
-    addIssue(
-      contractMatchDiscrepancyIssue({
-        statementKey,
-        category: "Storna",
-        keyPrefix: "storno-match",
-        scope: "my",
-        contractNumber: row.contractNumber,
-        client: row.client,
-        product,
-        match,
-      })
-    );
     addStornoSystemStatusIssue({
       contractNumber: row.contractNumber,
       client: row.client || "—",
@@ -5114,20 +4974,8 @@ const buildStatementDiscrepancyIssues = (
 
   statement.otherPayments
     .filter((payment) => payment.isStorno)
-    .forEach((payment, index) => {
+    .forEach((payment) => {
       const match = contractMatchForNumber(matchesByContractNumber, payment.contractNumber);
-      addIssue(
-        contractMatchDiscrepancyIssue({
-          statementKey,
-          category: "Storna",
-          keyPrefix: `storno-payment-match-${index}`,
-          scope: "my",
-          contractNumber: payment.contractNumber,
-          client: "—",
-          product: "Ostatní platby",
-          match,
-        })
-      );
       addStornoSystemStatusIssue({
         contractNumber: payment.contractNumber,
         client: matchedSystemContract(match)?.clientName || "—",
@@ -5478,7 +5326,7 @@ function LifeSplitContractCard({
         products={<>
             <span className={detailStyles.product}>
               <StatementProductLogo product={contractProductMeta} size="xs" />
-              <span>{contract.productLabel} · {contract.productCode}</span>
+              <span>{contract.productLabel}<small className={detailStyles.productCode}>{contract.productCode}</small></span>
             </span>
         </>}
         badges={<>
@@ -5834,7 +5682,7 @@ function OtherProductContractCard({
                 className={detailStyles.product}
               >
                 <StatementProductLogo product={product} size="xs" />
-                <span>{product.label} · {product.rawCode} · {statementProductCategoryLabel(product.category)}</span>
+                <span>{product.label}<small className={detailStyles.productCode}>{product.rawCode}</small></span>
               </span>
             ))}
         </>}
@@ -5872,7 +5720,7 @@ function OtherProductContractCard({
             )}
             {autoPremiumChange && (
               <span
-                className={detailStyles.badge} data-tone="error"
+                className={detailStyles.badge} data-tone="warn"
               >
                 {autoPremiumChange.direction === "increase" ? (
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
@@ -6067,6 +5915,7 @@ function LifeSplitProductsSection({
     <LifeSplitProductsSectionPanel
       contracts={contracts}
       contractTotal={lifeSplitContractTotal}
+      contractIsUnpaired={(contract) => isUnpairedContractMatch(contractMatchForNumber(matchesByContractNumber, contract.contractNumber, lifeSplitContractMatchScope(contract)))}
       contractUncertaintyCount={(contract) =>
         lifeSplitContractUncertaintyCount(
           contract,
@@ -6195,12 +6044,13 @@ function UnpairedContractsSection({
   return (
     <StatementSection
       title="Nespárované smlouvy"
-      icon={AlertTriangle}
-      tone="warning"
+      icon={Link2Off}
+      tone="unpaired"
       count={totalContracts}
       amount={totalCommission}
-      description="Bez jednoznačné shody v systému. Před zápisem zkontroluj ručně."
-      badge="K ruční kontrole"
+      description="Smlouvy bez jednoznačné shody v systému."
+      badge="Bez spárování"
+      badgeTone="info"
       expanded={expanded}
       onToggle={() => setExpanded(value => !value)}
     >
@@ -6487,7 +6337,7 @@ function ManagerCommissionRowCard({
       products={products.map(item => (
         <span key={item.rawCode} className={detailStyles.product}>
           <StatementProductLogo product={item} size="xs" />
-          <span>{item.label} · {item.rawCode}</span>
+          <span>{item.label}<small className={detailStyles.productCode}>{item.rawCode}</small></span>
         </span>
       ))}
       badges={<>
@@ -6766,7 +6616,8 @@ function ManagerCommissionsSection({
       count={uniqueContractNumbers.length}
       amount={totalCommission}
       description="Meziprovize ze smluv týmu"
-      badge={unpairedContractCount > 0 ? uncertaintyCountLabel(unpairedContractCount) : undefined}
+      badge={unpairedContractCount > 0 ? `${unpairedContractCount} bez spárování` : undefined}
+      badgeTone="info"
       expanded={expanded}
       onToggle={() => setExpanded(value => !value)}
     >
@@ -6911,8 +6762,8 @@ function ManagerCommissionsSection({
                       </span>
                     )}
                     {advisorUnpairedContractCount > 0 && (
-                      <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800">
-                        {advisorUnpairedContractCount} k ruční kontrole
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                        {advisorUnpairedContractCount} bez spárování
                       </span>
                     )}
                     <div className="rounded-xl bg-slate-950 px-3 py-2 text-right text-white ring-1 ring-slate-800">
@@ -7073,6 +6924,7 @@ function OtherProductsSection({
       contracts={contracts}
       contractHasA101Commission={otherProductContractHasA101Commission}
       contractTotal={otherProductContractTotal}
+      contractIsUnpaired={(contract) => isUnpairedContractMatch(contractMatchForNumber(matchesByContractNumber, contract.contractNumber, otherProductContractMatchScope(contract)))}
       contractUncertaintyCount={(contract) =>
         otherProductContractUncertaintyCount(
           contract,

@@ -3,6 +3,8 @@ import { beforeAll, afterAll } from "vitest";
 // Scope only our synthetic keys. Do not clear other suites' Auth emulator
 // configuration with vi.unstubAllEnvs(). No deployment secrets are loaded.
 const values = {
+  BUSINESS_DATA_INDEX_KEY: Buffer.alloc(32, 83).toString("base64"),
+  BUSINESS_DATA_ENCRYPTION_REQUIRED: "false",
   MAILBOX_ENCRYPTION_KEY: Buffer.alloc(32, 71).toString("base64"),
   MAILBOX_ENCRYPTION_KEY_ID: "private-test",
   MAILBOX_ENCRYPTION_PREVIOUS_KEYS: "",

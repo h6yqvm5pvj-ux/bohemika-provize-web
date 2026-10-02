@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
+import { authorizeContractNoteLocation } from "@/lib/server/contractNoteLocation";
 import { requireContractsEntryGuard } from "../_lib/contractsApi";
 import {
   canManageContractOwner,
@@ -194,13 +195,21 @@ const authorizeContract = async ({
     };
   }
 
+  let notesParent;
+  try {
+    notesParent = await authorizeContractNoteLocation(contractRef, contract);
+  } catch (error) {
+    if (!(error instanceof Error) || !("statusCode" in error) || error.statusCode !== 409) throw error;
+    return { ok: false as const, response: guard.withRateLimit(
+      NextResponse.json({ ok: false, error: error.message }, { status: 409 })
+    ) };
+  }
   return {
     ok: true as const,
     contract: openPrivateRecord(contractRef.path, contract) as ContractDoc,
     contractRef,
     contractSnap,
-    notesRef: (typeof contract.contractNotesPath === "string" && /^users\/[^/]+\/entries\/[^/]+$/.test(contract.contractNotesPath)
-      ? adminDb.doc(contract.contractNotesPath) : contractRef).collection(CONTRACT_NOTES_COLLECTION),
+    notesRef: notesParent.collection(CONTRACT_NOTES_COLLECTION),
     actorEmail: guard.ctx.actorEmail,
     reminderRecipientEmail: guard.ctx.email,
     withRateLimit: guard.withRateLimit,

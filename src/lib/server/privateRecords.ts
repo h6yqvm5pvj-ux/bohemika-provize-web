@@ -1,8 +1,10 @@
 import { isPrivateValue, openPrivateValue, sealPrivateValue } from "./privateEncryption";
+import { businessEncryptionRequired } from "./businessDataEncryption";
 
 /** Query/authorization fields stay readable. Content is authenticated to its
  * exact record and field; callers must authorize before opening a record. */
 export function privateRecordFields(path: string, data: Record<string, unknown>): readonly string[] {
+  if (/^onlineCardMeetingRequests\/[^/]+$/.test(path)) return ["requester", "travel"];
   if (/^users\/[^/]+\/entries\/[^/]+\/contractNotes\/[^/]+$/.test(path)) return ["text", "clientName", "contractNumber"];
   if (/^users\/[^/]+\/entries\/[^/]+$/.test(path)) return ["note"];
   if (/^contractHistories\/[^/]+\/events\/[^/]+$/.test(path)) return ["title", "changes"];
@@ -15,7 +17,7 @@ export function privateRecordFields(path: string, data: Record<string, unknown>)
 }
 
 export const isPrivateSystemMessage = (type: unknown) =>
-  ["contract_note_reminder", "production_plan_share", "production_export_share"].includes(String(type));
+  ["contract_note_reminder", "production_plan_share", "production_export_share", "online_card_meeting_request"].includes(String(type));
 
 export function privateRecordContext(path: string, data: Record<string, unknown>, field: string): string {
   if (/^anniversaryReviews\/[^/]+$/.test(path) && typeof data.privateReviewPath === "string" && /^anniversaryReviews\/[^/]+$/.test(data.privateReviewPath)) {
@@ -44,7 +46,14 @@ export function sealPrivateRecord(path: string, data: Record<string, unknown>): 
 export function openPrivateRecord(path: string, data: Record<string, unknown>): Record<string, unknown> {
   const result = { ...data };
   for (const field of privateRecordFields(path, data)) {
-    if (Object.hasOwn(data, field)) result[field] = openPrivateValue(data[field], privateRecordContext(path, data, field));
+    if (Object.hasOwn(data, field)) {
+      // New coverage has its own rollout gate: enabling it must not turn the
+      // previous migration's required flag into an outage for old enquiries.
+      const expanded = path.startsWith("onlineCardMeetingRequests/") || data.type === "online_card_meeting_request";
+      if (expanded && !isPrivateValue(data[field])) {
+        if (data[field] != null && businessEncryptionRequired()) throw new Error("Unencrypted enquiry is no longer accepted");
+      } else result[field] = openPrivateValue(data[field], privateRecordContext(path, data, field));
+    }
   }
   return result;
 }

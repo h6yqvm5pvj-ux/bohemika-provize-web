@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type CSSProperties, useId, useState } from "react";
 import styles from "./comparison.module.css";
 
 export function ParameterField({ label, value, onChange, min, max, step, unit, presets }: {
@@ -23,7 +23,7 @@ export function ParameterField({ label, value, onChange, min, max, step, unit, p
         <input id={id} type="text" inputMode="decimal" value={focused ? value : format(safeValue)} onFocus={() => setFocused(true)} onChange={event => onChange(event.target.value)} onBlur={() => { onChange(String(safeValue)); setFocused(false); }} autoComplete="off" aria-describedby={`${id}-hint`} />
         <span>{unit}</span>
       </div>
-      <input className={styles.slider} type="range" min={min} max={max} step={step} value={safeValue} onChange={event => onChange(event.target.value)} aria-label={`${label} – posuvník`} aria-valuetext={`${format(safeValue)} ${unit}`} />
+      <input className={styles.slider} style={{ "--slider-progress": `${max > min ? (safeValue - min) / (max - min) * 100 : 0}%` } as CSSProperties} type="range" min={min} max={max} step={step} value={safeValue} onChange={event => onChange(event.target.value)} aria-label={`${label} – posuvník`} aria-valuetext={`${format(safeValue)} ${unit}`} />
       <div className={styles.scale} id={`${id}-hint`}><span>{format(min)} {unit}</span><span>{format(max)} {unit}</span></div>
       <div className={styles.presets} aria-label={`Rychlé hodnoty: ${label}`}>{presets.map(amount => <button key={amount} type="button" aria-pressed={safeValue === amount} onClick={() => onChange(String(amount))}>{format(amount)} {unit}</button>)}</div>
     </div>

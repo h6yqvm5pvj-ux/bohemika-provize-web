@@ -2,6 +2,7 @@ import { readHallEntryDocuments } from "@/lib/server/hallOfFameEntries";
 import { loadHallOwnerStats } from "@/lib/server/hallOfFameProjection";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
+import { authorizeContractNoteLocation } from "@/lib/server/contractNoteLocation";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -1057,6 +1058,9 @@ async function transferOwnerEntriesToSuccessor({
     for (const entrySnap of page.docs) {
       const entryData = (entrySnap.data() ?? {}) as ContractDoc;
       const entryId = entrySnap.id;
+      // The source delete below has an update-time precondition, so a concurrent
+      // valid transfer cannot invalidate this binding and still let this batch commit.
+      await authorizeContractNoteLocation(entrySnap.ref, entryData);
       const nextData = buildTransferredContractData({
         contract: entryData,
         fromOwnerEmail,

@@ -78,7 +78,7 @@ describe("persistent client–contract links", () => {
     const contracts = await readClientContractLinks(db, owner, [owner], clientSlugForName(petr.clientName), "Poradce");
     expect(contracts.map(item => item.id)).toEqual(["000"]);
     expect(reads).toEqual([`clientContractIndex/${owner}`]);
-    expect(queries).toEqual([{ path: "clientContractLinks", conditions: [["ownerClientKey", "==", records.get(linkPath("000"))!.ownerClientKey]] }]);
+    expect(queries).toEqual([{ path: "clientContractLinks", conditions: [["ownerEmail", "==", owner], ["clientSlug", "==", clientSlugForName("Petr Novák")]] }]);
   });
   it("indexes current source data when a contract changes or disappears during backfill", async () => {
     records.set(sourcePath("edited"), petr); records.set(sourcePath("deleted"), petr);

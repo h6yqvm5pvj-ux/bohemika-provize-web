@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ guard: vi.fn(), get: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 const db = vi.hoisted(() => ({
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
@@ -11,7 +11,7 @@ vi.mock("@/lib/server/clientCardEmailImport", () => ({ fillClientCardEmailFromUp
 vi.mock("@/lib/server/clientCardCompanyIdImport", () => ({ fillClientCardCompanyIdFromUploadedPdf: mocks.fillCompanyId }));
 vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: (_writer: unknown, _ref: unknown, _before: unknown, patch: unknown) => patch }));
 vi.mock("@/lib/server/cashflowMutationTracking", () => ({ withCashflowMutation: (_name: string, work: () => unknown) => work(), trackCashflowWrite: (work: () => unknown) => work() }));
-vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard, hasContractAccess: () => true, CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL: "override@example.test" }));
+vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard, hasContractAccess: mocks.access, CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL: "override@example.test" }));
 vi.mock("@/lib/server/contractPdfStorage", () => ({
   normalizeStoredContractPdfAttachment: () => null,
   uploadContractPdfAttachment: mocks.upload,
@@ -19,22 +19,55 @@ vi.mock("@/lib/server/contractPdfStorage", () => ({
   buildContractPdfStoredFileName: () => "stored.pdf",
   toPublicContractPdfAttachment: () => ({ hasFile: true }),
 }));
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const owner = "owner@example.test";
 const ctx = { email: owner, uid: "owner-uid", accountType: "advisor", actorEmail: owner, contractAccessEmails: [], isImpersonating: false };
-const request = () => {
+const request = (entryId = "entry") => {
   const form = new FormData();
   form.set("file", new File(["%PDF-fixture"], "contract.pdf", { type: "application/pdf" }));
-  form.set("ownerEmail", owner); form.set("entryId", "entry");
+  form.set("ownerEmail", owner); form.set("entryId", entryId);
   return new NextRequest("http://localhost/api/contracts/attachment", { method: "POST", body: form });
 };
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.guard.mockResolvedValue({ ok: true, ctx, withRateLimit: (response: NextResponse) => response });
+  mocks.access.mockReturnValue(true);
   mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto" }), updateTime: "version" });
   mocks.upload.mockResolvedValue({ sha256: "verified-hash", storagePath: "file.pdf", originalName: "file.pdf" });
   mocks.commit.mockResolvedValue(undefined); mocks.fill.mockResolvedValue("saved");
+});
+
+describe("attachment contract boundary", () => {
+  it.each(["old-id/contractNotes/note-id", "../entries/other", "x".repeat(161)])(
+    "rejects manipulated IDs before database or storage access: %s", async entryId => {
+      // A retained note can still exist under the former owner's entry path.
+      mocks.get.mockResolvedValue({ exists: true, data: () => ({ text: "private transferred note" }), updateTime: "version" });
+      expect((await POST(request(entryId))).status).toBe(400);
+      const url = new URL("http://localhost/api/contracts/attachment");
+      url.searchParams.set("ownerEmail", owner);
+      url.searchParams.set("entryId", entryId);
+      expect((await GET(new NextRequest(url))).status).toBe(400);
+      expect(mocks.get).not.toHaveBeenCalled();
+      expect(mocks.upload).not.toHaveBeenCalled();
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.commit).not.toHaveBeenCalled();
+    }
+  );
+
+  it("denies another user's contract before uploading or writing", async () => {
+    mocks.access.mockReturnValue(false);
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("does not let a tipster upload a contract attachment", async () => {
+    mocks.guard.mockResolvedValue({ ok: true, ctx: { ...ctx, accountType: "tipster" }, withRateLimit: (response: NextResponse) => response });
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
 });
 
 describe("CPP Auto attachment contact import", () => {

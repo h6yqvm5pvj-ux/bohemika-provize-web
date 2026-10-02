@@ -26,6 +26,7 @@ import {
   requireContractsEntryGuard,
 } from "../_lib/contractsApi";
 import type { ContractDoc, ErrorResponse } from "../_lib/contractsApi.types";
+import { isSafeContractNoteId } from "../notes/contractNotes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,10 +63,10 @@ async function loadContractForAttachment({
       response: jsonError("Server není správně nakonfigurován.", 500),
     } as const;
   }
-  if (!ownerEmail || !EMAIL_RE.test(ownerEmail) || !entryId) {
+  if (!ownerEmail || !EMAIL_RE.test(ownerEmail) || !isSafeContractNoteId(entryId)) {
     return {
       ok: false,
-      response: jsonError("Chybí ownerEmail nebo entryId.", 400),
+      response: jsonError("Chybí nebo je neplatný ownerEmail či entryId.", 400),
     } as const;
   }
 

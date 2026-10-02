@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { deleteDoc, deleteField, doc, getDoc, setDoc, setLogLevel, updateDoc } from "firebase/firestore";
+import { collection, collectionGroup, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, setLogLevel, updateDoc, where } from "firebase/firestore";
 
 const PROJECT_ID = "demo-bohemika-rules";
 const EMAIL = "advisor@example.test";
@@ -137,7 +137,9 @@ describe("immediate token revocation", () => {
     const contract = { userEmail: EMAIL, userId: UID, managerEmailSnapshot: "", managerChain: [], managerOverrides: [], [field]: managers };
     for (const path of ["contracts/managed", `users/${EMAIL}/entries/managed`]) {
       await seed(path, contract);
-      await assertSucceeds(getDoc(doc(actor(OTHER, { auth_time: 101 }), path)));
+      const read = getDoc(doc(actor(OTHER, { auth_time: 101 }), path));
+      if (path.startsWith("users/")) await assertFails(read);
+      else await assertSucceeds(read);
       await assertFails(getDoc(doc(actor(OTHER, { auth_time: 100 }), path)));
     }
   });
@@ -263,6 +265,27 @@ describe("normal profile use", () => {
   });
 });
 
+describe("statement records cannot bypass server field authorization", () => {
+  it("denies document, owner collection and collection-group reads to owners and snapshot managers", async () => {
+    await seed(`users/${EMAIL}`, profile);
+    await seed(`users/${EMAIL}/entries/private-finance`, {
+      userEmail: EMAIL, userId: UID, managerEmailSnapshot: OTHER,
+      managerChain: [{ email: OTHER }], managerOverrides: [{ email: OTHER }],
+      commissionPayouts: [{ writtenBy: OTHER, amount: 123456 }],
+      premiumStatementHistory: [{ writtenBy: OTHER, annualPremium: 654321 }],
+    });
+    for (const email of [EMAIL, OTHER]) {
+      const db = actor(email);
+      await assertFails(getDoc(doc(db, `users/${EMAIL}/entries/private-finance`)));
+      await assertFails(getDocs(collection(db, `users/${EMAIL}/entries`)));
+      await assertFails(getDocs(query(collectionGroup(db, "entries"), where("userEmail", "==", EMAIL))));
+    }
+    // Also exercise the recursive rule without the users/{email} match.
+    await seed("legacy/example/entries/private", { userEmail: EMAIL, userId: UID });
+    await assertFails(getDoc(doc(actor(), "legacy/example/entries/private")));
+  });
+});
+
 describe("administrator role boundaries", () => {
   for (const claims of [
     {}, { admin: false, adminRole: "owner" }, { admin: true, adminRole: "support" },
@@ -284,10 +307,18 @@ describe("administrator role boundaries", () => {
     const db = actor(OTHER, { admin: true, ...role });
     for (const path of ["contracts/test", `users/${EMAIL}/entries/test`]) {
       const ref = doc(db, path);
-      await assertSucceeds(setDoc(ref, { userEmail: EMAIL }));
-      await assertSucceeds(getDoc(ref));
-      await assertSucceeds(updateDoc(ref, { clientName: "Admin update" }));
-      await assertSucceeds(deleteDoc(ref));
+      if (path.includes("/entries/")) {
+        await seed(path, { userEmail: EMAIL });
+        await assertSucceeds(getDoc(ref));
+        await assertFails(setDoc(ref, { userEmail: EMAIL }));
+        await assertFails(updateDoc(ref, { clientName: "Plaintext bypass" }));
+        await assertFails(deleteDoc(ref));
+      } else {
+        await assertSucceeds(setDoc(ref, { userEmail: EMAIL }));
+        await assertSucceeds(getDoc(ref));
+        await assertSucceeds(updateDoc(ref, { clientName: "Admin update" }));
+        await assertSucceeds(deleteDoc(ref));
+      }
     }
   });
 

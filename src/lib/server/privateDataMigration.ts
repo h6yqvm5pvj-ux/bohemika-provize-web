@@ -1,6 +1,7 @@
 import { openPrivateValue, sealPrivateValue, isPrivateValue } from "./privateEncryption";
 import { decryptMailboxJson, encryptMailboxJson } from "./mailboxEncryption";
 import { privateRecordFields, privateRecordContext } from "./privateRecords";
+import { planBusinessDataMigration } from "./businessDataEncryption";
 
 /** Pure, idempotent plan. The executor must re-read inside a transaction and
  * replace the whole document: merge:true would retain legacy map fields. */
@@ -51,5 +52,6 @@ export function planPrivateDataMigration(path: string, source: Record<string, un
     data.metadata = metadata;
   }
   for (const field of privateRecordFields(path, data)) seal(field);
-  return changed ? data : null;
+  const business = planBusinessDataMigration(path, data);
+  return business ?? (changed ? data : null);
 }

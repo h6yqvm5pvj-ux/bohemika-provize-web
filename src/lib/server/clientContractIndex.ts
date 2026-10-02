@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { businessLookupToken } from "./businessDataEncryption";
 import { FieldPath, FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
 import { clientSlugForName } from "@/app/_klienti/clientIdentity";
 import { toDate, type ClientContractItem } from "@/app/_klienti/clientCardHelpers";
@@ -52,7 +53,7 @@ export function writeClientContractLink(writer: IndexWriter, ref: DocumentRefere
   if (oldOwner !== owner) writer.delete(clientContractLinkRef(ref.firestore, oldOwner, ref.id));
   const target = clientContractLinkRef(ref.firestore, owner, ref.id);
   const record = clientContractIndexRecord({ ...before, ...patch }, owner);
-  if (record) writer.set(target, { ...record, ownerEmail: owner, entryId: ref.id, ownerClientKey: indexKey(owner, String(record.clientSlug)), ownerAuthorKey: indexKey(owner, String(record.originalAdviserEmail)) });
+  if (record) writer.set(target, { ...record, ownerEmail: owner, entryId: ref.id, ownerClientKey: businessLookupToken("owner-client", `${owner}\0${record.clientSlug}`), ownerAuthorKey: indexKey(owner, String(record.originalAdviserEmail)) });
   else writer.delete(target);
 }
 
@@ -89,7 +90,7 @@ export async function readClientContractLinks(db: Firestore, owner: string, auth
   const links = db.collection(CLIENT_CONTRACT_LINKS_COLLECTION);
   // A card reads only its linked contracts. The directory queries its selected
   // authors directly, so "my" never downloads the entire team's portfolio.
-  const queries = slug ? [links.where("ownerClientKey", "==", indexKey(owner, slug))]
+  const queries = slug ? [links.where("ownerEmail", "==", owner).where("clientSlug", "==", slug)]
     : authors === null ? [links.where("ownerEmail", "==", owner)]
     : Array.from({ length: Math.ceil(authors.length / 30) }, (_, i) => {
       const chunk = authors.slice(i * 30, i * 30 + 30).map(author => indexKey(owner, author));

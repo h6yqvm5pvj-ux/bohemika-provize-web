@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { recordOnlineCardAnalyticsEvent, resolveOnlineCardAnalyticsOwnerEmail } from "@/lib/server/onlineCardAnalytics";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
+import { sealPrivateRecord } from "@/lib/server/privateRecords";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import { parseTravelInquiry, travelInquiryMessage } from "@/lib/travelInsurance";
 import { isValidOnlineCardEmail, isValidOnlineCardPhone } from "@/lib/onlineCardContact";
@@ -357,13 +358,11 @@ async function loadOwnerPushTokens(ownerEmail: string): Promise<string[]> {
 async function sendPushNotification({
   req,
   ownerEmail,
-  requesterName,
   requestId,
   isTravel = false,
 }: {
   req: NextRequest;
   ownerEmail: string;
-  requesterName: string;
   requestId: string;
   isTravel?: boolean;
 }) {
@@ -373,7 +372,7 @@ async function sendPushNotification({
   if (tokens.length === 0) return;
 
   const title = isTravel ? "Nová poptávka cestovního pojištění" : "Nová žádost o schůzku";
-  const body = isTravel ? `${requesterName} posílá plán své cesty.` : `${requesterName} chce domluvit schůzku.`;
+  const body = "Podrobnosti nové poptávky najdeš po přihlášení v aplikaci.";
   const deepLink = "/posta";
   const webPushLink = `${req.nextUrl.protocol}//${req.nextUrl.host}${deepLink}`;
   const createdAtIso = new Date().toISOString();
@@ -394,7 +393,6 @@ async function sendPushNotification({
         body,
         deepLink,
         requestId,
-        requesterName,
         createdAt: createdAtIso,
       },
       webpush: {
@@ -560,7 +558,7 @@ export async function POST(req: NextRequest) {
     const requestRef = adminDb.collection("onlineCardMeetingRequests").doc();
     const createdAtMs = Date.now();
 
-    await requestRef.set({
+    await requestRef.set(sealPrivateRecord(requestRef.path, {
       requestId: requestRef.id,
       slug,
       ownerEmail: recipientEmail,
@@ -587,7 +585,7 @@ export async function POST(req: NextRequest) {
       ...(travel ? { travel } : {}),
       createdAtMs,
       createdAt: FieldValue.serverTimestamp(),
-    });
+    }));
 
     try {
       if (owner.analyticsOwnerEmail) await recordOnlineCardAnalyticsEvent({
@@ -629,7 +627,6 @@ export async function POST(req: NextRequest) {
       await sendPushNotification({
         req,
         ownerEmail: recipientEmail,
-        requesterName: fullName,
         requestId: requestRef.id,
         isTravel: Boolean(travel),
       });

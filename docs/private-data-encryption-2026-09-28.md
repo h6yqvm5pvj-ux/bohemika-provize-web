@@ -1,5 +1,7 @@
 # Ochrana soukromých dat – 28. 9. 2026
 
+Aktuální migrační skript má rozšířený rozsah a vyžaduje také samostatný indexový klíč a `--index-key-fingerprint`. Pro nové nasazení použijte [aktuální postup](business-data-encryption.md); údaje níže popisují dřívější nasazení.
+
 Následné rozšíření o poznámky a historii smluv, výročí, uživatelské požadavky a sdílené plány včetně aktuálního stavu nasazení je v [navazujícím záznamu](security-extension-2026-09-28.md). Níže je původní rozsah a společný postup migrace.
 
 ## Rozsah změn

@@ -13,8 +13,11 @@ nextEnv.loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
 export async function main() {
   return withCashflowScriptMutation("script:migrate-private-data-encryption", async () => {
   const jiti = createJiti(import.meta.url, { alias: { "@": `${process.cwd()}/src` } });
-  const { adminDb: db } = jiti("../src/lib/server/firebaseAdmin.ts");
+  const { adminDb } = jiti("../src/lib/server/firebaseAdmin.ts");
+  const { rawBusinessMigrationDatabase } = jiti("../src/lib/server/businessDataFirestore.ts");
+  const db = adminDb ? rawBusinessMigrationDatabase(adminDb) : null;
   const { planPrivateDataMigration } = jiti("../src/lib/server/privateDataMigration.ts");
+  const { planLegacyClaimMigration, businessLookupToken } = jiti("../src/lib/server/businessDataEncryption.ts");
   const { encryptPrivateFile, decryptPrivateFile, isPrivateFile } = jiti("../src/lib/server/privateStorage.ts");
   const { resolveStorageBucketCandidates } = jiti("../src/lib/server/contractPdfStorage.ts");
   const { sealPrivateValue, openPrivateValue } = jiti("../src/lib/server/privateEncryption.ts");
@@ -30,6 +33,10 @@ export async function main() {
   const expectedFingerprint = process.argv.find(arg => arg.startsWith("--key-fingerprint="))?.slice(18);
   const fingerprint = createHash("sha256").update(Buffer.from(process.env.MAILBOX_ENCRYPTION_KEY ?? "", "base64")).digest("hex");
   if (apply && expectedFingerprint !== fingerprint) throw new Error("--key-fingerprint must match the deployed production key fingerprint from check-security-config");
+  businessLookupToken("migration-preflight", "synthetic-check");
+  const indexFingerprint = createHash("sha256").update(Buffer.from(process.env.BUSINESS_DATA_INDEX_KEY ?? "", "base64")).digest("hex");
+  const expectedIndexFingerprint = process.argv.find(arg => arg.startsWith("--index-key-fingerprint="))?.slice(24);
+  if (apply && expectedIndexFingerprint !== indexFingerprint) throw new Error("--index-key-fingerprint must match the deployed business index key fingerprint");
   // Validate secret configuration before any data access or writes.
   if (openPrivateValue(sealPrivateValue("preflight", "migration-check"), "migration-check") !== "preflight") throw new Error("Encryption preflight failed");
   const stats = { mode: apply ? "apply" : "preview", documentsChecked: 0, documentsPending: 0, documentsWritten: 0, filesChecked: 0, filesPending: 0, filesWritten: 0, failed: 0 };
@@ -42,6 +49,11 @@ export async function main() {
     db.collectionGroup("contractNotes"), db.collectionGroup("events"), db.collectionGroup("entries"),
     db.collection("userRequests"), db.collection("mailboxSharedPayloads"),
     db.collection("anniversaryReviews"),
+    db.collection("onlineCardMeetingRequests"), db.collectionGroup("commissionStatements"),
+    db.collection("clientContractLinks"), db.collection("contractRefs"), db.collection("contractNumberClaims"),
+    db.collectionGroup("accountingRepairDrafts"), db.collectionGroup("externalUpdateTasks"), db.collectionGroup("tipPayouts"),
+    db.collectionGroup("advisorTipStatuses"),
+    db.collection("_cashflowCandidates"), db.collection("_cashflowCandidateChunks"),
   ];
   for (const source of sources) {
     let cursor;
@@ -52,12 +64,27 @@ export async function main() {
       for (const doc of page.docs) {
         stats.documentsChecked++;
         try {
-          if (!planPrivateDataMigration(doc.ref.path, doc.data())) continue;
+          if (!planLegacyClaimMigration(doc.ref.path, doc.data()) && !planPrivateDataMigration(doc.ref.path, doc.data())) continue;
           stats.documentsPending++;
           if (apply) {
             const written = await trackCashflowScriptWrite(() => db.runTransaction(async tx => {
               const current = await tx.get(doc.ref);
               if (!current.exists) return false;
+              const move = planLegacyClaimMigration(doc.ref.path, current.data());
+              if (move) {
+                const destination = db.doc(move.path);
+                const target = await tx.get(destination);
+                if (target.exists && target.data().entryPath !== current.data().entryPath) throw new Error("Conflicting contract claim; manual review required");
+                if (!target.exists) tx.create(destination, move.data);
+                else {
+                  const replacement = planPrivateDataMigration(destination.path, target.data());
+                  if (replacement) tx.set(destination, replacement);
+                }
+                // Only --apply reaches this branch. The same transaction keeps
+                // the uniqueness claim while removing its plaintext old ID.
+                tx.delete(doc.ref);
+                return true;
+              }
               const replacement = planPrivateDataMigration(doc.ref.path, current.data());
               if (!replacement) return false;
               tx.set(doc.ref, replacement); // Full replacement removes old nested plaintext.

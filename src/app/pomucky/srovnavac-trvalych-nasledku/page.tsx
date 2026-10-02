@@ -13,7 +13,6 @@ import {
   useState,
 } from "react";
 import {
-  Calculator,
   ChartNoAxesColumn,
   CheckCircle2,
   ChevronDown,
@@ -27,11 +26,11 @@ import {
 } from "lucide-react";
 
 import styles from "./comparison.module.css";
-import { ComparisonIllustration } from "./ComparisonIllustration";
 import { ComparisonLoading } from "./ComparisonLoading";
 import { InsurerPicker } from "./InsurerPicker";
 import { buildClientReport, type PdfAppendix } from "./clientReport";
 import { ParameterField } from "./ParameterField";
+import { PdfPersonalization } from "./PdfPersonalization";
 import { PROGRESSION_LABELS } from "./progressionOptions";
 
 import { AppLayout } from "@/components/AppLayout";
@@ -697,7 +696,7 @@ function EditorialResultRow({
     <article className={`tn-editorial-row ${styles.resultRow}`} data-featured={featured} data-compact={compact}>
       <span className={styles.rank}>{String(position + 1).padStart(2, "0")}</span>
       <div className={styles.resultLogo}>
-        {logoPath ? <Image src={logoPath} alt={insurerName} width={64} height={40} className={institutionLogoImageClass(institutionLogoKeyFromInsurerName(insurerName))} /> : <ChartNoAxesColumn aria-hidden="true" />}
+        {logoPath ? <Image src={logoPath} alt={insurerName} width={96} height={64} className={institutionLogoImageClass(institutionLogoKeyFromInsurerName(insurerName))} /> : <ChartNoAxesColumn aria-hidden="true" />}
       </div>
       <div className={styles.resultIdentity}>
         {featured && card.payout > 0 && <span className={styles.winnerLabel}>Nejvyšší plnění ve výběru</span>}
@@ -3154,6 +3153,8 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
 export default function SrovnavacTrvalychNasledkuPage() {
   const pageRef = useRef<HTMLDivElement>(null);
   const [pdfAppendix, setPdfAppendix] = useState<PdfAppendix>("graphs");
+  const [pdfClientName, setPdfClientName] = useState("");
+  const [pdfAdvisorName, setPdfAdvisorName] = useState("");
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
   const [compactList, setCompactList] = useState(false);
@@ -3855,7 +3856,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [scenarioExporting, setScenarioExporting] = useState(false);
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
   const infoTableScrollRef = useRef<HTMLDivElement | null>(null);
-  const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>(["ČPP", "Kooperativa", "Allianz"]);
+  const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>([]);
   const cards = buildCardsForPercent(rangePercentValue);
   const filterableCards =
     presetCardKeys.length > 0
@@ -3991,6 +3992,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const orderedCards = [...applyCardFilters(cards)].sort((a,b) => b.payout - a.payout);
     return buildClientReport({
       generatedAt, sumInsured: sumInsuredValue, scenarios: exportScenarios, appendix: pdfAppendix,
+      clientName: pdfClientName, advisorName: pdfAdvisorName,
       rows: orderedCards.map(card => ({
         ...splitInsurerAndProduct(card.insurer), badges: card.badges, curve: card.curve, table: card.tablePreview,
         logo: getInsurerLogoPath(splitInsurerAndProduct(card.insurer).insurerName),
@@ -4046,7 +4048,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     try {
       const fileStamp = new Date().toISOString().slice(0, 10);
       await savePdfExport(
-        buildScenarioPdfExportHtml(new Date().toLocaleString("cs-CZ"), [{ label: "Aktuální výpočet", percent: rangePercentValue }]),
+        buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"), [{ label: "Aktuální výpočet", percent: rangePercentValue }]),
         `srovnani_trvalych_nasledku_${fileStamp}.pdf`
       );
     } catch (error) {
@@ -4065,7 +4067,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioExportError(null);
     setScenarioExporting(true);
     try {
-      const generatedAt = new Date().toLocaleString("cs-CZ");
+      const generatedAt = new Date().toLocaleDateString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
       const exportHtml = buildScenarioPdfExportHtml(generatedAt);
 
@@ -4167,7 +4169,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
   const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
   const scenarioPreviewSrcDoc = scenarioModalOpen && scenarioStep === 1
-    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${buildScenarioPdfExportHtml(new Date().toLocaleString("cs-CZ"))}</div></div><script>${SCENARIO_FIT_SCRIPT}</script></body></html>` : "";
+    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"))}</div></div><script>${SCENARIO_FIT_SCRIPT}</script></body></html>` : "";
 
 
   return (
@@ -4220,89 +4222,93 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <span className="hidden sm:inline">3 scénáře</span>
                 </button>
               </div>
-            ) : (
-              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-100/48">Výběr produktů</span>
-            )}
+            ) : null}
           </div>
         </nav>
-        <header className={styles.hero}>
-          <div className={styles.heroCopy}>
-            <span className={styles.eyebrow}><ChartNoAxesColumn size={16} aria-hidden="true" /> Srovnávač pojistného plnění</span>
-            <h1>Trvalé následky<span>Stejný úraz. Různé plnění.</span></h1>
-            <p>Porovnej, kolik jednotlivé produkty vyplatí při stejném rozsahu trvalých následků a pojistné částce.</p>
-          </div>
-          <div className={styles.heroArt}><ComparisonIllustration /></div>
+        <header className={styles.pageHeading}>
+          <p>Srovnávač pojistného plnění</p>
+          <h1>Trvalé následky<span>Stejný úraz. Různé plnění.</span></h1>
         </header>
+        {(currentExporting || scenarioExporting) && <div className={styles.exportStatus} data-html2canvas-ignore="true"><ComparisonLoading compact title="Připravuji PDF" description="Skládám vybrané produkty, částky a podklady do dokumentu." /></div>}
+
+        <div className={styles.workspace}>
         <section className={styles.parameters} aria-label="Vstupní parametry">
-          <div className={styles.parameterHeading}><span><Calculator size={18} aria-hidden="true" /></span><div><h2>Vstupní parametry</h2><p>Výsledky se přepočítají při každé změně.</p></div></div>
+          <div className={styles.parameterHeading}>
+            <span className={styles.stepNumber}>01</span>
+            <h2>Parametry srovnání</h2>
+          </div>
           <div className={styles.parameterGrid}>
             <ParameterField label="Pojistná částka" value={sumInsuredInput} onChange={setSumInsuredInput} min={0} max={3000000} step={50000} unit="Kč" presets={[500000,1000000,2000000]} />
             <ParameterField label="Rozsah trvalých následků" value={rangePercentInput} onChange={setRangePercentInput} min={0} max={100} step={1} unit="%" presets={[25,50,75]} />
           </div>
+          <div className={styles.parameterFooter}>
+            <div className={styles.comparisonSummary}>
+              <span>{productPickerConfirmed ? "Ve srovnání" : "K porovnání"}</span>
+              <strong>{sortedCards.length} variant</strong>
+            </div>
+            {productPickerConfirmed ? (
+              <button type="button" className={styles.editSelectionButton} onClick={() => setProductPickerConfirmed(false)}>
+                <SlidersHorizontal size={15} aria-hidden="true" /> Upravit výběr produktů
+              </button>
+            ) : (
+              <button type="button" className={styles.compareButton} onClick={() => setProductPickerConfirmed(true)}>
+                Porovnat plnění <ChevronRight size={17} aria-hidden="true" />
+              </button>
+            )}
+            <p className={styles.parameterHint}>Výsledky se přepočítají při každé změně.</p>
+          </div>
         </section>
-        {(currentExporting || scenarioExporting) && <div className={styles.exportStatus} data-html2canvas-ignore="true"><ComparisonLoading compact title="Připravuji PDF" description="Skládám vybrané produkty, částky a podklady do dokumentu." /></div>}
 
         {!productPickerConfirmed ? (
           <section className={styles.picker}>
-            <div className="tn-panel rounded-[24px] border px-4 py-3 shadow-[0_14px_34px_rgba(15,23,42,0.07)]">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#916eaa]">
-                    Výběr produktů
-                  </div>
-                  <p className="mt-1 text-sm font-semibold text-[#a08aaf]">
-                    Vyber produkty a ročníky pro srovnání. Bez výběru porovnáme všechny varianty.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-[#927b9f]">
-                    {allFilterOptionsSelected
-                      ? `Vybráno vše: ${selectedInsurers.length}`
-                      : selectedInsurers.length === 0
-                      ? "Bez omezení"
-                      : `Vybráno: ${selectedInsurers.length}`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedInsurers(
-                        allFilterOptionsSelected ? [] : allFilterOptionValues
-                      )
-                    }
-                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-                      allFilterOptionsSelected
-                        ? "border-fuchsia-300/35 bg-[#79558f] !text-white shadow-[0_10px_22px_rgba(76,29,149,0.22)]"
-                        : "border-slate-200 bg-white text-[#775d84] hover:border-violet-300 hover:bg-violet-50"
+            <div className={styles.pickerToolbar}>
+              <div className={styles.pickerHeading}>
+                <div className={styles.sectionTitle}><span className={styles.stepNumber}>02</span><h2>Pojišťovny a produkty</h2></div>
+                <p>Vyber konkrétní produkty, nebo porovnej všechny.</p>
+              </div>
+              <span className={styles.insurerCount}>{insurerFilterGroups.length} pojišťoven</span>
+            </div>
+            <div className={styles.pickerControls}>
+              <span className={styles.selectionCount} role="status">
+                {selectedInsurers.length === 0 || allFilterOptionsSelected
+                  ? "Porovnáváme všechny produkty"
+                  : `Vybrané produkty: ${selectedInsurers.length}`}
+              </span>
+              <div className={styles.pickerActions}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedInsurers(
+                      allFilterOptionsSelected ? [] : allFilterOptionValues
+                    )
+                  }
+                  className={styles.pickerAction}
+                  aria-pressed={allFilterOptionsSelected}
+                >
+                  {allFilterOptionsSelected ? "Zrušit vše" : "Všechny produkty"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleAllFilterGroupsExpanded}
+                  className={styles.pickerAction}
+                >
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition ${
+                      allFilterGroupsExpanded ? "rotate-180" : ""
                     }`}
-                  >
-                    {allFilterOptionsSelected ? "Zrušit vše" : "Všechny produkty"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleAllFilterGroupsExpanded}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#775d84] transition hover:border-violet-300 hover:bg-violet-50"
-                  >
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition ${
-                        allFilterGroupsExpanded ? "rotate-180" : ""
-                      }`}
-                    />
-                    {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setProductPickerConfirmed(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[#79558f] px-4 py-2 text-xs font-semibold !text-white shadow-[0_12px_26px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110 sm:px-5"
-                  >
-                    <span>Porovnat plnění</span>
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
+                  />
+                  {allFilterGroupsExpanded ? "Sbalit vše" : "Rozbalit vše"}
+                </button>
               </div>
             </div>
 
             <div className="min-w-0">
-              <InsurerPicker groups={insurerFilterGroups} selected={selectedInsurers} expanded={expandedFilterInsurers} onToggleOption={toggleFilterOption} onToggleGroup={toggleFilterGroupSelection} onToggleExpanded={toggleFilterGroupExpanded} getLogo={getInsurerLogoPath} />
+              <InsurerPicker layout="comparison" groups={insurerFilterGroups} selected={selectedInsurers} expanded={expandedFilterInsurers} onToggleOption={toggleFilterOption} onToggleGroup={toggleFilterGroupSelection} onToggleExpanded={toggleFilterGroupExpanded} getLogo={getInsurerLogoPath} />
+            </div>
+            <div className={styles.mobileCompare}>
+              <button type="button" className={styles.compareButton} onClick={() => setProductPickerConfirmed(true)}>
+                Porovnat plnění <ChevronRight size={17} aria-hidden="true" />
+              </button>
             </div>
           </section>
         ) : null}
@@ -4409,6 +4415,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 {scenarioStep === 0 ? (
                   <div>
                     <p className={styles.scenarioNote}>Pojistná částka <strong>{formatMoney(sumInsuredValue)}</strong> je pro všechny tři scénáře stejná. Uprav rozsah následků a porovnej částky v tabulce.</p>
+                    <PdfPersonalization clientName={pdfClientName} advisorName={pdfAdvisorName} onClientNameChange={setPdfClientName} onAdvisorNameChange={setPdfAdvisorName} />
                     <label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Pouze přehled plnění</option></select></label><div className={styles.scenarioInputs}>
                       {[{label: "Scénář 1", value: scenarioAInput, onChange: setScenarioAInput}, {label: "Scénář 2", value: scenarioBInput, onChange: setScenarioBInput}, {label: "Scénář 3", value: scenarioCInput, onChange: setScenarioCInput}].map(item => <div className={styles.scenarioInput} key={item.label}><ParameterField label={item.label} value={item.value} onChange={item.onChange} min={0} max={100} step={1} unit="%" presets={[10,50,100]} /></div>)}
                     </div>
@@ -4638,7 +4645,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
         <section className={styles.results} aria-label="Výsledky srovnání">
           <div className={styles.resultsHeading}>
-            <div><span className={styles.eyebrow}>Výsledky srovnání</span><h2>Jaké plnění můžeš očekávat?</h2><p>Seřazeno od nejvyššího plnění pro rozsah {formatPercent(rangePercentValue)}.</p></div>
+            <div><div className={styles.sectionTitle}><span className={styles.stepNumber}>02</span><h2>Srovnání plnění</h2></div><p>Od nejvyššího plnění pro rozsah {formatPercent(rangePercentValue)}.</p></div>
             <div className={styles.pdfOptionsRow}><label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Pouze přehled plnění</option></select></label><span className={styles.resultCount}>{sortedCards.length} variant</span></div>
           </div>
           {scenarioExportError && !scenarioModalOpen ? (
@@ -4646,6 +4653,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
               {scenarioExportError}
             </p>
           ) : null}
+
+          <PdfPersonalization clientName={pdfClientName} advisorName={pdfAdvisorName} onClientNameChange={setPdfClientName} onAdvisorNameChange={setPdfAdvisorName} />
 
           <div className={styles.resultList}>
             {sortedCards.length === 0 ? (
@@ -4674,13 +4683,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
             onClick={() => setInfoOpen(null)}
           >
             <div
-              className="tn-modal tn-modal--light flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-[30px] border shadow-[0_34px_100px_rgba(15,23,42,0.34)]"
+              className={`tn-modal tn-modal--light ${styles.detailDialog}`}
               role="dialog"
               aria-modal="true"
               aria-label={`Detail výpočtu pro ${selectedInfoCard.insurer}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col gap-2 border-b border-violet-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="flex shrink-0 flex-col gap-2 border-b border-violet-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="min-w-0">
                   <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9370aa]">
                     Výpočet
@@ -4723,59 +4732,50 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
               </div>
 
-              <div
-                className={`grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:overflow-hidden lg:p-5 ${
-                  selectedInfoCard.infoSections
-                    ? "lg:grid-cols-[minmax(0,0.72fr)_minmax(680px,1.28fr)]"
-                    : "lg:grid-cols-1"
-                }`}
-              >
-                {selectedInfoCard.infoSections ? (
-                  <div className="min-h-0 space-y-3 overflow-y-auto lg:max-h-[72vh]">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#9370aa]">
-                      Přehled ze znění PP
-                    </div>
-                    {selectedInfoCard.infoSections.map((section) => (
-                      <section
-                        key={section.title}
-                        className={`rounded-2xl border p-3 ${
-                          section.emphasis
-                            ? "border-fuchsia-200 bg-fuchsia-50/80"
-                            : "border-violet-100 bg-white"
-                        }`}
-                      >
-                        <h4
-                          className={`text-sm font-semibold leading-snug ${
-                            section.emphasis ? "text-fuchsia-800" : "text-[#493452]"
-                          }`}
-                        >
-                          {section.title}
-                        </h4>
-                        {section.body ? (
-                          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-[#775d84]">
-                            {section.body}
-                          </p>
-                        ) : null}
-                        {section.items ? (
-                          <ul className="mt-2 space-y-1.5 text-[13px] font-semibold leading-relaxed text-[#775d84]">
-                            {section.items.map((item) => (
-                              <li key={item} className="flex gap-2">
-                                <span
-                                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
-                                    section.emphasis ? "bg-fuchsia-600" : "bg-violet-500"
-                                  }`}
-                                />
-                                <span>{item}</span>
-                              </li>
+              <div className={styles.detailBody} data-with-table={Boolean(selectedInfoCard.tablePreview)}>
+                {selectedInfoCard.tablePreview ? (
+                  <aside className={styles.detailTablePanel} aria-label="Tabulka plnění">
+                    <div className={styles.detailTableHeading}>
+                      <span className={styles.eyebrow}>Tabulka plnění</span>
+                      <h4>{selectedInfoCard.tablePreview.title}</h4>
+                      {selectedInfoActiveRow ? (
+                        <div className={styles.detailActiveRow}>
+                          <p>Aktuální řádek · {formatPercent(rangePercentValue)} TN</p>
+                          <dl>
+                            {selectedInfoCard.tablePreview.columns.map((column, index) => (
+                              <div key={column}>
+                                <dt>{column}</dt>
+                                <dd>{selectedInfoActiveRow.cells[index]}</dd>
+                              </div>
                             ))}
-                          </ul>
-                        ) : null}
-                      </section>
-                    ))}
-                  </div>
+                          </dl>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div ref={infoTableScrollRef} className={styles.detailTableScroll} tabIndex={0} role="region" aria-label="Řádky tabulky plnění">
+                      <table className={styles.detailTable}>
+                        <thead>
+                          <tr>
+                            {selectedInfoCard.tablePreview.columns.map((column) => (
+                              <th key={column} scope="col">{column}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
+                            <tr key={`${row.cells.join("|")}-${rowIndex}`} data-active-row={row.active ? "true" : undefined}>
+                              {row.cells.map((cell, cellIndex) => (
+                                <td key={`${cell}-${cellIndex}`}>{cell}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </aside>
                 ) : null}
 
-                <div className="min-h-0 space-y-4 overflow-y-auto lg:max-h-[72vh]">
+                <div className={styles.detailContent}>
                   <PayoutCurveChart
                     points={selectedInfoCard.curve}
                     currentPercent={rangePercentValue}
@@ -4784,88 +4784,21 @@ export default function SrovnavacTrvalychNasledkuPage() {
                     diagnosisExamples={selectedInfoCard.diagnosisExamples}
                   />
 
-                  {selectedInfoCard.tablePreview ? (
-                    <div className="min-h-0 overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-sm">
-                      <div className="space-y-3 border-b border-violet-100 bg-white px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#a08aaf]">
-                            {selectedInfoCard.tablePreview.title}
-                          </div>
-                          <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9370aa]">
-                            Aktuální řádek
-                          </span>
-                        </div>
-                        {selectedInfoActiveRow ? (
-                          <div className="rounded-2xl border border-fuchsia-200 bg-[linear-gradient(135deg,#fdf2f8_0%,#fae8ff_100%)] p-3">
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {selectedInfoCard.tablePreview.columns.map((column, index) => (
-                                <div key={column} className="min-w-0">
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a585b7]">
-                                    {column}
-                                  </div>
-                                  <div className="mt-0.5 break-words text-sm font-semibold text-fuchsia-950">
-                                    {selectedInfoActiveRow.cells[index]}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div
-                        ref={infoTableScrollRef}
-                        className="max-h-[34vh] overflow-auto lg:max-h-[36vh]"
-                      >
-                        <table className="w-full min-w-[420px] border-collapse text-left text-xs">
-                          <thead className="sticky top-0 z-10 bg-violet-50 text-[#775d84]">
-                            <tr>
-                              {selectedInfoCard.tablePreview.columns.map((column) => (
-                                <th
-                                  key={column}
-                                  className="border-b border-violet-100 px-3 py-2 font-semibold"
-                                >
-                                  {column}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
-                              <tr
-                                key={`${row.cells.join("|")}-${rowIndex}`}
-                                data-active-row={row.active ? "true" : undefined}
-                                className={
-                                  row.active
-                                    ? "bg-fuchsia-50 text-[#493452]"
-                                    : rowIndex % 2 === 0
-                                      ? "bg-white"
-                                      : "bg-slate-50/70"
-                                }
-                              >
-                                {row.cells.map((cell, cellIndex) => (
-                                  <td
-                                    key={`${cell}-${cellIndex}`}
-                                    className={`border-b border-violet-50 px-3 py-2 ${
-                                      row.active
-                                        ? `bg-fuchsia-50 font-semibold text-fuchsia-900 ${
-                                            cellIndex === 0
-                                              ? "border-l-4 border-l-fuchsia-500"
-                                              : ""
-                                          }`
-                                        : cellIndex === 0
-                                          ? "font-semibold text-[#775d84]"
-                                          : "font-semibold text-[#927b9f]"
-                                    }`}
-                                  >
-                                    {cell}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                  {selectedInfoCard.infoSections ? (
+                    <section className={styles.detailNotes} aria-label="Podmínky a vysvětlení">
+                      <h4>Přehled ze znění PP</h4>
+                      {selectedInfoCard.infoSections.map((section) => (
+                        <section key={section.title} className={styles.detailNote} data-emphasis={section.emphasis || undefined}>
+                          <h5>{section.title}</h5>
+                          {section.body ? <p>{section.body}</p> : null}
+                          {section.items ? (
+                            <ul>
+                              {section.items.map((item) => <li key={item}>{item}</li>)}
+                            </ul>
+                          ) : null}
+                        </section>
+                      ))}
+                    </section>
                   ) : null}
                 </div>
               </div>
@@ -4874,6 +4807,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ) : null}
           </>
         ) : null}
+        </div>
       </div>
 
 

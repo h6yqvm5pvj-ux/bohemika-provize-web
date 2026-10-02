@@ -95,6 +95,8 @@ If the active key is absent or invalid, sending fails closed. Existing legacy me
 
 ## Learn More
 
+Contract identities, commission statement content and online-card enquiries also use server-side encryption. This requires the independent server-only `BUSINESS_DATA_INDEX_KEY` and a staged migration before enabling `BUSINESS_DATA_ENCRYPTION_REQUIRED`. See [business-data encryption and deployment](docs/business-data-encryption.md) before deploying this change or running maintenance scripts.
+
 To learn more about Next.js, take a look at the following resources:
 
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.

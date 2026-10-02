@@ -368,8 +368,10 @@ service cloud.firestore {
 
     // ---------- entries (collectionGroup fallback) ----------
     match /{path=**}/entries/{entryId} {
-      allow read: if isSignedIn() && (isAdmin() || canReadEntryDoc(resource.data));
-      allow create, update, delete: if isSignedIn() && (isAdmin());
+      // Entry documents contain records belonging to different statement authors.
+      // Only the server API can return the viewer-specific field projection.
+      allow read: if isSignedIn() && isAdmin();
+      allow create, update, delete: if false;
     }
 
     // ---------- users ----------
@@ -388,12 +390,11 @@ service cloud.firestore {
 
       // ---------- entries ----------
       match /entries/{entryId} {
-        // čtení povoleno autorovi, jeho nadřízeným (podle snapshotu v dokumentu) a adminu
-        allow read: if isSignedIn() && (isAdmin()
-                    || isOwner(userEmail)
-                    || canReadEntryDoc(resource.data));
+        // Same boundary as the collection-group rule above; Admin SDK APIs
+        // enforce owner/team/admin access before exposing individual fields.
+        allow read: if isSignedIn() && isAdmin();
         // zápis smluv jen přes backend API (Admin SDK), ne přímo z klienta
-        allow create, update, delete: if isSignedIn() && (isAdmin());
+        allow create, update, delete: if false;
       }
 
       // ---------- calendarEvents ----------

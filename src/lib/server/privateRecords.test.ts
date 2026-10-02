@@ -14,6 +14,20 @@ const cases: [string, Record<string, unknown>][] = [
   ["usersPrivate/a@example.test/mailbox/m", { type: "production_export_share", title: "Sensitive title", body: "Sensitive body", metadata: { noteText: "Sensitive text", totalAnnual: 54321 } }],
 ];
 describe("private record coverage and migration", () => {
+  it.each([
+    ["onlineCardMeetingRequests/request", { requester: { fullName: "Sensitive name", ip: "192.0.2.1" }, travel: { note: "Sensitive plan" } }],
+    ["usersPrivate/a@example.test/mailbox/enquiry", { type: "online_card_meeting_request", title: "Sensitive title", body: "Sensitive body", metadata: { requesterName: "Sensitive name" } }],
+  ] as const)("protects enquiry copies with an independent migration gate: %s", (path, data) => {
+    vi.stubEnv("PRIVATE_DATA_ENCRYPTION_REQUIRED", "true");
+    expect(openPrivateRecord(path, data)).toEqual(data);
+    const sealed = sealPrivateRecord(path, data);
+    expect(JSON.stringify(sealed)).not.toContain("Sensitive");
+    expect(openPrivateRecord(path, sealed)).toEqual(data);
+    expect(() => openPrivateRecord(`${path}-other`, sealed)).toThrow();
+    vi.stubEnv("BUSINESS_DATA_ENCRYPTION_REQUIRED", "true");
+    expect(() => openPrivateRecord(path, data)).toThrow();
+    expect(openPrivateRecord(path, sealed)).toEqual(data);
+  });
   it.each(cases)("seals all content in %s and migrates it without leaving readable copies", (path, data) => {
     const sealed = sealPrivateRecord(path, data);
     expect(JSON.stringify(sealed)).not.toContain("Sensitive");

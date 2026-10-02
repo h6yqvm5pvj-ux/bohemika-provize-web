@@ -4,6 +4,7 @@ import { initializeApp, deleteApp, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore, type DocumentReference } from "firebase-admin/firestore";
 import { withContractHistory, readContractHistory } from "../../src/lib/server/contractHistory";
 import { buildTransferredContractData } from "../../src/app/api/contracts/_lib/contractsApi.transfer";
+import { authorizeContractNoteLocation, assertContractNoteNamespaceAvailable, contractNoteLocationRef } from "../../src/lib/server/contractNoteLocation";
 const mocks = vi.hoisted(() => ({ db: null as Firestore | null, mailbox: vi.fn() }));
 vi.mock("../../src/lib/server/firebaseAdmin", () => ({ get adminDb() { return mocks.db; }, adminMessaging: null }));
 vi.mock("../../src/lib/server/mailbox", () => ({ writeMailboxEntryOnce: mocks.mailbox }));
@@ -32,6 +33,7 @@ async function transfer(source: DocumentReference, target: DocumentReference) {
     const current = await tx.get(source);
     if (!current.exists) throw new Error("Contract missing");
     const before = current.data()!;
+    await authorizeContractNoteLocation(source, before, ref => tx.get(ref));
     const fromOwnerEmail = source.parent.parent!.id;
     const toOwnerEmail = target.parent.parent!.id;
     const next = buildTransferredContractData({ contract: before, fromOwnerEmail, toOwnerEmail, toOwnerUserId: null, actorEmail: "admin@example.test", transferredAt: new Date() });
@@ -48,6 +50,29 @@ async function allEvents(reference: DocumentReference) {
 }
 
 describe("atomic contract history in Firestore", () => {
+  it("reserves transferred notes against key reuse and retransfer, and permits a legitimate transfer back", async () => {
+    const source = ref("notes-reserved", "idem-reserved");
+    const target = ref("notes-current", "idem-reserved");
+    const stolen = ref("notes-attacker", "idem-reserved");
+    await source.set({ userEmail: "notes-reserved@example.test", contractNumber: "old-number" });
+    await source.collection("contractNotes").doc("note").set({ text: "Retained note" });
+    await transfer(source, target);
+    await expect(db.runTransaction(async tx => {
+      await assertContractNoteNamespaceAvailable(source, ref => tx.get(ref));
+      tx.create(source, { userEmail: "notes-reserved@example.test", contractNumber: "new-number" });
+    })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await source.get()).exists).toBe(false);
+    // Simulate an old root already recreated before this fix was deployed.
+    await source.set({ userEmail: "notes-reserved@example.test", contractNumber: "new-number" });
+    await expect(authorizeContractNoteLocation(source, (await source.get()).data()!)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(transfer(source, stolen)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await contractNoteLocationRef(source).get()).data()?.contractPath).toBe(target.path);
+    expect((await stolen.get()).exists).toBe(false);
+    await source.delete();
+    await transfer(target, source);
+    expect((await authorizeContractNoteLocation(source, (await source.get()).data()!)).path).toBe(source.path);
+    expect((await source.collection("contractNotes").doc("note").get()).data()?.text).toBe("Retained note");
+  });
   it("keeps the entire audit across more than 50 transfers and paginates without gaps", async () => {
     let current = ref("owner0", "history-transfer");
     await current.set({ userEmail: "owner0@example.test", clientName: "Jan Novák", createdAt: new Date("2025-01-01"), commissionPayouts: [{ amount: 33333 }] });

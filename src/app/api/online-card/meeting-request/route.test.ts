@@ -1,10 +1,12 @@
+import "../../../../../tests/helpers/privateEncryptionTestKey";
+import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_TRAVEL_DRAFT } from "@/lib/travelInsurance";
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn(), mailbox: vi.fn(), rateLimit: vi.fn(), record: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => {
-  const query: Record<string, unknown> = { id: "inquiry-123", get: mocks.get, set: mocks.set };
+  const query: Record<string, unknown> = { id: "inquiry-123", path: "onlineCardMeetingRequests/inquiry-123", get: mocks.get, set: mocks.set };
   for (const key of ["collection", "where", "limit", "doc"]) query[key] = vi.fn(() => query);
   return { adminDb: query, adminMessaging: null };
 });
@@ -27,7 +29,7 @@ describe("short meeting inquiries", () => {
   it.each(["phone", "email"])("accepts only the preferred %s with no topic or message", async method => {
     const payload = { ...body(), travel: undefined, preferredContact: method, phone: method === "phone" ? "+420 777 000 111" : "", email: method === "email" ? "Client@Example.test" : "" };
     expect((await POST(request(payload))).status).toBe(200);
-    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ requester: expect.objectContaining({ preferredContact: method, topics: [], message: "" }) }));
+    expect(openPrivateRecord("onlineCardMeetingRequests/inquiry-123", mocks.set.mock.calls[0][0])).toEqual(expect.objectContaining({ requester: expect.objectContaining({ preferredContact: method, topics: [], message: "" }) }));
     expect(mocks.mailbox).toHaveBeenCalledWith(expect.objectContaining({
       body: method === "phone" ? "Test Klient • +420 777 000 111" : "Test Klient • client@example.test",
       metadata: expect.objectContaining({ preferredContact: method }),
@@ -57,7 +59,9 @@ describe("travel inquiry delivery", () => {
   it("delivers the canonical plan only to the owner and records a server-side conversion", async () => {
     const response = await POST(request({ ...body(), ownerEmail: "attacker@example.test", topics: ["Fake"], message: "Fake summary" }));
     expect(response.status).toBe(200);
-    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ ownerEmail: "owner@example.test", travel: body().travel, source: expect.objectContaining({ pagePath: "/vizitka/advisor/cestovni-pojisteni" }) }));
+    expect(openPrivateRecord("onlineCardMeetingRequests/inquiry-123", mocks.set.mock.calls[0][0])).toEqual(expect.objectContaining({ ownerEmail: "owner@example.test", travel: body().travel, source: expect.objectContaining({ pagePath: "/vizitka/advisor/cestovni-pojisteni" }) }));
+    expect(JSON.stringify(mocks.set.mock.calls[0][0])).not.toContain("client@example.test");
+    expect(JSON.stringify(mocks.set.mock.calls[0][0])).not.toContain("Ferraty");
     expect(mocks.mailbox).toHaveBeenCalledWith(expect.objectContaining({ recipientEmails: ["owner@example.test"], title: "Nová poptávka cestovního pojištění", metadata: expect.objectContaining({ requesterMessage: expect.stringContaining("Ferraty: D"), inquiryKind: "travel", preferredContact: "email" }) }));
     expect(mocks.record).toHaveBeenCalledExactlyOnceWith({ ownerEmail: "owner@example.test", slug: "advisor", event: "travel_submitted" });
   });

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateFlexi } from "@/app/lib/productFormulas/flexi";
+import { buildIdempotentEntryId } from "./contractsApi.identity";
+import { contractNoteLocationRef } from "@/lib/server/contractNoteLocation";
 
 const mocks = vi.hoisted(() => ({
   collection: vi.fn(), doc: vi.fn(), batch: vi.fn(), transaction: vi.fn(), guard: vi.fn(), find: vi.fn(),
@@ -34,6 +36,7 @@ let sequence: number;
 function reference(path: string) {
   return {
     id: path.split("/").at(-1)!, path,
+    firestore: { collection: mocks.collection, doc: mocks.doc },
     get: async () => snapshot(path),
     collection: (name: string) => collection(`${path}/${name}`),
   };
@@ -95,10 +98,10 @@ beforeEach(() => {
   } });
 });
 
-async function save(patch: Data = {}) {
+async function save(patch: Data = {}, retryKey?: string) {
   const { handleContractsCreate } = await import("./contractsApi");
   const response = await handleContractsCreate(new NextRequest("https://example.test/api/contracts", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+    method: "POST", headers: { "content-type": "application/json", ...(retryKey ? { "x-idempotency-key": retryKey } : {}) }, body: JSON.stringify({
       productKey: "flexi", entryType: "contract", clientName: "Test Client", contractNumber: "NEW123",
       contractSignedDate: "2026-01-10", policyStartDate: "2026-02-01", durationYears: 30,
       frequencyRaw: "monthly", inputAmount: 1_500, effectiveInputAmount: 1_500,
@@ -112,6 +115,28 @@ async function save(patch: Data = {}) {
 }
 
 describe("saving FLEXI renovation", () => {
+  it("rejects reuse of an idempotency key reserved by transferred notes before writing anything", async () => {
+    const key = "transferred-original-key";
+    const path = `users/${owner}/entries/${buildIdempotentEntryId(owner, key)}`;
+    const registry = contractNoteLocationRef(mocks.doc(path));
+    records.set(registry.path, { contractPath: `users/${manager}/entries/moved` });
+    const before = JSON.stringify([...records]);
+    const { response } = await save({}, key);
+    expect(response.status).toBe(409);
+    expect(records.has(path)).toBe(false);
+    expect(JSON.stringify([...records])).toBe(before);
+  });
+  it("keeps a normal idempotent retry and rejects an already recreated foreign notes root", async () => {
+    const key = "normal-retry";
+    const payload = { isRefresh: false, refreshOriginalContractNumber: null, flexiRenovation: null };
+    const first = await save(payload, key);
+    expect(first.response.status).toBe(200);
+    const retry = await save(payload, key);
+    expect(retry.body).toMatchObject({ ok: true, entryId: first.body.entryId, idempotentReplay: true });
+    const path = `users/${owner}/entries/${first.body.entryId}`;
+    records.set(contractNoteLocationRef(mocks.doc(path)).path, { contractPath: `users/${manager}/entries/moved` });
+    expect((await save(payload, key)).response.status).toBe(409);
+  });
   it("recalculates adviser and manager commission server-side and cancels the original on the new policy start", async () => {
     const { response, body, saved } = await save();
     expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: "original" });
