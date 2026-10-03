@@ -65,4 +65,26 @@ describe("contract-derived directory", () => {
     expect(filterClientDirectory(clients, "", "archived", "name").map((c) => c.name)).toEqual(["Jana Bílá"]);
     expect(filterClientDirectory(clients, "neexistuje", "all", "name")).toEqual([]);
   });
+  it("shows distinct portfolio groups, keeps archived products, and excludes endorsements", () => {
+    const clients = buildClientDirectory([
+      contract("life"), contract("life-2", undefined, { productKey: "flexi" }),
+      contract("auto", undefined, { productKey: "cppAuto", status: "storno" }),
+      contract("endorsement", undefined, { productKey: "domex", entryType: "endorsement" }),
+    ]);
+    expect(clients[0].productGroups).toEqual(["auto", "life"]);
+    expect(filterClientDirectory(clients, "", "all", "name", "auto")).toHaveLength(1);
+    expect(filterClientDirectory(clients, "", "all", "name", "propertyLiability")).toEqual([]);
+  });
+  it("combines the product filter with searching, client status and sorting", () => {
+    const clients = buildClientDirectory([
+      contract("a", "Petr Novák", { productKey: "cppAuto", clientPhone: "777 123 456" }),
+      contract("b", "Jana Nováková", { productKey: "cppAuto", status: "storno" }),
+      contract("c", "Petr Bílý", { productKey: "neon" }),
+    ]);
+    expect(filterClientDirectory(clients, "novak", "active", "name", "auto").map((client) => client.name)).toEqual(["Petr Novák"]);
+    expect(filterClientDirectory(clients, "novak", "archived", "name", "auto").map((client) => client.name)).toEqual(["Jana Nováková"]);
+    expect(filterClientDirectory(clients, "777123456", "all", "contracts", "auto")).toHaveLength(1);
+    expect(filterClientDirectory(clients, "auto", "all", "name", "life")).toEqual([]);
+    expect(filterClientDirectory(clients, "zivot", "all", "name", "all").map((client) => client.name)).toEqual(["Petr Bílý"]);
+  });
 });

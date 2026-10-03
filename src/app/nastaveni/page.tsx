@@ -88,6 +88,7 @@ import {
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 import { ProfileSettingsPanel } from "./components/ProfileSettingsPanel";
+import { SettingsLoader } from "./components/SettingsLoader";
 import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
 import { SubscriptionSettingsPanel } from "./components/SubscriptionSettingsPanel";
 import { UserRequestsPanel } from "./components/UserRequestsPanel";
@@ -3779,9 +3780,7 @@ export default function SettingsPage() {
         </header>
 
         {loadingMeta ? (
-          <div className="rounded-[24px] border border-slate-200 bg-white px-6 py-5 text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-            Načítám nastavení…
-          </div>
+          <SettingsLoader />
         ) : (
           <>
             {isImpersonating ? (

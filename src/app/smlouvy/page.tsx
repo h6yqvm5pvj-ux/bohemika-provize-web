@@ -16,6 +16,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
+  Archive,
   ArrowUpRight,
   ArrowRightLeft,
   BriefcaseBusiness,
@@ -28,6 +29,7 @@ import {
   ExternalLink,
   HeartPulse,
   Home,
+  ListChecks,
   Plane,
   PencilLine,
   ReceiptText,
@@ -39,8 +41,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import cardStyles from "./contractCards.module.css";
+import toolbarStyles from "./contractsToolbar.module.css";
 import { filterDisplayedContracts, isRefreshContract, contractOwnerEmail } from "./contractsPageFiltering";
 import { ContractFiltersDialog } from "./ContractFiltersDialog";
+import { ContractsListLoader } from "./ContractsListLoader";
 import { normalizeCareerPositions } from "@/app/lib/careerPositions";
 import { contractFilterCount } from "./contractFilterSelection";
 import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
@@ -86,9 +90,6 @@ import {
   isAnniversarySoon,
   shouldTrackAnniversary,
 } from "@/app/lib/contractAnniversary";
-import {
-  CATEGORY_DEFS,
-} from "./contractsPageFilters";
 import {
   commissionAuditCompactLabel,
   commissionAuditTimingLabel,
@@ -181,28 +182,6 @@ const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
   foreigners: UsersRound,
 };
 
-const CONTRACT_CATEGORY_TONE_BY_ID: Record<ProductCategory, string> = {
-  pension: "border-cyan-200 bg-cyan-50 text-cyan-600",
-  life: "border-rose-200 bg-rose-50 text-rose-600",
-  auto: "border-sky-200 bg-sky-50 text-sky-600",
-  property: "border-emerald-200 bg-emerald-50 text-emerald-600",
-  travel: "border-violet-200 bg-violet-50 text-violet-600",
-  comfort: "border-amber-200 bg-amber-50 text-amber-600",
-  business: "border-indigo-200 bg-indigo-50 text-indigo-600",
-  foreigners: "border-teal-200 bg-teal-50 text-teal-600",
-};
-
-const CONTRACT_CATEGORY_CARD_TONE_BY_ID: Record<ProductCategory, string> = {
-  pension: "border-cyan-300/35 bg-cyan-300/15 text-cyan-200",
-  life: "border-rose-300/35 bg-rose-300/15 text-rose-200",
-  auto: "border-sky-300/35 bg-sky-300/15 text-sky-200",
-  property: "border-emerald-300/35 bg-emerald-300/15 text-emerald-200",
-  travel: "border-violet-300/35 bg-violet-300/15 text-violet-200",
-  comfort: "border-amber-300/35 bg-amber-300/15 text-amber-200",
-  business: "border-indigo-300/35 bg-indigo-300/15 text-indigo-200",
-  foreigners: "border-teal-300/35 bg-teal-300/15 text-teal-200",
-};
-
 type ContractContextMenuState = {
   contract: ContractDoc;
   slug: string;
@@ -285,31 +264,31 @@ function contractStatusBadgeMeta({
   if (isStorno) {
     return {
       label: "Storno",
-      compactClass: "border-amber-200 bg-amber-50 text-amber-800",
-      compactDotClass: "bg-amber-500",
+      tone: "cancelled",
+      Icon: X,
     };
   }
 
   if (isDozita) {
     return {
       label: "Dožitá",
-      compactClass: "border-sky-200 bg-sky-50 text-sky-800",
-      compactDotClass: "bg-sky-500",
+      tone: "matured",
+      Icon: Archive,
     };
   }
 
   if (paid) {
     return {
       label: "Zaplaceno",
-      compactClass: "border-emerald-200 bg-emerald-50 text-emerald-800",
-      compactDotClass: "bg-emerald-500",
+      tone: "paid",
+      Icon: Check,
     };
   }
 
   return {
     label: "Nezaplaceno",
-    compactClass: "border-rose-200 bg-rose-50 text-rose-700",
-    compactDotClass: "bg-rose-500",
+    tone: "unpaid",
+    Icon: Clock,
   };
 }
 
@@ -349,32 +328,31 @@ function ContractInstitutionLogo({
   );
 }
 
-function ContractCategoryIcon({
-  product,
-  surface = "light",
-}: {
-  product?: Product | null;
-  surface?: "light" | "dark";
-}) {
+function ContractCardIllustration({ product }: { product?: Product | null }) {
   const category = product ? PRODUCT_CATALOG[product]?.category : null;
-  if (!category) return null;
-
-  const Icon = CATEGORY_ICON_BY_ID[category];
-  const label = CATEGORY_DEFS.find((item) => item.id === category)?.label ?? category;
-  const tone =
-    surface === "dark"
-      ? CONTRACT_CATEGORY_CARD_TONE_BY_ID[category]
-      : CONTRACT_CATEGORY_TONE_BY_ID[category];
+  const Icon = category ? CATEGORY_ICON_BY_ID[category] : ReceiptText;
 
   return (
-    <span
-      role="img"
-      aria-label={`Kategorie: ${label}`}
-      title={label}
-      className={`${cardStyles.categoryIcon} ${tone}`}
-    >
-      <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
-    </span>
+    <div className={cardStyles.illustration} aria-hidden="true">
+      <svg className={cardStyles.illustrationBackdrop} viewBox="0 0 88 72" fill="none">
+        <circle cx="42" cy="33" r="29" className={cardStyles.illustrationHalo} />
+        <circle cx="42" cy="33" r="35" stroke="currentColor" strokeOpacity=".16" strokeDasharray="2 6" />
+        <path d="M6 55C20 43 54 68 81 45" stroke="currentColor" strokeOpacity=".3" strokeWidth="1.5" />
+        <path d="M71 8v8m-4-4h8" stroke="currentColor" strokeOpacity=".6" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="10" cy="29" r="2.5" fill="currentColor" fillOpacity=".35" />
+      </svg>
+      <span className={cardStyles.illustrationIcon}>
+        <Icon size={35} strokeWidth={1.35}>
+          {category === "property" ? (
+            <rect className={cardStyles.illustrationWindow} x="9.5" y="7.5" width="5" height="3" rx=".6" strokeWidth=".7" />
+          ) : null}
+          {category === "life" ? (
+            <path className={cardStyles.illustrationHeartbeat} d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" pathLength="1" strokeWidth="2.3" />
+          ) : null}
+        </Icon>
+      </span>
+      <ContractInstitutionLogo product={product} />
+    </div>
   );
 }
 
@@ -2166,19 +2144,16 @@ function ContractsPageContent() {
     }
   };
 
-  const activePurpleButtonClass =
-    "border-transparent bg-violet-700 text-white shadow-[0_8px_18px_rgba(109,40,217,0.24)] [&_*]:!text-white";
-
   return (
     <AppLayout active="contracts">
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
         <div className="mx-auto w-full max-w-6xl space-y-6 font-mono text-slate-900">
           {/* SEARCH BAR + FILTER + BULK ACTIONS */}
-          <div className="sticky top-16 z-40 space-y-2 rounded-[22px] border border-slate-200/85 bg-white/96 p-3 shadow-[0_14px_30px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/90 lg:top-2">
-            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:gap-3">
-              <div className="min-w-0 xl:w-[340px] 2xl:w-[360px]">
-                <div className="flex h-10 w-full items-center gap-2 rounded-[16px] border border-slate-200 bg-slate-50/85 px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900/8">
-                    <Search size={17} strokeWidth={2.2} className="shrink-0 text-slate-400" aria-hidden="true" />
+          <div className={toolbarStyles.toolbar}>
+            <div className={toolbarStyles.row}>
+              <div className={toolbarStyles.searchRegion}>
+                <div className={toolbarStyles.search} role="search">
+                    <span className={toolbarStyles.searchIcon}><Search size={17} strokeWidth={1.7} aria-hidden="true" /></span>
                     <input
                       type="text"
                       aria-label="Hledat klienta nebo číslo smlouvy"
@@ -2193,7 +2168,7 @@ function ContractsPageContent() {
                         if (event.key === "Escape") { setSearchText(""); setDebouncedSearchText(""); }
                       }}
                       placeholder="Hledat klienta nebo smlouvu"
-                      className="min-w-0 flex-1 border-none bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                      className={toolbarStyles.input}
                     />
                     {isSearchBusy && (
                       <span role="status" aria-label="Vyhledávám smlouvy" className="inline-flex shrink-0">
@@ -2209,18 +2184,19 @@ function ContractsPageContent() {
                           setSearchText(""); setDebouncedSearchText("");
                           event.currentTarget.parentElement?.querySelector("input")?.focus();
                         }}
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-violet-50 hover:text-violet-700 focus-visible:outline-2 focus-visible:outline-violet-500"
+                        className={toolbarStyles.clear}
                       ><X size={15} aria-hidden="true" /></button>
                     )}
                 </div>
               </div>
 
-              <div className="-mx-1 min-w-0 overflow-x-auto px-1 pb-0.5 xl:mx-0 xl:flex-1 xl:overflow-visible xl:px-0 xl:pb-0">
-                <div className="flex min-w-max items-center gap-2 xl:min-w-0 xl:justify-between">
-                  <div className="flex items-center gap-2">
+              <div className={toolbarStyles.controls} data-team-toggle={canShowTeamToggle}>
+                <div className={toolbarStyles.controlRow}>
+                  <div className={toolbarStyles.scopeSlot}>
                     {canShowTeamToggle && (
                       <div
-                        className="inline-flex h-10 items-center gap-1 rounded-[16px] border border-slate-200 bg-slate-100/75 p-1"
+                        className={toolbarStyles.scope}
+                        role="group"
                         aria-label="Rozsah smluv"
                       >
                         <button
@@ -2228,15 +2204,12 @@ function ContractsPageContent() {
                           onClick={() => {
                             setShowTeam(false);
                             setSelectedSubordinates(new Set());
-    setSelectedPositions(new Set());
-    setAvailablePositions([]);
-    setFilterModalOpen(false);
+                            setSelectedPositions(new Set());
+                            setAvailablePositions([]);
+                            setFilterModalOpen(false);
                           }}
-                          className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                            !showTeam
-                              ? activePurpleButtonClass
-                              : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                          }`}
+                          className={toolbarStyles.scopeButton}
+                          aria-pressed={!showTeam}
                         >
                           <UserRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                           <span>Vlastní</span>
@@ -2244,11 +2217,8 @@ function ContractsPageContent() {
                         <button
                           type="button"
                           onClick={() => setShowTeam(true)}
-                          className={`ui-focus inline-flex h-8 items-center gap-1.5 rounded-[14px] border px-3 text-xs font-bold transition ${
-                            showTeam
-                              ? activePurpleButtonClass
-                              : "border-transparent text-slate-600 hover:bg-white hover:text-slate-950"
-                          }`}
+                          className={toolbarStyles.scopeButton}
+                          aria-pressed={showTeam}
                         >
                           <UsersRound size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                           <span>Tým</span>
@@ -2258,16 +2228,19 @@ function ContractsPageContent() {
 
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className={toolbarStyles.actions}>
                     <button
                       type="button"
                       onClick={() => setFilterModalOpen(true)}
-                      className="ui-focus inline-flex h-10 items-center gap-1.5 rounded-[16px] border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 transition hover:border-slate-500 hover:bg-slate-50"
+                      className={toolbarStyles.button}
+                      data-active={advancedFilterCount > 0}
+                      aria-haspopup="dialog"
+                      aria-expanded={filterModalOpen}
                     >
                       <SlidersHorizontal size={14} strokeWidth={2} className="shrink-0" aria-hidden="true" />
                       <span>Filtr</span>
                       {advancedFilterCount > 0 ? (
-                        <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-violet-700 px-1.5 text-[10px] font-black leading-5 text-white">
+                        <span className={toolbarStyles.filterCount}>
                           {advancedFilterCount}
                         </span>
                       ) : null}
@@ -2281,12 +2254,10 @@ function ContractsPageContent() {
                           setSelectMode(true);
                         }
                       }}
-                        className={`ui-focus inline-flex h-10 items-center rounded-[16px] border px-3 text-xs font-bold transition ${
-                          selectMode
-                          ? "border-violet-700 bg-violet-700 text-white shadow-[0_10px_22px_rgba(109,40,217,0.22)] hover:bg-violet-800 [&_*]:!text-white"
-                          : "border-emerald-700 bg-emerald-600 !text-white shadow-[0_10px_22px_rgba(5,150,105,0.2)] hover:bg-emerald-700"
-                      }`}
+                      className={`${toolbarStyles.button} ${toolbarStyles.bulk}`}
+                      aria-pressed={selectMode}
                     >
+                      <ListChecks size={16} strokeWidth={1.7} aria-hidden="true" />
                       {selectMode ? "Zrušit výběr" : "Hromadný výběr"}
                     </button>
                   </div>
@@ -2295,7 +2266,7 @@ function ContractsPageContent() {
             </div>
 
           {selectMode && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/85 pt-2">
+            <div className={toolbarStyles.selectionActions}>
               <span className="text-xs font-semibold text-slate-600">
                 Vybráno: {selectedKeys.size}
               </span>
@@ -2373,9 +2344,7 @@ function ContractsPageContent() {
               </p>
             </div>
           ) : loading && !serverFilterActive ? (
-            <p className="mt-4 text-sm text-slate-600">
-              Načítám smlouvy…
-            </p>
+            <ContractsListLoader />
           ) : isAnniversaryLoading && effectiveFilteredContracts.length === 0 ? (
             <div className="ui-card ui-card-quiet mt-4 space-y-2 rounded-2xl bg-white px-6 py-8 text-center text-sm text-slate-700">
               <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
@@ -2589,6 +2558,7 @@ function ContractsPageContent() {
                   const CompactContent = (
                     <article
                       className={cardStyles.card}
+                      data-category={PRODUCT_CATALOG[c.productKey as Product]?.category ?? "other"}
                       data-selected={isSelected}
                       data-selection-mode={selectMode}
                     >
@@ -2599,7 +2569,7 @@ function ContractsPageContent() {
                               <Check size={13} strokeWidth={2.5} />
                             </span>
                           ) : null}
-                          <ContractInstitutionLogo
+                          <ContractCardIllustration
                             product={c.productKey as Product | undefined}
                           />
                           <div className={cardStyles.identityText}>
@@ -2607,9 +2577,6 @@ function ContractsPageContent() {
                               {c.clientName || "Klient neuveden"}
                             </div>
                             <div className={cardStyles.product}>
-                              <ContractCategoryIcon
-                                product={c.productKey as Product | undefined}
-                              />
                               <span
                                 className={cardStyles.productName}
                                 title={[institutionLabel, displayProductName].filter(Boolean).join(" · ")}
@@ -2657,7 +2624,7 @@ function ContractsPageContent() {
                         </div>
 
                         <div className={cardStyles.date}>
-                          <CalendarDays size={12} strokeWidth={1.8} aria-hidden="true" />
+                          <CalendarDays size={14} strokeWidth={1.5} aria-hidden="true" />
                           <span className="sr-only">Sjednáno </span>
                           <span>{signedStr}</span>
                         </div>
@@ -2683,11 +2650,10 @@ function ContractsPageContent() {
                         </div>
 
                         <div className={cardStyles.status}>
-                          <span className={`${cardStyles.statusBadge} ${statusBadge.compactClass}`}>
-                            <span
-                              className={`${cardStyles.statusDot} ${statusBadge.compactDotClass}`}
-                              aria-hidden="true"
-                            />
+                          <span className={cardStyles.statusBadge} data-tone={statusBadge.tone}>
+                            <span className={cardStyles.statusIcon} aria-hidden="true">
+                              <statusBadge.Icon size={11} strokeWidth={2} />
+                            </span>
                             {statusBadge.label}
                           </span>
                         </div>
@@ -3093,7 +3059,7 @@ function ContractsPageFallback() {
   return (
     <AppLayout active="contracts">
       <div className="min-h-screen w-full bg-slate-50 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-        <div className="mx-auto w-full max-w-6xl font-mono text-slate-900">Načítám smlouvy…</div>
+        <div className="mx-auto w-full max-w-6xl"><ContractsListLoader /></div>
       </div>
     </AppLayout>
   );

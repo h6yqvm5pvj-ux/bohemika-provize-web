@@ -18,7 +18,7 @@ export const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 export const CONTRACTS_VIEW_STATE_KEY = "contracts_view_state_v1";
 export const CONTRACTS_SILENT_REFRESH_COOLDOWN_MS = 60_000;
 export const CONTRACT_LIST_WINDOWING_THRESHOLD = 90;
-export const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 92;
+export const CONTRACT_LIST_ESTIMATED_COMPACT_ROW_HEIGHT = 98;
 export const CONTRACT_LIST_OVERSCAN_ROWS = 3;
 
 export const normalizeEmail = (email?: string | null) =>

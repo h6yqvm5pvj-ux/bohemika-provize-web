@@ -1,0 +1,33 @@
+.scene {
+  --scene-color: var(--category-color, #8056a0);
+  --scene-surface: var(--category-surface, #f5effa);
+  --scene-mid: color-mix(in srgb, var(--scene-color) 45%, white);
+  --scene-light: color-mix(in srgb, var(--scene-color) 18%, white);
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+.needle { transform-origin: 51px 46px; }
+.detail { transform-box: fill-box; transform-origin: center; }
+@media (prefers-reduced-motion: no-preference) {
+  :global([data-tool-card]):focus-within .needle { animation: gauge 950ms ease-in-out 1; }
+  :global([data-tool-card]):focus-within .scene .detail { animation: float 950ms ease-in-out 1; }
+  :global([data-tool-card]):focus-within .scene[data-scene="proklepka-vozidla"] .detail { animation-name: drive; }
+  :global([data-tool-card]):focus-within .scene[data-scene="cestovni-pojisteni-cpp-vs-kooperativa"] .detail { animation-name: fly; }
+  :global([data-tool-card]):focus-within .scene[data-scene="nastaveni-zivotniho-pojisteni"] .detail { animation-name: pulse; }
+}
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  :global([data-tool-card]):hover .needle { animation: gauge 950ms ease-in-out 1; }
+  :global([data-tool-card]):hover .scene .detail { animation: float 950ms ease-in-out 1; }
+  :global([data-tool-card]):hover .scene[data-scene="proklepka-vozidla"] .detail { animation-name: drive; }
+  :global([data-tool-card]):hover .scene[data-scene="cestovni-pojisteni-cpp-vs-kooperativa"] .detail { animation-name: fly; }
+  :global([data-tool-card]):hover .scene[data-scene="nastaveni-zivotniho-pojisteni"] .detail { animation-name: pulse; }
+}
+@keyframes gauge { 0%, 100% { rotate: 0deg; } 45% { rotate: 22deg; } }
+@keyframes float { 0%, 100% { translate: 0 0; } 45% { translate: 0 -5px; } }
+@keyframes drive { 0%, 100% { translate: 0 0; } 45% { translate: 5px -2px; } }
+@keyframes fly { 0%, 100% { translate: 0 0; } 50% { translate: 7px -8px; } }
+@keyframes pulse { 0%, 100% { scale: 1; } 30% { scale: 1.08; } 50% { scale: .99; } 70% { scale: 1.04; } }
+:global(:root[data-motion="off"]) .detail, :global(:root[data-motion="off"]) .needle { animation: none !important; }

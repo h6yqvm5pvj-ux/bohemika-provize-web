@@ -75,17 +75,22 @@
 .filterCount { display: grid; place-items: center; min-width: 17px; height: 17px; padding-inline: 4px; border-radius: 5px; color: #aa85c4; background: #f7f1fc; font-size: 9px; font-variant-numeric: tabular-nums; }
 .sort { display: inline-flex; flex-shrink: 0; align-items: center; gap: 7px; color: #a18aac; }
 .sort select { max-width: 100%; padding: 5px 0; color: #897793; background: transparent; font-size: 11px; font-weight: 500; outline: none; }
+.productFilterBar { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 14px; padding-top: 12px; border-top: 1px solid #f0eaf5; }
+.productFilter { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 9px; min-width: 0; color: #7d6a88; font-size: 11px; font-weight: 550; }
+.productFilter select { min-height: 35px; max-width: 100%; padding: 6px 27px 6px 10px; border: 1px solid #e9e2ef; border-radius: 8px; background: #fcfafd; color: #604775; font-size: 12px; }
+.productHint { color: #887392; font-size: 10px; }
+.clearProduct { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; color: #765293; font-size: 11px; }
 .resultsBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #f0eaf5; padding: 11px 23px; }
 .resultsBar p { margin: 0; color: #887392; font-size: 10px; }
 .resultsBar strong { color: #81668f; font-weight: 600; }
 .syncNote { display: inline-flex; align-items: center; gap: 5px; color: #b19ac2; font-size: 10px; }
-.columnHead { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 104px; gap: 22px; padding: 11px 62px 11px 79px; border-block: 1px solid #f2edf6; background: #fcfafE; color: #887392; font-size: 9px; font-weight: 600; letter-spacing: .055em; text-transform: uppercase; }
+.columnHead { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 104px; gap: 22px; padding: 11px 62px 11px 72px; border-block: 1px solid #f2edf6; background: #fcfafE; color: #887392; font-size: 9px; font-weight: 600; letter-spacing: .055em; text-transform: uppercase; }
 .columnHead span:last-child { text-align: right; }
-.row { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 18px 22px; border-bottom: 1px solid #f1edf5; background: #fff; text-decoration: none; outline: none; transition: background .18s, box-shadow .18s; }
+.row { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 10px 22px; border-bottom: 1px solid #f1edf5; background: #fff; text-decoration: none; outline: none; transition: background .18s, box-shadow .18s; }
 .row:last-child { border-bottom: none; }
 .row:hover, .row:focus-visible { background: #fcf9ff; box-shadow: inset 3px 0 #ba9cd4; }
 .row:focus-visible { outline: 2px solid #bc99d8; outline-offset: -2px; }
-.initials { display: grid; place-items: center; width: 43px; height: 43px; flex-shrink: 0; border: 1px solid #e9e0f2; border-radius: 13px; background: #f4eef9; color: #9673b4; font-size: 12px; font-weight: 650; }
+.initials { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 1px solid #e9e0f2; border-radius: 11px; background: #f4eef9; color: #9673b4; font-size: 12px; font-weight: 650; }
 .initials[data-color="sage"] { color: #789185; background: #eff5f1; border-color: #e4ede7; }
 .initials[data-color="blue"] { color: #7d90ae; background: #f0f4f9; border-color: #e3eaf3; }
 .initials[data-color="rose"] { color: #b087a1; background: #faf1f5; border-color: #f1e5ec; }
@@ -93,18 +98,18 @@
 .identity, .contacts { min-width: 0; }
 .name { overflow: hidden; margin: 0; text-overflow: ellipsis; white-space: nowrap; color: #5e4770; font-size: 14px; font-weight: 600; letter-spacing: -.015em; }
 .row:hover .name { color: #8554a5; }
-.clientMeta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 5px; color: #887392; font-size: 10px; }
+.clientMeta { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 3px; color: #887392; font-size: 10px; }
 .address { display: inline-flex; align-items: center; min-width: 0; gap: 4px; }
 .address > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .address svg { flex-shrink: 0; }
 .aliases { color: #9171a7; }
-.contacts { display: grid; gap: 5px; color: #776181; font-size: 11px; }
+.contacts { display: grid; gap: 3px; color: #776181; font-size: 11px; }
 .contactItem { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .contactItem svg { flex-shrink: 0; color: #bdabc9; }
 .contactItem > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conflict { display: inline-flex; align-items: center; gap: 5px; width: fit-content; padding: 3px 6px; border-radius: 5px; color: #986d32; background: #fcf7ed; font-size: 10px; }
 .missing { color: #897895; font-size: 10px; }
-.contractCount { display: flex; align-items: flex-end; flex-direction: column; gap: 5px; }
+.contractCount { display: flex; align-items: flex-end; flex-direction: column; gap: 3px; }
 .contractCount > strong { color: #8b759b; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .activeBadge, .archiveBadge { display: inline-flex; align-items: center; gap: 5px; width: fit-content; border-radius: 5px; padding: 3px 6px; font-size: 9px; font-weight: 500; white-space: nowrap; }
 .activeBadge { color: #4d8068; background: #f0f7f3; }
@@ -147,12 +152,11 @@
   .resultsBar { padding-inline: 17px; }
   .syncNote { display: none; }
   .columnHead { display: none; }
-  .row { align-items: flex-start; gap: 12px; padding: 17px 16px; }
-  .rowContent { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .row { align-items: flex-start; gap: 12px; padding: 11px 16px; }
+  .rowContent { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .name { font-size: 14px; }
-  .contacts { gap: 5px; }
   .contractCount { flex-direction: row; align-items: center; gap: 8px; }
-  .rowArrow { margin-top: 7px; }
+  .rowArrow { margin-top: 4px; }
   .pagination { padding-inline: 16px; }
   .adviserOptions { grid-template-columns: minmax(0, 1fr); }
 }
@@ -163,7 +167,6 @@
   .scopeButton { gap: 6px; padding-inline: 10px; font-size: 11px; }
   .filter { padding-inline: 8px; font-size: 10px; }
   .search input { padding-left: 39px; font-size: 12px; }
-  .initials { width: 37px; height: 37px; border-radius: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .page *, .page *::after { animation: none !important; transition: none !important; }

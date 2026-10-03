@@ -2,15 +2,17 @@
 
 import { useId } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Star, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Star } from "lucide-react";
 import type { ToolCatalogCategory, ToolCatalogNews } from "./toolCatalog";
 import styles from "./ToolCard.module.css";
+import { ToolIllustration } from "./ToolIllustration";
+import type { ToolHubToolKey } from "./toolHub";
 
 export type ToolCardData = {
   category: ToolCatalogCategory;
   title: string;
   description: string;
-  icon: LucideIcon;
+  key: ToolHubToolKey;
   href?: string;
   external?: boolean;
   onClick?: () => void;
@@ -28,7 +30,6 @@ type ToolCardProps = {
 
 export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, onOpenNews, onOpen }: ToolCardProps) {
   const titleId = useId();
-  const Icon = tool.icon;
   const newsLabel = tool.news?.kind === "new" ? "Nové" : "Aktualizováno";
   const actionLabel = `Otevřít pomůcku ${tool.title}${tool.external ? " (nová karta)" : ""}`;
   const actionContent = <>
@@ -41,9 +42,9 @@ export function ToolCard({ tool, favorite, favoriteDisabled, onToggleFavorite, o
   };
 
   return (
-    <article className={styles.card} data-category={tool.category} data-favorite={favorite} aria-labelledby={titleId}>
+    <article data-tool-card="" className={styles.card} data-category={tool.category} data-favorite={favorite} aria-labelledby={titleId}>
+      <div className={styles.illustration}><ToolIllustration toolKey={tool.key} /></div>
       <div className={styles.header}>
-        <span className={styles.icon}><Icon size={23} strokeWidth={1.7} aria-hidden="true" /></span>
         <span className={styles.category}>{tool.category}</span>
         <button
           type="button"

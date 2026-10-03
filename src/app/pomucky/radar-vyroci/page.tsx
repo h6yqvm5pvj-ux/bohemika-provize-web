@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   BriefcaseBusiness,
@@ -35,6 +36,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { RadarAnniversaryLoader } from "./RadarAnniversaryLoader";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import type { AnniversaryContract as ContractRow } from "@/app/lib/anniversaryPortfolio";
+import { findAnniversaryRadarTarget, isAnniversaryRadarTarget } from "@/app/lib/anniversaryRadarLink";
 import { loadRadarData } from "./loadRadarData";
 import type { AnniversaryReview, AnniversaryReviewMutationResponse, ContactOutcome } from "@/app/lib/anniversaryReviews";
 import { AnniversaryHistory } from "./AnniversaryHistory";
@@ -339,6 +341,14 @@ function csvEscape(value: string): string {
 }
 
 export default function RadarVyrociPage() {
+  return <Suspense fallback={<AppLayout active="tools"><RadarAnniversaryLoader /></AppLayout>}>
+    <RadarVyrociContent />
+  </Suspense>;
+}
+
+function RadarVyrociContent() {
+  const searchParams = useSearchParams();
+  const linkedTarget = searchParams.get("contract");
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [adminImpersonation, setAdminImpersonation] =
     useState<AdminImpersonationState | null>(() =>
@@ -371,6 +381,14 @@ export default function RadarVyrociPage() {
   const [contractDetailWindow, setContractDetailWindow] =
     useState<ContractDetailWindowState | null>(null);
   const [contactDialog, setContactDialog] = useState<ContactDialogState | null>(null);
+  const [linkedCase, setLinkedCase] = useState<{
+    account: string;
+    target: string;
+    key: string | null;
+    failed?: boolean;
+  } | null>(null);
+  const linkedCardRef = useRef<HTMLElement | null>(null);
+  const pendingLinkedFocus = useRef<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -507,7 +525,7 @@ export default function RadarVyrociPage() {
 
   const canShowTeam = isManagerPosition(position);
 
-  const radarItems = useMemo<RadarItem[]>(() => {
+  const availableRadarItems = useMemo<RadarItem[]>(() => {
     const items: RadarItem[] = [];
     for (const contract of contracts) {
       if ((contract.entryType ?? "contract") !== "contract") continue;
@@ -517,10 +535,8 @@ export default function RadarVyrociPage() {
 
       const ownerEmail = contractOwnerEmail(contract);
       if (!ownerEmail) continue;
-      if (!showTeam && ownerEmail !== effectiveUserEmail) continue;
-
       const start = getAnniversaryStartDate(contract);
-      const info = isAnniversarySoon(start, windowDays);
+      const info = isAnniversarySoon(start, DEFAULT_ANNIVERSARY_WINDOW_DAYS);
       if (!info.soon || !info.next || info.daysLeft == null) continue;
 
       const occurrenceKey = anniversaryOccurrenceKey(info.next);
@@ -551,7 +567,43 @@ export default function RadarVyrociPage() {
     }
     items.sort((a, b) => a.daysLeft - b.daysLeft);
     return items;
-  }, [contracts, effectiveUserEmail, showTeam, windowDays]);
+  }, [contracts]);
+
+  useEffect(() => {
+    pendingLinkedFocus.current = null;
+    if (!user || linkedTarget === null || !isAnniversaryRadarTarget(linkedTarget) ||
+        loading || !loadedOnce || loadedFor !== effectiveUserEmail || portfolioFailed) return;
+    let cancelled = false;
+    // The URL only selects within data returned by the existing authorized loader.
+    void findAnniversaryRadarTarget(linkedTarget, availableRadarItems).then(item => {
+      if (cancelled) return;
+      setLinkedCase({ account: effectiveUserEmail, target: linkedTarget, key: item?.key ?? null });
+      if (!item) return;
+      setWindowDays(DEFAULT_ANNIVERSARY_WINDOW_DAYS);
+      setShowTeam(item.ownerEmail !== effectiveUserEmail);
+      setActivityFilter("all");
+      setProductFilter("all");
+      setSearchQuery("");
+      setExpandedKeys(previous => new Set(previous).add(item.key));
+      pendingLinkedFocus.current = item.key;
+    }).catch(() => {
+      if (!cancelled) setLinkedCase({ account: effectiveUserEmail, target: linkedTarget, key: null, failed: true });
+    });
+    return () => { cancelled = true; };
+  }, [availableRadarItems, effectiveUserEmail, linkedTarget, loadedFor, loadedOnce, loading, portfolioFailed, user]);
+
+  const currentLinkedCase = user && linkedCase?.account === effectiveUserEmail && linkedCase.target === linkedTarget
+    ? linkedCase : null;
+  const linkedNotice = linkedTarget === null ? null
+    : !isAnniversaryRadarTarget(linkedTarget) ? "Odkaz na výročí není platný."
+    : !currentLinkedCase ? "Hledám vybrané výročí…"
+    : currentLinkedCase.failed ? "Odkaz na výročí se nepodařilo otevřít. Zkus stránku obnovit."
+    : currentLinkedCase.key === null ? "Vybrané výročí není dostupné v tvém portfoliu nebo nespadá do příštích 90 dní."
+    : null;
+
+  const radarItems = useMemo(() => availableRadarItems.filter(item =>
+    item.daysLeft <= windowDays && (showTeam || item.ownerEmail === effectiveUserEmail)
+  ), [availableRadarItems, effectiveUserEmail, showTeam, windowDays]);
 
   const productFilteredItems = useMemo(
     () => radarItems.filter((item) => matchesRadarProductFilter(item.product, productFilter)),
@@ -576,6 +628,13 @@ export default function RadarVyrociPage() {
     if (activityFilter === "all") return true;
     return anniversaryStage(reviewRecords.get(item.key), item.occurrenceKey) === activityFilter;
   }), [searchedItems, activityFilter, reviewRecords]);
+
+  useEffect(() => {
+    if (!currentLinkedCase?.key || pendingLinkedFocus.current !== currentLinkedCase.key || !linkedCardRef.current) return;
+    linkedCardRef.current.scrollIntoView({ block: "center", behavior: "auto" });
+    linkedCardRef.current.focus({ preventScroll: true });
+    pendingLinkedFocus.current = null;
+  }, [currentLinkedCase, visibleItems]);
 
   const groups = useMemo(() => {
     return (["new", "active", "completed"] as const).flatMap(activity => {
@@ -747,6 +806,10 @@ export default function RadarVyrociPage() {
     );
   }
 
+  if (!user) {
+    return <AppLayout active="tools"><p>Pro zobrazení výročí se přihlas.</p></AppLayout>;
+  }
+
   if (portfolioFailed) {
     return (
       <AppLayout active="tools">
@@ -774,6 +837,7 @@ export default function RadarVyrociPage() {
         </header>
 
         {error && <div role="alert" className={styles.notice}>{error}</div>}
+        {linkedNotice && <div role="status" className={styles.linkedNotice}>{linkedNotice}</div>}
 
         <section className={styles.workspace} aria-label="Přehled výročí smluv">
           <div className={styles.tabs} role="group" aria-label="Stav zpracování">
@@ -858,8 +922,10 @@ export default function RadarVyrociPage() {
                         const meetingAt = isCurrentReview(review, item.occurrenceKey) ? review?.meetingAt ?? null : null;
                         const noteDraft = noteDrafts.get(item.key) ?? savedNote;
                         const noteDirty = noteDraft.trim() !== savedNote.trim();
+                        const isLinked = currentLinkedCase?.key === item.key;
                         return (
-                          <article key={item.key} className={styles.card} data-urgent={group.tone === "urgent" && !hasActivity} data-completed={isCompleted} aria-label={`${item.clientName}, smlouva ${item.contractNumber ?? item.entryId}`}>
+                          <article key={item.key} ref={isLinked ? linkedCardRef : undefined} tabIndex={isLinked ? -1 : undefined} className={styles.card} data-linked={isLinked} data-urgent={group.tone === "urgent" && !hasActivity} data-completed={isCompleted} aria-label={`${item.clientName}, smlouva ${item.contractNumber ?? item.entryId}`}>
+                            {isLinked && <div className={styles.linkedLabel}>Vybrané výročí z přehledu klientů</div>}
                             <div className={styles.cardRow}>
                               <div className={styles.client}>
                                 <span className={styles.categoryIcon}><ProductCategoryIcon product={item.product} /></span>

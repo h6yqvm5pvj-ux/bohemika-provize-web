@@ -16,6 +16,7 @@ import { clientScopeQuery, readClientScope, selectClientContracts, type ClientSc
 import { buildClientDirectory, filterClientDirectory, type ClientCardSummary, type ClientFilter, type ClientSort } from "./clientDirectory";
 import { loadClientContracts } from "./loadClientContracts";
 import type { ClientAdviser, ClientContractItem } from "./clientCardHelpers";
+import { CLIENT_PRODUCT_GROUPS, type ClientProductFilter } from "./clientProducts";
 
 const PAGE_SIZE = 24;
 const FILTERS: { value: ClientFilter; label: string }[] = [
@@ -37,6 +38,7 @@ function ClientDirectory({ user }: { user: User }) {
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
+  const [product, setProduct] = useState<ClientProductFilter>("all");
   const [sort, setSort] = useState<ClientSort>("name");
   const searchParams = useSearchParams();
   const [selection, setSelection] = useState(() => readClientScope(searchParams));
@@ -87,14 +89,14 @@ function ClientDirectory({ user }: { user: User }) {
     setPage(1);
     window.history.replaceState(null, "", `/klienti?${clientScopeQuery(next)}`);
   };
-  const hasFilters = Boolean(search.trim() || filter !== "all" || (selection.scope === "team" && selection.advisers.length));
-  const visible = useMemo(() => filterClientDirectory(scoped, search, filter, sort), [scoped, search, filter, sort]);
+  const hasFilters = Boolean(search.trim() || filter !== "all" || product !== "all" || (selection.scope === "team" && selection.advisers.length));
+  const visible = useMemo(() => filterClientDirectory(scoped, search, filter, sort, product), [scoped, search, filter, sort, product]);
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages);
   const activeCount = scoped.filter((client) => client.activeCount > 0).length;
   const missingCount = scoped.filter((client) => !client.phone || !client.email).length;
   const reviewCount = scoped.filter((client) => client.contactConflicts.length > 0).length;
-  const reset = () => { setSearch(""); setFilter("all"); changeScope({ ...selection, advisers: [] }); };
+  const reset = () => { setSearch(""); setFilter("all"); setProduct("all"); changeScope({ ...selection, advisers: [] }); };
   const changePage = (next: number) => {
     setPage(next);
     listRef.current?.scrollIntoView({ block: "start" });
@@ -155,6 +157,17 @@ function ClientDirectory({ user }: { user: User }) {
                   </button>)}
                 </div>
                 <label className={styles.sort}><ArrowDownUp size={13} aria-hidden="true" /><span className="sr-only">Řazení klientů</span><select value={sort} onChange={(event) => { setSort(event.target.value as ClientSort); setPage(1); }}><option value="name">Podle jména A–Z</option><option value="contracts">Nejvíce smluv</option><option value="recent">Nejnovější smlouva</option></select></label>
+              </div>
+              <div className={styles.productFilterBar}>
+                <label className={styles.productFilter}>
+                  <span>Druh produktu</span>
+                  <select value={product} disabled={loading || Boolean(error)} onChange={(event) => { setProduct(event.target.value as ClientProductFilter); setPage(1); }}>
+                    <option value="all">Všechny produkty</option>
+                    {CLIENT_PRODUCT_GROUPS.map((group) => <option key={group.value} value={group.value}>{group.label}</option>)}
+                  </select>
+                </label>
+                <span className={styles.productHint}>Podle smluv klienta včetně archivu</span>
+                {product !== "all" && <button type="button" className={styles.clearProduct} onClick={() => { setProduct("all"); setPage(1); }}><X size={12} aria-hidden="true" />Zrušit produktový filtr</button>}
               </div>
             </div>
 

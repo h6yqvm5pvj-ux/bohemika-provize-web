@@ -1,6 +1,7 @@
 import type { ClientCardDraft } from "./clientCardData";
 import { clientIdentityKey, clientNameWithoutTitles, clientSlugForName, isClientCardSlug, normalizeClientSearch } from "./clientIdentity";
 import { clientContractProductLabel, contractOwnerEmail, splitClientContracts, toDate, uniqueContracts, type ClientContractItem } from "./clientCardHelpers";
+import { CLIENT_PRODUCT_GROUPS, clientProductGroup, type ClientProductFilter, type ClientProductGroup } from "./clientProducts";
 
 export type ClientCardSummary = Pick<ClientCardDraft, "clientName" | "phone" | "email" | "permanentAddress"> & { slug: string };
 export type ClientDirectoryItem = {
@@ -16,6 +17,7 @@ export type ClientDirectoryItem = {
   address: string;
   contactConflicts: string[];
   products: string[];
+  productGroups: ClientProductGroup[];
   ownerEmails: string[];
   latestActivity: number;
   searchText: string;
@@ -56,6 +58,8 @@ export function buildClientDirectory(contracts: ClientContractItem[], cards: Cli
     const addresses = contactValues(items, "clientAddress");
     const split = splitClientContracts(items);
     const products = [...new Set(items.map(clientContractProductLabel))];
+    const groupValues = new Set(items.map((item) => clientProductGroup(item.productKey)));
+    const groups = CLIENT_PRODUCT_GROUPS.filter((group) => groupValues.has(group.value));
     const phone = saved ? saved.phone : phones.length === 1 ? phones[0] : "";
     const email = saved ? saved.email : emails.length === 1 ? emails[0] : "";
     const address = saved ? saved.permanentAddress : addresses.length === 1 ? addresses[0] : "";
@@ -66,9 +70,10 @@ export function buildClientDirectory(contracts: ClientContractItem[], cards: Cli
       phone, email, address,
       contactConflicts: [phones.length > 1 ? "telefon" : "", emails.length > 1 ? "e-mail" : "", addresses.length > 1 ? "adresa" : ""].filter(Boolean),
       products,
+      productGroups: groups.map((group) => group.value),
       ownerEmails: [...new Set(items.map(contractOwnerEmail))],
       latestActivity: dateOf(items[0]),
-      searchText: normalizeClientSearch([name, ...aliases, phone, email, address, ...phones, ...emails, ...addresses, ...products, ...items.map((item) => item.contractNumber ?? "")].join(" ")),
+      searchText: normalizeClientSearch([name, ...aliases, phone, email, address, ...phones, ...emails, ...addresses, ...products, ...groups.map((group) => group.label), ...items.map((item) => item.contractNumber ?? "")].join(" ")),
     };
   }).sort((a, b) => a.name.localeCompare(b.name, "cs-CZ") || a.slug.localeCompare(b.slug));
 }
@@ -76,10 +81,11 @@ export function buildClientDirectory(contracts: ClientContractItem[], cards: Cli
 export type ClientFilter = "all" | "active" | "archived" | "missing-contact" | "review";
 export type ClientSort = "name" | "contracts" | "recent";
 
-export function filterClientDirectory(clients: ClientDirectoryItem[], query: string, filter: ClientFilter, sort: ClientSort): ClientDirectoryItem[] {
+export function filterClientDirectory(clients: ClientDirectoryItem[], query: string, filter: ClientFilter, sort: ClientSort, product: ClientProductFilter = "all"): ClientDirectoryItem[] {
   const words = normalizeClientSearch(query).split(/\s+/).filter(Boolean);
   const numberQuery = query.replace(/[\s()+./-]/g, "");
   return clients.filter((client) => {
+    if (product !== "all" && !client.productGroups.includes(product)) return false;
     const matchesText = words.every((word) => client.searchText.includes(word));
     const matchesNumber = /^\d{3,}$/.test(numberQuery) && (
       client.contracts.some((item) => [item.clientPhone, item.contractNumber].some((value) => value?.replace(/[\s()+./-]/g, "").includes(numberQuery))) ||

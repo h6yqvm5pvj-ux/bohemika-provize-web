@@ -4,14 +4,14 @@
 
 .columns,
 .grid {
-  grid-template-columns: minmax(0, 1fr) 106px 136px 140px 36px;
+  grid-template-columns: minmax(0, 1fr) 106px 136px 116px 36px;
   align-items: center;
   column-gap: 24px;
 }
 
 .columns {
   display: grid;
-  padding: 0 20px 0 86px;
+  padding: 0 20px 0 112px;
   color: #7a8395;
   font-size: 11px;
   font-weight: 500;
@@ -19,6 +19,10 @@
 
 .columns > :nth-child(3) {
   text-align: right;
+}
+
+.columns > :nth-child(2) {
+  padding-left: 21px;
 }
 
 .cardButton {
@@ -37,7 +41,7 @@
 
 .card {
   content-visibility: auto;
-  contain-intrinsic-block-size: auto 57px;
+  contain-intrinsic-block-size: auto 62px;
   position: relative;
   min-height: 84px;
   padding: 13px 20px;
@@ -109,6 +113,154 @@
   object-fit: contain;
 }
 
+.illustration {
+  --illustration-accent: #8654bc;
+  position: relative;
+  flex: 0 0 76px;
+  width: 76px;
+  height: 62px;
+  color: var(--illustration-accent);
+}
+
+.card[data-category="auto"] .illustration { --illustration-accent: #4a7ec1; }
+.card[data-category="property"] .illustration { --illustration-accent: #39866d; }
+.card[data-category="travel"] .illustration,
+.card[data-category="foreigners"] .illustration { --illustration-accent: #337f96; }
+.card[data-category="pension"] .illustration,
+.card[data-category="comfort"] .illustration { --illustration-accent: #9c752f; }
+.card[data-category="business"] .illustration { --illustration-accent: #6574b2; }
+
+.illustrationBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.illustrationHalo { fill: var(--illustration-accent); fill-opacity: .09; }
+
+.illustrationIcon {
+  position: absolute;
+  top: 7px;
+  left: 15px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #ffffffdb;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #fff, #ffffff75);
+  box-shadow: 0 5px 12px #2438540c;
+  transform: rotate(-8deg);
+  transition: transform 250ms ease;
+}
+
+.illustrationIcon svg { width: 31px; height: 31px; transform: rotate(8deg); }
+.illustrationWindow { fill: currentColor; fill-opacity: .06; }
+.illustrationHeartbeat { opacity: 0; stroke-dasharray: .22 1.2; stroke-dashoffset: .22; }
+
+/* One short gesture per interaction; no timers or continuously moving rows. */
+.cardButton:focus-visible .illustrationIcon svg {
+  animation: illustrationNod 1100ms ease-in-out 1;
+}
+/* Keep keyframe references explicit so CSS Modules can rename them together. */
+.cardButton:focus-visible :where([data-category="auto"]) .illustrationIcon svg { animation-name: carDrive; }
+.cardButton:focus-visible :where([data-category="property"]) .illustrationIcon svg { animation-name: houseLight; }
+.cardButton:focus-visible :where([data-category="life"]) .illustrationIcon svg { animation-name: heartBeat; }
+.cardButton:focus-visible :where([data-category="travel"]) .illustrationIcon svg { animation-name: planeFlight; }
+.cardButton:focus-visible :where([data-category="pension"]) .illustrationIcon svg { animation-name: coinBounce; }
+.cardButton:focus-visible :where([data-category="comfort"]) .illustrationIcon svg { animation-name: coinTurn; }
+.cardButton:focus-visible :where([data-category="business"]) .illustrationIcon svg { animation-name: caseLift; }
+.cardButton:focus-visible :where([data-category="foreigners"]) .illustrationIcon svg { animation-name: peopleGreeting; }
+.cardButton:focus-visible .illustrationWindow { animation: windowLight 1100ms ease-in-out 1; }
+.cardButton:focus-visible .illustrationHeartbeat { animation: heartbeatTrace 1100ms ease-in-out 1; }
+
+@media (hover: hover) {
+  .cardButton:hover .illustrationIcon svg {
+    animation: illustrationNod 1100ms ease-in-out 1;
+  }
+  .cardButton:hover :where([data-category="auto"]) .illustrationIcon svg { animation-name: carDrive; }
+  .cardButton:hover :where([data-category="property"]) .illustrationIcon svg { animation-name: houseLight; }
+  .cardButton:hover :where([data-category="life"]) .illustrationIcon svg { animation-name: heartBeat; }
+  .cardButton:hover :where([data-category="travel"]) .illustrationIcon svg { animation-name: planeFlight; }
+  .cardButton:hover :where([data-category="pension"]) .illustrationIcon svg { animation-name: coinBounce; }
+  .cardButton:hover :where([data-category="comfort"]) .illustrationIcon svg { animation-name: coinTurn; }
+  .cardButton:hover :where([data-category="business"]) .illustrationIcon svg { animation-name: caseLift; }
+  .cardButton:hover :where([data-category="foreigners"]) .illustrationIcon svg { animation-name: peopleGreeting; }
+  .cardButton:hover .illustrationWindow { animation: windowLight 1100ms ease-in-out 1; }
+  .cardButton:hover .illustrationHeartbeat { animation: heartbeatTrace 1100ms ease-in-out 1; }
+}
+
+@keyframes carDrive {
+  0%, 100% { transform: translate(0, 0) rotate(8deg); }
+  18% { transform: translate(-3px, 0) rotate(6deg); }
+  48% { transform: translate(9px, -1px) rotate(8deg); }
+  65% { transform: translate(7px, 0) rotate(9deg); }
+}
+@keyframes houseLight {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  35%, 65% { filter: drop-shadow(0 0 3px #eebf5770); }
+}
+@keyframes windowLight {
+  0%, 100% { fill: currentColor; fill-opacity: .06; }
+  30%, 70% { fill: #f6bd45; fill-opacity: 1; }
+}
+@keyframes heartBeat {
+  0%, 100% { transform: rotate(8deg) scale(1); }
+  25% { transform: rotate(8deg) scale(1.1); }
+  45% { transform: rotate(8deg) scale(.97); }
+  65% { transform: rotate(8deg) scale(1.035); }
+}
+@keyframes heartbeatTrace {
+  0%, 10% { stroke-dashoffset: .22; opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  90%, 100% { stroke-dashoffset: -1; opacity: 0; }
+}
+@keyframes planeFlight {
+  0%, 100% { transform: translate(0, 0) rotate(8deg); }
+  25% { transform: translate(-1px, 1px) rotate(11deg); }
+  60% { transform: translate(4px, -5px) rotate(1deg); }
+}
+@keyframes coinBounce {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  35% { transform: translateY(-5px) rotate(8deg); }
+  65% { transform: translateY(1px) rotate(8deg); }
+}
+@keyframes coinTurn {
+  0%, 100% { transform: rotate(8deg) scaleX(1); }
+  45% { transform: rotate(8deg) scaleX(.35); }
+  70% { transform: rotate(8deg) scaleX(1.05); }
+}
+@keyframes caseLift {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  35% { transform: translateY(-4px) rotate(3deg); }
+  65% { transform: translateY(-3px) rotate(12deg); }
+}
+@keyframes peopleGreeting {
+  0%, 100% { transform: rotate(8deg); }
+  30% { transform: rotate(1deg); }
+  60% { transform: rotate(12deg); }
+}
+@keyframes illustrationNod {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  45% { transform: translateY(-3px) rotate(5deg); }
+}
+
+.illustration .logo {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 42px;
+  height: 25px;
+  border: 1px solid #f0edf5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 8px #24385410;
+}
+
+.illustration .logoImage { padding: 3px; }
+
 .identityText {
   min-width: 0;
   flex: 1;
@@ -141,15 +293,7 @@
   white-space: nowrap;
 }
 
-.categoryIcon {
-  display: inline-flex;
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
-}
+
 
 .metadata {
   display: flex;
@@ -203,7 +347,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   color: #657084;
   font-size: 12px;
   line-height: 20px;
@@ -212,7 +356,11 @@
 }
 
 .date svg {
-  display: none;
+  display: block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #9c90af;
 }
 
 .premium {
@@ -246,19 +394,44 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 9px;
-  border-radius: 7px;
+  min-height: 20px;
   font-size: 11px;
-  font-weight: 550;
-  line-height: 18px;
+  font-weight: 600;
+  line-height: 16px;
   white-space: nowrap;
 }
 
-.statusDot {
-  width: 5px;
-  height: 5px;
+.statusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   border-radius: 50%;
+  background: var(--status-background);
+  box-shadow: inset 0 0 0 1px var(--status-border);
+}
+
+.statusBadge[data-tone="paid"] {
+  --status-background: #edf8f2;
+  --status-border: #d4ecdf;
+  color: #287353;
+}
+.statusBadge[data-tone="unpaid"] {
+  --status-background: #fff0f3;
+  --status-border: #f6dce3;
+  color: #a14461;
+}
+.statusBadge[data-tone="cancelled"] {
+  --status-background: #fff6e5;
+  --status-border: #f4e4c2;
+  color: #946728;
+}
+.statusBadge[data-tone="matured"] {
+  --status-background: #edf5fc;
+  --status-border: #d9e8f5;
+  color: #487596;
 }
 
 .action {
@@ -290,7 +463,7 @@
   .columns,
   .grid {
     column-gap: 16px;
-    grid-template-columns: minmax(0, 1fr) 90px 108px 110px 34px;
+    grid-template-columns: minmax(0, 1fr) 106px 108px 110px 34px;
   }
 }
 
@@ -325,12 +498,18 @@
     padding: 4px;
   }
 
+  .illustration { flex-basis: 54px; width: 54px; height: 48px; }
+  .illustrationIcon { top: 5px; left: 9px; width: 32px; height: 32px; border-radius: 10px; }
+  .illustrationIcon svg { width: 25px; height: 25px; }
+  .illustration .logo { width: 34px; height: 20px; border-radius: 6px; }
+  .illustration .logoImage { padding: 2px; }
+
   .selection {
     width: 18px;
     height: 18px;
   }
 
-  .card[data-selection-mode="true"] .logo {
+  .card[data-selection-mode="true"] .illustration {
     display: none;
   }
 
@@ -345,11 +524,6 @@
   .date {
     grid-area: date;
     font-size: 11px;
-  }
-
-  .date svg {
-    display: block;
-    color: #9ba3b1;
   }
 
   .premium {
@@ -367,9 +541,7 @@
   }
 
   .statusBadge {
-    padding: 2px 7px;
     font-size: 10px;
-    line-height: 17px;
   }
 
   .action {
@@ -383,7 +555,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .action {
+  .action,
+  .illustrationIcon {
     transition: none;
+  }
+  .cardButton:is(:hover, :focus-visible) .illustrationIcon svg,
+  .cardButton:is(:hover, :focus-visible) .illustrationWindow,
+  .cardButton:is(:hover, :focus-visible) .illustrationHeartbeat {
+    animation: none;
   }
 }

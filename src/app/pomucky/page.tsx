@@ -15,38 +15,18 @@ import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpRight,
-  BanknoteArrowDown,
   BarChart3,
-  Bike,
-  Building2,
-  Calculator,
-  CalendarClock,
   CarFront,
-  ChartNoAxesColumn,
-  Clock3,
-  ContactRound,
   Files,
-  FileSignature,
-  Gauge,
-  HandCoins,
   HeartPulse,
   Home,
-  Landmark,
   Plane,
-  PenTool,
   PiggyBank,
-  RefreshCcw,
-  Scale,
-  ScrollText,
   Search,
-  ShieldCheck,
   Sparkles,
   Star,
   LayoutGrid,
   History,
-  TrendingUp,
-  Trophy,
-  WalletCards,
   X,
 } from "lucide-react";
 
@@ -143,44 +123,10 @@ type Tool = {
   title: string;
   description: string;
   news?: ToolCatalogNews;
-  icon: LucideIcon;
   href?: string;
   external?: boolean;
   render?: () => ReactElement;
   onClick?: () => void;
-};
-
-const TOOL_ICON_BY_KEY: Record<ToolHubToolKey, LucideIcon> = {
-  argumenty: Scale,
-  kontakty: ContactRound,
-  dokumenty: Files,
-  zaznam: FileSignature,
-  "vypoved-smlouvy": ScrollText,
-  "jak-stiham-vypoved-smlouvy": Clock3,
-  "nahrada-smlouvy": RefreshCcw,
-  "radar-vyroci": CalendarClock,
-  tvorba: PenTool,
-  "srovnani-nabidek": Scale,
-  "online-vizitka": WalletCards,
-  "hypoteka-vlastni-zdroje": PiggyBank,
-  statistika: BarChart3,
-  "export-produkce": BanknoteArrowDown,
-  "plan-produkce": Trophy,
-  tipar: HandCoins,
-  zlato: Landmark,
-  katastr: Home,
-  "proklepka-vozidla": ShieldCheck,
-  "nahrat-tachometr": Gauge,
-  "odkazy-instituce": Landmark,
-  ares: Building2,
-  "projekce-vykonu": TrendingUp,
-  "cestovni-pojisteni-cpp-vs-kooperativa": Plane,
-  "nastaveni-zivotniho-pojisteni": HeartPulse,
-  "invalidni-duchod": Calculator,
-  "srovnavac-trvalych-nasledku": Bike,
-  "srovnavac-odpovednosti-obcana": ShieldCheck,
-  "srovnavac-pracovni-neschopnosti": HeartPulse,
-  "neon-life-vs-metlife-oneguard": ChartNoAxesColumn,
 };
 
 type ToolHubUsageResponse = {
@@ -281,7 +227,6 @@ export default function ToolsPage() {
       TOOL_CATALOG.filter((entry) => !entry.hiddenFromHub).map((entry) => {
         const baseTool: Tool = {
           ...entry,
-          icon: TOOL_ICON_BY_KEY[entry.key],
         };
 
         if (entry.key === "kontakty") {
