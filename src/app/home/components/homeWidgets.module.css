@@ -57,6 +57,7 @@
 .trend[data-direction="flat"] { color: #8d7e99; }
 .error { margin-top: 10px; color: #b25570; font-size: 12px; line-height: 1.6; }
 .payout { padding-block: 20px; }
+.payoutLoading { border-color: #e8e1f0; background: linear-gradient(155deg, #fff 30%, #fcfaff); }
 .payoutLayout { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; margin-top: 16px; }
 .payoutPeriod { margin: 0; font-size: 9px; letter-spacing: .07em; }
 .payout .amount { margin: 5px 0 0; font-size: clamp(28px, 9.5cqi, 44px); }

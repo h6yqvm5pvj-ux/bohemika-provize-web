@@ -1,0 +1,23 @@
+.scene { width: min(100%, 400px); min-width: 0; margin: 0 auto; }
+.scene svg { display: block; width: 100%; height: auto; overflow: visible; }
+.scene text { font-family: var(--font-inter, system-ui, sans-serif); font-weight: 500; }
+.document, .dashboard, .receipt, .wallet, .summary, .miniCard, .coins { animation: float 5s ease-in-out infinite; }
+.dashboard, .wallet { animation-delay: -2s; }
+.summary { animation-delay: -3s; }
+.miniCard { animation-delay: -1s; }
+.coins { animation-delay: -4s; }
+.signal { stroke-dasharray: 10 90; animation: signal 3.6s linear infinite; }
+.bar { transform-box: fill-box; transform-origin: bottom; animation: bars 3.6s ease-in-out infinite; }
+.trend { stroke-dasharray: 100; animation: draw 5s ease-in-out infinite; }
+.orbitDot, .placeholder { animation: breathe 3s ease-in-out infinite; }
+@keyframes float { 0%, 100% { translate: 0 2px; } 50% { translate: 0 -3px; } }
+@keyframes signal { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes bars { 0%, 100% { scale: 1 .8; } 50% { scale: 1 1; } }
+@keyframes draw { 0%, 10% { stroke-dashoffset: 100; opacity: .2; } 55%, 85% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: .2; } }
+@keyframes breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .scene, .scene * { animation: none !important; }
+  .signal { stroke-dasharray: none; opacity: .4; }
+}
+:global(:root[data-motion="off"]) .scene, :global(:root[data-motion="off"]) .scene * { animation: none !important; }
+:global(:root[data-motion="off"]) .signal { stroke-dasharray: none; opacity: .4; }
