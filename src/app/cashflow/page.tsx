@@ -42,6 +42,7 @@ import type {
 } from "./types";
 import { useCashflowData } from "./useCashflowData";
 import { useCashflowView } from "./useCashflowView";
+import { useCashflowContractSearch } from "./useCashflowContractSearch";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
 import { CashflowAccordion } from "./components/CashflowAccordion";
@@ -214,7 +215,6 @@ export default function CashflowPage() {
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("combined");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
-  const [contractNumberQuery, setContractNumberQuery] = useState("");
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -375,6 +375,8 @@ export default function CashflowPage() {
 
   const calculationIdentity = user && dataEmail && effectiveEmail
     ? `${user.uid ?? user.email}|${normalizeEmail(effectiveEmail)}|${normalizeEmail(dataEmail)}|${accountType}` : null;
+  const { input: contractNumberInput, query: contractNumberQuery, pending: contractSearchPending, setInput: setContractNumberInput } =
+    useCashflowContractSearch(cashflowDataEnabled ? calculationIdentity : null);
   const calculationDay = new Date().toDateString();
   const workerDataset = useMemo<CashflowDataset | null>(() =>
     calculationDeferred && rawSnapshot && cashflowDataEnabled
@@ -726,20 +728,20 @@ export default function CashflowPage() {
               {!isTipsterMode && hasInternalProfile === true && (
                 <div className={introStyles.filtersReveal} style={introDelay(170)}>
                   <CashflowFilters
-                    calculating={calculating}
+                    calculating={calculating || contractSearchPending}
                     calculationFailed={Boolean(workerView.error)}
                     hasTeam={hasTeam}
                     scopeFilter={scopeFilter}
                     productFilter={productFilter}
                     showSubscriptionFilter={canViewSubscriptionCashflow}
-                    contractNumberQuery={contractNumberQuery}
-                    contractNumberSearchActive={contractNumberSearchActive}
+                    contractNumberQuery={contractNumberInput}
+                    contractNumberSearchActive={contractNumberSearchActive || contractSearchPending}
                     contractNumberMatchCount={contractSearchStats.itemCount}
                     contractNumberContractCount={contractSearchStats.contractCount}
                     contractNumberSummary={contractSearchStats.summary}
                     onScopeChange={setScopeFilter}
                     onProductChange={setProductFilter}
-                    onContractNumberChange={setContractNumberQuery}
+                    onContractNumberChange={setContractNumberInput}
                   />
                 </div>
               )}

@@ -2,17 +2,24 @@
 
 import { openPreviewWindow } from "@/lib/openPreviewWindow";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   Download,
+  CarFront,
+  ChartNoAxesCombined,
   Eye,
   ExternalLink,
+  FileText,
+  HeartPulse,
+  House,
+  Info,
   Loader2,
   Maximize2,
   Minimize2,
   Search,
   Send,
+  Target,
   UserCheck,
   X,
 } from "lucide-react";
@@ -38,7 +45,7 @@ import {
   type Position,
   type CommissionResultItemDTO,
 } from "@/app/types/domain";
-import SplitTitle from "./SplitTitle";
+import styles from "./productionPlan.module.css";
 
 // html2pdf lazy load
 let html2pdfPromise: Promise<any> | null = null;
@@ -73,6 +80,12 @@ function findImmediate(items: CommissionResultItemDTO[]): number {
 
 function stripUnsupportedColors(html: string): string {
   return html.replace(/(?:oklch|lab)\([^)]*\)/gi, "#0f172a");
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character] ?? character);
 }
 
 function temporarilyDisableGlobalStyles(exceptNodes: Set<Node>): () => void {
@@ -193,6 +206,16 @@ export default function PlanProdukcePage() {
   const [shareErrorText, setShareErrorText] = useState<string | null>(null);
   const [shareSuccessText, setShareSuccessText] = useState<string | null>(null);
   const shareLookupSeq = useRef(0);
+  const shareDialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!shareModalOpen) return;
+    const previousFocus = document.activeElement;
+    shareDialogRef.current?.querySelector<HTMLInputElement>("#plan-share-recipient")?.focus();
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [shareModalOpen]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, setUser);
@@ -658,7 +681,7 @@ export default function PlanProdukcePage() {
                 </div>
                 <div class="title">
                   <h1>Plán produkce</h1>
-                  <p class="title-sub">${fullName} • ${posLabel}</p>
+                  <p class="title-sub">${escapeHtml(fullName)} • ${escapeHtml(posLabel)}</p>
                   <div class="title-tags">
                     <span class="title-tag">Měsíční plán</span>
                     <span class="title-tag title-tag-accent">Okamžitá provize</span>
@@ -1039,218 +1062,121 @@ export default function PlanProdukcePage() {
 
   return (
     <AppLayout active="tools">
-      <div className="w-full max-w-5xl space-y-6">
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div className={styles.page}>
+        <header className={styles.hero}>
           <div>
-            <SplitTitle text="Plán produkce" />
-            <p className="text-sm text-slate-600">
-              Naplánuj počet smluv a pojistné, spočítej orientační okamžitou
-              provizi (pozice: {position ?? "neznámá"}).
-            </p>
+            <p className={styles.eyebrow}><ChartNoAxesCombined size={14} aria-hidden="true" />Obchod · Pomůcky</p>
+            <h1>Plán produkce<span>.</span></h1>
+            <p className={styles.heroDescription}>Proměň svoje cíle v konkrétní čísla. Naplánuj smlouvy a podívej se na orientační provizi.</p>
+            <div className={styles.heroMeta}>
+              <span><Target size={14} aria-hidden="true" />Tvoje pozice: <strong>{positionLabel(position)}</strong></span>
+              <span><FileText size={14} aria-hidden="true" />Náhled, PDF a sdílení</span>
+            </div>
           </div>
-          <div className="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
-            <span className="text-xs uppercase tracking-[0.14em] text-slate-500">Celkem</span>
-            <span className="text-base font-semibold text-slate-900">
-              {formatMoney(estimates.total)}
-            </span>
-          </div>
+          <svg className={styles.heroArt} viewBox="0 0 230 150" fill="none" aria-hidden="true">
+            <ellipse cx="118" cy="78" rx="104" ry="66" fill="#f3edf8" />
+            <path d="M39 121h155" stroke="#d8c9e4" strokeWidth="2" strokeLinecap="round" />
+            <rect x="53" y="91" width="29" height="30" rx="5" fill="#d7c4e6" />
+            <rect x="97" y="64" width="29" height="57" rx="5" fill="#bca0d1" />
+            <rect x="141" y="33" width="29" height="88" rx="5" fill="#9772af" />
+            <path d="m53 71 44-27 39-19m-9-1 11-1-3 11" stroke="#a588ba" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="184" cy="105" r="24" fill="white" stroke="#e1d5ea" strokeWidth="3" />
+            <circle cx="184" cy="105" r="15" stroke="#a886bd" strokeWidth="2" />
+            <circle cx="184" cy="105" r="7" fill="#e6d8f0" />
+            <path d="m184 105 17-17m-7-1h8v8" stroke="#7c598f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <PlanCard
-            title="Životní pojištění"
-            premiumLabel="Celkové měsíční pojistné (Kč)"
-            tone="emerald"
-            contracts={lifeContracts}
-            premium={lifePremium}
-            onContractsChange={setLifeContracts}
-            onPremiumChange={setLifePremium}
-            estimate={estimates.life}
-          />
-
-          <PlanCard
-            title="Auta"
-            premiumLabel="Celkové roční pojistné (Kč)"
-            tone="sky"
-            contracts={autoContracts}
-            premium={autoPremium}
-            onContractsChange={setAutoContracts}
-            onPremiumChange={setAutoPremium}
-            estimate={estimates.auto}
-          />
-
-          <PlanCard
-            title="Majetek"
-            premiumLabel="Celkové roční pojistné (Kč)"
-            tone="amber"
-            contracts={propertyContracts}
-            premium={propertyPremium}
-            onContractsChange={setPropertyContracts}
-            onPremiumChange={setPropertyPremium}
-            estimate={estimates.prop}
-          />
+        <div className={styles.sectionHeading}>
+          <div><p className={styles.eyebrow}>01 · Sestav svůj plán</p><h2>Tři oblasti. Jeden přehled.</h2></div>
+          <span><span className={styles.liveDot} />Odhad se přepočítává průběžně</span>
+        </div>
+        <div className={styles.cards}>
+          <PlanCard title="Životní pojištění" premiumLabel="Celkové měsíční pojistné" tone="emerald"
+            contracts={lifeContracts} premium={lifePremium} onContractsChange={setLifeContracts}
+            onPremiumChange={setLifePremium} estimate={estimates.life} />
+          <PlanCard title="Auta" premiumLabel="Celkové roční pojistné" tone="sky"
+            contracts={autoContracts} premium={autoPremium} onContractsChange={setAutoContracts}
+            onPremiumChange={setAutoPremium} estimate={estimates.auto} />
+          <PlanCard title="Majetek" premiumLabel="Celkové roční pojistné" tone="amber"
+            contracts={propertyContracts} premium={propertyPremium} onContractsChange={setPropertyContracts}
+            onPremiumChange={setPropertyPremium} estimate={estimates.prop} />
         </div>
 
-        <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_34px_rgba(15,23,42,0.08)] space-y-2">
-          <span className="absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#0b1220_0%,#15356b_52%,#2d5ea7_100%)]" />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-600">
-                Odhad okamžité provize
-              </p>
-              <p className="text-sm text-slate-800">
-                Součet všech sekcí podle zadaného počtu smluv a pojistného.
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-500">Celkem</p>
-              <p className="text-2xl font-semibold text-slate-900">
-                {formatMoney(estimates.total)}
-              </p>
-            </div>
+        <section className={styles.summary} aria-label="Souhrn plánu">
+          <div className={styles.total}>
+            <p className={styles.eyebrow}>Odhad okamžité provize</p>
+            <p className={styles.totalAmount} data-plan-total>{formatMoney(estimates.total)}</p>
+            <p className={styles.totalCaption}>{estimates.lifeCount + estimates.autoCount + estimates.propCount} smluv v plánu · {positionLabel(position)}</p>
           </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handlePreview}
-              disabled={generating}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-[linear-gradient(135deg,#1e293b_0%,#0f172a_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_34px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,0.34)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Eye className="h-4 w-4" />
-              {generating ? "Připravuji náhled…" : "Náhled PDF"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleGeneratePdf}
-              disabled={generating}
-              className="inline-flex items-center gap-2 rounded-2xl border border-blue-700/70 bg-[linear-gradient(135deg,#1d4ed8_0%,#1e293b_100%)] px-6 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(30,64,175,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(30,64,175,0.38)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Download className="h-4 w-4" />
+          <div className={styles.mix}>
+            <h3>Rozložení provize</h3>
+            {[
+              { label: "Život", amount: estimates.life.totalImmediate, tone: "emerald" },
+              { label: "Auta", amount: estimates.auto.totalImmediate, tone: "sky" },
+              { label: "Majetek", amount: estimates.prop.totalImmediate, tone: "amber" },
+            ].map(item => <div key={item.tone} className={styles.mixRow} data-tone={item.tone}>
+              <span>{item.label}</span>
+              <span className={styles.mixTrack} aria-hidden="true"><span style={{ width: `${estimates.total > 0 ? item.amount / estimates.total * 100 : 0}%` }} /></span>
+              <strong>{formatMoney(item.amount)}</strong>
+            </div>)}
+          </div>
+          <div className={styles.actions}>
+            <button type="button" onClick={handleGeneratePdf} disabled={generating} className={styles.primaryButton}>
+              {generating ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
               {generating ? "Připravuji PDF…" : "Stáhnout PDF"}
             </button>
-
-            <button
-              type="button"
-              onClick={openShareModal}
-              disabled={generating || shareSubmitting}
-              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/75 bg-[linear-gradient(135deg,#059669_0%,#1d4ed8_100%)] px-6 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_16px_38px_rgba(5,150,105,0.3)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(5,150,105,0.38)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Send className="h-4 w-4" />
-              Odeslat
-            </button>
+            <div>
+              <button type="button" onClick={handlePreview} disabled={generating} className={styles.secondaryButton}><Eye size={15} aria-hidden="true" />Náhled PDF</button>
+              <button type="button" onClick={openShareModal} disabled={generating || shareSubmitting} className={styles.secondaryButton}><Send size={15} aria-hidden="true" />Odeslat</button>
+            </div>
           </div>
         </section>
+        <p className={styles.estimateNote}><Info size={15} aria-hidden="true" />Orientační odhad: život podle NEON, auta podle Kooperativy, majetek jako průměr DOMEX a MAXDOMOV. Závisí na tvé pozici.</p>
 
         {errorText && (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
+          <p role="alert" className={styles.warning}>
             {errorText}
           </p>
         )}
 
         {shareSuccessText && (
-          <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-2xl px-3 py-2">
+          <p role="status" className={styles.success}>
             {shareSuccessText}
           </p>
         )}
 
         {position === null && (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
+          <p role="status" className={styles.warning}>
             Nepodařilo se načíst tvoji pozici. Odhad provize může být nepřesný.
           </p>
         )}
 
-        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_14px_38px_rgba(15,23,42,0.1)]">
-          <div className="border-b border-slate-200 bg-[linear-gradient(155deg,#f8fafc_0%,#eef5ff_100%)] px-4 py-3.5 sm:px-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-[-0.015em] text-slate-900">
-                  Náhled PDF
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Náhled odpovídá tomu, co stáhneš jako PDF.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                  A4 • na výšku
-                </span>
-                {previewGeneratedAt && (
-                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800">
-                    Aktualizováno {previewGeneratedAt.toLocaleTimeString("cs-CZ")}
-                  </span>
-                )}
-                {previewHtml && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleOpenPreviewInNewTab}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Otevřít v kartě
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewExpanded((prev) => !prev)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50"
-                    >
-                      {previewExpanded ? (
-                        <Minimize2 className="h-3.5 w-3.5" />
-                      ) : (
-                        <Maximize2 className="h-3.5 w-3.5" />
-                      )}
-                      {previewExpanded ? "Zmenšit" : "Rozšířit"}
-                    </button>
-                  </>
-                )}
-              </div>
+        <section className={styles.preview} aria-labelledby="production-preview-heading">
+          <div className={styles.previewHeader}>
+            <div><p className={styles.eyebrow}>02 · Připraveno ke sdílení</p><h2 id="production-preview-heading">Náhled tvého plánu</h2><p>Zkontroluj plán před stažením nebo odesláním.</p></div>
+            <div className={styles.previewTools}>
+              <span className={styles.previewBadge}>A4 · na výšku</span>
+              {previewGeneratedAt && <span className={styles.previewBadge}>Aktualizováno {previewGeneratedAt.toLocaleTimeString("cs-CZ")}</span>}
+              {previewHtml && <>
+                <button type="button" onClick={handleOpenPreviewInNewTab} className={styles.secondaryButton}><ExternalLink size={14} aria-hidden="true" />Otevřít v kartě</button>
+                <button type="button" onClick={() => setPreviewExpanded(prev => !prev)} className={styles.secondaryButton} aria-expanded={previewExpanded}>
+                  {previewExpanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}{previewExpanded ? "Zmenšit" : "Rozšířit"}
+                </button>
+              </>}
             </div>
           </div>
-
-          {previewHtml ? (
-            <div
-              className={`overflow-hidden bg-[radial-gradient(circle_at_14%_8%,rgba(37,99,235,0.1)_0%,transparent_44%),radial-gradient(circle_at_84%_14%,rgba(14,165,233,0.08)_0%,transparent_40%),#f8fafc] p-3 transition-[height] duration-300 sm:p-4 ${
-                previewExpanded ? "h-[78vh] min-h-[760px]" : "h-[640px]"
-              }`}
-            >
-              <div className="h-full overflow-hidden rounded-[24px] border border-slate-300/90 bg-white shadow-[0_20px_48px_rgba(15,23,42,0.2)]">
-                <div className="flex items-center gap-2 border-b border-[#1e293b] bg-[#0b1220] px-4 py-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#fb7185]" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#f59e0b]" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
-                  <span className="ml-2 truncate rounded bg-[#1f2937] px-2 py-0.5 text-[10px] font-medium text-[#cbd5e1]">
-                    Bohemika.App export preview
-                  </span>
-                </div>
-                <iframe
-                  srcDoc={previewHtml}
-                  title="Náhled PDF Plán produkce"
-                  className="h-[calc(100%-38px)] w-full bg-white"
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="grid min-h-[320px] place-items-center bg-[linear-gradient(160deg,#f8fafc_0%,#ffffff_100%)] px-5 py-12 text-center">
-              <div className="max-w-md space-y-2">
-                <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-700">
-                  <Eye className="h-5 w-5" />
-                </div>
-                <p className="text-base font-semibold text-slate-900">Náhled zatím není připravený</p>
-                <p className="text-sm text-slate-600">
-                  Klikni na „Náhled PDF“ a otevře se vizuální kontrola exportu podle aktuálních hodnot.
-                </p>
-              </div>
-            </div>
-          )}
+          {previewHtml ? <div className={styles.previewViewport} data-expanded={previewExpanded}>
+            <iframe srcDoc={previewHtml} title="Náhled PDF Plán produkce" className={styles.previewFrame} sandbox="" />
+          </div> : <div className={styles.previewEmpty}>
+            <div className={styles.emptyDocument} aria-hidden="true"><FileText size={27} strokeWidth={1.3} /><i /><i /><i /></div>
+            <div><h3>Tvůj plán má zatím prázdný list.</h3><p>Doplň smlouvy a pojistné. Tlačítkem „Náhled PDF“ si zobrazíš připravený dokument.</p></div>
+            <button type="button" onClick={handlePreview} disabled={generating} className={styles.secondaryButton}><Eye size={15} aria-hidden="true" />Zobrazit náhled</button>
+          </div>}
         </section>
 
         {shareModalOpen && (
-          <div className="fixed inset-0 z-[90]">
+          <div className={styles.shareOverlay}>
             <button
               type="button"
               aria-label="Zavřít okno odeslání"
@@ -1259,14 +1185,23 @@ export default function PlanProdukcePage() {
             />
 
             <div className="relative z-[91] flex min-h-full items-center justify-center p-4">
-              <section className="w-full max-w-lg rounded-[30px] border border-white/70 bg-white/95 p-5 shadow-[0_28px_78px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-6">
+              <section ref={shareDialogRef} className={styles.shareDialog} role="dialog" aria-modal="true" aria-labelledby="plan-share-title"
+                onKeyDown={event => {
+                  if (event.key === "Escape") { event.preventDefault(); closeShareModal(); }
+                  if (event.key !== "Tab") return;
+                  const controls = event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href]');
+                  const first = controls[0];
+                  const last = controls[controls.length - 1];
+                  if (event.shiftKey && document.activeElement === first && last) { event.preventDefault(); last.focus(); }
+                  if (!event.shiftKey && document.activeElement === last && first) { event.preventDefault(); first.focus(); }
+                }}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
                       <Send className="h-3.5 w-3.5" />
                       Odeslat plán
                     </div>
-                    <h3 className="mt-3 text-2xl font-semibold tracking-[-0.015em] text-slate-900">
+                    <h3 id="plan-share-title" className="mt-3 text-2xl font-semibold tracking-[-0.015em] text-slate-900">
                       Vyber příjemce
                     </h3>
                     <p className="mt-1 text-sm text-slate-600">
@@ -1277,6 +1212,7 @@ export default function PlanProdukcePage() {
                   <button
                     type="button"
                     onClick={closeShareModal}
+                    aria-label="Zavřít odeslání plánu"
                     disabled={shareSubmitting}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -1413,7 +1349,7 @@ export default function PlanProdukcePage() {
                   </div>
 
                   {shareErrorText && (
-                    <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                    <p role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
                       {shareErrorText}
                     </p>
                   )}
@@ -1470,95 +1406,29 @@ function PlanCard({
   onPremiumChange: (v: string) => void;
   estimate: BlockEstimate;
 }) {
-  const toneStyles = {
-    emerald: {
-      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#132c58_52%,#1d4c8f_100%)]",
-      focus: "focus:ring-emerald-500 focus:border-emerald-500",
-      metric: "text-emerald-700",
-      summaryBorder: "border-emerald-100",
-      summaryBg: "bg-emerald-50/40",
-    },
-    sky: {
-      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#163567_52%,#285fb0_100%)]",
-      focus: "focus:ring-sky-500 focus:border-sky-500",
-      metric: "text-sky-700",
-      summaryBorder: "border-sky-100",
-      summaryBg: "bg-sky-50/40",
-    },
-    amber: {
-      strip: "bg-[linear-gradient(90deg,#0b1220_0%,#1c3a66_52%,#3a6fb4_100%)]",
-      focus: "focus:ring-amber-500 focus:border-amber-500",
-      metric: "text-amber-700",
-      summaryBorder: "border-amber-100",
-      summaryBg: "bg-amber-50/40",
-    },
-  }[tone];
+  const fieldId = useId();
+  const Icon = tone === "emerald" ? HeartPulse : tone === "sky" ? CarFront : House;
+  const description = tone === "emerald" ? "Měsíční pojistné · NEON" : tone === "sky" ? "Roční pojistné · Kooperativa" : "Roční pojistné · DOMEX / MAXDOMOV";
 
-  return (
-    <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-5 py-5 shadow-[0_14px_30px_rgba(15,23,42,0.08)] space-y-4">
-      <span className={`absolute inset-x-0 top-0 h-1.5 ${toneStyles.strip}`} />
-      <div className="pt-1 text-center">
-        <h2 className="text-2xl font-semibold text-slate-900">{title}</h2>
+  return <section className={styles.planCard} data-tone={tone} aria-labelledby={`${fieldId}-heading`}>
+    <header className={styles.cardHeader}>
+      <span className={styles.productIcon}><Icon size={24} strokeWidth={1.5} aria-hidden="true" /></span>
+      <div><h3 id={`${fieldId}-heading`}>{title}</h3><p>{description}</p></div>
+    </header>
+    <div className={styles.cardFields}>
+      <div className={styles.field}>
+        <label htmlFor={`${fieldId}-contracts`}>Počet smluv</label>
+        <div><input id={`${fieldId}-contracts`} type="number" min={0} value={contracts} onChange={e => onContractsChange(e.target.value)} placeholder="např. 5" /><span aria-hidden="true">smluv</span></div>
       </div>
-
-      <div className="space-y-2">
-        <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-          Počet smluv
-        </label>
-        <input
-          type="number"
-          min={0}
-          className={`w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-xl font-semibold text-slate-900 outline-none focus:ring-2 ${toneStyles.focus}`}
-          value={contracts}
-          onChange={(e) => onContractsChange(e.target.value)}
-          placeholder="např. 5"
-        />
+      <div className={styles.field}>
+        <label htmlFor={`${fieldId}-premium`}>{premiumLabel} (Kč)</label>
+        <div><input id={`${fieldId}-premium`} type="number" min={0} value={premium} onChange={e => onPremiumChange(e.target.value)} placeholder="např. 10000" /><span aria-hidden="true">Kč</span></div>
       </div>
-
-      <div className="space-y-2">
-        <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-          {premiumLabel}
-        </label>
-        <input
-          type="number"
-          min={0}
-          className={`w-full rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-xl font-semibold text-slate-900 outline-none focus:ring-2 ${toneStyles.focus}`}
-          value={premium}
-          onChange={(e) => onPremiumChange(e.target.value)}
-          placeholder="např. 10000"
-        />
-      </div>
-
-      <div
-        className={`rounded-2xl border px-4 py-3 text-sm text-slate-900 space-y-2 ${toneStyles.summaryBorder} ${toneStyles.summaryBg}`}
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-slate-600">Průměr pojistného / smlouva</span>
-          <span className="font-semibold text-slate-900">
-            {estimate.perContractPremium > 0
-              ? formatMoney(estimate.perContractPremium)
-              : "—"}
-          </span>
-        </div>
-        <div className="border-t border-slate-200" />
-        <div className="flex items-center justify-between">
-          <span className="text-slate-600">Okamžitá provize / smlouva</span>
-          <span className="font-semibold text-slate-900">
-            {estimate.immediatePerContract > 0
-              ? formatMoney(estimate.immediatePerContract)
-              : "—"}
-          </span>
-        </div>
-        <div className="border-t border-slate-200" />
-        <div className="flex items-center justify-between">
-          <span className="text-slate-700 font-medium">Celková provize</span>
-          <span className={`text-xl font-semibold ${toneStyles.metric}`}>
-            {estimate.totalImmediate > 0
-              ? formatMoney(estimate.totalImmediate)
-              : "—"}
-          </span>
-        </div>
-      </div>
-    </section>
-  );
+    </div>
+    <dl className={styles.cardMetrics}>
+      <div><dt>Průměr pojistného / smlouva</dt><dd>{estimate.perContractPremium > 0 ? formatMoney(estimate.perContractPremium) : "—"}</dd></div>
+      <div><dt>Okamžitá provize / smlouva</dt><dd>{estimate.immediatePerContract > 0 ? formatMoney(estimate.immediatePerContract) : "—"}</dd></div>
+      <div className={styles.cardTotal}><dt>Celková provize</dt><dd>{estimate.totalImmediate > 0 ? formatMoney(estimate.totalImmediate) : "—"}</dd></div>
+    </dl>
+  </section>;
 }

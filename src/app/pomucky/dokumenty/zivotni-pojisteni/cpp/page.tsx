@@ -1,13 +1,10 @@
 // src/app/pomucky/dokumenty/zivotni-pojisteni/cpp/page.tsx
 "use client";
 
-import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import Image from "next/image";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   ArrowUpRight,
   BellRing,
   CheckCircle2,
@@ -21,7 +18,6 @@ import {
   Paperclip,
   Plus,
   Save,
-  Search,
   Send,
   ShieldCheck,
   Sparkles,
@@ -53,10 +49,9 @@ import {
   SECURE_DOCUMENT_FILE_NAMES,
   useSecureDocumentBlob,
 } from "@/app/lib/secureDocuments";
-import SplitTitle from "../../../plan-produkce/SplitTitle";
-import { systemSansFont } from "@/lib/fonts";
-
-const documentsFont = systemSansFont;
+import { DocumentsHeader, DocumentsSearch } from "../../DocumentsUi";
+import { DocumentAttachmentPreview } from "../../DocumentAttachmentPreview";
+import styles from "../../documents.module.css";
 
 type ActiveTab = ToolDocumentTab | "sprava";
 type EditorTabMode = "existing" | "new";
@@ -144,6 +139,10 @@ const normalizeSearchText = (value: string): string =>
     .replace(/[\u0300-\u036f]/g, "");
 
 export default function CppLifeDocumentsPage() {
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const dialogCloseRef = useRef<(() => void) | null>(null);
+  const sessionUid = useRef(auth.currentUser?.uid ?? null);
+  const documentsRequestSeq = useRef(0);
   const pathname = usePathname();
   const router = useRouter();
   const documentContext = useMemo(() => {
@@ -300,6 +299,7 @@ export default function CppLifeDocumentsPage() {
   );
 
   const loadDocuments = useCallback(async () => {
+    const requestSeq = ++documentsRequestSeq.current;
     const user = auth.currentUser;
     if (!user) {
       setDocuments(fallbackDocuments);
@@ -310,10 +310,12 @@ export default function CppLifeDocumentsPage() {
     setDocumentsError(null);
     try {
       const payload = (await fetchAuthedJsonOrThrow(user, `/api/documents/manage?section=${currentInsurer.section}`)) as ToolDocumentsListResponse;
+      if (requestSeq !== documentsRequestSeq.current || auth.currentUser?.uid !== user.uid) return;
       setDocuments(payload.documents);
       setCanManageDocuments(payload.canManage);
       if (!payload.canManage && activeTab === "sprava") setActiveTab("prehled");
     } catch (error) {
+      if (requestSeq !== documentsRequestSeq.current || auth.currentUser?.uid !== user.uid) return;
       setDocuments(fallbackDocuments);
       setCanManageDocuments(false);
       setDocumentsError(
@@ -323,11 +325,25 @@ export default function CppLifeDocumentsPage() {
   }, [activeTab, currentInsurer.section, fallbackDocuments]);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, () => {
+    const unsub = onAuthStateChanged(auth, user => {
+      const nextUid = user?.uid ?? null;
+      if (sessionUid.current !== nextUid) {
+        sessionUid.current = nextUid;
+        setActiveDocumentId(null);
+        setRequestedDocumentId(null);
+        setAddModalOpen(false);
+        setDeleteConfirmationDoc(null);
+        setDocumentNotificationDraft(null);
+        setDocuments(fallbackDocuments);
+        setLocallyDeletedDocumentIds(new Set());
+        setCanManageDocuments(false);
+        setActiveTab("prehled");
+        setEditor(emptyEditor());
+      }
       void loadDocuments();
     });
     return () => unsub();
-  }, [loadDocuments]);
+  }, [fallbackDocuments, loadDocuments]);
 
   useEffect(() => {
     setDocuments(fallbackDocuments);
@@ -445,7 +461,7 @@ export default function CppLifeDocumentsPage() {
           onDragOver={handleFileDrag}
           onDragLeave={handleFileDragLeave}
           onDrop={handleFileDrop}
-          className={`group flex min-h-[5.25rem] cursor-pointer flex-col gap-3 rounded-2xl border-2 border-dashed px-4 py-3 transition sm:flex-row sm:items-center sm:justify-between ${
+          className={`${styles.fileDropZone} group flex min-h-[5.25rem] cursor-pointer flex-col gap-3 rounded-2xl border-2 border-dashed px-4 py-3 transition sm:flex-row sm:items-center sm:justify-between ${
             fileDropActive
               ? "border-slate-900 bg-slate-100 shadow-[0_14px_28px_rgba(15,23,42,0.10)]"
               : selectedFile
@@ -485,7 +501,7 @@ export default function CppLifeDocumentsPage() {
             </span>
           </span>
           <span
-            className={`inline-flex flex-shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-bold transition ${
+            className={`${styles.fileSelectButton} inline-flex flex-shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-bold transition ${
               selectedFile
                 ? "border border-emerald-200 bg-white text-emerald-800 group-hover:border-emerald-300"
                 : "border border-slate-900 bg-slate-900 text-white group-hover:bg-slate-800"
@@ -686,6 +702,8 @@ export default function CppLifeDocumentsPage() {
         matchedUsers?: number;
       };
 
+      if (auth.currentUser?.uid !== user.uid) return;
+
       const sent = typeof payload.sent === "number" ? payload.sent : 0;
       const recipients = typeof payload.recipients === "number" ? payload.recipients : null;
       const matchedUsers =
@@ -700,6 +718,7 @@ export default function CppLifeDocumentsPage() {
           : `Notifikace odeslána. Doručeno ${sent}.`
       );
     } catch (error) {
+      if (auth.currentUser?.uid !== user.uid) return;
       setDocumentNotificationError(
         error instanceof Error ? error.message : "Notifikaci se nepodařilo odeslat."
       );
@@ -755,6 +774,8 @@ export default function CppLifeDocumentsPage() {
         body: form,
       })) as { ok?: boolean; id?: string; documents?: ToolDocumentRecord[] };
 
+      if (auth.currentUser?.uid !== user.uid) return;
+
       if (payload.documents) setDocuments(payload.documents);
       setEditorStatus(editor.id ? "Dokument byl uložen." : "Dokument byl přidán.");
       if (!editor.id) setActiveTab(nextTab);
@@ -772,6 +793,7 @@ export default function CppLifeDocumentsPage() {
       setEditor(emptyEditor(nextTab, resolvedTabLabel, nextEmoji));
       setFileInputKey((key) => key + 1);
     } catch (error) {
+      if (auth.currentUser?.uid !== user.uid) return;
       setEditorError(
         error instanceof Error ? error.message : "Dokument se nepodařilo uložit."
       );
@@ -803,10 +825,13 @@ export default function CppLifeDocumentsPage() {
         }),
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
+      if (auth.currentUser?.uid !== user.uid) return;
+
       if (payload.documents) setDocuments(payload.documents);
       if (invalid && activeDocumentId === doc.id) closeDocumentDetail();
       setEditorStatus(invalid ? "Dokument byl označen jako neplatný." : "Dokument byl obnoven.");
     } catch (error) {
+      if (auth.currentUser?.uid !== user.uid) return;
       const fallbackMessage = invalid
         ? "Dokument se nepodařilo označit jako neplatný."
         : "Dokument se nepodařilo obnovit.";
@@ -835,6 +860,8 @@ export default function CppLifeDocumentsPage() {
         }),
       })) as { ok?: boolean; documents?: ToolDocumentRecord[] };
 
+      if (auth.currentUser?.uid !== user.uid) return;
+
       if (Array.isArray(payload.documents)) {
         setDocuments(payload.documents);
       }
@@ -842,6 +869,7 @@ export default function CppLifeDocumentsPage() {
       setDeleteConfirmationDoc(null);
       setEditorStatus("Dokument byl trvale smazán.");
     } catch (error) {
+      if (auth.currentUser?.uid !== user.uid) return;
       const message = error instanceof Error ? error.message : "Dokument se nepodařilo smazat.";
       if (message.includes("Dokument nebyl nalezen") || message.includes("Dokument byl smazán")) {
         removeDocumentFromLocalState(doc);
@@ -855,202 +883,90 @@ export default function CppLifeDocumentsPage() {
     }
   };
 
-  const renderDocumentCard = (doc: ToolDocumentRecord, variant: "wide" | "compact") => {
+  const dialogKind = deleteConfirmationDoc ? "delete" : documentNotificationDraft ? "notification" : addModalOpen ? "add" : activeDocumentId ? "reader" : null;
+  dialogCloseRef.current = () => {
+    if (dialogKind === "reader") closeDocumentDetail();
+    if (dialogKind === "add") closeAddModal();
+    if (dialogKind === "delete" && !editorBusy) setDeleteConfirmationDoc(null);
+    if (dialogKind === "notification") closeDocumentNotificationPrompt();
+  };
+  useEffect(() => {
+    if (!dialogKind) return;
+    const modal = workspaceRef.current?.querySelector<HTMLElement>(`[data-documents-dialog="${dialogKind}"]`);
+    if (!modal) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const controls = () => Array.from(modal.querySelectorAll<HTMLElement>('button:not([disabled]):not([data-dialog-backdrop]), a[href]:not([aria-disabled="true"]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'));
+    (modal.querySelector<HTMLElement>('input:not([type="file"]), select, textarea') ?? controls()[0] ?? modal).focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); dialogCloseRef.current?.(); }
+      if (event.key !== "Tab") return;
+      const items = controls(); const first = items[0]; const last = items.at(-1);
+      if (!first || !last) { event.preventDefault(); modal.focus(); return; }
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    modal.addEventListener("keydown", onKeyDown);
+    return () => {
+      modal.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [dialogKind]);
+
+  const renderDocumentCard = (doc: ToolDocumentRecord) => {
     const Icon = doc.isImage ? ImageIcon : FileText;
-    const isWide = variant === "wide";
     const publishedDate = formatDate(doc.publishedAt);
-    return (
-      <article
-        key={doc.id}
-        className={`group relative overflow-hidden rounded-[24px] border border-cyan-200/85 bg-[linear-gradient(135deg,#f8fafc_0%,#eff6ff_56%,#ffffff_100%)] px-5 py-5 text-left shadow-[0_14px_30px_rgba(15,23,42,0.1)] transition hover:-translate-y-0.5 hover:border-cyan-300 ${
-          isWide ? "" : "min-h-[170px]"
-        }`}
-      >
-        <span className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" aria-hidden="true" />
-        <p className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-cyan-700">
-          <span className="text-sm leading-none" aria-hidden="true">
-            {doc.emoji || DEFAULT_TOOL_DOCUMENT_EMOJI}
-          </span>
-          <Icon className="h-3.5 w-3.5" />
-          {doc.isImage ? "Náhled dokumentu" : "Dokument"}
-        </p>
-        <h3 className={`mt-2 font-bold leading-tight tracking-[-0.015em] text-slate-900 ${
-          isWide ? "text-[2rem] sm:text-[2.2rem]" : "text-2xl"
-        }`}>
-          {doc.title}
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">{doc.description || doc.fileName}</p>
-        {publishedDate ? (
-          <p className="mt-2 text-sm font-semibold text-slate-500">
-            Zveřejněno {publishedDate}
-          </p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openDocumentDetail(doc)}
-            className="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-cyan-400 hover:bg-cyan-50"
-          >
-            Otevřít dokument
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
-          {canManageDocuments ? (
-            <button
-              type="button"
-              onClick={() => startEdit(doc)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-500"
-            >
-              <Pencil className="h-4 w-4" />
-              Upravit
-            </button>
-          ) : null}
-        </div>
-      </article>
-    );
+    const fileKind = doc.isImage ? "Obrázek" : doc.contentType === "application/pdf" ? "PDF" : "Poznámky";
+    return <article key={doc.id} className={styles.documentRow}>
+      <span className={styles.fileIcon} data-image={doc.isImage}><Icon size={26} strokeWidth={1.4} aria-hidden="true" /><small>{fileKind}</small></span>
+      <div className={styles.documentInfo}>
+        <div className={styles.documentMeta}><span>{doc.emoji || DEFAULT_TOOL_DOCUMENT_EMOJI} {doc.tabLabel || resolveTabInfo(doc.tab).label}</span>{publishedDate && <span>{publishedDate}</span>}{doc.fileSize ? <span>{formatFileSize(doc.fileSize)}</span> : null}</div>
+        <h3>{doc.title}</h3><p>{doc.description || doc.fileName}</p>
+      </div>
+      <div className={styles.documentActions}>
+        {canManageDocuments && <button type="button" onClick={() => startEdit(doc)} className={styles.iconButton} aria-label={`Upravit ${doc.title}`}><Pencil size={15} aria-hidden="true" /></button>}
+        <button type="button" onClick={() => openDocumentDetail(doc)} className={styles.secondaryButton} aria-label={`Otevřít dokument ${doc.title}`}>Otevřít<ArrowUpRight size={15} aria-hidden="true" /></button>
+      </div>
+    </article>;
   };
 
   return (
     <AppLayout active="tools">
-      <div className={`${documentsFont.className} w-full px-4 pb-10 pt-2 sm:px-5`}>
-        <div
-          className={`mx-auto max-w-[1040px] space-y-5 transition-[filter,opacity] duration-200 ${
-            activeDocumentId || addModalOpen ? "pointer-events-none select-none blur-[2px] opacity-90" : ""
-          }`}
-        >
-          <header className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f7fbff_55%,#eef6ff_100%)] px-6 py-6 shadow-[0_20px_50px_rgba(15,23,42,0.1)] sm:px-8 sm:py-8">
-            <span className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" aria-hidden="true" />
-            <div
-              className="pointer-events-none absolute right-1 top-1/2 hidden h-48 w-72 -translate-y-1/2 opacity-[0.08] sm:block lg:right-4 lg:h-64 lg:w-96"
-              aria-hidden="true"
-            >
-              <Image
-                src={currentInsurer.logo}
-                alt=""
-                fill
-                sizes="224px"
-                className="object-contain"
-              />
-            </div>
-            <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 space-y-4 lg:max-w-[70%]">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {currentInsurer.shortLabel} {documentContext.categoryChip} • Dokumenty
-                  </span>
-                  <Link
-                    href={documentContext.backHref}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    {documentContext.backLabel}
-                  </Link>
-                  <Link
-                    href="/pomucky/dokumenty"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                  >
-                    Zpět na dokumenty
-                  </Link>
-                </div>
-
-                <SplitTitle text={`${currentInsurer.title} Dokumenty`} className="!text-4xl !text-slate-900 sm:!text-5xl" />
-                <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-                  Rozcestník dokumentů pro {documentContext.subject} {currentInsurer.title}. Vyber režim práce, otevři náhledy a stáhni potřebné podklady.
-                </p>
-              </div>
-
-              {canManageDocuments ? (
-                <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => startCreate(activeTab === "sprava" ? documentTabs[0]?.id ?? "prehled" : activeTab)}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-950 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-[0_14px_28px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-slate-800"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Přidat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openManageDocuments}
-                    className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-bold shadow-[0_14px_28px_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 ${
-                      activeTab === "sprava"
-                        ? "border-cyan-500 bg-cyan-600 text-white hover:bg-cyan-700"
-                        : "border-cyan-200 bg-white text-cyan-800 hover:border-cyan-300 hover:bg-cyan-50"
-                    }`}
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Spravovat
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </header>
-          {documentsError ? (
-            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-              {documentsError}
-            </p>
-          ) : null}
-
-          <section className="flex flex-col gap-3 md:flex-row md:items-center">
-            <div className="w-full md:max-w-sm">
-              <label htmlFor="cpp-documents-search" className="sr-only">
-                Hledat dokumenty
-              </label>
-              <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="cpp-documents-search"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Hledat dokument..."
-                  className="h-[58px] w-full bg-transparent py-2 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                />
-              </div>
-            </div>
-
-            <div className="inline-flex w-fit flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-              {documentTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    closeDocumentDetail();
-                  }}
-                  className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition ${
-                    activeTab === tab.id
-                      ? "border border-slate-900 bg-slate-900 text-white shadow-[0_10px_20px_rgba(15,23,42,0.24)]"
-                      : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="text-base leading-none" aria-hidden="true">
-                    {tab.emoji}
-                  </span>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
+      <div ref={workspaceRef} className={styles.workspace}>
+      <div className={styles.page}>
+        <div className={styles.libraryContent} data-overlay={Boolean(dialogKind)}>
+          <DocumentsHeader title={`${currentInsurer.title} dokumenty`} description={`Podklady pro ${documentContext.subject}. Vyber sekci, prohlédni si dokument a stáhni potřebnou přílohu.`}
+            kicker={`Dokumenty · ${documentContext.categoryTitle}`} backHref={documentContext.backHref} backLabel={documentContext.backLabel} logo={{ src: currentInsurer.logo, label: currentInsurer.title }}>
+            <div className={styles.heroMeta}><span><FileText size={14} aria-hidden="true" />Dostupné dokumenty: {documents.filter(doc => !doc.isInvalid && !locallyDeletedDocumentIds.has(doc.id)).length}</span><span>Sekce: {documentTabs.length}</span></div>
+          </DocumentsHeader>
+          {documentsError && <p className={styles.warning} role="alert">{documentsError}</p>}
+          <div className={styles.libraryLayout}>
+            <aside className={styles.sidebar}>
+              <p className={styles.eyebrow}>Sekce dokumentů</p>
+              <nav className={styles.tabList} aria-label="Sekce dokumentů">
+                {documentTabs.map(tab => <button key={tab.id} type="button" aria-pressed={activeTab === tab.id}
+                  onClick={() => { setActiveTab(tab.id); closeDocumentDetail(); }}>
+                  <span aria-hidden="true">{tab.emoji}</span><span>{tab.label}</span><small>{filteredDocuments.filter(doc => doc.tab === tab.id && !doc.isInvalid).length}</small>
+                </button>)}
+              </nav>
+              {canManageDocuments && <div className={styles.sidebarAdmin}>
+                <button type="button" onClick={openManageDocuments} className={styles.secondaryButton} aria-pressed={activeTab === "sprava"}><ShieldCheck size={15} aria-hidden="true" />Spravovat</button>
+                <button type="button" onClick={() => startCreate(activeTab === "sprava" ? documentTabs[0]?.id ?? "prehled" : activeTab)} className={styles.primaryButton}><Plus size={15} aria-hidden="true" />Přidat dokument</button>
+              </div>}
+              <p className={styles.sidebarNote}>Dokument otevřeš v náhledu. Přílohu si můžeš stáhnout pro další práci.</p>
+            </aside>
+            <main className={styles.documentList}>
+              <DocumentsSearch id="cpp-documents-search" label="Hledat dokumenty" placeholder="Hledat název, obsah nebo datum…" value={searchQuery} onChange={setSearchQuery} />
+              <div className={styles.listHeading}><h2>{activeTab === "sprava" ? "Správa dokumentů" : resolveTabInfo(activeTab).label}</h2><span role="status">Výsledky: {activeTab === "sprava" ? filteredDocuments.length : activeTabDocuments.length}</span></div>
           {activeTab !== "sprava" ? (
             <section className="space-y-4">
-              {activeTabDocuments.length > 0 ? (
-                activeTab === "prehled" ? (
-                  activeTabDocuments.map((doc) => renderDocumentCard(doc, "wide"))
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {activeTabDocuments.map((doc) => renderDocumentCard(doc, "compact"))}
-                  </div>
-                )
-              ) : (
-                <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-8 text-center text-sm font-semibold text-slate-500">
-                  Žádný dokument neodpovídá hledání.
-                </div>
-              )}
+              {activeTabDocuments.length > 0 ? <div className={styles.documentRows}>{activeTabDocuments.map(doc => renderDocumentCard(doc))}</div>
+                : <div className={styles.emptyState}><FileText size={29} aria-hidden="true" /><h3>{searchQuery ? "Žádný dokument neodpovídá hledání." : "Tahle sekce je zatím prázdná."}</h3><p>{searchQuery ? "Zkus jiný výraz nebo zkontroluj výsledky v ostatních sekcích." : "Jakmile budou dokumenty k dispozici, najdeš je tady."}</p>{searchQuery && <button type="button" className={styles.secondaryButton} onClick={() => setSearchQuery("")}>Vymazat hledání</button>}</div>}
             </section>
           ) : canManageDocuments ? (
-            <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
+            <section className={styles.manageGrid}>
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -1313,7 +1229,7 @@ export default function CppLifeDocumentsPage() {
                         </p>
                       ) : null}
                       {editorError ? (
-                        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                           {editorError}
                         </p>
                       ) : null}
@@ -1337,7 +1253,7 @@ export default function CppLifeDocumentsPage() {
                           type="button"
                           onClick={() => void submitEditor()}
                           disabled={editorBusy}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:opacity-60"
+                          className={styles.primaryButton}
                         >
                           {editorBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                           Uložit
@@ -1350,7 +1266,7 @@ export default function CppLifeDocumentsPage() {
                     <FilePlus2 className="h-8 w-8 text-slate-400" />
                     <h3 className="mt-3 text-lg font-semibold text-slate-900">Vyber dokument k úpravě</h3>
                     <p className="mt-1 max-w-xs text-sm text-slate-500">
-                      Pro nový dokument použij tlačítko Přidat. Editaci otevřeš přes tlačítko Edit u konkrétní položky.
+                      Nový dokument přidáš tlačítkem Přidat dokument. Pro úpravu vyber konkrétní položku v seznamu.
                     </p>
                     <button
                       type="button"
@@ -1365,6 +1281,8 @@ export default function CppLifeDocumentsPage() {
               </div>
             </section>
           ) : null}
+            </main>
+          </div>
         </div>
       </div>
 
@@ -1374,15 +1292,16 @@ export default function CppLifeDocumentsPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Přidat dokument"
+          data-documents-dialog="add" tabIndex={-1}
         >
           <button
             type="button"
             className="absolute inset-0 bg-slate-950/58 backdrop-blur-sm"
             onClick={closeAddModal}
-            aria-label="Zavřít přidání dokumentu"
+            aria-label="Zavřít přidání dokumentu" data-dialog-backdrop="true"
           />
-          <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_34px_92px_rgba(15,23,42,0.34)] sm:p-6">
-            <span className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500" aria-hidden="true" />
+          <div className={styles.editorDialog}>
+
             <div className="flex items-start justify-between gap-4">
               <div>
                 <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
@@ -1537,7 +1456,7 @@ export default function CppLifeDocumentsPage() {
                 </p>
               ) : null}
               {editorError ? (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                   {editorError}
                 </p>
               ) : null}
@@ -1556,7 +1475,7 @@ export default function CppLifeDocumentsPage() {
                   type="button"
                   onClick={() => void submitEditor()}
                   disabled={editorBusy}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                  className={styles.primaryButton}
                 >
                   {editorBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Přidat dokument
@@ -1573,6 +1492,7 @@ export default function CppLifeDocumentsPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Potvrdit smazání dokumentu"
+          data-documents-dialog="delete" tabIndex={-1}
         >
           <button
             type="button"
@@ -1580,20 +1500,20 @@ export default function CppLifeDocumentsPage() {
             onClick={() => {
               if (!editorBusy) setDeleteConfirmationDoc(null);
             }}
-            aria-label="Zavřít potvrzení smazání"
+            aria-label="Zavřít potvrzení smazání" data-dialog-backdrop="true"
           />
-          <div className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-rose-100 bg-white shadow-[0_34px_90px_rgba(15,23,42,0.42)]">
-            <div className="bg-[linear-gradient(135deg,#881337_0%,#be123c_52%,#f43f5e_100%)] px-5 py-5 text-white sm:px-6">
+          <div className={styles.dangerDialog}>
+            <div className={styles.dangerHeader}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] !text-white">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]">
                     <Trash2 className="h-3.5 w-3.5" />
                     Trvalé smazání
                   </span>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] !text-white">
+                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em]">
                     Smazat dokument?
                   </h3>
-                  <p className="mt-1 text-sm leading-relaxed !text-rose-50/90">
+                  <p className="mt-1 text-sm leading-relaxed">
                     Tato akce odstraní dokument ze správy i z pomůcek. Nejde ji vrátit zpět.
                   </p>
                 </div>
@@ -1601,7 +1521,7 @@ export default function CppLifeDocumentsPage() {
                   type="button"
                   onClick={() => setDeleteConfirmationDoc(null)}
                   disabled={editorBusy}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/12 text-white transition hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-purple-200 bg-white transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Zavřít"
                 >
                   <X className="h-4 w-4" />
@@ -1657,31 +1577,31 @@ export default function CppLifeDocumentsPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Upozornit poradce na nový dokument"
+          data-documents-dialog="notification" tabIndex={-1}
         >
           <button
             type="button"
             className="absolute inset-0 bg-slate-950/66 backdrop-blur-md"
             onClick={closeDocumentNotificationPrompt}
-            aria-label="Zavřít notifikaci k dokumentu"
+            aria-label="Zavřít notifikaci k dokumentu" data-dialog-backdrop="true"
           />
-          <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,#ffffff_0%,#f8fbff_55%,#eef8ff_100%)] shadow-[0_34px_92px_rgba(15,23,42,0.38)]">
-            <div className="relative overflow-hidden bg-[linear-gradient(135deg,#4c1d95_0%,#6d28d9_54%,#8b5cf6_100%)] px-5 py-5 text-white shadow-[0_18px_44px_rgba(76,29,149,0.24)] sm:px-6">
-              <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/30" aria-hidden="true" />
+          <div className={styles.notificationDialog}>
+            <div className={styles.notificationHeader}>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
                       <BellRing className="h-3.5 w-3.5" />
                       Notifikace k dokumentu
                     </span>
-                    <span className="rounded-full border border-white/18 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] !text-white">
+                    <span className="rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]">
                       Dokument uložen
                     </span>
                   </div>
-                  <h3 className="mt-3 text-2xl font-extrabold tracking-[-0.02em] !text-white sm:text-3xl">
+                  <h3 className="mt-3 text-2xl font-semibold tracking-tight">
                     Poslat upozornění poradci?
                   </h3>
-                  <p className="mt-1 max-w-2xl text-sm leading-relaxed !text-violet-100/86">
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed">
                     Notifikace se odešle poradcům a po kliknutí otevře přímo nově přidaný dokument.
                   </p>
                 </div>
@@ -1689,7 +1609,7 @@ export default function CppLifeDocumentsPage() {
                   type="button"
                   onClick={closeDocumentNotificationPrompt}
                   disabled={documentNotificationBusy}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/12 text-white shadow-[0_10px_22px_rgba(30,15,70,0.16)] backdrop-blur transition hover:bg-white/18 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-purple-200 bg-white shadow-[0_10px_22px_rgba(30,15,70,0.16)] backdrop-blur transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Zavřít"
                 >
                   <X className="h-4 w-4" />
@@ -1806,7 +1726,7 @@ export default function CppLifeDocumentsPage() {
                 ) : null}
               </div>
 
-              <aside className="rounded-[24px] border border-slate-200 bg-slate-950 p-4 text-white shadow-[0_20px_48px_rgba(15,23,42,0.20)]">
+              <aside className={styles.notificationPreview}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/80">
                     Náhled
@@ -1881,7 +1801,7 @@ export default function CppLifeDocumentsPage() {
                     type="button"
                     onClick={() => void sendDocumentNotification()}
                     disabled={documentNotificationBusy}
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-violet-200/70 bg-[linear-gradient(135deg,#6d28d9_0%,#7c3aed_52%,#a855f7_100%)] px-5 py-2.5 text-sm font-bold text-white shadow-[0_16px_34px_rgba(124,58,237,0.32)] transition hover:-translate-y-0.5 hover:brightness-110 focus:outline-none focus:ring-4 focus:ring-violet-200/80 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60"
+                    className={styles.primaryButton}
                   >
                     {documentNotificationBusy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1899,15 +1819,16 @@ export default function CppLifeDocumentsPage() {
       ) : null}
 
       {activeDocumentMeta ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/62 px-3 py-6 backdrop-blur-[2.5px] sm:px-6">
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[linear-gradient(160deg,#ffffff_0%,#f8fafc_55%,#eff6ff_100%)] p-4 shadow-[0_30px_80px_rgba(15,23,42,0.35)] sm:p-6">
-            <div className="flex items-start justify-between gap-4">
+        <div className={styles.readerOverlay} role="dialog" aria-modal="true" aria-labelledby="document-reader-title" data-documents-dialog="reader" tabIndex={-1}>
+          <button type="button" className={styles.readerBackdrop} aria-label="Zavřít náhled dokumentu" data-dialog-backdrop="true" onClick={closeDocumentDetail} />
+          <div className={styles.readerDialog}>
+            <div className={styles.readerHeader}>
               <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                <span className={styles.readerBadge}>
                   <Sparkles className="h-3.5 w-3.5" />
                   {currentInsurer.title} {documentContext.categoryTitle}
                 </span>
-                <h3 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">
+                <h3 id="document-reader-title" className={styles.readerTitle}>
                   {activeDocumentMeta.title}
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
@@ -1928,7 +1849,7 @@ export default function CppLifeDocumentsPage() {
                     onClick={(event) => {
                       if (!activeDocument.url) event.preventDefault();
                     }}
-                    className={`inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black ${
+                    className={`${styles.primaryButton} ${
                       activeDocument.url ? "" : "pointer-events-none opacity-60"
                     }`}
                     aria-disabled={!activeDocument.url}
@@ -1949,7 +1870,7 @@ export default function CppLifeDocumentsPage() {
             </div>
 
             {activeDocumentMeta.body.length > 0 ? (
-              <div className="mt-5 space-y-4 text-[15px] leading-7 text-slate-800">
+              <div className={styles.documentNotes}>
                 {activeDocumentMeta.id === "cpp-storno-dohodou" ? (
                   <>
                     <p className="font-semibold">Vážení poradci,</p>
@@ -1964,7 +1885,7 @@ export default function CppLifeDocumentsPage() {
                 <ol className="space-y-2">
                   {activeDocumentMeta.body.map((rule, index) => (
                     <li key={`${rule}-${index}`} className="flex items-start gap-2.5">
-                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-cyan-300 bg-white text-xs font-semibold text-cyan-700">
+                      <span className={styles.noteNumber}>
                         {index + 1}
                       </span>
                       <span>{rule}</span>
@@ -1978,44 +1899,13 @@ export default function CppLifeDocumentsPage() {
                   </>
                 ) : null}
               </div>
-            ) : activeDocumentMeta.isImage ? (
-              <div className="mt-5">
-                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  {activeDocument.loading ? (
-                    <div className="flex min-h-[360px] items-center justify-center text-sm font-medium text-slate-600">
-                      Načítám dokument...
-                    </div>
-                  ) : activeDocument.error ? (
-                    <div className="flex min-h-[360px] items-center justify-center px-4 text-center text-sm font-medium text-rose-700">
-                      {activeDocument.error}
-                    </div>
-                  ) : activeDocument.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={activeDocument.url}
-                      alt={activeDocumentMeta.title}
-                      className="h-auto w-full object-contain"
-                    />
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-cyan-200 bg-cyan-50/60 px-4 py-3 text-[15px] leading-7 text-slate-800">
-                <p className="inline-flex items-center gap-2 font-semibold text-slate-900">
-                  <ShieldCheck className="h-4 w-4 text-cyan-700" />
-                  {activeDocumentMeta.fileName}
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  Použij tlačítko <span className="font-semibold">Stáhnout</span> vpravo nahoře.
-                </p>
-                {activeDocument.error ? (
-                  <p className="mt-2 text-sm font-semibold text-rose-700">{activeDocument.error}</p>
-                ) : null}
-              </div>
-            )}
+            ) : null}
+            {activeDocumentHasFile && <DocumentAttachmentPreview key={activeDocumentMeta.id} blob={activeDocument.blob} url={activeDocument.url} loading={activeDocument.loading} error={activeDocument.error}
+              isImage={activeDocumentMeta.isImage} contentType={activeDocumentMeta.contentType} title={activeDocumentMeta.title} />}
           </div>
         </div>
       ) : null}
+      </div>
     </AppLayout>
   );
 }

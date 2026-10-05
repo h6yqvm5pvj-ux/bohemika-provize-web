@@ -1,7 +1,6 @@
 // src/app/pomucky/vypoved-smlouvy/page.tsx
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { User as FirebaseUser } from "firebase/auth";
@@ -11,9 +10,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   ExternalLink,
   FileDown,
+  FileText,
+  FileCheck2,
   HeartPulse,
   Loader2,
   Mail,
@@ -35,7 +35,9 @@ import { auth } from "@/app/firebase-auth";
 import { getUserProfileCached } from "@/app/lib/userProfileCache";
 import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import { productLabel } from "@/app/lib/productCatalog";
-import SplitTitle from "../plan-produkce/SplitTitle";
+import { TerminationSelection } from "./TerminationSelection";
+import { TerminationIllustration } from "./TerminationIllustration";
+import styles from "./termination.module.css";
 import {
   consumeContractTerminationPrefill,
   getContractTerminationPdfFieldDefaults,
@@ -107,6 +109,7 @@ type GeneratedLetterPreviewConfig = {
   requiresOtherReason?: boolean;
   calculator?: UniversalLetterCalculator;
   uploadUrl?: string;
+  uploadButtonLabel?: string;
 };
 type OnlineFormConfig = {
   id: string;
@@ -206,6 +209,7 @@ const MAXIMA_NON_LIFE_TERMINATION_DOCUMENT_ID: SecureDocumentId =
   "maxima-nezivot-vypoved";
 const GENERALI_UPLOAD_URL = "https://www.generaliceska.cz/napiste-nam";
 const UNIQA_UPLOAD_URL = "https://epodatelna.uniqa.cz/klient/odeslani-zasilky";
+const ALLIANZ_UPLOAD_URL = "https://www.allianz.cz/cs_CZ/apps/napiste-nam.html";
 const AGREEMENT_PAGE_COUNT = 3;
 const STANDARD_TERMINATION_PAGE_COUNT = 2;
 const DEFAULT_AGENT_COMPANY = "Bohemika a.s.";
@@ -1751,9 +1755,9 @@ function OnlineFormPanel({
   prefill: ContractTerminationPrefill | null;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up">
+    <section className={styles.documentCard}>
       <div className="space-y-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className={styles.documentHeader}>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
               {config.eyebrow}
@@ -1768,6 +1772,7 @@ function OnlineFormPanel({
 
           <a
             href={config.url}
+            data-primary="true"
             target="_blank"
             rel="noreferrer"
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
@@ -1904,8 +1909,6 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
 
   const currentStep = formSteps[step]?.id ?? "insurer";
   const lastStep = formSteps.length - 1;
-  const selectedInsuranceType = INSURANCE_TYPES.find((item) => item.id === insuranceType);
-  const selectedReason = availableReasons.find((item) => item.id === reason);
   const showCppAgreementDocument =
     completed && insuranceType === "life" && reason === "agreement" && insurer === "ČPP";
   const showCppStandardTerminationDocument =
@@ -2005,11 +2008,14 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
             universalLetterDefinition.requiresOtherReason,
           calculator: universalLetterDefinition.calculator,
           uploadUrl:
-            insurer === "UNIQA"
-              ? UNIQA_UPLOAD_URL
-              : insurer === "Generali"
-                ? GENERALI_UPLOAD_URL
-                : undefined,
+            insurer === "Allianz"
+              ? ALLIANZ_UPLOAD_URL
+              : insurer === "UNIQA"
+                ? UNIQA_UPLOAD_URL
+                : insurer === "Generali"
+                  ? GENERALI_UPLOAD_URL
+                  : undefined,
+          uploadButtonLabel: insurer === "Allianz" ? "Odeslat" : undefined,
         }
       : null;
   const activeDocument =
@@ -2091,33 +2097,30 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
 
   return (
     <AppLayout active="tools" embedded={embedded}>
-      <div className="mx-auto w-full max-w-5xl space-y-6 px-2 pb-10 sm:px-3">
-        {activeDocument ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <SplitTitle
-              text="Výpověď smlouvy"
-              className="!text-3xl sm:!text-4xl"
-            />
-            {!embedded ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setCompleted(false);
-                  setFormError(null);
-                }}
-                className="inline-flex items-center justify-center gap-2 self-start rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:bg-slate-50 sm:self-auto"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Zpět na výběr
-              </button>
-            ) : null}
+      <div className={styles.page} data-embedded={embedded}>
+        <header className={styles.hero} data-document={Boolean(activeDocument)}>
+          <div>
+            <p className={styles.eyebrow}><FileText size={14} aria-hidden="true" />Administrativa · Pomůcky</p>
+            <h1>Výpověď smlouvy<span>.</span></h1>
+            <p className={styles.heroDescription}>{activeDocument
+              ? activeOnlineFormConfig && visibleDocumentMode === "official"
+                ? "Pokračuj do online formuláře pojišťovny a dokonči ukončení smlouvy."
+                : "Doplň údaje v dokumentu, zkontroluj je a připrav výpověď k odeslání."
+              : "Od výběru pojišťovny k připravené výpovědi. Přehledně, krok za krokem."}</p>
+            {!activeDocument && <div className={styles.heroMeta}>
+              <span><ShieldCheck size={13} aria-hidden="true" />Výběr pojišťovny</span>
+              <span><FileCheck2 size={13} aria-hidden="true" />Příprava dokumentu</span>
+              <span><Printer size={13} aria-hidden="true" />PDF a tisk</span>
+            </div>}
           </div>
-        ) : (
-          <SplitTitle text="Výpověď smlouvy" />
-        )}
+          {activeDocument ? !embedded && <button type="button" className={styles.secondaryButton}
+            onClick={() => { setCompleted(false); setFormError(null); }}>
+            <ChevronLeft size={16} aria-hidden="true" />Zpět na výběr
+          </button> : <div className={styles.heroArt}><TerminationIllustration /></div>}
+        </header>
 
         {contractPrefill ? (
-          <section className="flex flex-col gap-3 rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-950 shadow-[0_10px_28px_rgba(16,185,129,0.1)] sm:flex-row sm:items-center sm:justify-between">
+          <section className={styles.prefillBanner}>
             <div className="flex min-w-0 items-start gap-3">
               <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
               <div className="min-w-0">
@@ -2149,7 +2152,7 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
         ) : null}
 
         {hasOfficialDocument && hasUniversalDocument ? (
-          <section className="sticky top-2 z-40 flex flex-col gap-3 rounded-[22px] border border-violet-200/80 bg-white/95 p-3 shadow-[0_16px_42px_rgba(88,28,135,0.16)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-3.5">
+          <section className={styles.documentSwitch}>
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-violet-700">
                 Typ dokumentu
@@ -2160,9 +2163,9 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
             </div>
 
             <div
-              role="tablist"
+              role="group"
               aria-label="Typ dokumentu výpovědi"
-              className="grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-100 p-1.5"
+              className={styles.documentTabs}
             >
               {(
                 [
@@ -2183,22 +2186,15 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
                   <button
                     key={option.mode}
                     type="button"
-                    role="tab"
                     disabled={!option.available}
-                    aria-selected={selected}
+                    aria-pressed={selected}
                     title={
                       option.available
                         ? option.label
                         : `${option.label} dokument není pro tuto volbu dostupný`
                     }
                     onClick={() => setDocumentViewMode(option.mode)}
-                    className={`min-w-[126px] rounded-xl px-4 py-2.5 text-sm font-bold transition ${
-                      selected
-                        ? "bg-slate-950 text-white shadow-[0_9px_22px_rgba(15,23,42,0.26)]"
-                        : option.available
-                          ? "bg-white text-slate-700 hover:text-slate-950"
-                          : "cursor-not-allowed bg-transparent text-slate-400 line-through opacity-60"
-                    }`}
+                    className={styles.documentTab}
                   >
                     {option.label}
                   </button>
@@ -2208,293 +2204,28 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
           </section>
         ) : null}
 
-        {!activeDocument ? (
-          <section className="relative overflow-hidden rounded-[28px] border border-violet-300/25 bg-[radial-gradient(circle_at_80%_0%,rgba(167,139,250,0.24),transparent_34%),linear-gradient(155deg,#160c2a_0%,#100b21_100%)] p-4 text-[#f8fafc] shadow-[0_34px_90px_rgba(7,6,25,0.7),inset_0_1px_0_rgba(196,181,253,0.2)] sm:p-6 vizitka-anim-up">
-            <div className="flex flex-col gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-200/80">
-                Pomůcka
-              </p>
-              <h2 className="text-xl font-bold tracking-[-0.02em] text-[#f8fafc]">
-                Základní údaje k výpovědi
-              </h2>
-            </div>
-
-          <div className="mt-5 rounded-2xl border border-white/14 bg-white/[0.04] px-3 py-3">
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: `repeat(${formSteps.length}, minmax(0, 1fr))` }}
-            >
-              {formSteps.map((stepItem, index) => {
-                const stepDone = step > index || completed;
-                const stepActive = step === index && !completed;
-
-                return (
-                  <div key={stepItem.id} className="flex flex-col items-center gap-1 text-center">
-                    <span
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                        stepDone
-                          ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
-                          : stepActive
-                            ? "border-violet-200/70 bg-violet-400/30 text-[#f8fafc]"
-                            : "border-white/20 bg-white/[0.03] text-violet-200/70"
-                      }`}
-                    >
-                      {stepDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                    </span>
-                    <span
-                      className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                        stepActive || stepDone ? "text-[#f4f0ff]" : "text-violet-200/60"
-                      }`}
-                    >
-                      {stepItem.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 h-1.5 rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#8b5cf6_0%,#a855f7_55%,#c084fc_100%)] transition-[width] duration-300"
-                style={{
-                  width: `${completed ? 100 : ((step + 1) / formSteps.length) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="mt-5">
-            {currentStep === "type" ? (
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                  Co se vypovídá
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {availableInsuranceTypes.map((item) => {
-                    const Icon = item.icon;
-                    const selected = insuranceType === item.id;
-
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setInsuranceType(item.id);
-                          if (
-                            reason &&
-                            !getTerminationReasonsForSelection(
-                              item.id,
-                              insurer,
-                              contractPrefill?.sourceProduct,
-                            ).some((option) => option.id === reason)
-                          ) {
-                            setReason(null);
-                          }
-                          setCompleted(false);
-                          setFormError(null);
-                        }}
-                        className={`group flex min-h-[92px] items-start gap-3 rounded-2xl border px-3 py-3 text-left transition ${
-                          selected
-                            ? "border-violet-200/70 bg-violet-400/20 text-[#f8fafc] shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
-                            : "border-white/14 bg-white/[0.03] text-violet-100/90 hover:border-violet-300/40 hover:bg-white/[0.07]"
-                        }`}
-                      >
-                        <span
-                          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-                            selected
-                              ? "border-violet-200/70 bg-violet-300/35 text-[#f8fafc]"
-                              : "border-white/20 bg-white/[0.03] text-violet-100/80"
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold leading-tight text-[#f8fafc]">{item.label}</span>
-                          <span className="mt-1 block text-xs leading-relaxed text-violet-100/65">
-                            {item.description}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {currentStep === "reason" ? (
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                  Varianta výpovědi
-                </p>
-                <div className="grid gap-3">
-                  {availableReasons.map((item) => {
-                    const selected = reason === item.id;
-
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setReason(item.id);
-                          setCompleted(false);
-                          setFormError(null);
-                        }}
-                        className={`flex min-h-[64px] items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                          selected
-                            ? "border-violet-200/70 bg-violet-400/20 text-[#f8fafc] shadow-[0_10px_26px_rgba(139,92,246,0.28)]"
-                            : "border-white/14 bg-white/[0.03] text-violet-100/90 hover:border-violet-300/40 hover:bg-white/[0.07]"
-                        }`}
-                      >
-                        <span
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-                            selected
-                              ? "border-emerald-300/70 bg-emerald-400/25 text-emerald-100"
-                              : "border-white/20 bg-white/[0.03] text-violet-100/80"
-                          }`}
-                        >
-                          {selected ? <CheckCircle2 className="h-4 w-4" /> : null}
-                        </span>
-                        <span className="text-sm font-medium leading-tight text-[#f8fafc]">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {currentStep === "insurer" ? (
-              <div className="space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-violet-200/85">
-                  Pojišťovna
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {INSURERS.map((item) => {
-                    const selected = insurer === item.label;
-
-                    return (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => {
-                          setInsurer(item.label);
-                          if (item.label === "Direct") {
-                            setInsuranceType("nonLife");
-                            setReason(null);
-                            setDocumentViewMode("official");
-                            setCompleted(true);
-                            setFormError(null);
-                            return;
-                          }
-                          if (
-                            reason &&
-                            !getTerminationReasonsForSelection(
-                              insuranceType,
-                              item.label,
-                              contractPrefill?.sourceProduct,
-                            ).some((option) => option.id === reason)
-                          ) {
-                            setReason(null);
-                          }
-                          setCompleted(false);
-                          setFormError(null);
-                        }}
-                        aria-label={`Vybrat pojišťovnu ${item.label}`}
-                        className={`group flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center text-sm font-semibold transition ${
-                          selected
-                            ? "border-violet-200/85 bg-violet-400/24 shadow-[0_12px_30px_rgba(139,92,246,0.32)]"
-                            : "border-white/14 bg-white/[0.04] hover:border-violet-300/40 hover:bg-white/[0.08]"
-                        }`}
-                      >
-                        <span className="relative flex h-12 w-full max-w-[126px] items-center justify-center rounded-xl border border-white/70 bg-white/95 shadow-[0_10px_20px_rgba(10,7,24,0.18)]">
-                          <Image
-                            src={item.logoPath}
-                            alt={`Logo ${item.label}`}
-                            fill
-                            sizes="126px"
-                            className={`object-contain ${item.logoClass}`}
-                          />
-                        </span>
-                        <span className={selected ? "text-[#f8fafc]" : "text-violet-100/82"}>{item.label}</span>
-                        {item.label === "Direct" ? (
-                          <span className="inline-flex items-center rounded-full border border-lime-300/45 bg-lime-300/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-lime-200">
-                            Online • bez podpisu
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {formError ? (
-            <p className="mt-4 rounded-2xl border border-rose-300/45 bg-rose-400/15 px-3 py-2 text-xs text-rose-100">
-              {formError}
-            </p>
-          ) : null}
-
-          <div className="mt-5 rounded-2xl border border-white/12 bg-white/[0.03] p-3">
-            <div className="grid gap-2 text-xs text-violet-100/75 sm:grid-cols-3">
-              <div>
-                <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
-                  Pojišťovna
-                </span>
-                <span className="mt-1 block text-sm text-[#f8fafc]">{insurer ?? "Nevybráno"}</span>
-              </div>
-              <div>
-                <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
-                  Typ
-                </span>
-                <span className="mt-1 block text-sm text-[#f8fafc]">
-                  {selectedInsuranceType?.label ?? "Nevybráno"}
-                </span>
-              </div>
-              <div>
-                <span className="block font-semibold uppercase tracking-[0.14em] text-violet-200/80">
-                  Varianta
-                </span>
-                <span className="mt-1 block text-sm text-[#f8fafc]">
-                  {requiresReasonStep ? selectedReason?.label ?? "Nevybráno" : "Nevyžadováno"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {completed ? (
-            <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-100">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Výběr je připravený pro další krok.
-            </p>
-          ) : null}
-
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-violet-100/70">
-              Krok {step + 1} / {formSteps.length}
-            </p>
-            <div className="ml-auto flex items-center gap-2">
-              {step > 0 ? (
-                <button
-                  type="button"
-                  onClick={goToPreviousStep}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/22 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-white/[0.1]"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Zpět
-                </button>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={goToNextStep}
-                className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.35)] transition hover:brightness-110 vizitka-cta-glow"
-              >
-                {step < lastStep ? "Pokračovat" : "Dokončit výběr"}
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          </section>
-        ) : null}
+        {!activeDocument && <TerminationSelection
+          step={step} steps={formSteps} completed={completed}
+          insurer={insurer} insuranceType={insuranceType} reason={reason}
+          insurers={INSURERS} insuranceTypes={availableInsuranceTypes} reasons={availableReasons}
+          error={formError} onPrevious={goToPreviousStep} onNext={goToNextStep}
+          onInsurerChange={(nextInsurer) => {
+            setInsurer(nextInsurer);
+            if (nextInsurer === "Direct") {
+              setInsuranceType("nonLife"); setReason(null);
+              setDocumentViewMode("official"); setCompleted(true); setFormError(null);
+              return;
+            }
+            if (reason && !getTerminationReasonsForSelection(insuranceType, nextInsurer, contractPrefill?.sourceProduct).some(item => item.id === reason)) setReason(null);
+            setCompleted(false); setFormError(null);
+          }}
+          onInsuranceTypeChange={(nextType) => {
+            setInsuranceType(nextType);
+            if (reason && !getTerminationReasonsForSelection(nextType, insurer, contractPrefill?.sourceProduct).some(item => item.id === reason)) setReason(null);
+            setCompleted(false); setFormError(null);
+          }}
+          onReasonChange={(nextReason) => { setReason(nextReason); setCompleted(false); setFormError(null); }}
+        />}
 
         {activeGeneratedLetterConfig ? (
           <div
@@ -2778,7 +2509,7 @@ function UniversalTerminationLetterPreview({
   return (
     <section
       id={config.id}
-      className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up"
+      className={styles.documentCard}
     >
       <style jsx global>{`
         #${config.id} .uniqa-letter-page {
@@ -2890,7 +2621,7 @@ function UniversalTerminationLetterPreview({
         }
       `}</style>
 
-      <div className="uniqa-no-print flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className={`uniqa-no-print ${styles.documentHeader}`}>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
             {config.eyebrow}
@@ -2918,11 +2649,11 @@ function UniversalTerminationLetterPreview({
             <a
               href={config.uploadUrl}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
             >
               <Send className="h-4 w-4" />
-              Odeslat výpověď
+              {config.uploadButtonLabel ?? "Odeslat výpověď"}
             </a>
           ) : null}
           <button
@@ -2935,6 +2666,7 @@ function UniversalTerminationLetterPreview({
           </button>
           <button
             type="button"
+            data-primary="true"
             onClick={() => void downloadLetterPdf()}
             disabled={downloadingPdf}
             className="inline-flex items-center gap-2 rounded-full border border-blue-700 bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(29,78,216,0.24)] transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-65"
@@ -2948,6 +2680,7 @@ function UniversalTerminationLetterPreview({
           </button>
           <button
             type="button"
+            data-primary="true"
             onClick={printLetter}
             className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110"
           >
@@ -3045,7 +2778,7 @@ function UniversalTerminationLetterPreview({
           )
         : null}
 
-      <div className="uniqa-letter-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
+      <div className={`uniqa-letter-pages grid gap-5 ${styles.documentCanvas}`}>
         <article
           ref={letterPageRef}
           id={`${config.id}-letter-page`}
@@ -3347,7 +3080,7 @@ function FillablePdfPreview({
   return (
     <section
       id="generali-fillable-document"
-      className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up"
+      className={styles.documentCard}
     >
       <style jsx global>{`
         #generali-fillable-document .generali-field {
@@ -3435,7 +3168,7 @@ function FillablePdfPreview({
         }
       `}</style>
 
-      <div className="generali-no-print flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className={`generali-no-print ${styles.documentHeader}`}>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
             {config.eyebrow}
@@ -3474,6 +3207,7 @@ function FillablePdfPreview({
           </button>
           <button
             type="button"
+            data-primary="true"
             onClick={printPdf}
             disabled={renderStatus !== "ready"}
             className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
@@ -3501,7 +3235,7 @@ function FillablePdfPreview({
         </p>
       ) : null}
 
-      <div className="generali-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
+      <div className={`generali-pages grid gap-5 ${styles.documentCanvas}`}>
         {(pages.length ? pages : [{ width: 595.276, height: 841.89 }]).map((page, pageIndex) => (
           <div
             key={pageIndex}
@@ -3765,7 +3499,7 @@ function LifeInsurancePdfPreview({
   return (
     <section
       id="cpp-agreement-document"
-      className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:p-5 vizitka-anim-up"
+      className={styles.documentCard}
     >
       <style jsx global>{`
         #cpp-agreement-document .agreement-field {
@@ -3858,7 +3592,7 @@ function LifeInsurancePdfPreview({
         }
       `}</style>
 
-      <div className="agreement-no-print flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className={`agreement-no-print ${styles.documentHeader}`}>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">
             {config.eyebrow}
@@ -3907,6 +3641,7 @@ function LifeInsurancePdfPreview({
           </button>
           <button
             type="button"
+            data-primary="true"
             onClick={openPrintInstructions}
             disabled={renderStatus !== "ready"}
             className="inline-flex items-center gap-2 rounded-full border border-violet-300/40 bg-[linear-gradient(120deg,#7c3aed_0%,#a855f7_55%,#c084fc_100%)] px-5 py-2.5 text-sm font-semibold text-[#f8fafc] shadow-[0_14px_28px_rgba(124,58,237,0.28)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
@@ -4007,7 +3742,7 @@ function LifeInsurancePdfPreview({
         </p>
       ) : null}
 
-      <div className="agreement-pages mt-5 grid gap-5 bg-slate-100/80 p-3 sm:p-4">
+      <div className={`agreement-pages grid gap-5 ${styles.documentCanvas}`}>
         {Array.from({ length: config.pageCount }).map((_, pageIndex) => (
           <div
             key={pageIndex}
