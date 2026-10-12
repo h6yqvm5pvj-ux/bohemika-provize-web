@@ -18,9 +18,14 @@ describe("generateCashflow", () => {
       [new Date(2026, 8, 25), new Date(2026, 8, 15), new Date(2026, 9, 25)],
       [new Date(2026, 8, 26), new Date(2026, 8, 15), new Date(2026, 10, 25)],
       [new Date(2026, 7, 18), new Date(2026, 8, 28), new Date(2026, 9, 25)],
-      [new Date(2026, 9, 8), new Date(2026, 11, 1), new Date(2027, 0, 25)],
+      [new Date(2026, 9, 8), new Date(2026, 11, 1), new Date(2026, 11, 25)],
+      [new Date(2026, 9, 12), new Date(2026, 11, 1), new Date(2026, 11, 25)],
+      [new Date(2026, 10, 25), new Date(2026, 11, 1), new Date(2026, 11, 25)],
+      [new Date(2026, 10, 26), new Date(2026, 11, 1), new Date(2027, 0, 25)],
+      [new Date(2026, 11, 1), new Date(2026, 11, 1), new Date(2027, 0, 25)],
+      [new Date(2026, 11, 8), new Date(2027, 0, 1), new Date(2027, 0, 25)],
       [new Date(2026, 11, 28), new Date(2026, 11, 1), new Date(2027, 1, 25)],
-    ])("waits for the month after policy start and signing acceptance (%s, %s)", (signed, start, expected) => {
+    ])("respects signing acceptance and advance first-day starts (%s, %s)", (signed, start, expected) => {
       const rows = generateCashflow([fixture(signed, start)], 2, undefined, asOf);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ date: expected, amount: 1000 });
@@ -29,6 +34,37 @@ describe("generateCashflow", () => {
     it.each([null, "invalid-date"])("keeps a conservative forecast without a signing date (%s)", signed => {
       const rows = generateCashflow([fixture(signed)], 2, undefined, asOf);
       expect(rows[0].date).toEqual(new Date(2026, 9, 25));
+    });
+
+    it.each([null, "invalid-date"])("does not infer advance signing from creation time (%s)", signed => {
+      const entry = { ...fixture(signed, new Date(2026, 11, 1)), createdAt: new Date(2026, 9, 12) };
+      expect(generateCashflow([entry], 2, undefined, asOf)[0].date).toEqual(new Date(2027, 0, 25));
+    });
+
+    it("includes every initial commission part in the advance policy start month", () => {
+      const entry = fixture("2026-10-12", new Date(2026, 11, 1));
+      entry.items = [
+        { title: "Provize A101", code: "A101", amount: 700 },
+        { title: "Provize B0301", code: "B0301", amount: 300 },
+        { title: "Provize 50% z B3601", code: "B3601_HALF", amount: 100 },
+      ];
+      const rows = generateCashflow([entry], 2, undefined, asOf);
+      expect(rows.map(row => [row.commissionCode, row.amount, row.date])).toEqual([
+        ["A101", 700, new Date(2026, 11, 25)],
+        ["B0301", 300, new Date(2026, 11, 25)],
+        ["B3601_HALF", 100, new Date(2026, 11, 25)],
+      ]);
+    });
+
+    it("keeps a January statement payout instead of the advance December forecast", () => {
+      const entry = fixture(new Date(2026, 9, 12), new Date(2026, 11, 1));
+      entry.commissionPayouts = [{ key: "paid-advance-life", code: "A101", status: "paid", amount: 1000, payoutMonthKey: "2027-1" }];
+      const rows = generateCashflow([entry], 2, undefined, asOf);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        date: new Date(2027, 0, 25), originalDate: new Date(2026, 11, 25),
+        payoutStatus: "paid", commissionPayoutKey: "paid-advance-life",
+      });
     });
 
     it("applies the timing to every part of the first commission", () => {
@@ -114,7 +150,7 @@ describe("generateCashflow", () => {
         { title: "Provize po 3 letech", code: "B3601", amount: 300 },
       ],
     }], 5, undefined, new Date(2026, 9, 8));
-    expect(rows.find(row => row.commissionCode === "A101")?.date).toEqual(new Date(2027, 0, 25));
+    expect(rows.find(row => row.commissionCode === "A101")?.date).toEqual(new Date(2026, 11, 25));
     expect(rows.filter(row => row.commissionCode === "B101-B104").map(row => row.date)).toEqual([
       new Date(2028, 0, 25), new Date(2029, 0, 25), new Date(2030, 0, 25), new Date(2031, 0, 25),
     ]);

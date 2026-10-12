@@ -51,11 +51,14 @@ function estimateLifeFirstPayoutDate(
   payoutDay = 25
 ): Date {
   // Předstih pro akceptaci počítáme od sjednání: do 25. dne +1 měsíc,
-  // později +2 měsíce. ČPP posílá provize firmě začátkem měsíce;
-  // u NEONu proto platba kolem počátku patří nejdříve do dalšího měsíce.
+  // později +2 měsíce. NEON sjednaný před měsícem počátku a začínající
+  // prvního může mít první výplatu už v měsíci počátku; jinak až v dalším.
   // U ostatních životek výplata nesmí předcházet samotnému počátku.
   const acceptancePayout = estimatePayoutDate(agreementDate, agreementDate, 25, payoutDay);
-  const monthsAfterStart = product === "neon" || policyStart.getDate() > payoutDay ? 1 : 0;
+  const startsOnFirstAfterSigning = policyStart.getDate() === 1 && agreementDate <
+    calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth(), 1);
+  const monthsAfterStart = (product === "neon" && !startsOnFirstAfterSigning) ||
+    policyStart.getDate() > payoutDay ? 1 : 0;
   const earliestPayout = calendarDate(policyStart,
     policyStart.getFullYear(),
     policyStart.getMonth() + monthsAfterStart,

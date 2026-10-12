@@ -90,11 +90,11 @@ describe("isolated cashflow calendar", () => {
       const results = await Promise.all(models.map(async model => {
         await Promise.resolve();
         model.view(WORKER_FILTER_CASES[0].options);
-        expect(model.month("2026-12")).toBeNull();
-        return model.month("2027-1")!.items[0].date.toISOString();
+        expect(model.month("2027-1")).toBeNull();
+        return model.month("2026-12")!.items[0].date.toISOString();
       }));
-      expect(results).toEqual(["2027-01-24T23:00:00.000Z", "2027-01-25T05:00:00.000Z",
-        "2027-01-25T00:00:00.000Z", "2027-01-24T10:00:00.000Z"]);
+      expect(results).toEqual(["2026-12-24T23:00:00.000Z", "2026-12-25T05:00:00.000Z",
+        "2026-12-25T00:00:00.000Z", "2026-12-24T10:00:00.000Z"]);
       expect(cashflowCanonicalJson(snapshot)).toBe(before);
     } finally { models.forEach(model => model.dispose()); }
   });

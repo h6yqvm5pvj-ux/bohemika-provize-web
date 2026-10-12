@@ -12,8 +12,8 @@ const dataset = (): CashflowDataset => ({
   asOf: new Date(2026, 9, 8), statements: [],
   snapshot: { email: "advisor@example.test", myPosition: "poradce3", myCommissionMode: "standard", hasAnyTeam: false,
     ownEntries: [{ id: "synthetic", productKey: "neon", userEmail: "advisor@example.test",
-      // ČPP's November policy start produces the December detail exercised below.
-      contractNumber: "123456", clientName: "Synthetic client", policyStartDate: new Date(2026, 10, 1), contractSignedDate: new Date(2026, 9, 8),
+      // The advance December first-day start produces the December detail exercised below.
+      contractNumber: "123456", clientName: "Synthetic client", policyStartDate: new Date(2026, 11, 1), contractSignedDate: new Date(2026, 9, 8),
       items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }] }],
     teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
   },
