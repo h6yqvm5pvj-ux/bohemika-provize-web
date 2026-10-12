@@ -978,7 +978,7 @@ export default function ExportProductionPage() {
 
     const loadBrandAssets = async () => {
       try {
-        const companyLogo = await readAsset("/icons/nadpislogo.jpg");
+        const companyLogo = await readAsset("/icons/bohemika_logo.png");
         const iconEntries = await Promise.all(
           (Object.entries(PRODUCT_ICON_PATHS) as [Product, string][]).map(
             async ([product, path]) => [product, await readAsset(path)] as const
@@ -1652,7 +1652,7 @@ export default function ExportProductionPage() {
     const totalContracts =
       summary.lifeContracts + summary.nonLifeContracts + summary.goldContracts;
 
-    const companyLogoSrc = companyLogoDataUrl ?? new URL("/icons/nadpislogo.jpg", window.location.origin).href;
+    const companyLogoSrc = companyLogoDataUrl ?? new URL("/icons/bohemika_logo.png", window.location.origin).href;
     const html = `
       <!DOCTYPE html>
       <html lang="cs">
@@ -2341,7 +2341,7 @@ export default function ExportProductionPage() {
 	                ) : (
 	                  <div className={styles.emptyPreview}>
                       <div className={styles.paperSample} aria-hidden="true">
-                        <Image src="/icons/nadpislogo.jpg" alt="" width={1024} height={655} />
+                        <Image src="/icons/bohemika_logo.png" alt="" width={320} height={480} />
                         <span className={styles.sampleRule} />
                         <div className={styles.sampleMeta}><span /><span /><span /></div>
                         <div className={styles.sampleTotals}><span /><span /><span /></div>

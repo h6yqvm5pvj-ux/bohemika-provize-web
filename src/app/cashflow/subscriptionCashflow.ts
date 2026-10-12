@@ -51,7 +51,8 @@ export const subscriptionIntervalMonths = (
 ): number => CASHFLOW_SUBSCRIPTION_INTERVAL_MONTHS[plan];
 
 export const parseSubscriptionIsoDay = (
-  value: string | null | undefined
+  value: string | null | undefined,
+  calendar?: Date
 ): Date | null => {
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -62,7 +63,7 @@ export const parseSubscriptionIsoDay = (
   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
     return null;
   }
-  const date = new Date(year, month - 1, day);
+  const date = calendarDate(calendar, year, month - 1, day);
   if (
     date.getFullYear() !== year ||
     date.getMonth() !== month - 1 ||
@@ -84,8 +85,8 @@ export const addSubscriptionMonths = (date: Date, months: number): Date => {
   const year = date.getFullYear();
   const month = date.getMonth();
   const day = date.getDate();
-  const endOfTargetMonth = new Date(year, month + months + 1, 0).getDate();
-  return new Date(year, month + months, Math.min(day, endOfTargetMonth));
+  const endOfTargetMonth = calendarDate(date, year, month + months + 1, 0).getDate();
+  return calendarDate(date, year, month + months, Math.min(day, endOfTargetMonth));
 };
 
 export const subscriptionPeriodUntilIso = (
@@ -96,7 +97,8 @@ export const subscriptionPeriodUntilIso = (
     periodFrom,
     subscriptionIntervalMonths(plan)
   );
-  const periodUntil = new Date(nextPeriodStart);
+  const periodUntil = calendarDate(nextPeriodStart, nextPeriodStart);
   periodUntil.setDate(periodUntil.getDate() - 1);
   return formatSubscriptionIsoDay(periodUntil);
 };
+import { calendarDate } from "@/app/lib/calendarDates";

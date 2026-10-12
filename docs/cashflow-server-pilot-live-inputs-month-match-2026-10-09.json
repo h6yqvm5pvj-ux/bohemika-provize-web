@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T13:26:24+02:00",
+  "source": "user-provided screenshot after visibly clearing the diagnostic and following the fresh-view/month-detail procedure",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "month",
+    "status": "match",
+    "requestMs": 7976.5,
+    "referenceMs": 20.799999997019768,
+    "serverTimingMs": {
+      "cashflow_auth": 661.03,
+      "cashflow_inputs": 5767.78,
+      "cashflow_hash": 336.7,
+      "cashflow_compute": 1003.42,
+      "cashflow_total": 7808.06
+    }
+  },
+  "visibleDetail": {
+    "monthKey": "2026-04"
+  },
+  "precedingSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true
+  },
+  "verification": {
+    "previousDiagnosticRemovalVisible": true,
+    "newMonthComparisonAfterRemovalVisible": true,
+    "fullInputAndMonthsHashMatchReported": true,
+    "serializedMonthAndAllItemFieldsMatchReported": true,
+    "currentMatchedViewRequiredByClient": true,
+    "selectionBinding": "preceding fresh team/prediction procedure; month modal hides selection controls",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "aliasVerifiedAt": "2026-10-09T11:27:48.451Z",
+    "requestDeploymentIndependentlyCaptured": false,
+    "displayedMonthBinding": "visible April 2026 modal; diagnostic itself omits monthKey",
+    "monthDetailVerifiedAccordingToProcedure": true,
+    "productionSpeedupEstablished": false
+  },
+  "measurementLimitations": {
+    "sameMonthComparedAcrossReleases": false,
+    "wholePageLatencyMeasured": false,
+    "stableProductionImprovementEstablished": false
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "businessItemCountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "businessRecordsChanged": false
+}

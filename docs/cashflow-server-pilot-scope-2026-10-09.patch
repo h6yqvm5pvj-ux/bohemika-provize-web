@@ -1,0 +1,277 @@
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+--- a/src/lib/server/cashflowShadowBudget.ts
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -1,9 +1,10 @@
+-import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import type { CashflowComputationOptions, CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+ import type { EntryDoc } from "@/app/cashflow/types";
+ import type { CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
+ import { toDate } from "@/app/lib/formatters";
+ import { monthsBetweenPayments } from "@/app/cashflow/generator";
+-import { CASHFLOW_FORECAST_YEARS, INTELLIGENT_PREDICTION_CONFIG, normalizeContractNumberSearch } from "@/app/cashflow/helpers";
++import { CASHFLOW_FORECAST_YEARS, INTELLIGENT_PREDICTION_CONFIG, matchesProductFilter, normalizeContractNumberSearch } from "@/app/cashflow/helpers";
++import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
+ 
+ const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
+ const MAX_PAYOUT_MATCH_WORK = 2_000_000;
+@@ -78,24 +79,37 @@
+  * statement-only payout and bound life reviews by their formula schedules when
+  * prediction is on.
+  * Each subscription row gets 1 actual + 120 forecasts. Bounds are not truncation.
++ * A validated view selection can narrow generation paths; without it, legacy
++ * callers keep the whole-portfolio estimate. All source shape/date/nesting
++ * checks remain independent of selection, as does the caller's full input hash.
+  *
+  * The 25k output estimate is supplemented by bounds on payout matching work,
+  * nested arrays and dates/durations: a small number of corrupt historical rows
+  * must not cause unbounded synchronous loops. Exceeding any bound skips the
+  * diagnostic comparison; callers keep the existing browser calculation.
+  */
+-export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true): CashflowServerResourceLimit | null {
++export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true,
++  selection?: Omit<CashflowComputationOptions, "asOf">): CashflowServerResourceLimit | null {
+   const asOfMs = asOf.getTime();
+   if (!Number.isFinite(asOfMs) || asOf.getFullYear() < 2000 || asOf.getFullYear() > 2200) return "reference_time";
+   const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
+   const maxDateYear = asOf.getFullYear() + 100;
+-  let estimatedOutputItems = snapshot.tipPayouts.length + snapshot.subscriptionPayments.length * 121;
++  if (!Array.isArray(snapshot.tipPayouts) || !Array.isArray(snapshot.subscriptionPayments)) return "output_estimate";
++  if (!Array.isArray(snapshot.ownEntries) || !Array.isArray(snapshot.teamEntriesRaw)) return "entry_shape";
++  const includeTips = !selection || selection.tipsterMode || selection.productFilter === "tip" ||
++    (selection.productFilter === "all" && selection.scopeFilter !== "team");
++  const includeSubscriptions = !selection || (isSubscriptionCashflowOwner(snapshot.email) && !selection.tipsterMode &&
++    selection.scopeFilter !== "team" && ["all", "subscription"].includes(selection.productFilter));
++  let estimatedOutputItems = (includeTips ? snapshot.tipPayouts.length : 0) +
++    (includeSubscriptions ? snapshot.subscriptionPayments.length * 121 : 0);
+   let payoutMatchWork = 0;
+   let nestedRows = 0;
+   if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return "output_estimate";
+   if (snapshot.ownEntries.length + snapshot.teamEntriesRaw.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
+-
+-  const entryFailure = (entry: EntryDoc, multiplicity: number): CashflowServerResourceLimit | null => {
++  if (selection && snapshot.ownEntries.length + snapshot.teamEntriesRaw.length +
++    snapshot.tipPayouts.length + snapshot.subscriptionPayments.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
++
++  const entryFailure = (entry: EntryDoc, fromTeam: boolean): CashflowServerResourceLimit | null => {
+     if (!entry || typeof entry !== "object") return "entry_shape";
+     if (entry.durationYears != null && (
+       typeof entry.durationYears !== "number" || !Number.isFinite(entry.durationYears) ||
+@@ -137,8 +151,26 @@
+     // Three additional months cover inclusive endpoints and payout-date offsets.
+     const months = horizonMonth - earliestMonth + 3;
+     const scheduledItems = estimateCashflowShadowScheduleItems(entry, months, parts);
+-    const extraReviews = includeLifeReviews ? estimateCashflowShadowLifeReviewItems(entry, scheduledItems) : 0;
+-    const expansion = multiplicity * (scheduledItems + payouts.length + extraReviews);
++    // computeCashflow selects scope/products before generation. Only those paths
++    // expand, but every source row above is still validated and hashed by callers.
++    // Search and history filters run later, so they cannot reduce this budget.
++    let multiplicity = fromTeam ? 2 : 1;
++    let extraReviews = includeLifeReviews ? multiplicity * estimateCashflowShadowLifeReviewItems(entry, scheduledItems) : 0;
++    if (selection) {
++      const selected = !selection.tipsterMode && selection.productFilter !== "tip" &&
++        (selection.productFilter === "all" || matchesProductFilter(entry.productKey, selection.productFilter));
++      const ownPath = selected && selection.scopeFilter !== "team" &&
++        typeof entry.userEmail === "string" && entry.userEmail.trim().toLowerCase() === snapshot.email;
++      const managerPath = selected && fromTeam && selection.scopeFilter !== "own" && overrides.some(override =>
++        typeof (override as { email?: unknown }).email === "string" &&
++        (override as { email: string }).email.toLowerCase() === snapshot.email);
++      multiplicity = Number(ownPath) + Number(managerPath);
++      extraReviews = includeLifeReviews ?
++        Number(ownPath) * estimateCashflowShadowLifeReviewItems(entry, scheduledItems) +
++        Number(managerPath) * estimateCashflowShadowLifeReviewItems({ ...entry, originalEntryId: entry.id,
++          id: `${entry.id}-override` }, scheduledItems) : 0;
++    }
++    const expansion = multiplicity * (scheduledItems + payouts.length) + extraReviews;
+     estimatedOutputItems += expansion;
+     // The generator scans and ranks historical payouts for each forecast item.
+     payoutMatchWork += expansion * (1 + payouts.length + matches.length) +
+@@ -150,12 +182,12 @@
+ 
+   try {
+     let failure: CashflowServerResourceLimit | null = null;
+-    const check = (entry: EntryDoc, multiplicity: number) => {
+-      failure = entryFailure(entry, multiplicity);
++    const check = (entry: EntryDoc, fromTeam: boolean) => {
++      failure = entryFailure(entry, fromTeam);
+       return failure === null;
+     };
+-    if (!snapshot.ownEntries.every(entry => check(entry, 1))) return failure;
+-    snapshot.teamEntriesRaw.every(entry => check(entry, 2));
++    if (!snapshot.ownEntries.every(entry => check(entry, false))) return failure;
++    snapshot.teamEntriesRaw.every(entry => check(entry, true));
+     return failure;
+   } catch {
+     // Unexpected legacy field shapes cannot authorize an expensive computation.
+@@ -163,6 +195,7 @@
+   }
+ }
+ 
+-export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true): boolean {
+-  return cashflowShadowBudgetFailure(snapshot, asOf, includeLifeReviews) === null;
+-}
++export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true,
++  selection?: Omit<CashflowComputationOptions, "asOf">): boolean {
++  return cashflowShadowBudgetFailure(snapshot, asOf, includeLifeReviews, selection) === null;
++}
+diff --git a/src/lib/server/cashflowShadowBudget.test.ts b/src/lib/server/cashflowShadowBudget.test.ts
+--- a/src/lib/server/cashflowShadowBudget.test.ts
++++ b/src/lib/server/cashflowShadowBudget.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from "vitest";
+ 
+-import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
++import type { CashflowComputationOptions, CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+ import type { EntryDoc } from "@/app/cashflow/types";
+ import { cashflowShadowBudgetFailure, isCashflowShadowWithinBudget } from "./cashflowShadowBudget";
+ 
+@@ -14,8 +14,82 @@
+ });
+ const entries = (count: number, patch: Partial<EntryDoc> = {}) =>
+   Array.from({ length: count }, (_, id) => entry({ id: String(id), ...patch }));
++const selection = (patch: Partial<CashflowComputationOptions> = {}): CashflowComputationOptions => ({
++  scopeFilter: "team", productFilter: "all", tipsterMode: false, ...patch,
++});
++const managerOverrides: EntryDoc["managerOverrides"] = [{ email: "viewer@example.test",
++  position: "manazer8", commissionMode: "standard", total: 1, items: [{ title: "Okamžitá provize", amount: 1 }] }];
+ 
+ describe("server cashflow shadow resource budget", () => {
++  it("bounds only generated team paths while preserving the legacy whole-portfolio estimate", () => {
++    const input = snapshot({
++      ownEntries: entries(1_000, { userEmail: "viewer@example.test", productKey: "neon" }),
++      teamEntriesRaw: entries(300, { userEmail: "member@example.test", productKey: "neon", managerOverrides }),
++      subscriptionPayments: Array.from({ length: 207 }, () => ({})),
++    });
++    const before = structuredClone(input);
++    expect(cashflowShadowBudgetFailure(input, asOf, true)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection())).toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ scopeFilter: "own" }))).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ scopeFilter: "combined" }))).toBe("output_estimate");
++    expect(input).toEqual(before);
++  });
++
++  it("keeps the same 25,000-item cap for the selected team generation path", () => {
++    const make = (count: number) => snapshot({ teamEntriesRaw: entries(count, {
++      userEmail: "member@example.test", productKey: "neon", managerOverrides,
++    }) });
++    expect(cashflowShadowBudgetFailure(make(454), asOf, true, selection())).toBeNull();
++    expect(cashflowShadowBudgetFailure(make(455), asOf, true, selection())).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(make(455), asOf, false, selection())).toBeNull();
++  });
++
++  it("includes own contracts found only in team rows and both paths in combined views", () => {
++    const input = snapshot({ teamEntriesRaw: entries(300, {
++      userEmail: " VIEWER@EXAMPLE.TEST ", productKey: "neon", managerOverrides,
++    }) });
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ scopeFilter: "own" }))).toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection())).toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ scopeFilter: "combined" }))).toBe("output_estimate");
++  });
++
++  it("selects products and ignores team rows without the current viewer's override", () => {
++    const input = snapshot({ teamEntriesRaw: entries(500, { userEmail: "member@example.test", productKey: "neon",
++      managerOverrides: [{ ...managerOverrides[0], email: "other@example.test" }] }) });
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection())).toBeNull();
++    input.teamEntriesRaw.forEach(entry => { entry.managerOverrides = managerOverrides; });
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ productFilter: "auto" }))).toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ productFilter: "life" }))).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ productFilter: "tip" }))).toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ tipsterMode: true }))).toBeNull();
++  });
++
++  it.each([
++    { policyStartDate: "invalid" }, { durationYears: 101 },
++    { items: {} as EntryDoc["items"] }, { commissionPayouts: Array.from({ length: 501 }, () => ({})) },
++  ])("still rejects malformed source rows excluded from generation (%j)", changed => {
++    const input = snapshot({ ownEntries: [entry(changed)] });
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection())).not.toBeNull();
++    expect(cashflowShadowBudgetFailure(input, asOf, true, selection({ productFilter: "tip" }))).not.toBeNull();
++  });
++
++  it("bounds full source and nested input size even when no contracts are generated", () => {
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(25_001) }), asOf, true,
++      selection({ productFilter: "tip" }))).toBe("source_rows");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(80, {
++      items: Array.from({ length: 128 }, () => ({ title: "Provize", amount: 1 })),
++    }) }), asOf, true, selection())).toBe("nested_rows");
++    expect(cashflowShadowBudgetFailure(snapshot({ tipPayouts: Array.from({ length: 25_001 }, () => ({})) }),
++      asOf, true, selection())).toBe("source_rows");
++  });
++
++  it("still rejects excessive payout matching for a selected override", () => {
++    const input = snapshot({ teamEntriesRaw: entries(7, { userEmail: "member@example.test", managerOverrides,
++      commissionPayouts: Array.from({ length: 500 }, () => ({})),
++    }) });
++    expect(cashflowShadowBudgetFailure(input, asOf, false, selection())).toBe("payout_matching");
++  });
++
+   it("distinguishes workload limits from malformed data using only fixed codes", () => {
+     expect(cashflowShadowBudgetFailure(snapshot(), asOf)).toBeNull();
+     expect(cashflowShadowBudgetFailure(snapshot(), new Date(NaN))).toBe("reference_time");
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+--- a/src/app/api/cashflow/view/route.ts
++++ b/src/app/api/cashflow/view/route.ts
+@@ -50,7 +50,7 @@
+     if (req.signal.aborted) return unavailable(409, "cancelled");
+     if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+     const resourceLimit = cashflowShadowBudgetFailure(inputs.snapshot, asOf,
+-      body.options.intelligentPredictionEnabled && !body.options.tipsterMode);
++      body.options.intelligentPredictionEnabled && !body.options.tipsterMode, body.options);
+     if (resourceLimit) return unavailable(503, "resource_limit", resourceLimit);
+     const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
+     // Never replace a view from another data version or accept a partially read portfolio.
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -281,6 +281,52 @@
+     expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason: "resource_limit", resourceLimit: "output_estimate" });
+     expect(response.headers.get("Server-Timing")).not.toContain("cashflow_compute");
+   });
++  it.each(["view", "month"] as const)("matches the full original prediction for a selected team %s despite excluded own contracts", async kind => {
++    fixture = makeWorkerFixture(1, asOf);
++    const template = fixture.snapshot.ownEntries[0];
++    fixture.snapshot.ownEntries = Array.from({ length: 1_000 }, (_, index) => ({ ...template,
++      id: `own-life-${index}`, productKey: "neon" as const, items: [{ title: "Okamžitá provize", amount: 10 }],
++    }));
++    fixture.snapshot.teamEntriesRaw = Array.from({ length: 300 }, (_, index) => ({ ...template,
++      id: `team-life-${index}`, userEmail: "member@example.test", productKey: "neon" as const,
++      items: [{ title: "Okamžitá provize", amount: 10 }],
++      managerOverrides: [{ email, position: "manazer8", commissionMode: "standard",
++        items: [{ title: "Okamžitá provize", amount: 2 }], total: 2 }],
++    }));
++    const selected = { ...options, scopeFilter: "team" as const, intelligentPredictionEnabled: true };
++    const before = cashflowCanonicalJson(fixture);
++    const reference = runReference(fixture.snapshot, fixture.statements, selected, asOf);
++    const occupied = reference.months.find(month => month.items.length > 0)!;
++    const response = await POST(request(await body(selected, kind === "month" ? occupied.key : undefined)));
++    expect(response.status).toBe(200);
++    const actual = await response.json();
++    expect(actual.inputHash).toBe(await hashCashflowValue(fixture));
++    expect(actual.monthsHash).toBe(await hashCashflowValue(reference.months));
++    if (kind === "month") expect(cashflowCanonicalJson(parseCashflowSnapshot(actual.payload)!.months)).toBe(cashflowCanonicalJson([occupied]));
++    else expect(actual.overview.months).toEqual(reference.months.map(({ items, ...month }) => ({
++      ...month, itemCountLabel: formatCashflowItemCount(items),
++    })));
++    expect(cashflowCanonicalJson(fixture)).toBe(before);
++    const previousBody = await body(selected);
++    fixture.snapshot.ownEntries[0].items![0].amount += 1;
++    const stale = await POST(request(previousBody));
++    expect(stale.status).toBe(409);
++    expect(await stale.json()).toMatchObject({ reason: "different_inputs" });
++  });
++
++  it("cannot bypass a selected excessive portfolio with a search query or hidden historical years", async () => {
++    fixture = makeWorkerFixture(1, asOf);
++    const template = fixture.snapshot.ownEntries[0];
++    fixture.snapshot.ownEntries = Array.from({ length: 1_000 }, (_, index) => ({ ...template,
++      id: `synthetic-life-${index}`, productKey: "neon" as const,
++    }));
++    const selected = { ...options, scopeFilter: "own" as const, intelligentPredictionEnabled: true,
++      contractNumberQuery: "absent-contract", showPastYears: false };
++    const response = await POST(request(await body(selected)));
++    expect(response.status).toBe(503);
++    expect(await response.json()).toMatchObject({ reason: "resource_limit", resourceLimit: "output_estimate" });
++    expect(response.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
++  });
+   it.each(["{", "x".repeat(4097), { kind: "month", monthKey: "../other" }])("rejects malformed/oversized requests before reading data (%s)", async value => {
+     expect((await POST(request(value))).status).toBe(400);
+     expect(mocks.load).not.toHaveBeenCalled();

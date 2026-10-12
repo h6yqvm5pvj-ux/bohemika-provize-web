@@ -1234,12 +1234,12 @@ function ClientCardEditor({ user, slug, query, returnContractHref }: { user: Fir
 
             {(sharedLoading || sharedError || sharedContracts?.matchingAvailable === false || Boolean(sharedContracts?.summaries.length)) && <section aria-label="Další smlouvy klienta" className={styles.panel}>
               <div className={styles.panelHeader}>
-                <div><h2 className="text-lg font-bold text-slate-900">Smlouvy dalších poradců</h2><p className="mt-1 text-xs text-slate-500">Přehled produktů sjednaných mimo tvou strukturu.</p></div>
+                <div><h2 className="text-lg font-bold text-slate-900">Další dostupné smlouvy</h2><p className="mt-1 text-xs text-slate-500">Přehled smluv ve tvé oprávněné struktuře.</p></div>
                 <LockKeyhole className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
               </div>
-              {sharedLoading && <p role="status" className="flex items-center gap-2 px-5 py-4 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-violet-500 motion-reduce:animate-none" aria-hidden="true" />{sharedContracts?.indexing ? "Propojuji starší smlouvy dalších poradců…" : "Načítám další smlouvy klienta…"}</p>}
+              {sharedLoading && <p role="status" className="flex items-center gap-2 px-5 py-4 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-violet-500 motion-reduce:animate-none" aria-hidden="true" />{sharedContracts?.indexing ? "Propojuji starší dostupné smlouvy…" : "Načítám další smlouvy klienta…"}</p>}
               {sharedError && <div role="alert" className="px-5 py-4 text-sm text-slate-600">Další smlouvy se nepodařilo načíst. <button type="button" className="font-semibold text-violet-700 underline" onClick={() => setSharedReload(value => value + 1)}>Zkusit znovu</button></div>}
-              {sharedContracts?.matchingAvailable === false && <p className="px-5 py-4 text-sm leading-6 text-slate-500">Pro propojení s dalšími poradci musí být ve smlouvách shodné jméno a telefon nebo e-mail. U těchto smluv kontakt zatím chybí.</p>}
+              {sharedContracts?.matchingAvailable === false && <p className="px-5 py-4 text-sm leading-6 text-slate-500">Pro propojení dostupných smluv musí být shodné jméno a telefon nebo e-mail. U těchto smluv kontakt zatím chybí.</p>}
               {Boolean(sharedContracts?.summaries.length) && <div className={styles.contractList}>{sharedContracts!.summaries.map(summary => <RestrictedContractCard key={summary.shareId} summary={summary} />)}</div>}
             </section>}
 

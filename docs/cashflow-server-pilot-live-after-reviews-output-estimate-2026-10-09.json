@@ -1,0 +1,31 @@
+{
+  "observedAt": "2026-10-09T11:04:57+02:00",
+  "source": "user-provided screenshot",
+  "mode": "compare",
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true,
+    "contractNumberQuery": ""
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "unavailable",
+    "requestMs": 11542.9,
+    "referenceMs": 108.9,
+    "serverTimingMs": {
+      "cashflow_auth": 560.9,
+      "cashflow_inputs": 10596.98,
+      "cashflow_total": 11223.7
+    },
+    "reason": "resource_limit",
+    "httpStatus": 503,
+    "resourceLimit": "output_estimate"
+  },
+  "expectedDeploymentId": "dpl_GfQopwSRQEfweTAczSYXKySCpchN",
+  "aliasVerifiedAt": "2026-10-09T09:12:43.410Z",
+  "requestDeploymentIndependentlyCaptured": false,
+  "authenticatedLivePredictionVerified": false,
+  "sourcePortfolioRead": false,
+  "businessRecordsChanged": false
+}

@@ -57,7 +57,24 @@ export function parseCashflowCandidateCheckResult(value: unknown): CashflowCandi
   };
 }
 
-const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash", "cashflow_storage"] as const;
+export const CASHFLOW_CONTRACT_TIMING_PHASES = [
+  "identity", "team_context", "subscription", "count", "entries", "response",
+] as const;
+export type CashflowContractTimingPhase = typeof CASHFLOW_CONTRACT_TIMING_PHASES[number];
+
+export const CASHFLOW_INPUT_TIMING_NAMES = [
+  "cashflow_inputs_profile", "cashflow_inputs_own_contracts", "cashflow_inputs_team_contracts",
+  "cashflow_inputs_tips", "cashflow_inputs_subscriptions", "cashflow_inputs_statements",
+  "cashflow_inputs_own_contracts_identity", "cashflow_inputs_own_contracts_team_context",
+  "cashflow_inputs_own_contracts_subscription", "cashflow_inputs_own_contracts_count",
+  "cashflow_inputs_own_contracts_entries", "cashflow_inputs_own_contracts_response",
+  "cashflow_inputs_team_contracts_identity", "cashflow_inputs_team_contracts_team_context",
+  "cashflow_inputs_team_contracts_subscription", "cashflow_inputs_team_contracts_count",
+  "cashflow_inputs_team_contracts_entries", "cashflow_inputs_team_contracts_response",
+] as const;
+export type CashflowInputTimingName = typeof CASHFLOW_INPUT_TIMING_NAMES[number];
+const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash", "cashflow_storage",
+  ...CASHFLOW_INPUT_TIMING_NAMES] as const;
 export type CashflowServerTiming = Partial<Record<typeof timingNames[number], number>>;
 
 /** Only numerical duration aggregates may reach diagnostic session storage. */

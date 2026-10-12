@@ -5,6 +5,7 @@ import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
 import { applyConfirmedPayoutMatches } from "./payoutPlanMatching";
+import { calendarDate } from "../lib/calendarDates";
 
 type ImmediateCashflowPart = {
   title: string;
@@ -37,10 +38,30 @@ export function estimatePayoutDate(
     : policyStart.getDate();
 
   if (dayForCutoff > cutoffDay) {
-    return new Date(year, month + 2, payoutDay);
+    return calendarDate(policyStart, year, month + 2, payoutDay);
   }
 
-  return new Date(year, month + 1, payoutDay);
+  return calendarDate(policyStart, year, month + 1, payoutDay);
+}
+
+function estimateLifeFirstPayoutDate(
+  policyStart: Date,
+  agreementDate: Date,
+  product: EntryDoc["productKey"],
+  payoutDay = 25
+): Date {
+  // Předstih pro akceptaci počítáme od sjednání: do 25. dne +1 měsíc,
+  // později +2 měsíce. ČPP posílá provize firmě začátkem měsíce;
+  // u NEONu proto platba kolem počátku patří nejdříve do dalšího měsíce.
+  // U ostatních životek výplata nesmí předcházet samotnému počátku.
+  const acceptancePayout = estimatePayoutDate(agreementDate, agreementDate, 25, payoutDay);
+  const monthsAfterStart = product === "neon" || policyStart.getDate() > payoutDay ? 1 : 0;
+  const earliestPayout = calendarDate(policyStart,
+    policyStart.getFullYear(),
+    policyStart.getMonth() + monthsAfterStart,
+    payoutDay
+  );
+  return acceptancePayout > earliestPayout ? acceptancePayout : earliestPayout;
 }
 
 function isSameCalendarMonth(left: Date, right: Date): boolean {
@@ -56,7 +77,7 @@ function estimateAutoFirstPayoutDate(
   payoutDay = 25
 ): Date {
   if (agreementDate && isSameCalendarMonth(policyStart, agreementDate)) {
-    return new Date(policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
+    return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
   }
 
   return estimatePayoutDate(policyStart, agreementDate, 25, payoutDay);
@@ -240,14 +261,14 @@ function amountsMatchExpectedPayout(
   return Math.abs(candidate - expected) <= tolerance;
 }
 
-function payoutMonthDateFromKey(value: string | null | undefined): Date | null {
+function payoutMonthDateFromKey(value: string | null | undefined, calendar?: Date): Date | null {
   const match = String(value ?? "").match(/^(\d{4})-(\d{1,2})$/);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   if (!Number.isInteger(year) || !Number.isInteger(month)) return null;
   if (month < 1 || month > 12) return null;
-  return new Date(year, month - 1, 25);
+  return calendarDate(calendar, year, month - 1, 25);
 }
 
 function payoutSortValue(payout: IndexedCommissionPayout): number {
@@ -271,12 +292,13 @@ function isStatementOnlyCommissionPayout(payout: EntryCommissionPayout): boolean
 }
 
 function indexSettledCommissionPayouts(
-  payouts: EntryDoc["commissionPayouts"] | undefined | null
+  payouts: EntryDoc["commissionPayouts"] | undefined | null,
+  calendar?: Date
 ): IndexedCommissionPayout[] {
   return (payouts ?? [])
     .map((payout, index): IndexedCommissionPayout | null => {
       if (!isSettledCommissionPayout(payout)) return null;
-      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
+      const date = payoutMonthDateFromKey(payout.payoutMonthKey, calendar);
       if (!date) return null;
       return {
         payout,
@@ -296,12 +318,13 @@ function indexSettledCommissionPayouts(
 }
 
 function indexStatementOnlyCommissionPayouts(
-  payouts: EntryDoc["commissionPayouts"] | undefined | null
+  payouts: EntryDoc["commissionPayouts"] | undefined | null,
+  calendar?: Date
 ): IndexedCommissionPayout[] {
   return (payouts ?? [])
     .map((payout, index): IndexedCommissionPayout | null => {
       if (!isStatementOnlyCommissionPayout(payout)) return null;
-      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
+      const date = payoutMonthDateFromKey(payout.payoutMonthKey, calendar);
       if (!date) return null;
       return {
         payout,
@@ -483,8 +506,8 @@ export function generateCashflow(
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
   let globalItemSequence = 0;
-  const now = new Date(asOf);
-  const horizonEnd = new Date(
+  const now = calendarDate(asOf, asOf);
+  const horizonEnd = calendarDate(now,
     now.getFullYear() + horizonYears,
     now.getMonth(),
     now.getDate()
@@ -499,25 +522,25 @@ export function generateCashflow(
       : null;
     const status = normalizeContractStatus(entry.status);
     const isStorno = status === "storno";
-    const parsedStornoDate = toDate(entry.stornoDate);
+    const parsedStornoDate = toDate(entry.stornoDate, { calendar: now });
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
     const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
-    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts);
-    const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts);
+    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts, now);
+    const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts, now);
     const consumedPayoutKeys = new Set<string>();
 
     const start =
-      toDate(entry.policyStartDate) ??
-      toDate(entry.contractSignedDate) ??
-      toDate(entry.createdAt) ??
-      new Date(now);
+      toDate(entry.policyStartDate, { calendar: now }) ??
+      toDate(entry.contractSignedDate, { calendar: now }) ??
+      toDate(entry.createdAt, { calendar: now }) ??
+      calendarDate(now, now);
     const agreement =
-      toDate(entry.contractSignedDate) ??
-      toDate(entry.createdAt) ??
-      toDate(entry.policyStartDate) ??
+      toDate(entry.contractSignedDate, { calendar: now }) ??
+      toDate(entry.createdAt, { calendar: now }) ??
+      toDate(entry.policyStartDate, { calendar: now }) ??
       start;
-    const contractSignedDateIso = dateToIsoDay(toDate(entry.contractSignedDate));
-    const policyEnd = toDate(entry.policyEndDate);
+    const contractSignedDateIso = dateToIsoDay(toDate(entry.contractSignedDate, { calendar: now }));
+    const policyEnd = toDate(entry.policyEndDate, { calendar: now });
     const policyEndPayoutDate = policyEnd ? estimatePayoutDate(policyEnd) : null;
     const entryHorizonEnd = earlierDate(
       horizonEnd,
@@ -546,9 +569,9 @@ export function generateCashflow(
         ? storedRefreshBaseMonthlyRaw
         : currentMonthlyPremium;
     const lifeRevisionBaseDate =
-      toDate(entry.contractSignedDate) ??
-      toDate(entry.policyStartDate) ??
-      toDate(entry.createdAt) ??
+      toDate(entry.contractSignedDate, { calendar: now }) ??
+      toDate(entry.policyStartDate, { calendar: now }) ??
+      toDate(entry.createdAt, { calendar: now }) ??
       start;
 
     const inherited = isInheritedContract(entry);
@@ -556,9 +579,9 @@ export function generateCashflow(
     // Entitlement follows the premium period, not the later statement/payout date.
     const commissionPeriods = new Map<number, Date>();
     const periodAfterMonths = (months: number) => {
-      const monthStart = new Date(start.getFullYear(), start.getMonth() + months, 1);
-      const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-      return new Date(monthStart.getFullYear(), monthStart.getMonth(), Math.min(start.getDate(), lastDay));
+      const monthStart = calendarDate(start, start.getFullYear(), start.getMonth() + months, 1);
+      const lastDay = calendarDate(start, monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+      return calendarDate(start, monthStart.getFullYear(), monthStart.getMonth(), Math.min(start.getDate(), lastDay));
     };
     const rememberRecurringPeriod = (payout: Date, firstPayout: Date) => {
       const period = periodAfterMonths(monthSerial(payout) - monthSerial(firstPayout));
@@ -698,7 +721,7 @@ export function generateCashflow(
         currentMonthlyPremium,
         lifeStornoBaseMonthlyPremium,
         policyStartDate: start,
-        contractSignedDate: toDate(entry.contractSignedDate),
+        contractSignedDate: toDate(entry.contractSignedDate, { calendar: now }),
         lifeRevisionBaseDate,
         contractStatus: status,
         stornoDate: stornoCutoffDate,
@@ -764,7 +787,7 @@ export function generateCashflow(
           currentMonthlyPremium,
           lifeStornoBaseMonthlyPremium,
           policyStartDate: start,
-          contractSignedDate: toDate(entry.contractSignedDate),
+          contractSignedDate: toDate(entry.contractSignedDate, { calendar: now }),
           lifeRevisionBaseDate,
           contractStatus: status,
           stornoDate: stornoCutoffDate,
@@ -792,10 +815,15 @@ export function generateCashflow(
       }
     };
 
+    // Bez známého data sjednání zachováme dosavadní konzervativní odhad.
+    const lifeFirstPayoutDate = toDate(entry.contractSignedDate, { calendar: now })
+      ? estimateLifeFirstPayoutDate(start, agreement, product)
+      : estimatePayoutDate(start, agreement);
+
     const pushImmediateCashflowItems = (
       horizonLimit: Date = entryHorizonEnd
     ) => {
-      const payoutDate = estimatePayoutDate(start, agreement);
+      const payoutDate = lifeFirstPayoutDate;
       if (splitImmediateParts.length > 0) {
         for (const part of splitImmediateParts) {
           pushItem(part.amount, payoutDate, part.commissionLabel, horizonLimit, {
@@ -815,7 +843,7 @@ export function generateCashflow(
     const annPlusYears = (years: number) => {
       const period = inherited
         ? periodAfterMonths(years * 12)
-        : new Date(start.getFullYear() + years, start.getMonth(), start.getDate());
+        : calendarDate(start, start.getFullYear() + years, start.getMonth(), start.getDate());
       const payout = estimatePayoutDate(period);
       commissionPeriods.set(payout.getTime(), period);
       return payout;
@@ -880,7 +908,7 @@ export function generateCashflow(
         if (immediate) {
           pushItem(
             immediate.amount,
-            estimatePayoutDate(start, agreement),
+            lifeFirstPayoutDate,
             undefined,
             entryHorizonEnd,
             immediateCodes.length > 0
@@ -1102,7 +1130,7 @@ export function generateCashflow(
                   : subsequentDomexMetadata
             );
           }
-          payout = new Date(
+          payout = calendarDate(payout,
             payout.getFullYear(),
             payout.getMonth() + stepMonths,
             payout.getDate()
@@ -1169,7 +1197,7 @@ export function generateCashflow(
             pushItem(perPaymentImmediate, payout, undefined, entryHorizonEnd, immediateMetadata);
           }
 
-          payout = new Date(
+          payout = calendarDate(payout,
             payout.getFullYear(),
             payout.getMonth() + stepMonths,
             payout.getDate()
@@ -1267,7 +1295,7 @@ export function generateCashflow(
         const subsequentMetadata = naslGeneric
           ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
           : {};
-        const firstAnniversary = new Date(
+        const firstAnniversary = calendarDate(start,
           start.getFullYear() + 1,
           start.getMonth(),
           start.getDate()
@@ -1316,7 +1344,7 @@ export function generateCashflow(
                   )
                 : immediateMetadata
           );
-          payout = new Date(
+          payout = calendarDate(payout,
             payout.getFullYear(),
             payout.getMonth() + stepMonths,
             payout.getDate()
@@ -1353,7 +1381,7 @@ export function generateCashflow(
           );
 
           // další měsíce: už jen následná
-          let payout = new Date(
+          let payout = calendarDate(first,
             first.getFullYear(),
             first.getMonth() + 1,
             first.getDate()
@@ -1365,7 +1393,7 @@ export function generateCashflow(
               payout,
               "Comfort Commodity – následná (měsíčně)"
             );
-            payout = new Date(
+            payout = calendarDate(payout,
               payout.getFullYear(),
               payout.getMonth() + 1,
               payout.getDate()
@@ -1394,7 +1422,7 @@ export function generateCashflow(
     pushUnmatchedStatementPayouts();
     if (entry.productKey === "kooperativaAuto") {
       const entryItems = out.splice(entryOutputStart);
-      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail));
+      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail, now));
     }
   }
 

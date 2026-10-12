@@ -41,6 +41,29 @@ describe("cashflow diagnostic response protocol", () => {
 });
 
 describe("cashflow Server-Timing aggregates", () => {
+  it("accepts fixed own/team phases and drops descriptions, unknown phases and invalid durations", () => {
+    const names = ["cashflow_inputs_own_contracts_identity", "cashflow_inputs_own_contracts_team_context",
+      "cashflow_inputs_own_contracts_subscription", "cashflow_inputs_own_contracts_count",
+      "cashflow_inputs_own_contracts_entries", "cashflow_inputs_own_contracts_response",
+      "cashflow_inputs_team_contracts_identity", "cashflow_inputs_team_contracts_team_context",
+      "cashflow_inputs_team_contracts_subscription", "cashflow_inputs_team_contracts_count",
+      "cashflow_inputs_team_contracts_entries", "cashflow_inputs_team_contracts_response"];
+    const header = names.map((name, i) => `${name};dur=${i};desc="synthetic@example.test"`).join(", ");
+    expect(parseCashflowServerTiming(`${header}, cashflow_inputs_own_contracts_private;dur=1`))
+      .toEqual(Object.fromEntries(names.map((name, i) => [name, i])));
+    expect(parseCashflowServerTiming("cashflow_inputs_own_contracts_entries;dur=1, cashflow_inputs_own_contracts_entries;dur=2, cashflow_inputs_team_contracts_identity;dur=NaN, cashflow_inputs_team_contracts_count;dur=3600001"))
+      .toEqual({});
+  });
+  it("accepts only the six fixed input source names and drops descriptions or identifiers", () => {
+    const names = ["profile", "own_contracts", "team_contracts", "tips", "subscriptions", "statements"];
+    const header = names.map((name, i) => `cashflow_inputs_${name};dur=${i + 1};desc="private@example.test"`).join(", ");
+    expect(parseCashflowServerTiming(`${header}, cashflow_inputs_other;dur=1, account@example.test;dur=2`)).toEqual(
+      Object.fromEntries(names.map((name, i) => [`cashflow_inputs_${name}`, i + 1])),
+    );
+  });
+  it("applies the same duplicate and number bounds to individual input sources", () => {
+    expect(parseCashflowServerTiming("cashflow_inputs_profile;dur=1, cashflow_inputs_profile;dur=2, cashflow_inputs_tips;dur=-1, cashflow_inputs_statements;dur=3600001")).toEqual({});
+  });
   it("retains only finite numerical durations for named metrics", () => {
     expect(parseCashflowServerTiming('cashflow_total;dur=12.5;desc="private text", cashflow_auth;dur=0, cashflow_hash;dur=.25, unrelated;dur=42, cashflow_inputs;desc="private"')).toEqual({
       cashflow_total: 12.5, cashflow_auth: 0, cashflow_hash: 0.25,

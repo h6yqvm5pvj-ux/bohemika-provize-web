@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-10T10:51:01+02:00",
+  "source": "User-provided screenshot with visible combined/all/prediction-off controls and all twelve inner contract timing metrics",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 7317.1,
+    "referenceMs": 71.4,
+    "serverTimingMs": {
+      "cashflow_auth": 479.1,
+      "cashflow_inputs": 4663.49,
+      "cashflow_hash": 429.13,
+      "cashflow_compute": 1485.58,
+      "cashflow_inputs_profile": 473.28,
+      "cashflow_inputs_own_contracts_identity": 719.35,
+      "cashflow_inputs_subscriptions": 744.69,
+      "cashflow_inputs_statements": 1027.21,
+      "cashflow_inputs_own_contracts_team_context": 316.54,
+      "cashflow_inputs_tips": 1064.46,
+      "cashflow_inputs_own_contracts_subscription": 36.58,
+      "cashflow_inputs_own_contracts_count": 33.64,
+      "cashflow_inputs_own_contracts_entries": 1165.82,
+      "cashflow_inputs_own_contracts_response": 12.62,
+      "cashflow_inputs_own_contracts": 2265.65,
+      "cashflow_inputs_team_contracts_identity": 1447.11,
+      "cashflow_inputs_team_contracts_team_context": 35.71,
+      "cashflow_inputs_team_contracts_subscription": 17.15,
+      "cashflow_inputs_team_contracts_count": 53.97,
+      "cashflow_inputs_team_contracts_entries": 1552.92,
+      "cashflow_inputs_team_contracts_response": 11.47,
+      "cashflow_inputs_team_contracts": 3073.52,
+      "cashflow_total": 7098.48
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "combined",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": false,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "transcribedMillisecondsRoundedToTwoDecimals": true,
+    "innerContractMetricCount": 12,
+    "innerContractMetricNamesVerified": true,
+    "selectionBinding": "Visible controls and preceding requested clear/reload procedure; request options and diagnostic removal not independently captured",
+    "previousDiagnosticRemovalVisible": false,
+    "hardReloadIndependentlyCaptured": false,
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_3xSrYtV5w7cWGPLLkd6tkpLL6cap",
+    "currentAlias": {
+      "checkedAt": "2026-10-10T08:52:22.011Z",
+      "domain": "https://bohemka.app",
+      "deploymentId": "dpl_3xSrYtV5w7cWGPLLkd6tkpLL6cap",
+      "expectedDeploymentId": "dpl_3xSrYtV5w7cWGPLLkd6tkpLL6cap",
+      "deploymentVerified": true,
+      "concurrencyPatchVerified": true,
+      "businessDataRead": false,
+      "businessDataWrites": false,
+      "productionSecretsChanged": false
+    },
+    "currentHostingDeploymentIndependentlyVerified": true,
+    "requestDeploymentIndependentlyCaptured": false,
+    "sameSelectionRepeatedSamplesCollected": false,
+    "productionSpeedupEstablished": false,
+    "wholePageLatencyMeasured": false,
+    "serverOnlyMigrationComplete": false
+  },
+  "sourceAnalysis": {
+    "inspectedRuntimeMatchesReleaseManifest": true,
+    "ownTeamOverlapEnabledInCurrentLoader": true,
+    "profileBeforePortfolioInCurrentLoader": true,
+    "independentFreshAuthorizationOnEveryPage": true,
+    "countOverlapsEntriesWithinContractHandler": true,
+    "contractSourceDurationsSumMs": 5339.17,
+    "inputSpanAfterProfileMs": 4190.21,
+    "netOverlapIndicatedMs": 1148.96,
+    "overlapInferredFromDurationTotals": true,
+    "exactTimelineCaptured": false,
+    "innerIdentitySumMs": 2166.46,
+    "innerEntriesSumMs": 2718.74,
+    "inputsPercentOfServerTotal": 65.7,
+    "specificDatabaseQueryBottleneckEstablished": false,
+    "identitySubsystemBottleneckEstablished": false,
+    "identifiedDelay": "Input loading remains the largest elapsed block. Own and team measured spans overlap; the sum exceeds total input time after the profile. Individual contract and especially team identity times are longer than the earlier single sample. Those increases are observations, not proof that concurrency caused slower guards.",
+    "nextVerification": "Keep original client output and independent fresh guards; verify further selections and month detail, and repeat the same combined selection before asserting stable speedup or choosing another optimization."
+  },
+  "beforeAfterSamples": {
+    "beforeEvidence": "cashflow-server-pilot-live-contract-timing-combined-match-2026-10-10.json",
+    "sameVisibleSelection": true,
+    "samePortfolioIndependentlyCaptured": false,
+    "controlledRunConditions": false,
+    "platformFlagsIdentical": false,
+    "additionalHostingFlagName": "USE_RUST_LAYER_LATEST",
+    "request": {
+      "beforeMs": 7492.5,
+      "afterMs": 7317.1,
+      "deltaMs": -175.4,
+      "shorterPercent": 2.34
+    },
+    "serverMetrics": {
+      "cashflow_auth": {
+        "beforeMs": 415.17,
+        "afterMs": 479.1,
+        "deltaMs": 63.93,
+        "shorterPercent": -15.4
+      },
+      "cashflow_inputs": {
+        "beforeMs": 4758.54,
+        "afterMs": 4663.49,
+        "deltaMs": -95.05,
+        "shorterPercent": 2.0
+      },
+      "cashflow_hash": {
+        "beforeMs": 490.32,
+        "afterMs": 429.13,
+        "deltaMs": -61.19,
+        "shorterPercent": 12.48
+      },
+      "cashflow_compute": {
+        "beforeMs": 1508.37,
+        "afterMs": 1485.58,
+        "deltaMs": -22.79,
+        "shorterPercent": 1.51
+      },
+      "cashflow_inputs_profile": {
+        "beforeMs": 514.14,
+        "afterMs": 473.28,
+        "deltaMs": -40.86,
+        "shorterPercent": 7.95
+      },
+      "cashflow_inputs_own_contracts_identity": {
+        "beforeMs": 646.74,
+        "afterMs": 719.35,
+        "deltaMs": 72.61,
+        "shorterPercent": -11.23
+      },
+      "cashflow_inputs_subscriptions": {
+        "beforeMs": 727.91,
+        "afterMs": 744.69,
+        "deltaMs": 16.78,
+        "shorterPercent": -2.31
+      },
+      "cashflow_inputs_statements": {
+        "beforeMs": 1022.79,
+        "afterMs": 1027.21,
+        "deltaMs": 4.42,
+        "shorterPercent": -0.43
+      },
+      "cashflow_inputs_own_contracts_team_context": {
+        "beforeMs": 54.92,
+        "afterMs": 316.54,
+        "deltaMs": 261.62,
+        "shorterPercent": -476.37
+      },
+      "cashflow_inputs_tips": {
+        "beforeMs": 1075.48,
+        "afterMs": 1064.46,
+        "deltaMs": -11.02,
+        "shorterPercent": 1.02
+      },
+      "cashflow_inputs_own_contracts_subscription": {
+        "beforeMs": 19.25,
+        "afterMs": 36.58,
+        "deltaMs": 17.33,
+        "shorterPercent": -90.03
+      },
+      "cashflow_inputs_own_contracts_count": {
+        "beforeMs": 302.21,
+        "afterMs": 33.64,
+        "deltaMs": -268.57,
+        "shorterPercent": 88.87
+      },
+      "cashflow_inputs_own_contracts_entries": {
+        "beforeMs": 1201.21,
+        "afterMs": 1165.82,
+        "deltaMs": -35.39,
+        "shorterPercent": 2.95
+      },
+      "cashflow_inputs_own_contracts_response": {
+        "beforeMs": 10.87,
+        "afterMs": 12.62,
+        "deltaMs": 1.75,
+        "shorterPercent": -16.1
+      },
+      "cashflow_inputs_own_contracts": {
+        "beforeMs": 1943.06,
+        "afterMs": 2265.65,
+        "deltaMs": 322.59,
+        "shorterPercent": -16.6
+      },
+      "cashflow_inputs_team_contracts_identity": {
+        "beforeMs": 683.7,
+        "afterMs": 1447.11,
+        "deltaMs": 763.41,
+        "shorterPercent": -111.66
+      },
+      "cashflow_inputs_team_contracts_team_context": {
+        "beforeMs": 36.34,
+        "afterMs": 35.71,
+        "deltaMs": -0.63,
+        "shorterPercent": 1.73
+      },
+      "cashflow_inputs_team_contracts_subscription": {
+        "beforeMs": 17.43,
+        "afterMs": 17.15,
+        "deltaMs": -0.28,
+        "shorterPercent": 1.61
+      },
+      "cashflow_inputs_team_contracts_count": {
+        "beforeMs": 46.07,
+        "afterMs": 53.97,
+        "deltaMs": 7.9,
+        "shorterPercent": -17.15
+      },
+      "cashflow_inputs_team_contracts_entries": {
+        "beforeMs": 1543.59,
+        "afterMs": 1552.92,
+        "deltaMs": 9.33,
+        "shorterPercent": -0.6
+      },
+      "cashflow_inputs_team_contracts_response": {
+        "beforeMs": 8.7,
+        "afterMs": 11.47,
+        "deltaMs": 2.77,
+        "shorterPercent": -31.84
+      },
+      "cashflow_inputs_team_contracts": {
+        "beforeMs": 2297.01,
+        "afterMs": 3073.52,
+        "deltaMs": 776.51,
+        "shorterPercent": -33.81
+      },
+      "cashflow_total": {
+        "beforeMs": 7198.1,
+        "afterMs": 7098.48,
+        "deltaMs": -99.62,
+        "shorterPercent": 1.38
+      }
+    },
+    "contractSourceDurationSumIncreaseMs": 1099.1,
+    "causalSpeedupEstablished": false
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "runtimeChanged": false,
+  "businessRecordsChanged": false
+}

@@ -1,0 +1,410 @@
+diff --git a/src/app/api/contracts/_lib/contractsApi.ts b/src/app/api/contracts/_lib/contractsApi.ts
+--- a/src/app/api/contracts/_lib/contractsApi.ts
++++ b/src/app/api/contracts/_lib/contractsApi.ts
+@@ -71,6 +71,7 @@
+   ContractLifePremiumChange,
+   ContractListFilters,
+   ContractListResponseShape,
++  ContractsListOptions,
+   ContractResponseItem,
+   ContractTransferTarget,
+   ContractsFindResponse,
+@@ -4024,7 +4025,7 @@
+ export async function handleContractsGet(
+   req: NextRequest,
+   mode: ContractsGetMode = "auto",
+-  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
++  options: ContractsListOptions = {}
+ ) {
+   const guard = await requireContractsEntryGuard(req, {
+     namespace: "api:contracts:get",
+@@ -4297,7 +4298,17 @@
+     responseShape === "cashflow" &&
+     cursor == null &&
+     !hasContractListFilters(listFilters)
+-      ? measureCashflowContractPhase(options.onCashflowTiming, "count", () => countContractEntriesForOwners(owners))
++      ? measureCashflowContractPhase(options.onCashflowTiming, "count", () => countContractEntriesForOwners(owners)).then(totalCount => {
++        // Scheduling only: the independently loaded team still runs every fresh guard.
++        // Neither request parameters nor profile hints can enable this callback.
++        if (options.freshCashflowContext && scopeParam === "my" && !includeTeam &&
++          teamEmails.length > 0 && !req.signal.aborted &&
++          totalCount !== null && Number.isSafeInteger(totalCount) && totalCount >= 0) {
++          try { options.onCashflowTeamReady?.(totalCount); }
++          catch { /* The caller can retain the original sequential loading path. */ }
++        }
++        return totalCount;
++      })
+       : Promise.resolve<number | null>(null);
+ 
+   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
+@@ -7900,7 +7911,7 @@
+ 
+ export async function handleContractsList(
+   req: NextRequest,
+-  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
++  options: ContractsListOptions = {}
+ ) {
+   return handleContractsGet(req, "list", options);
+ }
+diff --git a/src/app/api/contracts/_lib/contractsApi.types.ts b/src/app/api/contracts/_lib/contractsApi.types.ts
+--- a/src/app/api/contracts/_lib/contractsApi.types.ts
++++ b/src/app/api/contracts/_lib/contractsApi.types.ts
+@@ -670,3 +670,10 @@
+   /** Trusted server caller only; never enabled by request headers or parameters. */
+   onCashflowTiming?: CashflowContractTimingObserver;
+ };
++
++export type ContractsListOptions = Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> & {
++  /** Trusted server-only scheduling hint after fresh guards and the first own count.
++   * Team requests must still perform their own authorization. No identity is shared.
++   */
++  onCashflowTeamReady?: (ownTotalCount: number) => void;
++};
+diff --git a/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+--- a/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
++++ b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+@@ -79,8 +79,10 @@
+     const { handleContractsList } = await import("./contractsApi");
+     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+     const onCashflowTiming = vi.fn<CashflowContractTimingObserver>(() => { throw new Error("observer"); });
+-    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming });
++    const onCashflowTeamReady = vi.fn();
++    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming, onCashflowTeamReady });
+     expect(response.status).toBe(status);
++    expect(onCashflowTeamReady).not.toHaveBeenCalled();
+     expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(["identity"]);
+     expect(mocks.users).not.toHaveBeenCalled();
+     expect(mocks.subscription).not.toHaveBeenCalled();
+@@ -94,8 +96,10 @@
+     if (denial === "tipster") profiles[email].accountType = "tipster";
+     if (denial === "revoked-team") profiles["team@example.test"].managerEmail = null;
+     const onCashflowTiming = vi.fn();
+-    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming });
++    const onCashflowTeamReady = vi.fn();
++    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming, onCashflowTeamReady });
+     expect(response.status).toBe(403);
++    expect(onCashflowTeamReady).not.toHaveBeenCalled();
+     expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(denial === "removed-profile"
+       ? ["identity", "team_context"] : ["identity", "team_context", "subscription"]);
+     expect(mocks.collection.mock.calls.map(([name]) => name)).not.toContain("entries");
+diff --git a/src/lib/server/cashflowShadowInputs.ts b/src/lib/server/cashflowShadowInputs.ts
+--- a/src/lib/server/cashflowShadowInputs.ts
++++ b/src/lib/server/cashflowShadowInputs.ts
+@@ -90,7 +90,8 @@
+ 
+ async function invoke(
+   source: Source, request: NextRequest, freshCashflowContext: boolean,
+-  onCashflowTiming?: CashflowContractTimingObserver
++  onCashflowTiming?: CashflowContractTimingObserver,
++  onCashflowTeamReady?: (ownTotalCount: number) => void
+ ): Promise<Response> {
+   // Direct authorized handlers: no HTTP request, user supplied URL or auth bypass.
+   switch (source) {
+@@ -100,6 +101,7 @@
+     case "team_contracts":
+       return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, {
+         freshCashflowContext, ...(onCashflowTiming ? { onCashflowTiming } : {}),
++        ...(source === "own_contracts" && onCashflowTeamReady ? { onCashflowTeamReady } : {}),
+       });
+     case "tips":
+       return (await import("@/app/api/tip-payouts/list/route")).GET(request);
+@@ -136,8 +138,23 @@
+   const timer = setTimeout(() => stop("timeout"), MAX_DURATION_MS);
+   let requests = 0;
+   let contractRows = 0;
+-
+-  const read = async (source: Source, path: string, params?: URLSearchParams): Promise<JsonObject> => {
++  const declaredContractCounts = new Map<"my" | "team", number>();
++  let declaredContractRows = 0;
++  const reserveContractCount = (scope: "my" | "team", count: number) => {
++    const reserved = declaredContractCounts.get(scope);
++    if (reserved !== undefined) {
++      if (reserved !== count) return incomplete();
++      return;
++    }
++    if (count > MAX_CONTRACT_ROWS - declaredContractRows) throw new CashflowShadowInputsError("limit");
++    declaredContractCounts.set(scope, count);
++    declaredContractRows += count;
++  };
++
++  const read = async (
++    source: Source, path: string, params?: URLSearchParams,
++    onCashflowTeamReady?: (ownTotalCount: number) => void
++  ): Promise<JsonObject> => {
+     if (stopError) throw stopError;
+     if (controller.signal.aborted) throw new CashflowShadowInputsError("aborted", 499);
+     if (requests >= MAX_REQUESTS) throw new CashflowShadowInputsError("limit");
+@@ -157,7 +174,7 @@
+         catch { /* Optional telemetry must not affect access checks or input loading. */ }
+       } : undefined;
+     try {
+-      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true, onCashflowTiming), stopped]);
++      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true, onCashflowTiming, onCashflowTeamReady), stopped]);
+       if (!response.ok) {
+         const code = response.status === 401 ? "unauthorized"
+           : response.status === 403 ? "forbidden" : "upstream_failed";
+@@ -187,7 +204,7 @@
+       : typeof profile.profile.userRole === "string" ? profile.profile.userRole : "";
+     const tipsterMode = accountType.trim().toLowerCase() === "tipster";
+ 
+-    const collectContracts = async (scope: "my" | "team") => {
++    const collectContracts = async (scope: "my" | "team", onCashflowTeamReady?: (ownTotalCount: number) => void) => {
+       const entries: EntryDoc[] = [];
+       const seenIds = new Set<string>();
+       const seenCursors = new Set<string>();
+@@ -197,12 +214,14 @@
+       do {
+         const params = new URLSearchParams({ scope, limit: String(CONTRACT_PAGE_LIMIT), shape: "cashflow" });
+         if (cursor) params.set("cursor", cursor);
+-        const data = await read(scope === "my" ? "own_contracts" : "team_contracts", "/api/contracts/list", params);
++        const data = await read(scope === "my" ? "own_contracts" : "team_contracts", "/api/contracts/list", params,
++          cursor === null ? onCashflowTeamReady : undefined);
+         if (!first) {
+           first = data;
+           if (typeof data.totalCount !== "number" || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) return incomplete();
+           if (typeof data.hasTeam !== "boolean" || !Array.isArray(data.teamEmails) || !data.teamEmails.every(email => typeof email === "string")) return incomplete();
+           totalCount = data.totalCount;
++          reserveContractCount(scope, totalCount);
+           if (totalCount > MAX_CONTRACT_ROWS - contractRows) throw new CashflowShadowInputsError("limit");
+         } else if (data.totalCount != null && data.totalCount !== totalCount) {
+           return incomplete();
+@@ -265,9 +284,21 @@
+ 
+     const collectPortfolio = async (): Promise<Pick<CashflowSnapshot, "myPosition" | "myCommissionMode" | "hasAnyTeam" | "ownEntries" | "teamEntriesRaw">> => {
+       if (tipsterMode) return { myPosition: null, myCommissionMode: null, hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [] };
+-      const own = await collectContracts("my");
++      let team: ReturnType<typeof collectContracts> | undefined;
++      const onCashflowTeamReady = options.freshCashflowContext ? (ownTotalCount: number) => {
++        if (team || stopError || controller.signal.aborted ||
++          !Number.isSafeInteger(ownTotalCount) || ownTotalCount < 0 || ownTotalCount > MAX_CONTRACT_ROWS) return;
++        // Reserve the whole declared own portfolio before launching the team,
++        // so interleaving cannot defer rejection of an oversized combined read.
++        reserveContractCount("my", ownTotalCount);
++        team = collectContracts("team");
++        // A fast team denial must not become an unhandled rejection while own
++        // pages finish. Await the original promise below and propagate its error.
++        void team.catch(() => undefined);
++      } : undefined;
++      const own = await collectContracts("my", onCashflowTeamReady);
+       const hasTeam = own.first.hasTeam === true || (own.first.teamEmails as string[]).some(email => normalizeEmail(email));
+-      const teamEntriesRaw = hasTeam ? (await collectContracts("team")).entries : [];
++      const teamEntriesRaw = hasTeam ? (await (team ?? collectContracts("team"))).entries : [];
+       return {
+         myPosition: (own.first.position ?? null) as CashflowSnapshot["myPosition"],
+         myCommissionMode: (own.first.commissionMode ?? null) as CashflowSnapshot["myCommissionMode"],
+diff --git a/src/lib/server/cashflowShadowInputs.test.ts b/src/lib/server/cashflowShadowInputs.test.ts
+--- a/src/lib/server/cashflowShadowInputs.test.ts
++++ b/src/lib/server/cashflowShadowInputs.test.ts
+@@ -9,7 +9,7 @@
+ 
+ const handlers = vi.hoisted(() => ({
+   profile: vi.fn<(request: NextRequest) => Promise<Response>>(),
+-  contracts: vi.fn<(request: NextRequest, options?: { freshCashflowContext?: boolean; onCashflowTiming?: CashflowContractTimingObserver }) => Promise<Response>>(),
++  contracts: vi.fn<(request: NextRequest, options?: { freshCashflowContext?: boolean; onCashflowTiming?: CashflowContractTimingObserver; onCashflowTeamReady?: (ownTotalCount: number) => void }) => Promise<Response>>(),
+   tips: vi.fn<(request: NextRequest) => Promise<Response>>(),
+   subscriptions: vi.fn<(request: NextRequest) => Promise<Response>>(),
+   statements: vi.fn<(request: NextRequest) => Promise<Response>>(),
+@@ -128,6 +128,160 @@
+     expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_team_contracts", 10);
+     expect(handlers.subscriptions).not.toHaveBeenCalled();
+   });
++  it("overlaps team loading with pending own entries only after a trusted fresh hint", async () => {
++    const own = deferred<Response>(), team = deferred<Response>();
++    handlers.contracts.mockImplementation((req, options) => {
++      expect(options?.freshCashflowContext).toBe(true);
++      if (req.nextUrl.searchParams.get("scope") === "my") {
++        options?.onCashflowTeamReady?.(1);
++        options?.onCashflowTeamReady?.(1); // A repeated hint cannot start another team read.
++        return own.promise;
++      }
++      expect(options?.onCashflowTeamReady).toBeUndefined();
++      return team.promise;
++    });
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    let settled = false;
++    void result.then(() => { settled = true; });
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(2));
++    team.resolve(Response.json(contracts([{ id: "team", adviserEmail: "team@example.test" }], { hasTeam: true })));
++    await Promise.resolve();
++    expect(settled).toBe(false);
++    own.resolve(Response.json(contracts([{ id: "own" }], { hasTeam: true })));
++    const loaded = await result;
++    expect(loaded.snapshot.ownEntries.map(row => row.id)).toEqual(["own"]);
++    expect(loaded.snapshot.teamEntriesRaw.map(row => row.id)).toEqual(["team"]);
++    expect(loaded.snapshot.hasAnyTeam).toBe(true);
++    expect(handlers.contracts).toHaveBeenCalledTimes(2);
++  });
++  it.each([-1, NaN, Infinity, 5001])("does not start early team reads for an invalid own count %s", async count => {
++    const own = deferred<Response>();
++    handlers.contracts.mockImplementation((req, options) => {
++      if (req.nextUrl.searchParams.get("scope") === "my") {
++        options?.onCashflowTeamReady?.(count);
++        return own.promise;
++      }
++      return json(contracts());
++    });
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(1));
++    expect(handlers.contracts.mock.calls[0][1]?.onCashflowTeamReady).toBeTypeOf("function");
++    expect(handlers.contracts).toHaveBeenCalledTimes(1);
++    own.resolve(Response.json(contracts([], { hasTeam: true })));
++    await result;
++    expect(handlers.contracts).toHaveBeenCalledTimes(2); // Original fallback after complete own response.
++  });
++  it("ignores profile and client team hints and keeps no-team portfolios unchanged", async () => {
++    handlers.profile.mockImplementation(() => json({ ...profile(), hasTeam: true }));
++    const req = request();
++    req.headers.set("x-cashflow-team-ready", "1");
++    await loadCashflowShadowInputs(req, { freshCashflowContext: true });
++    expect(handlers.contracts).toHaveBeenCalledTimes(1);
++    expect(handlers.contracts.mock.calls[0][0].nextUrl.searchParams.get("scope")).toBe("my");
++    expect(handlers.contracts.mock.calls[0][0].nextUrl.searchParams.has("targetEmail")).toBe(false);
++  });
++  it.each([401, 403, 429, 503])("propagates an early team denial %i after own loading finishes", async status => {
++    const own = deferred<Response>();
++    handlers.contracts.mockImplementation((req, options) => {
++      if (req.nextUrl.searchParams.get("scope") === "my") {
++        options?.onCashflowTeamReady?.(0);
++        return own.promise;
++      }
++      return json({ ok: false }, status);
++    });
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    const rejected = expect(result).rejects.toMatchObject({
++      code: status === 401 ? "unauthorized" : status === 403 ? "forbidden" : "upstream_failed", status,
++    });
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(2));
++    own.resolve(Response.json(contracts([], { hasTeam: true })));
++    await rejected;
++  });
++  it("does not attach the scheduling hint to later own pages or any team page", async () => {
++    handlers.contracts.mockImplementation((req, options) => {
++      const scope = req.nextUrl.searchParams.get("scope"), cursor = req.nextUrl.searchParams.get("cursor");
++      if (scope === "my" && !cursor) {
++        options?.onCashflowTeamReady?.(2);
++        return json(contracts([{ id: "one" }], { totalCount: 2, hasMore: true, nextCursorToken: "two", hasTeam: true }));
++      }
++      expect(options?.onCashflowTeamReady).toBeUndefined();
++      return json(contracts(scope === "my" ? [{ id: "two" }] : [], { totalCount: scope === "my" ? null : 0 }));
++    });
++    const result = await loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    expect(result.snapshot.ownEntries.map(row => row.id)).toEqual(["one", "two"]);
++    expect(handlers.contracts).toHaveBeenCalledTimes(3);
++  });
++  it("keeps own failure precedence when the early team has already failed", async () => {
++    const own = deferred<Response>();
++    handlers.contracts.mockImplementation((req, options) => {
++      if (req.nextUrl.searchParams.get("scope") === "my") {
++        options?.onCashflowTeamReady?.(0);
++        return own.promise;
++      }
++      return json({ ok: false }, 403);
++    });
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    const rejected = expect(result).rejects.toMatchObject({ code: "unauthorized", status: 401 });
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(2));
++    own.resolve(Response.json({ ok: false }, { status: 401 }));
++    await rejected;
++  });
++  it("retains a single shared request budget across concurrent duplicate pages", async () => {
++    handlers.contracts.mockImplementation((req, options) => {
++      const page = Number(req.nextUrl.searchParams.get("cursor") ?? 0);
++      if (req.nextUrl.searchParams.get("scope") === "my" && page === 0) options?.onCashflowTeamReady?.(1);
++      return json(contracts([{ id: "duplicate" }], {
++        totalCount: page ? null : 1, hasTeam: true, hasMore: page < 40, nextCursorToken: page < 40 ? String(page + 1) : null,
++      }));
++    });
++    await expect(loadCashflowShadowInputs(request(), { freshCashflowContext: true })).rejects.toMatchObject({ code: "limit" });
++    const started = Object.values(handlers).reduce((count, handler) => count + handler.mock.calls.length, 0);
++    expect(started).toBe(50);
++    expect(handlers.contracts.mock.calls.every(([req]) => req.signal.aborted)).toBe(true);
++  });
++  it.each(["my", "team"] as const)("rejects revoked access on a later concurrent %s page", async deniedScope => {
++    handlers.contracts.mockImplementation((req, options) => {
++      const scope = req.nextUrl.searchParams.get("scope"), cursor = req.nextUrl.searchParams.get("cursor");
++      expect(options?.freshCashflowContext).toBe(true);
++      if (scope === "my" && !cursor) options?.onCashflowTeamReady?.(2);
++      if (scope === deniedScope && cursor) return json({ ok: false }, 403);
++      return json(contracts([{ id: cursor ? "two" : "one" }], {
++        totalCount: cursor ? null : 2, hasTeam: true, hasMore: !cursor, nextCursorToken: cursor ? null : "two",
++      }));
++    });
++    await expect(loadCashflowShadowInputs(request(), { freshCashflowContext: true })).rejects.toMatchObject({ code: "forbidden", status: 403 });
++  });
++  it("cancels both concurrent scopes without returning a partial portfolio", async () => {
++    const controller = new AbortController();
++    let hint!: (count: number) => void;
++    handlers.contracts.mockImplementation((req, options) => {
++      if (req.nextUrl.searchParams.get("scope") === "my") hint = options!.onCashflowTeamReady!;
++      return new Promise(() => undefined);
++    });
++    const result = loadCashflowShadowInputs(request(controller.signal), { freshCashflowContext: true });
++    const rejected = expect(result).rejects.toMatchObject({ code: "aborted", status: 499 });
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(1));
++    hint(0);
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(2));
++    controller.abort();
++    await rejected;
++    expect(handlers.contracts.mock.calls.every(([req]) => req.signal.aborted)).toBe(true);
++    hint(0);
++    expect(handlers.contracts).toHaveBeenCalledTimes(2);
++  });
++  it("keeps the duration cap with both concurrent scopes pending", async () => {
++    vi.useFakeTimers();
++    handlers.contracts.mockImplementation((req, options) => {
++      if (req.nextUrl.searchParams.get("scope") === "my") options?.onCashflowTeamReady?.(0);
++      return new Promise(() => undefined);
++    });
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    const rejected = expect(result).rejects.toMatchObject({ code: "timeout", status: 504 });
++    await vi.advanceTimersByTimeAsync(20_000);
++    await rejected;
++    expect(handlers.contracts).toHaveBeenCalledTimes(2);
++    expect(handlers.contracts.mock.calls.every(([req]) => req.signal.aborted)).toBe(true);
++  });
+   it("cannot change successful loading or hide authorization errors when the observer fails", async () => {
+     const onSourceTiming = vi.fn(() => { throw new Error("private observer error"); });
+     await expect(loadCashflowShadowInputs(request(), { onSourceTiming })).resolves.toMatchObject({ effectiveEmail: "viewer@example.test" });
+@@ -163,7 +317,9 @@
+     expect(handlers.contracts.mock.calls[0][1]).toEqual({ freshCashflowContext: false });
+     handlers.contracts.mockClear();
+     await loadCashflowShadowInputs(req, { freshCashflowContext: true });
+-    expect(handlers.contracts.mock.calls[0][1]).toEqual({ freshCashflowContext: true });
++    expect(handlers.contracts.mock.calls[0][1]).toEqual({
++      freshCashflowContext: true, onCashflowTeamReady: expect.any(Function),
++    });
+   });
+ 
+   it("preserves authentication and impersonation through direct handlers and normalizes portfolio owners", async () => {
+@@ -253,7 +409,9 @@
+     const own = Array.from({ length: 1001 }, (_, i) => ({ id: String(i), inputAmount: i, userEmail: " Viewer@Example.Test " }));
+     const team = Array.from({ length: 501 }, (_, i) => ({ id: String(i), inputAmount: i, adviserEmail: " Team@Example.Test " }));
+     handlers.contracts.mockImplementation((child, options) => {
+-      expect(options).toEqual({ freshCashflowContext: true });
++      expect(options?.freshCashflowContext).toBe(true);
++      const firstOwnPage = child.nextUrl.searchParams.get("scope") === "my" && !child.nextUrl.searchParams.has("cursor");
++      expect(options?.onCashflowTeamReady).toEqual(firstOwnPage ? expect.any(Function) : undefined);
+       expect(child.headers.get("authorization")).toBe("Bearer actor-token");
+       expect(child.headers.get("cookie")).toBe("impersonation=verified-cookie");
+       expect(child.nextUrl.searchParams.get("shape")).toBe("cashflow");
+@@ -301,8 +459,9 @@
+     expect(handlers.contracts).toHaveBeenCalledOnce();
+   });
+ 
+-  it.each([2500, 2501])("keeps the combined own/team contract bound when the team has %i rows", async teamCount => {
+-    handlers.contracts.mockImplementation(child => {
++  it.each([[2500, false], [2501, false], [2500, true], [2501, true]] as const)("keeps the combined own/team bound with %i team rows and fresh context %s", async (teamCount, freshCashflowContext) => {
++    handlers.contracts.mockImplementation((child, options) => {
++      if (child.nextUrl.searchParams.get("scope") === "my" && !child.nextUrl.searchParams.has("cursor")) options?.onCashflowTeamReady?.(2500);
+       const totalCount = child.nextUrl.searchParams.get("scope") === "team" ? teamCount : 2500;
+       const offset = Number(child.nextUrl.searchParams.get("cursor") ?? 0);
+       const next = Math.min(offset + 500, totalCount);
+@@ -311,7 +470,7 @@
+         hasMore: next < totalCount, nextCursorToken: next < totalCount ? String(next) : null,
+       }));
+     });
+-    const result = loadCashflowShadowInputs(request());
++    const result = loadCashflowShadowInputs(request(), { freshCashflowContext });
+     if (teamCount === 2500) {
+       const { snapshot } = await result;
+       expect(snapshot.ownEntries).toHaveLength(2500);

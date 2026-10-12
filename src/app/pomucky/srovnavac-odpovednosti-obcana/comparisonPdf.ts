@@ -4,7 +4,10 @@ import type { LiabilityReport, ExportRow, ExportSection } from "./exportData";
 import type { LiabilityProduct } from "./products";
 import type { ComparisonTone } from "./comparisonData";
 
-export type LiabilityPdfOptions = { report: LiabilityReport; advisor: ReportAdvisor; generatedAt?: Date };
+export type LiabilityPdfOptions = {
+  report: LiabilityReport; advisor: ReportAdvisor; generatedAt?: Date;
+  presentation?: { title: string; subtitle: string; footer: string; advisorInFooter?: boolean; continuousSections?: boolean };
+};
 const FONT = "LiberationSans";
 const INK = "#493354", MUTED = "#82708e", LINE = "#e4dcea", PURPLE = "#79558f";
 const MARGIN = 28, LINE_HEIGHT = 11.5, PADDING = 7;
@@ -18,7 +21,7 @@ const TONES: Record<ComparisonTone, { fill: string; ink: string }> = {
   positive: { fill: "#edf7f2", ink: "#286748" }, warning: { fill: "#fff7e9", ink: "#89601d" },
   negative: { fill: "#fff0ed", ink: "#ad4839" }, neutral: { fill: "#f4f4f7", ink: "#625e6e" },
 };
-type TextLine = { text: string; bold?: boolean; color?: string };
+type TextLine = { text: string; bold?: boolean; color?: string; href?: string };
 
 async function asset(path: string): Promise<Uint8Array> {
   const response = await fetch(path);
@@ -36,12 +39,12 @@ function safeLink(value: string): string | undefined {
 }
 
 // Native PDF text keeps Czech characters searchable and sharp in print.
-export async function createLiabilityPdf({ report, advisor, generatedAt = new Date() }: LiabilityPdfOptions): Promise<jsPDF> {
+export async function createLiabilityPdf({ report, advisor, generatedAt = new Date(), presentation }: LiabilityPdfOptions): Promise<jsPDF> {
   if (!report.products.length || !report.sections.some((section) => section.rows.length)) throw new Error("Vyber alespoň jeden produkt a kritérium.");
   if (report.sections.some((section) => section.rows.some((row) => row.cells.length !== report.products.length))) throw new Error("Počet odpovědí neodpovídá vybraným produktům.");
   const cardUrl = safeLink(advisor.cardUrl);
   const [{ jsPDF: Pdf }, regular, bold, companyLogo, qr, logoAssets] = await Promise.all([
-    import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"), asset("/icons/nadpislogo.jpg"),
+    import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"), asset("/icons/bohemika_logo.png"),
     cardUrl ? import("qrcode").then((module) => module.default.toDataURL(cardUrl, { width: 240, margin: 1, errorCorrectionLevel: "M", color: { dark: INK, light: "#ffffff" } })) : Promise.resolve(""),
     Promise.all([...new Set(report.products.map((product) => product.logoPath))].map(async (path) => [path, await asset(PDF_LOGO_PATHS[path] ?? path)] as const)),
   ]);
@@ -49,9 +52,10 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
   for (const [style, bytes] of [["normal", regular], ["bold", bold]] as const) {
     pdf.addFileToVFS(`${FONT}-${style}.ttf`, base64(bytes)); pdf.addFont(`${FONT}-${style}.ttf`, FONT, style);
   }
-  pdf.setProperties({ title: "Srovnání odpovědnosti občana", author: advisor.fullName || advisor.email, creator: "Bohemika a.s.", subject: report.sections.map((section) => section.title).join(" · ") });
+  const title = presentation?.title ?? "Srovnání odpovědnosti občana";
+  pdf.setProperties({ title, author: advisor.fullName || advisor.email, creator: "Bohemika a.s.", subject: report.sections.map((section) => section.title).join(" · ") });
   const pageWidth = pdf.internal.pageSize.getWidth(), pageHeight = pdf.internal.pageSize.getHeight();
-  const width = pageWidth - MARGIN * 2, bottom = pageHeight - 39;
+  const width = pageWidth - MARGIN * 2, bottom = pageHeight - (presentation?.advisorInFooter ? 50 : 39);
   const date = generatedAt.toLocaleDateString("cs-CZ", { timeZone: "Europe/Prague" });
   const logoProps = pdf.getImageProperties(companyLogo);
   const insurerLogos = new Map(logoAssets.map(([path, data]) => {
@@ -72,15 +76,20 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
     return (pdf.splitTextToSize(value, space) as string[]).map((line) => ({ text: line, bold: weight, color }));
   }
   function drawLines(lines: TextLine[], x: number, y: number) {
-    lines.forEach((line, index) => text(line.text, x, y + index * LINE_HEIGHT, 8.5, line.bold, line.color));
+    lines.forEach((line, index) => {
+      const top = y + index * LINE_HEIGHT;
+      text(line.text, x, top, 8.5, line.bold, line.color);
+      const url = line.href && safeLink(line.href);
+      if (url && line.text) pdf.link(x, top, pdf.getTextWidth(line.text), LINE_HEIGHT, { url });
+    });
   }
   function rule(y: number) { pdf.setDrawColor(LINE); pdf.setLineWidth(.5); pdf.line(MARGIN, y, pageWidth - MARGIN, y); }
   function newPage() {
     if (!firstPage) pdf.addPage(); firstPage = false;
     const logoHeight = 40, logoWidth = logoHeight * logoProps.width / logoProps.height;
-    pdf.addImage(companyLogo, "JPEG", MARGIN, 14, logoWidth, logoHeight, "bohemika-logo");
-    text("Srovnání odpovědnosti občana", MARGIN + logoWidth + 16, 18, 16, true);
-    text(`${report.products.length} produktů · ${report.sections.length} sekcí · ${report.includeDetails ? "včetně podrobností" : "stručný přehled bez podrobností"}${report.onlyDifferences ? " · pouze rozdíly" : ""}`, MARGIN + logoWidth + 16, 42, 8.5, false, MUTED);
+    pdf.addImage(companyLogo, "PNG", MARGIN, 14, logoWidth, logoHeight, "bohemika-logo");
+    text(title, MARGIN + logoWidth + 16, 18, 16, true);
+    text(presentation?.subtitle ?? `${report.products.length} produktů · ${report.sections.length} sekcí · ${report.includeDetails ? "včetně podrobností" : "stručný přehled bez podrobností"}${report.onlyDifferences ? " · pouze rozdíly" : ""}`, MARGIN + logoWidth + 16, 42, 8.5, false, MUTED);
     font(10, true); pdf.text("Bohemika a.s.", pageWidth - MARGIN, 20, { align: "right", baseline: "top" });
     font(8, false, MUTED); pdf.text(date, pageWidth - MARGIN, 39, { align: "right", baseline: "top" });
     rule(64); return 78;
@@ -93,8 +102,8 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
   for (const group of groups) {
     const criterionWidth = 158, productWidth = (width - criterionWidth) / group.products.length;
     const columnWidths = [criterionWidth, ...group.products.map(() => productWidth)];
-    function tableHeader(section: ExportSection, continuation = false) {
-      let top = newPage();
+    function tableHeader(section: ExportSection, continuation = false, reusePage = false) {
+      let top = reusePage ? y + 20 : newPage();
       text(`${section.title}${continuation ? " · pokračování" : ""}`, MARGIN, top, 12, true, PURPLE);
       if (groups.length > 1) {
         font(8, false, MUTED); pdf.text(`Produkty ${group.offset + 1}–${group.offset + group.products.length} z ${report.products.length}`, pageWidth - MARGIN, top + 3, { align: "right", baseline: "top" });
@@ -130,12 +139,15 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
         ...wrapped(cell.summary, productWidth - PADDING * 2, true, TONES[cell.tone].ink),
         ...(cell.context ? [{ text: "" }, ...wrapped(cell.context, productWidth - PADDING * 2, false, TONES[cell.tone].ink)] : []),
         ...(cell.detail ? [{ text: "" }, ...wrapped(cell.detail, productWidth - PADDING * 2, false, TONES[cell.tone].ink)] : []),
+        ...(cell.links?.length ? [{ text: "" }, ...cell.links.flatMap((link) => wrapped(link.label, productWidth - PADDING * 2, false, PURPLE).map((line) => ({ ...line, href: link.url })))] : []),
       ]);
       return [label, ...cells];
     }
     for (const section of report.sections) {
       if (!section.rows.length) continue;
-      y = tableHeader(section);
+      const firstRowHeight = Math.max(...rowLayout(section.rows[0]).map((queue) => queue.length)) * LINE_HEIGHT + PADDING * 2;
+      const reusePage = presentation?.continuousSections === true && !firstPage && y + 20 + 120 + Math.min(firstRowHeight, 180) <= bottom;
+      y = tableHeader(section, false, reusePage);
       const capacity = bottom - y;
       for (const row of section.rows) {
         const queues = rowLayout(row);
@@ -190,8 +202,16 @@ export async function createLiabilityPdf({ report, advisor, generatedAt = new Da
   }
   const pageCount = pdf.getNumberOfPages();
   for (let page = 1; page <= pageCount; page++) {
-    pdf.setPage(page); rule(pageHeight - 29);
-    text("Údaje podle dodaného srovnání. Data verzí jsou uvedena u produktů.", MARGIN, pageHeight - 21, 7.5, false, MUTED);
+    pdf.setPage(page); rule(pageHeight - (presentation?.advisorInFooter ? 40 : 29));
+    if (presentation?.advisorInFooter) {
+      font(7.5, true);
+      const contact = [advisor.fullName || advisor.email, advisor.phone, advisor.email].filter(Boolean).join(" · ");
+      // A long profile field must not collide with the page number or leave the page.
+      let clipped = contact;
+      while (clipped.length && pdf.getTextWidth(clipped + "…") > width - 64) clipped = clipped.slice(0, -1);
+      text(clipped.length < contact.length ? `${clipped}…` : contact, MARGIN, pageHeight - 33, 7.5, true);
+    }
+    text(presentation?.footer ?? "Údaje podle dodaného srovnání. Data verzí jsou uvedena u produktů.", MARGIN, pageHeight - 21, 7.5, false, MUTED);
     font(7.5, true, PURPLE); pdf.text(`${page} / ${pageCount}`, pageWidth - MARGIN, pageHeight - 21, { align: "right", baseline: "top" });
   }
   return pdf;

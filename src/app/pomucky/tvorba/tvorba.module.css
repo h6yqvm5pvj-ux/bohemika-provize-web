@@ -148,7 +148,7 @@
 .paper { position: relative; box-sizing: border-box; width: 210mm; height: 297mm; overflow: hidden; background: #fff; color: #182638; box-shadow: 0 6px 24px #263e5714; border-top: 2mm solid #2996cb; }
 .paperAccent { position: absolute; top: 0; right: 0; width: 74mm; height: 33mm; border-bottom-left-radius: 38mm; background: #f0f7fb; }
 .paperHeader { position: relative; height: 35mm; margin: 0 16mm; padding: 5mm 0; display: flex; align-items: center; justify-content: space-between; gap: 12mm; border-bottom: 1px solid #e0e9ef; box-sizing: border-box; }
-.brandLogo { width: 30mm; height: auto; object-fit: contain; }
+.brandLogo { width: 30mm; height: 20mm; object-fit: contain; }
 .paperHeading { max-width: 105mm; text-align: right; }
 .paperHeading > span { display: flex; align-items: center; justify-content: flex-end; gap: 1.6mm; font-size: 8px; font-weight: 600; letter-spacing: .16em; color: #55859e; margin-bottom: 3mm; }
 .paperHeading i { width: 4px; height: 4px; border-radius: 50%; background: #2996cb; }

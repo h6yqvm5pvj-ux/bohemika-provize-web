@@ -20,6 +20,7 @@ describe("shared client contracts endpoint",()=>{
    const response=await GET(request("scope=my&ownerEmail=outside@example.test&includeDetails=1"),context());
    expect(response.status).toBe(200);expect(response.headers.get("Cache-Control")).toContain("private, no-store");
    expect(mocks.read.mock.calls[0][2]).toMatchObject({email:ctx.email,teamEmails:["team@example.test"],selection:{scope:"my",advisers:[]}});
+   expect(mocks.advance).toHaveBeenCalledWith(expect.anything(),[ctx.email,"team@example.test"]);
    expect(await response.json()).toEqual({ok:true,...result,indexing:false});
  });
  it("never starts global migration for a guessed client or a card without matching contacts",async()=>{
@@ -34,7 +35,7 @@ describe("shared client contracts endpoint",()=>{
  it("reports incomplete backfill without blocking the main card",async()=>{
    mocks.advance.mockResolvedValue(false);
    expect(await (await GET(request(),context())).json()).toMatchObject({ok:true,indexing:true});
-   expect(mocks.advance.mock.calls[0][1]).toEqual(["own@example.test","team@example.test","outside@example.test"]);
+   expect(mocks.advance.mock.calls[0][1]).toEqual(["own@example.test","team@example.test"]);
  });
  it("denies impersonation and invalid IDs before any lookup",async()=>{
    expect((await GET(request(),context("../outside"))).status).toBe(404);

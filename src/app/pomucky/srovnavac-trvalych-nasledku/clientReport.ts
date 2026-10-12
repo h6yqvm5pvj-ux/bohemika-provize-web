@@ -29,7 +29,7 @@ const modelNote = "Modelové srovnání při stejné pojistné částce. Skuteč
 
 const header = (date: string, section: string, cover = false, personalization = "") => `<header class="pdf-brand${cover ? " pdf-cover-brand" : ""}">
   <div class="pdf-brand-row">
-    <img src="/icons/nadpislogo.jpg" alt="Bohemika – finanční poradenství" />
+    <img src="/icons/bohemika_logo.png" alt="Bohemika – finanční poradenství" />
     ${cover ? `<div class="pdf-cover-title"><div class="pdf-kicker">SROVNÁVAČ POJISTNÉHO PLNĚNÍ</div><h1>Stejný úraz.<br/><span>Různé plnění.</span></h1></div>` : ""}
     <div class="pdf-document"><strong>${escape(section)}</strong><small>${escape(date)}</small></div>
   </div>

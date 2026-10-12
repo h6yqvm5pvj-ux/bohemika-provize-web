@@ -202,6 +202,9 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
     "srovnání",
     "porovnání",
   ],
+  "neon-life-vs-generali-bel-mondo-20": [
+    "čpp", "neon", "generali", "bel mondo", "belmondo", "životko", "srovnání", "porovnání", "2026", "progrese", "ivf",
+  ],
 };
 
 export const normalizeToolSearch = (value: string): string =>
@@ -480,5 +483,13 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
       summary:
         "Nové přehledné srovnání ČPP Životní pojištění NEON Life a MetLife OneGuard na jednom místě.",
     },
+  },
+  {
+    key: "neon-life-vs-generali-bel-mondo-20",
+    category: "Životní pojištění",
+    title: "NEON Life vs. Generali Bel Mondo 20",
+    description: "49 témat z podmínek NEON 2026 a Bel Mondo 20 (02/2024), model progrese, zdroje a PDF s vizitkou.",
+    href: "/pomucky/neon-life-vs-generali-bel-mondo-20",
+    news: { kind: "new", summary: "Možné výhody ČPP, jejich omezení a důležité protiváhy; výběr témat do PDF s vizitkou poradce." },
   },
 ];

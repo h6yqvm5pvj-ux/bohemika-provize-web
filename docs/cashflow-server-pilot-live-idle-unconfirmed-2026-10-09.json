@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T09:25:26+02:00",
+  "observationSource": "User-provided browser screenshot following the requested idle-filter test",
+  "domain": "https://bohemka.app",
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all"
+  },
+  "diagnostic": {
+    "previousResultRemovalObserved": true,
+    "storedComparison": null,
+    "newResourceEntriesAfterRemovalCaptured": false,
+    "actualFilterChangeAfterRemovalCaptured": false,
+    "idleDurationMeasured": false
+  },
+  "interpretation": {
+    "freshComparisonVerified": false,
+    "idleContextRenewalLiveVerified": false,
+    "calculationMismatchProven": false,
+    "runtimeFailureCauseEstablished": false,
+    "reason": "The screenshot shows diagnostic removal and a subsequent null value. Resource timings above the removal are the earlier printed sample; no completed new comparison or exact filter-change sequence is captured."
+  },
+  "nextProbe": "scripts/cashflow-pilot-scope-console.js",
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationRuntimeCodeChanged": false,
+  "deploymentChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false
+}

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-08T19:41:45+02:00",
+  "source": "user-authenticated-browser-diagnostic",
+  "selection": {
+    "scopeFilter": "own",
+    "productFilter": "all"
+  },
+  "result": {
+    "kind": "view",
+    "status": "unavailable",
+    "reason": "stale_context",
+    "httpStatus": 409,
+    "requestMs": 848.1,
+    "referenceMs": 31.8,
+    "serverTimingMs": {
+      "cashflow_auth": 663.58,
+      "cashflow_total": 668.39
+    }
+  },
+  "inputsLoaded": false,
+  "comparisonCompleted": false,
+  "previousMatchDoesNotCoverThisSelection": true,
+  "personalOrPortfolioDataStored": false
+}

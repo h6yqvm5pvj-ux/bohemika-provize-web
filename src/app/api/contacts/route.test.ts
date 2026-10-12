@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  DEFAULT_DIRECTORY_CONTACTS,
+  type DirectoryContact,
+} from "@/app/lib/contactDirectory";
+
+const pillowDefaults = DEFAULT_DIRECTORY_CONTACTS.filter(
+  (contact) => contact.institutionKey === "pillow",
+);
+
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   set: vi.fn(),
@@ -78,6 +87,77 @@ describe("/api/contacts", () => {
     expect(payload.contacts?.length).toBeGreaterThan(0);
   });
 
+  it.each(["GET", "PUT"] as const)("odmítne %s bez přihlášení", async (method) => {
+    mocks.requireAdvisor.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ ok: false }, { status: 401 }),
+    });
+    const handlers = await import("./route");
+    const response = await handlers[method](
+      new NextRequest("https://bohemka.app/api/contacts", { method }),
+    );
+    expect(response.status).toBe(401);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("doplní Pillow do staršího adresáře a zachová uložené kontakty", async () => {
+    const existing: DirectoryContact = {
+      id: "custom-cpp",
+      institutionKey: "cpp",
+      person: "Testovací podpora",
+      emails: [{ value: "podpora@example.test" }],
+    };
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ contacts: [existing] }),
+    });
+    const { GET } = await import("./route");
+    const response = await GET(new NextRequest("https://bohemka.app/api/contacts"));
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload.contacts).toEqual([existing, ...pillowDefaults]);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.sendBroadcast).not.toHaveBeenCalled();
+    expect(mocks.writeMailbox).not.toHaveBeenCalled();
+  });
+
+  it.each(["id", "email", "phone"] as const)(
+    "neduplikuje existující kartu Pillow podle %s a zachová její úpravy",
+    async (match) => {
+      const seed = pillowDefaults[0];
+      const edited: DirectoryContact = {
+        id: match === "id" ? seed.id : "custom-pillow",
+        institutionKey: "pillow",
+        person: "Upravený testovací kontakt",
+        emails: [{
+          value: match === "email"
+            ? seed.emails![0].value.toUpperCase()
+            : "upraveny@example.test",
+        }],
+        ...(match === "phone" ? { phone: seed.phone } : {}),
+      };
+      mocks.get.mockResolvedValue({
+        exists: true,
+        data: () => ({ contacts: [edited] }),
+      });
+      const { GET } = await import("./route");
+      const response = await GET(new NextRequest("https://bohemka.app/api/contacts"));
+      const payload = await response.json();
+      expect(payload.contacts).toEqual([edited, pillowDefaults[1]]);
+    },
+  );
+
+  it("neobnoví odstraněné kontakty po uložení nové verze adresáře", async () => {
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ contacts: [], pillowDefaultsVersion: 1 }),
+    });
+    const { GET } = await import("./route");
+    const response = await GET(new NextRequest("https://bohemka.app/api/contacts"));
+    expect((await response.json()).contacts).toEqual([]);
+  });
+
   it("zakáže zápis běžnému uživateli", async () => {
     const { PUT } = await import("./route");
     const response = await PUT(
@@ -88,6 +168,17 @@ describe("/api/contacts", () => {
     );
 
     expect(response.status).toBe(403);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("odmítne neplatná kontaktní data i specialistovi", async () => {
+    mocks.canManage.mockResolvedValue(true);
+    const { PUT } = await import("./route");
+    const response = await PUT(new NextRequest("https://bohemka.app/api/contacts", {
+      method: "PUT",
+      body: JSON.stringify({ contacts: [{ id: "invalid", institutionKey: "pillow", phone: { display: "Test", href: "javascript:alert(1)" } }] }),
+    }));
+    expect(response.status).toBe(400);
     expect(mocks.set).not.toHaveBeenCalled();
   });
 
@@ -104,7 +195,7 @@ describe("/api/contacts", () => {
     const response = await PUT(
       new NextRequest("https://bohemka.app/api/contacts", {
         method: "PUT",
-        body: JSON.stringify({ contacts: [pillowContact] }),
+        body: JSON.stringify({ contacts: [pillowContact], pillowDefaultsVersion: 999 }),
       }),
     );
     const payload = (await response.json()) as {
@@ -118,6 +209,7 @@ describe("/api/contacts", () => {
     expect(mocks.set).toHaveBeenCalledWith(
       expect.objectContaining({
         contacts: [pillowContact],
+        pillowDefaultsVersion: 1,
         updatedByEmail: authContext.email,
       }),
     );
@@ -148,7 +240,7 @@ describe("/api/contacts", () => {
     };
     mocks.get.mockResolvedValue({
       exists: true,
-      data: () => ({ contacts: [unchangedContact] }),
+      data: () => ({ contacts: [unchangedContact], pillowDefaultsVersion: 1 }),
     });
     const { PUT } = await import("./route");
     const response = await PUT(
@@ -159,6 +251,26 @@ describe("/api/contacts", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(mocks.writeMailbox).not.toHaveBeenCalled();
+    expect(mocks.sendBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("uloží doplněné výchozí kontakty bez notifikace, když se zobrazený obsah nezměnil", async () => {
+    mocks.canManage.mockResolvedValue(true);
+    mocks.get.mockResolvedValue({
+      exists: true,
+      data: () => ({ contacts: [] }),
+    });
+    const { PUT } = await import("./route");
+    const response = await PUT(new NextRequest("https://bohemka.app/api/contacts", {
+      method: "PUT",
+      body: JSON.stringify({ contacts: pillowDefaults }),
+    }));
+    expect(response.status).toBe(200);
+    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({
+      contacts: pillowDefaults,
+      pillowDefaultsVersion: 1,
+    }));
     expect(mocks.writeMailbox).not.toHaveBeenCalled();
     expect(mocks.sendBroadcast).not.toHaveBeenCalled();
   });

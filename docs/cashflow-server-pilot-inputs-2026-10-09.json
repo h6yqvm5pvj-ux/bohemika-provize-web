@@ -1,0 +1,382 @@
+{
+  "version": 1,
+  "date": "2026-10-09",
+  "status": "single-account-input-pagination-deployed",
+  "baseline": {
+    "gitCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+    "previousDeploymentId": "dpl_C9KG2YyLHLyMa6FzFyu7Y1iHVomh",
+    "previousScopePatch": {
+      "file": "cashflow-server-pilot-scope-2026-10-09.patch",
+      "sha256": "11941044ae7a352d72b48608c0567c1eea9bc440ab82de7f00ad2bbc0da26700"
+    },
+    "previousReviewsPatch": {
+      "file": "cashflow-server-pilot-reviews-2026-10-09.patch",
+      "sha256": "1fee315f5704456db0e37da8025ef5ec845ebba17a31519b2a420239a2fb76c3"
+    },
+    "additionalSources": [
+      {
+        "path": "src/lib/server/cashflowShadowInputs.ts",
+        "sha256": "9e87db61a0a4b862fd11efbba642a5c826152770b4a57221505fbc2c13b4bdf8"
+      },
+      {
+        "path": "src/lib/server/cashflowShadowInputs.test.ts",
+        "sha256": "b417474fdea3895e14f5a0209db13539f4077281940d3c28fc42a9c3d748c594"
+      },
+      {
+        "path": "src/app/lib/cashflowPagination.ts",
+        "sha256": "ef78077c06efe2ae981d0f2739f7d1de228e2d1335fae579e7bf69687192e340"
+      }
+    ]
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-inputs-2026-10-09.patch",
+    "sha256": "e33856021372f1da90516923a39fbd00a88872a59e4533e49239cccfa727222a"
+  },
+  "reviewFiles": [
+    "src/lib/server/cashflowShadowInputs.ts",
+    "src/lib/server/cashflowShadowInputs.test.ts"
+  ],
+  "files": [
+    {
+      "path": "package-lock.json",
+      "sha256": "f406945395a94522533add9b3ac20950fb70659a4ba1ceca90a4f7cfd80b66f5"
+    },
+    {
+      "path": "package.json",
+      "sha256": "4cf2ee6de9a2f8c0de3917f8a030bd38c1808c600e1e4165be37a8204b76157d"
+    },
+    {
+      "path": "scripts/check-cashflow-server-pilot.mjs",
+      "sha256": "e25c86c22ebf477a203ec58f598de24fa972a82efa626255d4b0704fccabf6c3"
+    },
+    {
+      "path": "scripts/check-cashflow-timezones.mjs",
+      "sha256": "fc2c52f1b684b7ea9347a3f4ece0e3d9ba02920e402d222e37a1c76c1c0466c0"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.test.ts",
+      "sha256": "544171246e35e04bab2ddc024b512af535a154fcf94b571d92e3bc190a47708a"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.ts",
+      "sha256": "e9e615b75ed26c8d764d2e34733fae0cb37acf320662516868e5e6cf48534fa8"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.test.ts",
+      "sha256": "8b33c5ae24380c04970610c9768e293367786cc19d3b40911d219e9e8a364dfc"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.ts",
+      "sha256": "40e00f23650f570f7aa5ecfb3ebd6134a43df631b7c2f398f68e66dec7879ede"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.test.ts",
+      "sha256": "6ab7e7e47560386da08bfbe518c3a45e556c0f15551899a323ce45d2ce8531c1"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.ts",
+      "sha256": "2041b4ec0cfa4fc16913eb816becd7c6887fdbae99da157407f34bb71a7d2dd5"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.test.ts",
+      "sha256": "6966ac76390a53b44bda1a17b7d4f2fa07b0b42cd9cc1aa579eb413e7d53390d"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.ts",
+      "sha256": "196f00e79c67a985c0d921a1c8db9ee0eece637d95d62f4c196acd6b4efe5fd2"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerProtocol.ts",
+      "sha256": "fcfbd5f8571b5a4458cd88c7fc5feaa8f9dc2d1f9a71d256929183a91927a167"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.test.ts",
+      "sha256": "506e92eb6751d896961785fa41211e7f6730a7c79b2406b2aabac16e6f55fb67"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.ts",
+      "sha256": "a96f2b76a94180c3c22155e3e4ee0741d33ec0c07d0120d0ee14fbdf158b9c42"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.types.ts",
+      "sha256": "34f13f1a13df6bde5081ff2ebbb3329ad9ee6c4acf6192b170971c8d9a22da62"
+    },
+    {
+      "path": "src/app/cashflow/computeCashflow.ts",
+      "sha256": "06c9617a5f0b2094b526bfa5569341e30db9f99dcacaa85f8188ef77f183bca6"
+    },
+    {
+      "path": "src/app/cashflow/generator.test.ts",
+      "sha256": "ec31ce086ea72db7ad1c2e8ba36777e32812098c0a3a70734c6264ec7b4a1c88"
+    },
+    {
+      "path": "src/app/cashflow/generator.ts",
+      "sha256": "1381bf122d5d189c92af1d99380b58beaaeea809e43af17343db13bfbb3dfcaa"
+    },
+    {
+      "path": "src/app/cashflow/helpers.ts",
+      "sha256": "764733a0bfc43f70bf4a6d0015db68beec426043d423c95ba4b3f37ce6af72c6"
+    },
+    {
+      "path": "src/app/cashflow/page.loading.test.tsx",
+      "sha256": "47e3f3b6dbb247bd842be3191e65577826c6adfac37298e3fc7350ff310670ed"
+    },
+    {
+      "path": "src/app/cashflow/page.tsx",
+      "sha256": "b156f2fb2c864f3050479b472d4a1e29fd4cce4b7a795ab8e496cd9d895f80e5"
+    },
+    {
+      "path": "src/app/cashflow/payoutPlanMatching.ts",
+      "sha256": "9386af962d5ec59cb2abaec75173935110d3ad6d4f24a68f072dd446be2263bc"
+    },
+    {
+      "path": "src/app/cashflow/subscriptionCashflow.ts",
+      "sha256": "0be94f91700c1a7ca7ff9a0fa3bd7b81765202017cbbcab0a2ec26321114733f"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.ts",
+      "sha256": "071b62f7055465667a2ce91cb327e31a41d745bb6cdcfd7f1f4de0c2416f4f9b"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.worker.test.tsx",
+      "sha256": "1702f8684533936026f124091a0c657bce6df0d1fd64b3069aa2033374f29320"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.test.tsx",
+      "sha256": "eb2ba19d5f66064072514fe965d48068af80233a1c0691acaf0766436fbaab69"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.ts",
+      "sha256": "fddbf750def071970884dce3f5877217dca996dc8523c6f742d4b6fda82916c1"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.test.tsx",
+      "sha256": "ddad3faa1f91771829f238c3da615539d4d8142fa0451bc41a22966cff942d3d"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.ts",
+      "sha256": "7a1df11a5fa46f883b5922da1c3c2e8db7a7b08e26d906eb1cb1b58114ec5845"
+    },
+    {
+      "path": "src/app/lib/calendarDates.ts",
+      "sha256": "74124fab602c813880e2362be773add3b84bad8a9cfd82caef502a966940365f"
+    },
+    {
+      "path": "src/app/lib/cashflowPagination.ts",
+      "sha256": "ef78077c06efe2ae981d0f2739f7d1de228e2d1335fae579e7bf69687192e340"
+    },
+    {
+      "path": "src/app/lib/formatters.ts",
+      "sha256": "219880637bd2ecf55e9aba3aa3b6b77a05593514bfff5f9da9cd5d17fd080109"
+    },
+    {
+      "path": "src/app/lib/kooperativaCPayoutMeaning.ts",
+      "sha256": "058a274d4e38d6248b003ab8b1a9b4d457792e720618f8b5a0415ee1608b976a"
+    },
+    {
+      "path": "src/lib/server/cashflowCalendar.test.ts",
+      "sha256": "f6ff510eb43e1c5d4ca4c790a100f3fcb596c32dc1524b53930aaaba86aa9a4e"
+    },
+    {
+      "path": "src/lib/server/cashflowCalendar.ts",
+      "sha256": "b17bfc9ab8394267505317f809d3580f0d3b91709fb848c525ad7214129cec97"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.test.ts",
+      "sha256": "44a49e0b0368a2ffeb3d330329edc017329d0b6ebaf45509c5973ccc90832fed"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.ts",
+      "sha256": "dbce89e3325637fb164af563f23b766d046dac46429a6b362ddb5984a5d4b79f"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.test.ts",
+      "sha256": "a3496a21502deb3aa219eae8f307eb393e74362d4feabf3dd1115d153d33ba36"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.ts",
+      "sha256": "e43ed80bee74502275341267d1097aeca3456d18e37e2dd1a7c86a5f77d9b3a5"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowSchedules.test.ts",
+      "sha256": "856f9e60f107ec7b27aeba1510c60e9c15e41da60ea66a6e218134bb698c5405"
+    },
+    {
+      "path": "tests/security/api-authentication.test.ts",
+      "sha256": "82a10ff99739ec1d1893c4b88f22d9c03f701aba9cb2284e3cfe14c7121c4bec"
+    }
+  ],
+  "scope": {
+    "runtimeFilesChanged": 1,
+    "unchangedPreviousSources": 39,
+    "businessCalculationChanged": false,
+    "apiOutputChanged": false,
+    "authenticationAndAuthorizationChanged": false,
+    "cacheAdded": false,
+    "dataTruncated": false,
+    "wholeSourceHashPreserved": true,
+    "contractPageSizeBefore": 100,
+    "contractPageSizeAfter": 500,
+    "requestCap": 50,
+    "durationCapMs": 20000,
+    "aggregateContractRowsCap": 5000,
+    "aggregateContractRowsCapOrigin": "Previous 50-request / 100-row page upper bound; counted across own and team including duplicates. Larger pages do not remove authorization from any request.",
+    "pilotAccountCount": 1,
+    "productionDataWrites": false
+  },
+  "deploymentChanged": true,
+  "validation": {
+    "passed": true,
+    "targetedTests": {
+      "passed": 130,
+      "files": 3
+    },
+    "rootTypecheckPassed": true,
+    "rootTargetedEslintPassed": true,
+    "syntheticOnly": true,
+    "isolatedTests": {
+      "passed": 5907,
+      "files": 397
+    },
+    "isolatedTypecheckPassed": true,
+    "immutableReleasePreparationPassed": true,
+    "originalVsNew": {
+      "passed": true,
+      "syntheticOnly": true,
+      "previousPatchSha256": "11941044ae7a352d72b48608c0567c1eea9bc440ab82de7f00ad2bbc0da26700",
+      "unchangedReleaseFiles": 39,
+      "portfolios": 42,
+      "views": 378,
+      "oldContractRequests": 270,
+      "nextContractRequests": 102,
+      "pageReductionWitness": {
+        "ownContracts": 1001,
+        "teamContracts": 501,
+        "oldContractRequests": 17,
+        "nextContractRequests": 5
+      },
+      "completeInputsEqual": true,
+      "allOverviewFieldsAndMonthItemsMatch": true,
+      "authorizationRevocationRejectedByBoth": true,
+      "businessSourcesUnchanged": true,
+      "inputsUnmodified": true,
+      "productionSpeedupEstablished": false
+    },
+    "isolatedTargetedEslintPassed": true,
+    "productionBuild": {
+      "passed": true,
+      "syntheticConfigurationOnly": true,
+      "envFilesRead": false,
+      "productionCredentialsUsed": false,
+      "inputsPatchSha256": "e33856021372f1da90516923a39fbd00a88872a59e4533e49239cccfa727222a",
+      "sourceFilesVerified": 42,
+      "webpack": true,
+      "authProxyVerified": true
+    },
+    "localNativeChromeWorker": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true
+    },
+    "securityReview": {
+      "authenticationAndAuthorizationUnchanged": true,
+      "freshAccessCheckedOnEveryPage": true,
+      "foreignAccountAndManipulatedInputTestsPassed": true,
+      "revokedAccessOnLaterOwnAndTeamPageRejected": true,
+      "rateLimitUnchanged": true,
+      "requestAndDurationCapsUnchanged": true,
+      "aggregateSourceRowsBoundPreserved": true,
+      "duplicateSourceRowsCounted": true,
+      "completeInputsRequired": true,
+      "completeSourceHashPreserved": true,
+      "privateNoStoreResponsesUnchanged": true,
+      "sensitiveLogsAdded": false,
+      "newDependencies": false
+    }
+  },
+  "localHelpers": [
+    {
+      "path": "scripts/prepare-cashflow-inputs-release.mjs",
+      "sha256": "fe7d5373856bde0a9420ad55e1ba960a896a2a1bc5c46d250060a6ab36b1b43a",
+      "includedInDeployment": false
+    },
+    {
+      "path": "scripts/check-cashflow-input-pagination.mjs",
+      "sha256": "6c3217033e3168bbce2ba935c19403ef595ac1a252785cbe7938cf833a686d7b",
+      "includedInDeployment": false
+    }
+  ],
+  "liveVerification": {
+    "pending": false,
+    "serverOnlyMigrationComplete": false,
+    "productionSpeedupEstablished": false,
+    "updatedAt": "2026-10-09T11:33:53.776Z",
+    "teamWithPrediction": {
+      "status": "match",
+      "evidence": "cashflow-server-pilot-live-inputs-prediction-match-2026-10-09.json"
+    },
+    "ownWithoutPrediction": {
+      "status": "match",
+      "evidence": "cashflow-server-pilot-live-inputs-own-match-2026-10-09.json"
+    },
+    "monthDetail": {
+      "status": "match",
+      "evidence": "cashflow-server-pilot-live-inputs-month-match-2026-10-09.json",
+      "visibleMonthKey": "2026-04",
+      "selectionBinding": "preceding fresh team/prediction procedure; filters hidden by modal"
+    },
+    "singleSampleInputReductionPercent": 48.14,
+    "singleSampleRequestReductionPercent": 38.44,
+    "repeatedComparableSamples": false,
+    "plannedLiveScenariosVerified": 3,
+    "latencyVariationObserved": true,
+    "sameSelectionRepeatedSamplesCollected": false
+  },
+  "deploymentSubmission": {
+    "checkedAt": "2026-10-09T10:53:07.583Z",
+    "deploymentSubmitted": true,
+    "deploymentId": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "deploymentUrl": "bohemika-provize-i3b43eag0-jacobrausch989s-projects-909dd478.vercel.app",
+    "previousProductionId": "dpl_C9KG2YyLHLyMa6FzFyu7Y1iHVomh",
+    "inputsPatchSha256": "e33856021372f1da90516923a39fbd00a88872a59e4533e49239cccfa727222a",
+    "auditedSourceFiles": 42,
+    "automaticDomainSwitch": false,
+    "serverPilotEnabled": true,
+    "browserPilotBuildEnabled": true,
+    "allowlistAccounts": 1,
+    "accountIncludedInReceipt": false,
+    "otherApplicationRuntimeVariableChangesRequested": false,
+    "productionSecretsChanged": false,
+    "businessDataWrites": false
+  },
+  "deployment": {
+    "domain": "https://bohemka.app",
+    "id": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "receipt": "cashflow-server-pilot-inputs-deployment-2026-10-09.json",
+    "promotedAt": "2026-10-09T11:07:26.534583+00:00",
+    "productionChecksPassed": 20,
+    "productionIdVerifiedThisTurn": true,
+    "authenticatedLiveViewVerified": true,
+    "authenticatedLivePredictionVerified": true,
+    "authenticatedLiveMonthDetailVerified": true,
+    "livePredictionEvidence": "cashflow-server-pilot-live-inputs-prediction-match-2026-10-09.json",
+    "livePredictionVerificationMethod": "Visible team/all/prediction controls following preceding clear/reload instructions; diagnostic removal, request options and request deployment not independently captured.",
+    "liveMonthDetailEvidence": "cashflow-server-pilot-live-inputs-month-match-2026-10-09.json",
+    "authenticatedLiveOwnViewVerified": true,
+    "liveOwnViewEvidence": "cashflow-server-pilot-live-inputs-own-match-2026-10-09.json"
+  },
+  "hostingAccess": {
+    "checkedAt": "2026-10-09T11:33:53.776Z",
+    "hostingReadStatus": 200,
+    "deploymentBlocked": false,
+    "currentDeploymentId": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "currentDeploymentVerified": true,
+    "businessDataRead": false,
+    "productionChangedByVerification": false
+  }
+}

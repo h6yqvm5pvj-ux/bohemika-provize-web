@@ -13,6 +13,13 @@ const db = {collection:()=>({where})} as unknown as Firestore;
 const viewer: ClientSharingViewer = { email:owner, teamEmails:[subordinate], selection:{scope:"my",advisers:[]}, adviserNames:new Map([[peer,"Jana Bílá"],[owner,"Jakub"],[subordinate,"Podřízený poradce"]]) };
 beforeEach(()=>{ vi.clearAllMocks(); where.mockReturnValue({get}); get.mockResolvedValue({docs:[doc("own",owner),doc("peer",peer),doc("team",subordinate)]}); });
 describe("shared client identity and field-level access",()=>{
+  it.each([{clientPhone: "777123456", clientEmail: null}, {clientPhone: null, clientEmail: "PETR@EXAMPLE.TEST"}])("does not authorize an outsider through forged own contact data: %j", async contacts => {
+    get.mockResolvedValue({docs:[doc("forged",owner,contacts),doc("foreign",peer)]});
+    const result = await readSharedClientContracts(db,slug,viewer);
+    expect(result).toMatchObject({contracts:[],summaries:[]});
+    expect(JSON.stringify(result)).not.toContain("opaque-foreign");
+    expect(JSON.stringify(result)).not.toContain("Jana Bílá");
+  });
   it("accepts title variants and normalizes phone formatting or email case",()=>{
     expect(matchesSharedClient({...base,id:"a"},{id:"b",clientName:"Bc. Petr Novák",clientPhone:"777123456"})).toBe(true);
     expect(matchesSharedClient({...base,id:"a"},{id:"b",clientName:name,clientEmail:"PETR@EXAMPLE.TEST"})).toBe(true);
@@ -23,23 +30,23 @@ describe("shared client identity and field-level access",()=>{
   ])("does not connect a namesake or a shared contact with another name: %j",candidate=>{
     expect(matchesSharedClient({...base,id:"a"},{...candidate,id:"b"})).toBe(false);
   });
-  it("returns only a product and adviser for a peer, with full data for an actual subordinate",async()=>{
+  it("omits outsiders and keeps full data for an actual subordinate",async()=>{
     const result = await readSharedClientContracts(db,slug,viewer);
-    expect(result?.summaries).toEqual([{shareId:"opaque-peer",productKey:"neon",adviserName:"Jana Bílá"}]);
+    expect(result?.summaries).toEqual([]);
     expect(result?.contracts).toHaveLength(1);
     expect(result?.contracts[0]).toMatchObject({id:"team",adviserEmail:subordinate,contractNumber:"private-team"});
     const summary = JSON.stringify(result?.summaries);
     for(const hidden of [peer,"private-peer","777", "petr@", "inputAmount","note","ownerEmail","entryId","contractSignedDate"]) expect(summary).not.toContain(hidden);
     expect(where).toHaveBeenCalledWith("clientSlug","==",slug);
   });
-  it("gives the other adviser a reciprocal summary and does not grant detail access upwards",async()=>{
+  it("does not grant a subordinate access upwards or to peers",async()=>{
     const result=await readSharedClientContracts(db,slug,{...viewer,email:subordinate,teamEmails:[]});
     expect(result?.contracts).toEqual([]);
-    expect(result?.summaries.map(item=>item.shareId).sort()).toEqual(["opaque-own","opaque-peer"]);
+    expect(result?.summaries).toEqual([]);
   });
   it("does not use another adviser's matching contacts to expand the sharing group",async()=>{
     get.mockResolvedValue({docs:[doc("own",owner,{clientEmail:null}),doc("bridge",peer,{clientEmail:"bridge@example.test"}),doc("other",peer,{clientPhone:"777222333",clientEmail:"bridge@example.test"})]});
-    expect((await readSharedClientContracts(db,slug,viewer))?.summaries.map(item=>item.shareId)).toEqual(["opaque-bridge"]);
+    expect((await readSharedClientContracts(db,slug,viewer))?.summaries.map(item=>item.shareId)).toEqual([]);
   });
   it("rejects guessed slugs without any owned/team contract, even for an admin with wider access",async()=>{
     get.mockResolvedValue({docs:[doc("peer",peer)]});

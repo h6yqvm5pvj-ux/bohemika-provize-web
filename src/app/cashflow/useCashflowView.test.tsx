@@ -8,8 +8,9 @@ import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import type { MonthGroup } from "./types";
 
-const mocks = vi.hoisted(() => ({ createClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createClient: vi.fn(), getToken: vi.fn() }));
 vi.mock("./cashflowWorker.client", () => ({ createCashflowWorkerClient: mocks.createClient }));
+vi.mock("../firebase", () => ({ auth: { currentUser: { email: "advisor@example.test", getIdToken: mocks.getToken } } }));
 import { useCashflowView } from "./useCashflowView";
 
 type Props = Parameters<typeof useCashflowView>[0];
@@ -45,7 +46,7 @@ const options: CashflowViewOptions = {
 const makeDataset = (): CashflowDataset => ({
   snapshot: { email: "advisor@example.test", myPosition: null, myCommissionMode: null,
     hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [] },
-  statements: [], asOf: new Date(2026, 8, 12, 12),
+  statements: [], asOf: new Date(),
 });
 const detail = (total = 10): MonthGroup => ({
   key: "2026-09", year: 2026, monthIndex: 8, label: "Září 2026", total,
@@ -87,6 +88,7 @@ describe("cashflow view lifecycle and asynchronous selection guards", () => {
     commits = [];
     onCommit = undefined;
     props = { dataset: makeDataset(), identity: "uid-1:advisor@example.test", options, enabled: true };
+    mocks.getToken.mockReset().mockImplementation(() => new Promise(() => undefined));
     mocks.createClient.mockReset().mockImplementation(() => {
       const stub = stubClient(); clients.push(stub); return stub.client;
     });
@@ -121,6 +123,57 @@ describe("cashflow view lifecycle and asynchronous selection guards", () => {
     await render({ ...props });
     expect(mocks.createClient).toHaveBeenCalledTimes(1);
     expect(clients[0].client.view).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates a new reference session when the explicit pilot mode changes and ignores the old result", async () => {
+    await render();
+    const old = clients[0];
+    await render({ ...props, serverPilot: true });
+    expect(old.client.dispose).toHaveBeenCalledOnce();
+    expect(clients).toHaveLength(2);
+    expect(latest.overview).toBeNull();
+    // This stub has no verifier: the pilot must preserve its original result.
+    const expected = await resolveView(1);
+    expect(latest.overview).toBe(expected);
+    await act(async () => old.views[0].resolve(overview(999)));
+    expect(latest.overview).toBe(expected);
+  });
+
+  it("publishes the original overview and detail while background pilot authentication is stalled", async () => {
+    await render({ ...props, serverPilot: true });
+    Object.assign(clients[0].client, {
+      verification: vi.fn(async () => ({ inputHash: "a".repeat(64), monthsHash: "b".repeat(64) })),
+    });
+    const expected = await resolveView();
+    expect(latest).toMatchObject({ overview: expected, pending: false, error: null });
+    await vi.waitFor(() => expect(mocks.getToken).toHaveBeenCalledOnce());
+    expect(latest.overview).toBe(expected);
+    const loaded = latest.loadMonth("2026-09");
+    const original = detail();
+    await act(async () => clients[0].months[0].resolve(original));
+    expect(await loaded).toBe(original);
+    expect(latest.pending).toBe(false);
+  });
+
+  it("replaces an expired pilot worker on filter change, hides old data and disposes the renewed worker on logout", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await render({ ...props, serverPilot: true });
+      await resolveView();
+      vi.setSystemTime(props.dataset!.asOf.getTime() + 6 * 60_000);
+      await render({ ...props, options: { ...options, scopeFilter: "own" } });
+      expect(clients).toHaveLength(2);
+      expect(clients[0].client.dispose).toHaveBeenCalledOnce();
+      const fresh = mocks.createClient.mock.calls[1][0].dataset;
+      expect(fresh.asOf.getTime()).toBe(Date.now());
+      expect(fresh.snapshot).toBe(props.dataset!.snapshot);
+      expect(latest).toMatchObject({ overview: null, pending: true });
+      const expected = await resolveView(1, 0, overview(20));
+      expect(latest.overview).toBe(expected);
+      await render({ ...props, enabled: false, identity: null });
+      expect(clients[1].client.dispose).toHaveBeenCalledOnce();
+      expect(latest).toMatchObject({ overview: null, pending: false });
+    } finally { vi.useRealTimers(); }
   });
 
   it("hides the completed overview on the first commit of a new filter", async () => {

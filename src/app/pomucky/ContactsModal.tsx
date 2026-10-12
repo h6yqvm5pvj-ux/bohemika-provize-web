@@ -228,6 +228,11 @@ export function ContactsModal({
   const [search, setSearch] = useState("");
   useDirectoryDialog(panelRef, onClose);
   const highlightedContactRef = useRef<HTMLElement | null>(null);
+  const contactContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (contactContentRef.current) contactContentRef.current.scrollTop = 0;
+  }, [search, selectedInstitution]);
 
   const institutionsWithContacts = useMemo(
     () =>
@@ -468,6 +473,9 @@ export function ContactsModal({
   };
 
   const showBackButton = view !== "contacts";
+  const activeInstitution = selectedInstitution
+    ? CONTACT_INSTITUTION_BY_KEY.get(selectedInstitution)
+    : null;
   const title =
     view === "csob-alternatives"
       ? "Alternativní kontakty ČSOB"
@@ -500,7 +508,7 @@ export function ContactsModal({
   return (
     <div className={ui.overlay}>
       <button type="button" className={ui.backdrop} onClick={onClose} aria-label="Zavřít kontakty" tabIndex={-1} />
-      <section ref={panelRef} tabIndex={-1} className={ui.panel} role="dialog" aria-modal="true" aria-labelledby="contacts-modal-title">
+      <section ref={panelRef} tabIndex={-1} className={`${ui.panel} ${styles.panel}`} data-directory={view === "contacts" || undefined} role="dialog" aria-modal="true" aria-labelledby="contacts-modal-title">
         <header className={ui.header}>
           <span className={ui.headerIcon}><ContactRound size={22} strokeWidth={1.7} aria-hidden="true" /></span>
           <div className={ui.heading}>
@@ -517,164 +525,187 @@ export function ContactsModal({
         </header>
 
         {view === "contacts" ? (
-          <>
-            <nav className={ui.toolbar} aria-label="Filtrovat kontakty podle instituce">
-              <div className={ui.searchRow}>
-                <div className={ui.search}><Search size={17} aria-hidden="true" />
-                  <input aria-label="Hledat kontakt" placeholder="Jméno, instituce, telefon nebo e-mail…" value={search} onChange={(event) => setSearch(event.target.value)} />
-                  {search && <button type="button" onClick={() => setSearch("")} aria-label="Vymazat hledání"><X size={15} /></button>}
-                </div>
-                <span className={ui.count}>Kontakty · {visibleContacts.length} / {contacts.length}</span>
+          <div className={styles.directory}>
+            <nav className={styles.sidebar} aria-label="Filtrovat kontakty podle instituce">
+              <div className={styles.sidebarHeading}>
+                <p>Instituce</p>
+                <span>{institutionsWithContacts.length}</span>
               </div>
-              <div className={ui.filters}>
-                <button type="button" onClick={() => setSelectedInstitution(null)} aria-pressed={selectedInstitution === null} className={ui.filter}>Všechny <span>{contacts.length}</span></button>
+              <div className={styles.institutionList}>
+                <button type="button" onClick={() => setSelectedInstitution(null)} aria-pressed={selectedInstitution === null} className={styles.institutionButton}>
+                  <span className={`${styles.institutionLogo} ${styles.allInstitutions}`}><ContactRound size={22} strokeWidth={1.6} aria-hidden="true" /></span>
+                  <span className={styles.institutionLabel}>Všechny kontakty</span>
+                  <span className={styles.institutionCount}>{contacts.length}</span>
+                </button>
                 {institutionsWithContacts.map((institution) => (
-                  <button key={institution.key} type="button" onClick={() => setSelectedInstitution(institution.key)} aria-pressed={selectedInstitution === institution.key} className={ui.filter}>
-                    {institution.label}<span>{contacts.filter((contact) => contact.institutionKey === institution.key).length}</span>
+                  <button key={institution.key} type="button" onClick={() => setSelectedInstitution(institution.key)} aria-pressed={selectedInstitution === institution.key} className={styles.institutionButton}>
+                    <span className={styles.institutionLogo}><Image src={institution.logoPath} alt="" width={64} height={40} /></span>
+                    <span className={styles.institutionLabel}>{institution.label}</span>
+                    <span className={styles.institutionCount}>{contacts.filter((contact) => contact.institutionKey === institution.key).length}</span>
                   </button>
                 ))}
               </div>
-
-              {editingMode ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3">
-                  <p className="mr-auto text-xs font-semibold text-slate-500">
-                    Režim úprav je aktivní. Kliknutím na tužku upravíte kartu.
-                  </p>
-                  {selectedInstitution ? (
-                    <button
-                      type="button"
-                      onClick={() => openNewContact(selectedInstitution)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Přidat kontakt
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatus(null);
-                      setView("institution-picker");
-                    }}
-                    disabled={availableInstitutions.length === 0}
-                    className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <Building2 className="h-4 w-4" />
-                    Přidat instituci
-                  </button>
-                </div>
-              ) : null}
-
-              {loading ? (
-                <p className="mt-2 text-xs font-semibold text-slate-400">
-                  Načítám aktuální kontakty…
-                </p>
-              ) : null}
-              {status ? (
-                <p
-                  className={`mt-2 text-xs font-bold ${
-                    status.tone === "error"
-                      ? "text-rose-700"
-                      : "text-emerald-700"
-                  }`}
-                  role="status"
-                >
-                  {status.text}
-                </p>
-              ) : null}
             </nav>
 
-            <div className={`${ui.content} ${styles.grid}`}>
-              {visibleContacts.map((contact) => {
-                const institution = CONTACT_INSTITUTION_BY_KEY.get(
-                  contact.institutionKey,
-                );
-                if (!institution) return null;
-                const contactTitle =
-                  contact.person ??
-                  contact.description ??
-                  contact.role ??
-                  institution.label;
-                const institutionIsTitle = contactTitle === institution.label;
-                const showRoleBadge =
-                  Boolean(contact.role) && contactTitle !== contact.role;
-                const showDescription = Boolean(
-                  contact.person && contact.description,
-                );
+            <div className={styles.main}>
+              <div className={`${ui.toolbar} ${styles.toolbar}`}>
+                <div className={ui.searchRow}>
+                  <div className={`${ui.search} ${styles.search}`}><Search size={17} aria-hidden="true" />
+                    <input aria-label="Hledat kontakt" placeholder="Jméno, instituce, telefon nebo e-mail…" value={search} onChange={(event) => setSearch(event.target.value)} />
+                    {search && <button type="button" onClick={() => setSearch("")} aria-label="Vymazat hledání"><X size={15} /></button>}
+                  </div>
+                </div>
 
-                return (
-                  <article
-                    key={contact.id}
-                    ref={
-                      contact.id === initialContactId
-                        ? highlightedContactRef
-                        : undefined
-                    }
-                    className={styles.card}
-                    data-highlighted={contact.id === initialContactId || undefined}
+                {editingMode ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3">
+                    <p className="mr-auto text-xs font-semibold text-slate-500">
+                      Režim úprav je aktivní. Kliknutím na tužku upravíte kartu.
+                    </p>
+                    {selectedInstitution ? (
+                      <button
+                        type="button"
+                        onClick={() => openNewContact(selectedInstitution)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Přidat kontakt
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatus(null);
+                        setView("institution-picker");
+                      }}
+                      disabled={availableInstitutions.length === 0}
+                      className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Přidat instituci
+                    </button>
+                  </div>
+                ) : null}
+
+                {loading ? (
+                  <p className="mt-2 text-xs font-semibold text-slate-400">
+                    Načítám aktuální kontakty…
+                  </p>
+                ) : null}
+                {status ? (
+                  <p
+                    className={`mt-2 text-xs font-bold ${
+                      status.tone === "error"
+                        ? "text-rose-700"
+                        : "text-emerald-700"
+                    }`}
+                    role="status"
                   >
-                    <div>
-                      <div className={styles.cardHeader}>
-                        <span className={styles.logo}><Image src={institution.logoPath} alt="" width={64} height={44} /></span>
-                        <div className={styles.identity}>
-                          {!institutionIsTitle && <p className={styles.institution}>{institution.label}</p>}
-                          <h3 className={styles.name}>{contactTitle}</h3>
-                          {showRoleBadge && <span className={styles.role}>{contact.role}</span>}
+                    {status.text}
+                  </p>
+                ) : null}
+              </div>
+
+              <div ref={contactContentRef} className={`${ui.content} ${styles.contactContent}`}>
+                <div className={styles.resultsHeading}>
+                  <div>
+                    <p className={styles.resultsEyebrow}>Obchodní a administrativní podpora</p>
+                    <h3>{activeInstitution?.label ?? "Všechny kontakty"}</h3>
+                  </div>
+                  <span className={styles.resultsCount} role="status" aria-live="polite" aria-atomic="true">{visibleContacts.length} / {contacts.length} kontaktů</span>
+                </div>
+                <div className={styles.grid}>
+                  {visibleContacts.map((contact) => {
+                    const institution = CONTACT_INSTITUTION_BY_KEY.get(
+                      contact.institutionKey,
+                    );
+                    if (!institution) return null;
+                    const contactTitle =
+                      contact.person ??
+                      contact.description ??
+                      contact.role ??
+                      institution.label;
+                    const institutionIsTitle = contactTitle === institution.label;
+                    const showRoleBadge =
+                      Boolean(contact.role) && contactTitle !== contact.role;
+                    const showDescription = Boolean(
+                      contact.person && contact.description,
+                    );
+
+                    return (
+                      <article
+                        key={contact.id}
+                        ref={
+                          contact.id === initialContactId
+                            ? highlightedContactRef
+                            : undefined
+                        }
+                        className={styles.card}
+                        data-highlighted={contact.id === initialContactId || undefined}
+                      >
+                        <div>
+                          <div className={styles.cardHeader}>
+                            <span className={styles.logo}><Image src={institution.logoPath} alt="" width={64} height={44} /></span>
+                            <div className={styles.identity}>
+                              {!institutionIsTitle && <p className={styles.institution}>{institution.label}</p>}
+                              <h3 className={styles.name}>{contactTitle}</h3>
+                              {showRoleBadge && <span className={styles.role}>{contact.role}</span>}
+                            </div>
+                            {editingMode && <button type="button" onClick={() => openExistingContact(contact)} className={styles.editCard} aria-label={`Upravit kontakt ${contactTitle}`}><Pencil size={15} /></button>}
+                          </div>
+
+                          {showDescription ? (
+                            <p className={styles.description}>
+                              {contact.description}
+                            </p>
+                          ) : null}
+
+                          <div className={styles.methods}>
+                            {contact.phone && <a href={`tel:${contact.phone.href}`} className={styles.method}>
+                              <span className={styles.methodIcon}><Phone size={16} aria-hidden="true" /></span>
+                              <span className={styles.methodText}>{contact.phone.display}</span>
+                              <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
+                            </a>}
+                            {contact.emails?.map((email) => <a key={`${email.value}-${email.label ?? ""}`} href={mailtoHref(email)} className={styles.method}>
+                              <span className={styles.methodIcon}><Mail size={16} aria-hidden="true" /></span>
+                              <span className={styles.methodText}>{email.label && <small>{email.label}</small>}{email.value}</span>
+                              <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
+                            </a>)}
+                          </div>
+
+                          {contact.id === "csob" ? (
+                            <div className="mt-3 border-t border-sky-200/80 pt-3">
+                              <p className="text-xs font-bold leading-5 text-slate-600">
+                                V případě, že se nemůžete dovolat Vlkovi
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setStatus(null);
+                                  setView("csob-alternatives");
+                                }}
+                                className="group mt-2 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-sky-800 hover:shadow-md"
+                              >
+                                Zobrazit alternativy
+                                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {contact.notice ? (
+                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-5 text-amber-950">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                              <p>{contact.notice}</p>
+                            </div>
+                          ) : null}
                         </div>
-                        {editingMode && <button type="button" onClick={() => openExistingContact(contact)} className={styles.editCard} aria-label={`Upravit kontakt ${contactTitle}`}><Pencil size={15} /></button>}
-                      </div>
-
-                      {showDescription ? (
-                        <p className={styles.description}>
-                          {contact.description}
-                        </p>
-                      ) : null}
-
-                      <div className={styles.methods}>
-                        {contact.phone && <a href={`tel:${contact.phone.href}`} className={styles.method}>
-                          <span className={styles.methodIcon}><Phone size={16} aria-hidden="true" /></span>
-                          <span className={styles.methodText}>{contact.phone.display}</span>
-                          <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
-                        </a>}
-                        {contact.emails?.map((email) => <a key={`${email.value}-${email.label ?? ""}`} href={mailtoHref(email)} className={styles.method}>
-                          <span className={styles.methodIcon}><Mail size={16} aria-hidden="true" /></span>
-                          <span className={styles.methodText}>{email.label && <small>{email.label}</small>}{email.value}</span>
-                          <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
-                        </a>)}
-                      </div>
-
-                      {contact.id === "csob" ? (
-                        <div className="mt-3 border-t border-sky-200/80 pt-3">
-                          <p className="text-xs font-bold leading-5 text-slate-600">
-                            V případě, že se nemůžete dovolat Vlkovi
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStatus(null);
-                              setView("csob-alternatives");
-                            }}
-                            className="group mt-2 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-sky-800 hover:shadow-md"
-                          >
-                            Zobrazit alternativy
-                            <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                          </button>
-                        </div>
-                      ) : null}
-
-                      {contact.notice ? (
-                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-5 text-amber-950">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                          <p>{contact.notice}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-              {visibleContacts.length === 0 && <div className={ui.empty}><Search size={28} /><p>Žádný kontakt neodpovídá hledání.</p><button type="button" onClick={() => { setSearch(""); setSelectedInstitution(null); }}>Zobrazit všechny kontakty</button></div>}
+                      </article>
+                    );
+                  })}
+                  {visibleContacts.length === 0 && <div className={ui.empty}><Search size={28} /><p>Žádný kontakt neodpovídá hledání.</p><button type="button" onClick={() => { setSearch(""); setSelectedInstitution(null); }}>Zobrazit všechny kontakty</button></div>}
+                </div>
+              </div>
             </div>
-          </>
+          </div>
         ) : null}
 
         {view === "csob-alternatives" ? (

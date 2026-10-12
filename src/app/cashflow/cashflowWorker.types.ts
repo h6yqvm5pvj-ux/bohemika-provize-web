@@ -32,8 +32,15 @@ export type CashflowOverview = {
   contractSearchStats: CashflowContractSearchStats;
 };
 
+export type CashflowVerification = {
+  inputHash: string;
+  monthsHash: string;
+};
+
 export type CashflowModel = {
   view(options: CashflowViewOptions): CashflowOverview;
   month(key: string): MonthGroup | null;
+  /** Optional diagnostic path; hashes every displayed item without transferring it. */
+  verification?(): Promise<CashflowVerification>;
   dispose(): void;
 };

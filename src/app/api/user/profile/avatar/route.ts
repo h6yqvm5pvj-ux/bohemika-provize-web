@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveProfileAvatarBuckets } from "@/lib/server/profileAvatarStorage";
 
 import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
@@ -17,36 +18,6 @@ const UPLOAD_RATE_WINDOW_MS = 60_000;
 
 type ApiSuccess = { ok: true; avatar: string };
 type ApiError = { ok: false; error: string };
-
-const normalizeBucketName = (value: string): string =>
-  value.trim().replace(/^gs:\/\//i, "").replace(/\/+$/, "");
-
-const resolveStorageBucketCandidates = (): string[] => {
-  const candidates: string[] = [];
-  const append = (value: string | null | undefined) => {
-    if (!value) return;
-    const normalized = normalizeBucketName(value);
-    if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
-  };
-
-  append(process.env.FIREBASE_STORAGE_BUCKET);
-  append(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET);
-  const explicit = candidates[0] ?? "";
-  if (explicit.endsWith(".firebasestorage.app")) {
-    append(explicit.replace(/\.firebasestorage\.app$/i, ".appspot.com"));
-  } else if (explicit.endsWith(".appspot.com")) {
-    append(explicit.replace(/\.appspot\.com$/i, ".firebasestorage.app"));
-  }
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID?.trim() ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim() ||
-    "";
-  if (projectId) {
-    append(`${projectId}.appspot.com`);
-    append(`${projectId}.firebasestorage.app`);
-  }
-  return candidates;
-};
 
 const isBucketMissingError = (error: unknown): boolean => {
   if (!error || typeof error !== "object") return false;
@@ -141,7 +112,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const buckets = resolveStorageBucketCandidates();
+  const buckets = resolveProfileAvatarBuckets();
   if (buckets.length === 0) {
     return withRateLimitHeaders(
       NextResponse.json(

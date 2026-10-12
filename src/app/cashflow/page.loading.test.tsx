@@ -42,6 +42,7 @@ describe("cashflow initial loading", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true, items: [] })));
     vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED", "0");
+    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "0");
     localStorage.clear();
     sessionStorage.clear();
     mocks.profile.mockResolvedValue({ hasProfile: true, profile: { accountType: "advisor" } });
@@ -76,6 +77,39 @@ describe("cashflow initial loading", () => {
   const render = () => act(async () => root.render(<CashflowPage />));
   const loader = () => container.querySelector('[role="progressbar"]');
   const readyContent = () => container.textContent?.includes("Zatím nemáš žádné smlouvy");
+
+  it("keeps the original calculation when the build flag is on but this tab has not opted in", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
+    await render();
+    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: false }));
+    expect(mocks.workerView).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("cashflow_page_last_result")).toBeNull();
+  });
+  it("measures the original page only after the statement request and view have settled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
+    sessionStorage.setItem("cashflow_server_pilot_mode", "baseline");
+    let resolveStatements!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(() => new Promise(resolve => { resolveStatements = resolve; }));
+    cashflow.ready = true; cashflow.loading = false;
+    await render();
+    await act(async () => vi.advanceTimersByTimeAsync(64));
+    expect(sessionStorage.getItem("cashflow_page_last_result")).toBeNull();
+    await act(async () => resolveStatements(Response.json({ ok: true, items: [], hasMore: false, processingComplete: true })));
+    await act(async () => vi.advanceTimersByTimeAsync(64));
+    expect(JSON.parse(sessionStorage.getItem("cashflow_page_last_result")!)).toMatchObject({ mode: "baseline", status: "ready" });
+    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: false }));
+    expect(mocks.workerView).not.toHaveBeenCalled();
+  });
+  it("forces the worker reference only in the explicitly opted-in comparison tab", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
+    sessionStorage.setItem("cashflow_server_pilot_mode", "compare");
+    enableDeferredData();
+    mocks.workerView.mockResolvedValue({ months: [], contractSearchStats: { itemCount: 0, contractCount: 0, summary: null } });
+    await render();
+    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: true }));
+    expect(mocks.workerView).toHaveBeenCalled();
+    expect(readyContent()).toBe(true);
+  });
 
   it("shows ready content without advancing timers, and hides it again during a reload", async () => {
     await render();

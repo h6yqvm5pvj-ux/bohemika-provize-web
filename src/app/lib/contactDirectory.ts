@@ -245,6 +245,21 @@ export const DEFAULT_DIRECTORY_CONTACTS: DirectoryContact[] = [
     phone: { display: "+420 731 011 598", href: "+420731011598" },
     emails: [{ value: "Katerina.Kubatova@slavia-pojistovna.cz" }],
   },
+  {
+    id: "pillow-martin-kroupa",
+    institutionKey: "pillow",
+    person: "Martin Kroupa",
+    role: "KAM",
+    description: "Online Ambasador",
+    phone: { display: "+420 790 388 478", href: "+420790388478" },
+    emails: [{ value: "martin.kroupa@pillow.cz" }],
+  },
+  {
+    id: "pillow-klientsky-servis",
+    institutionKey: "pillow",
+    description: "Klientský servis Pillow",
+    phone: { display: "+420 777 657 827", href: "+420777657827" },
+  },
 ];
 
 export type ContactDirectoryChangeSummary = {

@@ -1,4 +1,5 @@
 import { type Position } from "@/app/types/domain";
+import { calendarDate, hasDateCalendar } from "./calendarDates";
 
 type DateLike = {
   seconds: number;
@@ -8,6 +9,7 @@ type DateLike = {
 
 type ToDateOptions = {
   parseCzechDate?: boolean;
+  calendar?: Date;
 };
 
 type FormatMoneyOptions = {
@@ -45,7 +47,7 @@ export const POSITION_LABELS: Record<Position, string> = {
 
 export function toDate(value: unknown, options?: ToDateOptions): Date | null {
   if (!value) return null;
-  if (value instanceof Date) return value;
+  if (value instanceof Date) return hasDateCalendar(options?.calendar) ? calendarDate(options?.calendar, value) : value;
 
   const parseCzechDate = options?.parseCzechDate ?? true;
 
@@ -56,7 +58,7 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
       const day = Number(cz[1]);
       const month = Number(cz[2]);
       const year = Number(cz[3]);
-      const d = new Date(year, month - 1, day);
+      const d = calendarDate(options?.calendar, year, month - 1, day);
       return Number.isNaN(d.getTime()) ? null : d;
     }
   }
@@ -68,7 +70,8 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
     typeof (value as DateLike).toDate === "function"
   ) {
     const d = (value as DateLike).toDate?.();
-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+    return d instanceof Date && !Number.isNaN(d.getTime())
+      ? hasDateCalendar(options?.calendar) ? calendarDate(options?.calendar, d) : d : null;
   }
 
   if (
@@ -80,11 +83,11 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
     const ts = value as DateLike;
     const ms =
       ts.seconds * 1000 + Math.floor((ts.nanoseconds ?? 0) / 1_000_000);
-    const d = new Date(ms);
+    const d = calendarDate(options?.calendar, ms);
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  const d = new Date(value as string | number | Date);
+  const d = calendarDate(options?.calendar, value as string | number | Date);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

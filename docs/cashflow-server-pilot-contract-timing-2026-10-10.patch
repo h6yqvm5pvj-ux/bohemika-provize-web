@@ -1,0 +1,642 @@
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+index 57d4417..a67298e 100644
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -57,6 +57,8 @@ describe("read-only server cashflow pilot", () => {
+       onSourceTiming("cashflow_inputs_own_contracts", 4.5);
+       onSourceTiming("cashflow_inputs_own_contracts", 5.5);
+       onSourceTiming("cashflow_inputs_statements", 3);
++      onSourceTiming("cashflow_inputs_own_contracts_identity", 1);
++      onSourceTiming("cashflow_inputs_own_contracts_entries", 7);
+       return inputs();
+     });
+     const response = await POST(request(selected));
+@@ -64,6 +66,8 @@ describe("read-only server cashflow pilot", () => {
+     expect(await response.json()).toEqual(original);
+     expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_own_contracts;dur=10.00");
+     expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_statements;dur=3.00");
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_own_contracts_identity;dur=1.00");
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_own_contracts_entries;dur=7.00");
+     expect(response.headers.get("Server-Timing")).not.toMatch(/advisor@example|synthetic-token|contract-/);
+   });
+   it.each(WORKER_FILTER_CASES)("matches the independent original calculation and every month/item for $id", async ({ options }) => {
+diff --git a/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+index 0727faf..4c24396 100644
+--- a/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
++++ b/src/app/api/contracts/_lib/contractsApi.freshContext.test.ts
+@@ -1,5 +1,6 @@
+ import { NextRequest, NextResponse } from "next/server";
+-import { beforeEach, describe, expect, it, vi } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import type { CashflowContractTimingObserver } from "@/lib/server/cashflowContractTiming";
+ 
+ const mocks = vi.hoisted(() => ({
+   guard: vi.fn(),
+@@ -40,7 +41,7 @@ beforeEach(() => {
+     return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };
+   });
+   mocks.subscription.mockImplementation(async () => ({
+-    exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: "2099-01-01" }),
++    exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: subscriptionStatus === "expired" ? "2000-01-01" : "2099-01-01" }),
+   }));
+   mocks.collection.mockImplementation((name: string) => {
+     if (name === "users") return { get: mocks.users };
+@@ -48,8 +49,69 @@ beforeEach(() => {
+     throw new Error(`Unexpected collection ${name}`);
+   });
+ });
++afterEach(() => vi.restoreAllMocks());
+ 
+ describe("fresh contract context for server cashflow candidates", () => {
++  it("measures identity, current team context and subscription without changing verified permissions", async () => {
++    const { requireContractsEntryGuard } = await import("./contractsApi");
++    let time = 0;
++    vi.spyOn(performance, "now").mockImplementation(() => time);
++    mocks.guard.mockImplementation(async () => {
++      time += 3;
++      return { ok: true, ctx: { email, uid: "uid", decoded: { email }, isImpersonating: false,
++        actorEmail: email, actorUid: "uid", impersonation: null } };
++    });
++    const readUsers = mocks.users.getMockImplementation()!;
++    mocks.users.mockImplementation(async () => { time += 7; return readUsers(); });
++    const readSubscription = mocks.subscription.getMockImplementation()!;
++    mocks.subscription.mockImplementation(async () => { time += 5; return readSubscription(); });
++    const original = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true });
++    const onCashflowTiming = vi.fn();
++    const measured = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true, onCashflowTiming });
++    expect(measured.ok && measured.ctx).toEqual(original.ok && original.ctx);
++    expect(onCashflowTiming.mock.calls).toEqual([["identity", 3], ["team_context", 7], ["subscription", 5]]);
++    expect(mocks.users).toHaveBeenCalledTimes(2);
++    expect(mocks.subscription).toHaveBeenCalledTimes(2);
++    expect(JSON.stringify(onCashflowTiming.mock.calls)).not.toMatch(/example.test|uid|decoded|token/);
++  });
++
++  it.each([401, 403, 429])("keeps guard denial %i before database reads when the observer fails", async status => {
++    const { handleContractsList } = await import("./contractsApi");
++    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
++    const onCashflowTiming = vi.fn<CashflowContractTimingObserver>(() => { throw new Error("observer"); });
++    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming });
++    expect(response.status).toBe(status);
++    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(["identity"]);
++    expect(mocks.users).not.toHaveBeenCalled();
++    expect(mocks.subscription).not.toHaveBeenCalled();
++  });
++
++  it.each(["removed-profile", "unpaid", "expired", "tipster", "revoked-team"])("keeps %s denial before entry/count reads with trusted timing enabled", async denial => {
++    const { requireContractsEntryGuard, handleContractsList } = await import("./contractsApi");
++    await requireContractsEntryGuard(request(), rateLimit); // Seed ordinary caches before revocation.
++    if (denial === "removed-profile") delete profiles[email];
++    if (denial === "unpaid" || denial === "expired") subscriptionStatus = denial;
++    if (denial === "tipster") profiles[email].accountType = "tipster";
++    if (denial === "revoked-team") profiles["team@example.test"].managerEmail = null;
++    const onCashflowTiming = vi.fn();
++    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming });
++    expect(response.status).toBe(403);
++    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(denial === "removed-profile"
++      ? ["identity", "team_context"] : ["identity", "team_context", "subscription"]);
++    expect(mocks.collection.mock.calls.map(([name]) => name)).not.toContain("entries");
++    // The users mock has no doc/entries/count capability: any portfolio access would throw.
++  });
++
++  it("preserves a fresh permission-read failure and reports only completed phases", async () => {
++    const { requireContractsEntryGuard } = await import("./contractsApi");
++    const failure = new Error("synthetic unavailable");
++    mocks.users.mockRejectedValue(failure);
++    const onCashflowTiming = vi.fn<CashflowContractTimingObserver>(() => { throw new Error("observer"); });
++    await expect(requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true, onCashflowTiming })).rejects.toBe(failure);
++    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(["identity", "team_context"]);
++    expect(mocks.subscription).not.toHaveBeenCalled();
++  });
++
+   it("rereads current position, mode and team without reusing or extending the shared tree cache", async () => {
+     const { requireContractsEntryGuard } = await import("./contractsApi");
+     const initial = await requireContractsEntryGuard(request(), rateLimit);
+diff --git a/src/app/api/contracts/_lib/contractsApi.ts b/src/app/api/contracts/_lib/contractsApi.ts
+index 3fe7072..3b2a4e2 100644
+--- a/src/app/api/contracts/_lib/contractsApi.ts
++++ b/src/app/api/contracts/_lib/contractsApi.ts
+@@ -60,6 +60,7 @@ import {
+ import {
+   LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
+ } from "@/app/lib/productCatalog";
++import { measureCashflowContractPhase } from "@/lib/server/cashflowContractTiming";
+ import type {
+   AuthContextOptions,
+   ContractDetailResponse,
+@@ -3821,6 +3822,7 @@ async function getAuthContext(
+     requireKnownUser = false,
+     requireActiveSubscription = false,
+     freshCashflowContext = false,
++    onCashflowTiming,
+   } = options;
+ 
+   if (!adminDb) {
+@@ -3832,21 +3834,22 @@ async function getAuthContext(
+   }
+   const rawTokenEmail = identity.rawTokenEmail;
+ 
+-  const { users, childrenByManager } = freshCashflowContext
+-    ? await buildUserTree()
+-    : await getCachedUserTree();
++  const { users, childrenByManager } = await measureCashflowContractPhase(
++    onCashflowTiming, "team_context",
++    () => freshCashflowContext ? buildUserTree() : getCachedUserTree()
++  );
+   const me = users.find((u) => u.email === email) ?? null;
+   if (requireKnownUser && !me) {
+     return { error: "Uživatel nemá interní profil v systému.", status: 403 } as const;
+   }
+ 
+   if (requireActiveSubscription) {
+-    const subscriptionAccess = await loadUserSubscriptionStatus({
++    const subscriptionAccess = await measureCashflowContractPhase(onCashflowTiming, "subscription", () => loadUserSubscriptionStatus({
+       email,
+       rawTokenEmail,
+       uid: identity.uid,
+       freshCashflowContext,
+-    });
++    }));
+     if (subscriptionAccess?.effectiveState === "blocked") {
+       if (subscriptionAccess.status === "unpaid") {
+         return { error: "Účet je označený jako nezaplacený.", status: 403 } as const;
+@@ -3906,12 +3909,12 @@ export async function requireContractsEntryGuard(
+     limit: number;
+     windowMs: number;
+   },
+-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
++  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
+ ): Promise<ContractsEntryGuardResult> {
+-  const guard = await requireAuthedRateLimited(req, {
++  const guard = await measureCashflowContractPhase(options.onCashflowTiming, "identity", () => requireAuthedRateLimited(req, {
+     ...rateLimit,
+     allowImpersonation: true,
+-  });
++  }));
+   if (!guard.ok) return guard;
+ 
+   const tokenEmail =
+@@ -3932,6 +3935,7 @@ export async function requireContractsEntryGuard(
+       requireKnownUser: true,
+       requireActiveSubscription: true,
+       freshCashflowContext: options.freshCashflowContext,
++      onCashflowTiming: options.onCashflowTiming,
+     }
+   );
+   if ("error" in authCtx) {
+@@ -4020,7 +4024,7 @@ const contractTransferAccessForContext = ({
+ export async function handleContractsGet(
+   req: NextRequest,
+   mode: ContractsGetMode = "auto",
+-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
++  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
+ ) {
+   const guard = await requireContractsEntryGuard(req, {
+     namespace: "api:contracts:get",
+@@ -4293,7 +4297,7 @@ export async function handleContractsGet(
+     responseShape === "cashflow" &&
+     cursor == null &&
+     !hasContractListFilters(listFilters)
+-      ? countContractEntriesForOwners(owners)
++      ? measureCashflowContractPhase(options.onCashflowTiming, "count", () => countContractEntriesForOwners(owners))
+       : Promise.resolve<number | null>(null);
+ 
+   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
+@@ -4303,9 +4307,12 @@ export async function handleContractsGet(
+     canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
+   };
+ 
++  const fetchTimedContractsForOwners = (...args: Parameters<typeof fetchContractsForOwners>) =>
++    measureCashflowContractPhase(options.onCashflowTiming, "entries", () => fetchContractsForOwners(...args));
++
+   if (shouldFetchTeamInParallel) {
+     [primaryRes, teamRes] = await Promise.all([
+-      fetchContractsForOwners(
++      fetchTimedContractsForOwners(
+         owners,
+         statementViewer,
+         cursor,
+@@ -4315,7 +4322,7 @@ export async function handleContractsGet(
+         ownerNamesByEmail,
+         usersByEmail
+       ),
+-      fetchContractsForOwners(
++      fetchTimedContractsForOwners(
+         teamEmails,
+         statementViewer,
+         null,
+@@ -4327,7 +4334,7 @@ export async function handleContractsGet(
+       ),
+     ]);
+   } else {
+-    primaryRes = await fetchContractsForOwners(
++    primaryRes = await fetchTimedContractsForOwners(
+       owners,
+       statementViewer,
+       cursor,
+@@ -4338,7 +4345,7 @@ export async function handleContractsGet(
+       usersByEmail
+     );
+     if (includeTeam && teamEmails.length > 0) {
+-      teamRes = await fetchContractsForOwners(
++      teamRes = await fetchTimedContractsForOwners(
+         teamEmails,
+         statementViewer,
+         null,
+@@ -4353,45 +4360,47 @@ export async function handleContractsGet(
+ 
+   const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
+   const totalCount = await totalCountPromise;
+-  const filterStatementData = (contract: ContractResponseItem) =>
+-    filterStatementDerivedContractDataForViewer({
+-      contract,
+-      viewerEmail: email,
++  return measureCashflowContractPhase(options.onCashflowTiming, "response", () => {
++    const filterStatementData = (contract: ContractResponseItem) =>
++      filterStatementDerivedContractDataForViewer({
++        contract,
++        viewerEmail: email,
++        teamEmails,
++        canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
++      });
++    const visibleContracts = list.map(filterStatementData);
++    const teamContracts = teamRes?.list.map(filterStatementData);
++    const teamHasMore = teamRes?.hasMore;
++    const teamNextCursor = teamRes?.nextCursor;
++    const teamNextCursorToken = teamRes?.nextCursorToken;
++
++    const response: ContractsResponse = {
++      availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
++      ok: true,
++      scope: scopeParam,
++      position,
++      commissionMode: ctx.commissionMode,
++      hasTeam: teamEmails.length > 0,
+       teamEmails,
+-      canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
+-    });
+-  const visibleContracts = list.map(filterStatementData);
+-  const teamContracts = teamRes?.list.map(filterStatementData);
+-  const teamHasMore = teamRes?.hasMore;
+-  const teamNextCursor = teamRes?.nextCursor;
+-  const teamNextCursorToken = teamRes?.nextCursorToken;
+-
+-  const response: ContractsResponse = {
+-    availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
+-    ok: true,
+-    scope: scopeParam,
+-    position,
+-    commissionMode: ctx.commissionMode,
+-    hasTeam: teamEmails.length > 0,
+-    teamEmails,
+-    teamAdvisers: responseShape === "clientDirectory"
+-      ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
+-        .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
+-      : undefined,
+-    canTransferContracts,
+-    transferTargets,
+-    contracts: visibleContracts,
+-    totalCount,
+-    hasMore,
+-    nextCursor,
+-    nextCursorToken,
+-    teamContracts,
+-    teamHasMore,
+-    teamNextCursor,
+-    teamNextCursorToken,
+-  };
++      teamAdvisers: responseShape === "clientDirectory"
++        ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
++          .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
++        : undefined,
++      canTransferContracts,
++      transferTargets,
++      contracts: visibleContracts,
++      totalCount,
++      hasMore,
++      nextCursor,
++      nextCursorToken,
++      teamContracts,
++      teamHasMore,
++      teamNextCursor,
++      teamNextCursorToken,
++    };
+ 
+-  return withRateLimit(NextResponse.json(response));
++    return withRateLimit(NextResponse.json(response));
++  });
+ }
+ 
+ const sortContractsFindResults = (contracts: ContractResponseItem[]): ContractResponseItem[] => {
+@@ -7891,7 +7900,7 @@ export async function handleContractsDelete(req: NextRequest) {
+ 
+ export async function handleContractsList(
+   req: NextRequest,
+-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
++  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
+ ) {
+   return handleContractsGet(req, "list", options);
+ }
+diff --git a/src/app/api/contracts/_lib/contractsApi.types.ts b/src/app/api/contracts/_lib/contractsApi.types.ts
+index 9ce034e..e3b95e2 100644
+--- a/src/app/api/contracts/_lib/contractsApi.types.ts
++++ b/src/app/api/contracts/_lib/contractsApi.types.ts
+@@ -14,6 +14,7 @@ import type {
+   CommissionAuditCodeFilter,
+   CommissionAuditMode,
+ } from "@/app/lib/commissionAudit";
++import type { CashflowContractTimingObserver } from "@/lib/server/cashflowContractTiming";
+ 
+ export type FirestoreTimestamp = {
+   seconds: number;
+@@ -666,4 +667,6 @@ export type AuthContextOptions = {
+   requireActiveSubscription?: boolean;
+   /** Trusted server caller only; never read from request headers or parameters. */
+   freshCashflowContext?: boolean;
++  /** Trusted server caller only; never enabled by request headers or parameters. */
++  onCashflowTiming?: CashflowContractTimingObserver;
+ };
+diff --git a/src/app/cashflow/candidateCheckProtocol.test.ts b/src/app/cashflow/candidateCheckProtocol.test.ts
+index dd5b4fe..b438b6d 100644
+--- a/src/app/cashflow/candidateCheckProtocol.test.ts
++++ b/src/app/cashflow/candidateCheckProtocol.test.ts
+@@ -41,6 +41,19 @@ describe("cashflow diagnostic response protocol", () => {
+ });
+ 
+ describe("cashflow Server-Timing aggregates", () => {
++  it("accepts fixed own/team phases and drops descriptions, unknown phases and invalid durations", () => {
++    const names = ["cashflow_inputs_own_contracts_identity", "cashflow_inputs_own_contracts_team_context",
++      "cashflow_inputs_own_contracts_subscription", "cashflow_inputs_own_contracts_count",
++      "cashflow_inputs_own_contracts_entries", "cashflow_inputs_own_contracts_response",
++      "cashflow_inputs_team_contracts_identity", "cashflow_inputs_team_contracts_team_context",
++      "cashflow_inputs_team_contracts_subscription", "cashflow_inputs_team_contracts_count",
++      "cashflow_inputs_team_contracts_entries", "cashflow_inputs_team_contracts_response"];
++    const header = names.map((name, i) => `${name};dur=${i};desc="synthetic@example.test"`).join(", ");
++    expect(parseCashflowServerTiming(`${header}, cashflow_inputs_own_contracts_private;dur=1`))
++      .toEqual(Object.fromEntries(names.map((name, i) => [name, i])));
++    expect(parseCashflowServerTiming("cashflow_inputs_own_contracts_entries;dur=1, cashflow_inputs_own_contracts_entries;dur=2, cashflow_inputs_team_contracts_identity;dur=NaN, cashflow_inputs_team_contracts_count;dur=3600001"))
++      .toEqual({});
++  });
+   it("accepts only the six fixed input source names and drops descriptions or identifiers", () => {
+     const names = ["profile", "own_contracts", "team_contracts", "tips", "subscriptions", "statements"];
+     const header = names.map((name, i) => `cashflow_inputs_${name};dur=${i + 1};desc="private@example.test"`).join(", ");
+diff --git a/src/app/cashflow/candidateCheckProtocol.ts b/src/app/cashflow/candidateCheckProtocol.ts
+index 3b19092..d3ec763 100644
+--- a/src/app/cashflow/candidateCheckProtocol.ts
++++ b/src/app/cashflow/candidateCheckProtocol.ts
+@@ -57,9 +57,20 @@ export function parseCashflowCandidateCheckResult(value: unknown): CashflowCandi
+   };
+ }
+ 
++export const CASHFLOW_CONTRACT_TIMING_PHASES = [
++  "identity", "team_context", "subscription", "count", "entries", "response",
++] as const;
++export type CashflowContractTimingPhase = typeof CASHFLOW_CONTRACT_TIMING_PHASES[number];
++
+ export const CASHFLOW_INPUT_TIMING_NAMES = [
+   "cashflow_inputs_profile", "cashflow_inputs_own_contracts", "cashflow_inputs_team_contracts",
+   "cashflow_inputs_tips", "cashflow_inputs_subscriptions", "cashflow_inputs_statements",
++  "cashflow_inputs_own_contracts_identity", "cashflow_inputs_own_contracts_team_context",
++  "cashflow_inputs_own_contracts_subscription", "cashflow_inputs_own_contracts_count",
++  "cashflow_inputs_own_contracts_entries", "cashflow_inputs_own_contracts_response",
++  "cashflow_inputs_team_contracts_identity", "cashflow_inputs_team_contracts_team_context",
++  "cashflow_inputs_team_contracts_subscription", "cashflow_inputs_team_contracts_count",
++  "cashflow_inputs_team_contracts_entries", "cashflow_inputs_team_contracts_response",
+ ] as const;
+ export type CashflowInputTimingName = typeof CASHFLOW_INPUT_TIMING_NAMES[number];
+ const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash", "cashflow_storage",
+diff --git a/src/app/cashflow/cashflowServerPilot.client.test.ts b/src/app/cashflow/cashflowServerPilot.client.test.ts
+index f0cf66d..188fda0 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.test.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -428,14 +428,15 @@ describe("background server comparison with the original displayed result", () =
+     const f = fixture(); const original = f.request.getMockImplementation()!;
+     f.request.mockImplementation(async (...args) => {
+       const response = await original(...args);
+-      response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, cashflow_inputs_own_contracts;dur=4;desc=private, cashflow_inputs_team_contracts;dur=6, private_account;dur=123, cashflow_inputs_unknown;dur=7");
++      response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, cashflow_inputs_own_contracts;dur=4;desc=private, cashflow_inputs_team_contracts;dur=6, cashflow_inputs_own_contracts_identity;dur=1, cashflow_inputs_team_contracts_entries;dur=5;desc=private, cashflow_inputs_team_contracts_unknown;dur=2, private_account;dur=123, cashflow_inputs_unknown;dur=7");
+       return response;
+     });
+     const client = f.create(); await comparedView(f, client);
+     const result = f.measure.mock.calls[0][0];
+     expect(result.referenceMs).toBeGreaterThanOrEqual(0);
+     expect(result.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5,
+-      cashflow_inputs_own_contracts: 4, cashflow_inputs_team_contracts: 6 });
++      cashflow_inputs_own_contracts: 4, cashflow_inputs_team_contracts: 6,
++      cashflow_inputs_own_contracts_identity: 1, cashflow_inputs_team_contracts_entries: 5 });
+     expect(JSON.stringify(result)).not.toMatch(/account|advisor@example|Synthetic client|token|amount|contractNumber/); client.dispose();
+   });
+ });
+diff --git a/src/lib/server/cashflowContractTiming.test.ts b/src/lib/server/cashflowContractTiming.test.ts
+new file mode 100644
+index 0000000..cc794a1
+--- /dev/null
++++ b/src/lib/server/cashflowContractTiming.test.ts
+@@ -0,0 +1,43 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { measureCashflowContractPhase } from "./cashflowContractTiming";
++
++afterEach(() => vi.restoreAllMocks());
++
++describe("trusted contract timing", () => {
++  it("does no clock or observer work when disabled and preserves object identity", async () => {
++    const clock = vi.spyOn(performance, "now");
++    const result = { ok: true };
++    expect(await measureCashflowContractPhase(undefined, "entries", () => result)).toBe(result);
++    expect(clock).not.toHaveBeenCalled();
++  });
++
++  it("waits for asynchronous work and passes only a fixed phase and elapsed duration", async () => {
++    let time = 10;
++    vi.spyOn(performance, "now").mockImplementation(() => time);
++    const observer = vi.fn();
++    let done!: (value: object) => void;
++    const work = new Promise<object>(resolve => { done = resolve; });
++    const result = measureCashflowContractPhase(observer, "entries", () => work);
++    expect(observer).not.toHaveBeenCalled();
++    const value = { private: "synthetic record" };
++    time = 35;
++    done(value);
++    expect(await result).toBe(value);
++    expect(observer.mock.calls).toEqual([["entries", 25]]);
++  });
++
++  it.each([false, true])("preserves the original %s asynchronous error even when the observer throws", async asynchronous => {
++    const failure = new Error("synthetic denied");
++    const observer = vi.fn(() => { throw new Error("observer failed"); });
++    await expect(measureCashflowContractPhase(observer, "identity", () => {
++      if (asynchronous) return Promise.reject(failure);
++      throw failure;
++    })).rejects.toBe(failure);
++    expect(observer).toHaveBeenCalledOnce();
++  });
++
++  it("preserves a successful result when optional diagnostics fail", async () => {
++    const result = { ok: true };
++    expect(await measureCashflowContractPhase(() => { throw new Error("observer failed"); }, "response", () => result)).toBe(result);
++  });
++});
+diff --git a/src/lib/server/cashflowContractTiming.ts b/src/lib/server/cashflowContractTiming.ts
+new file mode 100644
+index 0000000..8fad539
+--- /dev/null
++++ b/src/lib/server/cashflowContractTiming.ts
+@@ -0,0 +1,19 @@
++import type { CashflowContractTimingPhase } from "@/app/cashflow/candidateCheckProtocol";
++
++/** Trusted server-only observer; never receives identities, requests or records. */
++export type CashflowContractTimingObserver = (phase: CashflowContractTimingPhase, durationMs: number) => void;
++
++export async function measureCashflowContractPhase<T>(
++  observer: CashflowContractTimingObserver | undefined,
++  phase: CashflowContractTimingPhase,
++  work: () => T | Promise<T>
++): Promise<T> {
++  if (!observer) return work();
++  const started = performance.now();
++  try {
++    return await work();
++  } finally {
++    try { observer(phase, Math.max(0, performance.now() - started)); }
++    catch { /* Optional telemetry cannot change results or conceal authorization errors. */ }
++  }
++}
+diff --git a/src/lib/server/cashflowDiagnosticHttp.test.ts b/src/lib/server/cashflowDiagnosticHttp.test.ts
+index 46c67ab..e8092c0 100644
+--- a/src/lib/server/cashflowDiagnosticHttp.test.ts
++++ b/src/lib/server/cashflowDiagnosticHttp.test.ts
+@@ -12,12 +12,16 @@ describe("cashflow diagnostic transport", () => {
+     timing.recordInput("cashflow_inputs_own_contracts", 7.5);
+     timing.recordInput("cashflow_inputs_team_contracts", 10);
+     timing.recordInput("cashflow_inputs_statements", 25);
++    timing.recordInput("cashflow_inputs_own_contracts_count", 8);
++    timing.recordInput("cashflow_inputs_own_contracts_count", 2);
++    timing.recordInput("cashflow_inputs_own_contracts_entries", 20);
+     const response = timing.json({ ok: false, reason: "unavailable" }, 503);
+     expect(response.status).toBe(503);
+     expect(await response.json()).toEqual({ ok: false, reason: "unavailable" });
+     expect(parseCashflowServerTiming(response.headers.get("Server-Timing"))).toEqual({
+       cashflow_inputs_own_contracts: 20, cashflow_inputs_team_contracts: 10,
+       cashflow_inputs_statements: 25, cashflow_total: 0,
++      cashflow_inputs_own_contracts_count: 10, cashflow_inputs_own_contracts_entries: 20,
+     });
+     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+   });
+diff --git a/src/lib/server/cashflowShadowInputs.test.ts b/src/lib/server/cashflowShadowInputs.test.ts
+index b29bd45..c192491 100644
+--- a/src/lib/server/cashflowShadowInputs.test.ts
++++ b/src/lib/server/cashflowShadowInputs.test.ts
+@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "@/app/cashflow/subscriptionCashflow";
+ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
++import { CASHFLOW_CONTRACT_TIMING_PHASES, type CashflowContractTimingPhase } from "@/app/cashflow/candidateCheckProtocol";
++import type { CashflowContractTimingObserver } from "./cashflowContractTiming";
+ import { loadCashflowShadowInputs } from "./cashflowShadowInputs";
+ 
+ const handlers = vi.hoisted(() => ({
+   profile: vi.fn<(request: NextRequest) => Promise<Response>>(),
+-  contracts: vi.fn<(request: NextRequest, options?: { freshCashflowContext?: boolean }) => Promise<Response>>(),
++  contracts: vi.fn<(request: NextRequest, options?: { freshCashflowContext?: boolean; onCashflowTiming?: CashflowContractTimingObserver }) => Promise<Response>>(),
+   tips: vi.fn<(request: NextRequest) => Promise<Response>>(),
+   subscriptions: vi.fn<(request: NextRequest) => Promise<Response>>(),
+   statements: vi.fn<(request: NextRequest) => Promise<Response>>(),
+@@ -58,13 +60,14 @@ describe("cashflow shadow independent inputs", () => {
+   it("preserves every input and handler request when source timing is enabled", async () => {
+     const original = await loadCashflowShadowInputs(request(), { freshCashflowContext: true });
+     const trace = () => Object.values(handlers).map(handler => handler.mock.calls.map(([req, options]) =>
+-      ({ url: req.url, method: req.method, headers: [...req.headers], options })));
++      ({ url: req.url, method: req.method, headers: [...req.headers], freshCashflowContext: options?.freshCashflowContext })));
+     const originalTrace = trace();
+     Object.values(handlers).forEach(handler => handler.mockClear());
+     const onSourceTiming = vi.fn();
+     const measured = await loadCashflowShadowInputs(request(), { freshCashflowContext: true, onSourceTiming });
+     expect(measured).toEqual(original);
+     expect(trace()).toEqual(originalTrace);
++    expect(handlers.contracts.mock.calls[0][1]?.onCashflowTiming).toBeTypeOf("function");
+     expect(onSourceTiming.mock.calls.map(([name]) => name).sort()).toEqual([
+       "cashflow_inputs_profile", "cashflow_inputs_own_contracts", "cashflow_inputs_tips", "cashflow_inputs_statements",
+     ].sort());
+@@ -74,6 +77,31 @@ describe("cashflow shadow independent inputs", () => {
+     }
+     expect(JSON.stringify(onSourceTiming.mock.calls)).not.toMatch(/viewer@example|actor-token|cookie|impersonation|targetEmail/);
+   });
++  it("forwards only bounded fixed inner phases under the trusted own/team source", async () => {
++    handlers.contracts.mockImplementation((_req, options) => {
++      for (const phase of CASHFLOW_CONTRACT_TIMING_PHASES) options?.onCashflowTiming?.(phase, 2);
++      options?.onCashflowTiming?.("private@example.test;desc=secret" as CashflowContractTimingPhase, 2);
++      for (const invalid of [-1, NaN, Infinity, 3_600_001]) options?.onCashflowTiming?.("entries", invalid);
++      return json(contracts([], { hasTeam: true }));
++    });
++    const onSourceTiming = vi.fn();
++    await loadCashflowShadowInputs(request(), { freshCashflowContext: true, onSourceTiming });
++    for (const source of ["own_contracts", "team_contracts"]) {
++      for (const phase of CASHFLOW_CONTRACT_TIMING_PHASES) {
++        expect(onSourceTiming).toHaveBeenCalledWith(`cashflow_inputs_${source}_${phase}`, 2);
++      }
++    }
++    expect(onSourceTiming.mock.calls).toHaveLength(17); // 12 phases + 5 source reads.
++    expect(JSON.stringify(onSourceTiming.mock.calls)).not.toMatch(/example.test|secret|actor-token/);
++  });
++  it("preserves an inner authorization denial even if forwarding the phase throws", async () => {
++    handlers.contracts.mockImplementation((_req, options) => {
++      options?.onCashflowTiming?.("identity", 1);
++      return json({ ok: false }, 403);
++    });
++    await expect(loadCashflowShadowInputs(request(), { onSourceTiming: () => { throw new Error("observer"); } }))
++      .rejects.toMatchObject({ code: "forbidden", status: 403 });
++  });
+   it("keeps independent sources concurrent and measures sequential own/team reads separately", async () => {
+     let time = 0;
+     vi.spyOn(performance, "now").mockImplementation(() => time);
+diff --git a/src/lib/server/cashflowShadowInputs.ts b/src/lib/server/cashflowShadowInputs.ts
+index 5810185..8d8d9d1 100644
+--- a/src/lib/server/cashflowShadowInputs.ts
++++ b/src/lib/server/cashflowShadowInputs.ts
+@@ -5,7 +5,8 @@ import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
+ import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
+ import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
+ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
+-import type { CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
++import { CASHFLOW_CONTRACT_TIMING_PHASES, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
++import type { CashflowContractTimingObserver } from "./cashflowContractTiming";
+ 
+ const MAX_REQUESTS = 50;
+ const MAX_DURATION_MS = 20_000;
+@@ -87,14 +88,19 @@ function nextCursor(data: JsonObject, chunkSize: number, seen: Set<string>): str
+   return data.hasMore ? cursor : null;
+ }
+ 
+-async function invoke(source: Source, request: NextRequest, freshCashflowContext: boolean): Promise<Response> {
++async function invoke(
++  source: Source, request: NextRequest, freshCashflowContext: boolean,
++  onCashflowTiming?: CashflowContractTimingObserver
++): Promise<Response> {
+   // Direct authorized handlers: no HTTP request, user supplied URL or auth bypass.
+   switch (source) {
+     case "profile":
+       return (await import("@/app/api/user/profile/route")).GET(request);
+     case "own_contracts":
+     case "team_contracts":
+-      return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, { freshCashflowContext });
++      return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, {
++        freshCashflowContext, ...(onCashflowTiming ? { onCashflowTiming } : {}),
++      });
+     case "tips":
+       return (await import("@/app/api/tip-payouts/list/route")).GET(request);
+     case "subscriptions":
+@@ -144,8 +150,14 @@ export async function loadCashflowShadowInputs(
+       signal: controller.signal,
+     });
+     const started = options.onSourceTiming ? performance.now() : 0;
++    const onCashflowTiming: CashflowContractTimingObserver | undefined = options.onSourceTiming &&
++      (source === "own_contracts" || source === "team_contracts") ? (phase, durationMs) => {
++        if (!CASHFLOW_CONTRACT_TIMING_PHASES.includes(phase) || !Number.isFinite(durationMs) || durationMs < 0 || durationMs > 3_600_000) return;
++        try { options.onSourceTiming?.(`cashflow_inputs_${source}_${phase}`, durationMs); }
++        catch { /* Optional telemetry must not affect access checks or input loading. */ }
++      } : undefined;
+     try {
+-      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true), stopped]);
++      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true, onCashflowTiming), stopped]);
+       if (!response.ok) {
+         const code = response.status === 401 ? "unauthorized"
+           : response.status === 403 ? "forbidden" : "upstream_failed";

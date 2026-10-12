@@ -1838,7 +1838,7 @@ function TvorbaWorkspace({ authUser, effectiveProfileEmail }: { authUser: Fireba
                     >
                 <div className={styles.paperAccent} aria-hidden="true" />
                 <header className={styles.paperHeader}>
-                  <Image src="/icons/nadpislogo.jpg" alt="Bohemika – finanční poradenství" width={320} height={205} className={styles.brandLogo} priority />
+                  <Image src="/icons/bohemika_logo.png" alt="Bohemika – finanční poradenství" width={320} height={480} className={styles.brandLogo} priority />
                   <div className={styles.paperHeading}>
                     <span><i /> PŘIPRAVENO PRO VÁS</span>
                     <div>{headerDocTitle}</div>

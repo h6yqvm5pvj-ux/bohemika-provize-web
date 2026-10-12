@@ -27,16 +27,19 @@ vi.mock("firebase-admin/storage", () => ({ getStorage: mocks.storage }));
 
 import { POST } from "./route";
 import { DELETE } from "../route";
+import { PATCH as updateConversation } from "../conversation/route";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
 
 type Data = Record<string, unknown>;
-type Write = { kind: "create" | "set" | "delete"; path: string; data?: Data; merge?: boolean };
-const alice = "alice@example.test", bob = "bob@example.test", carol = "carol@example.test";
+type Write = { kind: "create" | "set" | "delete" | "update"; path: string; data?: Data; merge?: boolean; expected?: string };
+const alice = "alice@example.test", bob = "bob@example.test", carol = "carol@example.test", dave = "dave@example.test";
 const key = "123e4567-e89b-42d3-a456-426614174000";
 let store: ReturnType<typeof privateFirestore>;
 let objects: Map<string, Buffer>;
 let beforeCommit: (() => Promise<void>) | undefined;
 let loseCommitResponse = false;
+let duringUpload: (() => Promise<void>) | undefined;
+let snapshotVersions: WeakMap<object,string>;
 const mailboxPath = (email: string, id = key) => `usersPrivate/${email}/mailbox/${id}`;
 
 // Firestore create preconditions reject the whole batch, including earlier writes.
@@ -44,13 +47,18 @@ const mailboxPath = (email: string, id = key) => `usersPrivate/${email}/mailbox/
 function atomicBatch() {
   const writes: Write[] = [];
   return {
+    get: async (ref: { path: string }) => store.db.doc(ref.path).get(),
     create: (ref: { path: string }, data: Data) => writes.push({ kind: "create", path: ref.path, data }),
     set: (ref: { path: string }, data: Data, options?: { merge?: boolean }) => writes.push({ kind: "set", path: ref.path, data, merge: options?.merge }),
+    update: (ref: { path: string }, data: Data, precondition?: {lastUpdateTime:object}) => writes.push({kind:"update",path:ref.path,data,merge:true,expected:precondition ? snapshotVersions.get(precondition.lastUpdateTime) : undefined}),
     delete: (ref: { path: string }) => writes.push({ kind: "delete", path: ref.path }),
     commit: async () => {
       await beforeCommit?.();
       const existing = new Set(store.records.keys());
       for (const write of writes) {
+        if (write.kind === "update" && (!existing.has(write.path) || (write.expected !== undefined && JSON.stringify(store.records.get(write.path)) !== write.expected))) {
+          throw Object.assign(new Error("FAILED_PRECONDITION: document changed"), {code:9});
+        }
         if (write.kind === "create" && existing.has(write.path)) {
           throw Object.assign(new Error("ALREADY_EXISTS: private document path"), { code: 6 });
         }
@@ -108,9 +116,42 @@ async function deleteLocalCopy(email: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  store = privateFirestore(); objects = new Map(); beforeCommit = undefined; loseCommitResponse = false;
-  mocks.db = { ...store.db, batch: atomicBatch } as unknown as Firestore;
-  for (const email of [alice, bob, carol]) store.records.set(`users/${email}`, { name: email, accountType: "advisor" });
+  store = privateFirestore(); objects = new Map(); beforeCommit = undefined; loseCommitResponse = false; duringUpload = undefined; snapshotVersions = new WeakMap();
+  const wrapRef = (ref: ReturnType<Firestore["doc"]>): ReturnType<Firestore["doc"]> => Object.assign(Object.create(ref),{
+    get:async()=>{
+      const snapshot=await ref.get();
+      snapshotVersions.set(snapshot.updateTime!,JSON.stringify(snapshot.data()));
+      return snapshot;
+    },
+    collection:(name:string)=>wrapCollection(ref.collection(name)),
+  });
+  const wrapCollection = (ref: ReturnType<Firestore["collection"]>): ReturnType<Firestore["collection"]> => Object.assign(Object.create(ref),{
+    doc:(id?:string)=>wrapRef(id ? ref.doc(id) : ref.doc()),
+  });
+  mocks.db = { ...store.db, batch: atomicBatch,
+    doc:(path:string)=>wrapRef(store.db.doc(path)),collection:(name:string)=>wrapCollection(store.db.collection(name)),
+    runTransaction: async (work: (tx: ReturnType<typeof atomicBatch>) => Promise<unknown>) => {
+      // Model Firestore's read-version preconditions and callback retry. Writes
+      // remain staged until every read is still current at the commit boundary.
+      for (let attempt=0; attempt<5; attempt++) {
+        const reads = new Map<string,string | undefined>();
+        const tx = atomicBatch();
+        tx.get = async ref => {
+          const snapshot = await store.db.doc(ref.path).get();
+          const data = snapshot.data();
+          reads.set(ref.path,JSON.stringify(data));
+          return Object.assign(Object.create(snapshot),{data:()=>data});
+        };
+        const result = await work(tx);
+        await beforeCommit?.();
+        if ([...reads].some(([path,data])=>JSON.stringify(store.records.get(path))!==data)) continue;
+        await tx.commit();
+        return result;
+      }
+      throw new Error("Transaction retries exhausted");
+    },
+  } as unknown as Firestore;
+  for (const email of [alice, bob, carol, dave]) store.records.set(`users/${email}`, { name: email, accountType: "advisor" });
   mocks.guard.mockImplementation(async (req: NextRequest) => {
     const email = req.headers.get("x-test-user")!;
     return { ok: true, ctx: { email, uid: email, actorEmail: email, actorUid: email } };
@@ -120,7 +161,7 @@ beforeEach(() => {
   vi.stubEnv("FIREBASE_STORAGE_BUCKET", "demo.firebasestorage.app");
   mocks.storage.mockReturnValue({ bucket: (name: string) => ({
     name, file: (path: string) => ({
-      save: async (bytes: Buffer) => { objects.set(path, bytes); },
+      save: async (bytes: Buffer) => { objects.set(path, bytes); await duringUpload?.(); },
       delete: async () => { objects.delete(path); },
     }),
   }) });
@@ -132,6 +173,81 @@ afterEach(() => {
 });
 
 describe("mailbox compose cannot replace an existing message", () => {
+  const conversationId = "group_revocation_test_1234";
+  const conversationPath = (email: string) => `usersPrivate/${email}/mailboxConversations/${conversationId}`;
+  const seedGroup = () => {
+    const participantEmails=[bob,alice,carol,dave];
+    for (const email of participantEmails) store.records.set(conversationPath(email),{
+      conversationId,groupConversation:true,groupName:"Private group",groupOwnerEmail:bob,
+      participants:participantEmails.map(email=>({email,name:email})),participantEmails,active:true,
+    });
+  };
+  const removeMember = (email: string) => updateConversation(new NextRequest("https://example.test/api/mailbox/conversation", {
+    method:"PATCH",headers:{"x-test-user":bob,"content-type":"application/json"},
+    body:JSON.stringify({conversationId,action:"remove",email}),
+  }));
+  it.each([alice,dave])("rejects an in-flight send after %s is removed during upload",async removed => {
+    seedGroup();
+    duringUpload=async()=>{duringUpload=undefined;expect((await removeMember(removed)).status).toBe(200);};
+    const response=await POST(request(alice,[bob,carol,dave],{conversationId,file:true}));
+    expect(response.status).toBe(400);
+    expect(store.records.get(conversationPath(removed))?.active).toBe(false);
+    expect([...store.records.keys()].some(path=>path.includes("/mailbox/"))).toBe(false);
+    expect(objects.size).toBe(0);
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+  it("rechecks membership on a transaction conflict at the commit boundary",async()=>{
+    seedGroup();
+    beforeCommit=async()=>{beforeCommit=undefined;expect((await removeMember(alice)).status).toBe(200);};
+    const response=await POST(request(alice,[bob,carol,dave],{conversationId,file:true}));
+    expect(response.status).toBe(400);
+    expect(store.records.get(conversationPath(alice))?.active).toBe(false);
+    expect(objects.size).toBe(0);
+    expect([...store.records.keys()].some(path=>path.includes("/mailbox/"))).toBe(false);
+  });
+  it("preserves membership, names and preferences on an authorized group send",async()=>{
+    seedGroup();
+    for(const email of [alice,bob,carol,dave]) store.records.set(conversationPath(email),{...store.records.get(conversationPath(email)),muted:true});
+    const response=await POST(request(alice,[bob,carol,dave],{conversationId,file:true}));
+    expect(response.status).toBe(200);
+    for(const email of [alice,bob,carol,dave]) expect(store.records.get(conversationPath(email))).toMatchObject({
+      active:true,muted:true,groupName:"Private group",groupOwnerEmail:bob,participantEmails:[bob,alice,carol,dave],
+    });
+    expect(objects.size).toBe(1);
+  });
+  it.each(["rename","add"])("rejects a stale owner %s after concurrent member removal",async action=>{
+    seedGroup();
+    const extra="extra@example.test";
+    store.records.set(`users/${extra}`,{name:"New member",accountType:"advisor"});
+    beforeCommit=async()=>{beforeCommit=undefined;expect((await removeMember(alice)).status).toBe(200);};
+    const response=await updateConversation(new NextRequest("https://example.test/api/mailbox/conversation",{
+      method:"PATCH",headers:{"x-test-user":bob,"content-type":"application/json"},
+      body:JSON.stringify({conversationId,action,email:extra,groupName:"Renamed"}),
+    }));
+    expect(response.status).toBe(409);
+    expect(store.records.get(conversationPath(alice))?.active).toBe(false);
+    expect(store.records.get(conversationPath(bob))?.participantEmails).not.toContain(alice);
+    expect(store.records.has(conversationPath(extra))).toBe(false);
+  });
+  it("does not allow an ordinary member to manage the group",async()=>{
+    seedGroup();const before=new Map(store.records);
+    const response=await updateConversation(new NextRequest("https://example.test/api/mailbox/conversation",{
+      method:"PATCH",headers:{"x-test-user":alice,"content-type":"application/json"},
+      body:JSON.stringify({conversationId,action:"remove",email:dave}),
+    }));
+    expect(response.status).toBe(403);expect(store.records).toEqual(before);
+  });
+  it("rejects a manipulated group participant set",async()=>{
+    seedGroup();const before=new Map(store.records);
+    const response=await POST(request(alice,[bob,carol],{conversationId}));
+    expect(response.status).toBe(400);expect(store.records).toEqual(before);
+  });
+  it.each([401,403])("preserves guard rejection %s before any group access",async status=>{
+    seedGroup();const before=new Map(store.records);
+    mocks.guard.mockResolvedValueOnce({ok:false,response:NextResponse.json({ok:false},{status})});
+    expect((await POST(request(alice,[bob,carol,dave],{conversationId}))).status).toBe(status);
+    expect(store.records).toEqual(before);expect(objects.size).toBe(0);
+  });
   it("blocks a recipient reusing a received ID after deleting their local copy", async () => {
     expect((await POST(request(bob, [alice]))).status).toBe(200);
     await deleteLocalCopy(alice);

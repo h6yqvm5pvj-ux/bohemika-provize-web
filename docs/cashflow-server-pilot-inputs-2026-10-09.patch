@@ -1,0 +1,144 @@
+diff --git a/src/lib/server/cashflowShadowInputs.test.ts b/src/lib/server/cashflowShadowInputs.test.ts
+index ff4d49a..9d89437 100644
+--- a/src/lib/server/cashflowShadowInputs.test.ts
++++ b/src/lib/server/cashflowShadowInputs.test.ts
+@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "@/app/cashflow/subscriptionCashflow";
++import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
+ import { loadCashflowShadowInputs } from "./cashflowShadowInputs";
+ 
+ const handlers = vi.hoisted(() => ({
+@@ -143,6 +144,89 @@ describe("cashflow shadow independent inputs", () => {
+     expect(handlers.contracts).toHaveBeenCalledTimes(3);
+   });
+ 
++  it("loads complete portfolios in the same 500-row pages as the cashflow API with fresh authorization on every page", async () => {
++    const own = Array.from({ length: 1001 }, (_, i) => ({ id: String(i), inputAmount: i, userEmail: " Viewer@Example.Test " }));
++    const team = Array.from({ length: 501 }, (_, i) => ({ id: String(i), inputAmount: i, adviserEmail: " Team@Example.Test " }));
++    handlers.contracts.mockImplementation((child, options) => {
++      expect(options).toEqual({ freshCashflowContext: true });
++      expect(child.headers.get("authorization")).toBe("Bearer actor-token");
++      expect(child.headers.get("cookie")).toBe("impersonation=verified-cookie");
++      expect(child.nextUrl.searchParams.get("shape")).toBe("cashflow");
++      expect(child.nextUrl.searchParams.get("limit")).toBe(String(CASHFLOW_CONTRACTS_PAGE_SIZE));
++      const source = child.nextUrl.searchParams.get("scope") === "team" ? team : own;
++      const offset = Number(child.nextUrl.searchParams.get("cursor") ?? 0);
++      const next = offset + CASHFLOW_CONTRACTS_PAGE_SIZE;
++      return json(contracts(source.slice(offset, next), {
++        totalCount: offset ? null : source.length, hasTeam: true, teamEmails: ["team@example.test"],
++        hasMore: next < source.length, nextCursorToken: next < source.length ? String(next) : null,
++      }));
++    });
++    const result = await loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    expect(CASHFLOW_CONTRACTS_PAGE_SIZE).toBe(500);
++    expect(result.snapshot.ownEntries).toEqual(own.map(item => ({ ...item, userEmail: "viewer@example.test" })));
++    expect(result.snapshot.teamEntriesRaw).toEqual(team.map(item => ({ ...item, userEmail: "team@example.test" })));
++    expect(result.snapshot.hasAnyTeam).toBe(true);
++    expect(handlers.contracts).toHaveBeenCalledTimes(5);
++  });
++
++  it.each(["my", "team"] as const)("rejects revoked access on a later %s page without returning earlier authorized rows", async scope => {
++    handlers.contracts.mockImplementation(child => {
++      const currentScope = child.nextUrl.searchParams.get("scope");
++      if (currentScope !== scope) return json(contracts([], { hasTeam: true }));
++      if (child.nextUrl.searchParams.has("cursor")) return json({ ok: false, error: "private backend reason" }, 403);
++      return json(contracts(Array.from({ length: 500 }, (_, i) => ({ id: String(i) })), {
++        totalCount: 501, hasTeam: true, hasMore: true, nextCursorToken: "remaining",
++      }));
++    });
++    await expect(loadCashflowShadowInputs(request(), { freshCashflowContext: true })).rejects.toMatchObject({
++      code: "forbidden", status: 403, message: "Cashflow shadow inputs are unavailable.",
++    });
++    expect(handlers.contracts.mock.calls.every(([, options]) => options?.freshCashflowContext === true)).toBe(true);
++  });
++
++  it("rejects a response larger than the existing API page cap", async () => {
++    handlers.contracts.mockImplementation(() => json(contracts(Array.from({ length: 501 }, (_, i) => ({ id: String(i) })))));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "incomplete" });
++    expect(handlers.contracts).toHaveBeenCalledOnce();
++  });
++
++  it("rejects an oversized declared portfolio before requesting more pages", async () => {
++    handlers.contracts.mockImplementation(() => json(contracts([], { totalCount: 5001, hasMore: true, nextCursorToken: "next" })));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "limit" });
++    expect(handlers.contracts).toHaveBeenCalledOnce();
++  });
++
++  it.each([2500, 2501])("keeps the combined own/team contract bound when the team has %i rows", async teamCount => {
++    handlers.contracts.mockImplementation(child => {
++      const totalCount = child.nextUrl.searchParams.get("scope") === "team" ? teamCount : 2500;
++      const offset = Number(child.nextUrl.searchParams.get("cursor") ?? 0);
++      const next = Math.min(offset + 500, totalCount);
++      return json(contracts(Array.from({ length: next - offset }, (_, i) => ({ id: String(offset + i) })), {
++        totalCount: offset ? null : totalCount, hasTeam: true,
++        hasMore: next < totalCount, nextCursorToken: next < totalCount ? String(next) : null,
++      }));
++    });
++    const result = loadCashflowShadowInputs(request());
++    if (teamCount === 2500) {
++      const { snapshot } = await result;
++      expect(snapshot.ownEntries).toHaveLength(2500);
++      expect(snapshot.teamEntriesRaw).toHaveLength(2500);
++      expect(handlers.contracts).toHaveBeenCalledTimes(10);
++    } else {
++      await expect(result).rejects.toMatchObject({ code: "limit" });
++      expect(handlers.contracts).toHaveBeenCalledTimes(6);
++    }
++  });
++
++  it("counts duplicate source rows against the aggregate contract bound", async () => {
++    let page = 0;
++    handlers.contracts.mockImplementation(() => json(contracts(Array.from({ length: 500 }, (_, i) => ({ id: String(i) })), {
++      totalCount: 501, hasMore: true, nextCursorToken: String(++page),
++    })));
++    await expect(loadCashflowShadowInputs(request())).rejects.toMatchObject({ code: "limit" });
++    expect(handlers.contracts).toHaveBeenCalledTimes(11);
++  });
++
+   it("loads only TIP payouts and statements for the profile's tipster mode", async () => {
+     handlers.profile.mockImplementation(() => json(profile(SUBSCRIPTION_CASHFLOW_OWNER_EMAIL, { accountType: null, userRole: " TIPSTER " })));
+     handlers.tips.mockImplementation(() => json(tips([{ id: "tip", amount: 250 }])));
+diff --git a/src/lib/server/cashflowShadowInputs.ts b/src/lib/server/cashflowShadowInputs.ts
+index 0c05a8c..07e6a7f 100644
+--- a/src/lib/server/cashflowShadowInputs.ts
++++ b/src/lib/server/cashflowShadowInputs.ts
+@@ -4,10 +4,14 @@ import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+ import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
+ import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
+ import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
++import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
+ 
+ const MAX_REQUESTS = 50;
+ const MAX_DURATION_MS = 20_000;
+-const CONTRACT_PAGE_LIMIT = 100;
++const CONTRACT_PAGE_LIMIT = CASHFLOW_CONTRACTS_PAGE_SIZE;
++// Preserve the previous aggregate upper bound (50 reads of 100 contracts),
++// including duplicate rows, when fetching the same portfolio in fewer pages.
++const MAX_CONTRACT_ROWS = 5_000;
+ const TIP_PAGE_LIMIT = 100;
+ const STATEMENTS_LIMIT = 240;
+ const SUBSCRIPTIONS_LIMIT = 5_000;
+@@ -121,6 +125,7 @@ export async function loadCashflowShadowInputs(
+   if (request.signal.aborted) onAbort();
+   const timer = setTimeout(() => stop("timeout"), MAX_DURATION_MS);
+   let requests = 0;
++  let contractRows = 0;
+ 
+   const read = async (source: Source, path: string, params?: URLSearchParams): Promise<JsonObject> => {
+     if (stopError) throw stopError;
+@@ -177,10 +182,13 @@ export async function loadCashflowShadowInputs(
+           if (typeof data.totalCount !== "number" || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) return incomplete();
+           if (typeof data.hasTeam !== "boolean" || !Array.isArray(data.teamEmails) || !data.teamEmails.every(email => typeof email === "string")) return incomplete();
+           totalCount = data.totalCount;
++          if (totalCount > MAX_CONTRACT_ROWS - contractRows) throw new CashflowShadowInputsError("limit");
+         } else if (data.totalCount != null && data.totalCount !== totalCount) {
+           return incomplete();
+         }
+         const chunk = rows(data, "contracts", CONTRACT_PAGE_LIMIT);
++        if (chunk.length > MAX_CONTRACT_ROWS - contractRows) throw new CashflowShadowInputsError("limit");
++        contractRows += chunk.length;
+         for (const item of chunk) {
+           const ownerEmail = normalizeEmail(item.adviserEmail ?? item.userEmail ?? effectiveEmail);
+           const id = String(item.id ?? "").trim();

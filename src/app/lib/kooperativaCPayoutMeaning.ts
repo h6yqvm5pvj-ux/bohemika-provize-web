@@ -1,4 +1,5 @@
 import { toDate } from "./formatters";
+import { calendarDate } from "./calendarDates";
 
 type PayoutSource = {
   code?: string | null;
@@ -12,23 +13,24 @@ type PayoutSource = {
 export const isKooperativaCPayout = (product: unknown, code: unknown): boolean =>
   product === "kooperativaAuto" && /^C1\d{2,}$/.test(String(code ?? "").trim().toUpperCase());
 
-function statementStart(payout: PayoutSource): Date | null {
+function statementStart(payout: PayoutSource, calendar?: Date): Date | null {
   const period = payout.statementPeriod?.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
   if (period) {
-    const date = new Date(Number(period[3]), Number(period[2]) - 1, Number(period[1]));
+    const date = calendarDate(calendar, Number(period[3]), Number(period[2]) - 1, Number(period[1]));
     return date.getFullYear() === Number(period[3]) && date.getMonth() === Number(period[2]) - 1 && date.getDate() === Number(period[1]) ? date : null;
   }
   const month = payout.payoutMonthKey?.match(/^(\d{4})-(0?[1-9]|1[0-2])$/);
-  return month ? new Date(Number(month[1]), Number(month[2]) - 1, 1) : null;
+  return month ? calendarDate(calendar, Number(month[1]), Number(month[2]) - 1, 1) : null;
 }
 
 /** Presentation evidence only. Never use this hint to change a coefficient,
  * premium, payment frequency or to infer a C→B installment number. */
-export function describeKooperativaCPayout({ product, policyStartDate, payout, payouts = [] }: {
+export function describeKooperativaCPayout({ product, policyStartDate, payout, payouts = [], calendar }: {
   product: unknown;
   policyStartDate: unknown;
   payout: PayoutSource;
   payouts?: readonly PayoutSource[];
+  calendar?: Date;
 }): { kind: "subsequentCandidate" | "correction" | "unknown"; label: string; explanation: string } | null {
   if (!isKooperativaCPayout(product, payout.code)) return null;
   if (payout.status === "storno" || Number(payout.amount) < 0) return {
@@ -42,10 +44,10 @@ export function describeKooperativaCPayout({ product, policyStartDate, payout, p
     kind: "correction", label: "C provize s opravou",
     explanation: "Ke stejnému kódu a příjemci patří i záporná položka. Výplatu a její opravu je potřeba posuzovat společně.",
   };
-  const start = toDate(policyStartDate);
-  const observed = statementStart(payout);
+  const start = toDate(policyStartDate, { calendar });
+  const observed = statementStart(payout, calendar);
   if (start && Number.isFinite(start.getTime()) && observed && Number.isFinite(payout.amount) && Number(payout.amount) > 0 && ["paid", "difference"].includes(payout.status ?? "")) {
-    const anniversary = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
+    const anniversary = calendarDate(start, start.getFullYear() + 1, start.getMonth(), start.getDate());
     if (observed >= anniversary) return {
       kind: "subsequentCandidate", label: "Pravděpodobná následná provize",
       explanation: "Kladná C výplata je ve výpisu po prvním výročí smlouvy. To odpovídá následné provizi, ale samo neurčuje, kterou splátku plánu nahrazuje.",

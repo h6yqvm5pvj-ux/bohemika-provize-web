@@ -1,0 +1,385 @@
+--- a/src/app/cashflow/cashflowServerPilot.client.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.ts
+@@ -3,7 +3,7 @@
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import { CASHFLOW_SERVER_PILOT_VERSION, parseCashflowServerFallbackReason, parseCashflowServerResourceLimit, type CashflowServerFallbackReason, type CashflowServerRequest, type CashflowServerResourceLimit } from "./cashflowServerProtocol";
+ import { parseCashflowSnapshot } from "./cashflowSnapshotWire";
+-import { cashflowCanonicalJson } from "./shadowProtocol";
++import { CASHFLOW_SHADOW_MAX_AGE_MS, cashflowCanonicalJson, isCashflowShadowContextCurrent } from "./shadowProtocol";
+ import { parseCashflowServerTiming, type CashflowServerTiming } from "./candidateCheckProtocol";
+ 
+ export type CashflowServerPilotMeasurement = {
+@@ -38,10 +38,11 @@
+  * soon as it is ready. A match requires the complete reference, including the
+  * worker hash of every month/item; it never publishes unverified server values.
+  */
+-export function createCashflowServerPilotClient({ dataset, local, getToken, request = fetch,
++export function createCashflowServerPilotClient({ dataset, local, createLocal, getToken, request = fetch,
+   measure = recordMeasurement, timeoutMs = 25_000 }: {
+   dataset: CashflowDataset;
+   local: CashflowWorkerClient;
++  createLocal: (dataset: CashflowDataset) => CashflowWorkerClient;
+   getToken: () => Promise<string>;
+   request?: typeof fetch;
+   measure?: (value: CashflowServerPilotMeasurement) => void;
+@@ -50,6 +51,23 @@
+   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000) throw new RangeError("Invalid pilot timeout");
+   let revision = 0;
+   let disposed = false;
++  const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
++  type Context = { dataset: CashflowDataset; local: CashflowWorkerClient; timeZone: string };
++  let context: Context = { dataset, local, timeZone: timeZone() };
++  const contextCurrent = (value: Context, nowMs = Date.now()) =>
++    value.timeZone === timeZone() && isCashflowShadowContextCurrent(value.dataset.asOf.getTime(), nowMs);
++  const refreshContext = () => {
++    const nowMs = Date.now();
++    // Leave time for local calculation and the complete background deadline.
++    // Renew the model too: changing only the outgoing timestamp would compare
++    // results computed for different dates (especially across midnight).
++    if (contextCurrent(context, nowMs) &&
++      Math.abs(nowMs - context.dataset.asOf.getTime()) <= CASHFLOW_SHADOW_MAX_AGE_MS - timeoutMs - 10_000) return;
++    const refreshed = { ...dataset, asOf: new Date(nowMs) };
++    const next = { dataset: refreshed, local: createLocal(refreshed), timeZone: timeZone() };
++    context.local.dispose();
++    context = next;
++  };
+   type Job = {
+     revision: number;
+     controller: AbortController;
+@@ -114,11 +132,13 @@
+       })();
+     }, 0);
+   };
+-  const read = async (body: CashflowServerRequest, job: Job): Promise<{ value: Record<string, unknown>; serverTimingMs: CashflowServerTiming }> => {
+-    checkJob(job);
++  const read = async (body: CashflowServerRequest, job: Job, referenceContext: Context): Promise<{ value: Record<string, unknown>; serverTimingMs: CashflowServerTiming }> => {
++    checkJob(job);
++    if (!contextCurrent(referenceContext)) throw new PilotUnavailable("stale_context");
+     job.phase = "token";
+     const token = await getToken();
+     checkJob(job);
++    if (!contextCurrent(referenceContext)) throw new PilotUnavailable("stale_context");
+     if (!token) throw aborted();
+     job.phase = "request";
+     const response = await request("/api/cashflow/view", {
+@@ -142,30 +162,32 @@
+       value.kind !== body.kind || value.inputHash !== body.inputHash) throw new PilotUnavailable("invalid_response", response.status, serverTimingMs);
+     return { value, serverTimingMs };
+   };
+-  const bodyFor = (kind: CashflowServerRequest["kind"], options: CashflowViewOptions, verification: CashflowVerification, monthKey?: string): CashflowServerRequest => ({
++  const bodyFor = (referenceContext: Context, kind: CashflowServerRequest["kind"], options: CashflowViewOptions, verification: CashflowVerification, monthKey?: string): CashflowServerRequest => ({
+     version: CASHFLOW_SERVER_PILOT_VERSION, kind, options,
+-    asOfMs: dataset.asOf.getTime(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++    asOfMs: referenceContext.dataset.asOf.getTime(), timeZone: referenceContext.timeZone,
+     inputHash: verification.inputHash, ...(monthKey ? { monthKey } : {}),
+   });
+ 
+   return {
+-    get executionPath() { return disposed ? "disposed" : local.executionPath; },
++    get executionPath() { return disposed ? "disposed" : context.local.executionPath; },
+     async view(options) {
+       if (disposed) throw aborted();
+       const expected = ++revision;
+       selected = null;
+       cancelComparison();
++      refreshContext();
++      const referenceContext = context;
+       const copiedOptions = { ...options };
+       // Failure of the reference itself follows the existing UI error path.
+       const referenceStart = performance.now();
+-      const reference = await local.view(copiedOptions);
++      const reference = await referenceContext.local.view(copiedOptions);
+       const referenceMs = Math.max(0, performance.now() - referenceStart);
+       checkCurrent(expected);
+       startComparison(expected, "view", referenceMs, async (job, start) => {
+-        if (!local.verification) throw new PilotUnavailable("verification");
+-        const verification = await local.verification().catch(() => { throw new PilotUnavailable("verification"); });
++        if (!referenceContext.local.verification) throw new PilotUnavailable("verification");
++        const verification = await referenceContext.local.verification().catch(() => { throw new PilotUnavailable("verification"); });
+         checkJob(job);
+-        const { value, serverTimingMs } = await read(bodyFor("view", copiedOptions, verification), job);
++        const { value, serverTimingMs } = await read(bodyFor(referenceContext, "view", copiedOptions, verification), job, referenceContext);
+         checkJob(job);
+         if (value.monthsHash !== verification.monthsHash ||
+           cashflowCanonicalJson(value.overview) !== cashflowCanonicalJson(reference)) {
+@@ -181,13 +203,16 @@
+       if (disposed) throw aborted();
+       const expected = revision;
+       const selection = selected;
++      // A detail belongs to the displayed overview. Never silently replace its
++      // model/date; an expired comparison remains unavailable until a new view.
++      const referenceContext = context;
+       const referenceStart = performance.now();
+-      const reference = await local.month(key);
++      const reference = await referenceContext.local.month(key);
+       const referenceMs = Math.max(0, performance.now() - referenceStart);
+       checkCurrent(expected);
+       if (!selection || selection.revision !== expected) return reference;
+       startComparison(expected, "month", referenceMs, async (job, start) => {
+-        const { value, serverTimingMs } = await read(bodyFor("month", selection.options, selection.verification, key), job);
++        const { value, serverTimingMs } = await read(bodyFor(referenceContext, "month", selection.options, selection.verification, key), job, referenceContext);
+         checkJob(job);
+         const parsed = parseCashflowSnapshot(value.payload);
+         const month = parsed?.months[0] ?? null;
+@@ -207,7 +232,7 @@
+       disposed = true;
+       selected = null;
+       cancelComparison();
+-      local.dispose();
++      context.local.dispose();
+     },
+   };
+ }
+--- a/src/app/cashflow/cashflowServerPilot.client.test.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -26,9 +26,17 @@
+     month: vi.fn(async (key: string) => model.month(key)),
+     verification: vi.fn(() => model.verification!()), dispose: vi.fn(() => model.dispose()),
+   };
++  const createLocal = vi.fn((fresh: CashflowDataset) => {
++    const model = createCashflowModel(fresh);
++    return { executionPath: "fallback" as const,
++      view: vi.fn(async (selected: CashflowViewOptions) => model.view(selected)),
++      month: vi.fn(async (key: string) => model.month(key)),
++      verification: vi.fn(() => model.verification!()), dispose: vi.fn(() => model.dispose()),
++    };
++  });
+   const request = vi.fn<typeof fetch>(async (_url, init) => {
+     const raw = JSON.parse(init!.body as string);
+-    const responseModel = createCashflowModel(input);
++    const responseModel = createCashflowModel({ ...input, asOf: new Date(raw.asOfMs) });
+     try {
+       const overview = responseModel.view(raw.options);
+       const verification = await responseModel.verification!();
+@@ -40,15 +48,15 @@
+   });
+   const getToken = vi.fn(async () => "synthetic-test-token");
+   const measure = vi.fn();
+-  const create = (timeoutMs?: number) => createCashflowServerPilotClient({ dataset: input, local, getToken, request, measure, timeoutMs });
+-  return { input, model, local, request, getToken, measure, create };
++  const create = (timeoutMs?: number) => createCashflowServerPilotClient({ dataset: input, local, createLocal, getToken, request, measure, timeoutMs });
++  return { input, model, local, createLocal, request, getToken, measure, create };
+ }
+ const deferred = <T>() => {
+   let resolve!: (value: T) => void;
+   const promise = new Promise<T>(yes => { resolve = yes; });
+   return { promise, resolve };
+ };
+-beforeEach(() => { vi.useRealTimers(); });
++beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(dataset().asOf); });
+ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+ 
+ const measurement = async (f: ReturnType<typeof fixture>, count = 1) => {
+@@ -68,6 +76,108 @@
+ };
+ 
+ describe("background server comparison with the original displayed result", () => {
++  it.each([6 * 60_000, -6 * 60_000, 24 * 60 * 60_000])("rebuilds both model and request context after the clock moves by %s ms", async elapsed => {
++    const f = fixture(); const client = f.create(); await comparedView(f, client);
++    const before = JSON.stringify(f.input);
++    const now = f.input.asOf.getTime() + elapsed;
++    vi.setSystemTime(now);
++    const selected = { ...options, scopeFilter: "combined" as const };
++    const actual = await client.view(selected);
++    expect(f.createLocal).toHaveBeenCalledOnce();
++    const fresh = f.createLocal.mock.calls[0][0];
++    expect(fresh.asOf.getTime()).toBe(now);
++    expect(fresh.snapshot).toBe(f.input.snapshot);
++    expect(fresh.statements).toBe(f.input.statements);
++    expect(f.local.dispose).toHaveBeenCalledOnce();
++    const model = createCashflowModel(fresh);
++    expect(actual).toEqual(model.view(selected));
++    expect((await measurement(f, 2)).status).toBe("match");
++    expect(JSON.parse(f.request.mock.calls[1][1]!.body as string).asOfMs).toBe(now);
++    expect(await client.month("2026-12")).toEqual(model.month("2026-12"));
++    expect((await measurement(f, 3)).status).toBe("match");
++    expect(JSON.stringify(f.input)).toBe(before);
++    client.dispose(); model.dispose();
++    expect(f.createLocal.mock.results[0].value.dispose).toHaveBeenCalledOnce();
++  });
++  it("reuses fresh model caches and renews before the complete comparison could exceed five minutes", async () => {
++    const f = fixture(); const client = f.create(); await comparedView(f, client);
++    vi.setSystemTime(f.input.asOf.getTime() + 4 * 60_000);
++    await client.view({ ...options, productFilter: "auto" }); await measurement(f, 2);
++    expect(f.createLocal).not.toHaveBeenCalled();
++    expect(f.local.dispose).not.toHaveBeenCalled();
++    vi.setSystemTime(f.input.asOf.getTime() + 4.5 * 60_000);
++    await client.view(options); await measurement(f, 3);
++    expect(f.createLocal).toHaveBeenCalledOnce();
++    expect(f.measure.mock.calls[2][0].status).toBe("match"); client.dispose();
++  });
++  it("renews after midnight even when less than five minutes elapsed", async () => {
++    const f = fixture();
++    f.input.asOf.setHours(23, 59, 0, 0);
++    vi.setSystemTime(f.input.asOf);
++    const client = f.create(); await comparedView(f, client);
++    vi.setSystemTime(f.input.asOf.getTime() + 120_000);
++    await client.view(options); await measurement(f, 2);
++    expect(f.createLocal).toHaveBeenCalledOnce();
++    expect(f.createLocal.mock.calls[0][0].asOf.getDate()).toBe(9);
++    expect(f.measure.mock.calls[1][0].status).toBe("match"); client.dispose();
++  });
++  it("recalculates the year-dependent horizon instead of merely sending a new timestamp", async () => {
++    const f = fixture(); const client = f.create();
++    const previous = await comparedView(f, client);
++    vi.setSystemTime(new Date(2027, 0, 1, 0, 1));
++    const actual = await client.view({ ...options, showPastYears: false });
++    const fresh = createCashflowModel({ ...f.input, asOf: new Date() });
++    const expected = fresh.view({ ...options, showPastYears: false });
++    expect(actual).toEqual(expected);
++    expect(actual).not.toEqual(previous);
++    expect((await measurement(f, 2)).status).toBe("match");
++    client.dispose(); fresh.dispose();
++  });
++  it("rebuilds the reference when the browser time zone changes", async () => {
++    const f = fixture();
++    const resolved = Intl.DateTimeFormat().resolvedOptions();
++    const zone = vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockReturnValue({ ...resolved, timeZone: "Europe/Prague" });
++    const client = f.create(); await comparedView(f, client);
++    zone.mockReturnValue({ ...resolved, timeZone: "America/New_York" });
++    await client.view(options);
++    expect((await measurement(f, 2)).status).toBe("match");
++    expect(f.createLocal).toHaveBeenCalledOnce();
++    expect(JSON.parse(f.request.mock.calls[1][1]!.body as string).timeZone).toBe("America/New_York"); client.dispose();
++  });
++  it("does not relabel a displayed detail with a fresh date after its overview expires", async () => {
++    const f = fixture(); const client = f.create(); await comparedView(f, client);
++    const expected = f.model.month("2026-12");
++    vi.setSystemTime(f.input.asOf.getTime() + 6 * 60_000);
++    expect(await client.month("2026-12")).toBe(expected);
++    expect((await measurement(f, 2))).toMatchObject({ kind: "month", status: "unavailable", reason: "stale_context" });
++    expect(f.request).toHaveBeenCalledOnce();
++    expect(f.createLocal).not.toHaveBeenCalled();
++    await client.view(options);
++    expect((await measurement(f, 3)).status).toBe("match"); client.dispose();
++  });
++  it("does not submit a stale context when authentication resumes after a suspended tab", async () => {
++    const f = fixture(); const late = deferred<string>(); f.getToken.mockImplementationOnce(() => late.promise);
++    const client = f.create(); await client.view(options);
++    await vi.waitFor(() => expect(f.getToken).toHaveBeenCalledOnce());
++    vi.setSystemTime(f.input.asOf.getTime() + 6 * 60_000);
++    late.resolve("synthetic-token");
++    expect((await measurement(f))).toMatchObject({ status: "unavailable", reason: "stale_context" });
++    expect(f.request).not.toHaveBeenCalled();
++    await client.view(options); expect((await measurement(f, 2)).status).toBe("match"); client.dispose();
++  });
++  it("cancels a late old comparison when renewing the model for a new filter", async () => {
++    const f = fixture(); const late = deferred<Response>(); f.request.mockImplementationOnce(() => late.promise);
++    const client = f.create(); await client.view(options);
++    await vi.waitFor(() => expect(f.request).toHaveBeenCalledOnce());
++    vi.setSystemTime(f.input.asOf.getTime() + 6 * 60_000);
++    await client.view({ ...options, productFilter: "auto" });
++    expect((await measurement(f)).status).toBe("match");
++    expect(f.request.mock.calls[0][1]!.signal!.aborted).toBe(true);
++    late.resolve(Response.json({ private: "old response" }));
++    await new Promise(resolve => setTimeout(resolve, 0));
++    expect(f.measure).toHaveBeenCalledOnce();
++    expect(f.createLocal).toHaveBeenCalledOnce(); client.dispose();
++  });
+   it("returns the original before hashing/auth, then verifies full overview and restored detail", async () => {
+     const f = fixture(); const client = f.create();
+     const overview = await client.view(options);
+--- a/src/app/cashflow/useCashflowView.ts
++++ b/src/app/cashflow/useCashflowView.ts
+@@ -42,7 +42,7 @@
+     const local = createCashflowWorkerClient({ dataset: activeDataset });
+     const session: Session = {
+       client: serverPilot ? createCashflowServerPilotClient({
+-        dataset: activeDataset, local,
++        dataset: activeDataset, local, createLocal: fresh => createCashflowWorkerClient({ dataset: fresh }),
+         getToken: async () => {
+           const { auth } = await import("../firebase");
+           const user = auth.currentUser;
+--- a/src/app/cashflow/useCashflowView.test.tsx
++++ b/src/app/cashflow/useCashflowView.test.tsx
+@@ -46,7 +46,7 @@
+ const makeDataset = (): CashflowDataset => ({
+   snapshot: { email: "advisor@example.test", myPosition: null, myCommissionMode: null,
+     hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [] },
+-  statements: [], asOf: new Date(2026, 8, 12, 12),
++  statements: [], asOf: new Date(),
+ });
+ const detail = (total = 10): MonthGroup => ({
+   key: "2026-09", year: 2026, monthIndex: 8, label: "Září 2026", total,
+@@ -155,6 +155,27 @@
+     expect(latest.pending).toBe(false);
+   });
+ 
++  it("replaces an expired pilot worker on filter change, hides old data and disposes the renewed worker on logout", async () => {
++    vi.useFakeTimers({ toFake: ["Date"] });
++    try {
++      await render({ ...props, serverPilot: true });
++      await resolveView();
++      vi.setSystemTime(props.dataset!.asOf.getTime() + 6 * 60_000);
++      await render({ ...props, options: { ...options, scopeFilter: "own" } });
++      expect(clients).toHaveLength(2);
++      expect(clients[0].client.dispose).toHaveBeenCalledOnce();
++      const fresh = mocks.createClient.mock.calls[1][0].dataset;
++      expect(fresh.asOf.getTime()).toBe(Date.now());
++      expect(fresh.snapshot).toBe(props.dataset!.snapshot);
++      expect(latest).toMatchObject({ overview: null, pending: true });
++      const expected = await resolveView(1, 0, overview(20));
++      expect(latest.overview).toBe(expected);
++      await render({ ...props, enabled: false, identity: null });
++      expect(clients[1].client.dispose).toHaveBeenCalledOnce();
++      expect(latest).toMatchObject({ overview: null, pending: false });
++    } finally { vi.useRealTimers(); }
++  });
++
+   it("hides the completed overview on the first commit of a new filter", async () => {
+     await render();
+     await resolveView();
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -96,7 +96,11 @@
+     };
+     const measure = vi.fn();
+     const client = createCashflowServerPilotClient({
+-      dataset: { ...fixture, asOf }, local, getToken: async () => "synthetic-token", measure,
++      dataset: { ...fixture, asOf }, local, createLocal: fresh => {
++        const model = createCashflowModel(fresh);
++        return { executionPath: "fallback", view: async selected => model.view(selected),
++          month: async key => model.month(key), verification: () => model.verification!(), dispose: () => model.dispose() };
++      }, getToken: async () => "synthetic-token", measure,
+       request: async (_url, init) => POST(new NextRequest("https://example.test/api/cashflow/view", { ...init, signal: init?.signal ?? undefined })),
+     });
+     try {
+@@ -114,6 +118,38 @@
+       expect(measure.mock.calls.at(-1)![0]).toMatchObject({ status: "unavailable", reason: "different_inputs" });
+     } finally { client.dispose(); }
+   });
++  it.each(WORKER_FILTER_CASES)("renews an idle browser calculation and matches the real endpoint for $id", async ({ options: selected }) => {
++    const source = structuredClone(fixture);
++    const before = cashflowCanonicalJson(source);
++    const createLocal = (fresh: Parameters<typeof createCashflowModel>[0]) => {
++      const model = createCashflowModel(fresh);
++      return { executionPath: "fallback" as const, view: async (value: CashflowViewOptions) => model.view(value),
++        month: async (key: string) => model.month(key), verification: () => model.verification!(), dispose: () => model.dispose() };
++    };
++    const dataset = { ...source, asOf };
++    const measure = vi.fn();
++    const client = createCashflowServerPilotClient({ dataset, local: createLocal(dataset), createLocal,
++      getToken: async () => "synthetic-token", measure,
++      request: async (_url, init) => POST(new NextRequest("https://example.test/api/cashflow/view", { ...init, signal: init?.signal ?? undefined })),
++    });
++    try {
++      await client.view(options);
++      await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(1));
++      expect(measure.mock.calls[0][0].status).toBe("match");
++      const now = new Date(asOf.getTime() + 6 * 60_000);
++      vi.setSystemTime(now);
++      const stale = await POST(request(await body(selected)));
++      expect(stale.status).toBe(409);
++      expect((await stale.json()).reason).toBe("stale_context");
++      const reference = runReference(source.snapshot, source.statements, selected, now);
++      const actual = await client.view(selected);
++      expect(actual.months).toEqual(reference.months.map(({ items, ...month }) => ({ ...month, itemCountLabel: formatCashflowItemCount(items) })));
++      await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(2));
++      expect(measure.mock.calls[1][0].status).toBe("match");
++      for (const month of reference.months) expect(cashflowCanonicalJson(await client.month(month.key))).toBe(cashflowCanonicalJson(month));
++      expect(cashflowCanonicalJson(source)).toBe(before);
++    } finally { client.dispose(); }
++  }, 30_000);
+   it.each(["CASHFLOW_SERVER_PILOT_ENABLED", "CASHFLOW_SERVER_PILOT_EMAILS"])("is disabled by default without %s", async flag => {
+     vi.stubEnv(flag, "");
+     expect((await POST(request(await body()))).status).toBe(404);

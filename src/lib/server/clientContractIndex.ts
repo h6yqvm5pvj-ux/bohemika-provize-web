@@ -114,13 +114,13 @@ export function clientContractFromIndex(data: Record<string, unknown>, adviserNa
   return result as ClientContractItem;
 }
 
-/** One bounded migration step for legacy advisers outside the viewer's team.
+/** One bounded migration step for legacy contracts of authorized owners.
  * Called separately from the main card, never while loading the directory.
  * A completed roster costs one metadata read on subsequent visits. */
 export async function advanceSharedClientIndex(db: Firestore, ownerEmails: string[]): Promise<boolean> {
   const owners = [...new Set(ownerEmails.map(email => email.trim().toLowerCase()).filter(Boolean))].sort();
   const fingerprint = createHash("sha256").update(JSON.stringify([VERSION, owners])).digest("hex");
-  const ref = db.collection("clientContractIndexMigrations").doc("shared-clients");
+  const ref = db.collection("clientContractIndexMigrations").doc(`shared-clients-${fingerprint}`);
   const state = (await ref.get()).data();
   if (state?.fingerprint === fingerprint && state.ready === true) return true;
   const start = state?.fingerprint === fingerprint ? Number(state.nextOwner) || 0 : 0;

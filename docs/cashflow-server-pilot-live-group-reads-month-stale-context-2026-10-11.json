@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "reportedOn": "2026-10-11",
+  "observedAt": null,
+  "recordedAt": "2026-10-11T14:08:35.387642+00:00",
+  "source": "User-provided text diagnostic after instructions to open a month using the previously matched own/prediction-off overview",
+  "comparison": {
+    "kind": "month",
+    "status": "unavailable",
+    "requestMs": 0.3,
+    "referenceMs": 22.5,
+    "serverTimingMs": {},
+    "reason": "stale_context"
+  },
+  "verification": {
+    "monthMatchReported": false,
+    "resultMismatchReported": false,
+    "exactMonthKeyCaptured": false,
+    "requestOptionsIndependentlyCaptured": false,
+    "resourceTimingIndependentlyCaptured": false,
+    "reportedScenario": "Month detail after the own overview without prediction; controls and exact month were not supplied",
+    "lastSuccessfulHostingVerification": {
+      "checkedAt": "2026-10-11T13:47:04.126Z",
+      "currentDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "currentDeploymentVerified": true,
+      "businessDataRead": false
+    },
+    "currentHostingMetadataRefetchedForThisClientSideFailure": false
+  },
+  "sourceAnalysis": {
+    "clientAndTestMatchReleaseManifest": true,
+    "sharedProtocolMatchesBaselineCommit": true,
+    "sourcesVerified": 3,
+    "maximumContextAgeMs": 300000,
+    "sameCalendarDayRequired": true,
+    "sameBrowserTimeZoneRequired": true,
+    "clientRejectsStaleContextBeforeRequest": true,
+    "clientSideRejectionEstablishedFromDiagnosticAndVerifiedCode": true,
+    "exactClockAndTimeZoneAtFailureCaptured": false,
+    "expiredAgeIsLikelyCauseButExactContextNotCaptured": true,
+    "localDetailReturnedBeforeBackgroundRejection": true,
+    "failureClearsMatchedSelection": true,
+    "newViewRebuildsExpiredReferenceAndRequestContext": true,
+    "noSafetyGuardRelaxationRequiredForRetest": true,
+    "nextVerification": "Close the month, force a new view by switching away from own and back with prediction off, wait for a fresh view/match, then immediately open and compare one month without an intervening chat round trip or reload."
+  },
+  "validation": {
+    "isolatedReviewedReleaseUsed": true,
+    "syntheticOnly": true,
+    "targetedExistingClientTestsPassed": 5,
+    "otherTestsSkippedByNameFilter": 66,
+    "staleDetailRejectedWithoutSecondNetworkRequest": true,
+    "newOverviewAfterExpirationMatches": true,
+    "refreshedModelAndSubsequentMonthMatch": true,
+    "referenceDateMatchesRequestDate": true,
+    "originalDetailRemainsDisplayed": true
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "runtimeChanged": false,
+  "businessDataWrites": false,
+  "productionSecretsChanged": false,
+  "contextGuardChanged": false
+}

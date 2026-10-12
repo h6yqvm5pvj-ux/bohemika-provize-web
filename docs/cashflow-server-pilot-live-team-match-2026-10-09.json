@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T09:01:46+02:00",
+  "observationSource": "User-provided browser screenshot after clearing diagnostic storage and restarting compare mode",
+  "domain": "https://bohemka.app",
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "contractNumberQueryEmpty": true
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 9629.3,
+    "referenceMs": 26.5,
+    "serverTimingMs": {
+      "cashflow_auth": 540.57,
+      "cashflow_inputs": 7900.73,
+      "cashflow_hash": 215.2,
+      "cashflow_compute": 682.23,
+      "cashflow_total": 9366.09
+    }
+  },
+  "releaseAssociation": {
+    "expectedReleaseDeploymentId": "dpl_HFViReVeKpL9p84M1Ztb8AxS8va7",
+    "requestDeploymentIdCaptured": false,
+    "currentHostingMetadataReverified": false,
+    "lastVerifiedAliasAt": "2026-10-08T18:08:36.563Z",
+    "limitation": "Current hosting metadata was unavailable during the follow-up. The observation proves a completed authenticated comparison on the visible domain, without independently identifying its deployment."
+  },
+  "interpretation": {
+    "sampleCount": 1,
+    "serverModelComputed": true,
+    "authenticatedCompletedViewMatchVerified": true,
+    "inputFingerprintMatched": true,
+    "fullMonthItemFingerprintMatched": true,
+    "allOverviewFieldsMatched": true,
+    "selectionObservedFromUI": true,
+    "requestOptionsCaptured": false,
+    "ownViewLiveVerified": false,
+    "allFilterCombinationsLiveVerified": false,
+    "monthDetailEndpointLiveVerified": false,
+    "idleContextRenewalLiveVerified": false,
+    "productionSpeedupVerified": false,
+    "displayCalculation": "original-client-reference",
+    "referenceMsExcludesInitialSourceReadsAndBackgroundVerification": true,
+    "dominantServerPhase": "inputs",
+    "inputShareOfServerTotalPercent": 84.35
+  },
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationCodeChanged": false,
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": [
+    "Own-scope view with all products",
+    "A new filter after more than five minutes idle without reloading",
+    "Prediction and monthly detail comparison"
+  ]
+}

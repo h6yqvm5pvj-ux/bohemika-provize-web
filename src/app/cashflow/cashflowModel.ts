@@ -1,6 +1,8 @@
 import { computeCashflow, type CashflowSnapshot } from "./computeCashflow";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import { formatCashflowItemCount } from "./cashflowLabels";
+import { hashCashflowValue } from "./shadowProtocol";
+import { calendarDate } from "@/app/lib/calendarDates";
 import {
   applyIntelligentCashflowPrediction,
   applyStatementMissingPayoutShifts,
@@ -33,7 +35,7 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
   if (!(initialDataset.asOf instanceof Date) || !Number.isFinite(initialDataset.asOf.getTime())) {
     throw new Error("Cashflow dataset requires a valid calculation date");
   }
-  let dataset: CashflowDataset | null = { ...initialDataset, asOf: new Date(initialDataset.asOf) };
+  let dataset: CashflowDataset | null = { ...initialDataset, asOf: calendarDate(initialDataset.asOf, initialDataset.asOf) };
   let currentMonths: MonthGroup[] | null = null;
   const clearCaches: Array<() => void> = [];
 
@@ -135,6 +137,14 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
     },
     month(key) {
       return currentMonths?.find(month => month.key === key) ?? null;
+    },
+    async verification() {
+      if (!dataset || !currentMonths) throw new Error("Cashflow view is unavailable");
+      const [inputHash, monthsHash] = await Promise.all([
+        hashCashflowValue({ snapshot: dataset.snapshot, statements: dataset.statements }),
+        hashCashflowValue(currentMonths),
+      ]);
+      return { inputHash, monthsHash };
     },
     dispose() {
       dataset = null;

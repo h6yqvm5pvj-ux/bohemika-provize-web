@@ -37,36 +37,23 @@ export function clientSharingAnchors(contracts: ClientContractItem[], viewer: Cl
   return viewer.selection ? selectClientContracts(authorized, viewer.email, viewer.selection, viewer.teamEmails.map(email => ({ email, name: viewer.adviserNames.get(email) ?? null }))) : authorized;
 }
 
-const adviserLabel = (email: string, storedName: unknown, names: Map<string, string | null>) => {
-  if (!email) return "Sjednavatel neuveden";
-  const name = text(names.get(email)) || text(storedName);
-  if (name) return name;
-  return email.split("@")[0]!.split(/[._-]/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || "Sjednavatel neuveden";
-};
-
-/** One snapshot supplies both the eligibility proof and candidate contracts.
- * Guessing a slug or saving a personal card cannot grant access to strangers.
- * Matching never expands transitively through another adviser's contacts. */
+/** Contacts select related contracts only within the independently authorized
+ * owner/team scope. Editable contact data never grants access to outsiders. */
 export async function readSharedClientContracts(db: Firestore, slug: string, viewer: ClientSharingViewer) {
+  const allowedOwners = new Set([viewer.email, ...viewer.teamEmails]);
   const snapshot = await db.collection(CLIENT_CONTRACT_LINKS_COLLECTION).where("clientSlug", "==", slug).get();
-  const candidates = snapshot.docs.map(doc => ({ doc, data: doc.data() })).filter(({ data }) => data.clientSlug === slug && typeof data.ownerEmail === "string" && typeof data.entryId === "string" && data.entryType !== "endorsement");
+  const candidates = snapshot.docs.map(doc => ({ data: doc.data() })).filter(({ data }) => data.clientSlug === slug && typeof data.ownerEmail === "string" && allowedOwners.has(data.ownerEmail) && typeof data.entryId === "string" && data.entryType !== "endorsement");
   const fullItem = (data: Record<string, unknown>) => clientContractFromIndex(data, viewer.adviserNames.get(String(data.ownerEmail)) ?? null);
   const anchors = clientSharingAnchors(candidates.map(({ data }) => fullItem(data)), viewer);
   if (!anchors.length) return null;
   const anchorKeys = new Set(anchors.map(item => `${item.adviserEmail}\0${item.id}`));
-  const allowedOwners = new Set([viewer.email, ...viewer.teamEmails]);
   const contracts: ClientContractItem[] = [];
   const summaries: SharedContractSummary[] = [];
-  for (const { doc, data } of candidates) {
+  for (const { data } of candidates) {
     if (anchorKeys.has(`${data.ownerEmail}\0${data.entryId}`)) continue;
     const candidate = fullItem(data);
     if (!anchors.some(anchor => matchesSharedClient(anchor, candidate))) continue;
-    if (allowedOwners.has(String(data.ownerEmail))) contracts.push(candidate);
-    else summaries.push({
-      shareId: doc.id,
-      productKey: typeof data.productKey === "string" ? data.productKey : null,
-      adviserName: adviserLabel(text(data.originalAdviserEmail), data.originalAdviserName, viewer.adviserNames),
-    });
+    contracts.push(candidate);
   }
   return { contracts, summaries, matchingAvailable: anchors.some(hasClientSharingContact) };
 }

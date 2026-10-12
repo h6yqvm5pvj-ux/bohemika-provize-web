@@ -48,7 +48,7 @@ describe("PDF občanské odpovědnosti", () => {
       // The brand logo precedes the product logos; the advisor QR may follow them.
       expect(page!.images.slice(1, end - offset + 1)).toEqual(expectedLogos.slice(offset, end));
     }
-    const fetched = vi.mocked(fetch).mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith("/icons/") && path !== "/icons/nadpislogo.jpg");
+    const fetched = vi.mocked(fetch).mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith("/icons/") && path !== "/icons/bohemika_logo.png");
     expect(new Set(fetched).size).toBe(new Set(LIABILITY_PRODUCTS.map((product) => product.logoPath)).size);
     for (const path of new Set(fetched)) {
       expect(fetched.filter((value) => value === path)).toHaveLength(1);

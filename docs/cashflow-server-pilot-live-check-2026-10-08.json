@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-08T16:23:24+02:00",
+  "observationSource": "User-provided browser screenshot of the whitelisted session diagnostics",
+  "domain": "https://bohemka.app",
+  "status": "server-comparison-unavailable-original-calculation-ready",
+  "page": {
+    "mode": "compare",
+    "status": "ready",
+    "profileReadyMs": 1409.6,
+    "statementsReadyMs": 2032.4,
+    "contractsReadyMs": 7626.5,
+    "overviewReadyMs": 8335,
+    "frameReadyMs": 8342.9
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "unavailable",
+    "requestMs": 618.2,
+    "referenceMs": 61.4,
+    "serverTimingMs": {
+      "cashflow_auth": 446.5,
+      "cashflow_total": 449.23
+    },
+    "reason": "time_zone",
+    "httpStatus": 409
+  },
+  "interpretation": {
+    "serverModelComputed": false,
+    "originalCalculationReady": true,
+    "liveServerMatchVerified": false,
+    "actualTimeZoneNamesCaptured": false,
+    "baselineSampleAvailable": false,
+    "productionSpeedupVerified": false,
+    "pageTimingsAreCumulativeMilestones": true,
+    "sampleCount": 1
+  },
+  "followupValidation": {
+    "testTimeZone": "UTC",
+    "targetedTestFiles": 3,
+    "targetedTestsPassed": 122,
+    "syntheticTimezoneComparison": {
+      "syntheticOnly": true,
+      "contracts": 12,
+      "identicalSerializedSourceData": true,
+      "referenceTimeZone": "Europe/Prague",
+      "serverTestTimeZone": "UTC",
+      "filtersCompared": 9,
+      "overviewMatches": 9,
+      "fullMonthItemsMatches": 1,
+      "matchingFilter": "tip",
+      "guardMustBePreserved": true
+    },
+    "workerThreadTimezoneProbe": {
+      "parentTimeZone": "UTC",
+      "requestedWorkerEnvironmentTimeZone": "Europe/Prague",
+      "resolvedWorkerNativeTimeZone": "UTC",
+      "isolationProven": false
+    }
+  },
+  "applicationCodeChanged": false,
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataWrites": false,
+  "identityAmountsAndPortfolioIncluded": false,
+  "nextRequiredVerification": "Explicit per-model timezone handling, full original/new output comparisons and another live authenticated sample"
+}

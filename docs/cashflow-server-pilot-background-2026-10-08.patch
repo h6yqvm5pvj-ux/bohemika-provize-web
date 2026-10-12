@@ -1,0 +1,669 @@
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+index 0f03102..9d11b2e 100644
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -88,7 +88,7 @@ describe("read-only server cashflow pilot", () => {
+     const value = await (await POST(request(await body(options, "2001-01")))).json();
+     expect(parseCashflowSnapshot(value.payload)).toEqual({ items: [], months: [] });
+   });
+-  it("connects the real client, model, endpoint and Date codec, then falls back after a source change", async () => {
++  it("connects the background client, model, endpoint and Date codec, then detects a source change", async () => {
+     const model = createCashflowModel({ ...structuredClone(fixture), asOf });
+     const local = { executionPath: "fallback" as const,
+       view: async (options: CashflowViewOptions) => model.view(options),
+@@ -99,15 +99,20 @@ describe("read-only server cashflow pilot", () => {
+       dataset: { ...fixture, asOf }, local, getToken: async () => "synthetic-token", measure,
+       request: async (_url, init) => POST(new NextRequest("https://example.test/api/cashflow/view", { ...init, signal: init?.signal ?? undefined })),
+     });
+-    const overview = await client.view(options);
+-    expect(measure.mock.calls.at(-1)![0].status).toBe("match");
+-    const key = overview.months.find(month => model.month(month.key)!.items.length > 0)!.key;
+-    expect(await client.month(key)).toEqual(model.month(key));
+-    expect(measure.mock.calls.at(-1)![0].status).toBe("match");
+-    fixture.snapshot.ownEntries[0].items![0].amount += 100;
+-    expect(await client.month(key)).toBe(model.month(key));
+-    expect(measure.mock.calls.at(-1)![0].status).toBe("unavailable");
+-    client.dispose();
++    try {
++      const overview = await client.view(options);
++      expect(measure).not.toHaveBeenCalled();
++      await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(1));
++      expect(measure.mock.calls.at(-1)![0].status).toBe("match");
++      const key = overview.months.find(month => model.month(month.key)!.items.length > 0)!.key;
++      expect(await client.month(key)).toEqual(model.month(key));
++      await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(2));
++      expect(measure.mock.calls.at(-1)![0].status).toBe("match");
++      fixture.snapshot.ownEntries[0].items![0].amount += 100;
++      expect(await client.month(key)).toBe(model.month(key));
++      await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(3));
++      expect(measure.mock.calls.at(-1)![0]).toMatchObject({ status: "unavailable", reason: "different_inputs" });
++    } finally { client.dispose(); }
+   });
+   it.each(["CASHFLOW_SERVER_PILOT_ENABLED", "CASHFLOW_SERVER_PILOT_EMAILS"])("is disabled by default without %s", async flag => {
+     vi.stubEnv(flag, "");
+diff --git a/src/app/cashflow/cashflowServerPilot.client.test.ts b/src/app/cashflow/cashflowServerPilot.client.test.ts
+index f0833f7..e84f848 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.test.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -51,32 +51,50 @@ const deferred = <T>() => {
+ beforeEach(() => { vi.useRealTimers(); });
+ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+ 
+-describe("server pilot with mandatory comparison and local fallback", () => {
+-  it("uses only a matching overview/detail and restores every Date", async () => {
++const measurement = async (f: ReturnType<typeof fixture>, count = 1) => {
++  await vi.waitFor(() => expect(f.measure).toHaveBeenCalledTimes(count));
++  return f.measure.mock.calls[count - 1][0];
++};
++const comparedView = async (f: ReturnType<typeof fixture>, client: ReturnType<typeof f.create>) => {
++  const overview = await client.view(options);
++  await measurement(f);
++  return overview;
++};
++const prepareVerification = async (f: ReturnType<typeof fixture>) => {
++  const overview = f.model.view(options);
++  const verification = await f.model.verification!();
++  f.local.verification.mockResolvedValue(verification);
++  return Response.json({ ok: true, version: CASHFLOW_SERVER_PILOT_VERSION, kind: "view", ...verification, overview });
++};
++
++describe("background server comparison with the original displayed result", () => {
++  it("returns the original before hashing/auth, then verifies full overview and restored detail", async () => {
+     const f = fixture(); const client = f.create();
+     const overview = await client.view(options);
+-    const reference = f.local.view.mock.results[0];
+-    expect(overview).toEqual(await reference.value);
+-    expect(overview).not.toBe(await reference.value);
++    expect(overview).toBe(await f.local.view.mock.results[0].value);
++    expect(f.local.verification).not.toHaveBeenCalled();
++    expect(f.getToken).not.toHaveBeenCalled();
++    expect(f.request).not.toHaveBeenCalled();
++    expect((await measurement(f)).status).toBe("match");
+     const detail = await client.month(overview.months[0].key);
+-    expect(detail).toEqual(await f.local.month.mock.results[0].value);
++    expect(detail).toBe(await f.local.month.mock.results[0].value);
+     expect(detail!.items[0].date).toBeInstanceOf(Date);
++    expect((await measurement(f, 2)).status).toBe("match");
+     expect(f.request).toHaveBeenCalledTimes(2);
+     expect(f.request.mock.calls[0][0]).toBe("/api/cashflow/view");
+     const raw = JSON.parse(f.request.mock.calls[0][1]!.body as string);
+     expect(Object.keys(raw).sort()).toEqual(["asOfMs", "inputHash", "kind", "options", "timeZone", "version"]);
+     expect(JSON.stringify(raw)).not.toMatch(/advisor@example|Synthetic client|synthetic-test-token/);
+     expect(f.request.mock.calls[0][1]!.headers).toMatchObject({ Authorization: "Bearer synthetic-test-token" });
+-    expect(f.measure.mock.calls.map(([value]) => value.status)).toEqual(["match", "match"]);
+     client.dispose();
+   });
+   it("handles a missing month without creating a zero-valued replacement", async () => {
+-    const f = fixture(); const client = f.create(); await client.view(options);
++    const f = fixture(); const client = f.create(); await comparedView(f, client);
+     expect(await client.month("2001-1")).toBeNull();
+-    expect(f.measure.mock.calls.at(-1)![0].status).toBe("match");
++    expect((await measurement(f, 2)).status).toBe("match");
+     client.dispose();
+   });
+-  it.each(["monthsHash", "overview", "inputHash", "version", "kind"])("falls back when %s disagrees, even if totals otherwise agree", async field => {
++  it.each(["monthsHash", "overview", "inputHash", "version", "kind"])("rejects %s disagreement even if totals agree", async field => {
+     const f = fixture(); const original = f.request.getMockImplementation()!;
+     f.request.mockImplementation(async (...args) => {
+       const raw = await (await original(...args)).json();
+@@ -85,13 +103,13 @@ describe("server pilot with mandatory comparison and local fallback", () => {
+       return Response.json(raw);
+     });
+     const client = f.create();
+-    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++    expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value);
+     await client.month("2026-12");
+     expect(f.request).toHaveBeenCalledTimes(1);
+     expect(f.measure.mock.calls[0][0].status).not.toBe("match");
+     client.dispose();
+   });
+-  it.each(["amount", "ownerEmail", "date", "monthKey", "monthsHash"])("keeps the original month when %s changes without trusting the sum", async field => {
++  it.each(["amount", "ownerEmail", "date", "monthKey", "monthsHash"])("invalidates month comparison when %s changes", async field => {
+     const f = fixture(); const original = f.request.getMockImplementation()!;
+     f.request.mockImplementation(async (...args) => {
+       const raw = await (await original(...args)).json();
+@@ -101,17 +119,17 @@ describe("server pilot with mandatory comparison and local fallback", () => {
+       }
+       return Response.json(raw);
+     });
+-    const client = f.create(); await client.view(options);
++    const client = f.create(); await comparedView(f, client);
+     expect(await client.month("2026-12")).toBe(await f.local.month.mock.results[0].value);
+-    expect(f.measure.mock.calls.at(-1)![0].status).toBe("mismatch");
++    expect((await measurement(f, 2)).status).toBe("mismatch");
+     await client.month("2026-12");
+     expect(f.request).toHaveBeenCalledTimes(2);
+     client.dispose();
+   });
+-  it.each([401, 403, 409, 429, 503])("keeps the reference after server status %s", async status => {
++  it.each([401, 403, 409, 429, 503])("preserves the reference after server status %s", async status => {
+     const f = fixture(); f.request.mockResolvedValue(new Response("Sensitive upstream details", { status }));
+     const client = f.create();
+-    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++    expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value);
+     expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/Sensitive|advisor@example|token/);
+     expect(Object.keys(f.measure.mock.calls[0][0]).sort()).toEqual([
+       "httpStatus", "kind", "reason", "referenceMs", "requestMs", "serverTimingMs", "status",
+@@ -119,98 +137,166 @@ describe("server pilot with mandatory comparison and local fallback", () => {
+     client.dispose();
+   });
+   it.each(["time_zone", "different_inputs", "incomplete_inputs", "resource_limit", "stale_context", "timeout"])(
+-    "records a safe %s reason and timing while preserving the complete reference", async reason => {
++    "records only safe %s diagnostic fields", async reason => {
+       const f = fixture();
+       f.request.mockResolvedValue(Response.json({ ok: false, reason, error: "private upstream details", email: "private@example.test" }, {
+         status: 503, headers: { "Server-Timing": "cashflow_inputs;dur=4.25, private_phase;dur=12" },
+       }));
+       const client = f.create();
+-      expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++      expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value);
+       expect(f.measure.mock.calls[0][0]).toMatchObject({ status: "unavailable", reason, httpStatus: 503,
+         serverTimingMs: { cashflow_inputs: 4.25 } });
+       expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/private|upstream|email/);
+       client.dispose();
+     });
+-  it("ignores arbitrary server reason strings and never persists upstream errors", async () => {
++  it("ignores arbitrary server reason strings", async () => {
+     const f = fixture();
+     f.request.mockResolvedValue(Response.json({ reason: "private@example.test", error: "private-token" }, { status: 503 }));
+-    const client = f.create(); await client.view(options);
++    const client = f.create(); await comparedView(f, client);
+     expect(f.measure.mock.calls[0][0].reason).toBe("http");
+-    expect(JSON.stringify(f.measure.mock.calls)).not.toContain("private");
+-    client.dispose();
++    expect(JSON.stringify(f.measure.mock.calls)).not.toContain("private"); client.dispose();
+   });
+-  it.each(["token", "network", "json", "verification"])("isolates a %s failure from the displayed result", async phase => {
++  it.each(["token", "network", "json", "verification"])("isolates a %s failure from the display", async phase => {
+     const f = fixture();
+-    if (phase === "token") f.getToken.mockRejectedValue(new Error("Token unavailable"));
+-    if (phase === "network") f.request.mockRejectedValue(new Error("Network unavailable"));
++    if (phase === "token") f.getToken.mockRejectedValue(new Error("Private token failure"));
++    if (phase === "network") f.request.mockRejectedValue(new Error("Private network failure"));
+     if (phase === "json") f.request.mockResolvedValue(new Response("{"));
+-    if (phase === "verification") f.local.verification.mockRejectedValue(new Error("Hash unavailable"));
++    if (phase === "verification") f.local.verification.mockRejectedValue(new Error("Private hash failure"));
+     const client = f.create();
+-    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
+-    client.dispose();
++    expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value);
++    expect(f.measure.mock.calls[0][0].status).toBe("unavailable");
++    expect(JSON.stringify(f.measure.mock.calls)).not.toContain("Private"); client.dispose();
+   });
+-  it.each(["token", "network"])("bounds a stalled %s operation and returns the reference", async phase => {
++  it.each(["verification", "token", "request", "response"] as const)("bounds stalled %s without delaying the displayed result", async phase => {
++    const f = fixture(); await prepareVerification(f);
+     vi.useFakeTimers();
+-    const f = fixture();
+-    if (phase === "token") f.getToken.mockImplementation(() => new Promise(() => undefined));
+-    else f.request.mockImplementation(() => new Promise(() => undefined));
++    const stalled = () => new Promise<never>(() => undefined);
++    if (phase === "verification") f.local.verification.mockImplementation(stalled);
++    if (phase === "token") f.getToken.mockImplementation(stalled);
++    if (phase === "request") f.request.mockImplementation(stalled);
++    if (phase === "response") {
++      const response = Response.json({}, { headers: { "Server-Timing": "cashflow_auth;dur=3, private;dur=99" } });
++      vi.spyOn(response, "json").mockImplementation(stalled); f.request.mockResolvedValue(response);
++    }
+     const client = f.create(20);
+-    const result = client.view(options);
+-    await vi.waitFor(() => expect(f.getToken).toHaveBeenCalled());
++    const result = await client.view(options);
++    expect(result).toBe(await f.local.view.mock.results[0].value);
++    expect(f.measure).not.toHaveBeenCalled();
++    await vi.advanceTimersByTimeAsync(0);
+     await vi.advanceTimersByTimeAsync(20);
+-    expect(await result).toBe(await f.local.view.mock.results[0].value);
+-    expect(f.measure.mock.calls[0][0].reason).toBe("timeout");
+-    expect(vi.getTimerCount()).toBe(0);
+-    client.dispose();
++    expect(f.measure.mock.calls[0][0]).toMatchObject({ status: "unavailable", reason: "timeout", timeoutPhase: phase });
++    if (phase === "response") expect(f.measure.mock.calls[0][0]).toMatchObject({ httpStatus: 200, serverTimingMs: { cashflow_auth: 3 } });
++    expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/private|advisor@example|Synthetic client|contractNumber|amount/);
++    expect(vi.getTimerCount()).toBe(0); client.dispose();
+   });
+-  it("rejects a late view after filters change instead of returning either old result", async () => {
+-    const f = fixture(); const late = deferred<Response>();
+-    f.request.mockImplementationOnce(() => late.promise);
++  it("can confirm a response after eight seconds while the original has already returned", async () => {
++    const f = fixture(); const response = await prepareVerification(f);
++    const late = deferred<Response>(); f.request.mockImplementation(() => late.promise);
++    vi.useFakeTimers();
+     const client = f.create();
+-    const old = client.view(options).catch(error => error);
++    const original = await client.view(options);
++    expect(original).toBe(await f.local.view.mock.results[0].value);
++    await vi.advanceTimersByTimeAsync(0);
++    await vi.advanceTimersByTimeAsync(9_000);
++    expect(f.measure).not.toHaveBeenCalled();
++    expect(f.request.mock.calls[0][1]!.signal!.aborted).toBe(false);
++    late.resolve(response);
++    await vi.advanceTimersByTimeAsync(0);
++    expect(f.measure.mock.calls[0][0].status).toBe("match");
++    expect(vi.getTimerCount()).toBe(0); client.dispose();
++  });
++  it("cancels a queued comparison before hashing or sending any request", async () => {
++    const f = fixture(); vi.useFakeTimers(); const client = f.create();
++    await client.view(options); client.dispose(); client.dispose();
++    await vi.runAllTimersAsync();
++    expect(f.local.verification).not.toHaveBeenCalled(); expect(f.request).not.toHaveBeenCalled();
++    expect(f.measure).not.toHaveBeenCalled(); expect(f.local.dispose).toHaveBeenCalledTimes(1);
++  });
++  it("ignores a late server response after filters change, including a fetch that ignores abort", async () => {
++    const f = fixture(); const late = deferred<Response>(); f.request.mockImplementationOnce(() => late.promise);
++    const client = f.create(); const first = await client.view(options);
+     await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(1));
+-    const changed = { ...options, productFilter: "auto" as const };
+-    const latest = await client.view(changed);
+-    expect((await old).name).toBe("AbortError");
+-    late.resolve(Response.json({ ok: true }));
+-    expect(latest.months).toEqual([]);
+-    expect(f.measure.mock.calls).toHaveLength(1);
+-    client.dispose();
++    const latest = await client.view({ ...options, productFilter: "auto" });
++    expect(latest.months).toEqual([]); expect(first.months.length).toBeGreaterThan(0);
++    expect(f.request.mock.calls[0][1]!.signal!.aborted).toBe(true);
++    await measurement(f);
++    late.resolve(Response.json({ ok: true, overview: { private: "old data" } }));
++    await new Promise(resolve => setTimeout(resolve, 0));
++    expect(f.measure).toHaveBeenCalledTimes(1); expect(f.measure.mock.calls[0][0].status).toBe("match");
++    // A stale response must not erase the latest verified selection.
++    await client.month("2026-12"); expect((await measurement(f, 2)).status).toBe("match"); client.dispose();
+   });
+-  it("rejects in-flight month work after dispose and releases the local client once", async () => {
+-    const f = fixture(); const client = f.create(); await client.view(options);
+-    f.request.mockImplementation(() => new Promise(() => undefined));
+-    const detail = client.month("2026-12").catch(error => error);
++  it.each(["verification", "token"])("ignores a late %s before it can submit an old request", async phase => {
++    const f = fixture(); const response = await prepareVerification(f);
++    const verification = await response.json();
++    const late = deferred<never>();
++    if (phase === "verification") f.local.verification.mockImplementationOnce(() => late.promise);
++    else f.getToken.mockImplementationOnce(() => late.promise);
++    const client = f.create(); await client.view(options);
++    await vi.waitFor(() => expect(phase === "verification" ? f.local.verification : f.getToken).toHaveBeenCalledTimes(1));
++    await client.view({ ...options, productFilter: "auto" }); await measurement(f);
++    late.resolve((phase === "verification" ? verification : "synthetic-late-token") as never);
++    await new Promise(resolve => setTimeout(resolve, 0));
++    expect(f.request).toHaveBeenCalledTimes(1); expect(f.measure).toHaveBeenCalledTimes(1); client.dispose();
++  });
++  it("supersedes a detail comparison without invalidating the latest selection", async () => {
++    const f = fixture(); const client = f.create(); await comparedView(f, client);
++    const late = deferred<Response>(); f.request.mockImplementationOnce(() => late.promise);
++    const first = await client.month("2026-12");
+     await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
++    expect(await client.month("2026-12")).toEqual(first);
++    expect((await measurement(f, 2)).status).toBe("match");
++    late.resolve(Response.json({ ok: true, payload: "private outdated detail" }));
++    await new Promise(resolve => setTimeout(resolve, 0));
++    await client.month("2026-12"); expect((await measurement(f, 3)).status).toBe("match");
++    expect(f.request).toHaveBeenCalledTimes(4); client.dispose();
++  });
++  it.each(["view", "month"])("suppresses pending %s comparison on disposal", async kind => {
++    const f = fixture(); const client = f.create();
++    if (kind === "month") await comparedView(f, client);
++    f.request.mockImplementation(() => new Promise(() => undefined));
++    if (kind === "view") await client.view(options); else await client.month("2026-12");
++    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(kind === "view" ? 1 : 2));
+     client.dispose(); client.dispose();
+-    expect((await detail).name).toBe("AbortError");
++    await new Promise(resolve => setTimeout(resolve, 0));
++    expect(f.measure).toHaveBeenCalledTimes(kind === "view" ? 0 : 1);
+     expect(f.local.dispose).toHaveBeenCalledTimes(1);
+     await expect(client.view(options)).rejects.toMatchObject({ name: "AbortError" });
+     await expect(client.month("2026-12")).rejects.toMatchObject({ name: "AbortError" });
+   });
++  it("rejects a late original calculation after filters change", async () => {
++    const f = fixture(); const late = deferred<Awaited<ReturnType<typeof f.local.view>>>();
++    f.local.view.mockImplementationOnce(() => late.promise);
++    const client = f.create(); const old = client.view(options).catch(error => error);
++    const latest = await client.view({ ...options, productFilter: "auto" });
++    late.resolve(latest); expect((await old).name).toBe("AbortError");
++    await measurement(f); expect(f.request).toHaveBeenCalledTimes(1); client.dispose();
++  });
++  it("does not compare a detail before the complete overview has matched", async () => {
++    const f = fixture(); const client = f.create(); await client.view(options);
++    expect(await client.month("2026-12")).toBe(await f.local.month.mock.results[0].value);
++    await measurement(f); expect(f.request).toHaveBeenCalledTimes(1); client.dispose();
++  });
+   it("preserves an original calculation failure instead of fabricating data", async () => {
+     const f = fixture(); f.local.view.mockRejectedValue(new Error("Original unavailable"));
+-    const client = f.create();
+-    await expect(client.view(options)).rejects.toThrow("Original unavailable");
+-    expect(f.request).not.toHaveBeenCalled(); client.dispose();
++    const client = f.create(); await expect(client.view(options)).rejects.toThrow("Original unavailable");
++    expect(f.request).not.toHaveBeenCalled(); expect(f.measure).not.toHaveBeenCalled(); client.dispose();
+   });
+   it("ignores a failing diagnostic callback", async () => {
+     const f = fixture(); f.measure.mockImplementation(() => { throw new Error("Storage unavailable"); });
+-    const client = f.create();
+-    expect(await client.view(options)).toEqual(await f.local.view.mock.results[0].value); client.dispose();
++    const client = f.create(); expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value); client.dispose();
+   });
+-  it("records bounded server phases and reference latency without identifiers or amounts", async () => {
++  it("records bounded server phases without identifiers or amounts", async () => {
+     const f = fixture(); const original = f.request.getMockImplementation()!;
+     f.request.mockImplementation(async (...args) => {
+       const response = await original(...args);
+       response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, private_account;dur=123");
+       return response;
+     });
+-    const client = f.create(); await client.view(options);
+-    const measurement = f.measure.mock.calls[0][0];
+-    expect(measurement.referenceMs).toBeGreaterThanOrEqual(0);
+-    expect(measurement.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5 });
+-    expect(JSON.stringify(measurement)).not.toMatch(/account|advisor@example|Synthetic client|token|amount|contractNumber/);
+-    client.dispose();
++    const client = f.create(); await comparedView(f, client);
++    const result = f.measure.mock.calls[0][0];
++    expect(result.referenceMs).toBeGreaterThanOrEqual(0);
++    expect(result.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5 });
++    expect(JSON.stringify(result)).not.toMatch(/account|advisor@example|Synthetic client|token|amount|contractNumber/); client.dispose();
+   });
+ });
+diff --git a/src/app/cashflow/cashflowServerPilot.client.ts b/src/app/cashflow/cashflowServerPilot.client.ts
+index 3ed813e..bd55887 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.ts
+@@ -1,5 +1,5 @@
+ import type { CashflowWorkerClient } from "./cashflowWorker.client";
+-import type { CashflowDataset, CashflowOverview, CashflowVerification } from "./cashflowWorker.types";
++import type { CashflowDataset, CashflowVerification } from "./cashflowWorker.types";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import { CASHFLOW_SERVER_PILOT_VERSION, parseCashflowServerFallbackReason, type CashflowServerFallbackReason, type CashflowServerRequest } from "./cashflowServerProtocol";
+ import { parseCashflowSnapshot } from "./cashflowSnapshotWire";
+@@ -14,11 +14,13 @@ export type CashflowServerPilotMeasurement = {
+   serverTimingMs: CashflowServerTiming;
+   reason?: CashflowServerFallbackReason;
+   httpStatus?: number;
++  timeoutPhase?: "verification" | "token" | "request" | "response";
+ };
+ 
+ class PilotUnavailable extends Error {
+   constructor(readonly reason: CashflowServerFallbackReason, readonly httpStatus?: number,
+-    readonly serverTimingMs: CashflowServerTiming = {}) { super("Cashflow server unavailable"); }
++    readonly serverTimingMs: CashflowServerTiming = {},
++    readonly timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"]) { super("Cashflow server unavailable"); }
+ }
+ 
+ function recordMeasurement(value: CashflowServerPilotMeasurement) {
+@@ -30,12 +32,12 @@ const aborted = () => new DOMException("Cashflow selection changed", "AbortError
+ const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+ 
+ /**
+- * Read-only pilot. A server result is used only after comparison with the local
+- * reference, including a worker-generated hash of every displayed month/item.
+- * Every failure keeps the existing calculation. There is no persisted portfolio.
++ * Read-only comparison in the background. The original result is displayed as
++ * soon as it is ready. A match requires the complete reference, including the
++ * worker hash of every month/item; it never publishes unverified server values.
+  */
+ export function createCashflowServerPilotClient({ dataset, local, getToken, request = fetch,
+-  measure = recordMeasurement, timeoutMs = 8_000 }: {
++  measure = recordMeasurement, timeoutMs = 25_000 }: {
+   dataset: CashflowDataset;
+   local: CashflowWorkerClient;
+   getToken: () => Promise<string>;
+@@ -46,57 +48,92 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000) throw new RangeError("Invalid pilot timeout");
+   let revision = 0;
+   let disposed = false;
+-  let controller: AbortController | null = null;
++  type Job = {
++    revision: number;
++    controller: AbortController;
++    scheduled: ReturnType<typeof setTimeout> | null;
++    phase: NonNullable<CashflowServerPilotMeasurement["timeoutPhase"]>;
++    serverTimingMs: CashflowServerTiming;
++    httpStatus?: number;
++  };
++  let comparison: Job | null = null;
+   let selected: { revision: number; options: CashflowViewOptions; verification: CashflowVerification } | null = null;
+   const current = (expected: number) => !disposed && expected === revision;
+   const checkCurrent = (expected: number) => { if (!current(expected)) throw aborted(); };
++  const jobCurrent = (job: Job) => current(job.revision) && comparison === job;
++  const checkJob = (job: Job) => { if (!jobCurrent(job) || job.controller.signal.aborted) throw aborted(); };
++  const cancelComparison = () => {
++    const previous = comparison;
++    comparison = null;
++    if (!previous) return;
++    if (previous.scheduled !== null) clearTimeout(previous.scheduled);
++    previous.controller.abort();
++  };
+   const report = (kind: CashflowServerRequest["kind"], status: CashflowServerPilotMeasurement["status"], start: number,
+-    referenceMs: number, serverTimingMs: CashflowServerTiming = {}, reason?: CashflowServerFallbackReason, httpStatus?: number) => {
++    referenceMs: number, serverTimingMs: CashflowServerTiming = {}, reason?: CashflowServerFallbackReason, httpStatus?: number,
++    timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"]) => {
+     try { measure({ kind, status, requestMs: Math.max(0, performance.now() - start), referenceMs, serverTimingMs,
+-      ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}) }); }
++      ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}), ...(timeoutPhase ? { timeoutPhase } : {}) }); }
+     catch { /* No telemetry failure may replace the reference result. */ }
+   };
+   const reportFailure = (kind: CashflowServerRequest["kind"], error: unknown, start: number, referenceMs: number) => {
+     const failure = error instanceof PilotUnavailable ? error : new PilotUnavailable("unavailable");
+-    report(kind, "unavailable", start, referenceMs, failure.serverTimingMs, failure.reason, failure.httpStatus);
++    report(kind, "unavailable", start, referenceMs, failure.serverTimingMs, failure.reason, failure.httpStatus, failure.timeoutPhase);
+   };
+-  const read = async (body: CashflowServerRequest, expected: number): Promise<{ value: Record<string, unknown>; serverTimingMs: CashflowServerTiming }> => {
+-    checkCurrent(expected);
+-    controller?.abort();
+-    const active = new AbortController();
+-    controller = active;
+-    const stopped = new Promise<never>((_resolve, reject) => {
+-      active.signal.addEventListener("abort", () => reject(aborted()), { once: true });
++  const startComparison = (expected: number, kind: CashflowServerRequest["kind"], referenceMs: number,
++    work: (job: Job, start: number) => Promise<void>) => {
++    cancelComparison();
++    const job: Job = { revision: expected, controller: new AbortController(), scheduled: null,
++      phase: kind === "view" ? "verification" : "token", serverTimingMs: {} };
++    comparison = job;
++    // Let the reference promise settle before even starting hashing or auth.
++    job.scheduled = setTimeout(() => {
++      job.scheduled = null;
++      if (!jobCurrent(job)) return;
++      const start = performance.now();
++      let timedOut = false;
++      const stopped = new Promise<never>((_resolve, reject) => {
++        job.controller.signal.addEventListener("abort", () => reject(timedOut
++          ? new PilotUnavailable("timeout", job.httpStatus, job.serverTimingMs, job.phase) : aborted()), { once: true });
++      });
++      const timer = setTimeout(() => { timedOut = true; job.controller.abort(); }, timeoutMs);
++      void (async () => {
++        try { await Promise.race([work(job, start), stopped]); }
++        catch (error) {
++          if (!jobCurrent(job)) return;
++          if (kind === "month") selected = null;
++          reportFailure(kind, error, start, referenceMs);
++        } finally {
++          clearTimeout(timer);
++          if (comparison === job) comparison = null;
++          job.controller.abort();
++        }
++      })();
++    }, 0);
++  };
++  const read = async (body: CashflowServerRequest, job: Job): Promise<{ value: Record<string, unknown>; serverTimingMs: CashflowServerTiming }> => {
++    checkJob(job);
++    job.phase = "token";
++    const token = await getToken();
++    checkJob(job);
++    if (!token) throw aborted();
++    job.phase = "request";
++    const response = await request("/api/cashflow/view", {
++      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
++      body: JSON.stringify(body), signal: job.controller.signal, cache: "no-store",
+     });
+-    let timedOut = false;
+-    const timer = setTimeout(() => { timedOut = true; active.abort(); }, timeoutMs);
+-    try {
+-      const work = async () => {
+-        const token = await getToken();
+-        checkCurrent(expected);
+-        if (active.signal.aborted || !token) throw aborted();
+-        const response = await request("/api/cashflow/view", {
+-          method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+-          body: JSON.stringify(body), signal: active.signal, cache: "no-store",
+-        });
+-        const serverTimingMs = parseCashflowServerTiming(response.headers.get("Server-Timing"));
+-        const value: unknown = await response.json().catch(() => null);
+-        if (!response.ok) throw new PilotUnavailable(
+-          (object(value) && parseCashflowServerFallbackReason(value.reason)) || "http", response.status, serverTimingMs);
+-        if (!object(value) || value.ok !== true || value.version !== CASHFLOW_SERVER_PILOT_VERSION ||
+-          value.kind !== body.kind || value.inputHash !== body.inputHash) throw new PilotUnavailable("invalid_response", response.status, serverTimingMs);
+-        return { value, serverTimingMs };
+-      };
+-      return await Promise.race([work(), stopped]);
+-    } catch (error) {
+-      if (timedOut) throw new PilotUnavailable("timeout");
+-      throw error;
+-    } finally {
+-      clearTimeout(timer);
+-      if (controller === active) controller = null;
+-      // Release pending work even when an injected fetch ignores the signal.
+-      active.abort();
+-    }
++    checkJob(job);
++    job.phase = "response";
++    const serverTimingMs = parseCashflowServerTiming(response.headers.get("Server-Timing"));
++    job.serverTimingMs = serverTimingMs;
++    job.httpStatus = response.status;
++    const value: unknown = await response.json().catch(() => null);
++    checkJob(job);
++    if (!response.ok) throw new PilotUnavailable(
++      (object(value) && parseCashflowServerFallbackReason(value.reason)) || "http", response.status, serverTimingMs);
++    if (!object(value) || value.ok !== true || value.version !== CASHFLOW_SERVER_PILOT_VERSION ||
++      value.kind !== body.kind || value.inputHash !== body.inputHash) throw new PilotUnavailable("invalid_response", response.status, serverTimingMs);
++    return { value, serverTimingMs };
+   };
+   const bodyFor = (kind: CashflowServerRequest["kind"], options: CashflowViewOptions, verification: CashflowVerification, monthKey?: string): CashflowServerRequest => ({
+     version: CASHFLOW_SERVER_PILOT_VERSION, kind, options,
+@@ -110,33 +147,28 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+       if (disposed) throw aborted();
+       const expected = ++revision;
+       selected = null;
+-      controller?.abort();
++      cancelComparison();
+       const copiedOptions = { ...options };
+       // Failure of the reference itself follows the existing UI error path.
+       const referenceStart = performance.now();
+       const reference = await local.view(copiedOptions);
+       const referenceMs = Math.max(0, performance.now() - referenceStart);
+       checkCurrent(expected);
+-      const start = performance.now();
+-      try {
++      startComparison(expected, "view", referenceMs, async (job, start) => {
+         if (!local.verification) throw new PilotUnavailable("verification");
+         const verification = await local.verification().catch(() => { throw new PilotUnavailable("verification"); });
+-        checkCurrent(expected);
+-        const { value, serverTimingMs } = await read(bodyFor("view", copiedOptions, verification), expected);
+-        checkCurrent(expected);
++        checkJob(job);
++        const { value, serverTimingMs } = await read(bodyFor("view", copiedOptions, verification), job);
++        checkJob(job);
+         if (value.monthsHash !== verification.monthsHash ||
+           cashflowCanonicalJson(value.overview) !== cashflowCanonicalJson(reference)) {
+           report("view", "mismatch", start, referenceMs, serverTimingMs, "different_result");
+-          return reference;
++          return;
+         }
+         selected = { revision: expected, options: copiedOptions, verification };
+         report("view", "match", start, referenceMs, serverTimingMs);
+-        return value.overview as CashflowOverview;
+-      } catch (error) {
+-        checkCurrent(expected);
+-        reportFailure("view", error, start, referenceMs);
+-        return reference;
+-      }
++      });
++      return reference;
+     },
+     async month(key) {
+       if (disposed) throw aborted();
+@@ -147,10 +179,9 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+       const referenceMs = Math.max(0, performance.now() - referenceStart);
+       checkCurrent(expected);
+       if (!selection || selection.revision !== expected) return reference;
+-      const start = performance.now();
+-      try {
+-        const { value, serverTimingMs } = await read(bodyFor("month", selection.options, selection.verification, key), expected);
+-        checkCurrent(expected);
++      startComparison(expected, "month", referenceMs, async (job, start) => {
++        const { value, serverTimingMs } = await read(bodyFor("month", selection.options, selection.verification, key), job);
++        checkJob(job);
+         const parsed = parseCashflowSnapshot(value.payload);
+         const month = parsed?.months[0] ?? null;
+         if (!parsed || parsed.items.length !== 0 || parsed.months.length > 1 || value.monthKey !== key ||
+@@ -158,23 +189,17 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+           cashflowCanonicalJson(month) !== cashflowCanonicalJson(reference)) {
+           selected = null;
+           report("month", "mismatch", start, referenceMs, serverTimingMs, "different_result");
+-          return reference;
++          return;
+         }
+         report("month", "match", start, referenceMs, serverTimingMs);
+-        return month;
+-      } catch (error) {
+-        checkCurrent(expected);
+-        selected = null;
+-        reportFailure("month", error, start, referenceMs);
+-        return reference;
+-      }
++      });
++      return reference;
+     },
+     dispose() {
+       if (disposed) return;
+       disposed = true;
+       selected = null;
+-      controller?.abort();
+-      controller = null;
++      cancelComparison();
+       local.dispose();
+     },
+   };
+diff --git a/src/app/cashflow/useCashflowView.test.tsx b/src/app/cashflow/useCashflowView.test.tsx
+index 605464c..f4e6d66 100644
+--- a/src/app/cashflow/useCashflowView.test.tsx
++++ b/src/app/cashflow/useCashflowView.test.tsx
+@@ -8,8 +8,9 @@ import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import type { MonthGroup } from "./types";
+ 
+-const mocks = vi.hoisted(() => ({ createClient: vi.fn() }));
++const mocks = vi.hoisted(() => ({ createClient: vi.fn(), getToken: vi.fn() }));
+ vi.mock("./cashflowWorker.client", () => ({ createCashflowWorkerClient: mocks.createClient }));
++vi.mock("../firebase", () => ({ auth: { currentUser: { email: "advisor@example.test", getIdToken: mocks.getToken } } }));
+ import { useCashflowView } from "./useCashflowView";
+ 
+ type Props = Parameters<typeof useCashflowView>[0];
+@@ -87,6 +88,7 @@ describe("cashflow view lifecycle and asynchronous selection guards", () => {
+     commits = [];
+     onCommit = undefined;
+     props = { dataset: makeDataset(), identity: "uid-1:advisor@example.test", options, enabled: true };
++    mocks.getToken.mockReset().mockImplementation(() => new Promise(() => undefined));
+     mocks.createClient.mockReset().mockImplementation(() => {
+       const stub = stubClient(); clients.push(stub); return stub.client;
+     });
+@@ -137,6 +139,22 @@ describe("cashflow view lifecycle and asynchronous selection guards", () => {
+     expect(latest.overview).toBe(expected);
+   });
+ 
++  it("publishes the original overview and detail while background pilot authentication is stalled", async () => {
++    await render({ ...props, serverPilot: true });
++    Object.assign(clients[0].client, {
++      verification: vi.fn(async () => ({ inputHash: "a".repeat(64), monthsHash: "b".repeat(64) })),
++    });
++    const expected = await resolveView();
++    expect(latest).toMatchObject({ overview: expected, pending: false, error: null });
++    await vi.waitFor(() => expect(mocks.getToken).toHaveBeenCalledOnce());
++    expect(latest.overview).toBe(expected);
++    const loaded = latest.loadMonth("2026-09");
++    const original = detail();
++    await act(async () => clients[0].months[0].resolve(original));
++    expect(await loaded).toBe(original);
++    expect(latest.pending).toBe(false);
++  });
++
+   it("hides the completed overview on the first commit of a new filter", async () => {
+     await render();
+     await resolveView();

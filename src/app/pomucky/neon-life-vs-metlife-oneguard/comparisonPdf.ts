@@ -54,7 +54,7 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
   if (!rows.length) throw new Error("Vyberte alespoň jedno téma pro PDF.");
   const [{ jsPDF: Pdf }, regular, bold, logo, cppLogo, metlifeLogo, qr] = await Promise.all([
     import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"),
-    asset("/icons/nadpislogo.jpg"), asset("/icons/cpp.png"), asset("/icons/metlife.png"),
+    asset("/icons/bohemika_logo.png"), asset("/icons/cpp.png"), asset("/icons/metlife.png"),
     options.advisor.cardUrl ? import("qrcode").then(module => module.default.toDataURL(options.advisor.cardUrl, {
       width: 280, margin: 1, errorCorrectionLevel: "M", color: { dark: NAVY, light: "#ffffff" },
     })) : Promise.resolve(""),
@@ -114,7 +114,7 @@ export async function createComparisonPdf(options: ComparisonPdfOptions): Promis
     pdf.addImage(bytes, format, x, y + (h - imageHeight) / 2, imageWidth, imageHeight, alias);
   }
   function letterhead() {
-    fittedImage(logo, "JPEG", MARGIN, 24, 66, 39, "bohemika-logo");
+    fittedImage(logo, "PNG", MARGIN, 24, 66, 39, "bohemika-logo");
     rightText("Bohemika a.s.", right, 29, 10, "bold", NAVY);
     rightText(`Životní pojištění  /  Srovnání k ${date}`, right, 47, 8, "normal", MUTED);
     rule(MARGIN, 77, width);

@@ -49,7 +49,7 @@ export async function createComparisonPdf({ doc, advisor, contact, orientation =
   if (doc.offers.length < 2) throw new Error("Srovnání musí obsahovat současnou smlouvu a alespoň jednu nabídku.");
   const logoPaths = [...new Set(doc.offers.flatMap(offer => { const insurer = insurerById(offer.insurerId); return insurer ? [insurer.logo] : []; }))];
   const [{ jsPDF: Pdf }, regular, bold, companyLogo, qr, loadedLogos] = await Promise.all([
-    import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"), asset("/icons/nadpislogo.jpg"),
+    import("jspdf"), asset("/fonts/LiberationSans-Regular.ttf"), asset("/fonts/LiberationSans-Bold.ttf"), asset("/icons/bohemika_logo.png"),
     createQrSymbol(contact.payload), Promise.all(logoPaths.map(async path => [path, await asset(path)] as const)),
   ]);
   const portrait = orientation === "portrait";
@@ -201,7 +201,7 @@ export async function createComparisonPdf({ doc, advisor, contact, orientation =
     y = MARGIN;
     if (pageCount === 1) {
       const logoHeight = 42, logoWidth = logoProperties.width / logoProperties.height * logoHeight;
-      pdf.addImage(companyLogo, "JPEG", MARGIN + 2, 31, logoWidth, logoHeight, "bohemika");
+      pdf.addImage(companyLogo, "PNG", MARGIN + 2, 31, logoWidth, logoHeight, "bohemika");
       pdf.setDrawColor(BORDER); pdf.setLineWidth(.5); pdf.line(MARGIN + 82, 31, MARGIN + 82, 75);
       text("OSOBNÍ SROVNÁNÍ", titleX, 27, 7, true, ACCENT);
       lines(headerTitle, titleX, 43, 24);

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "observedAtLocal": "2026-10-08T18:27:49",
+  "timeZone": "Europe/Prague",
+  "source": "User-provided live browser screenshot, aggregate diagnostics only",
+  "deploymentReceipt": "cashflow-server-pilot-background-deployment-2026-10-08.json",
+  "page": {
+    "mode": "compare",
+    "status": "ready",
+    "profileReadyMs": 1214.3,
+    "statementsReadyMs": 1621.8,
+    "contractsReadyMs": 6890.9,
+    "overviewReadyMs": 6970.9,
+    "frameReadyMs": 7003.2
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "unavailable",
+    "requestMs": 10217.6,
+    "referenceMs": 71.8,
+    "serverTimingMs": {
+      "cashflow_auth": 507.84,
+      "cashflow_inputs": 9448.79,
+      "cashflow_total": 9992.01
+    },
+    "reason": "resource_limit",
+    "httpStatus": 503
+  },
+  "interpretation": {
+    "originalClientResultReady": true,
+    "serverRespondedBeforeClientDeadline": true,
+    "serverCalculationCompleted": false,
+    "authenticatedLiveMatchVerified": false,
+    "specificResourceLimitKnown": false,
+    "notes": [
+      "The resource code is shared by the source-request cap and several pre-computation budget guards. No specific guard can be inferred from these timings.",
+      "By route ordering, recording the input phase implies that the calendar and initial authenticated allowlist gates were reached and passed; this is an inference from source code, not a full calculation comparison.",
+      "A single browser screenshot does not establish a production speedup or equality of the server calculation."
+    ]
+  },
+  "storedIdentityAmountsPortfolioOrImage": false,
+  "businessDataWrites": false
+}

@@ -184,4 +184,21 @@ describe("cashflow model with bounded last-stage caches", () => {
     expect(() => createCashflowModel({ ...input, asOf: new Date(Number.NaN) })).toThrow("valid calculation date");
     expect(heldDate).toEqual(asOf);
   });
+
+  it("hashes every displayed month/item and source without returning the portfolio", async () => {
+    const input = dataset();
+    const model = createCashflowModel(input);
+    await expect(model.verification!()).rejects.toThrow("unavailable");
+    const result = model.view(defaultOptions);
+    const verification = await model.verification!();
+    expect(verification).toEqual({
+      inputHash: digest({ snapshot: input.snapshot, statements: input.statements }),
+      monthsHash: digest(result.months.map(month => model.month(month.key))),
+    });
+    expect(Object.keys(verification).sort()).toEqual(["inputHash", "monthsHash"]);
+    model.view({ ...defaultOptions, productFilter: "life" });
+    expect((await model.verification!()).monthsHash).not.toBe(verification.monthsHash);
+    model.dispose();
+    await expect(model.verification!()).rejects.toThrow("unavailable");
+  });
 });

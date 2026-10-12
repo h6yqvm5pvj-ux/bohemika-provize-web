@@ -1,23 +1,95 @@
+.panel { width: min(100%, 1180px); }
+.panel[data-directory] { height: min(820px, calc(100dvh - 48px)); }
+.directory { display: grid; grid-template-columns: 244px minmax(0, 1fr); flex: 1; min-height: 0; }
+.sidebar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 23px 14px; border-right: 1px solid #e9e3f1; background: linear-gradient(180deg, #faf8fd, #f5f2fa); scrollbar-width: thin; scrollbar-color: #dcd2e7 transparent; }
+.sidebarHeading { display: flex; align-items: center; justify-content: space-between; margin: 0 10px 16px; }
+.sidebarHeading p { margin: 0; color: #82718f; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.sidebarHeading > span { color: #9c8aa9; font-size: 11px; }
+.institutionList { display: flex; flex-direction: column; gap: 6px; }
+.institutionButton { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 60px; padding: 9px 10px; border: 1px solid transparent; border-radius: 13px; background: transparent; color: #71617e; text-align: left; cursor: pointer; transition: background 160ms, border-color 160ms, box-shadow 160ms; }
+.institutionButton:hover { border-color: #e5dcee; background: #ffffffb3; }
+.institutionButton[aria-pressed="true"] { border-color: #dfcff1; background: #fff; color: #663799; box-shadow: 0 3px 12px #40206408; }
+.institutionButton[aria-pressed="true"]::before { position: absolute; top: 17px; bottom: 17px; left: -1px; width: 3px; border-radius: 0 3px 3px 0; background: #9864cf; content: ""; }
+.institutionLogo { display: flex; align-items: center; justify-content: center; flex: 0 0 48px; height: 38px; padding: 5px; border: 1px solid #eee9f4; border-radius: 9px; background: #fff; }
+.institutionLogo img { width: 100%; height: 100%; object-fit: contain; }
+.allInstitutions { border-color: #e9dffa; background: #f2ebfc; color: #9460c4; }
+.institutionLabel { flex: 1; min-width: 0; font-size: 11px; line-height: 1.45; font-weight: 600; }
+.institutionCount { display: grid; place-items: center; flex-shrink: 0; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 6px; background: #eee9f4; color: #8c799b; font-size: 10px; font-weight: 600; }
+.institutionButton[aria-pressed="true"] .institutionCount { background: #f0e6fc; color: #8152af; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.main .toolbar { padding: 20px 26px; background: #fff; }
+.toolbar input { font-size: 13px; }
+.toolbar .search { max-width: none; height: 44px; }
+.main .contactContent { flex: 1; padding: 23px 26px 28px; background: #faf9fc; }
+.resultsHeading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.resultsEyebrow { margin: 0 0 5px; color: #9b86af; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.resultsHeading h3 { margin: 0; color: #352443; font-size: 20px; line-height: 1.35; font-weight: 650; letter-spacing: -.025em; }
+.resultsCount { flex-shrink: 0; padding: 6px 10px; border: 1px solid #e9e2f0; border-radius: 8px; background: #fff; color: #877395; font-size: 10px; font-variant-numeric: tabular-nums; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.card { min-width: 0; border: 1px solid #e8e1ef; border-radius: 18px; padding: 21px; background: #fff; box-shadow: 0 3px 10px #35204b03; scroll-margin: 18px; transition: border-color 160ms, box-shadow 160ms; }
-.card:hover { border-color: #d9c8e8; box-shadow: 0 5px 16px #35204b06; }
+.card { min-width: 0; border: 1px solid #e7dfef; border-radius: 17px; padding: 20px; background: #fff; box-shadow: 0 3px 12px #35204b04; scroll-margin: 18px; transition: border-color 160ms, box-shadow 160ms; }
+.card:hover { border-color: #cfb6e3; box-shadow: 0 6px 20px #35204b09; }
 .card[data-highlighted] { border-color: #b692d7; box-shadow: 0 0 0 3px #cfb4ef30; }
-.cardHeader { display: flex; align-items: flex-start; gap: 13px; }
-.logo { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 59px; height: 49px; padding: 7px; border: 1px solid #eee9f4; border-radius: 12px; background: #fff; }
+.cardHeader { display: flex; align-items: flex-start; gap: 12px; }
+.logo { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 56px; height: 48px; padding: 7px; border: 1px solid #eee9f4; border-radius: 11px; background: #fff; }
 .logo img { min-height: 0; min-width: 0; object-fit: contain; width: 100%; height: 100%; }
 .identity { min-width: 0; flex: 1; padding-top: 1px; }
-.institution { margin: 0 0 5px; font-size: 9px; line-height: 1.4; text-transform: uppercase; letter-spacing: .1em; font-weight: 600; color: #9a84ad; }
+.institution { margin: 0 0 5px; font-size: 9px; line-height: 1.4; text-transform: uppercase; letter-spacing: .1em; font-weight: 650; color: #9278a9; }
 .name { margin: 0; font-size: 17px; line-height: 1.4; font-weight: 650; letter-spacing: -.025em; color: #33243e; overflow-wrap: anywhere; }
-.role { display: inline-block; font-size: 9px; font-weight: 600; border-radius: 5px; padding: 2px 6px; margin-top: 5px; background: #f3edf9; color: #9471b3; }
-.editCard { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #f5effb; color: #8a64ac; flex-shrink: 0; }
-.description { margin: 14px 0 0; font-size: 11px; line-height: 1.7; color: #8f809b; }
-.methods { display: grid; margin-top: 16px; padding-top: 8px; border-top: 1px solid #f0ebf5; }
-.method { display: flex; align-items: center; gap: 10px; padding: 9px 7px; margin: 0 -7px; border-radius: 10px; text-decoration: none; transition: background 150ms; }
+.role { display: inline-block; font-size: 9px; font-weight: 600; border-radius: 5px; padding: 3px 7px; margin-top: 6px; background: #f3edf9; color: #8460a4; }
+.editCard { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #f5effb; color: #8a64ac; flex-shrink: 0; cursor: pointer; }
+.description { margin: 14px 0 0; font-size: 12px; line-height: 1.7; color: #82718f; }
+.methods { display: grid; margin-top: 17px; padding-top: 9px; border-top: 1px solid #eee8f4; }
+.method { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 9px 7px; margin: 0 -7px; border-radius: 10px; text-decoration: none; transition: background 150ms; }
 .method:hover { background: #f7f2fc; }
-.methodIcon { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px; background: #f7f3fb; color: #9a7cb6; }
+.methodIcon { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: #f5f0fa; color: #9a7cb6; }
 .methodText { min-width: 0; flex: 1; font-size: 12px; line-height: 1.5; font-weight: 550; color: #574362; overflow-wrap: anywhere; }
-.methodText small { display: block; font-size: 9px; font-weight: 500; color: #a390af; margin-bottom: 2px; }
+.methodText small { display: block; font-size: 10px; font-weight: 500; color: #927da1; margin-bottom: 2px; }
 .methodArrow { flex-shrink: 0; color: #c0accf; }
 .method:hover .methodArrow { color: #8d61b4; }
-@media(max-width:700px) { .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } .card { padding: 18px; } }
-@media(max-width:380px) { .card { padding: 15px; } .cardHeader { gap: 10px; } .logo { width: 48px; height: 43px; } .name { font-size: 16px; } .method { gap: 8px; } }
+
+@media(max-width:1000px) {
+  .directory { grid-template-columns: 216px minmax(0, 1fr); }
+  .sidebar { padding-inline: 10px; }
+  .institutionButton { gap: 8px; padding-inline: 8px; }
+  .institutionLogo { flex-basis: 42px; }
+  .main .toolbar, .main .contactContent { padding-inline: 20px; }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media(max-width:760px) {
+  .directory { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar { overflow: hidden; padding: 12px 18px; border-right: 0; border-bottom: 1px solid #e9e3f1; }
+  .sidebarHeading { display: none; }
+  .institutionList { flex-direction: row; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+  .institutionButton { flex-shrink: 0; width: auto; min-height: 54px; max-width: 230px; padding: 8px 10px; border-color: #e9e2f0; background: #ffffffb3; }
+  .institutionButton[aria-pressed="true"] { border-color: #cdb2e8; background: #f5effc; }
+  .institutionLabel { font-size: 11px; white-space: nowrap; }
+  .institutionLogo { flex-basis: 40px; width: 40px; height: 32px; }
+  .institutionButton[aria-pressed="true"]::before { display: none; }
+  .main .toolbar { padding: 14px 18px; }
+  .main .contactContent { padding: 18px; }
+  .resultsHeading { margin-bottom: 16px; gap: 10px; }
+  .resultsHeading h3 { font-size: 18px; }
+  .resultsEyebrow { font-size: 8px; line-height: 1.5; }
+  .resultsCount { padding: 5px 7px; }
+  .grid { gap: 12px; }
+  .card { padding: 18px; }
+}
+
+@media(max-width:640px) {
+  .panel[data-directory] { height: calc(100dvh - 24px); }
+  .panel > header { padding: 18px; }
+}
+
+@media(max-width:380px) {
+  .panel[data-directory] { height: calc(100dvh - 16px); }
+  .sidebar { padding: 10px 12px; }
+  .main .toolbar, .main .contactContent { padding: 12px; }
+  .resultsHeading { align-items: flex-start; }
+  .resultsEyebrow { max-width: 150px; }
+  .card { padding: 15px; }
+  .cardHeader { gap: 10px; }
+  .logo { width: 48px; height: 43px; }
+  .name { font-size: 16px; }
+  .method { gap: 8px; }
+}

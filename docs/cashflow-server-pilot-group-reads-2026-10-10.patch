@@ -1,0 +1,307 @@
+diff --git a/src/app/api/contracts/_lib/contractsApi.ts b/src/app/api/contracts/_lib/contractsApi.ts
+index 82e4eb8..2126fa6 100644
+--- a/src/app/api/contracts/_lib/contractsApi.ts
++++ b/src/app/api/contracts/_lib/contractsApi.ts
+@@ -5,6 +5,7 @@ import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
+ import { heldCareerPositions } from "@/app/lib/careerPositions";
+ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
+ import { readFilteredContractPage } from "./contractsApi.filteredPage";
++import { orderedCashflowReads } from "./contractsApi.cashflowReads";
+ import { authorizeContractNoteLocation, assertContractNoteNamespaceAvailable } from "@/lib/server/contractNoteLocation";
+ import { isSafeContractNoteId } from "../notes/contractNotes";
+ import { projectTipMatchData, projectTipMatchResponse } from "./contractsApi.tipProjection";
+@@ -3229,7 +3230,8 @@ async function fetchContractsForOwners(
+   filters?: ContractListFilters,
+   responseShape: ContractListResponseShape = "full",
+   ownerNames?: Map<string, string | null>,
+-  ownerContexts?: Map<string, ContractOwnerPositionContext | null>
++  ownerContexts?: Map<string, ContractOwnerPositionContext | null>,
++  cashflowReadAhead = false
+ ): Promise<{
+   list: ContractResponseItem[];
+   hasMore: boolean;
+@@ -3500,42 +3502,48 @@ async function fetchContractsForOwners(
+   // collectionGroup queries (userEmail stored)
+   // Pull by both date fields so records without contractSignedDate are still included.
+   if (shouldUseCollectionGroup) {
+-    for (let i = 0; i < owners.length; i += 10) {
+-      const chunk = owners.slice(i, i + 10);
+-      try {
+-        const signedFrom = filters?.signedFrom ?? null;
+-        const ownerOperator = chunk.length === 1 ? "==" : "in";
+-        const ownerValue = chunk.length === 1 ? chunk[0]! : chunk;
+-        const indexedClauses = filters
+-          ? buildContractListIndexedQueryClauses(filters, {
+-              allowIn: chunk.length === 1,
+-            })
+-          : [];
+-        const signedBase = applyContractListIndexedQueryClauses(
+-          db.collectionGroup("entries").where("userEmail", ownerOperator, ownerValue),
+-          indexedClauses
+-        );
+-        let qBySigned = signedBase
+-          .orderBy("contractSignedDate", "desc");
+-        let qByCreated = db
+-          .collectionGroup("entries")
+-          .where("userEmail", ownerOperator, ownerValue)
+-          .orderBy("createdAt", "desc");
+-        if (signedFrom) {
+-          qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
+-          qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+-        }
+-        // Keep createdAt query uncursored. Backfilled contracts can have old
+-        // contractSignedDate with fresh createdAt; cursoring createdAt would
+-        // skip them permanently in subsequent pages.
+-        if (cursor) {
+-          qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+-        }
++    const chunks = Array.from({ length: Math.ceil(owners.length / 10) }, (_, i) => owners.slice(i * 10, i * 10 + 10));
++    const readGroup = async (chunk: string[]) => {
++      const signedFrom = filters?.signedFrom ?? null;
++      const ownerOperator = chunk.length === 1 ? "==" : "in";
++      const ownerValue = chunk.length === 1 ? chunk[0]! : chunk;
++      const indexedClauses = filters
++        ? buildContractListIndexedQueryClauses(filters, {
++            allowIn: chunk.length === 1,
++          })
++        : [];
++      const signedBase = applyContractListIndexedQueryClauses(
++        db.collectionGroup("entries").where("userEmail", ownerOperator, ownerValue),
++        indexedClauses
++      );
++      let qBySigned = signedBase
++        .orderBy("contractSignedDate", "desc");
++      let qByCreated = db
++        .collectionGroup("entries")
++        .where("userEmail", ownerOperator, ownerValue)
++        .orderBy("createdAt", "desc");
++      if (signedFrom) {
++        qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
++        qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
++      }
++      // Keep createdAt query uncursored. Backfilled contracts can have old
++      // contractSignedDate with fresh createdAt; cursoring createdAt would
++      // skip them permanently in subsequent pages.
++      if (cursor) {
++        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
++      }
+ 
+-        const [signedSnap, createdSnap] = await Promise.all([
+-          qBySigned.limit(pageLimit).get(),
+-          qByCreated.limit(pageLimit).get(),
+-        ]);
++      const [signedSnap, createdSnap] = await Promise.all([
++        qBySigned.limit(pageLimit).get(),
++        qByCreated.limit(pageLimit).get(),
++      ]);
++
++      return { chunk, qBySigned, qByCreated, signedSnap, createdSnap };
++    };
++    for await (const result of orderedCashflowReads(chunks, readGroup, cashflowReadAhead)) {
++      try {
++        if (!result.ok) throw result.error;
++        const { chunk, qBySigned, qByCreated, signedSnap, createdSnap } = result.value;
+ 
+         const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+           snap.docs.forEach((doc) => {
+@@ -4320,6 +4328,10 @@ export async function handleContractsGet(
+ 
+   const fetchTimedContractsForOwners = (...args: Parameters<typeof fetchContractsForOwners>) =>
+     measureCashflowContractPhase(options.onCashflowTiming, "entries", () => fetchContractsForOwners(...args));
++  // Only a trusted, freshly authorized server cashflow read can prefetch. Public
++  // parameters/headers and ordinary list/filter paths retain serial group reads.
++  const cashflowReadAhead = options.freshCashflowContext === true &&
++    responseShape === "cashflow" && !includeTeam && !hasContractListFilters(listFilters);
+ 
+   if (shouldFetchTeamInParallel) {
+     [primaryRes, teamRes] = await Promise.all([
+@@ -4331,7 +4343,8 @@ export async function handleContractsGet(
+         listFilters,
+         responseShape,
+         ownerNamesByEmail,
+-        usersByEmail
++        usersByEmail,
++        cashflowReadAhead
+       ),
+       fetchTimedContractsForOwners(
+         teamEmails,
+@@ -4341,7 +4354,8 @@ export async function handleContractsGet(
+         undefined,
+         responseShape,
+         ownerNamesByEmail,
+-        usersByEmail
++        usersByEmail,
++        cashflowReadAhead
+       ),
+     ]);
+   } else {
+@@ -4353,7 +4367,8 @@ export async function handleContractsGet(
+       listFilters,
+       responseShape,
+       ownerNamesByEmail,
+-      usersByEmail
++      usersByEmail,
++      cashflowReadAhead
+     );
+     if (includeTeam && teamEmails.length > 0) {
+       teamRes = await fetchTimedContractsForOwners(
+@@ -4364,7 +4379,8 @@ export async function handleContractsGet(
+         undefined,
+         responseShape,
+         ownerNamesByEmail,
+-        usersByEmail
++        usersByEmail,
++        cashflowReadAhead
+       );
+     }
+   }
+diff --git a/src/app/api/contracts/_lib/contractsApi.cashflowReads.ts b/src/app/api/contracts/_lib/contractsApi.cashflowReads.ts
+new file mode 100644
+index 0000000..644cf53
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.cashflowReads.ts
+@@ -0,0 +1,38 @@
++type ReadResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
++
++/**
++ * Read at most one group ahead; consume snapshots in the original order.
++ * Observe every rejection immediately and drain a speculative read before the
++ * caller falls back, so it cannot modify the fallback's collection later.
++ */
++export async function* orderedCashflowReads<I, T>(
++  groups: readonly I[],
++  read: (group: I) => Promise<T>,
++  readAhead: boolean
++): AsyncGenerator<ReadResult<T>> {
++  const pending: Promise<ReadResult<T>>[] = [];
++  let index = 0;
++  const fill = () => {
++    const width = readAhead ? 2 : 1;
++    while (index < groups.length && pending.length < width) {
++      const group = groups[index++]!;
++      pending.push(Promise.resolve().then(() => read(group)).then(
++        value => ({ ok: true as const, value }),
++        error => ({ ok: false as const, error })
++      ));
++    }
++  };
++  try {
++    fill();
++    while (pending.length > 0) {
++      const result = await pending.shift()!;
++      yield result;
++      if (!result.ok) return;
++      // The caller has finished consuming this group's continuations. Later
++      // groups cannot affect its merged page boundary or deduplication order.
++      fill();
++    }
++  } finally {
++    await Promise.all(pending);
++  }
++}
+diff --git a/src/app/api/contracts/_lib/contractsApi.cashflowReads.test.ts b/src/app/api/contracts/_lib/contractsApi.cashflowReads.test.ts
+new file mode 100644
+index 0000000..43a762b
+--- /dev/null
++++ b/src/app/api/contracts/_lib/contractsApi.cashflowReads.test.ts
+@@ -0,0 +1,100 @@
++import { describe, expect, it, vi } from "vitest";
++import { orderedCashflowReads } from "./contractsApi.cashflowReads";
++
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  let reject!: (error: unknown) => void;
++  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
++  return { promise, resolve, reject };
++}
++
++describe("ordered cashflow group reads", () => {
++  it("overlaps at most two initial reads, without consuming a faster later group first", async () => {
++    const groups = Array.from({ length: 4 }, () => deferred<number>());
++    const read = vi.fn((index: number) => groups[index].promise);
++    const iterator = orderedCashflowReads([0, 1, 2, 3], read, true);
++    const first = iterator.next();
++    await vi.waitFor(() => expect(read.mock.calls).toEqual([[0], [1]]));
++    groups[1].resolve(1);
++    groups[0].resolve(0);
++    expect((await first).value).toEqual({ ok: true, value: 0 });
++    expect(read).toHaveBeenCalledTimes(2);
++    expect((await iterator.next()).value).toEqual({ ok: true, value: 1 });
++    expect(read.mock.calls).toEqual([[0], [1], [2]]);
++    groups[2].resolve(2);
++    expect((await iterator.next()).value).toEqual({ ok: true, value: 2 });
++    expect(read.mock.calls).toEqual([[0], [1], [2], [3]]);
++    groups[3].resolve(3);
++    expect((await iterator.next()).value).toEqual({ ok: true, value: 3 });
++    expect((await iterator.next()).done).toBe(true);
++  });
++
++  it("keeps ordinary reads serial", async () => {
++    const firstGroup = deferred<number>();
++    const read = vi.fn((index: number) => index === 0 ? firstGroup.promise : Promise.resolve(index));
++    const iterator = orderedCashflowReads([0, 1], read, false);
++    const pending = iterator.next();
++    await vi.waitFor(() => expect(read.mock.calls).toEqual([[0]]));
++    firstGroup.resolve(0);
++    expect((await pending).value).toEqual({ ok: true, value: 0 });
++    expect(read).toHaveBeenCalledTimes(1);
++    expect((await iterator.next()).value).toEqual({ ok: true, value: 1 });
++    expect((await iterator.next()).done).toBe(true);
++  });
++
++  it("observes an early speculative failure and returns the first group failure in order", async () => {
++    const groups = [deferred<number>(), deferred<number>()];
++    const read = vi.fn((index: number) => groups[index].promise);
++    const iterator = orderedCashflowReads([0, 1, 2], read, true);
++    const pending = iterator.next();
++    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
++    const firstError = new Error("first group");
++    groups[1].reject(new Error("speculative group"));
++    await Promise.resolve();
++    groups[0].reject(firstError);
++    expect((await pending).value).toEqual({ ok: false, error: firstError });
++    expect((await iterator.next()).done).toBe(true);
++    expect(read).toHaveBeenCalledTimes(2);
++  });
++
++  it("drains pending snapshots before an early break completes, without starting another group", async () => {
++    const speculative = deferred<number>();
++    const read = vi.fn((index: number) => index === 0 ? Promise.resolve(0) : speculative.promise);
++    const iterator = orderedCashflowReads([0, 1, 2], read, true);
++    expect((await iterator.next()).value).toEqual({ ok: true, value: 0 });
++    let drained = false;
++    const closing = iterator.return(undefined).then(result => { drained = true; return result; });
++    await Promise.resolve();
++    expect(drained).toBe(false);
++    speculative.resolve(1);
++    expect((await closing).done).toBe(true);
++    expect(read.mock.calls).toEqual([[0], [1]]);
++  });
++
++  it("also drains when snapshot consumption throws", async () => {
++    const speculative = deferred<number>();
++    const read = vi.fn((index: number) => index === 0 ? Promise.resolve(0) : speculative.promise);
++    const failure = new Error("continuation failed");
++    const consuming = (async () => {
++      for await (const result of orderedCashflowReads([0, 1, 2], read, true)) {
++        expect(result).toEqual({ ok: true, value: 0 });
++        throw failure;
++      }
++    })();
++    const check = expect(consuming).rejects.toBe(failure);
++    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
++    speculative.reject(new Error("late speculative failure"));
++    await check;
++    expect(read.mock.calls).toEqual([[0], [1]]);
++  });
++
++  it("handles a synchronous read failure and an empty group list", async () => {
++    const failure = new Error("synchronous");
++    const read = vi.fn((): Promise<number> => { throw failure; });
++    const results = [];
++    for await (const result of orderedCashflowReads([0], read, true)) results.push(result);
++    expect(results).toEqual([{ ok: false, error: failure }]);
++    for await (const result of orderedCashflowReads([], read, true)) results.push(result);
++    expect(read).toHaveBeenCalledTimes(1);
++  });
++});

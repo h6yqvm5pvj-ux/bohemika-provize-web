@@ -1,0 +1,191 @@
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+--- a/src/lib/server/cashflowShadowBudget.ts
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -3,6 +3,7 @@
+ import type { CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
+ import { toDate } from "@/app/lib/formatters";
+ import { monthsBetweenPayments } from "@/app/cashflow/generator";
++import { CASHFLOW_FORECAST_YEARS, INTELLIGENT_PREDICTION_CONFIG, normalizeContractNumberSearch } from "@/app/cashflow/helpers";
+ 
+ const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
+ const MAX_PAYOUT_MATCH_WORK = 2_000_000;
+@@ -37,6 +38,36 @@
+   return months * parts + 16;
+ }
+ 
++/** Bound the actual life-review formula schedules, assuming the first review is
++ * due today and all amounts are positive. Each formula has at most three
++ * immediate parts plus payouts after three/four years and its product-specific
++ * annual tail. Pillow's existing prediction also retains its total row as an
++ * immediate item. Ignoring the payout-month offset includes the horizon endpoint.
++ * Manager differences and shorter durations can only remove these items.
++ */
++export function estimateCashflowShadowLifeReviewItems(entry: EntryDoc, scheduledItems: number): number {
++  if (!LIFE_PRODUCTS.has(entry.productKey ?? "")) return 0;
++  let itemsPerCandidate = 0;
++  const maxIterations = Math.ceil(CASHFLOW_FORECAST_YEARS / 2);
++  for (let review = 0; review < maxIterations; review++) {
++    const years = Math.floor(CASHFLOW_FORECAST_YEARS - review * INTELLIGENT_PREDICTION_CONFIG.lifeReviewIntervalYears);
++    if (years < 0) break;
++    itemsPerCandidate += (entry.productKey === "pillowInjury" ? 4 : 3) + Number(years >= 3) + Number(years >= 4);
++    if (entry.productKey === "neon") {
++      itemsPerCandidate += Math.min(4, years) + Math.max(0, Math.min(9, years) - 3);
++    } else if (entry.productKey === "flexi") {
++      itemsPerCandidate += Math.max(0, years - 5);
++    } else if (entry.productKey === "maximaMaxEfekt") {
++      itemsPerCandidate += Math.max(0, years - 4);
++    }
++  }
++  // Normal entries share one candidate key across their generated items. Legacy
++  // empty original IDs can instead fall back to each individual item ID.
++  const grouped = [entry.rootContractEntryId, entry.originalEntryId ?? entry.id,
++    normalizeContractNumberSearch(entry.contractNumber)].some(value => typeof value === "string" && Boolean(value.trim()));
++  return itemsPerCandidate * (grouped ? 1 : scheduledItems);
++}
++
+ /**
+  * Resource gate for the optional server shadow only, never a business-data filter.
+  *
+@@ -44,7 +75,8 @@
+  * ten-year horizon. Annual, payment-frequency and fixed life schedules use their
+  * own upper bounds; unknown products retain the old monthly/parts bound. Count
+  * team rows twice (own and override paths can both include them), include every
+- * statement-only payout and allow 100 life-review items when prediction is on.
++ * statement-only payout and bound life reviews by their formula schedules when
++ * prediction is on.
+  * Each subscription row gets 1 actual + 120 forecasts. Bounds are not truncation.
+  *
+  * The 25k output estimate is supplemented by bounds on payout matching work,
+@@ -104,8 +136,9 @@
+ 
+     // Three additional months cover inclusive endpoints and payout-date offsets.
+     const months = horizonMonth - earliestMonth + 3;
+-    const extraReviews = includeLifeReviews && LIFE_PRODUCTS.has(entry.productKey ?? "") ? 100 : 0;
+-    const expansion = multiplicity * (estimateCashflowShadowScheduleItems(entry, months, parts) + payouts.length + extraReviews);
++    const scheduledItems = estimateCashflowShadowScheduleItems(entry, months, parts);
++    const extraReviews = includeLifeReviews ? estimateCashflowShadowLifeReviewItems(entry, scheduledItems) : 0;
++    const expansion = multiplicity * (scheduledItems + payouts.length + extraReviews);
+     estimatedOutputItems += expansion;
+     // The generator scans and ranks historical payouts for each forecast item.
+     payoutMatchWork += expansion * (1 + payouts.length + matches.length) +
+diff --git a/src/lib/server/cashflowShadowBudget.test.ts b/src/lib/server/cashflowShadowBudget.test.ts
+--- a/src/lib/server/cashflowShadowBudget.test.ts
++++ b/src/lib/server/cashflowShadowBudget.test.ts
+@@ -62,7 +62,8 @@
+     expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(100) }), asOf)).toBe(true);
+     expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(105) }), asOf)).toBe(false);
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(110, { productKey: "neon" }) }), asOf)).toBe(true);
+-    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(230, { productKey: "neon" }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(454, { productKey: "neon" }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(455, { productKey: "neon" }) }), asOf)).toBe(false);
+   });
+ 
+   it("accounts for up to 120 forecasts plus the actual subscription payment", () => {
+@@ -128,7 +129,8 @@
+       items: Array.from({ length: 128 }, () => ({ title: "Provize", amount: 1 })),
+     }];
+     expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(50, { productKey: "flexi", managerOverrides }) }), asOf)).toBeNull();
+-    expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(60, { productKey: "flexi", managerOverrides }) }), asOf)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(75, { productKey: "flexi", managerOverrides }) }), asOf)).toBeNull();
++    expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(76, { productKey: "flexi", managerOverrides }) }), asOf)).toBe("output_estimate");
+   });
+ 
+   it("bounds saved payout associations and their quadratic matching work", () => {
+diff --git a/src/lib/server/cashflowShadowSchedules.test.ts b/src/lib/server/cashflowShadowSchedules.test.ts
+--- a/src/lib/server/cashflowShadowSchedules.test.ts
++++ b/src/lib/server/cashflowShadowSchedules.test.ts
+@@ -4,7 +4,7 @@
+ import { generateCashflow } from "@/app/cashflow/generator";
+ import { applyIntelligentCashflowPrediction } from "@/app/cashflow/helpers";
+ import { toDate } from "@/app/lib/formatters";
+-import { estimateCashflowShadowScheduleItems } from "./cashflowShadowBudget";
++import { estimateCashflowShadowLifeReviewItems, estimateCashflowShadowScheduleItems } from "./cashflowShadowBudget";
+ 
+ // Record completeness makes a new domain product require a schedule test.
+ const products: Record<Product, true> = {
+@@ -96,11 +96,50 @@
+           const predicted = applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: true, today: asOf });
+           const additions = predicted.length - original.length;
+           maximumAdditions = Math.max(maximumAdditions, additions);
+-          expect(additions).toBeLessThanOrEqual(100);
++          expect(additions).toBeLessThanOrEqual(estimateCashflowShadowLifeReviewItems(entry, original.length));
+           expect(applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: false, today: asOf })).toBe(original);
+         }
+       }
+     }
+     expect(maximumAdditions).toBeGreaterThan(0);
+   });
++
++  it.each(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"] as const)("bounds review horizons, anniversaries and durations for %s", productKey => {
++    for (const today of [asOf, new Date(2028, 1, 29, 12), new Date(2026, 11, 31, 12), new Date(2026, 0, 31, 12)]) {
++      for (const baseDate of [new Date(1900, 0, 1), new Date(today.getFullYear() - 3, today.getMonth(), today.getDate() - 1),
++        new Date(today.getFullYear() - 3, today.getMonth(), today.getDate()),
++        new Date(today.getFullYear() - 3, today.getMonth(), today.getDate() + 1),
++        new Date(today.getFullYear() + 8, today.getMonth(), today.getDate())]) {
++        for (const durationYears of [null, 1, 6, 15, 100]) {
++          for (const predictionPosition of Object.keys(positions) as Position[]) {
++            for (const predictionCommissionMode of ["standard", "accelerated"] as const) {
++              for (const source of ["own", "manager"] as const) {
++                const entry = { ...fixture(productKey, 1), policyStartDate: baseDate, contractSignedDate: baseDate,
++                  durationYears, source, predictionPosition, predictionCommissionMode,
++                  predictionBaselinePosition: source === "manager" ? "poradce1" as const : null };
++                const original = generateCashflow([entry], 10, viewer, today);
++                const predicted = applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: true, today });
++                const bound = estimateCashflowShadowLifeReviewItems(entry, original.length);
++                expect(predicted.length - original.length, JSON.stringify({ productKey, today, baseDate,
++                  durationYears, predictionPosition, predictionCommissionMode, source })).toBeLessThanOrEqual(bound);
++              }
++            }
++          }
++        }
++      }
++    }
++  }, 30_000);
++
++  it("covers review candidates that fall back to individual item IDs when a legacy original ID is empty", () => {
++    for (const productKey of ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"] as const) {
++      const entry = { ...fixture(productKey, 128), originalEntryId: "", contractNumber: null,
++        policyStartDate: "2020-01-01", contractSignedDate: "2020-01-01", predictionPosition: "manazer10" as const,
++        predictionCommissionMode: "accelerated" as const };
++      const original = generateCashflow([entry], 10, viewer, asOf);
++      const predicted = applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: true, today: asOf });
++      const scheduledItems = estimateCashflowShadowScheduleItems(entry, monthBudget(entry, asOf), 128);
++      expect(predicted.length - original.length).toBeLessThanOrEqual(estimateCashflowShadowLifeReviewItems(entry, scheduledItems));
++      expect(predicted.length - original.length).toBeGreaterThan(estimateCashflowShadowLifeReviewItems({ ...entry, originalEntryId: "group" }, scheduledItems));
++    }
++  });
+ });
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -250,6 +250,30 @@
+     expect(enabled.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
+   });
+ 
++  it("admits bounded team life predictions and matches every original month/item without raising the cap", async () => {
++    fixture = makeWorkerFixture(1, asOf);
++    const template = fixture.snapshot.ownEntries[0];
++    fixture.snapshot.ownEntries = [];
++    fixture.snapshot.hasAnyTeam = true;
++    fixture.snapshot.teamEntriesRaw = Array.from({ length: 200 }, (_, index) => ({ ...template,
++      id: `synthetic-team-life-${index}`, userEmail: "member@example.test", productKey: "neon" as const,
++      items: [{ title: "Okamžitá provize", amount: 10 }],
++      managerOverrides: [{ email, position: "manazer8", commissionMode: "standard",
++        items: [{ title: "Okamžitá provize", amount: 2 }], total: 2 }],
++    }));
++    const selected: CashflowViewOptions = { ...options, scopeFilter: "team", intelligentPredictionEnabled: true };
++    const reference = runReference(fixture.snapshot, fixture.statements, selected, asOf);
++    const response = await POST(request(await body(selected)));
++    expect(response.status).toBe(200);
++    const actual = await response.json();
++    expect(actual.monthsHash).toBe(await hashCashflowValue(reference.months));
++    expect(actual.overview.months).toEqual(reference.months.map(({ items, ...month }) => ({
++      ...month, itemCountLabel: formatCashflowItemCount(items),
++    })));
++    expect(reference.months.reduce((sum, month) => sum + month.items.length, 0)).toBeLessThanOrEqual(25_000);
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_compute");
++  });
++
+   it("keeps the bounded fallback for an excessive portfolio without returning partial totals", async () => {
+     fixture = makeWorkerFixture(1000, asOf);
+     const response = await POST(request(await body()));

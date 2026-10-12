@@ -110,14 +110,15 @@ describe("persistent client–contract links", () => {
    expect(await ensureClientContractIndex(db, owner)).toEqual({ ready: true, processed: 1 });
    expect(records.get(linkPath("first"))).toMatchObject({ ownerEmail: owner, entryId: "first" });
  });
- it("checkpoints the company migration and only reads its marker after completion", async () => {
+ it("checkpoints authorized roster migrations independently and only reads their marker after completion", async () => {
    const owners = Array.from({length:7}, (_, i) => `advisor${i}@example.test`);
    for (const email of owners) records.set(sourcePath("one", email), petr);
    expect(await advanceSharedClientIndex(db, owners)).toBe(false);
+   expect(await advanceSharedClientIndex(db, ["another@example.test"])).toBe(true);
    expect(await advanceSharedClientIndex(db, owners)).toBe(true);
    reads.length = 0; queries.length = 0;
    expect(await advanceSharedClientIndex(db, owners)).toBe(true);
-   expect(reads).toEqual(["clientContractIndexMigrations/shared-clients"]); expect(queries).toEqual([]);
+   expect(reads).toHaveLength(1); expect(reads[0]).toMatch(/^clientContractIndexMigrations\/shared-clients-[a-f0-9]{64}$/); expect(queries).toEqual([]);
    records.set(sourcePath("two", "new@example.test"), petr);
    while (!(await advanceSharedClientIndex(db, [...owners,"new@example.test"]))) { /* bounded test migration */ }
    expect(records.get(linkPath("two", "new@example.test"))).toMatchObject({ entryId: "two" });

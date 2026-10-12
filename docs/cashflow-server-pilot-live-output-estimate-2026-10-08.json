@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "source": "user-browser-screenshot",
+  "observedAtLocal": "2026-10-08T18:59:03+02:00",
+  "deploymentId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+  "kind": "view",
+  "status": "unavailable",
+  "reason": "resource_limit",
+  "resourceLimit": "output_estimate",
+  "httpStatus": 503,
+  "requestMs": 8921.4,
+  "referenceMs": 292.5,
+  "serverTimingMs": {
+    "cashflow_auth": 470.61,
+    "cashflow_inputs": 7885.1,
+    "cashflow_total": 8364.65
+  },
+  "authenticatedParityVerified": false,
+  "identityAndFinancialDataStored": false
+}

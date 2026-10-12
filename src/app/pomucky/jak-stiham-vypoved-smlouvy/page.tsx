@@ -1,18 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowLeft,
+  ArrowRight,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock3,
+  FileCheck2,
   HeartPulse,
+  Info,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
+  TriangleAlert,
 } from "lucide-react";
 
 import { AppLayout } from "@/components/AppLayout";
 import { systemSansFont } from "@/lib/fonts";
+import styles from "./timing.module.css";
 
 const pageFont = systemSansFont;
 
@@ -360,133 +367,98 @@ const calculateLifeWithdrawal = (
   };
 };
 
-function VariantCard({
-  variant,
-  active,
-  onSelect,
-}: {
-  variant: VariantConfig;
-  active: boolean;
-  onSelect: () => void;
+const VARIANT_PRESENTATION: Record<VariantId, { caption: string; badge: string }> = {
+  lifeAnniversary: { caption: "K měsíčnímu výročí smlouvy", badge: "6 týdnů" },
+  nonLifeAnniversary: { caption: "K ročnímu výročí smlouvy", badge: "6 týdnů" },
+  twoMonths: { caption: "Od uzavření smlouvy", badge: "2 měsíce" },
+  postClaim: { caption: "Od oznámení pojistné události", badge: "3 měsíce" },
+  lifeWithdrawal: { caption: "Od uzavření životního pojištění", badge: "1 měsíc" },
+};
+
+function TimingIllustration() {
+  return (
+    <svg viewBox="0 0 300 220" fill="none" aria-hidden="true" focusable="false">
+      <ellipse cx="150" cy="119" rx="123" ry="88" fill="#f4edf8" />
+      <ellipse cx="151" cy="191" rx="109" ry="10" fill="#e9deef" opacity=".6" />
+      <g transform="rotate(-7 125 105)">
+        <rect x="47" y="39" width="164" height="139" rx="15" fill="white" stroke="#d7c4e3" strokeWidth="1.5" />
+        <path d="M47 55a16 16 0 0 1 16-16h132a16 16 0 0 1 16 16v24H47V55Z" fill="#ece0f4" />
+        <path d="M82 30v22m91-22v22" stroke="#a782bc" strokeWidth="6" strokeLinecap="round" />
+        <path d="M67 79h125" stroke="#decce8" />
+        {[0, 1, 2].map((row) => [0, 1, 2, 3].map((column) => (
+          <rect key={`${row}-${column}`} x={68 + column * 31} y={95 + row * 23} width="17" height="12" rx="3" fill={row === 1 && column === 2 ? "#9a75b2" : "#f1eaf6"} />
+        )))}
+        <path d="m133 123 3 3 5-6" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      <g transform="rotate(7 218 144)">
+        <rect x="168" y="118" width="100" height="66" rx="9" fill="#fff" stroke="#cbb5d9" strokeWidth="1.5" />
+        <path d="m171 125 46 32 48-32M170 179l30-25m65 25-30-25" stroke="#d4c1e0" strokeWidth="1.5" strokeLinejoin="round" />
+      </g>
+      <circle cx="240" cy="65" r="24" fill="#fff" stroke="#d6c3e1" strokeWidth="1.5" />
+      <path d="M240 51v15l10 6" stroke="#9670ad" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="36" cy="137" r="4" fill="#d9c5e6" />
+      <path d="M274 101h9m-4.5-4.5v9M30 72h8m-4-4v8" stroke="#c4a7d5" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function VariantCard({ variant, active, onSelect }: {
+  variant: VariantConfig; active: boolean; onSelect: () => void;
 }) {
   const Icon = variant.icon;
-
+  const presentation = VARIANT_PRESENTATION[variant.id];
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`group relative isolate min-h-[168px] overflow-hidden rounded-[26px] border p-4 text-left shadow-[0_18px_44px_rgba(88,28,135,0.12)] transition duration-200 hover:-translate-y-0.5 sm:p-5 ${
-        active
-          ? "border-violet-500 bg-[linear-gradient(145deg,#2d135f_0%,#180b34_100%)] text-white ring-2 ring-violet-200"
-          : "border-violet-100 bg-white/92 text-slate-900 hover:border-violet-300"
-      }`}
-    >
-      <span
-        className={`pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full blur-2xl ${
-          active ? "bg-violet-300/24" : "bg-violet-200/45"
-        }`}
-        aria-hidden="true"
-      />
-      <Icon
-        className={`relative z-10 h-7 w-7 ${
-          active ? "text-violet-200" : "text-violet-700"
-        }`}
-        strokeWidth={2.1}
-        aria-hidden="true"
-      />
-      <div className="relative z-10 mt-4">
-        <p
-          className={`text-[11px] font-black uppercase tracking-[0.16em] ${
-            active ? "text-violet-200" : "text-violet-700"
-          }`}
-        >
-          {variant.shortLabel}
-        </p>
-        <h2
-          className={`mt-1 text-[1.05rem] font-bold leading-snug tracking-[-0.01em] ${
-            active ? "!text-white" : "text-slate-950"
-          }`}
-        >
-          {variant.label}
-        </h2>
-        <p className={`mt-2 text-sm leading-5 ${active ? "!text-white/85" : "text-slate-600"}`}>
-          {variant.description}
-        </p>
-      </div>
+    <button type="button" onClick={onSelect} className={styles.variantCard}
+      aria-pressed={active} aria-controls="timing-calculator" aria-label={variant.label}>
+      <span className={styles.variantIcon}><Icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+      <span className={styles.variantCopy}>
+        <strong>{variant.shortLabel}</strong>
+        <span>{presentation.caption}</span>
+        <small>{presentation.badge}</small>
+      </span>
+      <span className={styles.variantCheck} aria-hidden="true">{active ? <Check size={13} /> : <ArrowRight size={13} />}</span>
     </button>
   );
 }
 
-function DateInput({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
+function DateInput({ id, label, value, onChange, order }: {
+  id: string; label: string; value: string; onChange: (value: string) => void; order: string;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-semibold text-slate-900" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-12 w-full rounded-2xl border border-slate-300 bg-white px-4 text-base font-bold text-slate-950 shadow-[0_10px_24px_rgba(15,23,42,0.08)] outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-200/80"
-      />
+    <div className={styles.dateField}>
+      <label htmlFor={id}><span>{order}</span>{label}</label>
+      <input id={id} type="date" value={value} onChange={(event) => onChange(event.target.value)} />
     </div>
   );
 }
 
 function ResultPanel({ result }: { result: CalculationResult }) {
-  const toneClass =
-    result.tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-      : result.tone === "warning"
-        ? "border-amber-200 bg-amber-50 text-amber-950"
-        : "border-slate-200 bg-slate-50 text-slate-700";
-
+  const StatusIcon = result.tone === "warning" ? TriangleAlert : result.tone === "success" ? CheckCircle2 : Info;
   return (
-    <div className="mt-6 rounded-[24px] border border-white/80 bg-white p-4 shadow-[0_18px_44px_rgba(15,23,42,0.10)] sm:p-5">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        {result.details.map((detail) => (
-          <div key={detail.label} className="rounded-2xl bg-slate-50 px-4 py-4">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-              {detail.label}
-            </span>
-            <span className="mt-1 block text-lg font-black text-slate-950">
-              {detail.value}
-            </span>
+    <section className={styles.result} data-tone={result.tone} aria-labelledby="timing-result-title" role="status">
+      <div className={styles.resultHeading}>
+        <div><p className={styles.eyebrow}>03 · Výsledek</p><h3 id="timing-result-title">{result.tone === "success" ? "Tvoje rozhodné termíny" : "Zkontroluj lhůtu a zadaná data"}</h3></div>
+        <span className={styles.resultIcon}><StatusIcon size={23} strokeWidth={1.6} aria-hidden="true" /></span>
+      </div>
+      <dl className={styles.dates}>
+        {result.details.map((detail, index) => (
+          <div key={detail.label} data-important={index === result.details.length - 1 && result.tone === "success"}>
+            <dt>{detail.label}</dt><dd>{detail.value}</dd>
           </div>
         ))}
+      </dl>
+      <div className={styles.resultMessage}>
+        <StatusIcon size={16} aria-hidden="true" />
+        <div><strong>{result.headline}</strong><p>{result.message}</p></div>
       </div>
-
-      <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-semibold ${toneClass}`}>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start">
-          <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0" strokeWidth={2.2} />
-          <div>
-            <p className="font-black">{result.headline}</p>
-            <p className="mt-1 leading-6">{result.message}</p>
-          </div>
+      {result.nextIfDeadlineMissed && (
+        <div className={styles.nextDate}>
+          <Clock3 size={16} aria-hidden="true" />
+          <p>Pokud propásneš nejzazší doručení, další možné ukončení je <strong>{result.nextIfDeadlineMissed.terminationDate}</strong>. Výpověď pro tento termín doruč nejpozději <strong>{result.nextIfDeadlineMissed.deliveryDeadline}</strong>.</p>
         </div>
-      </div>
-
-      {result.nextIfDeadlineMissed ? (
-        <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-950">
-          Pokud se propásne datum <strong>Doručit nejpozději</strong>, další možné
-          ukončení smlouvy bude k{" "}
-          <strong>{result.nextIfDeadlineMissed.terminationDate}</strong>. Pro tento
-          další termín musí být výpověď doručena nejpozději{" "}
-          <strong>{result.nextIfDeadlineMissed.deliveryDeadline}</strong>.
-        </div>
-      ) : null}
-    </div>
+      )}
+      {result.tone === "success" && <div className={styles.resultFooter}><span><FileCheck2 size={14} aria-hidden="true" />Teď můžeš připravit výpověď.</span><Link href="/pomucky/vypoved-smlouvy">Připravit výpověď<ArrowRight size={14} aria-hidden="true" /></Link></div>}
+    </section>
   );
 }
 
@@ -509,130 +481,73 @@ function CalculatorBox({ variant }: { variant: VariantConfig }) {
 
   const result = useMemo<CalculationResult | null>(() => {
     if (!primary || !delivery) return null;
-
-    if (variant.id === "lifeAnniversary") {
-      return calculateAnniversaryTermination(primary, delivery, "monthly");
-    }
-    if (variant.id === "nonLifeAnniversary") {
-      return calculateAnniversaryTermination(primary, delivery, "annual");
-    }
-    if (variant.id === "twoMonths") {
-      return calculateTwoMonthsTermination(primary, delivery);
-    }
-    if (variant.id === "postClaim") {
-      return calculatePostClaimTermination(primary, delivery);
-    }
+    if (variant.id === "lifeAnniversary") return calculateAnniversaryTermination(primary, delivery, "monthly");
+    if (variant.id === "nonLifeAnniversary") return calculateAnniversaryTermination(primary, delivery, "annual");
+    if (variant.id === "twoMonths") return calculateTwoMonthsTermination(primary, delivery);
+    if (variant.id === "postClaim") return calculatePostClaimTermination(primary, delivery);
     return calculateLifeWithdrawal(primary, delivery);
   }, [delivery, primary, variant.id]);
 
   const deadlinePreview = useMemo(() => {
     if (!primary) return null;
-
-    if (variant.id === "twoMonths") {
-      return `Nejpozdější doručení výpovědi: ${formatDateCz(
-        addCalendarMonths(primary, 2)
-      )}.`;
-    }
-    if (variant.id === "postClaim") {
-      return `Nejpozdější doručení výpovědi: ${formatDateCz(
-        addCalendarMonths(primary, 3)
-      )}.`;
-    }
-    if (variant.id === "lifeWithdrawal") {
-      return `Nejpozdější doručení odstoupení: ${formatDateCz(
-        addCalendarMonths(primary, 1)
-      )}.`;
-    }
+    if (variant.id === "twoMonths") return `Nejpozdější doručení výpovědi: ${formatDateCz(addCalendarMonths(primary, 2))}.`;
+    if (variant.id === "postClaim") return `Nejpozdější doručení výpovědi: ${formatDateCz(addCalendarMonths(primary, 3))}.`;
+    if (variant.id === "lifeWithdrawal") return `Nejpozdější doručení odstoupení: ${formatDateCz(addCalendarMonths(primary, 1))}.`;
     return null;
   }, [primary, variant.id]);
 
   return (
-    <section className="relative overflow-hidden rounded-[32px] border border-violet-200 bg-[linear-gradient(180deg,#fbfaff_0%,#f6f3ff_100%)] p-5 text-center shadow-[0_24px_70px_rgba(88,28,135,0.14)] sm:p-7">
-      <div className="mx-auto max-w-3xl">
-        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-700">
-          {variant.eyebrow}
-        </p>
-        <h2 className="mt-2 text-2xl font-black tracking-[-0.025em] text-slate-950 sm:text-3xl">
-          {variant.title}
-        </h2>
-        <p className="mx-auto mt-3 max-w-2xl text-sm font-medium leading-6 text-slate-600 sm:text-base">
-          {variant.formDescription}
-        </p>
-      </div>
-
-      <div className="mx-auto mt-6 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
-        <DateInput
-          id={`${variant.id}-primary-date`}
-          label={primaryLabel}
-          value={primaryDate}
-          onChange={setPrimaryDate}
-        />
-        <DateInput
-          id={`${variant.id}-delivery-date`}
-          label={deliveryLabel}
-          value={deliveryDate}
-          onChange={setDeliveryDate}
-        />
-      </div>
-
-      {result ? (
-        <ResultPanel result={result} />
-      ) : (
-        <div className="mx-auto mt-6 max-w-3xl rounded-[22px] border border-white/80 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-          {deadlinePreview ?? "Po zadání obou dat se zobrazí výsledek a datum ukončení smlouvy."}
+    <div id="timing-calculator" className={styles.calculator}>
+      <section className={styles.formPanel} aria-labelledby="timing-calculator-title">
+        <div className={styles.formHeading}>
+          <div><p className={styles.eyebrow}>02 · Rozhodná data</p><h2 id="timing-calculator-title">{variant.title}</h2></div>
+          <span className={styles.formBadge}>{variant.eyebrow}</span>
         </div>
+        <p className={styles.formDescription}>{variant.formDescription}</p>
+        <div className={styles.dateInputs}>
+          <DateInput id={`${variant.id}-primary-date`} label={primaryLabel} value={primaryDate} onChange={setPrimaryDate} order="1" />
+          <DateInput id={`${variant.id}-delivery-date`} label={deliveryLabel} value={deliveryDate} onChange={setDeliveryDate} order="2" />
+        </div>
+        <div className={styles.formFooter}>
+          <span><CalendarDays size={14} aria-hidden="true" />Výsledek se přepočítá automaticky.</span>
+          <button type="button" disabled={!primaryDate && !deliveryDate} onClick={() => { setPrimaryDate(""); setDeliveryDate(""); }}><RotateCcw size={13} aria-hidden="true" />Vymazat data</button>
+        </div>
+      </section>
+      {result ? <ResultPanel result={result} /> : (
+        <section className={styles.waitingResult} aria-live="polite">
+          <span className={styles.waitingIcon}><Clock3 size={25} strokeWidth={1.5} aria-hidden="true" /></span>
+          <div><p className={styles.eyebrow}>03 · Výsledek</p><h3>{deadlinePreview ? "První termín už známe" : "Ještě doplň rozhodná data"}</h3><p>{deadlinePreview ?? "Po zadání obou dat uvidíš nejzazší doručení a datum ukončení smlouvy."}</p></div>
+        </section>
       )}
-    </section>
+    </div>
   );
 }
 
 export default function TerminationTimingPage() {
   const [selectedVariantId, setSelectedVariantId] = useState<VariantId | null>(null);
-  const selectedVariant =
-    VARIANTS.find((variant) => variant.id === selectedVariantId) ?? null;
-
+  const selectedVariant = VARIANTS.find((variant) => variant.id === selectedVariantId) ?? null;
   return (
     <AppLayout active="tools">
-      <div className={`${pageFont.className} relative w-full overflow-visible px-2 pb-10 pt-2 sm:px-3`}>
-        <div className="mx-auto max-w-7xl space-y-5 px-1 sm:px-2 lg:px-3">
-          <section className="relative overflow-hidden rounded-[34px] border border-white/80 bg-[linear-gradient(140deg,rgba(255,255,255,0.96)_0%,rgba(244,247,255,0.96)_46%,rgba(245,240,255,0.96)_100%)] px-5 py-7 shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:px-8 sm:py-9">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.045)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.045)_1px,transparent_1px)] bg-[length:34px_34px] opacity-40" />
-            <div className="relative z-10 max-w-4xl">
-              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                <Sparkles className="h-3.5 w-3.5" strokeWidth={2.1} />
-                Jak stíhám výpověď smlouvy?
-              </span>
-              <h1 className="mt-5 text-4xl font-black tracking-[-0.035em] text-slate-950 sm:text-5xl">
-                Ověř jak stíháš výpověď smlouvy a zjisti datum ukončení smlouvy.
-              </h1>
-            </div>
+      <div className={`${pageFont.className} ${styles.page}`}>
+        <Link href="/pomucky" className={styles.backLink}><ArrowLeft size={14} aria-hidden="true" />Zpět na pomůcky</Link>
+        <header className={styles.hero}>
+          <div><p className={styles.eyebrow}><Clock3 size={14} aria-hidden="true" />Pomůcky · Výpovědní lhůty</p><h1>Jak stíhám<br />výpověď smlouvy<span>?</span></h1><p className={styles.heroDescription}>Pár dat a máš jasno. Ověř termín doručení výpovědi a zjisti, kdy může smlouva skončit.</p><div className={styles.heroMeta}><span><CalendarDays size={13} aria-hidden="true" />Přehled rozhodných termínů</span><span><ShieldCheck size={13} aria-hidden="true" />5 způsobů ukončení</span></div></div>
+          <div className={styles.heroArt}><TimingIllustration /></div>
+        </header>
+        <div className={styles.workspace}>
+          <section className={styles.choices} aria-labelledby="timing-variants-heading">
+            <div className={styles.choicesHeading}><p className={styles.eyebrow}>01 · Způsob ukončení</p><h2 id="timing-variants-heading">Vyber svoji situaci</h2><p>Každá varianta má vlastní lhůtu.</p></div>
+            <div className={styles.variantList}>{VARIANTS.map((variant) => <VariantCard key={variant.id} variant={variant} active={variant.id === selectedVariantId} onSelect={() => setSelectedVariantId(variant.id)} />)}</div>
           </section>
-
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {VARIANTS.map((variant) => (
-              <VariantCard
-                key={variant.id}
-                variant={variant}
-                active={variant.id === selectedVariantId}
-                onSelect={() => setSelectedVariantId(variant.id)}
-              />
-            ))}
-          </section>
-
-          {selectedVariant ? (
-            <CalculatorBox key={selectedVariant.id} variant={selectedVariant} />
-          ) : (
-            <section className="rounded-[30px] border border-dashed border-violet-200 bg-white/78 px-6 py-10 text-center shadow-[0_18px_44px_rgba(88,28,135,0.08)]">
-              <p className="text-sm font-semibold text-slate-600 sm:text-base">
-                Vyber nahoře variantu výpovědi a zde se zobrazí příslušný výpočet.
-              </p>
+          {selectedVariant ? <CalculatorBox key={selectedVariant.id} variant={selectedVariant} /> : (
+            <section id="timing-calculator" className={styles.emptyPanel} aria-labelledby="timing-empty-title">
+              <div className={styles.emptyArtwork}><CalendarDays size={42} strokeWidth={1.2} aria-hidden="true" /><span><Check size={18} aria-hidden="true" /></span></div>
+              <p className={styles.eyebrow}>Tvůj přehled termínů</p><h2 id="timing-empty-title">Zjisti, kdy může smlouva skončit.</h2><p>Začni výběrem způsobu ukončení. Pak stačí zadat dvě data a rozhodné termíny se zobrazí tady.</p>
+              <ol className={styles.emptySteps}><li><span>1</span>Vyber variantu</li><li><span>2</span>Zadej data</li><li><span>3</span>Získej termíny</li></ol>
             </section>
           )}
-
-          <aside className="rounded-[24px] border border-amber-200 bg-amber-50/90 px-5 py-4 text-sm leading-6 text-amber-950 shadow-[0_14px_34px_rgba(146,64,14,0.08)]">
-            Výpočet je orientační pomůcka pro kontrolu lhůt. U konkrétní smlouvy vždy ověř přesné pojistné podmínky a datum doručení pojišťovně.
-          </aside>
         </div>
+        <aside className={styles.note}><Info size={16} aria-hidden="true" /><p>Výpočet je orientační pomůcka pro kontrolu lhůt. U konkrétní smlouvy vždy ověř přesné pojistné podmínky a datum doručení pojišťovně.</p></aside>
       </div>
     </AppLayout>
   );

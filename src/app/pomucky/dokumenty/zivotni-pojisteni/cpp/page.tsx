@@ -51,6 +51,7 @@ import {
 } from "@/app/lib/secureDocuments";
 import { DocumentsHeader, DocumentsSearch } from "../../DocumentsUi";
 import { DocumentAttachmentPreview } from "../../DocumentAttachmentPreview";
+import { LifeComparisonDocumentLink, comparisonDocumentMatches } from "../../LifeComparisonDocumentLink";
 import styles from "../../documents.module.css";
 
 type ActiveTab = ToolDocumentTab | "sprava";
@@ -932,6 +933,7 @@ export default function CppLifeDocumentsPage() {
     </article>;
   };
 
+  const showLifeComparison = currentInsurer.section === "cpp-life" && activeTab === "prehled" && comparisonDocumentMatches(searchQuery);
   return (
     <AppLayout active="tools">
       <div ref={workspaceRef} className={styles.workspace}>
@@ -962,8 +964,9 @@ export default function CppLifeDocumentsPage() {
               <div className={styles.listHeading}><h2>{activeTab === "sprava" ? "Správa dokumentů" : resolveTabInfo(activeTab).label}</h2><span role="status">Výsledky: {activeTab === "sprava" ? filteredDocuments.length : activeTabDocuments.length}</span></div>
           {activeTab !== "sprava" ? (
             <section className="space-y-4">
+              {showLifeComparison && <LifeComparisonDocumentLink />}
               {activeTabDocuments.length > 0 ? <div className={styles.documentRows}>{activeTabDocuments.map(doc => renderDocumentCard(doc))}</div>
-                : <div className={styles.emptyState}><FileText size={29} aria-hidden="true" /><h3>{searchQuery ? "Žádný dokument neodpovídá hledání." : "Tahle sekce je zatím prázdná."}</h3><p>{searchQuery ? "Zkus jiný výraz nebo zkontroluj výsledky v ostatních sekcích." : "Jakmile budou dokumenty k dispozici, najdeš je tady."}</p>{searchQuery && <button type="button" className={styles.secondaryButton} onClick={() => setSearchQuery("")}>Vymazat hledání</button>}</div>}
+                : !showLifeComparison && <div className={styles.emptyState}><FileText size={29} aria-hidden="true" /><h3>{searchQuery ? "Žádný dokument neodpovídá hledání." : "Tahle sekce je zatím prázdná."}</h3><p>{searchQuery ? "Zkus jiný výraz nebo zkontroluj výsledky v ostatních sekcích." : "Jakmile budou dokumenty k dispozici, najdeš je tady."}</p>{searchQuery && <button type="button" className={styles.secondaryButton} onClick={() => setSearchQuery("")}>Vymazat hledání</button>}</div>}
             </section>
           ) : canManageDocuments ? (
             <section className={styles.manageGrid}>

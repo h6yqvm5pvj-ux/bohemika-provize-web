@@ -1,6 +1,6 @@
 import { sealTip } from "@/lib/server/tipEncryption";
 import { randomUUID } from "crypto";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type DocumentReference, type DocumentSnapshot } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -493,6 +493,8 @@ class MailboxMessageConflictError extends Error {
   }
 }
 
+class MailboxGroupStateError extends Error {}
+
 const isAlreadyExistsError = (error: unknown): boolean =>
   isPlainObject(error) &&
   (error.code === 6 || error.code === "already-exists" || error.code === "ALREADY_EXISTS");
@@ -631,13 +633,13 @@ async function composeGroupMessage({
   createGroupOnly: boolean;
 }) {
   if (!adminDb) throw new Error("Firebase Admin není nakonfigurován.");
-  if (recipientEmails.length < 2) throw new Error("Skupina vyžaduje alespoň dva příjemce.");
+  if (recipientEmails.length < 2) throw new MailboxGroupStateError("Skupina vyžaduje alespoň dva příjemce.");
 
   const loadedRecipients = await Promise.all(
     recipientEmails.map((email) => loadUserByEmail(email))
   );
   if (loadedRecipients.some((recipient) => recipient === null)) {
-    throw new Error("Některý příjemce nebyl v systému nalezen.");
+    throw new MailboxGroupStateError("Některý příjemce nebyl v systému nalezen.");
   }
   const recipients = loadedRecipients.filter(
     (recipient): recipient is { email: string; name: string } => recipient !== null
@@ -651,7 +653,7 @@ async function composeGroupMessage({
 
   if (conversationId) {
     if (!GROUP_CONVERSATION_ID_RE.test(conversationId)) {
-      throw new Error("Neplatná skupinová konverzace.");
+      throw new MailboxGroupStateError("Neplatná skupinová konverzace.");
     }
     const conversationSnapshot = await adminDb
       .collection("usersPrivate")
@@ -661,7 +663,7 @@ async function composeGroupMessage({
       .get();
     const conversationData = (conversationSnapshot.data() ?? {}) as Record<string, unknown>;
     if (conversationData.active === false) {
-      throw new Error("Už nejsi členem této skupiny.");
+      throw new MailboxGroupStateError("Už nejsi členem této skupiny.");
     }
     const storedParticipantEmails = Array.isArray(conversationData.participantEmails)
       ? conversationData.participantEmails.map(normalizeEmail).filter(Boolean)
@@ -673,7 +675,7 @@ async function composeGroupMessage({
       storedParticipants.length !== requestedParticipants.length ||
       storedParticipants.some((email, index) => email !== requestedParticipants[index])
     ) {
-      throw new Error("Účastníci skupinové konverzace nesouhlasí.");
+      throw new MailboxGroupStateError("Účastníci skupinové konverzace nesouhlasí.");
     }
     groupName = normalizeText(conversationData.groupName) || groupName;
     groupOwnerEmail =
@@ -722,16 +724,12 @@ async function composeGroupMessage({
       ])
     );
     mailboxDocumentPaths = [...mailboxRefs.values()].map(ref => ref.path);
-    const recipientConversationSnapshots = await Promise.all(
-      recipients.map(async (recipient) => {
-        const ref = adminDb!
+    const conversationRefs = new Map(participants.map(participant => [participant.email, adminDb!
           .collection("usersPrivate")
-          .doc(recipient.email)
+          .doc(participant.email)
           .collection("mailboxConversations")
-          .doc(conversationId);
-        return { recipient, ref, snapshot: await ref.get() };
-      })
-    );
+          .doc(conversationId)]));
+    type RecipientConversation = { recipient: typeof recipients[number]; ref: DocumentReference; snapshot: DocumentSnapshot };
     const commonMetadata = {
       messageId,
       ...(clientRequestId ? { clientRequestId } : {}),
@@ -752,87 +750,120 @@ async function composeGroupMessage({
       deliveredAtMs: createdAtMs,
       encryptedContentVersion: encryptedContent.version,
     };
-    const batch = adminDb.batch();
-    participants.forEach((participant) => {
-      const senderCopy = participant.email === senderEmail;
-      // Every copy must be new. A collision aborts the entire delivery batch.
-      batch.create(mailboxRefs.get(participant.email)!, {
-        recipientEmail: participant.email,
-        type: "direct_message",
-        title: "Šifrovaná zpráva",
-        body: "Nová šifrovaná zpráva.",
-        encryptedContent,
-        deepLink: "/posta",
-        read: senderCopy,
-        readAtMs: senderCopy ? createdAtMs : null,
-        readAt: senderCopy ? FieldValue.serverTimestamp() : null,
-        createdAtMs,
-        createdAt: FieldValue.serverTimestamp(),
-        metadata: {
-          ...commonMetadata,
-          mailboxOwnerEmail: participant.email,
-          mailboxDirection: senderCopy ? "sent" : "received",
-        },
+    const deliver = (batch: {
+      create(ref: DocumentReference, data: Record<string, unknown>): unknown;
+      set(ref: DocumentReference, data: Record<string, unknown>, options: {merge: true}): unknown;
+    }, recipientConversationSnapshots: RecipientConversation[]) => {
+      participants.forEach((participant) => {
+        const senderCopy = participant.email === senderEmail;
+        // Every copy must be new. A collision aborts the entire delivery batch.
+        batch.create(mailboxRefs.get(participant.email)!, {
+          recipientEmail: participant.email,
+          type: "direct_message",
+          title: "Šifrovaná zpráva",
+          body: "Nová šifrovaná zpráva.",
+          encryptedContent,
+          deepLink: "/posta",
+          read: senderCopy,
+          readAtMs: senderCopy ? createdAtMs : null,
+          readAt: senderCopy ? FieldValue.serverTimestamp() : null,
+          createdAtMs,
+          createdAt: FieldValue.serverTimestamp(),
+          metadata: {
+            ...commonMetadata,
+            mailboxOwnerEmail: participant.email,
+            mailboxDirection: senderCopy ? "sent" : "received",
+          },
+        });
+        batch.set(
+          adminDb!
+            .collection("usersPrivate")
+            .doc(participant.email)
+            .collection("mailboxConversations")
+            .doc(conversationId),
+          {
+            ...(requestedConversationId
+              ? {}
+              : {
+                  conversationId,
+                  groupConversation: true,
+                  groupName,
+                  groupOwnerEmail,
+                  participants,
+                  participantEmails,
+                  active: true,
+                  createdByEmail: senderEmail,
+                  createdAtMs,
+                  createdAt: FieldValue.serverTimestamp(),
+                }),
+            lastMessageId: messageId,
+            lastMessageAtMs: createdAtMs,
+            lastMessageAt: FieldValue.serverTimestamp(),
+            lastSenderEmail: senderEmail,
+          },
+          { merge: true }
+        );
       });
-      batch.set(
-        adminDb!
-          .collection("usersPrivate")
-          .doc(participant.email)
-          .collection("mailboxConversations")
-          .doc(conversationId),
-        {
-          conversationId,
-          groupConversation: true,
-          groupName,
-          groupOwnerEmail,
-          participants,
-          participantEmails,
-          active: true,
-          ...(requestedConversationId
-            ? {}
-            : {
-                createdByEmail: senderEmail,
-                createdAtMs,
-                createdAt: FieldValue.serverTimestamp(),
-              }),
-          lastMessageId: messageId,
-          lastMessageAtMs: createdAtMs,
-          lastMessageAt: FieldValue.serverTimestamp(),
-          lastSenderEmail: senderEmail,
-        },
-        { merge: true }
-      );
-    });
-    recipientConversationSnapshots.forEach(({ recipient, ref, snapshot }) => {
-      const data = (snapshot.data() ?? {}) as Record<string, unknown>;
-      const pendingMessageId = normalizeText(data.pendingReplyReminderMessageId);
-      if (!pendingMessageId || pendingMessageId.includes("/")) return;
-      batch.set(
-        adminDb!
-          .collection("usersPrivate")
-          .doc(recipient.email)
-          .collection("mailbox")
-          .doc(pendingMessageId),
-        {
-          replyReminderAtMs: FieldValue.delete(),
-          replyReminderAt: FieldValue.delete(),
-          replyReminderSetAtMs: FieldValue.delete(),
-          replyReminderSetAt: FieldValue.delete(),
-          replyReminderResolvedAtMs: createdAtMs,
-          replyReminderResolvedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      batch.set(
-        ref,
-        {
-          pendingReplyReminderMessageId: FieldValue.delete(),
-          pendingReplyReminderAtMs: FieldValue.delete(),
-        },
-        { merge: true }
-      );
-    });
-    await batch.commit();
+      recipientConversationSnapshots.forEach(({ recipient, ref, snapshot }) => {
+        const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+        const pendingMessageId = normalizeText(data.pendingReplyReminderMessageId);
+        if (!pendingMessageId || pendingMessageId.includes("/")) return;
+        batch.set(
+          adminDb!
+            .collection("usersPrivate")
+            .doc(recipient.email)
+            .collection("mailbox")
+            .doc(pendingMessageId),
+          {
+            replyReminderAtMs: FieldValue.delete(),
+            replyReminderAt: FieldValue.delete(),
+            replyReminderSetAtMs: FieldValue.delete(),
+            replyReminderSetAt: FieldValue.delete(),
+            replyReminderResolvedAtMs: createdAtMs,
+            replyReminderResolvedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        batch.set(
+          ref,
+          {
+            pendingReplyReminderMessageId: FieldValue.delete(),
+            pendingReplyReminderAtMs: FieldValue.delete(),
+          },
+          { merge: true }
+        );
+      });
+    };
+    let recipientConversationSnapshots: RecipientConversation[];
+    if (requestedConversationId) {
+      recipientConversationSnapshots = await adminDb.runTransaction(async tx => {
+        // Reads and delivery share the same commit. Removal/addition updates
+        // these copies and forces a retry against the new membership state.
+        const snapshots = await Promise.all(participants.map(participant => tx.get(conversationRefs.get(participant.email)!)));
+        const expectedEmails = [...participantEmails].sort();
+        for (const snapshot of snapshots) {
+          const data = snapshot.data() ?? {};
+          const currentEmails = Array.isArray(data.participantEmails) ? data.participantEmails.map(normalizeEmail).sort() : [];
+          if (!snapshot.exists || data.active === false || currentEmails.length !== expectedEmails.length ||
+              currentEmails.some((email, index) => email !== expectedEmails[index])) {
+            throw new MailboxGroupStateError("Členství ve skupině se změnilo. Obnov konverzaci před odesláním.");
+          }
+        }
+        groupName = normalizeText(snapshots[0]!.data()?.groupName) || groupName;
+        commonMetadata.groupName = groupName;
+        const recipientSnapshots = recipients.map((recipient, index) => ({recipient,ref:conversationRefs.get(recipient.email)!,snapshot:snapshots[index + 1]!}));
+        deliver(tx, recipientSnapshots);
+        return recipientSnapshots;
+      });
+    } else {
+      recipientConversationSnapshots = await Promise.all(recipients.map(async recipient => {
+        const ref = conversationRefs.get(recipient.email)!;
+        return {recipient,ref,snapshot:await ref.get()};
+      }));
+      const batch = adminDb.batch();
+      deliver(batch, recipientConversationSnapshots);
+      await batch.commit();
+    }
     committed = true;
 
     if (!createGroupOnly) {
@@ -1165,11 +1196,11 @@ export async function POST(req: NextRequest) {
           {
             ok: false,
             error:
-              error instanceof Error
+              error instanceof MailboxGroupStateError || error instanceof MailboxMessageConflictError
                 ? error.message
                 : "Skupinovou zprávu se nepodařilo odeslat.",
           },
-          { status: error instanceof MailboxMessageConflictError ? 409 : 400 }
+          { status: error instanceof MailboxMessageConflictError ? 409 : error instanceof MailboxGroupStateError ? 400 : 500 }
         ),
         ctx
       );

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T13:32:08+02:00",
+  "source": "user-provided screenshot after diagnostic removal, visible null and a new own-view result",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 15591.79999999702,
+    "referenceMs": 107.09999999403954,
+    "serverTimingMs": {
+      "cashflow_auth": 2226.88,
+      "cashflow_inputs": 11999.47,
+      "cashflow_hash": 234.1,
+      "cashflow_compute": 907.73,
+      "cashflow_total": 15391.06
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "own",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": false,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "previousDiagnosticRemovalVisible": true,
+    "emptyDiagnosticAfterRemovalVisible": true,
+    "newViewComparisonAfterRemovalVisible": true,
+    "fullInputAndResultMatchReported": true,
+    "selectionBinding": "visible own/all/prediction-off controls, diagnostic removal, intermediate null and preceding procedure; request options not captured",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "aliasVerifiedAt": "2026-10-09T11:33:53.776Z",
+    "requestDeploymentIndependentlyCaptured": false,
+    "ownViewVerifiedAccordingToProcedure": true,
+    "productionSpeedupEstablished": false
+  },
+  "singleSampleLatencyComparison": {
+    "previousEvidence": "cashflow-server-pilot-live-scope-own-match-2026-10-09.json",
+    "sameVisibleSelection": true,
+    "previousInputMs": 7896.57,
+    "currentInputMs": 11999.47,
+    "previousAuthMs": 468.89,
+    "currentAuthMs": 2226.88,
+    "previousRequestMs": 9738.300000011921,
+    "currentRequestMs": 15591.79999999702,
+    "currentObservationSlower": true,
+    "repeatedComparableSamples": false,
+    "identicalPortfolioAcrossObservationsIndependentlyVerified": false,
+    "wholePageLatencyMeasured": false,
+    "causalAttributionEstablished": false,
+    "interpretation": "The own-view observation is slower than the previous successful own-view observation. Earlier faster team/prediction and month samples do not establish stable production speedup."
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "businessRecordsChanged": false
+}

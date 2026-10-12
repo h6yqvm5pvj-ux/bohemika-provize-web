@@ -42,6 +42,7 @@ import type {
 } from "./types";
 import { useCashflowData } from "./useCashflowData";
 import { useCashflowView } from "./useCashflowView";
+import { useCashflowPageMeasurement, useCashflowPilotMode } from "./useCashflowPilotDiagnostics";
 import { useCashflowContractSearch } from "./useCashflowContractSearch";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
@@ -170,6 +171,7 @@ function CommissionStatementPreviewModal({
 }
 
 export default function CashflowPage() {
+  const pilotMode = useCashflowPilotMode();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [profileReady, setProfileReady] = useState(false);
@@ -193,6 +195,7 @@ export default function CashflowPage() {
   } | null>(null);
   const [statementVerificationEmail, setStatementVerificationEmail] = useState<string | null>(null);
   const statementScopeIdentity = user ? `${user.uid ?? user.email}|${statementScopeEmail}` : null;
+  const [statementsSettled, setStatementsSettled] = useState<{ identity: string; failed: boolean } | null>(null);
   const [statementPreviewState, setStatementPreviewState] = useState(() => emptyStatementPreview(statementScopeIdentity));
   const previewScopeMatches = statementPreviewState.scope.identity === statementScopeIdentity;
   if (!previewScopeMatches) setStatementPreviewState(emptyStatementPreview(statementScopeIdentity));
@@ -290,6 +293,7 @@ export default function CashflowPage() {
   }, [effectiveEmail, user]);
 
   useEffect(() => {
+    setStatementsSettled(null);
     setStatementVerificationEmail(null);
     setCommissionStatements([]);
     setStatementsDataEmail(null);
@@ -316,6 +320,7 @@ export default function CashflowPage() {
           throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
         }
         if (!cancelled) {
+          setStatementsSettled({ identity: statementScopeIdentity!, failed: false });
           setCommissionStatements(dedupeCashflowCommissionStatements(payload.items));
           setStatementsDataEmail(normalizeEmail(requestScopeEmail));
           setStatementVerificationEmail(
@@ -326,6 +331,7 @@ export default function CashflowPage() {
         }
       } catch (error) {
         if (cancelled) return;
+        setStatementsSettled({ identity: statementScopeIdentity!, failed: true });
         console.warn("Cashflow: uložené provizní výpisy se nepodařilo načíst.", error);
         setCommissionStatements([]);
         setStatementPreviewState(previous => previous.scope === previewScope && !previous.request
@@ -338,7 +344,7 @@ export default function CashflowPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, effectiveEmail, previewScope]);
+  }, [user, effectiveEmail, previewScope, statementScopeIdentity]);
 
   const isTipsterMode = accountType === "tipster";
   const canViewSubscriptionCashflow =
@@ -352,9 +358,11 @@ export default function CashflowPage() {
 
   const cashflowDataEnabled =
     profileReady && Boolean(dataEmail) && hasInternalProfile === true;
+  const serverPilot = pilotMode === "compare";
   const {
     loading,
     ready: cashflowReady,
+    error: cashflowDataError,
     rawSnapshot,
     calculationDeferred,
     cashflowItems,
@@ -368,6 +376,7 @@ export default function CashflowPage() {
     tipsterMode: isTipsterMode,
     enabled: cashflowDataEnabled,
     deferCalculation: process.env.NEXT_PUBLIC_CASHFLOW_WORKER_ENABLED === "1",
+    forceDeferredCalculation: serverPilot,
   });
 
   const initialLoadingActive =
@@ -391,6 +400,7 @@ export default function CashflowPage() {
   const workerView = useCashflowView({
     dataset: workerDataset, options: workerOptions, identity: calculationIdentity,
     enabled: Boolean(calculationDeferred && cashflowDataEnabled),
+    serverPilot,
   });
   const calculating = Boolean(calculationDeferred && workerView.pending);
 
@@ -532,6 +542,17 @@ export default function CashflowPage() {
     ? workerView.overview?.contractSearchStats ?? EMPTY_SEARCH_STATS : inlineContractSearchStats;
 
   const yearGroups = useMemo(() => includeCurrentYear(groupMonthsByYear(monthGroups)), [monthGroups]);
+
+  useCashflowPageMeasurement({
+    mode: pilotMode, identity: statementScopeIdentity,
+    profileReady: profileReady && hasInternalProfile === true,
+    contractsReady: cashflowDataEnabled && cashflowReady && !loading,
+    statementsReady: statementsSettled?.identity === statementScopeIdentity,
+    overviewReady: statementsSettled?.identity === statementScopeIdentity && cashflowDataEnabled && cashflowReady && !loading &&
+      (!calculationDeferred || Boolean(workerView.overview)),
+    failed: Boolean(profileLoadError || cashflowDataError || workerView.error ||
+      (statementsSettled?.identity === statementScopeIdentity && statementsSettled?.failed)),
+  });
 
   useEffect(() => {
     if (

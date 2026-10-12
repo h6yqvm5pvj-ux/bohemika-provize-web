@@ -61,7 +61,7 @@ export function isAvailablePayoutPlanTarget(item: CashflowItem): boolean {
 }
 
 /** No C→B aliases, date proximity, amount similarity or counter-based guesses. */
-export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem[], viewerEmail?: string | null): CashflowItem[] {
+export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem[], viewerEmail?: string | null, calendar?: Date): CashflowItem[] {
   if (entry.productKey !== "kooperativaAuto") return items;
   const recipient = normalizedPayoutEmail(viewerEmail);
   const matches = (entry.cashflowPayoutMatches ?? []).filter(match => normalizedPayoutEmail(match.writtenBy) === recipient);
@@ -96,7 +96,7 @@ export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem
     if (replacement) return replacement;
     if (!isKooperativaCPayout(item.productKey, item.commissionCode) || !item.isStatementOnly) return item;
     const payout = (entry.commissionPayouts ?? []).find(source => source.key === item.commissionPayoutKey && normalizedPayoutEmail(source.writtenBy) === recipient);
-    const meaning = payout ? describeKooperativaCPayout({ product: entry.productKey, policyStartDate: entry.policyStartDate, payout, payouts: entry.commissionPayouts ?? [] }) : null;
+    const meaning = payout ? describeKooperativaCPayout({ product: entry.productKey, policyStartDate: entry.policyStartDate, payout, payouts: entry.commissionPayouts ?? [], calendar }) : null;
     return {
       ...item, payoutPlanStatus: item.amount < 0 ? "correction" : "unmatched",
       ...(meaning ? { commissionLabel: `${meaning.label} · ${item.commissionCode}` } : {}),

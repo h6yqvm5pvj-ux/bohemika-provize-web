@@ -28,6 +28,7 @@ const CONTACTS_WRITE_RATE_LIMIT = 30;
 const CONTACTS_WINDOW_MS = 60_000;
 const CONTACTS_DEEP_LINK = "/?contacts=1&source=contact-notification";
 const CONTACTS_MAILBOX_BATCH_SIZE = 400;
+const PILLOW_DEFAULTS_VERSION = 1;
 
 const response = (
   payload: Record<string, unknown>,
@@ -46,8 +47,25 @@ async function loadStoredContacts() {
     .get();
   if (!snapshot.exists) return DEFAULT_DIRECTORY_CONTACTS;
 
-  const normalized = normalizeDirectoryContacts(snapshot.data()?.contacts);
-  return normalized ?? DEFAULT_DIRECTORY_CONTACTS;
+  const stored = snapshot.data();
+  const normalized = normalizeDirectoryContacts(stored?.contacts);
+  if (!normalized) return DEFAULT_DIRECTORY_CONTACTS;
+  if (stored?.pillowDefaultsVersion === PILLOW_DEFAULTS_VERSION) return normalized;
+
+  // Supplement older directories without overwriting edits or duplicating contacts.
+  // The next authorized save records the version so later deletions stay deleted.
+  const additions = DEFAULT_DIRECTORY_CONTACTS.filter(
+    (contact) => contact.institutionKey === "pillow" && !normalized.some(
+      (existing) => existing.institutionKey === contact.institutionKey && (
+        existing.id === contact.id ||
+        (contact.phone && existing.phone?.href === contact.phone.href) ||
+        contact.emails?.some((email) => existing.emails?.some(
+          (other) => other.value.toLowerCase() === email.value.toLowerCase(),
+        ))
+      ),
+    ),
+  );
+  return [...normalized, ...additions];
 }
 
 async function canManageContacts(ctx: {
@@ -197,6 +215,7 @@ export async function PUT(req: NextRequest) {
       .doc(CONTACT_DIRECTORY_DOCUMENT)
       .set({
         contacts,
+        pillowDefaultsVersion: PILLOW_DEFAULTS_VERSION,
         updatedAt: FieldValue.serverTimestamp(),
         updatedByEmail: guard.ctx.email,
       });

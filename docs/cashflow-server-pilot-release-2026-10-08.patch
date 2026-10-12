@@ -1,0 +1,1915 @@
+diff --git a/src/app/cashflow/cashflow.worker.ts b/src/app/cashflow/cashflow.worker.ts
+index a1d5d5e..f18617d 100644
+--- a/src/app/cashflow/cashflow.worker.ts
++++ b/src/app/cashflow/cashflow.worker.ts
+@@ -10,8 +10,8 @@ const scope = self as unknown as {
+ let model: CashflowModel | null = null;
+ let revision = 0;
+ 
+-scope.addEventListener("message", ({ data }) => {
+-  if (!data || typeof data !== "object" || !["init", "view", "month", "dispose"].includes(data.kind)) {
++scope.addEventListener("message", async ({ data }) => {
++  if (!data || typeof data !== "object" || !["init", "view", "month", "verify", "dispose"].includes(data.kind)) {
+     scope.postMessage({ kind: "invalid", id: -1, ok: false });
+     return;
+   }
+@@ -33,6 +33,14 @@ scope.addEventListener("message", ({ data }) => {
+     } else if (data.kind === "month") {
+       if (!model || data.revision !== revision || revision === 0) throw new Error("Invalid month revision");
+       scope.postMessage({ kind: "month", id: data.id, revision, ok: true, result: model.month(data.key) });
++    } else if (data.kind === "verify") {
++      if (!model?.verification || data.revision !== revision || revision === 0) throw new Error("Invalid worker request");
++      const requestedRevision = revision;
++      const result = await model.verification();
++      // A new view/dispose may arrive while WebCrypto is hashing.
++      if (model && revision === requestedRevision) {
++        scope.postMessage({ kind: "verify", id: data.id, revision: requestedRevision, ok: true, result });
++      }
+     } else throw new Error("Invalid worker request");
+   } catch {
+     scope.postMessage({ kind: data.kind, id: data.id, ok: false });
+diff --git a/src/app/cashflow/cashflowModel.test.ts b/src/app/cashflow/cashflowModel.test.ts
+index 2a9131e..f88e096 100644
+--- a/src/app/cashflow/cashflowModel.test.ts
++++ b/src/app/cashflow/cashflowModel.test.ts
+@@ -184,4 +184,21 @@ describe("cashflow model with bounded last-stage caches", () => {
+     expect(() => createCashflowModel({ ...input, asOf: new Date(Number.NaN) })).toThrow("valid calculation date");
+     expect(heldDate).toEqual(asOf);
+   });
++
++  it("hashes every displayed month/item and source without returning the portfolio", async () => {
++    const input = dataset();
++    const model = createCashflowModel(input);
++    await expect(model.verification!()).rejects.toThrow("unavailable");
++    const result = model.view(defaultOptions);
++    const verification = await model.verification!();
++    expect(verification).toEqual({
++      inputHash: digest({ snapshot: input.snapshot, statements: input.statements }),
++      monthsHash: digest(result.months.map(month => model.month(month.key))),
++    });
++    expect(Object.keys(verification).sort()).toEqual(["inputHash", "monthsHash"]);
++    model.view({ ...defaultOptions, productFilter: "life" });
++    expect((await model.verification!()).monthsHash).not.toBe(verification.monthsHash);
++    model.dispose();
++    await expect(model.verification!()).rejects.toThrow("unavailable");
++  });
+ });
+diff --git a/src/app/cashflow/cashflowModel.ts b/src/app/cashflow/cashflowModel.ts
+index 1edc0fa..a2eda30 100644
+--- a/src/app/cashflow/cashflowModel.ts
++++ b/src/app/cashflow/cashflowModel.ts
+@@ -1,6 +1,7 @@
+ import { computeCashflow, type CashflowSnapshot } from "./computeCashflow";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import { formatCashflowItemCount } from "./cashflowLabels";
++import { hashCashflowValue } from "./shadowProtocol";
+ import {
+   applyIntelligentCashflowPrediction,
+   applyStatementMissingPayoutShifts,
+@@ -136,6 +137,14 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
+     month(key) {
+       return currentMonths?.find(month => month.key === key) ?? null;
+     },
++    async verification() {
++      if (!dataset || !currentMonths) throw new Error("Cashflow view is unavailable");
++      const [inputHash, monthsHash] = await Promise.all([
++        hashCashflowValue({ snapshot: dataset.snapshot, statements: dataset.statements }),
++        hashCashflowValue(currentMonths),
++      ]);
++      return { inputHash, monthsHash };
++    },
+     dispose() {
+       dataset = null;
+       currentMonths = null;
+diff --git a/src/app/cashflow/cashflowWorker.client.test.ts b/src/app/cashflow/cashflowWorker.client.test.ts
+index 6fba128..cef6283 100644
+--- a/src/app/cashflow/cashflowWorker.client.test.ts
++++ b/src/app/cashflow/cashflowWorker.client.test.ts
+@@ -53,6 +53,30 @@ beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
+ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+ 
+ describe("persistent cashflow worker client", () => {
++  it("requests compact verification hashes only after the current view completes", async () => {
++    const f = fixture();
++    await expect(f.client.verification!()).rejects.toMatchObject({ name: "AbortError" });
++    const view = f.client.view(options()); f.init(); f.respond(); await view;
++    const verified = f.client.verification!();
++    const request = f.worker.postMessage.mock.calls.at(-1)![0];
++    expect(request).toEqual({ kind: "verify", id: 2, revision: 1 });
++    const result = { inputHash: "a".repeat(64), monthsHash: "b".repeat(64) };
++    f.worker.emit("message", { ...request, ok: true, result });
++    expect(await verified).toEqual(result);
++    expect(f.createFallbackModel).not.toHaveBeenCalled();
++    f.client.dispose();
++  });
++
++  it("verifies the same view after the worker falls back to a local model", async () => {
++    const f = fixture();
++    const result = { inputHash: "a".repeat(64), monthsHash: "b".repeat(64) };
++    Object.assign(f.model, { verification: vi.fn(async () => result) });
++    const view = f.client.view(options()); f.worker.emit("error"); await view;
++    expect(await f.client.verification!()).toEqual(result);
++    expect(f.client.executionPath).toBe("fallback");
++    f.client.dispose();
++  });
++
+   it("initializes one immutable dataset and sends only options or month keys afterward", async () => {
+     expectTypeOf<Worker>().toExtend<CashflowWorkerPort>();
+     const f = fixture();
+diff --git a/src/app/cashflow/cashflowWorker.client.ts b/src/app/cashflow/cashflowWorker.client.ts
+index dbebe92..0938dbd 100644
+--- a/src/app/cashflow/cashflowWorker.client.ts
++++ b/src/app/cashflow/cashflowWorker.client.ts
+@@ -1,5 +1,5 @@
+ import type { CashflowViewOptions } from "./buildCashflowView";
+-import type { CashflowDataset, CashflowModel, CashflowOverview } from "./cashflowWorker.types";
++import type { CashflowDataset, CashflowModel, CashflowOverview, CashflowVerification } from "./cashflowWorker.types";
+ import type { MonthGroup } from "./types";
+ 
+ export type CashflowWorkerPort = Pick<Worker, "postMessage" | "addEventListener" | "removeEventListener" | "terminate">;
+@@ -7,16 +7,19 @@ export type CashflowWorkerRequest =
+   | { kind: "init"; id: 0; dataset: CashflowDataset }
+   | { kind: "view"; id: number; revision: number; options: CashflowViewOptions }
+   | { kind: "month"; id: number; revision: number; key: string }
++  | { kind: "verify"; id: number; revision: number }
+   | { kind: "dispose" };
+ export type CashflowWorkerResponse =
+   | { kind: "init"; id: 0; ok: true }
+   | { kind: "view"; id: number; revision: number; ok: true; result: CashflowOverview }
+   | { kind: "month"; id: number; revision: number; ok: true; result: MonthGroup | null }
++  | { kind: "verify"; id: number; revision: number; ok: true; result: CashflowVerification }
+   | { kind: string; id: number; ok: false };
+ export type CashflowWorkerClient = {
+   view(options: CashflowViewOptions): Promise<CashflowOverview>;
+   /** Only valid after the most recently requested view has completed. */
+   month(key: string): Promise<MonthGroup | null>;
++  verification?(): Promise<CashflowVerification>;
+   dispose(): void;
+   readonly executionPath: "pending" | "worker" | "fallback" | "disposed";
+ };
+@@ -30,6 +33,7 @@ type Job = {
+ } & (
+   | { kind: "view"; resolve(result: CashflowOverview): void }
+   | { kind: "month"; key: string; resolve(result: MonthGroup | null): void }
++  | { kind: "verify"; resolve(result: CashflowVerification): void }
+ );
+ type Active = Job | { kind: "init"; id: 0 };
+ 
+@@ -106,8 +110,14 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
+           fallbackRevision = job.revision;
+         }
+         if (!current(job)) return;
+-        const result = model.month(job.key);
+-        if (current(job)) job.resolve(result);
++        if (job.kind === "verify") {
++          if (!model.verification) throw new Error("Cashflow verification unavailable");
++          const result = await model.verification();
++          if (current(job)) job.resolve(result);
++        } else {
++          const result = model.month(job.key);
++          if (current(job)) job.resolve(result);
++        }
+       }
+     } catch {
+       if (current(job)) job.reject(new Error("Cashflow calculation failed"));
+@@ -143,6 +153,12 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
+         onFailure(); return;
+       }
+       if (current(active)) { readyRevision = active.revision; active.resolve(result); }
++    } else if (active.kind === "verify") {
++      const result = response.result as CashflowVerification | null;
++      if (!result || ![result.inputHash, result.monthsHash].every(hash => typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash))) {
++        onFailure(); return;
++      }
++      if (current(active) && readyRevision === active.revision) active.resolve(result);
+     } else if (active.kind === "month") {
+       const result = response.result as MonthGroup | null;
+       if (result !== null && (!result || result.key !== active.key || !Array.isArray(result.items))) { onFailure(); return; }
+@@ -175,9 +191,9 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
+     if (!current(job)) { drain(); return; }
+     active = job;
+     if (path === "fallback") { void finishFallback(job); return; }
+-    send(job.kind === "view"
+-      ? { kind: "view", id: job.id, revision: job.revision, options: job.options }
+-      : { kind: "month", id: job.id, revision: job.revision, key: job.key });
++    if (job.kind === "view") send({ kind: "view", id: job.id, revision: job.revision, options: job.options });
++    else if (job.kind === "verify") send({ kind: "verify", id: job.id, revision: job.revision });
++    else send({ kind: "month", id: job.id, revision: job.revision, key: job.key });
+   }
+   const enqueue = (job: Job) => {
+     cancel(active);
+@@ -201,6 +217,11 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
+       return new Promise((resolve, reject) => enqueue({ kind: "month", id: ++sequence,
+         revision, options: latestOptions!, key, cancelled: false, resolve, reject }));
+     },
++    verification() {
++      if (path === "disposed" || !latestOptions || readyRevision !== revision) return Promise.reject(abortError());
++      return new Promise((resolve, reject) => enqueue({ kind: "verify", id: ++sequence,
++        revision, options: latestOptions!, cancelled: false, resolve, reject }));
++    },
+     dispose() {
+       if (path === "disposed") return;
+       path = "disposed";
+diff --git a/src/app/cashflow/cashflowWorker.types.ts b/src/app/cashflow/cashflowWorker.types.ts
+index 4413d42..6492f01 100644
+--- a/src/app/cashflow/cashflowWorker.types.ts
++++ b/src/app/cashflow/cashflowWorker.types.ts
+@@ -32,8 +32,15 @@ export type CashflowOverview = {
+   contractSearchStats: CashflowContractSearchStats;
+ };
+ 
++export type CashflowVerification = {
++  inputHash: string;
++  monthsHash: string;
++};
++
+ export type CashflowModel = {
+   view(options: CashflowViewOptions): CashflowOverview;
+   month(key: string): MonthGroup | null;
++  /** Optional diagnostic path; hashes every displayed item without transferring it. */
++  verification?(): Promise<CashflowVerification>;
+   dispose(): void;
+ };
+diff --git a/src/app/cashflow/generator.test.ts b/src/app/cashflow/generator.test.ts
+index 48313b5..0fcc5d2 100644
+--- a/src/app/cashflow/generator.test.ts
++++ b/src/app/cashflow/generator.test.ts
+@@ -4,6 +4,80 @@ import { generateCashflow } from "./generator";
+ import type { EntryDoc } from "./types";
+ 
+ describe("generateCashflow", () => {
++  describe.each(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"] as const)("%s first life commission", (productKey) => {
++    const asOf = new Date(2026, 9, 8);
++    const fixture = (contractSignedDate: unknown): EntryDoc => ({
++      id: "life-forecast",
++      productKey,
++      policyStartDate: new Date(2026, 11, 1),
++      contractSignedDate,
++      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }],
++    });
++
++    it.each([
++      [new Date(2026, 9, 8), new Date(2026, 11, 25)],
++      [new Date(2026, 10, 25), new Date(2026, 11, 25)],
++      [new Date(2026, 10, 26), new Date(2027, 0, 25)],
++      [new Date(2026, 10, 28), new Date(2027, 0, 25)],
++      [new Date(2026, 11, 8), new Date(2027, 0, 25)],
++      [new Date(2026, 11, 28), new Date(2027, 1, 25)],
++    ])("forecasts a contract signed on %s for %s", (signed, expected) => {
++      const rows = generateCashflow([fixture(signed)], 2, undefined, asOf);
++      expect(rows).toHaveLength(1);
++      expect(rows[0]).toMatchObject({ date: expected, amount: 1000 });
++    });
++
++    it.each([null, "invalid-date"])("keeps a conservative forecast without a valid signing date (%s)", (signed) => {
++      const entry = { ...fixture(signed), createdAt: new Date(2026, 9, 8) };
++      expect(generateCashflow([entry], 2, undefined, asOf)[0].date).toEqual(new Date(2027, 0, 25));
++    });
++
++    it("does not forecast a payout before a late-month policy start", () => {
++      const entry = { ...fixture(new Date(2026, 9, 8)), policyStartDate: new Date(2026, 11, 28) };
++      expect(generateCashflow([entry], 2, undefined, asOf)[0].date).toEqual(new Date(2027, 0, 25));
++    });
++
++    it("keeps the real payout month when it differs from the forecast", () => {
++      const entry = fixture(new Date(2026, 9, 8));
++      entry.commissionPayouts = [{ key: "paid-life", code: "A101", status: "paid", amount: 1000, payoutMonthKey: "2027-1" }];
++      const rows = generateCashflow([entry], 2, undefined, asOf);
++      expect(rows).toHaveLength(1);
++      expect(rows[0]).toMatchObject({
++        date: new Date(2027, 0, 25),
++        originalDate: new Date(2026, 11, 25),
++        payoutStatus: "paid",
++        commissionPayoutKey: "paid-life",
++      });
++    });
++  });
++
++  it("keeps life anniversary commissions tied to the policy start", () => {
++    const rows = generateCashflow([{
++      id: "life-anniversary", productKey: "neon",
++      policyStartDate: new Date(2026, 11, 1), contractSignedDate: new Date(2026, 9, 8),
++      items: [
++        { title: "Okamžitá provize", code: "A101", amount: 1000 },
++        { title: "Následná provize (2.–5. rok)", code: "B101-B104", amount: 100 },
++        { title: "Provize po 3 letech", code: "B3601", amount: 300 },
++      ],
++    }], 5, undefined, new Date(2026, 9, 8));
++    expect(rows.find(row => row.commissionCode === "A101")?.date).toEqual(new Date(2026, 11, 25));
++    expect(rows.filter(row => row.commissionCode === "B101-B104").map(row => row.date)).toEqual([
++      new Date(2028, 0, 25), new Date(2029, 0, 25), new Date(2030, 0, 25), new Date(2031, 0, 25),
++    ]);
++    expect(rows.find(row => row.commissionCode === "B3601")?.date).toEqual(new Date(2030, 0, 25));
++  });
++
++  it("keeps the existing forecast for property insurance with an early signing date", () => {
++    const rows = generateCashflow([{
++      id: "property-forecast", productKey: "allianzmujdomov",
++      policyStartDate: new Date(2026, 11, 1), contractSignedDate: new Date(2026, 9, 8),
++      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }],
++    }], 2, undefined, new Date(2026, 9, 8));
++    expect(rows).toHaveLength(1);
++    expect(rows[0].date).toEqual(new Date(2027, 0, 25));
++  });
++
+   it.each([600, 19_884])("matches a B101 payout to cashflow regardless of base size (%s CZK)", (statementBaseAmount) => {
+     const smallBase = statementBaseAmount === 600;
+     const entry: EntryDoc = {
+diff --git a/src/app/cashflow/generator.ts b/src/app/cashflow/generator.ts
+index 16a14b6..1702272 100644
+--- a/src/app/cashflow/generator.ts
++++ b/src/app/cashflow/generator.ts
+@@ -43,6 +43,23 @@ export function estimatePayoutDate(
+   return new Date(year, month + 1, payoutDay);
+ }
+ 
++function estimateLifeFirstPayoutDate(
++  policyStart: Date,
++  agreementDate: Date,
++  payoutDay = 25
++): Date {
++  // Předstih pro akceptaci počítáme od sjednání: do 25. dne +1 měsíc,
++  // později +2 měsíce. Výplata může být už v měsíci počátku,
++  // ale nesmí předcházet samotnému počátku pojištění.
++  const acceptancePayout = estimatePayoutDate(agreementDate, agreementDate, 25, payoutDay);
++  const earliestPayout = new Date(
++    policyStart.getFullYear(),
++    policyStart.getMonth() + (policyStart.getDate() > payoutDay ? 1 : 0),
++    payoutDay
++  );
++  return acceptancePayout > earliestPayout ? acceptancePayout : earliestPayout;
++}
++
+ function isSameCalendarMonth(left: Date, right: Date): boolean {
+   return (
+     left.getFullYear() === right.getFullYear() &&
+@@ -792,10 +809,15 @@ export function generateCashflow(
+       }
+     };
+ 
++    // Bez známého data sjednání zachováme dosavadní konzervativní odhad.
++    const lifeFirstPayoutDate = toDate(entry.contractSignedDate)
++      ? estimateLifeFirstPayoutDate(start, agreement)
++      : estimatePayoutDate(start, agreement);
++
+     const pushImmediateCashflowItems = (
+       horizonLimit: Date = entryHorizonEnd
+     ) => {
+-      const payoutDate = estimatePayoutDate(start, agreement);
++      const payoutDate = lifeFirstPayoutDate;
+       if (splitImmediateParts.length > 0) {
+         for (const part of splitImmediateParts) {
+           pushItem(part.amount, payoutDate, part.commissionLabel, horizonLimit, {
+@@ -880,7 +902,7 @@ export function generateCashflow(
+         if (immediate) {
+           pushItem(
+             immediate.amount,
+-            estimatePayoutDate(start, agreement),
++            lifeFirstPayoutDate,
+             undefined,
+             entryHorizonEnd,
+             immediateCodes.length > 0
+diff --git a/src/app/cashflow/page.loading.test.tsx b/src/app/cashflow/page.loading.test.tsx
+index e8ad82a..aeba871 100644
+--- a/src/app/cashflow/page.loading.test.tsx
++++ b/src/app/cashflow/page.loading.test.tsx
+@@ -42,6 +42,7 @@ describe("cashflow initial loading", () => {
+     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ ok: true, items: [] })));
+     vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED", "0");
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "0");
+     localStorage.clear();
+     sessionStorage.clear();
+     mocks.profile.mockResolvedValue({ hasProfile: true, profile: { accountType: "advisor" } });
+@@ -77,6 +78,39 @@ describe("cashflow initial loading", () => {
+   const loader = () => container.querySelector('[role="progressbar"]');
+   const readyContent = () => container.textContent?.includes("Zatím nemáš žádné smlouvy");
+ 
++  it("keeps the original calculation when the build flag is on but this tab has not opted in", async () => {
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
++    await render();
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: false }));
++    expect(mocks.workerView).not.toHaveBeenCalled();
++    expect(sessionStorage.getItem("cashflow_page_last_result")).toBeNull();
++  });
++  it("measures the original page only after the statement request and view have settled", async () => {
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
++    sessionStorage.setItem("cashflow_server_pilot_mode", "baseline");
++    let resolveStatements!: (response: Response) => void;
++    vi.mocked(fetch).mockImplementation(() => new Promise(resolve => { resolveStatements = resolve; }));
++    cashflow.ready = true; cashflow.loading = false;
++    await render();
++    await act(async () => vi.advanceTimersByTimeAsync(64));
++    expect(sessionStorage.getItem("cashflow_page_last_result")).toBeNull();
++    await act(async () => resolveStatements(Response.json({ ok: true, items: [], hasMore: false, processingComplete: true })));
++    await act(async () => vi.advanceTimersByTimeAsync(64));
++    expect(JSON.parse(sessionStorage.getItem("cashflow_page_last_result")!)).toMatchObject({ mode: "baseline", status: "ready" });
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: false }));
++    expect(mocks.workerView).not.toHaveBeenCalled();
++  });
++  it("forces the worker reference only in the explicitly opted-in comparison tab", async () => {
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
++    sessionStorage.setItem("cashflow_server_pilot_mode", "compare");
++    enableDeferredData();
++    mocks.workerView.mockResolvedValue({ months: [], contractSearchStats: { itemCount: 0, contractCount: 0, summary: null } });
++    await render();
++    expect(mocks.cashflow).toHaveBeenLastCalledWith(expect.objectContaining({ forceDeferredCalculation: true }));
++    expect(mocks.workerView).toHaveBeenCalled();
++    expect(readyContent()).toBe(true);
++  });
++
+   it("shows ready content without advancing timers, and hides it again during a reload", async () => {
+     await render();
+     expect(loader()).not.toBeNull();
+diff --git a/src/app/cashflow/page.tsx b/src/app/cashflow/page.tsx
+index 6c314d7..5e64629 100644
+--- a/src/app/cashflow/page.tsx
++++ b/src/app/cashflow/page.tsx
+@@ -42,6 +42,7 @@ import type {
+ } from "./types";
+ import { useCashflowData } from "./useCashflowData";
+ import { useCashflowView } from "./useCashflowView";
++import { useCashflowPageMeasurement, useCashflowPilotMode } from "./useCashflowPilotDiagnostics";
+ import { useCashflowContractSearch } from "./useCashflowContractSearch";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
+@@ -170,6 +171,7 @@ function CommissionStatementPreviewModal({
+ }
+ 
+ export default function CashflowPage() {
++  const pilotMode = useCashflowPilotMode();
+   const [user, setUser] = useState<FirebaseUser | null>(null);
+   const effectiveEmail = useEffectiveUserEmail(user?.email);
+   const [profileReady, setProfileReady] = useState(false);
+@@ -193,6 +195,7 @@ export default function CashflowPage() {
+   } | null>(null);
+   const [statementVerificationEmail, setStatementVerificationEmail] = useState<string | null>(null);
+   const statementScopeIdentity = user ? `${user.uid ?? user.email}|${statementScopeEmail}` : null;
++  const [statementsSettled, setStatementsSettled] = useState<{ identity: string; failed: boolean } | null>(null);
+   const [statementPreviewState, setStatementPreviewState] = useState(() => emptyStatementPreview(statementScopeIdentity));
+   const previewScopeMatches = statementPreviewState.scope.identity === statementScopeIdentity;
+   if (!previewScopeMatches) setStatementPreviewState(emptyStatementPreview(statementScopeIdentity));
+@@ -290,6 +293,7 @@ export default function CashflowPage() {
+   }, [effectiveEmail, user]);
+ 
+   useEffect(() => {
++    setStatementsSettled(null);
+     setStatementVerificationEmail(null);
+     setCommissionStatements([]);
+     setStatementsDataEmail(null);
+@@ -316,6 +320,7 @@ export default function CashflowPage() {
+           throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
+         }
+         if (!cancelled) {
++          setStatementsSettled({ identity: statementScopeIdentity!, failed: false });
+           setCommissionStatements(dedupeCashflowCommissionStatements(payload.items));
+           setStatementsDataEmail(normalizeEmail(requestScopeEmail));
+           setStatementVerificationEmail(
+@@ -326,6 +331,7 @@ export default function CashflowPage() {
+         }
+       } catch (error) {
+         if (cancelled) return;
++        setStatementsSettled({ identity: statementScopeIdentity!, failed: true });
+         console.warn("Cashflow: uložené provizní výpisy se nepodařilo načíst.", error);
+         setCommissionStatements([]);
+         setStatementPreviewState(previous => previous.scope === previewScope && !previous.request
+@@ -338,7 +344,7 @@ export default function CashflowPage() {
+     return () => {
+       cancelled = true;
+     };
+-  }, [user, effectiveEmail, previewScope]);
++  }, [user, effectiveEmail, previewScope, statementScopeIdentity]);
+ 
+   const isTipsterMode = accountType === "tipster";
+   const canViewSubscriptionCashflow =
+@@ -352,9 +358,11 @@ export default function CashflowPage() {
+ 
+   const cashflowDataEnabled =
+     profileReady && Boolean(dataEmail) && hasInternalProfile === true;
++  const serverPilot = pilotMode === "compare";
+   const {
+     loading,
+     ready: cashflowReady,
++    error: cashflowDataError,
+     rawSnapshot,
+     calculationDeferred,
+     cashflowItems,
+@@ -368,6 +376,7 @@ export default function CashflowPage() {
+     tipsterMode: isTipsterMode,
+     enabled: cashflowDataEnabled,
+     deferCalculation: process.env.NEXT_PUBLIC_CASHFLOW_WORKER_ENABLED === "1",
++    forceDeferredCalculation: serverPilot,
+   });
+ 
+   const initialLoadingActive =
+@@ -391,6 +400,7 @@ export default function CashflowPage() {
+   const workerView = useCashflowView({
+     dataset: workerDataset, options: workerOptions, identity: calculationIdentity,
+     enabled: Boolean(calculationDeferred && cashflowDataEnabled),
++    serverPilot,
+   });
+   const calculating = Boolean(calculationDeferred && workerView.pending);
+ 
+@@ -533,6 +543,17 @@ export default function CashflowPage() {
+ 
+   const yearGroups = useMemo(() => includeCurrentYear(groupMonthsByYear(monthGroups)), [monthGroups]);
+ 
++  useCashflowPageMeasurement({
++    mode: pilotMode, identity: statementScopeIdentity,
++    profileReady: profileReady && hasInternalProfile === true,
++    contractsReady: cashflowDataEnabled && cashflowReady && !loading,
++    statementsReady: statementsSettled?.identity === statementScopeIdentity,
++    overviewReady: statementsSettled?.identity === statementScopeIdentity && cashflowDataEnabled && cashflowReady && !loading &&
++      (!calculationDeferred || Boolean(workerView.overview)),
++    failed: Boolean(profileLoadError || cashflowDataError || workerView.error ||
++      (statementsSettled?.identity === statementScopeIdentity && statementsSettled?.failed)),
++  });
++
+   useEffect(() => {
+     if (
+       process.env.NEXT_PUBLIC_CASHFLOW_SHADOW_ENABLED !== "1" || !user ||
+diff --git a/src/app/cashflow/useCashflowData.ts b/src/app/cashflow/useCashflowData.ts
+index e842d99..695ce47 100644
+--- a/src/app/cashflow/useCashflowData.ts
++++ b/src/app/cashflow/useCashflowData.ts
+@@ -35,6 +35,8 @@ type UseCashflowDataParams = {
+   enabled?: boolean;
+   reloadKey?: number;
+   deferCalculation?: boolean;
++  /** Explicit server pilot uses a worker reference even for a small portfolio. */
++  forceDeferredCalculation?: boolean;
+   /** Home computes only its payout totals in a dedicated worker. */
+   snapshotOnly?: boolean;
+ };
+@@ -645,6 +647,7 @@ export function useCashflowData({
+   enabled = true,
+   reloadKey = 0,
+   deferCalculation = false,
++  forceDeferredCalculation = false,
+   snapshotOnly = false,
+ }: UseCashflowDataParams): UseCashflowDataResult {
+   const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
+@@ -763,7 +766,7 @@ export function useCashflowData({
+   const dataReady = ready && snapshotRequestKey === requestKey && (!snapshot || snapshotMatchesCurrentUser);
+   const rawSnapshot = enabled && snapshotMatchesCurrentUser ? snapshot : null;
+   // Small portfolios keep their existing synchronous display path.
+-  const calculationDeferred = Boolean(rawSnapshot && (snapshotOnly || (deferCalculation &&
++  const calculationDeferred = Boolean(rawSnapshot && (snapshotOnly || forceDeferredCalculation || (deferCalculation &&
+     rawSnapshot.ownEntries.length + rawSnapshot.teamEntriesRaw.length >= 200)));
+   const { cashflowItems, verificationInput } = useMemo(() => {
+     if (calculationDeferred || !enabled || !snapshot || !snapshotMatchesCurrentUser) {
+diff --git a/src/app/cashflow/useCashflowData.worker.test.tsx b/src/app/cashflow/useCashflowData.worker.test.tsx
+index 7f08fcc..56b2a7b 100644
+--- a/src/app/cashflow/useCashflowData.worker.test.tsx
++++ b/src/app/cashflow/useCashflowData.worker.test.tsx
+@@ -178,6 +178,19 @@ describe("actual cashflow data hook worker boundary", () => {
+     expect(urls.every(url => url.searchParams.get("limit") === "500")).toBe(true);
+   });
+ 
++  it("uses a deferred reference for small portfolios only when the server pilot explicitly requests it", async () => {
++    email = addAccount(12);
++    signIn(email);
++    await render({ forceDeferredCalculation: true });
++    await finishLoading();
++    expect(latest.calculationDeferred).toBe(true);
++    expect(latest.cashflowItems).toEqual([]);
++    expect(generateCashflow).not.toHaveBeenCalled();
++    await render({ forceDeferredCalculation: false });
++    expect(latest.calculationDeferred).toBe(false);
++    expect(generateCashflow).toHaveBeenCalled();
++  });
++
+   it("defaults to the original calculation and can toggle deferral without reloading data", async () => {
+     email = addAccount(300);
+     signIn(email);
+diff --git a/src/app/cashflow/useCashflowView.test.tsx b/src/app/cashflow/useCashflowView.test.tsx
+index 4677968..605464c 100644
+--- a/src/app/cashflow/useCashflowView.test.tsx
++++ b/src/app/cashflow/useCashflowView.test.tsx
+@@ -123,6 +123,20 @@ describe("cashflow view lifecycle and asynchronous selection guards", () => {
+     expect(clients[0].client.view).toHaveBeenCalledTimes(1);
+   });
+ 
++  it("creates a new reference session when the explicit pilot mode changes and ignores the old result", async () => {
++    await render();
++    const old = clients[0];
++    await render({ ...props, serverPilot: true });
++    expect(old.client.dispose).toHaveBeenCalledOnce();
++    expect(clients).toHaveLength(2);
++    expect(latest.overview).toBeNull();
++    // This stub has no verifier: the pilot must preserve its original result.
++    const expected = await resolveView(1);
++    expect(latest.overview).toBe(expected);
++    await act(async () => old.views[0].resolve(overview(999)));
++    expect(latest.overview).toBe(expected);
++  });
++
+   it("hides the completed overview on the first commit of a new filter", async () => {
+     await render();
+     await resolveView();
+diff --git a/src/app/cashflow/useCashflowView.ts b/src/app/cashflow/useCashflowView.ts
+index 4dceda7..0b5116d 100644
+--- a/src/app/cashflow/useCashflowView.ts
++++ b/src/app/cashflow/useCashflowView.ts
+@@ -2,22 +2,24 @@
+ 
+ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+ import { createCashflowWorkerClient } from "./cashflowWorker.client";
++import { createCashflowServerPilotClient } from "./cashflowServerPilot.client";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import type { CashflowDataset, CashflowOverview } from "./cashflowWorker.types";
+ import type { MonthGroup } from "./types";
+ 
+ type Client = ReturnType<typeof createCashflowWorkerClient>;
+ type Session = { client: Client; request: object | null };
+-type Selection = { dataset: CashflowDataset | null; identity: string | null; options: CashflowViewOptions };
++type Selection = { dataset: CashflowDataset | null; identity: string | null; options: CashflowViewOptions; serverPilot: boolean };
+ type ViewState = { session: Session; request: object; overview: CashflowOverview | null; error: string | null };
+ type State = { selection: Selection; result: ViewState | null };
+ 
+ /** Each identity/data version owns its own worker and optional local fallback. */
+-export function useCashflowView({ dataset, options, identity, enabled }: {
++export function useCashflowView({ dataset, options, identity, enabled, serverPilot = false }: {
+   dataset: CashflowDataset | null;
+   options: CashflowViewOptions;
+   identity: string | null;
+   enabled: boolean;
++  serverPilot?: boolean;
+ }) {
+   // Disabled/logged-out state must not retain a previous dataset in React state.
+   const activeDataset = enabled && identity ? dataset : null;
+@@ -25,20 +27,32 @@ export function useCashflowView({ dataset, options, identity, enabled }: {
+   const sessionRef = useRef<Session | null>(null);
+   const committedSelection = useRef<Selection | null>(null);
+   const [state, setState] = useState<State>(() => ({
+-    selection: { dataset: activeDataset, identity: activeIdentity, options }, result: null,
++    selection: { dataset: activeDataset, identity: activeIdentity, options, serverPilot }, result: null,
+   }));
+-  const matches = state.selection.dataset === activeDataset && state.selection.identity === activeIdentity && state.selection.options === options;
++  const matches = state.selection.dataset === activeDataset && state.selection.identity === activeIdentity && state.selection.options === options && state.selection.serverPilot === serverPilot;
+   // React retries this render before committing children. Clearing derived state
+   // here hides old data immediately, without scheduling an extra effect render.
+   if (!matches) {
+-    setState({ selection: { dataset: activeDataset, identity: activeIdentity, options }, result: null });
++    setState({ selection: { dataset: activeDataset, identity: activeIdentity, options, serverPilot }, result: null });
+   }
+   const selection = state.selection;
+ 
+   useLayoutEffect(() => {
+     if (!activeDataset || !activeIdentity) return;
++    const local = createCashflowWorkerClient({ dataset: activeDataset });
+     const session: Session = {
+-      client: createCashflowWorkerClient({ dataset: activeDataset }), request: null,
++      client: serverPilot ? createCashflowServerPilotClient({
++        dataset: activeDataset, local,
++        getToken: async () => {
++          const { auth } = await import("../firebase");
++          const user = auth.currentUser;
++          // The pilot accepts only the signed-in account, including after refresh.
++          if (!user || user.email?.trim().toLowerCase() !== activeDataset.snapshot.email) throw new Error("Account changed");
++          const token = await user.getIdToken();
++          if (auth.currentUser !== user) throw new Error("Account changed");
++          return token;
++        },
++      }) : local, request: null,
+     };
+     sessionRef.current = session;
+     return () => {
+@@ -46,7 +60,7 @@ export function useCashflowView({ dataset, options, identity, enabled }: {
+       if (sessionRef.current === session) sessionRef.current = null;
+       session.client.dispose();
+     };
+-  }, [activeDataset, activeIdentity]);
++  }, [activeDataset, activeIdentity, serverPilot]);
+ 
+   // Invalidate async reads at commit, including the interval before passive
+   // effects run. Worker startup and the calculation remain in the passive effect.
+diff --git a/tests/security/api-authentication.test.ts b/tests/security/api-authentication.test.ts
+index d19613f..2c12f62 100644
+--- a/tests/security/api-authentication.test.ts
++++ b/tests/security/api-authentication.test.ts
+@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
+ import { withRateLimitHeaders, type AuthedRateLimitContext } from "@/lib/server/apiEntryGuard";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { CASHFLOW_SHADOW_VERSION } from "@/app/cashflow/shadowProtocol";
++import { CASHFLOW_SERVER_PILOT_VERSION } from "@/app/cashflow/cashflowServerProtocol";
+ 
+ const doubles = vi.hoisted(() => ({
+   verifyIdToken: vi.fn(),
+@@ -86,6 +87,8 @@ beforeEach(() => {
+   vi.stubEnv("CASHFLOW_CANDIDATES_ENABLED", "1");
+   vi.stubEnv("CASHFLOW_CACHE_TRACK_WRITES", "1");
+   vi.stubEnv("CASHFLOW_SHADOW_EMAILS", "advisor@example.test");
++  vi.stubEnv("CASHFLOW_SERVER_PILOT_ENABLED", "1");
++  vi.stubEnv("CASHFLOW_SERVER_PILOT_EMAILS", "advisor@example.test");
+   vi.stubEnv("CRON_SECRET", "synthetic-cron-secret-for-local-tests");
+ });
+ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+@@ -113,7 +116,8 @@ describe.each([
+       doubles.isBlocked.mockResolvedValue(bearer === "blocked-account");
+     }
+     const body = route.startsWith("cashflow/") ? {
+-      version: CASHFLOW_SHADOW_VERSION, asOfMs: Date.now(),
++      version: route === "cashflow/view" ? CASHFLOW_SERVER_PILOT_VERSION : CASHFLOW_SHADOW_VERSION,
++      kind: "view", asOfMs: Date.now(),
+       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+       inputHash: "a".repeat(64), itemsHash: "b".repeat(64), monthsHash: "c".repeat(64),
+       options: {
+diff --git a/scripts/check-cashflow-server-pilot.mjs b/scripts/check-cashflow-server-pilot.mjs
+new file mode 100644
+index 0000000..12bd403
+--- /dev/null
++++ b/scripts/check-cashflow-server-pilot.mjs
+@@ -0,0 +1,90 @@
++/** Synthetic comparisons only. Run from the prepared release: node scripts/check-cashflow-server-pilot.mjs ../base
++ * No .env, database, authentication or network. Prints aggregate diagnostics.
++ */
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { readFile } from "node:fs/promises";
++import { dirname, resolve, join } from "node:path";
++import { fileURLToPath } from "node:url";
++import { createJiti } from "jiti";
++
++const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++assert(process.argv.length === 3, "Provide the isolated original source directory.");
++const baseline = resolve(process.argv[2]);
++assert(baseline !== repo, "Original and new source must be separate.");
++const oldJiti = createJiti(import.meta.url, { alias: { "@": join(baseline, "src") }, moduleCache: false, fsCache: false });
++const newJiti = createJiti(import.meta.url, { alias: { "@": join(repo, "src") }, moduleCache: false, fsCache: false });
++const original = await oldJiti.import(join(baseline, "src/app/cashflow/generator.ts"));
++const current = await newJiti.import(join(repo, "src/app/cashflow/generator.ts"));
++const { createCashflowModel } = await newJiti.import(join(repo, "src/app/cashflow/cashflowModel.ts"));
++const { runReference } = await newJiti.import(join(repo, "scripts/cashflow-worker/reference.ts"));
++const { makeWorkerFixture, WORKER_FILTER_CASES } = await newJiti.import(join(repo, "scripts/cashflow-worker/fixtures.ts"));
++const { cashflowCanonicalJson } = await newJiti.import(join(repo, "src/app/cashflow/shadowProtocol.ts"));
++const { isCashflowShadowWithinBudget } = await newJiti.import(join(repo, "src/lib/server/cashflowShadowBudget.ts"));
++const digest = value => createHash("sha256").update(cashflowCanonicalJson(value)).digest("hex");
++const domain = await readFile(join(repo, "src/app/types/domain.ts"), "utf8");
++const products = [...domain.slice(domain.indexOf("export type Product ="), domain.indexOf(";", domain.indexOf("export type Product ="))).matchAll(/"([^"]+)"/g)].map(match => match[1]);
++assert(products.length >= 20, "Missing product cases");
++const life = new Set(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"]);
++const asOf = new Date(2026, 9, 8, 12);
++let compared = 0;
++let changedLifeRows = 0;
++for (const productKey of products) for (const frequencyRaw of ["monthly", "quarterly", "semiannual", "annual"]) {
++  for (const signed of [new Date(2026, 9, 8), new Date(2026, 10, 28), new Date(2026, 11, 8), null]) {
++    for (const paid of [false, true]) {
++      const entry = { id: "synthetic-contract", userEmail: "advisor@example.test", productKey, frequencyRaw,
++        policyStartDate: new Date(2026, 11, 1), contractSignedDate: signed, status: "active", durationYears: 10,
++        items: [{ code: "A101", title: "Okamžitá provize", amount: 1000 },
++          { code: "B101-B104", title: "Následná provize (2.–5. rok)", amount: 40 },
++          { code: "B201-B206", title: "Pečovatelská provize (5.–10. rok)", amount: 20 }],
++        ...(paid ? { commissionPayouts: [{ key: "synthetic-paid", code: "A101", status: "paid", amount: 1000, payoutMonthKey: "2027-1" }] } : {}),
++      };
++      const before = original.generateCashflow([entry], 10, entry.userEmail, asOf);
++      const after = current.generateCashflow([entry], 10, entry.userEmail, asOf);
++      assert.equal(after.length, before.length, "Unexpected change in payout row count");
++      for (let index = 0; index < after.length; index++) {
++        const oldRow = before[index], newRow = after[index];
++        if (digest(oldRow) === digest(newRow)) continue;
++        assert(life.has(productKey) && signed && newRow.commissionCode === "A101", "Unexpected business-rule difference");
++        const oldFields = { ...oldRow, id: null, date: null, originalDate: null };
++        const newFields = { ...newRow, id: null, date: null, originalDate: null };
++        assert.equal(digest(newFields), digest(oldFields), "Changed amount or provenance");
++        const expected = new Date(signed.getFullYear(), signed.getMonth() + (signed.getDate() > 25 ? 2 : 1), 25);
++        const firstAllowed = new Date(2026, 11, 25);
++        const prediction = expected > firstAllowed ? expected : firstAllowed;
++        if (paid) {
++          assert.equal(newRow.date.getTime(), oldRow.date.getTime(), "Changed a real payout date");
++          const shifted = prediction.getFullYear() !== newRow.date.getFullYear() || prediction.getMonth() !== newRow.date.getMonth();
++          assert.equal(newRow.originalDate?.getTime() ?? null, shifted ? prediction.getTime() : null, "Incorrect original prediction");
++        } else assert.equal(newRow.date.getTime(), prediction.getTime(), "Incorrect first life payout");
++        changedLifeRows++;
++      }
++      compared++;
++    }
++  }
++}
++assert(changedLifeRows > 0, "Production baseline was not exercised");
++const portfolios = [];
++for (const count of [12, 60, 132, 300, 1000]) {
++  const fixture = makeWorkerFixture(count, asOf);
++  const model = createCashflowModel({ ...fixture, asOf });
++  let displayedItems = 0, monthsBytes = 0, fingerprintsAvailable = true;
++  try {
++    for (const { options } of WORKER_FILTER_CASES) {
++      const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
++      const view = model.view(options);
++      const months = view.months.map(month => model.month(month.key));
++      assert.equal(digest(months), digest(reference.months), "Full original/new month contents differ");
++      if (options === WORKER_FILTER_CASES[0].options) {
++        displayedItems = months.reduce((count, month) => count + month.items.length, 0);
++        monthsBytes = Buffer.byteLength(cashflowCanonicalJson(months));
++        try { await model.verification(); } catch { fingerprintsAvailable = false; }
++      }
++    }
++    portfolios.push({ contracts: count, filtersCompared: WORKER_FILTER_CASES.length, monthsMatch: true, displayedItems,
++      inputBytes: Buffer.byteLength(cashflowCanonicalJson(fixture)), monthsBytes, fingerprintsAvailable,
++      serverBudgetAccepted: isCashflowShadowWithinBudget(fixture.snapshot, asOf) });
++  } finally { model.dispose(); }
++}
++console.log(JSON.stringify({ syntheticOnly: true, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++  productionGeneratorCases: compared, allowedFirstLifeDifferences: changedLifeRows, portfolios }));
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+new file mode 100644
+index 0000000..cc296b3
+--- /dev/null
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -0,0 +1,230 @@
++import { NextRequest } from "next/server";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { makeWorkerFixture, WORKER_FILTER_CASES } from "../../../../../scripts/cashflow-worker/fixtures";
++import { runReference } from "../../../../../scripts/cashflow-worker/reference";
++import { CASHFLOW_SERVER_PILOT_VERSION } from "@/app/cashflow/cashflowServerProtocol";
++import { cashflowCanonicalJson, hashCashflowValue } from "@/app/cashflow/shadowProtocol";
++import { parseCashflowSnapshot } from "@/app/cashflow/cashflowSnapshotWire";
++import { formatCashflowItemCount } from "@/app/cashflow/cashflowLabels";
++import type { CashflowViewOptions } from "@/app/cashflow/buildCashflowView";
++import { createCashflowModel } from "@/app/cashflow/cashflowModel";
++import { createCashflowServerPilotClient } from "@/app/cashflow/cashflowServerPilot.client";
++
++const mocks = vi.hoisted(() => ({ auth: vi.fn(), load: vi.fn() }));
++vi.mock("@/lib/server/apiEntryGuard", () => ({ requireAuthedRateLimited: mocks.auth }));
++vi.mock("@/lib/server/cashflowShadowInputs", async original => ({
++  ...await original<typeof import("@/lib/server/cashflowShadowInputs")>(), loadCashflowShadowInputs: mocks.load,
++}));
++import { CashflowShadowInputsError } from "@/lib/server/cashflowShadowInputs";
++import { POST } from "./route";
++
++const asOf = new Date(2026, 9, 8, 12);
++const email = "advisor@example.test";
++const options = WORKER_FILTER_CASES[0].options;
++let fixture = makeWorkerFixture(12, asOf);
++const inputs = () => ({ ...fixture, effectiveEmail: email, tipsterMode: false });
++const body = async (selected: CashflowViewOptions = options, monthKey?: string) => ({
++  version: CASHFLOW_SERVER_PILOT_VERSION, kind: monthKey ? "month" : "view",
++  asOfMs: asOf.getTime(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++  options: selected, inputHash: await hashCashflowValue(fixture), ...(monthKey ? { monthKey } : {}),
++});
++const request = (value: unknown, signal?: AbortSignal) => new NextRequest("https://example.test/api/cashflow/view?email=other@example.test", {
++  method: "POST", body: typeof value === "string" ? value : JSON.stringify(value), signal,
++  headers: { Authorization: "Bearer synthetic-token", "Content-Type": "application/json" },
++});
++
++beforeEach(() => {
++  vi.clearAllMocks();
++  vi.useFakeTimers({ toFake: ["Date"] });
++  vi.setSystemTime(asOf);
++  vi.stubEnv("CASHFLOW_SERVER_PILOT_ENABLED", "1");
++  vi.stubEnv("CASHFLOW_SERVER_PILOT_EMAILS", email);
++  fixture = makeWorkerFixture(12, asOf);
++  mocks.auth.mockResolvedValue({ ok: true, ctx: { email, uid: "verified-uid" } });
++  mocks.load.mockImplementation(async (_req, { authorizeEmail }) => {
++    if (!await authorizeEmail(email)) throw new CashflowShadowInputsError("not_allowed", 403);
++    return inputs();
++  });
++});
++afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
++
++describe("read-only server cashflow pilot", () => {
++  it.each(WORKER_FILTER_CASES)("matches the independent original calculation and every month/item for $id", async ({ options }) => {
++    const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
++    const before = cashflowCanonicalJson(fixture);
++    const response = await POST(request(await body(options)));
++    expect(response.status).toBe(200);
++    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_compute");
++    const actual = await response.json();
++    expect(actual.monthsHash).toBe(await hashCashflowValue(reference.months));
++    expect(actual.overview.months).toEqual(reference.months.map(({ items, ...month }) => ({
++      ...month, itemCountLabel: formatCashflowItemCount(items),
++    })));
++    expect(actual.overview.months.every((month: object) => !Object.hasOwn(month, "items"))).toBe(true);
++    const decoded = [];
++    for (const month of reference.months) {
++      const detailResponse = await POST(request(await body(options, month.key)));
++      expect(detailResponse.status).toBe(200);
++      const detail = await detailResponse.json();
++      expect(detail.monthsHash).toBe(actual.monthsHash);
++      const parsed = parseCashflowSnapshot(detail.payload)!;
++      expect(parsed.items).toEqual([]);
++      expect(parsed.months).toHaveLength(1);
++      decoded.push(parsed.months[0]);
++    }
++    expect(cashflowCanonicalJson(decoded)).toBe(cashflowCanonicalJson(reference.months));
++    expect(cashflowCanonicalJson(fixture)).toBe(before);
++  }, 30_000);
++
++  it("returns only aggregate data without client names, emails or contract numbers in an unfiltered overview", async () => {
++    const value = await (await POST(request(await body()))).json();
++    expect(value.overview.contractSearchStats.summary).toBeNull();
++    expect(JSON.stringify(value)).not.toMatch(/Syntetický|advisor@example|member-|100000|contract-0000/);
++    expect(Object.keys(value).sort()).toEqual(["inputHash", "kind", "monthsHash", "ok", "overview", "version"]);
++    expect(mocks.load.mock.calls[0][1].freshCashflowContext).toBe(true);
++  });
++  it("returns an empty detail for a month outside the current filtered view", async () => {
++    const value = await (await POST(request(await body(options, "2001-01")))).json();
++    expect(parseCashflowSnapshot(value.payload)).toEqual({ items: [], months: [] });
++  });
++  it("connects the real client, model, endpoint and Date codec, then falls back after a source change", async () => {
++    const model = createCashflowModel({ ...structuredClone(fixture), asOf });
++    const local = { executionPath: "fallback" as const,
++      view: async (options: CashflowViewOptions) => model.view(options),
++      month: async (key: string) => model.month(key), verification: () => model.verification!(), dispose: () => model.dispose(),
++    };
++    const measure = vi.fn();
++    const client = createCashflowServerPilotClient({
++      dataset: { ...fixture, asOf }, local, getToken: async () => "synthetic-token", measure,
++      request: async (_url, init) => POST(new NextRequest("https://example.test/api/cashflow/view", { ...init, signal: init?.signal ?? undefined })),
++    });
++    const overview = await client.view(options);
++    expect(measure.mock.calls.at(-1)![0].status).toBe("match");
++    const key = overview.months.find(month => model.month(month.key)!.items.length > 0)!.key;
++    expect(await client.month(key)).toEqual(model.month(key));
++    expect(measure.mock.calls.at(-1)![0].status).toBe("match");
++    fixture.snapshot.ownEntries[0].items![0].amount += 100;
++    expect(await client.month(key)).toBe(model.month(key));
++    expect(measure.mock.calls.at(-1)![0].status).toBe("unavailable");
++    client.dispose();
++  });
++  it.each(["CASHFLOW_SERVER_PILOT_ENABLED", "CASHFLOW_SERVER_PILOT_EMAILS"])("is disabled by default without %s", async flag => {
++    vi.stubEnv(flag, "");
++    expect((await POST(request(await body()))).status).toBe(404);
++    expect(mocks.auth).not.toHaveBeenCalled();
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each([401, 403, 429])("preserves authentication denial %s and hides upstream errors", async status => {
++    mocks.auth.mockResolvedValue({ ok: false, response: new Response("private token diagnostics", { status, headers: { "Retry-After": "30" } }) });
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(status);
++    expect(response.headers.get("Retry-After")).toBe("30");
++    expect(await response.text()).not.toContain("private token");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("rejects a valid account outside the server allowlist before portfolio reads", async () => {
++    mocks.auth.mockResolvedValue({ ok: true, ctx: { email: "other@example.test", uid: "other" } });
++    expect((await POST(request(await body()))).status).toBe(403);
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("ignores supplied identities, roles and financial inputs and binds access to the token", async () => {
++    const response = await POST(request({ ...await body(), email: "other@example.test", uid: "other", role: "owner", snapshot: { amount: 999 } }));
++    expect(response.status).toBe(200);
++    expect(mocks.auth).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ allowImpersonation: false, limit: 12 }));
++    const authorization = mocks.load.mock.calls[0][1].authorizeEmail;
++    expect(authorization("other@example.test")).toBe(false);
++    expect(authorization(email)).toBe(true);
++  });
++  it.each(["effectiveEmail", "snapshot"])("rejects another account returned through %s", async field => {
++    mocks.load.mockResolvedValue({ ...inputs(), ...(field === "effectiveEmail"
++      ? { effectiveEmail: "other@example.test" } : { snapshot: { ...fixture.snapshot, email: "other@example.test" } }) });
++    expect((await POST(request(await body()))).status).toBe(403);
++  });
++  it("rejects client manipulation of account type", async () => {
++    expect((await POST(request(await body({ ...options, tipsterMode: true })))).status).toBe(409);
++  });
++  it("rejects changed source data between overview and month reads", async () => {
++    const original = await body(options, "2026-10");
++    fixture.snapshot.ownEntries[0].items![0].amount += 1;
++    expect((await POST(request(original))).status).toBe(409);
++  });
++  it.each(["incomplete", "limit", "timeout", "upstream_failed"] as const)("never returns partial amounts after %s", async code => {
++    mocks.load.mockRejectedValue(new CashflowShadowInputsError(code));
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(503);
++    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason:
++      code === "incomplete" ? "incomplete_inputs" : code === "limit" ? "resource_limit" : code === "timeout" ? "timeout" : "unavailable" });
++  });
++  it.each([401, 403, 429])("honors source authorization/rate denial %s", async status => {
++    mocks.load.mockRejectedValue(new CashflowShadowInputsError("forbidden", status));
++    expect((await POST(request(await body()))).status).toBe(status);
++  });
++  it("bounds calculation work for corrupt or excessive contracts", async () => {
++    fixture.snapshot.ownEntries[0].durationYears = 10000000;
++    expect((await POST(request(await body()))).status).toBe(503);
++  });
++  it.each([300, 1000])("keeps the bounded fallback for a %s-contract portfolio without returning partial totals", async count => {
++    fixture = makeWorkerFixture(count, asOf);
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(503);
++    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason: "resource_limit" });
++    expect(response.headers.get("Server-Timing")).not.toContain("cashflow_compute");
++  });
++  it.each(["{", "x".repeat(4097), { kind: "month", monthKey: "../other" }])("rejects malformed/oversized requests before reading data (%s)", async value => {
++    expect((await POST(request(value))).status).toBe(400);
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each([
++    { kind: "admin" }, { kind: { toString: "view" } }, { version: "old-version" },
++    { asOfMs: -1 }, { asOfMs: 1.5 }, { inputHash: "invalid" }, { timeZone: "x".repeat(101) },
++    { kind: "month", monthKey: "2026-13" }, { kind: "month", monthKey: "../other" },
++    { options: { ...options, scopeFilter: "admin" } }, { options: { ...options, productFilter: "private" } },
++    { options: { ...options, tipsterMode: "false" } }, { options: { ...options, showPastYears: 1 } },
++    { options: { ...options, contractNumberQuery: "x".repeat(129) } },
++  ])("rejects manipulated request fields before portfolio loading (%j)", async changed => {
++    expect((await POST(request({ ...await body(), ...changed }))).status).toBe(400);
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each(["timeZone", "asOfMs"])("rejects incompatible %s", async field => {
++    const raw = { ...await body(), ...(field === "timeZone" ? { timeZone: "different/zone" } : { asOfMs: asOf.getTime() - 300001 }) };
++    const response = await POST(request(raw));
++    expect(response.status).toBe(409);
++    expect((await response.json()).reason).toBe(field === "timeZone" ? "time_zone" : "stale_context");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("rejects a different valid IANA timezone before portfolio reads", async () => {
++    const current = Intl.DateTimeFormat().resolvedOptions().timeZone;
++    const response = await POST(request({ ...await body(), timeZone: current === "UTC" ? "Europe/Prague" : "UTC" }));
++    expect(response.status).toBe(409);
++    expect((await response.json()).reason).toBe("time_zone");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it("rejects the previous calendar day even within the five-minute clock window", async () => {
++    const now = new Date(2027, 0, 1, 0, 2);
++    vi.setSystemTime(now);
++    const response = await POST(request({ ...await body(), asOfMs: now.getTime() - 3 * 60_000 }));
++    expect(response.status).toBe(409);
++    expect((await response.json()).reason).toBe("stale_context");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each([new Date(2026, 2, 29, 12), new Date(2026, 9, 25, 12), new Date(2028, 1, 29, 12)])(
++    "matches the independent original at DST/leap-year boundaries %s", async current => {
++      vi.setSystemTime(current);
++      const reference = runReference(fixture.snapshot, fixture.statements, options, current);
++      const response = await POST(request({ ...await body(), asOfMs: current.getTime() }));
++      expect(response.status).toBe(200);
++      expect((await response.json()).monthsHash).toBe(await hashCashflowValue(reference.months));
++    });
++  it("discards results after cancellation", async () => {
++    const controller = new AbortController();
++    mocks.load.mockImplementation(async () => { controller.abort(); return inputs(); });
++    expect((await POST(request(await body(), controller.signal))).status).toBe(409);
++  });
++  it("does not expose unexpected failures", async () => {
++    mocks.load.mockRejectedValue(new Error("sensitive database contents"));
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(503);
++    expect(await response.text()).not.toContain("sensitive");
++  });
++});
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+new file mode 100644
+index 0000000..d637419
+--- /dev/null
++++ b/src/app/api/cashflow/view/route.ts
+@@ -0,0 +1,77 @@
++import { NextResponse, type NextRequest } from "next/server";
++import { createCashflowModel } from "@/app/cashflow/cashflowModel";
++import { parseCashflowServerRequest, CASHFLOW_SERVER_PILOT_VERSION, type CashflowServerFallbackReason } from "@/app/cashflow/cashflowServerProtocol";
++import { serializeCashflowSnapshot } from "@/app/cashflow/cashflowSnapshotWire";
++import { hashCashflowValue, isCashflowShadowContextCurrent } from "@/app/cashflow/shadowProtocol";
++import { requireAuthedRateLimited } from "@/lib/server/apiEntryGuard";
++import { createCashflowDiagnosticTiming, readCashflowDiagnosticJson } from "@/lib/server/cashflowDiagnosticHttp";
++import { CashflowShadowInputsError, loadCashflowShadowInputs } from "@/lib/server/cashflowShadowInputs";
++import { isCashflowShadowWithinBudget } from "@/lib/server/cashflowShadowBudget";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++
++/** Read-only pilot. No result cache and no changes to business records. */
++export async function POST(req: NextRequest): Promise<NextResponse> {
++  const timing = createCashflowDiagnosticTiming();
++  const json = timing.json;
++  const unavailable = (status = 503, reason?: CashflowServerFallbackReason) =>
++    json({ ok: false, error: "Cashflow není dostupné.", ...(reason ? { reason } : {}) }, status);
++  const allowed = new Set((process.env.CASHFLOW_SERVER_PILOT_EMAILS ?? "")
++    .split(/[,\s]+/).map(email => email.trim().toLowerCase()).filter(Boolean));
++  if (process.env.CASHFLOW_SERVER_PILOT_ENABLED !== "1" || !allowed.size) return unavailable(404);
++
++  try {
++    const auth = await timing.measure("auth", () => requireAuthedRateLimited(req, {
++      namespace: "api:cashflow:view", limit: 12, windowMs: 60_000,
++      allowImpersonation: false, enforceAdvisorSetup: false,
++    }));
++    if (!auth.ok) {
++      const response = unavailable(auth.response.status);
++      const retry = auth.response.headers.get("Retry-After");
++      if (retry) response.headers.set("Retry-After", retry);
++      return response;
++    }
++    if (!allowed.has(auth.ctx.email)) return unavailable(403);
++    const body = parseCashflowServerRequest(await readCashflowDiagnosticJson(req));
++    if (!body) return unavailable(400);
++    if (body.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone) return unavailable(409, "time_zone");
++    if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
++
++    const inputs = await timing.measure("inputs", () => loadCashflowShadowInputs(req, {
++      freshCashflowContext: true,
++      authorizeEmail: email => email === auth.ctx.email && allowed.has(email),
++    }));
++    if (inputs.effectiveEmail !== auth.ctx.email || inputs.snapshot.email !== auth.ctx.email) return unavailable(403);
++    if (inputs.tipsterMode !== body.options.tipsterMode) return unavailable(409);
++    if (req.signal.aborted) return unavailable(409, "cancelled");
++    if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
++    const asOf = new Date(body.asOfMs);
++    if (!isCashflowShadowWithinBudget(inputs.snapshot, asOf)) return unavailable(503, "resource_limit");
++    const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
++    // Never replace a view from another data version or accept a partially read portfolio.
++    if (inputHash !== body.inputHash) return unavailable(409, "different_inputs");
++    const model = createCashflowModel({ snapshot: inputs.snapshot, statements: inputs.statements, asOf });
++    try {
++      const overview = await timing.measure("compute", () => model.view(body.options));
++      const verification = await timing.measure("hash", () => model.verification!());
++      if (req.signal.aborted) return unavailable(409, "cancelled");
++      if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
++      const context = { ok: true, version: CASHFLOW_SERVER_PILOT_VERSION, kind: body.kind, ...verification };
++      if (body.kind === "view") return json({ ...context, overview });
++      const month = model.month(body.monthKey!);
++      return json({ ...context, monthKey: body.monthKey,
++        payload: serializeCashflowSnapshot({ items: [], months: month ? [month] : [] }),
++      });
++    } finally { model.dispose(); }
++  } catch (error) {
++    if (error instanceof CashflowShadowInputsError && [401, 403, 429].includes(error.status)) return unavailable(error.status);
++    if (error instanceof CashflowShadowInputsError) {
++      const reason = error.code === "incomplete" ? "incomplete_inputs" : error.code === "limit" ? "resource_limit"
++        : error.code === "timeout" ? "timeout" : error.code === "aborted" ? "cancelled" : "unavailable";
++      return unavailable(503, reason);
++    }
++    // No upstream messages, portfolio, account identifiers or financial amounts in logs/errors.
++    return unavailable();
++  }
++}
+diff --git a/src/app/cashflow/cashflow.worker.test.ts b/src/app/cashflow/cashflow.worker.test.ts
+new file mode 100644
+index 0000000..dc4bf38
+--- /dev/null
++++ b/src/app/cashflow/cashflow.worker.test.ts
+@@ -0,0 +1,41 @@
++import { afterEach, expect, it, vi } from "vitest";
++import { makeWorkerFixture } from "../../../scripts/cashflow-worker/fixtures";
++import { createCashflowModel } from "./cashflowModel";
++import type { CashflowWorkerRequest, CashflowWorkerResponse } from "./cashflowWorker.client";
++
++afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
++
++it("runs the real worker message handler and returns only hashes for comparison", async () => {
++  const asOf = new Date(2026, 9, 8);
++  const dataset = { ...makeWorkerFixture(12, asOf), asOf };
++  let handler!: (event: { data: CashflowWorkerRequest }) => Promise<void>;
++  const postMessage = vi.fn<(response: CashflowWorkerResponse) => void>();
++  const close = vi.fn();
++  vi.stubGlobal("self", {
++    addEventListener: (_event: string, callback: typeof handler) => { handler = callback; }, postMessage, close,
++  });
++  vi.resetModules();
++  await import("./cashflow.worker");
++  const send = (data: CashflowWorkerRequest) => handler({ data: structuredClone(data) });
++  const options = { scopeFilter: "combined" as const, productFilter: "all" as const, tipsterMode: false,
++    showPastYears: true, intelligentPredictionEnabled: true, contractNumberQuery: "" };
++  await send({ kind: "init", id: 0, dataset });
++  await send({ kind: "verify", id: 1, revision: 0 });
++  expect(postMessage.mock.calls.at(-1)![0].ok).toBe(false);
++  await send({ kind: "view", id: 2, revision: 1, options });
++  const view = postMessage.mock.calls.at(-1)![0];
++  expect(view.kind).toBe("view");
++  const reference = createCashflowModel(dataset);
++  expect(view).toMatchObject({ result: reference.view(options) });
++  await send({ kind: "verify", id: 3, revision: 1 });
++  expect(postMessage.mock.calls.at(-1)![0]).toEqual({ kind: "verify", id: 3, revision: 1, ok: true, result: await reference.verification!() });
++  if (view.kind !== "view" || !view.ok) throw new Error("View missing");
++  const key = view.result.months[0].key;
++  await send({ kind: "month", id: 4, revision: 1, key });
++  expect(postMessage.mock.calls.at(-1)![0]).toMatchObject({ result: reference.month(key) });
++  await send({ kind: "dispose" });
++  expect(close).toHaveBeenCalledOnce();
++  await send({ kind: "verify", id: 5, revision: 1 });
++  expect(postMessage.mock.calls.at(-1)![0].ok).toBe(false);
++  reference.dispose();
++});
+diff --git a/src/app/cashflow/cashflowServerPilot.client.test.ts b/src/app/cashflow/cashflowServerPilot.client.test.ts
+new file mode 100644
+index 0000000..f0833f7
+--- /dev/null
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -0,0 +1,216 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { createCashflowServerPilotClient } from "./cashflowServerPilot.client";
++import { CASHFLOW_SERVER_PILOT_VERSION } from "./cashflowServerProtocol";
++import { createCashflowModel } from "./cashflowModel";
++import { serializeCashflowSnapshot } from "./cashflowSnapshotWire";
++import type { CashflowDataset } from "./cashflowWorker.types";
++import type { CashflowViewOptions } from "./buildCashflowView";
++
++const options: CashflowViewOptions = { scopeFilter: "own", productFilter: "all", tipsterMode: false,
++  showPastYears: true, intelligentPredictionEnabled: false, contractNumberQuery: "" };
++const dataset = (): CashflowDataset => ({
++  asOf: new Date(2026, 9, 8), statements: [],
++  snapshot: { email: "advisor@example.test", myPosition: "poradce3", myCommissionMode: "standard", hasAnyTeam: false,
++    ownEntries: [{ id: "synthetic", productKey: "neon", userEmail: "advisor@example.test",
++      contractNumber: "123456", clientName: "Synthetic client", policyStartDate: new Date(2026, 11, 1), contractSignedDate: new Date(2026, 9, 8),
++      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }] }],
++    teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
++  },
++});
++
++function fixture() {
++  const input = dataset();
++  const model = createCashflowModel(input);
++  const local = { executionPath: "fallback" as const,
++    view: vi.fn(async (options: CashflowViewOptions) => model.view(options)),
++    month: vi.fn(async (key: string) => model.month(key)),
++    verification: vi.fn(() => model.verification!()), dispose: vi.fn(() => model.dispose()),
++  };
++  const request = vi.fn<typeof fetch>(async (_url, init) => {
++    const raw = JSON.parse(init!.body as string);
++    const responseModel = createCashflowModel(input);
++    try {
++      const overview = responseModel.view(raw.options);
++      const verification = await responseModel.verification!();
++      const context = { ok: true, version: CASHFLOW_SERVER_PILOT_VERSION, kind: raw.kind, ...verification };
++      if (raw.kind === "view") return Response.json({ ...context, overview });
++      const month = responseModel.month(raw.monthKey);
++      return Response.json({ ...context, monthKey: raw.monthKey, payload: serializeCashflowSnapshot({ items: [], months: month ? [month] : [] }) });
++    } finally { responseModel.dispose(); }
++  });
++  const getToken = vi.fn(async () => "synthetic-test-token");
++  const measure = vi.fn();
++  const create = (timeoutMs?: number) => createCashflowServerPilotClient({ dataset: input, local, getToken, request, measure, timeoutMs });
++  return { input, model, local, request, getToken, measure, create };
++}
++const deferred = <T>() => {
++  let resolve!: (value: T) => void;
++  const promise = new Promise<T>(yes => { resolve = yes; });
++  return { promise, resolve };
++};
++beforeEach(() => { vi.useRealTimers(); });
++afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
++
++describe("server pilot with mandatory comparison and local fallback", () => {
++  it("uses only a matching overview/detail and restores every Date", async () => {
++    const f = fixture(); const client = f.create();
++    const overview = await client.view(options);
++    const reference = f.local.view.mock.results[0];
++    expect(overview).toEqual(await reference.value);
++    expect(overview).not.toBe(await reference.value);
++    const detail = await client.month(overview.months[0].key);
++    expect(detail).toEqual(await f.local.month.mock.results[0].value);
++    expect(detail!.items[0].date).toBeInstanceOf(Date);
++    expect(f.request).toHaveBeenCalledTimes(2);
++    expect(f.request.mock.calls[0][0]).toBe("/api/cashflow/view");
++    const raw = JSON.parse(f.request.mock.calls[0][1]!.body as string);
++    expect(Object.keys(raw).sort()).toEqual(["asOfMs", "inputHash", "kind", "options", "timeZone", "version"]);
++    expect(JSON.stringify(raw)).not.toMatch(/advisor@example|Synthetic client|synthetic-test-token/);
++    expect(f.request.mock.calls[0][1]!.headers).toMatchObject({ Authorization: "Bearer synthetic-test-token" });
++    expect(f.measure.mock.calls.map(([value]) => value.status)).toEqual(["match", "match"]);
++    client.dispose();
++  });
++  it("handles a missing month without creating a zero-valued replacement", async () => {
++    const f = fixture(); const client = f.create(); await client.view(options);
++    expect(await client.month("2001-1")).toBeNull();
++    expect(f.measure.mock.calls.at(-1)![0].status).toBe("match");
++    client.dispose();
++  });
++  it.each(["monthsHash", "overview", "inputHash", "version", "kind"])("falls back when %s disagrees, even if totals otherwise agree", async field => {
++    const f = fixture(); const original = f.request.getMockImplementation()!;
++    f.request.mockImplementation(async (...args) => {
++      const raw = await (await original(...args)).json();
++      if (field === "overview") raw.overview.months[0].label = "Wrong month label";
++      else raw[field] = "invalid";
++      return Response.json(raw);
++    });
++    const client = f.create();
++    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++    await client.month("2026-12");
++    expect(f.request).toHaveBeenCalledTimes(1);
++    expect(f.measure.mock.calls[0][0].status).not.toBe("match");
++    client.dispose();
++  });
++  it.each(["amount", "ownerEmail", "date", "monthKey", "monthsHash"])("keeps the original month when %s changes without trusting the sum", async field => {
++    const f = fixture(); const original = f.request.getMockImplementation()!;
++    f.request.mockImplementation(async (...args) => {
++      const raw = await (await original(...args)).json();
++      if (raw.kind === "month") {
++        if (field === "monthKey" || field === "monthsHash") raw[field] = "wrong";
++        else raw.payload.months[0].items[0][field] = field === "amount" ? 999 : field === "date" ? "invalid" : "other@example.test";
++      }
++      return Response.json(raw);
++    });
++    const client = f.create(); await client.view(options);
++    expect(await client.month("2026-12")).toBe(await f.local.month.mock.results[0].value);
++    expect(f.measure.mock.calls.at(-1)![0].status).toBe("mismatch");
++    await client.month("2026-12");
++    expect(f.request).toHaveBeenCalledTimes(2);
++    client.dispose();
++  });
++  it.each([401, 403, 409, 429, 503])("keeps the reference after server status %s", async status => {
++    const f = fixture(); f.request.mockResolvedValue(new Response("Sensitive upstream details", { status }));
++    const client = f.create();
++    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++    expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/Sensitive|advisor@example|token/);
++    expect(Object.keys(f.measure.mock.calls[0][0]).sort()).toEqual([
++      "httpStatus", "kind", "reason", "referenceMs", "requestMs", "serverTimingMs", "status",
++    ]);
++    client.dispose();
++  });
++  it.each(["time_zone", "different_inputs", "incomplete_inputs", "resource_limit", "stale_context", "timeout"])(
++    "records a safe %s reason and timing while preserving the complete reference", async reason => {
++      const f = fixture();
++      f.request.mockResolvedValue(Response.json({ ok: false, reason, error: "private upstream details", email: "private@example.test" }, {
++        status: 503, headers: { "Server-Timing": "cashflow_inputs;dur=4.25, private_phase;dur=12" },
++      }));
++      const client = f.create();
++      expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++      expect(f.measure.mock.calls[0][0]).toMatchObject({ status: "unavailable", reason, httpStatus: 503,
++        serverTimingMs: { cashflow_inputs: 4.25 } });
++      expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/private|upstream|email/);
++      client.dispose();
++    });
++  it("ignores arbitrary server reason strings and never persists upstream errors", async () => {
++    const f = fixture();
++    f.request.mockResolvedValue(Response.json({ reason: "private@example.test", error: "private-token" }, { status: 503 }));
++    const client = f.create(); await client.view(options);
++    expect(f.measure.mock.calls[0][0].reason).toBe("http");
++    expect(JSON.stringify(f.measure.mock.calls)).not.toContain("private");
++    client.dispose();
++  });
++  it.each(["token", "network", "json", "verification"])("isolates a %s failure from the displayed result", async phase => {
++    const f = fixture();
++    if (phase === "token") f.getToken.mockRejectedValue(new Error("Token unavailable"));
++    if (phase === "network") f.request.mockRejectedValue(new Error("Network unavailable"));
++    if (phase === "json") f.request.mockResolvedValue(new Response("{"));
++    if (phase === "verification") f.local.verification.mockRejectedValue(new Error("Hash unavailable"));
++    const client = f.create();
++    expect(await client.view(options)).toBe(await f.local.view.mock.results[0].value);
++    client.dispose();
++  });
++  it.each(["token", "network"])("bounds a stalled %s operation and returns the reference", async phase => {
++    vi.useFakeTimers();
++    const f = fixture();
++    if (phase === "token") f.getToken.mockImplementation(() => new Promise(() => undefined));
++    else f.request.mockImplementation(() => new Promise(() => undefined));
++    const client = f.create(20);
++    const result = client.view(options);
++    await vi.waitFor(() => expect(f.getToken).toHaveBeenCalled());
++    await vi.advanceTimersByTimeAsync(20);
++    expect(await result).toBe(await f.local.view.mock.results[0].value);
++    expect(f.measure.mock.calls[0][0].reason).toBe("timeout");
++    expect(vi.getTimerCount()).toBe(0);
++    client.dispose();
++  });
++  it("rejects a late view after filters change instead of returning either old result", async () => {
++    const f = fixture(); const late = deferred<Response>();
++    f.request.mockImplementationOnce(() => late.promise);
++    const client = f.create();
++    const old = client.view(options).catch(error => error);
++    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(1));
++    const changed = { ...options, productFilter: "auto" as const };
++    const latest = await client.view(changed);
++    expect((await old).name).toBe("AbortError");
++    late.resolve(Response.json({ ok: true }));
++    expect(latest.months).toEqual([]);
++    expect(f.measure.mock.calls).toHaveLength(1);
++    client.dispose();
++  });
++  it("rejects in-flight month work after dispose and releases the local client once", async () => {
++    const f = fixture(); const client = f.create(); await client.view(options);
++    f.request.mockImplementation(() => new Promise(() => undefined));
++    const detail = client.month("2026-12").catch(error => error);
++    await vi.waitFor(() => expect(f.request).toHaveBeenCalledTimes(2));
++    client.dispose(); client.dispose();
++    expect((await detail).name).toBe("AbortError");
++    expect(f.local.dispose).toHaveBeenCalledTimes(1);
++    await expect(client.view(options)).rejects.toMatchObject({ name: "AbortError" });
++    await expect(client.month("2026-12")).rejects.toMatchObject({ name: "AbortError" });
++  });
++  it("preserves an original calculation failure instead of fabricating data", async () => {
++    const f = fixture(); f.local.view.mockRejectedValue(new Error("Original unavailable"));
++    const client = f.create();
++    await expect(client.view(options)).rejects.toThrow("Original unavailable");
++    expect(f.request).not.toHaveBeenCalled(); client.dispose();
++  });
++  it("ignores a failing diagnostic callback", async () => {
++    const f = fixture(); f.measure.mockImplementation(() => { throw new Error("Storage unavailable"); });
++    const client = f.create();
++    expect(await client.view(options)).toEqual(await f.local.view.mock.results[0].value); client.dispose();
++  });
++  it("records bounded server phases and reference latency without identifiers or amounts", async () => {
++    const f = fixture(); const original = f.request.getMockImplementation()!;
++    f.request.mockImplementation(async (...args) => {
++      const response = await original(...args);
++      response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, private_account;dur=123");
++      return response;
++    });
++    const client = f.create(); await client.view(options);
++    const measurement = f.measure.mock.calls[0][0];
++    expect(measurement.referenceMs).toBeGreaterThanOrEqual(0);
++    expect(measurement.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5 });
++    expect(JSON.stringify(measurement)).not.toMatch(/account|advisor@example|Synthetic client|token|amount|contractNumber/);
++    client.dispose();
++  });
++});
+diff --git a/src/app/cashflow/cashflowServerPilot.client.ts b/src/app/cashflow/cashflowServerPilot.client.ts
+new file mode 100644
+index 0000000..3ed813e
+--- /dev/null
++++ b/src/app/cashflow/cashflowServerPilot.client.ts
+@@ -0,0 +1,181 @@
++import type { CashflowWorkerClient } from "./cashflowWorker.client";
++import type { CashflowDataset, CashflowOverview, CashflowVerification } from "./cashflowWorker.types";
++import type { CashflowViewOptions } from "./buildCashflowView";
++import { CASHFLOW_SERVER_PILOT_VERSION, parseCashflowServerFallbackReason, type CashflowServerFallbackReason, type CashflowServerRequest } from "./cashflowServerProtocol";
++import { parseCashflowSnapshot } from "./cashflowSnapshotWire";
++import { cashflowCanonicalJson } from "./shadowProtocol";
++import { parseCashflowServerTiming, type CashflowServerTiming } from "./candidateCheckProtocol";
++
++export type CashflowServerPilotMeasurement = {
++  kind: "view" | "month";
++  status: "match" | "mismatch" | "unavailable";
++  requestMs: number;
++  referenceMs: number;
++  serverTimingMs: CashflowServerTiming;
++  reason?: CashflowServerFallbackReason;
++  httpStatus?: number;
++};
++
++class PilotUnavailable extends Error {
++  constructor(readonly reason: CashflowServerFallbackReason, readonly httpStatus?: number,
++    readonly serverTimingMs: CashflowServerTiming = {}) { super("Cashflow server unavailable"); }
++}
++
++function recordMeasurement(value: CashflowServerPilotMeasurement) {
++  try { sessionStorage.setItem("cashflow_server_pilot_last_result", JSON.stringify(value)); }
++  catch { /* Diagnostic storage must not affect the displayed result. */ }
++}
++
++const aborted = () => new DOMException("Cashflow selection changed", "AbortError");
++const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
++
++/**
++ * Read-only pilot. A server result is used only after comparison with the local
++ * reference, including a worker-generated hash of every displayed month/item.
++ * Every failure keeps the existing calculation. There is no persisted portfolio.
++ */
++export function createCashflowServerPilotClient({ dataset, local, getToken, request = fetch,
++  measure = recordMeasurement, timeoutMs = 8_000 }: {
++  dataset: CashflowDataset;
++  local: CashflowWorkerClient;
++  getToken: () => Promise<string>;
++  request?: typeof fetch;
++  measure?: (value: CashflowServerPilotMeasurement) => void;
++  timeoutMs?: number;
++}): CashflowWorkerClient {
++  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000) throw new RangeError("Invalid pilot timeout");
++  let revision = 0;
++  let disposed = false;
++  let controller: AbortController | null = null;
++  let selected: { revision: number; options: CashflowViewOptions; verification: CashflowVerification } | null = null;
++  const current = (expected: number) => !disposed && expected === revision;
++  const checkCurrent = (expected: number) => { if (!current(expected)) throw aborted(); };
++  const report = (kind: CashflowServerRequest["kind"], status: CashflowServerPilotMeasurement["status"], start: number,
++    referenceMs: number, serverTimingMs: CashflowServerTiming = {}, reason?: CashflowServerFallbackReason, httpStatus?: number) => {
++    try { measure({ kind, status, requestMs: Math.max(0, performance.now() - start), referenceMs, serverTimingMs,
++      ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}) }); }
++    catch { /* No telemetry failure may replace the reference result. */ }
++  };
++  const reportFailure = (kind: CashflowServerRequest["kind"], error: unknown, start: number, referenceMs: number) => {
++    const failure = error instanceof PilotUnavailable ? error : new PilotUnavailable("unavailable");
++    report(kind, "unavailable", start, referenceMs, failure.serverTimingMs, failure.reason, failure.httpStatus);
++  };
++  const read = async (body: CashflowServerRequest, expected: number): Promise<{ value: Record<string, unknown>; serverTimingMs: CashflowServerTiming }> => {
++    checkCurrent(expected);
++    controller?.abort();
++    const active = new AbortController();
++    controller = active;
++    const stopped = new Promise<never>((_resolve, reject) => {
++      active.signal.addEventListener("abort", () => reject(aborted()), { once: true });
++    });
++    let timedOut = false;
++    const timer = setTimeout(() => { timedOut = true; active.abort(); }, timeoutMs);
++    try {
++      const work = async () => {
++        const token = await getToken();
++        checkCurrent(expected);
++        if (active.signal.aborted || !token) throw aborted();
++        const response = await request("/api/cashflow/view", {
++          method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
++          body: JSON.stringify(body), signal: active.signal, cache: "no-store",
++        });
++        const serverTimingMs = parseCashflowServerTiming(response.headers.get("Server-Timing"));
++        const value: unknown = await response.json().catch(() => null);
++        if (!response.ok) throw new PilotUnavailable(
++          (object(value) && parseCashflowServerFallbackReason(value.reason)) || "http", response.status, serverTimingMs);
++        if (!object(value) || value.ok !== true || value.version !== CASHFLOW_SERVER_PILOT_VERSION ||
++          value.kind !== body.kind || value.inputHash !== body.inputHash) throw new PilotUnavailable("invalid_response", response.status, serverTimingMs);
++        return { value, serverTimingMs };
++      };
++      return await Promise.race([work(), stopped]);
++    } catch (error) {
++      if (timedOut) throw new PilotUnavailable("timeout");
++      throw error;
++    } finally {
++      clearTimeout(timer);
++      if (controller === active) controller = null;
++      // Release pending work even when an injected fetch ignores the signal.
++      active.abort();
++    }
++  };
++  const bodyFor = (kind: CashflowServerRequest["kind"], options: CashflowViewOptions, verification: CashflowVerification, monthKey?: string): CashflowServerRequest => ({
++    version: CASHFLOW_SERVER_PILOT_VERSION, kind, options,
++    asOfMs: dataset.asOf.getTime(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++    inputHash: verification.inputHash, ...(monthKey ? { monthKey } : {}),
++  });
++
++  return {
++    get executionPath() { return disposed ? "disposed" : local.executionPath; },
++    async view(options) {
++      if (disposed) throw aborted();
++      const expected = ++revision;
++      selected = null;
++      controller?.abort();
++      const copiedOptions = { ...options };
++      // Failure of the reference itself follows the existing UI error path.
++      const referenceStart = performance.now();
++      const reference = await local.view(copiedOptions);
++      const referenceMs = Math.max(0, performance.now() - referenceStart);
++      checkCurrent(expected);
++      const start = performance.now();
++      try {
++        if (!local.verification) throw new PilotUnavailable("verification");
++        const verification = await local.verification().catch(() => { throw new PilotUnavailable("verification"); });
++        checkCurrent(expected);
++        const { value, serverTimingMs } = await read(bodyFor("view", copiedOptions, verification), expected);
++        checkCurrent(expected);
++        if (value.monthsHash !== verification.monthsHash ||
++          cashflowCanonicalJson(value.overview) !== cashflowCanonicalJson(reference)) {
++          report("view", "mismatch", start, referenceMs, serverTimingMs, "different_result");
++          return reference;
++        }
++        selected = { revision: expected, options: copiedOptions, verification };
++        report("view", "match", start, referenceMs, serverTimingMs);
++        return value.overview as CashflowOverview;
++      } catch (error) {
++        checkCurrent(expected);
++        reportFailure("view", error, start, referenceMs);
++        return reference;
++      }
++    },
++    async month(key) {
++      if (disposed) throw aborted();
++      const expected = revision;
++      const selection = selected;
++      const referenceStart = performance.now();
++      const reference = await local.month(key);
++      const referenceMs = Math.max(0, performance.now() - referenceStart);
++      checkCurrent(expected);
++      if (!selection || selection.revision !== expected) return reference;
++      const start = performance.now();
++      try {
++        const { value, serverTimingMs } = await read(bodyFor("month", selection.options, selection.verification, key), expected);
++        checkCurrent(expected);
++        const parsed = parseCashflowSnapshot(value.payload);
++        const month = parsed?.months[0] ?? null;
++        if (!parsed || parsed.items.length !== 0 || parsed.months.length > 1 || value.monthKey !== key ||
++          (month && month.key !== key) || value.monthsHash !== selection.verification.monthsHash ||
++          cashflowCanonicalJson(month) !== cashflowCanonicalJson(reference)) {
++          selected = null;
++          report("month", "mismatch", start, referenceMs, serverTimingMs, "different_result");
++          return reference;
++        }
++        report("month", "match", start, referenceMs, serverTimingMs);
++        return month;
++      } catch (error) {
++        checkCurrent(expected);
++        selected = null;
++        reportFailure("month", error, start, referenceMs);
++        return reference;
++      }
++    },
++    dispose() {
++      if (disposed) return;
++      disposed = true;
++      selected = null;
++      controller?.abort();
++      controller = null;
++      local.dispose();
++    },
++  };
++}
+diff --git a/src/app/cashflow/cashflowServerProtocol.ts b/src/app/cashflow/cashflowServerProtocol.ts
+new file mode 100644
+index 0000000..54ffa58
+--- /dev/null
++++ b/src/app/cashflow/cashflowServerProtocol.ts
+@@ -0,0 +1,50 @@
++import {
++  CASHFLOW_SHADOW_VERSION,
++  parseCashflowShadowRequest,
++} from "./shadowProtocol";
++import type { CashflowViewOptions } from "./buildCashflowView";
++
++export const CASHFLOW_SERVER_PILOT_VERSION = "cashflow-server-pilot-v1";
++const unusedHash = "0".repeat(64);
++
++const fallbackReasons = ["time_zone", "stale_context", "different_inputs", "incomplete_inputs",
++  "resource_limit", "cancelled", "unavailable", "http", "timeout", "verification",
++  "invalid_response", "different_result"] as const;
++export type CashflowServerFallbackReason = typeof fallbackReasons[number];
++
++/** Diagnostic codes only: never copy an upstream message into client storage. */
++export function parseCashflowServerFallbackReason(value: unknown): CashflowServerFallbackReason | null {
++  return typeof value === "string" && fallbackReasons.includes(value as CashflowServerFallbackReason)
++    ? value as CashflowServerFallbackReason : null;
++}
++
++export type CashflowServerRequest = {
++  version: typeof CASHFLOW_SERVER_PILOT_VERSION;
++  kind: "view" | "month";
++  asOfMs: number;
++  timeZone: string;
++  options: CashflowViewOptions;
++  /** Expected source fingerprint for this pilot, never an authorization credential. */
++  inputHash: string;
++  monthKey?: string;
++};
++
++export function parseCashflowServerRequest(value: unknown): CashflowServerRequest | null {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
++  const raw = value as Record<string, unknown>;
++  if (raw.version !== CASHFLOW_SERVER_PILOT_VERSION || (raw.kind !== "view" && raw.kind !== "month")) return null;
++  // Reuse the existing reviewed date/options/hash validator. The server accepts
++  // no portfolio, account identity, role or client-calculated amounts.
++  const validated = parseCashflowShadowRequest({
++    version: CASHFLOW_SHADOW_VERSION, asOfMs: raw.asOfMs, timeZone: raw.timeZone,
++    options: raw.options, inputHash: raw.inputHash, itemsHash: unusedHash, monthsHash: unusedHash,
++  });
++  if (!validated) return null;
++  if (raw.kind === "month" && (typeof raw.monthKey !== "string" || !/^\d{4}-(?:0?[1-9]|1[0-2])$/.test(raw.monthKey))) return null;
++  return {
++    version: CASHFLOW_SERVER_PILOT_VERSION, kind: raw.kind as "view" | "month",
++    asOfMs: validated.asOfMs, timeZone: validated.timeZone, options: validated.options,
++    inputHash: validated.inputHash,
++    ...(raw.kind === "month" ? { monthKey: raw.monthKey as string } : {}),
++  };
++}
+diff --git a/src/app/cashflow/useCashflowPilotDiagnostics.test.tsx b/src/app/cashflow/useCashflowPilotDiagnostics.test.tsx
+new file mode 100644
+index 0000000..ffef25b
+--- /dev/null
++++ b/src/app/cashflow/useCashflowPilotDiagnostics.test.tsx
+@@ -0,0 +1,145 @@
++// @vitest-environment happy-dom
++
++import { act, StrictMode, useLayoutEffect } from "react";
++import { createRoot, type Root } from "react-dom/client";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { CASHFLOW_PAGE_MEASUREMENT_KEY, CASHFLOW_PILOT_MODE_KEY, useCashflowPageMeasurement,
++  useCashflowPilotMode, type CashflowPilotMode, type CashflowPageMeasurement } from "./useCashflowPilotDiagnostics";
++
++type Input = Parameters<typeof useCashflowPageMeasurement>[0];
++const waiting = (): Input => ({ mode: "baseline", identity: null, profileReady: false,
++  contractsReady: false, statementsReady: false, overviewReady: false, failed: false });
++const ready = (identity = "synthetic-account-A"): Input => ({ mode: "compare", identity,
++  profileReady: true, contractsReady: true, statementsReady: true, overviewReady: true, failed: false });
++let root: Root;
++let now: number;
++let nextFrame: number;
++let frames: Map<number, FrameRequestCallback>;
++let input: Input;
++let record: ReturnType<typeof vi.fn<(value: CashflowPageMeasurement) => void>>;
++function Harness(props: Input) { useCashflowPageMeasurement(props, record); return null; }
++const render = async (props = input, strict = false) => {
++  input = props;
++  await act(async () => root.render(strict ? <StrictMode><Harness {...props} /></StrictMode> : <Harness {...props} />));
++};
++const frame = async () => {
++  const pending = [...frames.values()]; frames.clear(); now += 16;
++  await act(async () => pending.forEach(callback => callback(now)));
++};
++
++beforeEach(() => {
++  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
++  vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
++  now = 0; nextFrame = 0; frames = new Map(); input = waiting(); record = vi.fn();
++  vi.spyOn(performance, "now").mockImplementation(() => now);
++  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; });
++  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
++  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
++  sessionStorage.clear();
++  root = createRoot(document.createElement("div"));
++});
++afterEach(async () => {
++  await act(async () => root.unmount());
++  vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs();
++});
++
++describe("cashflow pilot activation in one browser tab", () => {
++  let mode: CashflowPilotMode;
++  function Mode() { const value = useCashflowPilotMode(); useLayoutEffect(() => { mode = value; }); return null; }
++  const renderMode = () => act(async () => root.render(<Mode />));
++  it.each([null, "1", "enabled", "private@example.test"])("keeps the original path without an explicit valid mode: %s", async value => {
++    if (value) sessionStorage.setItem(CASHFLOW_PILOT_MODE_KEY, value);
++    await renderMode(); expect(mode).toBeNull();
++  });
++  it.each(["baseline", "compare"])("accepts the explicit %s mode only with the public build flag", async value => {
++    sessionStorage.setItem(CASHFLOW_PILOT_MODE_KEY, value);
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "0");
++    await renderMode(); expect(mode).toBeNull();
++    vi.stubEnv("NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED", "1");
++    await renderMode(); expect(mode).toBe(value);
++  });
++  it("switches mode and returns to the original path on explicit local disable", async () => {
++    await renderMode(); expect(mode).toBeNull();
++    sessionStorage.setItem(CASHFLOW_PILOT_MODE_KEY, "compare");
++    await act(async () => window.dispatchEvent(new Event("cashflow:pilot-mode")));
++    expect(mode).toBe("compare");
++    sessionStorage.removeItem(CASHFLOW_PILOT_MODE_KEY);
++    await act(async () => window.dispatchEvent(new Event("cashflow:pilot-mode")));
++    expect(mode).toBeNull();
++  });
++  it("keeps the original path if browser storage is unavailable", async () => {
++    vi.stubGlobal("sessionStorage", { getItem: () => { throw new Error("Storage blocked"); } });
++    await renderMode(); expect(mode).toBeNull();
++  });
++});
++
++describe("whole cashflow initial-load milestones", () => {
++  it("includes auth/profile waiting, inputs, statements and the completed view, then two frames", async () => {
++    await render();
++    now = 40; await render({ ...input, identity: "synthetic-account-A" });
++    now = 90; await render({ ...input, profileReady: true });
++    now = 120; await render({ ...input, contractsReady: true });
++    now = 180; await render({ ...input, statementsReady: true });
++    expect(frames.size).toBe(0); expect(record).not.toHaveBeenCalled();
++    now = 200; await render({ ...input, overviewReady: true });
++    await frame(); expect(record).not.toHaveBeenCalled();
++    await frame();
++    expect(record).toHaveBeenCalledExactlyOnceWith({ mode: "baseline", status: "ready", profileReadyMs: 90,
++      contractsReadyMs: 120, statementsReadyMs: 180, overviewReadyMs: 200, frameReadyMs: 232 });
++    now = 300; await render({ ...input, overviewReady: false });
++    await render({ ...input, overviewReady: true }); await frame(); await frame();
++    expect(record).toHaveBeenCalledTimes(1);
++  });
++  it("cancels old frames at account change and measures the new account independently", async () => {
++    await render(ready()); await frame();
++    now = 100; await render({ ...waiting(), mode: "compare", identity: "synthetic-account-B" });
++    await frame(); expect(record).not.toHaveBeenCalled();
++    now = 200; await render(ready("synthetic-account-B")); await frame(); await frame();
++    expect(record).toHaveBeenCalledTimes(1);
++    expect(record.mock.calls[0][0]).toMatchObject({ mode: "compare", frameReadyMs: 132 });
++    expect(JSON.stringify(record.mock.calls)).not.toMatch(/synthetic|account|identity/);
++  });
++  it("cancels a ready sample while a changed selection is pending", async () => {
++    await render(ready()); await frame();
++    await render({ ...input, overviewReady: false }); await frame();
++    expect(record).not.toHaveBeenCalled();
++    await render({ ...input, overviewReady: true }); await frame(); await frame();
++    expect(record).toHaveBeenCalledTimes(1);
++  });
++  it("starts a fresh sample when switching between baseline and comparison", async () => {
++    await render({ ...ready(), mode: "baseline" }); await frame(); await frame();
++    now = 100; await render(ready()); await frame(); await frame();
++    expect(record.mock.calls.map(([value]) => [value.mode, value.frameReadyMs])).toEqual([["baseline", 32], ["compare", 32]]);
++  });
++  it("records a failure without inventing missing readiness times", async () => {
++    await render({ ...waiting(), identity: "synthetic", failed: true }); await frame(); await frame();
++    expect(record).toHaveBeenCalledExactlyOnceWith({ mode: "baseline", status: "error", frameReadyMs: 32 });
++  });
++  it("discards samples if the tab was hidden before completion", async () => {
++    await render(ready()); await frame();
++    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
++    document.dispatchEvent(new Event("visibilitychange"));
++    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
++    await frame(); expect(record).not.toHaveBeenCalled();
++  });
++  it("never records disabled or logged-out sessions", async () => {
++    await render({ ...ready(), mode: null }); await frame(); await frame();
++    await render({ ...ready(), identity: null }); await frame(); await frame();
++    expect(record).not.toHaveBeenCalled();
++  });
++  it("cleans up pending work on unmount and reports once under StrictMode", async () => {
++    await render(ready(), true); await frame(); await frame(); expect(record).toHaveBeenCalledTimes(1);
++    await act(async () => root.render(null)); expect(frames.size).toBe(0);
++  });
++  it("isolates a failing recorder from the UI", async () => {
++    record.mockImplementation(() => { throw new Error("Storage blocked"); });
++    await render(ready()); await frame(); await frame(); expect(record).toHaveBeenCalledTimes(1);
++  });
++  it("writes only whitelisted milestones and mode to session storage", async () => {
++    function Stored() { useCashflowPageMeasurement(ready()); return null; }
++    await act(async () => root.render(<Stored />)); await frame(); await frame();
++    const stored = JSON.parse(sessionStorage.getItem(CASHFLOW_PAGE_MEASUREMENT_KEY)!);
++    expect(Object.keys(stored).sort()).toEqual(["contractsReadyMs", "frameReadyMs", "mode", "overviewReadyMs", "profileReadyMs", "statementsReadyMs", "status"]);
++    expect(JSON.stringify(stored)).not.toMatch(/synthetic|account|identity|email|token|amount|contractNumber/);
++  });
++});
+diff --git a/src/app/cashflow/useCashflowPilotDiagnostics.ts b/src/app/cashflow/useCashflowPilotDiagnostics.ts
+new file mode 100644
+index 0000000..6eb8a1f
+--- /dev/null
++++ b/src/app/cashflow/useCashflowPilotDiagnostics.ts
+@@ -0,0 +1,114 @@
++"use client";
++
++import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
++
++export type CashflowPilotMode = "baseline" | "compare" | null;
++export const CASHFLOW_PILOT_MODE_KEY = "cashflow_server_pilot_mode";
++export const CASHFLOW_PAGE_MEASUREMENT_KEY = "cashflow_page_last_result";
++
++function readMode(): CashflowPilotMode {
++  if (process.env.NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED !== "1") return null;
++  try {
++    const value = sessionStorage.getItem(CASHFLOW_PILOT_MODE_KEY);
++    return value === "baseline" || value === "compare" ? value : null;
++  } catch { return null; }
++}
++const serverMode = (): CashflowPilotMode => null;
++function subscribeMode(listener: () => void) {
++  window.addEventListener("storage", listener);
++  window.addEventListener("cashflow:pilot-mode", listener);
++  return () => {
++    window.removeEventListener("storage", listener);
++    window.removeEventListener("cashflow:pilot-mode", listener);
++  };
++}
++
++/** A public build flag alone must not switch every user's calculation path. */
++export function useCashflowPilotMode(): CashflowPilotMode {
++  return useSyncExternalStore(subscribeMode, readMode, serverMode);
++}
++
++type Milestone = "profileReadyMs" | "contractsReadyMs" | "statementsReadyMs" | "overviewReadyMs";
++export type CashflowPageMeasurement = {
++  mode: Exclude<CashflowPilotMode, null>;
++  status: "ready" | "error";
++  frameReadyMs: number;
++} & Partial<Record<Milestone, number>>;
++
++type MeasurementInput = {
++  mode: CashflowPilotMode;
++  identity: string | null;
++  profileReady: boolean;
++  contractsReady: boolean;
++  statementsReady: boolean;
++  overviewReady: boolean;
++  failed: boolean;
++};
++type Run = {
++  identity: string | null;
++  mode: CashflowPilotMode;
++  start: number;
++  milestones: Partial<Record<Milestone, number>>;
++  done: boolean;
++  hidden: boolean;
++};
++
++function recordPageMeasurement(value: CashflowPageMeasurement) {
++  try { sessionStorage.setItem(CASHFLOW_PAGE_MEASUREMENT_KEY, JSON.stringify(value)); }
++  catch { /* Optional local diagnostics cannot affect the page. */ }
++}
++
++/**
++ * One initial-load sample per account/mode. Times share a monotonic origin at
++ * this component's mount; they are completion milestones, not additive phases.
++ * Two animation frames allow the committed overview to be painted. This is not
++ * a navigation, LCP or INP measurement. Hidden-tab samples are discarded.
++ */
++export function useCashflowPageMeasurement(input: MeasurementInput, record = recordPageMeasurement) {
++  const run = useRef<Run | null>(null);
++  useLayoutEffect(() => {
++    const now = performance.now();
++    const previous = run.current;
++    // Resolve the initial unknown identity without losing auth/profile waiting.
++    const changedAccount = previous?.identity !== null && previous?.identity !== input.identity;
++    if (!previous || changedAccount || previous.mode !== input.mode) {
++      run.current = { identity: input.identity, mode: input.mode, start: now, milestones: {}, done: false,
++        hidden: document.visibilityState === "hidden" };
++    }
++    const active = run.current!;
++    active.identity = input.identity;
++    const hide = () => { if (document.visibilityState === "hidden") active.hidden = true; };
++    document.addEventListener("visibilitychange", hide);
++    const elapsed = () => Math.max(0, performance.now() - active.start);
++    if (input.identity && input.mode && !active.done && !active.hidden) {
++      const ready: Record<Milestone, boolean> = {
++        profileReadyMs: input.profileReady, contractsReadyMs: input.contractsReady,
++        statementsReadyMs: input.statementsReady, overviewReadyMs: input.overviewReady,
++      };
++      for (const key of Object.keys(ready) as Milestone[]) {
++        if (!ready[key]) delete active.milestones[key];
++        if (ready[key] && active.milestones[key] === undefined) active.milestones[key] = elapsed();
++      }
++    }
++    let firstFrame = 0;
++    let secondFrame = 0;
++    const settled = input.failed || (input.profileReady && input.contractsReady && input.statementsReady && input.overviewReady);
++    if (input.identity && input.mode && settled && !active.done && !active.hidden) {
++      firstFrame = requestAnimationFrame(() => {
++        secondFrame = requestAnimationFrame(() => {
++          if (run.current !== active || active.hidden || active.done) return;
++          active.done = true;
++          try { record({ mode: input.mode!, status: input.failed ? "error" : "ready",
++            ...active.milestones, frameReadyMs: elapsed() }); }
++          catch { /* A diagnostic callback must not replace the displayed data. */ }
++        });
++      });
++    }
++    return () => {
++      cancelAnimationFrame(firstFrame);
++      cancelAnimationFrame(secondFrame);
++      document.removeEventListener("visibilitychange", hide);
++    };
++  }, [input.identity, input.mode, input.profileReady, input.contractsReady, input.statementsReady,
++    input.overviewReady, input.failed, record]);
++}

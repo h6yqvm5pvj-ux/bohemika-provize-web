@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/AppLayout";
 import type { ToolDocumentInsurer } from "@/app/lib/toolDocuments";
 import { DocumentsArtwork, DocumentsHeader, DocumentsLogo, DocumentsSearch } from "./DocumentsUi";
 import styles from "./documents.module.css";
+import { LifeComparisonDocumentLink, comparisonDocumentMatches } from "./LifeComparisonDocumentLink";
 
 export function DocumentsInsurers({ title, description, category, insurers, layout = "grid" }: {
   title: string; description: string; category: string; insurers: readonly ToolDocumentInsurer[];
@@ -41,6 +42,7 @@ export function DocumentsInsurers({ title, description, category, insurers, layo
           </div>
 
           <section className={styles.landingCategories} aria-label="Pojišťovny">
+            {category === "zivotni-pojisteni" && comparisonDocumentMatches(search) && <LifeComparisonDocumentLink />}
             <div className={styles.landingListHeading}>
               <h2>Vyber pojišťovnu</h2>
               <span>Otevři dokumenty</span>

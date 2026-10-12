@@ -10,8 +10,8 @@ const scope = self as unknown as {
 let model: CashflowModel | null = null;
 let revision = 0;
 
-scope.addEventListener("message", ({ data }) => {
-  if (!data || typeof data !== "object" || !["init", "view", "month", "dispose"].includes(data.kind)) {
+scope.addEventListener("message", async ({ data }) => {
+  if (!data || typeof data !== "object" || !["init", "view", "month", "verify", "dispose"].includes(data.kind)) {
     scope.postMessage({ kind: "invalid", id: -1, ok: false });
     return;
   }
@@ -33,6 +33,14 @@ scope.addEventListener("message", ({ data }) => {
     } else if (data.kind === "month") {
       if (!model || data.revision !== revision || revision === 0) throw new Error("Invalid month revision");
       scope.postMessage({ kind: "month", id: data.id, revision, ok: true, result: model.month(data.key) });
+    } else if (data.kind === "verify") {
+      if (!model?.verification || data.revision !== revision || revision === 0) throw new Error("Invalid worker request");
+      const requestedRevision = revision;
+      const result = await model.verification();
+      // A new view/dispose may arrive while WebCrypto is hashing.
+      if (model && revision === requestedRevision) {
+        scope.postMessage({ kind: "verify", id: data.id, revision: requestedRevision, ok: true, result });
+      }
     } else throw new Error("Invalid worker request");
   } catch {
     scope.postMessage({ kind: data.kind, id: data.id, ok: false });

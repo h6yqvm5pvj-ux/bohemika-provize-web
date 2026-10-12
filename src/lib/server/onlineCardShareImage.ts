@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { normalizeManagedProfileAvatar } from "./profileAvatarStorage";
+import { detectSafeUserAttachment } from "./safeUserAttachments";
 
 const MAX_PORTRAIT_BYTES = 2_000_000;
 
@@ -9,7 +10,7 @@ export function onlineCardShareImagePath(slug: string, card: { fullName: string;
 }
 
 export async function onlineCardSharePortrait(value: string): Promise<string | null> {
-  const url = normalizeProfileAvatar(value);
+  const url = normalizeManagedProfileAvatar(value);
   if (!url) return null;
   try {
     const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(5000) });
@@ -38,7 +39,12 @@ export async function onlineCardSharePortrait(value: string): Promise<string | n
       reader.releaseLock();
     }
     const bytes = Buffer.concat(chunks, size);
+    const detected = detectSafeUserAttachment({ bytes, fileName: "", declaredContentType: response.headers.get("content-type") });
+    if (!detected || !["image/jpeg", "image/png", "image/webp"].includes(detected.contentType)) return null;
     const { default: sharp } = await import("sharp");
+    // Restrict the decoder as well as the signature gate: a malformed raster
+    // prefix must never fall back to libvips' SVG loader.
+    sharp.block({ operation: ["VipsForeignLoadSvg"] });
     const png = await sharp(bytes, { limitInputPixels: 4_000_000 })
       .rotate().resize(440, 440, { fit: "cover" }).png().toBuffer();
     return `data:image/png;base64,${png.toString("base64")}`;

@@ -31,6 +31,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "srovnavac-odpovednosti-obcana",
   "srovnavac-pracovni-neschopnosti",
   "neon-life-vs-metlife-oneguard",
+  "neon-life-vs-generali-bel-mondo-20",
 ] as const;
 
 export type ToolHubToolKey = (typeof TOOL_HUB_TOOL_KEYS)[number];

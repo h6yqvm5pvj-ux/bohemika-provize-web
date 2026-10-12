@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T09:02:34+02:00",
+  "observationSource": "User-provided browser screenshot",
+  "visibleSelection": {
+    "scopeFilter": "own",
+    "productFilter": "all"
+  },
+  "storedComparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 9629.3,
+    "referenceMs": 26.5,
+    "serverTimingMs": {
+      "cashflow_auth": 540.57,
+      "cashflow_inputs": 7900.73,
+      "cashflow_hash": 215.2,
+      "cashflow_compute": 682.23,
+      "cashflow_total": 9366.09
+    }
+  },
+  "freshComparisonVerified": false,
+  "ownScopeMatchVerified": false,
+  "reason": "Every displayed comparison timing is identical to the earlier team-view diagnostic. The stored result does not identify its selection or completion timestamp, so it cannot establish a new own-view comparison.",
+  "priorObservation": "cashflow-server-pilot-live-team-match-2026-10-09.json",
+  "requiredNextStep": "Remove only the stored pilot comparison diagnostic before changing away from and back to own scope; wait for the new comparison before reading it.",
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationCodeChanged": false,
+  "deploymentChanged": false,
+  "businessDataWrites": false
+}

@@ -53,6 +53,30 @@ beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("persistent cashflow worker client", () => {
+  it("requests compact verification hashes only after the current view completes", async () => {
+    const f = fixture();
+    await expect(f.client.verification!()).rejects.toMatchObject({ name: "AbortError" });
+    const view = f.client.view(options()); f.init(); f.respond(); await view;
+    const verified = f.client.verification!();
+    const request = f.worker.postMessage.mock.calls.at(-1)![0];
+    expect(request).toEqual({ kind: "verify", id: 2, revision: 1 });
+    const result = { inputHash: "a".repeat(64), monthsHash: "b".repeat(64) };
+    f.worker.emit("message", { ...request, ok: true, result });
+    expect(await verified).toEqual(result);
+    expect(f.createFallbackModel).not.toHaveBeenCalled();
+    f.client.dispose();
+  });
+
+  it("verifies the same view after the worker falls back to a local model", async () => {
+    const f = fixture();
+    const result = { inputHash: "a".repeat(64), monthsHash: "b".repeat(64) };
+    Object.assign(f.model, { verification: vi.fn(async () => result) });
+    const view = f.client.view(options()); f.worker.emit("error"); await view;
+    expect(await f.client.verification!()).toEqual(result);
+    expect(f.client.executionPath).toBe("fallback");
+    f.client.dispose();
+  });
+
   it("initializes one immutable dataset and sends only options or month keys afterward", async () => {
     expectTypeOf<Worker>().toExtend<CashflowWorkerPort>();
     const f = fixture();

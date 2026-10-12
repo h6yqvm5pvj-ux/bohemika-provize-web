@@ -35,6 +35,8 @@ type UseCashflowDataParams = {
   enabled?: boolean;
   reloadKey?: number;
   deferCalculation?: boolean;
+  /** Explicit server pilot uses a worker reference even for a small portfolio. */
+  forceDeferredCalculation?: boolean;
   /** Home computes only its payout totals in a dedicated worker. */
   snapshotOnly?: boolean;
 };
@@ -645,6 +647,7 @@ export function useCashflowData({
   enabled = true,
   reloadKey = 0,
   deferCalculation = false,
+  forceDeferredCalculation = false,
   snapshotOnly = false,
 }: UseCashflowDataParams): UseCashflowDataResult {
   const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
@@ -763,7 +766,7 @@ export function useCashflowData({
   const dataReady = ready && snapshotRequestKey === requestKey && (!snapshot || snapshotMatchesCurrentUser);
   const rawSnapshot = enabled && snapshotMatchesCurrentUser ? snapshot : null;
   // Small portfolios keep their existing synchronous display path.
-  const calculationDeferred = Boolean(rawSnapshot && (snapshotOnly || (deferCalculation &&
+  const calculationDeferred = Boolean(rawSnapshot && (snapshotOnly || forceDeferredCalculation || (deferCalculation &&
     rawSnapshot.ownEntries.length + rawSnapshot.teamEntriesRaw.length >= 200)));
   const { cashflowItems, verificationInput } = useMemo(() => {
     if (calculationDeferred || !enabled || !snapshot || !snapshotMatchesCurrentUser) {

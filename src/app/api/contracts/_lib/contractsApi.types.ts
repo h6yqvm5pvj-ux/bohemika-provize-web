@@ -14,6 +14,7 @@ import type {
   CommissionAuditCodeFilter,
   CommissionAuditMode,
 } from "@/app/lib/commissionAudit";
+import type { CashflowContractTimingObserver } from "@/lib/server/cashflowContractTiming";
 
 export type FirestoreTimestamp = {
   seconds: number;
@@ -666,4 +667,13 @@ export type AuthContextOptions = {
   requireActiveSubscription?: boolean;
   /** Trusted server caller only; never read from request headers or parameters. */
   freshCashflowContext?: boolean;
+  /** Trusted server caller only; never enabled by request headers or parameters. */
+  onCashflowTiming?: CashflowContractTimingObserver;
+};
+
+export type ContractsListOptions = Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> & {
+  /** Trusted server-only scheduling hint after fresh guards and the first own count.
+   * Team requests must still perform their own authorization. No identity is shared.
+   */
+  onCashflowTeamReady?: (ownTotalCount: number) => void;
 };

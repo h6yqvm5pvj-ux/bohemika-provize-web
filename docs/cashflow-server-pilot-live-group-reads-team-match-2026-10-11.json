@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-11T12:52:10+02:00",
+  "source": "User-provided screenshot with a visible diagnostic removal, delayed result, team scope and prediction-off controls; preceded by another screenshot of the same controls before the timer printed",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 8206.2,
+    "referenceMs": 108.5,
+    "serverTimingMs": {
+      "cashflow_auth": 1286.23,
+      "cashflow_inputs": 5525.33,
+      "cashflow_hash": 289.62,
+      "cashflow_compute": 749.39,
+      "cashflow_inputs_profile": 549.2,
+      "cashflow_inputs_own_contracts_identity": 685.83,
+      "cashflow_inputs_subscriptions": 731.91,
+      "cashflow_inputs_own_contracts_team_context": 70.29,
+      "cashflow_inputs_statements": 1142.47,
+      "cashflow_inputs_own_contracts_subscription": 390.47,
+      "cashflow_inputs_own_contracts_count": 42.98,
+      "cashflow_inputs_tips": 1218.29,
+      "cashflow_inputs_own_contracts_entries": 1688.01,
+      "cashflow_inputs_own_contracts_response": 15,
+      "cashflow_inputs_own_contracts": 2864.83,
+      "cashflow_inputs_team_contracts_identity": 1860.86,
+      "cashflow_inputs_team_contracts_team_context": 43.58,
+      "cashflow_inputs_team_contracts_subscription": 19.1,
+      "cashflow_inputs_team_contracts_count": 51.16,
+      "cashflow_inputs_team_contracts_entries": 1832.44,
+      "cashflow_inputs_team_contracts_response": 11.27,
+      "cashflow_inputs_team_contracts": 3776.55,
+      "cashflow_total": 7885.86
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": false,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "transcribedMillisecondsRoundedToTwoDecimals": true,
+    "innerContractMetricCount": 12,
+    "previousDiagnosticRemovalVisible": true,
+    "newDiagnosticResultVisible": true,
+    "timerIdIsNotComparisonResult": true,
+    "selectionBinding": "Team/all/prediction-off controls are visible before and after the delayed result; request options and resource timing are not independently captured",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+    "currentHostingDeploymentIndependentlyVerified": false,
+    "requestDeploymentIndependentlyCaptured": false,
+    "hostingVerificationAttempt": {
+      "checkedAt": "2026-10-11T10:58:52.329612+00:00",
+      "metadataAvailable": false,
+      "httpStatus": 403,
+      "causeEstablished": false,
+      "productionChanged": false
+    },
+    "lastSuccessfulHostingVerification": {
+      "checkedAt": "2026-10-10T12:58:54.769Z",
+      "currentDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "currentDeploymentVerified": true,
+      "businessDataRead": false
+    },
+    "sameSelectionRepeatedSamplesCollected": false,
+    "productionSpeedupEstablished": false,
+    "wholePageLatencyMeasured": false,
+    "serverOnlyMigrationComplete": false
+  },
+  "sourceAnalysis": {
+    "localRelevantSourceFilesMatchReleaseManifest": true,
+    "localRelevantSourceFilesVerified": 7,
+    "contractSourceDurationsSumMs": 6641.38,
+    "inputSpanAfterProfileMs": 4976.13,
+    "netOverlapIndicatedMs": 1665.25,
+    "overlapInferredFromDurationTotals": true,
+    "exactTimelineCaptured": false,
+    "inputsPercentOfServerTotal": 70.07,
+    "actualOwnerGroupCountCaptured": false,
+    "groupReadAheadActivationIndependentlyCaptured": false,
+    "sameScenarioAsPriorPredictionOnObservation": false,
+    "previousObservationIsDifferentDayAndPredictionSetting": true,
+    "previousPredictionOnObservationFile": "cashflow-server-pilot-live-group-reads-team-prediction-match-2026-10-10.json",
+    "identifiedDelay": "Input loading remains the largest elapsed block. This prediction-off observation cannot be treated as a repeated prediction-on sample or controlled evidence of speedup.",
+    "specificDatabaseQueryBottleneckEstablished": false,
+    "causalSpeedupEstablished": false,
+    "nextVerification": "Enable prediction on the team overview, wait for a fresh result, and capture the diagnostic without reloading; repeated same-selection samples and current hosting metadata remain pending."
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "runtimeChanged": false,
+  "businessDataWrites": false,
+  "productionSecretsChanged": false
+}

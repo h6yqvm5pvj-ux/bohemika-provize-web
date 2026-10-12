@@ -5,6 +5,7 @@ import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
+import { orderedCashflowReads } from "./contractsApi.cashflowReads";
 import { authorizeContractNoteLocation, assertContractNoteNamespaceAvailable } from "@/lib/server/contractNoteLocation";
 import { isSafeContractNoteId } from "../notes/contractNotes";
 import { projectTipMatchData, projectTipMatchResponse } from "./contractsApi.tipProjection";
@@ -60,6 +61,7 @@ import {
 import {
   LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
 } from "@/app/lib/productCatalog";
+import { measureCashflowContractPhase } from "@/lib/server/cashflowContractTiming";
 import type {
   AuthContextOptions,
   ContractDetailResponse,
@@ -70,6 +72,7 @@ import type {
   ContractLifePremiumChange,
   ContractListFilters,
   ContractListResponseShape,
+  ContractsListOptions,
   ContractResponseItem,
   ContractTransferTarget,
   ContractsFindResponse,
@@ -3227,7 +3230,8 @@ async function fetchContractsForOwners(
   filters?: ContractListFilters,
   responseShape: ContractListResponseShape = "full",
   ownerNames?: Map<string, string | null>,
-  ownerContexts?: Map<string, ContractOwnerPositionContext | null>
+  ownerContexts?: Map<string, ContractOwnerPositionContext | null>,
+  cashflowReadAhead = false
 ): Promise<{
   list: ContractResponseItem[];
   hasMore: boolean;
@@ -3498,42 +3502,48 @@ async function fetchContractsForOwners(
   // collectionGroup queries (userEmail stored)
   // Pull by both date fields so records without contractSignedDate are still included.
   if (shouldUseCollectionGroup) {
-    for (let i = 0; i < owners.length; i += 10) {
-      const chunk = owners.slice(i, i + 10);
-      try {
-        const signedFrom = filters?.signedFrom ?? null;
-        const ownerOperator = chunk.length === 1 ? "==" : "in";
-        const ownerValue = chunk.length === 1 ? chunk[0]! : chunk;
-        const indexedClauses = filters
-          ? buildContractListIndexedQueryClauses(filters, {
-              allowIn: chunk.length === 1,
-            })
-          : [];
-        const signedBase = applyContractListIndexedQueryClauses(
-          db.collectionGroup("entries").where("userEmail", ownerOperator, ownerValue),
-          indexedClauses
-        );
-        let qBySigned = signedBase
-          .orderBy("contractSignedDate", "desc");
-        let qByCreated = db
-          .collectionGroup("entries")
-          .where("userEmail", ownerOperator, ownerValue)
-          .orderBy("createdAt", "desc");
-        if (signedFrom) {
-          qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
-          qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
-        }
-        // Keep createdAt query uncursored. Backfilled contracts can have old
-        // contractSignedDate with fresh createdAt; cursoring createdAt would
-        // skip them permanently in subsequent pages.
-        if (cursor) {
-          qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
-        }
+    const chunks = Array.from({ length: Math.ceil(owners.length / 10) }, (_, i) => owners.slice(i * 10, i * 10 + 10));
+    const readGroup = async (chunk: string[]) => {
+      const signedFrom = filters?.signedFrom ?? null;
+      const ownerOperator = chunk.length === 1 ? "==" : "in";
+      const ownerValue = chunk.length === 1 ? chunk[0]! : chunk;
+      const indexedClauses = filters
+        ? buildContractListIndexedQueryClauses(filters, {
+            allowIn: chunk.length === 1,
+          })
+        : [];
+      const signedBase = applyContractListIndexedQueryClauses(
+        db.collectionGroup("entries").where("userEmail", ownerOperator, ownerValue),
+        indexedClauses
+      );
+      let qBySigned = signedBase
+        .orderBy("contractSignedDate", "desc");
+      let qByCreated = db
+        .collectionGroup("entries")
+        .where("userEmail", ownerOperator, ownerValue)
+        .orderBy("createdAt", "desc");
+      if (signedFrom) {
+        qBySigned = qBySigned.where("contractSignedDate", ">=", signedFrom);
+        qByCreated = qByCreated.where("createdAt", ">=", signedFrom);
+      }
+      // Keep createdAt query uncursored. Backfilled contracts can have old
+      // contractSignedDate with fresh createdAt; cursoring createdAt would
+      // skip them permanently in subsequent pages.
+      if (cursor) {
+        qBySigned = qBySigned.where("contractSignedDate", "<=", cursor.date);
+      }
 
-        const [signedSnap, createdSnap] = await Promise.all([
-          qBySigned.limit(pageLimit).get(),
-          qByCreated.limit(pageLimit).get(),
-        ]);
+      const [signedSnap, createdSnap] = await Promise.all([
+        qBySigned.limit(pageLimit).get(),
+        qByCreated.limit(pageLimit).get(),
+      ]);
+
+      return { chunk, qBySigned, qByCreated, signedSnap, createdSnap };
+    };
+    for await (const result of orderedCashflowReads(chunks, readGroup, cashflowReadAhead)) {
+      try {
+        if (!result.ok) throw result.error;
+        const { chunk, qBySigned, qByCreated, signedSnap, createdSnap } = result.value;
 
         const consumeSnap = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
           snap.docs.forEach((doc) => {
@@ -3821,6 +3831,7 @@ async function getAuthContext(
     requireKnownUser = false,
     requireActiveSubscription = false,
     freshCashflowContext = false,
+    onCashflowTiming,
   } = options;
 
   if (!adminDb) {
@@ -3832,21 +3843,22 @@ async function getAuthContext(
   }
   const rawTokenEmail = identity.rawTokenEmail;
 
-  const { users, childrenByManager } = freshCashflowContext
-    ? await buildUserTree()
-    : await getCachedUserTree();
+  const { users, childrenByManager } = await measureCashflowContractPhase(
+    onCashflowTiming, "team_context",
+    () => freshCashflowContext ? buildUserTree() : getCachedUserTree()
+  );
   const me = users.find((u) => u.email === email) ?? null;
   if (requireKnownUser && !me) {
     return { error: "Uživatel nemá interní profil v systému.", status: 403 } as const;
   }
 
   if (requireActiveSubscription) {
-    const subscriptionAccess = await loadUserSubscriptionStatus({
+    const subscriptionAccess = await measureCashflowContractPhase(onCashflowTiming, "subscription", () => loadUserSubscriptionStatus({
       email,
       rawTokenEmail,
       uid: identity.uid,
       freshCashflowContext,
-    });
+    }));
     if (subscriptionAccess?.effectiveState === "blocked") {
       if (subscriptionAccess.status === "unpaid") {
         return { error: "Účet je označený jako nezaplacený.", status: 403 } as const;
@@ -3906,12 +3918,12 @@ export async function requireContractsEntryGuard(
     limit: number;
     windowMs: number;
   },
-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+  options: Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> = {}
 ): Promise<ContractsEntryGuardResult> {
-  const guard = await requireAuthedRateLimited(req, {
+  const guard = await measureCashflowContractPhase(options.onCashflowTiming, "identity", () => requireAuthedRateLimited(req, {
     ...rateLimit,
     allowImpersonation: true,
-  });
+  }));
   if (!guard.ok) return guard;
 
   const tokenEmail =
@@ -3932,6 +3944,7 @@ export async function requireContractsEntryGuard(
       requireKnownUser: true,
       requireActiveSubscription: true,
       freshCashflowContext: options.freshCashflowContext,
+      onCashflowTiming: options.onCashflowTiming,
     }
   );
   if ("error" in authCtx) {
@@ -4020,7 +4033,7 @@ const contractTransferAccessForContext = ({
 export async function handleContractsGet(
   req: NextRequest,
   mode: ContractsGetMode = "auto",
-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+  options: ContractsListOptions = {}
 ) {
   const guard = await requireContractsEntryGuard(req, {
     namespace: "api:contracts:get",
@@ -4293,7 +4306,17 @@ export async function handleContractsGet(
     responseShape === "cashflow" &&
     cursor == null &&
     !hasContractListFilters(listFilters)
-      ? countContractEntriesForOwners(owners)
+      ? measureCashflowContractPhase(options.onCashflowTiming, "count", () => countContractEntriesForOwners(owners)).then(totalCount => {
+        // Scheduling only: the independently loaded team still runs every fresh guard.
+        // Neither request parameters nor profile hints can enable this callback.
+        if (options.freshCashflowContext && scopeParam === "my" && !includeTeam &&
+          teamEmails.length > 0 && !req.signal.aborted &&
+          totalCount !== null && Number.isSafeInteger(totalCount) && totalCount >= 0) {
+          try { options.onCashflowTeamReady?.(totalCount); }
+          catch { /* The caller can retain the original sequential loading path. */ }
+        }
+        return totalCount;
+      })
       : Promise.resolve<number | null>(null);
 
   let primaryRes: Awaited<ReturnType<typeof fetchContractsForOwners>>;
@@ -4303,9 +4326,16 @@ export async function handleContractsGet(
     canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
   };
 
+  const fetchTimedContractsForOwners = (...args: Parameters<typeof fetchContractsForOwners>) =>
+    measureCashflowContractPhase(options.onCashflowTiming, "entries", () => fetchContractsForOwners(...args));
+  // Only a trusted, freshly authorized server cashflow read can prefetch. Public
+  // parameters/headers and ordinary list/filter paths retain serial group reads.
+  const cashflowReadAhead = options.freshCashflowContext === true &&
+    responseShape === "cashflow" && !includeTeam && !hasContractListFilters(listFilters);
+
   if (shouldFetchTeamInParallel) {
     [primaryRes, teamRes] = await Promise.all([
-      fetchContractsForOwners(
+      fetchTimedContractsForOwners(
         owners,
         statementViewer,
         cursor,
@@ -4313,9 +4343,10 @@ export async function handleContractsGet(
         listFilters,
         responseShape,
         ownerNamesByEmail,
-        usersByEmail
+        usersByEmail,
+        cashflowReadAhead
       ),
-      fetchContractsForOwners(
+      fetchTimedContractsForOwners(
         teamEmails,
         statementViewer,
         null,
@@ -4323,11 +4354,12 @@ export async function handleContractsGet(
         undefined,
         responseShape,
         ownerNamesByEmail,
-        usersByEmail
+        usersByEmail,
+        cashflowReadAhead
       ),
     ]);
   } else {
-    primaryRes = await fetchContractsForOwners(
+    primaryRes = await fetchTimedContractsForOwners(
       owners,
       statementViewer,
       cursor,
@@ -4335,10 +4367,11 @@ export async function handleContractsGet(
       listFilters,
       responseShape,
       ownerNamesByEmail,
-      usersByEmail
+      usersByEmail,
+      cashflowReadAhead
     );
     if (includeTeam && teamEmails.length > 0) {
-      teamRes = await fetchContractsForOwners(
+      teamRes = await fetchTimedContractsForOwners(
         teamEmails,
         statementViewer,
         null,
@@ -4346,52 +4379,55 @@ export async function handleContractsGet(
         undefined,
         responseShape,
         ownerNamesByEmail,
-        usersByEmail
+        usersByEmail,
+        cashflowReadAhead
       );
     }
   }
 
   const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
   const totalCount = await totalCountPromise;
-  const filterStatementData = (contract: ContractResponseItem) =>
-    filterStatementDerivedContractDataForViewer({
-      contract,
-      viewerEmail: email,
+  return measureCashflowContractPhase(options.onCashflowTiming, "response", () => {
+    const filterStatementData = (contract: ContractResponseItem) =>
+      filterStatementDerivedContractDataForViewer({
+        contract,
+        viewerEmail: email,
+        teamEmails,
+        canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
+      });
+    const visibleContracts = list.map(filterStatementData);
+    const teamContracts = teamRes?.list.map(filterStatementData);
+    const teamHasMore = teamRes?.hasMore;
+    const teamNextCursor = teamRes?.nextCursor;
+    const teamNextCursorToken = teamRes?.nextCursorToken;
+
+    const response: ContractsResponse = {
+      availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
+      ok: true,
+      scope: scopeParam,
+      position,
+      commissionMode: ctx.commissionMode,
+      hasTeam: teamEmails.length > 0,
       teamEmails,
-      canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
-    });
-  const visibleContracts = list.map(filterStatementData);
-  const teamContracts = teamRes?.list.map(filterStatementData);
-  const teamHasMore = teamRes?.hasMore;
-  const teamNextCursor = teamRes?.nextCursor;
-  const teamNextCursorToken = teamRes?.nextCursorToken;
+      teamAdvisers: responseShape === "clientDirectory"
+        ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
+          .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
+        : undefined,
+      canTransferContracts,
+      transferTargets,
+      contracts: visibleContracts,
+      totalCount,
+      hasMore,
+      nextCursor,
+      nextCursorToken,
+      teamContracts,
+      teamHasMore,
+      teamNextCursor,
+      teamNextCursorToken,
+    };
 
-  const response: ContractsResponse = {
-    availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
-    ok: true,
-    scope: scopeParam,
-    position,
-    commissionMode: ctx.commissionMode,
-    hasTeam: teamEmails.length > 0,
-    teamEmails,
-    teamAdvisers: responseShape === "clientDirectory"
-      ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
-        .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
-      : undefined,
-    canTransferContracts,
-    transferTargets,
-    contracts: visibleContracts,
-    totalCount,
-    hasMore,
-    nextCursor,
-    nextCursorToken,
-    teamContracts,
-    teamHasMore,
-    teamNextCursor,
-    teamNextCursorToken,
-  };
-
-  return withRateLimit(NextResponse.json(response));
+    return withRateLimit(NextResponse.json(response));
+  });
 }
 
 const sortContractsFindResults = (contracts: ContractResponseItem[]): ContractResponseItem[] => {
@@ -5610,7 +5646,6 @@ export async function handleContractsCreate(req: NextRequest) {
           {
             ok: false,
             error: "Smlouva s tímto číslem už v systému existuje.",
-            duplicate: existingContract,
           },
           { status: 409 }
         );
@@ -5929,10 +5964,6 @@ export async function handleContractsCreate(req: NextRequest) {
           {
             ok: false,
             error: message,
-            duplicatePath:
-              typeof (createErr as any)?.duplicatePath === "string"
-                ? (createErr as any).duplicatePath
-                : null,
           },
           { status: statusCode }
         );
@@ -7891,7 +7922,7 @@ export async function handleContractsDelete(req: NextRequest) {
 
 export async function handleContractsList(
   req: NextRequest,
-  options: Pick<AuthContextOptions, "freshCashflowContext"> = {}
+  options: ContractsListOptions = {}
 ) {
   return handleContractsGet(req, "list", options);
 }

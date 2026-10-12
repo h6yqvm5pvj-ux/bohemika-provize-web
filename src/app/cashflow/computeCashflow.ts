@@ -1,4 +1,5 @@
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
+import { calendarDate } from "@/app/lib/calendarDates";
 
 import {
   type CommissionMode,
@@ -112,15 +113,16 @@ const subscriptionOccurrenceKey = (
   periodFrom: string
 ): string => `${userKey}|${plan}|${periodFrom}`;
 
-const validTimestampDate = (value: unknown): Date | null => {
+const validTimestampDate = (value: unknown, calendar: Date): Date | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  const date = new Date(value);
+  const date = calendarDate(calendar, value);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
 const normalizeSubscriptionPaymentForCashflow = (
   payment: SubscriptionPaymentApiItem,
-  index: number
+  index: number,
+  calendar: Date
 ): NormalizedSubscriptionPayment | null => {
   const plan = isCashflowSubscriptionPlan(payment.plan) ? payment.plan : null;
   if (!plan) return null;
@@ -131,10 +133,10 @@ const normalizeSubscriptionPaymentForCashflow = (
       : 0;
   if (!(amount > 0)) return null;
 
-  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom);
+  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom, calendar);
   const paymentDate =
-    validTimestampDate(payment.paymentDateMs) ??
-    validTimestampDate(payment.createdAtMs) ??
+    validTimestampDate(payment.paymentDateMs, calendar) ??
+    validTimestampDate(payment.createdAtMs, calendar) ??
     periodFromDate;
   if (!paymentDate) return null;
 
@@ -325,7 +327,7 @@ export function computeCashflow(
             ? payout.payoutDate
             : null;
         if (payoutTs == null) return acc;
-        const payoutDate = new Date(payoutTs);
+        const payoutDate = calendarDate(asOf, payoutTs);
         if (Number.isNaN(payoutDate.getTime())) return acc;
 
         const amount =
@@ -382,7 +384,7 @@ export function computeCashflow(
     ? (() => {
         const normalizedPayments = snapshot.subscriptionPayments
           .map((payment, index) =>
-            normalizeSubscriptionPaymentForCashflow(payment, index)
+            normalizeSubscriptionPaymentForCashflow(payment, index, asOf)
           )
           .filter((payment): payment is NormalizedSubscriptionPayment =>
             Boolean(payment)
@@ -443,7 +445,7 @@ export function computeCashflow(
           });
         });
 
-        const forecastHorizonEnd = new Date(asOf);
+        const forecastHorizonEnd = calendarDate(asOf, asOf);
         forecastHorizonEnd.setFullYear(
           forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS
         );

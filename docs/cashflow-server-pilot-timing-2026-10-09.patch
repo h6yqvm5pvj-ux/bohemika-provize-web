@@ -1,0 +1,345 @@
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+index e568cc2..4047b55 100644
+--- a/src/app/api/cashflow/view/route.ts
++++ b/src/app/api/cashflow/view/route.ts
+@@ -43,6 +43,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+ 
+     const inputs = await timing.measure("inputs", () => loadCashflowShadowInputs(req, {
+       freshCashflowContext: true,
++      onSourceTiming: timing.recordInput,
+       authorizeEmail: email => email === auth.ctx.email && allowed.has(email),
+     }));
+     if (inputs.effectiveEmail !== auth.ctx.email || inputs.snapshot.email !== auth.ctx.email) return unavailable(403);
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+index ce1f416..57d4417 100644
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -49,6 +49,23 @@ beforeEach(() => {
+ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+ 
+ describe("read-only server cashflow pilot", () => {
++  it("wires trusted source timing into headers while preserving the complete response and hashes", async () => {
++    const selected = await body();
++    const original = await (await POST(request(selected))).json();
++    mocks.load.mockImplementation(async (_req, { authorizeEmail, onSourceTiming }) => {
++      expect(await authorizeEmail(email)).toBe(true);
++      onSourceTiming("cashflow_inputs_own_contracts", 4.5);
++      onSourceTiming("cashflow_inputs_own_contracts", 5.5);
++      onSourceTiming("cashflow_inputs_statements", 3);
++      return inputs();
++    });
++    const response = await POST(request(selected));
++    expect(response.status).toBe(200);
++    expect(await response.json()).toEqual(original);
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_own_contracts;dur=10.00");
++    expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_statements;dur=3.00");
++    expect(response.headers.get("Server-Timing")).not.toMatch(/advisor@example|synthetic-token|contract-/);
++  });
+   it.each(WORKER_FILTER_CASES)("matches the independent original calculation and every month/item for $id", async ({ options }) => {
+     const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
+     const before = cashflowCanonicalJson(fixture);
+diff --git a/src/app/cashflow/candidateCheckProtocol.ts b/src/app/cashflow/candidateCheckProtocol.ts
+index e8fa082..3b19092 100644
+--- a/src/app/cashflow/candidateCheckProtocol.ts
++++ b/src/app/cashflow/candidateCheckProtocol.ts
+@@ -57,7 +57,13 @@ export function parseCashflowCandidateCheckResult(value: unknown): CashflowCandi
+   };
+ }
+ 
+-const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash", "cashflow_storage"] as const;
++export const CASHFLOW_INPUT_TIMING_NAMES = [
++  "cashflow_inputs_profile", "cashflow_inputs_own_contracts", "cashflow_inputs_team_contracts",
++  "cashflow_inputs_tips", "cashflow_inputs_subscriptions", "cashflow_inputs_statements",
++] as const;
++export type CashflowInputTimingName = typeof CASHFLOW_INPUT_TIMING_NAMES[number];
++const timingNames = ["cashflow_total", "cashflow_auth", "cashflow_inputs", "cashflow_compute", "cashflow_hash", "cashflow_storage",
++  ...CASHFLOW_INPUT_TIMING_NAMES] as const;
+ export type CashflowServerTiming = Partial<Record<typeof timingNames[number], number>>;
+ 
+ /** Only numerical duration aggregates may reach diagnostic session storage. */
+diff --git a/src/app/cashflow/candidateCheckProtocol.test.ts b/src/app/cashflow/candidateCheckProtocol.test.ts
+index 3fa6bf4..dd5b4fe 100644
+--- a/src/app/cashflow/candidateCheckProtocol.test.ts
++++ b/src/app/cashflow/candidateCheckProtocol.test.ts
+@@ -41,6 +41,16 @@ describe("cashflow diagnostic response protocol", () => {
+ });
+ 
+ describe("cashflow Server-Timing aggregates", () => {
++  it("accepts only the six fixed input source names and drops descriptions or identifiers", () => {
++    const names = ["profile", "own_contracts", "team_contracts", "tips", "subscriptions", "statements"];
++    const header = names.map((name, i) => `cashflow_inputs_${name};dur=${i + 1};desc="private@example.test"`).join(", ");
++    expect(parseCashflowServerTiming(`${header}, cashflow_inputs_other;dur=1, account@example.test;dur=2`)).toEqual(
++      Object.fromEntries(names.map((name, i) => [`cashflow_inputs_${name}`, i + 1])),
++    );
++  });
++  it("applies the same duplicate and number bounds to individual input sources", () => {
++    expect(parseCashflowServerTiming("cashflow_inputs_profile;dur=1, cashflow_inputs_profile;dur=2, cashflow_inputs_tips;dur=-1, cashflow_inputs_statements;dur=3600001")).toEqual({});
++  });
+   it("retains only finite numerical durations for named metrics", () => {
+     expect(parseCashflowServerTiming('cashflow_total;dur=12.5;desc="private text", cashflow_auth;dur=0, cashflow_hash;dur=.25, unrelated;dur=42, cashflow_inputs;desc="private"')).toEqual({
+       cashflow_total: 12.5, cashflow_auth: 0, cashflow_hash: 0.25,
+diff --git a/src/app/cashflow/cashflowServerPilot.client.test.ts b/src/app/cashflow/cashflowServerPilot.client.test.ts
+index 437d80c..f0cf66d 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.test.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -428,13 +428,14 @@ describe("background server comparison with the original displayed result", () =
+     const f = fixture(); const original = f.request.getMockImplementation()!;
+     f.request.mockImplementation(async (...args) => {
+       const response = await original(...args);
+-      response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, private_account;dur=123");
++      response.headers.set("Server-Timing", "cashflow_auth;dur=1.25, cashflow_compute;dur=2.5, cashflow_inputs_own_contracts;dur=4;desc=private, cashflow_inputs_team_contracts;dur=6, private_account;dur=123, cashflow_inputs_unknown;dur=7");
+       return response;
+     });
+     const client = f.create(); await comparedView(f, client);
+     const result = f.measure.mock.calls[0][0];
+     expect(result.referenceMs).toBeGreaterThanOrEqual(0);
+-    expect(result.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5 });
++    expect(result.serverTimingMs).toEqual({ cashflow_auth: 1.25, cashflow_compute: 2.5,
++      cashflow_inputs_own_contracts: 4, cashflow_inputs_team_contracts: 6 });
+     expect(JSON.stringify(result)).not.toMatch(/account|advisor@example|Synthetic client|token|amount|contractNumber/); client.dispose();
+   });
+ });
+diff --git a/src/lib/server/cashflowDiagnosticHttp.ts b/src/lib/server/cashflowDiagnosticHttp.ts
+index 3dda3a9..2cec576 100644
+--- a/src/lib/server/cashflowDiagnosticHttp.ts
++++ b/src/lib/server/cashflowDiagnosticHttp.ts
+@@ -1,4 +1,5 @@
+ import { NextResponse, type NextRequest } from "next/server";
++import { CASHFLOW_INPUT_TIMING_NAMES, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
+ 
+ export function cashflowShadowAllowedEmails(): Set<string> {
+   return new Set((process.env.CASHFLOW_SHADOW_EMAILS ?? "")
+@@ -32,8 +33,15 @@ type Phase = "auth" | "inputs" | "compute" | "hash" | "storage";
+ export function createCashflowDiagnosticTiming() {
+   const start = performance.now();
+   const phases = new Map<Phase, number>();
++  const inputs = new Map<CashflowInputTimingName, number>();
+   const elapsed = (since: number) => Math.max(0, performance.now() - since);
+   return {
++    /** Fixed source names and numerical aggregates only; overlapping sources must not be summed as elapsed time. */
++    recordInput(name: CashflowInputTimingName, durationMs: number): void {
++      if (!CASHFLOW_INPUT_TIMING_NAMES.includes(name) || !Number.isFinite(durationMs) || durationMs < 0) return;
++      const duration = (inputs.get(name) ?? 0) + durationMs;
++      if (duration <= 3_600_000) inputs.set(name, duration);
++    },
+     async measure<T>(phase: Phase, work: () => T | Promise<T>): Promise<T> {
+       const since = performance.now();
+       try { return await work(); }
+@@ -41,6 +49,7 @@ export function createCashflowDiagnosticTiming() {
+     },
+     json(body: unknown, status = 200): NextResponse {
+       const metrics = [...phases].map(([phase, ms]) => `cashflow_${phase};dur=${ms.toFixed(2)}`);
++      metrics.push(...[...inputs].map(([name, ms]) => `${name};dur=${ms.toFixed(2)}`));
+       metrics.push(`cashflow_total;dur=${elapsed(start).toFixed(2)}`);
+       return NextResponse.json(body, { status, headers: {
+         "Cache-Control": "private, no-store", "Server-Timing": metrics.join(", "),
+diff --git a/src/lib/server/cashflowDiagnosticHttp.test.ts b/src/lib/server/cashflowDiagnosticHttp.test.ts
+index a5232f7..46c67ab 100644
+--- a/src/lib/server/cashflowDiagnosticHttp.test.ts
++++ b/src/lib/server/cashflowDiagnosticHttp.test.ts
+@@ -1,9 +1,36 @@
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { NextRequest } from "next/server";
+ import { createCashflowDiagnosticTiming, readCashflowDiagnosticJson } from "./cashflowDiagnosticHttp";
++import { parseCashflowServerTiming, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
+ afterEach(() => vi.restoreAllMocks());
+ 
+ describe("cashflow diagnostic transport", () => {
++  it("aggregates source pages separately from overlapping elapsed time without changing JSON", async () => {
++    vi.spyOn(performance, "now").mockReturnValue(100);
++    const timing = createCashflowDiagnosticTiming();
++    timing.recordInput("cashflow_inputs_own_contracts", 12.5);
++    timing.recordInput("cashflow_inputs_own_contracts", 7.5);
++    timing.recordInput("cashflow_inputs_team_contracts", 10);
++    timing.recordInput("cashflow_inputs_statements", 25);
++    const response = timing.json({ ok: false, reason: "unavailable" }, 503);
++    expect(response.status).toBe(503);
++    expect(await response.json()).toEqual({ ok: false, reason: "unavailable" });
++    expect(parseCashflowServerTiming(response.headers.get("Server-Timing"))).toEqual({
++      cashflow_inputs_own_contracts: 20, cashflow_inputs_team_contracts: 10,
++      cashflow_inputs_statements: 25, cashflow_total: 0,
++    });
++    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
++  });
++  it("rejects unexpected source names and invalid or excessive numerical aggregates", () => {
++    const timing = createCashflowDiagnosticTiming();
++    timing.recordInput("private@example.test;desc=secret" as CashflowInputTimingName, 5);
++    for (const invalid of [-1, NaN, Infinity, 3_600_001]) timing.recordInput("cashflow_inputs_profile", invalid);
++    timing.recordInput("cashflow_inputs_tips", 3_600_000);
++    timing.recordInput("cashflow_inputs_tips", 1);
++    const header = timing.json({ ok: true }).headers.get("Server-Timing")!;
++    expect(header).not.toMatch(/private|secret|profile|NaN|Infinity/);
++    expect(parseCashflowServerTiming(header).cashflow_inputs_tips).toBe(3_600_000);
++  });
+   it("reports monotonic aggregate durations including repeated phases and failures", async () => {
+     let time = 100;
+     vi.spyOn(performance, "now").mockImplementation(() => time);
+diff --git a/src/lib/server/cashflowShadowInputs.ts b/src/lib/server/cashflowShadowInputs.ts
+index 07e6a7f..5810185 100644
+--- a/src/lib/server/cashflowShadowInputs.ts
++++ b/src/lib/server/cashflowShadowInputs.ts
+@@ -5,6 +5,7 @@ import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
+ import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
+ import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
+ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
++import type { CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
+ 
+ const MAX_REQUESTS = 50;
+ const MAX_DURATION_MS = 20_000;
+@@ -16,7 +17,7 @@ const TIP_PAGE_LIMIT = 100;
+ const STATEMENTS_LIMIT = 240;
+ const SUBSCRIPTIONS_LIMIT = 5_000;
+ 
+-type Source = "profile" | "contracts" | "tips" | "subscriptions" | "statements";
++type Source = "profile" | "own_contracts" | "team_contracts" | "tips" | "subscriptions" | "statements";
+ type JsonObject = Record<string, unknown>;
+ 
+ export type CashflowShadowInputsErrorCode =
+@@ -51,6 +52,8 @@ type LoadOptions = {
+   authorizeEmail?: (email: string) => boolean | Promise<boolean>;
+   /** Bypass process-local role/team/subscription caches for a fenced candidate read. */
+   freshCashflowContext?: boolean;
++  /** Trusted server-only observer. No request/account/portfolio values are passed. */
++  onSourceTiming?: (name: CashflowInputTimingName, durationMs: number) => void;
+ };
+ 
+ const isObject = (value: unknown): value is JsonObject =>
+@@ -89,7 +92,8 @@ async function invoke(source: Source, request: NextRequest, freshCashflowContext
+   switch (source) {
+     case "profile":
+       return (await import("@/app/api/user/profile/route")).GET(request);
+-    case "contracts":
++    case "own_contracts":
++    case "team_contracts":
+       return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, { freshCashflowContext });
+     case "tips":
+       return (await import("@/app/api/tip-payouts/list/route")).GET(request);
+@@ -139,6 +143,7 @@ export async function loadCashflowShadowInputs(
+       headers: new Headers(request.headers),
+       signal: controller.signal,
+     });
++    const started = options.onSourceTiming ? performance.now() : 0;
+     try {
+       const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true), stopped]);
+       if (!response.ok) {
+@@ -152,6 +157,10 @@ export async function loadCashflowShadowInputs(
+     } catch (error) {
+       if (error instanceof CashflowShadowInputsError) throw error;
+       throw new CashflowShadowInputsError("upstream_failed");
++    } finally {
++      // Diagnostics cannot turn a successful read into an error, or conceal a failed read.
++      try { options.onSourceTiming?.(`cashflow_inputs_${source}`, Math.max(0, performance.now() - started)); }
++      catch { /* Optional telemetry must not affect data loading. */ }
+     }
+   };
+ 
+@@ -176,7 +185,7 @@ export async function loadCashflowShadowInputs(
+       do {
+         const params = new URLSearchParams({ scope, limit: String(CONTRACT_PAGE_LIMIT), shape: "cashflow" });
+         if (cursor) params.set("cursor", cursor);
+-        const data = await read("contracts", "/api/contracts/list", params);
++        const data = await read(scope === "my" ? "own_contracts" : "team_contracts", "/api/contracts/list", params);
+         if (!first) {
+           first = data;
+           if (typeof data.totalCount !== "number" || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) return incomplete();
+diff --git a/src/lib/server/cashflowShadowInputs.test.ts b/src/lib/server/cashflowShadowInputs.test.ts
+index 9d89437..b29bd45 100644
+--- a/src/lib/server/cashflowShadowInputs.test.ts
++++ b/src/lib/server/cashflowShadowInputs.test.ts
+@@ -52,9 +52,82 @@ beforeEach(() => {
+   handlers.statements.mockImplementation(() => json(statements()));
+ });
+ 
+-afterEach(() => vi.useRealTimers());
++afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+ 
+ describe("cashflow shadow independent inputs", () => {
++  it("preserves every input and handler request when source timing is enabled", async () => {
++    const original = await loadCashflowShadowInputs(request(), { freshCashflowContext: true });
++    const trace = () => Object.values(handlers).map(handler => handler.mock.calls.map(([req, options]) =>
++      ({ url: req.url, method: req.method, headers: [...req.headers], options })));
++    const originalTrace = trace();
++    Object.values(handlers).forEach(handler => handler.mockClear());
++    const onSourceTiming = vi.fn();
++    const measured = await loadCashflowShadowInputs(request(), { freshCashflowContext: true, onSourceTiming });
++    expect(measured).toEqual(original);
++    expect(trace()).toEqual(originalTrace);
++    expect(onSourceTiming.mock.calls.map(([name]) => name).sort()).toEqual([
++      "cashflow_inputs_profile", "cashflow_inputs_own_contracts", "cashflow_inputs_tips", "cashflow_inputs_statements",
++    ].sort());
++    for (const call of onSourceTiming.mock.calls) {
++      expect(call).toHaveLength(2);
++      expect(Number.isFinite(call[1]) && call[1] >= 0).toBe(true);
++    }
++    expect(JSON.stringify(onSourceTiming.mock.calls)).not.toMatch(/viewer@example|actor-token|cookie|impersonation|targetEmail/);
++  });
++  it("keeps independent sources concurrent and measures sequential own/team reads separately", async () => {
++    let time = 0;
++    vi.spyOn(performance, "now").mockImplementation(() => time);
++    handlers.profile.mockImplementation(() => { time = 5; return json(profile()); });
++    const own = deferred<Response>(), team = deferred<Response>(), tip = deferred<Response>(), statement = deferred<Response>();
++    handlers.contracts.mockImplementation(req => req.nextUrl.searchParams.get("scope") === "my" ? own.promise : team.promise);
++    handlers.tips.mockReturnValue(tip.promise);
++    handlers.statements.mockReturnValue(statement.promise);
++    const onSourceTiming = vi.fn();
++    const result = loadCashflowShadowInputs(request(), { onSourceTiming });
++    await vi.waitFor(() => expect(handlers.statements).toHaveBeenCalledTimes(1));
++    expect(handlers.contracts).toHaveBeenCalledTimes(1);
++    expect(handlers.tips).toHaveBeenCalledTimes(1);
++    time = 12; tip.resolve(Response.json(tips()));
++    await vi.waitFor(() => expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_tips", 7));
++    time = 20; statement.resolve(Response.json(statements()));
++    await vi.waitFor(() => expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_statements", 15));
++    time = 30; own.resolve(Response.json(contracts([], { hasTeam: true })));
++    await vi.waitFor(() => expect(handlers.contracts).toHaveBeenCalledTimes(2));
++    time = 40; team.resolve(Response.json(contracts()));
++    await result;
++    expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_profile", 5);
++    expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_own_contracts", 25);
++    expect(onSourceTiming).toHaveBeenCalledWith("cashflow_inputs_team_contracts", 10);
++    expect(handlers.subscriptions).not.toHaveBeenCalled();
++  });
++  it("cannot change successful loading or hide authorization errors when the observer fails", async () => {
++    const onSourceTiming = vi.fn(() => { throw new Error("private observer error"); });
++    await expect(loadCashflowShadowInputs(request(), { onSourceTiming })).resolves.toMatchObject({ effectiveEmail: "viewer@example.test" });
++    handlers.contracts.mockImplementation(() => json({ ok: false, error: "private" }, 403));
++    await expect(loadCashflowShadowInputs(request(), { onSourceTiming })).rejects.toMatchObject({
++      code: "forbidden", status: 403, message: "Cashflow shadow inputs are unavailable.",
++    });
++  });
++  it("does not enable portfolio reads or timings before authorization succeeds", async () => {
++    const onSourceTiming = vi.fn();
++    await expect(loadCashflowShadowInputs(request(), { authorizeEmail: () => false, onSourceTiming })).rejects.toMatchObject({ code: "not_allowed" });
++    expect(onSourceTiming.mock.calls.map(([name]) => name)).toEqual(["cashflow_inputs_profile"]);
++    expect(handlers.contracts).not.toHaveBeenCalled();
++    expect(handlers.tips).not.toHaveBeenCalled();
++    expect(handlers.statements).not.toHaveBeenCalled();
++  });
++  it("reports a timed-out source while preserving cancellation and the duration cap", async () => {
++    vi.useFakeTimers();
++    handlers.profile.mockReturnValue(new Promise(() => undefined));
++    const onSourceTiming = vi.fn();
++    const result = loadCashflowShadowInputs(request(), { onSourceTiming });
++    const rejected = expect(result).rejects.toMatchObject({ code: "timeout", status: 504 });
++    await vi.advanceTimersByTimeAsync(20_000);
++    await rejected;
++    expect(onSourceTiming.mock.calls.map(([name]) => name)).toEqual(["cashflow_inputs_profile"]);
++    expect(handlers.profile.mock.calls[0][0].signal.aborted).toBe(true);
++    expect(handlers.contracts).not.toHaveBeenCalled();
++  });
+   it("passes fresh context only as a trusted server option, never from the request", async () => {
+     const req = request();
+     req.headers.set("x-cashflow-fresh-context", "true");
+@@ -136,7 +209,11 @@ describe("cashflow shadow independent inputs", () => {
+     handlers.tips.mockImplementation(child => child.nextUrl.searchParams.get("cursor") === "23"
+       ? json(tips([{ id: "a", amount: 1 }, { id: "b", amount: 2 }]))
+       : json(tips([{ id: "a", amount: 1 }], { hasMore: true, nextCursor: 23 })));
+-    const { snapshot } = await loadCashflowShadowInputs(request());
++    const onSourceTiming = vi.fn();
++    const { snapshot } = await loadCashflowShadowInputs(request(), { onSourceTiming });
++    expect(onSourceTiming.mock.calls.filter(([name]) => name === "cashflow_inputs_own_contracts")).toHaveLength(2);
++    expect(onSourceTiming.mock.calls.filter(([name]) => name === "cashflow_inputs_team_contracts")).toHaveLength(1);
++    expect(onSourceTiming.mock.calls.filter(([name]) => name === "cashflow_inputs_tips")).toHaveLength(2);
+     expect(snapshot.ownEntries.map(entry => entry.id)).toEqual(["shared", "second"]);
+     expect(snapshot.teamEntriesRaw[0].userEmail).toBe("team@example.test");
+     expect(snapshot.hasAnyTeam).toBe(true);

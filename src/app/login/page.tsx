@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, KeyRound, Mail, ShieldCheck } from "lucide-react";
-import { AuthPage } from "@/components/account-setup/AuthPage";
+import { LoginShell } from "./LoginShell";
 import { PasswordField } from "@/components/account-setup/PasswordField";
 import surface from "@/components/account-setup/authSurface.module.css";
 import {
@@ -39,6 +39,7 @@ import {
 } from "@/app/lib/passkeys";
 import { PasskeyLoginLoader, type PasskeyLoginStage } from "./PasskeyLoginLoader";
 import passkeyStyles from "./passkeyLoginLoader.module.css";
+import loginStyles from "./login.module.css";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
@@ -629,7 +630,7 @@ export default function LoginPage() {
     }
   };
 
-  const fieldInputClass = `${surface.field} ${surface.withIcon}`;
+  const fieldInputClass = `${surface.field} ${surface.withIcon} ${loginStyles.field}`;
 
   const focusMfaInput = (index: number) => {
     window.requestAnimationFrame(() => mfaInputRefs.current[index]?.focus());
@@ -667,15 +668,16 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthPage
+    <LoginShell
       title={mfaResolver ? "Ověř své přihlášení" : "Vítej zpátky"}
       description={mfaResolver ? "Už jen kód z tvé ověřovací aplikace." : "Přihlas se do svého pracovního prostoru."}
+      busy={loading || passkeyLoading}
     >
             <form
               onSubmit={handleSubmit}
               inert={passkeyLoading}
               aria-hidden={passkeyLoading || undefined}
-              className={`relative z-10 space-y-4 ${passkeyLoading ? passkeyStyles.pendingForm : ""}`}
+              className={`relative z-10 space-y-4 ${loginStyles.form} ${passkeyLoading ? passkeyStyles.pendingForm : ""}`}
             >
               {!mfaResolver ? (
                 <>
@@ -720,6 +722,7 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
+                        className={loginStyles.field}
                       />
                     <div className="flex justify-end">
                       <button
@@ -844,7 +847,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || passkeyLoading}
-                className={`${surface.primary} mt-2 w-full`}
+                className={`${surface.primary} ${loginStyles.primary} mt-2 w-full`}
               >
                 <span>
                   {loading && !passkeyLoading
@@ -873,7 +876,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => void handlePasskeyLogin()}
                     disabled={loading || passkeyLoading}
-                    className={`${surface.secondary} w-full`}
+                    className={`${surface.secondary} ${loginStyles.secondary} w-full`}
                   >
                     <KeyRound className="h-4 w-4 text-violet-100/82" aria-hidden="true" />
                     {passkeyLoading
@@ -886,6 +889,6 @@ export default function LoginPage() {
               ) : null}
             </form>
             {passkeyStage && <PasskeyLoginLoader stage={passkeyStage} onCancel={passkeyStage === "session" ? undefined : () => passkeyAttemptRef.current?.abort()} />}
-    </AuthPage>
+    </LoginShell>
   );
 }

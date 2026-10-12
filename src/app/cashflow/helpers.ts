@@ -28,6 +28,7 @@ import type {
   YearGroup,
 } from "./types";
 import { formatMoney, toDate } from "@/app/lib/formatters";
+import { calendarDate } from "@/app/lib/calendarDates";
 export { formatMoney, toDate };
 
 export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
@@ -222,7 +223,7 @@ export function filterPastItems(
   now = new Date()
 ): CashflowItem[] {
   if (showPastYears) return cashflowItems;
-  const startCurrentYear = new Date(now.getFullYear(), 0, 1);
+  const startCurrentYear = calendarDate(now, now.getFullYear(), 0, 1);
   return cashflowItems.filter((item) => item.date >= startCurrentYear);
 }
 
@@ -281,7 +282,7 @@ export const statementMonthKey = (
 };
 
 const addMonths = (date: Date, months: number): Date =>
-  new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+  calendarDate(date, date.getFullYear(), date.getMonth() + months, date.getDate());
 
 const monthSerial = (date: Date): number =>
   date.getFullYear() * 12 + date.getMonth();
@@ -297,7 +298,7 @@ const isStornoStatus = (status: CashflowItem["contractStatus"]): boolean => {
 
 const isOnOrAfterStornoMonth = (item: CashflowItem, date: Date): boolean => {
   if (!isStornoStatus(item.contractStatus)) return false;
-  const stornoDate = toDate(item.stornoDate);
+  const stornoDate = toDate(item.stornoDate, { calendar: date });
   if (!stornoDate) return false;
   return monthSerial(date) >= monthSerial(stornoDate);
 };
@@ -324,7 +325,7 @@ const monthDistance = (from: Date, to: Date): number =>
   monthSerial(to) - monthSerial(from);
 
 const currentMonthStart = (today: Date): Date =>
-  new Date(today.getFullYear(), today.getMonth(), 1);
+  calendarDate(today, today.getFullYear(), today.getMonth(), 1);
 
 const roundCashflowAmount = (amount: number): number => Math.round(amount);
 
@@ -402,7 +403,7 @@ const roundToNearest = (value: number, step: number): number =>
   Math.round(value / step) * step;
 
 const addYears = (date: Date, years: number): Date =>
-  new Date(date.getFullYear() + years, date.getMonth(), date.getDate());
+  calendarDate(date, date.getFullYear() + years, date.getMonth(), date.getDate());
 
 const validDate = (date: Date | null | undefined): Date | null =>
   date && !Number.isNaN(date.getTime()) ? date : null;
@@ -423,9 +424,9 @@ const estimateLifePayoutDate = (
 ): Date => {
   const dayForCutoff = agreementDate ? agreementDate.getDate() : policyStart.getDate();
   if (dayForCutoff > cutoffDay) {
-    return new Date(policyStart.getFullYear(), policyStart.getMonth() + 2, payoutDay);
+    return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 2, payoutDay);
   }
-  return new Date(policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
+  return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
 };
 
 const nextLifeReviewDate = (
@@ -730,7 +731,7 @@ const buildLifeReviewCashflowItems = (
   cashflowItems: CashflowItem[],
   today: Date
 ): CashflowItem[] => {
-  const horizonEnd = new Date(
+  const horizonEnd = calendarDate(today,
     today.getFullYear() + CASHFLOW_FORECAST_YEARS,
     today.getMonth(),
     today.getDate()

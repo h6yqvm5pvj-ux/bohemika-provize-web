@@ -178,6 +178,19 @@ describe("actual cashflow data hook worker boundary", () => {
     expect(urls.every(url => url.searchParams.get("limit") === "500")).toBe(true);
   });
 
+  it("uses a deferred reference for small portfolios only when the server pilot explicitly requests it", async () => {
+    email = addAccount(12);
+    signIn(email);
+    await render({ forceDeferredCalculation: true });
+    await finishLoading();
+    expect(latest.calculationDeferred).toBe(true);
+    expect(latest.cashflowItems).toEqual([]);
+    expect(generateCashflow).not.toHaveBeenCalled();
+    await render({ forceDeferredCalculation: false });
+    expect(latest.calculationDeferred).toBe(false);
+    expect(generateCashflow).toHaveBeenCalled();
+  });
+
   it("defaults to the original calculation and can toggle deferral without reloading data", async () => {
     email = addAccount(300);
     signIn(email);

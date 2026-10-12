@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T19:49:35+02:00",
+  "source": "User-provided screenshot with all six new source metrics and visible combined/all/prediction-off controls",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 8193.5,
+    "referenceMs": 66,
+    "serverTimingMs": {
+      "cashflow_auth": 483.9,
+      "cashflow_inputs": 5261.05,
+      "cashflow_hash": 467.99,
+      "cashflow_compute": 1678.16,
+      "cashflow_inputs_profile": 666.75,
+      "cashflow_inputs_subscriptions": 799.24,
+      "cashflow_inputs_tips": 862.3,
+      "cashflow_inputs_statements": 1228.76,
+      "cashflow_inputs_own_contracts": 2385.59,
+      "cashflow_inputs_team_contracts": 2189.45,
+      "cashflow_total": 7921.64
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "combined",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": false,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "newSourceMetricsVisible": true,
+    "sourceMetricCount": 6,
+    "fullInputAndResultMatchReported": true,
+    "selectionBinding": "Visible combined/all/prediction-off controls; request options and diagnostic clearing not independently captured",
+    "requestedOwnScenarioConfirmed": false,
+    "previousDiagnosticRemovalVisible": false,
+    "hardReloadIndependentlyCaptured": false,
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm",
+    "lastSuccessfulAliasVerificationAt": "2026-10-09T14:40:30.374Z",
+    "currentAliasCheckStatus": 403,
+    "currentAliasCheckErrorCode": "forbidden",
+    "currentDeploymentIndependentlyVerified": false,
+    "requestDeploymentIndependentlyCaptured": false,
+    "productionSpeedupEstablished": false,
+    "sameSelectionRepeatedSamplesCollected": false,
+    "wholePageLatencyMeasured": false
+  },
+  "sourceAnalysis": {
+    "contractsSerialInCurrentLoader": true,
+    "profileBeforePortfolioInCurrentLoader": true,
+    "tipsSubscriptionsStatementsConcurrentInCurrentLoader": true,
+    "contractSourceReadMs": 4575.04,
+    "profileAndContractSerialReadMs": 5241.79,
+    "remainingInputElapsedMs": 19.26,
+    "contractPercentOfInputElapsed": 86.96,
+    "inputsPercentOfServerTotal": 66.41,
+    "innerAuthorizationAndDatabaseDurationsMeasuredSeparately": false,
+    "identifiedDelay": "Contract handler reads dominate the sequential input path in this single sample. Durations include fresh authorization and JSON handling; a specific database query or authorization stage is not attributed.",
+    "repeatedFreshAuthorizationObservedInCode": true,
+    "nextInvestigation": "Separate contract-entry authentication, fresh team/subscription authorization, and contract data reads; retain every permission and completeness check."
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "businessRecordsChanged": false
+}

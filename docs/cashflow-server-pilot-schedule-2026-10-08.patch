@@ -1,0 +1,382 @@
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+--- a/src/lib/server/cashflowShadowBudget.ts
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -2,6 +2,7 @@
+ import type { EntryDoc } from "@/app/cashflow/types";
+ import type { CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
+ import { toDate } from "@/app/lib/formatters";
++import { monthsBetweenPayments } from "@/app/cashflow/generator";
+ 
+ const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
+ const MAX_PAYOUT_MATCH_WORK = 2_000_000;
+@@ -10,27 +11,48 @@
+ const MAX_PAYOUTS_PER_ENTRY = 500;
+ const MAX_MANAGERS_PER_ENTRY = 20;
+ const LIFE_PRODUCTS = new Set(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"]);
++const ANNUAL_PRODUCTS = new Set(["allianzAuto", "pillowAuto", "uniqaAuto", "uniqaflotila", "pillowmajetek", "allianzmujdomov"]);
++const PAYMENT_PRODUCTS = new Set([
++  "domex", "domexneuron", "cppbytex", "cpphafan", "koopmajetekobcan", "koopfit", "koopodzam", "kooppmop",
++  "cppPPRbez", "cppsimplex", "cppPPRs", "zamex", "maxdomov",
++  "cppAuto", "slaviaauto", "slaviaflotila", "csobAuto", "kooperativaAuto", "koopflotila",
++]);
+ 
+ function boundedArray(value: unknown, limit: number): unknown[] | null {
+   if (value == null) return [];
+   return Array.isArray(value) && value.length <= limit ? value : null;
+ }
+ 
++/** Upper bound for the reviewed generator branches, before statement payouts
++ * and life reviews. Unknown products retain the old monthly/parts estimate.
++ * months already includes three months of inclusive/date-offset padding.
++ */
++export function estimateCashflowShadowScheduleItems(entry: EntryDoc, months: number, parts: number): number {
++  if (entry.productKey === "neon") return parts + 12;
++  if (entry.productKey === "pillowInjury") return parts + 2;
++  if (entry.productKey === "flexi") return parts + 2 + Math.ceil(months / 12);
++  if (entry.productKey === "maximaMaxEfekt") return 3 + Math.ceil(months / 12);
++  if (ANNUAL_PRODUCTS.has(entry.productKey ?? "")) return 1 + Math.ceil(months / 12);
++  if (PAYMENT_PRODUCTS.has(entry.productKey ?? "")) return Math.ceil(months / monthsBetweenPayments(entry.frequencyRaw));
++  return months * parts + 16;
++}
++
+ /**
+  * Resource gate for the optional server shadow only, never a business-data filter.
+  *
+- * Estimate every contract at monthly frequency from its earliest source date to
+- * the ten-year horizon, multiplied by its largest commission-parts array. Count
+- * team rows twice (own and override paths can both include them), allow 100 extra
+- * life-review items and 16 fixed items per generated entry, and include every
+- * statement-only payout. Each subscription row gets 1 actual + 120 forecasts.
++ * Bound reviewed generator schedules from the earliest source date to the
++ * ten-year horizon. Annual, payment-frequency and fixed life schedules use their
++ * own upper bounds; unknown products retain the old monthly/parts bound. Count
++ * team rows twice (own and override paths can both include them), include every
++ * statement-only payout and allow 100 life-review items when prediction is on.
++ * Each subscription row gets 1 actual + 120 forecasts. Bounds are not truncation.
+  *
+  * The 25k output estimate is supplemented by bounds on payout matching work,
+  * nested arrays and dates/durations: a small number of corrupt historical rows
+  * must not cause unbounded synchronous loops. Exceeding any bound skips the
+  * diagnostic comparison; callers keep the existing browser calculation.
+  */
+-export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Date): CashflowServerResourceLimit | null {
++export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true): CashflowServerResourceLimit | null {
+   const asOfMs = asOf.getTime();
+   if (!Number.isFinite(asOfMs) || asOf.getFullYear() < 2000 || asOf.getFullYear() > 2200) return "reference_time";
+   const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
+@@ -67,8 +89,9 @@
+     const payouts = boundedArray(entry.commissionPayouts, MAX_PAYOUTS_PER_ENTRY);
+     const overrides = boundedArray(entry.managerOverrides, MAX_MANAGERS_PER_ENTRY);
+     const managers = boundedArray(entry.managerChain, MAX_MANAGERS_PER_ENTRY);
+-    if (!items || !payouts || !overrides || !managers) return "entry_shape";
+-    nestedRows += items.length + payouts.length + overrides.length + managers.length;
++    const matches = boundedArray(entry.cashflowPayoutMatches, MAX_PAYOUTS_PER_ENTRY);
++    if (!items || !payouts || !overrides || !managers || !matches) return "entry_shape";
++    nestedRows += items.length + payouts.length + overrides.length + managers.length + matches.length;
+     let parts = Math.max(1, items.length);
+     for (const override of overrides) {
+       if (!override || typeof override !== "object") return "entry_shape";
+@@ -81,11 +104,12 @@
+ 
+     // Three additional months cover inclusive endpoints and payout-date offsets.
+     const months = horizonMonth - earliestMonth + 3;
+-    const extraReviews = LIFE_PRODUCTS.has(entry.productKey ?? "") ? 100 : 0;
+-    const expansion = multiplicity * (months * parts + payouts.length + extraReviews + 16);
++    const extraReviews = includeLifeReviews && LIFE_PRODUCTS.has(entry.productKey ?? "") ? 100 : 0;
++    const expansion = multiplicity * (estimateCashflowShadowScheduleItems(entry, months, parts) + payouts.length + extraReviews);
+     estimatedOutputItems += expansion;
+     // The generator scans and ranks historical payouts for each forecast item.
+-    payoutMatchWork += expansion * (1 + payouts.length);
++    payoutMatchWork += expansion * (1 + payouts.length + matches.length) +
++      multiplicity * matches.length * (matches.length + payouts.length);
+     if (!(estimatedOutputItems <= MAX_ESTIMATED_OUTPUT_ITEMS)) return "output_estimate";
+     if (!(payoutMatchWork <= MAX_PAYOUT_MATCH_WORK)) return "payout_matching";
+     return null;
+@@ -106,6 +130,6 @@
+   }
+ }
+ 
+-export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date): boolean {
+-  return cashflowShadowBudgetFailure(snapshot, asOf) === null;
++export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date, includeLifeReviews = true): boolean {
++  return cashflowShadowBudgetFailure(snapshot, asOf, includeLifeReviews) === null;
+ }
+diff --git a/src/lib/server/cashflowShadowBudget.test.ts b/src/lib/server/cashflowShadowBudget.test.ts
+--- a/src/lib/server/cashflowShadowBudget.test.ts
++++ b/src/lib/server/cashflowShadowBudget.test.ts
+@@ -10,7 +10,7 @@
+   hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [], ...patch,
+ });
+ const entry = (patch: Partial<EntryDoc> = {}): EntryDoc => ({
+-  id: "contract", productKey: "cppAuto", policyStartDate: "2026-09-01", ...patch,
++  id: "contract", productKey: "cppAuto", frequencyRaw: "monthly", policyStartDate: "2026-09-01", ...patch,
+ });
+ const entries = (count: number, patch: Partial<EntryDoc> = {}) =>
+   Array.from({ length: count }, (_, id) => entry({ id: String(id), ...patch }));
+@@ -20,7 +20,7 @@
+     expect(cashflowShadowBudgetFailure(snapshot(), asOf)).toBeNull();
+     expect(cashflowShadowBudgetFailure(snapshot(), new Date(NaN))).toBe("reference_time");
+     expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(25_001) }), asOf)).toBe("source_rows");
+-    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(200) }), asOf)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(205) }), asOf)).toBe("output_estimate");
+     expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(7, {
+       commissionPayouts: Array.from({ length: 500 }, () => ({})),
+     }) }), asOf)).toBe("payout_matching");
+@@ -44,7 +44,8 @@
+   it("estimates historical monthly expansion instead of using only source row counts", () => {
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100) }), asOf)).toBe(true);
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100, { policyStartDate: "2000-01-01" }) }), asOf)).toBe(false);
+-    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(200) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(200) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(205) }), asOf)).toBe(false);
+   });
+ 
+   it("uses the earliest source date, even when a newer policy date is present", () => {
+@@ -58,8 +59,10 @@
+ 
+   it("budgets team rows for both possible generation paths and life review additions", () => {
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(100) }), asOf)).toBe(true);
+-    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(100) }), asOf)).toBe(false);
+-    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(110, { productKey: "neon" }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(100) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(105) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(110, { productKey: "neon" }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(230, { productKey: "neon" }) }), asOf)).toBe(false);
+   });
+ 
+   it("accounts for up to 120 forecasts plus the actual subscription payment", () => {
+@@ -83,26 +86,61 @@
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ durationMonths: 1_201 })] }), asOf)).toBe(false);
+   });
+ 
+-  it("caps nested arrays and counts split commissions in the expansion estimate", () => {
++  it("caps nested arrays and avoids multiplying aggregated auto commissions", () => {
+     const items = Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 }));
+-    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { items }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { items }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { productKey: "comfortcc", items }) }), asOf)).toBe(false);
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ items: Array.from({ length: 129 }, () => ({ title: "Provize", amount: 1 })) })] }), asOf)).toBe(false);
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ commissionPayouts: Array.from({ length: 501 }, () => ({})) })] }), asOf)).toBe(false);
+     expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: [entry({ managerOverrides: Array.from({ length: 21 }, () => ({ email: null, position: null, commissionMode: null, items: [], total: 0 })) })] }), asOf)).toBe(false);
+   });
+ 
+-  it("uses manager commission parts for team expansion, not only contract parts", () => {
++  it("retains the conservative fallback for unreviewed manager commission schedules", () => {
+     const managerOverrides: EntryDoc["managerOverrides"] = [{
+       email: "viewer@example.test", position: null, commissionMode: null, total: 4,
+       items: Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 })),
+     }];
+-    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(25, { managerOverrides }) }), asOf)).toBe(false);
++    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(25, { productKey: "comfortcc", managerOverrides }) }), asOf)).toBe(false);
+   });
+ 
+   it("bounds payout matching work even when output size alone fits", () => {
+     const commissionPayouts = Array.from({ length: 500 }, () => ({}));
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(6, { commissionPayouts }) }), asOf)).toBe(true);
+     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(7, { commissionPayouts }) }), asOf)).toBe(false);
++  });
++
++  it("budgets annual products annually even when premium payments are monthly", () => {
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(1_000, { productKey: "pillowAuto" }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(1_000, { frequencyRaw: "annual" }) }), asOf)).toBe(true);
++    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(1_000) }), asOf)).toBe(false);
++  });
++
++  it("charges life reviews only when enabled, with a conservative default", () => {
++    const input = snapshot({ ownEntries: entries(1_000, { productKey: "neon" }) });
++    expect(cashflowShadowBudgetFailure(input, asOf)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(input, asOf, true)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(input, asOf, false)).toBeNull();
++  });
++
++  it("counts large split life commissions from manager overrides", () => {
++    const managerOverrides: EntryDoc["managerOverrides"] = [{
++      email: "viewer@example.test", position: null, commissionMode: null, total: 128,
++      items: Array.from({ length: 128 }, () => ({ title: "Provize", amount: 1 })),
++    }];
++    expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(50, { productKey: "flexi", managerOverrides }) }), asOf)).toBeNull();
++    expect(cashflowShadowBudgetFailure(snapshot({ teamEntriesRaw: entries(60, { productKey: "flexi", managerOverrides }) }), asOf)).toBe("output_estimate");
++  });
++
++  it("bounds saved payout associations and their quadratic matching work", () => {
++    const cashflowPayoutMatches = Array.from({ length: 500 }, () => ({
++      payoutKey: "synthetic", payoutSignature: "synthetic", plannedCode: "B101", plannedMonthKey: "2026-09",
++      plannedPeriodStart: "2026-09-01", plannedFrequency: "monthly" as const,
++      writtenBy: "viewer@example.test", writtenAtMs: 1, actorEmail: "viewer@example.test",
++    }));
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(6, { cashflowPayoutMatches }) }), asOf)).toBeNull();
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(7, { cashflowPayoutMatches }) }), asOf)).toBe("payout_matching");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: [entry({ cashflowPayoutMatches: [...cashflowPayoutMatches, cashflowPayoutMatches[0]] })] }), asOf)).toBe("entry_shape");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: [entry({ cashflowPayoutMatches: {} as EntryDoc["cashflowPayoutMatches"] })] }), asOf)).toBe("entry_shape");
+   });
+ 
+   it("rejects invalid reference time and malformed legacy arrays", () => {
+diff --git a/src/lib/server/cashflowShadowSchedules.test.ts b/src/lib/server/cashflowShadowSchedules.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/server/cashflowShadowSchedules.test.ts
+@@ -0,0 +1,106 @@
++import { describe, expect, it } from "vitest";
++import type { Product, Position, PaymentFrequency } from "@/app/types/domain";
++import type { EntryDoc } from "@/app/cashflow/types";
++import { generateCashflow } from "@/app/cashflow/generator";
++import { applyIntelligentCashflowPrediction } from "@/app/cashflow/helpers";
++import { toDate } from "@/app/lib/formatters";
++import { estimateCashflowShadowScheduleItems } from "./cashflowShadowBudget";
++
++// Record completeness makes a new domain product require a schedule test.
++const products: Record<Product, true> = {
++  conseqzenit: true, neon: true, flexi: true, maximaMaxEfekt: true, maxcizinkomplex: true,
++  pillowInjury: true, zamex: true, cppbytex: true, domex: true, domexneuron: true, cpphafan: true,
++  pillowmajetek: true, koopmajetekobcan: true, koopfit: true, koopodzam: true, kooppmop: true,
++  maxdomov: true, cppsimplex: true, cppAuto: true, slaviaauto: true, slaviaflotila: true,
++  allianzAuto: true, allianzmujdomov: true, csobAuto: true, uniqaAuto: true, uniqaflotila: true,
++  pillowAuto: true, kooperativaAuto: true, koopflotila: true, koopcestovko: true,
++  cppcestovko: true, axacestovko: true, comfortcc: true, cppPPRs: true, cppPPRbez: true,
++};
++const positions: Record<Position, true> = {
++  poradce1: true, poradce2: true, poradce3: true, poradce4: true, poradce5: true,
++  poradce6: true, poradce7: true, poradce8: true, poradce9: true, poradce10: true,
++  manazer4: true, manazer5: true, manazer6: true, manazer7: true, manazer8: true,
++  manazer9: true, manazer10: true,
++};
++const titles = [
++  "Okamžitá provize", "Provize A101", "Provize B0301", "50% z B3601",
++  "Provize po 3 letech", "Provize po 4 letech", "Následná provize (2.–5. rok)",
++  "Pečovatelská provize (5.–10. rok)", "Následná provize (od 6. roku)",
++  "Následná provize (od 5. roku)", "Následná provize (z platby)", "Následná provize",
++];
++const viewer = "viewer@example.test";
++const asOf = new Date(2026, 9, 8, 12);
++const fixture = (productKey: Product, parts: number): EntryDoc => ({
++  id: "synthetic-schedule", userEmail: viewer, productKey, inputAmount: 1_000,
++  policyStartDate: "2026-12-01", contractSignedDate: "2026-10-08", durationYears: 100,
++  items: Array.from({ length: parts }, (_, index) => ({
++    title: titles[index % titles.length], amount: 100, code: index === 0 ? "A101" : undefined,
++  })),
++});
++const monthBudget = (entry: EntryDoc, today: Date) => {
++  const serial = (date: Date) => date.getFullYear() * 12 + date.getMonth();
++  const earliest = Math.min(serial(today), ...[entry.policyStartDate, entry.contractSignedDate, entry.createdAt]
++    .filter(value => value != null).map(value => serial(toDate(value, { calendar: today })!)));
++  return serial(today) + 120 - earliest + 3;
++};
++
++describe("schedule resource bounds against actual generator output", () => {
++  it.each(Object.keys(products) as Product[])("bounds every generated item for %s", productKey => {
++    for (const frequencyRaw of ["monthly", "quarterly", "semiannual", "annual", null, "invalid"] as (PaymentFrequency | null)[]) {
++      for (const policyStartDate of ["1900-01-01", "2024-02-29", "2026-12-01"]) {
++        for (const parts of [12, 128]) {
++          for (const reduction of [{}, { status: "storno", stornoDate: "2027-01-01" }, {
++            acquisitionType: "inherited" as const, transferEffectiveDate: "2026-10-01",
++          }]) {
++            const entry = { ...fixture(productKey, parts), frequencyRaw, policyStartDate, ...reduction };
++            const before = structuredClone(entry);
++            const output = generateCashflow([entry], 10, viewer, asOf);
++            const upperBound = estimateCashflowShadowScheduleItems(entry, monthBudget(entry, asOf), parts);
++            expect(output.length, JSON.stringify({ productKey, frequencyRaw, policyStartDate, parts, reduction })).toBeLessThanOrEqual(upperBound);
++            expect(entry).toEqual(before);
++          }
++        }
++      }
++    }
++  });
++
++  it.each([new Date(2028, 1, 29, 12), new Date(2026, 11, 31, 12)])("covers inclusive horizon and leap-year endpoints %s", today => {
++    for (const productKey of Object.keys(products) as Product[]) {
++      const entry = { ...fixture(productKey, 128), frequencyRaw: "monthly" as const,
++        policyStartDate: new Date(today.getFullYear(), today.getMonth(), 1), contractSignedDate: today };
++      expect(generateCashflow([entry], 10, viewer, today).length).toBeLessThanOrEqual(
++        estimateCashflowShadowScheduleItems(entry, monthBudget(entry, today), 128));
++    }
++  });
++
++  it("includes each unmatched historical statement payout separately", () => {
++    const entry = fixture("neon", 128);
++    entry.commissionPayouts = Array.from({ length: 500 }, (_, index) => ({
++      key: `synthetic-payout-${index}`, code: `SYN${index}`, status: "paid", amount: 1,
++      payoutMonthKey: "2026-09", writtenBy: viewer,
++    }));
++    const output = generateCashflow([entry], 10, viewer, asOf);
++    expect(output.filter(item => item.isStatementOnly)).toHaveLength(500);
++    expect(output.length).toBeLessThanOrEqual(estimateCashflowShadowScheduleItems(entry, monthBudget(entry, asOf), 128) + 500);
++  });
++
++  it.each(["neon", "flexi", "maximaMaxEfekt", "pillowInjury"] as const)("bounds life reviews for every career/mode and own/manager path of %s", productKey => {
++    let maximumAdditions = 0;
++    for (const predictionPosition of Object.keys(positions) as Position[]) {
++      for (const predictionCommissionMode of ["standard", "accelerated"] as const) {
++        for (const source of ["own", "manager"] as const) {
++          const entry = { ...fixture(productKey, 128), source, predictionPosition, predictionCommissionMode,
++            predictionBaselinePosition: source === "manager" ? "poradce1" as const : null,
++            policyStartDate: "2020-01-01", contractSignedDate: "2020-01-01" };
++          const original = generateCashflow([entry], 10, viewer, asOf);
++          const predicted = applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: true, today: asOf });
++          const additions = predicted.length - original.length;
++          maximumAdditions = Math.max(maximumAdditions, additions);
++          expect(additions).toBeLessThanOrEqual(100);
++          expect(applyIntelligentCashflowPrediction({ cashflowItems: original, enabled: false, today: asOf })).toBe(original);
++        }
++      }
++    }
++    expect(maximumAdditions).toBeGreaterThan(0);
++  });
++});
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+--- a/src/app/api/cashflow/view/route.ts
++++ b/src/app/api/cashflow/view/route.ts
+@@ -49,7 +49,8 @@
+     if (inputs.tipsterMode !== body.options.tipsterMode) return unavailable(409);
+     if (req.signal.aborted) return unavailable(409, "cancelled");
+     if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+-    const resourceLimit = cashflowShadowBudgetFailure(inputs.snapshot, asOf);
++    const resourceLimit = cashflowShadowBudgetFailure(inputs.snapshot, asOf,
++      body.options.intelligentPredictionEnabled && !body.options.tipsterMode);
+     if (resourceLimit) return unavailable(503, "resource_limit", resourceLimit);
+     const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
+     // Never replace a view from another data version or accept a partially read portfolio.
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -182,8 +182,40 @@
+       reason: "resource_limit", resourceLimit: "date_range" });
+     expect(response.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
+   });
+-  it.each([300, 1000])("keeps the bounded fallback for a %s-contract portfolio without returning partial totals", async count => {
++  it.each(WORKER_FILTER_CASES.map(filter => ({ ...filter, count: filter.id === "prediction" ? 200 : 300 })))(
++    "preserves all month fields for a newly admitted $count-contract portfolio and $id", async ({ options, count }) => {
+     fixture = makeWorkerFixture(count, asOf);
++    const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
++    const response = await POST(request(await body(options)));
++    expect(response.status).toBe(200);
++    const actual = await response.json();
++    expect(actual.monthsHash).toBe(await hashCashflowValue(reference.months));
++    expect(actual.overview.months).toEqual(reference.months.map(({ items, ...month }) => ({
++      ...month, itemCountLabel: formatCashflowItemCount(items),
++    })));
++    const occupied = reference.months.find(month => month.items.length > 0)!;
++    const detail = await (await POST(request(await body(options, occupied.key)))).json();
++    expect(cashflowCanonicalJson(parseCashflowSnapshot(detail.payload)!.months)).toBe(cashflowCanonicalJson([occupied]));
++  }, 30_000);
++
++  it("binds the life-review budget to the same validated option used by computation", async () => {
++    fixture = makeWorkerFixture(1, asOf);
++    const template = fixture.snapshot.ownEntries[0];
++    fixture.snapshot.ownEntries = Array.from({ length: 1_000 }, (_, index) => ({ ...template,
++      id: `synthetic-life-${index}`, productKey: "neon" as const, items: [{ title: "Okamžitá provize", amount: 10 }],
++    }));
++    const disabled = await POST(request(await body({ ...options, intelligentPredictionEnabled: false })));
++    expect(disabled.status).toBe(200);
++    const original = runReference(fixture.snapshot, fixture.statements, options, asOf);
++    expect((await disabled.json()).monthsHash).toBe(await hashCashflowValue(original.months));
++    const enabled = await POST(request(await body({ ...options, intelligentPredictionEnabled: true })));
++    expect(enabled.status).toBe(503);
++    expect(await enabled.json()).toMatchObject({ reason: "resource_limit", resourceLimit: "output_estimate" });
++    expect(enabled.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
++  });
++
++  it("keeps the bounded fallback for an excessive portfolio without returning partial totals", async () => {
++    fixture = makeWorkerFixture(1000, asOf);
+     const response = await POST(request(await body()));
+     expect(response.status).toBe(503);
+     expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason: "resource_limit", resourceLimit: "output_estimate" });

@@ -20,6 +20,7 @@
     "generate:homepage-gif:real": "node scripts/generate-homepage-gif-from-screenshots.cjs"
   },
   "dependencies": {
+    "@date-fns/tz": "1.5.0",
     "@opentelemetry/api": "^1.9.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.3",
@@ -35,26 +36,26 @@
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.555.0",
-    "next": "16.3.6",
+    "next": "16.3.8",
     "ogl": "^1.0.11",
     "pdfjs-dist": "^5.4.530",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "tailwind-merge": "^3.4.0",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
-    "@next/bundle-analyzer": "16.3.6",
+    "@next/bundle-analyzer": "16.3.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "16.3.8",
     "gifenc": "^1.0.3",
     "happy-dom": "20.14.0",
     "tailwindcss": "^4",
@@ -68,6 +69,10 @@
     "fast-xml-parser": "5.8.0",
     "node-forge": "1.4.0",
     "postcss": "8.5.23",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "@fastify/busboy": "3.2.3",
+    "@grpc/grpc-js": "1.14.6",
+    "dompurify": "3.4.16",
+    "source-map-js": "1.2.2"
   }
 }

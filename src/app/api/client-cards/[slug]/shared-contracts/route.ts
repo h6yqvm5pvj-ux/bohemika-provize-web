@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ slug: s
     const initial = await readSharedClientContracts(adminDb, slug, viewer);
     if (!initial) return respond({ ok: false, error: "Karta klienta nebyla nalezena." }, 404);
     if (!initial.matchingAvailable) return respond({ ok: true, ...initial, indexing: false });
-    const ready = await advanceSharedClientIndex(adminDb, ctx.users.filter(user => user.accountType === "advisor").map(user => user.email));
+    const ready = await advanceSharedClientIndex(adminDb, [viewer.email, ...viewer.teamEmails]);
     // Recheck association after migration: a concurrent delete/transfer of the
     // viewer's last contract must revoke the shared overview as well.
     const result = await readSharedClientContracts(adminDb, slug, viewer);

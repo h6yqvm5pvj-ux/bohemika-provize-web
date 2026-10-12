@@ -4,15 +4,21 @@ import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
 import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
 import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
 import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
+import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
+import { CASHFLOW_CONTRACT_TIMING_PHASES, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
+import type { CashflowContractTimingObserver } from "./cashflowContractTiming";
 
 const MAX_REQUESTS = 50;
 const MAX_DURATION_MS = 20_000;
-const CONTRACT_PAGE_LIMIT = 100;
+const CONTRACT_PAGE_LIMIT = CASHFLOW_CONTRACTS_PAGE_SIZE;
+// Preserve the previous aggregate upper bound (50 reads of 100 contracts),
+// including duplicate rows, when fetching the same portfolio in fewer pages.
+const MAX_CONTRACT_ROWS = 5_000;
 const TIP_PAGE_LIMIT = 100;
 const STATEMENTS_LIMIT = 240;
 const SUBSCRIPTIONS_LIMIT = 5_000;
 
-type Source = "profile" | "contracts" | "tips" | "subscriptions" | "statements";
+type Source = "profile" | "own_contracts" | "team_contracts" | "tips" | "subscriptions" | "statements";
 type JsonObject = Record<string, unknown>;
 
 export type CashflowShadowInputsErrorCode =
@@ -47,6 +53,8 @@ type LoadOptions = {
   authorizeEmail?: (email: string) => boolean | Promise<boolean>;
   /** Bypass process-local role/team/subscription caches for a fenced candidate read. */
   freshCashflowContext?: boolean;
+  /** Trusted server-only observer. No request/account/portfolio values are passed. */
+  onSourceTiming?: (name: CashflowInputTimingName, durationMs: number) => void;
 };
 
 const isObject = (value: unknown): value is JsonObject =>
@@ -80,13 +88,21 @@ function nextCursor(data: JsonObject, chunkSize: number, seen: Set<string>): str
   return data.hasMore ? cursor : null;
 }
 
-async function invoke(source: Source, request: NextRequest, freshCashflowContext: boolean): Promise<Response> {
+async function invoke(
+  source: Source, request: NextRequest, freshCashflowContext: boolean,
+  onCashflowTiming?: CashflowContractTimingObserver,
+  onCashflowTeamReady?: (ownTotalCount: number) => void
+): Promise<Response> {
   // Direct authorized handlers: no HTTP request, user supplied URL or auth bypass.
   switch (source) {
     case "profile":
       return (await import("@/app/api/user/profile/route")).GET(request);
-    case "contracts":
-      return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, { freshCashflowContext });
+    case "own_contracts":
+    case "team_contracts":
+      return (await import("@/app/api/contracts/_lib/contractsApi")).handleContractsList(request, {
+        freshCashflowContext, ...(onCashflowTiming ? { onCashflowTiming } : {}),
+        ...(source === "own_contracts" && onCashflowTeamReady ? { onCashflowTeamReady } : {}),
+      });
     case "tips":
       return (await import("@/app/api/tip-payouts/list/route")).GET(request);
     case "subscriptions":
@@ -121,8 +137,24 @@ export async function loadCashflowShadowInputs(
   if (request.signal.aborted) onAbort();
   const timer = setTimeout(() => stop("timeout"), MAX_DURATION_MS);
   let requests = 0;
+  let contractRows = 0;
+  const declaredContractCounts = new Map<"my" | "team", number>();
+  let declaredContractRows = 0;
+  const reserveContractCount = (scope: "my" | "team", count: number) => {
+    const reserved = declaredContractCounts.get(scope);
+    if (reserved !== undefined) {
+      if (reserved !== count) return incomplete();
+      return;
+    }
+    if (count > MAX_CONTRACT_ROWS - declaredContractRows) throw new CashflowShadowInputsError("limit");
+    declaredContractCounts.set(scope, count);
+    declaredContractRows += count;
+  };
 
-  const read = async (source: Source, path: string, params?: URLSearchParams): Promise<JsonObject> => {
+  const read = async (
+    source: Source, path: string, params?: URLSearchParams,
+    onCashflowTeamReady?: (ownTotalCount: number) => void
+  ): Promise<JsonObject> => {
     if (stopError) throw stopError;
     if (controller.signal.aborted) throw new CashflowShadowInputsError("aborted", 499);
     if (requests >= MAX_REQUESTS) throw new CashflowShadowInputsError("limit");
@@ -134,8 +166,15 @@ export async function loadCashflowShadowInputs(
       headers: new Headers(request.headers),
       signal: controller.signal,
     });
+    const started = options.onSourceTiming ? performance.now() : 0;
+    const onCashflowTiming: CashflowContractTimingObserver | undefined = options.onSourceTiming &&
+      (source === "own_contracts" || source === "team_contracts") ? (phase, durationMs) => {
+        if (!CASHFLOW_CONTRACT_TIMING_PHASES.includes(phase) || !Number.isFinite(durationMs) || durationMs < 0 || durationMs > 3_600_000) return;
+        try { options.onSourceTiming?.(`cashflow_inputs_${source}_${phase}`, durationMs); }
+        catch { /* Optional telemetry must not affect access checks or input loading. */ }
+      } : undefined;
     try {
-      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true), stopped]);
+      const response = await Promise.race([invoke(source, child, options.freshCashflowContext === true, onCashflowTiming, onCashflowTeamReady), stopped]);
       if (!response.ok) {
         const code = response.status === 401 ? "unauthorized"
           : response.status === 403 ? "forbidden" : "upstream_failed";
@@ -147,6 +186,10 @@ export async function loadCashflowShadowInputs(
     } catch (error) {
       if (error instanceof CashflowShadowInputsError) throw error;
       throw new CashflowShadowInputsError("upstream_failed");
+    } finally {
+      // Diagnostics cannot turn a successful read into an error, or conceal a failed read.
+      try { options.onSourceTiming?.(`cashflow_inputs_${source}`, Math.max(0, performance.now() - started)); }
+      catch { /* Optional telemetry must not affect data loading. */ }
     }
   };
 
@@ -161,7 +204,7 @@ export async function loadCashflowShadowInputs(
       : typeof profile.profile.userRole === "string" ? profile.profile.userRole : "";
     const tipsterMode = accountType.trim().toLowerCase() === "tipster";
 
-    const collectContracts = async (scope: "my" | "team") => {
+    const collectContracts = async (scope: "my" | "team", onCashflowTeamReady?: (ownTotalCount: number) => void) => {
       const entries: EntryDoc[] = [];
       const seenIds = new Set<string>();
       const seenCursors = new Set<string>();
@@ -171,16 +214,21 @@ export async function loadCashflowShadowInputs(
       do {
         const params = new URLSearchParams({ scope, limit: String(CONTRACT_PAGE_LIMIT), shape: "cashflow" });
         if (cursor) params.set("cursor", cursor);
-        const data = await read("contracts", "/api/contracts/list", params);
+        const data = await read(scope === "my" ? "own_contracts" : "team_contracts", "/api/contracts/list", params,
+          cursor === null ? onCashflowTeamReady : undefined);
         if (!first) {
           first = data;
           if (typeof data.totalCount !== "number" || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) return incomplete();
           if (typeof data.hasTeam !== "boolean" || !Array.isArray(data.teamEmails) || !data.teamEmails.every(email => typeof email === "string")) return incomplete();
           totalCount = data.totalCount;
+          reserveContractCount(scope, totalCount);
+          if (totalCount > MAX_CONTRACT_ROWS - contractRows) throw new CashflowShadowInputsError("limit");
         } else if (data.totalCount != null && data.totalCount !== totalCount) {
           return incomplete();
         }
         const chunk = rows(data, "contracts", CONTRACT_PAGE_LIMIT);
+        if (chunk.length > MAX_CONTRACT_ROWS - contractRows) throw new CashflowShadowInputsError("limit");
+        contractRows += chunk.length;
         for (const item of chunk) {
           const ownerEmail = normalizeEmail(item.adviserEmail ?? item.userEmail ?? effectiveEmail);
           const id = String(item.id ?? "").trim();
@@ -236,9 +284,21 @@ export async function loadCashflowShadowInputs(
 
     const collectPortfolio = async (): Promise<Pick<CashflowSnapshot, "myPosition" | "myCommissionMode" | "hasAnyTeam" | "ownEntries" | "teamEntriesRaw">> => {
       if (tipsterMode) return { myPosition: null, myCommissionMode: null, hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [] };
-      const own = await collectContracts("my");
+      let team: ReturnType<typeof collectContracts> | undefined;
+      const onCashflowTeamReady = options.freshCashflowContext ? (ownTotalCount: number) => {
+        if (team || stopError || controller.signal.aborted ||
+          !Number.isSafeInteger(ownTotalCount) || ownTotalCount < 0 || ownTotalCount > MAX_CONTRACT_ROWS) return;
+        // Reserve the whole declared own portfolio before launching the team,
+        // so interleaving cannot defer rejection of an oversized combined read.
+        reserveContractCount("my", ownTotalCount);
+        team = collectContracts("team");
+        // A fast team denial must not become an unhandled rejection while own
+        // pages finish. Await the original promise below and propagate its error.
+        void team.catch(() => undefined);
+      } : undefined;
+      const own = await collectContracts("my", onCashflowTeamReady);
       const hasTeam = own.first.hasTeam === true || (own.first.teamEmails as string[]).some(email => normalizeEmail(email));
-      const teamEntriesRaw = hasTeam ? (await collectContracts("team")).entries : [];
+      const teamEntriesRaw = hasTeam ? (await (team ?? collectContracts("team"))).entries : [];
       return {
         myPosition: (own.first.position ?? null) as CashflowSnapshot["myPosition"],
         myCommissionMode: (own.first.commissionMode ?? null) as CashflowSnapshot["myCommissionMode"],

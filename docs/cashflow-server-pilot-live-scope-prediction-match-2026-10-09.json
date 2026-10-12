@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T11:55:58+02:00",
+  "source": "user-provided screenshot after clearing the previous diagnostic and following the prediction/team procedure",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 14799.70000000298,
+    "referenceMs": 106.1000000089407,
+    "serverTimingMs": {
+      "cashflow_auth": 529.98,
+      "cashflow_inputs": 12682.08,
+      "cashflow_hash": 325.78,
+      "cashflow_compute": 1028.39,
+      "cashflow_total": 14605.5
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "previousDiagnosticRemovalVisible": true,
+    "newComparisonAfterRemovalVisible": true,
+    "timingsDifferFromPreviousOwnResult": true,
+    "selectionBinding": "visible controls, diagnostic removal and preceding user procedure; request options not captured",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_C9KG2YyLHLyMa6FzFyu7Y1iHVomh",
+    "aliasVerifiedAt": "2026-10-09T09:58:00.646Z",
+    "requestDeploymentIndependentlyCaptured": false,
+    "teamPredictionVerifiedAccordingToProcedure": true,
+    "monthDetailVerified": false,
+    "productionSpeedupEstablished": false
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "businessRecordsChanged": false
+}

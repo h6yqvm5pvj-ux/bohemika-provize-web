@@ -1,0 +1,460 @@
+{
+  "version": 1,
+  "status": "single-account-pilot-timezone-fix-deployed",
+  "date": "2026-10-08",
+  "domain": "https://bohemka.app",
+  "deploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+  "deploymentUrl": "bohemika-provize-17ms88wzp-jacobrausch989s-projects-909dd478.vercel.app",
+  "previousVerifiedDeploymentId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+  "baselineCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+  "previousPilotPatch": {
+    "file": "cashflow-server-pilot-release-2026-10-08.patch",
+    "sha256": "b7f22b5350639d736d4af2027715e50d1acefdfaa6d02bafa591676e94b3c961"
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-timezone-2026-10-08.patch",
+    "sha256": "cece02a1f8e156d4c9ce3bce10203d4b63bf02e37793c3a52f946653101c1427"
+  },
+  "sourceVerification": {
+    "releaseSources": 37,
+    "unchangedBaselineControls": 9,
+    "uploadedSourceHashesChecked": 46,
+    "method": "Downloaded source archive streamed without extraction; 37 release sources and 9 unchanged baseline controls matched",
+    "credentialFilesFound": false,
+    "archiveExtracted": false
+  },
+  "configuration": {
+    "serverPilotEnabled": true,
+    "browserPilotBuildEnabled": true,
+    "allowlistAccounts": 1,
+    "accountChosenExplicitlyByUser": true,
+    "accountStoredInRepository": false,
+    "clientTabOptInRequired": true,
+    "defaultClientMode": "off",
+    "globalTimezoneChanged": false,
+    "globalProjectBuildSettingsChanged": false,
+    "scheduledJobsChanged": false,
+    "otherApplicationEnvironmentChangesRequested": false
+  },
+  "configurationVerification": {
+    "method": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+    "allowlistValueReadBack": false,
+    "runtimeGateVerifiedOnProduction": true,
+    "productionSecretsChanged": false
+  },
+  "promotion": {
+    "checkedAt": "2026-10-08T15:10:23.407105+00:00",
+    "promoted": true,
+    "deploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+    "previousDeploymentId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+    "domain": "https://bohemka.app",
+    "serverPilotEnabled": true,
+    "allowlistAccounts": 1,
+    "accountIncludedInReceipt": false,
+    "timezonePatchSha256": "cece02a1f8e156d4c9ce3bce10203d4b63bf02e37793c3a52f946653101c1427",
+    "globalTimezoneChanged": false,
+    "businessDataWrites": false,
+    "productionSecretsChanged": false
+  },
+  "validation": {
+    "local": {
+      "passed": true,
+      "fullWorkspaceTests": 5799,
+      "workspaceTestFiles": 400,
+      "isolatedReleaseTests": 5775,
+      "isolatedTestFiles": 396,
+      "typecheckPassed": true,
+      "lintPassed": true,
+      "whitespacePassed": true,
+      "sourceFilesVerified": 37,
+      "fullTimezoneComparisons": 1296,
+      "calendarBoundaryChecks": 320,
+      "originalProductionGeneratorCases": 1120,
+      "nativeWorkerPassed": true,
+      "nativeMonthsCompared": 5,
+      "timezoneLibraryExcludedFromClient": true,
+      "securityReview": {
+        "authorizationUnchanged": true,
+        "foreignAccountAndManipulatedInputTestsPassed": true,
+        "globalTimezoneUnchanged": true,
+        "exactInputAndFullMonthVerificationRetained": true,
+        "sensitiveDataInDiagnostics": false
+      },
+      "productionSpeedupVerified": false
+    },
+    "originalProductionGeneratorTimezones": [
+      "UTC",
+      "Europe/Prague",
+      "America/New_York"
+    ],
+    "generatorCasesPerTimezone": 1120,
+    "fullPortfolioComparisonsPerTimezone": 45,
+    "allowedLifeDifferencesPerTimezone": 64,
+    "productionBuild": "passed",
+    "nativeChromeHostingWorker": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true,
+      "deploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+      "remoteWorkerPath": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+      "remoteWorkerSha256": "e97518dc3ecfa90c12cbe05a3b4a536f3b5aac14d32755ffe943d11bca692cde",
+      "dependencies": [
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "sha256": "f4f88dec3acb3d6ad3f917548e642c98ac94df1fce80cf842c8782d9bf173521",
+          "bytes": 19943
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "sha256": "3e423e35db00f285ad701bde71cb6cbc6069b37832c323c87c127f67d50d830a",
+          "bytes": 16497
+        }
+      ]
+    },
+    "beforePromotion": {
+      "checkedAt": "2026-10-08T15:09:51.476Z",
+      "mode": "stage",
+      "deploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+      "url": "bohemika-provize-17ms88wzp-jacobrausch989s-projects-909dd478.vercel.app",
+      "state": "READY",
+      "baselineProductionId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+      "currentProductionId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+      "domain": "bohemika-provize-17ms88wzp-jacobrausch989s-projects-909dd478.vercel.app",
+      "serverPilotEnabled": true,
+      "allowlistAccounts": 1,
+      "globalProjectBuildConfigurationUnchanged": true,
+      "deploymentBuildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs",
+      "scheduledJobs": [
+        {
+          "path": "/api/cron/contract-lifecycle",
+          "schedule": "30 1 * * *"
+        },
+        {
+          "path": "/api/cron/weekly-team-report",
+          "schedule": "0 7 * * 1"
+        },
+        {
+          "path": "/api/cron/subscription-expiry-notifications",
+          "schedule": "15 7 * * *"
+        },
+        {
+          "path": "/api/cron/contract-note-reminders",
+          "schedule": "45 7 * * *"
+        },
+        {
+          "path": "/api/cron/password-change-notices",
+          "schedule": "0 8 * * *"
+        }
+      ],
+      "scheduledJobsUnchanged": true,
+      "uploadedSourceHashesChecked": 46,
+      "sourceVerification": "Downloaded source archive streamed without extraction; 37 release sources and 9 unchanged baseline controls matched",
+      "singleAccountAllowlistConfigured": true,
+      "pilotConfigurationVerification": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+      "allowlistValueReadBack": false,
+      "otherRuntimeVariableKeysUnchanged": true,
+      "hostingForcedBuildFlagsAdded": [],
+      "otherApplicationEnvironmentChangesRequested": false,
+      "globalTimezoneChangesRequested": false,
+      "productionSecurityConfigVerified": true,
+      "encryptionFingerprintsUnchanged": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": false,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": true,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ],
+      "hostingWorkerNativeChromeVerified": true,
+      "hostingWorkerAssetsChecked": 3,
+      "passed": true
+    },
+    "afterPromotion": {
+      "checkedAt": "2026-10-08T15:10:31.361Z",
+      "mode": "production",
+      "deploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+      "url": "bohemika-provize-17ms88wzp-jacobrausch989s-projects-909dd478.vercel.app",
+      "state": "READY",
+      "baselineProductionId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+      "currentProductionId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+      "domain": "bohemka.app",
+      "serverPilotEnabled": true,
+      "allowlistAccounts": 1,
+      "globalProjectBuildConfigurationUnchanged": true,
+      "deploymentBuildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs",
+      "scheduledJobs": [
+        {
+          "path": "/api/cron/contract-lifecycle",
+          "schedule": "30 1 * * *"
+        },
+        {
+          "path": "/api/cron/weekly-team-report",
+          "schedule": "0 7 * * 1"
+        },
+        {
+          "path": "/api/cron/subscription-expiry-notifications",
+          "schedule": "15 7 * * *"
+        },
+        {
+          "path": "/api/cron/contract-note-reminders",
+          "schedule": "45 7 * * *"
+        },
+        {
+          "path": "/api/cron/password-change-notices",
+          "schedule": "0 8 * * *"
+        }
+      ],
+      "scheduledJobsUnchanged": true,
+      "uploadedSourceHashesChecked": 46,
+      "sourceVerification": "Downloaded source archive streamed without extraction; 37 release sources and 9 unchanged baseline controls matched",
+      "singleAccountAllowlistConfigured": true,
+      "pilotConfigurationVerification": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+      "allowlistValueReadBack": false,
+      "otherRuntimeVariableKeysUnchanged": true,
+      "hostingForcedBuildFlagsAdded": [],
+      "otherApplicationEnvironmentChangesRequested": false,
+      "globalTimezoneChangesRequested": false,
+      "productionSecurityConfigVerified": true,
+      "encryptionFingerprintsUnchanged": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": false,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": true,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ],
+      "hostingWorkerNativeChromeVerified": true,
+      "hostingWorkerAssetsChecked": 3,
+      "passed": true
+    }
+  },
+  "securityReview": {
+    "authenticationAndMfaUnchanged": true,
+    "backendSingleAccountAllowlistRequired": true,
+    "sourceAuthorizationUnchanged": true,
+    "impersonationForbidden": true,
+    "requestValidationAndRateLimitRetained": true,
+    "foreignAccountAndManipulatedInputTestsPassed": true,
+    "fullInputAndFullMonthVerificationRetained": true,
+    "fallbackOnErrorsOrDifferencesRetained": true,
+    "sharedUserResultsOrGlobalDateChanges": false,
+    "encryptionFingerprintsUnchanged": true,
+    "livePortfolioReadDuringDeploymentChecks": false,
+    "businessDataWrites": false,
+    "secretsOrUserIdentityInReceipt": false
+  },
+  "verificationLimitations": [
+    "Authenticated comparison on the actual account portfolio remains pending a new opt-in browser request.",
+    "Production page speedup has not been demonstrated; compare mode still obtains and computes the original reference.",
+    "Single-account runtime override was submitted exactly; hosting does not expose its runtime value for readback. No credentials were decrypted.",
+    "Conservative resource, completeness and exact verification limits remain. Large or unsupported inputs fall back to the original calculation."
+  ],
+  "rollback": {
+    "deploymentId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+    "serverPilotEnabledInPreviousDeployment": true,
+    "method": "Promote the previous verified deployment only after checking that the live alias has not changed concurrently; no database changes required."
+  }
+}

@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "status": "deployed-and-verified",
+  "date": "2026-10-08",
+  "domain": "https://bohemka.app",
+  "deploymentId": "dpl_B38yvf39Uj5WVANGTc5RsUqVyrWQ",
+  "deploymentUrl": "bohemika-provize-ikfazur58-jacobrausch989s-projects-909dd478.vercel.app",
+  "baseline": {
+    "gitCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+    "deploymentId": "dpl_5BeURqXKuQqRXXyW4FF4vca8cdTg",
+    "domain": "https://bohemka.app",
+    "verification": "Read-only Vercel v13 deployment metadata: source=git, gitSource.type=github, gitSource.sha matches local HEAD. Reinspect before rollout."
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-release-2026-10-08.patch",
+    "sha256": "b7f22b5350639d736d4af2027715e50d1acefdfaa6d02bafa591676e94b3c961"
+  },
+  "source": "CLI archive containing the inspected baseline plus the immutable cashflow-only patch; not the dirty workspace and not a new Git commit.",
+  "promotion": {
+    "checkedAt": "2026-10-08T12:05:35.642838+00:00",
+    "promoted": true,
+    "deploymentId": "dpl_B38yvf39Uj5WVANGTc5RsUqVyrWQ",
+    "previousDeploymentId": "dpl_5BeURqXKuQqRXXyW4FF4vca8cdTg",
+    "domain": "https://bohemka.app",
+    "serverPilotEnabled": false,
+    "businessDataWrites": false,
+    "productionSecretsChanged": false
+  },
+  "configuration": {
+    "NEXT_PUBLIC_CASHFLOW_SERVER_PILOT_ENABLED": "1",
+    "CASHFLOW_SERVER_PILOT_ENABLED": "0",
+    "pilotAccountConfiguredByThisRelease": false,
+    "clientOptInRequired": true,
+    "defaultClientMode": "off",
+    "globalTimezoneChanged": false,
+    "globalProjectBuildConfigurationUnchanged": true,
+    "scheduledJobsUnchanged": true,
+    "buildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs"
+  },
+  "validation": {
+    "isolatedTestsPassed": 5753,
+    "workspaceTestsPassed": 5777,
+    "typecheck": "passed",
+    "eslint": "passed",
+    "productionBuild": "passed",
+    "uploadedSourceHashesChecked": 35,
+    "cashflowArtifactFiles": 24,
+    "credentialFilesFoundInArchive": false,
+    "productionSecurityConfigVerified": true,
+    "encryptionFingerprintsUnchanged": true,
+    "nativeChromeHostingWorker": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true,
+      "deploymentId": "dpl_B38yvf39Uj5WVANGTc5RsUqVyrWQ",
+      "remoteWorkerPath": "/_next/static/chunks/7540.e272fa5ec1d1f09a.js",
+      "remoteWorkerSha256": "c750fa81d192a87776efa0de46e51f73e3ddae430a75bbaccaced2b38a945061",
+      "dependencies": [
+        {
+          "path": "/_next/static/chunks/1515-4cf969ed2858491d.js",
+          "sha256": "65252bdad3fc1fd6eee2ae2c8a5e7a57277b69b60f0698ba94d1000fb1021438",
+          "bytes": 19592
+        },
+        {
+          "path": "/_next/static/chunks/9506.a337267a668032f8.js",
+          "sha256": "1b6e1f22edfd023c803982402b4c628250a5b992cd8d7d76231fe157f3db0745",
+          "bytes": 16155
+        }
+      ]
+    },
+    "beforePromotion": {
+      "checkedAt": "2026-10-08T12:05:01.481Z",
+      "passed": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 404,
+          "disabled": true,
+          "invalidToken": false
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 404,
+          "disabled": true,
+          "invalidToken": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.e272fa5ec1d1f09a.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-4cf969ed2858491d.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.a337267a668032f8.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ]
+    },
+    "afterPromotion": {
+      "checkedAt": "2026-10-08T12:05:43.801Z",
+      "passed": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 404,
+          "disabled": true,
+          "invalidToken": false
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 404,
+          "disabled": true,
+          "invalidToken": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.e272fa5ec1d1f09a.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-4cf969ed2858491d.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.a337267a668032f8.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ]
+    }
+  },
+  "verificationNotes": [
+    "The first file-list check assumed individual uploaded source files. Vercel stored two source.tgz parts; their combined archive was verified without extracting it.",
+    "The local worker URL was unavailable in the hosting build because Webpack assigned different chunk/module identifiers. The actual hosting worker and its two imported chunks were downloaded, verified in isolated native Chrome with synthetic data, and their hashes rechecked on both deployment and production domains. The initial incomplete standalone worker check lacked these imported chunks and is not counted as a passing result."
+  ],
+  "productionBusinessDataWrites": false,
+  "productionSecretsChanged": false,
+  "unrelatedWorkspaceChangesDeployed": false,
+  "containsCredentialsOrUserIdentity": false,
+  "notVerified": [
+    "Authenticated live-account comparison",
+    "Production Node/browser timezone equality",
+    "Production performance or cost improvement",
+    "Server support for larger portfolios"
+  ],
+  "rollback": {
+    "deploymentId": "dpl_5BeURqXKuQqRXXyW4FF4vca8cdTg",
+    "method": "Promote the previous verified deployment after checking that the production alias has not changed concurrently. No database rollback is needed for this release."
+  }
+}

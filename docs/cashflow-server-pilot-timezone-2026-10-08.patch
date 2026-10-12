@@ -1,0 +1,1158 @@
+diff --git a/package-lock.json b/package-lock.json
+index 5f0b7fe..890a0f9 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,6 +8,7 @@
+       "name": "bohemika-provize-web",
+       "version": "0.1.0",
+       "dependencies": {
++        "@date-fns/tz": "1.5.0",
+         "@opentelemetry/api": "^1.9.0",
+         "@simplewebauthn/browser": "^13.3.0",
+         "@simplewebauthn/server": "^13.3.3",
+@@ -314,6 +315,12 @@
+         "node": ">=6.9.0"
+       }
+     },
++    "node_modules/@date-fns/tz": {
++      "version": "1.5.0",
++      "resolved": "https://registry.npmjs.org/@date-fns/tz/-/tz-1.5.0.tgz",
++      "integrity": "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==",
++      "license": "MIT"
++    },
+     "node_modules/@discoveryjs/json-ext": {
+       "version": "0.5.7",
+       "resolved": "https://registry.npmjs.org/@discoveryjs/json-ext/-/json-ext-0.5.7.tgz",
+diff --git a/package.json b/package.json
+index 586c980..364d6c9 100644
+--- a/package.json
++++ b/package.json
+@@ -20,6 +20,7 @@
+     "generate:homepage-gif:real": "node scripts/generate-homepage-gif-from-screenshots.cjs"
+   },
+   "dependencies": {
++    "@date-fns/tz": "1.5.0",
+     "@opentelemetry/api": "^1.9.0",
+     "@simplewebauthn/browser": "^13.3.0",
+     "@simplewebauthn/server": "^13.3.3",
+diff --git a/work/scripts/check-cashflow-timezones.mjs b/scripts/check-cashflow-timezones.mjs
+new file mode 100644
+index 0000000..2bb23af
+--- /dev/null
++++ b/scripts/check-cashflow-timezones.mjs
+@@ -0,0 +1,175 @@
++/** Full original/new comparisons on synthetic data in separate native timezone
++ * processes. Run with the immutable, pre-timezone pilot source directory.
++ * Does not read .env, credentials, databases, production portfolios or network.
++ */
++import assert from "node:assert/strict";
++import { spawn } from "node:child_process";
++import { createHash } from "node:crypto";
++import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { dirname, join, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { createJiti } from "jiti";
++
++const here = fileURLToPath(import.meta.url);
++const repo = resolve(dirname(here), "..");
++const mode = process.argv[2];
++const encode = value => value instanceof Date ? { syntheticDateMs: value.getTime() }
++  : Array.isArray(value) ? value.map(encode)
++  : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, child]) => [key, encode(child)])) : value;
++const decode = value => value && typeof value === "object" && Object.keys(value).length === 1 && "syntheticDateMs" in value
++  ? new Date(value.syntheticDateMs) : Array.isArray(value) ? value.map(decode)
++  : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, child]) => [key, decode(child)])) : value;
++// Each subprocess owns exactly one source tree. Share its module graph like
++// Node/Next do, so per-date calendar metadata belongs to the same module.
++const makeJiti = source => createJiti(import.meta.url, { alias: { "@": join(source, "src") }, moduleCache: true, fsCache: false });
++
++if (mode === "reference") {
++  const originalRoot = resolve(process.argv[3]);
++  const outputPath = process.argv[4];
++  const oldJiti = makeJiti(originalRoot);
++  const { createCashflowModel } = await oldJiti.import(join(originalRoot, "src/app/cashflow/cashflowModel.ts"));
++  const { cashflowCanonicalJson } = await oldJiti.import(join(originalRoot, "src/app/cashflow/shadowProtocol.ts"));
++  const { makeWorkerFixture, WORKER_FILTER_CASES } = await oldJiti.import(join(originalRoot, "scripts/cashflow-worker/fixtures.ts"));
++  const { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } = await oldJiti.import(join(originalRoot, "src/app/cashflow/subscriptionCashflow.ts"));
++  const hash = value => createHash("sha256").update(cashflowCanonicalJson(value)).digest("hex");
++  const cases = [];
++  const calendarChecks = [
++    [2026, 2, 29, 2, 30], [2026, 9, 25, 2, 30], [2026, 9, 24, 2, 30],
++    [2026, 2, 8, 2, 30], [2026, 10, 1, 1, 30], [2026, 9, 1, 1, 30],
++    [2028, 1, 29, 12], [2026, 0, 31, 0], [2026, 12, 0, 0], [2026, 1, 31, 1],
++  ].map(parts => {
++    const initial = new Date(...parts);
++    const expected = [initial.toISOString()];
++    for (const operation of ["day", "month", "year"]) {
++      const next = new Date(initial);
++      if (operation === "day") next.setDate(next.getDate() + 1);
++      if (operation === "month") next.setMonth(next.getMonth() + 1);
++      if (operation === "year") next.setFullYear(next.getFullYear() + 1);
++      expected.push(next.toISOString());
++    }
++    return { parts, expected };
++  });
++  const instants = ["2026-10-08T14:23:00Z", "2026-12-31T23:30:00Z", "2026-12-01T00:15:00Z",
++    "2026-03-29T00:59:59Z", "2026-03-29T01:00:00Z", "2026-10-25T00:59:59Z", "2026-10-25T01:00:00Z", "2028-02-29T12:00:00Z"];
++  for (const instant of instants) for (const count of [12, 60]) {
++    const asOf = new Date(instant);
++    const fixture = makeWorkerFixture(count, asOf);
++    // Explicit local date-times, date-only UTC, Czech dates and imported payouts.
++    fixture.snapshot.ownEntries[0].policyStartDate = "2026-12-01T00:00:00.125";
++    fixture.snapshot.ownEntries[0].contractSignedDate = "8.10.2026";
++    const auto = fixture.snapshot.ownEntries.find(entry => entry.productKey === "kooperativaAuto");
++    auto.commissionPayouts = [{ key: "synthetic-C", code: "C101", amount: 70, status: "paid",
++      writtenBy: auto.userEmail, payoutMonthKey: "2027-1", statementPeriod: "1.1.2027 - 31.1.2027" }];
++    fixture.snapshot.ownEntries[2].status = "storno";
++    fixture.snapshot.ownEntries[2].stornoDate = new Date(asOf.getFullYear(), asOf.getMonth() + 2, 1);
++    const model = createCashflowModel({ ...fixture, asOf });
++    try {
++      cases.push({ count, instant, data: encode({ ...fixture, asOf }), inputHash: hash(fixture),
++        filters: WORKER_FILTER_CASES.map(({ id, options }) => {
++          const overview = model.view(options);
++          return { id, options, overviewHash: hash(overview),
++            monthsHash: hash(overview.months.map(month => model.month(month.key))) };
++        }) });
++    } finally { model.dispose(); }
++  }
++  // This calculator intentionally restricts subscription cashflow to its owner.
++  // Only that existing constant is reused; every payment/customer is synthetic.
++  for (const instant of [instants[0], instants[1]]) {
++    const asOf = new Date(instant);
++    const snapshot = { email: SUBSCRIPTION_CASHFLOW_OWNER_EMAIL, myPosition: null, myCommissionMode: null,
++      hasAnyTeam: false, ownEntries: [], teamEntriesRaw: [], tipPayouts: [],
++      subscriptionPayments: [{ id: "synthetic-subscription", userEmail: "subscriber@example.test", userName: "Synthetic",
++        plan: "monthly", amountCzk: 100, periodFrom: "2026-01-31", paymentDateMs: Date.parse("2026-01-31T23:30:00Z") }] };
++    const fixture = { snapshot, statements: [] };
++    const model = createCashflowModel({ ...fixture, asOf });
++    try {
++      cases.push({ count: 0, instant, data: encode({ ...fixture, asOf }), inputHash: hash(fixture),
++        filters: WORKER_FILTER_CASES.map(({ id, options }) => {
++          const overview = model.view(options);
++          return { id, options, overviewHash: hash(overview), monthsHash: hash(overview.months.map(month => model.month(month.key))) };
++        }) });
++    } finally { model.dispose(); }
++  }
++  await writeFile(outputPath, JSON.stringify({ zone: Intl.DateTimeFormat().resolvedOptions().timeZone, cases, calendarChecks }), { mode: 0o600 });
++} else if (mode === "compare") {
++  const inputPath = process.argv[3];
++  const jiti = makeJiti(repo);
++  const { createCashflowModel } = await jiti.import(join(repo, "src/app/cashflow/cashflowModel.ts"));
++  const { cashflowCalendarDate } = await jiti.import(join(repo, "src/lib/server/cashflowCalendar.ts"));
++  const { calendarDate } = await jiti.import(join(repo, "src/app/lib/calendarDates.ts"));
++  const { cashflowCanonicalJson } = await jiti.import(join(repo, "src/app/cashflow/shadowProtocol.ts"));
++  const reference = JSON.parse(await readFile(inputPath, "utf8"));
++  const hash = value => createHash("sha256").update(cashflowCanonicalJson(value)).digest("hex");
++  const calendar = cashflowCalendarDate(Date.parse("2026-10-08T14:23:00Z"), reference.zone);
++  let calendarChecksPassed = 0;
++  for (const { parts, expected } of reference.calendarChecks) {
++    const initial = calendarDate(calendar, ...parts);
++    const actual = [initial.toISOString()];
++    for (const operation of ["day", "month", "year"]) {
++      const next = calendarDate(initial, initial);
++      if (operation === "day") next.setDate(next.getDate() + 1);
++      if (operation === "month") next.setMonth(next.getMonth() + 1);
++      if (operation === "year") next.setFullYear(next.getFullYear() + 1);
++      actual.push(next.toISOString());
++    }
++    assert.deepEqual(actual, expected, `Calendar/DST mismatch: ${reference.zone}/${parts.join("-")}`);
++    calendarChecksPassed += expected.length;
++  }
++  let compared = 0;
++  for (const item of reference.cases) {
++    const dataset = decode(item.data);
++    const before = hash({ snapshot: dataset.snapshot, statements: dataset.statements });
++    assert.equal(before, item.inputHash, "Source data must match the immutable reference");
++    dataset.asOf = cashflowCalendarDate(dataset.asOf.getTime(), reference.zone);
++    assert(dataset.asOf, "Calendar must be supported");
++    const model = createCashflowModel(dataset);
++    try {
++      for (const filter of item.filters) {
++        const overview = model.view(filter.options);
++        const context = `${reference.zone}/${item.instant}/${item.count}/${filter.id}`;
++        assert.equal(hash(overview), filter.overviewHash, `Overview mismatch: ${context}`);
++        assert.equal(hash(overview.months.map(month => model.month(month.key))), filter.monthsHash, `Full month items mismatch: ${context}`);
++        const verified = await model.verification();
++        assert.equal(verified.inputHash, item.inputHash, `Source verification mismatch: ${context}`);
++        assert.equal(verified.monthsHash, filter.monthsHash, `Month verification mismatch: ${context}`);
++        compared++;
++      }
++    } finally { model.dispose(); }
++    assert.equal(hash({ snapshot: dataset.snapshot, statements: dataset.statements }), before, "Source objects were mutated");
++  }
++  console.log(JSON.stringify({ syntheticOnly: true, referenceZone: reference.zone,
++    hostZone: Intl.DateTimeFormat().resolvedOptions().timeZone, datasets: reference.cases.length,
++    filtersCompared: compared, calendarChecksPassed, fullMonthItemsMatch: true, sourceDataUnchanged: true }));
++} else {
++  assert(process.argv.length === 3, "Provide the immutable pre-timezone source directory");
++  const originalRoot = resolve(mode);
++  assert(originalRoot !== repo, "Original/new sources must be separate");
++  const manifest = JSON.parse(await readFile(join(repo, "docs/cashflow-server-pilot-release-2026-10-08.json"), "utf8"));
++  for (const file of manifest.files) {
++    const hash = createHash("sha256").update(await readFile(join(originalRoot, file.path))).digest("hex");
++    assert.equal(hash, file.sha256, "Original pilot source checksum mismatch");
++  }
++  const directory = await mkdtemp(join(tmpdir(), "bohemika-cashflow-timezones-"));
++  const run = async (args, zone) => {
++    const child = spawn(process.execPath, [here, ...args], { env: { PATH: process.env.PATH, TZ: zone }, stdio: ["ignore", "pipe", "pipe"], shell: false });
++    let stdout = "", stderr = "";
++    child.stdout.setEncoding("utf8").on("data", chunk => { stdout += chunk; });
++    child.stderr.setEncoding("utf8").on("data", chunk => { stderr += chunk; });
++    const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
++    if (code !== 0) throw new Error(stderr || "Synthetic comparison process failed");
++    return stdout ? JSON.parse(stdout) : null;
++  };
++  const results = [];
++  try {
++    for (const zone of ["Europe/Prague", "UTC", "America/New_York", "Pacific/Kiritimati"]) {
++      const file = join(directory, `synthetic-${results.length}.json`);
++      await run(["reference", originalRoot, file], zone);
++      results.push(await run(["compare", file], "UTC"));
++      // The same new code in the native browser zone must remain equivalent too.
++      results.push(await run(["compare", file], zone));
++    }
++    console.log(JSON.stringify({ syntheticOnly: true, immutableReferenceSourcesVerified: manifest.files.length,
++      comparisonsPassed: results.reduce((sum, result) => sum + result.filtersCompared, 0), results }));
++  } finally { await rm(directory, { recursive: true, force: true }); }
++}
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+index cc296b3..0f03102 100644
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -193,12 +193,12 @@ describe("read-only server cashflow pilot", () => {
+     expect((await response.json()).reason).toBe(field === "timeZone" ? "time_zone" : "stale_context");
+     expect(mocks.load).not.toHaveBeenCalled();
+   });
+-  it("rejects a different valid IANA timezone before portfolio reads", async () => {
++  it("accepts a different valid IANA timezone with an isolated calculation calendar", async () => {
+     const current = Intl.DateTimeFormat().resolvedOptions().timeZone;
+     const response = await POST(request({ ...await body(), timeZone: current === "UTC" ? "Europe/Prague" : "UTC" }));
+-    expect(response.status).toBe(409);
+-    expect((await response.json()).reason).toBe("time_zone");
+-    expect(mocks.load).not.toHaveBeenCalled();
++    expect(response.status).toBe(200);
++    expect((await response.json()).ok).toBe(true);
++    expect(mocks.load).toHaveBeenCalledOnce();
+   });
+   it("rejects the previous calendar day even within the five-minute clock window", async () => {
+     const now = new Date(2027, 0, 1, 0, 2);
+@@ -208,6 +208,19 @@ describe("read-only server cashflow pilot", () => {
+     expect((await response.json()).reason).toBe("stale_context");
+     expect(mocks.load).not.toHaveBeenCalled();
+   });
++  it("rejects a changed client calendar day before reads even if UTC remains on the same date", async () => {
++    vi.setSystemTime(new Date("2026-12-31T23:01:00Z"));
++    const response = await POST(request({ ...await body(), timeZone: "Europe/Prague", asOfMs: Date.parse("2026-12-31T22:59:00Z") }));
++    expect(response.status).toBe(409);
++    expect((await response.json()).reason).toBe("stale_context");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
++  it.each(["+03:00", "../../Europe/Prague", "Europe/Invalid"])("rejects manipulated timezone %s without portfolio reads", async timeZone => {
++    const response = await POST(request({ ...await body(), timeZone }));
++    expect(response.status).toBe(409);
++    expect((await response.json()).reason).toBe("time_zone");
++    expect(mocks.load).not.toHaveBeenCalled();
++  });
+   it.each([new Date(2026, 2, 29, 12), new Date(2026, 9, 25, 12), new Date(2028, 1, 29, 12)])(
+     "matches the independent original at DST/leap-year boundaries %s", async current => {
+       vi.setSystemTime(current);
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+index d637419..ef59352 100644
+--- a/src/app/api/cashflow/view/route.ts
++++ b/src/app/api/cashflow/view/route.ts
+@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
+ import { createCashflowModel } from "@/app/cashflow/cashflowModel";
+ import { parseCashflowServerRequest, CASHFLOW_SERVER_PILOT_VERSION, type CashflowServerFallbackReason } from "@/app/cashflow/cashflowServerProtocol";
+ import { serializeCashflowSnapshot } from "@/app/cashflow/cashflowSnapshotWire";
+-import { hashCashflowValue, isCashflowShadowContextCurrent } from "@/app/cashflow/shadowProtocol";
++import { hashCashflowValue } from "@/app/cashflow/shadowProtocol";
++import { cashflowCalendarDate, isCashflowCalendarCurrent } from "@/lib/server/cashflowCalendar";
+ import { requireAuthedRateLimited } from "@/lib/server/apiEntryGuard";
+ import { createCashflowDiagnosticTiming, readCashflowDiagnosticJson } from "@/lib/server/cashflowDiagnosticHttp";
+ import { CashflowShadowInputsError, loadCashflowShadowInputs } from "@/lib/server/cashflowShadowInputs";
+@@ -35,8 +36,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+     if (!allowed.has(auth.ctx.email)) return unavailable(403);
+     const body = parseCashflowServerRequest(await readCashflowDiagnosticJson(req));
+     if (!body) return unavailable(400);
+-    if (body.timeZone !== Intl.DateTimeFormat().resolvedOptions().timeZone) return unavailable(409, "time_zone");
+-    if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
++    const asOf = cashflowCalendarDate(body.asOfMs, body.timeZone);
++    if (!asOf) return unavailable(409, "time_zone");
++    if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+ 
+     const inputs = await timing.measure("inputs", () => loadCashflowShadowInputs(req, {
+       freshCashflowContext: true,
+@@ -45,8 +47,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+     if (inputs.effectiveEmail !== auth.ctx.email || inputs.snapshot.email !== auth.ctx.email) return unavailable(403);
+     if (inputs.tipsterMode !== body.options.tipsterMode) return unavailable(409);
+     if (req.signal.aborted) return unavailable(409, "cancelled");
+-    if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
+-    const asOf = new Date(body.asOfMs);
++    if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+     if (!isCashflowShadowWithinBudget(inputs.snapshot, asOf)) return unavailable(503, "resource_limit");
+     const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
+     // Never replace a view from another data version or accept a partially read portfolio.
+@@ -56,7 +57,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+       const overview = await timing.measure("compute", () => model.view(body.options));
+       const verification = await timing.measure("hash", () => model.verification!());
+       if (req.signal.aborted) return unavailable(409, "cancelled");
+-      if (!isCashflowShadowContextCurrent(body.asOfMs)) return unavailable(409, "stale_context");
++      if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+       const context = { ok: true, version: CASHFLOW_SERVER_PILOT_VERSION, kind: body.kind, ...verification };
+       if (body.kind === "view") return json({ ...context, overview });
+       const month = model.month(body.monthKey!);
+diff --git a/src/app/cashflow/cashflowModel.ts b/src/app/cashflow/cashflowModel.ts
+index a2eda30..cbf4f78 100644
+--- a/src/app/cashflow/cashflowModel.ts
++++ b/src/app/cashflow/cashflowModel.ts
+@@ -2,6 +2,7 @@ import { computeCashflow, type CashflowSnapshot } from "./computeCashflow";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+ import { formatCashflowItemCount } from "./cashflowLabels";
+ import { hashCashflowValue } from "./shadowProtocol";
++import { calendarDate } from "@/app/lib/calendarDates";
+ import {
+   applyIntelligentCashflowPrediction,
+   applyStatementMissingPayoutShifts,
+@@ -34,7 +35,7 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
+   if (!(initialDataset.asOf instanceof Date) || !Number.isFinite(initialDataset.asOf.getTime())) {
+     throw new Error("Cashflow dataset requires a valid calculation date");
+   }
+-  let dataset: CashflowDataset | null = { ...initialDataset, asOf: new Date(initialDataset.asOf) };
++  let dataset: CashflowDataset | null = { ...initialDataset, asOf: calendarDate(initialDataset.asOf, initialDataset.asOf) };
+   let currentMonths: MonthGroup[] | null = null;
+   const clearCaches: Array<() => void> = [];
+ 
+diff --git a/src/app/cashflow/computeCashflow.ts b/src/app/cashflow/computeCashflow.ts
+index f324ddc..faf27f4 100644
+--- a/src/app/cashflow/computeCashflow.ts
++++ b/src/app/cashflow/computeCashflow.ts
+@@ -1,4 +1,5 @@
+ import { isInheritedContract } from "@/app/lib/inheritedContracts";
++import { calendarDate } from "@/app/lib/calendarDates";
+ 
+ import {
+   type CommissionMode,
+@@ -112,15 +113,16 @@ const subscriptionOccurrenceKey = (
+   periodFrom: string
+ ): string => `${userKey}|${plan}|${periodFrom}`;
+ 
+-const validTimestampDate = (value: unknown): Date | null => {
++const validTimestampDate = (value: unknown, calendar: Date): Date | null => {
+   if (typeof value !== "number" || !Number.isFinite(value)) return null;
+-  const date = new Date(value);
++  const date = calendarDate(calendar, value);
+   return Number.isNaN(date.getTime()) ? null : date;
+ };
+ 
+ const normalizeSubscriptionPaymentForCashflow = (
+   payment: SubscriptionPaymentApiItem,
+-  index: number
++  index: number,
++  calendar: Date
+ ): NormalizedSubscriptionPayment | null => {
+   const plan = isCashflowSubscriptionPlan(payment.plan) ? payment.plan : null;
+   if (!plan) return null;
+@@ -131,10 +133,10 @@ const normalizeSubscriptionPaymentForCashflow = (
+       : 0;
+   if (!(amount > 0)) return null;
+ 
+-  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom);
++  const periodFromDate = parseSubscriptionIsoDay(payment.periodFrom, calendar);
+   const paymentDate =
+-    validTimestampDate(payment.paymentDateMs) ??
+-    validTimestampDate(payment.createdAtMs) ??
++    validTimestampDate(payment.paymentDateMs, calendar) ??
++    validTimestampDate(payment.createdAtMs, calendar) ??
+     periodFromDate;
+   if (!paymentDate) return null;
+ 
+@@ -325,7 +327,7 @@ export function computeCashflow(
+             ? payout.payoutDate
+             : null;
+         if (payoutTs == null) return acc;
+-        const payoutDate = new Date(payoutTs);
++        const payoutDate = calendarDate(asOf, payoutTs);
+         if (Number.isNaN(payoutDate.getTime())) return acc;
+ 
+         const amount =
+@@ -382,7 +384,7 @@ export function computeCashflow(
+     ? (() => {
+         const normalizedPayments = snapshot.subscriptionPayments
+           .map((payment, index) =>
+-            normalizeSubscriptionPaymentForCashflow(payment, index)
++            normalizeSubscriptionPaymentForCashflow(payment, index, asOf)
+           )
+           .filter((payment): payment is NormalizedSubscriptionPayment =>
+             Boolean(payment)
+@@ -443,7 +445,7 @@ export function computeCashflow(
+           });
+         });
+ 
+-        const forecastHorizonEnd = new Date(asOf);
++        const forecastHorizonEnd = calendarDate(asOf, asOf);
+         forecastHorizonEnd.setFullYear(
+           forecastHorizonEnd.getFullYear() + SUBSCRIPTION_FORECAST_YEARS
+         );
+diff --git a/src/app/cashflow/generator.ts b/src/app/cashflow/generator.ts
+index 1702272..47eb425 100644
+--- a/src/app/cashflow/generator.ts
++++ b/src/app/cashflow/generator.ts
+@@ -5,6 +5,7 @@ import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
+ import { toDate } from "./helpers";
+ import type { CashflowItem, EntryDoc } from "./types";
+ import { applyConfirmedPayoutMatches } from "./payoutPlanMatching";
++import { calendarDate } from "../lib/calendarDates";
+ 
+ type ImmediateCashflowPart = {
+   title: string;
+@@ -37,10 +38,10 @@ export function estimatePayoutDate(
+     : policyStart.getDate();
+ 
+   if (dayForCutoff > cutoffDay) {
+-    return new Date(year, month + 2, payoutDay);
++    return calendarDate(policyStart, year, month + 2, payoutDay);
+   }
+ 
+-  return new Date(year, month + 1, payoutDay);
++  return calendarDate(policyStart, year, month + 1, payoutDay);
+ }
+ 
+ function estimateLifeFirstPayoutDate(
+@@ -52,7 +53,7 @@ function estimateLifeFirstPayoutDate(
+   // později +2 měsíce. Výplata může být už v měsíci počátku,
+   // ale nesmí předcházet samotnému počátku pojištění.
+   const acceptancePayout = estimatePayoutDate(agreementDate, agreementDate, 25, payoutDay);
+-  const earliestPayout = new Date(
++  const earliestPayout = calendarDate(policyStart,
+     policyStart.getFullYear(),
+     policyStart.getMonth() + (policyStart.getDate() > payoutDay ? 1 : 0),
+     payoutDay
+@@ -73,7 +74,7 @@ function estimateAutoFirstPayoutDate(
+   payoutDay = 25
+ ): Date {
+   if (agreementDate && isSameCalendarMonth(policyStart, agreementDate)) {
+-    return new Date(policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
++    return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
+   }
+ 
+   return estimatePayoutDate(policyStart, agreementDate, 25, payoutDay);
+@@ -257,14 +258,14 @@ function amountsMatchExpectedPayout(
+   return Math.abs(candidate - expected) <= tolerance;
+ }
+ 
+-function payoutMonthDateFromKey(value: string | null | undefined): Date | null {
++function payoutMonthDateFromKey(value: string | null | undefined, calendar?: Date): Date | null {
+   const match = String(value ?? "").match(/^(\d{4})-(\d{1,2})$/);
+   if (!match) return null;
+   const year = Number(match[1]);
+   const month = Number(match[2]);
+   if (!Number.isInteger(year) || !Number.isInteger(month)) return null;
+   if (month < 1 || month > 12) return null;
+-  return new Date(year, month - 1, 25);
++  return calendarDate(calendar, year, month - 1, 25);
+ }
+ 
+ function payoutSortValue(payout: IndexedCommissionPayout): number {
+@@ -288,12 +289,13 @@ function isStatementOnlyCommissionPayout(payout: EntryCommissionPayout): boolean
+ }
+ 
+ function indexSettledCommissionPayouts(
+-  payouts: EntryDoc["commissionPayouts"] | undefined | null
++  payouts: EntryDoc["commissionPayouts"] | undefined | null,
++  calendar?: Date
+ ): IndexedCommissionPayout[] {
+   return (payouts ?? [])
+     .map((payout, index): IndexedCommissionPayout | null => {
+       if (!isSettledCommissionPayout(payout)) return null;
+-      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
++      const date = payoutMonthDateFromKey(payout.payoutMonthKey, calendar);
+       if (!date) return null;
+       return {
+         payout,
+@@ -313,12 +315,13 @@ function indexSettledCommissionPayouts(
+ }
+ 
+ function indexStatementOnlyCommissionPayouts(
+-  payouts: EntryDoc["commissionPayouts"] | undefined | null
++  payouts: EntryDoc["commissionPayouts"] | undefined | null,
++  calendar?: Date
+ ): IndexedCommissionPayout[] {
+   return (payouts ?? [])
+     .map((payout, index): IndexedCommissionPayout | null => {
+       if (!isStatementOnlyCommissionPayout(payout)) return null;
+-      const date = payoutMonthDateFromKey(payout.payoutMonthKey);
++      const date = payoutMonthDateFromKey(payout.payoutMonthKey, calendar);
+       if (!date) return null;
+       return {
+         payout,
+@@ -500,8 +503,8 @@ export function generateCashflow(
+ ): CashflowItem[] {
+   const out: CashflowItem[] = [];
+   let globalItemSequence = 0;
+-  const now = new Date(asOf);
+-  const horizonEnd = new Date(
++  const now = calendarDate(asOf, asOf);
++  const horizonEnd = calendarDate(now,
+     now.getFullYear() + horizonYears,
+     now.getMonth(),
+     now.getDate()
+@@ -516,25 +519,25 @@ export function generateCashflow(
+       : null;
+     const status = normalizeContractStatus(entry.status);
+     const isStorno = status === "storno";
+-    const parsedStornoDate = toDate(entry.stornoDate);
++    const parsedStornoDate = toDate(entry.stornoDate, { calendar: now });
+     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
+     const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
+-    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts);
+-    const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts);
++    const settledPayouts = indexSettledCommissionPayouts(scopedPayouts, now);
++    const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts, now);
+     const consumedPayoutKeys = new Set<string>();
+ 
+     const start =
+-      toDate(entry.policyStartDate) ??
+-      toDate(entry.contractSignedDate) ??
+-      toDate(entry.createdAt) ??
+-      new Date(now);
++      toDate(entry.policyStartDate, { calendar: now }) ??
++      toDate(entry.contractSignedDate, { calendar: now }) ??
++      toDate(entry.createdAt, { calendar: now }) ??
++      calendarDate(now, now);
+     const agreement =
+-      toDate(entry.contractSignedDate) ??
+-      toDate(entry.createdAt) ??
+-      toDate(entry.policyStartDate) ??
++      toDate(entry.contractSignedDate, { calendar: now }) ??
++      toDate(entry.createdAt, { calendar: now }) ??
++      toDate(entry.policyStartDate, { calendar: now }) ??
+       start;
+-    const contractSignedDateIso = dateToIsoDay(toDate(entry.contractSignedDate));
+-    const policyEnd = toDate(entry.policyEndDate);
++    const contractSignedDateIso = dateToIsoDay(toDate(entry.contractSignedDate, { calendar: now }));
++    const policyEnd = toDate(entry.policyEndDate, { calendar: now });
+     const policyEndPayoutDate = policyEnd ? estimatePayoutDate(policyEnd) : null;
+     const entryHorizonEnd = earlierDate(
+       horizonEnd,
+@@ -563,9 +566,9 @@ export function generateCashflow(
+         ? storedRefreshBaseMonthlyRaw
+         : currentMonthlyPremium;
+     const lifeRevisionBaseDate =
+-      toDate(entry.contractSignedDate) ??
+-      toDate(entry.policyStartDate) ??
+-      toDate(entry.createdAt) ??
++      toDate(entry.contractSignedDate, { calendar: now }) ??
++      toDate(entry.policyStartDate, { calendar: now }) ??
++      toDate(entry.createdAt, { calendar: now }) ??
+       start;
+ 
+     const inherited = isInheritedContract(entry);
+@@ -573,9 +576,9 @@ export function generateCashflow(
+     // Entitlement follows the premium period, not the later statement/payout date.
+     const commissionPeriods = new Map<number, Date>();
+     const periodAfterMonths = (months: number) => {
+-      const monthStart = new Date(start.getFullYear(), start.getMonth() + months, 1);
+-      const lastDay = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+-      return new Date(monthStart.getFullYear(), monthStart.getMonth(), Math.min(start.getDate(), lastDay));
++      const monthStart = calendarDate(start, start.getFullYear(), start.getMonth() + months, 1);
++      const lastDay = calendarDate(start, monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
++      return calendarDate(start, monthStart.getFullYear(), monthStart.getMonth(), Math.min(start.getDate(), lastDay));
+     };
+     const rememberRecurringPeriod = (payout: Date, firstPayout: Date) => {
+       const period = periodAfterMonths(monthSerial(payout) - monthSerial(firstPayout));
+@@ -715,7 +718,7 @@ export function generateCashflow(
+         currentMonthlyPremium,
+         lifeStornoBaseMonthlyPremium,
+         policyStartDate: start,
+-        contractSignedDate: toDate(entry.contractSignedDate),
++        contractSignedDate: toDate(entry.contractSignedDate, { calendar: now }),
+         lifeRevisionBaseDate,
+         contractStatus: status,
+         stornoDate: stornoCutoffDate,
+@@ -781,7 +784,7 @@ export function generateCashflow(
+           currentMonthlyPremium,
+           lifeStornoBaseMonthlyPremium,
+           policyStartDate: start,
+-          contractSignedDate: toDate(entry.contractSignedDate),
++          contractSignedDate: toDate(entry.contractSignedDate, { calendar: now }),
+           lifeRevisionBaseDate,
+           contractStatus: status,
+           stornoDate: stornoCutoffDate,
+@@ -810,7 +813,7 @@ export function generateCashflow(
+     };
+ 
+     // Bez známého data sjednání zachováme dosavadní konzervativní odhad.
+-    const lifeFirstPayoutDate = toDate(entry.contractSignedDate)
++    const lifeFirstPayoutDate = toDate(entry.contractSignedDate, { calendar: now })
+       ? estimateLifeFirstPayoutDate(start, agreement)
+       : estimatePayoutDate(start, agreement);
+ 
+@@ -837,7 +840,7 @@ export function generateCashflow(
+     const annPlusYears = (years: number) => {
+       const period = inherited
+         ? periodAfterMonths(years * 12)
+-        : new Date(start.getFullYear() + years, start.getMonth(), start.getDate());
++        : calendarDate(start, start.getFullYear() + years, start.getMonth(), start.getDate());
+       const payout = estimatePayoutDate(period);
+       commissionPeriods.set(payout.getTime(), period);
+       return payout;
+@@ -1124,7 +1127,7 @@ export function generateCashflow(
+                   : subsequentDomexMetadata
+             );
+           }
+-          payout = new Date(
++          payout = calendarDate(payout,
+             payout.getFullYear(),
+             payout.getMonth() + stepMonths,
+             payout.getDate()
+@@ -1191,7 +1194,7 @@ export function generateCashflow(
+             pushItem(perPaymentImmediate, payout, undefined, entryHorizonEnd, immediateMetadata);
+           }
+ 
+-          payout = new Date(
++          payout = calendarDate(payout,
+             payout.getFullYear(),
+             payout.getMonth() + stepMonths,
+             payout.getDate()
+@@ -1289,7 +1292,7 @@ export function generateCashflow(
+         const subsequentMetadata = naslGeneric
+           ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
+           : {};
+-        const firstAnniversary = new Date(
++        const firstAnniversary = calendarDate(start,
+           start.getFullYear() + 1,
+           start.getMonth(),
+           start.getDate()
+@@ -1338,7 +1341,7 @@ export function generateCashflow(
+                   )
+                 : immediateMetadata
+           );
+-          payout = new Date(
++          payout = calendarDate(payout,
+             payout.getFullYear(),
+             payout.getMonth() + stepMonths,
+             payout.getDate()
+@@ -1375,7 +1378,7 @@ export function generateCashflow(
+           );
+ 
+           // další měsíce: už jen následná
+-          let payout = new Date(
++          let payout = calendarDate(first,
+             first.getFullYear(),
+             first.getMonth() + 1,
+             first.getDate()
+@@ -1387,7 +1390,7 @@ export function generateCashflow(
+               payout,
+               "Comfort Commodity – následná (měsíčně)"
+             );
+-            payout = new Date(
++            payout = calendarDate(payout,
+               payout.getFullYear(),
+               payout.getMonth() + 1,
+               payout.getDate()
+@@ -1416,7 +1419,7 @@ export function generateCashflow(
+     pushUnmatchedStatementPayouts();
+     if (entry.productKey === "kooperativaAuto") {
+       const entryItems = out.splice(entryOutputStart);
+-      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail));
++      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail, now));
+     }
+   }
+ 
+diff --git a/src/app/cashflow/helpers.ts b/src/app/cashflow/helpers.ts
+index 64137d8..6542d48 100644
+--- a/src/app/cashflow/helpers.ts
++++ b/src/app/cashflow/helpers.ts
+@@ -28,6 +28,7 @@ import type {
+   YearGroup,
+ } from "./types";
+ import { formatMoney, toDate } from "@/app/lib/formatters";
++import { calendarDate } from "@/app/lib/calendarDates";
+ export { formatMoney, toDate };
+ 
+ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
+@@ -222,7 +223,7 @@ export function filterPastItems(
+   now = new Date()
+ ): CashflowItem[] {
+   if (showPastYears) return cashflowItems;
+-  const startCurrentYear = new Date(now.getFullYear(), 0, 1);
++  const startCurrentYear = calendarDate(now, now.getFullYear(), 0, 1);
+   return cashflowItems.filter((item) => item.date >= startCurrentYear);
+ }
+ 
+@@ -281,7 +282,7 @@ export const statementMonthKey = (
+ };
+ 
+ const addMonths = (date: Date, months: number): Date =>
+-  new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
++  calendarDate(date, date.getFullYear(), date.getMonth() + months, date.getDate());
+ 
+ const monthSerial = (date: Date): number =>
+   date.getFullYear() * 12 + date.getMonth();
+@@ -297,7 +298,7 @@ const isStornoStatus = (status: CashflowItem["contractStatus"]): boolean => {
+ 
+ const isOnOrAfterStornoMonth = (item: CashflowItem, date: Date): boolean => {
+   if (!isStornoStatus(item.contractStatus)) return false;
+-  const stornoDate = toDate(item.stornoDate);
++  const stornoDate = toDate(item.stornoDate, { calendar: date });
+   if (!stornoDate) return false;
+   return monthSerial(date) >= monthSerial(stornoDate);
+ };
+@@ -324,7 +325,7 @@ const monthDistance = (from: Date, to: Date): number =>
+   monthSerial(to) - monthSerial(from);
+ 
+ const currentMonthStart = (today: Date): Date =>
+-  new Date(today.getFullYear(), today.getMonth(), 1);
++  calendarDate(today, today.getFullYear(), today.getMonth(), 1);
+ 
+ const roundCashflowAmount = (amount: number): number => Math.round(amount);
+ 
+@@ -402,7 +403,7 @@ const roundToNearest = (value: number, step: number): number =>
+   Math.round(value / step) * step;
+ 
+ const addYears = (date: Date, years: number): Date =>
+-  new Date(date.getFullYear() + years, date.getMonth(), date.getDate());
++  calendarDate(date, date.getFullYear() + years, date.getMonth(), date.getDate());
+ 
+ const validDate = (date: Date | null | undefined): Date | null =>
+   date && !Number.isNaN(date.getTime()) ? date : null;
+@@ -423,9 +424,9 @@ const estimateLifePayoutDate = (
+ ): Date => {
+   const dayForCutoff = agreementDate ? agreementDate.getDate() : policyStart.getDate();
+   if (dayForCutoff > cutoffDay) {
+-    return new Date(policyStart.getFullYear(), policyStart.getMonth() + 2, payoutDay);
++    return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 2, payoutDay);
+   }
+-  return new Date(policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
++  return calendarDate(policyStart, policyStart.getFullYear(), policyStart.getMonth() + 1, payoutDay);
+ };
+ 
+ const nextLifeReviewDate = (
+@@ -730,7 +731,7 @@ const buildLifeReviewCashflowItems = (
+   cashflowItems: CashflowItem[],
+   today: Date
+ ): CashflowItem[] => {
+-  const horizonEnd = new Date(
++  const horizonEnd = calendarDate(today,
+     today.getFullYear() + CASHFLOW_FORECAST_YEARS,
+     today.getMonth(),
+     today.getDate()
+diff --git a/src/app/cashflow/payoutPlanMatching.ts b/src/app/cashflow/payoutPlanMatching.ts
+index a60cf93..a46a3c5 100644
+--- a/src/app/cashflow/payoutPlanMatching.ts
++++ b/src/app/cashflow/payoutPlanMatching.ts
+@@ -61,7 +61,7 @@ export function isAvailablePayoutPlanTarget(item: CashflowItem): boolean {
+ }
+ 
+ /** No C→B aliases, date proximity, amount similarity or counter-based guesses. */
+-export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem[], viewerEmail?: string | null): CashflowItem[] {
++export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem[], viewerEmail?: string | null, calendar?: Date): CashflowItem[] {
+   if (entry.productKey !== "kooperativaAuto") return items;
+   const recipient = normalizedPayoutEmail(viewerEmail);
+   const matches = (entry.cashflowPayoutMatches ?? []).filter(match => normalizedPayoutEmail(match.writtenBy) === recipient);
+@@ -96,7 +96,7 @@ export function applyConfirmedPayoutMatches(entry: EntryDoc, items: CashflowItem
+     if (replacement) return replacement;
+     if (!isKooperativaCPayout(item.productKey, item.commissionCode) || !item.isStatementOnly) return item;
+     const payout = (entry.commissionPayouts ?? []).find(source => source.key === item.commissionPayoutKey && normalizedPayoutEmail(source.writtenBy) === recipient);
+-    const meaning = payout ? describeKooperativaCPayout({ product: entry.productKey, policyStartDate: entry.policyStartDate, payout, payouts: entry.commissionPayouts ?? [] }) : null;
++    const meaning = payout ? describeKooperativaCPayout({ product: entry.productKey, policyStartDate: entry.policyStartDate, payout, payouts: entry.commissionPayouts ?? [], calendar }) : null;
+     return {
+       ...item, payoutPlanStatus: item.amount < 0 ? "correction" : "unmatched",
+       ...(meaning ? { commissionLabel: `${meaning.label} · ${item.commissionCode}` } : {}),
+diff --git a/src/app/cashflow/subscriptionCashflow.ts b/src/app/cashflow/subscriptionCashflow.ts
+index b1cc42b..6da76f2 100644
+--- a/src/app/cashflow/subscriptionCashflow.ts
++++ b/src/app/cashflow/subscriptionCashflow.ts
+@@ -51,7 +51,8 @@ export const subscriptionIntervalMonths = (
+ ): number => CASHFLOW_SUBSCRIPTION_INTERVAL_MONTHS[plan];
+ 
+ export const parseSubscriptionIsoDay = (
+-  value: string | null | undefined
++  value: string | null | undefined,
++  calendar?: Date
+ ): Date | null => {
+   if (typeof value !== "string") return null;
+   const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+@@ -62,7 +63,7 @@ export const parseSubscriptionIsoDay = (
+   if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+     return null;
+   }
+-  const date = new Date(year, month - 1, day);
++  const date = calendarDate(calendar, year, month - 1, day);
+   if (
+     date.getFullYear() !== year ||
+     date.getMonth() !== month - 1 ||
+@@ -84,8 +85,8 @@ export const addSubscriptionMonths = (date: Date, months: number): Date => {
+   const year = date.getFullYear();
+   const month = date.getMonth();
+   const day = date.getDate();
+-  const endOfTargetMonth = new Date(year, month + months + 1, 0).getDate();
+-  return new Date(year, month + months, Math.min(day, endOfTargetMonth));
++  const endOfTargetMonth = calendarDate(date, year, month + months + 1, 0).getDate();
++  return calendarDate(date, year, month + months, Math.min(day, endOfTargetMonth));
+ };
+ 
+ export const subscriptionPeriodUntilIso = (
+@@ -96,7 +97,8 @@ export const subscriptionPeriodUntilIso = (
+     periodFrom,
+     subscriptionIntervalMonths(plan)
+   );
+-  const periodUntil = new Date(nextPeriodStart);
++  const periodUntil = calendarDate(nextPeriodStart, nextPeriodStart);
+   periodUntil.setDate(periodUntil.getDate() - 1);
+   return formatSubscriptionIsoDay(periodUntil);
+ };
++import { calendarDate } from "@/app/lib/calendarDates";
+diff --git a/work/src/app/lib/calendarDates.ts b/src/app/lib/calendarDates.ts
+new file mode 100644
+index 0000000..5ccd68d
+--- /dev/null
++++ b/src/app/lib/calendarDates.ts
+@@ -0,0 +1,31 @@
++/** A date's calendar belongs to that date/model, never to a shared request flag. */
++export type CalendarDateFactory = {
++  from(value: string | number | Date): Date;
++  local(year: number, month: number, day: number, hours: number, minutes: number, seconds: number, milliseconds: number): Date;
++};
++
++const dateCalendars = new WeakMap<Date, CalendarDateFactory>();
++
++export function withDateCalendar(value: Date, factory: CalendarDateFactory): Date {
++  const date = factory.from(value);
++  dateCalendars.set(date, factory);
++  return date;
++}
++
++export function calendarDate(reference: Date | undefined, value: string | number | Date): Date;
++export function calendarDate(reference: Date | undefined, year: number, month: number, day?: number,
++  hours?: number, minutes?: number, seconds?: number, milliseconds?: number): Date;
++export function calendarDate(reference: Date | undefined, value: string | number | Date, month?: number,
++  day = 1, hours = 0, minutes = 0, seconds = 0, milliseconds = 0): Date {
++  const factory = reference ? dateCalendars.get(reference) : undefined;
++  const date = month === undefined
++    ? factory ? factory.from(value) : new Date(value)
++    : factory ? factory.local(value as number, month, day, hours, minutes, seconds, milliseconds)
++      : new Date(value as number, month, day, hours, minutes, seconds, milliseconds);
++  if (factory) dateCalendars.set(date, factory);
++  return date;
++}
++
++export function hasDateCalendar(date: Date | undefined): boolean {
++  return !!date && dateCalendars.has(date);
++}
+diff --git a/src/app/lib/formatters.ts b/src/app/lib/formatters.ts
+index 910e806..82bd5cc 100644
+--- a/src/app/lib/formatters.ts
++++ b/src/app/lib/formatters.ts
+@@ -1,4 +1,5 @@
+ import { type Position } from "@/app/types/domain";
++import { calendarDate, hasDateCalendar } from "./calendarDates";
+ 
+ type DateLike = {
+   seconds: number;
+@@ -8,6 +9,7 @@ type DateLike = {
+ 
+ type ToDateOptions = {
+   parseCzechDate?: boolean;
++  calendar?: Date;
+ };
+ 
+ type FormatMoneyOptions = {
+@@ -45,7 +47,7 @@ export const POSITION_LABELS: Record<Position, string> = {
+ 
+ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
+   if (!value) return null;
+-  if (value instanceof Date) return value;
++  if (value instanceof Date) return hasDateCalendar(options?.calendar) ? calendarDate(options?.calendar, value) : value;
+ 
+   const parseCzechDate = options?.parseCzechDate ?? true;
+ 
+@@ -56,7 +58,7 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
+       const day = Number(cz[1]);
+       const month = Number(cz[2]);
+       const year = Number(cz[3]);
+-      const d = new Date(year, month - 1, day);
++      const d = calendarDate(options?.calendar, year, month - 1, day);
+       return Number.isNaN(d.getTime()) ? null : d;
+     }
+   }
+@@ -68,7 +70,8 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
+     typeof (value as DateLike).toDate === "function"
+   ) {
+     const d = (value as DateLike).toDate?.();
+-    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
++    return d instanceof Date && !Number.isNaN(d.getTime())
++      ? hasDateCalendar(options?.calendar) ? calendarDate(options?.calendar, d) : d : null;
+   }
+ 
+   if (
+@@ -80,11 +83,11 @@ export function toDate(value: unknown, options?: ToDateOptions): Date | null {
+     const ts = value as DateLike;
+     const ms =
+       ts.seconds * 1000 + Math.floor((ts.nanoseconds ?? 0) / 1_000_000);
+-    const d = new Date(ms);
++    const d = calendarDate(options?.calendar, ms);
+     return Number.isNaN(d.getTime()) ? null : d;
+   }
+ 
+-  const d = new Date(value as string | number | Date);
++  const d = calendarDate(options?.calendar, value as string | number | Date);
+   return Number.isNaN(d.getTime()) ? null : d;
+ }
+ 
+diff --git a/src/app/lib/kooperativaCPayoutMeaning.ts b/src/app/lib/kooperativaCPayoutMeaning.ts
+index d6f72ea..6c30a15 100644
+--- a/src/app/lib/kooperativaCPayoutMeaning.ts
++++ b/src/app/lib/kooperativaCPayoutMeaning.ts
+@@ -1,4 +1,5 @@
+ import { toDate } from "./formatters";
++import { calendarDate } from "./calendarDates";
+ 
+ type PayoutSource = {
+   code?: string | null;
+@@ -12,23 +13,24 @@ type PayoutSource = {
+ export const isKooperativaCPayout = (product: unknown, code: unknown): boolean =>
+   product === "kooperativaAuto" && /^C1\d{2,}$/.test(String(code ?? "").trim().toUpperCase());
+ 
+-function statementStart(payout: PayoutSource): Date | null {
++function statementStart(payout: PayoutSource, calendar?: Date): Date | null {
+   const period = payout.statementPeriod?.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+   if (period) {
+-    const date = new Date(Number(period[3]), Number(period[2]) - 1, Number(period[1]));
++    const date = calendarDate(calendar, Number(period[3]), Number(period[2]) - 1, Number(period[1]));
+     return date.getFullYear() === Number(period[3]) && date.getMonth() === Number(period[2]) - 1 && date.getDate() === Number(period[1]) ? date : null;
+   }
+   const month = payout.payoutMonthKey?.match(/^(\d{4})-(0?[1-9]|1[0-2])$/);
+-  return month ? new Date(Number(month[1]), Number(month[2]) - 1, 1) : null;
++  return month ? calendarDate(calendar, Number(month[1]), Number(month[2]) - 1, 1) : null;
+ }
+ 
+ /** Presentation evidence only. Never use this hint to change a coefficient,
+  * premium, payment frequency or to infer a C→B installment number. */
+-export function describeKooperativaCPayout({ product, policyStartDate, payout, payouts = [] }: {
++export function describeKooperativaCPayout({ product, policyStartDate, payout, payouts = [], calendar }: {
+   product: unknown;
+   policyStartDate: unknown;
+   payout: PayoutSource;
+   payouts?: readonly PayoutSource[];
++  calendar?: Date;
+ }): { kind: "subsequentCandidate" | "correction" | "unknown"; label: string; explanation: string } | null {
+   if (!isKooperativaCPayout(product, payout.code)) return null;
+   if (payout.status === "storno" || Number(payout.amount) < 0) return {
+@@ -42,10 +44,10 @@ export function describeKooperativaCPayout({ product, policyStartDate, payout, p
+     kind: "correction", label: "C provize s opravou",
+     explanation: "Ke stejnému kódu a příjemci patří i záporná položka. Výplatu a její opravu je potřeba posuzovat společně.",
+   };
+-  const start = toDate(policyStartDate);
+-  const observed = statementStart(payout);
++  const start = toDate(policyStartDate, { calendar });
++  const observed = statementStart(payout, calendar);
+   if (start && Number.isFinite(start.getTime()) && observed && Number.isFinite(payout.amount) && Number(payout.amount) > 0 && ["paid", "difference"].includes(payout.status ?? "")) {
+-    const anniversary = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
++    const anniversary = calendarDate(start, start.getFullYear() + 1, start.getMonth(), start.getDate());
+     if (observed >= anniversary) return {
+       kind: "subsequentCandidate", label: "Pravděpodobná následná provize",
+       explanation: "Kladná C výplata je ve výpisu po prvním výročí smlouvy. To odpovídá následné provizi, ale samo neurčuje, kterou splátku plánu nahrazuje.",
+diff --git a/work/src/lib/server/cashflowCalendar.test.ts b/src/lib/server/cashflowCalendar.test.ts
+new file mode 100644
+index 0000000..64e59f4
+--- /dev/null
++++ b/src/lib/server/cashflowCalendar.test.ts
+@@ -0,0 +1,100 @@
++import { describe, expect, it } from "vitest";
++import { calendarDate, hasDateCalendar } from "@/app/lib/calendarDates";
++import { toDate } from "@/app/lib/formatters";
++import { createCashflowModel } from "@/app/cashflow/cashflowModel";
++import { cashflowCanonicalJson } from "@/app/cashflow/shadowProtocol";
++import { cashflowCalendarDate, isCashflowCalendarCurrent } from "./cashflowCalendar";
++import { WORKER_FILTER_CASES } from "../../../scripts/cashflow-worker/fixtures";
++
++const ms = Date.parse("2026-10-08T14:23:00Z");
++const root = (zone = "Europe/Prague") => cashflowCalendarDate(ms, zone)!;
++
++describe("isolated cashflow calendar", () => {
++  it.each(["", "different/zone", "../../Europe/Prague", "+03:00", "x".repeat(101)])("rejects unsupported zone %s", zone => {
++    expect(cashflowCalendarDate(ms, zone)).toBeNull();
++  });
++  it("does not change the environment or native date/calendar", () => {
++    const before = { env: process.env.TZ, zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++      date: new Date(2026, 11, 25).toISOString() };
++    calendarDate(root(), 2026, 11, 25);
++    expect({ env: process.env.TZ, zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
++      date: new Date(2026, 11, 25).toISOString() }).toEqual(before);
++  });
++  it.each([
++    ["Europe/Prague", 11, "2026-12-24T23:00:00.000Z"],
++    ["Europe/Prague", 5, "2026-06-24T22:00:00.000Z"],
++    ["America/New_York", 11, "2026-12-25T05:00:00.000Z"],
++    ["America/New_York", 5, "2026-06-25T04:00:00.000Z"],
++    ["Pacific/Kiritimati", 11, "2026-12-24T10:00:00.000Z"],
++  ])("creates payout dates with the correct seasonal offset in %s, month %s", (zone, month, expected) => {
++    const date = calendarDate(root(zone), 2026, Number(month), 25);
++    expect(date.toISOString()).toBe(expected);
++    expect([date.getFullYear(), date.getMonth(), date.getDate()]).toEqual([2026, month, 25]);
++    expect(JSON.parse(cashflowCanonicalJson(date))).toBe(expected);
++  });
++  it("retains exact instants and source object identity without mutating source dates", () => {
++    const value = new Date("2026-11-30T23:30:00Z");
++    expect(toDate(value)).toBe(value);
++    const parsed = toDate(value, { calendar: root() })!;
++    expect(parsed.getTime()).toBe(value.getTime());
++    expect([parsed.getMonth(), parsed.getDate()]).toEqual([11, 1]);
++    expect(value.toISOString()).toBe("2026-11-30T23:30:00.000Z");
++  });
++  it("preserves date-only ISO UTC semantics and local Czech/ISO datetime semantics", () => {
++    const reference = root();
++    expect(toDate("2026-12-01", { calendar: reference })!.toISOString()).toBe("2026-12-01T00:00:00.000Z");
++    expect(toDate("1.12.2026", { calendar: reference })!.toISOString()).toBe("2026-11-30T23:00:00.000Z");
++    expect(toDate("2026-12-01T00:00:00.125", { calendar: reference })!.toISOString()).toBe("2026-11-30T23:00:00.125Z");
++    expect(toDate("2026-12-01T00:00:00+01:00", { calendar: reference })!.toISOString()).toBe("2026-11-30T23:00:00.000Z");
++    expect(toDate({ seconds: 1796081400 }, { calendar: reference })!.getTime()).toBe(1796081400000);
++  });
++  it("rejects invalid date-time values instead of normalizing invalid months", () => {
++    expect(toDate("2026-13-01T00:00:00", { calendar: root() })).toBeNull();
++  });
++  it("uses the earlier DST fold for constructed local times and preserves real later instants", () => {
++    const reference = root();
++    expect(calendarDate(reference, 2026, 9, 25, 2, 30).toISOString()).toBe("2026-10-25T00:30:00.000Z");
++    expect(toDate("2026-10-25T02:30:00", { calendar: reference })!.toISOString()).toBe("2026-10-25T00:30:00.000Z");
++    const later = toDate("2026-10-25T02:30:00+01:00", { calendar: reference })!;
++    expect(later.toISOString()).toBe("2026-10-25T01:30:00.000Z");
++    const shifted = calendarDate(reference, 2026, 9, 24, 2, 30);
++    shifted.setDate(25);
++    expect(shifted.toISOString()).toBe("2026-10-25T00:30:00.000Z");
++  });
++  it("copies calendar context through date arithmetic and garbage-collectable model dates", () => {
++    const reference = root("Pacific/Kiritimati");
++    const day = calendarDate(reference, 2026, 11, 31);
++    const next = calendarDate(day, day);
++    next.setDate(next.getDate() + 1);
++    expect(next.toISOString()).toBe("2026-12-31T10:00:00.000Z");
++    expect(day.toISOString()).toBe("2026-12-30T10:00:00.000Z");
++    if (Intl.DateTimeFormat().resolvedOptions().timeZone !== "Pacific/Kiritimati") expect(hasDateCalendar(next)).toBe(true);
++  });
++  it("checks freshness at the client's midnight even while the host is still on the same day", () => {
++    const before = cashflowCalendarDate(Date.parse("2026-12-31T22:59:00Z"), "Europe/Prague")!;
++    expect(isCashflowCalendarCurrent(before, Date.parse("2026-12-31T23:01:00Z"))).toBe(false);
++    const after = cashflowCalendarDate(Date.parse("2026-12-31T23:00:30Z"), "Europe/Prague")!;
++    expect(isCashflowCalendarCurrent(after, Date.parse("2026-12-31T23:01:00Z"))).toBe(true);
++    expect(isCashflowCalendarCurrent(after, after.getTime() + 300001)).toBe(false);
++  });
++  it("keeps interleaved and concurrently scheduled models in their own calendars", async () => {
++    const snapshot = { email: "advisor@example.test", myPosition: null, myCommissionMode: null, hasAnyTeam: false,
++      ownEntries: [{ id: "synthetic-life", userEmail: "advisor@example.test", productKey: "neon" as const,
++        contractSignedDate: "8.10.2026", policyStartDate: "1.12.2026",
++        items: [{ code: "A101", title: "Okamžitá provize", amount: 1000 }] }],
++      teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [] };
++    const before = cashflowCanonicalJson(snapshot);
++    const zones = ["Europe/Prague", "America/New_York", "UTC", "Pacific/Kiritimati"];
++    const models = zones.map(zone => createCashflowModel({ snapshot, statements: [], asOf: root(zone) }));
++    try {
++      const results = await Promise.all(models.map(async model => {
++        await Promise.resolve();
++        model.view(WORKER_FILTER_CASES[0].options);
++        return model.month("2026-12")!.items[0].date.toISOString();
++      }));
++      expect(results).toEqual(["2026-12-24T23:00:00.000Z", "2026-12-25T05:00:00.000Z",
++        "2026-12-25T00:00:00.000Z", "2026-12-24T10:00:00.000Z"]);
++      expect(cashflowCanonicalJson(snapshot)).toBe(before);
++    } finally { models.forEach(model => model.dispose()); }
++  });
++});
+diff --git a/work/src/lib/server/cashflowCalendar.ts b/src/lib/server/cashflowCalendar.ts
+new file mode 100644
+index 0000000..7037fa5
+--- /dev/null
++++ b/src/lib/server/cashflowCalendar.ts
+@@ -0,0 +1,77 @@
++import { TZDateMini } from "@date-fns/tz/date/mini";
++import { tzOffset } from "@date-fns/tz/tzOffset";
++import { calendarDate, withDateCalendar, type CalendarDateFactory } from "@/app/lib/calendarDates";
++import { CASHFLOW_SHADOW_MAX_AGE_MS } from "@/app/cashflow/shadowProtocol";
++
++/** Native Date chooses the earlier instant when a local time occurs twice.
++ * TZDateMini can choose the later one on a UTC host. An earlier candidate is
++ * accepted only if all calendar fields are identical. Instants loaded from
++ * timestamps/offset strings are never disambiguated or changed.
++ */
++function preferEarlierFold(date: CashflowCalendarDate): CashflowCalendarDate {
++  const ms = date.getTime();
++  if (!Number.isFinite(ms)) return date;
++  const delta = Math.round((tzOffset(date.timeZone!, new Date(ms - 86_400_000)) - tzOffset(date.timeZone!, date)) * 60_000);
++  if (!(delta > 0)) return date;
++  const earlier = new TZDateMini(ms - delta, date.timeZone);
++  if (["getFullYear", "getMonth", "getDate", "getHours", "getMinutes", "getSeconds", "getMilliseconds"]
++    .every(method => {
++      const getter = method as "getFullYear";
++      return earlier[getter]() === date[getter]();
++    })) date.setTime(earlier.getTime());
++  return date;
++}
++
++class CashflowCalendarDate extends TZDateMini {}
++// Local setters have native compatible disambiguation; UTC setters/setTime
++// retain absolute instants, including an actually paid second fold occurrence.
++for (const method of ["setFullYear", "setMonth", "setDate", "setHours", "setMinutes", "setSeconds", "setMilliseconds"] as const) {
++  const setter = TZDateMini.prototype[method] as (...args: number[]) => number;
++  Object.defineProperty(CashflowCalendarDate.prototype, method, {
++    value(this: CashflowCalendarDate, ...args: number[]) {
++      setter.apply(this, args);
++      return preferEarlierFold(this).getTime();
++    }, configurable: true, writable: true,
++  });
++}
++
++/** Validated IANA zone; no environment writes, global Date replacement or account cache. */
++export function cashflowCalendarDate(asOfMs: number, timeZone: string): Date | null {
++  try {
++    const canonicalZone = new Intl.DateTimeFormat("en", { timeZone }).resolvedOptions().timeZone;
++    if (/^[+-]/.test(canonicalZone) || !Number.isFinite(new Date(asOfMs).getTime())) return null;
++    if (canonicalZone === Intl.DateTimeFormat().resolvedOptions().timeZone) return new Date(asOfMs);
++    const factory: CalendarDateFactory = {
++      from(value) {
++        if (typeof value === "string") {
++          const text = value.trim();
++          // Date-only ISO strings have UTC semantics in native Date. Preserve them.
++          // ISO date-times without an offset have local calendar semantics.
++          const local = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
++          if (local) {
++            if (!Number.isFinite(new Date(`${text}Z`).getTime())) return new TZDateMini(NaN, canonicalZone);
++            return preferEarlierFold(new CashflowCalendarDate(Number(local[1]), Number(local[2]) - 1, Number(local[3]),
++              Number(local[4]), Number(local[5]), Number(local[6] ?? 0), Number((local[7] ?? "0").padEnd(3, "0")), canonicalZone));
++          }
++          if (!/^\d{4}-\d{2}-\d{2}$/.test(text) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)) {
++            // A host-dependent legacy parser cannot prove browser equivalence.
++            throw new Error("Unsupported cashflow date format");
++          }
++        }
++        return typeof value === "string" ? new CashflowCalendarDate(value, canonicalZone)
++          : new CashflowCalendarDate(value instanceof Date ? value.getTime() : value, canonicalZone);
++      },
++      local: (year, month, day, hours, minutes, seconds, milliseconds) =>
++        preferEarlierFold(new CashflowCalendarDate(year, month, day, hours, minutes, seconds, milliseconds, canonicalZone)),
++    };
++    return withDateCalendar(new Date(asOfMs), factory);
++  } catch { return null; }
++}
++
++/** Freshness is evaluated in the same calendar as the computation, including midnight. */
++export function isCashflowCalendarCurrent(asOf: Date, nowMs = Date.now()): boolean {
++  if (!Number.isFinite(asOf.getTime()) || !Number.isFinite(nowMs) ||
++    Math.abs(nowMs - asOf.getTime()) > CASHFLOW_SHADOW_MAX_AGE_MS) return false;
++  const now = calendarDate(asOf, nowMs);
++  return asOf.getFullYear() === now.getFullYear() && asOf.getMonth() === now.getMonth() && asOf.getDate() === now.getDate();
++}
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+index bc22094..d87fd7f 100644
+--- a/src/lib/server/cashflowShadowBudget.ts
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -55,7 +55,7 @@ export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: D
+     for (const field of ["policyStartDate", "contractSignedDate", "createdAt", "policyEndDate", "stornoDate", "transferEffectiveDate"] as const) {
+       const value = entry[field];
+       if (value == null) continue;
+-      const date = toDate(value);
++      const date = toDate(value, { calendar: asOf });
+       if (!date || !Number.isFinite(date.getTime()) || date.getFullYear() < 1900 || date.getFullYear() > maxDateYear) return false;
+       if (field === "policyStartDate" || field === "contractSignedDate" || field === "createdAt") {
+         earliestMonth = Math.min(earliestMonth, date.getFullYear() * 12 + date.getMonth());

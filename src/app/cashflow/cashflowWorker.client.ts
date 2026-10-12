@@ -1,5 +1,5 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
-import type { CashflowDataset, CashflowModel, CashflowOverview } from "./cashflowWorker.types";
+import type { CashflowDataset, CashflowModel, CashflowOverview, CashflowVerification } from "./cashflowWorker.types";
 import type { MonthGroup } from "./types";
 
 export type CashflowWorkerPort = Pick<Worker, "postMessage" | "addEventListener" | "removeEventListener" | "terminate">;
@@ -7,16 +7,19 @@ export type CashflowWorkerRequest =
   | { kind: "init"; id: 0; dataset: CashflowDataset }
   | { kind: "view"; id: number; revision: number; options: CashflowViewOptions }
   | { kind: "month"; id: number; revision: number; key: string }
+  | { kind: "verify"; id: number; revision: number }
   | { kind: "dispose" };
 export type CashflowWorkerResponse =
   | { kind: "init"; id: 0; ok: true }
   | { kind: "view"; id: number; revision: number; ok: true; result: CashflowOverview }
   | { kind: "month"; id: number; revision: number; ok: true; result: MonthGroup | null }
+  | { kind: "verify"; id: number; revision: number; ok: true; result: CashflowVerification }
   | { kind: string; id: number; ok: false };
 export type CashflowWorkerClient = {
   view(options: CashflowViewOptions): Promise<CashflowOverview>;
   /** Only valid after the most recently requested view has completed. */
   month(key: string): Promise<MonthGroup | null>;
+  verification?(): Promise<CashflowVerification>;
   dispose(): void;
   readonly executionPath: "pending" | "worker" | "fallback" | "disposed";
 };
@@ -30,6 +33,7 @@ type Job = {
 } & (
   | { kind: "view"; resolve(result: CashflowOverview): void }
   | { kind: "month"; key: string; resolve(result: MonthGroup | null): void }
+  | { kind: "verify"; resolve(result: CashflowVerification): void }
 );
 type Active = Job | { kind: "init"; id: 0 };
 
@@ -106,8 +110,14 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
           fallbackRevision = job.revision;
         }
         if (!current(job)) return;
-        const result = model.month(job.key);
-        if (current(job)) job.resolve(result);
+        if (job.kind === "verify") {
+          if (!model.verification) throw new Error("Cashflow verification unavailable");
+          const result = await model.verification();
+          if (current(job)) job.resolve(result);
+        } else {
+          const result = model.month(job.key);
+          if (current(job)) job.resolve(result);
+        }
       }
     } catch {
       if (current(job)) job.reject(new Error("Cashflow calculation failed"));
@@ -143,6 +153,12 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
         onFailure(); return;
       }
       if (current(active)) { readyRevision = active.revision; active.resolve(result); }
+    } else if (active.kind === "verify") {
+      const result = response.result as CashflowVerification | null;
+      if (!result || ![result.inputHash, result.monthsHash].every(hash => typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash))) {
+        onFailure(); return;
+      }
+      if (current(active) && readyRevision === active.revision) active.resolve(result);
     } else if (active.kind === "month") {
       const result = response.result as MonthGroup | null;
       if (result !== null && (!result || result.key !== active.key || !Array.isArray(result.items))) { onFailure(); return; }
@@ -175,9 +191,9 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
     if (!current(job)) { drain(); return; }
     active = job;
     if (path === "fallback") { void finishFallback(job); return; }
-    send(job.kind === "view"
-      ? { kind: "view", id: job.id, revision: job.revision, options: job.options }
-      : { kind: "month", id: job.id, revision: job.revision, key: job.key });
+    if (job.kind === "view") send({ kind: "view", id: job.id, revision: job.revision, options: job.options });
+    else if (job.kind === "verify") send({ kind: "verify", id: job.id, revision: job.revision });
+    else send({ kind: "month", id: job.id, revision: job.revision, key: job.key });
   }
   const enqueue = (job: Job) => {
     cancel(active);
@@ -200,6 +216,11 @@ export function createCashflowWorkerClient({ dataset, createWorker = defaultFact
       if (path === "disposed" || !latestOptions || readyRevision !== revision) return Promise.reject(abortError());
       return new Promise((resolve, reject) => enqueue({ kind: "month", id: ++sequence,
         revision, options: latestOptions!, key, cancelled: false, resolve, reject }));
+    },
+    verification() {
+      if (path === "disposed" || !latestOptions || readyRevision !== revision) return Promise.reject(abortError());
+      return new Promise((resolve, reject) => enqueue({ kind: "verify", id: ++sequence,
+        revision, options: latestOptions!, cancelled: false, resolve, reject }));
     },
     dispose() {
       if (path === "disposed") return;

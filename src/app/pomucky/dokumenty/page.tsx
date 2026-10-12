@@ -32,6 +32,7 @@ const DOCUMENT_SECTIONS: readonly DocumentSection[] = [
       "Checklist vstupních údajů klienta",
       "Vzory doporučení pojistné částky",
       "Shrnutí rizik a potřeb klienta",
+      "ČPP NEON Life 2026 vs. Generali Bel Mondo 20 – srovnání a PDF",
     ],
   },
   {

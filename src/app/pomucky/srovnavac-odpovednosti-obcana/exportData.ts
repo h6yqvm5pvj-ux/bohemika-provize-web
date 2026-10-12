@@ -8,7 +8,7 @@ export type ExportSettings = {
   onlyDifferences: boolean;
 };
 
-export type ExportCell = { summary: string; detail?: string; context?: string; tone: ComparisonTone };
+export type ExportCell = { summary: string; detail?: string; context?: string; tone: ComparisonTone; links?: { label: string; url: string }[] };
 export type ExportRow = { id: string; title: string; parentLabel?: string; cells: ExportCell[] };
 export type ExportSection = { id: string; title: string; rows: ExportRow[] };
 export type LiabilityReport = { products: LiabilityProduct[]; sections: ExportSection[]; includeDetails: boolean; onlyDifferences: boolean };

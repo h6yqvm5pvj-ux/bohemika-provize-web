@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "observationDate": "2026-10-09",
+  "observationSource": "User-provided diagnostic text following the own-filter procedure and removal of the previous stored diagnostic",
+  "domain": "https://bohemka.app",
+  "pilotMode": "compare",
+  "selectionAssociation": {
+    "latestVisibleScopeFilter": "own",
+    "latestVisibleProductFilter": "all",
+    "requestOptionsCaptured": false,
+    "basis": "Follow-up to the own-filter screenshot and requested measurement procedure. The diagnostic itself does not include the request selection."
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 12570.4,
+    "referenceMs": 34.8,
+    "serverTimingMs": {
+      "cashflow_auth": 2248.03,
+      "cashflow_inputs": 9018.69,
+      "cashflow_hash": 259.97,
+      "cashflow_compute": 803.59,
+      "cashflow_total": 12374.94
+    }
+  },
+  "freshnessEvidence": {
+    "previousDiagnosticRemovalObserved": true,
+    "emptyDiagnosticObservedBeforeFollowUp": true,
+    "timingsDifferFromPreviousTeamSample": true,
+    "viewResourceEntryCount": 6,
+    "lastResourceDurationMs": 12525,
+    "priorUnconfirmedObservation": "cashflow-server-pilot-live-own-unconfirmed-2026-10-09.json"
+  },
+  "interpretation": {
+    "freshCompletedViewMatchVerified": true,
+    "ownScopeMatchVerifiedByProcedure": true,
+    "requestScopeIndependentlyVerified": false,
+    "inputFingerprintMatched": true,
+    "fullMonthItemFingerprintMatched": true,
+    "allOverviewFieldsMatched": true,
+    "pageMeasurementAvailable": false,
+    "allFilterCombinationsLiveVerified": false,
+    "monthDetailEndpointLiveVerified": false,
+    "idleContextRenewalLiveVerified": false,
+    "productionSpeedupVerified": false,
+    "displayCalculation": "original-client-reference",
+    "referenceMsExcludesInitialSourceReadsAndBackgroundVerification": true
+  },
+  "releaseAssociation": {
+    "expectedReleaseDeploymentId": "dpl_HFViReVeKpL9p84M1Ztb8AxS8va7",
+    "requestDeploymentIdCaptured": false,
+    "currentHostingMetadataReverified": false,
+    "lastVerifiedAliasAt": "2026-10-08T18:08:36.563Z"
+  },
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationRuntimeCodeChanged": false,
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": [
+    "A new filter after more than five minutes idle without reloading",
+    "Prediction and monthly detail comparison"
+  ]
+}

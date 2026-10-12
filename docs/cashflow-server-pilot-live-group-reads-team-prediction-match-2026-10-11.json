@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-11T13:06:54+02:00",
+  "source": "User-provided screenshot following instructions to enable prediction on the team overview, wait without reloading and print the diagnostic; the preceding screenshot showed prediction off and a different diagnostic",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 10740,
+    "referenceMs": 150.7,
+    "serverTimingMs": {
+      "cashflow_auth": 1475.09,
+      "cashflow_inputs": 6157.23,
+      "cashflow_hash": 312.42,
+      "cashflow_compute": 1172.14,
+      "cashflow_inputs_profile": 893.18,
+      "cashflow_inputs_own_contracts_identity": 868.58,
+      "cashflow_inputs_own_contracts_team_context": 77.84,
+      "cashflow_inputs_own_contracts_subscription": 29.66,
+      "cashflow_inputs_own_contracts_count": 47.35,
+      "cashflow_inputs_subscriptions": 1066.62,
+      "cashflow_inputs_tips": 1137.44,
+      "cashflow_inputs_statements": 1768.96,
+      "cashflow_inputs_own_contracts_entries": 1995.23,
+      "cashflow_inputs_own_contracts_response": 14.63,
+      "cashflow_inputs_own_contracts": 3041.86,
+      "cashflow_inputs_team_contracts_identity": 2142.46,
+      "cashflow_inputs_team_contracts_team_context": 46.79,
+      "cashflow_inputs_team_contracts_subscription": 32.16,
+      "cashflow_inputs_team_contracts_count": 305.65,
+      "cashflow_inputs_team_contracts_entries": 1949.14,
+      "cashflow_inputs_team_contracts_response": 10.38,
+      "cashflow_inputs_team_contracts": 4190.02,
+      "cashflow_total": 9201.15
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "transcribedMillisecondsRoundedToTwoDecimals": true,
+    "innerContractMetricCount": 12,
+    "newDiagnosticResultVisible": true,
+    "previousDiagnosticRemovalVisible": false,
+    "selectionBinding": "Visible prediction-on controls and preceding instructions, with a distinct diagnostic from the preceding prediction-off screenshot; request options and deployment ID are not independently captured",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+    "currentAlias": {
+      "checkedAt": "2026-10-11T11:22:00.491Z",
+      "domain": "https://bohemka.app",
+      "deploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "expectedDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "deploymentVerified": true,
+      "groupReadsPatchVerified": true,
+      "concurrencyPatchVerified": true,
+      "relevantRuntimeFilesVerified": 7,
+      "businessDataRead": false,
+      "businessDataWrites": false,
+      "productionSecretsChanged": false
+    },
+    "currentHostingDeploymentIndependentlyVerified": true,
+    "requestDeploymentIndependentlyCaptured": false,
+    "sameVisibleSelectionObservationCount": 2,
+    "sameSelectionObservationsAcrossDays": true,
+    "controlledRepeatedPerformanceSamplesCollected": false,
+    "productionSpeedupEstablished": false,
+    "wholePageLatencyMeasured": false,
+    "serverOnlyMigrationComplete": false
+  },
+  "sourceAnalysis": {
+    "localRelevantSourceFilesMatchReleaseManifest": true,
+    "localRelevantSourceFilesVerified": 7,
+    "contractSourceDurationsSumMs": 7231.88,
+    "inputSpanAfterProfileMs": 5264.05,
+    "netOverlapIndicatedMs": 1967.83,
+    "overlapInferredFromDurationTotals": true,
+    "exactTimelineCaptured": false,
+    "inputsPercentOfServerTotal": 66.92,
+    "actualOwnerGroupCountCaptured": false,
+    "groupReadAheadActivationIndependentlyCaptured": false,
+    "identifiedDelay": "Input loading remains the largest elapsed block. The second visible team/prediction-on observation is on another day, so the faster request does not establish stable or causal speedup.",
+    "specificDatabaseQueryBottleneckEstablished": false,
+    "causalSpeedupEstablished": false,
+    "nextVerification": "Verify the own overview without prediction and a separate month detail on this release; further repeated team console samples alone will not establish a controlled performance gain."
+  },
+  "previousSameSelectionObservation": {
+    "file": "cashflow-server-pilot-live-group-reads-team-prediction-match-2026-10-10.json",
+    "observedAt": "2026-10-10T14:54:04+02:00",
+    "requestMs": 12243.1,
+    "requestDeltaMs": -1503.1,
+    "requestDeltaPercent": -12.28,
+    "controlledBeforeAfterExperiment": false,
+    "samePortfolioAndInfrastructureIndependentlyVerified": false
+  },
+  "hostingAccessRecovery": {
+    "initialCheck": {
+      "checkedAt": "2026-10-11T11:16:47.954Z",
+      "localAccessTokenPresent": true,
+      "localRefreshTokenPresent": true,
+      "localExpirationRecorded": true,
+      "localAccessTokenExpired": true,
+      "results": [
+        {
+          "endpoint": "identity",
+          "httpStatus": 403,
+          "errorCode": "forbidden",
+          "forbiddenTokenExpired": false
+        },
+        {
+          "endpoint": "productionAlias",
+          "httpStatus": 403,
+          "errorCode": "forbidden",
+          "forbiddenTokenExpired": false
+        },
+        {
+          "endpoint": "expectedDeployment",
+          "httpStatus": 403,
+          "errorCode": "forbidden",
+          "forbiddenTokenExpired": false
+        }
+      ],
+      "businessDataRead": false,
+      "businessDataWrites": false,
+      "productionChanged": false
+    },
+    "localTokenExpirationEstablished": true,
+    "existingCliRefreshSucceeded": true,
+    "userInteractiveLoginRequired": false,
+    "subsequentHostingMetadataVerified": true,
+    "rawCliOutputStoredInRepository": false,
+    "productionSecretsChanged": false
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "runtimeChanged": false,
+  "businessDataWrites": false,
+  "productionSecretsChanged": false
+}

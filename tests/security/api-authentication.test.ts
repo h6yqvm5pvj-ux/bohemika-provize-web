@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withRateLimitHeaders, type AuthedRateLimitContext } from "@/lib/server/apiEntryGuard";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASHFLOW_SHADOW_VERSION } from "@/app/cashflow/shadowProtocol";
+import { CASHFLOW_SERVER_PILOT_VERSION } from "@/app/cashflow/cashflowServerProtocol";
 
 const doubles = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
@@ -86,6 +87,8 @@ beforeEach(() => {
   vi.stubEnv("CASHFLOW_CANDIDATES_ENABLED", "1");
   vi.stubEnv("CASHFLOW_CACHE_TRACK_WRITES", "1");
   vi.stubEnv("CASHFLOW_SHADOW_EMAILS", "advisor@example.test");
+  vi.stubEnv("CASHFLOW_SERVER_PILOT_ENABLED", "1");
+  vi.stubEnv("CASHFLOW_SERVER_PILOT_EMAILS", "advisor@example.test");
   vi.stubEnv("CRON_SECRET", "synthetic-cron-secret-for-local-tests");
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -113,7 +116,8 @@ describe.each([
       doubles.isBlocked.mockResolvedValue(bearer === "blocked-account");
     }
     const body = route.startsWith("cashflow/") ? {
-      version: CASHFLOW_SHADOW_VERSION, asOfMs: Date.now(),
+      version: route === "cashflow/view" ? CASHFLOW_SERVER_PILOT_VERSION : CASHFLOW_SHADOW_VERSION,
+      kind: "view", asOfMs: Date.now(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       inputHash: "a".repeat(64), itemsHash: "b".repeat(64), monthsHash: "c".repeat(64),
       options: {

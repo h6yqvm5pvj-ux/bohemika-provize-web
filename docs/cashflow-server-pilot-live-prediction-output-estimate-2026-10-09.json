@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T09:36:51+02:00",
+  "observationSource": "User-provided browser screenshot of the tested scope-console probe with prediction enabled",
+  "domain": "https://bohemka.app",
+  "probe": "scripts/cashflow-pilot-scope-console.js",
+  "selection": {
+    "before": "own",
+    "requested": "team",
+    "after": "team",
+    "visibleScopeFilter": "team",
+    "visibleProductFilter": "all",
+    "contractNumberQueryEmpty": true,
+    "predictionVisiblyEnabled": true,
+    "requestOptionsCaptured": false
+  },
+  "probeResult": {
+    "waitMs": 11308,
+    "newViewResourceEntryCount": 1,
+    "newViewResourceDurationMs": 11152
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "unavailable",
+    "requestMs": 11207.5,
+    "referenceMs": 52,
+    "serverTimingMs": {
+      "cashflow_auth": 969.38,
+      "cashflow_inputs": 8373.43,
+      "cashflow_total": 9410.25
+    },
+    "reason": "resource_limit",
+    "httpStatus": 503,
+    "resourceLimit": "output_estimate"
+  },
+  "interpretation": {
+    "newRequestObservedAfterProbeStart": true,
+    "predictionLiveVerified": false,
+    "fullMonthItemFingerprintMatched": false,
+    "computeTimingPresent": false,
+    "outputEstimateRejectedBeforeModelComputation": true,
+    "displayCalculation": "original-client-reference",
+    "productionSpeedupVerified": false
+  },
+  "releaseAssociation": {
+    "expectedReleaseDeploymentId": "dpl_HFViReVeKpL9p84M1Ztb8AxS8va7",
+    "requestDeploymentIdCaptured": false,
+    "currentHostingMetadataReverified": false
+  },
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": [
+    "Deploy reviewed life-review budget correction after hosting access is restored",
+    "Prediction-enabled view comparison",
+    "Monthly detail comparison"
+  ]
+}

@@ -116,7 +116,7 @@ const loadConversation = async (email: string, conversationId: string) => {
   const snapshot = await ref.get();
   const data = (snapshot.data() ?? {}) as Record<string, unknown>;
   if (!snapshot.exists || data.groupConversation !== true) return null;
-  return { ref, data };
+  return { ref, data, updateTime: snapshot.updateTime };
 };
 
 const propagateGroupMetadata = async ({
@@ -327,8 +327,16 @@ export async function PATCH(req: NextRequest) {
 
     const participantEmails = participants.map((participant) => participant.email);
     const nowMs = Date.now();
+    if (!loaded.updateTime) throw new Error("Missing conversation version");
     const batch = adminDb.batch();
+    // Serialize owner operations against the source snapshot. A concurrent
+    // add/rename must not restore a participant removed by another request.
+    batch.update(loaded.ref, {
+      groupName, groupOwnerEmail: ownerEmail, participants, participantEmails,
+      active: true, updatedAtMs: nowMs, updatedAt: FieldValue.serverTimestamp(),
+    }, { lastUpdateTime: loaded.updateTime });
     participants.forEach((participant) => {
+      if (participant.email === ownerEmail) return;
       batch.set(
         adminDb!
           .collection("usersPrivate")
@@ -397,6 +405,12 @@ export async function PATCH(req: NextRequest) {
       ctx
     );
   } catch (error) {
+    if ((error as {code?: number})?.code === 9) {
+      return withRateLimitHeaders(
+        NextResponse.json({ok:false,error:"Skupina se mezitím změnila. Obnov konverzaci a zkus to znovu."},{status:409}),
+        ctx
+      );
+    }
     console.error("PATCH /api/mailbox/conversation failed", error);
     return withRateLimitHeaders(
       NextResponse.json({ ok: false, error: "Změnu skupiny se nepodařilo uložit." }, { status: 500 }),

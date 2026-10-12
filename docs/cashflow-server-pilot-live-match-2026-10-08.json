@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-08T19:36:48+02:00",
+  "observationSource": "User-provided browser screenshot of whitelisted session diagnostics",
+  "domain": "https://bohemka.app",
+  "expectedReleaseDeploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+  "releaseAssociation": {
+    "method": "Observed domain followed by current hosting alias and patch metadata verification",
+    "requestDeploymentIdCaptured": false,
+    "hostingMetadata": {
+      "checkedAt": "2026-10-08T17:38:29.650Z",
+      "domain": "https://bohemka.app",
+      "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+      "currentAliasMatchesScheduleRelease": true,
+      "releasePatchMetadataMatches": true,
+      "businessDataRead": false,
+      "productionChanged": false
+    }
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 12089.7,
+    "referenceMs": 63.4,
+    "serverTimingMs": {
+      "cashflow_auth": 512.08,
+      "cashflow_inputs": 9089.47,
+      "cashflow_hash": 412.97,
+      "cashflow_compute": 1619.85,
+      "cashflow_total": 11666.38
+    }
+  },
+  "interpretation": {
+    "sampleCount": 1,
+    "serverModelComputed": true,
+    "authenticatedCurrentViewMatchVerified": true,
+    "inputFingerprintMatched": true,
+    "fullMonthItemFingerprintMatched": true,
+    "allOverviewFieldsMatched": true,
+    "allFilterCombinationsLiveVerified": false,
+    "monthDetailEndpointLiveVerified": false,
+    "requestOptionsCaptured": false,
+    "pageReadyTimingCaptured": false,
+    "productionSpeedupVerified": false,
+    "displayCalculation": "original-client-reference",
+    "referenceMsExcludesInitialSourceReadsAndBackgroundVerification": true,
+    "dominantServerPhase": "inputs",
+    "inputShareOfServerTotalPercent": 77.91
+  },
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationCodeChanged": false,
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": [
+    "Authenticated own/team and product-filter views",
+    "Authenticated prediction and historical view",
+    "Authenticated monthly detail comparison"
+  ],
+  "nextPerformanceInvestigation": "Measure and reduce authenticated source-loading costs while preserving authorization, full reads and result parity."
+}

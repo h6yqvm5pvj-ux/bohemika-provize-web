@@ -1,0 +1,361 @@
+diff --git a/src/app/api/cashflow/view/route.test.ts b/src/app/api/cashflow/view/route.test.ts
+index 9d11b2e..8b85477 100644
+--- a/src/app/api/cashflow/view/route.test.ts
++++ b/src/app/api/cashflow/view/route.test.ts
+@@ -159,7 +159,8 @@ describe("read-only server cashflow pilot", () => {
+     const response = await POST(request(await body()));
+     expect(response.status).toBe(503);
+     expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason:
+-      code === "incomplete" ? "incomplete_inputs" : code === "limit" ? "resource_limit" : code === "timeout" ? "timeout" : "unavailable" });
++      code === "incomplete" ? "incomplete_inputs" : code === "limit" ? "resource_limit" : code === "timeout" ? "timeout" : "unavailable",
++      ...(code === "limit" ? { resourceLimit: "input_requests" } : {}) });
+   });
+   it.each([401, 403, 429])("honors source authorization/rate denial %s", async status => {
+     mocks.load.mockRejectedValue(new CashflowShadowInputsError("forbidden", status));
+@@ -167,13 +168,25 @@ describe("read-only server cashflow pilot", () => {
+   });
+   it("bounds calculation work for corrupt or excessive contracts", async () => {
+     fixture.snapshot.ownEntries[0].durationYears = 10000000;
+-    expect((await POST(request(await body()))).status).toBe(503);
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(503);
++    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.",
++      reason: "resource_limit", resourceLimit: "duration" });
++    expect(response.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
++  });
++  it("reports a rejected date without exposing the rejected value or contract identity", async () => {
++    fixture.snapshot.ownEntries[0].policyStartDate = "private-invalid-date";
++    const response = await POST(request(await body()));
++    expect(response.status).toBe(503);
++    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.",
++      reason: "resource_limit", resourceLimit: "date_range" });
++    expect(response.headers.get("Server-Timing")).not.toMatch(/cashflow_(compute|hash)/);
+   });
+   it.each([300, 1000])("keeps the bounded fallback for a %s-contract portfolio without returning partial totals", async count => {
+     fixture = makeWorkerFixture(count, asOf);
+     const response = await POST(request(await body()));
+     expect(response.status).toBe(503);
+-    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason: "resource_limit" });
++    expect(await response.json()).toEqual({ ok: false, error: "Cashflow není dostupné.", reason: "resource_limit", resourceLimit: "output_estimate" });
+     expect(response.headers.get("Server-Timing")).not.toContain("cashflow_compute");
+   });
+   it.each(["{", "x".repeat(4097), { kind: "month", monthKey: "../other" }])("rejects malformed/oversized requests before reading data (%s)", async value => {
+diff --git a/src/app/api/cashflow/view/route.ts b/src/app/api/cashflow/view/route.ts
+index ef59352..8598f1d 100644
+--- a/src/app/api/cashflow/view/route.ts
++++ b/src/app/api/cashflow/view/route.ts
+@@ -1,13 +1,13 @@
+ import { NextResponse, type NextRequest } from "next/server";
+ import { createCashflowModel } from "@/app/cashflow/cashflowModel";
+-import { parseCashflowServerRequest, CASHFLOW_SERVER_PILOT_VERSION, type CashflowServerFallbackReason } from "@/app/cashflow/cashflowServerProtocol";
++import { parseCashflowServerRequest, CASHFLOW_SERVER_PILOT_VERSION, type CashflowServerFallbackReason, type CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
+ import { serializeCashflowSnapshot } from "@/app/cashflow/cashflowSnapshotWire";
+ import { hashCashflowValue } from "@/app/cashflow/shadowProtocol";
+ import { cashflowCalendarDate, isCashflowCalendarCurrent } from "@/lib/server/cashflowCalendar";
+ import { requireAuthedRateLimited } from "@/lib/server/apiEntryGuard";
+ import { createCashflowDiagnosticTiming, readCashflowDiagnosticJson } from "@/lib/server/cashflowDiagnosticHttp";
+ import { CashflowShadowInputsError, loadCashflowShadowInputs } from "@/lib/server/cashflowShadowInputs";
+-import { isCashflowShadowWithinBudget } from "@/lib/server/cashflowShadowBudget";
++import { cashflowShadowBudgetFailure } from "@/lib/server/cashflowShadowBudget";
+ 
+ export const runtime = "nodejs";
+ export const dynamic = "force-dynamic";
+@@ -16,8 +16,9 @@ export const dynamic = "force-dynamic";
+ export async function POST(req: NextRequest): Promise<NextResponse> {
+   const timing = createCashflowDiagnosticTiming();
+   const json = timing.json;
+-  const unavailable = (status = 503, reason?: CashflowServerFallbackReason) =>
+-    json({ ok: false, error: "Cashflow není dostupné.", ...(reason ? { reason } : {}) }, status);
++  const unavailable = (status = 503, reason?: CashflowServerFallbackReason, resourceLimit?: CashflowServerResourceLimit) =>
++    json({ ok: false, error: "Cashflow není dostupné.", ...(reason ? { reason } : {}),
++      ...(reason === "resource_limit" && resourceLimit ? { resourceLimit } : {}) }, status);
+   const allowed = new Set((process.env.CASHFLOW_SERVER_PILOT_EMAILS ?? "")
+     .split(/[,\s]+/).map(email => email.trim().toLowerCase()).filter(Boolean));
+   if (process.env.CASHFLOW_SERVER_PILOT_ENABLED !== "1" || !allowed.size) return unavailable(404);
+@@ -48,7 +49,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+     if (inputs.tipsterMode !== body.options.tipsterMode) return unavailable(409);
+     if (req.signal.aborted) return unavailable(409, "cancelled");
+     if (!isCashflowCalendarCurrent(asOf)) return unavailable(409, "stale_context");
+-    if (!isCashflowShadowWithinBudget(inputs.snapshot, asOf)) return unavailable(503, "resource_limit");
++    const resourceLimit = cashflowShadowBudgetFailure(inputs.snapshot, asOf);
++    if (resourceLimit) return unavailable(503, "resource_limit", resourceLimit);
+     const inputHash = await timing.measure("hash", () => hashCashflowValue({ snapshot: inputs.snapshot, statements: inputs.statements }));
+     // Never replace a view from another data version or accept a partially read portfolio.
+     if (inputHash !== body.inputHash) return unavailable(409, "different_inputs");
+@@ -70,7 +72,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
+     if (error instanceof CashflowShadowInputsError) {
+       const reason = error.code === "incomplete" ? "incomplete_inputs" : error.code === "limit" ? "resource_limit"
+         : error.code === "timeout" ? "timeout" : error.code === "aborted" ? "cancelled" : "unavailable";
+-      return unavailable(503, reason);
++      return unavailable(503, reason, error.code === "limit" ? "input_requests" : undefined);
+     }
+     // No upstream messages, portfolio, account identifiers or financial amounts in logs/errors.
+     return unavailable();
+diff --git a/src/app/cashflow/cashflowServerPilot.client.test.ts b/src/app/cashflow/cashflowServerPilot.client.test.ts
+index e84f848..bcc04d0 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.test.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.test.ts
+@@ -156,6 +156,34 @@ describe("background server comparison with the original displayed result", () =
+     expect(f.measure.mock.calls[0][0].reason).toBe("http");
+     expect(JSON.stringify(f.measure.mock.calls)).not.toContain("private"); client.dispose();
+   });
++  it.each(["input_requests", "source_rows", "output_estimate", "payout_matching", "nested_rows",
++    "entry_shape", "date_range", "duration", "reference_time"])("records the fixed resource code %s while preserving the reference", async resourceLimit => {
++    const f = fixture();
++    f.request.mockResolvedValue(Response.json({ reason: "resource_limit", resourceLimit,
++      error: "private upstream details", entry: { email: "private@example.test", amount: 987654321 } }, { status: 503 }));
++    const client = f.create();
++    expect(await comparedView(f, client)).toBe(await f.local.view.mock.results[0].value);
++    expect(f.measure.mock.calls[0][0]).toMatchObject({ status: "unavailable", reason: "resource_limit", resourceLimit, httpStatus: 503 });
++    expect(Object.keys(f.measure.mock.calls[0][0]).sort()).toEqual([
++      "httpStatus", "kind", "reason", "referenceMs", "requestMs", "resourceLimit", "serverTimingMs", "status",
++    ]);
++    expect(JSON.stringify(f.measure.mock.calls)).not.toMatch(/private|987654321|amount|email/);
++    client.dispose();
++  });
++  it.each(["private@example.test", "__proto__", null, 1, {}, ["output_estimate"]])("discards unrecognized resource details (%j)", async resourceLimit => {
++    const f = fixture();
++    f.request.mockResolvedValue(Response.json({ reason: "resource_limit", resourceLimit }, { status: 503 }));
++    const client = f.create(); await comparedView(f, client);
++    expect(f.measure.mock.calls[0][0].resourceLimit).toBeUndefined();
++    expect(f.measure.mock.calls[0][0].reason).toBe("resource_limit");
++    client.dispose();
++  });
++  it("does not accept a resource code attached to an unrelated error", async () => {
++    const f = fixture();
++    f.request.mockResolvedValue(Response.json({ reason: "timeout", resourceLimit: "output_estimate" }, { status: 503 }));
++    const client = f.create(); await comparedView(f, client);
++    expect(f.measure.mock.calls[0][0].resourceLimit).toBeUndefined(); client.dispose();
++  });
+   it.each(["token", "network", "json", "verification"])("isolates a %s failure from the display", async phase => {
+     const f = fixture();
+     if (phase === "token") f.getToken.mockRejectedValue(new Error("Private token failure"));
+diff --git a/src/app/cashflow/cashflowServerPilot.client.ts b/src/app/cashflow/cashflowServerPilot.client.ts
+index bd55887..9a62793 100644
+--- a/src/app/cashflow/cashflowServerPilot.client.ts
++++ b/src/app/cashflow/cashflowServerPilot.client.ts
+@@ -1,7 +1,7 @@
+ import type { CashflowWorkerClient } from "./cashflowWorker.client";
+ import type { CashflowDataset, CashflowVerification } from "./cashflowWorker.types";
+ import type { CashflowViewOptions } from "./buildCashflowView";
+-import { CASHFLOW_SERVER_PILOT_VERSION, parseCashflowServerFallbackReason, type CashflowServerFallbackReason, type CashflowServerRequest } from "./cashflowServerProtocol";
++import { CASHFLOW_SERVER_PILOT_VERSION, parseCashflowServerFallbackReason, parseCashflowServerResourceLimit, type CashflowServerFallbackReason, type CashflowServerRequest, type CashflowServerResourceLimit } from "./cashflowServerProtocol";
+ import { parseCashflowSnapshot } from "./cashflowSnapshotWire";
+ import { cashflowCanonicalJson } from "./shadowProtocol";
+ import { parseCashflowServerTiming, type CashflowServerTiming } from "./candidateCheckProtocol";
+@@ -15,12 +15,14 @@ export type CashflowServerPilotMeasurement = {
+   reason?: CashflowServerFallbackReason;
+   httpStatus?: number;
+   timeoutPhase?: "verification" | "token" | "request" | "response";
++  resourceLimit?: CashflowServerResourceLimit;
+ };
+ 
+ class PilotUnavailable extends Error {
+   constructor(readonly reason: CashflowServerFallbackReason, readonly httpStatus?: number,
+     readonly serverTimingMs: CashflowServerTiming = {},
+-    readonly timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"]) { super("Cashflow server unavailable"); }
++    readonly timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"],
++    readonly resourceLimit?: CashflowServerResourceLimit) { super("Cashflow server unavailable"); }
+ }
+ 
+ function recordMeasurement(value: CashflowServerPilotMeasurement) {
+@@ -71,14 +73,15 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+   };
+   const report = (kind: CashflowServerRequest["kind"], status: CashflowServerPilotMeasurement["status"], start: number,
+     referenceMs: number, serverTimingMs: CashflowServerTiming = {}, reason?: CashflowServerFallbackReason, httpStatus?: number,
+-    timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"]) => {
++    timeoutPhase?: CashflowServerPilotMeasurement["timeoutPhase"], resourceLimit?: CashflowServerResourceLimit) => {
+     try { measure({ kind, status, requestMs: Math.max(0, performance.now() - start), referenceMs, serverTimingMs,
+-      ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}), ...(timeoutPhase ? { timeoutPhase } : {}) }); }
++      ...(reason ? { reason } : {}), ...(httpStatus ? { httpStatus } : {}), ...(timeoutPhase ? { timeoutPhase } : {}),
++      ...(reason === "resource_limit" && resourceLimit ? { resourceLimit } : {}) }); }
+     catch { /* No telemetry failure may replace the reference result. */ }
+   };
+   const reportFailure = (kind: CashflowServerRequest["kind"], error: unknown, start: number, referenceMs: number) => {
+     const failure = error instanceof PilotUnavailable ? error : new PilotUnavailable("unavailable");
+-    report(kind, "unavailable", start, referenceMs, failure.serverTimingMs, failure.reason, failure.httpStatus, failure.timeoutPhase);
++    report(kind, "unavailable", start, referenceMs, failure.serverTimingMs, failure.reason, failure.httpStatus, failure.timeoutPhase, failure.resourceLimit);
+   };
+   const startComparison = (expected: number, kind: CashflowServerRequest["kind"], referenceMs: number,
+     work: (job: Job, start: number) => Promise<void>) => {
+@@ -129,8 +132,12 @@ export function createCashflowServerPilotClient({ dataset, local, getToken, requ
+     job.httpStatus = response.status;
+     const value: unknown = await response.json().catch(() => null);
+     checkJob(job);
+-    if (!response.ok) throw new PilotUnavailable(
+-      (object(value) && parseCashflowServerFallbackReason(value.reason)) || "http", response.status, serverTimingMs);
++    if (!response.ok) {
++      const reason = (object(value) && parseCashflowServerFallbackReason(value.reason)) || "http";
++      const resourceLimit = reason === "resource_limit" && object(value)
++        ? parseCashflowServerResourceLimit(value.resourceLimit) ?? undefined : undefined;
++      throw new PilotUnavailable(reason, response.status, serverTimingMs, undefined, resourceLimit);
++    }
+     if (!object(value) || value.ok !== true || value.version !== CASHFLOW_SERVER_PILOT_VERSION ||
+       value.kind !== body.kind || value.inputHash !== body.inputHash) throw new PilotUnavailable("invalid_response", response.status, serverTimingMs);
+     return { value, serverTimingMs };
+diff --git a/src/app/cashflow/cashflowServerProtocol.ts b/src/app/cashflow/cashflowServerProtocol.ts
+index 54ffa58..b071da6 100644
+--- a/src/app/cashflow/cashflowServerProtocol.ts
++++ b/src/app/cashflow/cashflowServerProtocol.ts
+@@ -12,6 +12,16 @@ const fallbackReasons = ["time_zone", "stale_context", "different_inputs", "inco
+   "invalid_response", "different_result"] as const;
+ export type CashflowServerFallbackReason = typeof fallbackReasons[number];
+ 
++const resourceLimits = ["input_requests", "source_rows", "output_estimate", "payout_matching",
++  "nested_rows", "entry_shape", "date_range", "duration", "reference_time"] as const;
++export type CashflowServerResourceLimit = typeof resourceLimits[number];
++
++/** A fixed code only: no source fields, identifiers or rejected values. */
++export function parseCashflowServerResourceLimit(value: unknown): CashflowServerResourceLimit | null {
++  return typeof value === "string" && resourceLimits.includes(value as CashflowServerResourceLimit)
++    ? value as CashflowServerResourceLimit : null;
++}
++
+ /** Diagnostic codes only: never copy an upstream message into client storage. */
+ export function parseCashflowServerFallbackReason(value: unknown): CashflowServerFallbackReason | null {
+   return typeof value === "string" && fallbackReasons.includes(value as CashflowServerFallbackReason)
+diff --git a/src/lib/server/cashflowShadowBudget.test.ts b/src/lib/server/cashflowShadowBudget.test.ts
+index 927f8c9..7c38235 100644
+--- a/src/lib/server/cashflowShadowBudget.test.ts
++++ b/src/lib/server/cashflowShadowBudget.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
+ 
+ import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+ import type { EntryDoc } from "@/app/cashflow/types";
+-import { isCashflowShadowWithinBudget } from "./cashflowShadowBudget";
++import { cashflowShadowBudgetFailure, isCashflowShadowWithinBudget } from "./cashflowShadowBudget";
+ 
+ const asOf = new Date("2026-09-12T12:00:00Z");
+ const snapshot = (patch: Partial<CashflowSnapshot> = {}): CashflowSnapshot => ({
+@@ -16,6 +16,23 @@ const entries = (count: number, patch: Partial<EntryDoc> = {}) =>
+   Array.from({ length: count }, (_, id) => entry({ id: String(id), ...patch }));
+ 
+ describe("server cashflow shadow resource budget", () => {
++  it("distinguishes workload limits from malformed data using only fixed codes", () => {
++    expect(cashflowShadowBudgetFailure(snapshot(), asOf)).toBeNull();
++    expect(cashflowShadowBudgetFailure(snapshot(), new Date(NaN))).toBe("reference_time");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(25_001) }), asOf)).toBe("source_rows");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(200) }), asOf)).toBe("output_estimate");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: entries(7, {
++      commissionPayouts: Array.from({ length: 500 }, () => ({})),
++    }) }), asOf)).toBe("payout_matching");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: [entry({ policyStartDate: "invalid" })] }), asOf)).toBe("date_range");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: [entry({ durationYears: 101 })] }), asOf)).toBe("duration");
++    expect(cashflowShadowBudgetFailure(snapshot({ ownEntries: [entry({ items: {} as EntryDoc["items"] })] }), asOf)).toBe("entry_shape");
++  });
++  it("preserves rejection when malformed source lists make the expansion estimate non-finite", () => {
++    const input = snapshot({ ownEntries: [entry()], subscriptionPayments: {} as CashflowSnapshot["subscriptionPayments"] });
++    expect(isCashflowShadowWithinBudget(input, asOf)).toBe(false);
++    expect(cashflowShadowBudgetFailure(input, asOf)).toBe("output_estimate");
++  });
+   it("accepts ordinary portfolios without changing their contents", () => {
+     const input = snapshot({ ownEntries: entries(150), tipPayouts: [{ id: "tip", amount: 10 }] });
+     const before = structuredClone(input);
+diff --git a/src/lib/server/cashflowShadowBudget.ts b/src/lib/server/cashflowShadowBudget.ts
+index d87fd7f..5f716f6 100644
+--- a/src/lib/server/cashflowShadowBudget.ts
++++ b/src/lib/server/cashflowShadowBudget.ts
+@@ -1,5 +1,6 @@
+ import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+ import type { EntryDoc } from "@/app/cashflow/types";
++import type { CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
+ import { toDate } from "@/app/lib/formatters";
+ 
+ const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
+@@ -29,34 +30,34 @@ function boundedArray(value: unknown, limit: number): unknown[] | null {
+  * must not cause unbounded synchronous loops. Exceeding any bound skips the
+  * diagnostic comparison; callers keep the existing browser calculation.
+  */
+-export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date): boolean {
++export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Date): CashflowServerResourceLimit | null {
+   const asOfMs = asOf.getTime();
+-  if (!Number.isFinite(asOfMs) || asOf.getFullYear() < 2000 || asOf.getFullYear() > 2200) return false;
++  if (!Number.isFinite(asOfMs) || asOf.getFullYear() < 2000 || asOf.getFullYear() > 2200) return "reference_time";
+   const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
+   const maxDateYear = asOf.getFullYear() + 100;
+   let estimatedOutputItems = snapshot.tipPayouts.length + snapshot.subscriptionPayments.length * 121;
+   let payoutMatchWork = 0;
+   let nestedRows = 0;
+-  if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return false;
+-  if (snapshot.ownEntries.length + snapshot.teamEntriesRaw.length > MAX_ESTIMATED_OUTPUT_ITEMS) return false;
++  if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return "output_estimate";
++  if (snapshot.ownEntries.length + snapshot.teamEntriesRaw.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
+ 
+-  const entryWithinBudget = (entry: EntryDoc, multiplicity: number): boolean => {
+-    if (!entry || typeof entry !== "object") return false;
++  const entryFailure = (entry: EntryDoc, multiplicity: number): CashflowServerResourceLimit | null => {
++    if (!entry || typeof entry !== "object") return "entry_shape";
+     if (entry.durationYears != null && (
+       typeof entry.durationYears !== "number" || !Number.isFinite(entry.durationYears) ||
+       entry.durationYears < 0 || entry.durationYears > 100
+-    )) return false;
++    )) return "duration";
+     if (entry.durationMonths != null && (
+       typeof entry.durationMonths !== "number" || !Number.isFinite(entry.durationMonths) ||
+       entry.durationMonths < 0 || entry.durationMonths > 1_200
+-    )) return false;
++    )) return "duration";
+ 
+     let earliestMonth = asOf.getFullYear() * 12 + asOf.getMonth();
+     for (const field of ["policyStartDate", "contractSignedDate", "createdAt", "policyEndDate", "stornoDate", "transferEffectiveDate"] as const) {
+       const value = entry[field];
+       if (value == null) continue;
+       const date = toDate(value, { calendar: asOf });
+-      if (!date || !Number.isFinite(date.getTime()) || date.getFullYear() < 1900 || date.getFullYear() > maxDateYear) return false;
++      if (!date || !Number.isFinite(date.getTime()) || date.getFullYear() < 1900 || date.getFullYear() > maxDateYear) return "date_range";
+       if (field === "policyStartDate" || field === "contractSignedDate" || field === "createdAt") {
+         earliestMonth = Math.min(earliestMonth, date.getFullYear() * 12 + date.getMonth());
+       }
+@@ -66,17 +67,17 @@ export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: D
+     const payouts = boundedArray(entry.commissionPayouts, MAX_PAYOUTS_PER_ENTRY);
+     const overrides = boundedArray(entry.managerOverrides, MAX_MANAGERS_PER_ENTRY);
+     const managers = boundedArray(entry.managerChain, MAX_MANAGERS_PER_ENTRY);
+-    if (!items || !payouts || !overrides || !managers) return false;
++    if (!items || !payouts || !overrides || !managers) return "entry_shape";
+     nestedRows += items.length + payouts.length + overrides.length + managers.length;
+     let parts = Math.max(1, items.length);
+     for (const override of overrides) {
+-      if (!override || typeof override !== "object") return false;
++      if (!override || typeof override !== "object") return "entry_shape";
+       const overrideItems = boundedArray((override as { items?: unknown }).items, MAX_COMMISSION_PARTS);
+-      if (!overrideItems) return false;
++      if (!overrideItems) return "entry_shape";
+       nestedRows += overrideItems.length;
+       parts = Math.max(parts, overrideItems.length);
+     }
+-    if (nestedRows > MAX_NESTED_ROWS) return false;
++    if (nestedRows > MAX_NESTED_ROWS) return "nested_rows";
+ 
+     // Three additional months cover inclusive endpoints and payout-date offsets.
+     const months = horizonMonth - earliestMonth + 3;
+@@ -85,14 +86,26 @@ export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: D
+     estimatedOutputItems += expansion;
+     // The generator scans and ranks historical payouts for each forecast item.
+     payoutMatchWork += expansion * (1 + payouts.length);
+-    return estimatedOutputItems <= MAX_ESTIMATED_OUTPUT_ITEMS && payoutMatchWork <= MAX_PAYOUT_MATCH_WORK;
++    if (!(estimatedOutputItems <= MAX_ESTIMATED_OUTPUT_ITEMS)) return "output_estimate";
++    if (!(payoutMatchWork <= MAX_PAYOUT_MATCH_WORK)) return "payout_matching";
++    return null;
+   };
+ 
+   try {
+-    return snapshot.ownEntries.every(entry => entryWithinBudget(entry, 1)) &&
+-      snapshot.teamEntriesRaw.every(entry => entryWithinBudget(entry, 2));
++    let failure: CashflowServerResourceLimit | null = null;
++    const check = (entry: EntryDoc, multiplicity: number) => {
++      failure = entryFailure(entry, multiplicity);
++      return failure === null;
++    };
++    if (!snapshot.ownEntries.every(entry => check(entry, 1))) return failure;
++    snapshot.teamEntriesRaw.every(entry => check(entry, 2));
++    return failure;
+   } catch {
+     // Unexpected legacy field shapes cannot authorize an expensive computation.
+-    return false;
++    return "entry_shape";
+   }
+ }
++
++export function isCashflowShadowWithinBudget(snapshot: CashflowSnapshot, asOf: Date): boolean {
++  return cashflowShadowBudgetFailure(snapshot, asOf) === null;
++}

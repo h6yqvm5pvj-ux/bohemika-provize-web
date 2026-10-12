@@ -1,0 +1,538 @@
+{
+  "version": 1,
+  "status": "single-account-schedule-budget-deployed",
+  "date": "2026-10-08",
+  "domain": "https://bohemka.app",
+  "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+  "deploymentUrl": "bohemika-provize-q8mmve8vp-jacobrausch989s-projects-909dd478.vercel.app",
+  "previousVerifiedDeploymentId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+  "baselineCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+  "previousPatches": {
+    "previousPilotPatch": {
+      "file": "cashflow-server-pilot-release-2026-10-08.patch",
+      "sha256": "b7f22b5350639d736d4af2027715e50d1acefdfaa6d02bafa591676e94b3c961"
+    },
+    "previousTimezonePatch": {
+      "file": "cashflow-server-pilot-timezone-2026-10-08.patch",
+      "sha256": "cece02a1f8e156d4c9ce3bce10203d4b63bf02e37793c3a52f946653101c1427"
+    },
+    "previousBackgroundPatch": {
+      "file": "cashflow-server-pilot-background-2026-10-08.patch",
+      "sha256": "fb616ab9aff06f3a3724ee39f4d360b31a59be6bc7efee0f40cc2738519acb7c"
+    },
+    "previousResourcePatch": {
+      "file": "cashflow-server-pilot-resource-2026-10-08.patch",
+      "sha256": "0ed0201c45f96f559e0ae3082840a456c4677306b9f45dcf0cf44a19e6e35e12"
+    }
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-schedule-2026-10-08.patch",
+    "sha256": "86d219670cfe24d5a689caba3e2d551c40c4463959ba00c2fcc41f39c8a87860"
+  },
+  "runtimeFilesChanged": 2,
+  "testFilesChanged": 3,
+  "newDependencies": 0,
+  "configuration": {
+    "serverPilotEnabled": true,
+    "browserPilotBuildEnabled": true,
+    "allowlistAccounts": 1,
+    "accountChosenExplicitlyByUser": true,
+    "accountStoredInRepository": false,
+    "clientTabOptInRequired": true,
+    "defaultClientMode": "off",
+    "displayCalculation": "original-client-reference",
+    "comparison": "background-full-input-and-result",
+    "comparisonTimeoutMs": 25000,
+    "serverInputDeadlineMs": 20000,
+    "globalTimezoneChanged": false,
+    "globalProjectBuildSettingsChanged": false,
+    "scheduledJobsChanged": false,
+    "productionSecretsChanged": false
+  },
+  "configurationVerification": {
+    "method": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+    "allowlistValueReadBack": false,
+    "runtimeGateVerifiedOnProduction": true
+  },
+  "changes": {
+    "knownProductScheduleUpperBounds": true,
+    "paymentFrequencyUsesSharedGeneratorHelper": true,
+    "unknownProductsRetainConservativeFallback": true,
+    "lifeReviewBudgetUsesValidatedPredictionOption": true,
+    "savedPayoutAssociationArraysAndQuadraticWorkBounded": true,
+    "outputItemCap": 25000,
+    "payoutMatchingWorkCap": 2000000,
+    "nestedRowsCap": 10000,
+    "resourceCapsIncreased": false,
+    "businessCalculationChanged": false,
+    "dataTruncated": false
+  },
+  "promotion": {
+    "checkedAt": "2026-10-08T17:27:31.936969+00:00",
+    "promoted": true,
+    "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+    "previousDeploymentId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+    "domain": "https://bohemka.app",
+    "serverPilotEnabled": true,
+    "allowlistAccounts": 1,
+    "accountIncludedInReceipt": false,
+    "schedulePatchSha256": "86d219670cfe24d5a689caba3e2d551c40c4463959ba00c2fcc41f39c8a87860",
+    "globalTimezoneChanged": false,
+    "businessDataWrites": false,
+    "productionSecretsChanged": false
+  },
+  "validation": {
+    "local": {
+      "passed": true,
+      "patchSha256": "86d219670cfe24d5a689caba3e2d551c40c4463959ba00c2fcc41f39c8a87860",
+      "rootSuite": {
+        "tests": 5884,
+        "files": 401
+      },
+      "isolatedSuite": {
+        "tests": 5860,
+        "files": 397
+      },
+      "targetedSuite": {
+        "tests": 169,
+        "files": 4
+      },
+      "rootTypeScript": true,
+      "isolatedTypeScript": true,
+      "lint": true,
+      "whitespace": true,
+      "sourceFilesMatched": 39,
+      "newDependencies": 0,
+      "localBuild": {
+        "passed": true,
+        "syntheticConfigurationOnly": true,
+        "envFilesRead": false,
+        "productionCredentialsUsed": false,
+        "schedulePatchSha256": "86d219670cfe24d5a689caba3e2d551c40c4463959ba00c2fcc41f39c8a87860",
+        "sourceFilesVerified": 39,
+        "webpack": true,
+        "authProxyVerified": true
+      },
+      "localNativeChromeWorker": {
+        "nativeWorker": true,
+        "hashesMatch": true,
+        "datesPreserved": true,
+        "compactOverview": true,
+        "lifePayoutMonth": "2026-12",
+        "filterMatches": true,
+        "monthsCompared": 5
+      },
+      "resultParity": {
+        "passed": true,
+        "syntheticOnly": true,
+        "previousPatchSha256": "0ed0201c45f96f559e0ae3082840a456c4677306b9f45dcf0cf44a19e6e35e12",
+        "unchangedReleaseFiles": 34,
+        "comparisons": 324,
+        "accepted": 234,
+        "rejected": 90,
+        "newlyAdmitted": 153,
+        "allOverviewFieldsAndMonthItemsMatch": true,
+        "businessSourcesUnchanged": true,
+        "outputCap": 25000,
+        "inputsUnmodified": true
+      },
+      "syntheticGeneratorUpperBoundCases": 3780,
+      "lifeReviewCases": 272,
+      "secretAndIdentityCheck": true,
+      "securityReview": {
+        "authenticationAndServerAllowlistUnchanged": true,
+        "authDenials401403429Covered": true,
+        "crossAccountAndClientRoleManipulationDenied": true,
+        "validatedPredictionOptionControlsBudgetAndCompute": true,
+        "fixedResourceCodesOnly": true,
+        "untrustedSavedPayoutAssociationCountsBounded": true,
+        "resourceCapsUnchanged": true,
+        "failureNeverReturnsPartialTotals": true,
+        "productionDataReadForTesting": false,
+        "productionDataWrites": false
+      },
+      "comparisonScriptResolvedDependenciesSequentially": true,
+      "localHelpers": {
+        "comparisonScript": {
+          "file": "scripts/check-cashflow-schedule-budget.mjs",
+          "sha256": "ede5a410b3d218df4447d60e6fd763ab086ffa20fc5feccebe67b9b1f7715ef5"
+        },
+        "preparationScript": {
+          "file": "scripts/prepare-cashflow-schedule-release.mjs",
+          "sha256": "f15d396be24490e5420ff760c64313ba9c0a9d49d7ff125c20e847c1182d899d"
+        }
+      },
+      "reviewedPatchFiles": [
+        "src/lib/server/cashflowShadowBudget.ts",
+        "src/lib/server/cashflowShadowBudget.test.ts",
+        "src/lib/server/cashflowShadowSchedules.test.ts",
+        "src/app/api/cashflow/view/route.ts",
+        "src/app/api/cashflow/view/route.test.ts"
+      ],
+      "previousReleaseFilesUnchanged": 34,
+      "priorFourPatchHashesVerified": true
+    },
+    "nativeChromeHostingWorker": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true,
+      "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+      "remoteWorkerPath": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+      "remoteWorkerSha256": "e97518dc3ecfa90c12cbe05a3b4a536f3b5aac14d32755ffe943d11bca692cde",
+      "dependencies": [
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "sha256": "f4f88dec3acb3d6ad3f917548e642c98ac94df1fce80cf842c8782d9bf173521",
+          "bytes": 19943
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "sha256": "3e423e35db00f285ad701bde71cb6cbc6069b37832c323c87c127f67d50d830a",
+          "bytes": 16497
+        }
+      ]
+    },
+    "beforePromotion": {
+      "checkedAt": "2026-10-08T17:26:49.109Z",
+      "mode": "stage",
+      "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+      "url": "bohemika-provize-q8mmve8vp-jacobrausch989s-projects-909dd478.vercel.app",
+      "state": "READY",
+      "baselineProductionId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+      "currentProductionId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+      "domain": "bohemika-provize-q8mmve8vp-jacobrausch989s-projects-909dd478.vercel.app",
+      "serverPilotEnabled": true,
+      "allowlistAccounts": 1,
+      "globalProjectBuildConfigurationUnchanged": true,
+      "deploymentBuildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs",
+      "scheduledJobs": [
+        {
+          "path": "/api/cron/contract-lifecycle",
+          "schedule": "30 1 * * *"
+        },
+        {
+          "path": "/api/cron/weekly-team-report",
+          "schedule": "0 7 * * 1"
+        },
+        {
+          "path": "/api/cron/subscription-expiry-notifications",
+          "schedule": "15 7 * * *"
+        },
+        {
+          "path": "/api/cron/contract-note-reminders",
+          "schedule": "45 7 * * *"
+        },
+        {
+          "path": "/api/cron/password-change-notices",
+          "schedule": "0 8 * * *"
+        }
+      ],
+      "scheduledJobsUnchanged": true,
+      "uploadedSourceHashesChecked": 48,
+      "sourceVerification": "Downloaded source archive streamed without extraction; 39 release sources and 9 unchanged baseline controls matched",
+      "singleAccountAllowlistConfigured": true,
+      "pilotConfigurationVerification": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+      "allowlistValueReadBack": false,
+      "otherRuntimeVariableKeysUnchanged": true,
+      "hostingForcedBuildFlagsAdded": [],
+      "otherApplicationEnvironmentChangesRequested": false,
+      "globalTimezoneChangesRequested": false,
+      "productionSecurityConfigVerified": true,
+      "encryptionFingerprintsUnchanged": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": false,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": true,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ],
+      "hostingWorkerNativeChromeVerified": true,
+      "hostingWorkerAssetsChecked": 3,
+      "passed": true
+    },
+    "afterPromotion": {
+      "checkedAt": "2026-10-08T17:27:40.534Z",
+      "mode": "production",
+      "deploymentId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+      "url": "bohemika-provize-q8mmve8vp-jacobrausch989s-projects-909dd478.vercel.app",
+      "state": "READY",
+      "baselineProductionId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+      "currentProductionId": "dpl_8AjqjnDAF9stkqm5v3GBrtzXWLzb",
+      "domain": "bohemka.app",
+      "serverPilotEnabled": true,
+      "allowlistAccounts": 1,
+      "globalProjectBuildConfigurationUnchanged": true,
+      "deploymentBuildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs",
+      "scheduledJobs": [
+        {
+          "path": "/api/cron/contract-lifecycle",
+          "schedule": "30 1 * * *"
+        },
+        {
+          "path": "/api/cron/weekly-team-report",
+          "schedule": "0 7 * * 1"
+        },
+        {
+          "path": "/api/cron/subscription-expiry-notifications",
+          "schedule": "15 7 * * *"
+        },
+        {
+          "path": "/api/cron/contract-note-reminders",
+          "schedule": "45 7 * * *"
+        },
+        {
+          "path": "/api/cron/password-change-notices",
+          "schedule": "0 8 * * *"
+        }
+      ],
+      "scheduledJobsUnchanged": true,
+      "uploadedSourceHashesChecked": 48,
+      "sourceVerification": "Downloaded source archive streamed without extraction; 39 release sources and 9 unchanged baseline controls matched",
+      "singleAccountAllowlistConfigured": true,
+      "pilotConfigurationVerification": "Exact single-account runtime override submitted through authenticated hosting CLI. Runtime gate checked through HTTP; runtime-only allowlist value/name not exposed in deployment metadata. Values not decrypted.",
+      "allowlistValueReadBack": false,
+      "otherRuntimeVariableKeysUnchanged": true,
+      "hostingForcedBuildFlagsAdded": [],
+      "otherApplicationEnvironmentChangesRequested": false,
+      "globalTimezoneChangesRequested": false,
+      "productionSecurityConfigVerified": true,
+      "encryptionFingerprintsUnchanged": true,
+      "checks": [
+        {
+          "path": "/login",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/ucet/zabezpeceni",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/embed/zlato",
+          "status": 200,
+          "strictCsp": true
+        },
+        {
+          "path": "/cashflow",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/smlouvy",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/muj-tym",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/admin",
+          "status": 307,
+          "denied": true
+        },
+        {
+          "path": "/api/user/profile",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/contracts?scope=my&shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/commission-statements?shape=cashflow&limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/subscription-payments/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/tip-payouts/list?limit=1",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/team-overview",
+          "status": 401,
+          "denied": true
+        },
+        {
+          "path": "/api/auth/session",
+          "status": 401,
+          "invalidTokenDenied": true
+        },
+        {
+          "path": "/api/auth/password-reset/confirm",
+          "status": 403,
+          "foreignOriginDenied": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": false,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/api/cashflow/view",
+          "status": 401,
+          "denied": true,
+          "invalidToken": true,
+          "pilotGateEnabled": true
+        },
+        {
+          "path": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "status": 200,
+          "nativeChromeVerifiedWorkerMatches": true
+        }
+      ],
+      "hostingWorkerNativeChromeVerified": true,
+      "hostingWorkerAssetsChecked": 3,
+      "passed": true
+    }
+  },
+  "securityReview": {
+    "authenticationAndServerAllowlistUnchanged": true,
+    "authDenials401403429Covered": true,
+    "crossAccountAndClientRoleManipulationDenied": true,
+    "validatedPredictionOptionControlsBudgetAndCompute": true,
+    "fixedResourceCodesOnly": true,
+    "untrustedSavedPayoutAssociationCountsBounded": true,
+    "resourceCapsUnchanged": true,
+    "failureNeverReturnsPartialTotals": true,
+    "productionDataReadForTesting": false,
+    "productionDataWrites": false
+  },
+  "verificationLimitations": [
+    "The authenticated browser sample at 18:59:03 identified output_estimate before hashing or model computation; it did not establish result parity.",
+    "The new estimate is verified with actual generated synthetic output and full model comparisons. Acceptance and matching hashes on the real portfolio remain pending.",
+    "No real portfolio was read for testing. Public hosting checks verify authentication, protective configuration and assets, not authenticated business results.",
+    "The unchanged bounds may still reject genuinely large or malformed portfolios and remain intentionally conservative for unreviewed products.",
+    "Compare mode continues displaying the original browser calculation. Migration to server-only cashflow is not complete."
+  ],
+  "rollback": {
+    "deploymentId": "dpl_F54a6Nhm9L5ykEAxcH4WGTEyGCis",
+    "method": "Promote the previous verified deployment after checking the live alias; no database changes required."
+  }
+}

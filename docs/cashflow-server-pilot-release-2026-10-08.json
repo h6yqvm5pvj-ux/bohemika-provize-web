@@ -1,0 +1,349 @@
+{
+  "version": 1,
+  "baseline": {
+    "gitCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+    "deploymentId": "dpl_5BeURqXKuQqRXXyW4FF4vca8cdTg",
+    "domain": "https://bohemka.app",
+    "verification": "Read-only Vercel v13 deployment metadata: source=git, gitSource.type=github, gitSource.sha matches local HEAD. Reinspect before rollout."
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-release-2026-10-08.patch",
+    "sha256": "b7f22b5350639d736d4af2027715e50d1acefdfaa6d02bafa591676e94b3c961"
+  },
+  "files": [
+    {
+      "path": "scripts/check-cashflow-server-pilot.mjs",
+      "sha256": "e25c86c22ebf477a203ec58f598de24fa972a82efa626255d4b0704fccabf6c3"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.test.ts",
+      "sha256": "0725e581fde0e937de988f8ff1d12b6c1774992fb04f29cbbe224175a2a004ac"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.ts",
+      "sha256": "a184763798ac7852e9635801368d6f9568319bd54d71df71a4183e25f28db2af"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.test.ts",
+      "sha256": "8b33c5ae24380c04970610c9768e293367786cc19d3b40911d219e9e8a364dfc"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.ts",
+      "sha256": "40e00f23650f570f7aa5ecfb3ebd6134a43df631b7c2f398f68e66dec7879ede"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.test.ts",
+      "sha256": "6ab7e7e47560386da08bfbe518c3a45e556c0f15551899a323ce45d2ce8531c1"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.ts",
+      "sha256": "02f05a6447c8e74a413fce04db29d02ad9af57a85ed4240131245114c0a543a7"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.test.ts",
+      "sha256": "ead2949da9fda8fc39cc4d816bb8f9ff2256617247bae7b9760c4c75850399be"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.ts",
+      "sha256": "c53df84ded89f017978fbc6578ff3f0adfc49a9905b3d64c63329c1f58c51f82"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerProtocol.ts",
+      "sha256": "4c6a03e2a731eee54d3a156c041cee28ec0df6bc83982bafa9be9c7ebd85630b"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.test.ts",
+      "sha256": "506e92eb6751d896961785fa41211e7f6730a7c79b2406b2aabac16e6f55fb67"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.ts",
+      "sha256": "a96f2b76a94180c3c22155e3e4ee0741d33ec0c07d0120d0ee14fbdf158b9c42"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.types.ts",
+      "sha256": "34f13f1a13df6bde5081ff2ebbb3329ad9ee6c4acf6192b170971c8d9a22da62"
+    },
+    {
+      "path": "src/app/cashflow/generator.test.ts",
+      "sha256": "ec31ce086ea72db7ad1c2e8ba36777e32812098c0a3a70734c6264ec7b4a1c88"
+    },
+    {
+      "path": "src/app/cashflow/generator.ts",
+      "sha256": "eef534a2e533c62c4bd0d483c16990951265b3a75a3ac8f8a1be0270696bf797"
+    },
+    {
+      "path": "src/app/cashflow/page.loading.test.tsx",
+      "sha256": "47e3f3b6dbb247bd842be3191e65577826c6adfac37298e3fc7350ff310670ed"
+    },
+    {
+      "path": "src/app/cashflow/page.tsx",
+      "sha256": "b156f2fb2c864f3050479b472d4a1e29fd4cce4b7a795ab8e496cd9d895f80e5"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.ts",
+      "sha256": "071b62f7055465667a2ce91cb327e31a41d745bb6cdcfd7f1f4de0c2416f4f9b"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.worker.test.tsx",
+      "sha256": "1702f8684533936026f124091a0c657bce6df0d1fd64b3069aa2033374f29320"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.test.tsx",
+      "sha256": "eb2ba19d5f66064072514fe965d48068af80233a1c0691acaf0766436fbaab69"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.ts",
+      "sha256": "fddbf750def071970884dce3f5877217dca996dc8523c6f742d4b6fda82916c1"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.test.tsx",
+      "sha256": "3564bfddc53670db9829848c92ce65f4f5c18375c2aa38cabcaf45e600227c2a"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.ts",
+      "sha256": "2513f115223fa98a5990d0b9da84aabf94782ea1c07f3d286844f99ebb237fcd"
+    },
+    {
+      "path": "tests/security/api-authentication.test.ts",
+      "sha256": "82a10ff99739ec1d1893c4b88f22d9c03f701aba9cb2284e3cfe14c7121c4bec"
+    }
+  ],
+  "enabledByDefault": false,
+  "productionChanged": true,
+  "containsCredentials": false,
+  "validation": {
+    "status": "passed",
+    "isolatedRelease": {
+      "files": 395,
+      "testsPassed": 5753,
+      "command": "node node_modules/vitest/vitest.mjs run --maxWorkers=4"
+    },
+    "workspace": {
+      "files": 399,
+      "testsPassed": 5777,
+      "command": "npm test -- --maxWorkers=4"
+    },
+    "typecheck": "passed",
+    "eslint": "passed",
+    "diffCheck": "passed",
+    "build": {
+      "next": "16.3.6",
+      "bundler": "webpack",
+      "syntheticConfigOnly": true,
+      "firebaseAdminConfigured": false,
+      "runtimeSecurityCheck": "passed",
+      "securityConfigCheck": "passed",
+      "authProxyCheck": "passed"
+    },
+    "sourceHashesChecked": 24,
+    "addedSecretPatternMatches": 0,
+    "nativeChrome": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5
+    },
+    "syntheticComparisons": [
+      {
+        "syntheticOnly": true,
+        "timeZone": "UTC",
+        "productionGeneratorCases": 1120,
+        "allowedFirstLifeDifferences": 64,
+        "portfolios": [
+          {
+            "contracts": 12,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 412,
+            "inputBytes": 9132,
+            "monthsBytes": 482394,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 60,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 1462,
+            "inputBytes": 37587,
+            "monthsBytes": 1664522,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 132,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 3351,
+            "inputBytes": 81191,
+            "monthsBytes": 3794816,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 300,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 7336,
+            "inputBytes": 184779,
+            "monthsBytes": 8301978,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 1000,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 26085,
+            "inputBytes": 625069,
+            "monthsBytes": 29788690,
+            "fingerprintsAvailable": false,
+            "serverBudgetAccepted": false
+          }
+        ]
+      },
+      {
+        "syntheticOnly": true,
+        "timeZone": "Europe/Prague",
+        "productionGeneratorCases": 1120,
+        "allowedFirstLifeDifferences": 64,
+        "portfolios": [
+          {
+            "contracts": 12,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 412,
+            "inputBytes": 9132,
+            "monthsBytes": 482394,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 60,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 1462,
+            "inputBytes": 37587,
+            "monthsBytes": 1664522,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 132,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 3351,
+            "inputBytes": 81191,
+            "monthsBytes": 3794816,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 300,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 7336,
+            "inputBytes": 184779,
+            "monthsBytes": 8301978,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 1000,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 26085,
+            "inputBytes": 625069,
+            "monthsBytes": 29788690,
+            "fingerprintsAvailable": false,
+            "serverBudgetAccepted": false
+          }
+        ]
+      },
+      {
+        "syntheticOnly": true,
+        "timeZone": "America/New_York",
+        "productionGeneratorCases": 1120,
+        "allowedFirstLifeDifferences": 64,
+        "portfolios": [
+          {
+            "contracts": 12,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 414,
+            "inputBytes": 9132,
+            "monthsBytes": 484614,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 60,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 1464,
+            "inputBytes": 37587,
+            "monthsBytes": 1666658,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": true
+          },
+          {
+            "contracts": 132,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 3353,
+            "inputBytes": 81191,
+            "monthsBytes": 3797119,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 300,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 7339,
+            "inputBytes": 184779,
+            "monthsBytes": 8305417,
+            "fingerprintsAvailable": true,
+            "serverBudgetAccepted": false
+          },
+          {
+            "contracts": 1000,
+            "filtersCompared": 9,
+            "monthsMatch": true,
+            "displayedItems": 26091,
+            "inputBytes": 625069,
+            "monthsBytes": 29795730,
+            "fingerprintsAvailable": false,
+            "serverBudgetAccepted": false
+          }
+        ]
+      }
+    ],
+    "initialRuns": "An incomplete local release archive omitted existing web-scheduler.json; it was corrected from the same baseline. Concurrent full suites and a subsequently interrupted local runner exceeded test/fork deadlines. Final separate runs passed without changing assertions or time limits.",
+    "securityReview": {
+      "authenticationAndMfaRegressionTests": "passed",
+      "foreignAccountAndManipulatedInputTests": "passed",
+      "freshSourceAuthorization": true,
+      "genericUnauthenticatedErrors": true,
+      "diagnosticsExcludePortfolioAndIdentity": true,
+      "businessWritesAdded": false
+    },
+    "notVerified": [
+      "Live account pilot",
+      "Production Node/browser timezone equality",
+      "Production performance or cost improvement",
+      "Larger portfolios on server"
+    ]
+  },
+  "deployment": {
+    "receipt": "cashflow-server-pilot-activation-2026-10-08.json",
+    "deploymentId": "dpl_HS5LZ1LzRHAwZruGwxMubPqe779w",
+    "verifiedAt": "2026-10-08T13:47:01.871Z",
+    "serverPilotEnabled": true,
+    "allowlistAccounts": 1,
+    "clientTabOptInRequired": true
+  }
+}

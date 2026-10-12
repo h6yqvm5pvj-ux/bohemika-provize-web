@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T13:14:43+02:00",
+  "source": "user-provided screenshot following the diagnostic-clear/reload/team-prediction procedure",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 9110,
+    "referenceMs": 103.59999999403954,
+    "serverTimingMs": {
+      "cashflow_auth": 569.73,
+      "cashflow_inputs": 6577.42,
+      "cashflow_hash": 329.23,
+      "cashflow_compute": 1201.09,
+      "cashflow_total": 8739.1
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "diagnosticClearAndReloadRequestedInPrecedingProcedure": true,
+    "diagnosticRemovalVisible": false,
+    "timingsDifferFromPreviousDeployment": true,
+    "selectionBinding": "visible team/all/prediction controls and preceding procedure; request options not captured",
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_4Gr5EFeGA65BwwXat2hGRgm9HJ4z",
+    "aliasVerifiedAt": "2026-10-09T11:17:01.592Z",
+    "requestDeploymentIndependentlyCaptured": false,
+    "teamPredictionVerifiedAccordingToProcedure": true,
+    "monthDetailVerified": false,
+    "productionSpeedupEstablished": false
+  },
+  "singleSampleLatencyComparison": {
+    "previousEvidence": "cashflow-server-pilot-live-scope-prediction-match-2026-10-09.json",
+    "sameVisibleSelection": true,
+    "previousInputMs": 12682.08,
+    "currentInputMs": 6577.42,
+    "inputReductionPercent": 48.14,
+    "previousRequestMs": 14799.70000000298,
+    "currentRequestMs": 9110,
+    "requestReductionPercent": 38.44,
+    "repeatedComparableSamples": false,
+    "identicalPortfolioAcrossObservationsIndependentlyVerified": false,
+    "wholePageLatencyMeasured": false,
+    "causalAttributionToPaginationEstablished": false,
+    "interpretation": "This observation is faster than the prior successful team/prediction observation. Stable production improvement or whole-page speedup is not established by one uncontrolled sample."
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "businessRecordsChanged": false
+}

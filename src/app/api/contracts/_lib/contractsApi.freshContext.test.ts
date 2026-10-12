@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CashflowContractTimingObserver } from "@/lib/server/cashflowContractTiming";
 
 const mocks = vi.hoisted(() => ({
   guard: vi.fn(),
@@ -40,7 +41,7 @@ beforeEach(() => {
     return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };
   });
   mocks.subscription.mockImplementation(async () => ({
-    exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: "2099-01-01" }),
+    exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: subscriptionStatus === "expired" ? "2000-01-01" : "2099-01-01" }),
   }));
   mocks.collection.mockImplementation((name: string) => {
     if (name === "users") return { get: mocks.users };
@@ -48,8 +49,73 @@ beforeEach(() => {
     throw new Error(`Unexpected collection ${name}`);
   });
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("fresh contract context for server cashflow candidates", () => {
+  it("measures identity, current team context and subscription without changing verified permissions", async () => {
+    const { requireContractsEntryGuard } = await import("./contractsApi");
+    let time = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => time);
+    mocks.guard.mockImplementation(async () => {
+      time += 3;
+      return { ok: true, ctx: { email, uid: "uid", decoded: { email }, isImpersonating: false,
+        actorEmail: email, actorUid: "uid", impersonation: null } };
+    });
+    const readUsers = mocks.users.getMockImplementation()!;
+    mocks.users.mockImplementation(async () => { time += 7; return readUsers(); });
+    const readSubscription = mocks.subscription.getMockImplementation()!;
+    mocks.subscription.mockImplementation(async () => { time += 5; return readSubscription(); });
+    const original = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true });
+    const onCashflowTiming = vi.fn();
+    const measured = await requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true, onCashflowTiming });
+    expect(measured.ok && measured.ctx).toEqual(original.ok && original.ctx);
+    expect(onCashflowTiming.mock.calls).toEqual([["identity", 3], ["team_context", 7], ["subscription", 5]]);
+    expect(mocks.users).toHaveBeenCalledTimes(2);
+    expect(mocks.subscription).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(onCashflowTiming.mock.calls)).not.toMatch(/example.test|uid|decoded|token/);
+  });
+
+  it.each([401, 403, 429])("keeps guard denial %i before database reads when the observer fails", async status => {
+    const { handleContractsList } = await import("./contractsApi");
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    const onCashflowTiming = vi.fn<CashflowContractTimingObserver>(() => { throw new Error("observer"); });
+    const onCashflowTeamReady = vi.fn();
+    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming, onCashflowTeamReady });
+    expect(response.status).toBe(status);
+    expect(onCashflowTeamReady).not.toHaveBeenCalled();
+    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(["identity"]);
+    expect(mocks.users).not.toHaveBeenCalled();
+    expect(mocks.subscription).not.toHaveBeenCalled();
+  });
+
+  it.each(["removed-profile", "unpaid", "expired", "tipster", "revoked-team"])("keeps %s denial before entry/count reads with trusted timing enabled", async denial => {
+    const { requireContractsEntryGuard, handleContractsList } = await import("./contractsApi");
+    await requireContractsEntryGuard(request(), rateLimit); // Seed ordinary caches before revocation.
+    if (denial === "removed-profile") delete profiles[email];
+    if (denial === "unpaid" || denial === "expired") subscriptionStatus = denial;
+    if (denial === "tipster") profiles[email].accountType = "tipster";
+    if (denial === "revoked-team") profiles["team@example.test"].managerEmail = null;
+    const onCashflowTiming = vi.fn();
+    const onCashflowTeamReady = vi.fn();
+    const response = await handleContractsList(request(), { freshCashflowContext: true, onCashflowTiming, onCashflowTeamReady });
+    expect(response.status).toBe(403);
+    expect(onCashflowTeamReady).not.toHaveBeenCalled();
+    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(denial === "removed-profile"
+      ? ["identity", "team_context"] : ["identity", "team_context", "subscription"]);
+    expect(mocks.collection.mock.calls.map(([name]) => name)).not.toContain("entries");
+    // The users mock has no doc/entries/count capability: any portfolio access would throw.
+  });
+
+  it("preserves a fresh permission-read failure and reports only completed phases", async () => {
+    const { requireContractsEntryGuard } = await import("./contractsApi");
+    const failure = new Error("synthetic unavailable");
+    mocks.users.mockRejectedValue(failure);
+    const onCashflowTiming = vi.fn<CashflowContractTimingObserver>(() => { throw new Error("observer"); });
+    await expect(requireContractsEntryGuard(request(), rateLimit, { freshCashflowContext: true, onCashflowTiming })).rejects.toBe(failure);
+    expect(onCashflowTiming.mock.calls.map(([phase]) => phase)).toEqual(["identity", "team_context"]);
+    expect(mocks.subscription).not.toHaveBeenCalled();
+  });
+
   it("rereads current position, mode and team without reusing or extending the shared tree cache", async () => {
     const { requireContractsEntryGuard } = await import("./contractsApi");
     const initial = await requireContractsEntryGuard(request(), rateLimit);

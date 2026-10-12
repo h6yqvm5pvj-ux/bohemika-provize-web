@@ -115,6 +115,26 @@ async function save(patch: Data = {}, retryKey?: string) {
 }
 
 describe("saving FLEXI renovation", () => {
+  it.each([owner, "foreign@example.test"])("keeps duplicate metadata private for owner %s", async duplicateOwner => {
+    mocks.find.mockImplementation(async (number: string) => number === "NEW123"
+      ? {entryPath:`users/${duplicateOwner}/entries/private-record`,ownerEmail:duplicateOwner,entryId:"private-record"}
+      : number === "OLD123" ? {entryPath:originalPath,ownerEmail:owner,entryId:"original"} : null);
+    const before = new Map(records);
+    const {response,body}=await save();
+    expect(response.status).toBe(409);
+    expect(body).toEqual({ok:false,error:"Smlouva s tímto číslem už v systému existuje."});
+    expect(records).toEqual(before);
+  });
+  it("keeps duplicate race errors private and does not write", async () => {
+    mocks.transaction.mockRejectedValueOnce(Object.assign(new Error("Smlouva s tímto číslem už v systému existuje."),{
+      statusCode:409,duplicatePath:"users/foreign@example.test/entries/private-record",
+    }));
+    const before = new Map(records);
+    const {response,body}=await save();
+    expect(response.status).toBe(409);
+    expect(body).toEqual({ok:false,error:"Smlouva s tímto číslem už v systému existuje."});
+    expect(records).toEqual(before);
+  });
   it("rejects reuse of an idempotency key reserved by transferred notes before writing anything", async () => {
     const key = "transferred-original-key";
     const path = `users/${owner}/entries/${buildIdempotentEntryId(owner, key)}`;

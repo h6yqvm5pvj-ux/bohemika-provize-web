@@ -1,0 +1,518 @@
+{
+  "version": 1,
+  "date": "2026-10-10",
+  "status": "single-account-contract-timing-deployed",
+  "baseline": {
+    "gitCommit": "bc49666275a0262be284f0007bdbc3886be3822d",
+    "previousDeploymentId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm",
+    "previousTimingPatch": {
+      "file": "cashflow-server-pilot-timing-2026-10-09.patch",
+      "sha256": "aefbbff76a345125acea6670bb18bb81a755941b0fc3fffe43a4c6a8b0f1e77f"
+    },
+    "additionalSources": [
+      {
+        "path": "src/app/api/contracts/_lib/contractsApi.freshContext.test.ts",
+        "sha256": "1ada36070be3eececb8c262f4c4b7f9492efb483b1d0f16c7a0d1c77c28f2700"
+      },
+      {
+        "path": "src/app/api/contracts/_lib/contractsApi.ts",
+        "sha256": "9b1bf6c0d03714880176231cf71cc463a7cc1afdcfcb16df69e1265c4bc75ecf"
+      },
+      {
+        "path": "src/app/api/contracts/_lib/contractsApi.types.ts",
+        "sha256": "e02837a6d20fabbb4bbfd3227ebca322ebd84a4ecf12fbce9727a8d9a9ade092"
+      }
+    ]
+  },
+  "codePatch": {
+    "file": "cashflow-server-pilot-contract-timing-2026-10-10.patch",
+    "sha256": "3f4ee23d5e0ef4bf86b04980c38e3ef65ce697cdcec5f4efac37da8dd4ed5d79"
+  },
+  "reviewFiles": [
+    "src/app/api/cashflow/view/route.test.ts",
+    "src/app/api/contracts/_lib/contractsApi.freshContext.test.ts",
+    "src/app/api/contracts/_lib/contractsApi.ts",
+    "src/app/api/contracts/_lib/contractsApi.types.ts",
+    "src/app/cashflow/candidateCheckProtocol.test.ts",
+    "src/app/cashflow/candidateCheckProtocol.ts",
+    "src/app/cashflow/cashflowServerPilot.client.test.ts",
+    "src/lib/server/cashflowContractTiming.test.ts",
+    "src/lib/server/cashflowContractTiming.ts",
+    "src/lib/server/cashflowDiagnosticHttp.test.ts",
+    "src/lib/server/cashflowShadowInputs.test.ts",
+    "src/lib/server/cashflowShadowInputs.ts"
+  ],
+  "addedSources": [
+    "src/lib/server/cashflowContractTiming.test.ts",
+    "src/lib/server/cashflowContractTiming.ts"
+  ],
+  "files": [
+    {
+      "path": "package-lock.json",
+      "sha256": "f406945395a94522533add9b3ac20950fb70659a4ba1ceca90a4f7cfd80b66f5"
+    },
+    {
+      "path": "package.json",
+      "sha256": "4cf2ee6de9a2f8c0de3917f8a030bd38c1808c600e1e4165be37a8204b76157d"
+    },
+    {
+      "path": "scripts/check-cashflow-server-pilot.mjs",
+      "sha256": "e25c86c22ebf477a203ec58f598de24fa972a82efa626255d4b0704fccabf6c3"
+    },
+    {
+      "path": "scripts/check-cashflow-timezones.mjs",
+      "sha256": "fc2c52f1b684b7ea9347a3f4ece0e3d9ba02920e402d222e37a1c76c1c0466c0"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.test.ts",
+      "sha256": "8dabcb0918f5fa3110d70483de04a7eee04e2e0d0070e3ce449a1d4a87367488"
+    },
+    {
+      "path": "src/app/api/cashflow/view/route.ts",
+      "sha256": "369aa139f906aa0f63332e57c97260fee8bca78304ba687963b315a54820f159"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.freshContext.test.ts",
+      "sha256": "de9d7707488415a1c645558b79ff6e9830a17d433cc7850a0340f06ab66b62ca"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.ts",
+      "sha256": "90ccc30df3d2a017785ff6aa368590b6895297f98f797cc5d471fae0334a2f8b"
+    },
+    {
+      "path": "src/app/api/contracts/_lib/contractsApi.types.ts",
+      "sha256": "14152a40831d6c230e11cb26d7078ef557e1c91606619c98bd42d692cc82a392"
+    },
+    {
+      "path": "src/app/cashflow/candidateCheckProtocol.test.ts",
+      "sha256": "55f6bf41a1808c6e421ff3fd5beed0692d49fa94061525c214a42aedd07fa3f6"
+    },
+    {
+      "path": "src/app/cashflow/candidateCheckProtocol.ts",
+      "sha256": "9c9716992e0ebf78df82357865391af4675665b3967ebf0282086c32a3645eaa"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.test.ts",
+      "sha256": "8b33c5ae24380c04970610c9768e293367786cc19d3b40911d219e9e8a364dfc"
+    },
+    {
+      "path": "src/app/cashflow/cashflow.worker.ts",
+      "sha256": "40e00f23650f570f7aa5ecfb3ebd6134a43df631b7c2f398f68e66dec7879ede"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.test.ts",
+      "sha256": "6ab7e7e47560386da08bfbe518c3a45e556c0f15551899a323ce45d2ce8531c1"
+    },
+    {
+      "path": "src/app/cashflow/cashflowModel.ts",
+      "sha256": "2041b4ec0cfa4fc16913eb816becd7c6887fdbae99da157407f34bb71a7d2dd5"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.test.ts",
+      "sha256": "b7ddc99615d73be74ca4119a63851ffea5f416bc809033b3c8e687dd95d6c758"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerPilot.client.ts",
+      "sha256": "196f00e79c67a985c0d921a1c8db9ee0eece637d95d62f4c196acd6b4efe5fd2"
+    },
+    {
+      "path": "src/app/cashflow/cashflowServerProtocol.ts",
+      "sha256": "fcfbd5f8571b5a4458cd88c7fc5feaa8f9dc2d1f9a71d256929183a91927a167"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.test.ts",
+      "sha256": "506e92eb6751d896961785fa41211e7f6730a7c79b2406b2aabac16e6f55fb67"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.client.ts",
+      "sha256": "a96f2b76a94180c3c22155e3e4ee0741d33ec0c07d0120d0ee14fbdf158b9c42"
+    },
+    {
+      "path": "src/app/cashflow/cashflowWorker.types.ts",
+      "sha256": "34f13f1a13df6bde5081ff2ebbb3329ad9ee6c4acf6192b170971c8d9a22da62"
+    },
+    {
+      "path": "src/app/cashflow/computeCashflow.ts",
+      "sha256": "06c9617a5f0b2094b526bfa5569341e30db9f99dcacaa85f8188ef77f183bca6"
+    },
+    {
+      "path": "src/app/cashflow/generator.test.ts",
+      "sha256": "ec31ce086ea72db7ad1c2e8ba36777e32812098c0a3a70734c6264ec7b4a1c88"
+    },
+    {
+      "path": "src/app/cashflow/generator.ts",
+      "sha256": "1381bf122d5d189c92af1d99380b58beaaeea809e43af17343db13bfbb3dfcaa"
+    },
+    {
+      "path": "src/app/cashflow/helpers.ts",
+      "sha256": "764733a0bfc43f70bf4a6d0015db68beec426043d423c95ba4b3f37ce6af72c6"
+    },
+    {
+      "path": "src/app/cashflow/page.loading.test.tsx",
+      "sha256": "47e3f3b6dbb247bd842be3191e65577826c6adfac37298e3fc7350ff310670ed"
+    },
+    {
+      "path": "src/app/cashflow/page.tsx",
+      "sha256": "b156f2fb2c864f3050479b472d4a1e29fd4cce4b7a795ab8e496cd9d895f80e5"
+    },
+    {
+      "path": "src/app/cashflow/payoutPlanMatching.ts",
+      "sha256": "9386af962d5ec59cb2abaec75173935110d3ad6d4f24a68f072dd446be2263bc"
+    },
+    {
+      "path": "src/app/cashflow/subscriptionCashflow.ts",
+      "sha256": "0be94f91700c1a7ca7ff9a0fa3bd7b81765202017cbbcab0a2ec26321114733f"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.ts",
+      "sha256": "071b62f7055465667a2ce91cb327e31a41d745bb6cdcfd7f1f4de0c2416f4f9b"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowData.worker.test.tsx",
+      "sha256": "1702f8684533936026f124091a0c657bce6df0d1fd64b3069aa2033374f29320"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.test.tsx",
+      "sha256": "eb2ba19d5f66064072514fe965d48068af80233a1c0691acaf0766436fbaab69"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowPilotDiagnostics.ts",
+      "sha256": "fddbf750def071970884dce3f5877217dca996dc8523c6f742d4b6fda82916c1"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.test.tsx",
+      "sha256": "ddad3faa1f91771829f238c3da615539d4d8142fa0451bc41a22966cff942d3d"
+    },
+    {
+      "path": "src/app/cashflow/useCashflowView.ts",
+      "sha256": "7a1df11a5fa46f883b5922da1c3c2e8db7a7b08e26d906eb1cb1b58114ec5845"
+    },
+    {
+      "path": "src/app/lib/calendarDates.ts",
+      "sha256": "74124fab602c813880e2362be773add3b84bad8a9cfd82caef502a966940365f"
+    },
+    {
+      "path": "src/app/lib/cashflowPagination.ts",
+      "sha256": "ef78077c06efe2ae981d0f2739f7d1de228e2d1335fae579e7bf69687192e340"
+    },
+    {
+      "path": "src/app/lib/formatters.ts",
+      "sha256": "219880637bd2ecf55e9aba3aa3b6b77a05593514bfff5f9da9cd5d17fd080109"
+    },
+    {
+      "path": "src/app/lib/kooperativaCPayoutMeaning.ts",
+      "sha256": "058a274d4e38d6248b003ab8b1a9b4d457792e720618f8b5a0415ee1608b976a"
+    },
+    {
+      "path": "src/lib/server/cashflowCalendar.test.ts",
+      "sha256": "f6ff510eb43e1c5d4ca4c790a100f3fcb596c32dc1524b53930aaaba86aa9a4e"
+    },
+    {
+      "path": "src/lib/server/cashflowCalendar.ts",
+      "sha256": "b17bfc9ab8394267505317f809d3580f0d3b91709fb848c525ad7214129cec97"
+    },
+    {
+      "path": "src/lib/server/cashflowContractTiming.test.ts",
+      "sha256": "787392ae466a8ba74e47885f65b4aa9732329ae05c69a4978136c17a7622a636"
+    },
+    {
+      "path": "src/lib/server/cashflowContractTiming.ts",
+      "sha256": "263b6a517e1677d537983742a9b004ca791eeab47e89324e67978d0b81d40a83"
+    },
+    {
+      "path": "src/lib/server/cashflowDiagnosticHttp.test.ts",
+      "sha256": "a87cc6de5f875a3f7fb27f287ee160ac60d26080824069d15e0ef9460e882721"
+    },
+    {
+      "path": "src/lib/server/cashflowDiagnosticHttp.ts",
+      "sha256": "cb0ed62fb03d9306ca4a12d6a61bf7f4f9a0bbedd6ad527ecdf9d03015d171f9"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.test.ts",
+      "sha256": "44a49e0b0368a2ffeb3d330329edc017329d0b6ebaf45509c5973ccc90832fed"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowBudget.ts",
+      "sha256": "dbce89e3325637fb164af563f23b766d046dac46429a6b362ddb5984a5d4b79f"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.test.ts",
+      "sha256": "33ff5cba0c7e3e34930fb98f185802a389532d56dd0f3b7e04a0d0be2650224b"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowInputs.ts",
+      "sha256": "74d2490ea1e8e1c6cb584271fbb67cd56069a8936eca2a625e62ffefe6c751d8"
+    },
+    {
+      "path": "src/lib/server/cashflowShadowSchedules.test.ts",
+      "sha256": "856f9e60f107ec7b27aeba1510c60e9c15e41da60ea66a6e218134bb698c5405"
+    },
+    {
+      "path": "tests/security/api-authentication.test.ts",
+      "sha256": "82a10ff99739ec1d1893c4b88f22d9c03f701aba9cb2284e3cfe14c7121c4bec"
+    }
+  ],
+  "localHelpers": [
+    {
+      "path": "scripts/prepare-cashflow-contract-timing-release.mjs",
+      "sha256": "4d65448c7bb2e21e4334bdb305a93cbdd3e3559d1a610b94771403ab777731e8",
+      "includedInDeployment": false
+    },
+    {
+      "path": "scripts/check-cashflow-contract-timing.mjs",
+      "sha256": "515601f5cd11619d878abf8b5ee34ddc326b128e25cc73aa9baef3c5e8dc05db",
+      "includedInDeployment": false
+    },
+    {
+      "path": "scripts/check-cashflow-contract-timing-models.mjs",
+      "sha256": "60dd248e8dc1f19b164adb10314a7a88df488961926db19d50058655c8fba358",
+      "includedInDeployment": false
+    }
+  ],
+  "scope": {
+    "trustedContractPhases": [
+      "identity",
+      "team_context",
+      "subscription",
+      "count",
+      "entries",
+      "response"
+    ],
+    "fixedMetricNamesOnly": true,
+    "noAccountOrContractMetadata": true,
+    "countAndEntriesOverlap": true,
+    "entriesIncludeQueryDecryptionFilteringAndSerializationPreparation": true,
+    "teamContextIncludesCurrentProfileTreeReadAndConstruction": true,
+    "roleTeamAndSubscriptionChecksUnchanged": true,
+    "pilotAccountCount": 1,
+    "productionDataWrites": false,
+    "timingDefinitions": {
+      "identity": "Existing authentication, impersonation handling and rate guard.",
+      "team_context": "Existing fresh profile-tree read and tree construction; does not include every later role resolution step.",
+      "subscription": "Existing current subscription access check.",
+      "count": "First-page existing count query; overlaps entry reads and cannot be added to entries as elapsed time.",
+      "entries": "Existing complete fetch, query fallbacks, decryption, filtering and response-item preparation.",
+      "response": "Existing final visibility filtering, response construction, JSON serialization and rate headers."
+    }
+  },
+  "validation": {
+    "rootTypecheckPassed": true,
+    "rootTargetedEslintPassed": true,
+    "initialTargetedTests": {
+      "passed": 258,
+      "files": 7
+    },
+    "syntheticOnly": true,
+    "isolatedTests": {
+      "passed": 5935,
+      "files": 398
+    },
+    "isolatedTypecheckPassed": true,
+    "isolatedTargetedEslintPassed": true,
+    "immutableReleasePreparationPassed": true,
+    "securityReview": {
+      "authenticationAndAuthorizationUnchanged": true,
+      "freshAccessCheckedOnEveryPage": true,
+      "foreignAccountAndManipulatedInputTestsPassed": true,
+      "rateLimitsAndSourceCapsUnchanged": true,
+      "completeSourceHashPreserved": true,
+      "privateNoStoreResponsesUnchanged": true,
+      "fixedMetricNamesOnly": true,
+      "finiteNumericalDurationsOnly": true,
+      "telemetryErrorsCannotChangeResultsOrHideDenial": true,
+      "sensitiveLogsAdded": false,
+      "secretsAdded": false,
+      "newDependencies": false
+    },
+    "actualContractHandlers": {
+      "passed": true,
+      "syntheticOnly": true,
+      "contractCases": 26,
+      "completePages": 9,
+      "actualOldNewHandlersCompared": true,
+      "allResponseFieldsCountsCursorsAndHeadersEqual": true,
+      "databaseQueriesAndAuthorizationOrderEqual": true,
+      "measuredAndUnmeasuredResultsEqual": true,
+      "deniedRequestsReadNoContracts": true,
+      "foreignOwnerAndPrivilegeManipulationRejected": true,
+      "countAndEntriesRemainConcurrent": true,
+      "inputHeadersCannotEnableDiagnostics": true,
+      "productionChanged": false,
+      "productionDataRead": false
+    },
+    "rootHelperEslintPassed": true,
+    "productionBuild": {
+      "passed": true,
+      "syntheticConfigurationOnly": true,
+      "envFilesRead": false,
+      "productionCredentialsUsed": false,
+      "timingPatchSha256": "3f4ee23d5e0ef4bf86b04980c38e3ef65ce697cdcec5f4efac37da8dd4ed5d79",
+      "sourceFilesVerified": 51,
+      "webpack": true,
+      "authProxyVerified": true
+    },
+    "localNativeChromeWorker": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true,
+      "externalBrowserNetworkingDisabled": true,
+      "temporaryUnauthenticatedProfile": true
+    },
+    "originalVsNewCashflow": {
+      "passed": true,
+      "syntheticOnly": true,
+      "previousPatchSha256": "aefbbff76a345125acea6670bb18bb81a755941b0fc3fffe43a4c6a8b0f1e77f",
+      "unchangedReleaseFiles": 39,
+      "portfolios": 42,
+      "views": 378,
+      "oldContractRequests": 102,
+      "nextContractRequests": 102,
+      "unchangedPaginationWitness": {
+        "ownContracts": 1001,
+        "teamContracts": 501,
+        "oldContractRequests": 5,
+        "nextContractRequests": 5
+      },
+      "completeInputsEqual": true,
+      "allOverviewFieldsAndMonthItemsMatch": true,
+      "authorizationRevocationRejectedByBoth": true,
+      "businessSourcesUnchanged": true,
+      "inputsUnmodified": true,
+      "sourceRequestsUnchanged": true,
+      "sourceTimingEnabled": true,
+      "innerContractTimingForwarded": true,
+      "productionSpeedupEstablished": false
+    },
+    "finalArtifactAndIsolatedSourceIntegrityPassed": true,
+    "preparationHelperEslintPassed": true,
+    "hostingWorkerNativeChrome": {
+      "nativeWorker": true,
+      "hashesMatch": true,
+      "datesPreserved": true,
+      "compactOverview": true,
+      "lifePayoutMonth": "2026-12",
+      "filterMatches": true,
+      "monthsCompared": 5,
+      "syntheticOnly": true,
+      "deploymentId": "dpl_2JrBgt4hjWjbFHG4PwiQA8tpN1iF",
+      "remoteWorkerPath": "/_next/static/chunks/7540.dc1e422c0a4a8c7c.js",
+      "remoteWorkerSha256": "e97518dc3ecfa90c12cbe05a3b4a536f3b5aac14d32755ffe943d11bca692cde",
+      "dependencies": [
+        {
+          "path": "/_next/static/chunks/1515-db21cb145d5d682f.js",
+          "sha256": "f4f88dec3acb3d6ad3f917548e642c98ac94df1fce80cf842c8782d9bf173521",
+          "bytes": 19943
+        },
+        {
+          "path": "/_next/static/chunks/9506.027aa8730c9084a5.js",
+          "sha256": "3e423e35db00f285ad701bde71cb6cbc6069b37832c323c87c127f67d50d830a",
+          "bytes": 16497
+        }
+      ]
+    }
+  },
+  "deploymentChanged": true,
+  "hostingAccess": {
+    "checkedAt": "2026-10-10T08:07:17.042Z",
+    "currentDeploymentId": "dpl_2JrBgt4hjWjbFHG4PwiQA8tpN1iF",
+    "currentDeploymentVerified": true,
+    "businessDataRead": false
+  },
+  "liveVerification": {
+    "pending": false,
+    "serverOnlyMigrationComplete": false,
+    "productionSpeedupEstablished": false,
+    "updatedAt": "2026-10-10T08:10:49.622Z",
+    "combinedWithoutPrediction": {
+      "status": "match",
+      "evidence": "cashflow-server-pilot-live-contract-timing-combined-match-2026-10-10.json"
+    },
+    "innerContractMetricNamesVerified": true,
+    "innerContractMetricCount": 12,
+    "currentHostingDeploymentIndependentlyVerified": true,
+    "sameSelectionRepeatedSamplesCollected": false,
+    "specificDatabaseQueryBottleneckEstablished": false
+  },
+  "deploymentPrerequisite": {
+    "renewHostingLoginRequired": false,
+    "expectedPreviousDeploymentId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm",
+    "mustRecheckAliasAndConfigurationBeforeSubmission": true,
+    "pilotAccountCount": 1,
+    "productionDeploymentSubmitted": true
+  },
+  "deploymentPreflight": {
+    "checkedAt": "2026-10-10T07:49:30.875Z",
+    "productionId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm",
+    "productionMatchesPreviousVerifiedRelease": true,
+    "originalGlobalSettings": {
+      "buildCommand": null,
+      "framework": "nextjs",
+      "nodeVersion": "24.x"
+    },
+    "buildCommand": "node scripts/check-image-runtime.mjs && node scripts/check-security-config.mjs && next build --webpack && node scripts/check-auth-proxy-build.mjs",
+    "scheduledJobs": [
+      {
+        "path": "/api/cron/contract-lifecycle",
+        "schedule": "30 1 * * *"
+      },
+      {
+        "path": "/api/cron/weekly-team-report",
+        "schedule": "0 7 * * 1"
+      },
+      {
+        "path": "/api/cron/subscription-expiry-notifications",
+        "schedule": "15 7 * * *"
+      },
+      {
+        "path": "/api/cron/contract-note-reminders",
+        "schedule": "45 7 * * *"
+      },
+      {
+        "path": "/api/cron/password-change-notices",
+        "schedule": "0 8 * * *"
+      }
+    ],
+    "region": "fra1",
+    "businessDataWrites": false,
+    "secretsSuppressed": true
+  },
+  "deploymentSubmission": {
+    "checkedAt": "2026-10-10T07:50:57.698Z",
+    "deploymentSubmitted": true,
+    "deploymentId": "dpl_2JrBgt4hjWjbFHG4PwiQA8tpN1iF",
+    "deploymentUrl": "bohemika-provize-lwdlp423y-jacobrausch989s-projects-909dd478.vercel.app",
+    "previousProductionId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm",
+    "contractTimingPatchSha256": "3f4ee23d5e0ef4bf86b04980c38e3ef65ce697cdcec5f4efac37da8dd4ed5d79",
+    "auditedSourceFiles": 51,
+    "automaticDomainSwitch": false,
+    "serverPilotEnabled": true,
+    "browserPilotBuildEnabled": true,
+    "allowlistAccounts": 1,
+    "accountIncludedInReceipt": false,
+    "otherApplicationRuntimeVariableChangesRequested": false,
+    "productionSecretsChanged": false,
+    "businessDataWrites": false
+  },
+  "uploadedSourceVerification": {
+    "deploymentId": "dpl_2JrBgt4hjWjbFHG4PwiQA8tpN1iF",
+    "passed": true,
+    "archiveParts": 2,
+    "uploadedSourceHashesChecked": 60,
+    "credentialFilesFound": false,
+    "archiveExtracted": false
+  },
+  "deployment": {
+    "domain": "https://bohemka.app",
+    "id": "dpl_2JrBgt4hjWjbFHG4PwiQA8tpN1iF",
+    "receipt": "cashflow-server-pilot-contract-timing-deployment-2026-10-10.json",
+    "promotedAt": "2026-10-10T08:01:06.651887+00:00",
+    "productionChecksPassed": 20,
+    "authenticatedContractTimingsPending": false,
+    "rollbackDeploymentId": "dpl_AKhELij5YgxNiqKeMPyEcD8ySwEm"
+  }
+}

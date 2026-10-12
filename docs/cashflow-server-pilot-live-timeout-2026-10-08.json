@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-08T17:15:40+02:00",
+  "observationSource": "User-provided screenshot of whitelisted browser session diagnostics",
+  "domain": "https://bohemka.app",
+  "mostRecentlyVerifiedDeploymentId": "dpl_51QAhxPtrtHzXzximaqK2vM87z2v",
+  "status": "server-comparison-timeout-original-calculation-ready",
+  "page": {
+    "mode": "compare",
+    "status": "ready",
+    "profileReadyMs": 1117.5,
+    "statementsReadyMs": 1726.1,
+    "contractsReadyMs": 7350.9,
+    "overviewReadyMs": 15505.1,
+    "frameReadyMs": 15515.6
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "unavailable",
+    "requestMs": 8060.6,
+    "referenceMs": 70.6,
+    "serverTimingMs": {},
+    "reason": "timeout"
+  },
+  "interpretation": {
+    "originalCalculationReady": true,
+    "liveServerMatchVerified": false,
+    "httpStatusAvailable": false,
+    "serverPhaseTimingsAvailable": false,
+    "serverModelCompletionKnown": false,
+    "timezoneGateOutcomeKnown": false,
+    "pageTimingsAreCumulativeMilestones": true,
+    "baselineSampleAvailable": false,
+    "productionSpeedupVerified": false,
+    "sampleCount": 1
+  },
+  "sourceInvestigation": {
+    "clientComparisonDeadlineMs": 8000,
+    "serverInputReadDeadlineMs": 20000,
+    "viewAwaitedServerComparisonAfterOriginalCompleted": true,
+    "exactDelayPhaseCannotBeDeterminedFromScreenshot": true
+  },
+  "identityAmountsAndPortfolioIncluded": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": "Bounded comparison in the background, cancellation/ordering tests, deployment checks and another authenticated browser sample"
+}

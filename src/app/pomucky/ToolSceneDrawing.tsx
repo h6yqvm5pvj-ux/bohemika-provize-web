@@ -295,6 +295,7 @@ export function ToolSceneDrawing({ toolKey }: { toolKey: ToolHubToolKey }) {
         <circle cx="88" cy="116" r="14" fill={pale} stroke={mid} /><path d="m82 104 8 12-2 13m2-13 11-3" stroke={ink} strokeWidth="1.5" />
       </>;
     case "neon-life-vs-metlife-oneguard":
+    case "neon-life-vs-generali-bel-mondo-20":
       return <>
         <Shield x={47} y={66}><path d="M-4-4c-10-11-22 3-13 13l13 12L9 9C18-1 6-15-4-4Z" fill={mid} /></Shield>
         <g className={styles.detail}><Shield x={118} y={51}><Check x={-4} /></Shield></g>

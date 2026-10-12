@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-09T09:32:36+02:00",
+  "observationSource": "User-provided browser screenshot of the tested scope-console probe after the requested idle procedure",
+  "domain": "https://bohemka.app",
+  "probe": "scripts/cashflow-pilot-scope-console.js",
+  "selection": {
+    "before": "team",
+    "requested": "own",
+    "after": "own",
+    "visibleScopeFilter": "own",
+    "visibleProductFilter": "all",
+    "contractNumberQueryEmpty": true,
+    "requestOptionsCaptured": false
+  },
+  "probeResult": {
+    "waitMs": 12818,
+    "newViewResourceEntryCount": 1,
+    "newViewResourceDurationMs": 12604
+  },
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 12649.8,
+    "referenceMs": 76.3,
+    "serverTimingMs": {
+      "cashflow_auth": 1594.14,
+      "cashflow_inputs": 8992.93,
+      "cashflow_hash": 303.33,
+      "cashflow_compute": 897.45,
+      "cashflow_total": 11858.08
+    }
+  },
+  "idleEvidence": {
+    "precedingObservation": "cashflow-server-pilot-live-idle-unconfirmed-2026-10-09.json",
+    "precedingScreenshotAt": "2026-10-09T09:25:26+02:00",
+    "gapBetweenScreenshotTimesSeconds": 430,
+    "requestedProcedure": "Leave the page without reloading or changing filters for at least six minutes, then run the single console probe.",
+    "samePageInstanceIndependentlyVerified": false,
+    "referenceAsOfCaptured": false,
+    "idleDurationIndependentlyMeasured": false
+  },
+  "interpretation": {
+    "freshCompletedViewMatchVerified": true,
+    "scopeChangeObservedByProbe": true,
+    "ownScopeMatchVerifiedByProbe": true,
+    "newRequestObservedAfterProbeStart": true,
+    "inputFingerprintMatched": true,
+    "fullMonthItemFingerprintMatched": true,
+    "allOverviewFieldsMatched": true,
+    "idleContextRenewalLiveVerifiedByProcedure": true,
+    "exactReferenceTimeRenewalIndependentlyVerified": false,
+    "allFilterCombinationsLiveVerified": false,
+    "predictionLiveVerified": false,
+    "monthDetailEndpointLiveVerified": false,
+    "productionSpeedupVerified": false,
+    "displayCalculation": "original-client-reference",
+    "referenceMsExcludesInitialSourceReadsAndBackgroundVerification": true
+  },
+  "releaseAssociation": {
+    "expectedReleaseDeploymentId": "dpl_HFViReVeKpL9p84M1Ztb8AxS8va7",
+    "requestDeploymentIdCaptured": false,
+    "currentHostingMetadataReverified": false,
+    "lastVerifiedAliasAt": "2026-10-08T18:08:36.563Z"
+  },
+  "privacy": {
+    "identityIncluded": false,
+    "financialAmountsIncluded": false,
+    "portfolioIncluded": false,
+    "rawScreenshotStored": false,
+    "tokensIncluded": false
+  },
+  "applicationRuntimeCodeChanged": false,
+  "deploymentChanged": false,
+  "productionConfigurationChanged": false,
+  "businessDataReadByAgent": false,
+  "businessDataWrites": false,
+  "nextRequiredVerification": [
+    "Prediction-enabled view comparison",
+    "Monthly detail comparison"
+  ]
+}

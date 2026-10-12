@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "observedAt": "2026-10-10T14:54:04+02:00",
+  "source": "User-provided screenshot following the procedure to clear the diagnostic, reload first, set team scope with prediction on, wait, and read the result",
+  "domain": "https://bohemka.app/cashflow",
+  "comparison": {
+    "kind": "view",
+    "status": "match",
+    "requestMs": 12243.1,
+    "referenceMs": 104.8,
+    "serverTimingMs": {
+      "cashflow_auth": 1027.47,
+      "cashflow_inputs": 9624.66,
+      "cashflow_hash": 273.72,
+      "cashflow_compute": 1040.5,
+      "cashflow_inputs_profile": 2778.11,
+      "cashflow_inputs_subscriptions": 1598.4,
+      "cashflow_inputs_own_contracts_identity": 1635.63,
+      "cashflow_inputs_tips": 1642.73,
+      "cashflow_inputs_own_contracts_team_context": 45.56,
+      "cashflow_inputs_statements": 1983.32,
+      "cashflow_inputs_own_contracts_subscription": 303.71,
+      "cashflow_inputs_own_contracts_count": 40.9,
+      "cashflow_inputs_team_contracts_identity": 953.96,
+      "cashflow_inputs_own_contracts_entries": 1943.5,
+      "cashflow_inputs_own_contracts_response": 19.67,
+      "cashflow_inputs_own_contracts": 3958.1,
+      "cashflow_inputs_team_contracts_team_context": 1029.26,
+      "cashflow_inputs_team_contracts_subscription": 21.72,
+      "cashflow_inputs_team_contracts_count": 80.38,
+      "cashflow_inputs_team_contracts_entries": 2796.7,
+      "cashflow_inputs_team_contracts_response": 7.91,
+      "cashflow_inputs_team_contracts": 4816.67,
+      "cashflow_total": 11995.21
+    }
+  },
+  "visibleSelection": {
+    "scopeFilter": "team",
+    "productFilter": "all",
+    "intelligentPredictionEnabled": true,
+    "contractNumberQuery": ""
+  },
+  "verification": {
+    "fullInputAndResultMatchReported": true,
+    "transcribedMillisecondsRoundedToTwoDecimals": true,
+    "innerContractMetricCount": 12,
+    "selectionBinding": "Visible controls and preceding instructions; request parameters and request deployment ID are not independently captured",
+    "previousDiagnosticRemovalVisible": false,
+    "reloadIndependentlyCaptured": false,
+    "requestOptionsIndependentlyCaptured": false,
+    "freshResourceTimingIndependentlyCaptured": false,
+    "expectedDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+    "currentAlias": {
+      "checkedAt": "2026-10-10T12:58:54.769Z",
+      "domain": "https://bohemka.app",
+      "deploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "expectedDeploymentId": "dpl_DMwDdPq4h2X2TyJk59xBZ1jHgTzF",
+      "deploymentVerified": true,
+      "groupReadsPatchVerified": true,
+      "concurrencyPatchVerified": true,
+      "relevantRuntimeFilesVerified": 7,
+      "businessDataRead": false,
+      "businessDataWrites": false,
+      "productionSecretsChanged": false
+    },
+    "currentHostingDeploymentIndependentlyVerified": true,
+    "requestDeploymentIndependentlyCaptured": false,
+    "sameSelectionRepeatedSamplesCollected": false,
+    "productionSpeedupEstablished": false,
+    "wholePageLatencyMeasured": false,
+    "serverOnlyMigrationComplete": false
+  },
+  "sourceAnalysis": {
+    "inspectedRuntimeMatchesReleaseManifest": true,
+    "freshAuthorizationEveryPagePreserved": true,
+    "contractSourceDurationsSumMs": 8774.77,
+    "inputSpanAfterProfileMs": 6846.55,
+    "netOverlapIndicatedMs": 1928.22,
+    "overlapInferredFromDurationTotals": true,
+    "exactTimelineCaptured": false,
+    "inputsPercentOfServerTotal": 80.24,
+    "actualOwnerGroupCountCaptured": false,
+    "groupReadAheadActivationIndependentlyCaptured": false,
+    "identifiedDelay": "Input loading dominates elapsed server time. Profile, team context, identities and entry phases varied between the two observations; no individual query cause or causal regression is established.",
+    "specificDatabaseQueryBottleneckEstablished": false,
+    "causalRegressionEstablished": false,
+    "causalSpeedupEstablished": false,
+    "nextVerification": "Collect repeated same-selection samples before another performance change; verify own overview and a separate month on this release."
+  },
+  "previousSameSelectionObservation": {
+    "file": "cashflow-server-pilot-live-concurrency-team-prediction-match-2026-10-10.json",
+    "observedAt": "2026-10-10T10:58:42+02:00",
+    "deploymentId": "dpl_3xSrYtV5w7cWGPLLkd6tkpLL6cap",
+    "requestMs": 9258.4,
+    "requestDeltaMs": 2984.7,
+    "requestDeltaPercent": 32.24,
+    "timingComparison": {
+      "cashflow_auth": {
+        "previousMs": 775.65,
+        "currentMs": 1027.47,
+        "deltaMs": 251.82
+      },
+      "cashflow_inputs": {
+        "previousMs": 6890,
+        "currentMs": 9624.66,
+        "deltaMs": 2734.66
+      },
+      "cashflow_inputs_profile": {
+        "previousMs": 1195.43,
+        "currentMs": 2778.11,
+        "deltaMs": 1582.68
+      },
+      "cashflow_inputs_own_contracts": {
+        "previousMs": 4130.36,
+        "currentMs": 3958.1,
+        "deltaMs": -172.26
+      },
+      "cashflow_inputs_team_contracts": {
+        "previousMs": 4298.81,
+        "currentMs": 4816.67,
+        "deltaMs": 517.86
+      },
+      "cashflow_inputs_own_contracts_entries": {
+        "previousMs": 2754.7,
+        "currentMs": 1943.5,
+        "deltaMs": -811.2
+      },
+      "cashflow_inputs_team_contracts_entries": {
+        "previousMs": 1305.51,
+        "currentMs": 2796.7,
+        "deltaMs": 1491.19
+      },
+      "cashflow_hash": {
+        "previousMs": 284.53,
+        "currentMs": 273.72,
+        "deltaMs": -10.81
+      },
+      "cashflow_compute": {
+        "previousMs": 1116.86,
+        "currentMs": 1040.5,
+        "deltaMs": -76.36
+      },
+      "cashflow_total": {
+        "previousMs": 9092.37,
+        "currentMs": 11995.21,
+        "deltaMs": 2902.84
+      }
+    },
+    "controlledBeforeAfterExperiment": false,
+    "samePortfolioAndInfrastructureIndependentlyVerified": false
+  },
+  "privacy": {
+    "identityStored": false,
+    "financialAmountsStored": false,
+    "portfolioStored": false,
+    "tokensStored": false,
+    "sourceImageStored": false
+  },
+  "runtimeChanged": false,
+  "businessDataWrites": false,
+  "productionSecretsChanged": false
+}
