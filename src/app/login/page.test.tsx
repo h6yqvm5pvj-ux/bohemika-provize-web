@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     mfaPing: vi.fn(),
     resetEmail: vi.fn(),
     factors: vi.fn(), setupSession: vi.fn(), discardSetup: vi.fn(),
+    refreshRoutes: vi.fn(),
   };
 });
 
@@ -56,8 +57,10 @@ vi.mock("@/app/lib/userProfileCache", () => ({ getUserProfileCached: mocks.profi
 vi.mock("@/app/lib/authenticatedApi", () => ({ fetchAuthedJsonOrThrow: mocks.mfaPing }));
 vi.mock("@/app/lib/authEmailRequest", () => ({ requestPasswordResetEmail: mocks.resetEmail }));
 vi.mock("@/app/lib/totpSetupSession", () => ({ prepareTotpSetupSession: mocks.setupSession, discardPendingTotpSetupSession: mocks.discardSetup }));
+vi.mock("./actions", () => ({ refreshAuthenticatedRoutes: mocks.refreshRoutes }));
 
 import LoginPage from "./page";
+import { clearServerSession, SERVER_SESSION_REQUEST_TIMEOUT_MS } from "@/app/lib/authSession";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -91,6 +94,7 @@ describe("login verification boundary", () => {
     mocks.factors.mockReset().mockReturnValue({ enrolledFactors: [{ factorId: "totp" }] });
     mocks.setupSession.mockReset().mockResolvedValue(undefined);
     mocks.discardSetup.mockReset().mockResolvedValue(undefined);
+    mocks.refreshRoutes.mockReset().mockResolvedValue(undefined);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ ok: true }));
@@ -335,6 +339,67 @@ describe("login verification boundary", () => {
     await act(async () => session.resolve(Response.json({ ok: true })));
     expect(mocks.router.replace).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("waits for an earlier guest logout before completing a verified passkey login", async () => {
+    const oldLogout = deferred<Response>();
+    fetchMock.mockImplementation(async (url, init) => {
+      if (url === "/api/auth/session" && init?.method === "DELETE") return oldLogout.promise;
+      return Response.json({ ok: true });
+    });
+    const logout = clearServerSession();
+    mocks.passkey.mockResolvedValue({ user: freshUser });
+    await startPasskey();
+    expect(sessionPosts()).toHaveLength(0);
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Dokončuji přihlášení");
+
+    await act(async () => { oldLogout.resolve(Response.json({ ok: true })); await logout; });
+    expect(sessionPosts()).toHaveLength(1);
+    expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("waits for cached guest routes to be invalidated before navigating after passkey login", async () => {
+    const refresh = deferred<void>();
+    mocks.refreshRoutes.mockReturnValue(refresh.promise);
+    mocks.passkey.mockResolvedValue({ user: freshUser });
+    await startPasskey();
+    expect(sessionPosts()).toHaveLength(1);
+    expect(mocks.refreshRoutes).toHaveBeenCalledOnce();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("Dokončuji přihlášení");
+    await act(async () => refresh.resolve());
+    expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+  });
+
+  it("stays on login when the new cookie cannot be verified before route invalidation", async () => {
+    mocks.refreshRoutes.mockRejectedValue(new Error("Přihlášení se nepodařilo ověřit."));
+    mocks.passkey.mockResolvedValue({ user: freshUser });
+    await startPasskey();
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(mocks.signOut).toHaveBeenCalled();
+    expect(container.textContent).toContain("Nepodařilo se bezpečně dokončit přihlášení");
+  });
+
+  it("aborts a timed-out session request and lets the user retry passkey login", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementationOnce((_url, init) => new Promise((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    mocks.passkey.mockResolvedValue({ user: freshUser });
+    await startPasskey();
+    const signal = sessionPosts()[0][1]?.signal;
+    await act(async () => { await vi.advanceTimersByTimeAsync(SERVER_SESSION_REQUEST_TIMEOUT_MS); });
+    expect(signal?.aborted).toBe(true);
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(mocks.signOut).toHaveBeenCalled();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.textContent).toContain("Nepodařilo se bezpečně dokončit přihlášení");
+
+    await startPasskey();
+    expect(sessionPosts()).toHaveLength(2);
+    expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
   });
 
   it("does not navigate when the server rejects session creation", async () => {

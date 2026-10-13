@@ -3,6 +3,30 @@ import { clearLegacyClientCards } from "./clientCardPrivacy";
 import { clearContractTerminationPrefills } from "./contractTerminationPrivacy";
 import { clearMeetingRecords } from "./meetingRecordPrivacy";
 
+let pendingSessionMutation: Promise<void> = Promise.resolve();
+
+export const SERVER_SESSION_REQUEST_TIMEOUT_MS = 10_000;
+
+function mutateServerSession(
+  operation: (signal: AbortSignal) => Promise<void>,
+  timeoutMessage: string,
+): Promise<void> {
+  // A guest redirect can leave DELETE in flight while passkey login starts.
+  // Serialize cookie writes so its late response cannot erase the new session
+  // (and a late POST cannot undo a subsequent logout).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(
+    Object.assign(new Error(timeoutMessage), { code: "auth/timeout" }),
+  ), SERVER_SESSION_REQUEST_TIMEOUT_MS);
+  const mutation = pendingSessionMutation.then(() => {
+    // A login that expired while waiting must not create a session later.
+    controller.signal.throwIfAborted();
+    return operation(controller.signal);
+  }).finally(() => clearTimeout(timer));
+  pendingSessionMutation = mutation.catch(() => {});
+  return mutation;
+}
+
 function hasUnsafeLoginPathCharacters(value: string): boolean {
   // URL parsers turn backslashes into slashes and strip some ASCII controls.
   for (let index = 0; index < value.length; index += 1) {
@@ -63,20 +87,23 @@ export async function createServerSessionFromToken(
   options: { rememberThisDevice?: boolean } = {}
 ): Promise<void> {
   const rememberThisDevice = options.rememberThisDevice === true;
-  const response = await fetch("/api/auth/session", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-      "Content-Type": "application/json",
-    },
-    credentials: "same-origin",
-    cache: "no-store",
-    body: JSON.stringify({ rememberThisDevice }),
-  });
+  await mutateServerSession(async signal => {
+    const response = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        "Content-Type": "application/json",
+      },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ rememberThisDevice }),
+      signal,
+    });
 
-  if (!response.ok) {
-    throw await readSessionError(response);
-  }
+    if (!response.ok) {
+      throw await readSessionError(response);
+    }
+  }, "Nastavení relace uživatele trvá příliš dlouho.");
 }
 
 export async function clearServerSession(): Promise<void> {
@@ -85,10 +112,13 @@ export async function clearServerSession(): Promise<void> {
   clearMeetingRecords();
   clearContractTerminationPrefills();
   clearLegacyClientCards();
-  const response = await fetch("/api/auth/session", {
-    method: "DELETE",
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error("Odhlášení se nepodařilo dokončit. Zkontroluj připojení a zkus to znovu.");
+  await mutateServerSession(async signal => {
+    const response = await fetch("/api/auth/session", {
+      method: "DELETE",
+      credentials: "same-origin",
+      cache: "no-store",
+      signal,
+    });
+    if (!response.ok) throw new Error("Odhlášení se nepodařilo dokončit. Zkontroluj připojení a zkus to znovu.");
+  }, "Odhlášení trvá příliš dlouho. Zkus to znovu.");
 }

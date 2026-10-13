@@ -469,6 +469,7 @@ body {
   html.mobile-app-shell,
   body.mobile-app-shell {
     max-width: 100%;
+    touch-action: pan-x pan-y;
     overscroll-behavior-x: none;
     overscroll-behavior-y: none;
   }
@@ -487,6 +488,7 @@ body {
     min-height: 100dvh;
     max-width: 100%;
     overflow-x: clip;
+    touch-action: pan-x pan-y;
   }
 }
 

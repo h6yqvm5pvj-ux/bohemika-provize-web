@@ -1,25 +1,16 @@
-import { useId } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useId, useRef, useState } from "react";
 import {
-  BriefcaseBusiness,
-  CarFront,
-  CreditCard,
-  Globe2,
-  HeartPulse,
-  Home,
-  Landmark,
-  Plane,
   Search,
-  Tag,
+  SlidersHorizontal,
   UserRound,
   UsersRound,
-  Sparkles,
   X,
 } from "lucide-react";
 
 import styles from "../cashflowToolbar.module.css";
 import { formatMoney, frequencyText, productLabel } from "../helpers";
 import type { CashflowItem, ProductFilter, ScopeFilter } from "../types";
+import { CashflowProductPicker, type CashflowProductOption } from "./CashflowProductPicker";
 
 type ContractSearchSummary = {
   productKey: CashflowItem["productKey"];
@@ -46,8 +37,8 @@ type CashflowFiltersProps = {
   onContractNumberChange: (value: string) => void;
 };
 
-const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
-  { value: "all", label: "Všechny" },
+const PRODUCT_FILTER_OPTIONS: CashflowProductOption[] = [
+  { value: "all", label: "Všechny produkty" },
   { value: "tip", label: "TIP" },
   { value: "subscription", label: "Předplatné" },
   { value: "life", label: "Život" },
@@ -59,20 +50,6 @@ const PRODUCT_FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "gold", label: "Zlato" },
   { value: "pension", label: "Penzijáky" },
 ];
-
-const PRODUCT_FILTER_ICONS: Partial<Record<ProductFilter, LucideIcon>> = {
-  all: Sparkles,
-  tip: Tag,
-  subscription: CreditCard,
-  life: HeartPulse,
-  auto: CarFront,
-  property: Home,
-  entrepreneurs: BriefcaseBusiness,
-  travel: Plane,
-  foreigners: Globe2,
-  gold: Landmark,
-  pension: Landmark,
-};
 
 function formatCount(count: number, singular: string, few: string, many: string): string {
   if (count === 1) return `1 ${singular}`;
@@ -121,6 +98,10 @@ export function CashflowFilters({
 }: CashflowFiltersProps) {
   const searchId = useId();
   const searchResultId = `${searchId}-result`;
+  const productId = useId();
+  const productPanelId = `${productId}-panel`;
+  const filterToggleRef = useRef<HTMLButtonElement>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const foundPrefix = contractNumberMatchCount === 1 ? "Nalezena" : "Nalezeno";
   const searchResultLabel =
     contractNumberMatchCount === 0
@@ -140,17 +121,21 @@ export function CashflowFilters({
   const productFilterOptions = showSubscriptionFilter
     ? PRODUCT_FILTER_OPTIONS
     : PRODUCT_FILTER_OPTIONS.filter((option) => option.value !== "subscription");
+  const activeProductLabel = productFilterOptions.find(option => option.value === productFilter)?.label;
+  const hasProductFilter = productFilter !== "all";
 
   return (
-    <section className={styles.filters} aria-label="Filtry provizního kalendáře">
+    <section className={styles.filters} aria-label="Filtry provizního kalendáře"
+      onKeyDown={event => {
+        if (event.key === "Escape" && filtersExpanded && filterToggleRef.current?.getClientRects().length) {
+          event.preventDefault();
+          setFiltersExpanded(false);
+          filterToggleRef.current.focus();
+        }
+      }}>
       <div className={styles.filterTop}>
         {hasTeam && <div className={styles.scopeControl}>
-          <span className={styles.filterLabel}>Smlouvy</span>
           <div className={styles.scopeOptions} role="group" aria-label="Smlouvy">
-            <button type="button" onClick={() => onScopeChange("combined")}
-              className={styles.scopeButton} aria-pressed={scopeFilter === "combined"}>
-              Všechny
-            </button>
             <button type="button" onClick={() => onScopeChange("own")}
               className={styles.scopeButton} aria-pressed={scopeFilter === "own"}>
               <UserRound size={14} aria-hidden="true" />Vlastní
@@ -158,6 +143,10 @@ export function CashflowFilters({
             <button type="button" onClick={() => onScopeChange("team")}
               className={`${styles.scopeButton} ${styles.teamScope}`} aria-pressed={scopeFilter === "team"}>
               <UsersRound size={14} aria-hidden="true" />Týmové
+            </button>
+            <button type="button" onClick={() => onScopeChange("combined")}
+              className={styles.scopeButton} aria-pressed={scopeFilter === "combined"}>
+              Všechny
             </button>
           </div>
         </div>}
@@ -167,25 +156,33 @@ export function CashflowFilters({
           <input id={searchId} type="search" inputMode="search" autoComplete="off"
             value={contractNumberQuery}
             onChange={(event) => onContractNumberChange(event.target.value)}
-            placeholder="Hledat číslo smlouvy"
+            placeholder="Číslo smlouvy"
             aria-describedby={contractNumberSearchActive ? searchResultId : undefined} />
           {contractNumberQuery.trim() && <button type="button" onClick={() => onContractNumberChange("")}
             className={styles.clearSearch} aria-label="Vyčistit číslo smlouvy">
             <X size={14} aria-hidden="true" />
           </button>}
         </div>
-      </div>
 
-      <div className={styles.productsRow}>
-        <span className={styles.filterLabel}>Produkty</span>
-        <div className={styles.products} role="group" aria-label="Produkty">
-          {productFilterOptions.map((option) => {
-            const Icon = PRODUCT_FILTER_ICONS[option.value];
-            return <button key={option.value} type="button" onClick={() => onProductChange(option.value)}
-              className={styles.productButton} aria-pressed={productFilter === option.value}>
-              {Icon && <Icon size={14} aria-hidden="true" />}{option.label}
-            </button>;
-          })}
+        <button ref={filterToggleRef} type="button"
+          className={`${styles.filterToggle} ${hasProductFilter ? styles.filterToggleActive : ""}`}
+          aria-label={hasProductFilter && activeProductLabel ? `Filtry, aktivní produkt: ${activeProductLabel}` : "Filtry"}
+          aria-expanded={filtersExpanded} aria-controls={productPanelId}
+          onClick={() => setFiltersExpanded(expanded => !expanded)}>
+          <SlidersHorizontal size={16} aria-hidden="true" />Filtry
+          {hasProductFilter && <span className={styles.filterCount} aria-hidden="true">1</span>}
+        </button>
+
+        <div id={productPanelId} className={styles.productControl} data-expanded={filtersExpanded}>
+          <div className={styles.productPanelHeading}>
+            <span>Produkt</span>
+            {hasProductFilter && <button type="button" className={styles.resetProduct}
+              onClick={() => onProductChange("all")}>
+              <X size={13} aria-hidden="true" />Zrušit filtr
+            </button>}
+          </div>
+          <CashflowProductPicker id={productId} options={productFilterOptions}
+            value={productFilter} onChange={onProductChange} />
         </div>
       </div>
 

@@ -37,6 +37,12 @@ const toDateInput = (value: string | null | undefined): string | null => {
   const month = Number(monthRaw);
   const year = Number(yearRaw);
   if (!day || !month || !year) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null;
   return `${year.toString().padStart(4, "0")}-${month
     .toString()
     .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
@@ -207,12 +213,16 @@ const findBelowValue = (
   return null;
 };
 
-const findContractNumber = (items: PositionedTextItem[]): string | null =>
-  findBelowValue(
-    items,
-    (item) => item.pageNumber === 1 && item.normalized === "cislo pojistne smlouvy",
-    (item) => extractContractNumber(item.str) !== null
-  ) ?? null;
+const findContractNumber = (items: PositionedTextItem[]): string | null => {
+  for (const label of ["cislo pojistne smlouvy", "navrh pojistne smlouvy c.", "cislo navrhu"]) {
+    const labelMatcher = (item: PositionedTextItem) => item.normalized.replace(/:$/, "") === label;
+    const accept = (item: PositionedTextItem) => extractContractNumber(item.str) !== null;
+    const raw = findRightValue(items, labelMatcher, accept) ?? findBelowValue(items, labelMatcher, accept);
+    const number = extractContractNumber(raw);
+    if (number) return number;
+  }
+  return null;
+};
 
 const findClientName = (items: PositionedTextItem[]): string | null => {
   const sectionIndex = items.findIndex((item) => item.normalized === "pojistnik");
@@ -243,7 +253,9 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
 
   const contractNumber =
     findContractNumber(items) ??
-    fullTextAscii.match(/Cislo\s+pojistne\s+smlouvy[\s\S]{0,80}?(\d{6,14})/i)?.[1] ??
+    fullTextAscii.match(
+      /(?:Cislo\s+pojistne\s+smlouvy|Navrh\s+pojistne\s+smlouvy\s+c\.|Cislo\s+navrhu)\s*:?\s*(\d{6,14})\b/i
+    )?.[1] ??
     null;
   if (contractNumber) result.contractNumber = contractNumber;
 
@@ -302,11 +314,22 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
     (item) => item.normalized === "pojistna smlouva uzavrena dne",
     (item) => extractDateToken(item.str) !== null
   );
+  const proposalCreatedRaw = findRightValue(
+    items,
+    (item) => item.normalized === "datum vzniku navrhu pojistne smlouvy",
+    (item) => extractDateToken(item.str) !== null
+  );
   const contractSignedDate =
     toDateInput(extractDateToken(signedRaw)) ??
     toDateInput(
       fullTextAscii.match(
         /Pojistna\s+smlouva\s+uzavrena\s+dne[\s\S]{0,80}?(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i
+      )?.[1] ?? null
+    ) ??
+    toDateInput(extractDateToken(proposalCreatedRaw)) ??
+    toDateInput(
+      fullTextAscii.match(
+        /Datum\s+vzniku\s+navrhu\s+pojistne\s+smlouvy\s*:?\s*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i
       )?.[1] ?? null
     );
   if (contractSignedDate) result.contractSignedDate = contractSignedDate;

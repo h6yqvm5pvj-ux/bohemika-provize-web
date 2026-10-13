@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { LoginShell } from "./LoginShell";
+import { refreshAuthenticatedRoutes } from "./actions";
 import { PasswordField } from "@/components/account-setup/PasswordField";
 import surface from "@/components/account-setup/authSurface.module.css";
 import {
@@ -260,6 +261,11 @@ export default function LoginPage() {
 
   const finalizeServerSession = useCallback(
     async () => {
+      await withTimeout(
+        refreshAuthenticatedRoutes(),
+        10000,
+        "Dokončení přihlášení trvá příliš dlouho.",
+      );
       setMfaResolver(null);
       setMfaDigits(createEmptyMfaDigits());
       setMfaHintUid(null);
@@ -290,13 +296,9 @@ export default function LoginPage() {
       );
       // Account eligibility comes from the live server record, not potentially
       // stale MFA metadata restored by the browser (especially after passkeys).
-      await withTimeout(
-        createServerSessionFromToken(loginToken, {
-          rememberThisDevice: loginRememberThisDeviceRef.current,
-        }),
-        10000,
-        "Nastavení relace uživatele trvá příliš dlouho."
-      );
+      await createServerSessionFromToken(loginToken, {
+        rememberThisDevice: loginRememberThisDeviceRef.current,
+      });
       const finishLogin = async () => {
         await finalizeServerSession();
       };

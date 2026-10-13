@@ -61,7 +61,23 @@ export function MobilePullToRefresh() {
       setPhase("idle");
     };
 
+    const preventMobileZoom = (event: Event) => {
+      if (window.matchMedia("(any-pointer: coarse)").matches && event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    const handlePinch = (event: TouchEvent): boolean => {
+      if (event.touches.length < 2) return false;
+      // Safari can ignore viewport scaling limits. Cancel only multi-touch;
+      // single-finger scrolling and the app's pull-to-refresh remain available.
+      preventMobileZoom(event);
+      resetPull();
+      return true;
+    };
+
     const handleTouchStart = (event: TouchEvent) => {
+      if (handlePinch(event)) return;
       if (refreshingRef.current || event.touches.length !== 1 || getDocumentScrollTop() > 0) {
         return;
       }
@@ -90,6 +106,7 @@ export function MobilePullToRefresh() {
     };
 
     const handleTouchMove = (event: TouchEvent) => {
+      if (handlePinch(event)) return;
       const gesture = gestureRef.current;
       if (!gesture.active || refreshingRef.current || event.touches.length !== 1) return;
 
@@ -144,7 +161,9 @@ export function MobilePullToRefresh() {
       reloadTimerRef.current = window.setTimeout(() => window.location.reload(), 220);
     };
 
-    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("gesturestart", preventMobileZoom, { passive: false });
+    document.addEventListener("gesturechange", preventMobileZoom, { passive: false });
+    document.addEventListener("touchstart", handleTouchStart, { passive: false });
     document.addEventListener("touchmove", handleTouchMove, { passive: false });
     document.addEventListener("touchend", handleTouchEnd, { passive: true });
     document.addEventListener("touchcancel", resetPull, { passive: true });
@@ -152,6 +171,8 @@ export function MobilePullToRefresh() {
     return () => {
       root.classList.remove("mobile-app-shell");
       body.classList.remove("mobile-app-shell");
+      document.removeEventListener("gesturestart", preventMobileZoom);
+      document.removeEventListener("gesturechange", preventMobileZoom);
       document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("touchend", handleTouchEnd);
