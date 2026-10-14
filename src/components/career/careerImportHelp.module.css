@@ -1,0 +1,150 @@
+.dialog {
+  width: min(1060px, calc(100vw - 24px));
+  height: min(830px, calc(100dvh - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid #e5ddf7;
+  border-radius: 22px;
+  background: #fff;
+  color: #1e1b35;
+  color-scheme: light;
+  box-shadow: 0 36px 100px #0f072b55;
+  overflow: auto;
+}
+.dialog::backdrop { background: #110b27b8; backdrop-filter: blur(7px); }
+.content { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto auto; gap: 10px; box-sizing: border-box; height: 100%; min-height: 0; padding: 16px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.header h2 { margin: 0; font-size: 18px; font-weight: 750; letter-spacing: -.025em; line-height: 1.25; }
+.close { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border: 1px solid #e6e5ee; border-radius: 50%; background: #faf9fc; color: #656174; cursor: pointer; }
+.close:hover { background: #f0eafa; color: #6d28d9; }
+.content button:focus-visible, .content a:focus-visible { outline: 3px solid #a78bfa; outline-offset: 3px; }
+.demonstration { display: flex; flex-direction: column; min-height: 0; position: relative; border: 1px solid #dcd9e6; border-radius: 15px; background: #efefef; box-shadow: 0 10px 30px #28124c10; overflow: hidden; isolation: isolate; }
+.browserBar { position: relative; z-index: 2; display: flex; align-items: end; gap: 5px; flex: 0 0 36px; height: 36px; padding: 4px 12px 0; background: #e8e7ed; border-bottom: 1px solid #dad8e3; }
+.windowDots { display: flex; align-self: center; gap: 5px; padding-right: 14px; padding-bottom: 7px; }
+.windowDots i { width: 8px; height: 8px; background: #c5c2ce; border-radius: 50%; }
+.windowDots i:first-child { background: #f28b8b; }.windowDots i:nth-child(2) { background: #e6c56e; }.windowDots i:last-child { background: #83c5a0; }
+.browserTab { display: flex; align-items: center; gap: 8px; width: 205px; height: 31px; padding: 0 14px; border-radius: 9px 9px 0 0; color: #7f7c8d; font-size: 11px; font-weight: 650; }
+.activeTab { background: #fff; color: #2b263b; box-shadow: 0 -2px 7px #16102d05; }
+.maxxMark, .bohemkaMark { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 5px; background: #5bc7eb; color: #fff; font-size: 11px; font-weight: 800; }
+.bohemkaMark { background: #7c3aed; font-family: Georgia, serif; font-size: 18px; }
+.viewport { position: relative; flex: 1; width: 100%; min-height: 0; container-type: size; overflow: hidden; }
+.maxxCanvas { position: absolute; top: 50%; left: 50%; width: min(100%, 256.8493cqh); aspect-ratio: 1500 / 584; transform: translate(-50%, -50%); }
+.screenshot { display: block; width: 100%; height: 100%; }
+.selection { position: absolute; left: 3.6%; top: 28.5%; width: 71.7%; height: 48.3%; display: grid; grid-template-rows: repeat(7, 1fr); clip-path: inset(0); }
+.selectionRow { display: grid; grid-template-columns: 42% 35% 23%; align-items: start; }
+.selectionRow span { height: 53%; background: #328cff50; }
+.selectionRow span:first-child { width: 44%; }.selectionRow span:nth-child(2) { width: 88%; }.selectionRow span:last-child { width: 100%; }
+.maxxCursor, .appCursor, .switchCursor, .prefillCursor, .saveCursor { position: absolute; z-index: 7; width: 27px; height: 30px; color: #242137; filter: drop-shadow(0 2px 2px #0004); transform: translate(-3px, -3px); }
+.clickRing { position: absolute; left: -8px; top: -8px; width: 23px; height: 23px; border: 3px solid #7c3aed99; border-radius: 50%; opacity: 0; }
+.maxxCursor { left: 74.7%; top: 76.6%; }
+.demonstration[data-step="0"] .selection { animation: selectRows 4.5s linear both; }
+.demonstration[data-step="0"] .maxxCursor { animation: selectCursor 4.5s linear both; }
+.demonstration[data-step="0"] .clickRing { animation: dragClick 4.5s linear both; }
+.demonstration[data-step="1"] .maxxCursor { animation: copyCursor 4.5s ease both; }
+.demonstration[data-step="1"] .clickRing { animation: menuClick 4.5s linear both; }
+.copyMenu, .pasteMenu { position: absolute; z-index: 5; display: flex; align-items: center; gap: 9px; width: 245px; padding: 12px 14px; border: 1px solid #dddce3; border-radius: 9px; background: #fffffffa; color: #242137; box-shadow: 0 8px 28px #18102830; font-size: 13px; font-weight: 600; }
+.copyMenu span, .pasteMenu span { margin-left: auto; color: #8c8698; font-size: 10px; }
+/* Keep the menu inside the viewport even when the source canvas is zoomed. */
+.copyMenu { left: min(61%, calc(50% + 50cqw - 253px)); top: 54%; animation: copyMenu 4.5s linear both; }
+.copiedBadge { position: absolute; left: 64%; top: 82%; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid #a7e4c5; border-radius: 99px; background: #ecfdf5; color: #047857; font-size: 11px; font-weight: 750; animation: copiedBadge 4.5s linear both; }
+/* The application scenes are captures of the actual settings components. */
+.appScene { --capture-width: min(100%, 163.2184cqh); position: absolute; inset: 0; z-index: 2; container-type: size; overflow: hidden; background: #faf8ff; }
+.demonstration[data-step="2"] .appScene { animation: showApp 4.5s linear both; }
+.importCapture { position: absolute; top: 50%; left: 50%; width: var(--capture-width); transform: translate(-50%, -50%); }
+.importCapture picture, .resultCapture picture { display: block; }
+.appScreenshot { display: block; width: 100%; height: auto; max-width: none; }
+.pastedCapture { position: absolute; inset: 0; animation: pastedCapture 4.5s linear both; }
+.demonstration[data-step="3"] .pastedCapture { animation: none; }
+.pasteMenu { left: 43%; top: 58%; animation: pasteMenu 4.5s linear both; }
+.appCursor { left: 50%; top: 66.53%; }
+.demonstration[data-step="2"] .appCursor { animation: pasteCursor 4.5s ease both; }
+.demonstration[data-step="2"] .appCursor .clickRing { animation: pasteClick 4.5s linear both; }
+.switchCursor { left: 370px; top: 19px; animation: switchCursor 4.5s linear both; }
+.switchCursor .clickRing { animation: switchClick 4.5s linear both; }
+.prefillCursor { left: 86.17%; top: 84.49%; opacity: 0; animation: prefillCursor 4.5s ease both; }
+.prefillCursor .clickRing { animation: prefillClick 4.5s linear both; }
+.resultCapture { --result-start: -38.6%; position: absolute; top: 0; left: 50%; z-index: 3; width: var(--capture-width); transform: translate(-50%, calc(100cqh - 100%)); animation: showResult 4.5s ease-in-out both; }
+.saveCursor { left: 90.45%; top: 97.65%; animation: saveCursor 4.5s ease both; }
+.sceneLabel { position: absolute; z-index: 8; right: 10px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid #e9e6ee; border-radius: 99px; background: #ffffffed; color: #5d566b; font-size: 8px; font-weight: 800; letter-spacing: .07em; }
+.demonstration[data-step="2"] .sceneLabel, .demonstration[data-step="3"] .sceneLabel { display: none; }
+.sceneLabel > span:first-child { width: 5px; height: 5px; border-radius: 50%; background: #5bc7eb; }.demonstration[data-step="2"] .sceneLabel > span:first-child, .demonstration[data-step="3"] .sceneLabel > span:first-child { background: #8b5cf6; }.sceneLabelDetail { margin-left: 5px; color: #a099ab; font-weight: 500; letter-spacing: 0; }
+.steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.step { display: flex; min-height: 38px; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid #eeebf3; border-radius: 12px; background: #faf9fc; color: #7d758b; font-size: 11px; font-weight: 650; text-align: left; cursor: pointer; }.step:hover { border-color: #c4b5fd; }
+.stepNumber { display: grid; width: 25px; height: 25px; flex: none; place-items: center; border: 1px solid #e6e0ed; border-radius: 50%; background: #fff; font-size: 10px; }
+.currentStep { border-color: #c4b5fd; background: #f3edff; color: #6d28d9; }.currentStep .stepNumber { border-color: #7c3aed; background: #7c3aed; color: #fff; }
+.stepDescription { min-height: 0; margin: 0; color: #62596f; font-size: 12px; line-height: 1.5; }
+.stepTitle, .linkShort { display: none; }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid #eeebf4; }.controls { display: flex; gap: 8px; }.controls button { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #e7e1ef; border-radius: 9px; background: #fff; color: #655b76; font-size: 11px; font-weight: 650; cursor: pointer; }.controls button:hover { background: #f7f3ff; color: #6d28d9; }.footer a { display: inline-flex; align-items: center; gap: 6px; color: #7c3aed; font-size: 11px; font-weight: 700; text-decoration: none; }.footer a:hover { text-decoration: underline; }
+.demonstration[data-playing="false"] *, .demonstration[data-playing="false"] *::after { animation-play-state: paused !important; }
+.demonstration[data-still="true"] *, .demonstration[data-still="true"] *::after { animation-delay: -4.5s !important; }
+.copyMenu, .pasteMenu, .switchCursor { opacity: 0; }
+
+@keyframes selectRows { 0%, 15% { clip-path: inset(0 0 100% 0); } 72%, 100% { clip-path: inset(0); } }
+@keyframes selectCursor { 0% { left: 7%; top: 21%; } 15% { left: 3.7%; top: 28.2%; } 72%, 100% { left: 74.7%; top: 76.6%; } }
+@keyframes dragClick { 0%, 12%, 26%, 100% { opacity: 0; transform: scale(.5); } 17% { opacity: 1; transform: scale(1.4); } }
+@keyframes copyCursor { 0%, 12% { left: 74.7%; top: 76.6%; } 34%, 100% { left: 67%; top: 57%; } }
+@keyframes menuClick { 0%, 35%, 54%, 100% { opacity: 0; transform: scale(.5); } 42% { opacity: 1; transform: scale(1.4); } }
+@keyframes copyMenu { 0%, 12% { opacity: 0; } 16%, 44% { opacity: 1; } 49%, 100% { opacity: 0; } }
+@keyframes copiedBadge { 0%, 48% { opacity: 0; transform: translateY(5px); } 54%, 100% { opacity: 1; transform: translateY(0); } }
+@keyframes showApp { 0%, 15% { opacity: 0; } 19%, 100% { opacity: 1; } }
+@keyframes switchCursor { 0% { left: 68%; top: 70%; opacity: 1; } 10%, 18% { left: 370px; top: 19px; opacity: 1; } 22%, 100% { left: 370px; top: 19px; opacity: 0; } }
+@keyframes switchClick { 0%, 9%, 24%, 100% { opacity: 0; transform: scale(.5); } 15% { opacity: 1; transform: scale(1.4); } }
+@keyframes pasteCursor { 0%, 20% { left: 40%; top: 8%; opacity: 0; } 24% { opacity: 1; } 42%, 100% { left: 50%; top: 66.53%; opacity: 1; } }
+@keyframes pasteClick { 0%, 46%, 66%, 100% { opacity: 0; transform: scale(.5); } 55% { opacity: 1; transform: scale(1.4); } }
+@keyframes pasteMenu { 0%, 38% { opacity: 0; } 43%, 56% { opacity: 1; } 62%, 100% { opacity: 0; } }
+@keyframes pastedCapture { 0%, 58% { opacity: 0; } 62%, 100% { opacity: 1; } }
+@keyframes prefillCursor { 0% { opacity: 1; transform: translate(90px, -75px); } 22%, 35% { opacity: 1; transform: translate(-3px, -3px); } 41%, 100% { opacity: 0; transform: translate(-3px, -3px); } }
+@keyframes saveCursor { 0%, 77% { opacity: 0; } 86%, 100% { opacity: 1; } }
+@keyframes prefillClick { 0%, 22%, 43%, 100% { opacity: 0; transform: scale(.5); } 29% { opacity: 1; transform: scale(1.4); } }
+@keyframes showResult { 0%, 32% { opacity: 0; transform: translate(-50%, var(--result-start)); } 39% { opacity: 1; transform: translate(-50%, var(--result-start)); } 87%, 100% { opacity: 1; transform: translate(-50%, calc(100cqh - 100%)); } }
+
+@media (max-width: 640px) {
+  .dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); border-radius: 18px; }
+  .content { gap: 8px; padding: 12px; }
+  .header { gap: 9px; }.header h2 { font-size: 16px; }.close { width: 30px; height: 30px; }
+  .browserBar { flex-basis: 32px; height: 32px; padding: 3px 5px 0; gap: 3px; }.windowDots { display: none; }.browserTab { width: 50%; height: 28px; padding: 0 7px; gap: 6px; font-size: 10px; }
+  .maxxCanvas { width: min(200%, 256.8493cqh); transform: translate(-59%, -50%); }
+  .copyMenu { width: 220px; font-size: 12px; left: min(53%, calc(59% + 50cqw - 228px)); }.copiedBadge { left: 53%; }
+  .appScene { --capture-width: min(100%, 93.5cqh); }
+  .importCapture { top: 0; transform: translate(-50%, max(-43.48%, calc(100cqh - 100%))); }
+  .pasteMenu { left: 16%; top: 57%; width: min(205px, 80%); font-size: 11px; padding: 9px; }.pasteMenu span { font-size: 8px; }
+  .appCursor { top: 65.63%; }.prefillCursor { left: 50%; top: 88.12%; }
+  .resultCapture { --result-start: -35.14%; }.saveCursor { left: 75.4%; top: 98.41%; }
+  .sceneLabel { right: 5px; bottom: 4px; padding: 4px 6px; font-size: 6px; }.sceneLabelDetail { display: none; }
+  .steps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }.step { justify-content: center; min-height: 34px; padding: 4px; }.stepNumber { width: 23px; height: 23px; }.stepLabel { display: none; }
+  .stepTitle { display: block; margin-bottom: 3px; color: #4f3b69; font-size: 12px; }.stepDescription { font-size: 11px; line-height: 1.5; }
+  .footer { gap: 8px; padding-top: 7px; }.footer a { font-size: 10px; }.controls { gap: 6px; }.controls button { min-height: 34px; padding: 6px 8px; font-size: 10px; }.linkLong { display: none; }.linkShort { display: inline; }
+  @keyframes pasteCursor { 0%, 20% { left: 40%; top: 30%; opacity: 0; } 24% { opacity: 1; } 42%, 100% { left: 50%; top: 65.63%; opacity: 1; } }
+  @keyframes switchCursor { 0% { left: 68%; top: 70%; opacity: 1; } 10%, 18% { left: 72%; top: 15px; opacity: 1; } 22%, 100% { left: 72%; top: 15px; opacity: 0; } }
+}
+
+@media (max-height: 480px) and (min-width: 641px) {
+  .dialog { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+  .content { grid-template-columns: minmax(0, 1fr) 235px; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px; }
+  .header { grid-column: 1 / -1; }.header h2 { font-size: 16px; }.close { width: 28px; height: 28px; }
+  .demonstration { grid-column: 1; grid-row: 2; }.steps { grid-column: 2; grid-row: 2; grid-template-columns: 1fr; gap: 5px; align-content: center; }.step { min-height: 34px; font-size: 10px; }
+  .stepDescription { grid-column: 1; grid-row: 3; align-self: center; font-size: 10px; }.footer { grid-column: 2; grid-row: 3; align-self: center; padding-top: 0; border-top: 0; gap: 5px; }.footer a { font-size: 10px; }.linkLong { display: none; }.linkShort { display: inline; }.controls { gap: 5px; }.controls button { min-height: 32px; padding: 5px 7px; font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demonstration *, .demonstration *::after { animation-delay: -4.5s !important; animation-play-state: paused !important; }
+}
+
+/* Setup uses the real dark wizard, including its Pokračovat action. */
+.demonstration[data-context="setup"] .appScene { --capture-width: min(100%, 132.7303cqh); background: #181122; }
+.demonstration[data-context="setup"] .appCursor { top: 66.8406%; animation-name: setupPasteCursor; }
+.demonstration[data-context="setup"] .prefillCursor { left: 83.1049%; top: 84.8299%; }
+.demonstration[data-context="setup"] .resultCapture { --result-start: -26.2693%; }
+.demonstration[data-context="setup"] .saveCursor { left: 87.3925%; top: 98.2934%; }
+@keyframes setupPasteCursor { 0%, 20% { left: 40%; top: 8%; opacity: 0; } 24% { opacity: 1; } 42%, 100% { left: 50%; top: 66.8406%; opacity: 1; } }
+
+@media (max-width: 640px) {
+  .demonstration[data-context="setup"] .appScene { --capture-width: min(100%, 93.5cqh); }
+  .demonstration[data-context="setup"] .appCursor { top: 68.0083%; animation-name: setupMobilePasteCursor; }
+  .demonstration[data-context="setup"] .prefillCursor { left: 50%; top: 89.1069%; }
+  .demonstration[data-context="setup"] .resultCapture { --result-start: -23.5011%; }
+  .demonstration[data-context="setup"] .saveCursor { left: 61.9736%; top: 98.9105%; }
+  @keyframes setupMobilePasteCursor { 0%, 20% { left: 40%; top: 30%; opacity: 0; } 24% { opacity: 1; } 42%, 100% { left: 50%; top: 68.0083%; opacity: 1; } }
+}

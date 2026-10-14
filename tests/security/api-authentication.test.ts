@@ -5,6 +5,7 @@ import { withRateLimitHeaders, type AuthedRateLimitContext } from "@/lib/server/
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASHFLOW_SHADOW_VERSION } from "@/app/cashflow/shadowProtocol";
 import { CASHFLOW_SERVER_PILOT_VERSION } from "@/app/cashflow/cashflowServerProtocol";
+import { APP_SESSION_COOKIE_NAME, createAppSessionCookieValue } from "@/lib/appSession";
 
 const doubles = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
@@ -71,7 +72,7 @@ const cases = findRoutes(apiRoot).flatMap((file) => {
   if (publicRoutes.has(route) || retiredRoutes.has(route) || setupRoutes.has(route)) return [];
   const source = readFileSync(file, "utf8");
   return methods.filter((method) =>
-    new RegExp(`export\\s+(?:async\\s+)?function\\s+${method}\\b`).test(source) &&
+    new RegExp(`export\\s+(?:(?:async\\s+)?function\\s+${method}\\b|const\\s+${method}\\s*=)`).test(source) &&
     !(route === "auth/session" && method === "DELETE") &&
     !(route === "online-card/analytics" && method === "POST")
   ).map((method) => ({ file, route, method }));
@@ -90,22 +91,43 @@ beforeEach(() => {
   vi.stubEnv("CASHFLOW_SERVER_PILOT_ENABLED", "1");
   vi.stubEnv("CASHFLOW_SERVER_PILOT_EMAILS", "advisor@example.test");
   vi.stubEnv("CRON_SECRET", "synthetic-cron-secret-for-local-tests");
+  vi.stubEnv("APP_SESSION_SECRET", "synthetic-api-authentication-test-secret");
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe.each([
   "missing", "forged", "without-totp", "without-mfa-proof", "blocked-account",
   "disabled-account", "unverified-email", "unproven-custom-token",
+  "expired", "revoked", "spoofed-identity", "cookie-only", "password-with-custom-proof",
 ] as const)("API authentication: %s bearer", (bearer) => {
   it.each(cases)("$method /api/$route rejects access before reading data", async ({ file, route, method }) => {
     const routeModule = await import(/* @vite-ignore */ file);
     const headers = new Headers({ "Content-Type": "application/json", Origin: "https://app.example.test" });
-    if (bearer !== "missing") headers.set("Authorization", "Bearer synthetic-token");
+    const noBearer = ["missing", "spoofed-identity", "cookie-only"].includes(bearer);
+    const invalidBearer = ["forged", "expired", "revoked"].includes(bearer);
+    if (!noBearer) headers.set("Authorization", "Bearer synthetic-token");
+    if (bearer === "expired" || bearer === "revoked") {
+      doubles.verifyIdToken.mockRejectedValue(Object.assign(new Error("Rejected synthetic token"), {
+        code: bearer === "expired" ? "auth/id-token-expired" : "auth/id-token-revoked",
+      }));
+    }
+    if (bearer === "spoofed-identity") {
+      headers.set("x-user-id", "synthetic-admin");
+      headers.set("x-user-email", "admin@example.test");
+      headers.set("x-user-role", "owner");
+      headers.set("x-middleware-subrequest", "src/proxy:src/proxy:src/proxy:src/proxy:src/proxy");
+      headers.set("x-middleware-next", "1");
+    }
+    if (bearer === "cookie-only") {
+      const session = await createAppSessionCookieValue({ uid: "synthetic", email: "synthetic@example.test" });
+      headers.set("Cookie", `${APP_SESSION_COOKIE_NAME}=${session.value}`);
+    }
     if (bearer === "without-totp") doubles.verifyIdToken.mockResolvedValue({ uid: "synthetic", email: "synthetic@example.test", email_verified: true, firebase: { sign_in_provider: "password" } });
-    if (bearer !== "missing" && bearer !== "forged" && bearer !== "without-totp") {
+    if (!noBearer && !invalidBearer && bearer !== "without-totp") {
       doubles.verifyIdToken.mockResolvedValue({
         uid: "synthetic", email: "synthetic@example.test", email_verified: true,
-        firebase: bearer === "without-mfa-proof" ? { sign_in_provider: "password" }
+        ...(bearer === "password-with-custom-proof" ? { app_totp_enrolled: true, admin: true, adminRole: "owner" } : {}),
+        firebase: bearer === "without-mfa-proof" || bearer === "password-with-custom-proof" ? { sign_in_provider: "password" }
           : bearer === "unproven-custom-token" ? { sign_in_provider: "custom" }
           : { sign_in_provider: "password", sign_in_second_factor: "totp" },
       });
@@ -124,14 +146,15 @@ describe.each([
         scopeFilter: "combined", productFilter: "all", tipsterMode: false, showPastYears: false,
         intelligentPredictionEnabled: false, contractNumberQuery: "",
       },
-    } : {};
+    } : { uid: "synthetic-admin", email: "admin@example.test", role: "owner", admin: true, mfaVerified: true };
     const request = new NextRequest(`https://app.example.test/api/${route.replace(/\[[^\]]+\]/g, "test-id")}`, {
       method, headers, ...(method !== "GET" ? { body: JSON.stringify(body) } : {}),
     });
     const response: Response = await routeModule[method](request, {
       params: Promise.resolve({ slug: "test-client", postId: "test-post", commentId: "test-comment" }),
     });
-    expect(bearer === "missing" || bearer === "forged" ? [401] : [401, 403]).toContain(response.status);
+    expect(noBearer || invalidBearer ? [401] : [401, 403]).toContain(response.status);
+    expect(response.headers.get("set-cookie")).toBeNull();
     expect(doubles.databaseAccess).not.toHaveBeenCalled();
     if (route === "auth/session" && method === "POST") {
       expect(doubles.createDeniedAudit).toHaveBeenCalledWith(expect.objectContaining({ outcome: "denied", source: "web", identityVerified: false, email: null }));
@@ -139,7 +162,7 @@ describe.each([
       expect(doubles.createDeniedAudit).not.toHaveBeenCalled();
     }
     expect(doubles.networkAccess).not.toHaveBeenCalled();
-    if (bearer === "missing") expect(doubles.verifyIdToken).not.toHaveBeenCalled();
+    if (noBearer) expect(doubles.verifyIdToken).not.toHaveBeenCalled();
     for (const call of doubles.verifyIdToken.mock.calls) expect(call[1]).toBe(true);
   });
 });

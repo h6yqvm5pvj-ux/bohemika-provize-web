@@ -65,6 +65,7 @@ import {
 } from "@/app/lib/passkeys";
 import { invalidateUserProfileCache } from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
+import type { ImportedCareerPeriod } from "@/app/lib/careerTimelineImport";
 import {
   deleteBrowserFcmToken,
   getBrowserFcmToken,
@@ -1623,6 +1624,14 @@ export default function SettingsPage() {
 
   const unlockPositionTimeline = () => {
     setPositionTimelineLocked(false);
+    setPositionTimelineSaved(false);
+    setTimelineSaveFlashVisible(false);
+    setPositionTimelineError(null);
+  };
+
+  const importPositionTimeline = (rows: ImportedCareerPeriod[]) => {
+    if (positionTimelineLocked || positionTimelineSaving) return;
+    setPositionTimelineDraft(rows.map((row) => ({ ...row, id: createTimelineRowId() })));
     setPositionTimelineSaved(false);
     setTimelineSaveFlashVisible(false);
     setPositionTimelineError(null);
@@ -3872,6 +3881,7 @@ export default function SettingsPage() {
 
               {activeTab === "career" && (
                 <CareerTimelinePanel
+                  key={impersonatedEmail || user.uid}
                   positions={POSITIONS}
                   rows={positionTimelineDraft}
                   fieldClass={fieldClass}
@@ -3887,6 +3897,7 @@ export default function SettingsPage() {
                   onUnlock={unlockPositionTimeline}
                   onUpdateRow={updatePositionTimelineRow}
                   onRemoveRow={removePositionTimelineRow}
+                  onImport={importPositionTimeline}
                   onSave={savePositionTimeline}
                 />
               )}

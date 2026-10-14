@@ -83,6 +83,37 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
+describe("direct page login bypass attempts", () => {
+  const protectedPaths = [
+    "/", "/admin/zadosti", "/cashflow", "/cuzk", "/intranet", "/kalkulacka",
+    "/muj-tym", "/sin-slavy", "/nastaveni", "/pomucky", "/posta",
+    "/provizni-vypisy", "/smlouvy", "/smlouvy/synthetic-contract?embedded=1", "/tipy",
+    "/pomucky/ares?embed=1", "/kalkulacka?prefill=commission-statement",
+    "/muj-tym/tydenni-report?source=weekly-report&embed=mailbox",
+  ];
+  const attackHeaders: Record<string, string>[] = [
+    {},
+    { RSC: "1", "Next-Router-Prefetch": "1", Purpose: "prefetch" },
+    { "x-middleware-subrequest": "src/proxy:src/proxy:src/proxy:src/proxy:src/proxy", "x-middleware-next": "1", "x-user-role": "owner" },
+  ];
+
+  it.each(protectedPaths)("protects %s from missing, forged and revoked cookies and internal headers", async path => {
+    const session = await issue();
+    mocks.store.get(sessionPath("current"))!.revokedAtMs = nowMs;
+    for (const cookie of [undefined, "forged.signature", session.value]) {
+      for (const headers of attackHeaders) {
+        const req = request(path, cookie, undefined, false);
+        for (const [key, value] of Object.entries(headers)) req.headers.set(key, value);
+        const response = await middleware(req);
+        expect(response.status).toBe(307);
+        expect(new URL(response.headers.get("location")!).pathname).toBe("/login");
+        expect(response.headers.get("x-middleware-next")).toBeNull();
+        expect(response.headers.get("Cache-Control")).toContain("no-store");
+      }
+    }
+  });
+});
+
 describe("server session revocation", () => {
   it("rejects a cookie minted after revocation using older authentication", async () => {
     const cookie = await createAppSessionCookieValue({ uid, email, sessionId: "current", maxAgeSeconds: 3600, authenticationTime: Math.floor(nowMs / 1000) - 100 });

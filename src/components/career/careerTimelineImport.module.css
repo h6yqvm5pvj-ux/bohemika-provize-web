@@ -1,0 +1,375 @@
+.root {
+  --import-text: #252237;
+  --import-muted: #6c687d;
+  --import-accent: #6d45c3;
+  --import-line: #e8e3f1;
+  --import-surface: #fff;
+  --import-soft: #f7f4fc;
+  min-width: 0;
+  color: var(--import-text);
+}
+
+.root[data-tone="dark"] {
+  --import-text: #f2edff;
+  --import-muted: #bdb3d5;
+  --import-accent: #c2a5ff;
+  --import-line: rgb(196 174 239 / 20%);
+  --import-surface: #2b2141;
+  --import-soft: rgb(181 146 244 / 8%);
+}
+
+.card {
+  overflow: hidden;
+  border: 1px solid var(--import-line);
+  border-radius: 18px;
+  background: linear-gradient(115deg, var(--import-soft), var(--import-surface) 74%);
+  box-shadow: 0 3px 12px rgb(50 30 88 / 2%);
+}
+
+.summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+  padding: 17px 19px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover .iconTile {
+  background: #e8defc;
+}
+
+.summary:focus-visible,
+.helpButton:focus-visible,
+.importButton:focus-visible {
+  outline: 2px solid var(--import-accent);
+  outline-offset: -3px;
+}
+
+.iconTile {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid rgb(127 84 200 / 8%);
+  border-radius: 13px;
+  background: #eee6fc;
+  color: #7550bb;
+  transition: background 160ms ease;
+}
+
+.summaryCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: -.2px;
+}
+
+.subtitle {
+  color: var(--import-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--import-muted);
+  transition: transform 180ms ease;
+}
+
+.card[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 17px;
+  margin: 0 19px;
+  padding: 16px 0 19px;
+  border-top: 1px solid var(--import-line);
+}
+
+.description {
+  margin: 0;
+  color: var(--import-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.codes {
+  display: block;
+  margin-top: 3px;
+}
+
+.inputGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.5;
+  letter-spacing: .55px;
+  text-transform: uppercase;
+}
+
+.textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 134px;
+  resize: vertical;
+  border: 1px solid var(--import-line);
+  border-radius: 12px;
+  outline: none;
+  padding: 13px 14px;
+  background: var(--import-surface);
+  color: var(--import-text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.75;
+  box-shadow: 0 2px 5px rgb(40 29 62 / 2%);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.textarea::placeholder {
+  color: #9690a6;
+  opacity: 1;
+}
+
+.textarea:focus {
+  border-color: #a385d8;
+  box-shadow: 0 0 0 3px rgb(125 83 195 / 10%);
+}
+
+.textarea[aria-invalid="true"] {
+  border-color: #ce687b;
+}
+
+.textarea:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.notice {
+  display: flex;
+  max-width: 380px;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  color: var(--import-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #a29bad;
+}
+
+.importButton {
+  display: inline-flex;
+  min-height: 43px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  padding: 10px 16px;
+  background: #7046bd;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: 0 3px 7px rgb(94 57 160 / 12%);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.importButton:hover:not(:disabled) {
+  background: #6038a8;
+  box-shadow: 0 4px 10px rgb(94 57 160 / 18%);
+}
+
+.importButton:focus-visible {
+  outline-color: #35204f;
+  outline-offset: 3px;
+}
+
+.importButton:disabled {
+  background: #e7e1ef;
+  color: #9588a8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.error {
+  margin: -4px 0 0;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fff0f2;
+  color: #a32e49;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.success {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #edf8f2;
+  color: #26734f;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.success:empty {
+  display: none;
+}
+
+.success svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.helpRow {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.helpButton {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--import-accent);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.helpButton:hover {
+  background: var(--import-soft);
+}
+
+.root[data-tone="dark"] .iconTile,
+.root[data-tone="dark"] .summary:hover .iconTile {
+  background: rgb(181 146 244 / 14%);
+  color: #cdb4ff;
+}
+
+.root[data-tone="dark"] .importButton:disabled {
+  background: #403250;
+  color: #ada0c1;
+}
+
+.root[data-tone="dark"] .error {
+  background: rgb(211 92 117 / 13%);
+  color: #ffc0cf;
+}
+
+.root[data-tone="dark"] .success {
+  background: rgb(80 179 130 / 12%);
+  color: #9fe3bd;
+}
+
+@media (max-width: 600px) {
+  .summary {
+    gap: 11px;
+    padding: 15px;
+  }
+
+  .body {
+    margin-right: 15px;
+    margin-left: 15px;
+    padding-bottom: 15px;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 13px;
+  }
+
+  .notice {
+    max-width: none;
+  }
+
+  .textarea {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 380px) {
+  .summary {
+    gap: 9px;
+    padding: 13px;
+  }
+
+  .iconTile {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 11px;
+  }
+
+  .title {
+    font-size: 14px;
+  }
+
+  .subtitle {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconTile,
+  .chevron,
+  .textarea,
+  .importButton,
+  .helpButton {
+    transition: none;
+  }
+}

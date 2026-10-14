@@ -14,6 +14,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleHelp,
+  CirclePlay,
   Copy,
   ExternalLink,
   Loader2,
@@ -36,6 +37,9 @@ import styles from "./authSurface.module.css";
 import type { Position } from "@/app/types/domain";
 import type { AresIcoLookupState } from "@/components/profile/useAresIcoLookup";
 import { isValidProfilePhone } from "@/lib/profileFields";
+import type { ImportedCareerPeriod } from "@/app/lib/careerTimelineImport";
+import { CareerTimelineImport } from "@/components/career/CareerTimelineImport";
+import { CareerImportHelpDialog } from "@/components/career/CareerImportHelpDialog";
 
 type AccountSetupStepId = "phone" | "career" | "security";
 
@@ -109,6 +113,7 @@ type AccountSetupWizardProps = {
   ) => void;
   onRemoveTimelineRow: (rowId: string) => void;
   onAddTimelineRow: () => void;
+  onImportTimeline: (rows: ImportedCareerPeriod[]) => void;
   onMfaPasswordChange: (value: string) => void;
   onMfaCodeChange: (value: string) => void;
   onDismissGrace: () => void;
@@ -172,6 +177,7 @@ export function AccountSetupWizard({
   onTimelineRowChange,
   onRemoveTimelineRow,
   onAddTimelineRow,
+  onImportTimeline,
   onMfaPasswordChange,
   onMfaCodeChange,
   onDismissGrace,
@@ -179,6 +185,7 @@ export function AccountSetupWizard({
   onPrimaryAction,
 }: AccountSetupWizardProps) {
   const [isMfaHelpOpen, setIsMfaHelpOpen] = useState(false);
+  const [isCareerHelpOpen, setIsCareerHelpOpen] = useState(false);
   const [copyResult, setCopyResult] = useState<{ key: string; message: string } | null>(null);
   const copyStatus = copyResult?.key === mfaSecretKey ? copyResult?.message : null;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -229,8 +236,8 @@ export function AccountSetupWizard({
   return (
     <div ref={rootRef} className={`${styles.page} ${styles.setup}`} role="dialog" aria-modal="true" aria-label={ariaLabel}
       onKeyDown={event => {
-        if (event.key !== "Tab" || isMfaHelpOpen) return;
-        const focusable = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), summary, [tabindex="0"]') ?? []).filter(element => element.getClientRects().length > 0);
+        if (event.key !== "Tab" || isMfaHelpOpen || isCareerHelpOpen) return;
+        const focusable = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary, [tabindex="0"]') ?? []).filter(element => element.getClientRects().length > 0);
         const first = focusable[0], last = focusable.at(-1);
         if (event.shiftKey && (document.activeElement === first || !focusable.includes(document.activeElement as HTMLElement))) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -447,25 +454,21 @@ export function AccountSetupWizard({
                       </p>
                       <h2 tabIndex={-1} data-setup-heading className="mt-1 text-xl font-semibold text-white outline-none">Tvoje kariéra</h2>
                       <p className="mt-1 text-sm leading-relaxed text-violet-100/66">
-                        Pozice podle období se používají pro předvyplnění kalkulačky
-                        a přesné provizní výpočty.
+                        Vlož tabulku z Maxxu a zkontroluj období. Pozice se použijí
+                        pro předvyplnění kalkulačky a přesné provize.
                       </p>
+                      <div className={styles.careerActions}>
+                        <button type="button" onClick={() => setIsCareerHelpOpen(true)} aria-haspopup="dialog" className={styles.careerHelp}>
+                          <CirclePlay size={16} aria-hidden="true" /> Nápověda s ukázkou
+                        </button>
+                        <a href="https://sjednatel.bohemiaservis.cz/broker-card" target="_blank" rel="noreferrer noopener">
+                          Otevřít kariéru v Maxxu <ExternalLink size={13} aria-hidden="true" />
+                        </a>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-violet-300/20 bg-violet-400/5 px-4 py-3 text-sm leading-relaxed text-violet-100/80">
-                    Historii pozic najdeš v portálu Maxx:{" "}
-                    <a
-                      href="https://sjednatel.bohemiaservis.cz/broker-card"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center gap-1 rounded-full border border-violet-200/30 bg-violet-300/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white no-underline transition hover:bg-violet-300/20"
-                    >
-                      Otevřít kariéru v Maxxu
-                      <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                    </a>
-                    {" "}v záložce Kariéra. Přepiš pozice a data od nejstarší po aktuální.
-                  </div>
+                  <CareerTimelineImport key={user.uid} tone="dark" context="setup" disabled={busy} onImport={onImportTimeline} onHelp={() => setIsCareerHelpOpen(true)} />
 
                   {careerDraftStatus !== "none" && <p role="status" className="text-xs leading-relaxed text-violet-100/70">
                     {careerDraftStatus === "restored" ? "Obnovili jsme rozepsané změny v této otevřené kartě." : careerDraftStatus === "saved" ? "Rozepsané změny zůstanou dostupné do obnovení nebo zavření této stránky. Dokonči krok, aby se uložily do profilu." : "Prohlížeč neumožňuje uložit rozepsané změny. Před obnovením stránky dokonči tento krok."}
@@ -780,6 +783,7 @@ export function AccountSetupWizard({
         </div>
       )}
       {isMfaHelpOpen ? <MfaHelpDialog onClose={() => setIsMfaHelpOpen(false)} /> : null}
+      {isCareerHelpOpen && currentStep === "career" ? <CareerImportHelpDialog context="setup" onClose={() => setIsCareerHelpOpen(false)} /> : null}
     </div>
   );
 }

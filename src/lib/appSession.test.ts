@@ -85,6 +85,24 @@ describe("app session cookie", () => {
     ).resolves.toEqual({ ok: false, reason: "expired" });
   });
 
+  it.each([
+    ["uid", "another-user"],
+    ["email", "another@example.test"],
+    ["sid", "another-device"],
+    ["exp", 9_999_999_999],
+    ["authTime", 1_001],
+    ["admin", true],
+  ])("rejects changing %s without a new server signature", async (field, value) => {
+    const created = await createAppSessionCookieValue({
+      uid: "synthetic-user", email: "synthetic@example.test", nowMs: 1_000_000, maxAgeSeconds: 120,
+    });
+    const [encoded, signature] = created.value.split(".");
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    const tampered = Buffer.from(JSON.stringify({ ...payload, [field]: value })).toString("base64url");
+    await expect(verifyAppSessionCookieValue(`${tampered}.${signature}`, { nowMs: 1_030_000 }))
+      .resolves.toEqual({ ok: false, reason: "invalid-signature" });
+  });
+
   it("fails closed when no signing secret is available", async () => {
     delete process.env.APP_SESSION_SECRET;
 

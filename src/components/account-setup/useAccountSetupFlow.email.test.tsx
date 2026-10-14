@@ -145,6 +145,31 @@ describe("account setup progress, drafts and email verification", () => {
     expect(flow.error).toContain("vyplň datum DO");
     expect(mocks.api).not.toHaveBeenCalled();
   });
+  it("replaces the career draft with imported periods and saves only after the usual primary action", async () => {
+    await act(async () => flow.onBack());
+    await act(async () => flow.onImportTimeline([
+      { position: "poradce5", validFrom: "2020-01-01", validTo: "2025-01-01" },
+      { position: "manazer6", validFrom: "2025-01-01", validTo: "" },
+    ]));
+    expect(flow.timelineDraft).toEqual([
+      { id: expect.any(String), position: "poradce5", validFrom: "2020-01-01", validTo: "2025-01-01", ongoing: false },
+      { id: expect.any(String), position: "manazer6", validFrom: "2025-01-01", validTo: "", ongoing: true },
+    ]);
+    expect(flow.timelineDraft[0].id).not.toBe(flow.timelineDraft[1].id);
+    expect(flow.careerDraftStatus).toBe("saved");
+    expect(mocks.api).not.toHaveBeenCalled();
+    await act(async () => flow.onPrimaryAction());
+    expect(mocks.api).toHaveBeenCalledWith(user, "/api/user/profile", expect.objectContaining({
+      method: "PATCH",
+      body: expect.any(String),
+    }));
+    const saved = JSON.parse(mocks.api.mock.calls[0][2].body);
+    expect(saved.positionTimeline).toEqual([
+      { id: expect.any(String), position: "poradce5", validFrom: "2020-01-01", validTo: "2025-01-01" },
+      { id: expect.any(String), position: "manazer6", validFrom: "2025-01-01", validTo: null },
+    ]);
+    expect(flow.currentStep).toBe("security");
+  });
   it("automatically signs in after new enrollment without saving a stale profile", async () => {
     const navigate = vi.spyOn(window.location, "replace").mockImplementation(() => {});
     user.emailVerified = true;

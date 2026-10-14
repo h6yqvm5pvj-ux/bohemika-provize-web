@@ -693,6 +693,7 @@ export function AppLayout({
             onTimelineRowChange={accountSetup.onTimelineRowChange}
             onRemoveTimelineRow={accountSetup.onRemoveTimelineRow}
             onAddTimelineRow={accountSetup.onAddTimelineRow}
+            onImportTimeline={accountSetup.onImportTimeline}
             onMfaPasswordChange={accountSetup.onMfaPasswordChange}
             onMfaCodeChange={accountSetup.onMfaCodeChange}
             onDismissGrace={accountSetup.onDismissGrace}

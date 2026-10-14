@@ -18,6 +18,7 @@ import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import * as userProfileCache from "@/app/lib/userProfileCache";
 import { getNextCareerTimelineStart } from "@/app/lib/careerTimeline";
+import type { ImportedCareerPeriod } from "@/app/lib/careerTimelineImport";
 import type { Position } from "@/app/types/domain";
 import { useAresIcoLookup } from "@/components/profile/useAresIcoLookup";
 import { formatProfilePhoneInput, isValidProfilePhone } from "@/lib/profileFields";
@@ -637,6 +638,11 @@ export function useAccountSetupFlow({
     }]);
   }, [persistTimelineDraft, timelineDraft]);
 
+  const importTimeline = useCallback((rows: ImportedCareerPeriod[]) => {
+    if (!user || timelineSaving) return;
+    persistTimelineDraft(rows.map((row) => ({ ...row, id: createTimelineRowId(), ongoing: !row.validTo })));
+  }, [persistTimelineDraft, timelineSaving, user]);
+
   const updateTimelineRow = useCallback((rowId: string, patch: Partial<AccountSetupTimelineItem>) => {
     persistTimelineDraft(timelineDraft.map(row => row.id === rowId ? { ...row, ...patch } : row));
   }, [persistTimelineDraft, timelineDraft]);
@@ -1086,6 +1092,7 @@ export function useAccountSetupFlow({
       onTimelineRowChange: updateTimelineRow,
       onRemoveTimelineRow: removeTimelineRow,
       onAddTimelineRow: addTimelineRow,
+      onImportTimeline: importTimeline,
       onMfaPasswordChange: (value: string) => {
         setMfaPassword(value);
         setError(null);
@@ -1114,6 +1121,7 @@ export function useAccountSetupFlow({
     }),
     [
       addTimelineRow,
+      importTimeline,
       busy,
       completed,
       savedPhone,

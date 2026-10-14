@@ -83,6 +83,13 @@
 .progressFill { height: 100%; border-radius: inherit; background: #a77ce8; transition: width 200ms; }
 .form { min-width: 0; }
 .formBody { padding: 30px; }
+.careerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 12px; }
+.careerActions button, .careerActions a { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; }
+.careerHelp { padding: 7px 11px; border: 1px solid #c4a4fc40; border-radius: 10px; background: #a77ce812; color: #eadcff; cursor: pointer; }
+.careerHelp:hover { background: #a77ce824; }
+.careerActions a { color: #c7b0ec; text-decoration: none; }
+.careerActions a:hover { color: #eadcff; text-decoration: underline; }
+.careerActions button:focus-visible, .careerActions a:focus-visible { outline: 2px solid #c4a4fc; outline-offset: 3px; }
 .footer { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 30px; border-top: 1px solid #ffffff12; border-radius: 0 0 24px 24px; background: #181122f5; backdrop-filter: blur(12px); z-index: 2; }
 .footerNote { font-size: 12px; color: #b8aecb; }
 .footerActions { display: flex; justify-content: flex-end; gap: 10px; margin-left: auto; }
