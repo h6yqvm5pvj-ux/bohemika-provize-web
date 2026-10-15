@@ -1,7 +1,7 @@
 const LEGACY_KEYS = ["lifeRecordFormDraft", "lifeRecordResultInput", "carRecord.resultsInput"];
 const PREFIX = "bohemika:meeting-record:";
 const MAX_AGE_MS = 20 * 60 * 1000;
-export type MeetingRecordKind = "lifeDraft" | "lifeResults" | "carResults";
+export type MeetingRecordKind = "lifeDraft" | "lifeResults" | "carResults" | "clientPreferences";
 export type MeetingRecordContext = Readonly<{ uid: string; impersonatedEmail: string; generation: number }>;
 
 let generation = 0;

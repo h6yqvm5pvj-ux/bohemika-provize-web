@@ -1,7 +1,8 @@
 "use client";
 
+import { useId } from "react";
 import { Check } from "lucide-react";
-import type { ClientGender } from "./lifeRecordTexts";
+import type { ClientGender } from "./recordClientTexts";
 import styles from "./clientGenderSelector.module.css";
 
 function ClientSilhouette({ gender }: { gender: ClientGender }) {
@@ -23,9 +24,10 @@ function ClientSilhouette({ gender }: { gender: ClientGender }) {
 }
 
 export function ClientGenderSelector({ value, onChange }: { value: ClientGender; onChange: (value: ClientGender) => void }) {
+  const labelId = useId();
   return (
-    <div className={styles.selector} role="group" aria-labelledby="life-client-gender-label">
-      <span id="life-client-gender-label" className={styles.label}>Klient je</span>
+    <div className={styles.selector} role="group" aria-labelledby={labelId}>
+      <span id={labelId} className={styles.label}>Klient je</span>
       <div className={styles.options}>
         {([{ value: "male", label: "Muž" }, { value: "female", label: "Žena" }] as const).map(option => (
           <button key={option.value} type="button" aria-pressed={value === option.value} onClick={() => onChange(option.value)} className={styles.option}>

@@ -1,21 +1,22 @@
 "use client";
 
 import styles from "../record.module.css";
+import resultStyles from "../results.module.css";
 import { RecordIllustration } from "../RecordIllustration";
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Check,
-  ClipboardCopy,
   Info,
   Sparkles,
 } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 import { MeetingRecordSession } from "../MeetingRecordSession";
 import { LifeDiscrepancyExamples } from "../LifeDiscrepancyExamples";
+import { CopyAction, CopyFeedback, ResultSection, ResultTextRow, useRecordClipboard, type CopyHandler } from "../ResultComponents";
 import { getLifeRecordTexts, IMPACT_HEADING_PREFIX, type ClientGender } from "../lifeRecordTexts";
 import { readMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 import {
@@ -429,12 +430,6 @@ function joinWithAnd(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} a ${items[items.length - 1]}`;
 }
 
-type CopyHandler = (text: string) => void;
-
-function formatLineNumber(index: number): string {
-  return String(index).padStart(2, "0");
-}
-
 function formatTextCount(count: number): string {
   if (count === 1) return "1 text";
   if (count > 1 && count < 5) return `${count} texty`;
@@ -447,134 +442,11 @@ function normalizeImpactLineForCopy(line: string): string {
     : line;
 }
 
-function CopyAction({
-  text,
-  copiedText,
-  onCopy,
-  variant = "light",
-  label = "Kopírovat",
-}: {
-  text: string;
-  copiedText: string | null;
-  onCopy: CopyHandler;
-  variant?: "light" | "dark";
-  label?: string;
-}) {
-  const copied = copiedText === text;
-  const variantClass =
-    variant === "dark"
-      ? "border-violet-300/45 bg-white/[0.08] text-violet-50 hover:border-violet-200/70 hover:bg-white/[0.14]"
-      : "border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-400 hover:bg-violet-100";
-
-  return (
-    <button
-      type="button"
-      onClick={() => onCopy(text)}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${variantClass}`}
-    >
-      {copied ? (
-        <Check className="h-3.5 w-3.5" />
-      ) : (
-        <ClipboardCopy className="h-3.5 w-3.5" />
-      )}
-      <span>{copied ? "Zkopírováno" : label}</span>
-    </button>
-  );
-}
-
-function ResultSection({
-  eyebrow,
-  title,
-  description,
-  countLabel,
-  copyText,
-  copiedText,
-  onCopy,
-  children,
-}: {
-  eyebrow: string;
-  title: string;
-  description?: string;
-  countLabel?: string;
-  copyText?: string;
-  copiedText: string | null;
-  onCopy: CopyHandler;
-  children: ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[0_18px_44px_rgba(42,20,72,0.12)]">
-      <div className="border-b border-violet-100/80 px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
-              {eyebrow}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold leading-tight text-slate-950 sm:text-xl">
-              {title}
-            </h2>
-            {description ? (
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
-                {description}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {countLabel ? (
-              <span className="inline-flex items-center rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-900">
-                {countLabel}
-              </span>
-            ) : null}
-            {copyText ? (
-              <CopyAction
-                text={copyText}
-                copiedText={copiedText}
-                onCopy={onCopy}
-                label="Kopírovat vše"
-              />
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <div className="space-y-3 px-4 py-4 sm:px-5">{children}</div>
-    </section>
-  );
-}
-
-function ResultTextRow({
-  index,
-  text,
-  copiedText,
-  onCopy,
-  copyable = true,
-}: {
-  index: number;
-  text: string;
-  copiedText: string | null;
-  onCopy: CopyHandler;
-  copyable?: boolean;
-}) {
-  return (
-    <article className={`${styles.resultRow} grid gap-3 rounded-[22px] border border-violet-200/70 bg-white/95 p-3 shadow-[0_8px_22px_rgba(42,20,72,0.08)] sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start`}>
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-[11px] font-black text-violet-900">
-        {formatLineNumber(index)}
-      </span>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{text}</p>
-      {copyable ? (
-        <CopyAction text={text} copiedText={copiedText} onCopy={onCopy} />
-      ) : (
-        <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-900">
-          doplnit ručně
-        </span>
-      )}
-    </article>
-  );
-}
-
 function ImpactSubheading({ text }: { text: string }) {
   return (
-    <div className="rounded-[20px] border border-violet-300/45 bg-[linear-gradient(135deg,#ede9fe_0%,#faf5ff_100%)] px-4 py-3 text-sm font-semibold text-violet-950 shadow-[0_8px_20px_rgba(88,28,135,0.1)]">
+    <h3 className={resultStyles.subheading}>
       {text}
-    </div>
+    </h3>
   );
 }
 
@@ -590,13 +462,13 @@ function ProductRecommendationCard({
   onCopy: CopyHandler;
 }) {
   return (
-    <section className={styles.productRecommendation}>
-      <span className={styles.eyebrow}>Doporučení produktu</span>
+    <section className={resultStyles.productCard}>
+      <span className={resultStyles.eyebrow}>Doporučení produktu</span>
       <h3>{label}</h3>
       {text ? (
         <>
           <p>{text}</p>
-          <div className="mt-5"><CopyAction text={text} copiedText={copiedText} onCopy={onCopy} /></div>
+          <CopyAction text={text} copiedText={copiedText} onCopy={onCopy} />
         </>
       ) : <p>Doplníme po zadání parametrů této pojišťovny.</p>}
     </section>
@@ -617,17 +489,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
   const [productRecs, setProductRecs] = useState<
     { label: string; text: string | null }[]
   >([]);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
-
-  const handleCopy = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedText(text);
-      window.setTimeout(() => setCopiedText(null), 1500);
-    } catch (err) {
-      console.error("Copy failed", err);
-    }
-  }, []);
+  const { copiedText, feedback, handleCopy } = useRecordClipboard();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -801,25 +663,27 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
 
   return (
     <AppLayout active="tools">
-      <div className={`${styles.page} ${styles.results}`}>
+      <div className={`${styles.page} ${styles.results} ${resultStyles.page}`}>
         <button type="button" onClick={() => router.push("/pomucky/zaznam")} className={styles.back}>
-          <ArrowLeft size={15} /> Zpět na záznam
+          <ArrowLeft size={15} aria-hidden="true" /> Zpět na záznam
         </button>
-        <header className={styles.hero}>
+        <header className={`${styles.hero} ${resultStyles.hero}`}>
           <div>
-            <span className={styles.eyebrow}><Sparkles size={14} /> Výstup pro jednání</span>
-            <h1>Doporučení do dopadů</h1>
-            <p>Texty pro část „Dopady na {texts.clientAccusative}“. Zkopíruj celou sekci nebo jednotlivé věty podle toho, co do záznamu potřebuješ.</p>
-            <div className={styles.stats}>
-              <span><b>{additional === null ? "…" : additionalCount}</b><small>Cíle</small></span>
-              <span><b>{lines === null ? "…" : impactTextCount}</b><small>Dopady</small></span>
-              <span><b>{productTextCount}</b><small>Produkty</small></span>
-            </div>
+            <span className={styles.eyebrow}><Sparkles size={14} aria-hidden="true" /> Životní pojištění · Výsledky</span>
+            <h1>Texty do záznamu z jednání</h1>
+            <p>Vše připravené podle tvého zadání. Projdi jednotlivé části a zkopíruj texty, které odpovídají jednání s {texts.clientInstrumental}.</p>
           </div>
-          <div className={styles.illustration}><RecordIllustration complete /></div>
+          <div className={`${styles.illustration} ${resultStyles.heroIllustration}`}><RecordIllustration complete /></div>
         </header>
+        <nav className={resultStyles.navigation} aria-label="Části záznamu">
+          <a href="#pozadavky"><b>1</b> Potřeby a cíle <small>{additional === null ? "…" : formatTextCount(additionalCount)}</small></a>
+          <a href="#nesrovnalosti"><b>2</b> Nesrovnalosti</a>
+          <a href="#dopady"><b>3</b> Dopady <small>{lines === null ? "…" : formatTextCount(impactTextCount)}</small></a>
+          <a href="#produkty"><b>4</b> Produkty <small>{productTextCount}</small></a>
+        </nav>
 
         <ResultSection
+          id="pozadavky"
           eyebrow="Část 1"
           title={`Další požadavky, potřeby a cíle ${texts.customerGenitive}`}
           description="Krátké texty pro úvodní část záznamu. Položky označené jako ruční doplnění obsahují proměnné údaje."
@@ -835,7 +699,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
             onCopy={handleCopy}
           />
           {additional === null ? (
-            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+            <p className={resultStyles.muted}>
               Načítám…
             </p>
           ) : (
@@ -853,18 +717,20 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
         </ResultSection>
 
         <ResultSection
+          id="nesrovnalosti"
           eyebrow="Část 2"
           title={`Výčet případných nesrovnalostí mezi požadavky ${texts.customerGenitive} a nabízeným pojištěním`}
           copiedText={copiedText}
           onCopy={handleCopy}
         >
-          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
+          <p className={resultStyles.notice}>
             {texts.discrepanciesInstruction}
           </p>
           <LifeDiscrepancyExamples />
         </ResultSection>
 
         <ResultSection
+          id="dopady"
           eyebrow="Část 3"
           title="Popis dopadů sjednání pojištění/změny pojištění"
           description="Hlavní sada vět do pole dopadů. Nadpisy oddělují zvláštní situace jako refresh, změnu nebo ukončení starší smlouvy."
@@ -874,11 +740,11 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
           onCopy={handleCopy}
         >
           {lines === null ? (
-            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+            <p className={resultStyles.muted}>
               Načítám doporučení…
             </p>
           ) : lines.length === 0 ? (
-            <p className="rounded-2xl border border-violet-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+            <p className={resultStyles.muted}>
               Zatím tu nemám žádná konkrétní doporučení. Vyplň nejdřív krytí na
               stránce „Záznam z jednání – Život“ a znovu klikni na{" "}
               <strong>Výsledky</strong>.
@@ -908,28 +774,30 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
           )}
         </ResultSection>
 
-        <section className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
+        <section id="produkty" className={resultStyles.productSection} aria-labelledby="produkty-heading">
+          <div className={resultStyles.productHeading}>
+            <div className={resultStyles.sectionHeading}>
+              <p className={resultStyles.eyebrow}>
                 Část 4
               </p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">
+              <h2 id="produkty-heading">
                 Doporučení pojistného produktu
               </h2>
             </div>
             <button
               type="button"
               onClick={() => setShowProductInfo((v) => !v)}
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-900 transition hover:border-violet-400 hover:bg-violet-100"
+              className={resultStyles.copyAction}
               aria-label="Zobrazit vysvětlení doporučení pojistného produktu"
+              aria-expanded={showProductInfo}
+              aria-controls="product-info"
             >
-              <Info className="h-3.5 w-3.5" />
+              <Info size={15} aria-hidden="true" />
               Jak použít
             </button>
           </div>
           {showProductInfo && (
-            <div className="rounded-2xl border border-violet-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-700 shadow-[0_8px_24px_rgba(42,20,72,0.1)]">
+            <div id="product-info" className={`${resultStyles.notice} mb-4`}>
               <span className="font-semibold text-slate-950">
                 Doporučení pojistného produktu:
               </span>{" "}
@@ -938,7 +806,7 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className={resultStyles.productGrid}>
             {productRecs.map(({ label, text }) => (
               <ProductRecommendationCard
                 key={label}
@@ -950,6 +818,10 @@ function RecordResults({ owner }: { owner: MeetingRecordContext }) {
             ))}
           </div>
         </section>
+        <div className={resultStyles.footer}>
+          <Link href="/pomucky/zaznam" className={resultStyles.copyAction}><ArrowLeft size={15} aria-hidden="true" /> Upravit zadání</Link>
+        </div>
+        <CopyFeedback feedback={feedback} />
       </div>
     </AppLayout>
   );

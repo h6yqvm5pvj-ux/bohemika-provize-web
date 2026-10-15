@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readMeetingRecord, writeMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
 import { getLifeRecordTexts, type ClientGender } from "./lifeRecordTexts";
-import { ClientGenderSelector } from "./ClientGenderSelector";
+import { LifeBenefitFilter, LifeBenefitGroup, useBenefitHidden } from "./LifeBenefitGroups";
 import {
   Accessibility,
   AlertTriangle,
@@ -19,6 +19,10 @@ import {
   Shield,
   UsersRound,
   X,
+  Search,
+  Check,
+  ArrowRight,
+  ListFilter,
 } from "lucide-react";
 
 import {
@@ -121,10 +125,11 @@ function getBenefitCardIcon(title: string): React.ReactNode {
 
 const SEGMENTED_CONTROL_CLASS = compact.segmentedControl;
 
-export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
+export function LifeRecordForm({ owner, clientGender }: { owner: MeetingRecordContext; clientGender: ClientGender }) {
   const router = useRouter();
-  const [clientGender, setClientGender] = useState<ClientGender>("male");
   const texts = getLifeRecordTexts(clientGender);
+  const [benefitQuery, setBenefitQuery] = useState("");
+  const [selectedOnly, setSelectedOnly] = useState(false);
 
   // --------------------------------------------------
   // ZÁKLAD – SMRT, DOŽITÍ, ZPROŠTĚNÍ, INVALIDITY
@@ -345,7 +350,6 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
       if (!draft) return;
 
       frameId = window.requestAnimationFrame(() => {
-        setClientGender(draft.clientGender === "female" ? "female" : "male");
         if (typeof draft.deathOn === "boolean") {
           setDeathOn(draft.deathOn);
         }
@@ -672,14 +676,17 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
     placeholder: string,
     opts?: { min?: number; max?: number }
   ) => (
-    <input
-      {...moneyInputProps}
-      aria-label={placeholder}
-      className={`${compact.amountInput} rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] placeholder:text-slate-400 focus:border-violet-500/80 focus:outline-none focus:ring-2 focus:ring-violet-500/30`}
-      value={value}
-      onChange={(e) => onChange(normalizeAmountInput(e.target.value, opts))}
-      placeholder={placeholder}
-    />
+    <label className={compact.amountField}>
+      <span>{placeholder}</span>
+      <input
+        {...moneyInputProps}
+        aria-label={placeholder}
+        className={`${compact.amountInput} rounded-xl border border-violet-200 bg-white/95 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500/80 focus:outline-none focus:ring-2 focus:ring-violet-500/30`}
+        value={value}
+        onChange={(e) => onChange(normalizeAmountInput(e.target.value, opts))}
+        placeholder="0"
+      />
+    </label>
   );
 
   const renderLabeledAmountInput = (
@@ -687,12 +694,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
     value: string,
     onChange: (v: string) => void,
     opts?: { min?: number; max?: number }
-  ) => (
-    <label className={compact.amountField}>
-      <span>{label}</span>
-      {renderAmountInput(value, onChange, label, opts)}
-    </label>
-  );
+  ) => renderAmountInput(value, onChange, label, opts);
 
   // Reusable blok pro invaliditu (použijeme 2×)
   const renderInvalidityBlock = (
@@ -1555,29 +1557,37 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
   // RENDER
   // --------------------------------------------------
 
+  const groups = [
+    { id: "life-family", title: "Rodina a finanční jistota", description: "Zajištění blízkých a závazků pro případ úmrtí.", values: [deathOn, terminalOn, extraDeathOn, survivorPensionOn, waiverOn] },
+    { id: "life-invalidity", title: "Invalidita", description: "Krytí jednotlivých stupňů a variant pojistné částky.", values: [invalid1On, invalid2On] },
+    { id: "life-health", title: "Závažná onemocnění", description: "Finanční rezerva při nemoci a náročné léčbě.", values: [ci1On, ci2On, seriousHimOn, seriousHerOn, diabetesOn, vaccinationOn] },
+    { id: "life-accident", title: "Úrazy a jejich následky", description: "Od denního odškodného po trvalé následky úrazu.", values: [deathAccOn, perm1On, perm2On, dailyOn, bodilyOn] },
+    { id: "life-income", title: "Příjem a hospitalizace", description: "Zajištění během pracovní neschopnosti a pobytu v nemocnici.", values: [sick1On, sick2On, hospitalOn] },
+    { id: "life-care", title: "Děti, péče a asistence", description: "Podpora rodiny, soběstačnosti a každodenní péče.", values: [childOperationOn, childrenAccidentOn, assistedOn, careDependenceOn, fullCareOn, specialAidOn, healthSocialOn] },
+  ].map(group => ({ ...group, selected: group.values.filter(Boolean).length, total: group.values.length }));
+  const selectedCount = groups.reduce((sum, group) => sum + group.selected, 0);
+  const groupProps = (index: number) => {
+    const { id, title, description, selected, total } = groups[index];
+    return { id, title, description, selected, total };
+  };
+
   return (
     <>
-      <div className="space-y-4">
-        <section className="overflow-hidden rounded-[28px] border border-violet-200/75 bg-[linear-gradient(180deg,#ffffff_0%,#fbf7ff_100%)] shadow-[0_18px_44px_rgba(42,20,72,0.12)]">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-violet-100/80 px-4 py-4 sm:flex-nowrap sm:px-5">
-            <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-700">
-              Životní pojištění
-            </p>
-            <h2 className="text-base sm:text-lg font-semibold text-slate-900">
-              Životní pojištění – přehled sjednávaných krytí
-            </h2>
-            <p className="mt-1 text-xs sm:text-sm text-slate-600">
-              Zaklikni rizika, která s {texts.clientInstrumental} řešíš, a doplň jejich částky.
-              Slouží jako tahák k vyplnění Záznamu z jednání.
-            </p>
-            </div>
-            <ClientGenderSelector value={clientGender} onChange={setClientGender} />
-          </div>
-        </section>
-
-        {/* Všechny glassy boxy ve 2 sloupcích */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className={compact.lifeForm}>
+        <header className={compact.formHeader}>
+          <div><p className={styles.sectionKicker}>Životní pojištění</p><h2>Jaká rizika s {texts.clientInstrumental} řešíš?</h2><p>Vyber sjednávaná krytí. Částky a podmínky doplníš přímo u každého z nich.</p></div>
+        </header>
+        <div className={compact.filterBar}>
+          <div className={compact.search}><Search size={17} aria-hidden="true" /><input type="search" aria-label="Hledat krytí" placeholder="Najít krytí… třeba invalidita" value={benefitQuery} onChange={event => setBenefitQuery(event.target.value)} />{benefitQuery && <button type="button" onClick={() => setBenefitQuery("")} aria-label="Vymazat hledání"><X size={15} aria-hidden="true" /></button>}</div>
+          <div className={compact.filterActions}><button type="button" className={compact.selectedFilter} aria-pressed={selectedOnly} onClick={() => setSelectedOnly(value => !value)}><ListFilter size={15} aria-hidden="true" /> Jen vybraná <b>{selectedCount}</b></button><a href="#life-record-summary">K výstupu <ArrowRight size={14} aria-hidden="true" /></a></div>
+        </div>
+        {!benefitQuery.trim() && !selectedOnly && <nav className={compact.groupNav} aria-label="Skupiny životního pojištění">
+          {groups.map(group => <a key={group.id} href={`#${group.id}`}><span>{group.title}</span>{group.selected > 0 && <b>{group.selected}</b>}</a>)}
+          <a href="#life-contract">Stávající smlouva</a>
+        </nav>}
+        <LifeBenefitFilter.Provider value={{ query: benefitQuery, selectedOnly }}>
+        <div className={compact.benefitGroups}>
+        <LifeBenefitGroup {...groupProps(0)}>
         {/* 1) Smrt / dožití */}
         <BenefitCard
           title="Smrt nebo dožití"
@@ -1726,6 +1736,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           )}
         </BenefitCard>
 
+        </LifeBenefitGroup>
+        <LifeBenefitGroup {...groupProps(1)}>
         {/* 6) Invalidita – blok 1 */}
         {renderInvalidityBlock(
           "Invalidita",
@@ -1760,6 +1772,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           setInvalid2Amount3
         )}
 
+        </LifeBenefitGroup>
+        <LifeBenefitGroup {...groupProps(2)}>
         {/* 8) Závažná onemocnění a poranění – 1 */}
         {renderCriticalIllnessBlock(
           ci1On,
@@ -1843,6 +1857,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
             )}
         </BenefitCard>
 
+        </LifeBenefitGroup>
+        <LifeBenefitGroup {...groupProps(3)}>
         {/* 14) Smrt úrazem */}
         <BenefitCard
           title="Smrt úrazem"
@@ -2016,6 +2032,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           )}
         </BenefitCard>
 
+        </LifeBenefitGroup>
+        <LifeBenefitGroup {...groupProps(4)}>
         {/* 19) Pracovní neschopnost – 1 */}
         {renderSickLeaveBlock(
           sick1On,
@@ -2093,6 +2111,8 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           )}
         </BenefitCard>
 
+        </LifeBenefitGroup>
+        <LifeBenefitGroup {...groupProps(5)}>
         {/* 22) Operace dítěte s vrozenou vadou */}
         <BenefitCard
           title="Operace dítěte s vrozenou vadou"
@@ -2213,13 +2233,19 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
           onToggle={() => setHealthSocialOn((v) => !v)}
         />
 
-        <section className="rounded-[22px] border border-violet-200/70 bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)]">
-          <div className="space-y-3">
+        </LifeBenefitGroup>
+        </div>
+        <div className={compact.emptyState} role="status"><Search size={24} aria-hidden="true" /><strong>{selectedOnly && !selectedCount ? "Zatím nemáš vybrané žádné krytí" : "Žádné krytí neodpovídá hledání"}</strong><p>{selectedOnly && !selectedCount ? "Zobraz všechna krytí a vyber ta, která s klientem řešíš." : "Zkus jiný název nebo zruš filtr vybraných krytí."}</p><button type="button" onClick={() => { setBenefitQuery(""); setSelectedOnly(false); }}>Zobrazit všechna krytí</button></div>
+        </LifeBenefitFilter.Provider>
+
+        <section id="life-contract" className={compact.contractSection} aria-labelledby="life-contract-title">
+          <header className={compact.groupHeader}><div><h3 id="life-contract-title">Souvislosti se stávající smlouvou</h3><p>Odpovědi upraví podklady k potřebám klienta a dopadům změny.</p></div><FileSignature size={21} aria-hidden="true" /></header>
+          <div className={compact.contractQuestions}>
             <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               {texts.customerCapitalized} má již uzavřenou pojistnou smlouvu týkající se stejného
               pojistného zájmu
             </div>
-            <div className={SEGMENTED_CONTROL_CLASS}>
+            <div role="group" aria-label={`${texts.customerCapitalized} má již uzavřenou pojistnou smlouvu týkající se stejného pojistného zájmu`} className={SEGMENTED_CONTROL_CLASS}>
               <ChipButton
                 active={hasExistingContract === "yes"}
                 onClick={() => setHasExistingContract("yes")}
@@ -2237,7 +2263,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
             <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Změna na stávající smlouvě
             </div>
-            <div className={SEGMENTED_CONTROL_CLASS}>
+            <div role="group" aria-label="Změna na stávající smlouvě" className={SEGMENTED_CONTROL_CLASS}>
               <ChipButton
                 active={isChangeOnExistingContract === "yes"}
                 onClick={() => setIsChangeOnExistingContract("yes")}
@@ -2255,7 +2281,7 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
             <div className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
               Refresh nebo Renovace stávající smlouvy
             </div>
-            <div className={SEGMENTED_CONTROL_CLASS}>
+            <div role="group" aria-label="Refresh nebo Renovace stávající smlouvy" className={SEGMENTED_CONTROL_CLASS}>
               <ChipButton
                 active={isRefreshOrRenovation === "yes"}
                 onClick={() => setIsRefreshOrRenovation("yes")}
@@ -2289,11 +2315,9 @@ export function LifeRecordForm({ owner }: { owner: MeetingRecordContext }) {
             </div>
           </div>
         </section>
-      </div>
 
-      {/* ZELENÉ GLASSY TLAČÍTKO VÝSLEDKY */}
-      <div className={styles.actionBar}>
-        <div><strong>Připravit výstup z jednání</strong><p>Z vybraných krytí sestavíme texty ke zkopírování.</p></div>
+      <div id="life-record-summary" className={styles.actionBar}>
+        <div><span className={compact.summaryCount}><Check size={15} aria-hidden="true" /> {selectedCount} z 28 krytí vybráno</span><strong>Připravit výstup z jednání</strong><p>Z vybraných krytí a souvislostí sestavíme texty ke zkopírování.</p></div>
         <button
           type="button"
           onClick={handleResultsClick}
@@ -2413,51 +2437,32 @@ function BenefitCard({
   children,
 }: BenefitCardProps) {
   const icon = getBenefitCardIcon(title);
+  const hidden = useBenefitHidden(title, enabled);
 
   return (
     <section
       data-active={enabled}
-      className={`${styles.risk} rounded-[22px] border bg-white/95 p-4 shadow-[0_8px_22px_rgba(42,20,72,0.08)] transition-[transform,border-color,box-shadow] duration-200 sm:p-5 ${
-        enabled
-          ? "border-violet-300 shadow-[0_16px_34px_rgba(88,28,135,0.14)]"
-          : "border-violet-200/70 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_16px_34px_rgba(88,28,135,0.12)]"
-      }`}
+      data-benefit-card="true"
+      hidden={hidden}
+      className={styles.risk}
     >
       <button
         type="button"
         onClick={onToggle}
         aria-pressed={enabled}
         aria-label={title}
-        className="group flex w-full items-center gap-3 text-left"
+        className={compact.cardToggle}
       >
-        <div
-          className={`flex h-8 w-8 items-center justify-center rounded-full border text-sm font-bold ring-1 transition ${
-            enabled
-              ? "border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] text-white shadow-[0_8px_16px_rgba(109,40,217,0.26)] ring-violet-100"
-              : "border-violet-200 bg-violet-50 text-transparent ring-white group-hover:border-violet-300"
-          }`}
-        >
-          {enabled ? "✓" : ""}
-        </div>
-        <div
-          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border transition ${
-            enabled
-              ? "border-violet-300 bg-violet-50 text-violet-800"
-              : "border-violet-200 bg-violet-50/70 text-violet-700 group-hover:border-violet-300 group-hover:text-violet-900"
-          }`}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold leading-tight text-slate-950 sm:text-base">
+        <span className={compact.cardCheck} aria-hidden="true">{enabled && <Check size={14} strokeWidth={2.5} />}</span>
+        <span className={compact.cardIcon} aria-hidden="true">{icon}</span>
+        <div className={compact.cardTitle}>
+          <h4>
             {title}
-          </h3>
+          </h4>
           {subtitle && <p className={styles.riskHint}>{subtitle}</p>}
         </div>
         {enabled ? (
-          <span className="inline-flex shrink-0 rounded-full border border-violet-500 bg-[linear-gradient(135deg,#8b5cf6_0%,#6d28d9_100%)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-white shadow-[0_7px_14px_rgba(109,40,217,0.22)]">
-            Aktivní
-          </span>
+          <span className={compact.activeLabel}>Vybráno</span>
         ) : null}
       </button>
 

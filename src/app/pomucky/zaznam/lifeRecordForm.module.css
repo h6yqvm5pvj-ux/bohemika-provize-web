@@ -3,7 +3,7 @@
   flex-wrap: wrap;
   align-items: end;
   gap: 10px 12px;
-  color: #334155;
+  color: var(--record-ink);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -24,7 +24,7 @@
   gap: 4px;
   width: 144px;
   max-width: 100%;
-  color: #334155;
+  color: var(--record-ink);
   font-size: 11px;
 }
 
@@ -50,7 +50,7 @@
   gap: 3px;
   max-width: 100%;
   padding: 3px;
-  border: 1px solid #e9dff6;
+  border: 1px solid var(--record-control-border);
   border-radius: 16px;
   background: #fff;
   font-size: 11px;
@@ -81,6 +81,13 @@
 
 .toggleRow button {
   flex-shrink: 0;
+  border-color: var(--record-control-border);
+  background: #e9edf4;
+}
+
+.toggleRow button[aria-checked=true] {
+  border-color: var(--record-primary);
+  background: var(--record-primary);
 }
 
 .toggleAmount {
@@ -99,5 +106,70 @@
 .cardBody {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #eee6f4;
+  border-top: 1px solid var(--record-divider);
+}
+
+.lifeForm { padding-top: 8px; }
+.formHeader { display: flex; align-items: center; justify-content: space-between; gap: 22px; margin-bottom: 24px; }
+.formHeader h2 { font-size: 22px; font-weight: 700; line-height: 1.35; letter-spacing: -.025em; color: var(--record-ink); }
+.formHeader > div > p:last-child { margin-top: 8px; color: var(--record-muted); font-size: 13px; line-height: 1.75; }
+.filterBar { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.search { display: flex; align-items: center; flex: 0 1 420px; min-width: 0; gap: 10px; padding: 0 12px; border: 1px solid var(--record-control-border); border-radius: 11px; background: white; color: var(--record-muted); }
+.lifeForm .search input { width: 100%; min-width: 0; border: 0; border-radius: 0; padding: 10px 0; background: transparent; font-size: 12px; color: var(--record-ink); }
+.search:focus-within { outline: 2px solid var(--record-focus); outline-offset: 2px; }
+.lifeForm .search input:focus { outline: none; }
+.search input::-webkit-search-cancel-button { display: none; }
+.search button { display: grid; place-items: center; padding: 5px; border-radius: 5px; cursor: pointer; }
+.filterActions { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
+.filterActions > a { display: inline-flex; align-items: center; gap: 7px; color: var(--record-text); font-size: 12px; font-weight: 600; }
+.selectedFilter { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--record-control-border); border-radius: 11px; background: white; color: var(--record-text); font-size: 12px; cursor: pointer; }
+.selectedFilter:hover { border-color: var(--record-border-strong); }
+.selectedFilter[aria-pressed=true] { border-color: var(--record-border-strong); background: var(--record-selected); color: var(--record-text); }
+.selectedFilter b { display: grid; place-items: center; min-width: 22px; height: 22px; border-radius: 6px; background: #e9edf4; font-size: 11px; }
+.groupNav { display: flex; flex-wrap: wrap; gap: 7px; margin: 15px 0 0; }
+.groupNav a { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 7px; background: #e9edf4; color: var(--record-muted); font-size: 10px; line-height: 1.5; font-weight: 550; }
+.groupNav a:hover { background: #dce2ec; color: var(--record-ink); }
+.groupNav b { min-width: 15px; text-align: center; color: var(--record-text); }
+.benefitGroups { display: flex; flex-direction: column; gap: 28px; margin-top: 26px; }
+.benefitGroup { scroll-margin-top: 90px; }
+.groupHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+.groupHeader h3 { color: var(--record-ink); font-size: 15px; font-weight: 700; letter-spacing: -.015em; }
+.groupHeader p { margin: 4px 0 0; color: var(--record-muted); font-size: 11px; line-height: 1.6; }
+.groupHeader > span { flex-shrink: 0; padding: 5px 9px; border: 1px solid var(--record-border); border-radius: 7px; background: white; color: var(--record-text); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.groupHeader > span > span { color: var(--record-muted); font-weight: 400; }
+.benefitGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; align-items: start; }
+.cardToggle { display: flex; width: 100%; min-height: 39px; gap: 10px; align-items: center; text-align: left; cursor: pointer; }
+.cardCheck { display: grid; place-items: center; flex-shrink: 0; width: 21px; height: 21px; border: 1px solid var(--record-control-border); border-radius: 6px; background: #fff; color: white; }
+.cardToggle[aria-pressed=true] .cardCheck { border-color: var(--record-primary); background: var(--record-primary); }
+.cardIcon { display: grid; place-items: center; flex-shrink: 0; width: 31px; height: 31px; border-radius: 9px; background: #f0edf8; color: var(--record-accent); }
+.cardTitle { min-width: 0; flex: 1; }
+.activeLabel { flex-shrink: 0; padding: 4px 7px; border-radius: 5px; background: #ece8f5; color: var(--record-text); font-size: 9px; font-weight: 650; }
+.benefitGroup:not(:has([data-benefit-card]:not([hidden]))) { display: none; }
+.emptyState { display: none; padding: 32px 18px; border: 1px dashed var(--record-border); border-radius: 15px; text-align: center; background: #f5f7fa; color: var(--record-muted); }
+.benefitGroups:not(:has([data-benefit-card]:not([hidden]))) + .emptyState { display: grid; justify-items: center; gap: 9px; }
+.emptyState strong { color: var(--record-ink); font-size: 14px; }
+.emptyState p { font-size: 12px; line-height: 1.7; }
+.emptyState button { margin-top: 7px; padding: 9px 14px; border: 1px solid var(--record-border); border-radius: 8px; background: white; color: var(--record-text); font-size: 12px; font-weight: 600; cursor: pointer; }
+.contractSection { margin-top: 28px; padding: 22px; border: 1px solid var(--record-border); border-radius: 17px; background: white; scroll-margin-top: 90px; }
+.contractSection .groupHeader { padding-bottom: 17px; margin-bottom: 0; border-bottom: 1px solid var(--record-divider); color: var(--record-muted); }
+.contractQuestions { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 16px 24px; padding-top: 18px; }
+.contractQuestions > div:nth-child(odd) { font-size: 12px; font-weight: 550; line-height: 1.6; color: var(--record-text); }
+.contractQuestions .segmentedControl { flex-wrap: nowrap; border-radius: 9px; background: #f3f5f9; }
+.contractQuestions .segmentedControl button { min-width: 43px; min-height: 32px; border-radius: 6px; }
+.summaryCount { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--record-muted); font-size: 11px; }
+
+@media(max-width:700px) {
+  .formHeader { align-items: flex-start; flex-direction: column; gap: 18px; }
+  .formHeader h2 { font-size: 20px; }
+  .filterBar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .search { flex-basis: auto; }
+  .filterActions { justify-content: space-between; }
+  .groupNav { gap: 6px; }
+  .groupNav a { font-size: 10px; padding: 6px 8px; }
+  .benefitGrid { grid-template-columns: minmax(0,1fr); }
+  .benefitGroups { gap: 24px; }
+  .activeLabel { display: none; }
+  .contractSection { padding: 16px; }
+  .contractQuestions { gap: 14px 12px; }
+  .contractQuestions > div:nth-child(odd) { font-size: 11px; }
 }

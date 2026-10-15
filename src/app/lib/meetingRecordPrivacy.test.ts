@@ -8,7 +8,7 @@ import {
   type MeetingRecordKind,
 } from "./meetingRecordPrivacy";
 
-const kinds: MeetingRecordKind[] = ["lifeDraft", "lifeResults", "carResults"];
+const kinds: MeetingRecordKind[] = ["lifeDraft", "lifeResults", "carResults", "clientPreferences"];
 const legacy = ["lifeRecordFormDraft", "lifeRecordResultInput", "carRecord.resultsInput"];
 const payload = { syntheticInput: "only-for-advisor-a" };
 const key = (kind: MeetingRecordKind) => `bohemika:meeting-record:${kind}`;

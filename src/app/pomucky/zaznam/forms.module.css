@@ -1,0 +1,49 @@
+.stack { display: grid; gap: 16px; }
+.notice { display: flex; align-items: flex-start; gap: 11px; padding: 12px 16px; border: 1px solid var(--record-border); border-radius: 10px; color: var(--record-text); background: #edf1f7; }
+.notice > svg { flex-shrink: 0; margin-top: 3px; }
+.notice strong { font-size: 13px; font-weight: 650; }
+.notice p { margin-top: 3px; font-size: 12px; line-height: 1.7; color: var(--record-muted); }
+.section { overflow: hidden; border: 1px solid var(--record-border); background: #fff; border-radius: 13px; }
+.sectionHeader { padding: 20px 22px 0; background: #fff; }
+.eyebrow { color: var(--record-accent); font-size: 10px; line-height: 1.5; letter-spacing: .1em; font-weight: 650; text-transform: uppercase; margin: 0 0 7px; }
+.sectionTitle { color: var(--record-ink); font-size: 17px; font-weight: 650; line-height: 1.5; letter-spacing: -.015em; }
+.sectionDescription { max-width: 820px; margin-top: 6px; font-size: 12px; line-height: 1.75; color: var(--record-muted); }
+.sectionBody { display: grid; gap: 8px; padding: 16px 22px 20px; }
+.phraseRow { display: flex; align-items: flex-start; gap: 13px; border: 1px solid transparent; border-radius: 9px; padding: 15px; background: #f6f8fb; }
+.rowNumber { flex-shrink: 0; display: grid; place-items: center; width: 26px; height: 28px; border-radius: 6px; font-size: 10px; font-weight: 650; background: #e9edf4; color: var(--record-muted); }
+.phraseText { flex: 1; min-width: 0; color: var(--record-ink); font-size: 13px; line-height: 1.9; }
+.phraseText p { white-space: pre-line; }
+.phraseText .helper { font-size: 11px; line-height: 1.7; color: var(--record-muted); margin-top: 6px; }
+.copyButton { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 6px; min-height: 36px; border: 1px solid #d2d9e4; border-radius: 7px; padding: 8px 11px; background: #fff; color: var(--record-text); font-size: 11px; font-weight: 600; transition: background .15s,border-color .15s; }
+.copyButton:hover { background: #eef0f7; border-color: var(--record-border-strong); }
+.copyButton[data-copied=true] { color: #38694f; background: #f0f8f3; border-color: #c7e2d2; }
+.copyButton:focus-visible { outline: 2px solid var(--record-focus); outline-offset: 3px; }
+.feedback { position: fixed; left: 50%; bottom: 24px; z-index: 60; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 10px 16px; border: 1px solid #d4e5da; border-radius: 12px; background: #f4faf6; color: #38634a; font-size: 12px; line-height: 1.6; box-shadow: 0 6px 22px #30223f10; }
+.feedback:empty { display: none; }
+.copyError { background: #fff8f1; border-color: var(--record-border); color: #805727; }
+.callout { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--record-border); border-radius: 12px; background: #fdf9f3; padding: 14px 16px; color: #82613a; font-size: 12px; line-height: 1.8; }
+.callout svg { margin-top: 3px; flex-shrink: 0; }
+.topic { border: 1px solid var(--record-border); border-radius: 10px; padding: 16px; background: #fff; }
+.topicHeader { display: flex; align-items: center; gap: 9px; color: var(--record-muted); margin-bottom: 14px; }
+.topicHeader h3 { color: var(--record-ink); font-size: 14px; font-weight: 650; }
+.topic .phraseRow { flex-wrap: wrap; }
+.topic .phraseText { min-width: calc(100% - 42px); }
+.topic .phraseRow > button { margin-left: auto; }
+.variantList { display: grid; gap: 10px; }
+.product { display: grid; gap: 10px; border: 1px solid var(--record-border); border-radius: 14px; padding: 17px; }
+.productHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.productHeader span { border-radius: 5px; padding: 4px 8px; color: var(--record-accent); background: #f0edf8; font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+.productHeader h3 { color: var(--record-ink); font-size: 13px; font-weight: 650; }
+.product p { color: var(--record-muted); font-size: 13px; line-height: 1.8; }
+.product > button { justify-self: start; }
+@media(max-width:640px) {
+  .sectionHeader { padding: 16px 15px 0; }
+  .sectionBody { padding: 13px 15px 15px; }
+  .sectionTitle { font-size: 16px; }
+  .phraseRow { flex-wrap: wrap; gap: 10px; padding: 13px; }
+  .phraseText { min-width: calc(100% - 42px); }
+  .phraseRow > button { margin-left: auto; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .copyButton { transition: none; }
+}

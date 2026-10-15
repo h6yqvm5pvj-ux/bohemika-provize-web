@@ -2,13 +2,17 @@
 "use client";
 
 import styles from "../record.module.css";
+import resultStyles from "../results.module.css";
 import { RecordIllustration } from "../RecordIllustration";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { ArrowLeft, Check, Sparkles } from "lucide-react";
+import { CopyFeedback, ResultSection, ResultTextRow, useRecordClipboard } from "../ResultComponents";
 import Link from "next/link";
 import { AppLayout } from "@/components/AppLayout";
 import { MeetingRecordSession } from "../MeetingRecordSession";
 import { readMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
+import { getRecordClientWords, type ClientGender } from "../recordClientTexts";
 
 type Insurer =
   | "cpp"
@@ -20,6 +24,7 @@ type Insurer =
   | "uniqa";
 
 interface CarResultsInput {
+  clientGender?: ClientGender;
   hasLiability: boolean;
   liabilityLimit: string | null;
 
@@ -52,9 +57,6 @@ const INSURER_OPTIONS: { id: Insurer; label: string }[] = [
   { id: "uniqa", label: "UNIQA" },
 ];
 
-const MANDATORY_AUTO_RECOMMENDATION =
-  "Klient byl seznámen s pojistnými podmínkami, zejména s výlukami, limity a rozsahem pojistného plnění, spoluúčastí a postupem při hlášení a likvidaci pojistné události.";
-
 type RecommendationItem = {
   text: string;
   reason?: string;
@@ -82,7 +84,8 @@ function buildRecommendations(
 ): RecommendationItem[] {
   if (!data) return [];
 
-  const recs: RecommendationItem[] = [{ text: MANDATORY_AUTO_RECOMMENDATION }];
+  const t = getRecordClientWords(data.clientGender);
+  const recs: RecommendationItem[] = [{ text: `${t.Client} ${t.wasAcquainted} s pojistnými podmínkami, zejména s výlukami, limity a rozsahem pojistného plnění, spoluúčastí a postupem při hlášení a likvidaci pojistné události.` }];
 
   const photoTriggers: string[] = [];
   if (data.glass) photoTriggers.push("Skla");
@@ -96,7 +99,7 @@ function buildRecommendations(
   if (photoTriggers.length > 0) {
     recs.push(
       {
-        text: "Klient byl informován o nutnosti nafocení vozidla a bere na vědomí, že do nafocení může být uplatněna vyšší spoluúčast dle podmínek pojišťovny.",
+        text: `${t.Client} ${t.wasInformed} o nutnosti nafocení vozidla a bere na vědomí, že do nafocení může být uplatněna vyšší spoluúčast dle podmínek pojišťovny.`,
         reason: photoTriggers.join(" + "),
       }
     );
@@ -109,7 +112,7 @@ function buildRecommendations(
       const first = parseInt(match[1], 10);
       if (first < 100) {
         recs.push({
-          text: "Klient byl upozorněn že jím zvolené limity na POV mohou být nízké a to zejména v zahraničí.",
+          text: `${t.Client} ${t.wasWarned} že ${t.byClient} zvolené limity na POV mohou být nízké a to zejména v zahraničí.`,
           reason: "POV limit pod 100/100",
         });
       }
@@ -119,7 +122,7 @@ function buildRecommendations(
   // 2) Asistence – základní
   if (data.assistance && data.assistanceLevel === "Základní") {
     recs.push({
-      text: "Klient byl upozorněn že zvolil pouze základní asistenci a byla mu doporučena vyšší.",
+      text: `${t.Client} ${t.wasWarned} že ${t.chose} pouze základní asistenci a byla ${t.recipient} doporučena vyšší.`,
       reason: "Asistence: Základní",
     });
   }
@@ -137,7 +140,7 @@ function buildRecommendations(
 
   if (someCoverMissing) {
     recs.push({
-      text: "Klientovi byly doporučeny doplňková připojištění přesto je nepožaduje.",
+      text: `${t.ClientDative} byly doporučeny doplňková připojištění přesto je nepožaduje.`,
       reason: `Chybí krytí: ${missingCovers.join(", ")}`,
     });
   }
@@ -148,7 +151,7 @@ function buildRecommendations(
     (currentInsurer === "allianz" || currentInsurer === "pillow")
   ) {
     recs.push({
-      text: `Klient si zvolil roční nájezd ${data.annualMileage} a byl upozorněn, že musí vyfotit tachometr a v případě překročení mu bude pojistné dopočítáno dle tabulky ve smlouvě.`,
+      text: `${t.Client} si ${t.chose} roční nájezd ${data.annualMileage} a ${t.wasWarned}, že musí vyfotit tachometr a v případě překročení ${t.recipient} bude pojistné dopočítáno dle tabulky ve smlouvě.`,
       reason: `${currentInsurer === "allianz" ? "Allianz" : "Pillow"} + nájezd ${data.annualMileage}`,
     });
   }
@@ -161,7 +164,7 @@ function buildRecommendations(
       const insurerLabel = getInsurerLabel(currentInsurer);
       const joined = usualPriceLimitCovers.join(", ");
       recs.push({
-        text: `Klient byl upozorněn, že u produktu ${insurerLabel} je u připojištění ${joined} standardně nastaven limit pojistného plnění na obvyklou cenu vozidla.`,
+        text: `${t.Client} ${t.wasWarned}, že u produktu ${insurerLabel} je u připojištění ${joined} standardně nastaven limit pojistného plnění na obvyklou cenu vozidla.`,
         reason: `${insurerLabel}: limit na obvyklou cenu`,
       });
     }
@@ -170,7 +173,7 @@ function buildRecommendations(
   // 6) Extrabenefit Profi – POUZE pokud nahoře zvolena ČPP
   if (data.discountCppProfi && currentInsurer === "cpp") {
     recs.push({
-      text: "Klient byl upozorněn, že pokud dojde v následujícím tříletém období k pojistné události, pojistník se zavazuje pojistiteli vrátit slevu za poskytnutý EBP na pojistném za všechna pojistná období, v nichž byla sleva od počátku pojištění poskytnuta.",
+      text: `${t.Client} ${t.wasWarned}, že pokud dojde v následujícím tříletém období k pojistné události, pojistník se zavazuje pojistiteli vrátit slevu za poskytnutý EBP na pojistném za všechna pojistná období, v nichž byla sleva od počátku pojištění poskytnuta.`,
       reason: "ČPP + Extrabenefit Profi",
     });
   }
@@ -178,7 +181,7 @@ function buildRecommendations(
   // 7) Sleva za neoriginální sklo
   if (data.discountUniqaNonOemGlass) {
     recs.push({
-      text: "Klient si přeje využít slevu na neoriginální sklo.",
+      text: `${t.Client} si přeje využít slevu na neoriginální sklo.`,
       reason: "Sleva: neoriginální sklo",
     });
   }
@@ -323,211 +326,103 @@ export default function CarResultsPage() {
   return <MeetingRecordSession>{(owner) => <CarResults owner={owner} />}</MeetingRecordSession>;
 }
 
-function CarResults({ owner }: { owner: MeetingRecordContext }) {
-  const [data, setData] = useState<CarResultsInput | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
-
-  const [currentInsurer, setCurrentInsurer] = useState<Insurer | null>(null);
-  const [recommendedInsurer, setRecommendedInsurer] =
-    useState<Insurer | null>(null);
-
-  const handleCopy = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedText(text);
-      window.setTimeout(() => setCopiedText(null), 1500);
-    } catch (err) {
-      console.error("Copy failed", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      setData(readMeetingRecord<CarResultsInput>("carResults", owner));
-    } catch (e) {
-      console.error("Chyba při načítání výsledků vozidel:", e);
-    } finally {
-      setLoaded(true);
-    }
-  }, [owner]);
-
-  const recs = buildRecommendations(data, currentInsurer);
-  const productRecs = buildProductRecommendations(
-    data,
-    recommendedInsurer
+function InsurerPicker({ value, onChange, label }: {
+  value: Insurer | null;
+  onChange: (value: Insurer | null) => void;
+  label: string;
+}) {
+  return (
+    <div className={resultStyles.insurerPicker} role="group" aria-label={label}>
+      {INSURER_OPTIONS.map((option) => (
+        <button key={option.id} type="button" aria-pressed={value === option.id} onClick={() => onChange(value === option.id ? null : option.id)}>
+          {value === option.id && <Check size={14} aria-hidden="true" />}
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
+}
+
+function CarResults({ owner }: { owner: MeetingRecordContext }) {
+  const [data] = useState(() => readMeetingRecord<CarResultsInput>("carResults", owner));
+  const { copiedText, feedback, handleCopy } = useRecordClipboard();
+  const [currentInsurer, setCurrentInsurer] = useState<Insurer | null>(null);
+  const [recommendedInsurer, setRecommendedInsurer] = useState<Insurer | null>(null);
+
+  const t = getRecordClientWords(data?.clientGender);
+  const recs = buildRecommendations(data, currentInsurer);
+  const productRecs = buildProductRecommendations(data, recommendedInsurer);
 
   return (
     <AppLayout active="tools">
-      <div className={`${styles.page} ${styles.results}`}>
-        <Link href="/pomucky/zaznam" className={styles.back}>← Zpět na záznam</Link>
-        <header className={styles.hero}>
+      <div className={`${styles.page} ${styles.results} ${resultStyles.page}`}>
+        <Link href="/pomucky/zaznam" className={styles.back}><ArrowLeft size={15} aria-hidden="true" /> Upravit zadání</Link>
+        <header className={`${styles.hero} ${resultStyles.hero}`}>
           <div>
-            <span className={styles.eyebrow}>Výstup pro jednání · Vozidla</span>
-            <h1>Doporučení do dopadů</h1>
-            <p>Texty podle nastaveného pojištění vozidla. Vyber pojišťovnu a zkopíruj doporučení, která odpovídají jednání s klientem.</p>
+            <span className={styles.eyebrow}><Sparkles size={14} aria-hidden="true" /> Pojištění vozidel · Výsledky</span>
+            <h1>Texty do záznamu z jednání</h1>
+            <p>Vyber sjednávanou pojišťovnu. Doporučení se přizpůsobí tvému zadání a můžeš je zkopírovat jednotlivě nebo najednou.</p>
           </div>
-          <div className={styles.illustration}><RecordIllustration complete /></div>
+          <div className={`${styles.illustration} ${resultStyles.heroIllustration}`}><RecordIllustration complete /></div>
         </header>
-        {/* Přepínač pojišťovny – nahoře */}
-        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-4 sm:px-8 sm:py-5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-3">
-          <h2 className="text-sm font-semibold text-slate-900">
-            Jakou pojišťovnu sjednáváš?
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {INSURER_OPTIONS.map((opt) => {
-              const active = currentInsurer === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  aria-pressed={active}
-                  type="button"
-                  onClick={() =>
-                    setCurrentInsurer(
-                      currentInsurer === opt.id ? null : opt.id
-                    )
-                  }
-                  className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
-                    active
-                      ? "bg-violet-50 border-violet-300 text-violet-800"
-                      : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
+        {data && <nav className={`${resultStyles.navigation} ${resultStyles.carNavigation}`} aria-label="Části záznamu">
+          <a href="#pojistovna"><b>1</b> Pojišťovna</a>
+          <a href="#dopady"><b>2</b> Dopady <small>{recs.length === 1 ? "1 text" : recs.length < 5 ? `${recs.length} texty` : `${recs.length} textů`}</small></a>
+          <a href="#produkty"><b>3</b> Doporučení produktu</a>
+        </nav>}
+
+        {!data ? (
+          <div className={resultStyles.notice}>
+            <p>Nejprve vyplň pojištění vozidla a přejdi na výsledky. Potom tu najdeš texty připravené podle tvého zadání.</p>
+            <Link href="/pomucky/zaznam" className={`${resultStyles.copyAction} mt-3`}><ArrowLeft size={15} aria-hidden="true" /> Vyplnit záznam z jednání</Link>
           </div>
-        </section>
+        ) : (
+          <>
+            <ResultSection
+              id="pojistovna"
+              eyebrow="Krok 1"
+              title="Jakou pojišťovnu sjednáváš?"
+              description="Výběr doplní do dopadů také upozornění pro konkrétní pojišťovnu."
+              copiedText={copiedText}
+              onCopy={handleCopy}
+            >
+              <InsurerPicker value={currentInsurer} onChange={setCurrentInsurer} label="Sjednávaná pojišťovna" />
+              {!currentInsurer && <p className={resultStyles.muted}>Zatím vidíš obecná doporučení. Pro úplný výstup vyber pojišťovnu.</p>}
+            </ResultSection>
 
+            <ResultSection
+              id="dopady"
+              eyebrow="Část 2"
+              title="Popis dopadů sjednání pojištění"
+              description="Hotové věty pro dopady nebo záznam z jednání. Poznámka nad textem ukazuje, z čeho doporučení vychází."
+              countLabel={recs.length === 1 ? "1 text" : recs.length < 5 ? `${recs.length} texty` : `${recs.length} textů`}
+              copyText={recs.map((rec) => rec.text).join("\n")}
+              copiedText={copiedText}
+              onCopy={handleCopy}
+            >
+              {recs.map((rec, index) => <ResultTextRow key={rec.text} index={index + 1} text={rec.text} reason={rec.reason} copiedText={copiedText} onCopy={handleCopy} />)}
+            </ResultSection>
 
-
-        {/* Výsledky – hlavní doporučení */}
-        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
-          {!loaded ? (
-            <p className="text-sm text-slate-800">Načítám výsledky…</p>
-          ) : !data ? (
-            <div className="space-y-2 text-sm text-slate-800">
-              <p>
-                Nenašel jsem žádná data k pojištění vozidel. Pravděpodobně jsi
-                ještě nevyplnil formulář nebo jsi jej neuložil pomocí tlačítka{" "}
-                <span className="font-semibold">Výsledky</span>.
-              </p>
-              <Link
-                href="/pomucky/zaznam"
-                className="inline-flex items-center justify-center rounded-2xl bg-white text-slate-900 px-4 py-2 text-sm font-semibold hover:bg-slate-100"
-              >
-                Zpět na záznam z jednání
-              </Link>
-            </div>
-          ) : recs.length === 0 ? (
-            <div className="space-y-2 text-sm text-slate-800">
-              <p>
-                Z aktuálně zadaných údajů nevyplývají žádná speciální upozornění
-                pro dopady.
-              </p>
-              <p className="text-xs text-slate-500">
-                Pokud očekáváš nějaké doporučení, zkontroluj prosím nastavení
-                limitů, asistencí a doplňkových krytí v sekci Pojištění vozidel.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-800">
-                Níže máš hotové věty, které můžeš použít v dopadech nebo v
-                záznamu z jednání:
-              </p>
-              <ul className={`${styles.resultList} space-y-2 text-sm text-slate-900`}>
-                {recs.map((rec, idx) => (
-                  <li
-                    key={idx}
-                    className="flex items-start gap-3 leading-relaxed"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(rec.text)}
-                      className="mt-[1px] inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-[3px] text-[11px] font-medium text-slate-900 transition hover:border-emerald-300/60 hover:text-emerald-800"
-                    >
-                      {copiedText === rec.text ? "Zkopírováno" : "Kopírovat"}
-                    </button>
-                    <span className="mt-[6px] block h-[10px] w-[10px] rounded-full bg-emerald-400 flex-shrink-0" />
-                    <div className="flex-1 space-y-1">
-                      {rec.reason && (
-                        <span className="inline-flex rounded-full border border-emerald-300/45 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-800">
-                          {rec.reason}
-                        </span>
-                      )}
-                      <span className="block">{rec.text}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-
-        {/* Doporučení produktu */}
-        <section className="rounded-3xl border border-slate-900 bg-white  px-6 py-5 sm:px-8 sm:py-6 shadow-[0_8px_24px_rgba(15,23,42,0.08)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Doporučení produktu
-            </h2>
-          </div>
-
-          <p className="text-xs sm:text-sm text-slate-600">
-            Měl by jsi vždy doporučit klientovi alespoň 2 pojišťovny.
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-            {INSURER_OPTIONS.map((opt) => {
-              const active = recommendedInsurer === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  aria-pressed={active}
-                  type="button"
-                  onClick={() =>
-                    setRecommendedInsurer(
-                      recommendedInsurer === opt.id ? null : opt.id
-                    )
-                  }
-                  className={`px-3.5 py-1.5 rounded-2xl text-xs sm:text-sm border transition ${
-                    active
-                      ? "bg-violet-50 border-violet-300 text-violet-800"
-                      : "bg-white border-slate-300 text-slate-900 hover:bg-slate-100"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {productRecs.length > 0 && (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm text-slate-800">
-                Shrnutí výhod / poznámek pro zvolenou pojišťovnu:
-              </p>
-              <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-900">
-                {productRecs.map((text, idx) => (
-                  <li key={idx}>{text}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-
-        {/* Odkaz zpět */}
-        <div className="flex justify-end">
-          <Link
-            href="/pomucky/zaznam"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs sm:text-sm font-medium text-slate-900 hover:bg-slate-100"
-          >
-            Zpět na záznam z jednání
-          </Link>
+            <ResultSection
+              id="produkty"
+              eyebrow="Část 3"
+              title="Doporučení pojistného produktu"
+              description={`Doporuč ${t.clientDative} alespoň 2 pojišťovny. Výběrem zobrazíš přehled výhod pro každý produkt zvlášť.`}
+              copyText={productRecs.length > 0 ? productRecs.join("\n") : undefined}
+              copiedText={copiedText}
+              onCopy={handleCopy}
+            >
+              <InsurerPicker value={recommendedInsurer} onChange={setRecommendedInsurer} label="Doporučovaná pojišťovna" />
+              {productRecs.length > 0 ? productRecs.map((text, index) => (
+                <ResultTextRow key={text} index={index + 1} text={text} copiedText={copiedText} onCopy={handleCopy} />
+              )) : <p className={resultStyles.muted}>{recommendedInsurer ? "Pro tuto kombinaci nemám připravené další produktové poznámky." : "Vyber pojišťovnu a zobrazí se výhody podle nastavení pojištění vozidla."}</p>}
+            </ResultSection>
+          </>
+        )}
+        <div className={resultStyles.footer}>
+          <Link href="/pomucky/zaznam" className={resultStyles.copyAction}><ArrowLeft size={15} aria-hidden="true" /> Upravit zadání</Link>
         </div>
+        <CopyFeedback feedback={feedback} />
       </div>
     </AppLayout>
   );

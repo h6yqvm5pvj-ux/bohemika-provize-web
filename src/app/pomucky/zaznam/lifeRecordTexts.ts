@@ -1,4 +1,5 @@
-export type ClientGender = "male" | "female";
+import { getRecordAdditionalRequirement, type ClientGender } from "./recordClientTexts";
+export type { ClientGender } from "./recordClientTexts";
 
 export const IMPACT_HEADING_PREFIX = "[[heading]]:";
 
@@ -24,8 +25,7 @@ function buildLifeRecordTexts(gender: ClientGender) {
     mandatoryImpacts: [
       `${Client} ${informed} s rozsahem krytí, výší pojistných částek a pojistného, s hlavními výlukami/čekacími dobami a principem likvidace pojistné události dle pojistných podmínek, doporučení pravidelné aktualizace smlouvy a nutnosti hlásit změny jako například změna povolání.`,
     ],
-    additionalRequirement:
-      `${Client} ${female ? "vyžadovala" : "vyžadoval"} vysvětlení pojmů, které jsou uvedeny v pojistných podmínkách k požadovanému typu pojištění.`,
+    additionalRequirement: getRecordAdditionalRequirement(gender),
     discrepanciesInstruction:
       `Pokud byly po ocenění zdravotního stavu ${female ? "klientce" : "klientovi"} stanoveny RIZIKOVÉ PŘIRÁŽKY nebo VÝLUKY, uveď je zde.`,
     existingContract:

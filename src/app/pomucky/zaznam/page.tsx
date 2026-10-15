@@ -3,7 +3,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { RecordIllustration } from "./RecordIllustration";
 import styles from "./record.module.css";
 import { AppLayout } from "@/components/AppLayout";
 import type { LucideIcon } from "lucide-react";
@@ -31,7 +30,10 @@ import { LiabilityRecordForm } from "./LiabilityRecordForm";
 import { TravelRecordForm } from "./TravelRecordForm";
 import { BusinessRecordForm } from "./BusinessRecordForm";
 import { MeetingRecordSession } from "./MeetingRecordSession";
-import type { MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
+import { writeMeetingRecord, type MeetingRecordContext } from "@/app/lib/meetingRecordPrivacy";
+import { ClientGenderSelector } from "./ClientGenderSelector";
+import { getRecordClientWords, type ClientGender } from "./recordClientTexts";
+import { readRecordClientGender } from "./recordClientPreference";
 
 const INSURANCE_TYPE_ICONS: Record<RecordInsuranceType, LucideIcon> = {
   life: HeartPulse,
@@ -49,46 +51,54 @@ export default function RecordOfMeetingPage() {
 function RecordOfMeeting({ owner }: { owner: MeetingRecordContext }) {
   const [selectedType, setSelectedType] =
     useState<RecordInsuranceType>("life");
+  const selectedInsurance = RECORD_INSURANCE_TYPES.find((type) => type.id === selectedType)!;
+  const [clientGender, setClientGender] = useState(() => readRecordClientGender(owner));
+  const texts = getRecordClientWords(clientGender);
+  const changeClientGender = (gender: ClientGender) => {
+    if (!writeMeetingRecord("clientPreferences", { clientGender: gender }, owner)) return;
+    setClientGender(gender);
+  };
 
   return (
     <AppLayout active="tools">
       <div className={styles.page}>
         <Link href="/pomucky" className={styles.back}><ArrowLeft size={15} /> Zpět na pomůcky</Link>
-        <header className={styles.hero}>
+        <header className={styles.masthead}>
           <div>
-            <span className={styles.eyebrow}><FilePenLine size={14} /> Podklady pro jednání</span>
-            <h1>Záznam z jednání</h1>
-            <p>Od potřeb klienta k přehlednému zápisu. Vyber oblast pojištění a připrav si texty pro záznam z jednání.</p>
-            <div className={styles.steps} aria-label="Jak postupovat">
-              <span><b>1</b> Vyber oblast</span><span><b>2</b> Doplň podklady</span><span><b>3</b> Zkopíruj texty</span>
-            </div>
+            <h1>Záznam z jednání.<br /><span>Jasně a přehledně.</span></h1>
           </div>
-          <div className={styles.illustration}><RecordIllustration /></div>
+          <div className={styles.clientChoice}>
+            <ClientGenderSelector value={clientGender} onChange={changeClientGender} />
+            <p>Pro všechny oblasti pojištění</p>
+          </div>
         </header>
-        <div className={styles.pickerHeader}><h2>Co s klientem řešíš?</h2><span>Vyber oblast jednání</span></div>
+        <div id="record-insurance" className={styles.pickerHeader}><h2>Co s {texts.clientInstrumental} řešíš?</h2><span>Vyber oblast pojištění</span></div>
         <div className={styles.picker} role="group" aria-label="Oblast jednání">
           {RECORD_INSURANCE_TYPES.map((t: RecordInsuranceTypeConfig) => {
             const active = t.id === selectedType;
             const Icon = INSURANCE_TYPE_ICONS[t.id];
             return (
               <button key={t.id} type="button" onClick={() => setSelectedType(t.id)}
-                aria-pressed={active} aria-controls="record-form" className={styles.type}>
-                <span className={styles.typeIcon}><Icon size={19} strokeWidth={1.7} /></span>
-                {active && <Check size={13} className={styles.selectedMark} />}
-                <strong>{t.shortTitle}</strong><small>{t.subtitle}</small>
+                aria-pressed={active} aria-controls="record-form" className={styles.type} data-sector={t.id}>
+                <span className={styles.typeIcon}><Icon size={21} strokeWidth={1.7} aria-hidden="true" /></span>
+                {active && <Check size={14} className={styles.selectedMark} aria-hidden="true" />}
+                <span className={styles.typeCopy}><strong>{t.shortTitle}</strong><small>{t.subtitle}</small></span>
               </button>
             );
           })}
         </div>
 
-        <section id="record-form" className={styles.form} aria-label={RECORD_INSURANCE_TYPES.find((type) => type.id === selectedType)?.title}>
-          {selectedType === "life" && <LifeRecordForm owner={owner} />}
-          {selectedType === "car" && <CarRecordForm owner={owner} />}
-          {selectedType === "property" && <PropertyRecordForm />}
-          {selectedType === "liability" && <LiabilityRecordForm />}
-          {selectedType === "business" && <BusinessRecordForm />}
-          {selectedType === "travel" && <TravelRecordForm />}
-        </section>
+        <div className={styles.workspace}>
+          <div className={styles.workspaceLabel}><span><FilePenLine size={15} aria-hidden="true" /> Podklady pro záznam</span><span aria-live="polite">{selectedInsurance.title}</span></div>
+          <section id="record-form" className={styles.form} aria-label={selectedInsurance.title}>
+            {selectedType === "life" && <LifeRecordForm owner={owner} clientGender={clientGender} />}
+            {selectedType === "car" && <CarRecordForm owner={owner} clientGender={clientGender} />}
+            {selectedType === "property" && <PropertyRecordForm clientGender={clientGender} />}
+            {selectedType === "liability" && <LiabilityRecordForm clientGender={clientGender} />}
+            {selectedType === "business" && <BusinessRecordForm clientGender={clientGender} />}
+            {selectedType === "travel" && <TravelRecordForm clientGender={clientGender} />}
+          </section>
+        </div>
       </div>
     </AppLayout>
   );
