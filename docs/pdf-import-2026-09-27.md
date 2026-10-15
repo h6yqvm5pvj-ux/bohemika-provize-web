@@ -6,7 +6,7 @@ PDF dokument a jeho pracovní prostředky se uvolní po získání textu i při 
 
 ## OCR
 
-V kalkulačce je společná cesta zapojená pro všech 25 položek v `AUTOMATED_PDF_PRODUCTS`. OCR běží místně v prohlížeči pomocí existujících českých a anglických jazykových dat. Samostatná volání importérů z jiných funkcí zůstávají standardně textová; OCR lze zapnout volbou `allowOcr`. Conseq Zenit zachovává dosavadní výchozí OCR a svůj doplňkový pokus na prvních dvou stranách neúplného formuláře. Režim importu u provizního výpisu nadále respektuje `allowOcr: false`.
+V kalkulačce je společná cesta zapojená pro všech 25 položek v `AUTOMATED_PDF_PRODUCTS`. OCR běží místně v prohlížeči pomocí existujících českých a anglických jazykových dat. Samostatná volání importérů z jiných funkcí zůstávají standardně textová; OCR lze zapnout volbou `allowOcr`. Conseq Zenit zachovává dosavadní výchozí OCR a svůj doplňkový pokus na prvních dvou stranách neúplného formuláře. Od 14. 10. 2026 je OCR zapnuté také v kalkulačce otevřené z provizního výpisu, při rozpoznání produktu i načítání údajů pro jednotlivý a hromadný import.
 
 Automatické OCR vybírá strany s méně než 80 čitelnými písmeny/číslicemi a rastrovým obrázkem. Krátké čistě textové strany a prázdné listy ho nespouštějí. V kombinovaném PDF zůstávají ostatní strany a jejich původní text beze změny. Textový a OCR výsledek jsou oddělené; textový import ani při souběhu nečeká na OCR a nepřebírá jeho údaje.
 

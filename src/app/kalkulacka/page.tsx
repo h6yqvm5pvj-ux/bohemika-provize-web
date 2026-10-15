@@ -3134,7 +3134,7 @@ export default function CalculatorPage() {
       const detected = await withPdfImportTimeout(
         signal => detectProductFromPdfLazy(file, {
           signal,
-          allowOcr: !statementEmbedMode,
+          allowOcr: true,
           onOcrStart: () => {
             ocrActive = true;
             if (isCurrentPdfImport()) setPdfImportStatus("PDF je sken. Rozpoznávám produkt a údaje přes OCR…");
@@ -3300,7 +3300,7 @@ export default function CalculatorPage() {
       const parsed = await withPdfImportTimeout(
         signal => parseContractPdfByProduct(importProduct, file, {
           signal,
-          allowOcr: !statementEmbedMode,
+          allowOcr: true,
           onOcrStart: () => {
             ocrActive = true;
             if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
@@ -4396,7 +4396,7 @@ export default function CalculatorPage() {
         try {
           let batchOcrActive = false;
           const batchOcrOptions = {
-            allowOcr: !statementEmbedMode,
+            allowOcr: true,
             onOcrStart: () => {
               batchOcrActive = true;
               setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}: čtu sken přes OCR…`);
