@@ -1,7 +1,6 @@
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { securedRequest, authorizeRecipients, failure } = require("./security");
-const { processInvoice } = require("./billing");
 const { runtimeOptions } = require("./runtime");
 
 // v2 Functions importy
@@ -20,7 +19,6 @@ setGlobalOptions({
 
 // 🔐 Secrety
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
-const FAKTUROID_WEBHOOK_TOKEN = defineSecret("FAKTUROID_WEBHOOK_TOKEN");
 const CUZK_API_KEY = defineSecret("CUZK_API_KEY"); // ✅ KN API key
 const DATAOVOZIDLECH_API_KEY = defineSecret("DATAOVOZIDLECH_API_KEY");
 
@@ -1525,31 +1523,6 @@ exports.sendTestPush = securedRequest(admin, onRequest, "sendTestPush",
       }
       console.error("FUNCTION_OPERATION_FAILED");
       return res.status(500).json({ ok: false, error: "INTERNAL", detail: "Služba je dočasně nedostupná." });
-    }
-  }
-);
-
-/* ------------------------------------------------------------------ */
-/*  5) FAKTUROID WEBHOOK                                               */
-/* ------------------------------------------------------------------ */
-
-exports.fakturoidWebhook = onRequest(
-  {
-    ...runtimeOptions("fakturoidWebhook"),
-    secrets: [FAKTUROID_WEBHOOK_TOKEN],
-    timeoutSeconds: 30,
-    memory: "256MiB"
-  },
-  async (req, res) => {
-    if (req.method !== "POST") return res.status(405).send("Only POST allowed");
-
-    res.set("Cache-Control", "no-store");
-    try {
-      const result = await processInvoice(admin, req, FAKTUROID_WEBHOOK_TOKEN.value());
-      return res.status(200).send(result);
-    } catch (error) {
-      const status = [400,401,409,413,415,503].includes(error.status) ? error.status : 503;
-      return res.status(status).send(error.status ? error.code : "WEBHOOK_UNAVAILABLE");
     }
   }
 );

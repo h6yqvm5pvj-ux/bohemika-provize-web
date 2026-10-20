@@ -3,7 +3,7 @@ const accounts = {
   aiAssistant: "bf-ai-assist", sendTeamMessage: "bf-team", sendTestPush: "bf-test-push",
   cuzkSuggestAddress: "bf-cuzk-suggest", cuzkLookupByAddress: "bf-cuzk-address",
   cuzkLookupByAdresniMisto: "bf-cuzk-place", rsvVehicleLookup: "bf-vehicle",
-  fakturoidWebhook: "bf-billing", notifyAdminOnUserRequest: "bf-notify-admin",
+  notifyAdminOnUserRequest: "bf-notify-admin",
   notifyManagerOnNewEntry: "bf-notify-manager", notifyAutoAnniversary: "bf-notify-anniversary",
   notifyUnpaidContracts: "bf-notify-unpaid",
 };

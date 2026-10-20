@@ -3,7 +3,6 @@ const assert = require("node:assert/strict");
 const vm = require("node:vm");
 const fs = require("node:fs");
 const { authenticate, assertRevocation, consumeRate, authorizeRecipients } = require("../security");
-const { processInvoice, nextMonth } = require("../billing");
 
 const generation = "12345678-1234-1234-1234-123456789abc";
 function memory(initial = {}) {
@@ -37,7 +36,7 @@ function fixture() {
   const token = { uid:"uid-manager", email:"manager@example.invalid", email_verified:true, auth_time:200, firebase:{sign_in_provider:"password",sign_in_second_factor:"totp"} };
   const user = { uid:token.uid, email:token.email, emailVerified:true, disabled:false, multiFactor:{enrolledFactors:[{factorId:"totp"}]} };
   const db = memory({ [`users/${token.email}`]:{userId:token.uid}, "users/recipient@example.invalid":{userId:"uid-recipient",managerEmail:token.email,fcmToken:"synthetic-device"} });
-  const calls = { verify:[],push:[],http:[] }; let authError;
+  const calls = { verify:[],push:[],http:[],secrets:[] }; let authError;
   const firestore = () => db; firestore.Timestamp = { fromDate:date => ({toDate:() => new Date(date), iso:date.toISOString()}) };
   const admin = {initializeApp(){},firestore,auth:() => ({async verifyIdToken(value, revoked){calls.verify.push(revoked);if(authError)throw authError;if(value!=="valid")throw Object.assign(new Error("invalid"),{code:"auth/invalid-id-token"});return token;},async getUser(){return user;}}),messaging:()=>({async send(m){calls.push.push(m);return "synthetic-message";}})};
   return {token,user,db,calls,admin,setAuthError:value=>{authError=value;},req:{method:"POST",headers:{authorization:"Bearer valid","content-type":"application/json"},body:{},query:{}}};
@@ -88,8 +87,8 @@ function handlers(f) {
  const capture=(options,fn)=>{fn.options=options;return fn;};
  const modules={"firebase-admin":f.admin,"axios":{async post(){f.calls.http.push("post");return {data:{choices:[{message:{content:"synthetic response"}}]}};},async get(){f.calls.http.push("get");return {data:{features:[]}};}},
   "firebase-functions/v2/firestore":{onDocumentCreated:capture},"firebase-functions/v2":{setGlobalOptions(){}},"firebase-functions/v2/https":{onRequest:capture},
-  "firebase-functions/params":{defineSecret:()=>({value:()=>"synthetic-secret"})},"firebase-functions/v2/scheduler":{onSchedule:capture},
-  "./security":require("../security"),"./billing":require("../billing"),"./runtime":require("../runtime")};
+  "firebase-functions/params":{defineSecret:name=>{f.calls.secrets.push(name);return {value:()=>"synthetic-secret"};}},"firebase-functions/v2/scheduler":{onSchedule:capture},
+  "./security":require("../security"),"./runtime":require("../runtime")};
  const exports={};vm.runInNewContext(fs.readFileSync(require.resolve("../index"),"utf8"),{exports,...(f.Date?{Date:f.Date}:{}),require:name=>{if(!modules[name])throw new Error(name);return modules[name];},console:{log(){},warn(){},error(){}}},{timeout:1000});return exports;
 }
 async function invoke(fn,req) {
@@ -150,28 +149,9 @@ test("request wrapper requires JSON, bounds bytes, supports preflight and fails 
 });
 test("disabled manager notification stays disabled and runtime identities are distinct",async()=>{
  const f=fixture(),exports=handlers(f);await exports.notifyManagerOnNewEntry({data:{data(){throw new Error("must remain disabled");}}});
- assert.equal(new Set(Object.values(exports).map(fn=>fn.options.serviceAccount)).size,12);
-});
-
-function billingFixture() {
- const f=fixture();f.db.rows.set("users/customer@example.invalid",{fullName:"Synthetic Customer",paidUntil:f.admin.firestore.Timestamp.fromDate(new Date("2030-01-31T12:00:00Z"))});
- f.req.headers.authorization="synthetic-secret";f.req.body={invoice:{id:123,state:"paid",total:200,client_name:"Synthetic Customer"}};return f;
-}
-test("webhook rejects missing/invalid authentication, empty secret and missing invoice id",async()=>{
- const f=billingFixture();await expectStatus(processInvoice(f.admin,f.req,""),503);await expectStatus(processInvoice(f.admin,f.req,"wrong"),401);
- delete f.req.body.invoice.id;await expectStatus(processInvoice(f.admin,f.req,"synthetic-secret"),400);
-});
-test("duplicate and concurrent invoice delivery extends subscription once",async()=>{
- const f=billingFixture();const results=await Promise.all(Array.from({length:10},()=>processInvoice(f.admin,f.req,"synthetic-secret")));
- assert.equal(results.filter(r=>r==="Subscription updated").length,1);assert.equal(f.db.rows.get("users/customer@example.invalid").paidUntil.iso,"2030-02-28T12:00:00.000Z");
- assert.equal(await processInvoice(f.admin,f.req,"synthetic-secret"),"Invoice already processed");
-});
-test("previous version's last invoice is migrated without another extension",async()=>{
- const f=billingFixture();f.db.rows.get("users/customer@example.invalid").lastInvoiceId=123;
- assert.equal(await processInvoice(f.admin,f.req,"synthetic-secret"),"Invoice already processed");assert.equal(f.db.rows.get("users/customer@example.invalid").paidUntil.iso,"2030-01-31T12:00:00.000Z");
-});
-test("ambiguous customer is rejected without writing and month end is clamped",async()=>{
- const f=billingFixture();f.db.rows.set("users/duplicate@example.invalid",{fullName:"Synthetic Customer"});await expectStatus(processInvoice(f.admin,f.req,"synthetic-secret"),409);
- assert.equal([...f.db.rows.keys()].filter(k=>k.startsWith("billingWebhookInvoices/")).length,0);
- assert.equal(nextMonth(new Date("2028-01-31T00:00:00Z")).toISOString(),"2028-02-29T00:00:00.000Z");
+ const expected=[...protectedFunctions,"notifyAdminOnUserRequest","notifyManagerOnNewEntry","notifyAutoAnniversary","notifyUnpaidContracts"].sort();
+ assert.deepEqual(Object.keys(exports).sort(),expected);
+ assert.deepEqual(Object.keys(require("../runtime").accounts).sort(),expected);
+ assert.deepEqual(f.calls.secrets.sort(),["CUZK_API_KEY","DATAOVOZIDLECH_API_KEY","OPENAI_API_KEY"]);
+ assert.equal(new Set(Object.values(exports).map(fn=>fn.options.serviceAccount)).size,expected.length);
 });

@@ -84,7 +84,7 @@ Pro nový nebo upravený endpoint:
 
 U uploadů ověř vlastnictví, velikost, skutečný formát a bezpečný název/cestu. Používej helpery `safeUserAttachments.ts`, `contractPdfStorage.ts`, `mailboxAttachmentStorage.ts`, `profileAvatarUpload.ts`, `userRequestScreenshot.ts` a `privateStorage.ts` podle typu dat. U proxy/integrací zachovej omezení cílových adres, cest, redirectů, velikostí a timeoutů; nepřijímej libovolnou URL nebo Storage cestu od klienta.
 
-Firebase Functions mají vlastní HTTP vstupy, Firestore triggery a scheduled funkce v `functions/index.js`. `functions/security.js` vynucuje vlastní auth/MFA/revokaci a rate limiting; Next proxy je nechrání. Integrace zahrnují ČÚZK/RÚIAN, registr vozidel, AI asistenta, notifikace a Fakturoid. `functions/billing.js` ověřuje webhook secret, přiřazení zákazníka a idempotenci faktury a zapisuje předplatné transakčně. Zachovej deduplikační záznamy `billingWebhookInvoices`, kontroly vstupů a samostatné runtime identity z `functions/runtime.js`.
+Firebase Functions mají vlastní HTTP vstupy, Firestore triggery a scheduled funkce v `functions/index.js`. `functions/security.js` vynucuje vlastní auth/MFA/revokaci a rate limiting; Next proxy je nechrání. Integrace zahrnují ČÚZK/RÚIAN, registr vozidel, AI asistenta a notifikace. Platby předplatného se zadávají ručně přes administrační API `src/app/api/admin/subscriptions/route.ts`; Functions nepřijímají platební webhooky. Zachovej kontroly vstupů a samostatné runtime identity z `functions/runtime.js`.
 
 ## 6. Autentizace, session a oprávnění
 
@@ -164,7 +164,7 @@ Aplikace pracuje s údaji klientů i poradců: kontakty, adresami, rodnými čí
 | Storage / obrazy | `FIREBASE_STORAGE_BUCKET`, veřejná Firebase konfigurace; omezení hostů v `src/lib/firebaseImageSources.ts` a `next.config.ts`. |
 | Cron | `CRON_SECRET`; další konfiguraci plánovače ověř v `web-scheduler.json` a `scripts/deploy-web-scheduler.mjs`. |
 | Auth e-maily | `RESEND_API_KEY`, `AUTH_EMAIL_FROM`; `src/lib/server/firebaseAuthEmail.ts` a `docs/auth-email-setup.md`. |
-| Functions secrets | `OPENAI_API_KEY`, `FAKTUROID_WEBHOOK_TOKEN`, `CUZK_API_KEY`, `DATAOVOZIDLECH_API_KEY` přes Firebase `defineSecret()` v `functions/index.js`. |
+| Functions secrets | `OPENAI_API_KEY`, `CUZK_API_KEY`, `DATAOVOZIDLECH_API_KEY` přes Firebase `defineSecret()` v `functions/index.js`. |
 | Volitelné funkce | Cashflow přepínače v `src/lib/server/cashflow*.ts`; `ANALYZE` zapíná bundle analyzer. |
 | Integrace | Konfiguraci e-mailů, vozidlových služeb a workerů hledej v jejich serverových modulech a konkrétních routách. Nejde o úplný seznam povinných env pro každé prostředí. |
 

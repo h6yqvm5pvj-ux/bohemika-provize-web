@@ -1,8 +1,9 @@
 # Cloud Functions
 
-This directory restores the twelve deployed functions to version control and adds
-their direct authentication, authorization and billing protections. Deploy these
-functions separately from the Next.js application.
+This directory contains eleven Firebase functions and their direct authentication
+and authorization protections. Deploy these functions separately from the Next.js
+application. Subscription payments are entered manually through the web
+administration; Functions do not receive billing webhooks.
 
 ## Invariants
 
@@ -16,15 +17,11 @@ functions separately from the Next.js application.
   every recipient's hierarchy before sending anything. Device tokens stay on the
   server. Administrator impersonation continues through the web API's separately
   authorized local dispatch.
-- Billing requires the configured webhook secret, an invoice ID and one uniquely
-  matched customer. Invoice deduplication and subscription updates share a
-  Firestore transaction. `billingWebhookInvoices` records must not expire or be
-  made client-writable. The previous version's `lastInvoiceId` is recognized.
 - `notifyManagerOnNewEntry` intentionally remains disabled, matching its actual
   deployed source from May 10. Existing schedules and other notification behavior
   are preserved.
-- Public HTTP reachability is intentional for Firebase bearer authentication and
-  the webhook. The four internal event/scheduled functions retain private IAM.
+- Public HTTP reachability is intentional for Firebase bearer authentication.
+  The four internal event/scheduled functions retain private IAM.
 - Each function has its own runtime identity listed in `runtime.js`. Build uses
   `bf-build`, never a runtime identity with access to application secrets.
 
@@ -51,7 +48,7 @@ and secret versions. A later Firebase CLI release must verify those settings.
 
 Read each current configuration and IAM policy before changing it. Keep a private
 backup of the original sources/configuration, use an archive containing only
-`index.js`, `security.js`, `billing.js`, `runtime.js`, `package.json` and the lockfile,
+`index.js`, `security.js`, `runtime.js`, `package.json` and the lockfile,
 then deploy and verify both the Cloud Functions and Cloud Run URLs. Remove old
 permissions only after the new service identities have been tested successfully.
 
