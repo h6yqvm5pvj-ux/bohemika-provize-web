@@ -1,5 +1,6 @@
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
 import type { PdfOcrPage, PdfOcrProgress } from "./pdfOcr";
+import { PDF_OCR_ENABLED } from "./pdfOcrFeature";
 
 export type PdfReadOptions = {
   allowOcr?: boolean;
@@ -185,7 +186,7 @@ export function ocrPageToTextPage(page: PdfOcrPage, size: PdfTextPage): PdfTextP
 
 export async function readPdfText(file: File, options: PdfReadOptions = {}): Promise<PdfDocumentText> {
   const native = await sharedRead(file, "text", options, signal => readNativeText(file, signal));
-  if (!options.allowOcr || typeof document === "undefined") return native;
+  if (!PDF_OCR_ENABLED || !options.allowOcr || typeof document === "undefined") return native;
   const candidates = options.ocrPages ?? native.pages.flatMap((page, index) => page.needsOcr ? [index + 1] : []);
   const requested = [...new Set(candidates)].filter(number => Number.isInteger(number) && number >= 1 && number <= native.pages.length).sort((a, b) => a - b);
   if (!requested.length) return native;

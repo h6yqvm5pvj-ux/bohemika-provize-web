@@ -7,8 +7,9 @@ import type { PdfOcrPage } from "./pdfOcr";
 
 const mocks = vi.hoisted(() => ({
   pages: [] as string[][], getDocument: vi.fn(), getPage: vi.fn(), getText: vi.fn(),
-  destroy: vi.fn(), cleanup: vi.fn(), ocr: vi.fn(),
+  destroy: vi.fn(), cleanup: vi.fn(), ocr: vi.fn(), ocrEnabled: true,
 }));
+vi.mock("./pdfOcrFeature", () => ({ get PDF_OCR_ENABLED() { return mocks.ocrEnabled; } }));
 vi.mock("./pdfOcr", () => ({ extractOcrLinesFromPdf: mocks.ocr }));
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({ GlobalWorkerOptions: {}, getDocument: mocks.getDocument,
   OPS: { paintImageXObject: 85, paintInlineImageXObject: 86, paintImageXObjectRepeat: 88, paintInlineImageXObjectGroup: 87 },
@@ -21,6 +22,7 @@ const scannedPage = (lines: string[]): PdfOcrPage => ({
 const flexi = ["Kooperativa pojišťovna", "Rizikové životní pojištění FLEXI", "Číslo pojistné smlouvy", "1400000001", "Titul, jméno, příjmení", "Jana Testovací", "Částka k úhradě", "704 Kč", "Počátek pojištění", "01.10.2026"];
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.ocrEnabled = true;
   mocks.pages = [flexi];
   mocks.destroy.mockResolvedValue(undefined);
   mocks.getText.mockImplementation(async (number: number) => ({ items: mocks.pages[number - 1].map((str, index) => ({
@@ -37,6 +39,41 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("shared PDF text and scan reading", () => {
+  it.each([undefined, [1]])("does not start OCR while globally paused, including forced pages %j", async (ocrPages) => {
+    mocks.ocrEnabled = false;
+    mocks.pages = [[]];
+    const onOcrStart = vi.fn();
+    const onOcrProgress = vi.fn();
+    const result = await readPdfText(file(), { allowOcr: true, ocrPages, onOcrStart, onOcrProgress });
+    expect(result).toMatchObject({ pages: [{ items: [] }], ocrTextUsed: false });
+    expect(mocks.ocr).not.toHaveBeenCalled();
+    expect(onOcrStart).not.toHaveBeenCalled();
+    expect(onOcrProgress).not.toHaveBeenCalled();
+    expect(mocks.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("keeps native product detection and imports working while OCR is globally paused", async () => {
+    mocks.ocrEnabled = false;
+    const upload = file();
+    await expect(detectProductFromPdf(upload)).resolves.toMatchObject({ product: "flexi", confidence: "high" });
+    await expect(parseContractPdfByProduct("flexi", upload)).resolves.toMatchObject({
+      contractNumber: "1400000001", clientName: "Jana Testovací", amount: 704,
+    });
+    expect(mocks.getDocument).toHaveBeenCalledOnce();
+    expect(mocks.ocr).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse cached OCR text while OCR is globally paused", async () => {
+    mocks.pages = [[]];
+    const upload = file();
+    await expect(readPdfText(upload, { allowOcr: true })).resolves.toMatchObject({ ocrTextUsed: true });
+    mocks.ocrEnabled = false;
+    await expect(readPdfText(upload, { allowOcr: true })).resolves.toMatchObject({
+      pages: [{ items: [] }], ocrTextUsed: false,
+    });
+    expect(mocks.ocr).toHaveBeenCalledOnce();
+  });
+
   it("opens and extracts a native PDF once across detection and product import", async () => {
     const upload = file();
     await expect(detectProductFromPdf(upload)).resolves.toMatchObject({ product: "flexi", confidence: "high" });

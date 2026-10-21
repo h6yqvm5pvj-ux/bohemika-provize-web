@@ -5,6 +5,7 @@ import { detectProductFromPdf } from "./detectProductFromPdf";
 import { parseContractPdfByProduct, buildPdfImportIssueMessage, detectProductFromPdfLazy } from "../kalkulacka/calculatorPdfImport";
 
 const state = vi.hoisted(() => ({ pages: [] as PdfOcrPage[], ocr: vi.fn() }));
+vi.mock("./pdfOcrFeature", () => ({ PDF_OCR_ENABLED: true }));
 vi.mock("./pdfOcr", () => ({ extractOcrLinesFromPdf: state.ocr }));
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   GlobalWorkerOptions: {},
