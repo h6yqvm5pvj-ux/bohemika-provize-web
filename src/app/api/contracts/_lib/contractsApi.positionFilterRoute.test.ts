@@ -89,3 +89,26 @@ describe("signing position filter API integration", () => {
     expect(result.contracts).toHaveLength(1);
   });
 });
+
+
+describe("commission-ended filter authorization", () => {
+  const commissionRequest = (scope = "my") => new NextRequest(`https://example.test/api/contracts/list?shape=contractList&scope=${scope}&commissionEndedOnly=1&userEmail=unrelated@example.test&role=admin`);
+
+  it.each(["my", "team"])("uses the authenticated %s scope despite manipulated owner and role parameters", async scope => {
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(commissionRequest(scope));
+    expect(response.status).toBe(200);
+    expect(mocks.filtered).toHaveBeenCalledWith(expect.objectContaining({
+      owners: scope === "my" ? [email] : ["team@example.test"],
+      filters: expect.objectContaining({ commissionEndedOnly: true }),
+    }));
+  });
+
+  it.each([401, 403])("keeps the %s guard response and does not read contracts", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status }) });
+    const { handleContractsList } = await import("./contractsApi");
+    expect((await handleContractsList(commissionRequest())).status).toBe(status);
+    expect(mocks.filtered).not.toHaveBeenCalled();
+    expect(mocks.collection).not.toHaveBeenCalled();
+  });
+});

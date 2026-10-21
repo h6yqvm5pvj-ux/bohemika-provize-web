@@ -42,6 +42,18 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("contract filter results in the page and API", () => {
+  it("combines commission end with lifecycle and authorized adviser selection in the page and API", () => {
+    const historical = { productKey: "domex" as const, contractSignedDate: "2020-01-01", policyStartDate: "2020-02-01" };
+    const values = [contract("ended", historical), contract("storno", { ...historical, status: "storno" }),
+      contract("other-owner", { ...historical, adviserEmail: "other@example.test" }),
+      contract("still-earning", { ...historical, contractSignedDate: "2023-06-01", policyStartDate: "2023-07-01" }),
+      contract("current", { ...historical, contractSignedDate: "2024-09-01" }), contract("auto")];
+    expect(matching(values, { showCommissionEndedOnly: true })).toEqual(["ended", "storno", "other-owner"]);
+    expect(matching(values, { showCommissionEndedOnly: true, showActiveOnly: true, selectedSubordinates: [owner] })).toEqual(["ended"]);
+    const server = parseContractListFilters(new URLSearchParams({ commissionEndedOnly: "1", activeOnly: "1" }));
+    expect(values.filter(item => contractMatchesListFilters(item as ApiContract, server)).map(item => item.id)).toEqual(["ended", "other-owner"]);
+  });
+
   it.each(["novakova zaneta", "  ŽANETA\t  Nováková ", "novak zan", "AB 12 / 34"])("matches %s identically in the page and API", query => {
     const values = [contract("match"), contract("other", { clientName: "Jana Černá", contractNumber: "ZZ9999" })];
     const server = parseContractListFilters(new URLSearchParams({ q: query }));

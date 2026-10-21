@@ -108,6 +108,7 @@ export function readContractsViewState(
       showActiveOnly: Boolean(parsed.showActiveOnly),
       showStornoOnly: Boolean(parsed.showStornoOnly),
       showMaturedOnly: Boolean(parsed.showMaturedOnly),
+      showCommissionEndedOnly: parsed.showCommissionEndedOnly === true,
       commissionAuditMode: parseCommissionAuditMode(
         typeof parsed.commissionAuditMode === "string"
           ? parsed.commissionAuditMode

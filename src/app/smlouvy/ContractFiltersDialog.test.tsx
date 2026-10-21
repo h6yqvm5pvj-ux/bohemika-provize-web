@@ -28,6 +28,17 @@ beforeEach(() => { vi.clearAllMocks(); Object.assign(globalThis, { IS_REACT_ACT_
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 
 describe("contract filter dialog", () => {
+  it("applies and removes commission-ended filtering independently of active lifecycle", async () => {
+    await mount(); await choice("Provizně ukončené smlouvy"); await choice("Aktivní");
+    expect(apply).not.toHaveBeenCalled(); await submit();
+    expect(apply.mock.lastCall![0]).toMatchObject({ showCommissionEndedOnly: true, showActiveOnly: true });
+    expect(container.querySelector('[role="tab"]')?.textContent).toBe("Smlouvy2");
+    await click(button("Odebrat filtr: Provizně ukončené smlouvy")); await submit();
+    expect(apply.mock.lastCall![0]).toMatchObject({ showCommissionEndedOnly: false, showActiveOnly: true });
+    await choice("Provizně ukončené smlouvy"); await click(button("Vymazat filtry")); await submit();
+    expect(apply.mock.lastCall![0]).toEqual(emptyContractFilterSelection());
+  });
+
   it("offers only the supplied career history and applies multiple signing positions", async () => {
     await mount();
     const section = [...container.querySelectorAll("section")].find(item => item.querySelector("h3")?.textContent?.startsWith("Sjednaná pozice"))!;

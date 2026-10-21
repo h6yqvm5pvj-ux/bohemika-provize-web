@@ -1,3 +1,4 @@
+import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 import { CAREER_POSITIONS } from "@/app/lib/careerPositions";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import type { ContractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -244,6 +245,9 @@ export const parseContractListFilters = (
     maturedOnly:
       search.get("maturedOnly") === "1" ||
       search.get("maturedOnly") === "true",
+    commissionEndedOnly:
+      search.get("commissionEndedOnly") === "1" ||
+      search.get("commissionEndedOnly") === "true",
     commissionAuditMode: parseCommissionAuditMode(search.get("commissionAudit")),
     commissionAuditCodeFilter: parseCommissionAuditCodeFilter(
       search.get("commissionCode")
@@ -271,6 +275,7 @@ export const hasContractListClientFilters = (
   filters.activeOnly ||
   filters.stornoOnly ||
   filters.maturedOnly ||
+  filters.commissionEndedOnly ||
   isCommissionAuditFilterActive({
     mode: filters.commissionAuditMode,
     codeFilter: filters.commissionAuditCodeFilter,
@@ -502,6 +507,10 @@ export function contractMatchesListFilters(
     ) {
       return false;
     }
+  }
+
+  if (filters.commissionEndedOnly && !isContractCommissionEnded(contract)) {
+    return false;
   }
 
   if (filters.unpaidOnly) {

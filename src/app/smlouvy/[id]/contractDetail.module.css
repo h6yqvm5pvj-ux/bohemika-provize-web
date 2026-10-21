@@ -53,6 +53,7 @@
   font-weight: 600;
   line-height: 1.2;
 }
+.headerStatus.commissionEnded { color: #9a3412; background: #ffedd5; border-color: #fb923c; padding: 5px 8px; }
 .headerStatusIcon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; box-shadow: none; }
 .headerStatusIcon > * { width: 11px; height: 11px; font-size: 11px; }
 .headerTag { padding: 5px 8px; }

@@ -1,3 +1,4 @@
+import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 import type { Product } from "@/app/types/domain";
 import { commissionAuditSummaryForContract, isCommissionAuditFilterActive } from "@/app/lib/commissionAudit";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -106,6 +107,11 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
         (showMaturedOnly && lifecycleStatus === "dozita")
       );
     });
+  }
+
+  if (filters.showCommissionEndedOnly) {
+    const now = new Date();
+    base = base.filter(c => isContractCommissionEnded(c, now));
   }
 
   if (commissionAuditActive) {

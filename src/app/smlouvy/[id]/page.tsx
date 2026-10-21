@@ -1,6 +1,8 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
+import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
+
 import { buildInteractiveStatementHtml } from "@/lib/statementPreview";
 
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
@@ -5367,6 +5369,12 @@ export default function ContractDetailPage() {
                   {isRefreshContract && !isNeonRefreshContract && (
                     <span className={detailStyles.headerTag}>
                       {originalReplacementLabelText}
+                    </span>
+                  )}
+                  {isContractCommissionEnded(contract) && (
+                    <span className={`${detailStyles.headerStatus} ${detailStyles.commissionEnded}`} title="Období nároku na následné provize skončilo.">
+                      <AlertTriangle size={14} aria-hidden="true" />
+                      <span>Provizně ukončená smlouva</span>
                     </span>
                   )}
                   <span

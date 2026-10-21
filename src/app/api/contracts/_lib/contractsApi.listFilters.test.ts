@@ -40,6 +40,13 @@ const contract = (overrides: Partial<ContractDoc> = {}): ContractDoc => ({
 });
 
 describe("contracts API list filters", () => {
+  it.each(["1", "true", "false", "0", "anything", "{\"userEmail\":\"other@example.test\"}"])("validates the commission-ended flag %s", raw => {
+    const filters = parseContractListFilters(new URLSearchParams({ commissionEndedOnly: raw }));
+    const enabled = raw === "1" || raw === "true";
+    expect(filters.commissionEndedOnly).toBe(enabled);
+    expect(hasContractListClientFilters(filters)).toBe(enabled);
+  });
+
   it("normalizes search text and contract numbers", () => {
     expect(normalizeSearchValue("  Žaneta  ")).toBe("zaneta");
     expect(normalizeContractNumberForSearch(" AB 12/34 ")).toBe("ab1234");

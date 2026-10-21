@@ -618,6 +618,7 @@ export type ContractListFilters = {
   activeOnly: boolean;
   stornoOnly: boolean;
   maturedOnly: boolean;
+  commissionEndedOnly: boolean;
   commissionAuditMode: CommissionAuditMode;
   commissionAuditCodeFilter: CommissionAuditCodeFilter;
   categories: Set<ContractListProductCategory>;

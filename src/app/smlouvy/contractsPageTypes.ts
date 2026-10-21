@@ -180,6 +180,7 @@ export type ContractsListFilters = {
   showActiveOnly: boolean;
   showStornoOnly: boolean;
   showMaturedOnly: boolean;
+  showCommissionEndedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];
@@ -198,6 +199,7 @@ export type ContractsViewState = {
   showActiveOnly: boolean;
   showStornoOnly: boolean;
   showMaturedOnly: boolean;
+  showCommissionEndedOnly: boolean;
   commissionAuditMode: CommissionAuditFilterMode;
   commissionAuditCodeFilter: CommissionAuditFilterCode;
   selectedCategories: ProductCategory[];

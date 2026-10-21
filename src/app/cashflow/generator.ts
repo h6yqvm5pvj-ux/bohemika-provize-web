@@ -1,3 +1,4 @@
+import { estimatePayoutDate } from "../lib/commissionPayoutDate";
 import { isInheritedContract, isSubsequentCommissionItem } from "../lib/inheritedContracts";
 import type { PaymentFrequency } from "../types/domain";
 import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
@@ -6,6 +7,8 @@ import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
 import { applyConfirmedPayoutMatches } from "./payoutPlanMatching";
 import { calendarDate } from "../lib/calendarDates";
+
+export { estimatePayoutDate } from "../lib/commissionPayoutDate";
 
 type ImmediateCashflowPart = {
   title: string;
@@ -22,27 +25,6 @@ type IndexedCommissionPayout = {
   key: string;
   date: Date;
 };
-
-export function estimatePayoutDate(
-  policyStart: Date,
-  agreementDate?: Date | null,
-  cutoffDay = 25,
-  payoutDay = 25
-): Date {
-  const year = policyStart.getFullYear();
-  const month = policyStart.getMonth();
-  // Cutoff řídíme primárně datem sjednání.
-  // Pokud datum sjednání chybí, použijeme den počátku.
-  const dayForCutoff = agreementDate
-    ? agreementDate.getDate()
-    : policyStart.getDate();
-
-  if (dayForCutoff > cutoffDay) {
-    return calendarDate(policyStart, year, month + 2, payoutDay);
-  }
-
-  return calendarDate(policyStart, year, month + 1, payoutDay);
-}
 
 function estimateLifeFirstPayoutDate(
   policyStart: Date,

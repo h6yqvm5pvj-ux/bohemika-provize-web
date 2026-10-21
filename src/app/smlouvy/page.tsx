@@ -478,6 +478,7 @@ function ContractsPageContent() {
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [showStornoOnly, setShowStornoOnly] = useState(false);
   const [showMaturedOnly, setShowMaturedOnly] = useState(false);
+  const [showCommissionEndedOnly, setShowCommissionEndedOnly] = useState(false);
   const [commissionAuditMode, setCommissionAuditMode] =
     useState<CommissionAuditFilterMode>("off");
   const [commissionAuditCodeFilter, setCommissionAuditCodeFilter] =
@@ -605,6 +606,7 @@ function ContractsPageContent() {
     showActiveOnly ||
     showStornoOnly ||
     showMaturedOnly ||
+    showCommissionEndedOnly ||
     commissionAuditActive ||
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
@@ -619,6 +621,7 @@ function ContractsPageContent() {
       showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
+      showCommissionEndedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories: selectedCategoryList,
@@ -634,6 +637,7 @@ function ContractsPageContent() {
       showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
+      showCommissionEndedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategoryList,
@@ -705,6 +709,9 @@ function ContractsPageContent() {
         }
         if (filters.showMaturedOnly) {
           params.set("maturedOnly", "1");
+        }
+        if (filters.showCommissionEndedOnly) {
+          params.set("commissionEndedOnly", "1");
         }
         if (filters.commissionAuditMode !== "off") {
           params.set("commissionAudit", filters.commissionAuditMode);
@@ -1498,6 +1505,7 @@ function ContractsPageContent() {
         activeOnly: showActiveOnly,
         stornoOnly: showStornoOnly,
         maturedOnly: showMaturedOnly,
+        commissionEndedOnly: showCommissionEndedOnly,
         commissionAuditMode,
         commissionAuditCodeFilter,
         categories: Array.from(selectedCategories).sort(),
@@ -1514,6 +1522,7 @@ function ContractsPageContent() {
       showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
+      showCommissionEndedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories,
@@ -1690,6 +1699,7 @@ function ContractsPageContent() {
       showActiveOnly,
       showStornoOnly,
       showMaturedOnly,
+      showCommissionEndedOnly,
       commissionAuditMode,
       commissionAuditCodeFilter,
       selectedCategories: Array.from(selectedCategories),
@@ -1708,6 +1718,7 @@ function ContractsPageContent() {
     showActiveOnly,
     showStornoOnly,
     showMaturedOnly,
+    showCommissionEndedOnly,
     commissionAuditMode,
     commissionAuditCodeFilter,
     selectedCategories,
@@ -1854,6 +1865,7 @@ function ContractsPageContent() {
     setShowActiveOnly(saved.showActiveOnly);
     setShowStornoOnly(saved.showStornoOnly);
     setShowMaturedOnly(saved.showMaturedOnly);
+    setShowCommissionEndedOnly(saved.showCommissionEndedOnly);
     setCommissionAuditMode(saved.commissionAuditMode);
     setCommissionAuditCodeFilter(saved.commissionAuditCodeFilter);
     setSelectedCategories(new Set(saved.selectedCategories));
@@ -1892,6 +1904,7 @@ function ContractsPageContent() {
     showActiveOnly,
     showStornoOnly,
     showMaturedOnly,
+    showCommissionEndedOnly,
     commissionAuditMode,
     commissionAuditCodeFilter,
     selectedCategoryList,
@@ -2767,6 +2780,7 @@ function ContractsPageContent() {
               setShowActiveOnly(next.showActiveOnly);
               setShowStornoOnly(next.showStornoOnly);
               setShowMaturedOnly(next.showMaturedOnly);
+              setShowCommissionEndedOnly(next.showCommissionEndedOnly);
               setCommissionAuditMode(next.commissionAuditMode);
               setCommissionAuditCodeFilter(next.commissionAuditCodeFilter);
               setSelectedCategories(new Set(next.selectedCategories));

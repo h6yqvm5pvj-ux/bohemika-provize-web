@@ -10,6 +10,7 @@ export const emptyContractFilterSelection = (): ContractFilterSelection => ({
   showActiveOnly: false,
   showStornoOnly: false,
   showMaturedOnly: false,
+  showCommissionEndedOnly: false,
   commissionAuditMode: "off",
   commissionAuditCodeFilter: "all",
   selectedCategories: [],
@@ -21,7 +22,7 @@ export const emptyContractFilterSelection = (): ContractFilterSelection => ({
 export function contractFilterCount(value: ContractFilterSelection): number {
   return Number(value.filterMode === "anniversary") +
     Number(value.showUnpaidOnly) + Number(value.showRefreshOnly) +
-    Number(value.showActiveOnly) + Number(value.showStornoOnly) + Number(value.showMaturedOnly) +
+    Number(value.showActiveOnly) + Number(value.showStornoOnly) + Number(value.showMaturedOnly) + Number(value.showCommissionEndedOnly) +
     (value.commissionAuditMode === "off" ? 0 : 1 + Number(value.commissionAuditCodeFilter !== "all")) +
     value.selectedCategories.length + value.selectedInstitutions.length + value.selectedPositions.length + value.selectedSubordinates.length;
 }

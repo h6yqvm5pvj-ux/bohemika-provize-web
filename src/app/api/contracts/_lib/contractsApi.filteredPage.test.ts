@@ -38,6 +38,22 @@ afterEach(() => vi.useRealTimers());
 const filter = (values: Record<string, string>) => parseContractListFilters(new URLSearchParams(values));
 
 describe("complete filtered contract pagination", () => {
+  it("finds commission-ended contracts beyond 1,500 rows, paginates and reads only authorized owners", async () => {
+    const historical = { productKey: "domex" as const, contractSignedDate: "2020-01-01", policyStartDate: "2020-02-01" };
+    const records = Array.from({ length: 1500 }, (_, i) => record(String(i)));
+    records.push(record("old-b", historical), record("old-a", historical),
+      record("still-earning", { ...historical, contractSignedDate: "2023-06-01", policyStartDate: "2023-07-01" }),
+      record("private", historical, "unselected@example.test"));
+    const { db, state } = database(records);
+    const filters = filter({ commissionEndedOnly: "1", q: "novak" });
+    const first = await readFilteredContractPage({ db, owners: [owner], filters, cursor: null, pageSize: 1 });
+    expect(first.map(item => item.doc.id)).toEqual(["old-b", "old-a"]);
+    const next = await readFilteredContractPage({ db, owners: [owner], filters, cursor: { ts: Date.parse("2020-01-01"), key: `${owner}___old-b` }, pageSize: 1 });
+    expect(next.map(item => item.doc.id)).toEqual(["old-a"]);
+    expect(new Set(state.owners)).toEqual(new Set([owner]));
+    expect(state.fields).toEqual([[...CONTRACT_FILTER_PROJECTION], [...CONTRACT_FILTER_PROJECTION]]);
+  });
+
   it("finds old team search matches beyond the first 1,500 records without search indexes", async () => {
     const second = "second@example.test";
     const records = Array.from({ length: 1600 }, (_, i) => record(String(i), { clientName: "Jana Černá" }));

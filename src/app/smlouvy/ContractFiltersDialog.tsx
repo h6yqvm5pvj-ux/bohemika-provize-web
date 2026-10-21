@@ -73,7 +73,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
   const allVisibleSelected = visibleAdvisers.length > 0 && selectedVisible === visibleAdvisers.length;
   const chips: { key: string; label: string; remove: () => void }[] = [];
   if (draft.filterMode === "anniversary") chips.push({ key: "anniversary", label: "Výročí do 90 dnů", remove: () => change({ filterMode: "latest" }) });
-  for (const [key, label] of [["showActiveOnly", "Aktivní"], ["showStornoOnly", "Stornované"], ["showMaturedOnly", "Dožité"], ["showUnpaidOnly", "Nezaplacené"], ["showRefreshOnly", "Refresh / náhrada"]] as const) {
+  for (const [key, label] of [["showActiveOnly", "Aktivní"], ["showStornoOnly", "Stornované"], ["showMaturedOnly", "Dožité"], ["showUnpaidOnly", "Nezaplacené"], ["showRefreshOnly", "Refresh / náhrada"], ["showCommissionEndedOnly", "Provizně ukončené smlouvy"]] as const) {
     if (draft[key]) chips.push({ key, label, remove: () => change({ [key]: false }) });
   }
   for (const item of CATEGORY_DEFS) if (draft.selectedCategories.includes(item.id)) chips.push({ key: `category-${item.id}`, label: item.label, remove: () => change({ selectedCategories: draft.selectedCategories.filter(key => key !== item.id) }) });
@@ -132,6 +132,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
               <h3>Další podmínky</h3>
               <div className={styles.choices}>
                 <Choice checked={draft.showUnpaidOnly} onChange={() => setDraft(toggleUnpaidFilter)}>Nezaplacené</Choice>
+                <Choice checked={draft.showCommissionEndedOnly} onChange={() => change({ showCommissionEndedOnly: !draft.showCommissionEndedOnly })} description="Historické ČPP DOMEX po skončení období následných provizí.">Provizně ukončené smlouvy</Choice>
                 <Choice checked={draft.showRefreshOnly} onChange={() => change({ showRefreshOnly: !draft.showRefreshOnly })}>Refresh / náhrada</Choice>
               </div>
               <p className={styles.hint}>Nezaplacené zahrnují aktivní smlouvy bez označené úhrady.</p>

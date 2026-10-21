@@ -9,7 +9,7 @@ import { filterStatementDerivedContractDataForViewer, type StatementDataViewer }
 // Commission checks use full records because their cashflow calculation needs the complete input.
 export const CONTRACT_FILTER_PROJECTION = [
   "clientName", "contractNumber", "contractSignedDate", "createdAt", "productKey", "paid", "position",
-  "status", "stornoDate", "policyStartDate", "policyEndDate", "durationYears", "durationMonths",
+  "acquisitionType", "status", "stornoDate", "policyStartDate", "policyEndDate", "durationYears", "durationMonths",
   "isRefresh", "refreshOriginalContractNumber", "refreshCommissionBase", "userEmail",
 ] as const;
 
