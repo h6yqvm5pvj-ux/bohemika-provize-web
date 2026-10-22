@@ -1,4 +1,5 @@
-import { classifyLifeSplitCommissionCode, normalizeStatementCommissionCode } from "./statementParsing";
+import { classifyLifeSplitCommissionCode } from "./statementParsing";
+import { statementCommissionGroups } from "./statementCommissionComparisons";
 import type { CommissionRow, LifeSplitContractPreview } from "./statementTypes";
 
 /** Different bases belong to specific payout rows, not to the whole contract. */
@@ -23,12 +24,5 @@ export const lifeSplitBaseComparisonSources = (contract: LifeSplitContractPrevie
 export const lifeSplitCommissionGroups = (
   contract: LifeSplitContractPreview,
   kind: "subsequent" | "care"
-): { code: string; rows: CommissionRow[] }[] => {
-  const groups = new Map<string, CommissionRow[]>();
-  for (const row of contract.rows) {
-    if (row.lifeSplitKind !== kind) continue;
-    const code = normalizeStatementCommissionCode(row.type);
-    groups.set(code, [...(groups.get(code) ?? []), row]);
-  }
-  return [...groups].map(([code, rows]) => ({ code, rows }));
-};
+): { code: string; rows: CommissionRow[] }[] =>
+  statementCommissionGroups(contract.rows.filter(row => row.lifeSplitKind === kind));

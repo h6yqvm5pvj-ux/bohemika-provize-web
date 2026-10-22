@@ -40,6 +40,12 @@ import { isNeonRefreshStatementProductCode, isNeonInvestmentLifeA201Payout } fro
 import { neonRefreshBaseReview, neonRefreshBaseStatus } from "./statementRefreshBaseReview";
 import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase } from "./statementRefreshConversion";
 import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
+import {
+  buildStatementCodeComparisons,
+  comparisonStatus,
+  hasStatementAmountForComparison,
+  STATEMENT_AMOUNT_PRESENCE_TOLERANCE,
+} from "./statementCommissionComparisons";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
@@ -1237,11 +1243,6 @@ const sumRows = (rows: CommissionRow[]): number =>
 
 const sumPayments = (payments: OtherPayment[]): number =>
   payments.reduce((sum, payment) => sum + payment.amount, 0);
-
-const STATEMENT_AMOUNT_PRESENCE_TOLERANCE = 0.005;
-
-const hasStatementAmountForComparison = (amount: number): boolean =>
-  Number.isFinite(amount) && Math.abs(amount) >= STATEMENT_AMOUNT_PRESENCE_TOLERANCE;
 
 const hasRowsForAmountComparison = (rows: CommissionRow[]): boolean =>
   rows.some((row) => hasStatementAmountForComparison(row.commission));
@@ -3303,22 +3304,6 @@ const expectedAutoAmountForStatementRowBases = (
   return hasExpected ? total : null;
 };
 
-const comparisonStatus = (
-  statementAmount: number,
-  expectedAmount: number,
-  tolerance = COMMISSION_AMOUNT_TOLERANCE
-): CommissionAmountComparisonStatus => {
-  const difference = statementAmount - expectedAmount;
-  if (Math.abs(difference) <= tolerance) return "ok";
-  if (!hasStatementAmountForComparison(statementAmount) && hasStatementAmountForComparison(expectedAmount)) {
-    return "missing_statement";
-  }
-  if (!hasStatementAmountForComparison(expectedAmount) && hasStatementAmountForComparison(statementAmount)) {
-    return "missing_expected";
-  }
-  return "diff";
-};
-
 type SubsequentPayoutBundleInfo = {
   periods: number;
   expectedAmount: number;
@@ -3825,42 +3810,43 @@ const buildOtherProductAmountComparisons = (
     },
   ];
 
-  const comparisons: CommissionAmountComparison[] = groups
-    .map((group) => {
-      const statementAmount = sumRows(group.rows);
-      const expectedPerPeriod =
-        group.key === "increase"
-          ? expectedPremiumIncreaseAmountFromItems(items, group.rows)
-          : expectedAmountFromIndependentStatementBase(
-                group.rows,
-                systemContract,
-                group.matcher
-              ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
-      const subsequentBundleInfo =
-        group.key === "subsequent"
-          ? subsequentPayoutBundleInfo({
-              rows: group.rows,
-              statementAmount,
-              expectedPerPeriod,
-              systemContract,
-              statementPeriod,
-            })
-          : null;
-      const expectedAmount = subsequentBundleInfo?.expectedAmount ?? expectedPerPeriod;
-      return {
-        key: group.key,
-        label: subsequentBundleInfo
-          ? `${group.label} (${subsequentBundleInfo.periods} období)`
-          : group.label,
-        statementAmount,
-        expectedAmount,
-        difference: statementAmount - expectedAmount,
-        status: comparisonStatus(statementAmount, expectedAmount),
-        detailLines: subsequentBundleInfo?.detailLines,
-        hasStatementRows: hasRowsForAmountComparison(group.rows),
-      };
-    })
-    .filter((comparison) => comparison.hasStatementRows);
+  const comparisons: CommissionAmountComparison[] = groups.flatMap((group) => {
+    if (group.key === "subsequent") {
+      return buildStatementCodeComparisons({
+        rows: group.rows,
+        keyPrefix: group.key,
+        expectedForRows: (rows) => {
+          const statementAmount = sumRows(rows);
+          const expectedPerPeriod = expectedAmountFromIndependentStatementBase(
+            rows, systemContract, group.matcher
+          ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
+          const bundle = subsequentPayoutBundleInfo({
+            rows, statementAmount, expectedPerPeriod, systemContract, statementPeriod,
+          });
+          return {
+            amount: bundle?.expectedAmount ?? expectedPerPeriod,
+            periods: bundle?.periods,
+            detailLines: bundle?.detailLines,
+          };
+        },
+      });
+    }
+
+    if (!hasRowsForAmountComparison(group.rows)) return [];
+    const statementAmount = sumRows(group.rows);
+    const expectedAmount = group.key === "increase"
+      ? expectedPremiumIncreaseAmountFromItems(items, group.rows)
+      : expectedAmountFromIndependentStatementBase(group.rows, systemContract, group.matcher)
+        ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
+    return [{
+      key: group.key,
+      label: group.label,
+      statementAmount,
+      expectedAmount,
+      difference: statementAmount - expectedAmount,
+      status: comparisonStatus(statementAmount, expectedAmount),
+    }];
+  });
 
   const b36GrossAmount = b36PaidPaymentAmountsForComparison(contract.b36Payments).reduce(
     (sum, amount) => sum + amount,
