@@ -45,6 +45,7 @@ import {
   comparisonStatus,
   hasStatementAmountForComparison,
   STATEMENT_AMOUNT_PRESENCE_TOLERANCE,
+  statementAmountForSinglePayout,
 } from "./statementCommissionComparisons";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
@@ -3440,6 +3441,16 @@ const buildLifeSplitAmountComparisons = (
   const b3601Rows = rowsByKind(contract, "b3601");
   const b4801Rows = rowsByKind(contract, "b4801");
   const increaseRows = rowsByKind(contract, "increase");
+  const a101ExpectedAmount = expectedAmountFromItems(items, (title) => title.includes("a101"));
+  const b0301ExpectedAmount = expectedAmountFromItems(items, (title) => title.includes("b0301"));
+  const b3601ExpectedAmount = expectedAmountFromItems(
+    items,
+    (title) => !title.includes("50") &&
+      (title.includes("b3601") || title.includes("b36") || title.includes("po 3 letech"))
+  );
+  const b4801ExpectedAmount = expectedAmountFromItems(
+    items, (title) => title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
+  );
   const hasA101InStatement = a101Rows.length > 0;
   const hasB0301InStatement = b0301Rows.length > 0;
   const hasB0301InHistory = hasHistoricalB0301Payout(systemContract);
@@ -3502,16 +3513,16 @@ const buildLifeSplitAmountComparisons = (
       label: "A101",
       requiredNow: false,
       hasStatementRows: hasRowsForAmountComparison(a101Rows),
-      statementAmount: sumRows(a101Rows),
-      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("a101")),
+      statementAmount: statementAmountForSinglePayout(a101Rows, a101ExpectedAmount),
+      expectedAmount: a101ExpectedAmount,
     },
     {
       key: "b0301",
       label: "B0301",
       requiredNow: false,
       hasStatementRows: hasRowsForAmountComparison(b0301Rows),
-      statementAmount: sumRows(b0301Rows),
-      expectedAmount: expectedAmountFromItems(items, (title) => title.includes("b0301")),
+      statementAmount: statementAmountForSinglePayout(b0301Rows, b0301ExpectedAmount),
+      expectedAmount: b0301ExpectedAmount,
     },
     {
       key: "b36-half",
@@ -3529,24 +3540,16 @@ const buildLifeSplitAmountComparisons = (
       label: b36DeferredCodeForProduct(contract.productCode),
       requiredNow: false,
       hasStatementRows: hasRowsForAmountComparison(b3601Rows),
-      statementAmount: sumRows(b3601Rows),
-      expectedAmount: expectedAmountFromItems(
-        items,
-        (title) =>
-          !title.includes("50") &&
-          (title.includes("b3601") || title.includes("b36") || title.includes("po 3 letech"))
-      ),
+      statementAmount: statementAmountForSinglePayout(b3601Rows, b3601ExpectedAmount),
+      expectedAmount: b3601ExpectedAmount,
     },
     {
       key: "b4801",
       label: "B4801",
       requiredNow: false,
       hasStatementRows: hasRowsForAmountComparison(b4801Rows),
-      statementAmount: sumRows(b4801Rows),
-      expectedAmount: expectedAmountFromItems(
-        items,
-        (title) => title.includes("b4801") || title.includes("b48") || title.includes("po 4 letech")
-      ),
+      statementAmount: statementAmountForSinglePayout(b4801Rows, b4801ExpectedAmount),
+      expectedAmount: b4801ExpectedAmount,
     },
     {
       key: "increase",

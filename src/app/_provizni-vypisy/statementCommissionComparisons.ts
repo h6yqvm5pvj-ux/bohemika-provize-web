@@ -17,6 +17,19 @@ export const comparisonStatus = (
   return "diff";
 };
 
+/** Mirror payout import: ignore an incorrect duplicate when the same code has a matching payout. */
+export function statementAmountForSinglePayout(rows: CommissionRow[], expectedAmount: number): number {
+  const total = rows.reduce((sum, row) => sum + row.commission, 0);
+  if (rows.length < 2 || !Number.isFinite(expectedAmount) || expectedAmount <= 0 ||
+      rows.some(row => !Number.isFinite(row.commission) || row.commission <= 0) ||
+      new Set(rows.map(row => normalizeStatementCommissionCode(row.type))).size !== 1) return total;
+
+  const matching = rows.filter(row => Math.abs(row.commission - expectedAmount) <= COMMISSION_AMOUNT_TOLERANCE);
+  // Preserve unresolved differences and genuine repeated payments/corrections.
+  if (matching.length === 0 || matching.length === rows.length) return total;
+  return matching.reduce((sum, row) => sum + row.commission, 0);
+}
+
 /** Different codes identify separate payouts; repeated rows of one code stay together. */
 export function statementCommissionGroups(rows: CommissionRow[]): { code: string; rows: CommissionRow[] }[] {
   const groups = new Map<string, CommissionRow[]>();

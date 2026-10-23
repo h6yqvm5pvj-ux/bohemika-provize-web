@@ -118,6 +118,16 @@ beforeEach(() => {
 });
 
 describe("NEON REFRESH statement chronology", () => {
+  it.each([false, true])("imports only the matching duplicate A101 without creating a repair for the other row (%s)", async reverse => {
+    const expected = calculation(12000).items.find(item => item.code === "A101")!.amount;
+    const rows = [row(12000, "A101", expected + 164.88), row(12000, "A101", expected + 0.17)];
+    const result = await upload(3, 12000, (reverse ? rows.reverse() : rows).join(""));
+    expect(result.processingResult).toMatchObject({ duplicatePayoutRowsSkipped: 1, accountingRepairDrafts: 0 });
+    expect(contract().commissionPayouts).toEqual([
+      expect.objectContaining({ code: "A101", amount: Math.round((expected + 0.17) * 100) / 100, status: "paid" }),
+    ]);
+  });
+
   it.each([
     [1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1],
   ])("keeps March's risk base and all payouts when uploaded in order %i, %i, %i", async (...months) => {

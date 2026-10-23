@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { calculateKoopMajetekObcan } from "@/app/lib/productFormulas/koopmajetekobcan";
-import { buildStatementCodeComparisons, statementCommissionGroups } from "./statementCommissionComparisons";
+import { buildStatementCodeComparisons, comparisonStatus, statementAmountForSinglePayout, statementCommissionGroups } from "./statementCommissionComparisons";
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
 import { statementContractIsVerified } from "./statementContractReview";
 import type { CommissionRow } from "./statementTypes";
@@ -18,6 +18,41 @@ const expectedPerPayment = calculateKoopMajetekObcan(862, "monthly", "manazer7")
   .find(item => item.title.includes("Následná provize (z platby)"))!.amount;
 const compare = (rows: CommissionRow[]) => buildStatementCodeComparisons({
   rows, keyPrefix: "subsequent", expectedForRows: () => ({ amount: expectedPerPayment }),
+});
+
+describe("duplicate single-payout commissions", () => {
+  const expected = 2640.72;
+  const screenshotRows = [row("A101", 2805.60), row("A101", 2640.89)];
+
+  it.each([false, true])("compares only the matching A101, regardless of row order (%s)", reverse => {
+    const rows = reverse ? [...screenshotRows].reverse() : screenshotRows;
+    const amount = statementAmountForSinglePayout(rows, expected);
+    expect(amount).toBe(2640.89);
+    expect(comparisonStatus(amount, expected)).toBe("ok");
+    expect(rows).toHaveLength(2);
+  });
+
+  it.each(["B0301", "B3601", "B4801"])("also ignores an incorrect duplicate %s", code => {
+    expect(statementAmountForSinglePayout([row(code, 2805.60), row(code, 2640.89)], expected)).toBe(2640.89);
+  });
+
+  it("keeps discrepancies when no duplicate matches the expected amount", () => {
+    const amount = statementAmountForSinglePayout([row("A101", 2805.60), row("A101", 2900)], expected);
+    expect(amount).toBe(5705.60);
+    expect(comparisonStatus(amount, expected)).toBe("diff");
+  });
+
+  it("preserves a single incorrect payout, reversals and multiple matching payments", () => {
+    expect(statementAmountForSinglePayout([row("A101", 2805.60)], expected)).toBe(2805.60);
+    expect(statementAmountForSinglePayout([row("A101", expected), row("A101", -expected)], expected)).toBe(0);
+    expect(statementAmountForSinglePayout([row("A101", expected), row("A101", expected)], expected)).toBe(expected * 2);
+  });
+
+  it("does not discard another commission code or invent an expected payout", () => {
+    expect(statementAmountForSinglePayout([row("A101", 2640.89), row("AP101", 2805.60)], expected)).toBe(5446.49);
+    expect(statementAmountForSinglePayout(screenshotRows, 0)).toBe(5446.49);
+    expect(statementAmountForSinglePayout(screenshotRows, Number.NaN)).toBe(5446.49);
+  });
 });
 
 describe("statement comparisons for separate commission codes", () => {
