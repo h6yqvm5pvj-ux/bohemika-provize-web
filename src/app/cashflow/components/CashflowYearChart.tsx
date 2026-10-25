@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { ArrowDown, ArrowUpRight, ChartNoAxesColumnIncreasing } from "lucide-react";
 
 import { formatMoney } from "@/app/lib/formatters";
+import { cashflowMonthSourceLabel, paidSubscriptionAmount } from "../cashflowLabels";
 import { buildYearChart, CHART_MONTH_LABELS, formatChartAmount, isPastCashflowMonth } from "../yearChart";
 import type { MonthGroup, YearGroup } from "../types";
 import styles from "../yearOverview.module.css";
@@ -29,7 +30,7 @@ export function CashflowYearChart({ yearGroup, onSelectMonth }: {
           <p className={styles.chartSubtitle}>Měsíční částky v Kč</p>
         </div>
         {highlighted && <div className={styles.chartHighlight}>
-          <p>{active ? active.totalSource === "paid" ? "Dle výpisu" : "Předpoklad" : "Nejsilnější měsíc"}
+          <p>{active ? cashflowMonthSourceLabel(active) : "Nejsilnější měsíc"}
             <span aria-hidden="true"> · </span>
             <span className={styles.capitalize}>{highlighted.label.replace(/\s+\d{4}$/, "")}</span>
           </p>
@@ -66,7 +67,7 @@ export function CashflowYearChart({ yearGroup, onSelectMonth }: {
                   data-past-month={isPast || undefined}
                   aria-current={isCurrent ? "date" : undefined}
                   disabled={!month}
-                  aria-label={month ? `${month.label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: ${formatMoney(month.total)}, ${month.totalSource === "paid" ? "dle výpisu" : "předpoklad"}. Otevřít detail měsíce.` : `${label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
+                  aria-label={month ? `${month.label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: ${formatMoney(month.total)}, ${cashflowMonthSourceLabel(month).toLocaleLowerCase("cs-CZ")}. Otevřít detail měsíce.` : `${label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
                   onClick={() => { if (month) onSelectMonth(month); }}
                   onMouseEnter={() => setHoveredMonth(index)} onMouseLeave={() => setHoveredMonth(null)}
                   onFocus={() => setFocusedMonth(index)} onBlur={() => setFocusedMonth(null)}>
@@ -90,7 +91,7 @@ export function CashflowYearChart({ yearGroup, onSelectMonth }: {
 
       <div className={styles.chartFooter}>
         <div className={styles.legend} aria-label="Legenda grafu">
-          <span><i className={styles.legendPaid} />Dle výpisu</span>
+          <span><i className={styles.legendPaid} />{yearGroup.months.some(month => paidSubscriptionAmount(month) !== 0) ? "Výpis a předplatné" : "Dle výpisu"}</span>
           <span><i className={styles.legendPredicted} />Předpoklad</span>
           {isPastCashflowMonth(yearGroup.year, 0, now) && <span><i className={styles.legendPast} />Uplynulé měsíce</span>}
           {chart.months.some((month) => !month) && <span><i className={styles.legendMissing}>—</i>Bez dat ve výběru</span>}

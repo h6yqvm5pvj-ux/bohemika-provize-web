@@ -67,4 +67,36 @@ describe("saving statement base confirmation", () => {
     const resolutions = update.mock.calls[0][1].premiumStatementBaseResolutions;
     expect(resolutions).toHaveLength(1); expect(resolutions[0]).toMatchObject({ basePremium: 2536, period: "payment" });
   });
+
+  it("preserves foreign key collisions, manual, unattributed and malformed history during confirmation", async () => {
+    await savePremiumBaseResolution(db, options());
+    const generated = update.mock.calls[0][1].premiumStatementHistory[0];
+    const protectedHistory = [
+      { ...generated, writtenBy: "manager@example.test", newPremium: 9999 },
+      { ...generated, key: "manual", statementId: null },
+      { ...generated, key: "unattributed", writtenBy: null },
+      { statementId: "malformed", writtenBy: "manager@example.test", newPremium: 100 },
+    ];
+    update.mockClear();
+    getAll.mockResolvedValue(snapshots({ ...contract, premiumStatementHistory: protectedHistory } as typeof contract));
+    await savePremiumBaseResolution(db, options());
+    const history = update.mock.calls[0][1].premiumStatementHistory;
+    expect(history.slice(0, protectedHistory.length)).toEqual(protectedHistory);
+    expect(history).toHaveLength(protectedHistory.length + 1);
+    expect(history.at(-1)).toMatchObject({ writtenBy: owner, newPremium: 2536 });
+  });
+
+  it("rejects confirmation when protected history fills capacity instead of evicting another author", async () => {
+    await savePremiumBaseResolution(db, options());
+    const generated = update.mock.calls[0][1].premiumStatementHistory[0];
+    const protectedHistory = Array.from({ length: 120 }, (_, index) => ({
+      ...generated, key: `foreign-${index}`, rowId: `foreign-${index}`, writtenBy: "manager@example.test",
+      newPremium: 2000, newAnnualPremium: 4000,
+      anniversaryDate: "2000-01-01", statementChronologyMs: 1, writtenAtMs: 1,
+    }));
+    update.mockClear();
+    getAll.mockResolvedValue(snapshots({ ...contract, premiumStatementHistory: protectedHistory } as typeof contract));
+    await expect(savePremiumBaseResolution(db, options())).rejects.toThrow("historii zaplňují");
+    expect(update).not.toHaveBeenCalled();
+  });
 });

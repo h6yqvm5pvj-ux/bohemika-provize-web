@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Eye, Info, Repeat2, X } from "lucide-react";
+import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Eye, FileSearch, FileText, Info, Repeat2, X } from "lucide-react";
 import styles from "./contractCommission.module.css";
+import { PayoutDifferenceExplanationContent } from "./PayoutDifferenceExplanationContent";
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
@@ -1380,22 +1381,23 @@ export function ContractCommissionSection({
             role="dialog"
             aria-modal="true"
             aria-labelledby="payout-difference-explanation-title"
-            className="w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.32)]"
+            className="flex max-h-[calc(100dvh-3rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.32)]"
           >
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-linear-to-br from-violet-50/80 via-white to-white px-5 py-5 sm:px-6">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-800">
-                  <Info size={18} strokeWidth={2.4} aria-hidden="true" />
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-200/70 bg-white text-violet-600 shadow-sm">
+                  <FileSearch size={21} strokeWidth={1.8} aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
                   <h3
                     id="payout-difference-explanation-title"
-                    className="text-base font-black text-slate-950"
+                    className="text-lg font-bold tracking-tight text-slate-950"
                   >
                     Vysvětlení nesrovnalosti
                   </h3>
                   {payoutDifferenceExplanation.sourceLabel ? (
-                    <p className="mt-0.5 text-xs font-medium text-slate-500">
+                    <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-slate-500">
+                      <FileText size={13} className="mt-1 shrink-0" aria-hidden="true" />
                       Zapsáno z {payoutDifferenceExplanation.sourceLabel}
                     </p>
                   ) : null}
@@ -1411,20 +1413,18 @@ export function ContractCommissionSection({
               </button>
             </div>
 
-            <div className="space-y-4 px-5 py-5">
-              <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">
-                {payoutDifferenceExplanation.reasonLabel}
-              </span>
-              <p className="text-sm font-medium leading-7 text-slate-700">
-                {payoutDifferenceExplanation.detail}
-              </p>
+            <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+              <PayoutDifferenceExplanationContent
+                detail={payoutDifferenceExplanation.detail}
+                reasonLabel={payoutDifferenceExplanation.reasonLabel}
+              />
             </div>
 
-            <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-4">
+            <div className="flex shrink-0 justify-end border-t border-slate-100 bg-slate-50/70 px-5 py-3.5 sm:px-6">
               <button
                 type="button"
                 onClick={() => setPayoutDifferenceExplanation(null)}
-                className="ui-focus inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-black"
+                className="ui-focus inline-flex h-10 items-center justify-center rounded-xl bg-violet-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
               >
                 Zavřít
               </button>

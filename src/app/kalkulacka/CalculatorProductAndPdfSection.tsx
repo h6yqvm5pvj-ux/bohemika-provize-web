@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, CarFront, ChevronDown, Coins, FileCheck2, FileText, HeartPulse, House, LoaderCircle, Package, UploadCloud } from "lucide-react";
+import { ArrowRight, CircleHelp, CarFront, ChevronDown, Coins, FileCheck2, FileText, HeartPulse, House, LoaderCircle, Package, UploadCloud } from "lucide-react";
 import entryStyles from "./calculatorEntry.module.css";
 import styles from "./calculatorForm.module.css";
 import { type DragEvent, type ReactNode, type RefObject } from "react";
@@ -21,6 +21,7 @@ type CalculatorProductAndPdfSectionProps = {
   pdfImporting: boolean;
   pdfImportStatus: string | null;
   pdfImportError: string | null;
+  pdfParserReportStatus?: string | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onToggleProductPicker: () => void;
   onOpenFileDialog: () => void;
@@ -47,6 +48,7 @@ export function CalculatorProductAndPdfSection({
   pdfImporting,
   pdfImportStatus,
   pdfImportError,
+  pdfParserReportStatus,
   fileInputRef,
   onToggleProductPicker,
   onOpenFileDialog,
@@ -180,10 +182,11 @@ export function CalculatorProductAndPdfSection({
           </button>
         </div>
 
-        {canImportFromPdf && (pdfImportStatus || pdfImportError) && (
+        {canImportFromPdf && (pdfImportStatus || pdfImportError || pdfParserReportStatus) && (
           <div className={entryStyles.feedback}>
             {pdfImportStatus && <p role="status" className={entryStyles.statusMessage}>{pdfImporting ? <LoaderCircle className={entryStyles.spin} size={17} aria-hidden="true" /> : <FileText size={17} aria-hidden="true" />}<span>{pdfImportStatus}</span></p>}
             {pdfImportError && <p role="alert" className={entryStyles.errorMessage}>{pdfImportError}</p>}
+            {pdfParserReportStatus && <p role="status" className={entryStyles.statusMessage}><CircleHelp size={17} aria-hidden="true" /><span>{pdfParserReportStatus}</span></p>}
           </div>
         )}
         {canImportFromPdf && <p className={entryStyles.attachmentHint}><FileCheck2 size={15} strokeWidth={1.7} aria-hidden="true" />Nahrané PDF přiložíme ke smlouvě při uložení.</p>}
@@ -246,6 +249,7 @@ export function CalculatorProductAndPdfSection({
           {pdfImporting && <span className={styles.importProgress} role="progressbar" aria-label="Načítání PDF"><span /></span>}
           {pdfImportStatus && <p role="status" className={styles.importStatus}>{pdfImportStatus}</p>}
           {pdfImportError && <p role="alert" className={styles.importError}>{pdfImportError}</p>}
+          {pdfParserReportStatus && <p role="status" className={styles.importStatus}>{pdfParserReportStatus}</p>}
           {pdfAdditionalContent}
         </div>
       )}

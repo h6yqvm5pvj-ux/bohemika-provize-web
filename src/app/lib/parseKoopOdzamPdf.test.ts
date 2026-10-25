@@ -107,6 +107,8 @@ describe("parseKoopOdzamPdf", () => {
     });
     const parsed = await parseContractPdfByProduct("koopodzam", file, { allowOcr: false });
     expect(parsed).toEqual({
+      pdfNativeTextReadable: true,
+      pdfNeedsOcr: true,
       contractNumber: "3950000001",
       clientName: "Jana Testovací",
       policyStartDate: "2026-11-01",

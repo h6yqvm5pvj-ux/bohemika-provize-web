@@ -13,6 +13,7 @@ import {
   isAutoSubsequentCommissionCode,
 } from "@/app/lib/productFormulas/autoCommission";
 import { commissionStatementIdentityKey } from "./statementIdentity";
+import { mergeRebuiltStatementRecords, ownsStatementRecord, statementRecordArray } from "./statementRebuildScope";
 import { resolveAutoPremiumBasis, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
@@ -593,6 +594,7 @@ const premiumHistoryMoneyKey = (value: unknown): string => {
 
 const premiumHistorySemanticKey = (entry: PremiumStatementHistoryEntry): string =>
   [
+    String(entry.writtenBy ?? "").trim().toLowerCase(),
     entry.premiumKind,
     entry.source,
     commissionStatementIdentityKey(entry),
@@ -608,6 +610,7 @@ const premiumHistorySemanticKey = (entry: PremiumStatementHistoryEntry): string 
 
 const premiumHistoryRowIdentityKey = (entry: PremiumStatementHistoryEntry): string =>
   [
+    String(entry.writtenBy ?? "").trim().toLowerCase(),
     entry.premiumKind,
     entry.source,
     commissionStatementIdentityKey(entry),
@@ -761,7 +764,10 @@ export function confirmedPremiumHistoryPatch(
   confirmation: PremiumBaseResolution,
   nowMs: number,
 ) {
-  const resolutions = [...(contract.premiumStatementBaseResolutions ?? []).filter(item => item.key !== confirmation.key), confirmation];
+  const writer = confirmation.writtenBy;
+  const sameWriter = (value: unknown) => typeof value === "string" && value.trim().toLowerCase() === writer.trim().toLowerCase();
+  const resolutions = [...(contract.premiumStatementBaseResolutions ?? []).filter(item =>
+    item.key !== confirmation.key || !sameWriter(item.writtenBy)), confirmation];
   const own = resolutions.filter(item => item.writtenBy === confirmation.writtenBy &&
     item.frequencyRaw === contract.frequencyRaw && item.productKey === contract.productKey);
   const matches = (entry: PremiumStatementHistoryEntry, source: PremiumBaseResolution) =>
@@ -769,8 +775,10 @@ export function confirmedPremiumHistoryPatch(
     entry.rowId === source.rowId && entry.productCode === source.productCode &&
     normalizeCommissionCodeKey(entry.commissionCode) === normalizeCommissionCodeKey(source.commissionCode) &&
     commissionStatementIdentityKey(entry) === commissionStatementIdentityKey(source);
-  const kept = contractPremiumHistoryArray(contract).filter(entry => !own.some(source => matches(entry, source)));
+  const kept = statementRecordArray(contract.premiumStatementHistory).filter(entry =>
+    !ownsStatementRecord(entry, writer) || !own.some(source => matches(entry as PremiumStatementHistoryEntry, source)));
   const working: PremiumHistoryContract = { ...contract, premiumStatementBaseResolutions: resolutions, premiumStatementHistory: kept };
+  const regenerated: PremiumStatementHistoryEntry[] = [];
   for (const source of own.sort((a, b) => (a.statementChronologyMs ?? 0) - (b.statementChronologyMs ?? 0))) {
     const entry = premiumHistoryEntryFromStatementRow({
       row: { ...source, premiumKind: /^A/i.test(source.commissionCode) ? "auto_initial" : "auto_change",
@@ -780,8 +788,13 @@ export function confirmedPremiumHistoryPatch(
       statementChronologyMs: source.statementChronologyMs, payoutMonthKey: source.payoutMonthKey,
       periodEndMs: null, nowMs, writtenBy: source.writtenBy,
     });
-    if (entry) working.premiumStatementHistory = [...(working.premiumStatementHistory ?? []), entry];
+    if (entry) {
+      regenerated.push(entry);
+      working.premiumStatementHistory = [...(working.premiumStatementHistory ?? []), entry];
+    }
   }
   return { premiumStatementBaseResolutions: resolutions,
-    premiumStatementHistory: mergePremiumHistoryRecords([], contractPremiumHistoryArray(working), 120).merged };
+    premiumStatementHistory: mergeRebuiltStatementRecords({
+      existing: kept, incoming: regenerated, writer, maxCount: 120, merge: mergePremiumHistoryRecords,
+    }).merged };
 }

@@ -38,7 +38,7 @@ export function StatementSection({
           {badge && <span className={styles.sectionBadge} data-tone={badgeTone}>{badge}</span>}
           <span className={styles.sectionAmount}>{formatMoney(amount)} <span>Kč</span></span>
         </span>
-        <span className={styles.sectionChevron}><ChevronDown size={16} aria-hidden="true" /></span>
+        <span className={styles.sectionChevron}><span>{expanded ? "Sbalit" : "Zobrazit"}</span><ChevronDown size={16} aria-hidden="true" /></span>
       </button>
       <div id={contentId} hidden={!expanded}>
         {expanded && <div className={styles.sectionContent}>{children}</div>}

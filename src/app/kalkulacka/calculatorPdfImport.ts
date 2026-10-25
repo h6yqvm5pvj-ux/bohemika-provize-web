@@ -4,6 +4,9 @@ import { productLabel as productLabelFromCatalog } from "@/app/lib/productCatalo
 import { readPdfText, type PdfReadOptions } from "@/app/lib/pdfDocumentText";
 
 import { allowedFrequencies } from "./calculatorHelpers";
+import { AUTOMATED_PDF_PRODUCTS, hasAutomatedPdfImport } from "@/app/lib/contractPdfProducts";
+import { PDF_PARSER_REPORT_VERSION, type PdfParserMissingField, type PdfParserReport } from "@/app/lib/pdfParserReport";
+export { AUTOMATED_PDF_PRODUCTS, hasAutomatedPdfImport } from "@/app/lib/contractPdfProducts";
 
 export type ParsedContractPdf = Record<string, any>;
 
@@ -41,6 +44,28 @@ const parsedNumberValue = (parsed: ParsedContractPdf, key: string): number | nul
 
 const isIsoDay = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
+export function missingPdfImportFields({ product, parsed }: {
+  product: Product; parsed: ParsedContractPdf;
+}): PdfParserMissingField[] {
+  const missing: PdfParserMissingField[] = [];
+  for (const key of ["clientName", "contractNumber", "contractSignedDate", "policyStartDate", "frequency"] as const) {
+    if (!parsedTextValue(parsed, key)) missing.push(key);
+  }
+  if (parsedNumberValue(parsed, "amount") == null) missing.push("amount");
+  if (product === "conseqzenit" && !parsed.policyEndDate) missing.push("policyEndDate");
+  return missing;
+}
+
+export function buildPdfParserReport({ product, parsed, ocrAttempted }: {
+  product: Product; parsed: ParsedContractPdf; ocrAttempted: boolean;
+}): PdfParserReport | null {
+  // Incomplete amendments and scans are not evidence of a contract-parser defect.
+  if (!hasAutomatedPdfImport(product) || ocrAttempted || parsed.ocrTextUsed === true ||
+    parsed.pdfNeedsOcr === true || parsed.pdfNativeTextReadable !== true || parsed.isEndorsement === true) return null;
+  const missingFields = missingPdfImportFields({ product, parsed }).sort();
+  return missingFields.length ? { product, missingFields, extraction: "native", parserVersion: PDF_PARSER_REPORT_VERSION } : null;
+}
+
 export function buildPdfImportIssueMessage({
   product,
   parsed,
@@ -53,7 +78,6 @@ export function buildPdfImportIssueMessage({
   const policyStartDate = parsedTextValue(parsed, "policyStartDate");
   const contractSignedDate = parsedTextValue(parsed, "contractSignedDate");
   const amount = parsedNumberValue(parsed, "amount");
-  const parsedFrequencyRaw = parsedTextValue(parsed, "frequency");
   const parsedFrequency = parsed.frequency as PaymentFrequency | null | undefined;
   const frequencyAllowed =
     parsedFrequency != null && allowedFrequencies(product).includes(parsedFrequency);
@@ -68,17 +92,9 @@ export function buildPdfImportIssueMessage({
     ? { ...PDF_IMPORT_REQUIRED_FIELD_MESSAGES, clientName: "jméno klienta", policyStartDate: "počátek smlouvy", amount: "výši příspěvku klienta" }
     : PDF_IMPORT_REQUIRED_FIELD_MESSAGES;
 
-  const missing = [
-    ["clientName", clientName],
-    ["contractNumber", contractNumber],
-    ["contractSignedDate", contractSignedDate],
-    ["policyStartDate", policyStartDate],
-    ["frequency", parsedFrequencyRaw || (parsedFrequency ? String(parsedFrequency) : "")],
-    ["amount", amount == null ? "" : String(amount)],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => requiredFieldMessages[key])
-    .filter((value): value is string => Boolean(value));
+  const missing = missingPdfImportFields({ product, parsed }).map(key => key === "policyEndDate"
+    ? "datum konce (datum narození klienta a cílový věk strategie spoření)"
+    : requiredFieldMessages[key]);
 
   const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
     ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
@@ -105,9 +121,6 @@ export function buildPdfImportIssueMessage({
   }
 
   const parts: string[] = [];
-  if (product === "conseqzenit" && !parsed.policyEndDate) {
-    missing.push("datum konce (datum narození klienta a cílový věk strategie spoření)");
-  }
   if (missing.length > 0) {
     parts.push(`Nenašel jsem ${missing.join(", ")}.`);
   }
@@ -263,48 +276,13 @@ export async function parseContractPdfByProduct(
   const warnings = [...new Set([...(parsed.pdfImportWarnings ?? []), ...document.warnings])];
   return {
     ...parsed,
+    pdfNativeTextReadable: document.pages.some(page =>
+      page.items.map(item => item.str).join("").replace(/[^\p{L}\p{N}]/gu, "").length >= 80),
+    pdfNeedsOcr: document.pages.some(page => page.needsOcr === true),
     ...(document.ocrTextUsed ? { ocrTextUsed: true } : {}),
     ...(warnings.length ? { pdfImportWarnings: warnings } : {}),
   };
 }
-
-/**
- * Every product for which `parseContractPdfByProduct` has a dedicated parser.
- * Keep bulk import derived from this registry so a new parser is never
- * accidentally available only for single-PDF import.
- */
-export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
-  "conseqzenit",
-  "cppAuto",
-  "slaviaauto",
-  "allianzAuto",
-  "csobAuto",
-  "uniqaAuto",
-  "pillowAuto",
-  "kooperativaAuto",
-  "cppcestovko",
-  "axacestovko",
-  "koopcestovko",
-  "cppsimplex",
-  "cppPPRbez",
-  "cppPPRs",
-  "neon",
-  "flexi",
-  "domexneuron",
-  "domex",
-  "cppbytex",
-  "cpphafan",
-  "zamex",
-  "koopodzam",
-  "maxdomov",
-  "maxcizinkomplex",
-  "comfortcc",
-];
-
-const PDF_AUTOMATED_PRODUCT_SET = new Set<Product>(AUTOMATED_PDF_PRODUCTS);
-
-export const hasAutomatedPdfImport = (product: Product): boolean =>
-  PDF_AUTOMATED_PRODUCT_SET.has(product);
 
 /**
  * Comfort CC is intentionally excluded from batch import: its contract PDF

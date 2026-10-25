@@ -82,6 +82,17 @@ import {
 import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
 import { commissionStatementIdentityKey } from "./statementIdentity";
 import {
+  MAX_STATEMENT_HTML_LENGTH,
+  readStatementHtml,
+  StatementHtmlError,
+  StatementMatchingBudget,
+  statementLinkHref,
+  statementSectionHtml,
+  statementSummaryHtml,
+  statementTableCells,
+  statementTableRows,
+} from "./statementHtml";
+import {
   mergeRebuiltStatementRecords,
   ownsStatementRecord,
   remainingStatementRebuildCapacity,
@@ -96,7 +107,7 @@ const STATEMENTS_RATE_LIMIT = 80;
 const STATEMENTS_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_LIST_LIMIT = 120;
 const MAX_LIST_LIMIT = 240;
-const MAX_HTML_LENGTH = 850_000;
+const MAX_HTML_LENGTH = MAX_STATEMENT_HTML_LENGTH;
 const CONTRACT_REFS_COLLECTION = "contractRefs";
 const PREMIUM_CHANGE_TOLERANCE = 12;
 const COMMISSION_DIFFERENCE_TOLERANCE = 10;
@@ -104,6 +115,16 @@ const MANAGER_COMMISSION_DIFFERENCE_TOLERANCE = 10;
 const MONEY_MATCH_TOLERANCE = 0.01;
 const MAX_STORED_CONTRACT_PAYOUTS = 400;
 const MAX_STORED_PREMIUM_HISTORY = 120;
+
+const statementProcessingErrorResponse = (error: unknown): NextResponse | null => {
+  if (error instanceof StatementHtmlError) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+  }
+  if (error instanceof StatementRebuildCapacityError) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
+  }
+  return null;
+};
 
 type StatementHeaderPayload = {
   advisorNumber?: unknown;
@@ -340,13 +361,15 @@ const normalizeNullableNumber = (value: unknown): number | null => {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
 };
 
-const stripHtmlText = (value: string): string =>
-  value
-    .replace(/<[^>]*>/g, " ")
+const stripHtmlText = (value: string): string => {
+  // Do not retry a failing tag match at every '<' in an unclosed text suffix.
+  const lastEnd = value.lastIndexOf(">");
+  return (value.slice(0, lastEnd + 1).replace(/<[^>]*>/g, " ") + value.slice(lastEnd + 1))
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ")
     .trim();
+};
 
 const normalizeStatementLabel = (value: string): string =>
   stripHtmlText(value)
@@ -388,12 +411,8 @@ const normalizeExternalHref = (href: string | null | undefined): string | null =
 };
 
 const firstCellHrefFromRowHtml = (rowHtml: string): string | null => {
-  const firstCell = rowHtml.match(/<t[dh]\b[\s\S]*?<\/t[dh]>/i)?.[0] ?? "";
-  const quotedHref = firstCell.match(/<a\b[^>]*\bhref=(["'])(.*?)\1/i)?.[2];
-  if (quotedHref) return normalizeExternalHref(quotedHref);
-
-  const unquotedHref = firstCell.match(/<a\b[^>]*\bhref=([^\s>]+)/i)?.[1];
-  return normalizeExternalHref(unquotedHref);
+  const firstCell = statementTableCells(rowHtml)[0] ?? "";
+  return normalizeExternalHref(statementLinkHref(firstCell));
 };
 
 const normalizeSjednatelExtranetParam = (
@@ -427,14 +446,11 @@ const hasSjednatelExtranetFromProductCode = (
 
 const extractPayoutTotalFromStoredHtml = (html: string | null): number | null => {
   if (!html) return null;
-  const summaryEnd = html.search(
-    /<div\b[^>]*class=["'][^"']*\bvypis_sekce_toggle\b|id=["']zadrzny_fond["']/i
-  );
-  const summaryHtml = summaryEnd > 0 ? html.slice(0, summaryEnd) : html;
-  const rowMatches = summaryHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const summaryHtml = statementSummaryHtml(html);
+  const rowMatches = statementTableRows(summaryHtml, true);
 
   for (const rowHtml of [...rowMatches].reverse()) {
-    const cells = rowHtml.match(/<t[dh]\b[\s\S]*?<\/t[dh]>/gi) ?? [];
+    const cells = statementTableCells(rowHtml);
     if (cells.length < 2) continue;
     if (!cells.some((cell) => normalizeStatementLabel(cell) === "celkem")) continue;
 
@@ -447,6 +463,7 @@ const extractPayoutTotalFromStoredHtml = (html: string | null): number | null =>
 
 const normalizeContractNumber = (value: string | null | undefined): string | null => {
   const normalized = String(value ?? "").replace(/\D+/g, "").trim();
+  if (normalized.length > 64) throw new StatementHtmlError();
   return normalized.length >= 6 ? normalized : null;
 };
 
@@ -497,16 +514,7 @@ const isLifePremiumIncreaseCommissionCode = (
   return /^(?:NV(?:PZ?|Z)?|NB)\d+/.test(code);
 };
 
-const extractStatementSectionHtml = (html: string, id: string): string => {
-  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = html.match(
-    new RegExp(
-      `<div\\b[^>]*id=["']${escapedId}["'][^>]*>[\\s\\S]*?(?=<div\\b[^>]*class=["'][^"']*\\bvypis_sekce_toggle\\b|$)`,
-      "i"
-    )
-  );
-  return match?.[0] ?? "";
-};
+const extractStatementSectionHtml = statementSectionHtml;
 
 const compactHash = (value: string, length = 24): string =>
   createHash("sha256").update(value).digest("hex").slice(0, length);
@@ -582,11 +590,11 @@ const extractRowsFromStatementSection = (
   source: CommissionStatementPayoutRow["source"],
   layout: CommissionStatementPayoutRowLayout = "commission"
 ): CommissionStatementPayoutRow[] => {
-  const rowMatches = sectionHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const rowMatches = statementTableRows(sectionHtml);
   const rows: CommissionStatementPayoutRow[] = [];
 
   for (const rowHtml of rowMatches) {
-    const cells = (rowHtml.match(/<t[dh]\b[\s\S]*?<\/t[dh]>/gi) ?? []).map(stripHtmlText);
+    const cells = statementTableCells(rowHtml).map(stripHtmlText);
     const row = parseCommissionPayoutRow(
       cells,
       source,
@@ -604,7 +612,7 @@ const extractB36HalfPayoutRowsFromOtherPayments = (
 ): CommissionStatementPayoutRow[] => {
   if (!html) return [];
   const otherPaymentsHtml = extractStatementSectionHtml(html, "ostatni_platby");
-  const rowMatches = otherPaymentsHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const rowMatches = statementTableRows(otherPaymentsHtml);
   const rows: CommissionStatementPayoutRow[] = [];
   const seenRows = new Set<string>();
 
@@ -660,7 +668,7 @@ const extractB36HalfPayoutRowsFromOtherPayments = (
   };
 
   rowMatches.forEach((rowHtml, index) => {
-    const cells = (rowHtml.match(/<t[dh]\b[\s\S]*?<\/t[dh]>/gi) ?? []).map(stripHtmlText);
+    const cells = statementTableCells(rowHtml).map(stripHtmlText);
     if (cells.length < 2) return;
 
     const description = normalizeText(cells[0]);
@@ -820,6 +828,7 @@ const extractCommissionPayoutRowsFromStoredHtml = (
 
 const commissionCodeAliases = (value: string | null | undefined): string[] => {
   const code = stripHtmlText(value ?? "").toUpperCase().replace(/\s+/g, "");
+  if (code.length > 80) throw new StatementHtmlError();
   if (!code) return [];
   const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
   if (installmentRangeMatch) {
@@ -894,28 +903,32 @@ const isPositiveSettledPayoutRow = (row: CommissionStatementPayoutRow): boolean 
 const extractPaidCommissionKeysFromStoredHtml = (html: string | null): string[] => {
   if (!html) return [];
   const keys = new Set<string>();
+  const budget = new StatementMatchingBudget();
 
   for (const row of extractCommissionPayoutRowsFromStoredHtml(html)) {
     if (!isPositiveSettledPayoutRow(row)) continue;
-    for (const code of commissionCodeAliases(row.commissionCode)) {
+    const aliases = commissionCodeAliases(row.commissionCode);
+    budget.consume(aliases.length);
+    for (const code of aliases) {
       const key = paidCommissionKey(row.contractNumber, code);
       if (key) keys.add(key);
     }
   }
 
   const otherPaymentsHtml = extractStatementSectionHtml(html, "ostatni_platby");
-  const rowMatches = otherPaymentsHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const rowMatches = statementTableRows(otherPaymentsHtml);
   for (const rowHtml of rowMatches) {
     const rowText = stripHtmlText(rowHtml);
     if (/storn/i.test(rowText)) continue;
 
-    const contractMatches = [...rowText.matchAll(/smlouvy\s+(\d{6,})/gi)]
+    const contractMatches = [...new Set([...rowText.matchAll(/smlouvy\s+(\d{6,})/gi)]
       .map((match) => normalizeContractNumber(match[1]))
-      .filter((value): value is string => Boolean(value));
+      .filter((value): value is string => Boolean(value)))];
     if (contractMatches.length === 0) continue;
 
-    const codeMatches = commissionCodesFromOtherPaymentText(rowText);
+    const codeMatches = [...new Set(commissionCodesFromOtherPaymentText(rowText))];
     if (codeMatches.length === 0) continue;
+    budget.consume(contractMatches.length * codeMatches.length);
 
     for (const contractNumber of contractMatches) {
       for (const code of codeMatches) {
@@ -1072,7 +1085,7 @@ const extractPaidContractNumbersFromStoredHtml = (html: string | null): string[]
   }
 
   const otherPaymentsHtml = extractStatementSectionHtml(html, "ostatni_platby");
-  const rowMatches = otherPaymentsHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+  const rowMatches = statementTableRows(otherPaymentsHtml);
 
   for (const rowHtml of rowMatches) {
     const rowText = stripHtmlText(rowHtml);
@@ -1382,7 +1395,7 @@ const serializeStatementDoc = (
   shape: "full" | "cashflow" = "full"
 ) => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  const html = readStatementHtml(data.html);
   const periodStartMs = toMillis(data.periodStartMs);
   const periodEndMs = toMillis(data.periodEndMs);
   const statementDateMs = toMillis(data.statementDateMs);
@@ -1490,7 +1503,7 @@ const serializePremiumHistoryStatementDoc = (
   contractNumber: string
 ) => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  const html = readStatementHtml(data.html);
   const autoPremiumRows = filterAutoPremiumRowsForContract(
     autoPremiumRowsFromStatementData(data, html),
     contractNumber
@@ -1795,8 +1808,9 @@ const savedStatementReprocessItemFromDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ): SavedStatementReprocessItem | null => {
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  const html = readStatementHtml(data.html);
   if (!html) return null;
+  extractPaidCommissionKeysFromStoredHtml(html);
 
   const statementDate = normalizeText(data.statementDate, 32);
   const statementDateMs = toMillis(data.statementDateMs) ?? parseCzechDate(statementDate);
@@ -3785,7 +3799,6 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail,
   forcedContractEntryId,
   canManageContractsAsAdmin = false,
-  preserveOtherStatementAuthors = false,
 }: {
   docId: string;
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -3806,7 +3819,6 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail?: string | null;
   forcedContractEntryId?: string | null;
   canManageContractsAsAdmin?: boolean;
-  preserveOtherStatementAuthors?: boolean;
 }): Promise<ProcessingResult> => {
   const result = emptyProcessingResult();
   const normalizedOnlyContractNumber = normalizeContractNumber(onlyContractNumber);
@@ -3815,6 +3827,8 @@ const processStatementWrites = async ({
     ...(onlyContractNumbers ?? []).map((value) => normalizeContractNumber(value)),
   ].filter((value): value is string => Boolean(value));
   const onlyContractNumberSet = new Set(normalizedOnlyContractNumbers);
+  // Check the same bounded matching used by readers before any processing writes.
+  extractPaidCommissionKeysFromStoredHtml(html);
   const payoutRows = extractCommissionPayoutRowsFromStoredHtml(html);
   const autoPremiumRows = extractAutoPremiumRowsFromStoredHtml(html);
   const lifePremiumIncreaseRows = extractLifePremiumIncreaseRowsFromStoredHtml(html);
@@ -4021,17 +4035,13 @@ const processStatementWrites = async ({
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
     const premiumHistoryEntries = detectedPremiumHistoryEntries;
     const premiumHistoryEntriesForMerge = premiumHistoryEntries;
-    const premiumMerge = preserveOtherStatementAuthors ? mergeRebuiltStatementRecords({
+    const premiumMerge = mergeRebuiltStatementRecords({
       existing: contract.premiumStatementHistory,
       incoming: premiumHistoryEntriesForMerge,
       writer: ctxEmail,
       maxCount: MAX_STORED_PREMIUM_HISTORY,
       merge: mergePremiumHistoryRecordsForStatement,
-    }) : mergePremiumHistoryRecordsForStatement(
-      existingPremiumHistory,
-      premiumHistoryEntriesForMerge,
-      MAX_STORED_PREMIUM_HISTORY
-    );
+    });
     const actionablePremiumHistoryEntries = canApplyPremiumToCurrentContract
       ? detectedPremiumHistoryEntries.filter((entry) => entry.premiumKind !== "auto_initial")
       : [];
@@ -4052,7 +4062,7 @@ const processStatementWrites = async ({
     const existingInitialBase = (contract as {
       initialCommissionBase?: { statementId?: unknown; writtenBy?: unknown } | null;
     }).initialCommissionBase;
-    const protectsInitialBase = preserveOtherStatementAuthors && existingInitialBase &&
+    const protectsInitialBase = existingInitialBase &&
       normalizeText(existingInitialBase.statementId, 80) &&
       !ownsStatementRecord(existingInitialBase, ctxEmail);
     const autoInitialCommissionBaseUpdate = protectsInitialBase ? null : buildAutoInitialCommissionBaseUpdate({
@@ -4064,7 +4074,7 @@ const processStatementWrites = async ({
     });
     const shouldApplyAutoInitialCommissionBaseUpdate =
       autoInitialCommissionBaseUpdate != null &&
-      ((preserveOtherStatementAuthors && !existingInitialBase) ||
+      (!existingInitialBase ||
         contract.commissionBaseSource !== "commission_statement_auto_initial" ||
         Math.abs(
           (finiteMoneyOrNull(contract.calculationInputAmount) ?? 0) -
@@ -4149,17 +4159,13 @@ const processStatementWrites = async ({
         correctionInfo: payoutCorrectionInfoByRowKey.get(row.rowKey) ?? null,
       })
     );
-    const payoutMerge = preserveOtherStatementAuthors ? mergeRebuiltStatementRecords({
+    const payoutMerge = mergeRebuiltStatementRecords({
       existing: contract.commissionPayouts,
       incoming: incomingPayouts,
       writer: ctxEmail,
       maxCount: MAX_STORED_CONTRACT_PAYOUTS,
       merge: mergePayoutRecordsByKey,
-    }) : mergePayoutRecordsByKey(
-      contractPayoutArray(contract),
-      incomingPayouts,
-      MAX_STORED_CONTRACT_PAYOUTS
-    );
+    });
 
     const updatePayload: Record<string, unknown> = {
       commissionPayouts: payoutMerge.merged,
@@ -4509,7 +4515,7 @@ const handleManualNeonRefreshFromStatement = async ({
       ...parsePeriodRange(period),
     };
   }
-  const html = normalizeText(statementData.html, MAX_HTML_LENGTH + 1);
+  const html = readStatementHtml(statementData.html);
   if (!html) {
     return withRateLimit(
       NextResponse.json(
@@ -4780,7 +4786,7 @@ const handleSavedStatementReprocess = async ({
   }
 
   const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const html = normalizeText(data.html, MAX_HTML_LENGTH);
+  const html = readStatementHtml(data.html);
   if (!html) {
     return withRateLimit(
       NextResponse.json(
@@ -4975,7 +4981,6 @@ const handleContractStatementRebuild = async ({
       forcedContractOwnerEmail: ownerEmail,
       forcedContractEntryId: entryId,
       canManageContractsAsAdmin,
-      preserveOtherStatementAuthors: true,
     });
     addProcessingResult(processingResult, result);
     processedStatements += 1;
@@ -5182,6 +5187,8 @@ export async function GET(req: NextRequest) {
       } : {}),
     }), ctx);
   } catch (error) {
+    const inputError = statementProcessingErrorResponse(error);
+    if (inputError) return withRateLimitHeaders(inputError, ctx);
     console.error("Commission statements GET failed:", error);
     return withRateLimitHeaders(
       NextResponse.json(
@@ -5220,6 +5227,9 @@ export async function POST(req: NextRequest) {
       NextResponse.json({ ok: false, error: "Neplatné JSON tělo požadavku." }, { status: 400 })
     );
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Tělo požadavku musí být JSON objekt." }, { status: 400 }));
+  }
 
   const action = normalizeText(body.action, 80);
   if (action === "resolve-premium-base") {
@@ -5232,6 +5242,8 @@ export async function POST(req: NextRequest) {
       });
       return withRateLimit(NextResponse.json(result));
     } catch (error) {
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
       return withRateLimit(NextResponse.json({ ok: false,
         error: error instanceof PremiumBaseResolutionError ? error.message : "Potvrzení základny se nepodařilo uložit." },
       { status: error instanceof PremiumBaseResolutionError ? error.status : 500 }));
@@ -5253,6 +5265,8 @@ export async function POST(req: NextRequest) {
         withRateLimit,
       });
     } catch (error) {
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
       if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
         return withRateLimit(NextResponse.json(
           { ok: false, error: "Smlouva se mezitím změnila. Obnov náhled výpisu a zkus to znovu." }, { status: 409 }
@@ -5278,6 +5292,8 @@ export async function POST(req: NextRequest) {
         withRateLimit,
       });
     } catch (error) {
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
       console.error("Commission statements saved reprocess failed:", error);
       return withRateLimit(
         NextResponse.json(
@@ -5302,9 +5318,8 @@ export async function POST(req: NextRequest) {
         withRateLimit,
       });
     } catch (error) {
-      if (error instanceof StatementRebuildCapacityError) {
-        return withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: 409 }));
-      }
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
       if (error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code))) {
         return withRateLimit(NextResponse.json(
           { ok: false, error: "Smlouva se mezitím změnila. Obnov ji a spusť přepočet znovu." }, { status: 409 }
@@ -5369,6 +5384,9 @@ export async function POST(req: NextRequest) {
   const nowMs = Date.now();
 
   try {
+    // Validate semantic work before the source can become a stored read trigger.
+    extractPaidCommissionKeysFromStoredHtml(html);
+    extractPayoutTotalFromStoredHtml(html);
     const existingBusinessStatementRef = await findExistingStatementByBusinessIdentity({
       email: ctx.email,
       statementIdentity,
@@ -5433,6 +5451,8 @@ export async function POST(req: NextRequest) {
       })
     );
   } catch (error) {
+    const inputError = statementProcessingErrorResponse(error);
+    if (inputError) return withRateLimit(inputError);
     console.error("Commission statements POST failed:", error);
     return withRateLimit(
       NextResponse.json(

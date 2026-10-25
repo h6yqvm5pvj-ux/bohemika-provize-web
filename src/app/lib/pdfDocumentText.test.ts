@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPdfText, ocrPageToTextPage } from "./pdfDocumentText";
 import { detectProductFromPdf } from "./detectProductFromPdf";
-import { parseContractPdfByProduct } from "../kalkulacka/calculatorPdfImport";
+import { buildPdfParserReport, parseContractPdfByProduct } from "../kalkulacka/calculatorPdfImport";
 import type { PdfOcrPage } from "./pdfOcr";
 
 const mocks = vi.hoisted(() => ({
@@ -63,6 +63,26 @@ describe("shared PDF text and scan reading", () => {
     expect(mocks.ocr).not.toHaveBeenCalled();
   });
 
+  it("makes a native parser's missing fields eligible for diagnostics", async () => {
+    mocks.ocrEnabled = false;
+    const parsed = await parseContractPdfByProduct("flexi", file());
+    expect(parsed).toMatchObject({ pdfNativeTextReadable: true, pdfNeedsOcr: false });
+    expect(buildPdfParserReport({ product: "flexi", parsed: parsed!, ocrAttempted: false })?.missingFields).toContain("contractSignedDate");
+  });
+
+  it("excludes an incomplete mixed scan while OCR is paused, even with readable native text", async () => {
+    mocks.ocrEnabled = false;
+    mocks.pages = [flexi, ["Footer"]];
+    mocks.getPage.mockImplementation(async (number: number) => ({
+      getTextContent: () => mocks.getText(number), getViewport: () => ({ width: 595, height: 842 }),
+      getOperatorList: async () => ({ fnArray: [85] }), cleanup: mocks.cleanup,
+    }));
+    const parsed = await parseContractPdfByProduct("flexi", file());
+    expect(parsed).toMatchObject({ pdfNativeTextReadable: true, pdfNeedsOcr: true });
+    expect(buildPdfParserReport({ product: "flexi", parsed: parsed!, ocrAttempted: false })).toBeNull();
+    expect(mocks.ocr).not.toHaveBeenCalled();
+  });
+
   it("does not reuse cached OCR text while OCR is globally paused", async () => {
     mocks.pages = [[]];
     const upload = file();
@@ -92,6 +112,17 @@ describe("shared PDF text and scan reading", () => {
     const parsed = await parseContractPdfByProduct("flexi", upload);
     expect(parsed).toMatchObject({ clientName: "Jana Testovací", contractNumber: "1400000001", amount: 704, ocrTextUsed: true });
     expect(parsed?.pdfImportWarnings.join(" ")).toContain("Zkontroluj číslo smlouvy");
+    expect(mocks.ocr).toHaveBeenCalledOnce();
+  });
+
+  it("replays OCR provenance on cached attempts even when no OCR text was usable", async () => {
+    mocks.pages = [[]];
+    mocks.ocr.mockResolvedValue({ pages: [scannedPage([])] });
+    const upload = file();
+    await expect(readPdfText(upload, { allowOcr: true })).resolves.toMatchObject({ ocrTextUsed: false });
+    const onOcrStart = vi.fn();
+    await expect(readPdfText(upload, { allowOcr: true, onOcrStart })).resolves.toMatchObject({ ocrTextUsed: false });
+    expect(onOcrStart).toHaveBeenCalledOnce();
     expect(mocks.ocr).toHaveBeenCalledOnce();
   });
 

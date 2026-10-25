@@ -111,6 +111,9 @@ import importStyles from "./statementImport.module.css";
 import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
 import { StatementContractCard } from "./StatementContractCard";
+import { StatementContractList } from "./StatementContractList";
+import { StatementContractBrowser, StatementWorkflow, useStatementBrowserItems } from "./StatementContractBrowser";
+import { StatementHelp } from "./StatementHelp";
 import { statementContractIsVerified } from "./statementContractReview";
 import detailStyles from "./statementContractDetail.module.css";
 
@@ -230,7 +233,6 @@ import {
   formatMonthKey,
   formatSystemDate,
   formatWholeMoney,
-  isInvestmentSectionProductCode,
   isLifeSplitProductCode,
   isNeonInitialCommissionCode,
   lifeSplitAnnualPremiumBase,
@@ -1454,18 +1456,6 @@ const contractHasProductCategory = (
   category: StatementProductCategory
 ): boolean =>
   uniqueProductMetasForRows(contract.rows).some((product) => product.category === category);
-
-const contractHasTroyOunceProduct = (contract: OtherProductContractPreview): boolean =>
-  uniqueProductMetasForRows(contract.rows).some((product) =>
-    normalizeProductCode(product.rawCode).startsWith("TU_")
-  );
-
-const contractHasInvestmentSectionProduct = (
-  contract: OtherProductContractPreview
-): boolean =>
-  uniqueProductMetasForRows(contract.rows).some((product) =>
-    isInvestmentSectionProductCode(product.rawCode)
-  );
 
 const otherProductContractPrimaryCategory = (
   contract: OtherProductContractPreview
@@ -5055,6 +5045,7 @@ const formatSignedWholeMoney = (value: number): string => {
 function LifeSplitContractCard({
   contract,
   match,
+  reviewIssueCount = 0,
   deductionRows,
   statementId,
   statementPeriod,
@@ -5066,6 +5057,7 @@ function LifeSplitContractCard({
 }: {
   contract: LifeSplitContractPreview;
   match: ContractMatchState | null;
+  reviewIssueCount?: number;
   deductionRows?: DeductionCommissionRow[];
   statementId?: string | null;
   statementPeriod?: string | null;
@@ -5306,6 +5298,7 @@ function LifeSplitContractCard({
   return (
       <StatementContractCard
         verified={verified}
+        reviewSummary={{ label: isUnpairedContractMatch(match) ? "Bez propojení" : reviewIssueCount > 0 ? "K prověření" : "Detail kontroly", tone: isUnpairedContractMatch(match) || reviewIssueCount === 0 ? "info" : "warn" }}
         marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         )}
@@ -5488,6 +5481,7 @@ function LifeSplitContractCard({
 function OtherProductContractCard({
   contract,
   match,
+  reviewIssueCount = 0,
   deductionRows,
   statementPeriod,
   statementPrefillSource,
@@ -5497,6 +5491,7 @@ function OtherProductContractCard({
 }: {
   contract: OtherProductContractPreview;
   match: ContractMatchState | null;
+  reviewIssueCount?: number;
   deductionRows?: DeductionCommissionRow[];
   statementPeriod?: string | null;
   statementPrefillSource?: StatementCalculatorPrefillSource;
@@ -5657,6 +5652,7 @@ function OtherProductContractCard({
   return (
       <StatementContractCard
         verified={verified}
+        reviewSummary={{ label: isUnpairedContractMatch(match) ? "Bez propojení" : reviewIssueCount > 0 ? "K prověření" : "Detail kontroly", tone: isUnpairedContractMatch(match) || reviewIssueCount === 0 ? "info" : "warn" }}
         marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         )}
@@ -5918,6 +5914,7 @@ function LifeSplitProductsSection({
       renderContract={(contract) => (
         <LifeSplitContractCard
           key={`${contract.productCode}-${contract.contractNumber}`}
+          reviewIssueCount={lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext)}
           contract={contract}
           match={contractMatchForNumber(
             matchesByContractNumber,
@@ -5959,213 +5956,61 @@ function UnpairedContractsSection({
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const totalContracts = lifeContracts.length + otherContracts.length;
-  if (totalContracts === 0) return null;
-
-  const lifeProductContracts = otherContracts.filter((contract) =>
-    contractHasProductCategory(contract, "life")
-  );
-  const autoProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      contractHasProductCategory(contract, "auto")
-  );
-  const propertyProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      contractHasProductCategory(contract, "property")
-  );
-  const businessProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      contractHasProductCategory(contract, "business")
-  );
-  const travelProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      !contractHasProductCategory(contract, "business") &&
-      !contractHasProductCategory(contract, "foreigners") &&
-      contractHasProductCategory(contract, "travel")
-  );
-  const foreignerProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      !contractHasProductCategory(contract, "business") &&
-      contractHasProductCategory(contract, "foreigners")
-  );
-  const investmentProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      !contractHasProductCategory(contract, "business") &&
-      !contractHasProductCategory(contract, "travel") &&
-      !contractHasProductCategory(contract, "foreigners") &&
-      (contractHasProductCategory(contract, "investment") ||
-        contractHasInvestmentSectionProduct(contract) ||
-        contractHasTroyOunceProduct(contract))
-  );
-  const remainingOtherProductContracts = otherContracts.filter(
-    (contract) =>
-      !contractHasProductCategory(contract, "life") &&
-      !contractHasProductCategory(contract, "auto") &&
-      !contractHasProductCategory(contract, "property") &&
-      !contractHasProductCategory(contract, "business") &&
-      !contractHasProductCategory(contract, "travel") &&
-      !contractHasProductCategory(contract, "foreigners") &&
-      !contractHasProductCategory(contract, "investment") &&
-      !contractHasInvestmentSectionProduct(contract) &&
-      !contractHasTroyOunceProduct(contract)
-  );
-
-  const totalCommission =
-    lifeContracts.reduce((sum, contract) => sum + lifeSplitContractTotal(contract), 0) +
-    otherContracts.reduce((sum, contract) => sum + otherProductContractTotal(contract), 0);
+  const [expanded, setExpanded] = useState(true);
+  const { items, inBrowser } = useStatementBrowserItems([
+    ...lifeContracts.map(contract => ({
+      key: `life:${contract.contractNumber}-${contract.productCode}`,
+      searchText: `${contract.client} ${contract.contractNumber} ${contract.productLabel} ${contract.productCode}`,
+      amount: lifeSplitContractTotal(contract),
+      issueCount: lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
+      unpaired: true,
+      render: () => <LifeSplitContractCard
+        contract={contract}
+        match={contractMatchForNumber(matchesByContractNumber, contract.contractNumber, lifeSplitContractMatchScope(contract))}
+        deductionRows={deductionRows}
+        statementPeriod={statementPeriod}
+        statementPrefillSource={statementPrefillSource}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />,
+    })),
+    ...otherContracts.map(contract => ({
+      key: `other:${contract.key}`,
+      searchText: [contract.client, contract.contractNumber, ...contract.rows.map(row => `${row.product} ${resolveStatementProduct(row.product).label}`)].join(" "),
+      amount: otherProductContractTotal(contract),
+      issueCount: otherProductContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
+      unpaired: true,
+      hasA101: otherProductContractHasA101Commission(contract),
+      render: () => <OtherProductContractCard
+        contract={contract}
+        match={contractMatchForNumber(matchesByContractNumber, contract.contractNumber, otherProductContractMatchScope(contract))}
+        deductionRows={deductionRows}
+        statementPeriod={statementPeriod}
+        statementPrefillSource={statementPrefillSource}
+        statementKey={statementKey}
+        correctionContext={correctionContext}
+        markingControls={markingControls}
+      />,
+    })),
+  ]);
+  if (items.length === 0) return null;
 
   return (
     <StatementSection
-      title="Nespárované smlouvy"
+      title="Smlouvy mimo Bohemka.App"
       icon={Link2Off}
       tone="unpaired"
-      count={totalContracts}
-      amount={totalCommission}
-      description="Smlouvy bez jednoznačné shody v systému."
-      badge="Bez spárování"
+      count={items.length}
+      amount={items.reduce((sum, item) => sum + item.amount, 0)}
+      description="Zkontroluj číslo smlouvy a zda je uložená v systému."
+      badge="Nelze porovnat"
       badgeTone="info"
       expanded={expanded}
       onToggle={() => setExpanded(value => !value)}
     >
-          <LifeSplitProductsSection
-            contracts={lifeContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Životní pojištění"
-            description="Životní produkty mimo detailní rozpad jsou oddělené od ostatních smluv."
-            sectionKind="life"
-            contracts={lifeProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Auta"
-            description="Auto produkty se párují primárně podle čísla smlouvy. Produkt z výpisu je doplňující kontrola."
-            sectionKind="auto"
-            enableA101Filter
-            contracts={autoProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Majetek a odpovědnost"
-            description="Majetkové a odpovědnostní produkty jsou oddělené od ostatních smluv."
-            sectionKind="property"
-            enableA101Filter
-            contracts={propertyProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Podnikatelé"
-            description="Podnikatelské produkty jsou oddělené od ostatních smluv."
-            sectionKind="business"
-            contracts={businessProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Cestovní pojištění"
-            description="Cestovní produkty jsou oddělené od ostatních smluv."
-            sectionKind="travel"
-            contracts={travelProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Cizinci"
-            description="Zdravotní pojištění cizinců je oddělené od cestovního pojištění."
-            sectionKind="foreigners"
-            contracts={foreignerProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Investice"
-            description="Investiční produkty jsou oddělené od ostatních smluv."
-            sectionKind="investment"
-            contracts={investmentProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
-          <OtherProductsSection
-            title="Ostatní produkty"
-            contracts={remainingOtherProductContracts}
-            matchesByContractNumber={matchesByContractNumber}
-            deductionRows={deductionRows}
-            statementPeriod={statementPeriod}
-            statementPrefillSource={statementPrefillSource}
-            statementKey={statementKey}
-            correctionContext={correctionContext}
-            markingControls={markingControls}
-          />
-
+      <p className={workspaceStyles.sectionHint}>Tyto smlouvy jsme v systému jednoznačně nenašli. Otevři řádek smlouvy a zkontroluj její údaje.</p>
+      <StatementContractList items={items} showFilters={!inBrowser} enableA101Filter />
     </StatementSection>
   );
 }
@@ -6316,6 +6161,7 @@ function ManagerCommissionRowCard({
   return (
     <StatementContractCard
       verified={verified}
+      reviewSummary={{ label: isUnpairedContractMatch(match) ? "Bez propojení" : group.differenceCount + group.manualReviewCount > 0 ? "K prověření" : "Detail kontroly", tone: isUnpairedContractMatch(match) || group.differenceCount + group.manualReviewCount === 0 ? "info" : "warn" }}
       marking={markingControls?.markingMode && markedItem && (
         <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
       )}
@@ -6612,6 +6458,7 @@ function ManagerCommissionsSection({
     >
       {expanded && (
       <div className="space-y-4">
+          <p className={workspaceStyles.sectionHint}>Tady najdeš meziprovize rozdělené podle poradců. Otevři poradce a potom konkrétní smlouvu pro porovnání částek.</p>
           <div className="grid gap-2 md:grid-cols-2">
             <div className="rounded-xl border border-indigo-200 bg-white px-3 py-2">
               <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -6700,86 +6547,33 @@ function ManagerCommissionsSection({
             return (
               <article
                 key={advisorKey}
-                className="overflow-hidden rounded-2xl border border-indigo-200 bg-white"
+                className={workspaceStyles.advisorCard}
               >
                 <button
                   type="button"
-                  onClick={() =>
-                    setExpandedAdvisors((previous) => ({
-                      ...previous,
-                      [advisorKey]: !previous[advisorKey],
-                    }))
-                  }
-                  className="flex w-full flex-col gap-3 px-4 py-4 text-left transition hover:bg-indigo-50/40 lg:flex-row lg:items-start lg:justify-between"
+                  onClick={() => setExpandedAdvisors(previous => ({ ...previous, [advisorKey]: !previous[advisorKey] }))}
+                  className={workspaceStyles.advisorToggle}
                   aria-expanded={advisorExpanded}
                 >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-base font-bold text-slate-950">
-                        {advisor.advisorName || "Poradce bez jména"}
-                      </h4>
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-800">
-                        {advisor.advisorNumber}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                        {advisor.position || "Pozice nezjištěna"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                      <span>{advisor.contractCount} smluv dle výpisu</span>
-                      <span>{advisor.rows.length} detailních řádků</span>
-                      <span>
-                        Spárováno {advisorMatchedContractCount}/{advisorContractNumbers.length}
-                      </span>
-                      <span>Storna {formatMoney(advisor.stornos)} Kč</span>
-                      <span>Odpočty {formatMoney(advisor.deductions)} Kč</span>
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2 self-start lg:self-auto">
-                    {advisorManagerAmountComparisons.length > 0 && (
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          advisorManagerAmountIssueCount === 0
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : "border-rose-200 bg-rose-50 text-rose-800"
-                        }`}
-                      >
-                        {advisorManagerAmountIssueCount === 0
-                          ? "Meziprovize sedí"
-                          : `${advisorManagerAmountIssueCount} rozdílů meziprovize`}
-                      </span>
-                    )}
-                    {advisorUnpairedContractCount > 0 && (
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                        {advisorUnpairedContractCount} bez spárování
-                      </span>
-                    )}
-                    <div className="rounded-xl bg-slate-950 px-3 py-2 text-right text-white ring-1 ring-slate-800">
-                      <div className="text-[11px] font-black uppercase tracking-wide !text-white opacity-100">
-                        Celkem
-                      </div>
-                      <div className="mt-1 whitespace-nowrap text-lg font-bold text-emerald-200">
-                        {formatMoney(advisorTotal)} Kč
-                      </div>
-                    </div>
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200 bg-white text-indigo-700">
-                      <ChevronDown
-                        className={`h-5 w-5 transition-transform ${advisorExpanded ? "rotate-180" : ""}`}
-                        strokeWidth={2.2}
-                        aria-hidden="true"
-                      />
-                    </span>
-                  </div>
+                  <span className={workspaceStyles.advisorIdentity}>
+                    <strong>{advisor.advisorName || "Poradce bez jména"}</strong>
+                    <span>{advisor.advisorNumber} · {advisor.position || "Pozice nezjištěna"}</span>
+                    <span>{advisor.contractCount} smluv dle výpisu · Propojeno {advisorMatchedContractCount}/{advisorContractNumbers.length}</span>
+                  </span>
+                  <span className={workspaceStyles.advisorBadges}>
+                    {advisorManagerAmountComparisons.length > 0 && <span className={detailStyles.badge} data-tone={advisorManagerAmountIssueCount === 0 ? "ok" : "warn"}>{advisorManagerAmountIssueCount === 0 ? "Meziprovize sedí" : `${advisorManagerAmountIssueCount} rozdílů meziprovize`}</span>}
+                    {advisorUnpairedContractCount > 0 && <span className={detailStyles.badge} data-tone="info">{advisorUnpairedContractCount} bez propojení</span>}
+                  </span>
+                  <span className={workspaceStyles.advisorAmount}>{formatMoney(advisorTotal)} <small>Kč</small></span>
+                  <span className={workspaceStyles.sectionChevron}><span>{advisorExpanded ? "Sbalit" : "Detail"}</span><ChevronDown size={15} aria-hidden="true" /></span>
                 </button>
 
                 {advisorExpanded && advisorRowSections.length > 0 && (
                   <div className="space-y-3 border-t border-slate-200 bg-slate-50/70 px-4 py-4">
+                    <p className={workspaceStyles.sectionHint}>Storna {formatMoney(advisor.stornos)} Kč · Odpočty {formatMoney(advisor.deductions)} Kč · {advisor.rows.length} řádků výpisu</p>
                     {advisorRowSections.map((section) => {
                       const sectionToggleKey = `${advisorKey}-${section.key}`;
-                      const sectionExpanded = Boolean(
-                        expandedAdvisorRowSections[sectionToggleKey]
-                      );
+                      const sectionExpanded = expandedAdvisorRowSections[sectionToggleKey] ?? true;
                       const SectionIcon = managerCommissionRowSectionIcon(section.key);
 
                       return (
@@ -6792,7 +6586,7 @@ function ManagerCommissionsSection({
                             onClick={() =>
                               setExpandedAdvisorRowSections((previous) => ({
                                 ...previous,
-                                [sectionToggleKey]: !previous[sectionToggleKey],
+                                [sectionToggleKey]: !(previous[sectionToggleKey] ?? true),
                               }))
                             }
                             className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
@@ -6838,22 +6632,24 @@ function ManagerCommissionsSection({
                           </button>
                           {sectionExpanded && (
                             <div className="space-y-3 border-t border-white/70 bg-white px-3 py-3">
-                              {section.groups.map((group) => (
-                                <ManagerCommissionRowCard
-                                  key={`${advisorKey}-${section.key}-${group.key}`}
+                              <StatementContractList items={section.groups.map(group => ({
+                                key: `${advisorKey}-${section.key}-${group.key}`,
+                                searchText: `${group.contractNumber} ${group.rows.map(({ row }) => `${row.client} ${row.product} ${resolveStatementProduct(row.product).label}`).join(" ")}`,
+                                amount: group.commissionTotal,
+                                issueCount: group.differenceCount + group.manualReviewCount,
+                                unpaired: section.key.startsWith("unpaired"),
+                                render: () => <ManagerCommissionRowCard
                                   advisor={advisor}
                                   advisorRowScope={advisorRowScope}
                                   group={group}
                                   matchesByContractNumber={matchesByContractNumber}
                                   currentUserEmail={currentUserEmail}
-                                  managerAmountComparisonsByRowKey={
-                                    managerAmountComparisonsByRowKey
-                                  }
+                                  managerAmountComparisonsByRowKey={managerAmountComparisonsByRowKey}
                                   suggestedStornoDate={suggestedStornoDate}
                                   markingControls={markingControls}
                                   onRequestSystemStorno={onRequestSystemStorno}
-                                />
-                              ))}
+                                />,
+                              }))} />
                             </div>
                           )}
                         </div>
@@ -6927,6 +6723,7 @@ function OtherProductsSection({
       renderContract={(contract) => (
         <OtherProductContractCard
           key={contract.key}
+          reviewIssueCount={otherProductContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext)}
           contract={contract}
           match={contractMatchForNumber(
             matchesByContractNumber,
@@ -6998,6 +6795,22 @@ function StatementPreview({
       )
     );
   });
+  const browserItems = [
+    ...statement.lifeSplitContracts.map(contract => ({
+      key: `life:${contract.contractNumber}-${contract.productCode}`,
+      searchText: `${contract.client} ${contract.contractNumber} ${contract.productLabel} ${contract.productCode}`,
+      amount: lifeSplitContractTotal(contract),
+      issueCount: lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statement.header.period, statementKey, correctionContext),
+      unpaired: isUnpairedContractMatch(contractMatchForNumber(matchesByContractNumber, contract.contractNumber, lifeSplitContractMatchScope(contract))),
+    })),
+    ...visibleOtherProductContracts.map(contract => ({
+      key: `other:${contract.key}`,
+      searchText: [contract.client, contract.contractNumber, ...contract.rows.map(row => `${row.product} ${resolveStatementProduct(row.product).label}`)].join(" "),
+      amount: otherProductContractTotal(contract),
+      issueCount: otherProductContractUncertaintyCount(contract, matchesByContractNumber, statement.header.period, statementKey, correctionContext),
+      unpaired: isUnpairedContractMatch(contractMatchForNumber(matchesByContractNumber, contract.contractNumber, otherProductContractMatchScope(contract))),
+    })),
+  ];
   const {
     unpairedLifeSplitContracts,
     pairedLifeSplitContracts,
@@ -7043,11 +6856,7 @@ function StatementPreview({
       <StatementParseWarnings warnings={statement.parseWarnings} />
 
       <StatementSummary statement={statement} />
-      <div className={workspaceStyles.breakdownHeading}>
-        <h3>Rozpad výpisu</h3>
-        <p>Rozbal kategorii a projdi jednotlivé smlouvy</p>
-      </div>
-
+      <StatementContractBrowser items={browserItems}>
       <LifeSplitProductsSection
         contracts={pairedLifeSplitContracts}
         matchesByContractNumber={matchesByContractNumber}
@@ -7183,6 +6992,8 @@ function StatementPreview({
         markingControls={markingControls}
       />
 
+      </StatementContractBrowser>
+
       {statement.unmatchedB36Payments.length > 0 && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
           <h3 className="text-base font-bold text-amber-950">
@@ -7254,6 +7065,7 @@ function StatementPreview({
         </div>
       )}
 
+      {(statement.stornoRows.length > 0 || statement.otherPayments.some(payment => payment.isStorno) || statement.managerCommissions.length > 0) && <div className={workspaceStyles.additionalHeading}><h3>Další položky výpisu</h3><p>Storna a týmové provize mají vlastní seznamy a hledání.</p></div>}
       <StornoContractsSectionPanel
         statement={statement}
         statementId={selectedStatementId}
@@ -8726,7 +8538,7 @@ export default function CommissionStatementsPage() {
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
         <AppLayout active="statements">
-      <div className={`w-full max-w-7xl space-y-4 ${workspaceStyles.workspace}`}>
+      <div className={`w-full max-w-7xl space-y-4 ${workspaceStyles.workspace}`} data-loaded={statements.length > 0}>
         {!freshUploadPairingInProgress && (
           <section
             className={`px-1 py-1 ${
@@ -8743,8 +8555,8 @@ export default function CommissionStatementsPage() {
               ) : (
                 <div>
                   <p className={workspaceStyles.eyebrow}>PROVIZNÍ VÝPISY</p>
-                  <h1 className={workspaceStyles.pageTitle}>Přehled provizí.</h1>
-                  <p className={workspaceStyles.pageLead}>Částky, smlouvy a vše, co potřebuje tvoji pozornost.</p>
+                  <h1 className={workspaceStyles.pageTitle}>Zkontroluj své provize.</h1>
+                  <p className={workspaceStyles.pageLead}>Přehledně od vyplacené částky až po jednotlivé smlouvy.</p>
                 </div>
               )}
               <button
@@ -8753,7 +8565,7 @@ export default function CommissionStatementsPage() {
                   setProcessedStatementHistoryVisible(true);
                   void refreshProcessedStatementHistory();
                 }}
-                className={importStyles.historyButton}
+                className={statements.length === 0 ? importStyles.historyButton : workspaceStyles.secondaryButton}
               >
                 <CalendarDays className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
                 Zobrazit historii
@@ -8767,6 +8579,7 @@ export default function CommissionStatementsPage() {
 
             {statements.length > 0 && (
               <div className={workspaceStyles.toolbar}>
+                <a href="#statement-save" className={workspaceStyles.primaryButton}><CheckCircle2 size={15} aria-hidden="true" />{statementRecordsProcessed ? "Výpis je zpracovaný" : "Přejít ke zpracování"}</a>
                 <div className={workspaceStyles.toolGroup}>
                   <button
                     type="button"
@@ -8776,7 +8589,7 @@ export default function CommissionStatementsPage() {
                     aria-pressed={markingMode}
                   >
                     <ListChecks className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    {markingMode ? "Dokončit" : "Označit"}
+                    {markingMode ? "Dokončit označování" : "Označit k řešení"}
                   </button>
                   <button
                     type="button"
@@ -8784,9 +8597,10 @@ export default function CommissionStatementsPage() {
                     className={workspaceStyles.toolButton}
                   >
                     <RotateCcw className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    Vymazat
+                    Zavřít výpis
                   </button>
                 </div>
+                <StatementHelp />
                 {markedDiscrepancyItems.length > 0 && (
                   <>
                     <button
@@ -8892,6 +8706,8 @@ export default function CommissionStatementsPage() {
           <StatementPairingLoader stats={matchStats} hasUser={Boolean(user)} />
         ) : (
           <div className="space-y-4">
+            <StatementWorkflow saved={statementRecordsProcessed} />
+            {markingMode && <p className={workspaceStyles.notice}><ListChecks size={17} aria-hidden="true" />U smluv vyber položky k řešení. Potom nahoře otevři Souhrn nesrovnalostí a stáhni si PDF.</p>}
             <CppAutoBatchQueue
               items={cppAutoBatchQueue}
               isRunning={cppAutoBatchQueueRunning}
@@ -8932,7 +8748,7 @@ export default function CommissionStatementsPage() {
               );
             })}
 
-            <section className={workspaceStyles.savePanel}>
+            <section id="statement-save" className={workspaceStyles.savePanel} aria-label="Zpracování výpisu">
               <div className={workspaceStyles.saveRow}>
                 <div className={workspaceStyles.saveIdentity}>
                   <span className={workspaceStyles.saveIcon}>
@@ -8940,14 +8756,12 @@ export default function CommissionStatementsPage() {
                   </span>
                   <div className="min-w-0">
                     <h2 className={workspaceStyles.saveTitle}>
-                      Zápis výpisu
+                      {statementRecordsProcessed ? "Výpis je zpracovaný" : "Máš vše zkontrolované?"}
                     </h2>
                     <p className={workspaceStyles.saveLead}>
                     {statementRecordsProcessed
-                      ? "Výpis byl zpracovaný."
-                      : `${statements.length} ${
-                          statements.length === 1 ? "výpis připravený" : "výpisů připraveno"
-                        } ke zpracování.`}
+                      ? "Provize jsou zapsané u smluv. Výpis najdeš také v historii."
+                      : "Zpracováním zapíšeš provize z výpisu ke smlouvám v systému."}
                     </p>
                   </div>
                 </div>

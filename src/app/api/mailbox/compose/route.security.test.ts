@@ -26,9 +26,13 @@ vi.mock("@/lib/server/userProfileAvatars", () => ({ loadProfileAvatarsByEmail: a
 vi.mock("firebase-admin/storage", () => ({ getStorage: mocks.storage }));
 
 import { POST } from "./route";
-import { DELETE } from "../route";
+import { GET as getAttachment } from "../attachment/route";
+import { decryptMailboxJson } from "@/lib/server/mailboxEncryption";
+import { PDF_PARSER_REPORT_VERSION } from "@/app/lib/pdfParserReport";
+import { DELETE, GET } from "../route";
 import { PATCH as updateConversation } from "../conversation/route";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
+import { MAILBOX_SUPPORT_RECIPIENT } from "@/app/posta/mailboxSupport";
 
 type Data = Record<string, unknown>;
 type Write = { kind: "create" | "set" | "delete" | "update"; path: string; data?: Data; merge?: boolean; expected?: string };
@@ -163,6 +167,10 @@ beforeEach(() => {
     name, file: (path: string) => ({
       save: async (bytes: Buffer) => { objects.set(path, bytes); await duringUpload?.(); },
       delete: async () => { objects.delete(path); },
+      download: async () => {
+        if (!objects.has(path)) throw Object.assign(new Error("Missing synthetic object"), { code: 404 });
+        return [objects.get(path)];
+      },
     }),
   }) });
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -170,6 +178,172 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+});
+
+describe("private support conversations", () => {
+  const support = MAILBOX_SUPPORT_RECIPIENT.email;
+  beforeEach(() => { store.records.set(`users/${support}`, { name: "Support operator", accountType: "advisor" }); });
+
+  it("delivers separate encrypted conversations and replies through the existing mailbox flow", async () => {
+    const first = await POST(request(alice, [support], { text: "Alice support question", conversationId: mailboxConversationId(alice, bob) }));
+    expect(first.status).toBe(200);
+    const aliceThread = (await first.json()).conversationId;
+    expect(aliceThread).toBe(mailboxConversationId(alice, support));
+    const secondKey = "123e4567-e89b-42d3-a456-426614174001";
+    const second = await POST(request(bob, [support], { id: secondKey, text: "Bob support question" }));
+    expect(second.status).toBe(200);
+    expect((await second.json()).conversationId).not.toBe(aliceThread);
+    const received = store.records.get(mailboxPath(support))!;
+    expect(received.encryptedContent).toBeTruthy();
+    expect(JSON.stringify(received)).not.toContain("Alice support question");
+    const otherUser = await GET(new NextRequest(`https://example.test/api/mailbox?conversationId=${aliceThread}&includeUnreadCount=0`, { headers: { "x-test-user": bob } }));
+    expect(otherUser.status).toBe(200);
+    expect((await otherUser.json()).items).toEqual([]);
+    const replyKey = "123e4567-e89b-42d3-a456-426614174002";
+    const reply = await POST(request(support, [alice], { id: replyKey, text: "Support reply" }));
+    expect(reply.status).toBe(200);
+    expect((await reply.json()).conversationId).toBe(aliceThread);
+    expect(store.records.has(mailboxPath(alice, replyKey))).toBe(true);
+    expect(store.records.has(mailboxPath(bob, replyKey))).toBe(false);
+  });
+
+  it.each([401, 403])("retains authentication and authorization rejection %s before sending to support", async status => {
+    const before = new Map(store.records);
+    mocks.guard.mockResolvedValueOnce({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await POST(request(alice, [support]))).status).toBe(status);
+    expect(store.records).toEqual(before);
+  });
+
+  it("keeps tipster direct-chat restrictions in place", async () => {
+    mocks.setup.mockResolvedValueOnce({ accountType: "tipster", profile: { tipRecipientEmail: support } });
+    const before = new Map(store.records);
+    expect((await POST(request(alice, [support]))).status).toBe(403);
+    expect(store.records).toEqual(before);
+  });
+});
+
+describe("automatic PDF parser reports", () => {
+  const support = MAILBOX_SUPPORT_RECIPIENT.email;
+  const pdfBytes = "%PDF-1.7\nSynthetic private PDF body";
+  const diagnostic = { product: "flexi", parserVersion: PDF_PARSER_REPORT_VERSION, extraction: "native", missingFields: ["amount"] };
+  beforeEach(() => { store.records.set(`users/${support}`, { name: "Support operator", accountType: "advisor" }); });
+
+  function reportRequest(sender = alice, report: unknown = diagnostic, files = [new File([pdfBytes], "private-client-name.pdf", { type: "application/pdf" })]) {
+    const form = new FormData();
+    form.set("parserReportJson", JSON.stringify(report));
+    // Manipulated routing and content must not influence a diagnostic delivery.
+    form.set("recipientEmail", bob);
+    form.set("subject", "Injected subject");
+    form.set("text", "Injected sensitive value");
+    form.set("conversationId", "group_manipulated_123456");
+    form.set("createGroupOnly", "true");
+    form.set("metadataJson", JSON.stringify({ tipsterTip: true, senderEmail: carol }));
+    form.set("clientRequestId", key);
+    files.forEach(file => form.append("files", file));
+    return new NextRequest("https://example.test/api/mailbox/compose", { method: "POST", headers: { "x-test-user": sender }, body: form });
+  }
+
+  it("fixes recipient, sender, thread and message on the server and encrypts the PDF", async () => {
+    const response = await POST(reportRequest());
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.conversationId).toBe(mailboxConversationId(alice, support));
+    expect(payload.recipientEmail).toBe(support);
+    const saved = store.records.get(mailboxPath(support, payload.messageId))!;
+    const raw = JSON.stringify(saved);
+    expect(raw).not.toContain("private-client-name");
+    expect(raw).not.toContain("Injected sensitive value");
+    expect([...objects.values()][0].toString()).not.toContain(pdfBytes);
+    const content = decryptMailboxJson<{ subject: string; messageText: string }>(saved.encryptedContent, `message:${payload.messageId}`);
+    expect(content.messageText).toContain("Pojistné / příspěvek");
+    expect(content.messageText).not.toContain("Injected");
+    expect([...store.records.keys()].filter(path => path.includes("/mailbox/"))).toHaveLength(2);
+
+    const attachmentUrl = new URL(payload.attachmentItems[0].url, "https://example.test");
+    const adminDownload = await getAttachment(new NextRequest(attachmentUrl, { headers: { "x-test-user": support } }));
+    expect(adminDownload.status).toBe(200);
+    expect(await adminDownload.text()).toBe(pdfBytes);
+    expect(adminDownload.headers.get("cache-control")).toContain("no-store");
+    expect((await getAttachment(new NextRequest(attachmentUrl, { headers: { "x-test-user": bob } }))).status).toBe(404);
+    expect((await getAttachment(new NextRequest(attachmentUrl, { headers: { "x-test-user": alice } }))).status).toBe(200);
+  });
+
+  it("deduplicates repeated PDF contents across renamed files and reordered fields", async () => {
+    const first = await (await POST(reportRequest(alice, { ...diagnostic, missingFields: ["amount", "frequency"] }))).json();
+    const second = await (await POST(reportRequest(alice, { ...diagnostic, missingFields: ["frequency", "amount", "amount"] }, [new File([pdfBytes], "renamed.pdf")]))).json();
+    expect(first.messageId).toBe(second.messageId);
+    expect(objects.size).toBe(1);
+    expect([...store.records.keys()].filter(path => path.includes("/mailbox/"))).toHaveLength(2);
+    expect(mocks.push).toHaveBeenCalledOnce();
+  });
+
+  it("keeps reports by different users separate even for identical PDF bytes", async () => {
+    const first = await (await POST(reportRequest(alice))).json();
+    const second = await (await POST(reportRequest(bob))).json();
+    expect(first.messageId).not.toBe(second.messageId);
+    expect(first.conversationId).not.toBe(second.conversationId);
+    expect(objects.size).toBe(2);
+  });
+
+  it("deduplicates concurrent deliveries without deleting the winning encrypted attachment", async () => {
+    raceTwoCommits();
+    const results = await Promise.all([POST(reportRequest()), POST(reportRequest())]);
+    expect(results.map(response => response.status)).toEqual([200, 200]);
+    expect(objects.size).toBe(1);
+    expect([...store.records.keys()].filter(path => path.includes("/mailbox/"))).toHaveLength(2);
+  });
+
+  it("records the support owner's own upload once without enabling ordinary self messages", async () => {
+    const first = await POST(reportRequest(support));
+    expect(first.status).toBe(200);
+    const payload = await first.json();
+    expect((await POST(reportRequest(support))).status).toBe(200);
+    const messages = [...store.records.entries()].filter(([path]) => path.includes("/mailbox/"));
+    expect(messages).toHaveLength(1);
+    expect(messages[0][1].metadata).toMatchObject({ mailboxDirection: "received", senderEmail: support });
+    expect(payload.senderMailboxId).toBe(payload.recipientMailboxId);
+    expect((await POST(request(support, [support]))).status).toBe(400);
+  });
+
+  it.each([401, 403, 429])("preserves authentication, authorization and rate-limit rejection %s", async status => {
+    const before = new Map(store.records);
+    mocks.guard.mockResolvedValueOnce({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await POST(reportRequest())).status).toBe(status);
+    expect(store.records).toEqual(before);
+    expect(objects.size).toBe(0);
+  });
+
+  it("rejects tipsters and impersonated report senders without storing data", async () => {
+    mocks.setup.mockResolvedValueOnce({ accountType: "tipster", profile: { tipRecipientEmail: support } });
+    expect((await POST(reportRequest())).status).toBe(403);
+    mocks.guard.mockResolvedValueOnce({ ok: true, ctx: { email: alice, uid: alice, isImpersonating: true } });
+    expect((await POST(reportRequest())).status).toBe(403);
+    expect(objects.size).toBe(0);
+  });
+
+  it.each([
+    { ...diagnostic, extraction: "ocr" }, { ...diagnostic, missingFields: ["constructor"] },
+    { ...diagnostic, missingFields: [] }, { ...diagnostic, product: "unknown" },
+  ])("rejects malformed or OCR diagnostics %j", async report => {
+    expect((await POST(reportRequest(alice, report))).status).toBe(400);
+    expect(objects.size).toBe(0);
+  });
+
+  it.each([
+    { files: [] }, { files: [new File(["<script>synthetic</script>"], "fake.pdf", { type: "application/pdf" })] },
+    { files: [new File(["%PDF-1.7"], "a.pdf"), new File(["%PDF-1.7"], "b.pdf")] },
+  ])("rejects missing, spoofed or multiple PDF attachments", async ({ files }) => {
+    expect((await POST(reportRequest(alice, diagnostic, files))).status).toBe(400);
+    expect(objects.size).toBe(0);
+  });
+
+  it("returns and logs a generic diagnostic failure without leaking storage errors", async () => {
+    duringUpload = async () => { throw new Error("Synthetic private storage detail"); };
+    const response = await POST(reportRequest());
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("Synthetic private storage detail");
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain("Synthetic private storage detail");
+  });
 });
 
 describe("mailbox compose cannot replace an existing message", () => {

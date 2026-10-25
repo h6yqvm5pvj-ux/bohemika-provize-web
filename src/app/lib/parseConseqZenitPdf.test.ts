@@ -71,6 +71,7 @@ describe("CONSEQ Zenit PDF parser", () => {
       productDetected: true, contractNumber: "9512345678", clientName: "Jan Novák",
       amount: 1700, frequency: "monthly", contractSignedDate: "2024-11-04", policyStartDate: "2025-01-01",
       clientBirthDate: "1975-04-12", targetAge: 65, policyEndDate: "2040-04-12", ocrTextUsed: false,
+      pdfNativeTextReadable: true, pdfNeedsOcr: false,
     });
     expect(state.ocr).not.toHaveBeenCalled();
   });

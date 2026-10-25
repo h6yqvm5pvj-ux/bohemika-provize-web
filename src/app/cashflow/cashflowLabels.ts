@@ -1,5 +1,18 @@
 import type { CashflowSectionGroup } from "./monthSections";
-import type { CashflowItem } from "./types";
+import type { CashflowItem, MonthGroup } from "./types";
+
+type MonthTotals = Pick<MonthGroup, "total" | "totalSource" | "statementPayoutTotal">;
+
+/** The overview omits items, so derive the receipt supplement from its totals. */
+export function paidSubscriptionAmount(month: MonthTotals): number {
+  return month.totalSource === "paid" && month.statementPayoutTotal != null
+    ? Math.round((month.total - month.statementPayoutTotal) * 100) / 100 : 0;
+}
+
+export function cashflowMonthSourceLabel(month: MonthTotals): string {
+  if (month.totalSource !== "paid") return "Předpoklad";
+  return paidSubscriptionAmount(month) !== 0 ? "Výpis + předplatné" : "Dle výpisu";
+}
 
 function formatCount(count: number, singular: string, few: string, many: string): string {
   return `${count} ${count === 1 ? singular : count >= 2 && count <= 4 ? few : many}`;

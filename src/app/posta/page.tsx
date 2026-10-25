@@ -16,6 +16,7 @@ import {
   Bell,
   CheckCheck,
   ChevronDown,
+  CircleHelp,
   Clock3,
   Download,
   ExternalLink,
@@ -40,6 +41,7 @@ import {
 
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { SYSTEM_MAILBOX_RETENTION_DAYS } from "@/app/lib/mailboxRetention";
 import {
   effectiveUserEmail,
   useEffectiveUserEmail,
@@ -49,6 +51,8 @@ import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import { MailboxChatComposer } from "./MailboxChatComposer";
 import { MailboxChatThread } from "./MailboxChatThread";
+import { MailboxSupportCard } from "./MailboxSupportCard";
+import { isMailboxSupportConversation, isMailboxSupportEmail, MAILBOX_SUPPORT_RECIPIENT } from "./mailboxSupport";
 import { MailboxGroupManager } from "./MailboxGroupManager";
 import {
   COMPOSE_FILES_MAX_COUNT,
@@ -333,7 +337,7 @@ const directMessageCounterpart = (
   );
   return {
     email,
-    name: storedName || (email ? nameFromEmail(email) : "Uživatel"),
+    name: isMailboxSupportEmail(email) ? MAILBOX_SUPPORT_RECIPIENT.name : storedName || (email ? nameFromEmail(email) : "Uživatel"),
     profileAvatar: normalizeProfileAvatar(
       item.metadata?.[sent ? "recipientAvatar" : "senderAvatar"]
     ),
@@ -854,9 +858,17 @@ export default function PostaPage() {
     () => buildMailboxDisplayRows(filteredVisibleItems, false),
     [filteredVisibleItems]
   );
+  const supportMessages = useMemo(() => items.filter(isMailboxSupportConversation), [items]);
+  const supportAvailable = Boolean(effectiveEmail && !isMailboxSupportEmail(effectiveEmail));
+  const supportSearch = normalizeGroupText(mailSearch);
+  const showSupportChat = supportAvailable && mailFilter === "all" && (
+    !supportSearch || normalizeGroupText(`Podpora pomoc ${MAILBOX_SUPPORT_RECIPIENT.email}`).includes(supportSearch) ||
+    filteredVisibleItems.some(isMailboxSupportConversation)
+  );
   const chatListRows = useMemo(
-    () => buildMailboxChatListRows(filteredVisibleItems, items),
-    [filteredVisibleItems, items]
+    () => buildMailboxChatListRows(filteredVisibleItems, items).filter(row =>
+      !showSupportChat || row.kind !== "conversation" || !isMailboxSupportConversation(row.latestItem)),
+    [filteredVisibleItems, items, showSupportChat]
   );
 
   useEffect(() => {
@@ -2029,6 +2041,8 @@ export default function PostaPage() {
             <span className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200 ${groupConversation ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
               {groupConversation ? (
                 <UsersRound className="h-5 w-5" />
+              ) : isMailboxSupportConversation(latest) ? (
+                <CircleHelp className="h-6 w-6 text-violet-700" aria-hidden="true" />
               ) : (
                 <ProfileAvatar
                   src={row.counterpartAvatar}
@@ -2780,9 +2794,9 @@ export default function PostaPage() {
         typeof window !== "undefined" && window.matchMedia("(max-width: 1279px)").matches
       );
     } catch (cause) {
-      setComposeErrorText(
-        cause instanceof Error ? cause.message : "Konverzaci se nepodařilo otevřít."
-      );
+      const message = cause instanceof Error ? cause.message : "Konverzaci se nepodařilo otevřít.";
+      setComposeErrorText(message);
+      if (isMailboxSupportEmail(recipientEmail)) setError(message);
     }
   };
 
@@ -2876,7 +2890,7 @@ export default function PostaPage() {
   const activeConversationCount = buildMailboxChatListRows(
     activeChatItems,
     items
-  ).length;
+  ).length + (supportAvailable && !activeChatItems.some(isMailboxSupportConversation) ? 1 : 0);
   const unreadConversationCount = buildMailboxChatListRows(
     activeUnreadChatItems,
     items
@@ -2912,13 +2926,13 @@ export default function PostaPage() {
   const emptyFolderDescription: Record<MailFilterMode, string> = {
     all: "Vyhledej kolegu přes Nový chat a začni konverzaci.",
     unread: "Nové zprávy se zobrazí tady.",
-    system: "Nová upozornění aplikace se zobrazí tady.",
+    system: `Systémová oznámení se automaticky mažou po ${SYSTEM_MAILBOX_RETENTION_DAYS} dnech.`,
     snoozed: "Odložené zprávy a nastavená připomenutí se zobrazí tady.",
     archived: "Archivované chaty a oznámení se zobrazí tady.",
   };
   const listCountLabel =
     mailFilter === "all" || mailFilter === "unread"
-      ? pluralCount(chatListRows.length, "konverzace", "konverzace", "konverzací")
+      ? pluralCount(chatListRows.length + (showSupportChat ? 1 : 0), "konverzace", "konverzace", "konverzací")
       : mailFilter === "system"
       ? pluralCount(chatListRows.length, "oznámení", "oznámení", "oznámení")
       : pluralCount(chatListRows.length, "položka", "položky", "položek");
@@ -2940,6 +2954,7 @@ export default function PostaPage() {
   const standardDirectMetadata = standardDirectPreviewItem?.metadata ?? {};
   const standardDirectIsEmptyDraft =
     standardDirectMetadata.chatDraft === true && chatThreadMessages.length === 0;
+  const standardDirectIsSupport = Boolean(standardDirectPreviewItem && isMailboxSupportConversation(standardDirectPreviewItem));
   const standardDirectIsSent = standardDirectPreviewItem
     ? isSentMailboxItem(standardDirectPreviewItem)
     : false;
@@ -3022,11 +3037,11 @@ export default function PostaPage() {
         <div className="grid min-h-full place-items-center px-6 py-12 text-center">
           <div>
             <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-700 ring-1 ring-violet-100">
-              <MessageCircle className="h-6 w-6" />
+              {standardDirectIsSupport ? <CircleHelp className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
             </span>
-            <h3 className="mt-4 text-lg font-bold text-slate-900">Začni konverzaci</h3>
+            <h3 className="mt-4 text-lg font-bold text-slate-900">{standardDirectIsSupport ? "S čím potřebuješ pomoct?" : "Začni konverzaci"}</h3>
             <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-slate-500">
-              Napiš první zprávu pro {standardDirectCounterpart?.name || "vybraného uživatele"}.
+              {standardDirectIsSupport ? "Napiš nám svůj dotaz. Odpověď najdeš tady v chatu." : `Napiš první zprávu pro ${standardDirectCounterpart?.name || "vybraného uživatele"}.`}
             </p>
           </div>
         </div>
@@ -3281,8 +3296,9 @@ export default function PostaPage() {
                     <h2 className="truncate text-lg font-bold tracking-[-0.015em] text-slate-950">{folderTitle[mailFilter]}</h2>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {mailSearch
-                        ? `${chatListRows.length} výsledků hledání`
+                        ? `${chatListRows.length + (showSupportChat ? 1 : 0)} výsledků hledání`
                         : listCountLabel}
+                      {mailFilter === "system" && <span className="mt-1 block">Automatické mazání po {SYSTEM_MAILBOX_RETENTION_DAYS} dnech; u odložených oznámení od připomenutí.</span>}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -3335,11 +3351,19 @@ export default function PostaPage() {
                   {error ? (
                     <div className="m-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
                   ) : null}
+                  {showSupportChat ? (
+                    <MailboxSupportCard
+                      messages={supportMessages}
+                      unreadCount={activeUnreadChatItems.filter(isMailboxSupportConversation).length}
+                      selected={Boolean(previewItem && isMailboxSupportConversation(previewItem))}
+                      onOpen={(recipient) => { void openChatWithRecipient(recipient); }}
+                    />
+                  ) : null}
                   {loading ? (
                     <div className="divide-y divide-slate-200">
                       {[0, 1, 2, 3, 4].map((idx) => <div key={idx} className="h-[108px] animate-pulse bg-slate-100/75" />)}
                     </div>
-                  ) : filteredVisibleItems.length === 0 ? (
+                  ) : chatListRows.length === 0 ? showSupportChat ? null : (
                     <div className="grid min-h-[420px] place-items-center px-6 text-center">
                       <div>
                         <span className="mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
@@ -3371,6 +3395,8 @@ export default function PostaPage() {
                             <span className={`relative inline-flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl ring-1 ring-slate-200 ${isGroupMailboxItem(standardDirectPreviewItem) ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
                               {isGroupMailboxItem(standardDirectPreviewItem) ? (
                                 <UsersRound className="h-5 w-5" />
+                              ) : standardDirectIsSupport ? (
+                                <CircleHelp className="h-6 w-6 text-violet-700" aria-hidden="true" />
                               ) : (
                                 <>
                                   <ProfileAvatar
@@ -4090,6 +4116,8 @@ export default function PostaPage() {
                         <span className={`relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl ring-1 ring-white/20 ${isGroupMailboxItem(standardDirectPreviewItem) ? "bg-violet-200 text-violet-900" : "bg-white"}`}>
                           {isGroupMailboxItem(standardDirectPreviewItem) ? (
                             <UsersRound className="h-4 w-4" />
+                          ) : standardDirectIsSupport ? (
+                            <CircleHelp className="h-5 w-5 text-violet-700" aria-hidden="true" />
                           ) : (
                             <ProfileAvatar
                               src={standardDirectCounterpart?.profileAvatar}

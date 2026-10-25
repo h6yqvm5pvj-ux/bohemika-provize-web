@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyIntelligentCashflowPrediction,
   applyStatementMissingPayoutShifts,
+  applyStatementPayoutTotalsToMonths,
+  groupItemsByMonth,
   calculateStornoFund,
   dedupeCashflowCommissionStatements,
   filterPastItems,
@@ -144,6 +146,54 @@ describe("cashflow subscription payments", () => {
     ];
 
     expect(calculateStornoFund(items)).toBe(150);
+  });
+
+  it("adds only received subscriptions to statement payouts and preserves the statement itself", () => {
+    const received = subscriptionPayment();
+    const forecast = { ...received, id: "subscription-forecast", amount: 500, payoutStatus: "predicted" as const };
+    const commission = { ...received, id: "commission", productKey: "neon" as const, isSubscriptionPayment: false, amount: 1000 };
+    const months = groupItemsByMonth([received, forecast, commission]);
+    const statementsByMonthKey = { "2026-7": [commissionStatement({ payoutTotal: 800 })] };
+    const before = structuredClone(months);
+    const adjusted = applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey, enabled: true });
+    expect(adjusted[0]).toMatchObject({ total: 2390, statementPayoutTotal: 800, predictedTotal: 3090, totalSource: "paid" });
+    expect(adjusted[0].items).toEqual(months[0].items);
+    expect(months).toEqual(before);
+    expect(applyStatementPayoutTotalsToMonths({ monthGroups: adjusted, statementsByMonthKey, enabled: true })).toEqual(adjusted);
+  });
+
+  it("adds receipts once when there are multiple statements, including a re-upload", () => {
+    const months = groupItemsByMonth([subscriptionPayment()]);
+    const statementsByMonthKey = { "2026-7": [
+      commissionStatement({ payoutTotal: 800 }),
+      commissionStatement({ id: "re-upload", payoutTotal: 850, updatedAtMs: 2 }),
+      commissionStatement({ id: "second", statementNumber: "16", payoutTotal: 250 }),
+    ] };
+    const [month] = applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey, enabled: true });
+    expect(month.statementPayoutTotal).toBe(1100);
+    expect(month.total).toBe(2690);
+  });
+
+  it.each([0, -500.25, 33_381.15])("supports zero and negative statements and rounds the combined income: %s", payoutTotal => {
+    const months = groupItemsByMonth([{ ...subscriptionPayment(), amount: 350.1 }, { ...subscriptionPayment(), id: "second-receipt", amount: 250.2 }]);
+    const [month] = applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey: { "2026-7": [commissionStatement({ payoutTotal })] }, enabled: true });
+    expect(month.total).toBe(Math.round((payoutTotal + 600.3) * 100) / 100);
+    expect(month.statementPayoutTotal).toBe(payoutTotal);
+  });
+
+  it("recognizes a subscription by its product key and excludes unpaid or invalid amounts", () => {
+    const receipt = { ...subscriptionPayment(), isSubscriptionPayment: false };
+    const months = groupItemsByMonth([receipt, { ...receipt, id: "unpaid", payoutStatus: undefined }, { ...receipt, id: "invalid", amount: NaN }]);
+    const [month] = applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey: { "2026-7": [commissionStatement({ payoutTotal: 800 })] }, enabled: true });
+    expect(month.total).toBe(2390);
+  });
+
+  it("keeps forecasts and standalone subscription months unchanged when there is no statement total or a filter is active", () => {
+    const months = groupItemsByMonth([subscriptionPayment(), { ...subscriptionPayment(), id: "forecast", payoutStatus: "predicted" }]);
+    const statementsByMonthKey = { "2026-7": [commissionStatement({ payoutTotal: 800 })] };
+    expect(applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey, enabled: false })).toBe(months);
+    expect(applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey: {}, enabled: true })).toEqual(months);
+    expect(applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey: { "2026-7": [commissionStatement({ payoutTotal: null })] }, enabled: true })).toEqual(months);
   });
 
   it("does not shift subscription payments by missing commission statements", () => {

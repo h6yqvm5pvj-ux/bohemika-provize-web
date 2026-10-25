@@ -154,4 +154,62 @@ describe("cashflow statement response", () => {
     expect((await GET(request("shape=cashflow"))).status).toBe(401);
     expect(mocks.reads).not.toHaveBeenCalled();
   });
+
+  it.each(["shape=cashflow", "", "id=statement_000001"])("deduplicates the original repeated-mention workload for stored %s reads", async query => {
+    const text = "smlouvy 123456 ".repeat(20_000) + "B101 ".repeat(80_000);
+    mocks.records.get("statement_000001")!.html = `<div id='ostatni_platby'><tr><td>${text}</td></tr></div>`;
+    const result = await read(query);
+    const item = result.item ?? result.items[0];
+    expect(item.paidContractNumbers).toEqual(["123456"]);
+    expect(item.paidCommissionKeys).toEqual(["123456:B101"]);
+  });
+
+  it("preserves B36 half aliases and excludes storno in ordinary other-payment rows", async () => {
+    mocks.records.get("statement_000001")!.html = `<DIV ID="ostatni_platby"><TABLE>
+      <TR><TH>50 % provize B36 B036 smlouvy 123456 smlouvy 123456</TH></TR>
+      <TR><TD>storno smlouvy 987654 A101</TD></TR></TABLE></DIV>`;
+    const item = (await read("shape=cashflow")).items[0];
+    expect(item.paidCommissionKeys).toEqual(["123456:B036_HALF", "123456:B36_HALF", "123456:B3601_HALF"]);
+  });
+
+  it.each([
+    '<script>for(let i=0;i<rows.length;i++){console.log("<div");}</script>',
+    '<div title="1 < 2 > 0">Title</div>',
+    `<script>${"<div ".repeat(100_000)}</script>`,
+  ])("reads ordinary statement rows after quoted or raw-text angle brackets", async prefix => {
+    mocks.records.get("statement_000001")!.html = prefix +
+      '<div title="1 < 2" id="ostatni_platby"><tr><td>smlouvy 123456 A101</td></tr></div>';
+    const item = (await read("shape=cashflow")).items[0];
+    expect(item.paidCommissionKeys).toEqual(["123456:A101"]);
+  });
+
+  it("does not rescan raw script anchor mentions while reading a payout row's detail link", async () => {
+    mocks.records.get("statement_000001")!.html =
+      `<div id="provize"><tr><td><script>${"<a ".repeat(100_000)}</script></td></tr></div>`;
+    expect((await read("shape=cashflow")).items[0].paidCommissionKeys).toEqual([]);
+  });
+
+  it("enforces a document-wide matching budget across multiple individually bounded rows", async () => {
+    const contracts = Array.from({ length: 900 }, (_, index) => `smlouvy ${100000 + index} `).join("");
+    const codes = Array.from({ length: 12 }, (_, index) => `A${101 + index} `).join("");
+    const row = `<tr><td>${contracts}${codes}</td></tr>`;
+    mocks.records.get("statement_000001")!.html = `<div id="ostatni_platby">${row}${row}</div>`;
+    const response = await GET(request("shape=cashflow"));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("limit") });
+  });
+
+  it.each([
+    ["long contract token", `<div id="ostatni_platby"><tr><td>smlouvy ${"1".repeat(65)} B101</td></tr></div>`, 413],
+    ["too many rows", `<div id="provize">${"<tr></tr>".repeat(5001)}</div>`, 413],
+    ["unclosed rows", `<div id="provize">${"<tr>".repeat(1000)}</div>`, 400],
+    ["unclosed cells", `<div id="provize"><tr>${"<td>".repeat(50)}</tr></div>`, 400],
+    ["oversized legacy HTML", "x".repeat(850001), 413],
+    ["unterminated tag", `<div ${"id=invalid ".repeat(10_000)}`, 400],
+  ])("rejects %s in legacy stored HTML with a safe client error", async (_name, html, status) => {
+    mocks.records.get("statement_000001")!.html = html;
+    const response = await GET(request("id=statement_000001"));
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.any(String) });
+  });
 });

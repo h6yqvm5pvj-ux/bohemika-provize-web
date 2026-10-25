@@ -2,7 +2,7 @@ import { ArrowUpRight, CalendarDays, Check, ChevronDown, History } from "lucide-
 
 import { formatMoney } from "@/app/lib/formatters";
 import type { MonthGroup, YearGroup } from "../types";
-import { formatCashflowItemCount } from "../cashflowLabels";
+import { cashflowMonthSourceLabel, formatCashflowItemCount } from "../cashflowLabels";
 import { buildYearMonthSlots } from "../yearChart";
 import { CashflowYearChart } from "./CashflowYearChart";
 import styles from "../yearOverview.module.css";
@@ -96,7 +96,7 @@ export function CashflowAccordion({
                             <span className={styles.monthName}>{label.replace(/\s+\d{4}$/, "")}</span>
                             {month ? <span className={paid ? styles.paidBadge : styles.predictedBadge}>
                               {paid ? <Check size={12} strokeWidth={2.5} aria-hidden="true" /> : <span className={styles.predictedDot} />}
-                              {paid ? "Dle výpisu" : "Předpoklad"}
+                              {cashflowMonthSourceLabel(month)}
                             </span> : past && <span className={styles.pastBadge}><History size={11} aria-hidden="true" />Uplynulý</span>}
                           </span>
                           <span className={`${styles.monthAmount} ${month && month.total < 0 ? styles.negativeAmount : ""}`}>{month ? formatMoney(month.total) : "—"}</span>

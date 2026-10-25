@@ -13,6 +13,7 @@ import {
 
 import { StatementSection } from "./StatementSection";
 import { StatementContractList } from "./StatementContractList";
+import { useStatementBrowserItems } from "./StatementContractBrowser";
 import { resolveStatementProduct } from "./statementParsing";
 import type {
   LifeSplitContractPreview,
@@ -69,18 +70,18 @@ export function OtherProductsSectionPanel({
   uncertaintyCountLabel: (count: number) => string;
   renderContract: (contract: OtherProductContractPreview) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (contracts.length === 0) return null;
+  const [expanded, setExpanded] = useState(true);
 
-  const items = contracts.map(contract => ({
-    key: contract.key,
+  const { items, inBrowser } = useStatementBrowserItems(contracts.map(contract => ({
+    key: `other:${contract.key}`,
     searchText: [contract.client, contract.contractNumber, ...contract.rows.map(row => `${row.product} ${resolveStatementProduct(row.product).label}`)].join(" "),
     amount: contractTotal(contract),
     issueCount: contractUncertaintyCount(contract),
     unpaired: contractIsUnpaired(contract),
     hasA101: contractHasA101Commission(contract),
     render: () => renderContract(contract),
-  }));
+  })));
+  if (items.length === 0) return null;
   const totalCommission = items.reduce((sum, item) => sum + item.amount, 0);
   const uncertaintyCount = items.reduce((sum, item) => sum + item.issueCount, 0);
   const tone = sectionKind === "life" || sectionKind === "auto" || sectionKind === "property" || sectionKind === "travel" ? sectionKind : "neutral";
@@ -90,14 +91,14 @@ export function OtherProductsSectionPanel({
       showTitle={showTitle}
       icon={SECTION_ICONS[sectionKind]}
       tone={tone}
-      count={contracts.length}
+      count={items.length}
       amount={totalCommission}
       description={showDescription ? description : undefined}
       badge={uncertaintyCount > 0 ? uncertaintyCountLabel(uncertaintyCount) : undefined}
       expanded={expanded}
       onToggle={() => setExpanded(value => !value)}
     >
-      <StatementContractList enableA101Filter={enableA101Filter} items={items} />
+      <StatementContractList enableA101Filter={enableA101Filter} items={items} showFilters={!inBrowser} />
     </StatementSection>
   );
 }
@@ -117,17 +118,17 @@ export function LifeSplitProductsSectionPanel({
   uncertaintyCountLabel: (count: number) => string;
   renderContract: (contract: LifeSplitContractPreview) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  if (contracts.length === 0) return null;
+  const [expanded, setExpanded] = useState(true);
 
-  const items = contracts.map(contract => ({
-    key: `${contract.contractNumber}-${contract.productCode}`,
+  const { items, inBrowser } = useStatementBrowserItems(contracts.map(contract => ({
+    key: `life:${contract.contractNumber}-${contract.productCode}`,
     searchText: `${contract.client} ${contract.contractNumber} ${contract.productLabel} ${contract.productCode}`,
     amount: contractTotal(contract),
     issueCount: contractUncertaintyCount(contract),
     unpaired: contractIsUnpaired(contract),
     render: () => renderContract(contract),
-  }));
+  })));
+  if (items.length === 0) return null;
   const totalPayout = items.reduce((sum, item) => sum + item.amount, 0);
   const uncertaintyCount = items.reduce((sum, item) => sum + item.issueCount, 0);
 
@@ -136,13 +137,13 @@ export function LifeSplitProductsSectionPanel({
       title="Životní pojištění"
       icon={HeartPulse}
       tone="life"
-      count={contracts.length}
+      count={items.length}
       amount={totalPayout}
       badge={uncertaintyCount > 0 ? uncertaintyCountLabel(uncertaintyCount) : undefined}
       expanded={expanded}
       onToggle={() => setExpanded(value => !value)}
     >
-      <StatementContractList items={items} />
+      <StatementContractList items={items} showFilters={!inBrowser} />
     </StatementSection>
   );
 }

@@ -30,7 +30,7 @@ export function StatementPreviewHeader({
         <p className={styles.period}><CalendarDays aria-hidden="true" /><span>Období {period ?? "neuvedeno"}</span></p>
         <span className={styles.statementStatus} data-saved={saved}>
           {saved ? <CheckCircle2 size={12} aria-hidden="true" /> : <Eye size={12} aria-hidden="true" />}
-          {saved ? "Zpracovaný výpis" : "Náhled · bez zápisu provizí"}
+          {saved ? "Zpracovaný výpis" : "Připraveno ke kontrole"}
         </span>
       </div>
     </div>

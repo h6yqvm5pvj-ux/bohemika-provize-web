@@ -4,6 +4,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/mailbox-retention",
+      "schedule": "15 2 * * *"
+    },
+    {
       "path": "/api/cron/contract-lifecycle",
       "schedule": "30 1 * * *"
     },

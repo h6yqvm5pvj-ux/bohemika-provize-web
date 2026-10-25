@@ -93,6 +93,16 @@ describe("server cashflow view preserves the displayed calculation", () => {
     expect(months[0].items[0].payoutStatus).toBe("paid");
   });
 
+  it("includes subscription receipts in the combined payout while keeping unpaid subscriptions in the forecast", () => {
+    const receipt = item({ id: "subscription-received", productKey: "subscription", isSubscriptionPayment: true, amount: 300, contractNumber: null, payoutStatus: "paid" });
+    const forecast = { ...receipt, id: "subscription-forecast", amount: 500, payoutStatus: "predicted" as const };
+    const [month] = buildCashflowView([item(), receipt, forecast], [statement()], options, asOf);
+    expect(month).toMatchObject({ total: 1050, statementPayoutTotal: 750, predictedTotal: 1800, totalSource: "paid" });
+    const subscriptions = month.items.filter(item => item.isSubscriptionPayment);
+    expect(subscriptions).toHaveLength(2);
+    expect(subscriptions).toEqual(expect.arrayContaining([receipt, forecast]));
+  });
+
   it.each<Partial<CashflowViewOptions>>([
     { scopeFilter: "own" },
     { scopeFilter: "team" },

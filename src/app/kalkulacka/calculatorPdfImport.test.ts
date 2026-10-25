@@ -6,6 +6,8 @@ import {
   BULK_PDF_PRODUCTS,
   hasAutomatedPdfImport,
   buildPdfImportIssueMessage,
+  buildPdfParserReport,
+  missingPdfImportFields,
   resolveDetectedPdfProduct,
 } from "./calculatorPdfImport";
 
@@ -84,5 +86,35 @@ describe("PDF import missing amounts", () => {
   it("still warns about a contribution actually read as zero", () => {
     const message = buildPdfImportIssueMessage({ product: "conseqzenit", parsed: { ...parsed, amount: 0 } });
     expect(message).toContain("Částka: není kladná");
+  });
+});
+
+
+describe("native parser failure reporting", () => {
+  const complete = {
+    clientName: "Jana Testovací", contractNumber: "1400000001", contractSignedDate: "2026-09-01",
+    policyStartDate: "2026-10-01", frequency: "monthly", amount: 704,
+    pdfNativeTextReadable: true, pdfNeedsOcr: false,
+  };
+  it("reports precisely missing required fields without including their values", () => {
+    const report = buildPdfParserReport({ product: "flexi", parsed: { ...complete, amount: null, clientName: "" }, ocrAttempted: false });
+    expect(report?.missingFields).toEqual(["amount", "clientName"]);
+    expect(JSON.stringify(report)).not.toContain("1400000001");
+    expect(JSON.stringify(report)).not.toContain("2026-09-01");
+  });
+  it.each([
+    { ocrAttempted: true }, { ocrTextUsed: true }, { pdfNeedsOcr: true },
+    { pdfNativeTextReadable: false }, { pdfNativeTextReadable: undefined }, { isEndorsement: true },
+  ])("never reports OCR, scans, unreadable text or intentionally partial amendments: %j", overrides => {
+    expect(buildPdfParserReport({ product: "flexi", parsed: { ...complete, amount: null, ...overrides }, ocrAttempted: overrides.ocrAttempted ?? false })).toBeNull();
+  });
+  it("ignores warnings without missing fields and unsupported manual products", () => {
+    expect(buildPdfParserReport({ product: "flexi", parsed: { ...complete, amount: 0, pdfImportWarnings: ["Unusual value"] }, ocrAttempted: false })).toBeNull();
+    expect(buildPdfParserReport({ product: "pillowmajetek", parsed: { ...complete, amount: null }, ocrAttempted: false })).toBeNull();
+  });
+  it("shares the required-field definition with the existing import warning", () => {
+    expect(missingPdfImportFields({ product: "conseqzenit", parsed: complete })).toEqual(["policyEndDate"]);
+    expect(buildPdfImportIssueMessage({ product: "conseqzenit", parsed: complete })).toContain("datum konce");
+    expect(missingPdfImportFields({ product: "flexi", parsed: complete })).toEqual([]);
   });
 });

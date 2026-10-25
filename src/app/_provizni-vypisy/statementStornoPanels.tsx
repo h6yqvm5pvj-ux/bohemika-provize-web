@@ -4,6 +4,10 @@ import { useState } from "react";
 import { AlertTriangle, CalendarX, CheckCircle2, ChevronDown } from "lucide-react";
 
 import { StatementSection } from "./StatementSection";
+import { StatementContractCard } from "./StatementContractCard";
+import { StatementContractList } from "./StatementContractList";
+import detailStyles from "./statementContractDetail.module.css";
+import workspaceStyles from "./statementWorkspace.module.css";
 
 import { toDate } from "@/app/lib/formatters";
 import {
@@ -283,6 +287,7 @@ export function StornoContractsSectionPanel({
     >
       {expanded && (
       <div className="space-y-5">
+        <p className={workspaceStyles.sectionHint}>Storno znamená vrácení dříve vyplacené provize. V detailu zkontroluj částku i stav smlouvy v systému.</p>
           {stornoSections.map((section) => {
             const SectionIcon = section.icon;
             const sectionTotal = stornoSectionTotal(section.entries);
@@ -326,24 +331,26 @@ export function StornoContractsSectionPanel({
                   </p>
                 )}
                 {section.expanded && (
-                  <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200">
-                    {section.entries.map(({ group, groupIndex, match, systemContract }) => (
-                      <StornoContractGroupCard
-                        key={`storno-contract-group-${group.key}-${groupIndex}`}
-                        statement={statement}
-                        statementId={statementId}
-                        group={group}
-                        groupIndex={groupIndex}
-                        match={match}
-                        systemContract={systemContract}
-                        currentUserEmail={currentUserEmail}
-                        statusRuleByCode={statusRuleByCode}
-                        markingControls={markingControls}
-                        onRequestSystemStorno={onRequestSystemStorno}
-                        presentation={presentation}
-                      />
-                    ))}
-                  </div>
+                  <StatementContractList items={section.entries.map(({ group, groupIndex, match, systemContract }) => ({
+                    key: `storno-${group.key}-${groupIndex}`,
+                    searchText: `${group.client} ${group.contractNumber} ${systemContract?.clientName ?? ""} ${group.rows.map(row => resolveStatementProduct(row.product).label).join(" ")}`,
+                    amount: group.totalAmount,
+                    issueCount: !systemContract || !systemContractIsStorno(systemContract) ? 1 : 0,
+                    unpaired: !systemContract,
+                    render: () => <StornoContractGroupCard
+                      statement={statement}
+                      statementId={statementId}
+                      group={group}
+                      groupIndex={groupIndex}
+                      match={match}
+                      systemContract={systemContract}
+                      currentUserEmail={currentUserEmail}
+                      statusRuleByCode={statusRuleByCode}
+                      markingControls={markingControls}
+                      onRequestSystemStorno={onRequestSystemStorno}
+                      presentation={presentation}
+                    />,
+                  }))} />
                 )}
               </section>
             );
@@ -379,7 +386,6 @@ function StornoContractGroupCard({
   onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
   presentation: SystemMatchPresentation;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const row = group.rows[0] ?? null;
   const stornoInference = fullAutoStornoInferenceForGroup({
     statement,
@@ -473,45 +479,16 @@ function StornoContractGroupCard({
     : null;
 
   return (
-    <article className="bg-white text-sm">
-      <button
-        type="button"
-        onClick={() => setDetailsOpen((value) => !value)}
-        className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
-        aria-expanded={detailsOpen}
-      >
-        <div className="min-w-0">
-          <div className="truncate font-bold text-slate-950">
-            Smlouva {group.contractNumber || "bez čísla"}
-          </div>
-          <div className="mt-0.5 truncate font-semibold text-slate-800">{displayClient}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
-            <span>{productLabel}</span>
-            {group.rows.length > 0 && <span>· {rowItemsLabel}</span>}
-            {group.payments.length > 0 && <span>· {paymentItemsLabel}</span>}
-          </div>
-          <div className="mt-2">
-            {systemContract ? (
-              <StornoSystemStatusBadge contract={systemContract} />
-            ) : (
-              <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900">
-                Nenalezeno v systému
-              </span>
-            )}
-          </div>
-        </div>
-        <span className="whitespace-nowrap text-right text-base font-black text-rose-700">
-          {formatMoney(group.totalAmount)} Kč
-        </span>
-        <ChevronDown
-          className={`h-4 w-4 text-slate-400 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
-          strokeWidth={2.2}
-          aria-hidden="true"
-        />
-      </button>
-
-      {detailsOpen && (
-        <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 px-4 py-4">
+    <StatementContractCard
+      client={displayClient}
+      contractNumber={group.contractNumber ?? ""}
+      products={<span className={detailStyles.product}>{productLabel}</span>}
+      commission={group.totalAmount}
+      reviewSummary={{ label: systemContract ? systemContractIsStorno(systemContract) ? "Storno v systému" : "Prověřit stav storna" : "Bez propojení", tone: systemContract ? "warn" : "info" }}
+      badges={systemContract ? <StornoSystemStatusBadge contract={systemContract} /> : <span className={detailStyles.badge} data-tone="info">Bez propojení</span>}
+      marking={markedItem && <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />}
+    >
+        <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <BohemkaContractDetailLink contract={systemContract} compact />
             <ContractDetailLink href={row?.detailUrl} compact />
@@ -522,7 +499,6 @@ function StornoContractGroupCard({
             )}
           </div>
 
-          {markedItem && <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />}
 
           {statusCodes.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -602,7 +578,6 @@ function StornoContractGroupCard({
           />
           <StornoSystemActionPanel target={actionTarget} onRequestStorno={onRequestSystemStorno} />
         </div>
-      )}
-    </article>
+    </StatementContractCard>
   );
 }

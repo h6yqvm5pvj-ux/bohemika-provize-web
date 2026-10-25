@@ -8,6 +8,7 @@ import {
   Bell,
   BellOff,
   CircleAlert,
+  CircleHelp,
   Download,
   Eye,
   FileText,
@@ -39,6 +40,7 @@ import {
 import type { MailboxAttachment, MailboxAttachmentContent, MailboxItem } from "./postaTypes";
 import styles from "./mailboxChat.module.css";
 import { canGroupMailboxMessages } from "./postaMessageGrouping";
+import { isMailboxSupportConversation, isMailboxSupportEmail, MAILBOX_SUPPORT_RECIPIENT } from "./mailboxSupport";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
 import { PdfDocumentPreview } from "@/components/PdfDocumentPreview";
@@ -95,7 +97,7 @@ const counterpartForMessage = (item: MailboxItem) => {
   const storedName = metadataText(item, sent ? "recipientName" : "senderName");
   return {
     email,
-    name: storedName || (email ? nameFromEmail(email) : "Uživatel"),
+    name: isMailboxSupportEmail(email) ? MAILBOX_SUPPORT_RECIPIENT.name : storedName || (email ? nameFromEmail(email) : "Uživatel"),
     profileAvatar: normalizeProfileAvatar(
       item.metadata?.[sent ? "recipientAvatar" : "senderAvatar"]
     ),
@@ -536,6 +538,8 @@ export function MailboxChatThread({
           <span className={`relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-inner ring-1 ring-slate-200 ${latest.metadata?.groupConversation === true ? "bg-violet-100 text-violet-700" : "bg-white"}`}>
             {latest.metadata?.groupConversation === true ? (
               <UsersRound className="h-5 w-5" />
+            ) : isMailboxSupportConversation(latest) ? (
+              <CircleHelp className="h-6 w-6 text-violet-700" aria-hidden="true" />
             ) : (
               <>
                 <ProfileAvatar

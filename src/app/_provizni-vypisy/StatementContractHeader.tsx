@@ -7,7 +7,7 @@ import styles from "./statementContractDetail.module.css";
 
 export function StatementContractHeader({
   client, contractNumber, products, badges, commission, reserve,
-  expanded, onToggle, verified = false, contentId,
+  expanded, onToggle, verified = false, contentId, reviewSummary,
 }: {
   client: string;
   contractNumber: string;
@@ -19,15 +19,16 @@ export function StatementContractHeader({
   onToggle: () => void;
   verified?: boolean;
   contentId?: string;
+  reviewSummary?: { label: string; tone: "warn" | "info" | "error" };
 }) {
   return (
-    <button type="button" className={styles.cardToggle} data-compact={!expanded} onClick={onToggle} aria-expanded={expanded} aria-controls={contentId}>
+    <button type="button" className={styles.cardToggle} data-compact="true" onClick={onToggle} aria-expanded={expanded} aria-controls={contentId}>
       <span className={styles.identity}>
         <span className={styles.contractNumber}>Smlouva {contractNumber || "—"}</span>
         <span className={styles.clientName}>{client}</span>
       </span>
       <span className={styles.products}>{products}</span>
-      <span className={styles.amounts}>
+      <span className={styles.amounts} data-negative={commission < 0}>
         <span className={styles.amount}>
           <span>Provize celkem</span>
           <strong>{formatMoney(commission)} <small>Kč</small></strong>
@@ -39,11 +40,13 @@ export function StatementContractHeader({
           </span>
         )}
       </span>
-      <span className={styles.chevron}><ChevronDown size={17} aria-hidden="true" /></span>
+      <span className={styles.chevron}><span>{expanded ? "Sbalit" : "Detail"}</span><ChevronDown size={15} aria-hidden="true" /></span>
       <span className={styles.badges} data-verified={verified}>
         {!expanded && verified
           ? <span className={styles.badge} data-tone="ok"><CheckCircle2 size={13} aria-hidden="true" />Vše sedí</span>
-          : badges}
+          : !expanded && reviewSummary
+            ? <span className={styles.badge} data-tone={reviewSummary.tone}>{reviewSummary.label}</span>
+            : badges}
       </span>
     </button>
   );

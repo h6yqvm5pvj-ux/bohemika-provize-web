@@ -88,12 +88,15 @@ function document(path: string) {
     },
   };
 }
-function collection(path: string) {
+function collection(path: string, filters: Array<[string, unknown]> = [], limit = Infinity) {
   return {
     doc: (id: string) => document(`${path}/${id}`),
+    where: (field: string, _operator: string, value: unknown) => collection(path, [...filters, [field, value]], limit),
+    limit: (value: number) => collection(path, filters, value),
     get: async () => {
       reads.push(path);
-      return { docs: [...records.keys()].filter(key => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes("/")).map(snapshot) };
+      return { docs: [...records.keys()].filter(key => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes("/"))
+        .filter(key => filters.every(([field, value]) => records.get(key)?.[field] === value)).slice(0, limit).map(snapshot) };
     },
   };
 }
@@ -129,6 +132,87 @@ beforeEach(() => {
   });
 });
 
+describe("normal statement import author isolation", () => {
+  const ownStatementPath = `usersPrivate/${owner}/commissionStatements/security-statement`;
+  const payoutRows = () => `<div id="provize"><table>${Array.from({ length: 401 }, (_, index) => {
+    const cells = [index + 1, contractNumber, "", "", "Synthetic client", "", "", `ZZ${index}`, "", "", "", "", 1, 0];
+    return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+  }).join("")}</table></div>`;
+  const invoke = (mode: string, html: string) => {
+    records.set(ownStatementPath, { html });
+    return POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify(mode === "import" ? { html } : {
+        action: "reprocess-saved-statement", statementId: "security-statement",
+      }),
+    }));
+  };
+
+  beforeEach(() => {
+    setContext({ email: owner, actorEmail: owner });
+    records.set("contractRefs/security-reference", {
+      ownerEmail: owner, entryId: "entry-1", entryPath, contractNumberNormalized: contractNumber,
+    });
+  });
+
+  it.each(["import", "reprocess"])("normal %s preserves foreign, manual and unattributed payouts under retention pressure", async mode => {
+    const protectedRecords = [
+      { key: "foreign", statementId: "private-statement", writtenBy: "manager@example.test", amount: 55, writtenAtMs: 1 },
+      { key: "manual", writtenBy: owner, amount: 70 },
+      { key: "unattributed", statementId: "legacy", amount: 80 },
+      { statementId: "malformed-foreign", writtenBy: "manager@example.test", amount: 90 },
+    ];
+    records.get(entryPath)!.commissionPayouts = protectedRecords;
+    const response = await invoke(mode, payoutRows());
+    expect(response.status).toBe(200);
+    const payouts = records.get(entryPath)!.commissionPayouts as unknown[];
+    expect(payouts.slice(0, protectedRecords.length)).toEqual(protectedRecords);
+    expect(payouts).toHaveLength(400);
+    expect(payouts.slice(protectedRecords.length)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ writtenBy: owner, amount: 1 }),
+    ]));
+  });
+
+  it.each(["import", "reprocess"])("normal %s rejects full protected capacity without changing the contract", async mode => {
+    const protectedRecords = Array.from({ length: 400 }, (_, index) => ({
+      key: `foreign-${index}`, statementId: "private-statement", writtenBy: "manager@example.test", amount: index + 1,
+    }));
+    records.get(entryPath)!.commissionPayouts = protectedRecords;
+    const before = structuredClone(records.get(entryPath));
+    const response = await invoke(mode, payoutRows());
+    expect(response.status).toBe(409);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).not.toContain(entryPath);
+  });
+
+  it("rejects an excessive HTML matching budget before persisting an import", async () => {
+    const contracts = Array.from({ length: 1_000 }, (_, index) => `smlouvy ${100000 + index} `).join("");
+    const codes = Array.from({ length: 12 }, (_, index) => `A${101 + index} B${101 + index} `).join("");
+    const html = `<div id='ostatni_platby'><tr><td>${contracts}${codes}</td></tr></div>`;
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ html }),
+    }));
+    expect(response.status).toBe(413);
+    expect(writes).toEqual([]);
+  });
+
+  it("rejects unsafe stored HTML before reprocessing can change a contract", async () => {
+    const before = structuredClone(records.get(entryPath));
+    const response = await invoke("reprocess", `<div id="provize">${"<tr>".repeat(1000)}</div>`);
+    expect(response.status).toBe(400);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).toEqual([]);
+  });
+
+  it("rejects malformed summary tables before persisting a source that readers cannot parse", async () => {
+    const html = '<table><tr><td>Celkem</tr></table><div id="zadrzny_fond"></div>';
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ html }),
+    }));
+    expect(response.status).toBe(400);
+    expect(writes).toEqual([]);
+  });
+});
+
 async function expectRebuilt(actorEmail: string) {
   const response = await POST(request());
   expect(response.status).toBe(200);
@@ -160,6 +244,22 @@ function setAutoStatement(code = "A1", base = 6000, year = 2026) {
 }
 
 describe("rebuilding a contract from saved statements", () => {
+  it("rejects unsafe stored HTML before clearing the caller's existing records", async () => {
+    setContext({ email: owner, actorEmail: owner });
+    records.delete(statementPath);
+    records.set(`usersPrivate/${owner}/commissionStatements/invalid-source`, {
+      html: `<div id="provize">${"<tr>".repeat(1000)}</div>`,
+    });
+    records.get(entryPath)!.commissionPayouts = [
+      { key: "own", statementId: "old", writtenBy: owner, amount: 100 },
+    ];
+    const before = structuredClone(records.get(entryPath));
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).toEqual([]);
+  });
+
   it("rebuilds legacy CPP Auto premium changes and compares each renewal with its statement base", async () => {
     setContext({ teamEmails: [owner] });
     records.set(entryPath, {

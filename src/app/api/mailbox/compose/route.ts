@@ -1,5 +1,5 @@
 import { sealTip } from "@/lib/server/tipEncryption";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { FieldValue, type DocumentReference, type DocumentSnapshot } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { NextResponse, type NextRequest } from "next/server";
@@ -16,6 +16,8 @@ import {
   encryptMailboxJson,
   type MailboxEncryptionEnvelope,
 } from "@/lib/server/mailboxEncryption";
+import { MAILBOX_SUPPORT_RECIPIENT } from "@/app/posta/mailboxSupport";
+import { parsePdfParserReport, pdfParserReportMessage, PDF_PARSER_REPORT_FILE_NAME, PDF_PARSER_REPORT_MAX_BYTES, type PdfParserReport } from "@/app/lib/pdfParserReport";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
@@ -509,10 +511,11 @@ type ComposeReplayRequest = {
   groupName?: string;
   createGroupOnly?: boolean;
   isTipsterTip?: boolean;
+  isParserReport?: boolean;
 };
 
-// A retry may return only the actor's original sent copy, never a received
-// message or another delivery mode that happens to use the same document ID.
+// A retry may return only the actor's original delivery mode. The support
+// owner's self diagnostic is the sole received-copy exception; it is also theirs.
 async function loadComposeReplay(request: ComposeReplayRequest) {
   const senderMailboxId = request.senderMailboxId || request.clientRequestId;
   if (!senderMailboxId) return null;
@@ -534,7 +537,8 @@ async function loadComposeReplay(request: ComposeReplayRequest) {
   const expectedRecipients = [...recipientEmails].sort();
   if (
     data.type !== "direct_message" ||
-    metadata.mailboxDirection !== "sent" ||
+    metadata.mailboxDirection !== (request.isParserReport && request.senderEmail === request.recipients[0]?.email ? "received" : "sent") ||
+    (metadata.parserReport != null) !== (request.isParserReport === true) ||
     normalizeEmail(metadata.senderEmail) !== request.senderEmail ||
     (metadata.groupConversation === true) !== request.groupConversation ||
     (metadata.tipsterTip === true) !== (request.isTipsterTip === true) ||
@@ -959,9 +963,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let parserReport: PdfParserReport | null = null;
+  if (form.has("parserReportJson")) {
+    try {
+      const raw = form.get("parserReportJson");
+      if (typeof raw === "string" && raw.length <= 2000) parserReport = parsePdfParserReport(JSON.parse(raw));
+    } catch { /* Only allow structured diagnostic codes, never arbitrary payloads. */ }
+    if (!parserReport) {
+      return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatné hlášení parseru." }, { status: 400 }), ctx);
+    }
+    if (ctx.isImpersonating) {
+      return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Hlášení odešli ze svého účtu." }, { status: 403 }), ctx);
+    }
+  }
+
   let recipientEmails: string[];
   try {
-    recipientEmails = parseRecipientEmails(form);
+    recipientEmails = parserReport ? [MAILBOX_SUPPORT_RECIPIENT.email] : parseRecipientEmails(form);
   } catch (error) {
     return withRateLimitHeaders(
       NextResponse.json(
@@ -972,12 +990,13 @@ export async function POST(req: NextRequest) {
     );
   }
   const recipientEmail = recipientEmails[0] ?? "";
-  const requestedConversationId = normalizeText(form.get("conversationId"));
+  const requestedConversationId = parserReport ? "" : normalizeText(form.get("conversationId"));
   const requestedGroupName = normalizeText(form.get("groupName")).slice(0, GROUP_NAME_MAX_LEN);
-  const subject = normalizeText(form.get("subject")).slice(0, SUBJECT_MAX_LEN);
-  const messageText = normalizeText(form.get("text")).slice(0, MESSAGE_MAX_LEN);
-  const createGroupOnly = normalizeText(form.get("createGroupOnly")) === "true";
-  const clientRequestId = normalizeText(form.get("clientRequestId"));
+  const reportMessage = parserReport ? pdfParserReportMessage(parserReport) : null;
+  const subject = reportMessage?.subject ?? normalizeText(form.get("subject")).slice(0, SUBJECT_MAX_LEN);
+  const messageText = reportMessage?.text ?? normalizeText(form.get("text")).slice(0, MESSAGE_MAX_LEN);
+  const createGroupOnly = !parserReport && normalizeText(form.get("createGroupOnly")) === "true";
+  let clientRequestId = parserReport ? "" : normalizeText(form.get("clientRequestId"));
   if (clientRequestId && !CLIENT_REQUEST_ID_RE.test(clientRequestId)) {
     return withRateLimitHeaders(
       NextResponse.json({ ok: false, error: "Neplatný identifikátor požadavku." }, { status: 400 }),
@@ -986,7 +1005,7 @@ export async function POST(req: NextRequest) {
   }
   let clientMetadata: Record<string, unknown>;
   try {
-    clientMetadata = parseClientMetadata(form.get("metadataJson"));
+    clientMetadata = parserReport ? { parserReport } : parseClientMetadata(form.get("metadataJson"));
   } catch (error) {
     return withRateLimitHeaders(
       NextResponse.json(
@@ -1030,7 +1049,7 @@ export async function POST(req: NextRequest) {
       ctx
     );
   }
-  if (recipientEmails.includes(ctx.email)) {
+  if (!parserReport && recipientEmails.includes(ctx.email)) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Zprávu není možné poslat sobě." },
@@ -1075,6 +1094,9 @@ export async function POST(req: NextRequest) {
 
   const filesRaw = form.getAll("files");
   const files = filesRaw.filter((entry): entry is File => entry instanceof File);
+  if (parserReport && (files.length !== 1 || filesRaw.length !== 1 || files[0].size > PDF_PARSER_REPORT_MAX_BYTES)) {
+    return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Hlášení musí obsahovat právě jedno PDF do 20 MB." }, { status: 400 }), ctx);
+  }
   if (files.length > FILES_MAX_COUNT) {
     return withRateLimitHeaders(
       NextResponse.json(
@@ -1125,7 +1147,8 @@ export async function POST(req: NextRequest) {
       );
     }
     totalBytes += file.size;
-    const prepared = await prepareSafeUserAttachmentFile(file);
+    const prepared = await prepareSafeUserAttachmentFile(parserReport
+      ? new File([file], PDF_PARSER_REPORT_FILE_NAME, { type: "application/pdf" }) : file);
     if (!prepared.ok) {
       return withRateLimitHeaders(
         NextResponse.json(
@@ -1135,7 +1158,17 @@ export async function POST(req: NextRequest) {
         ctx
       );
     }
+    if (parserReport && prepared.file.contentType !== "application/pdf") {
+      return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Přílohou hlášení musí být PDF." }, { status: 400 }), ctx);
+    }
     preparedFiles.push(prepared.file);
+  }
+  if (parserReport) {
+    // Deduplicate across reloads and concurrent imports, scoped to the verified sender.
+    // Only a new parser version permits another report for this PDF/product/field set.
+    clientRequestId = `parser_${createHash("sha256")
+      .update(JSON.stringify([ctx.email, parserReport]))
+      .update(preparedFiles[0].bytes).digest("hex")}`;
   }
   if (totalBytes > FILE_TOTAL_MAX_BYTES) {
     return withRateLimitHeaders(
@@ -1222,7 +1255,7 @@ export async function POST(req: NextRequest) {
     const senderName = await resolveSenderName(ctx.email, ctx.uid);
     replayRequest = {
       senderEmail: ctx.email, recipients: [recipient], clientRequestId,
-      groupConversation: false, isTipsterTip: clientMetadata.tipsterTip === true,
+      groupConversation: false, isTipsterTip: clientMetadata.tipsterTip === true, isParserReport: parserReport != null,
     };
     const replay = await loadComposeReplay(replayRequest);
     if (replay) return withRateLimitHeaders(NextResponse.json(replay), ctx);
@@ -1232,7 +1265,10 @@ export async function POST(req: NextRequest) {
     const isTipsterTip = clientMetadata.tipsterTip === true;
     const conversationId = isTipsterTip
       ? null
-      : mailboxConversationId(ctx.email, recipient.email);
+      : parserReport && ctx.email === recipient.email
+        // Private diagnostic notebook for the support owner, not an ordinary self DM.
+        ? `dm_parser_${createHash("sha256").update(ctx.email).digest("base64url").slice(0, 32)}`
+        : mailboxConversationId(ctx.email, recipient.email);
     const encryptedContent = encryptMailboxJson(
           { subject, messageText },
           `message:${messageId}`
@@ -1327,7 +1363,8 @@ export async function POST(req: NextRequest) {
         pairedMailboxId: senderRef.id,
       },
     });
-    batch.create(senderRef, {
+    // The support owner's own diagnostic needs a single received copy.
+    if (senderRef.path !== recipientRef.path) batch.create(senderRef, {
       recipientEmail: ctx.email,
       type: "direct_message",
       title: "Šifrovaná zpráva",
@@ -1470,13 +1507,14 @@ export async function POST(req: NextRequest) {
         ctx
       );
     }
-    console.error("POST /api/mailbox/compose failed", error);
+    if (parserReport) console.error("PDF parser report delivery failed.");
+    else console.error("POST /api/mailbox/compose failed", error);
     return withRateLimitHeaders(
       NextResponse.json(
         {
           ok: false,
           error:
-            error instanceof Error && error.message
+            !parserReport && error instanceof Error && error.message
               ? error.message
               : "Zprávu se nepodařilo odeslat.",
         },

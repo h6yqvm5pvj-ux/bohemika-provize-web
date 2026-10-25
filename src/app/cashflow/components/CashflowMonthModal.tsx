@@ -14,7 +14,7 @@ import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } fro
 import { CashflowMonthSections } from "./CashflowMonthSections";
 import { CashflowCommissionCard } from "./CashflowCommissionCard";
 import type { CashflowDisplayGroup } from "../commissionPresentation";
-import { formatCashflowGroupCount } from "../cashflowLabels";
+import { formatCashflowGroupCount, paidSubscriptionAmount } from "../cashflowLabels";
 
 type CashflowMonthModalProps = {
   month: MonthGroup | null;
@@ -123,6 +123,7 @@ export function CashflowMonthModal({
     month.items.length > 0 &&
     month.items.every((item) => item.isSubscriptionPayment === true);
   const isPaidMonth = month.totalSource === "paid";
+  const subscriptionReceipts = paidSubscriptionAmount(month);
   const predictedTotal = month.predictedTotal ?? month.total;
   const payoutDifference = month.total - predictedTotal;
   const stornoFund = calculateStornoFund(month.items);
@@ -228,11 +229,15 @@ export function CashflowMonthModal({
                       <>
                         <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
                           <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
-                            Vyplaceno
+                            {subscriptionReceipts !== 0 ? "Přijato celkem" : "Vyplaceno"}
                           </div>
                           <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
                             {formatMoney(month.total)}
                           </div>
+                          {subscriptionReceipts !== 0 && <div className="mt-2 space-y-0.5 text-[9px] text-emerald-700 sm:text-xs">
+                            <p>Výpis: {formatMoney(month.statementPayoutTotal ?? 0)}</p>
+                            <p>Předplatné: {formatMoney(subscriptionReceipts)}</p>
+                          </div>}
                         </div>
 
                         <div className="min-w-0 rounded-[13px] border border-[#d7c3ed] bg-[#f4ecff] px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">

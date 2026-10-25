@@ -9,7 +9,8 @@ import * as helpers from "./helpers";
 import { formatCashflowItemCount } from "./cashflowLabels";
 import { cashflowCanonicalJson } from "./shadowProtocol";
 import { createCashflowModel, type CashflowDataset, type CashflowModel } from "./cashflowModel";
-import type { CashflowItem } from "./types";
+import type { CashflowItem, CashflowCommissionStatementSummary } from "./types";
+import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "./subscriptionCashflow";
 import type { CashflowViewOptions } from "./buildCashflowView";
 
 const asOf = new Date(2026, 8, 12, 12);
@@ -121,6 +122,27 @@ describe("cashflow model with bounded last-stage caches", () => {
       model.dispose();
     }
     expect(digest(originalModel.view(defaultOptions))).toBe(originalHash);
+  });
+
+  it("keeps combined overview and month detail aligned after adding subscription receipts to a statement", () => {
+    const input = dataset();
+    const monthStatement: CashflowCommissionStatementSummary = { ...input.statements[0], payoutMonthKey: "2026-9", payoutTotal: 1000 };
+    input.snapshot = {
+      email: SUBSCRIPTION_CASHFLOW_OWNER_EMAIL, myPosition: null, myCommissionMode: null, hasAnyTeam: false,
+      ownEntries: [], teamEntriesRaw: [], tipPayouts: [],
+      subscriptionPayments: [{ id: "synthetic-receipt", userEmail: "subscriber@example.test", plan: "monthly", amountCzk: 350,
+        periodFrom: "2026-09-01", periodUntil: "2026-11-30", paymentDateMs: new Date(2026, 8, 1, 12).getTime() }],
+    };
+    input.statements = [monthStatement];
+    const model = createCashflowModel(input);
+    const overview = model.view(defaultOptions);
+    const month = overview.months.find(month => month.key === "2026-9");
+    expect(month).toMatchObject({ total: 1350, statementPayoutTotal: 1000, totalSource: "paid", itemCountLabel: "1 platba" });
+    expect(model.month("2026-9")?.total).toBe(month?.total);
+    expect(model.month("2026-9")?.items).toHaveLength(1);
+    expect(overview.months.find(month => month.key === "2026-12")).toMatchObject({ total: 350, totalSource: "predicted", statementPayoutTotal: null });
+    expect(model.view({ ...defaultOptions, productFilter: "subscription" }).months.find(month => month.key === "2026-9")).toMatchObject({ total: 350, totalSource: "predicted" });
+    model.dispose();
   });
 
   it("keeps each account model separate and releases its current view on dispose", () => {

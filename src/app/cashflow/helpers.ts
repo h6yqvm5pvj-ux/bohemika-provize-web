@@ -1286,9 +1286,16 @@ export function applyStatementPayoutTotalsToMonths({
     const payoutTotal = statementPayoutTotal(statementsByMonthKey[month.key]);
     if (payoutTotal == null) return month;
 
+    // Commission statements settle commissions only. Subscription receipts are
+    // independent income; forecasts must not be presented as received money.
+    const subscriptionReceipts = month.items.reduce((sum, item) =>
+      (item.isSubscriptionPayment === true || item.productKey === "subscription") &&
+      item.payoutStatus === "paid" && Number.isFinite(item.amount)
+        ? sum + item.amount : sum, 0);
+
     return {
       ...month,
-      total: payoutTotal,
+      total: Math.round((payoutTotal + subscriptionReceipts) * 100) / 100,
       totalSource: "paid",
       statementPayoutTotal: payoutTotal,
     };

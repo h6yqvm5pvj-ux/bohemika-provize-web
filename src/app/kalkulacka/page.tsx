@@ -1,6 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
 
+import { deliverPdfParserReport } from "./pdfParserReportDelivery";
 import { openPreviewWindow } from "@/lib/openPreviewWindow";
 import dynamic from "next/dynamic";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
@@ -190,6 +191,7 @@ import {
 import {
   BULK_PDF_PRODUCTS,
   buildPdfImportIssueMessage,
+  buildPdfParserReport,
   detectProductFromPdfLazy,
   failedPdfImportMessage,
   hasAutomatedPdfImport,
@@ -825,7 +827,14 @@ export default function CalculatorPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pdfImportRunIdRef = useRef(0);
   const pdfImportAbortRef = useRef<AbortController | null>(null);
+  const pdfReportAbortRef = useRef<AbortController | null>(null);
   useEffect(() => () => { pdfImportAbortRef.current?.abort(); }, []);
+  useEffect(() => {
+    // A new import must not cancel an already queued report for the previous PDF.
+    const controller = new AbortController();
+    pdfReportAbortRef.current = controller;
+    return () => controller.abort();
+  }, [user?.uid]);
   const statementPrefillAppliedRef = useRef(false);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
@@ -835,6 +844,8 @@ export default function CalculatorPage() {
   const [pdfImporting, setPdfImporting] = useState(false);
   const [pdfImportStatus, setPdfImportStatus] = useState<string | null>(null);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [pdfParserReportStatus, setPdfParserReportStatus] = useState<string | null>(null);
+  const pdfParserReportCounts = useRef({ pending: 0, sent: 0, failed: 0 });
   const [autoBulkImporting, setAutoBulkImporting] = useState(false);
   const [autoBulkImportStatus, setAutoBulkImportStatus] =
     useState<string | null>(null);
@@ -3114,6 +3125,28 @@ export default function CalculatorPage() {
     setPdfImportStatus(null);
   };
 
+  const notifyPdfParserFailure = (file: File, product: Product, parsed: ParsedContractPdf,
+    ocrAttempted: boolean, signal: AbortSignal, isCurrent: () => boolean) => {
+    if (!user || impersonatedUserEmail || signal.aborted) return;
+    const report = buildPdfParserReport({ product, parsed, ocrAttempted });
+    if (!report) return;
+    const counts = pdfParserReportCounts.current;
+    counts.pending += 1;
+    const updateStatus = () => setPdfParserReportStatus(counts.failed > 0
+      ? `Podpoře se nepodařilo předat ${counts.failed} hlášení. Údaje můžeš dál doplnit ručně.${counts.pending ? " Ostatní hlášení ještě odesílám." : ""}`
+      : counts.pending > 0
+        ? "Problém s načtením a PDF předávám Podpoře…"
+        : counts.sent > 0 ? "Neúplné načtení a původní PDF byly předány do chatu Podpora." : null);
+    updateStatus();
+    void deliverPdfParserReport(user, file, report, pdfReportAbortRef.current?.signal ?? signal).then(status => {
+      if (!isCurrent()) return;
+      counts.pending -= 1;
+      if (status === "sent") counts.sent += 1;
+      if (status === "failed") counts.failed += 1;
+      updateStatus();
+    });
+  };
+
   const handlePdfImport = async (file: File | null) => {
     if (!file) return;
     pdfImportAbortRef.current?.abort();
@@ -3125,6 +3158,8 @@ export default function CalculatorPage() {
     let allowPdfImportProgress = true;
     let ocrActive = false;
 
+    pdfParserReportCounts.current = { pending: 0, sent: 0, failed: 0 };
+    setPdfParserReportStatus(null);
     setPdfImporting(true);
     setPensionTargetAge(null);
     setPdfImportError(null);
@@ -3972,6 +4007,7 @@ export default function CalculatorPage() {
             : `${ocrPrefix}${productDetectionPrefix}V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
       );
       setPdfImportError(importIssueMessage);
+      notifyPdfParserFailure(file, importProduct, parsed, ocrActive, importController.signal, isCurrentPdfImport);
     } catch (err) {
       console.error("PDF import selhal", err);
       if (!isCurrentPdfImport()) return;
@@ -4364,6 +4400,8 @@ export default function CalculatorPage() {
     pdfImportAbortRef.current?.abort();
     const batchController = new AbortController();
     pdfImportAbortRef.current = batchController;
+    pdfParserReportCounts.current = { pending: 0, sent: 0, failed: 0 };
+    setPdfParserReportStatus(null);
     setAutoBulkImportRows(rows);
     setAutoBulkImporting(true);
     setAutoBulkImportStatus(`Zpracovávám 0/${files.length}`);
@@ -4490,6 +4528,9 @@ export default function CalculatorPage() {
             );
             continue;
           }
+
+          notifyPdfParserFailure(file, importProduct, parsed, batchOcrActive, batchController.signal,
+            () => !batchController.signal.aborted);
 
           const replacementNumber = parsedPdfTextValue(
             parsed,
@@ -5494,6 +5535,9 @@ export default function CalculatorPage() {
     setStatementClientNamePrefillActive(false);
     setPdfImportStatus(null);
     setPdfImportError(null);
+    setPdfParserReportStatus(null);
+    // Invalidate old form feedback while its background report finishes independently.
+    pdfImportAbortRef.current?.abort();
     setImportedContractPdfFile(null);
     resetPdfDropState();
     if (fileInputRef.current) {
@@ -8647,6 +8691,7 @@ export default function CalculatorPage() {
         pdfImporting={pdfImporting || autoBulkImporting}
         pdfImportStatus={pdfImportStatus}
         pdfImportError={pdfImportError}
+        pdfParserReportStatus={pdfParserReportStatus}
         fileInputRef={fileInputRef}
         onToggleProductPicker={toggleProductPicker}
         onOpenFileDialog={() => fileInputRef.current?.click()}

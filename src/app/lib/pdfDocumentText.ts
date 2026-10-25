@@ -87,7 +87,8 @@ function sharedRead(
       }
     };
     options.signal?.addEventListener("abort", abort, { once: true });
-    if (active.ocrStarted && !active.settled) observer.onOcrStart?.();
+    // Provenance matters even for a completed OCR attempt with no useful text.
+    if (active.ocrStarted) observer.onOcrStart?.();
     active.promise.then(result => { if (finish()) resolve(result); }, error => { if (finish()) reject(error); });
   });
 }

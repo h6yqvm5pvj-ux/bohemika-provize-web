@@ -9,6 +9,8 @@ vi.mock("@/lib/server/premiumBaseResolution", () => ({ savePremiumBaseResolution
 }));
 import { POST } from "./route";
 import { PremiumBaseResolutionError } from "@/lib/server/premiumBaseResolution";
+import { StatementRebuildCapacityError } from "./statementRebuildScope";
+import { StatementHtmlError } from "./statementHtml";
 const ctx = { email: "owner@example.test", actorEmail: "owner@example.test", teamEmails: [], accountType: "advisor", canManageContractsAsAdmin: false };
 const body = { action: "resolve-premium-base", period: "payment", basePremium: 2536 };
 const request = () => new NextRequest("http://localhost/api/commission-statements", { method: "POST", body: JSON.stringify(body) });
@@ -33,6 +35,18 @@ describe("statement base confirmation endpoint", () => {
     mocks.save.mockRejectedValue(new PremiumBaseResolutionError("Řádek se změnil.", 409));
     const response = await POST(request()); expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ ok: false, error: "Řádek se změnil." });
+  });
+  it("returns a safe conflict when protected premium history fills capacity", async () => {
+    mocks.save.mockRejectedValue(new StatementRebuildCapacityError());
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("historii zaplňují") });
+  });
+  it("bounds the direct saved-source parser used by premium confirmation", async () => {
+    await POST(request());
+    const parseRows = mocks.save.mock.calls[0][1].parseRows;
+    expect(() => parseRows("x".repeat(850001))).toThrow(StatementHtmlError);
+    expect(() => parseRows(`<div id="provize">${"<tr>".repeat(1000)}</div>`)).toThrow(StatementHtmlError);
   });
   it("does not expose database errors", async () => {
     mocks.save.mockRejectedValue(new Error("private database details"));

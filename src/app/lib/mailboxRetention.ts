@@ -1,0 +1,1 @@
+export const SYSTEM_MAILBOX_RETENTION_DAYS = 10;
