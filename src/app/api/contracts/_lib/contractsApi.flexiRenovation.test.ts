@@ -47,6 +47,7 @@ function snapshot(path: string) {
 }
 function collection(path: string, filters: Array<[string, unknown]> = []) {
   return {
+    select() { return this; },
     doc: (id = `new-${++sequence}`) => reference(`${path}/${id}`),
     where: (field: string, _op: string, value: unknown) => collection(path, [...filters, [field, value]]),
     limit: () => collection(path, filters),
@@ -197,5 +198,76 @@ describe("saving FLEXI renovation", () => {
     expect(response.status).toBe(409);
     expect(mocks.transaction).not.toHaveBeenCalled();
     expect(records.get(originalPath)?.status).toBe("active");
+  });
+});
+
+describe("saving ČPP Auto replacements from the statement queue", () => {
+  const cppReplacement = {
+    productKey: "cppAuto", frequencyRaw: "annual", durationYears: null, flexiRenovation: null,
+    inputAmount: 12000, effectiveInputAmount: 12000, createdFromCommissionStatement: true,
+  };
+
+  it("links the original and cancels it one day before the new policy starts", async () => {
+    records.get(originalPath)!.productKey = "cppAuto";
+    const { response, body, saved } = await save(cppReplacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: "original" });
+    expect(saved).toMatchObject({ productKey: "cppAuto", isRefresh: true, refreshOriginalContractNumber: "OLD123" });
+    expect(records.get(originalPath)).toMatchObject({
+      status: "storno", stornoDate: new Date("2026-01-31"), refreshReplacedByEntryId: body.entryId,
+    });
+  });
+
+  it.each(["missing", "foreignOwner", "wrongProduct"])("does not cancel an original that is %s", async situation => {
+    const foreignPath = "users/another@example.test/entries/original";
+    records.set(foreignPath, { productKey: "cppAuto", contractNumber: "OLD123", status: "active" });
+    if (situation === "missing") records.delete(originalPath);
+    if (situation === "foreignOwner") mocks.find.mockImplementation(async (number: string) => number === "OLD123"
+      ? { entryPath: foreignPath, entryId: "original" } : null);
+    const beforeOriginal = records.has(originalPath) ? { ...records.get(originalPath)! } : undefined;
+    const beforeForeign = { ...records.get(foreignPath)! };
+    const { response, body, saved } = await save(cppReplacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(saved).toMatchObject({ isRefresh: true, refreshOriginalContractNumber: "OLD123" });
+    expect(records.get(originalPath)).toEqual(beforeOriginal);
+    expect(records.get(foreignPath)).toEqual(beforeForeign);
+  });
+
+  it("rejects an unauthenticated save without writing data", async () => {
+    mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status: 401 }) });
+    const before = new Map(records);
+    const { handleContractsCreate } = await import("./contractsApi");
+    const response = await handleContractsCreate(new NextRequest("https://example.test/api/contracts", { method: "POST" }));
+    expect(response.status).toBe(401);
+    expect(records).toEqual(before);
+  });
+
+  it("rejects saves by a tipster account without writing data", async () => {
+    records.get(`users/${owner}`)!.accountType = "tipster";
+    const before = new Map(records);
+    const { response } = await save(cppReplacement);
+    expect(response.status).toBe(403);
+    expect(records).toEqual(before);
+  });
+
+  it("refuses to replace an original already linked to another contract", async () => {
+    Object.assign(records.get(originalPath)!, { productKey: "cppAuto", refreshReplacedByEntryId: "another-replacement" });
+    const before = new Map(records);
+    const { response } = await save(cppReplacement);
+    expect(response.status).toBe(409);
+    expect(records).toEqual(before);
+  });
+
+  it.each([
+    [{ ownerEmail: "another@example.test" }, 403],
+    [{ refreshOriginalContractNumber: "NEW123" }, 400],
+    [{ refreshOriginalContractNumber: "" }, 400],
+    [{ isRefresh: "true" }, 400],
+  ] as const)("rejects unauthorized or manipulated queue saves: %j", async (patch, status) => {
+    const before = new Map(records);
+    const { response } = await save({ ...cppReplacement, ...patch });
+    expect(response.status).toBe(status);
+    expect(records).toEqual(before);
   });
 });

@@ -24,7 +24,7 @@ beforeEach(() => {
     if (name === "usersPrivate") return { doc: () => ({ get: async () => ({
       exists: true, data: () => ({ subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" }),
     }) }) };
-    if (name === "users") return { get: async () => {
+    if (name === "users") return { select() { return this; }, get: async () => {
       const docs = [
         { id: email, data: () => ({ email, position: "manazer4", commissionMode: "standard", accountType: "advisor", positionTimeline: [
           { position: "poradce2", validFrom: "2020-01-01", validTo: "2023-01-01" },

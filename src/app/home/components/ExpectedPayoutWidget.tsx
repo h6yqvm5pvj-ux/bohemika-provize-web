@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import type { User as FirebaseUser } from "firebase/auth";
 
-import { calculateExpectedPayout } from "../expectedPayout.client";
 import type { ExpectedPayout } from "../expectedPayout";
 import { useCalendarMonth } from "../useCalendarMonth";
 import { startHomeTiming } from "../homePerformance";
-import type { CashflowCommissionStatementSummary } from "@/app/cashflow/types";
-import { useCashflowData } from "@/app/cashflow/useCashflowData";
+import { auth } from "@/app/firebase";
+import { ADMIN_IMPERSONATION_HEADER, readAdminImpersonationState } from "@/app/lib/adminImpersonation";
 import type { AppLanguage } from "@/lib/appLanguage";
 import { ExpectedPayoutSection } from "./ExpectedPayoutSection";
 
@@ -21,95 +21,95 @@ type Props = {
   isLiteUI: boolean;
   onLoadingChange?: (loading: boolean) => void;
 };
-type Statements = { key: string; items: CashflowCommissionStatementSummary[]; updatedAt: number; error: string | null };
+type PayoutResponse = { ok?: unknown; code?: unknown; payout?: ExpectedPayout; updatedAt?: number; monthKey?: string };
+const PAYOUT_ERROR = "Výplatu se nepodařilo načíst úplně. Obnovte prosím stránku.";
+const ExpectedPayoutFallback = dynamic(
+  () => import("./ExpectedPayoutFallback").then(module => module.ExpectedPayoutFallback),
+  { ssr: false, loading: () => <ExpectedPayoutSection language="cs" loading grossAmount={0} stornoFundAmount={0}
+    netAmount={0} periodLabel="" isLiteUI /> }
+);
+
+function hasCompletePayout(payload: PayoutResponse | null, monthKey: string): payload is PayoutResponse & {
+  payout: ExpectedPayout; updatedAt: number;
+} {
+  return payload?.ok === true && payload.monthKey === monthKey &&
+    typeof payload.updatedAt === "number" && Number.isFinite(payload.updatedAt) && payload.updatedAt > 0 &&
+    !!payload.payout && [payload.payout.grossAmount, payload.payout.stornoFundAmount, payload.payout.netAmount]
+      .every(amount => typeof amount === "number" && Number.isFinite(amount));
+}
 
 export function ExpectedPayoutWidget({ language, user, advisorDataEmail, homeReloadKey, periodLabel, isLiteUI, onLoadingChange }: Props) {
-  const { loading: cashflowLoading, rawSnapshot, ready: cashflowReady, error: cashflowError, snapshotUpdatedAt } = useCashflowData({
-    userEmail: advisorDataEmail, scopeFilter: "combined", productFilter: "all",
-    enabled: Boolean(advisorDataEmail), reloadKey: homeReloadKey, snapshotOnly: true,
-  });
   const calendarMonth = useCalendarMonth();
+  const [year, monthIndex] = calendarMonth.split("-");
+  const monthKey = `${year}-${Number(monthIndex) + 1}`;
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const scope = `${user.uid}|${advisorDataEmail}|${calendarMonth}`;
   const requestKey = `${scope}|${homeReloadKey}`;
-  const [statements, setStatements] = useState<Statements | null>(null);
-  const timings = useRef<{ key: string; inputs: ReturnType<typeof startHomeTiming>; total: ReturnType<typeof startHomeTiming> } | null>(null);
+  const [result, setResult] = useState<{ key: string; error: string | null } | null>(null);
+  const [lastGood, setLastGood] = useState<{ scope: string; value: ExpectedPayout; updatedAt: number } | null>(null);
+  const [fallbackKey, setFallbackKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!advisorDataEmail) return;
-    const timer = { key: requestKey, inputs: startHomeTiming("payoutInputs"), total: startHomeTiming("payout") };
-    timings.current = timer;
+    const finishInputs = startHomeTiming("payoutInputs");
+    const finishTotal = startHomeTiming("payout");
     const controller = new AbortController();
-    const loadStatements = async () => {
+    const impersonatedEmail = readAdminImpersonationState()?.email ?? "";
+    const isCurrentRequest = () => !controller.signal.aborted && auth.currentUser?.uid === user.uid &&
+      (readAdminImpersonationState()?.email ?? "") === impersonatedEmail;
+    const loadPayout = async () => {
       try {
         let token = await user.getIdToken();
-        const request = () => fetch("/api/commission-statements?shape=cashflow&limit=240", {
-          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
+        const headers: Record<string, string> = impersonatedEmail ? { [ADMIN_IMPERSONATION_HEADER]: impersonatedEmail } : {};
+        const request = () => fetch(`/api/contracts/expected-payout?${new URLSearchParams({ timeZone })}`, {
+          headers: { ...headers, Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (!isCurrentRequest()) return;
         let response = await request();
         if (response.status === 401) {
+          if (!isCurrentRequest()) return;
           token = await user.getIdToken(true);
-          if (controller.signal.aborted) return;
+          if (!isCurrentRequest()) return;
           response = await request();
         }
-        const payload = await response.json().catch(() => null) as {
-          ok?: boolean; hasMore?: boolean; processingComplete?: boolean;
-          items?: CashflowCommissionStatementSummary[]; error?: string;
-        } | null;
-        if (!response.ok || payload?.ok !== true || !Array.isArray(payload.items) || payload.hasMore !== false || payload.processingComplete !== true) {
-          throw new Error(payload?.error || "Provizní výpisy se nepodařilo načíst.");
+        const payload = await response.json().catch(() => null) as PayoutResponse | null;
+        if (!isCurrentRequest()) return;
+        if ((response.status === 409 || response.status === 503) && payload?.ok === false && payload.code === "client_calculation_required") {
+          setFallbackKey(requestKey);
+          finishInputs("cancelled");
+          finishTotal("cancelled");
+          return;
         }
-        if (!controller.signal.aborted) setStatements({ key: requestKey, items: payload.items, updatedAt: Date.now(), error: null });
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        console.warn("Domovská stránka: provizní výpisy pro očekávanou výplatu se nepodařilo načíst.", error);
-        setStatements({ key: requestKey, items: [], updatedAt: 0, error: "Výplatu se nepodařilo načíst úplně. Obnovte prosím stránku." });
+        if (!response.ok || !hasCompletePayout(payload, monthKey)) {
+          throw new Error(PAYOUT_ERROR);
+        }
+        setLastGood({ scope, value: payload.payout, updatedAt: payload.updatedAt });
+        setResult({ key: requestKey, error: null });
+        finishInputs("success");
+        finishTotal("success");
+      } catch {
+        if (!isCurrentRequest()) return;
+        setResult({ key: requestKey, error: PAYOUT_ERROR });
+        finishInputs("error");
+        finishTotal("error");
       }
     };
-    void loadStatements();
-    return () => { controller.abort(); timer.inputs("cancelled"); timer.total("cancelled"); };
-  }, [advisorDataEmail, requestKey, user]);
+    void loadPayout();
+    return () => { controller.abort(); finishInputs("cancelled"); finishTotal("cancelled"); };
+  }, [advisorDataEmail, monthKey, requestKey, scope, timeZone, user]);
 
-  const currentStatements = statements?.key === requestKey ? statements : null;
-  const sourceError = currentStatements?.error ?? cashflowError ?? (cashflowReady && !cashflowLoading && !rawSnapshot
-    ? "Podklady výplaty se nepodařilo načíst. Obnovte prosím stránku." : null);
-  const dataset = useMemo(() => rawSnapshot && cashflowReady && !cashflowLoading && currentStatements && !sourceError
-    ? { snapshot: rawSnapshot, statements: currentStatements.items, asOf: new Date(),
-      updatedAt: Math.min(snapshotUpdatedAt ?? Date.now(), currentStatements.updatedAt) } : null,
-  [rawSnapshot, cashflowReady, cashflowLoading, currentStatements, sourceError, snapshotUpdatedAt]);
-  const [calculated, setCalculated] = useState<{ dataset: NonNullable<typeof dataset>; error: string | null } | null>(null);
-  const [lastGood, setLastGood] = useState<{ scope: string; value: ExpectedPayout; updatedAt: number } | null>(null);
-  useEffect(() => {
-    if (!dataset) return;
-    const controller = new AbortController();
-    const finish = startHomeTiming("payoutCalculation");
-    if (timings.current?.key === requestKey) timings.current.inputs("success");
-    void calculateExpectedPayout(dataset, controller.signal).then(value => {
-      if (controller.signal.aborted) return;
-      finish("success");
-      setLastGood({ scope, value, updatedAt: dataset.updatedAt });
-      setCalculated({ dataset, error: null });
-    }).catch(error => {
-      if (controller.signal.aborted) return;
-      finish("error");
-      if (error?.name !== "AbortError") setCalculated({ dataset, error: "Výplatu se nepodařilo spočítat. Obnovte prosím stránku." });
-    });
-    return () => { controller.abort(); finish("cancelled"); };
-  }, [dataset, requestKey, scope]);
-  const current = calculated?.dataset === dataset ? calculated : null;
-  const good = lastGood?.scope === scope ? lastGood : null;
+  const current = advisorDataEmail && result?.key === requestKey ? result : null;
+  const good = advisorDataEmail && lastGood?.scope === scope ? lastGood : null;
   const expectedPayout = good?.value ?? { grossAmount: 0, stornoFundAmount: 0, netAmount: 0 };
-  const error = sourceError ?? current?.error ?? null;
-  const loading = !error && !current;
-  useEffect(() => {
-    const timer = timings.current;
-    if (timer?.key !== requestKey) return;
-    if (sourceError) timer.inputs("error");
-    if (error) timer.total("error");
-    else if (current) timer.total("success");
-  }, [requestKey, sourceError, error, current]);
-  useEffect(() => { onLoadingChange?.(loading); }, [loading, onLoadingChange]);
+  const error = current?.error ?? null;
+  const loading = Boolean(advisorDataEmail) && !current;
+  const useClientFallback = Boolean(advisorDataEmail) && fallbackKey === requestKey;
+  useEffect(() => { if (!useClientFallback) onLoadingChange?.(loading); }, [loading, onLoadingChange, useClientFallback]);
   useEffect(() => () => { onLoadingChange?.(false); }, [onLoadingChange]);
+
+  if (useClientFallback) return <ExpectedPayoutFallback key={requestKey} language={language} user={user}
+    advisorDataEmail={advisorDataEmail} homeReloadKey={homeReloadKey} periodLabel={periodLabel} isLiteUI={isLiteUI}
+    onLoadingChange={onLoadingChange} />;
 
   return <ExpectedPayoutSection language={language} loading={loading} error={error} updatedAt={good?.updatedAt}
     grossAmount={expectedPayout.grossAmount} stornoFundAmount={expectedPayout.stornoFundAmount} netAmount={expectedPayout.netAmount}

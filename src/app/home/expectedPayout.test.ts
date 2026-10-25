@@ -5,7 +5,7 @@ import { applyStatementMissingPayoutShifts, applyStatementPayoutTotalsToMonths, 
   groupItemsByMonth, statementMonthKey } from "@/app/cashflow/helpers";
 import type { CashflowDataset } from "@/app/cashflow/cashflowWorker.types";
 import type { CashflowCommissionStatementSummary } from "@/app/cashflow/types";
-import { computeExpectedPayout } from "./expectedPayout";
+import { computeExpectedPayout, expectedPayoutFromStatements } from "./expectedPayout";
 import { calculateExpectedPayout } from "./expectedPayout.client";
 
 // Frozen reference from ExpectedPayoutWidget before moving it to a worker.
@@ -62,6 +62,138 @@ describe("expected payout equivalence", () => {
     expect(computeExpectedPayout(dataset)).toEqual(originalWidget(dataset));
     dataset.snapshot.ownEntries = []; dataset.snapshot.teamEntriesRaw = []; dataset.snapshot.tipPayouts = []; dataset.statements = [];
     expect(computeExpectedPayout(dataset)).toEqual({ grossAmount: 0, stornoFundAmount: 0, netAmount: 0 });
+  });
+});
+
+describe("expected payout from paid statements", () => {
+  const statement = (
+    id: string,
+    payoutTotal: unknown,
+    extra: Partial<CashflowCommissionStatementSummary> = {}
+  ): CashflowCommissionStatementSummary => ({
+    id,
+    fileName: `${id}.pdf`,
+    statementNumber: null,
+    statementDate: null,
+    period: null,
+    advisorNumber: null,
+    periodStartMs: null,
+    periodEndMs: null,
+    statementDateMs: null,
+    payoutMonthKey: "2026-9",
+    paidContractNumbers: [],
+    paidCommissionKeys: [],
+    commissionTotal: 0,
+    payoutTotal: payoutTotal as number,
+    otherPaymentsTotal: 0,
+    managerCommissionTotal: 0,
+    createdAtMs: null,
+    updatedAtMs: null,
+    ...extra,
+  });
+
+  it.each([0, -123.45, 4321])("preserves the paid total %s without applying a reserve", payoutTotal => {
+    const dataset = fixture();
+    dataset.statements = [statement("current", payoutTotal)];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual({
+      grossAmount: payoutTotal, stornoFundAmount: 0, netAmount: payoutTotal,
+    });
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+  });
+
+  it("creates the same paid result with no contracts, tips or subscriptions", () => {
+    const dataset = fixture();
+    dataset.snapshot.ownEntries = [];
+    dataset.snapshot.teamEntriesRaw = [];
+    dataset.snapshot.tipPayouts = [];
+    dataset.snapshot.subscriptionPayments = [];
+    dataset.statements = [statement("current", 250)];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)?.grossAmount).toBe(250);
+  });
+
+  it("uses finite numeric totals and the existing sum rounding", () => {
+    const dataset = fixture();
+    dataset.statements = [
+      statement("missing", null), statement("string", "900"), statement("nan", NaN),
+      statement("infinite", Infinity), statement("positive", 100.005), statement("negative", -20.001),
+    ];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual({
+      grossAmount: 80, stornoFundAmount: 0, netAmount: 80,
+    });
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+  });
+
+  it("falls back when the current month has no finite statement total", () => {
+    expect(expectedPayoutFromStatements([], asOf)).toBeNull();
+    expect(expectedPayoutFromStatements([
+      statement("previous", 100, { payoutMonthKey: "2026-8" }),
+      statement("future", 200, { payoutMonthKey: "2026-10" }),
+      statement("current", undefined),
+    ], asOf)).toBeNull();
+  });
+
+  it.each([null, undefined, NaN, Infinity, -Infinity, "900"])("does not treat an invalid total %s as a paid month", payoutTotal => {
+    expect(expectedPayoutFromStatements([statement("invalid", payoutTotal)], asOf)).toBeNull();
+  });
+
+  it("deduplicates current-month imports by identity and recency", () => {
+    const dataset = fixture();
+    const identity = { statementNumber: "  VÝPIS  12 ", period: "srpen", advisorNumber: "A1" };
+    dataset.statements = [
+      statement("old", 10, { ...identity, updatedAtMs: 1 }),
+      statement("new", 20, { ...identity, statementNumber: "výpis 12", updatedAtMs: 2 }),
+      statement("separate", 30),
+    ];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)?.grossAmount).toBe(50);
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+  });
+
+  it("does not resurrect an older duplicate total removed by the newest import", () => {
+    const identity = { statementNumber: "same", period: "srpen" };
+    expect(expectedPayoutFromStatements([
+      statement("old", 100, { ...identity, updatedAtMs: 1 }),
+      statement("new", null, { ...identity, updatedAtMs: 2 }),
+    ], asOf)).toBeNull();
+  });
+
+  it("groups by month before deduplication and keeps noncanonical month aliases separate", () => {
+    const dataset = fixture();
+    const identity = { statementNumber: "same", period: "srpen" };
+    dataset.statements = [
+      statement("current", 100, { ...identity, updatedAtMs: 1 }),
+      statement("padded", 900, { ...identity, payoutMonthKey: "2026-09", updatedAtMs: 2 }),
+      statement("future", 800, { ...identity, payoutMonthKey: "2026-10", updatedAtMs: 3 }),
+    ];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)?.grossAmount).toBe(100);
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+  });
+
+  it("retains the UTC statement-date and period-end fallback month semantics", () => {
+    const dataset = fixture();
+    dataset.statements = [
+      statement("date", 10, { payoutMonthKey: null, statementDateMs: Date.UTC(2026, 8, 1) }),
+      statement("period", 20, { payoutMonthKey: null, periodEndMs: Date.UTC(2026, 7, 31, 23) }),
+      statement("start", 30, { payoutMonthKey: null, periodStartMs: Date.UTC(2026, 8, 1) }),
+    ];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)?.grossAmount).toBe(60);
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
+  });
+
+  it("selects the current local calendar month across December and January", () => {
+    const dataset = fixture();
+    dataset.asOf = new Date(2027, 0, 1);
+    dataset.statements = [statement("december", 10, { payoutMonthKey: "2026-12" }),
+      statement("january", 20, { payoutMonthKey: "2027-1" })];
+
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)?.grossAmount).toBe(20);
+    expect(expectedPayoutFromStatements(dataset.statements, dataset.asOf)).toEqual(originalWidget(dataset));
   });
 });
 

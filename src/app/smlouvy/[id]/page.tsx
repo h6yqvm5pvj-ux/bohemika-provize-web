@@ -69,9 +69,6 @@ import {
   shouldShowContractTerminationAction,
   type TerminationReason,
 } from "@/app/pomucky/vypoved-smlouvy/universalTermination";
-import { parseTerminationPolicyholderPdf } from "@/app/lib/parseTerminationPolicyholderPdf";
-import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
-import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 import { originalReplacementLabel } from "@/app/lib/originalContractReplacement";
 import {
   isAnnualSeparatedPeriodProduct,
@@ -182,10 +179,7 @@ import {
 } from "@/app/lib/adminImpersonation";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
-import {
-  birthDateFromCzechBirthNumber,
-  parseKooperativaAutoPdf,
-} from "@/app/lib/parseKooperativaAutoPdf";
+import { birthDateFromCzechBirthNumber } from "@/app/lib/czechBirthNumber";
 import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
 import type { ContractNoteDto } from "@/app/api/contracts/notes/contractNotes";
 
@@ -4729,7 +4723,11 @@ export default function ContractDetailPage() {
     }
 
     try {
-      const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+      const [pdfBlob, { parseUniqaAutoPdf }, { parseTerminationPolicyholderPdf }] = await Promise.all([
+        downloadContractPdfBlob(sourcePdf),
+        import("@/app/lib/parseUniqaAutoPdf"),
+        import("@/app/lib/parseTerminationPolicyholderPdf"),
+      ]);
       const pdfFile = new File([pdfBlob], sourcePdf.fileName, {
         type: "application/pdf",
       });
@@ -4785,10 +4783,12 @@ export default function ContractDetailPage() {
           });
           const productParser = prod ? PDF_REIMPORT_PARSERS[prod] : null;
           const [genericPolicyholder, productParseResult] = await Promise.all([
-            parseTerminationPolicyholderPdf(pdfFile).catch((error) => {
-              console.warn("Doplňkový parser kontaktních údajů selhal", error);
-              return pdfPolicyholder;
-            }),
+            import("@/app/lib/parseTerminationPolicyholderPdf")
+              .then(({ parseTerminationPolicyholderPdf }) => parseTerminationPolicyholderPdf(pdfFile))
+              .catch((error) => {
+                console.warn("Doplňkový parser kontaktních údajů selhal", error);
+                return pdfPolicyholder;
+              }),
             productParser
               ? productParser(pdfFile).catch((error) => {
                   console.warn("Produktový parser PDF nenačetl pojistníka", error);
@@ -5016,7 +5016,10 @@ export default function ContractDetailPage() {
 
     void (async () => {
       try {
-        const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+        const [pdfBlob, { parseAllianzAutoPdf }] = await Promise.all([
+          downloadContractPdfBlob(sourcePdf),
+          import("@/app/lib/parseAllianzAutoPdf"),
+        ]);
         const parsed = await parseAllianzAutoPdf(
           new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" })
         );
@@ -5104,14 +5107,17 @@ export default function ContractDetailPage() {
 
     void (async () => {
       try {
-        const pdfBlob = await downloadContractPdfBlob({
-          ownerEmail,
-          entryId,
-          fileName: contractPdfFileName,
-          label: "Původní smlouva",
-          meta: contractPdfFileName,
-          isCurrent: true,
-        });
+        const [pdfBlob, { parseKooperativaAutoPdf }] = await Promise.all([
+          downloadContractPdfBlob({
+            ownerEmail,
+            entryId,
+            fileName: contractPdfFileName,
+            label: "Původní smlouva",
+            meta: contractPdfFileName,
+            isCurrent: true,
+          }),
+          import("@/app/lib/parseKooperativaAutoPdf"),
+        ]);
         const parsed = await parseKooperativaAutoPdf(
           new File([pdfBlob], contractPdfFileName, { type: "application/pdf" })
         );

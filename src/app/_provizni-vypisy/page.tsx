@@ -7878,7 +7878,8 @@ export default function CommissionStatementsPage() {
           ? event.data.pdfFile
           : null;
       const nextItem = {
-        ...cppAutoBatchQueueItemFromPrefill(queuedPrefill),
+        ...cppAutoBatchQueueItemFromPrefill(queuedPrefill, event.data),
+        policyEndDate: event.data.policyEndDate?.trim() ?? "",
         stornoDate: event.data.stornoDate.trim(),
         pdfFile,
       };

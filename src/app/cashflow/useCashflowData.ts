@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { auth } from "../firebase";
+import { ADMIN_IMPERSONATION_HEADER, readAdminImpersonationState } from "../lib/adminImpersonation";
+import { privateMemoryGeneration } from "../lib/privateMemory";
 import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "../lib/cashflowPagination";
 import {
   type CommissionMode,
@@ -93,15 +95,24 @@ const CONTRACTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CONTRACTS_UPDATED_KEY = "contracts_last_updated";
 type SnapshotMode = "standard" | "tipster";
 type SnapshotProgressListener = (progress: CashflowLoadingProgress) => void;
+type SnapshotContext = {
+  user: typeof auth.currentUser;
+  generation: number;
+  impersonatedEmail: string;
+};
+type SnapshotTask = {
+  context: SnapshotContext;
+  controller: AbortController;
+  promise: Promise<CashflowSnapshot>;
+  listeners: Set<SnapshotProgressListener>;
+  settled: boolean;
+};
+type SnapshotSubscription = { promise: Promise<CashflowSnapshot>; release: () => void };
 const contractsSnapshotCache: Record<
   string,
-  { ts: number; payload: CashflowSnapshot }
+  { ts: number; generation: number; payload: CashflowSnapshot }
 > = {};
-const contractsSnapshotInFlight: Partial<Record<string, Promise<CashflowSnapshot>>> = {};
-const contractsSnapshotProgressListeners = new Map<
-  string,
-  Set<SnapshotProgressListener>
->();
+const contractsSnapshotInFlight: Partial<Record<string, SnapshotTask>> = {};
 
 const normalizeEmail = (value: string | null | undefined): string =>
   (value ?? "").trim().toLowerCase();
@@ -131,16 +142,15 @@ const getContractsUpdatedAtMs = (): number => {
   }
 };
 
-const snapshotCacheKey = (email: string, mode: SnapshotMode): string => `${email}::${mode}`;
+const snapshotCacheKey = (email: string, mode: SnapshotMode, context: SnapshotContext): string =>
+  JSON.stringify([context.generation, context.user?.uid || normalizeEmail(context.user?.email),
+    email, mode, context.impersonatedEmail]);
 
-const emitSnapshotProgress = (
-  cacheKey: string,
-  progress: CashflowLoadingProgress
-): void => {
-  contractsSnapshotProgressListeners
-    .get(cacheKey)
-    ?.forEach((listener) => listener(progress));
-};
+const isSnapshotContextCurrent = (context: SnapshotContext): boolean =>
+  auth.currentUser === context.user && privateMemoryGeneration() === context.generation &&
+  (readAdminImpersonationState()?.email ?? "") === context.impersonatedEmail;
+
+const snapshotAbortError = () => new DOMException("Načítání cashflow bylo zrušeno.", "AbortError");
 
 const formatLoadedCount = (value: number): string =>
   Math.max(0, value).toLocaleString("cs-CZ");
@@ -155,17 +165,35 @@ const isSnapshotFresh = (
 async function fetchContractsSnapshot(
   email: string,
   mode: SnapshotMode,
-  onProgress: SnapshotProgressListener
+  onProgress: SnapshotProgressListener,
+  controller: AbortController,
+  context: SnapshotContext
 ): Promise<CashflowSnapshot> {
+  const { signal } = controller;
+  const ensureActive = () => {
+    if (!isSnapshotContextCurrent(context)) controller.abort();
+    if (signal.aborted) throw snapshotAbortError();
+  };
+  ensureActive();
   onProgress({
     percent: 4,
     label: "Ověřuji přístup k datům",
     detail: null,
   });
-  const currentUser = auth.currentUser;
+  const currentUser = context.user;
   if (!currentUser) throw new Error("Nejsi přihlášený.");
 
   let bearerToken = await currentUser.getIdToken();
+  ensureActive();
+
+  const requestWithToken = async (path: string, token: string): Promise<Response> => {
+    ensureActive();
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (context.impersonatedEmail) headers[ADMIN_IMPERSONATION_HEADER] = context.impersonatedEmail;
+    const response = await fetch(path, { headers, cache: "no-store", signal });
+    ensureActive();
+    return response;
+  };
 
   const requestContracts = async (
     scope: "my" | "team",
@@ -180,19 +208,17 @@ async function fetchContractsSnapshot(
       params.set("cursor", cursor);
     }
 
-    const requestWithToken = async (token: string) =>
-      fetch(`/api/contracts/list?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-
-    let res = await requestWithToken(bearerToken);
+    const path = `/api/contracts/list?${params.toString()}`;
+    let res = await requestWithToken(path, bearerToken);
     if (res.status === 401) {
+      ensureActive();
       bearerToken = await currentUser.getIdToken(true);
-      res = await requestWithToken(bearerToken);
+      ensureActive();
+      res = await requestWithToken(path, bearerToken);
     }
 
     const data = (await res.json()) as ContractsApiResponse;
+    ensureActive();
     if (!res.ok || data.ok === false) {
       const err = new Error(data.error || "Nepodařilo se načíst smlouvy.") as Error & {
         status?: number;
@@ -213,19 +239,17 @@ async function fetchContractsSnapshot(
       params.set("cursor", cursor);
     }
 
-    const requestWithToken = async (token: string) =>
-      fetch(`/api/tip-payouts/list?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-
-    let res = await requestWithToken(bearerToken);
+    const path = `/api/tip-payouts/list?${params.toString()}`;
+    let res = await requestWithToken(path, bearerToken);
     if (res.status === 401) {
+      ensureActive();
       bearerToken = await currentUser.getIdToken(true);
-      res = await requestWithToken(bearerToken);
+      ensureActive();
+      res = await requestWithToken(path, bearerToken);
     }
 
     const data = (await res.json()) as TipPayoutsApiResponse;
+    ensureActive();
     if (!res.ok || data.ok === false) {
       const err = new Error(data.error || "Nepodařilo se načíst TIP výplaty.") as Error & {
         status?: number;
@@ -241,19 +265,17 @@ async function fetchContractsSnapshot(
       limit: String(SUBSCRIPTION_PAYMENTS_PAGE_LIMIT),
     });
 
-    const requestWithToken = async (token: string) =>
-      fetch(`/api/subscription-payments/list?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-
-    let res = await requestWithToken(bearerToken);
+    const path = `/api/subscription-payments/list?${params.toString()}`;
+    let res = await requestWithToken(path, bearerToken);
     if (res.status === 401) {
+      ensureActive();
       bearerToken = await currentUser.getIdToken(true);
-      res = await requestWithToken(bearerToken);
+      ensureActive();
+      res = await requestWithToken(path, bearerToken);
     }
 
     const data = (await res.json()) as SubscriptionPaymentsApiResponse;
+    ensureActive();
     if (!res.ok || data.ok === false) {
       const err = new Error(data.error || "Nepodařilo se načíst platby předplatného.") as Error & {
         status?: number;
@@ -273,7 +295,9 @@ async function fetchContractsSnapshot(
     let pages = 0;
 
     while (hasMore && pages < TIP_PAYOUTS_MAX_PAGES) {
+      ensureActive();
       const response = await requestTipPayouts(cursor);
+      ensureActive();
       pages += 1;
 
       const chunk = Array.isArray(response.payouts) ? response.payouts : [];
@@ -309,6 +333,7 @@ async function fetchContractsSnapshot(
   };
 
   const collectSubscriptionPayments = async (): Promise<SubscriptionPaymentApiItem[]> => {
+    ensureActive();
     if (mode === "tipster" || !isSubscriptionCashflowOwner(email)) return [];
     const response = await requestSubscriptionPayments();
     return Array.isArray(response.payments) ? response.payments : [];
@@ -349,7 +374,9 @@ async function fetchContractsSnapshot(
     let totalHint: number | null = null;
 
     while (hasMore && pages < CONTRACTS_MAX_PAGES) {
+      ensureActive();
       const response = await requestContracts(scope, cursor);
+      ensureActive();
       if (pages === 0) {
         positionHint = (response.position as Position | null | undefined) ?? null;
         commissionModeHint =
@@ -465,6 +492,7 @@ async function fetchContractsSnapshot(
     });
   };
   const startTeamScopePromise = (): Promise<ScopeResult> => {
+    ensureActive();
     if (!teamScopePromise) {
       teamScopePromise = collectScope("team", undefined, reportTeamPage);
       teamScopePromise.catch(() => undefined);
@@ -473,16 +501,23 @@ async function fetchContractsSnapshot(
   };
 
   const tipPayoutsPromise = collectTipPayouts().catch((tipErr) => {
+    ensureActive();
     console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
     return [] as TipPayoutApiItem[];
   });
   const subscriptionPaymentsPromise = collectSubscriptionPayments().catch((subscriptionErr) => {
+    ensureActive();
     console.warn(
       "[cashflow] načtení plateb předplatného selhalo, pokračuji bez nich.",
       subscriptionErr
     );
     return [] as SubscriptionPaymentApiItem[];
   });
+  // These sources can reject while contracts are still pending, including when
+  // cancellation stops every source at once. Keep their original rejections for
+  // awaiting callers without leaving an unobserved parallel rejection.
+  void tipPayoutsPromise.catch(() => undefined);
+  void subscriptionPaymentsPromise.catch(() => undefined);
 
   if (mode === "tipster") {
     onProgress({
@@ -491,6 +526,7 @@ async function fetchContractsSnapshot(
       detail: null,
     });
     const tipPayouts = await tipPayoutsPromise;
+    ensureActive();
     onProgress({
       percent: 96,
       label: "Počítám očekávané cashflow",
@@ -526,6 +562,7 @@ async function fetchContractsSnapshot(
       });
     }
   );
+  ensureActive();
   const myPosition = ownResult.positionHint ?? null;
   const myCommissionMode = ownResult.commissionModeHint ?? null;
   ownScopeComplete = true;
@@ -550,9 +587,11 @@ async function fetchContractsSnapshot(
     }
     try {
       const teamResult = await (teamScopePromise ?? startTeamScopePromise());
+      ensureActive();
       teamEntriesRaw = teamResult.entries;
       hasAnyTeam = hasAnyTeam || teamEntriesRaw.length > 0;
     } catch (teamError) {
+      ensureActive();
       if ((teamError as { status?: number } | null)?.status === 403) {
         hasAnyTeam = false;
         teamEntriesRaw = [];
@@ -569,6 +608,7 @@ async function fetchContractsSnapshot(
   });
   const tipPayouts = await tipPayoutsPromise;
   const subscriptionPayments = await subscriptionPaymentsPromise;
+  ensureActive();
   onProgress({
     percent: 96,
     label: "Počítám čisté cashflow",
@@ -589,54 +629,82 @@ async function fetchContractsSnapshot(
   };
 }
 
-async function getContractsSnapshot(
+function getContractsSnapshot(
   email: string,
   mode: SnapshotMode,
-  onProgress: SnapshotProgressListener
-): Promise<CashflowSnapshot> {
-  const cacheKey = snapshotCacheKey(email, mode);
-  const listeners = contractsSnapshotProgressListeners.get(cacheKey) ?? new Set();
-  listeners.add(onProgress);
-  contractsSnapshotProgressListeners.set(cacheKey, listeners);
-
-  try {
-    const cached = contractsSnapshotCache[cacheKey];
-    const updatedAtMs = getContractsUpdatedAtMs();
-    if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
-      onProgress({
-        percent: 96,
-        label: "Používám načtená data",
-        detail: null,
-      });
-      return cached.payload;
-    }
-    if (cached && !isSnapshotFresh(cached.ts, updatedAtMs)) {
-      delete contractsSnapshotCache[cacheKey];
-    }
-
-    if (!contractsSnapshotInFlight[cacheKey]) {
-      contractsSnapshotInFlight[cacheKey] = fetchContractsSnapshot(
-        email,
-        mode,
-        (progress) => emitSnapshotProgress(cacheKey, progress)
-      )
-        .then((payload) => {
-          contractsSnapshotCache[cacheKey] = { ts: Date.now(), payload };
-          return payload;
-        })
-        .finally(() => {
-          delete contractsSnapshotInFlight[cacheKey];
-        });
-    }
-
-    return await contractsSnapshotInFlight[cacheKey];
-  } finally {
-    const currentListeners = contractsSnapshotProgressListeners.get(cacheKey);
-    currentListeners?.delete(onProgress);
-    if (currentListeners?.size === 0) {
-      contractsSnapshotProgressListeners.delete(cacheKey);
+  onProgress: SnapshotProgressListener,
+  context: SnapshotContext
+): SnapshotSubscription {
+  if (!isSnapshotContextCurrent(context)) throw snapshotAbortError();
+  // Private-context changes make old entries inaccessible; release their data
+  // as well, rather than accumulating a cache entry for each previous session.
+  for (const [key, entry] of Object.entries(contractsSnapshotCache)) {
+    if (entry.generation !== context.generation || Date.now() - entry.ts >= CONTRACTS_CACHE_TTL_MS) {
+      delete contractsSnapshotCache[key];
     }
   }
+  const cacheKey = snapshotCacheKey(email, mode, context);
+  const cached = contractsSnapshotCache[cacheKey];
+  const updatedAtMs = getContractsUpdatedAtMs();
+  if (cached && isSnapshotFresh(cached.ts, updatedAtMs)) {
+    onProgress({ percent: 96, label: "Používám načtená data", detail: null });
+    return { promise: Promise.resolve(cached.payload), release: () => {} };
+  }
+  if (cached) delete contractsSnapshotCache[cacheKey];
+
+  let task = contractsSnapshotInFlight[cacheKey];
+  if (task && !isSnapshotContextCurrent(task.context)) {
+    delete contractsSnapshotInFlight[cacheKey];
+    task.controller.abort();
+    task = undefined;
+  }
+  if (!task || task.controller.signal.aborted) {
+    const controller = new AbortController();
+    let succeeded = false;
+    const created: SnapshotTask = {
+      context,
+      controller,
+      listeners: new Set(),
+      settled: false,
+      // Defer startup until the task and its first subscriber are registered.
+      promise: Promise.resolve().then(() => fetchContractsSnapshot(email, mode, progress => {
+        if (contractsSnapshotInFlight[cacheKey] !== created || controller.signal.aborted || !isSnapshotContextCurrent(context)) return;
+        created.listeners.forEach(listener => listener(progress));
+      }, controller, context)).then(payload => {
+        if (contractsSnapshotInFlight[cacheKey] !== created || controller.signal.aborted || !isSnapshotContextCurrent(context)) {
+          throw snapshotAbortError();
+        }
+        // A mutation during this read must not make the older inputs fresh again.
+        if (getContractsUpdatedAtMs() <= updatedAtMs) {
+          contractsSnapshotCache[cacheKey] = { ts: Date.now(), generation: context.generation, payload };
+        }
+        succeeded = true;
+        return payload;
+      }).finally(() => {
+        created.settled = true;
+        // A failed source can leave other parallel sources pending.
+        if (!succeeded) controller.abort();
+        if (contractsSnapshotInFlight[cacheKey] === created) delete contractsSnapshotInFlight[cacheKey];
+      }),
+    };
+    contractsSnapshotInFlight[cacheKey] = created;
+    task = created;
+  }
+  task.listeners.add(onProgress);
+  const subscribedTask = task;
+  let released = false;
+  return {
+    promise: subscribedTask.promise,
+    release: () => {
+      if (released) return;
+      released = true;
+      subscribedTask.listeners.delete(onProgress);
+      if (subscribedTask.listeners.size || subscribedTask.settled) return;
+      // A quick remount starts a fresh task. An old finalizer cannot remove it.
+      if (contractsSnapshotInFlight[cacheKey] === subscribedTask) delete contractsSnapshotInFlight[cacheKey];
+      subscribedTask.controller.abort();
+    },
+  };
 }
 
 export function useCashflowData({
@@ -651,16 +719,22 @@ export function useCashflowData({
   snapshotOnly = false,
 }: UseCashflowDataParams): UseCashflowDataResult {
   const snapshotMode: SnapshotMode = tipsterMode ? "tipster" : "standard";
+  const currentUser = auth.currentUser;
+  const generation = privateMemoryGeneration();
+  const impersonatedEmail = readAdminImpersonationState()?.email ?? "";
+  const context = useMemo<SnapshotContext>(() => ({ user: currentUser, generation, impersonatedEmail }),
+    [currentUser, generation, impersonatedEmail]);
+  const cacheKey = snapshotCacheKey(normalizeEmail(userEmail), snapshotMode, context);
   const [loading, setLoading] = useState(() => {
     if (!enabled || !userEmail) return false;
-    const normalized = normalizeEmail(userEmail);
-    const cachedRaw = contractsSnapshotCache[snapshotCacheKey(normalized, snapshotMode)];
+    const cachedRaw = contractsSnapshotCache[cacheKey];
     if (!cachedRaw) return true;
     return !isSnapshotFresh(cachedRaw.ts, getContractsUpdatedAtMs());
   });
   const [snapshotUpdatedAt, setSnapshotUpdatedAt] = useState<number | null>(null);
-  const requestKey = `${normalizeEmail(userEmail)}|${snapshotMode}|${reloadKey}`;
+  const requestKey = `${cacheKey}|${reloadKey}`;
   const [snapshotRequestKey, setSnapshotRequestKey] = useState<string | null>(null);
+  const [snapshotContextKey, setSnapshotContextKey] = useState<string | null>(null);
   const [error, setError] = useState<{ key: string; message: string } | null>(null);
   const [snapshot, setSnapshot] = useState<CashflowSnapshot | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
@@ -673,6 +747,7 @@ export function useCashflowData({
     setError(null);
     if (!enabled || !userEmail) {
       setSnapshot(null);
+      setSnapshotContextKey(null);
       setSnapshotUpdatedAt(null);
       setHasTeam(false);
       setLoading(false);
@@ -682,10 +757,9 @@ export function useCashflowData({
     }
 
     let cancelled = false;
+    let subscription: SnapshotSubscription | undefined;
 
     const load = async () => {
-      const normalized = normalizeEmail(userEmail);
-      const cacheKey = snapshotCacheKey(normalized, snapshotMode);
       const forceReload = reloadKey > 0;
       if (forceReload) {
         delete contractsSnapshotCache[cacheKey];
@@ -702,6 +776,7 @@ export function useCashflowData({
       const hasCachedPayload = Boolean(cached?.payload);
       if (cached?.payload) {
         setSnapshotRequestKey(requestKey);
+        setSnapshotContextKey(cacheKey);
         setSnapshot(cached.payload);
         setSnapshotUpdatedAt(cached.ts);
         setHasTeam(cached.payload.hasAnyTeam);
@@ -717,27 +792,29 @@ export function useCashflowData({
         const emailRaw = userEmail.trim();
         const email = emailRaw.toLowerCase();
         if (!email) throw new Error("Chybí e-mail uživatele");
-        const payload = await getContractsSnapshot(email, snapshotMode, (progress) => {
-          if (cancelled) return;
+        subscription = getContractsSnapshot(email, snapshotMode, (progress) => {
+          if (cancelled || !isSnapshotContextCurrent(context)) return;
           setLoadingProgress((current) =>
             progress.percent >= current.percent ? progress : current
           );
-        });
-        if (cancelled) return;
+        }, context);
+        const payload = await subscription.promise;
+        if (cancelled || !isSnapshotContextCurrent(context)) return;
         setLoadingProgress({
           percent: 98,
           label: "Skládám provize do měsíců",
           detail: null,
         });
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-        if (cancelled) return;
+        if (cancelled || !isSnapshotContextCurrent(context)) return;
         setSnapshotRequestKey(requestKey);
+        setSnapshotContextKey(cacheKey);
         setSnapshot(payload);
         setSnapshotUpdatedAt(contractsSnapshotCache[cacheKey]?.ts ?? Date.now());
         setHasTeam(payload.hasAnyTeam);
         setReady(true);
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || !isSnapshotContextCurrent(context) || (error instanceof Error && error.name === "AbortError")) return;
         console.error("Chyba při načítání cashflow:", error);
         setSnapshotRequestKey(requestKey);
         setError({ key: requestKey, message: "Podklady výplaty se nepodařilo načíst. Obnovte prosím stránku." });
@@ -748,6 +825,7 @@ export function useCashflowData({
         }
         setReady(true);
       } finally {
+        subscription?.release();
         if (cancelled) return;
         setLoading(false);
       }
@@ -756,12 +834,14 @@ export function useCashflowData({
     void load();
     return () => {
       cancelled = true;
+      subscription?.release();
     };
-  }, [userEmail, enabled, snapshotMode, reloadKey, requestKey]);
+  }, [cacheKey, context, userEmail, enabled, snapshotMode, reloadKey, requestKey]);
 
   const currentEmail = normalizeEmail(userEmail);
   const snapshotMatchesCurrentUser = Boolean(
-    snapshot && currentEmail && normalizeEmail(snapshot.email) === currentEmail
+    snapshot && currentEmail && normalizeEmail(snapshot.email) === currentEmail &&
+    snapshotContextKey === cacheKey && isSnapshotContextCurrent(context)
   );
   const dataReady = ready && snapshotRequestKey === requestKey && (!snapshot || snapshotMatchesCurrentUser);
   const rawSnapshot = enabled && snapshotMatchesCurrentUser ? snapshot : null;

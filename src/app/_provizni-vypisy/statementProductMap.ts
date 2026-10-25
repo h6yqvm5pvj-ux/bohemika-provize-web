@@ -383,6 +383,12 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     category: "property",
   }),
   defaultEntry({
+    code: "CPP_CS6",
+    productKey: "cppcestovko",
+    label: "ČPP Cestovní pojištění",
+    category: "travel",
+  }),
+  defaultEntry({
     code: "CPP_CS_Z",
     productKey: "cppcestovko",
     label: "ČPP Cestovní pojištění",

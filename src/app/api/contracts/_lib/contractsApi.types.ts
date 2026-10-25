@@ -673,8 +673,11 @@ export type AuthContextOptions = {
 };
 
 export type ContractsListOptions = Pick<AuthContextOptions, "freshCashflowContext" | "onCashflowTiming"> & {
+  /** Successful guard from the same active server request; never read from HTTP. */
+  authorizedContext?: import("./contractsApi").AuthorizedContractsContext;
   /** Trusted server-only scheduling hint after fresh guards and the first own count.
-   * Team requests must still perform their own authorization. No identity is shared.
+   * Ordinary team requests still perform their own authorization; a request-scoped
+   * authorizedContext can reuse an already verified server guard.
    */
   onCashflowTeamReady?: (ownTotalCount: number) => void;
 };

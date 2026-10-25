@@ -1,4 +1,4 @@
-import { birthDateFromCzechBirthNumber } from "@/app/lib/parseKooperativaAutoPdf";
+import { birthDateFromCzechBirthNumber } from "@/app/lib/czechBirthNumber";
 
 export type AllianzOdometerIdentity = {
   kind: "birthDate" | "companyId";

@@ -26,6 +26,7 @@ import {
   withRateLimitHeaders,
 } from "@/lib/server/apiEntryGuard";
 import type { ServerImpersonationContext } from "@/lib/server/impersonation";
+import { ADMIN_IMPERSONATION_HEADER } from "@/lib/adminImpersonationShared";
 import {
   adminRoleAtLeast,
   resolveAdminRoleFromClaims,
@@ -3125,7 +3126,12 @@ const buildUserTree = async (): Promise<UserTreeResult> => {
   if (!adminDb) {
     throw new Error("Firebase Admin credentials are not configured.");
   }
-  const snap = await adminDb.collection("users").get();
+  // The authorization graph uses document IDs and these profile fields only.
+  // Keep unrelated profile content out of every cold/fresh hierarchy read.
+  const snap = await adminDb.collection("users").select(
+    "managerEmail", "position", "fullName", "name", "commissionMode",
+    "positionTimeline", "accountType", "userRole", "activeCollaboration", "careerStatus"
+  ).get();
   const usersByEmail = new Map<string, UserNode>();
 
   snap.forEach((doc) => {
@@ -3911,6 +3917,16 @@ type ContractsEntryGuardResult =
       withRateLimit: (response: NextResponse) => NextResponse;
     };
 
+export type AuthorizedContractsContext = Extract<ContractsEntryGuardResult, { ok: true }>;
+
+// Only actual successful guards can authorize internal list pages. Bind the
+// capability to verified request headers and its active originating request.
+const authorizedContractsRequests = new WeakMap<AuthorizedContractsContext, {
+  authorization: string | null;
+  impersonation: string | null;
+  signal: AbortSignal;
+}>();
+
 export async function requireContractsEntryGuard(
   req: NextRequest,
   rateLimit: {
@@ -3969,7 +3985,7 @@ export async function requireContractsEntryGuard(
     };
   }
 
-  return {
+  const authorized: AuthorizedContractsContext = {
     ok: true,
     ctx: {
       ...authCtx,
@@ -3981,6 +3997,12 @@ export async function requireContractsEntryGuard(
     withRateLimit: (response: NextResponse) =>
       withRateLimitHeaders(response, guard.ctx),
   };
+  authorizedContractsRequests.set(authorized, {
+    authorization: req.headers.get("authorization"),
+    impersonation: req.headers.get(ADMIN_IMPERSONATION_HEADER),
+    signal: req.signal,
+  });
+  return authorized;
 }
 
 const contractTransferAccessForContext = ({
@@ -4035,7 +4057,15 @@ export async function handleContractsGet(
   mode: ContractsGetMode = "auto",
   options: ContractsListOptions = {}
 ) {
-  const guard = await requireContractsEntryGuard(req, {
+  const trusted = options.authorizedContext;
+  const binding = trusted ? authorizedContractsRequests.get(trusted) : undefined;
+  const canReuse = mode === "list" && trusted && binding && !binding.signal.aborted &&
+    binding.authorization === req.headers.get("authorization") &&
+    binding.impersonation === req.headers.get(ADMIN_IMPERSONATION_HEADER);
+  if (trusted && !canReuse) {
+    return NextResponse.json({ ok: false, error: "Ověřený kontext smluv není platný pro tento požadavek." }, { status: 403 });
+  }
+  const guard = canReuse ? trusted : await requireContractsEntryGuard(req, {
     namespace: "api:contracts:get",
     limit: CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,

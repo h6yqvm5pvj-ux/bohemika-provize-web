@@ -40,7 +40,7 @@ import {
 } from "../lib/productFormulas";
 import { calculateCommission } from "../lib/calculateCommission";
 import { calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
-import { isStatementBatchQueueProduct, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
+import { canQueueStatementProduct, statementBatchQueueReplacementError, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
 import {
   calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
@@ -534,10 +534,13 @@ const notifyStatementParentCppA101QueueAdd = ({
   clientName,
   contractSignedDate,
   policyStartDate,
+  policyEndDate,
   amountText,
   frequency,
   stornoDate,
   pdfFile,
+  isRefresh,
+  refreshOriginalContractNumber,
 }: Omit<StatementBatchQueueAddMessage, "type">) => {
   if (typeof window === "undefined" || window.parent === window) return;
   const params = new URLSearchParams(window.location.search);
@@ -551,10 +554,13 @@ const notifyStatementParentCppA101QueueAdd = ({
       clientName,
       contractSignedDate,
       policyStartDate,
+      policyEndDate,
       amountText,
       frequency,
       stornoDate,
       pdfFile,
+      isRefresh,
+      refreshOriginalContractNumber,
     },
     window.location.origin
   );
@@ -6048,7 +6054,7 @@ export default function CalculatorPage() {
 
   const handleAddCppA101ToStatementQueue = () => {
     if (
-      !isStatementBatchQueueProduct(product) ||
+      !canQueueStatementProduct(product, originalReplacementWorkflowActive) ||
       !statementEmbedMode ||
       !statementEmbedParentAvailable ||
       !statementCppA101QueueEligible
@@ -6079,6 +6085,17 @@ export default function CalculatorPage() {
       return;
     }
 
+    const replacement = {
+      isRefresh: originalReplacementWorkflowActive,
+      refreshOriginalContractNumber: originalReplacementWorkflowActive ? refreshOriginalContractNumber.trim() : null,
+    };
+    const replacementError = statementBatchQueueReplacementError({ product, contractNumber, ...replacement });
+    if (replacementError) {
+      setSaveMessage(replacementError);
+      setValidationError(replacementError);
+      return;
+    }
+
     const trimmedStornoDate = stornoDate.trim();
     if (trimmedStornoDate && !parseIsoDayAsLocalDate(trimmedStornoDate)) {
       const message = "Datum storna má neplatný formát.";
@@ -6093,10 +6110,12 @@ export default function CalculatorPage() {
       clientName: clientName.trim(),
       contractSignedDate: contractSignedDate.trim(),
       policyStartDate: policyStartDate.trim(),
+      policyEndDate: product === "cppcestovko" ? policyEndDate.trim() : undefined,
       amountText: amountText.trim(),
       frequency,
       stornoDate: trimmedStornoDate,
       pdfFile: importedContractPdfFile,
+      ...replacement,
     });
     setMissingFields([]);
     setValidationError(null);
@@ -9207,9 +9226,8 @@ export default function CalculatorPage() {
               statementEmbedParentAvailable &&
               statementCppA101QueueEligible &&
               isAddContractMode &&
-              isStatementBatchQueueProduct(product) &&
+              canQueueStatementProduct(product, originalReplacementWorkflowActive) &&
               !tipsterModeEnabled &&
-              !originalReplacementWorkflowActive &&
               !endorsementDraft &&
               !endorsementWorkflowActive &&
               !endorsementDuplicateCandidateActive

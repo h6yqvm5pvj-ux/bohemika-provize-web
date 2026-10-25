@@ -44,7 +44,7 @@ beforeEach(() => {
     exists: true, data: () => ({ subscriptionStatus, subscriptionPaidUntil: subscriptionStatus === "expired" ? "2000-01-01" : "2099-01-01" }),
   }));
   mocks.collection.mockImplementation((name: string) => {
-    if (name === "users") return { get: mocks.users };
+    if (name === "users") return { select() { return this; }, get: mocks.users };
     if (name === "usersPrivate") return { doc: () => ({ get: mocks.subscription }) };
     throw new Error(`Unexpected collection ${name}`);
   });

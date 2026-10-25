@@ -46,6 +46,8 @@ import styles from "./team.module.css";
 import introStyles from "../cashflow/cashflowIntro.module.css";
 import { TeamOverviewLoader } from "./TeamOverviewLoader";
 import { TeamSummaryDashboard } from "./TeamSummaryDashboard";
+import { PersonalProductionDashboard } from "./PersonalProductionDashboard";
+import { PRODUCTION_CATEGORY_TABS, insurerLogoPath, productionRowsForStats } from "./teamProduction";
 import { ProductionGoalProgress } from "./ProductionGoalProgress";
 import { TeamGoalsDialog } from "./TeamGoalsDialog";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
@@ -297,35 +299,6 @@ type TipStats = {
   previousMonthToDate: number;
   contracted: number;
 };
-const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string }[] = [
-  { key: "life", label: "Životní pojištění" },
-  { key: "auto", label: "Auta" },
-  { key: "property", label: "Majetek a odpovědnost občanů" },
-  { key: "business", label: "Podnikatelé" },
-  { key: "comfort", label: "Zlato" },
-  { key: "foreigners", label: "Cizinci" },
-  { key: "travel", label: "Cestovko" },
-];
-
-function insurerLogoPath(insurer: string): string | null {
-  const normalized = insurer.toLowerCase();
-  if (normalized.includes("čpp") || normalized.includes("cpp")) return "/icons/cpp.png";
-  if (normalized.includes("kooperativa")) return "/icons/koop-v2.png";
-  if (normalized.includes("maxima")) return "/icons/maxima.png";
-  if (normalized.includes("allianz")) return "/icons/allianz.png";
-  if (normalized.includes("slavia")) return "/icons/slavialogo.png";
-  if (normalized.includes("comfort") || normalized.includes("commodity")) {
-    return "/icons/cclogo.png";
-  }
-  if (normalized.includes("uniqa")) return "/icons/uniqa.png";
-  if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
-  if (normalized.includes("pillow")) return "/icons/pillow.png";
-  if (normalized.includes("generali")) return "/icons/generali.png";
-  if (normalized.includes("metlife")) return "/icons/metlife.png";
-  if (normalized.includes("nn")) return "/icons/nn.png";
-  return null;
-}
-
 function formatMoney(value: number): string {
   return formatMoneyValue(value, { nonPositiveAsEmpty: true });
 }
@@ -1316,20 +1289,10 @@ export default function TeamPage() {
   const productionGridColsClass = showMonthlyPremiumInProduction
     ? "sm:grid-cols-[minmax(180px,1fr)_110px_150px_150px]"
     : "sm:grid-cols-[minmax(180px,1fr)_110px_150px]";
-  const selectedProductionRows = useMemo(() => {
-    if (!selected) return [] as { name: string; contracts: number; annualPremium: number; monthlyPremium: number }[];
-    const stats = selectedContractStats;
-    const raw = stats?.institutionByCategory?.[productionCategory] ?? {};
-    return Object.entries(raw)
-      .map(([name, row]) => ({
-        name,
-        contracts: row?.contracts ?? 0,
-        annualPremium: row?.annualPremium ?? 0,
-        monthlyPremium: row?.monthlyPremium ?? (row?.annualPremium ?? 0) / 12,
-      }))
-      .filter((row) => row.contracts > 0 || row.annualPremium > 0 || row.monthlyPremium > 0)
-      .sort((a, b) => b.annualPremium - a.annualPremium || b.contracts - a.contracts || a.name.localeCompare(b.name, "cs"));
-	  }, [selected, productionCategory, selectedContractStats]);
+  const selectedProductionRows = useMemo(
+    () => productionRowsForStats(selectedContractStats, productionCategory),
+    [productionCategory, selectedContractStats]
+  );
   const selectedProductionTotals = useMemo(
     () =>
       selectedProductionRows.reduce(
@@ -1676,6 +1639,16 @@ export default function TeamPage() {
   const hasTeamListMembers = members.some(
     (member) => !userEmail || member.email.toLowerCase() !== userEmail.toLowerCase()
   );
+  const ownMember = members.find(member => member.email === userEmail?.trim().toLowerCase()) ?? null;
+  const showPersonalOverview = Boolean(ownMember && ownMember.accountType !== "tipster" && !hasTeamListMembers);
+  const ownContractStats = ownMember
+    ? (productionContractScope === "active" ? activeContractCounts[ownMember.email] : contractCounts[ownMember.email]) ?? null
+    : null;
+  const personalDashboardSummary = useMemo(() => buildTeamDashboardSummary({
+    members: ownMember ? [ownMember] : [],
+    contractCounts: productionContractScope === "active" ? activeContractCounts : contractCounts,
+    lastActive,
+  }), [ownMember, productionContractScope, activeContractCounts, contractCounts, lastActive]);
   const showManagerTeamTools = isManagerPosition(userPosition);
   const canSendTeamMessage = showManagerTeamTools && hasTeamListMembers;
   const showTeamSidebar = showManagerTeamTools || hasTeamListMembers;
@@ -2214,11 +2187,16 @@ export default function TeamPage() {
         {!loading && (
           <header className={styles.header}>
             <div>
-              <div className={styles.eyebrow}><UsersRound size={14} aria-hidden="true" /> Společně k výsledkům</div>
-              <h1 className={styles.title}>Můj tým<span className="text-violet-400">.</span></h1>
-              <p className={styles.description}>Tvoji lidé, společné cíle a výsledky na jednom místě.</p>
+              <div className={styles.eyebrow}><UsersRound size={14} aria-hidden="true" /> {showPersonalOverview ? "Moje práce v číslech" : "Společně k výsledkům"}</div>
+              <h1 className={styles.title}>{showPersonalOverview ? "Moje výsledky" : "Můj tým"}<span className="text-violet-400">.</span></h1>
+              <p className={styles.description}>{showPersonalOverview ? "Tvoje smlouvy, pojišťovny a produkce na jednom místě." : "Tvoji lidé, společné cíle a výsledky na jednom místě."}</p>
             </div>
-            {showTeamSidebar ? (
+            {showPersonalOverview ? (
+              <nav className={styles.headerActions} aria-label="Moje smlouvy">
+                <Link href="/smlouvy" className={styles.action}><BarChart3 size={15} aria-hidden="true" /> Zobrazit smlouvy</Link>
+                <Link href="/kalkulacka" className={styles.primaryAction}>Přidat smlouvu</Link>
+              </nav>
+            ) : showTeamSidebar ? (
               <nav className={styles.headerActions} aria-label="Týmové nástroje">
                 <Link href="/pomucky/struktura" className={styles.action}>
                   <Network size={15} aria-hidden="true" /> Struktura
@@ -2247,6 +2225,19 @@ export default function TeamPage() {
               <strong>Tady bude tvůj tým</strong>
               Jakmile budeš mít přiřazené podřízené, uvidíš tu jejich aktivitu, cíle i výsledky.
             </div>
+          </div>
+        ) : showPersonalOverview && ownMember ? (
+          <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>
+            <PersonalProductionDashboard
+              stats={ownContractStats}
+              summary={personalDashboardSummary}
+              statsUnavailable={selectedStatsUnavailable || !ownContractStats}
+              contractScope={productionContractScope}
+              onContractScopeChange={setProductionContractScope}
+              goal={productionGoals.members[ownMember.email] ?? emptyProductionGoal()}
+              canEditGoal={canEditProductionGoals}
+              onEditGoal={() => openGoalsEditor(ownMember.email)}
+            />
           </div>
         ) : (
           <div className={introStyles.bodyReveal} style={teamRevealStyle(70)}>

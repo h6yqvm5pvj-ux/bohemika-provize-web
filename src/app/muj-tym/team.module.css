@@ -106,6 +106,24 @@
 .empty strong { display: block; margin-bottom: 5px; color: #564265; font-size: 16px; }
 
 .summary { container-type: inline-size; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.personalTotal { background: linear-gradient(135deg, #f4effc, #fff); border-color: #dcccf0; }
+.personalTotal .metricValue { color: #7951b5; }
+.personalBreakdownHeading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px; }
+.personalScopeLabel { color: #82748e; font-size: 11px; padding-top: 4px; }
+.personalCategories { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0; }
+.personalCategories button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; border: 1px solid #eae3f2; border-radius: 10px; padding: 8px 11px; color: #786587; background: #fff; font-size: 12px; font-weight: 600; }
+.personalCategories button[aria-pressed="true"] { color: #fff; border-color: #7954b4; background: #7954b4; }
+.personalCategories button span { min-width: 21px; padding: 2px 5px; border-radius: 5px; background: #f1ebf8; color: #7a5c9c; font-size: 10px; text-align: center; }
+.personalCategories button[aria-pressed="true"] span { color: #fff; background: #ffffff24; }
+.personalTableScroll { max-width: 100%; overflow-x: auto; border: 1px solid #eee7f3; border-radius: 13px; }
+.personalTable { width: 100%; min-width: 440px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.personalTable :is(th, td) { padding: 14px; text-align: right; border-bottom: 1px solid #eee8f4; white-space: nowrap; }
+.personalTable th:first-child { text-align: left; white-space: normal; }
+.personalTable thead th { color: #89768f; background: #fcfafe; font-size: 11px; font-weight: 600; }
+.personalTable tbody th { color: #574462; font-weight: 650; }
+.personalTable tbody td { color: #746280; }
+.personalTable tfoot :is(th, td) { color: #77529b; background: #f5effb; border-bottom: 0; font-weight: 750; }
+.personalInstitution { display: flex; align-items: center; gap: 9px; }
 .summaryHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; min-height: 64px; padding: 2px 2px 0; }
 .summaryTitle { color: #352841; font-size: 23px; font-weight: 700; letter-spacing: -.035em; }
 .period { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; color: #807088; font-size: 11px; }

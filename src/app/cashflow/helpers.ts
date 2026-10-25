@@ -997,16 +997,16 @@ const hasPaidCommissionForItem = ({
   normalizedContractNumber,
   paidContracts,
   paidCommissionKeys,
+  contractsWithPaidCommissionCodes,
 }: {
   item: CashflowItem;
   normalizedContractNumber: string;
   paidContracts: Set<string>;
   paidCommissionKeys: Set<string>;
+  contractsWithPaidCommissionCodes: Set<string>;
 }): boolean => {
   const commissionCodes = commissionCodesForItem(item);
-  const hasAnyPaidCodeForContract = [...paidCommissionKeys].some((key) =>
-    key.startsWith(`${normalizedContractNumber.toUpperCase()}:`)
-  );
+  const hasAnyPaidCodeForContract = contractsWithPaidCommissionCodes.has(normalizedContractNumber.toUpperCase());
   if (hasAnyPaidCodeForContract) {
     if (commissionCodes.length === 0) {
       return item.productKey === "comfortcc" && paidContracts.has(normalizedContractNumber);
@@ -1036,6 +1036,39 @@ export function applyStatementMissingPayoutShifts({
 }): CashflowItem[] {
   if (!enabled) return cashflowItems;
 
+  type MonthStatements = {
+    paidContracts: Set<string>;
+    paidCommissionKeys: Set<string>;
+    contractsWithPaidCommissionCodes: Set<string>;
+    periodLabels: string[];
+  };
+  // Each calculation owns its indexes. Reusing one month's sets across items
+  // never retains another account's statements or survives an input update.
+  const indexedMonths = new Map<string, MonthStatements | null>();
+  const statementsForMonth = (monthKey: string): MonthStatements | null => {
+    if (indexedMonths.has(monthKey)) return indexedMonths.get(monthKey)!;
+    const statements = statementsByMonthKey[monthKey];
+    if (!statements || statements.length === 0) {
+      indexedMonths.set(monthKey, null);
+      return null;
+    }
+    const paidCommissionKeys = paidCommissionKeySetForStatements(statements);
+    const contractsWithPaidCommissionCodes = new Set<string>();
+    for (const key of paidCommissionKeys) {
+      const separator = key.indexOf(":");
+      // Preserve startsWith(`${CONTRACT}:`) for empty suffixes and extra colons.
+      if (separator !== -1) contractsWithPaidCommissionCodes.add(key.slice(0, separator));
+    }
+    const indexed = {
+      paidContracts: paidContractSetForStatements(statements),
+      paidCommissionKeys,
+      contractsWithPaidCommissionCodes,
+      periodLabels: statementPeriodLabels(statements),
+    };
+    indexedMonths.set(monthKey, indexed);
+    return indexed;
+  };
+
   return cashflowItems.flatMap((item): CashflowItem[] => {
     if (item.isTipPayout || item.isSubscriptionPayment) return [item];
     if (item.payoutStatus === "paid") return [item];
@@ -1051,8 +1084,8 @@ export function applyStatementMissingPayoutShifts({
       if (isOnOrAfterStornoMonth(item, date)) return [];
 
       const monthKey = monthKeyFromDate(date);
-      const statements = statementsByMonthKey[monthKey];
-      if (!statements || statements.length === 0) {
+      const statements = statementsForMonth(monthKey);
+      if (!statements) {
         return [{
           ...item,
           id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
@@ -1063,8 +1096,7 @@ export function applyStatementMissingPayoutShifts({
         }];
       }
 
-      const paidContracts = paidContractSetForStatements(statements);
-      const paidCommissionKeys = paidCommissionKeySetForStatements(statements);
+      const { paidContracts, paidCommissionKeys, contractsWithPaidCommissionCodes } = statements;
       if (paidContracts.size === 0) {
         return [{
           ...item,
@@ -1082,6 +1114,7 @@ export function applyStatementMissingPayoutShifts({
           normalizedContractNumber,
           paidContracts,
           paidCommissionKeys,
+          contractsWithPaidCommissionCodes,
         })
       ) {
         return [{
@@ -1094,7 +1127,7 @@ export function applyStatementMissingPayoutShifts({
         }];
       }
 
-      missedStatementPeriods.push(...statementPeriodLabels(statements));
+      missedStatementPeriods.push(...statements.periodLabels);
       date = addMonths(date, 1);
       shifted = true;
     }

@@ -4,9 +4,10 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BohemkaContractDetailLink } from "./statementLinksAndCalculator";
+import { BohemkaContractDetailLink, firstContractDetailUrl, StatementCalculatorPrefillButton } from "./statementLinksAndCalculator";
 import { BohemkaContractDetailModal } from "./StatementEmbeddedModals";
-import { BohemkaContractDetailModalContext } from "./statementPresentation";
+import { BohemkaContractDetailModalContext, StatementCalculatorPrefillContext, statementCalculatorPrefill } from "./statementPresentation";
+import { resolveStatementProduct } from "./statementParsing";
 import type { BohemkaContractDetailModalPayload } from "./statementTypes";
 
 function StatementDetail({ compact }: { compact: boolean }) {
@@ -41,6 +42,7 @@ describe("contract detail opened from a commission statement", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -61,5 +63,35 @@ describe("contract detail opened from a commission statement", () => {
     await act(async () => dialog.querySelector("button")!.click());
     expect(container.querySelector("iframe")).toBeNull();
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it.each([
+    ["CPP_CS_Z", "cppcestovko"], ["CPP_CS6", "cppcestovko"], ["CPP_ACPIV", "cppAuto"], ["PIL_AUTOZ", "pillowAuto"],
+  ] as const)("opens MAXX and the prefilled queue form when adding %s", async (productCode, productKey) => {
+    const openMaxx = vi.spyOn(window, "open").mockReturnValue(null);
+    const openCalculator = vi.fn();
+    const prefill = {
+      ...statementCalculatorPrefill({
+        product: resolveStatementProduct(productCode), contractNumber: "1800000001", clientName: "Novák Jan",
+        signedAt: "01.09.2026", validFrom: "02.09.2026", statementBase: 1899.5,
+        source: { statementId: "statement-travel" },
+      })!,
+      cppA101QueueEligible: true,
+    };
+    const maxxHref = firstContractDetailUrl([{ detailUrl: null }, { detailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456" }]);
+    await act(async () => root.render(
+      <StatementCalculatorPrefillContext.Provider value={openCalculator}>
+        <StatementCalculatorPrefillButton prefill={prefill} maxxHref={maxxHref} />
+      </StatementCalculatorPrefillContext.Provider>
+    ));
+    const button = container.querySelector("button")!;
+    expect(button.textContent).toContain("Přidat smlouvu");
+    await act(async () => button.click());
+    expect(openMaxx).toHaveBeenCalledExactlyOnceWith(maxxHref, "_blank", "noopener,noreferrer");
+    expect(openCalculator).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      product: productKey,
+      contractNumber: "1800000001", amountText: "1899.5", cppA101QueueEligible: true,
+    }));
+    expect(openMaxx.mock.invocationCallOrder[0]).toBeLessThan(openCalculator.mock.invocationCallOrder[0]);
   });
 });

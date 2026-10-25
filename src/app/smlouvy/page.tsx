@@ -453,7 +453,7 @@ function ContractsPageContent() {
     viewRevision: number;
     promise: Promise<void>;
   } | null>(null);
-  const lastSilentRefreshAtRef = useRef(0);
+  const lastRefreshAtRef = useRef(0);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
@@ -971,13 +971,13 @@ function ContractsPageContent() {
   );
 
   const refreshContracts = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
+    async ({ silent = false, force = false }: { silent?: boolean; force?: boolean } = {}) => {
       const email = normalizedUserEmail;
       if (!user || !email) return;
       // Při aktivních serverových filtrech by tichý refresh přepsal filtrovaný dataset
       // první nefiltrouvanou stránkou a UI by viditelně probliklo.
       if (silent && serverFilterActive) return;
-      if (silent && Date.now() - lastSilentRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
+      if (silent && !force && Date.now() - lastRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
         return;
       }
       const viewRevision = dataViewRevisionRef.current;
@@ -987,12 +987,14 @@ function ContractsPageContent() {
         }
         return;
       }
+      let refreshSucceeded = false;
       const task = (async () => {
         if (!silent) setLoading(true);
         setLoadError(null);
         try {
           const data = await apiFetchContracts({ scope: "my", includeTeam: true });
           if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
+          refreshSucceeded = true;
           // The initial response still supplies team navigation metadata, but
           // must not replace a search that completed while it was loading.
           applyContractsMetadata(data);
@@ -1020,8 +1022,9 @@ function ContractsPageContent() {
       try {
         await task;
       } finally {
-        if (silent) {
-          lastSilentRefreshAtRef.current = Date.now();
+        if ((silent || refreshSucceeded) && effectiveUserEmail(auth.currentUser?.email) === email) {
+          // The initial load also makes the list fresh for passive browser events.
+          lastRefreshAtRef.current = Date.now();
         }
         if (refreshInFlightRef.current?.promise === task) {
           refreshInFlightRef.current = null;
@@ -1040,7 +1043,7 @@ function ContractsPageContent() {
   }, []);
 
   useEffect(() => {
-    lastSilentRefreshAtRef.current = 0;
+    lastRefreshAtRef.current = 0;
   }, [normalizedUserEmail]);
 
   // load pozice + smlouvy
@@ -1218,6 +1221,12 @@ function ContractsPageContent() {
       void refreshContracts({ silent: true });
     };
 
+    const refreshAfterMutation = () => {
+      searchResponseCacheRef.current.clear();
+      // Known data changes must not wait for the passive focus cooldown.
+      void refreshContracts({ silent: true, force: true });
+    };
+
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
         triggerRefresh();
@@ -1226,20 +1235,20 @@ function ContractsPageContent() {
 
     const onStorage = (ev: StorageEvent) => {
       if (ev.key === CONTRACTS_UPDATED_KEY) {
-        triggerRefresh();
+        refreshAfterMutation();
       }
     };
 
     window.addEventListener("focus", triggerRefresh);
     window.addEventListener("pageshow", triggerRefresh);
-    window.addEventListener("contracts:updated", triggerRefresh as EventListener);
+    window.addEventListener("contracts:updated", refreshAfterMutation);
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("storage", onStorage);
 
     return () => {
       window.removeEventListener("focus", triggerRefresh);
       window.removeEventListener("pageshow", triggerRefresh);
-      window.removeEventListener("contracts:updated", triggerRefresh as EventListener);
+      window.removeEventListener("contracts:updated", refreshAfterMutation);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("storage", onStorage);
     };

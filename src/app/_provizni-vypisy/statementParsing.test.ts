@@ -23,6 +23,12 @@ import {
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
+  it.each(["CPP_CS_Z", "CPP_CS6"])("maps %s to ČPP travel insurance without annualizing the premium", code => {
+    expect(resolveStatementProduct(code)).toMatchObject({
+      rawCode: code, productKey: "cppcestovko", category: "travel", usesAnnualPremiumBase: false,
+    });
+  });
+
   it("maps premium-increase manager codes to endorsement commission items", () => {
     expect(managerCommissionCodeForSystemItems("NB0301")).toBe("B0301");
     expect(managerCommissionCodeForSystemItems("NV101")).toBe("A101");

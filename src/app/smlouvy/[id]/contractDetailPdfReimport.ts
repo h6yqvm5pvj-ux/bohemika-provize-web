@@ -1,26 +1,5 @@
 import type { Product } from "../../types/domain";
-import { parseConseqZenitPdf } from "@/app/lib/parseConseqZenitPdf";
 import type { ContractDoc } from "./contractDetailTypes";
-import { parseAllianzAutoPdf } from "@/app/lib/parseAllianzAutoPdf";
-import { parseComfortPdf } from "@/app/lib/parseComfortPdf";
-import { parseCppAutoPdf } from "@/app/lib/parseCppAutoPdf";
-import { parseCppBytexPdf } from "@/app/lib/parseCppBytexPdf";
-import { parseCppCestovkoPdf } from "@/app/lib/parseCppCestovkoPdf";
-import { parseCppHafanPdf } from "@/app/lib/parseCppHafanPdf";
-import { parseCppSimplexPdf } from "@/app/lib/parseCppSimplexPdf";
-import { parseCppKomplexPdf } from "@/app/lib/parseCppKomplexPdf";
-import { parseCsobAutoPdf } from "@/app/lib/parseCsobAutoPdf";
-import { parseDomexPdf } from "@/app/lib/parseDomexPdf";
-import { parseFlexiPdf } from "@/app/lib/parseFlexiPdf";
-import { parseKooperativaAutoPdf } from "@/app/lib/parseKooperativaAutoPdf";
-import { parseKooperativaCestovkoPdf } from "@/app/lib/parseKooperativaCestovkoPdf";
-import { parseKoopOdzamPdf } from "@/app/lib/parseKoopOdzamPdf";
-import { parseMaxCizinKomplexPdf } from "@/app/lib/parseMaxCizinKomplexPdf";
-import { parseMaxdomovPdf } from "@/app/lib/parseMaxdomovPdf";
-import { parseNeonPdf } from "@/app/lib/parseNeonPdf";
-import { parsePillowAutoPdf } from "@/app/lib/parsePillowAutoPdf";
-import { parseSlaviaAutoPdf } from "@/app/lib/parseSlaviaAutoPdf";
-import { parseUniqaAutoPdf } from "@/app/lib/parseUniqaAutoPdf";
 
 type PdfReimportParser = (file: File) => Promise<unknown>;
 type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]>;
@@ -31,30 +10,32 @@ type SlaviaAutoDetail = NonNullable<ContractDoc["carSlaviaDetail"]>;
 type SlaviaAutoDetailField = keyof SlaviaAutoDetail;
 type ContractUpdateField = keyof ContractDoc;
 
+// Opening a contract needs no PDF parser. Load only the selected product when
+// a PDF action is used; the fixed imports also preserve unsupported-product checks.
 export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
-  conseqzenit: parseConseqZenitPdf,
-  cppAuto: parseCppAutoPdf,
-  slaviaauto: parseSlaviaAutoPdf,
-  allianzAuto: parseAllianzAutoPdf,
-  csobAuto: parseCsobAutoPdf,
-  uniqaAuto: parseUniqaAutoPdf,
-  pillowAuto: parsePillowAutoPdf,
-  kooperativaAuto: parseKooperativaAutoPdf,
-  koopcestovko: parseKooperativaCestovkoPdf,
-  cppcestovko: parseCppCestovkoPdf,
-  cppsimplex: parseCppSimplexPdf,
-  cppPPRbez: parseCppKomplexPdf,
-  cppPPRs: parseCppKomplexPdf,
-  neon: parseNeonPdf,
-  flexi: parseFlexiPdf,
-  domex: parseDomexPdf,
-  domexneuron: parseDomexPdf,
-  cppbytex: parseCppBytexPdf,
-  cpphafan: parseCppHafanPdf,
-  koopodzam: parseKoopOdzamPdf,
-  maxdomov: parseMaxdomovPdf,
-  maxcizinkomplex: parseMaxCizinKomplexPdf,
-  comfortcc: parseComfortPdf,
+  conseqzenit: async file => (await import("@/app/lib/parseConseqZenitPdf")).parseConseqZenitPdf(file),
+  cppAuto: async file => (await import("@/app/lib/parseCppAutoPdf")).parseCppAutoPdf(file),
+  slaviaauto: async file => (await import("@/app/lib/parseSlaviaAutoPdf")).parseSlaviaAutoPdf(file),
+  allianzAuto: async file => (await import("@/app/lib/parseAllianzAutoPdf")).parseAllianzAutoPdf(file),
+  csobAuto: async file => (await import("@/app/lib/parseCsobAutoPdf")).parseCsobAutoPdf(file),
+  uniqaAuto: async file => (await import("@/app/lib/parseUniqaAutoPdf")).parseUniqaAutoPdf(file),
+  pillowAuto: async file => (await import("@/app/lib/parsePillowAutoPdf")).parsePillowAutoPdf(file),
+  kooperativaAuto: async file => (await import("@/app/lib/parseKooperativaAutoPdf")).parseKooperativaAutoPdf(file),
+  koopcestovko: async file => (await import("@/app/lib/parseKooperativaCestovkoPdf")).parseKooperativaCestovkoPdf(file),
+  cppcestovko: async file => (await import("@/app/lib/parseCppCestovkoPdf")).parseCppCestovkoPdf(file),
+  cppsimplex: async file => (await import("@/app/lib/parseCppSimplexPdf")).parseCppSimplexPdf(file),
+  cppPPRbez: async file => (await import("@/app/lib/parseCppKomplexPdf")).parseCppKomplexPdf(file),
+  cppPPRs: async file => (await import("@/app/lib/parseCppKomplexPdf")).parseCppKomplexPdf(file),
+  neon: async file => (await import("@/app/lib/parseNeonPdf")).parseNeonPdf(file),
+  flexi: async file => (await import("@/app/lib/parseFlexiPdf")).parseFlexiPdf(file),
+  domex: async file => (await import("@/app/lib/parseDomexPdf")).parseDomexPdf(file),
+  domexneuron: async file => (await import("@/app/lib/parseDomexPdf")).parseDomexPdf(file),
+  cppbytex: async file => (await import("@/app/lib/parseCppBytexPdf")).parseCppBytexPdf(file),
+  cpphafan: async file => (await import("@/app/lib/parseCppHafanPdf")).parseCppHafanPdf(file),
+  koopodzam: async file => (await import("@/app/lib/parseKoopOdzamPdf")).parseKoopOdzamPdf(file),
+  maxdomov: async file => (await import("@/app/lib/parseMaxdomovPdf")).parseMaxdomovPdf(file),
+  maxcizinkomplex: async file => (await import("@/app/lib/parseMaxCizinKomplexPdf")).parseMaxCizinKomplexPdf(file),
+  comfortcc: async file => (await import("@/app/lib/parseComfortPdf")).parseComfortPdf(file),
 };
 
 const PDF_CONTRACT_FIELD_MAP = [

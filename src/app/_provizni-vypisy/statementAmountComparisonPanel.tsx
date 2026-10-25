@@ -10,7 +10,6 @@ import {
 import styles from "./statementContractDetail.module.css";
 import type {
   CommissionAmountComparison,
-  CommissionAmountComparisonStatus,
 } from "./statementTypes";
 
 type PremiumBaseComparison = {
@@ -38,8 +37,16 @@ const formatSignedWholeMoney = (value: number): string => {
   return sign + formatWholeMoney(Math.abs(value)) + " Kč";
 };
 
-const amountComparisonStatusLabel = (status: CommissionAmountComparisonStatus): string => {
-  switch (status) {
+const isHigherCommission = (comparison: CommissionAmountComparison): boolean =>
+  comparison.status === "diff" &&
+  Number.isFinite(comparison.expectedAmount) &&
+  Number.isFinite(comparison.statementAmount) &&
+  comparison.expectedAmount > 0 &&
+  comparison.difference > COMMISSION_AMOUNT_TOLERANCE;
+
+const amountComparisonStatusLabel = (comparison: CommissionAmountComparison): string => {
+  if (isHigherCommission(comparison)) return "Vyšší provize";
+  switch (comparison.status) {
     case "ok":
       return "Sedí";
     case "missing_statement":
@@ -51,8 +58,9 @@ const amountComparisonStatusLabel = (status: CommissionAmountComparisonStatus): 
   }
 };
 
-const amountComparisonStatusTone = (status: CommissionAmountComparisonStatus): string => {
-  switch (status) {
+const amountComparisonStatusTone = (comparison: CommissionAmountComparison): string => {
+  if (isHigherCommission(comparison)) return "ok";
+  switch (comparison.status) {
     case "ok":
       return "ok";
     case "missing_statement":
@@ -272,7 +280,7 @@ export function AmountComparisonPanel({
                   className={styles.difference} data-tone={
                     Math.abs(comparison.difference) <= COMMISSION_AMOUNT_TOLERANCE
                       ? "neutral"
-                      : "error"
+                      : isHigherCommission(comparison) ? "ok" : "error"
                   }
                 >
                   {comparison.difference > 0 ? "+" : ""}
@@ -280,9 +288,12 @@ export function AmountComparisonPanel({
                 </td>
                 <td>
                   <span
-                    className={styles.badge} data-tone={amountComparisonStatusTone(comparison.status)}
+                    className={styles.badge} data-tone={amountComparisonStatusTone(comparison)}
                   >
-                    {amountComparisonStatusLabel(comparison.status)}
+                    {isHigherCommission(comparison) && (
+                      <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                    )}
+                    {amountComparisonStatusLabel(comparison)}
                   </span>
                 </td>
               </tr>

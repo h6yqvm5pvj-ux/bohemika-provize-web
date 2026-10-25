@@ -35,6 +35,7 @@ beforeEach(() => {
       exists: true, data: () => ({ subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" }),
     }) }) };
     if (name === "users") return {
+      select() { return this; },
       get: async () => {
         const docs = [{ id: email, data: () => ({ email, position: "poradce3", commissionMode: "standard", accountType: "advisor" }) }];
         return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };

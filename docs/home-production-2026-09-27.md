@@ -16,11 +16,15 @@ Domovská stránka používá uložené součty vlastní a týmové produkce za 
 
 Podklady cashflow stále zahrnují starší smlouvy, TIP výplaty a případné předplatné. Mohou z nich vznikat splátky splatné nyní; ořezání podle měsíce sjednání by výsledek poškodilo.
 
-Domovská stránka nyní načte podklady bez původního synchronního výpočtu a po načtení provizních výpisů provede výpočet jednou ve Web Workeru. Zpět přenáší jen hrubou částku, storno fond a čistou výplatu. Používá stejný generátor, přesuny nevyplacených položek a skutečné součty výpisů. Při nedostupném workeru použije stejný výpočet v prohlížeči. Odchod ze stránky ukončí worker a zruší požadavek na výpisy. Neúplné nebo právě zpracovávané výpisy vedou k hlášení chyby.
+Od 23. 10. 2026 domovská stránka používá jediný požadavek `GET /api/contracts/expected-payout?timeZone=Europe%2FPrague` (pásmo odpovídá prohlížeči). Server vrací pouze hrubou částku, storno fond, čistou výplatu, měsíc a čas zahájení čtení. Identita vychází z ověřeného tokenu a případného autorizovaného zastoupení, nikoli z parametrů klienta. Odpovědi mají `private, no-store`; nevzniká uložená cache ani zápis do obchodních dat.
 
-Tato změna omezuje blokování hlavního vlákna; sama nezkracuje načítání historie cashflow ze serveru a nepřidává serverovou cache výplaty.
+Pokud úplné a zpracované výpisy určují skutečnou výplatu aktuálního měsíce, server vrátí jejich součet bez načítání smluv, TIP výplat nebo předplatného. Je to stejná náhrada predikce skutečnou částkou jako v původním výpočtu, včetně nuly a záporných součtů. Jinak se úplné podklady načtou přímo přes existující chráněné handlery a použije se stejný generátor, přesuny nevyplacených položek a storno fond. Jedno aktuální ověření smluvních oprávnění se používá pro všechny interní stránky smluv daného požadavku. Jiný token či zastoupení nebo podvržený kontext toto ověření nemohou převzít.
 
-## Ověření
+Synchronní práce serveru má omezený počet zdrojů a řádků, rozpočet generátoru i párování výpisů. Překročení limitu nebo nepodporované starší datum vrátí výslovný pokyn použít původní výpočet ve Web Workeru; jeho kód i podklady se v běžné cestě do prohlížeče nenačítají. Výsledek se nikdy nezíská ořezáním finančních podkladů. Neúplné nebo právě zpracovávané výpisy, chyba podkladů a zamítnutí přístupu vedou k chybě, nikoli k falešné nule. Odchod ze stránky ruší požadavek a opožděná odpověď po změně účtu se zahodí.
+
+Sdílené načítání podkladů v `useCashflowData` pro stránku cashflow a záložní výplatu se ruší po odpojení posledního odběratele. Zbývající odběratel dál používá společný požadavek. Stejný signál ruší vlastní/týmové smlouvy, TIP výplaty i předplatné; kontroluje se také před obnovením tokenu, po načtení těla odpovědi a před další stránkou. Již rozběhnutý databázový dotaz může doběhnout. Zrušení nevytváří úspěšnou cache částečných dat a starý požadavek nemůže přepsat novější načítání při rychlém návratu. Dokončená platná cache se zachová, je oddělená podle účtu, zastoupení a generace soukromého kontextu; starší generace a propadlé záznamy se při dalším načítání odstraní.
+
+## Ověření původní implementace (27. 9. 2026)
 
 - Celá aplikační sada: **5 100 / 5 100 testů ve 349 souborech** (`npm test -- --maxWorkers=4`). Běh je bez souběžného sestavování aplikace; při souběhu jeden existující test predikce 1 000 smluv překročil časový limit pěti sekund. Limit ani jeho ověřované výsledky se neměnily.
 - Celá databázová sada: **308 prošlo, 1 volitelný benchmark se přeskočil**. Po přidání samostatné kontroly přístupu k novým souhrnům prošlo všech **244 cílených testů** bezpečnostních pravidel a měsíční produkce.
@@ -36,7 +40,7 @@ Výše uvedené ověření proběhlo lokálně. Změna nevyžaduje migraci ani p
 
 - Produkce a žebříček ukazují datum a čas posledního úspěšného načtení. Klientská cache uchovává tento původní čas; pouhé zobrazení cache ani neúspěšné obnovení jej neposouvá. Načtený serverový měsíční souhrn má ověřenou aktuální revizi zdroje, proto úspěšné ověření aktualizuje čas na stránce.
 - Při obnovení zůstávají poslední hodnoty viditelné. Chyba přidá upozornění „Poslední známé údaje“. Bez předchozího úspěšného výsledku se místo částek zobrazí chyba. Chyba historie nevrací čerstvou měsíční produkci zpět na starší souhrn. Jiný účet, nový měsíc ani jiné období žebříčku nedostanou čas aktualizace předchozího výběru.
-- Výplata zachová poslední úspěšný výpočet pouze pro stejný účet a kalendářní měsíc. Její čas odpovídá staršímu ze dvou načtených podkladů: snapshotu cashflow a provizním výpisům. Výpadek kterékoli části nevede k výpočtu z neúplných podkladů. Ruční obnovení widget nepřipojuje znovu, takže může ukázat poslední výsledek během čekání.
+- Výplata zachová poslední úspěšný serverový výsledek pouze pro stejný účet a kalendářní měsíc. Její čas odpovídá zahájení čtení podkladů po ověření přístupu. Výpadek kterékoli části nevede k výpočtu z neúplných podkladů. Ruční obnovení souhrnu zachová poslední výsledek během čekání; při opětovném přechodu do záložního výpočtu může rozsáhlé portfolio zobrazit počáteční loader. Záložní worker zachovává původní čas staršího ze snapshotu cashflow a výpisů.
 - Widget výplaty se připojí jednou při přiblížení do 240 px od obrazovky. Nad přehybem začne ihned; bez podpory IntersectionObserver se načte také. Posun zpět jej neodpojuje ani nespouští duplicitní načítání.
 
 ### Měření po nasazení
@@ -46,8 +50,8 @@ Výše uvedené ověření proběhlo lokálně. Změna nevyžaduje migraci ani p
 - `production`: vlastní a týmový měsíční souhrn od spuštění načítání.
 - `productionTip`: samostatná TIP produkce.
 - `leaderboard`: připravenost aktuálního nebo vybraného historického období, včetně rychlého použití klientské cache.
-- `payoutInputs`: úplné podklady cashflow a provizní výpisy od připojení widgetu.
-- `payoutCalculation`: výpočet včetně spuštění/přenosu workeru nebo stejného náhradního výpočtu.
+- `payoutInputs`: odezva serverového souhrnu; u záložního workeru úplné podklady cashflow a provizní výpisy od připojení widgetu. Serverový `Server-Timing` rozlišuje čtení, výpočet a souhrnné fáze bez identifikátorů či částek.
+- `payoutCalculation`: pouze záložní výpočet včetně spuštění/přenosu workeru nebo stejného náhradního výpočtu v prohlížeči.
 - `payout`: připravenost výsledku od připojení widgetu; nezahrnuje dobu, kdy karta čekala mimo obrazovku.
 
 Klient odešle dávku nejvýše 20 měření po dvou sekundách. Pouze produkční sestavení odesílá data; posledních 60 měření je také lokálně v `sessionStorage["home.performance.v1"]`. Neodesílají se čísla smluv, jména, e-maily, částky, adresy stránek ani texty chyb. Endpoint `/api/home/performance` vyžaduje přihlášení a standardní aplikační kontroly, dovoluje nejvýše 20 požadavků za minutu a 8 KiB těla; pole měření mají pevně povolené hodnoty. Odeslání po změně účtu se zahodí, po chybě se neopakuje a neovlivňuje zobrazení stránky.
@@ -60,3 +64,11 @@ Pro vyhodnocení v logách filtrovat `event = home.performance`, rozbalit `sampl
 - Nové testy zahrnují původní čas cache při chybě/obnově, přepínání účtů a historických období, chybu podkladů výplaty, opožděné odpovědi, jednorázové připojení widgetu, neúplné první načtení, omezení a autorizaci telemetrie a výpadek jejího úložiště/odeslání.
 - Skutečný Chrome v pásmu Europe/Prague, šířky 390 a 1280 px, skutečný IntersectionObserver a worker, pouze syntetická data: mimo obrazovku nula požadavků na podklady výplaty; po přiblížení čtyři požadavky; zachování částky a času při chybě výpisů i smluv; úspěšné následné obnovení; karta nahoře načtená bez posunu; žádné JavaScriptové chyby ani vodorovné přetékání. Dávky měření obsahovaly očekávané úspěchy/chyby a pouze povolená pole.
 - Prohlížečový test používá izolovaný sestavený komponentový scénář se syntetickými odpověďmi, nikoli přihlášení k reálnému portfoliu. Záznamy a snímky jsou lokálně v ignorovaném `.tmp/home-freshness-20260927/`.
+
+## Ověření serverového souhrnu (23. 10. 2026)
+
+- Celá aplikační sada: **7 292 testů ve 431 souborech** (`npm test -- --maxWorkers=4`). Produkční sestavení přes Webpack, TypeScript, kontroly bezpečnostní konfigurace a registrace autentizační proxy prošly. ESLint dotčených souborů nemá chyby; stávající upozornění na navigaci v detailu smlouvy zůstává.
+- Scénářové testy potvrzují jediný souhrnný požadavek místo načítání smluv/výpisů v prohlížeči, přesné částky původního výpočtu, nulové/záporné výplaty, starší splátky, změnu měsíce a pásma, zrušení požadavku, chybové obnovení a izolaci účtů/zastoupení. Testy loaderů ověřují úplnost, omezení, zamítnutý přístup a nemožnost podvrhnout nebo převzít ověřený kontext.
+- Párování výpisů vytváří indexy pouze jednou za použitý měsíc a výpočet. Nezávislé porovnání s původní implementací pro 500 položek přes tři měsíce zachovává celý výstup a snižuje počet čtení každého zdrojového pole z 1 500 na 3. Indexy se nepřenášejí mezi účty ani voláními.
+- Ověření používá syntetická data. Produkční latence ani nasazení této úpravy nebyly součástí kontroly; existující měření `payout` a agregovaný `Server-Timing` umožní vyhodnotit skutečnou odezvu po nasazení.
+- Po doplnění rušení sdíleného načítání podkladů prošlo **7 314 testů ve 432 souborech**, včetně 22 nových scénářů rušení. Pokrývají více odběratelů, poslední odpojení, všechny čtyři zdroje, StrictMode, rychlý návrat, opožděné odpovědi a dokončení starého požadavku, změny účtu/zastoupení, nové přihlášení stejného UID, režim tipaře, obnovu tokenu, mutaci během načítání a zachování dokončené platné cache.

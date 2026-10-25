@@ -14,7 +14,7 @@ import {
 
 import type { PaymentFrequency } from "@/app/types/domain";
 import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
-import { isStatementBatchQueueProduct, type StatementBatchQueueProduct } from "@/app/lib/statementBatchQueue";
+import { isStatementBatchQueueProduct, statementBatchQueueReplacementError, type StatementBatchQueueProduct, type StatementBatchQueueReplacement } from "@/app/lib/statementBatchQueue";
 
 import type { StatementCalculatorPrefill } from "./statementPresentation";
 import { allowedFrequencies } from "../kalkulacka/calculatorHelpers";
@@ -40,9 +40,12 @@ export type CppAutoBatchQueueItem = {
   clientName: string;
   contractSignedDate: string;
   policyStartDate: string;
+  policyEndDate: string;
   amountText: string;
   frequency: PaymentFrequency;
   stornoDate: string;
+  isRefresh: boolean;
+  refreshOriginalContractNumber: string | null;
   pdfFile: File | null;
   status: CppAutoBatchQueueStatus;
   message: string | null;
@@ -55,9 +58,11 @@ export type CppAutoBatchQueuePatch = Partial<
     | "clientName"
     | "contractSignedDate"
     | "policyStartDate"
+    | "policyEndDate"
     | "amountText"
     | "frequency"
     | "stornoDate"
+    | "refreshOriginalContractNumber"
     | "pdfFile"
   >
 >;
@@ -76,7 +81,8 @@ export const cppAutoBatchQueueItemKey = (
 };
 
 export const cppAutoBatchQueueItemFromPrefill = (
-  prefill: StatementCalculatorPrefill
+  prefill: StatementCalculatorPrefill,
+  replacement: StatementBatchQueueReplacement = {}
 ): CppAutoBatchQueueItem => {
   if (!isStatementBatchQueueProduct(prefill.product)) {
     throw new Error("Tento produkt nelze přidat do fronty smluv z výpisu.");
@@ -98,9 +104,12 @@ export const cppAutoBatchQueueItemFromPrefill = (
     clientName: prefill.clientName,
     contractSignedDate: prefill.contractSignedDate,
     policyStartDate: prefill.policyStartDate,
+    policyEndDate: "",
     amountText: prefill.amountText,
     frequency: prefill.frequency,
     stornoDate: "",
+    isRefresh: replacement.isRefresh === true,
+    refreshOriginalContractNumber: replacement.refreshOriginalContractNumber?.trim() || null,
     pdfFile: null,
     status: "ready",
     message: null,
@@ -120,7 +129,7 @@ export const statementBatchQueueContractEntry = (item: CppAutoBatchQueueItem): R
     clientName: item.clientName.trim(),
     contractSignedDate: item.contractSignedDate.trim(),
     policyStartDate: item.policyStartDate.trim(),
-    policyEndDate: null,
+    policyEndDate: item.policyEndDate.trim() || null,
     status: item.stornoDate.trim() ? "storno" : "active",
     stornoDate: item.stornoDate.trim() || null,
     durationYears: null,
@@ -135,8 +144,8 @@ export const statementBatchQueueContractEntry = (item: CppAutoBatchQueueItem): R
     tipContractSourceTipClientName: null,
     tipContractSourceTipCreatedAtMs: null,
     paid: false,
-    isRefresh: false,
-    refreshOriginalContractNumber: null,
+    isRefresh: item.isRefresh,
+    refreshOriginalContractNumber: item.isRefresh ? item.refreshOriginalContractNumber?.trim() || null : null,
     refreshOriginalMissingInSystem: false,
     requiresStatementRefresh: false,
     commissionCalculationStatus: null,
@@ -175,6 +184,8 @@ const parseIsoDay = (value: string): Date | null => {
 export const validateCppAutoBatchQueueItem = (item: CppAutoBatchQueueItem): string | null => {
   if (!item.contractNumber.trim()) return "Doplň číslo smlouvy.";
   if (!item.clientName.trim()) return "Doplň jméno klienta.";
+  const replacementError = statementBatchQueueReplacementError(item);
+  if (replacementError) return replacementError;
 
   const signedAt = parseIsoDay(item.contractSignedDate);
   if (!signedAt) return "Doplň platné datum sjednání.";
@@ -182,6 +193,13 @@ export const validateCppAutoBatchQueueItem = (item: CppAutoBatchQueueItem): stri
   if (!policyStart) return "Doplň platné datum počátku.";
   if (policyStart.getTime() < signedAt.getTime()) {
     return "Počátek smlouvy nesmí být před datem sjednání.";
+  }
+  if (item.policyEndDate.trim()) {
+    const policyEnd = parseIsoDay(item.policyEndDate);
+    if (!policyEnd) return "Datum konce pojištění není platné.";
+    if (policyEnd.getTime() < policyStart.getTime()) {
+      return "Konec pojištění nesmí být před počátkem smlouvy.";
+    }
   }
 
   const amount = cppAutoBatchQueueAmount(item.amountText);
@@ -358,6 +376,7 @@ export function CppAutoBatchQueue({
                     </span>
                   </div>
                   {sourceLabel && <div className="mt-1 text-xs font-medium text-slate-500">Výpis: {sourceLabel}</div>}
+                  {item.isRefresh && <div className="mt-1 text-xs font-semibold text-amber-800">Náhrada původní smlouvy</div>}
                 </div>
                 <button
                   type="button"
@@ -371,6 +390,17 @@ export function CppAutoBatchQueue({
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {item.isRefresh && (
+                  <label className="text-xs font-bold text-slate-600">
+                    Číslo původní smlouvy
+                    <input
+                      value={item.refreshOriginalContractNumber ?? ""}
+                      disabled={disabled}
+                      onChange={(event) => onUpdate(item.id, { refreshOriginalContractNumber: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
+                    />
+                  </label>
+                )}
                 <label className="text-xs font-bold text-slate-600">
                   Číslo smlouvy
                   <input
@@ -429,11 +459,23 @@ export function CppAutoBatchQueue({
                   >
                     {allowedFrequencies(item.product).map((frequency) => (
                       <option key={frequency} value={frequency}>
-                        {{monthly:"měsíční",quarterly:"čtvrtletní",semiannual:"pololetní",annual:"roční"}[frequency]}
+                        {item.product === "cppcestovko" ? "jednorázově" : {monthly:"měsíční",quarterly:"čtvrtletní",semiannual:"pololetní",annual:"roční"}[frequency]}
                       </option>
                     ))}
                   </select>
                 </label>
+                {item.product === "cppcestovko" && (
+                  <label className="text-xs font-bold text-slate-600">
+                    Konec pojištění
+                    <input
+                      type="date"
+                      value={item.policyEndDate}
+                      disabled={disabled}
+                      onChange={(event) => onUpdate(item.id, { policyEndDate: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
+                    />
+                  </label>
+                )}
                 <label className="text-xs font-bold text-slate-600">
                   Datum storna
                   <input

@@ -40,7 +40,7 @@ beforeEach(() => {
   mocks.db = Object.assign(Object.create(store.db), { collection: (name: string) => {
     const ref = collection(name);
     if (name !== "users") return ref;
-    return Object.assign(Object.create(ref), { get: async () => {
+    return Object.assign(Object.create(ref), { select() { return this; }, get: async () => {
       const snap = await ref.get();
       return { ...snap, forEach: (visit: (doc: typeof snap.docs[number]) => void) => snap.docs.forEach(visit) };
     } });
