@@ -90,6 +90,7 @@ function document(path: string) {
 }
 function collection(path: string, filters: Array<[string, unknown]> = [], limit = Infinity) {
   return {
+    path,
     doc: (id: string) => document(`${path}/${id}`),
     where: (field: string, _operator: string, value: unknown) => collection(path, [...filters, [field, value]], limit),
     limit: (value: number) => collection(path, filters, value),
@@ -119,7 +120,13 @@ beforeEach(() => {
       });
       set(ref, patch);
     };
-    return { set, update, commit: async () => {
+    const create = (ref: { path: string }, patch: Record<string, unknown>) => {
+      checks.push(() => {
+        if (records.has(ref.path)) throw Object.assign(new Error("Concurrent document creation"), { code: 6 });
+      });
+      set(ref, patch);
+    };
+    return { set, update, create, commit: async () => {
       beforeReplayCommit?.(); beforeReplayCommit = undefined;
       checks.forEach(check => check());
       pending.forEach(work => work());
@@ -576,5 +583,230 @@ describe("rebuilding a contract from saved statements", () => {
     expect(await response.json()).toMatchObject({ reset: { statementPremiumPointerCleared: false } });
     expect(records.get(entryPath)).toMatchObject(pointer);
     expect(records.get(entryPath)!.premiumStatementHistory).toEqual([expect.objectContaining({ writtenBy: viewer, premiumKind: "auto_change" })]);
+  });
+});
+
+
+describe("automatic chronology reconciliation on statement import", () => {
+  const header = (year: number) => ({ statementNumber: `${year}-05`, statementDate: `31.05.${year}`, period: `01.05.${year} - 31.05.${year}` });
+  const html = (year: number, base = year === 2025 ? 10000 : year === 2026 ? 12000 : 14000) => {
+    const code = year === 2025 ? "A1" : `B10${year - 2025}`;
+    const cells = [1, contractNumber, "01.05.2025", "01.05.2025", "Synthetic client", "R", "CPP_1C_II", code, base, "", "", "5", base * 0.106, 0];
+    return `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
+  };
+  const setup = () => {
+    records.clear(); versions.clear(); reads.length = 0; writes.length = 0;
+    setContext({ email: owner, actorEmail: owner });
+    records.set("contractRefs/chronology-reference", { ownerEmail: owner, entryId: "entry-1", entryPath, contractNumberNormalized: contractNumber });
+    records.set(entryPath, {
+      contractNumber, userEmail: owner, productKey: "cppAuto", frequencyRaw: "annual", position: "poradce5", originalPosition: "poradce5",
+      commissionMode: "accelerated", inputAmount: 12000, calculationInputAmount: 12000, effectiveInputAmount: 12000,
+      createdFromCommissionStatement: true, contractSignedDate: "2025-05-01", policyStartDate: "2025-05-01",
+      commissionPayouts: [], premiumStatementHistory: [],
+    });
+  };
+  const upload = (year: number, base?: number) => POST(new NextRequest("https://example.test/api/commission-statements", {
+    method: "POST", body: JSON.stringify({ html: html(year, base), header: header(year) }),
+  }));
+  const expectUpload = async (year: number, base?: number) => {
+    const response = await upload(year, base);
+    const payload = await response.json();
+    expect(response.status, JSON.stringify(payload)).toBe(200);
+    return payload;
+  };
+  const summary = () => {
+    const contract = records.get(entryPath)!;
+    return {
+      inputAmount: contract.inputAmount, effectiveInputAmount: contract.effectiveInputAmount,
+      calculationInputAmount: contract.calculationInputAmount,
+      initialBase: (contract.initialCommissionBase as Record<string, unknown>)?.paymentPremium,
+      premiumChronology: contract.premiumUpdatedFromStatementChronologyMs,
+      history: ((contract.premiumStatementHistory ?? []) as Record<string, unknown>[])
+        .map(item => ({ kind: item.premiumKind, date: item.anniversaryDate, amount: item.newAnnualPremium, previous: item.previousAnnualPremium, difference: item.differenceAnnual }))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date))),
+      payouts: ((contract.commissionPayouts ?? []) as Record<string, unknown>[])
+        .map(item => ({ code: item.code, month: item.payoutMonthKey, amount: item.amount, expected: item.expectedAmount, status: item.status }))
+        .sort((a, b) => String(a.month).localeCompare(String(b.month))),
+    };
+  };
+
+  beforeEach(setup);
+
+  it("records the same premiums and payouts for May 2026 then May 2025 as for chronological import", async () => {
+    await expectUpload(2025); await expectUpload(2026);
+    const ordered = summary();
+    setup();
+    await expectUpload(2026); await expectUpload(2025);
+    expect(summary()).toEqual(ordered);
+    expect(summary().history).toEqual([
+      { kind: "auto_initial", date: "2025-05-01", amount: 10000, previous: null, difference: null },
+      { kind: "auto_change", date: "2026-05-01", amount: 12000, previous: 10000, difference: 2000 },
+    ]);
+    expect(summary().payouts.map(item => [item.month, item.amount])).toEqual([["2025-5", 1060], ["2026-5", 1272]]);
+  });
+
+  it.each([[2027, 2025, 2026], [2027, 2026, 2025], [2026, 2025, 2027], [2026, 2027, 2025], [2025, 2027, 2026]])("reconciles three anniversary statements in order %j", async (...years) => {
+    for (const year of [2025, 2026, 2027]) await expectUpload(year);
+    const ordered = summary();
+    setup();
+    for (const year of years) await expectUpload(year);
+    expect(summary()).toEqual(ordered);
+  });
+
+  it("preserves manual, foreign and unattributed records and never reads another author's statement collection", async () => {
+    await expectUpload(2026);
+    const protectedPayouts = [
+      { key: "manual", amount: 40 },
+      { key: "foreign", statementId: "private-source", writtenBy: viewer, amount: 70 },
+      { key: "legacy", statementId: "unknown-source", amount: 90 },
+      { key: "orphan", statementId: "missing-own-source", writtenBy: owner, amount: 25 },
+    ];
+    const protectedHistory = [{ key: "foreign-history", statementId: "private-source", writtenBy: viewer, premiumKind: "auto_initial", newPremium: 10000, newAnnualPremium: 10000, anniversaryDate: "2025-05-01" }];
+    const contract = records.get(entryPath)!;
+    contract.commissionPayouts = [...protectedPayouts, ...(contract.commissionPayouts as unknown[])];
+    contract.premiumStatementHistory = protectedHistory;
+    records.set(`usersPrivate/${viewer}/commissionStatements/private-source`, { html: html(2027, 99999), ...header(2027) });
+    await expectUpload(2025);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual(expect.arrayContaining(protectedPayouts));
+    expect(records.get(entryPath)!.premiumStatementHistory).toEqual(expect.arrayContaining(protectedHistory));
+    expect(reads.some(path => path.startsWith(`usersPrivate/${viewer}/commissionStatements`))).toBe(false);
+    expect(summary().payouts.some(item => item.amount === 99999 * 0.106)).toBe(false);
+  });
+
+  it("does not clear existing payouts or premium history when another writer changes the contract during replay", async () => {
+    await expectUpload(2026);
+    const before = structuredClone(records.get(entryPath)!);
+    const concurrent = { key: "concurrent", statementId: "another-source", writtenBy: viewer, amount: 55 };
+    beforeReplayCommit = () => write(entryPath, { commissionPayouts: [...(records.get(entryPath)!.commissionPayouts as unknown[]), concurrent] });
+    const response = await upload(2025);
+    expect(response.status).toBe(409);
+    expect(records.get(entryPath)).toEqual({ ...before, commissionPayouts: [...(before.commissionPayouts as unknown[]), concurrent] });
+  });
+
+  it("remains idempotent when the older source is processed again", async () => {
+    await expectUpload(2026); await expectUpload(2025);
+    const before = summary();
+    const repeat = await expectUpload(2025);
+    expect(repeat.processingResult).toMatchObject({ payoutRecordsAdded: 0, payoutRecordsUpdated: 0, premiumUpdates: 0 });
+    expect(summary()).toEqual(before);
+    expect(summary().payouts).toHaveLength(2);
+  });
+
+
+  const derivedTasks = () => [...records.entries()].filter(([path]) =>
+    path.startsWith(`usersPrivate/${owner}/accountingRepairDrafts/`) || path.startsWith(`usersPrivate/${owner}/externalUpdateTasks/`));
+
+  it("updates the later premium repair and external task from the corrected previous premium", async () => {
+    await expectUpload(2027);
+    const originalTasks = structuredClone(derivedTasks());
+    expect(originalTasks).toHaveLength(2);
+    expect(originalTasks.every(([, task]) => task.previousAnnualPremium === 12000)).toBe(true);
+    await expectUpload(2025);
+    for (const [path, original] of originalTasks) {
+      expect(records.get(path)).toMatchObject({ previousAnnualPremium: 10000, newAnnualPremium: 14000, differenceAnnual: 4000,
+        createdAtMs: original.createdAtMs, createdBy: original.createdBy });
+    }
+    await expectUpload(2026);
+    expect(derivedTasks()).toHaveLength(4);
+    for (const [path] of originalTasks) expect(records.get(path)).toMatchObject({
+      previousAnnualPremium: 12000, newAnnualPremium: 14000, differenceAnnual: 2000,
+    });
+  });
+
+  it("never reopens already completed repair drafts or external tasks during replay", async () => {
+    await expectUpload(2027);
+    for (const [path] of derivedTasks()) write(path, { status: "completed", reviewedBy: owner });
+    const completed = structuredClone(derivedTasks());
+    const result = await expectUpload(2025);
+    expect(result.processingResult).toMatchObject({ accountingRepairDrafts: 0, externalUpdateTasks: 0 });
+    for (const [path, task] of completed) expect(records.get(path)).toEqual(task);
+    expect(summary().history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ date: "2027-05-01", previous: 10000, difference: 4000 }),
+    ]));
+  });
+
+  it("rejects the whole replay if an existing draft is completed concurrently", async () => {
+    await expectUpload(2027);
+    const before = structuredClone(records.get(entryPath));
+    const [taskPath] = derivedTasks()[0];
+    beforeReplayCommit = () => write(taskPath, { status: "completed" });
+    const response = await upload(2025);
+    expect(response.status).toBe(409);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(records.get(taskPath)?.status).toBe("completed");
+  });
+
+  it("does not overwrite a task created concurrently with the atomic replay", async () => {
+    await expectUpload(2026);
+    const before = structuredClone(records.get(entryPath));
+    // Capture the deterministic new task path as it is read during simulation.
+    beforeReplayCommit = () => {
+      const taskPath = reads.find(path => path.startsWith(`usersPrivate/${owner}/externalUpdateTasks/`));
+      expect(taskPath).toBeDefined();
+      write(taskPath!, { status: "completed", marker: "concurrent" });
+    };
+    expect((await upload(2025)).status).toBe(409);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(derivedTasks()).toEqual([[expect.any(String), { status: "completed", marker: "concurrent" }]]);
+  });
+
+  it("leaves all financial records intact if a saved source fails validation", async () => {
+    const latest = await expectUpload(2026);
+    write(`usersPrivate/${owner}/commissionStatements/${latest.item.id}`, { html: '<div id="provize">' + "<tr>".repeat(1000) + "</div>" });
+    const before = structuredClone(records.get(entryPath));
+    expect((await upload(2025)).status).toBe(400);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(derivedTasks()).toEqual([]);
+  });
+
+  it("repairs an already imported older statement through the saved-statement action", async () => {
+    await expectUpload(2026);
+    const older = await expectUpload(2025);
+    const expected = summary();
+    // Simulate the missing history produced by the previous implementation.
+    records.get(entryPath)!.premiumStatementHistory = (records.get(entryPath)!.premiumStatementHistory as Record<string, unknown>[])
+      .filter(item => item.premiumKind === "auto_initial");
+    records.get(entryPath)!.premiumUpdatedFromStatementChronologyMs = null;
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ action: "reprocess-saved-statement", statementId: older.item.id }),
+    }));
+    expect(response.status).toBe(200);
+    expect(summary()).toEqual(expected);
+  });
+
+  it.each([401, 403])("rejects a denied import (%i) before any source or contract read", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await upload(2025)).status).toBe(status);
+    expect(reads).toEqual([]);
+    expect(writes).toEqual([]);
+  });
+
+  it("does not let another user trigger replay by supplying a target owner or an administrator flag", async () => {
+    await expectUpload(2026);
+    const before = structuredClone(records.get(entryPath));
+    reads.length = 0; writes.length = 0;
+    setContext({ email: viewer, actorEmail: viewer });
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ html: html(2025), header: header(2025), ownerEmail: owner,
+        entryId: "entry-1", canManageContractsAsAdmin: true, replayContext: { ownerEmail: owner } }),
+    }));
+    expect(response.status).toBe(200);
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).not.toContain(entryPath);
+    expect(reads.some(path => path.startsWith(`usersPrivate/${owner}/`))).toBe(false);
+  });
+
+  it("keeps other contracts and the historical source audit unchanged", async () => {
+    const latest = await expectUpload(2026);
+    const sourcePath = `usersPrivate/${owner}/commissionStatements/${latest.item.id}`;
+    const otherPath = `users/${owner}/entries/other-contract`;
+    records.set(otherPath, { contractNumber: "9876543210", productKey: "cppAuto", commissionPayouts: [{ key: "manual", amount: 42 }] });
+    const other = structuredClone(records.get(otherPath));
+    const source = records.get(sourcePath)!;
+    source.html = String(source.html).replace("</table>", html(2026).match(/<tr>.*<\/tr>/)![0].replace(contractNumber, "9876543210") + "</table>");
+    const sourceBefore = structuredClone(source);
+    await expectUpload(2025);
+    expect(records.get(otherPath)).toEqual(other);
+    expect(records.get(sourcePath)).toEqual(sourceBefore);
   });
 });

@@ -16,8 +16,8 @@ export const ownsStatementRecord = (value: unknown, writer: string): boolean => 
 };
 
 export class StatementRebuildCapacityError extends Error {
-  constructor() {
-    super("Přepočet nelze dokončit: historii zaplňují záznamy jiných autorů nebo záznamy bez určeného autora.");
+  constructor(message = "Přepočet nelze dokončit: historii zaplňují záznamy jiných autorů nebo záznamy bez určeného autora.") {
+    super(message);
   }
 }
 

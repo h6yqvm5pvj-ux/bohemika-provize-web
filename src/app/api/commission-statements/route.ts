@@ -123,6 +123,10 @@ const statementProcessingErrorResponse = (error: unknown): NextResponse | null =
   if (error instanceof StatementRebuildCapacityError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
   }
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 9 || code === 10 || code === 6) {
+    return NextResponse.json({ ok: false, error: "Smlouva se mezitím změnila. Zpracování výpisu prosím zopakujte." }, { status: 409 });
+  }
   return null;
 };
 
@@ -1700,35 +1704,32 @@ type ContractStatementRebuildResetSummary = {
   statementCreatedFlagPersisted: boolean;
 };
 
-const resetContractStatementDerivedFields = async ({
-  ref,
-  contract,
-  updateTime,
-  ctxEmail,
-  nowMs,
+const prepareContractStatementReset = ({
+  contract, ctxEmail, nowMs, statementIds,
 }: {
-  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
   contract: ContractDoc;
-  updateTime: FirebaseFirestore.Timestamp;
   ctxEmail: string;
   nowMs: number;
-}): Promise<ContractStatementRebuildResetSummary> => {
+  statementIds?: Set<string>;
+}): { patch: Record<string, unknown>; summary: ContractStatementRebuildResetSummary } => {
+  const canReplay = (record: unknown) => ownsStatementRecord(record, ctxEmail) &&
+    (!statementIds || statementIds.has(String((record as { statementId: unknown }).statementId)));
   const existingPayouts = statementRecordArray(contract.commissionPayouts);
-  const keptPayouts = existingPayouts.filter((payout) => !ownsStatementRecord(payout, ctxEmail));
+  const keptPayouts = existingPayouts.filter((payout) => !canReplay(payout));
   const existingPremiumHistory = statementRecordArray(contract.premiumStatementHistory);
   const keptPremiumHistory = existingPremiumHistory.filter(
-    (entry) => !ownsStatementRecord(entry, ctxEmail)
+    (entry) => !canReplay(entry)
   );
   const initialCommissionBase =
     (contract as { initialCommissionBase?: { statementId?: unknown; writtenBy?: unknown } | null })
       .initialCommissionBase ?? null;
   // Legacy IDs are user-scoped and resolvedBy identifies the applying actor,
   // not necessarily the source author. Preserve provenance without an author.
-  const initialCommissionBaseCleared = ownsStatementRecord(initialCommissionBase, ctxEmail);
-  const statementPremiumPointerCleared = ownsStatementRecord({
+  const initialCommissionBaseCleared = canReplay(initialCommissionBase);
+  const statementPremiumPointerCleared = canReplay({
     statementId: contract.premiumUpdatedFromStatementId,
     writtenBy: (contract as { premiumUpdatedFromStatementWrittenBy?: unknown }).premiumUpdatedFromStatementWrittenBy,
-  }, ctxEmail);
+  });
   const wasCreatedFromStatement = autoContractWasCreatedFromCommissionStatement(contract);
   const statementCreatedFlagPersisted =
     wasCreatedFromStatement && contract.createdFromCommissionStatement !== true;
@@ -1758,9 +1759,7 @@ const resetContractStatementDerivedFields = async ({
     patch.createdFromCommissionStatement = true;
   }
 
-  await trackCashflowWrite(() => ref.update(patch, { lastUpdateTime: updateTime }));
-
-  return {
+  return { patch, summary: {
     payoutRecordsRemoved: existingPayouts.length - keptPayouts.length,
     payoutRecordsKept: keptPayouts.length,
     premiumHistoryRemoved: existingPremiumHistory.length - keptPremiumHistory.length,
@@ -1768,7 +1767,21 @@ const resetContractStatementDerivedFields = async ({
     initialCommissionBaseCleared,
     statementPremiumPointerCleared,
     statementCreatedFlagPersisted,
-  };
+  } };
+};
+
+const resetContractStatementDerivedFields = async ({
+  ref, contract, updateTime, ctxEmail, nowMs,
+}: {
+  ref: FirebaseFirestore.DocumentReference;
+  contract: ContractDoc;
+  updateTime: FirebaseFirestore.Timestamp;
+  ctxEmail: string;
+  nowMs: number;
+}): Promise<ContractStatementRebuildResetSummary> => {
+  const { patch, summary } = prepareContractStatementReset({ contract, ctxEmail, nowMs });
+  await trackCashflowWrite(() => ref.update(patch, { lastUpdateTime: updateTime }));
+  return summary;
 };
 
 const statementChronologyMsFromParts = ({
@@ -3779,6 +3792,93 @@ const createProcessingBatchWriter = () => {
   return { set, updateContract, updateDocument, commit };
 };
 
+type ProcessingBatchWriter = ReturnType<typeof createProcessingBatchWriter>;
+type StatementReplayContext = {
+  original: AccessibleContractMatch;
+  contract: ContractDoc;
+  patch: Record<string, unknown>;
+  writer: ProcessingBatchWriter;
+};
+
+// Replay runs against a private in-memory contract. Neither clearing the old
+// history nor intermediate calculations may reach Firestore.
+const createStatementReplay = (
+  original: AccessibleContractMatch,
+  patch: Record<string, unknown>,
+  ctxEmail: string,
+  actorEmail: string
+): {
+  context: StatementReplayContext;
+  commit: () => Promise<void>;
+  taskCounts: () => { accountingRepairDrafts: number; externalUpdateTasks: number };
+} => {
+  const pending = new Map<string, {
+    snapshot: FirebaseFirestore.DocumentSnapshot;
+    data: FirebaseFirestore.DocumentData;
+  }>();
+  const queue = async (ref: FirebaseFirestore.DocumentReference, data: FirebaseFirestore.DocumentData) => {
+    // Historical source summaries describe the entire original import, not
+    // this one-contract replay. Only its private derived tasks are updated.
+    if (ref.path.startsWith(`${statementCollection(ctxEmail).path}/`)) return;
+    const existing = pending.get(ref.path);
+    const snapshot = existing?.snapshot ?? await ref.get();
+    const stored = snapshot.data();
+    if (snapshot.exists && stored?.status !== "draft" && stored?.status !== "pending_manual") return;
+    pending.set(ref.path, { snapshot, data: {
+      ...existing?.data, ...data,
+      ...(stored?.createdAtMs != null ? { createdAtMs: stored.createdAtMs } : {}),
+      ...(stored?.createdBy != null ? { createdBy: stored.createdBy } : {}),
+    } });
+    // Leave room for history/client/projection writes in the same atomic batch.
+    if (pending.size > 380) throw new StatementRebuildCapacityError(
+      "Přepočet vyžaduje příliš mnoho souvisejících zápisů. Smlouva zůstala beze změny; přepočet vyžaduje kontrolu správce."
+    );
+  };
+  const context: StatementReplayContext = {
+    original, contract: { ...original.contract, ...patch } as ContractDoc, patch: { ...patch },
+    writer: {
+      set: async (ref, data) => queue(ref, data),
+      updateDocument: async (snapshot, data) => queue(snapshot.ref, data),
+      updateContract: async (_match, update) => {
+        Object.assign(context.patch, update);
+        context.contract = { ...context.contract, ...update } as ContractDoc;
+      },
+      commit: async () => {},
+    },
+  };
+  return { context, taskCounts: () => ({
+    accountingRepairDrafts: [...pending.keys()].filter(path => path.includes("/accountingRepairDrafts/")).length,
+    externalUpdateTasks: [...pending.keys()].filter(path => path.includes("/externalUpdateTasks/")).length,
+  }), commit: async () => {
+    const batch = adminDb!.batch();
+    batch.update(original.ref, withContractHistory(batch, original.ref, original.contract, context.patch, {
+      actorEmail, title: "Časové přepočítání podle provizních výpisů",
+    }), { lastUpdateTime: original.updateTime });
+    for (const { snapshot, data } of pending.values()) {
+      if (snapshot.exists) batch.update(snapshot.ref, data, { lastUpdateTime: snapshot.updateTime! });
+      else batch.create(snapshot.ref, data);
+    }
+    await trackCashflowWrite(() => batch.commit());
+  } };
+};
+
+const hasNewerOwnStatement = (contract: ContractDoc, ctxEmail: string, chronology: number): boolean =>
+  [...statementRecordArray(contract.commissionPayouts), ...statementRecordArray(contract.premiumStatementHistory)]
+    .some(record => {
+      if (!ownsStatementRecord(record, ctxEmail)) return false;
+      const data = record as Record<string, unknown>;
+      const date = toMillis(data.statementChronologyMs) ?? statementChronologyMsFromParts({
+        statementDate: normalizeText(data.statementDate, 32),
+        statementPeriod: normalizeText(data.statementPeriod, 80),
+      });
+      return date != null && date > chronology;
+    });
+
+const compareSavedStatements = (a: SavedStatementReprocessItem, b: SavedStatementReprocessItem): number =>
+  (a.statementChronologyMs ?? 0) - (b.statementChronologyMs ?? 0) ||
+  String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
+  a.id.localeCompare(b.id, "cs");
+
 const processStatementWrites = async ({
   docId,
   docRef,
@@ -3799,6 +3899,7 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail,
   forcedContractEntryId,
   canManageContractsAsAdmin = false,
+  replayContext,
 }: {
   docId: string;
   docRef: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
@@ -3819,6 +3920,7 @@ const processStatementWrites = async ({
   forcedContractOwnerEmail?: string | null;
   forcedContractEntryId?: string | null;
   canManageContractsAsAdmin?: boolean;
+  replayContext?: StatementReplayContext;
 }): Promise<ProcessingResult> => {
   const result = emptyProcessingResult();
   const normalizedOnlyContractNumber = normalizeContractNumber(onlyContractNumber);
@@ -3864,7 +3966,29 @@ const processStatementWrites = async ({
       if (!matchedContractNumbers.has(contractNumber)) result.skippedContracts.push(contractNumber);
     });
   }
-  const batchWriter = createProcessingBatchWriter();
+  const batchWriter = replayContext?.writer ?? createProcessingBatchWriter();
+  const savedStatements = new Map<string, Promise<SavedStatementReprocessItem | null>>();
+  const loadSavedStatements = async (contract: ContractDoc) => {
+    // Read only sources already applied by this author to this contract. Do not
+    // scan the account's entire HTML archive or import unrelated saved sources.
+    const provenance = contract as { initialCommissionBase?: unknown; premiumUpdatedFromStatementWrittenBy?: unknown };
+    const ownRecords = [...statementRecordArray(contract.commissionPayouts),
+      ...statementRecordArray(contract.premiumStatementHistory), provenance.initialCommissionBase,
+      { statementId: contract.premiumUpdatedFromStatementId, writtenBy: provenance.premiumUpdatedFromStatementWrittenBy }];
+    const ids = new Set(ownRecords.filter(item => ownsStatementRecord(item, ctxEmail))
+      .map(item => safeEntryId(normalizeText((item as { statementId: unknown }).statementId, 180)))
+      .filter((id): id is string => Boolean(id) && id !== docId));
+    const items = await Promise.all([...ids].map(id => {
+      let item = savedStatements.get(id);
+      if (!item) {
+        item = statementCollection(ctxEmail).doc(id).get().then(snapshot =>
+          snapshot.exists ? savedStatementReprocessItemFromDoc(snapshot) : null);
+        savedStatements.set(id, item);
+      }
+      return item;
+    }));
+    return items.filter((item): item is SavedStatementReprocessItem => item != null && item.statementChronologyMs != null);
+  };
   const touchedContractPaths = new Set<string>();
 
   for (const contractNumber of allContractNumbers) {
@@ -3872,7 +3996,9 @@ const processStatementWrites = async ({
     const contractPremiumRows = premiumRowsByContract.get(contractNumber) ?? [];
     let resolution: AccessibleContractResolution;
     try {
-      if (
+      if (replayContext) {
+        resolution = { ...replayContext.original, contract: replayContext.contract };
+      } else if (
         forcedContractRef &&
         forcedContractOwnerEmail &&
         normalizeContractNumber(onlyContractNumber) === contractNumber
@@ -3936,6 +4062,74 @@ const processStatementWrites = async ({
       continue;
     }
     if (resolution.status !== "matched") continue;
+
+    if (!replayContext && !forcedContractRef && statementChronologyMs != null &&
+        hasNewerOwnStatement(resolution.contract, ctxEmail, statementChronologyMs)) {
+      const candidates = await loadSavedStatements(resolution.contract);
+      candidates.push({ id: docId, ref: docRef, html, statementNumber, statementPeriod, statementDate,
+        periodEndMs, statementChronologyMs, payoutMonthKey });
+      const statements: SavedStatementReprocessItem[] = [];
+      for (const item of candidates.sort(compareSavedStatements)) {
+        const payoutRows = extractCommissionPayoutRowsFromStoredHtml(item.html)
+          .filter(row => normalizeContractNumber(row.contractNumber) === contractNumber);
+        const premiumRows = [...extractAutoPremiumRowsFromStoredHtml(item.html), ...extractLifePremiumIncreaseRowsFromStoredHtml(item.html)]
+          .filter(row => normalizeContractNumber(row.contractNumber) === contractNumber);
+        if (!payoutRows.length && !premiumRows.length) continue;
+        // A shared policy number can also identify an amendment. Respect the
+        // normal product/family selection for EACH historical source.
+        const match = item.id === docId ? resolution : await resolveAccessibleContract({
+          contractNumber, viewerEmail: ctxEmail, teamEmails, payoutRows, premiumRows,
+        });
+        if (match.status === "matched" && match.ref.path === resolution.ref.path) statements.push(item);
+      }
+      if (statements.some(item => item.statementChronologyMs! > statementChronologyMs)) {
+        const { patch } = prepareContractStatementReset({ contract: resolution.contract, ctxEmail, nowMs,
+          statementIds: new Set(statements.map(item => item.id)) });
+        const replay = createStatementReplay(resolution, patch, ctxEmail, actorEmail);
+        const replayResult = emptyProcessingResult();
+        for (const statement of statements) {
+          const partial = await processStatementWrites({
+            docId: statement.id, docRef: statement.ref, html: statement.html, ctxEmail, actorEmail, teamEmails,
+            statementNumber: statement.statementNumber, statementPeriod: statement.statementPeriod,
+            statementDate: statement.statementDate, periodEndMs: statement.periodEndMs,
+            statementChronologyMs: statement.statementChronologyMs, payoutMonthKey: statement.payoutMonthKey,
+            nowMs, onlyContractNumber: contractNumber, replayContext: replay.context,
+          });
+          addProcessingResult(replayResult, partial);
+        }
+        // Report actual original-to-final changes, not every simulated replay
+        // as a newly imported payout or newly updated contract.
+        const payoutDelta = mergeRebuiltStatementRecords({ existing: resolution.contract.commissionPayouts,
+          incoming: contractPayoutArray(replay.context.contract).filter(item => ownsStatementRecord(item, ctxEmail)),
+          writer: ctxEmail, maxCount: MAX_STORED_CONTRACT_PAYOUTS, merge: mergePayoutRecordsByKey });
+        const originalHistory = new Map(contractPremiumHistoryArray(resolution.contract)
+          .filter(item => ownsStatementRecord(item, ctxEmail)).map(item => [item.key, item]));
+        const changedPremiums = contractPremiumHistoryArray(replay.context.contract)
+          .filter(item => ownsStatementRecord(item, ctxEmail)).filter(item => {
+            const previous = originalHistory.get(item.key);
+            return !previous || previous.previousAnnualPremium !== item.previousAnnualPremium ||
+              previous.newAnnualPremium !== item.newAnnualPremium || previous.differenceAnnual !== item.differenceAnnual ||
+              previous.previousPremium !== item.previousPremium || previous.newPremium !== item.newPremium ||
+              previous.difference !== item.difference;
+          });
+        replayResult.payoutRows = 0;
+        replayResult.contractsMatched = 1;
+        replayResult.contractsUpdated = 1;
+        replayResult.contractsWithPayoutChanges = payoutDelta.added + payoutDelta.updatedExisting > 0 ? 1 : 0;
+        replayResult.payoutRecordsAdded = payoutDelta.added;
+        replayResult.payoutRecordsExisting = payoutDelta.existingCount;
+        replayResult.payoutRecordsUpdated = payoutDelta.updatedExisting;
+        replayResult.premiumUpdates = changedPremiums.filter(item => item.premiumKind !== "auto_initial").length;
+        replayResult.premiumHistoryBackfills = changedPremiums.filter(item => item.premiumKind === "auto_initial").length;
+        replayResult.filteredContractsSkipped = 0;
+        Object.assign(replayResult, replay.taskCounts());
+        await batchWriter.commit();
+        await trackCashflowWrite(() => replay.commit());
+        touchedContractPaths.add(resolution.ref.path);
+        addProcessingResult(result, replayResult);
+        continue;
+      }
+    }
 
     result.contractsMatched += 1;
     const contract = resolution.contract;
@@ -4322,7 +4516,9 @@ const processStatementWrites = async ({
     for (const payout of incomingPayouts) {
       const repairId = compactHash(`${docId}:commission-difference:${resolution.ref.path}:${payout.key}`, 32);
       if (payout.status !== "difference" || payout.difference == null) {
-        const previous = contractPayoutArray(contract).find(item => item.key === payout.key);
+        const previous = contractPayoutArray(contract).find(item => item.key === payout.key) ??
+          (replayContext ? contractPayoutArray(replayContext.original.contract)
+            .find(item => item.key === payout.key && ownsStatementRecord(item, ctxEmail)) : undefined);
         if (payout.status === "paid" && previous?.status === "difference") {
           const draft = await processingPrivateCollection(ctxEmail, "accountingRepairDrafts").doc(repairId).get();
           if (draft.exists && draft.data()?.status === "draft" &&

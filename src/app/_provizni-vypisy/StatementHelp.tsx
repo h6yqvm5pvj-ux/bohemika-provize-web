@@ -81,6 +81,7 @@ function StatementHelpDialog({ dialogId, returnFocusRef, onClose }: { dialogId: 
               <li><strong>Doplnění údajů u smlouvy.</strong> Pokud výpis obsahuje příslušné odkazy, uloží se ke smlouvě údaje pro tlačítka <strong>Maxx</strong> a <strong>ExtraNet</strong>. U podporovaných produktů může zpracování také doplnit historii pojistného nebo zpřesnit provizní základnu a přepočítat provize podle údajů z výpisu.</li>
               <li><strong>Výsledek zpracování.</strong> V části <strong>Audit po zápisu</strong> uvidíš nové a aktualizované položky, přeskočené záznamy a věci k ruční kontrole. Při opakovaném zpracování se existující zápisy porovnávají a aktualizují; duplicitní položky se přeskakují.</li>
             </ol>
+            <p><strong>Výpisy můžeš nahrávat i zpětně.</strong> Když nahraješ starší výpis po novějším, u propojené smlouvy se podle dostupných uložených výpisů přepočítá navazující historie v časovém pořadí. Provize zůstanou přiřazené k měsícům podle data výpisu. Pro správné zařazení zkontroluj datum vystavení a období výpisu.</p>
             <p><strong>Smlouva se nenašla nebo má více shod?</strong> Provize se k ní automaticky nepřiřadí. Chybějící smlouvu můžeš doplnit přes <strong>Přidat smlouvu</strong>. Potom otevři výpis z historie a zvol <strong>Zpracovat znovu podle aktuálních smluv</strong>.</p>
           </section>
 
