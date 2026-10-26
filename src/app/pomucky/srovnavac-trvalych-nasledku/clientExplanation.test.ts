@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientComparisonHeading, explainClientVariant } from "./clientExplanation";
+import { clientComparisonHeading, explainClientVariant, getClientScenarioExample } from "./clientExplanation";
 import { buildClientReport } from "./clientReport";
 
 const curve = (calculate: (percent: number) => number) => Array.from({ length: 101 }, (_, percent) => ({ percent, payoutPercent: calculate(percent) }));
@@ -79,6 +79,30 @@ describe("client explanation from selected progression tables", () => {
     expect(clientComparisonHeading([cpp, { curve: curve(percent => percent * 5), payouts: [] }])).not.toContain("Stejné maximum");
     expect(clientComparisonHeading([cpp])).toContain("Rozhoduje průběh progrese");
   });
+
+  it("describes equal selected payouts without claiming a difference", () => {
+    expect(clientComparisonHeading([cpp, { ...generali, payouts: cpp.payouts }])).toBe("Stejná pojistná částka. Ve zvolených scénářích je plnění stejné.");
+  });
+
+  it("uses the full-base NEON multiplier in the illustrated calculation", () => {
+    expect(getClientScenarioExample(cpp, scenarios, insured)).toEqual({
+      assessment: 11, payout: 220000, payoutPercent: 22, effectiveMultiplier: 2, wholeBaseMultiplier: 2,
+    });
+  });
+
+  it("keeps percentage-table payouts separate from a whole-base multiplier", () => {
+    const example = getClientScenarioExample({ ...generali, payouts: [760000] }, [{ percent: 38 }], insured);
+    expect(example?.payoutPercent).toBe(76);
+    expect(example?.effectiveMultiplier).toBe(2);
+    expect(example?.wholeBaseMultiplier).toBeNull();
+  });
+
+  it("omits invalid scenarios and missing amounts from illustrated calculations", () => {
+    expect(getClientScenarioExample({ ...cpp, payouts: [NaN, 0, 220000] }, [{ percent: 11 }, { percent: 0 }, { percent: 11 }], insured)?.payout).toBe(220000);
+    expect(getClientScenarioExample(cpp, scenarios, 0)).toBeNull();
+    expect(getClientScenarioExample(cpp, scenarios, Infinity)).toBeNull();
+    expect(getClientScenarioExample({ ...cpp, payouts: [] }, scenarios, insured)).toBeNull();
+  });
 });
 
 describe("explanations in the PDF report", () => {
@@ -100,6 +124,17 @@ describe("explanations in the PDF report", () => {
     expect(html).not.toContain('<img src=x');
     expect(html).not.toContain("<script>bad()");
     expect(html).not.toContain("Bel Mondo");
+  });
+
+  it("preserves decimal scenario precision in the illustrated formula", () => {
+    const html = buildClientReport({ ...options, scenarios: [{ percent: 11.111, label: "Scénář 1" }], rows: [{ ...row(cpp), payouts: [222220] }] });
+    expect(html).toContain("1 000 000 Kč × 11,111 % × 2");
+    expect(html).toContain("222 220 Kč");
+  });
+
+  it("labels formulas that need rounding instead of implying an exact calculation", () => {
+    const html = buildClientReport({ ...options, scenarios: [{ percent: 11.11111111, label: "Scénář 1" }], rows: [{ ...row(cpp), payouts: [222222.2222] }] });
+    expect(html).toContain("Přibližně: 1 000 000 Kč × 11,111111 % × 2");
   });
 
   it("paginates explanations into separate sheets without losing products", () => {

@@ -16,6 +16,35 @@ const tolerance = 0.000001;
 // their rules between sampled points are whole-base multiplier bands.
 const wholeBaseCurves = new Set(["cpp-10x", "cpp-5x", "cpp-neon-top-2022-06"]);
 
+export type ClientScenarioExample = {
+  assessment: number;
+  payout: number;
+  payoutPercent: number;
+  effectiveMultiplier: number;
+  wholeBaseMultiplier: number | null;
+};
+
+export function getClientScenarioExample(
+  row: ExplanationRow,
+  scenarios: { percent: number }[],
+  sumInsured: number,
+): ClientScenarioExample | null {
+  if (!Number.isFinite(sumInsured) || sumInsured <= 0) return null;
+  const index = scenarios.findIndex((scenario, index) => scenario.percent > 0 && scenario.percent <= 100 &&
+    Number.isFinite(row.payouts[index]) && row.payouts[index] >= 0);
+  if (index < 0) return null;
+  const assessment = scenarios[index].percent;
+  const payout = row.payouts[index];
+  const payoutPercent = payout / sumInsured * 100;
+  const effectiveMultiplier = payoutPercent / assessment;
+  const roundedMultiplier = Math.round(effectiveMultiplier);
+  return {
+    assessment, payout, payoutPercent, effectiveMultiplier,
+    wholeBaseMultiplier: wholeBaseCurves.has(row.key ?? "") && roundedMultiplier > 1 &&
+      Math.abs(effectiveMultiplier - roundedMultiplier) < tolerance ? roundedMultiplier : null,
+  };
+}
+
 /** Describe the same curve and scenario amounts used by the comparison itself. */
 export function explainClientVariant(
   row: ExplanationRow,
@@ -48,24 +77,23 @@ export function explainClientVariant(
   const doubleBenefit = firstDouble && (!bandEnd || firstDouble.percent !== firstIncrease?.percent)
     ? `Alespoň dvojnásobku plnění bez progrese dosahuje tabulka poprvé při ${percent(firstDouble.percent)} hodnocení. Uvedené hranice porovnáváme po celých procentech.`
     : null;
-  const exampleIndex = scenarios.findIndex((scenario, index) => scenario.percent > 0 && scenario.percent <= 100 &&
-    Number.isFinite(row.payouts[index]) && row.payouts[index] >= 0);
+  const selectedExample = getClientScenarioExample(row, scenarios, sumInsured);
   let example: string | null = null;
-  if (exampleIndex >= 0 && Number.isFinite(sumInsured) && sumInsured > 0) {
-    const assessment = scenarios[exampleIndex].percent;
-    const payout = row.payouts[exampleIndex];
-    const payoutPercent = payout / sumInsured * 100;
-    const multiplier = payoutPercent / assessment;
-    // This is the effective multiple of the basic payout in THIS scenario;
-    // it does not turn a progressive percentage table into multiplier bands.
+  if (selectedExample) {
+    const { assessment, payout, payoutPercent, effectiveMultiplier } = selectedExample;
     example = `Při hodnocení ${percent(assessment)} a pojistné částce ${money(sumInsured)} vychází plnění na ${money(payout)}, tedy ${percent(payoutPercent)} pojistné částky.`;
-    if (Math.abs(multiplier - 2) < tolerance) example += " To je dvojnásobek plnění bez progrese.";
-    else if (Math.abs(multiplier - 1) < tolerance) example += " V tomto scénáři se plnění progresí ještě nezvyšuje.";
+    if (Math.abs(effectiveMultiplier - 2) < tolerance) example += " To je dvojnásobek plnění bez progrese.";
+    else if (Math.abs(effectiveMultiplier - 1) < tolerance) example += " V tomto scénáři se plnění progresí ještě nezvyšuje.";
   }
   return { progression, doubleBenefit, example };
 }
 
 export function clientComparisonHeading(rows: ExplanationRow[]): string {
+  const firstPayouts = rows[0]?.payouts;
+  if (rows.length > 1 && firstPayouts?.length && rows.every(row => row.payouts.length === firstPayouts.length &&
+    row.payouts.every((value, index) => Number.isFinite(value) && Math.abs(value - firstPayouts[index]) < tolerance))) {
+    return "Stejná pojistná částka. Ve zvolených scénářích je plnění stejné.";
+  }
   const maxima = rows.map(row => row.curve.find(point => point.percent === 100)?.payoutPercent);
   const commonMaximum = maxima[0];
   if (rows.length === 1) return "Stejná pojistná částka. Rozhoduje průběh progrese.";
