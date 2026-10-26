@@ -1,12 +1,15 @@
-.panel { max-width: 860px; }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.portalCard { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 19px 16px; border: 1px solid #e9e2f1; border-radius: 16px; background: #fff; box-shadow: 0 2px 5px #321a5903; text-decoration: none; transition: border-color 150ms, box-shadow 150ms, background 150ms; }
+.panel { max-width: 1040px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.portalCard { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 78px; padding: 12px; border: 1px solid #e9e2f1; border-radius: 12px; background: #fff; box-shadow: 0 2px 5px #321a5903; text-decoration: none; transition: border-color 150ms, box-shadow 150ms, background 150ms; }
 .portalCard:hover { border-color: #ceb5e9; box-shadow: 0 5px 16px #61378d0a; background: #fdfbff; }
-.logo { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 66px; height: 54px; padding: 8px; border: 1px solid #eeeaf3; border-radius: 12px; background: #fff; }
+.logo { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; padding: 5px; border: 1px solid #eeeaf3; border-radius: 8px; background: #fff; }
 .logo img { min-height: 0; min-width: 0; width: 100%; height: 100%; object-fit: contain; }
 .copy { min-width: 0; }
-.copy h3 { margin: 0; font-size: 14px; line-height: 1.4; font-weight: 650; letter-spacing: -.015em; color: #352644; overflow-wrap: anywhere; }
-.copy p { margin: 5px 0 0; font-size: 10px; line-height: 1.5; color: #a090ad; overflow-wrap: anywhere; }
-.arrow { display: grid; place-items: center; flex-shrink: 0; margin-left: auto; width: 28px; height: 28px; border-radius: 9px; color: #ae96c1; background: #f8f4fc; transition: color 150ms, background 150ms; }
+.copy h3 { margin: 0; font-size: 13px; line-height: 1.35; font-weight: 650; letter-spacing: -.015em; color: #352644; overflow-wrap: anywhere; }
+.copy p { margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 1.35; color: #7d6b8c; }
+.arrow { display: grid; place-items: center; flex-shrink: 0; margin-left: auto; width: 22px; height: 22px; border-radius: 7px; color: #ae96c1; background: #f8f4fc; transition: color 150ms, background 150ms; }
+.arrow svg { width: 16px; height: 16px; }
 .portalCard:hover .arrow { color: #8956b8; background: #eee4fa; }
-@media(max-width:640px) { .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; } .portalCard { padding: 14px; } }
+@media(max-width:1050px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media(max-width:800px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media(max-width:540px) { .grid { grid-template-columns: minmax(0, 1fr); } }
