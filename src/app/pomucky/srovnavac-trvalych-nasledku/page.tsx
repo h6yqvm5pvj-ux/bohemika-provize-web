@@ -3994,7 +3994,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
       generatedAt, sumInsured: sumInsuredValue, scenarios: exportScenarios, appendix: pdfAppendix,
       clientName: pdfClientName, advisorName: pdfAdvisorName,
       rows: orderedCards.map(card => ({
-        ...splitInsurerAndProduct(card.insurer), badges: card.badges, curve: card.curve, table: card.tablePreview,
+        key: card.key, ...splitInsurerAndProduct(card.insurer), badges: card.badges, curve: card.curve, table: card.tablePreview,
         logo: getInsurerLogoPath(splitInsurerAndProduct(card.insurer).insurerName),
         payouts: scenarioCards.map(scenario => scenario.get(card.key)?.payout ?? 0),
       })),
@@ -4416,7 +4416,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   <div>
                     <p className={styles.scenarioNote}>Pojistná částka <strong>{formatMoney(sumInsuredValue)}</strong> je pro všechny tři scénáře stejná. Uprav rozsah následků a porovnej částky v tabulce.</p>
                     <PdfPersonalization clientName={pdfClientName} advisorName={pdfAdvisorName} onClientNameChange={setPdfClientName} onAdvisorNameChange={setPdfAdvisorName} />
-                    <label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Pouze přehled plnění</option></select></label><div className={styles.scenarioInputs}>
+                    <label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Přehled a vysvětlení</option></select></label><div className={styles.scenarioInputs}>
                       {[{label: "Scénář 1", value: scenarioAInput, onChange: setScenarioAInput}, {label: "Scénář 2", value: scenarioBInput, onChange: setScenarioBInput}, {label: "Scénář 3", value: scenarioCInput, onChange: setScenarioCInput}].map(item => <div className={styles.scenarioInput} key={item.label}><ParameterField label={item.label} value={item.value} onChange={item.onChange} min={0} max={100} step={1} unit="%" presets={[10,50,100]} /></div>)}
                     </div>
                     <p className={styles.scenarioNote}>Zeleně je zvýrazněné nejvyšší plnění v každém scénáři. PDF zachová vybrané produkty i jejich pořadí.</p>
@@ -4646,7 +4646,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         <section className={styles.results} aria-label="Výsledky srovnání">
           <div className={styles.resultsHeading}>
             <div><div className={styles.sectionTitle}><span className={styles.stepNumber}>02</span><h2>Srovnání plnění</h2></div><p>Od nejvyššího plnění pro rozsah {formatPercent(rangePercentValue)}.</p></div>
-            <div className={styles.pdfOptionsRow}><label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Pouze přehled plnění</option></select></label><span className={styles.resultCount}>{sortedCards.length} variant</span></div>
+            <div className={styles.pdfOptionsRow}><label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Přehled a vysvětlení</option></select></label><span className={styles.resultCount}>{sortedCards.length} variant</span></div>
           </div>
           {scenarioExportError && !scenarioModalOpen ? (
             <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
