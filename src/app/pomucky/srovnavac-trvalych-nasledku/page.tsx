@@ -72,7 +72,12 @@ async function waitForPdfAssets(source: HTMLElement) {
     )
   );
 
-  await document.fonts?.ready;
+  if (document.fonts) {
+    await Promise.all([400, 700].map(weight => document.fonts.load(
+      `${weight} 14px "ReportSans"`, "Pojistné plnění · Příliš žluťoučký kůň · 0123456789 Kč × %",
+    ).catch(() => [])));
+    await document.fonts.ready;
+  }
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   );

@@ -12,7 +12,7 @@ const escapeSvgText = (value: string) => value
   .replaceAll("'", "&#039;");
 
 const money = (value: number) => `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`;
-const comparisonColors = ["#583a55", "#93644b"] as const;
+const comparisonColors = ["#6438e6", "#007f98"] as const;
 
 /** A shared local scale compares the two actual payouts within one scenario. */
 export function renderScenarioComparison(rows: ComparisonRow[], scenarioIndex: number): string {
@@ -33,9 +33,9 @@ export function renderScenarioComparison(rows: ComparisonRow[], scenarioIndex: n
     const payout = row.payouts[scenarioIndex];
     const width = maximum > 0 ? payout / maximum * 300 : 0;
     const y = index === 0 ? 26 : 64;
-    return `<text x="0" y="${y}" fill="${comparisonColors[index]}" font-size="8">${escapeSvgText(`${String(index + 1).padStart(2, "0")} / ${row.insurerName}`)}</text>
-  <text x="300" y="${y}" text-anchor="end" fill="${comparisonColors[index]}" font-size="12" font-weight="700">${escapeSvgText(money(payout))}</text>
-  <rect x="0" y="${y + 12}" width="${width.toFixed(2)}" height="4" fill="${comparisonColors[index]}"/>`;
+    return `<text x="0" y="${y}" fill="${comparisonColors[index]}" font-size="9">${escapeSvgText(`${String(index + 1).padStart(2, "0")} / ${row.insurerName}`)}</text>
+  <text x="300" y="${y}" text-anchor="end" fill="${comparisonColors[index]}" font-size="13" font-weight="700">${escapeSvgText(money(payout))}</text>
+  <rect x="0" y="${y + 12}" width="${width.toFixed(2)}" height="6" fill="${comparisonColors[index]}"/>`;
   }).join("\n  ")}
 </svg>`;
 }

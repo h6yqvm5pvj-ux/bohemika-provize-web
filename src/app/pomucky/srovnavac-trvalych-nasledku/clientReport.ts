@@ -27,7 +27,7 @@ const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<",
 const number = (value: number) => value.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 const equationNumber = (value: number) => value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
 const money = (value: number) => `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`;
-const colors = ["#583a55", "#94654c", "#48645d"];
+const colors = ["#6438e6", "#007f98", "#435375"];
 const color = (index: number) => colors[index % colors.length];
 const scenarioLabel = (index: number, count: number) => count > 1 ? `Scénář ${index + 1}` : "Modelový úraz";
 const quantityLabel = (count: number, one: string, few: string, many: string) => count === 1 ? one : count >= 2 && count <= 4 ? few : many;
@@ -74,9 +74,9 @@ function renderCurve(row: ReportRow, scenarios: ReportOptions["scenarios"], sumI
   const area = points.length ? `${path} L${points[points.length - 1].x},290 L${points[0].x},290 Z` : "";
   const grid = Array.from({ length: 5 }, (_, index) => {
     const value = max * index / 4;
-    return `<line x1="62" x2="662" y1="${y(value)}" y2="${y(value)}" stroke="#e2d9d0" stroke-dasharray="3 5"/><text x="50" y="${y(value) + 4}" text-anchor="end" fill="#776b70" font-size="10">${escape(number(value))} %</text>`;
+    return `<line x1="62" x2="662" y1="${y(value)}" y2="${y(value)}" stroke="#e3e7ef" stroke-dasharray="3 5"/><text x="50" y="${y(value) + 4}" text-anchor="end" fill="#657085" font-size="10">${escape(number(value))} %</text>`;
   }).join("");
-  const labels = [0, 25, 50, 75, 100].map(value => `<text x="${x(value)}" y="313" text-anchor="middle" fill="#776b70" font-size="10">${value} %</text>`).join("");
+  const labels = [0, 25, 50, 75, 100].map(value => `<text x="${x(value)}" y="313" text-anchor="middle" fill="#657085" font-size="10">${value} %</text>`).join("");
   const markerGroups = new Map<string, { percent: number; actual: number; indices: number[] }>();
   scenarios.forEach((scenario, index) => {
     const actual = sumInsured > 0 ? row.payouts[index] / sumInsured * 100 : 0;
@@ -87,9 +87,9 @@ function renderCurve(row: ReportRow, scenarios: ReportOptions["scenarios"], sumI
   });
   const markers = Array.from(markerGroups.values()).map(({ percent, actual, indices }) => `<line x1="${x(percent)}" x2="${x(percent)}" y1="${y(actual)}" y2="290" stroke="${color(indices[0])}" stroke-dasharray="4 5"/><circle cx="${x(percent)}" cy="${y(actual)}" r="10" fill="${color(indices[0])}" stroke="white" stroke-width="3"/><text x="${x(percent)}" y="${y(actual) + 3}" text-anchor="middle" font-size="${indices.length > 1 ? 6 : 8}" font-weight="bold" fill="white">${indices.map(index => index + 1).join("/")}</text>`).join("");
   return `<div class="pdf-chart"><svg viewBox="0 0 710 350" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Průběh pojistného plnění">
-    <text x="62" y="24" fill="#6c575f" font-size="11">Plnění ze sjednané pojistné částky</text>${grid}
-    <path d="${area}" fill="#eee5ed"/><path d="${path}" fill="none" stroke="#583a55" stroke-width="3" stroke-linejoin="round"/>
-    ${labels}${markers}<text x="362" y="342" text-anchor="middle" fill="#6c575f" font-size="11">Rozsah trvalých následků</text>
+    <text x="62" y="24" fill="#526077" font-size="11">Plnění ze sjednané pojistné částky</text>${grid}
+    <path d="${area}" fill="#f0ebff"/><path d="${path}" fill="none" stroke="#6438e6" stroke-width="3" stroke-linejoin="round"/>
+    ${labels}${markers}<text x="362" y="342" text-anchor="middle" fill="#526077" font-size="11">Rozsah trvalých následků</text>
   </svg></div>`;
 }
 
@@ -110,7 +110,7 @@ export function buildClientReport({ generatedAt, clientName, advisorName, sumIns
   const focusNumber = focusScenario ? number(focusScenario.percent) : "";
   const focusNumberClass = focusNumber.length > 3 ? " pdf-focus-value-wide" : focusNumber.length === 3 ? " pdf-focus-value-three" : "";
   const hasDifference = highlightIndex >= 0;
-  const title = hasDifference ? "Stejné zadání.<br/><em>Jiná výplata.</em>" : "Pojistné plnění.<br/><em>V jasných číslech.</em>";
+  const title = hasDifference ? "Stejné zadání.<br/><em>Rozdílné plnění.</em>" : "Pojistné plnění.<br/><em>Přehledně.</em>";
   const parameters = `<div class="pdf-parameters"><div><small>SJEDNANÁ POJISTNÁ ČÁSTKA</small><strong>${escape(money(sumInsured))}</strong></div><p>${escape(clientComparisonHeading(rows))}<span>Společný základ pro všechny vybrané varianty.</span></p></div>`;
   const focus = focusScenario ? `<aside class="pdf-focus"><div class="pdf-kicker">${scenarioLabel(Math.max(0, focusIndex), scenarios.length).toLocaleUpperCase("cs-CZ")}</div><div class="pdf-focus-value${focusNumberClass}">${escape(focusNumber)}<span>%</span></div><p>trvalých následků</p><div class="pdf-focus-note">Stejné hodnocení.<br/>Pro všechny vybrané varianty.</div></aside>` : "";
   const insight = hasDifference ? `<section class="pdf-insight"><div class="pdf-insight-copy"><div class="pdf-kicker">ROZDÍL PŘI ${escape(number(scenarios[highlightIndex].percent))} % NÁSLEDKŮ</div><strong>${escape(money(maxima[highlightIndex] - minima[highlightIndex]))}</strong><p>Mezi nejnižším a nejvyšším plněním<br/>z vybraných variant.</p></div>${rows.length === 2 ? `<figure class="pdf-comparison-figure">${renderScenarioComparison(rows, highlightIndex)}</figure>` : `<div class="pdf-insight-range"><span>Rozpětí vybraných variant</span><strong>${escape(money(minima[highlightIndex]))}<i>→</i>${escape(money(maxima[highlightIndex]))}</strong></div>`}</section>` : "";
@@ -132,7 +132,7 @@ export function buildClientReport({ generatedAt, clientName, advisorName, sumIns
     pages.push({
       className: first ? rows.length > 2 || hasLongName ? "pdf-cover-dense" : "pdf-cover" : "pdf-continued",
       section: "Přehled pojistného plnění", note: modelNote,
-      content: `${header(generatedAt, "Srovnání pojistného plnění")}${heading}${parameters}<div class="pdf-section-heading"><h2>${scenarios.length > 1 ? "Tři pohledy na vaše krytí" : "Vaše krytí v číslech"}</h2><span>${rows.length} ${quantityLabel(rows.length, "varianta", "varianty", "variant")} · ${insurerCount} ${quantityLabel(insurerCount, "pojišťovna", "pojišťovny", "pojišťoven")}<br/>Plnění v Kč, včetně progrese</span></div>${table}${first && rows.length <= 2 ? insight : ""}`,
+      content: `${header(generatedAt, "Srovnání pojistného plnění")}${heading}${parameters}<div class="pdf-section-heading"><h2>${scenarios.length > 1 ? "Srovnání 3 scénářů" : "Srovnání pojistného plnění"}</h2><span>${rows.length} ${quantityLabel(rows.length, "varianta", "varianty", "variant")} · ${insurerCount} ${quantityLabel(insurerCount, "pojišťovna", "pojišťovny", "pojišťoven")}<br/>Plnění v Kč, včetně progrese</span></div>${table}${first && rows.length <= 2 ? insight : ""}`,
     });
     if (!batch.length) break;
     offset += batch.length;
@@ -146,7 +146,7 @@ export function buildClientReport({ generatedAt, clientName, advisorName, sumIns
     pages.push({
       className: explanationsPerPage === 3 ? "pdf-explanations-dense" : "pdf-explanations",
       section: "Vysvětlení pro klienta", note: modelNote,
-      content: `${header(generatedAt, "Jak rozumět výsledkům")}<div class="pdf-kicker">${first ? "Proč se vyplacené částky liší" : `VARIANTY ${offset + 1}–${offset + batch.length}`}</div><h1 class="pdf-explanation-title">Rozdíl je <em>v pravidlech.</em></h1>${first ? `<p class="pdf-explanation-claim">${escape(clientComparisonHeading(rows))}</p><p class="pdf-explanation-lead">Ve srovnání používáme stejné procentní hodnocení; konkrétní úraz mohou různé pojišťovny ohodnotit odlišně. Výslednou částku pak určuje progrese vybrané varianty.</p>${processSteps()}` : ""}${batch.map((row, index) => clientExplanationCard(row, scenarios, sumInsured, offset + index)).join("")}`,
+      content: `${header(generatedAt, "Jak rozumět výsledkům")}<div class="pdf-kicker">${first ? "Proč se vyplacené částky liší" : `VARIANTY ${offset + 1}–${offset + batch.length}`}</div><h1 class="pdf-explanation-title">Jak se počítá <em>vaše plnění.</em></h1>${first ? `<p class="pdf-explanation-claim">${escape(clientComparisonHeading(rows))}</p><p class="pdf-explanation-lead">Ve srovnání používáme stejné procentní hodnocení; konkrétní úraz mohou různé pojišťovny ohodnotit odlišně. Výslednou částku pak určuje progrese vybrané varianty.</p>${processSteps()}` : ""}${batch.map((row, index) => clientExplanationCard(row, scenarios, sumInsured, offset + index)).join("")}`,
     });
     offset += batch.length;
   }
