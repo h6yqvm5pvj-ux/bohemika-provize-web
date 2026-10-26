@@ -137,6 +137,19 @@ describe("explanations in the PDF report", () => {
     expect(html).toContain("Přibližně: 1 000 000 Kč × 11,111111 % × 2");
   });
 
+  it("focuses the cover and graphic on the first selected scenario with different payouts", () => {
+    const html = buildClientReport({ ...options,
+      scenarios: [1, 50, 75].map(percent => ({ label: String(percent), percent })),
+      rows: [{ ...row(cpp), payouts: [10000, 2500000, 6000000] },
+        { ...row(generali), insurerName: "Generali", productName: "Bel Mondo", payouts: [10000, 1450000, 4250000] }],
+    });
+    const focus = html.match(/<aside class="pdf-focus">([\s\S]*?)<\/aside>/)?.[1];
+    expect(focus).toContain("SCÉNÁŘ 2");
+    expect(focus).toContain("50<span>%</span>");
+    expect(html).toContain("ROZDÍL PŘI 50 % NÁSLEDKŮ");
+    expect(html).toContain("Porovnání pojistného plnění ve scénáři 2");
+  });
+
   it("paginates explanations into separate sheets without losing products", () => {
     const html = buildClientReport({ ...options, rows: Array.from({ length: 8 }, (_, index) => ({ ...row(cpp), productName: `Varianta ${index}` })) });
     expect(html.match(/class="pdf-explanation-card"/g)).toHaveLength(8);

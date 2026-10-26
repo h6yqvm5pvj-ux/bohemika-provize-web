@@ -1,17 +1,185 @@
+/** A self-contained print identity, shared by the iframe and canvas exporter. */
 export const clientReportStyles = `
-.pdf-root{width:794px;background:#fff;color:#2b2535;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.pdf-root *{box-sizing:border-box}.pdf-root h1,.pdf-root h2,.pdf-root h3,.pdf-root p,.pdf-root dl,.pdf-root dd{margin:0}.pdf-root h1,.pdf-root h2,.pdf-root h3{font-weight:600}.pdf-root strong{font-weight:700}.pdf-root img{display:block}.pdf-root table{width:100%;border-collapse:collapse;table-layout:fixed}.pdf-root svg{display:block;flex-shrink:0}
-.pdf-page{position:relative;width:794px;height:1123px;padding:33px 42px 116px;background:#fff;overflow:hidden;break-after:page;page-break-after:always}.pdf-page::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:#73518f}.pdf-content{width:100%}
-.pdf-brand{display:flex;justify-content:space-between;align-items:center;padding-bottom:17px;border-bottom:1px solid #e7e1ed;margin-bottom:24px;gap:24px}.pdf-brand-identity{display:flex;align-items:center;gap:12px}.pdf-brand-identity img{width:33px;height:44px;object-fit:contain}.pdf-brand-identity strong{display:block;font-size:17px;letter-spacing:2.2px;color:#32253f}.pdf-brand-identity span{display:block;font-size:8px;letter-spacing:1.3px;color:#766a82;margin-top:2px}.pdf-document{text-align:right;max-width:250px}.pdf-document strong{display:block;font-size:10px;letter-spacing:.3px;font-weight:600;color:#5c4b6c}.pdf-document small{display:block;font-size:10px;color:#817389;margin-top:5px}
-.pdf-kicker{color:#73518f;font-size:9px;font-weight:700;letter-spacing:1.45px}.pdf-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:4px 0 21px}.pdf-hero-copy{flex:1;min-width:0}.pdf-hero h1{font-size:36px;font-weight:700;line-height:1.13;letter-spacing:-1.2px;color:#2b2535;margin:10px 0 11px}.pdf-hero h1 span{color:#73518f}.pdf-hero p{font-size:12px;color:#6a5a76}.pdf-hero-art{width:180px;flex-shrink:0}.pdf-hero-art svg{width:100%;height:auto}
-.pdf-people{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 28px;padding:15px 0;border-top:1px solid #eee8f2;border-bottom:1px solid #eee8f2;margin:0 0 20px!important}.pdf-people>div{min-width:0}.pdf-people dt{font-size:8px;letter-spacing:1.05px;text-transform:uppercase;color:#82738f}.pdf-people dd{margin-top:4px;font-size:14px;line-height:1.35;font-weight:600;color:#3a2e47;overflow-wrap:anywhere}
-.pdf-highlight{display:flex;align-items:center;justify-content:space-between;gap:24px;background:#f2edf7;border-radius:14px;padding:21px 23px;margin-bottom:20px}.pdf-highlight-copy{flex:1;min-width:0}.pdf-highlight .pdf-kicker{font-size:8px;letter-spacing:1px}.pdf-highlight h2{font-size:18px;line-height:1.3;letter-spacing:-.35px;color:#3e2c50;margin:7px 0}.pdf-highlight p{font-size:10px;line-height:1.5;color:#736080}.pdf-highlight-value{text-align:right;flex-shrink:0}.pdf-highlight-value strong{display:block;font-size:32px;letter-spacing:-1.2px;line-height:1.15;font-weight:700;color:#73518f;white-space:nowrap}.pdf-highlight-value small{display:block;font-size:9px;color:#786383;margin-top:5px}.pdf-client-intro{display:flex;align-items:flex-start;gap:12px;margin:19px 0;padding:0}.pdf-client-intro>svg{margin-top:1px}.pdf-client-intro h2{font-size:12px;line-height:1.5;color:#4f3b60;font-weight:600;margin-bottom:4px}.pdf-client-intro p{font-size:10px;line-height:1.65;color:#766580}
-.pdf-parameters{display:flex;gap:0;padding:14px 0;border-top:1px solid #e8e1ed;border-bottom:1px solid #e8e1ed;margin-bottom:20px}.pdf-parameter{flex:1;min-width:0;padding:0 15px;border-left:1px solid #e8e1ed}.pdf-parameter:first-child{border:0;padding-left:0;flex:1.45}.pdf-parameter:last-child{padding-right:0}.pdf-parameter small{display:block;font-size:8px;letter-spacing:.7px;color:#85758e;margin-bottom:6px}.pdf-parameter strong{display:block;font-size:23px;font-weight:600;letter-spacing:-.6px;color:#3d2d49;white-space:nowrap}.pdf-parameter:first-child strong{font-size:22px}.pdf-parameter span{display:block;font-size:9px;color:#82718c;margin-top:4px}.pdf-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
-.pdf-section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:24px 0 13px}.pdf-section-heading h2{font-size:17px;letter-spacing:-.35px;font-weight:600;color:#35283f}.pdf-section-heading>span{font-size:9px;line-height:1.4;color:#85718e;text-align:right}.pdf-summary{border-bottom:1px solid #ded5e7}.pdf-summary th{padding:12px 11px;text-align:right;background:#f6f3f9;border-top:1px solid #e5ddec;border-bottom:1px solid #e5ddec;font-size:9px;font-weight:500;color:#7c6989}.pdf-summary th:first-child{width:48%;text-align:left}.pdf-summary.pdf-multi th:first-child{width:38%}.pdf-summary th strong{display:block;font-size:18px;line-height:1.2;letter-spacing:-.4px;color:#4b365b;margin-top:5px}.pdf-summary td{padding:17px 11px;border-bottom:1px solid #eee8f3;vertical-align:middle;text-align:right}.pdf-summary td:first-child{text-align:left}.pdf-row-name{display:flex;align-items:center;gap:13px}.pdf-row-logo{display:flex;align-items:center;justify-content:center;width:47px;height:38px;flex-shrink:0}.pdf-row-logo img{max-width:100%;max-height:35px;object-fit:contain}.pdf-row-name>div:last-child{min-width:0}.pdf-row-name strong{display:block;font-size:12px;line-height:1.3;color:#352a40}.pdf-row-name span{display:block;margin-top:4px;font-size:10px;line-height:1.4;color:#675571}.pdf-row-name small{display:block;margin-top:4px;font-size:9px;line-height:1.4;color:#8b7896}.pdf-payout{font-size:20px;font-weight:600;letter-spacing:-.5px;white-space:nowrap;color:#3b2c47}.pdf-multi .pdf-payout{font-size:15px;letter-spacing:-.45px}.pdf-summary td.pdf-best{background:#f0f7f3}.pdf-best .pdf-payout{color:#347b61}.pdf-summary tfoot td{padding:12px 11px;background:#fbf9fd;border-top:1px solid #ded5e7;font-size:11px;white-space:nowrap;color:#6a4c7d;font-weight:600}.pdf-summary tfoot td:first-child{font-size:9px;white-space:normal;font-weight:500;line-height:1.45;color:#81708c}.pdf-summary-key{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:9px;line-height:1.5;color:#82728c}.pdf-summary-key i{display:block;width:7px;height:7px;border-radius:50%;background:#76a78c;flex-shrink:0}.pdf-empty{padding:35px;text-align:center;background:#f8f5fa;color:#766580;border-radius:12px}
-.pdf-cover-dense .pdf-hero{margin-bottom:14px}.pdf-cover-dense .pdf-hero h1{font-size:31px}.pdf-cover-dense .pdf-hero-art{width:140px}.pdf-cover-dense .pdf-people{padding:12px 0;margin-bottom:15px!important}.pdf-cover-dense .pdf-highlight{padding:16px 20px;margin-bottom:15px}.pdf-cover-dense .pdf-highlight h2{font-size:16px}.pdf-cover-dense .pdf-highlight-value strong{font-size:28px}.pdf-cover-dense .pdf-parameters{padding:11px 0;margin-bottom:15px}.pdf-cover-dense .pdf-summary td{padding-top:13px;padding-bottom:13px}.pdf-continued .pdf-brand{margin-bottom:20px}.pdf-continued .pdf-parameter strong{font-size:18px}.pdf-continued .pdf-parameter span{display:none}.pdf-continued .pdf-summary td{padding-top:12px;padding-bottom:12px}.pdf-continuation{display:flex;justify-content:space-between;align-items:baseline;gap:20px;margin:3px 0 20px}.pdf-continuation h1{font-size:25px;letter-spacing:-.7px}.pdf-continuation>span{font-size:10px;color:#8b7996}
-.pdf-explanation-title{font-size:29px;line-height:1.15;letter-spacing:-.7px;margin:9px 0 12px!important;color:#33273e}.pdf-explanation-claim{font-size:12px;line-height:1.5;font-weight:600;color:#584066;margin-bottom:8px!important}.pdf-explanation-lead{font-size:12px;line-height:1.6;color:#6e5b7c;max-width:675px;margin-bottom:19px!important}.pdf-process{display:flex;gap:12px;margin:19px 0 24px}.pdf-process>div{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:12px;background:#f7f4fa;border-radius:9px}.pdf-process-icon{display:flex;align-items:center;justify-content:center;width:33px;height:33px;background:white;border-radius:8px;flex-shrink:0}.pdf-process strong{display:block;font-size:10px;color:#51405f}.pdf-process small{display:block;font-size:8px;line-height:1.4;margin-top:3px;color:#746080}
-.pdf-explanation-card{border:1px solid #e5dceb;border-radius:13px;margin-top:17px;padding:20px 22px;break-inside:avoid;background:#fff}.pdf-explanation-product{display:flex;align-items:center;gap:14px;margin-bottom:15px}.pdf-explanation-product>img{width:55px;height:39px;object-fit:contain;flex-shrink:0}.pdf-explanation-product>div{min-width:0}.pdf-explanation-product h2{font-size:16px;line-height:1.3;color:#3c2c48;overflow-wrap:anywhere;margin-bottom:6px}.pdf-badges{display:flex;flex-wrap:wrap;gap:5px}.pdf-badges>span{display:inline-block;font-size:8px;line-height:1.5;padding:3px 7px;border-radius:4px;background:#f3edf7;color:#856496}.pdf-explanation-rule-label{font-size:8px;letter-spacing:1px;font-weight:600;color:#746080;margin-bottom:6px!important}.pdf-explanation-card p{font-size:12px;line-height:1.6;color:#65516f}.pdf-explanation-card .pdf-explanation-secondary{font-size:10px;line-height:1.6;margin-top:8px;color:#746080}.pdf-example{background:#f7f3fa;border-radius:9px;padding:15px 17px;margin-top:16px}.pdf-example-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px}.pdf-example-top span{font-size:9px;letter-spacing:.45px;color:#8b6d9f}.pdf-example-top strong{font-size:25px;line-height:1.2;letter-spacing:-.7px;color:#73518f;white-space:nowrap}.pdf-example .pdf-equation{font-size:13px;color:#51405e;margin-top:8px;font-variant-numeric:tabular-nums}.pdf-example small{display:block;margin-top:6px;font-size:10px;line-height:1.5;color:#746080}.pdf-explanations-dense .pdf-process{margin-bottom:18px}.pdf-explanations-dense .pdf-explanation-card{padding:15px 18px;margin-top:12px}.pdf-explanations-dense .pdf-explanation-product{margin-bottom:10px}.pdf-explanations-dense .pdf-explanation-product h2{font-size:14px}.pdf-explanations-dense .pdf-explanation-product>img{width:47px;height:32px}.pdf-explanations-dense .pdf-explanation-card p{font-size:11px;line-height:1.5}.pdf-explanations-dense .pdf-explanation-secondary{font-size:9px!important;line-height:1.45!important;margin-top:6px!important}.pdf-explanations-dense .pdf-example{padding:11px 13px;margin-top:11px}.pdf-explanations-dense .pdf-example-top strong{font-size:21px}.pdf-explanations-dense .pdf-equation{font-size:11px!important;margin-top:5px!important}.pdf-explanations-dense .pdf-example small{font-size:9px;margin-top:4px}
-.pdf-product-heading{display:flex;align-items:center;gap:18px;margin:23px 0}.pdf-product-logo{display:flex;align-items:center;justify-content:center;width:67px;height:53px;flex-shrink:0}.pdf-product-logo img{max-width:100%;max-height:47px;object-fit:contain}.pdf-product-heading>div:last-child{min-width:0}.pdf-product-heading h1{font-size:25px;line-height:1.2;letter-spacing:-.6px;margin:7px 0 9px;color:#3d2b49}.pdf-detail-metrics{display:flex;gap:24px;padding:14px 0;border-top:1px solid #e9e1ef;border-bottom:1px solid #e9e1ef;margin-bottom:23px}.pdf-detail-metrics>div{flex:1}.pdf-detail-metrics small{display:block;font-size:9px;letter-spacing:.5px;color:#8d7899;margin-bottom:6px}.pdf-detail-metrics strong{font-size:21px;font-weight:600;color:#624577}.pdf-section-title{font-size:18px;line-height:1.3;font-weight:600;letter-spacing:-.35px;margin:20px 0 8px!important;color:#473151}.pdf-intro{font-size:11px;line-height:1.6;color:#746080;margin-bottom:11px!important}.pdf-chart{border:1px solid #e6dcee;border-radius:12px;background:#fcfafd;padding:10px 7px;margin:16px 0 23px}.pdf-chart svg{width:100%;height:auto}.pdf-scenario-cards{display:flex;gap:12px;margin-top:14px}.pdf-scenario-card{flex:1;min-width:0;padding:15px 14px;border-top:3px solid #73518f;background:#f7f3fa;border-radius:0 0 8px 8px}.pdf-scenario-card small{display:block;font-size:8px;letter-spacing:.7px}.pdf-scenario-card h3{font-size:17px;font-weight:500;margin:7px 0 9px;color:#51405d}.pdf-scenario-card strong{display:block;font-size:20px;font-weight:600;letter-spacing:-.6px;color:#624577;white-space:nowrap}.pdf-scenario-card p{font-size:10px;line-height:1.5;margin-top:6px;color:#746080}.pdf-formula{padding:16px 18px;border-left:3px solid #b19ac3;background:#faf7fc;margin-top:23px}.pdf-formula strong{display:block;font-size:11px;color:#73518f;margin-bottom:6px}.pdf-formula p{font-size:11px;line-height:1.6;color:#746080}.pdf-progression-grid{display:flex;gap:20px;align-items:flex-start;margin-top:16px}.pdf-progression-grid>table{flex:1;width:0}.pdf-progression th{padding:10px 9px;font-size:10px;line-height:1.45;background:#f3edf8;border-bottom:1px solid #dfd2e9;text-align:right;color:#725287;font-weight:600}.pdf-progression td{font-size:11px;line-height:1.5;padding:7px 9px;border-bottom:1px solid #eee6f4;text-align:right;color:#6e5b7d}.pdf-progression td:first-child,.pdf-progression th:first-child{text-align:left}.pdf-progression tr:nth-child(even) td{background:#fcfafd}
-.pdf-footer{position:absolute;left:42px;right:42px;bottom:27px;border-top:1px solid #e5dceb;padding-top:12px}.pdf-footer>p{font-size:9px;line-height:1.55;color:#8d7c98;margin-bottom:9px;max-width:700px}.pdf-footer>div{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:9px;color:#8d7b98}.pdf-footer strong{font-weight:600;color:#6c507e}.pdf-page:last-child{break-after:auto;page-break-after:auto}
+.pdf-root{width:794px;background:#f7f3ed;color:#342332;font:12px/1.5 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pdf-root *{box-sizing:border-box}
+.pdf-root h1,.pdf-root h2,.pdf-root h3,.pdf-root p,.pdf-root figure,.pdf-root dl,.pdf-root dd{margin:0}
+.pdf-root h1,.pdf-root h2,.pdf-root h3{font-weight:400}
+.pdf-root strong{font-weight:700}
+.pdf-root img{display:block}
+.pdf-root table{width:100%;border-collapse:collapse;table-layout:fixed}
+.pdf-root svg{display:block;flex-shrink:0}
+.pdf-page{position:relative;width:794px;height:1123px;padding:36px 46px 110px;background:#f7f3ed;overflow:hidden;break-after:page;page-break-after:always}
+.pdf-content{width:100%}
+.pdf-kicker{font:600 9px/1.45 Arial,Helvetica,sans-serif;letter-spacing:1.35px;color:#80553e;text-transform:uppercase}
+
+/* Masthead, aligned to a fixed baseline. */
+.pdf-brand{display:flex;justify-content:space-between;align-items:center;gap:25px;padding-bottom:15px;margin-bottom:22px;border-bottom:1px solid #c9b7a7}
+.pdf-brand-identity{display:flex;align-items:center;gap:10px}
+.pdf-brand-identity img{width:24px;height:34px;object-fit:contain}
+.pdf-brand-identity strong{display:block;color:#342332;font-size:25px;line-height:1.1;font-weight:600;letter-spacing:-1.25px}
+.pdf-brand-identity span{display:block;font-size:7px;letter-spacing:1.7px;color:#75645f;margin-top:5px}
+.pdf-document{text-align:right;max-width:260px}
+.pdf-document strong{display:block;font-size:9px;line-height:1.5;font-weight:500;letter-spacing:.4px;text-transform:uppercase;color:#645157}
+.pdf-document small{display:block;font-size:10px;color:#76686a;margin-top:4px}
+
+/* Asymmetric cover, with the selected assessment set apart in the margin. */
+.pdf-hero{display:flex;justify-content:space-between;gap:22px;margin:0 0 18px;min-height:200px}
+.pdf-hero-copy{flex:1;min-width:0;padding-top:9px}
+.pdf-hero h1{font-family:Georgia,'Times New Roman',serif;font-size:49px;font-weight:400;line-height:1.05;letter-spacing:-1.9px;color:#342332;margin:17px 0 16px}
+.pdf-hero h1 em{font-weight:400;color:#80553e}
+.pdf-hero-copy>p{font-size:11px;line-height:1.7;color:#6e5e63;max-width:370px}
+.pdf-focus{position:relative;width:209px;min-height:200px;background:#342332;color:#f7f3ed;padding:20px 23px;flex-shrink:0;overflow:hidden}
+.pdf-focus::after{content:"";position:absolute;right:-36px;bottom:-38px;width:140px;height:140px;border:1px solid #785569;border-radius:50%;pointer-events:none}
+.pdf-focus .pdf-kicker{color:#e4c6ac;font-size:8px;letter-spacing:1.5px}
+.pdf-focus-value{font:400 77px/1 Georgia,'Times New Roman',serif;letter-spacing:-3.5px;margin:12px 0 4px;white-space:nowrap;color:#f7f3ed}
+.pdf-focus-value>span{font-size:.46em;letter-spacing:-1px;margin-left:3px;color:#e4c6ac}
+.pdf-focus>p{font-size:11px;letter-spacing:.2px;color:#efe5dd}
+.pdf-focus-note{position:relative;font-size:9px;line-height:1.65;color:#e4c6ac;margin-top:12px;z-index:1}
+.pdf-people{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin:0 0 19px!important;padding:0 0 17px;border-bottom:1px solid #d8cbc0}
+.pdf-people>div{min-width:0}
+.pdf-people dt{font-size:8px;text-transform:uppercase;letter-spacing:1.15px;color:#7b675e}
+.pdf-people dd{margin-top:5px;font-size:13px;font-weight:600;line-height:1.4;color:#342332;overflow-wrap:anywhere}
+.pdf-parameters{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:0 0 18px;border-bottom:1px solid #c9b7a7;margin-bottom:20px}
+.pdf-parameters>div{flex-shrink:0}
+.pdf-parameters small{display:block;font-size:8px;letter-spacing:1px;color:#7b675e;margin-bottom:6px}
+.pdf-parameters strong{display:block;font-size:25px;font-weight:500;line-height:1.25;letter-spacing:-.7px;white-space:nowrap;color:#342332}
+.pdf-parameters>p{max-width:330px;font-size:11px;line-height:1.6;color:#58434f}
+.pdf-parameters>p>span{display:block;font-size:9px;margin-top:5px;color:#77675f}
+.pdf-section-heading{display:flex;justify-content:space-between;align-items:baseline;gap:25px;margin:22px 0 14px}
+.pdf-section-heading h2{font:400 23px/1.25 Georgia,'Times New Roman',serif;letter-spacing:-.5px;color:#342332}
+.pdf-section-heading>span{text-align:right;font-size:9px;line-height:1.6;color:#76666c}
+
+/* Comparison matrix: consistent number alignment and horizontal rules. */
+.pdf-summary{border-bottom:1px solid #bba48e;font-variant-numeric:tabular-nums}
+.pdf-summary th{padding:13px 10px 12px;text-align:right;border-top:2px solid #583a55;border-bottom:1px solid #c9b7a7;color:#75615f;font-size:8px;letter-spacing:.6px;font-weight:400}
+.pdf-summary th:first-child{text-align:left;width:48%;vertical-align:bottom;padding-left:0;padding-bottom:16px}
+.pdf-summary.pdf-multi th:first-child{width:37%}
+.pdf-summary th>span{display:block;font-size:8px;letter-spacing:1.2px;text-transform:uppercase}
+.pdf-summary th strong{display:block;font:400 28px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-.6px;color:#583a55;margin:4px 0}
+.pdf-summary th small{font-size:8px;letter-spacing:0;font-weight:400;color:#7b6963}
+.pdf-summary td{padding:17px 10px;border-bottom:1px solid #ddd1c7;vertical-align:middle;text-align:right}
+.pdf-summary td:first-child{padding-left:0;text-align:left}
+.pdf-summary td:last-child,.pdf-summary th:last-child{padding-right:0}
+.pdf-row-name{display:flex;align-items:center;gap:12px}
+.pdf-row-logo{display:flex;align-items:center;justify-content:center;width:46px;height:36px;flex-shrink:0}
+.pdf-row-logo img{max-width:100%;max-height:33px;object-fit:contain}
+.pdf-row-name>div:last-child{min-width:0}
+.pdf-row-name strong{display:block;font-size:12px;font-weight:600;line-height:1.3;color:#342332}
+.pdf-product-number{font-size:8px;letter-spacing:.5px;color:#80553e;font-weight:400;margin-right:6px}.pdf-row-name span{display:block;font-size:10px;line-height:1.4;margin-top:4px;color:#5f4b57}
+.pdf-row-name small{display:block;font-size:9px;line-height:1.4;margin-top:5px;color:#7b675e}
+.pdf-payout{display:inline-block;font-size:23px;line-height:1.3;font-weight:400;letter-spacing:-.8px;white-space:nowrap;color:#583a55;padding-bottom:3px}
+.pdf-multi .pdf-payout{font-size:16px;letter-spacing:-.45px}
+.pdf-best .pdf-payout{font-weight:700;border-bottom:2px solid #93644b}
+.pdf-summary tfoot td{padding:12px 10px;border-top:1px solid #bba48e;background:#eee7de;font-size:11px;white-space:nowrap;color:#80553e;font-weight:600}
+.pdf-summary tfoot td:first-child{padding-left:12px;font-size:9px;white-space:normal;line-height:1.5;color:#665050;font-weight:500}
+.pdf-summary tfoot small{font-size:8px;color:#75675f}
+.pdf-summary tfoot td:last-child{padding-right:10px}
+.pdf-summary-key{display:flex;gap:7px;align-items:center;margin-top:10px;color:#76666c;font-size:8px;line-height:1.5}
+.pdf-summary-key i{width:12px;height:2px;background:#93644b;display:block;flex-shrink:0}
+.pdf-empty{padding:35px 20px;border-top:1px solid #c9b7a7;border-bottom:1px solid #c9b7a7;text-align:center;color:#76666c}
+.pdf-insight{display:flex;justify-content:space-between;gap:34px;border-top:1px solid #c9b7a7;margin-top:17px;padding-top:16px}
+.pdf-insight-copy{flex:1;min-width:0}
+.pdf-insight-copy .pdf-kicker{font-size:8px;letter-spacing:.9px}
+.pdf-insight-copy>strong{display:block;font:400 33px/1.25 Georgia,'Times New Roman',serif;letter-spacing:-1px;color:#583a55;margin:5px 0}
+.pdf-insight-copy>p{font-size:9px;line-height:1.6;color:#76666c}
+.pdf-comparison-figure{width:300px;flex-shrink:0}
+.pdf-comparison-figure svg{width:100%;height:auto}
+.pdf-insight-range{align-self:center;min-width:0}
+.pdf-insight-range>span{display:block;font-size:9px;color:#76666c;margin-bottom:8px}
+.pdf-insight-range>strong{display:block;font-size:16px;font-weight:500;white-space:nowrap;letter-spacing:-.3px;color:#583a55}
+.pdf-insight-range i{font-style:normal;color:#93644b;margin:0 12px}
+
+/* Compact cover variant, without shrinking product or payout text. */
+.pdf-cover-dense .pdf-hero{min-height:164px;margin-bottom:18px}
+.pdf-cover-dense .pdf-hero-copy{padding-top:3px}
+.pdf-cover-dense .pdf-hero h1{font-size:41px;margin:12px 0}
+.pdf-cover-dense .pdf-hero-copy>p{font-size:10px;line-height:1.6}
+.pdf-cover-dense .pdf-focus{min-height:164px;padding:17px 22px}
+.pdf-cover-dense .pdf-focus-value{font-size:62px;margin-top:10px}
+.pdf-focus-value.pdf-focus-value-three{font-size:64px}.pdf-focus-value.pdf-focus-value-wide{font-size:48px;letter-spacing:-1.6px}.pdf-cover-dense .pdf-focus-value.pdf-focus-value-wide{font-size:44px}.pdf-cover-dense .pdf-focus-note{margin-top:10px;font-size:8px}
+.pdf-cover-dense .pdf-people{margin-bottom:15px!important;padding-bottom:13px}
+.pdf-cover-dense .pdf-parameters{padding-bottom:14px;margin-bottom:16px}
+.pdf-cover-dense .pdf-summary td{padding-top:12px;padding-bottom:12px}
+.pdf-cover-dense .pdf-summary tfoot td{padding-top:10px;padding-bottom:10px}
+.pdf-continuation{display:flex;justify-content:space-between;align-items:baseline;gap:20px;margin:3px 0 24px}
+.pdf-continuation h1{font:400 33px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-.8px}
+.pdf-continuation>span{font-size:9px;color:#76666c}
+.pdf-continued .pdf-parameters strong{font-size:23px}
+.pdf-continued .pdf-summary td{padding-top:12px;padding-bottom:12px}
+
+/* Explanations use a product margin and a consistent reading column. */
+.pdf-explanation-title{font:400 39px/1.15 Georgia,'Times New Roman',serif;letter-spacing:-1.2px;color:#342332;margin:12px 0 18px!important}
+.pdf-explanation-title em{font-weight:400;color:#80553e}
+.pdf-explanation-claim{font-size:12px;line-height:1.55;font-weight:600;color:#583a55;margin-bottom:8px!important}
+.pdf-explanation-lead{font-size:12px;line-height:1.7;color:#6a585f;max-width:650px;margin-bottom:20px!important}
+.pdf-process{display:flex;gap:22px;padding:17px 0 18px;border-top:1px solid #c9b7a7;border-bottom:1px solid #c9b7a7;margin:20px 0 10px}
+.pdf-process>div{display:flex;gap:12px;align-items:center;flex:1;min-width:0}
+.pdf-process>div>span{font:400 25px/1 Georgia,'Times New Roman',serif;color:#93644b}
+.pdf-process strong{display:block;font-size:10px;font-weight:600;color:#583a55}
+.pdf-process small{display:block;font-size:8px;margin-top:3px;color:#77645f;line-height:1.5}
+.pdf-explanation-card{display:grid;grid-template-columns:145px minmax(0,1fr);gap:27px;padding:24px 0 25px;border-bottom:1px solid #c9b7a7;break-inside:avoid}
+.pdf-explanation-product{padding-top:2px;min-width:0}
+.pdf-explanation-product .pdf-kicker{font-size:8px;letter-spacing:1px}
+.pdf-explanation-product>img{width:60px;height:41px;object-fit:contain;object-position:left center;margin:15px 0 12px}
+.pdf-explanation-product h2{font:400 20px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-.4px;color:#583a55;overflow-wrap:anywhere;margin-top:10px}
+.pdf-product-version{margin-top:11px}
+.pdf-product-version>span{display:block;font-size:9px;line-height:1.6;color:#7b675e}
+.pdf-explanation-copy{min-width:0}
+.pdf-explanation-copy>h3{font-size:15px;line-height:1.4;font-weight:600;letter-spacing:-.2px;color:#342332;margin-bottom:15px}
+.pdf-explanation-copy>p{font-size:13px;line-height:1.65;color:#5d4756}
+.pdf-explanation-copy .pdf-explanation-rule-label{font-size:8px;font-weight:600;line-height:1.5;letter-spacing:.9px;color:#80553e;margin-bottom:7px!important}
+.pdf-explanation-copy .pdf-explanation-secondary{font-size:11px;line-height:1.6;color:#77645f;margin-top:10px}
+.pdf-example{display:flex;justify-content:space-between;gap:18px;margin-top:18px;padding-top:14px;border-top:1px solid #dfd1c5}
+.pdf-example-calculation{flex:1;min-width:0}
+.pdf-example-calculation>span{display:block;font-size:8px;letter-spacing:.5px;line-height:1.5;color:#80553e}
+.pdf-example .pdf-equation{font-size:12px;line-height:1.6;color:#583a55;margin-top:7px;font-variant-numeric:tabular-nums}
+.pdf-example small{display:block;font-size:9px;line-height:1.6;color:#77645f;margin-top:5px}
+.pdf-example>strong{font:400 26px/1.15 Georgia,'Times New Roman',serif;letter-spacing:-.75px;white-space:nowrap;color:#583a55;align-self:center}
+.pdf-explanations-dense .pdf-explanation-card{padding:19px 0 20px;grid-template-columns:135px minmax(0,1fr);gap:25px}
+.pdf-explanations-dense .pdf-explanation-copy>h3{font-size:14px;margin-bottom:11px}
+.pdf-explanations-dense .pdf-explanation-copy>p{font-size:11px;line-height:1.6}
+.pdf-explanations-dense .pdf-explanation-copy .pdf-explanation-secondary{font-size:10px}
+.pdf-explanations-dense .pdf-example{margin-top:13px;padding-top:10px}
+.pdf-explanations-dense .pdf-example>strong{font-size:24px}
+.pdf-explanations-dense .pdf-example .pdf-equation{font-size:11px}
+
+/* Supporting graphs and source tables share the same print identity. */
+.pdf-product-heading{display:flex;gap:20px;align-items:center;margin:27px 0}
+.pdf-product-logo{display:flex;align-items:center;justify-content:center;width:65px;height:52px;flex-shrink:0}
+.pdf-product-logo img{max-width:100%;max-height:46px;object-fit:contain}
+.pdf-product-heading>div:last-child{min-width:0}
+.pdf-product-heading h1{font:400 32px/1.2 Georgia,'Times New Roman',serif;letter-spacing:-.75px;color:#342332;margin:8px 0 9px}
+.pdf-badges{display:flex;gap:12px;flex-wrap:wrap}
+.pdf-badges>span{font-size:9px;line-height:1.5;color:#7b675e}
+.pdf-detail-metrics{display:flex;gap:30px;padding:16px 0;border-top:1px solid #c9b7a7;border-bottom:1px solid #c9b7a7;margin-bottom:25px}
+.pdf-detail-metrics>div{flex:1}
+.pdf-detail-metrics small{display:block;font-size:8px;letter-spacing:1px;line-height:1.5;color:#7b675e;margin-bottom:6px}
+.pdf-detail-metrics strong{font-size:21px;font-weight:400;letter-spacing:-.5px;color:#583a55}
+.pdf-section-title{font:400 25px/1.3 Georgia,'Times New Roman',serif;letter-spacing:-.4px;color:#342332;margin:22px 0 9px!important}
+.pdf-intro{font-size:11px;line-height:1.7;color:#77645f;margin-bottom:12px!important}
+.pdf-chart{padding:9px 0;border-top:1px solid #dfd1c5;border-bottom:1px solid #dfd1c5;margin:20px 0 23px}
+.pdf-chart svg{width:100%;height:auto}
+.pdf-scenario-cards{display:flex;gap:25px;margin-top:18px}
+.pdf-scenario-card{flex:1;min-width:0;border-top:2px solid #583a55;padding-top:13px}
+.pdf-scenario-card small{display:block;font-size:8px;letter-spacing:1px;line-height:1.5}
+.pdf-scenario-card h3{font:400 21px/1.3 Georgia,'Times New Roman',serif;letter-spacing:-.3px;color:#583a55;margin:8px 0 9px}
+.pdf-scenario-card strong{display:block;font-size:20px;font-weight:500;letter-spacing:-.65px;color:#583a55;white-space:nowrap}
+.pdf-scenario-card p{font-size:10px;line-height:1.6;color:#77645f;margin-top:6px}
+.pdf-formula{display:flex;align-items:baseline;gap:25px;border-top:1px solid #c9b7a7;margin-top:28px;padding-top:16px}
+.pdf-formula strong{font-size:10px;font-weight:600;color:#80553e;flex-shrink:0}
+.pdf-formula p{font-size:11px;line-height:1.7;color:#77645f}
+.pdf-progression-grid{display:flex;align-items:flex-start;gap:24px;margin-top:20px}
+.pdf-progression-grid>table{flex:1;width:0}
+.pdf-progression th{padding:10px 9px;border-top:2px solid #583a55;border-bottom:1px solid #c9b7a7;text-align:right;font-size:10px;font-weight:500;line-height:1.45;color:#583a55}
+.pdf-progression td{padding:7px 9px;border-bottom:1px solid #dfd1c5;text-align:right;font-size:11px;line-height:1.5;color:#66505b}
+.pdf-progression td:first-child,.pdf-progression th:first-child{text-align:left}
+.pdf-progression tr:nth-child(even) td{background:#eee7de}
+
+.pdf-footer{position:absolute;left:46px;right:46px;bottom:27px;border-top:1px solid #c9b7a7;padding-top:12px}
+.pdf-footer>p{font-size:9px;line-height:1.6;color:#76666c;margin-bottom:10px;max-width:690px}
+.pdf-footer>div{display:flex;justify-content:space-between;align-items:center;gap:20px;font-size:9px;color:#76666c}
+.pdf-footer strong{color:#583a55;font-weight:600}
+.pdf-footer>div>span:last-child{font-size:10px;letter-spacing:1px;color:#80553e}
+.pdf-page:last-child{break-after:auto;page-break-after:auto}
 @media print{.pdf-root{width:210mm}.pdf-page{width:210mm;height:297mm;break-inside:avoid;page-break-inside:avoid}@page{size:A4;margin:0}}
 `;
