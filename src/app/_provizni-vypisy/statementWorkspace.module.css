@@ -182,6 +182,10 @@
 .reviewFilters button[aria-pressed="true"] > span { background: #eee7f7; color: #684583; }
 .reviewFilters button[data-tone="warning"][aria-pressed="true"] { border-color: #e8d1aa; color: #89591c; }
 .reviewFilters button[data-tone="warning"][aria-pressed="true"] > span { background: #fff1d9; color: #89591c; }
+.reviewFilters button[data-tone="success"][aria-pressed="true"] { border-color: #c3dfd0; color: #39745b; }
+.reviewFilters button[data-tone="success"][aria-pressed="true"] > span { background: #eef7f2; color: #39745b; }
+.reviewFilters button[data-tone="error"][aria-pressed="true"] { border-color: #edcbd6; color: #9e4d65; }
+.reviewFilters button[data-tone="error"][aria-pressed="true"] > span { background: #fbf0f3; color: #9e4d65; }
 .browserSearch { display: flex; align-items: center; gap: 9px; flex: 1 1 250px; max-width: 350px; min-width: 0; padding: 0 12px; border: 1px solid #dfe2eb; border-radius: 8px; background: #fff; color: #838294; }
 .browserSearch input { width: 100%; min-width: 0; min-height: 40px; padding: 8px 0; border: 0; outline: 0; background: transparent; color: #32384c; font: inherit; font-size: 12px; }
 .browserSearch input::placeholder { color: #767b8b; }

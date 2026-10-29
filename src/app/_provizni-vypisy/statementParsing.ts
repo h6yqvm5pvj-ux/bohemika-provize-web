@@ -1,4 +1,5 @@
 import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
+import { isKooperativaCPayout } from "@/app/lib/kooperativaCPayoutMeaning";
 import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
 
 import type {
@@ -136,6 +137,9 @@ const resolveStatementProduct = (
     note: known?.note ?? undefined,
   };
 };
+
+const isKooperativaCStatementRow = (row: { product: string; type: string }): boolean =>
+  isKooperativaCPayout(resolveStatementProduct(row.product).productKey, row.type);
 
 const parseOptionalMoney = (value: string | null | undefined): number | null => {
   const normalized = String(value ?? "")
@@ -690,6 +694,9 @@ const classifyGeneralCommissionCode = (
   if (/^A\d+/.test(cleanCode)) {
     return { kind: "closing", label: "Provize za uzavření smlouvy" };
   }
+  if (isKooperativaCStatementRow({ product: cleanProduct, type: cleanCode })) {
+    return { kind: "subsequent", label: "Následná provize dle výpisu" };
+  }
   if (/^(?:CPZ|CP|CZ)\d+/.test(cleanCode)) {
     return { kind: "unexpected", label: "Neočekávaná provize - rozdělená role sjednatele" };
   }
@@ -815,6 +822,7 @@ const COMMISSION_CODE_RULES: CommissionCodeRule[] = [
     codes: "C1",
     label: "Neočekávaná provize",
     category: "unexpected",
+    note: "U Kooperativy Auto jsou C101, C102 a další C1 kódy následné výplaty; zapisuje se skutečná částka z výpisu. Samotná vyšší provize nedokládá navýšení pojistného.",
     matchers: [/^C\d+$/],
   },
   {
@@ -1706,6 +1714,7 @@ export {
   b36StatementAmountForReview,
   baseCommissionCodeForStatementComparison,
   classifyGeneralCommissionCode,
+  isKooperativaCStatementRow,
   classifyLifeSplitCommissionCode,
   closestB36PaidAmount,
   commissionRowCanReplaceDeduction,

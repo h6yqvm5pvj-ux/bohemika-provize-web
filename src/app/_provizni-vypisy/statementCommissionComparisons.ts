@@ -1,5 +1,10 @@
 import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode } from "./statementParsing";
 import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow } from "./statementTypes";
+import { isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
+
+export const isHigherStatementCommission = (comparison: { status: CommissionAmountComparisonStatus; expectedAmount?: number; statementAmount?: number }): boolean =>
+  comparison.status === "diff" && isHigherCommissionPayout({ amount: comparison.statementAmount ?? Number.NaN,
+    expectedAmount: comparison.expectedAmount, tolerance: COMMISSION_AMOUNT_TOLERANCE });
 
 export const STATEMENT_AMOUNT_PRESENCE_TOLERANCE = 0.005;
 

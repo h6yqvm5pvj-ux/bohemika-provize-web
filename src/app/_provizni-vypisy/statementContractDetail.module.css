@@ -106,6 +106,8 @@
 .listFilters button span { padding: 1px 5px; border-radius: 4px; background: #f4f1f7; color: #93809f; font-size: 10px; font-variant-numeric: tabular-nums; }
 .listFilters button[aria-pressed="true"] { border-color: #d7c8e3; background: #f1ebf7; color: #6e4e84; }
 .listFilters button[data-tone="warning"][aria-pressed="true"] { border-color: #ead7b5; background: #fff7e9; color: #916729; }
+.listFilters button[data-tone="success"][aria-pressed="true"] { border-color: #c3dfd0; background: #eef7f2; color: #39745b; }
+.listFilters button[data-tone="error"][aria-pressed="true"] { border-color: #edcbd6; background: #fbf0f3; color: #9e4d65; }
 .listFilters button[data-tone="info"][aria-pressed="true"] { border-color: #cbdfea; background: #eef5fa; color: #50738e; }
 .listSummary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; min-height: 40px; padding: 10px 1px; color: #7f6e8b; font-size: 10px; }
 .listSummary > span > span { color: #a192ac; margin-left: 5px; }

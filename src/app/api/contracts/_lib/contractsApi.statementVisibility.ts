@@ -45,6 +45,9 @@ export const filterStatementDerivedContractDataForViewer = <T extends ContractDo
 
   return {
     ...contract,
+    confirmedLifePremiumChanges: Array.isArray(contract.confirmedLifePremiumChanges)
+      ? contract.confirmedLifePremiumChanges.filter(canViewRecord)
+      : [],
     // Starší záznamy bez autora schováváme také: nelze bezpečně určit, komu patří.
     commissionPayouts: Array.isArray(contract.commissionPayouts)
       ? contract.commissionPayouts.filter(canViewRecord)

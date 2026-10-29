@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import type { Position } from "@/app/types/domain";
 
@@ -31,19 +31,21 @@ export function StatementCorrectionWarning({
 }) {
   if (details.length === 0) return null;
 
-  const title =
-    label === "Oprava kariérního stupně" || label === "Opravná provize: kariérní stupeň"
+  const resolved = label === "Opraveno navazujícím výpisem" || label === "Oprava kariérního stupně";
+  const Icon = resolved ? CheckCircle2 : AlertTriangle;
+  const title = resolved ? "Opraveno navazujícím výpisem" :
+    label === "Opravná provize: kariérní stupeň"
       ? "Pozor: smlouva byla zprovizována na jiném kariérním stupni, než by měla"
       : label === "Opravná provize"
         ? "Pozor: tento výpis obsahuje opravu provize"
         : "Pozor: provize byla opravena navazujícím výpisem";
 
   return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+    <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${resolved ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
       <div>
         <div className="font-bold">{title}</div>
-        <div className="mt-0.5 space-y-1 font-medium text-amber-900">
+        <div className={`mt-0.5 space-y-1 font-medium ${resolved ? "text-emerald-900" : "text-amber-900"}`}>
           {details.map((detail) => (
             <div key={detail}>{detail}</div>
           ))}

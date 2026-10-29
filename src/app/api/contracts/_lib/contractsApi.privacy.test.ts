@@ -57,6 +57,26 @@ beforeEach(() => {
 });
 
 describe("contract response privacy at the API boundary", () => {
+  it.each([owner, manager, admin])("filters confirmed premium changes by their author for %s", async viewer => {
+    const makeChange = (writtenBy: string, key: string) => ({ key, statementId: key, statementNumber: "10", statementPeriod: null,
+      statementDate: null, productCode: "CPP_NEON", annualIncrease: 1548, previousMonthlyPremium: 2350,
+      newMonthlyPremium: 2479, effectiveDate: "2026-01-01", writtenBy, confirmedAtMs: 1 });
+    entry("root", { confirmedLifePremiumChanges: [makeChange(owner, "own-source"), makeChange(manager, "manager-private-source")] });
+    asUser(viewer, viewer === admin);
+    const { handleContractsGet, handleContractsFind } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.contract.confirmedLifePremiumChanges.map((item: { key: string }) => item.key))
+      .toEqual(viewer === owner ? ["own-source"] : ["own-source", "manager-private-source"]);
+    if (viewer === owner) expect(JSON.stringify(body)).not.toContain("manager-private-source");
+    const find = await handleContractsFind(new NextRequest(`https://example.test/api/contracts/find?scope=${viewer === owner ? "my" : "team"}&q=12345`));
+    if (viewer === admin) { expect(find.status).toBe(403); return; }
+    expect(find.status).toBe(200);
+    const matched = await find.json();
+    expect(matched.contracts[0].confirmedLifePremiumChanges).toEqual(body.contract.confirmedLifePremiumChanges);
+    if (viewer === owner) expect(JSON.stringify(matched)).not.toContain("manager-private-source");
+  });
   it.each(["root/contractNotes/secret", "root%2FcontractNotes%2Fsecret"])("rejects nested entry paths: %s", async suppliedId => {
     entry("root");
     const notePath = `users/${owner}/entries/root/contractNotes/secret`;

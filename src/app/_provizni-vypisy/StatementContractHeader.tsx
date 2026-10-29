@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CheckCircle2, ChevronDown } from "lucide-react";
+import { CheckCircle2, ChevronDown, TrendingDown, TrendingUp } from "lucide-react";
 import { formatMoney } from "./statementParsing";
 import styles from "./statementContractDetail.module.css";
 
@@ -19,7 +19,7 @@ export function StatementContractHeader({
   onToggle: () => void;
   verified?: boolean;
   contentId?: string;
-  reviewSummary?: { label: string; tone: "warn" | "info" | "error" };
+  reviewSummary?: { label: string; tone: "ok" | "warn" | "info" | "error"; trend?: "increase" | "decrease" };
 }) {
   return (
     <button type="button" className={styles.cardToggle} data-compact="true" onClick={onToggle} aria-expanded={expanded} aria-controls={contentId}>
@@ -45,7 +45,11 @@ export function StatementContractHeader({
         {!expanded && verified
           ? <span className={styles.badge} data-tone="ok"><CheckCircle2 size={13} aria-hidden="true" />Vše sedí</span>
           : !expanded && reviewSummary
-            ? <span className={styles.badge} data-tone={reviewSummary.tone}>{reviewSummary.label}</span>
+            ? <span className={styles.badge} data-tone={reviewSummary.tone}>
+                {reviewSummary.trend === "increase" && <TrendingUp size={13} aria-hidden="true" />}
+                {reviewSummary.trend === "decrease" && <TrendingDown size={13} aria-hidden="true" />}
+                {reviewSummary.label}
+              </span>
             : badges}
       </span>
     </button>

@@ -121,6 +121,7 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
   id: string;
   contractPdfAttachment?: {
     kind?: "contractPdf" | string;

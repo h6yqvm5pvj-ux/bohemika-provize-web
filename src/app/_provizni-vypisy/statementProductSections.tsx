@@ -70,7 +70,7 @@ export function OtherProductsSectionPanel({
   uncertaintyCountLabel: (count: number) => string;
   renderContract: (contract: OtherProductContractPreview) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const { items, inBrowser } = useStatementBrowserItems(contracts.map(contract => ({
     key: `other:${contract.key}`,
@@ -118,7 +118,7 @@ export function LifeSplitProductsSectionPanel({
   uncertaintyCountLabel: (count: number) => string;
   renderContract: (contract: LifeSplitContractPreview) => ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const { items, inBrowser } = useStatementBrowserItems(contracts.map(contract => ({
     key: `life:${contract.contractNumber}-${contract.productCode}`,

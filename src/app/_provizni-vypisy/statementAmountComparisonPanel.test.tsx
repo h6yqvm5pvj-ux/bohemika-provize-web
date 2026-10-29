@@ -57,7 +57,7 @@ describe("commission comparison badges", () => {
     const badges = [...container.querySelectorAll("tbody tr td:last-child span")];
     expect(badges.map(badge => [badge.textContent, badge.getAttribute("data-tone")]))
       .toEqual([["Vyšší provize", "ok"], ["Rozdíl", "error"]]);
-    expect(container.textContent).toContain("2 rozdíly");
+    expect(container.textContent).toContain("1 rozdíl");
   });
 
   it("does not label a higher premium base as a higher commission", () => {

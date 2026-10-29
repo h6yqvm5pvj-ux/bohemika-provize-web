@@ -1,8 +1,9 @@
 import { AlertTriangle, CheckCircle2, Info, Loader2, RefreshCw } from "lucide-react";
 import type { RefreshBaseReview } from "./statementRefreshBaseReview";
+import type { LifePremiumReductionReference } from "./statementLifePremiumReduction";
 
 import { coefficientSetLabel } from "@/app/lib/productFormulas/coefficientSets";
-import { formatWholeMoney } from "./statementParsing";
+import { formatSystemDate, formatWholeMoney } from "./statementParsing";
 import type {
   CoefficientOverrideInfo,
   MissingAcceleratedB36Warning,
@@ -112,12 +113,12 @@ export function LifePremiumIncreaseNotice({
   if (annualPremiumIncrease === null) return null;
 
   return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-950">
+    <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
       <div>
         <div className="font-bold">Pojistné navýšeno</div>
-        <div className="mt-0.5 font-medium text-cyan-900">
-          Řádek výpisu je provize za navýšení smlouvy. Základna {formatWholeMoney(annualPremiumIncrease)} Kč znamená navýšení pojistného o {formatWholeMoney(annualPremiumIncrease)} Kč ročně ({formatWholeMoney(annualPremiumIncrease / 12)} Kč měsíčně), ne celé nové pojistné.
+        <div className="mt-0.5 font-medium text-emerald-900">
+          Výpis obsahuje provizi za navýšení pojistného se základnou {formatWholeMoney(annualPremiumIncrease)} Kč ročně ({formatWholeMoney(annualPremiumIncrease / 12)} Kč měsíčně). Skutečné nové pojistné a účinnost ověř podle podkladů ke smlouvě.
         </div>
       </div>
     </div>
@@ -140,6 +141,23 @@ export function LifeCoefficientOverrideNotice({
         </div>
         <div className="mt-0.5 font-medium text-violet-900">
           Smlouva podle data používá {coefficientSetLabel(override.currentSet)}, ale vyplacené částky ve výpisu jednoznačně odpovídají sadě {coefficientSetLabel(override.coefficientSet)}. Při zápisu výpisu uložím ke smlouvě výjimku a přepočítám položky podle výpisu.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LifePremiumReductionNotice({ reference }: { reference: LifePremiumReductionReference | null }) {
+  if (!reference) return null;
+  return (
+    <div className="mt-3 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+      <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+      <div>
+        <div className="font-bold">Zohledněno snížení pojistného dodatkem</div>
+        <div className="mt-0.5 font-medium text-sky-900">
+          Od {formatSystemDate(reference.change.policyStartDate)} je pojistné sníženo z {formatWholeMoney(reference.originalAnnualPremium / 12)} Kč na {formatWholeMoney(reference.annualPremium / 12)} Kč měsíčně.
+          {" "}Pro kontrolu odložené provize používáme {formatWholeMoney(reference.annualPremium)} Kč ročně a původní sazby a pozici.
+          {" "}Případný zbývající rozdíl základny nebo provize je potřeba ověřit samostatně.
         </div>
       </div>
     </div>

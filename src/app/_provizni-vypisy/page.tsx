@@ -1,5 +1,8 @@
 "use client";
 import dynamic from "next/dynamic";
+import { isLifeIncreaseCode, matchesLifePremiumIncrease, lifeIncreaseExpectedAmount, type LifeStatementPremiumChange } from "@/app/lib/lifePremiumIncrease";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { StatementLifePremiumChange, StatementLifePremiumChangeContext, type ConfirmLifePremiumChange } from "./StatementLifePremiumChange";
 
 
 import {
@@ -40,8 +43,11 @@ import { isNeonRefreshStatementProductCode, isNeonInvestmentLifeA201Payout } fro
 import { neonRefreshBaseReview, neonRefreshBaseStatus } from "./statementRefreshBaseReview";
 import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase } from "./statementRefreshConversion";
 import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
+import { lifeSplitPremiumReductionReview } from "./statementLifePremiumReduction";
+import { extendStatementCorrectionsWithStoredHistory } from "./statementStoredCorrections";
 import {
   buildStatementCodeComparisons,
+  isHigherStatementCommission,
   comparisonStatus,
   hasStatementAmountForComparison,
   STATEMENT_AMOUNT_PRESENCE_TOLERANCE,
@@ -112,9 +118,9 @@ import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
 import { StatementContractCard } from "./StatementContractCard";
 import { StatementContractList } from "./StatementContractList";
-import { StatementContractBrowser, StatementWorkflow, useStatementBrowserItems } from "./StatementContractBrowser";
+import { StatementContractBrowser, StatementWorkflow, useStatementBrowserItems, useStatementBrowserReview } from "./StatementContractBrowser";
 import { StatementHelp } from "./StatementHelp";
-import { statementContractIsVerified } from "./statementContractReview";
+import { statementContractIsVerified, statementContractReview } from "./statementContractReview";
 import detailStyles from "./statementContractDetail.module.css";
 
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
@@ -154,6 +160,7 @@ import {
   NeonRefreshBaseNotice,
   LifeCommissionBaseDifferenceNotice,
   LifePremiumBaseNotice,
+  LifePremiumReductionNotice,
   LifePremiumIncreaseNotice,
   lifePremiumBaseNoticeKind,
 } from "./statementLifeCardNotices";
@@ -234,6 +241,7 @@ import {
   formatSystemDate,
   formatWholeMoney,
   isLifeSplitProductCode,
+  isKooperativaCStatementRow,
   isNeonInitialCommissionCode,
   lifeSplitAnnualPremiumBase,
   monthKeyFromDate,
@@ -1198,7 +1206,7 @@ const buildManagerCommissionRowSections = ({
       existingGroup.reserveFundTotal += row.reserveFund;
       existingGroup.hasStorno = existingGroup.hasStorno || row.isStorno;
       if (matchNotice) existingGroup.manualReviewCount += 1;
-      if (comparison && comparison.status !== "ok") existingGroup.differenceCount += 1;
+      if (comparison && comparison.status !== "ok" && !isHigherStatementCommission(comparison)) existingGroup.differenceCount += 1;
       groupsByContract.set(groupKey, existingGroup);
     }
 
@@ -3042,6 +3050,8 @@ const lifeSplitContractUncertaintyCount = (
   const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
   const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
   const reviewContract = statementReviewContract;
+  const premiumReductionReview = lifeSplitPremiumReductionReview(reviewContract, systemContract, statementPeriod);
+  const comparisonSystemContract = premiumReductionReview?.systemContract ?? systemContract;
   const expectedProductKey = resolveStatementProduct(reviewContract.productCode).productKey;
   let count = 0;
 
@@ -3052,7 +3062,7 @@ const lifeSplitContractUncertaintyCount = (
   }
   const annualPremiumMismatch = tipOnlyContract
     ? null
-    : annualPremiumBaseMismatch(reviewContract.annualPremium, systemContract);
+    : annualPremiumBaseMismatch(reviewContract.annualPremium, comparisonSystemContract);
   const hasLifePremiumIncrease = rowsByKind(reviewContract, "increase").length > 0;
   if (
     annualPremiumMismatch &&
@@ -3063,13 +3073,13 @@ const lifeSplitContractUncertaintyCount = (
   }
   if (!tipOnlyContract && !hasLifePremiumIncrease && reviewContract.annualPremium <= 0) {
     count += lifeSplitBaseComparisonSources(reviewContract).filter(source => {
-      const mismatch = annualPremiumBaseMismatch(source.base, systemContract);
+      const mismatch = annualPremiumBaseMismatch(source.base, comparisonSystemContract);
       return mismatch && !mismatch.explainedByEndorsement;
     }).length;
   }
-  if (systemContract) {
-    count += buildLifeSplitAmountComparisons(reviewContract, systemContract, statementPeriod).filter(
-      (comparison) => comparison.status !== "ok"
+  if (comparisonSystemContract) {
+    count += buildLifeSplitAmountComparisons(reviewContract, comparisonSystemContract, statementPeriod).filter(
+      (comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison)
     ).length;
   }
   if (
@@ -3129,6 +3139,7 @@ const otherProductContractUncertaintyCount = (
     count += buildOtherProductAmountComparisons(reviewContract, systemContract, statementPeriod).filter(
       (comparison) =>
         comparison.status !== "ok" &&
+        !isHigherStatementCommission(comparison) &&
         !isAmountComparisonExplainedByAutoPremiumChange(
           comparison,
           explainedAutoPremiumChange
@@ -3431,6 +3442,9 @@ const buildLifeSplitAmountComparisons = (
   const b3601Rows = rowsByKind(contract, "b3601");
   const b4801Rows = rowsByKind(contract, "b4801");
   const increaseRows = rowsByKind(contract, "increase");
+  const increaseBases = [...new Set(increaseRows.map(row => row.base))];
+  const increaseExpected = increaseBases.length === 1 && matchesLifePremiumIncrease(systemContract, increaseBases[0])
+    ? lifeIncreaseExpectedAmount(items, increaseRows.map(row => row.type)) : null;
   const a101ExpectedAmount = expectedAmountFromItems(items, (title) => title.includes("a101"));
   const b0301ExpectedAmount = expectedAmountFromItems(items, (title) => title.includes("b0301"));
   const b3601ExpectedAmount = expectedAmountFromItems(
@@ -3545,9 +3559,9 @@ const buildLifeSplitAmountComparisons = (
       key: "increase",
       label: "Navýšení",
       requiredNow: false,
-      hasStatementRows: hasRowsForAmountComparison(increaseRows),
+      hasStatementRows: increaseExpected != null && hasRowsForAmountComparison(increaseRows),
       statementAmount: sumRows(increaseRows),
-      expectedAmount: expectedPremiumIncreaseAmountFromItems(items, increaseRows),
+      expectedAmount: increaseExpected ?? 0,
     },
     ...subsequentParts,
     ...careParts,
@@ -3655,7 +3669,10 @@ const buildOtherProductAmountComparisons = (
   if (isAutoContract) {
     const immediateRows = rowsByGeneralKinds(contract, ["closing", "installment"]);
     const immediateStatementAmount = sumRows(immediateRows);
-    const subsequentRows = rowsByGeneralKinds(contract, ["subsequent"]);
+    // Kooperativa C payouts retain their actual statement amount. Their sequence
+    // does not identify a B installment or establish the calculator's B rate.
+    const subsequentRows = rowsByGeneralKinds(contract, ["subsequent"])
+      .filter(row => !isKooperativaCStatementRow(row));
     const subsequentStatementAmount = sumRows(subsequentRows);
     const premiumReference = autoPremiumBaseReferenceForStatement(
       contract,
@@ -3826,6 +3843,8 @@ const buildOtherProductAmountComparisons = (
     }
 
     if (!hasRowsForAmountComparison(group.rows)) return [];
+    if (group.key === "increase" && group.rows.some(row => isLifeIncreaseCode(row.type)) &&
+      (new Set(group.rows.map(row => row.base)).size !== 1 || !matchesLifePremiumIncrease(systemContract, group.rows[0].base))) return [];
     const statementAmount = sumRows(group.rows);
     const expectedAmount = group.key === "increase"
       ? expectedPremiumIncreaseAmountFromItems(items, group.rows)
@@ -4215,6 +4234,7 @@ const buildManagerCommissionAmountComparison = (
   const override = managerOverrideForViewer(systemContract, currentUserEmail);
   const items = override?.items ?? [];
   if (items.length === 0) return null;
+  if (isLifeIncreaseCode(row.type) && (!matchesLifePremiumIncrease(systemContract, row.base) || lifeIncreaseExpectedAmount(items, [row.type]) == null)) return null;
 
   const paymentBundle = managerCommissionPaymentBundleInfo(
     row,
@@ -4516,6 +4536,8 @@ const buildStatementDiscrepancyIssues = (
     const match = contractMatchForNumber(matchesByContractNumber, contract.contractNumber, matchScope);
     const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
     const reviewContract = statementReviewContract;
+    const premiumReductionReview = lifeSplitPremiumReductionReview(reviewContract, systemContract, statement.header.period);
+    const comparisonSystemContract = premiumReductionReview?.systemContract ?? systemContract;
     const expectedProductKey = productMeta.productKey;
 
 
@@ -4556,7 +4578,7 @@ const buildStatementDiscrepancyIssues = (
 
     const hasLifePremiumIncrease = rowsByKind(reviewContract, "increase").length > 0;
     const premiumMismatch = !tipOnlyContract && reviewContract.rows.length > 0
-      ? annualPremiumBaseMismatch(reviewContract.annualPremium, systemContract)
+      ? annualPremiumBaseMismatch(reviewContract.annualPremium, comparisonSystemContract)
       : null;
     const refreshReview = !tipOnlyContract ? neonRefreshBaseReview(systemContract, reviewContract.rows) : null;
     if (refreshReview && refreshReview.status !== "confirmed") {
@@ -4593,6 +4615,9 @@ const buildStatementDiscrepancyIssues = (
         details: [
           `Výpis: ${formatWholeMoney(premiumMismatch.statementAnnualPremium)} Kč ročně (${formatWholeMoney(statementMonthlyPremium)} Kč měsíčně)`,
           `Systém: ${formatWholeMoney(premiumMismatch.systemAnnualPremium)} Kč ročně (${formatWholeMoney(premiumMismatch.systemMonthlyPremium)} Kč měsíčně)`,
+          ...(premiumReductionReview ? [
+            `Zohledněno snížení pojistného dodatkem od ${formatSystemDate(premiumReductionReview.reference.change.policyStartDate)}; původně ${formatWholeMoney(premiumReductionReview.reference.originalAnnualPremium)} Kč ročně.`,
+          ] : []),
           `Rozdíl pojistného: ${formatWholeMoney(premiumMismatch.difference)} Kč ročně (${formatWholeMoney(monthlyDifference)} Kč měsíčně)`,
         ],
         statementAmount: premiumMismatch.statementAnnualPremium,
@@ -4603,7 +4628,7 @@ const buildStatementDiscrepancyIssues = (
 
     if (!tipOnlyContract && !hasLifePremiumIncrease && refreshReview?.status !== "waiting" && (reviewContract.annualPremium <= 0 || refreshReview)) {
       for (const source of lifeSplitBaseComparisonSources(reviewContract)) {
-        const mismatch = annualPremiumBaseMismatch(source.base, systemContract);
+        const mismatch = annualPremiumBaseMismatch(source.base, comparisonSystemContract);
         if (!mismatch || mismatch.explainedByEndorsement) continue;
         addIssue({
           key: discrepancyIssueKey(statementKey, "life-premium-row", contract.contractNumber, source.key),
@@ -4622,13 +4647,13 @@ const buildStatementDiscrepancyIssues = (
       }
     }
 
-    if (systemContract) {
+    if (comparisonSystemContract) {
       for (const comparison of buildLifeSplitAmountComparisons(
         reviewContract,
-        systemContract,
+        comparisonSystemContract,
         statement.header.period
       )) {
-        if (comparison.status === "ok") continue;
+        if (comparison.status === "ok" || isHigherStatementCommission(comparison)) continue;
         addIssue({
           key: discrepancyIssueKey(statementKey, "life-amount", contract.contractNumber, comparison.key),
           statementKey,
@@ -4637,13 +4662,14 @@ const buildStatementDiscrepancyIssues = (
           category,
           scope: matchScope,
           contractNumber: contract.contractNumber,
-          client: contract.client || systemContract.clientName || "—",
+          client: contract.client || comparisonSystemContract.clientName || "—",
           product: productLabel,
           title: `${comparison.label}: ${amountComparisonStatusLabel(comparison.status).toLowerCase()}`,
           details: [
             `Výpis: ${formatMoney(comparison.statementAmount)} Kč`,
             `Systém: ${formatMoney(comparison.expectedAmount)} Kč`,
             `Rozdíl: ${formatMoney(comparison.difference)} Kč`,
+            ...(premiumReductionReview ? ["Očekávaná provize zohledňuje snížení pojistného dodatkem při zachování původních sazeb a pozice."] : []),
           ],
           statementAmount: comparison.statementAmount,
           expectedAmount: comparison.expectedAmount,
@@ -4821,6 +4847,7 @@ const buildStatementDiscrepancyIssues = (
       )) {
         if (
           comparison.status === "ok" ||
+          isHigherStatementCommission(comparison) ||
           isAmountComparisonExplainedByAutoPremiumChange(
             comparison,
             explainedPremiumChange
@@ -5104,6 +5131,8 @@ function LifeSplitContractCard({
   );
   const systemContract = matchedSystemContractForLifeSplit(statementReviewContract, match);
   const reviewContract = statementReviewContract;
+  const premiumReductionReview = lifeSplitPremiumReductionReview(reviewContract, systemContract, statementPeriod);
+  const comparisonSystemContract = premiumReductionReview?.systemContract ?? systemContract;
   const refreshBaseReview = !tipOnlyContract ? neonRefreshBaseReview(systemContract, reviewContract.rows) : null;
   const reviewA101Rows = rowsByKind(reviewContract, "a101");
   const reviewB0301Rows = rowsByKind(reviewContract, "b0301");
@@ -5120,11 +5149,11 @@ function LifeSplitContractCard({
         contract.b36Payments,
         systemContract
       );
-  const amountComparisons = systemContract
-    ? buildLifeSplitAmountComparisons(reviewContract, systemContract, statementPeriod)
+  const amountComparisons = comparisonSystemContract
+    ? buildLifeSplitAmountComparisons(reviewContract, comparisonSystemContract, statementPeriod)
     : [];
   const lifePremiumBaseComparisons = !tipOnlyContract
-    ? lifePremiumBaseComparisonsForContract(reviewContract, systemContract)
+    ? lifePremiumBaseComparisonsForContract(reviewContract, comparisonSystemContract)
     : [];
   const refreshBaseDifferences = refreshBaseReview && !hasLifePremiumIncrease
     ? lifePremiumBaseComparisons.filter(comparison =>
@@ -5134,7 +5163,7 @@ function LifeSplitContractCard({
   const coefficientOverride = systemContract
     ? lifeCoefficientOverrideInfo(reviewContract, systemContract)
     : null;
-  const amountIssueCount = amountComparisons.filter((comparison) => comparison.status !== "ok").length;
+  const amountIssueCount = amountComparisons.filter((comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison)).length;
   const careerCheck = systemContract && !tipOnlyContract
     ? statementCareerMismatch(reviewContract.rows, systemContractPositionRaw(systemContract))
     : null;
@@ -5147,7 +5176,7 @@ function LifeSplitContractCard({
       (!careerCheck.systemPosition || careerCheck.mismatched)
   );
   const premiumBaseMismatch = !tipOnlyContract && reviewContract.rows.length > 0
-    ? annualPremiumBaseMismatch(reviewContract.annualPremium, systemContract)
+    ? annualPremiumBaseMismatch(reviewContract.annualPremium, comparisonSystemContract)
     : null;
   const isRefreshMissingOriginal = isNeonRefreshMissingOriginalInSystem(systemContract);
   const premiumBaseExplainedByEndorsement =
@@ -5279,7 +5308,12 @@ function LifeSplitContractCard({
         ],
       }
     : null;
-  const verified = statementContractIsVerified({
+  const browserReview = useStatementBrowserReview(`life:${contract.contractNumber}-${contract.productCode}`);
+  const review = browserReview ?? statementContractReview({
+    unpaired: isUnpairedContractMatch(match),
+    issueCount: reviewIssueCount,
+    corrected: Boolean(correctionLabel),
+    premiumChange: hasLifePremiumIncrease ? "increase" : premiumReductionReview ? "decrease" : undefined,
     matched: Boolean(systemContract && matchedSystemContract(match)),
     comparisons: amountComparisons,
     baseComparisons: lifePremiumBaseComparisons,
@@ -5297,8 +5331,8 @@ function LifeSplitContractCard({
   });
   return (
       <StatementContractCard
-        verified={verified}
-        reviewSummary={{ label: isUnpairedContractMatch(match) ? "Bez propojení" : reviewIssueCount > 0 ? "K prověření" : "Detail kontroly", tone: isUnpairedContractMatch(match) || reviewIssueCount === 0 ? "info" : "warn" }}
+        verified={review.verified}
+        reviewSummary={review.summary}
         marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         )}
@@ -5355,7 +5389,7 @@ function LifeSplitContractCard({
               <span
                 className={detailStyles.badge} data-tone={amountIssueCount === 0 ? "ok" : "error"}
               >
-                {amountIssueCount === 0 ? "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
+                {amountIssueCount === 0 ? amountComparisons.some(isHigherStatementCommission) ? "Vyšší provize" : "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
               </span>
             )}
             {coefficientOverride && (
@@ -5403,10 +5437,12 @@ function LifeSplitContractCard({
             </div>
           )}
 
-          <LifeSplitCardMetadata
-            contract={reviewContract}
-            monthlyPremium={reviewContract.annualPremium > 0 ? reviewContract.annualPremium / 12 : null}
-          />
+          {!systemContract && (
+            <LifeSplitCardMetadata
+              contract={reviewContract}
+              monthlyPremium={reviewContract.annualPremium > 0 ? reviewContract.annualPremium / 12 : null}
+            />
+          )}
 
           <StatementRefreshConversionPanel
             showConversion={shouldShowStatementRefreshConversion}
@@ -5433,6 +5469,10 @@ function LifeSplitContractCard({
           <LifePremiumIncreaseNotice
             annualPremiumIncrease={hasLifePremiumIncrease ? lifeIncreaseAnnualPremium : null}
           />
+          {systemContract && hasLifePremiumIncrease && lifeIncreaseAnnualPremium != null && (
+            <StatementLifePremiumChange contract={systemContract} annualIncrease={lifeIncreaseAnnualPremium}
+              productCode={contract.productCode} source={statementPrefillSource} />
+          )}
           <LifeCoefficientOverrideNotice override={coefficientOverride} />
           <NeonRefreshBaseNotice
             review={refreshBaseReview}
@@ -5441,6 +5481,7 @@ function LifeSplitContractCard({
             error={baseConfirmationState.error}
           />
           <LifeCommissionBaseDifferenceNotice differences={refreshBaseDifferences} />
+          <LifePremiumReductionNotice reference={premiumReductionReview?.reference ?? null} />
           <LifePremiumBaseNotice
             kind={premiumBaseNotice}
             mismatch={premiumBaseMismatch}
@@ -5532,6 +5573,7 @@ function OtherProductContractCard({
       : { ...contract, rows: reviewRows };
   const tipOnlyContract = otherProductContractHasOnlyTipRows(reviewContract);
   const matchScope = otherProductContractMatchScope(reviewContract);
+  const hasKooperativaCPayouts = reviewContract.rows.some(isKooperativaCStatementRow);
   const correctionLabel = statementKey
     ? correctedRowsLabel(statementKey, contract.rows, correctionContext)
     : null;
@@ -5571,7 +5613,7 @@ function OtherProductContractCard({
       !isAmountComparisonExplainedByAutoPremiumChange(comparison, autoPremiumChange)
   );
   const amountIssueCount = amountComparisonsForReview.filter(
-    (comparison) => comparison.status !== "ok"
+    (comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison)
   ).length;
   const careerCheck = systemContract && !tipOnlyContract
     ? statementCareerMismatch(reviewContract.rows, systemContractPositionRaw(systemContract))
@@ -5634,9 +5676,14 @@ function OtherProductContractCard({
       }
     : null;
 
-  const verified = statementContractIsVerified({
+  const browserReview = useStatementBrowserReview(`other:${contract.key}`);
+  const review = browserReview ?? statementContractReview({
+    unpaired: isUnpairedContractMatch(match),
+    issueCount: reviewIssueCount,
+    corrected: Boolean(correctionLabel),
+    premiumChange: autoPremiumChange?.direction,
     matched: Boolean(systemContract),
-    comparisons: amountComparisons,
+    comparisons: amountComparisonsForReview,
     baseComparisons: statementPremiumBaseComparison ? [statementPremiumBaseComparison] : [],
     hasWarnings: Boolean(
       hasUnknown || hasCareerIssue || timelinePositionMismatch ||
@@ -5651,8 +5698,8 @@ function OtherProductContractCard({
 
   return (
       <StatementContractCard
-        verified={verified}
-        reviewSummary={{ label: isUnpairedContractMatch(match) ? "Bez propojení" : reviewIssueCount > 0 ? "K prověření" : "Detail kontroly", tone: isUnpairedContractMatch(match) || reviewIssueCount === 0 ? "info" : "warn" }}
+        verified={review.verified}
+        reviewSummary={review.summary}
         marking={markingControls?.markingMode && markedItem && (
           <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />
         )}
@@ -5676,6 +5723,11 @@ function OtherProductContractCard({
             {hasUnknown && (
               <span className={detailStyles.badge} data-tone="warn">
                 Neznámý kód
+              </span>
+            )}
+            {hasKooperativaCPayouts && (
+              <span className={detailStyles.badge} data-tone="info" title="Při zpracování se zapíše skutečná částka z výpisu. Vyšší provize sama o sobě neznamená navýšení pojistného.">
+                Následná provize dle výpisu
               </span>
             )}
             <SystemMatchBadge
@@ -5705,7 +5757,7 @@ function OtherProductContractCard({
             )}
             {autoPremiumChange && (
               <span
-                className={detailStyles.badge} data-tone="warn"
+                className={detailStyles.badge} data-tone={autoPremiumChange.direction === "increase" ? "ok" : "warn"}
               >
                 {autoPremiumChange.direction === "increase" ? (
                   <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
@@ -5721,7 +5773,7 @@ function OtherProductContractCard({
               <span
                 className={detailStyles.badge} data-tone={amountIssueCount === 0 ? "ok" : "error"}
               >
-                {amountIssueCount === 0 ? "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
+                {amountIssueCount === 0 ? amountComparisonsForReview.some(isHigherStatementCommission) ? "Vyšší provize" : "Provize sedí" : amountIssueCountLabel(amountIssueCount)}
               </span>
             )}
             {coefficientOverride && (
@@ -5792,12 +5844,16 @@ function OtherProductContractCard({
                 Pojistné
               </div>
               <div>
-                {productMetas.some((product) => product.usesAnnualPremiumBase)
+                {isAutoContract && statementPremiumBaseComparison
+                  ? statementPremiumBaseComparison.statementBasePeriod === "annual"
+                    ? `${formatWholeMoney(statementPremiumBaseComparison.statementAnnualPremiumBase)} Kč ročně`
+                    : paymentAmountWithFrequencyLabel(statementPremiumBaseComparison.statementPaymentBase, statementPremiumBaseComparison.systemPaymentFrequency)
+                  : productMetas.some((product) => product.usesAnnualPremiumBase)
                   ? annualBase > 0
                     ? `${formatWholeMoney(annualBase)} Kč ročně`
                     : "—"
                   : "Nesleduje se"}
-                {productMetas.some((product) => product.usesAnnualPremiumBase) && monthlyBase !== null
+                {!isAutoContract && productMetas.some((product) => product.usesAnnualPremiumBase) && monthlyBase !== null
                   ? ` · ${formatWholeMoney(monthlyBase)} Kč měsíčně`
                   : ""}
               </div>
@@ -5956,7 +6012,7 @@ function UnpairedContractsSection({
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const { items, inBrowser } = useStatementBrowserItems([
     ...lifeContracts.map(contract => ({
       key: `life:${contract.contractNumber}-${contract.productCode}`,
@@ -6062,7 +6118,7 @@ function ManagerCommissionRowCard({
     )
     .filter((comparison): comparison is CommissionAmountComparison => Boolean(comparison));
   const rowComparisonIssueCount = rowComparisons.filter(
-    (comparison) => comparison.status !== "ok"
+    (comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison)
   ).length;
   const classification = classifyGeneralCommissionCode(row.product, row.type);
   const match = contractMatchForNumber(matchesByContractNumber, row.contractNumber, "team");
@@ -6367,7 +6423,7 @@ function ManagerCommissionRowCard({
                 : `${rowComparisonIssueCount} položky meziprovize nesedí se systémem`}
             </div>
             {rowComparisons
-              .filter((comparison) => comparison.status !== "ok")
+              .filter((comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison))
               .map((comparison) => (
                 <div key={comparison.key} className="mt-1">
                   <div className="font-medium">
@@ -6534,7 +6590,7 @@ function ManagerCommissionsSection({
               ).values(),
             ];
             const advisorManagerAmountIssueCount = advisorManagerAmountComparisons.filter(
-              (comparison) => comparison.status !== "ok"
+              (comparison) => comparison.status !== "ok" && !isHigherStatementCommission(comparison)
             ).length;
             const advisorRowSections = buildManagerCommissionRowSections({
               rows: sortedRows,
@@ -6573,7 +6629,7 @@ function ManagerCommissionsSection({
                     <p className={workspaceStyles.sectionHint}>Storna {formatMoney(advisor.stornos)} Kč · Odpočty {formatMoney(advisor.deductions)} Kč · {advisor.rows.length} řádků výpisu</p>
                     {advisorRowSections.map((section) => {
                       const sectionToggleKey = `${advisorKey}-${section.key}`;
-                      const sectionExpanded = expandedAdvisorRowSections[sectionToggleKey] ?? true;
+                      const sectionExpanded = expandedAdvisorRowSections[sectionToggleKey] ?? false;
                       const SectionIcon = managerCommissionRowSectionIcon(section.key);
 
                       return (
@@ -6586,7 +6642,7 @@ function ManagerCommissionsSection({
                             onClick={() =>
                               setExpandedAdvisorRowSections((previous) => ({
                                 ...previous,
-                                [sectionToggleKey]: !(previous[sectionToggleKey] ?? true),
+                                [sectionToggleKey]: !(previous[sectionToggleKey] ?? false),
                               }))
                             }
                             className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between"
@@ -6742,6 +6798,95 @@ function OtherProductsSection({
   );
 }
 
+type OwnStatementReviewContext = {
+  matchesByContractNumber: ContractMatchesByNumber;
+  statementPeriod: string | null;
+  statementKey: string;
+  correctionContext?: StatementCorrectionContext;
+  deductionRows: DeductionCommissionRow[];
+  markingControls?: MarkingControls;
+  canConvertRefresh: boolean;
+};
+
+const ownStatementReviewHasWarnings = (
+  contract: { contractNumber: string; rows: CommissionRow[]; b36Payments: OtherPayment[] },
+  scope: ContractMatchScope,
+  category: string,
+  fallback: string,
+  context: OwnStatementReviewContext
+): boolean => {
+  const reviewRows = rowsForStatementReview(context.statementKey, contract.rows, context.correctionContext);
+  const marking = context.markingControls;
+  const markedKey = marking ? markedDiscrepancyKey({ statementKey: marking.statementKey, scope, category, contractNumber: contract.contractNumber, fallback }) : null;
+  return Boolean(
+    correctedRowsLabel(context.statementKey, contract.rows, context.correctionContext) ||
+    currentStatementCorrectionInfoForRows(reviewRows, context.deductionRows) ||
+    contract.rows.some(row => row.commission < 0) ||
+    contract.b36Payments.some(payment => payment.isStorno) ||
+    (markedKey && marking?.markedItems[markedKey])
+  );
+};
+
+const lifeSplitBrowserReview = (contract: LifeSplitContractPreview, context: OwnStatementReviewContext) => {
+  const rows = rowsForStatementReview(context.statementKey, contract.rows, context.correctionContext);
+  const current = { ...contract, rows, annualPremium: lifeSplitAnnualPremiumBase(rows) };
+  const scope = lifeSplitContractMatchScope(current);
+  const match = contractMatchForNumber(context.matchesByContractNumber, contract.contractNumber, scope);
+  const system = matchedSystemContractForLifeSplit(current, match);
+  const tipOnly = lifeSplitContractHasOnlyTipRows(current);
+  const reduction = lifeSplitPremiumReductionReview(current, system, context.statementPeriod);
+  const comparisonSystem = reduction?.systemContract ?? system;
+  const increase = rowsByKind(current, "increase").length > 0;
+  const refresh = !tipOnly ? neonRefreshBaseReview(system, rows) : null;
+  const mismatch = !tipOnly && rows.length > 0 ? annualPremiumBaseMismatch(current.annualPremium, comparisonSystem) : null;
+  const premiumNotice = lifePremiumBaseNoticeKind({ hasPremiumMismatch: Boolean(mismatch) && !refresh,
+    isRefreshMissingOriginal: isNeonRefreshMissingOriginalInSystem(system), hasPremiumIncrease: increase,
+    hasEndorsement: Boolean(mismatch?.explainedByEndorsement) });
+  return statementContractReview({
+    unpaired: isUnpairedContractMatch(match),
+    issueCount: lifeSplitContractUncertaintyCount(contract, context.matchesByContractNumber, context.statementPeriod, context.statementKey, context.correctionContext),
+    corrected: Boolean(correctedRowsLabel(context.statementKey, contract.rows, context.correctionContext)),
+    premiumChange: increase ? "increase" : reduction ? "decrease" : undefined,
+    matched: Boolean(system && matchedSystemContract(match)),
+    comparisons: comparisonSystem ? buildLifeSplitAmountComparisons(current, comparisonSystem, context.statementPeriod) : [],
+    baseComparisons: !tipOnly ? lifePremiumBaseComparisonsForContract(current, comparisonSystem) : [],
+    hasWarnings: Boolean(
+      ownStatementReviewHasWarnings(contract, scope, "Životní pojištění", `${contract.productCode}-${contract.client}`, context) ||
+      statusForContract(current, system).tone === "warn" || premiumNotice ||
+      (system && lifeCoefficientOverrideInfo(current, system)) ||
+      (refresh && refresh.status !== "confirmed") ||
+      (isNeonRefreshStatementProductCode(current.productCode) && system?.productKey === "neon" && system.isRefresh !== true && context.canConvertRefresh) ||
+      (rowsByKind(current, "a101").length > 0 && rowsByKind(current, "b0301").length === 0 && !hasHistoricalB0301Payout(system)) ||
+      contract.rows.some(row => row.lifeSplitKind === "unknown")
+    ),
+  });
+};
+
+const otherProductBrowserReview = (contract: OtherProductContractPreview, context: OwnStatementReviewContext) => {
+  const current = { ...contract, rows: rowsForStatementReview(context.statementKey, contract.rows, context.correctionContext) };
+  const scope = otherProductContractMatchScope(current);
+  const match = contractMatchForNumber(context.matchesByContractNumber, contract.contractNumber, scope);
+  const system = matchedSystemContract(match);
+  const tipOnly = otherProductContractHasOnlyTipRows(current);
+  const isAuto = contractHasProductCategory(contract, "auto");
+  const change = !tipOnly ? autoPremiumChangeInfo(current, system, context.statementPeriod) : null;
+  const base = system && !tipOnly ? otherProductPremiumBaseComparisonForContract(current, system, context.statementPeriod) : null;
+  const comparisons = system ? buildOtherProductAmountComparisons(current, system, context.statementPeriod)
+    .filter(comparison => !isAmountComparisonExplainedByAutoPremiumChange(comparison, change)) : [];
+  return statementContractReview({
+    unpaired: isUnpairedContractMatch(match),
+    issueCount: otherProductContractUncertaintyCount(contract, context.matchesByContractNumber, context.statementPeriod, context.statementKey, context.correctionContext),
+    corrected: Boolean(correctedRowsLabel(context.statementKey, contract.rows, context.correctionContext)),
+    premiumChange: change?.direction,
+    matched: Boolean(system), comparisons, baseComparisons: base ? [base] : [],
+    hasWarnings: Boolean(
+      ownStatementReviewHasWarnings(contract, scope, isAuto ? "Auta" : "Ostatní smlouvy", `${contract.key}-${contract.client}`, context) ||
+      contract.rows.some(row => classifyGeneralCommissionCode(row.product, row.type).kind === "unknown") ||
+      change || (isAuto && system && !tipOnly && autoCoefficientOverrideInfo(current, system))
+    ),
+  });
+};
+
 function StatementPreview({
   statement,
   matchesByContractNumber,
@@ -6795,9 +6940,15 @@ function StatementPreview({
       )
     );
   });
+  const reviewContext: OwnStatementReviewContext = {
+    matchesByContractNumber, statementPeriod: statement.header.period, statementKey,
+    correctionContext, deductionRows: statement.deductionRows, markingControls,
+    canConvertRefresh: Boolean(onConvertNeonRefresh),
+  };
   const browserItems = [
     ...statement.lifeSplitContracts.map(contract => ({
       key: `life:${contract.contractNumber}-${contract.productCode}`,
+      review: lifeSplitBrowserReview(contract, reviewContext),
       searchText: `${contract.client} ${contract.contractNumber} ${contract.productLabel} ${contract.productCode}`,
       amount: lifeSplitContractTotal(contract),
       issueCount: lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statement.header.period, statementKey, correctionContext),
@@ -6805,6 +6956,7 @@ function StatementPreview({
     })),
     ...visibleOtherProductContracts.map(contract => ({
       key: `other:${contract.key}`,
+      review: otherProductBrowserReview(contract, reviewContext),
       searchText: [contract.client, contract.contractNumber, ...contract.rows.map(row => `${row.product} ${resolveStatementProduct(row.product).label}`)].join(" "),
       amount: otherProductContractTotal(contract),
       issueCount: otherProductContractUncertaintyCount(contract, matchesByContractNumber, statement.header.period, statementKey, correctionContext),
@@ -7340,6 +7492,28 @@ export default function CommissionStatementsPage() {
     });
   };
 
+  const confirmLifePremiumChange = async (input: ConfirmLifePremiumChange): Promise<LifeStatementPremiumChange> => {
+    if (!user) throw new Error("Pro potvrzení změny se přihlas.");
+    const account = effectiveUserEmail;
+    const payload = await fetchAuthedJsonOrThrow<{ ok?: boolean; change?: LifeStatementPremiumChange; error?: string }>(user, "/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ action: "confirm-life-premium-change", confirmed: true,
+        ownerEmail: input.contract.adviserEmail, entryId: input.contract.id, contractNumber: input.contract.contractNumber,
+        statementId: input.statementId, previousMonthlyPremium: input.previousMonthlyPremium,
+        newMonthlyPremium: input.newMonthlyPremium, effectiveDate: input.effectiveDate }),
+    });
+    if (!payload.ok || !payload.change) throw new Error(payload.error || "Změnu pojistného se nepodařilo uložit.");
+    if (lastMatchEffectiveUserEmailRef.current !== account) throw new Error("Aktivní účet se změnil. Obnov náhled.");
+    const change = payload.change;
+    setMatchesByContractNumber(previous => Object.fromEntries(Object.entries(previous).map(([key, match]) => [key, {
+      ...match, contracts: match.contracts.map(contract => contract.id === input.contract.id &&
+        normalizeEmailForComparison(contract.adviserEmail) === normalizeEmailForComparison(input.contract.adviserEmail)
+        ? { ...contract, confirmedLifePremiumChanges: [...(contract.confirmedLifePremiumChanges ?? []).filter(item => item.key !== change.key), change] } : contract),
+    }])));
+    try { sessionStorage.removeItem("contracts_cache_v3"); localStorage.setItem("contracts_last_updated", String(Date.now()));
+      window.dispatchEvent(new Event("contracts:updated")); } catch { /* Cache invalidation is best effort. */ }
+    return change;
+  };
+
   const convertNeonRefreshFromStatement = async ({
     intent,
     statementId,
@@ -7751,8 +7925,16 @@ export default function CommissionStatementsPage() {
   }, [matchesByContractNumber, statementContractMatchRequests]);
 
   const statementCorrectionContext = useMemo(
-    () => buildStatementCorrectionContext(statements),
-    [statements]
+    () => extendStatementCorrectionsWithStoredHistory({
+      context: buildStatementCorrectionContext(statements), statements, matchesByContractNumber,
+      writerEmail: effectiveUserEmail,
+      statementIdsByKey: {
+        ...processedStatementIdsByKey,
+        ...(statements.length === 1 && selectedHistoryStatementId
+          ? { [statementDiscrepancyKey(statements[0])]: selectedHistoryStatementId } : {}),
+      },
+    }),
+    [statements, matchesByContractNumber, effectiveUserEmail, processedStatementIdsByKey, selectedHistoryStatementId]
   );
 
   const markedDiscrepancyItems = useMemo(
@@ -8535,6 +8717,7 @@ export default function CommissionStatementsPage() {
       : statementSaveState.message;
 
   return (
+    <StatementLifePremiumChangeContext.Provider value={confirmLifePremiumChange}>
     <BohemkaContractDetailModalContext.Provider value={setContractDetailModal}>
       <StatementCalculatorPrefillContext.Provider value={setCalculatorPrefillPanel}>
         <AppLayout active="statements">
@@ -8897,5 +9080,6 @@ export default function CommissionStatementsPage() {
         </AppLayout>
       </StatementCalculatorPrefillContext.Provider>
     </BohemkaContractDetailModalContext.Provider>
+    </StatementLifePremiumChangeContext.Provider>
   );
 }

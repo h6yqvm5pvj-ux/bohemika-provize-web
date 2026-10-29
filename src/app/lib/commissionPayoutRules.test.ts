@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isHigherCommissionPayout,
   isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
 } from "./commissionPayoutRules";
+
+describe("higher commission payouts", () => {
+  it("distinguishes a positive higher payment from an underpayment or an unknown expectation", () => {
+    expect(isHigherCommissionPayout({ amount: 140, expectedAmount: 100, tolerance: 10 })).toBe(true);
+    for (const expectedAmount of [null, undefined, 0, -100, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(isHigherCommissionPayout({ amount: 140, expectedAmount, tolerance: 10 })).toBe(false);
+    }
+    for (const amount of [-140, 0, 60, 100, 110, Number.NaN]) {
+      expect(isHigherCommissionPayout({ amount, expectedAmount: 100, tolerance: 10 })).toBe(false);
+    }
+  });
+});
 
 describe("isNeonRefreshStatementProductCode", () => {
   it("recognizes NEON refresh product codes used in statements", () => {

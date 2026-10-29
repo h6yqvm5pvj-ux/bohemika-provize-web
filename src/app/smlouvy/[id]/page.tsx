@@ -150,6 +150,8 @@ import {
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
+import { ContractLifePremiumChanges } from "./ContractLifePremiumChanges";
+import { currentConfirmedLifePremium } from "@/app/lib/lifePremiumIncrease";
 import { ContractPayoutPlanMatching, type PayoutPlanRequest } from "./ContractPayoutPlanMatching";
 import { isKooperativaCPayout, type PayoutPlanPreview } from "@/app/cashflow/payoutPlanMatching";
 import {
@@ -560,6 +562,7 @@ export default function ContractDetailPage() {
   const [contractPdfBlobUrl, setContractPdfBlobUrl] = useState<string | null>(null);
   const [contractPdfPages, setContractPdfPages] = useState<ContractPdfPreviewPage[]>([]);
   const [contractPdfLoading, setContractPdfLoading] = useState(false);
+  const [contractPdfDownloading, setContractPdfDownloading] = useState(false);
   const [contractPdfError, setContractPdfError] = useState<string | null>(null);
   const [openContractPdfExternally, setOpenContractPdfExternally] = useState(false);
   const contractPdfObjectUrlRef = useRef<string | null>(null);
@@ -1192,18 +1195,23 @@ export default function ContractDetailPage() {
     return sourceEntries[sourceEntries.length - 1] ?? null;
   }, [contract, contractTimeline]);
   const premiumEntry = latestTimelineEntry ?? contract;
+  const confirmedLifeChanges = [...new Map((contractTimeline.length ? contractTimeline : contract ? [contract] : [])
+    .flatMap(entry => entry.confirmedLifePremiumChanges ?? []).map(change => [change.key, change])).values()];
+  const todayForPremium = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Prague" });
+  const premiumEntryStart = toDate(premiumEntry?.policyStartDate)?.toLocaleDateString("sv-SE", { timeZone: "Europe/Prague" });
+  const confirmedCurrentPremium = currentConfirmedLifePremium(confirmedLifeChanges, todayForPremium, premiumEntryStart);
   const premiumEntryIsEndorsement = premiumEntry?.entryType === "endorsement";
   const isShowingLatestTimelinePremium =
     !isEndorsement &&
     Boolean(premiumEntry?.id && contract?.id && premiumEntry.id !== contract.id);
-  const premium = premiumEntryIsEndorsement
+  const premium = confirmedCurrentPremium?.newMonthlyPremium ?? (premiumEntryIsEndorsement
     ? Number(
         premiumEntry?.newInputAmount ??
           premiumEntry?.effectiveInputAmount ??
           premiumEntry?.inputAmount ??
           0
       )
-    : Number(premiumEntry?.inputAmount ?? 0);
+    : Number(premiumEntry?.inputAmount ?? 0));
   const refreshCommissionBase = contract?.refreshCommissionBase ?? null;
   const refreshCalculationMonthlyPremium = Number(
     isNeonRefreshContract
@@ -1591,6 +1599,34 @@ export default function ContractDetailPage() {
     }
     setShowContractPdfOptions((prev) => !prev);
   }, [contractPdfOptions, openContractPdfOption]);
+  const handleDownloadContractPdf = useCallback(async () => {
+    const option = contractPdfOptions.find((item) => item.isCurrent) ?? contractPdfOptions[0];
+    if (!option || contractPdfDownloading) return;
+
+    setShowContractPdfOptions(false);
+    setShowContractActionsMenu(false);
+    setContractPdfDownloading(true);
+    try {
+      const blob = await downloadContractPdfBlob(option);
+      if (!user || auth.currentUser?.uid !== user.uid) return;
+
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      try {
+        link.href = objectUrl;
+        link.download = "Smlouva.pdf";
+        document.body.appendChild(link);
+        link.click();
+      } finally {
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
+    } catch {
+      pushToast("PDF smlouvy se nepodařilo stáhnout. Zkus to prosím znovu.", "error");
+    } finally {
+      setContractPdfDownloading(false);
+    }
+  }, [contractPdfOptions, contractPdfDownloading, downloadContractPdfBlob, pushToast, user]);
   const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
   const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
   const isAutoCommissionProduct = isAutoProduct(prod ?? null);
@@ -5481,6 +5517,22 @@ export default function ContractDetailPage() {
                     </div>
                   )}
 
+                  {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadContractPdf}
+                      disabled={contractPdfDownloading}
+                      className={`${actionStyles.button} ${detailStyles.headerSecondary}`}
+                    >
+                      {contractPdfDownloading ? (
+                        <Spinner className="h-3.5 w-3.5" />
+                      ) : (
+                        <Download size={14} strokeWidth={2} aria-hidden="true" />
+                      )}
+                      <span>{contractPdfDownloading ? "Stahuji…" : "Stáhnout smlouvu"}</span>
+                    </button>
+                  )}
+
                   {[
                     { label: "ExtraNet", href: cppExtranetDetailUrl },
                     { label: "Maxx", href: maxxContractDetailUrl },
@@ -6526,6 +6578,8 @@ export default function ContractDetailPage() {
                   canManageContract && contract?.contractNumber
                 )}
               />
+
+              <ContractLifePremiumChanges changes={confirmedLifeChanges} onOpenStatement={handleOpenCommissionStatementPreview} />
 
               {contract?.productKey === "kooperativaAuto" && (
                 contract.commissionPayouts?.some(payout => isKooperativaCPayout(contract.productKey, payout.code) && normalizeEmail(payout.writtenBy) === normalizedViewerEmail) ||
@@ -7657,7 +7711,7 @@ export default function ContractDetailPage() {
                   <>
                     <a
                       href={contractPdfBlobUrl}
-                      download={selectedContractPdfFileName}
+                      download="Smlouva.pdf"
                       className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
                     >
                       <Download size={15} strokeWidth={2.2} aria-hidden="true" />

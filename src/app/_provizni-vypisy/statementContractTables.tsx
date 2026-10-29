@@ -34,7 +34,8 @@ export function LifeSplitCommissionTable({
           <tr>
             <th scope="col">Kód</th>
             <th scope="col">Význam</th>
-            <th scope="col">Základna</th>
+            <th scope="col">Roční základna</th>
+            <th scope="col">Měsíční základna</th>
             <th scope="col">Procento</th>
             <th scope="col">Provize</th>
             <th scope="col">Rez. fond</th>
@@ -46,6 +47,7 @@ export function LifeSplitCommissionTable({
               <td>{row.type}</td>
               <td>{row.lifeSplitLabel}</td>
               <td>{formatMoney(row.base)}</td>
+              <td>{formatMoney(row.base / 12)}</td>
               <td>{row.percent || "—"}</td>
               <td>
                 {formatMoney(row.commission)}
@@ -65,6 +67,7 @@ export function LifeSplitCommissionTable({
                   {payment.isStorno ? " / storno" : ""}
                   {isOffsetPair ? " / vyplaceno a odečteno ve stejném výpisu" : ""}
                 </td>
+                <td>—</td>
                 <td>—</td>
                 <td>—</td>
                 <td>
@@ -92,6 +95,10 @@ export function OtherProductCommissionTable({
   pairedB36PaymentIndexes: Set<number>;
   generalCommissionKindClass: (kind: GeneralCommissionKind) => string;
 }) {
+  const showMonthlyBase = rows.length > 0 && rows.every(row => {
+    const product = resolveStatementProduct(row.product);
+    return product.category === "life" && product.usesAnnualPremiumBase;
+  });
   return (
     <div className={styles.lineItems}>
       <h5 className={styles.lineItemsHeading}><ReceiptText aria-hidden="true" />Položky z provizního výpisu</h5>
@@ -103,7 +110,8 @@ export function OtherProductCommissionTable({
             <th scope="col">Produkt</th>
             <th scope="col">Kód</th>
             <th scope="col">Význam</th>
-            <th scope="col">Základna</th>
+            <th scope="col">{showMonthlyBase ? "Roční základna" : "Základna"}</th>
+            {showMonthlyBase && <th scope="col">Měsíční základna</th>}
             <th scope="col">Procento</th>
             <th scope="col">Provize</th>
             <th scope="col">Rez. fond</th>
@@ -131,12 +139,13 @@ export function OtherProductCommissionTable({
                 </td>
                 <td>
                   <div>{formatMoney(row.base)}</div>
-                  {rowProductMeta.usesAnnualPremiumBase && row.base > 0 && (
+                  {!showMonthlyBase && rowProductMeta.usesAnnualPremiumBase && row.base > 0 && (
                     <div className={styles.secondary}>
                       měs. {formatWholeMoney(row.base / 12)} Kč
                     </div>
                   )}
                 </td>
+                {showMonthlyBase && <td>{formatMoney(row.base / 12)}</td>}
                 <td>{row.percent || "—"}</td>
                 <td>
                   {formatMoney(row.commission)}
@@ -166,6 +175,7 @@ export function OtherProductCommissionTable({
                     </div>
                   )}
                 </td>
+                {showMonthlyBase && <td>—</td>}
                 <td>—</td>
                 <td>—</td>
                 <td>

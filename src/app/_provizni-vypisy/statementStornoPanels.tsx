@@ -213,8 +213,8 @@ export function StornoContractsSectionPanel({
   presentation: SystemMatchPresentation;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [pairedExpanded, setPairedExpanded] = useState(true);
-  const [unpairedExpanded, setUnpairedExpanded] = useState(true);
+  const [pairedExpanded, setPairedExpanded] = useState(false);
+  const [unpairedExpanded, setUnpairedExpanded] = useState(false);
   const otherPaymentStornos = statement.otherPayments.filter((payment) => payment.isStorno);
   const combinedStornoGroups = groupStornoItemsByContract(
     statement.stornoRows,

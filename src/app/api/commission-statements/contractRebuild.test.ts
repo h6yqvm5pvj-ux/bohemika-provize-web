@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   collection: vi.fn(),
   doc: vi.fn(),
   batch: vi.fn(),
+  transaction: vi.fn(),
   history: vi.fn(),
 }));
 vi.mock("@/app/api/contracts/_lib/contractsApi", async () => ({
@@ -13,7 +14,7 @@ vi.mock("@/app/api/contracts/_lib/contractsApi", async () => ({
   hasContractAccess: (await import("@/app/api/contracts/_lib/contractsApi.access")).hasContractAccess,
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
-  adminDb: { collection: mocks.collection, doc: mocks.doc, batch: mocks.batch },
+  adminDb: { collection: mocks.collection, doc: mocks.doc, batch: mocks.batch, runTransaction: mocks.transaction },
 }));
 vi.mock("@/lib/server/cashflowMutationTracking", () => ({
   withCashflowMutation: (_reason: string, work: () => Promise<unknown>) => work(),
@@ -108,6 +109,14 @@ beforeEach(() => {
   mocks.collection.mockImplementation(collection);
   mocks.doc.mockImplementation(document);
   mocks.history.mockImplementation((_batch, _ref, _before, patch) => patch);
+  mocks.transaction.mockImplementation(async work => {
+    const pending: (() => void)[] = [];
+    const tx = { getAll: async (...refs: { path: string }[]) => refs.map(ref => { reads.push(ref.path); return snapshot(ref.path); }),
+      update: (ref: { path: string }, patch: Record<string, unknown>) => pending.push(() => write(ref.path, patch)) };
+    const result = await work(tx);
+    pending.forEach(commit => commit());
+    return result;
+  });
   mocks.batch.mockImplementation(() => {
     const pending: (() => void)[] = [];
     const checks: (() => void)[] = [];
@@ -139,6 +148,79 @@ beforeEach(() => {
   });
 });
 
+describe("confirmed life premium changes from a saved statement", () => {
+  const confirm = (patch: Record<string, unknown> = {}) => POST(request({ action: "confirm-life-premium-change", statementId: "statement-1",
+    previousMonthlyPremium: 2350, newMonthlyPremium: 2479, effectiveDate: "2026-01-01", confirmed: true, ...patch }));
+  const setup = () => {
+    setContext({ teamEmails: [owner], actorEmail: actor });
+    records.set("contractRefs/life-increase-reference", { ownerEmail: owner, entryId: "entry-1", entryPath, contractNumberNormalized: contractNumber });
+    Object.assign(records.get(entryPath)!, { inputAmount: 2350, items: [{ code: "A101", title: "Provize A101", amount: 14190.24 }] });
+    const rows = [["NV101", 620.9], ["NB0301", 158.1]].map(([code, amount], index) => {
+      const cells = [index + 1, contractNumber, "07.09.2023", "08.09.2023", "Synthetic client", "Z", "CPP_NEON", code, 1548, "", "", "7", amount, 0];
+      return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    });
+    records.get(statementPath)!.html = `<div id="provize"><table>${rows.join("")}</table></div>`;
+  };
+  it("stores neutral history exactly once and preserves the original contract calculation", async () => {
+    setup();
+    const before = structuredClone(records.get(entryPath)!);
+    const response = await confirm();
+    expect(response.status).toBe(200);
+    const change = (await response.json()).change;
+    expect(change).toMatchObject({ previousMonthlyPremium: 2350, newMonthlyPremium: 2479, annualIncrease: 1548,
+      effectiveDate: "2026-01-01", statementId: "statement-1", writtenBy: viewer });
+    expect(change).not.toHaveProperty("reason");
+    expect(change).not.toHaveProperty("entryType");
+    expect(records.get(entryPath)).toEqual({ ...before, confirmedLifePremiumChanges: [change], updatedAt: new Date(change.confirmedAtMs) });
+    expect((await confirm()).status).toBe(200);
+    expect(records.get(entryPath)!.confirmedLifePremiumChanges).toEqual([change]);
+    expect(reads.some(path => path.includes(`usersPrivate/${actor}/`))).toBe(false);
+    expect(reads).toContain(statementPath);
+    expect(mocks.history.mock.calls[0][4]).toMatchObject({ actorEmail: actor, changes: [] });
+  });
+  it.each([
+    { confirmed: false }, { previousMonthlyPremium: "2350" }, { newMonthlyPremium: -2479 }, { newMonthlyPremium: null },
+    { effectiveDate: "2026-02-30" }, { effectiveDate: "" }, { entryId: "entry-1/private/secret" }, { statementId: "../other" },
+  ])("rejects invalid and manipulated input %j", async patch => {
+    setup(); expect((await confirm(patch)).status).toBe(400); expect(writes).toEqual([]);
+  });
+  it.each([
+    { newMonthlyPremium: 2500 }, { contractNumber: "other" },
+  ])("requires agreement with the server's stored statement %j", async patch => {
+    setup(); expect((await confirm(patch)).status).toBe(409); expect(writes).toEqual([]);
+  });
+  it("rejects conflicting repeated confirmations", async () => {
+    setup(); expect((await confirm()).status).toBe(200);
+    writes.length = 0;
+    expect((await confirm({ effectiveDate: "2026-02-01" })).status).toBe(409); expect(writes).toEqual([]);
+  });
+  it("blocks unauthorized cross-account writes and role escalation", async () => {
+    setup(); setContext();
+    expect((await confirm({ canManageContractsAsAdmin: true, viewerEmail: owner })).status).toBe(403);
+    setContext({ accountType: "tipster", teamEmails: [owner] });
+    expect((await confirm()).status).toBe(403);
+    expect(writes).toEqual([]);
+  });
+  it("requires authentication and a source in the represented account", async () => {
+    setup(); mocks.guard.mockResolvedValueOnce({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    expect((await confirm()).status).toBe(401);
+    records.delete(statementPath);
+    expect((await confirm()).status).toBe(404); expect(writes).toEqual([]);
+  });
+  it("preserves NV/NB payouts without comparing them with the whole original commission", async () => {
+    setup();
+    records.set(`usersPrivate/${viewer}/commissionStatements/statement-reprocess-1`, records.get(statementPath)!);
+    const response = await POST(request({ action: "reprocess-saved-statement", statementId: "statement-reprocess-1" }));
+    expect(response.status).toBe(200);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([
+      expect.objectContaining({ code: "NV101", amount: 620.9, expectedAmount: null, difference: null, status: "paid" }),
+      expect.objectContaining({ code: "NB0301", amount: 158.1, expectedAmount: null, difference: null, status: "paid" }),
+    ]);
+    expect([...records.keys()].some(key => key.includes("accountingRepairDrafts/"))).toBe(false);
+    expect(records.get(entryPath)!.inputAmount).toBe(2350);
+  });
+});
+
 describe("normal statement import author isolation", () => {
   const ownStatementPath = `usersPrivate/${owner}/commissionStatements/security-statement`;
   const payoutRows = () => `<div id="provize"><table>${Array.from({ length: 401 }, (_, index) => {
@@ -159,6 +241,52 @@ describe("normal statement import author isolation", () => {
     records.set("contractRefs/security-reference", {
       ownerEmail: owner, entryId: "entry-1", entryPath, contractNumberNormalized: contractNumber,
     });
+  });
+
+  it.each(["import", "reprocess"])("normal %s records actual Kooperativa C payouts without changing a constant premium", async mode => {
+    const premium = 7175;
+    Object.assign(records.get(entryPath)!, {
+      productKey: "kooperativaAuto", frequencyRaw: "semiannual", position: "poradce7",
+      inputAmount: premium, calculationInputAmount: premium, effectiveInputAmount: premium,
+      contractSignedDate: "2023-02-16", policyStartDate: "2023-02-17",
+      items: [{ title: "Následná provize", code: "B101", amount: 605.57 }],
+    });
+    const before = structuredClone(records.get(entryPath))!;
+    const amounts = [["C101", 937.80], ["C103", 970.20], ["C105", 1019.40], ["C106", 769.80]] as const;
+    const html = `<div id="provize"><table>${amounts.map(([code, amount], index) => {
+      const cells = [index + 1, contractNumber, "16.02.2023", "17.02.2023", "Testovací klient", "Z", "KOO_NAMIRU", code, premium, "", "60,00%", "7", amount, 0];
+      return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    }).join("")}</table></div>`;
+    for (let attempt = 0; attempt < (mode === "reprocess" ? 2 : 1); attempt++) {
+      const response = await invoke(mode, html);
+      expect(response.status).toBe(200);
+      const saved = records.get(entryPath)!;
+      const payouts = saved.commissionPayouts as ContractCommissionPayout[];
+      expect(payouts).toHaveLength(amounts.length);
+      expect(payouts).toEqual(expect.arrayContaining(amounts.map(([code, amount]) =>
+        expect.objectContaining({ code, amount, status: "paid", expectedAmount: null, difference: null, writtenBy: owner })
+      )));
+      expect(saved).toMatchObject({ inputAmount: premium, effectiveInputAmount: premium, calculationInputAmount: premium, position: "poradce7", frequencyRaw: "semiannual", items: before.items });
+      expect(saved.premiumStatementHistory ?? []).toEqual([]);
+      expect(saved.commissionCoefficientSetOverride).toBeUndefined();
+    }
+  });
+
+  it.each([
+    { amount: 140, career: "7", expected: 100, status: "paid", reason: null },
+    { amount: 60, career: "7", expected: 100, status: "difference", reason: "commission_amount_mismatch" },
+    { amount: 140, career: "8", expected: 100, status: "difference", reason: "career_mismatch" },
+    { amount: 140, career: "7", expected: null, status: "paid", reason: null },
+  ])("keeps a paid higher commission distinct from real payout problems: %j", async ({ amount, career, expected, status, reason }) => {
+    Object.assign(records.get(entryPath)!, { position: "poradce7", inputAmount: 1000,
+      items: expected == null ? [] : [{ code: "B3601", title: "Provize po 3 letech", amount: expected }] });
+    const cells = [1, contractNumber, "01.01.2020", "01.01.2020", "Testovací klient", "Z", "CPP_NEON", "B3601", 12000, "", "", career, amount, 0];
+    const response = await invoke("reprocess", `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`);
+    expect(response.status).toBe(200);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([expect.objectContaining({ amount, expectedAmount: expected, status, differenceReason: reason,
+      difference: expected == null ? null : amount - expected })]);
+    expect(records.get(entryPath)!.inputAmount).toBe(1000);
+    if (status === "paid") expect([...records.keys()].filter(key => key.includes("accountingRepairDrafts/"))).toEqual([]);
   });
 
   it.each(["import", "reprocess"])("normal %s preserves foreign, manual and unattributed payouts under retention pressure", async mode => {

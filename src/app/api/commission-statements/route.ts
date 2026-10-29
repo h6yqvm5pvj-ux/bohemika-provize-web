@@ -1,6 +1,8 @@
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { savePremiumBaseResolution, PremiumBaseResolutionError } from "@/lib/server/premiumBaseResolution";
+import { saveLifeStatementPremiumChange } from "@/lib/server/lifeStatementPremiumChange";
+import { isLifeIncreaseCode, matchesLifePremiumIncrease, lifeIncreaseExpectedAmount } from "@/app/lib/lifePremiumIncrease";
 import { createHash } from "node:crypto";
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -20,6 +22,7 @@ import {
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import {
   isFirstYearAutoACommissionPayout,
+  isHigherCommissionPayout,
   isLifeSubsequentCommissionPayout,
   lifeRiskAnnualPremiumBase,
   isNeonInvestmentLifeA201Payout,
@@ -2241,6 +2244,10 @@ const expectedPayoutAmountForRow = (
       : Array.isArray(contract.items)
         ? contract.items
         : [];
+  if (isLifeIncreaseCode(code)) {
+    return matchesLifePremiumIncrease(contract, row.baseAmount ?? 0)
+      ? lifeIncreaseExpectedAmount(sourceItems, [code]) : null;
+  }
   if (row.source === "manager" && sourceItems.length === 0) return null;
   const amountFromItems = (predicate: (title: string) => boolean) =>
     row.source === "manager"
@@ -3238,6 +3245,9 @@ const payoutRecordDetail = ({
     parts.push(
       `${code}: vyplaceno ${formatMoneyDetail(Math.abs(signedAmount))}, systém ${formatMoneyDetail(expectedAmount)}, rozdíl ${formatSignedMoneyDetail(difference)}.`
     );
+    if (status === "paid" && isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance: payoutDifferenceToleranceForRow(row) })) {
+      parts.push("Vyšší vyplacená provize; kladný rozdíl není nesrovnalost vyplacené částky.");
+    }
   }
 
   if (differenceReason === "career_mismatch") {
@@ -3376,18 +3386,22 @@ const payoutRecordFromStatementRow = ({
       ? null
       : Math.round((signedAmount - expectedAmount) * 100) / 100;
   const tolerance = payoutDifferenceToleranceForRow(row);
-  const status =
+  let status: ContractCommissionPayoutRecord["status"] =
     row.status === "storno"
       ? "storno"
       : difference != null && Math.abs(difference) > tolerance
         ? "difference"
         : "paid";
-  const differenceReason = payoutDifferenceReasonForRow({
+  let differenceReason = payoutDifferenceReasonForRow({
     row,
     contract,
     status,
     viewerEmail: writtenBy,
   });
+  if (differenceReason === "commission_amount_mismatch" && isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance })) {
+    status = "paid";
+    differenceReason = null;
+  }
   const canComparePremiumBase = isFirstYearAutoACommissionPayout({
     product: contract.productKey,
     commissionCode: row.commissionCode,
@@ -5428,6 +5442,21 @@ export async function POST(req: NextRequest) {
   }
 
   const action = normalizeText(body.action, 80);
+  if (action === "confirm-life-premium-change") {
+    if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json({ ok: false, error: "Nemáš oprávnění upravovat pojistné." }, { status: 403 }));
+    try {
+      return withRateLimit(NextResponse.json(await saveLifeStatementPremiumChange(adminDb, {
+        body, viewerEmail: ctx.email, actorEmail: ctx.actorEmail, teamEmails: ctx.teamEmails,
+        canManageContractsAsAdmin: ctx.canManageContractsAsAdmin, parseRows: extractLifePremiumIncreaseRowsFromStoredHtml,
+      })));
+    } catch (error) {
+      if (error instanceof PremiumBaseResolutionError) return withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: error.status }));
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
+      console.error("Potvrzení změny pojistného selhalo.");
+      return withRateLimit(NextResponse.json({ ok: false, error: "Změnu pojistného se nepodařilo uložit." }, { status: 500 }));
+    }
+  }
   if (action === "resolve-premium-base") {
     if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json({ ok: false, error: "Nemáš oprávnění upravovat základnu." }, { status: 403 }));
     try {

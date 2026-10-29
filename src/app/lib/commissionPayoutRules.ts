@@ -1,6 +1,14 @@
 import type { Product } from "@/app/types/domain";
 import { isAutoProduct, isLifeProduct } from "@/app/lib/productCatalog";
 
+/** A real payment above a known positive expectation is not an underpayment. */
+export const isHigherCommissionPayout = ({ amount, expectedAmount, tolerance }: {
+  amount: number;
+  expectedAmount: number | null | undefined;
+  tolerance: number;
+}): boolean => typeof expectedAmount === "number" && Number.isFinite(expectedAmount) && expectedAmount > 0 &&
+  Number.isFinite(amount) && Number.isFinite(tolerance) && tolerance >= 0 && amount - expectedAmount > tolerance;
+
 const normalizedCommissionCode = (value: unknown): string =>
   String(value ?? "")
     .trim()

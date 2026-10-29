@@ -23,6 +23,7 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
   contractHistoryId?: string;
   contractHistoryStartedAtMs?: number;
   contractNotesPath?: string;

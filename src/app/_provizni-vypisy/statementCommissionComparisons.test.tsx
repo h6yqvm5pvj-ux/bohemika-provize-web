@@ -6,6 +6,8 @@ import { buildStatementCodeComparisons, comparisonStatus, statementAmountForSing
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
 import { statementContractIsVerified } from "./statementContractReview";
 import type { CommissionRow } from "./statementTypes";
+import { OtherProductCommissionTable } from "./statementContractTables";
+import { otherProductCardSummary } from "./statementCardMath";
 
 const row = (type: string, commission = 57.93, patch: Partial<CommissionRow> = {}): CommissionRow => ({
   id: `${type}-${commission}`, type, commission, product: "KOO_OBCAN", base: 862,
@@ -56,6 +58,20 @@ describe("duplicate single-payout commissions", () => {
 });
 
 describe("statement comparisons for separate commission codes", () => {
+  it("keeps actual Kooperativa C amounts and codes when the premium base remains constant", () => {
+    const rows = [row("C101", 937.80), row("C103", 970.20), row("C105", 1019.40), row("C106", 769.80)]
+      .map(item => ({ ...item, product: "KOO_NAMIRU", base: 7175 }));
+    const summary = otherProductCardSummary({ key: "synthetic-koop", contractNumber: "synthetic-contract", client: "Testovací klient", signedAt: "16.02.2023", validFrom: "17.02.2023", rows, b36Payments: [] });
+    expect(summary.totalCommission).toBeCloseTo(3697.20, 2);
+    const html = renderToStaticMarkup(createElement(OtherProductCommissionTable, { rows, b36Payments: [], pairedB36PaymentIndexes: new Set<number>(), generalCommissionKindClass: () => "" })).replaceAll("\u00a0", " ");
+    expect(html.match(/Následná provize dle výpisu/g)).toHaveLength(rows.length);
+    for (const code of ["C101", "C103", "C105", "C106"]) expect(html).toContain(code);
+    for (const amount of ["937,80", "970,20", "1 019,40", "769,80"]) expect(html).toContain(amount);
+    expect(html).not.toContain("Neočekávaná provize");
+    expect(html).not.toContain("navýšení smlouvy");
+    expect(html).not.toContain("B101");
+  });
+
   it.each([false, true])("accepts B101 and B102 as two correct payments, regardless of row order (%s)", reverse => {
     const rows = [row("B101"), row("B102")];
     const comparisons = compare(reverse ? rows.reverse() : rows);
@@ -73,7 +89,7 @@ describe("statement comparisons for separate commission codes", () => {
   });
 
   it("keeps an incorrect B102 visible while accepting B101", () => {
-    const comparisons = compare([row("B101"), row("B102", 77.93)]);
+    const comparisons = compare([row("B101"), row("B102", 37.93)]);
     expect(comparisons.map(item => [item.label, item.status])).toEqual([["B101", "ok"], ["B102", "diff"]]);
     expect(statementContractIsVerified({ matched: true, comparisons, hasWarnings: false })).toBe(false);
     const html = renderToStaticMarkup(createElement(AmountComparisonPanel, { comparisons }));

@@ -95,9 +95,10 @@ describe("Kooperativa in the commission statement queue", () => {
 });
 
 describe.each([
-  { product: "allianzAuto", productCode: "ALLMOJEAUT", label: "Allianz Auto", contractNumber: "4321123456", statementId: "statement-allianz" },
-  { product: "pillowAuto", productCode: "PIL_AUTOZ", label: "Pillow Auto", contractNumber: "9012345678", statementId: "statement-pillow" },
-] as const)("$label in the commission statement queue", ({ product, productCode, label, contractNumber, statementId }) => {
+  { product: "allianzAuto", productCode: "ALLMOJEAUT", label: "Allianz Auto", contractNumber: "4321123456", statementId: "statement-allianz", frequencies: ["monthly", "quarterly", "semiannual", "annual"] },
+  { product: "pillowAuto", productCode: "PIL_AUTOZ", label: "Pillow Auto", contractNumber: "9012345678", statementId: "statement-pillow", frequencies: ["monthly", "quarterly", "semiannual", "annual"] },
+  { product: "zamex", productCode: "CPP_ZAMEX", label: "ČPP ZAMEX", contractNumber: "0030000001", statementId: "statement-zamex", frequencies: ["quarterly", "semiannual", "annual"] },
+] as const)("$label in the commission statement queue", ({ product, productCode, label, contractNumber, statementId, frequencies }) => {
   const productPrefill = () => ({
     ...statementCalculatorPrefill({
       product: resolveStatementProduct(productCode),
@@ -108,7 +109,7 @@ describe.each([
     cppA101QueueEligible: true,
   });
 
-  it.each(["monthly", "quarterly", "semiannual", "annual"] as const)(
+  it.each(frequencies)(
     "preserves the product, %s payments and PDF through the queue and authenticated save",
     async frequency => {
       const source = { ...productPrefill(), frequency };
@@ -120,6 +121,12 @@ describe.each([
       })).toBe(true);
       const item = { ...cppAutoBatchQueueItemFromPrefill(source), pdfFile: file };
       expect(validateCppAutoBatchQueueItem(item)).toBeNull();
+      if (product === "zamex") {
+        expect(validateCppAutoBatchQueueItem({ ...item, frequency: "monthly" })).toContain("podporovanou frekvenci");
+        const normalized = normalizeCreateEntryPayload({ raw: statementBatchQueueContractEntry(item), ownerEmail: "represented@example.test", ownerUid: "test-uid" });
+        expect(normalized.ok).toBe(true);
+        if (normalized.ok) expect(normalized.payload).toMatchObject({ productKey: "zamex", inputAmount: 12000, frequencyRaw: frequency });
+      }
       expect(cppAutoBatchQueueItemKey(item)).toBe(`${product}:${contractNumber}`);
       expect(cppAutoBatchQueueItemKey(item)).not.toBe(cppAutoBatchQueueItemKey({ ...item, product: "cppAuto" }));
       const result = await saveContractEntry({
@@ -158,7 +165,7 @@ describe.each([
       expect(container.textContent).toContain("Kooperativa Auto");
       const productCard = container.querySelector("article")!;
       expect([...productCard.querySelectorAll("select option")].map(option => option.getAttribute("value")))
-        .toEqual(["monthly", "quarterly", "semiannual", "annual"]);
+        .toEqual([...frequencies]);
       await act(async () => [...container.querySelectorAll("button")]
         .find(button => button.textContent?.includes("Nahrát frontu"))!.click());
       expect(onRun).toHaveBeenCalledOnce();
@@ -180,7 +187,7 @@ describe("ČPP Auto replacements in the commission statement queue", () => {
   it("allows ČPP Auto with replacement enabled and keeps other replacement workflows excluded", () => {
     expect(canQueueStatementProduct("cppAuto", true)).toBe(true);
     expect(canQueueStatementProduct("cppAuto", false)).toBe(true);
-    for (const product of ["domex", "allianzAuto", "kooperativaAuto", "uniqaAuto", "pillowAuto"] as const) {
+    for (const product of ["domex", "allianzAuto", "kooperativaAuto", "uniqaAuto", "pillowAuto", "zamex"] as const) {
       expect(canQueueStatementProduct(product, false)).toBe(true);
       expect(canQueueStatementProduct(product, true)).toBe(false);
     }

@@ -399,6 +399,7 @@ export type ContractCommissionPayoutRecord = {
 };
 
 export type MatchedSystemContract = {
+  confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
   id: string;
   adviserEmail: string | null;
   adviserName?: string | null;

@@ -66,7 +66,7 @@ describe("contract detail opened from a commission statement", () => {
   });
 
   it.each([
-    ["CPP_CS_Z", "cppcestovko"], ["CPP_CS6", "cppcestovko"], ["CPP_ACPIV", "cppAuto"], ["PIL_AUTOZ", "pillowAuto"],
+    ["CPP_CS_Z", "cppcestovko"], ["CPP_CS6", "cppcestovko"], ["CPP_ACPIV", "cppAuto"], ["PIL_AUTOZ", "pillowAuto"], ["CPP_ZAMEX", "zamex"],
   ] as const)("opens MAXX and the prefilled queue form when adding %s", async (productCode, productKey) => {
     const openMaxx = vi.spyOn(window, "open").mockReturnValue(null);
     const openCalculator = vi.fn();

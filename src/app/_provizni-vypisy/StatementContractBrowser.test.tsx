@@ -3,7 +3,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StatementContractBrowser, filterStatementBrowserItems, useStatementBrowserItems, type StatementBrowserItem } from "./StatementContractBrowser";
+import { StatementContractBrowser, filterStatementBrowserItems, sortStatementBrowserItems, useStatementBrowserItems, type StatementBrowserItem } from "./StatementContractBrowser";
+import { statementContractReview } from "./statementContractReview";
 import { StatementContractList } from "./StatementContractList";
 import { StatementContractCard } from "./StatementContractCard";
 import { StornoContractsSectionPanel } from "./statementStornoPanels";
@@ -19,6 +20,24 @@ const items: StatementBrowserItem[] = [
 function Category({ entries }: { entries: StatementBrowserItem[] }) {
   const { items: visible } = useStatementBrowserItems(entries);
   return visible.length > 0 ? <div data-category>{visible.map(item => <span key={item.key} data-contract>{item.searchText}</span>)}</div> : null;
+}
+
+const reviewItems: StatementBrowserItem[] = ["ok", "increase", "decrease", "commission-error", "ok", "increase", "review", "higher"].map((status, index) => ({
+  key: String(index), searchText: `Žaneta ${index}`, amount: 100 + index, unpaired: false,
+  issueCount: status === "commission-error" ? 1 : 0,
+  review: statementContractReview({ matched: true, unpaired: false, issueCount: status === "commission-error" ? 1 : 0,
+    comparisons: status === "review" ? [] : [{ status: status === "commission-error" || status === "higher" ? "diff" : "ok",
+      expectedAmount: 100, statementAmount: status === "higher" ? 140 : status === "commission-error" ? 60 : 100 }], hasWarnings: false,
+    premiumChange: status === "increase" || status === "decrease" ? status : undefined }),
+}));
+
+function ReviewCategory({ entries }: { entries: StatementBrowserItem[] }) {
+  // Sections create their own rows; the browser supplies their shared review metadata.
+  const { items: visible } = useStatementBrowserItems(entries.map(item => ({ key: item.key, searchText: item.searchText, amount: item.amount, issueCount: item.issueCount, unpaired: item.unpaired })));
+  return <StatementContractList showFilters={false} items={visible.map(item => ({ ...item,
+    render: () => <StatementContractCard client={item.searchText} contractNumber={item.key} products="Testovací produkt" commission={item.amount}
+      verified={item.review?.verified} reviewSummary={item.review?.summary} badges="Podrobná kontrola"><p>Detail {item.key}</p></StatementContractCard>,
+  }))} />;
 }
 
 describe("statement review navigation", () => {
@@ -41,6 +60,46 @@ describe("statement review navigation", () => {
     expect(filterStatementBrowserItems(items, "  NOVÁKOVÁ  ", "unpaired").map(item => item.key)).toEqual(["other:3"]);
     expect(filterStatementBrowserItems(items, "", "issues").map(item => item.key)).toEqual(["other:2", "other:3"]);
     expect(items).toHaveLength(3);
+  });
+
+  it("groups identical badges stably before pagination without mutating the source", () => {
+    const before = reviewItems.map(item => item.key);
+    expect(sortStatementBrowserItems(reviewItems).map(item => item.key)).toEqual(["3", "1", "5", "2", "7", "0", "4", "6"]);
+    expect(reviewItems.map(item => item.key)).toEqual(before);
+    expect(filterStatementBrowserItems(reviewItems, "zaneta", "increase").map(item => item.key)).toEqual(["1", "5"]);
+    expect(filterStatementBrowserItems(reviewItems, "4", "ok").map(item => item.key)).toEqual(["4"]);
+    expect(filterStatementBrowserItems(reviewItems, "", "ok").map(item => item.key)).toEqual(["0", "4"]);
+    const overlapping = { ...reviewItems[3], review: statementContractReview({ matched: true, unpaired: false, issueCount: 1,
+      comparisons: [{ status: "diff" }], hasWarnings: false, premiumChange: "increase" }) };
+    expect(filterStatementBrowserItems([overlapping], "", "increase")).toHaveLength(1);
+    expect(filterStatementBrowserItems([overlapping], "", "commission-error")).toHaveLength(1);
+    expect(filterStatementBrowserItems([overlapping], "", "ok")).toHaveLength(0);
+  });
+
+  it("filters and counts by actual review results and keeps section rows in badge groups", async () => {
+    await act(async () => root.render(<StatementContractBrowser items={reviewItems}><ReviewCategory entries={reviewItems} /></StatementContractBrowser>));
+    const numbers = () => Array.from(container.querySelectorAll("article button")).map(item => item.querySelector('[class*="contractNumber"]')?.textContent);
+    expect(numbers()).toEqual(["Smlouva 3", "Smlouva 1", "Smlouva 5", "Smlouva 2", "Smlouva 7", "Smlouva 0", "Smlouva 4", "Smlouva 6"]);
+    expect(button("Navýšení").textContent).toContain("2");
+    await act(async () => button("Navýšení").click());
+    expect(numbers()).toEqual(["Smlouva 1", "Smlouva 5"]);
+    expect(container.querySelector("article button")?.textContent).toContain("Pojistné navýšeno");
+    expect(container.querySelector("article button svg.lucide-trending-up")).not.toBeNull();
+    await act(async () => button("Ponížení").click());
+    expect(numbers()).toEqual(["Smlouva 2"]);
+    await act(async () => button("Špatná provize").click());
+    expect(numbers()).toEqual(["Smlouva 3"]);
+    expect(container.querySelector("article button")?.textContent).toContain("Špatná provize");
+    await act(async () => button("Vyšší provize").click());
+    expect(numbers()).toEqual(["Smlouva 7"]);
+    expect(container.querySelector("article button")?.textContent).toContain("Vyšší provize");
+    await act(async () => button("K prověření").click());
+    expect(numbers()).toEqual(["Smlouva 3"]);
+    await act(async () => button("Vše OK").click());
+    expect(numbers()).toEqual(["Smlouva 0", "Smlouva 4"]);
+    expect(container.querySelector("article button")?.textContent).toContain("Vše sedí");
+    await act(async () => button("Zrušit filtry").click());
+    expect(container.querySelectorAll("article")).toHaveLength(reviewItems.length);
   });
 
   it("filters all categories together, includes unpaired contracts for review, and restores the full list", async () => {
@@ -93,6 +152,29 @@ describe("statement review navigation", () => {
     expect(container.querySelectorAll("article")).toHaveLength(15);
   });
 
+  it("groups badges before pagination and resets the page when combining status and A101 filters", async () => {
+    const entries = Array.from({ length: 32 }, (_, index) => {
+      const review = statementContractReview({ matched: true, unpaired: false, issueCount: 0, comparisons: [{ status: "ok" }],
+        hasWarnings: false, premiumChange: index % 2 === 1 ? "increase" : undefined });
+      return { key: String(index), searchText: `Testovací klient ${index}`, amount: 100, issueCount: 0, unpaired: false,
+        review, hasA101: index === 0 || index === 31,
+        render: () => <article data-status={review.status}>Smlouva {index}</article> };
+    });
+    await act(async () => root.render(<StatementContractList items={entries} enableA101Filter />));
+    const states = () => Array.from(container.querySelectorAll("article")).map(item => item.getAttribute("data-status"));
+    expect(states()).toEqual(Array(15).fill("increase"));
+    await act(async () => button("Další").click());
+    expect(states()).toEqual(["increase", ...Array(14).fill("ok")]);
+    await act(async () => button("Vše OK").click());
+    expect(states()).toEqual(Array(15).fill("ok"));
+    expect(button("Předchozí").disabled).toBe(true);
+    await act(async () => button("Navýšení").click());
+    await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(states()).toEqual(["increase"]);
+    expect(container.querySelector("article")?.textContent).toBe("Smlouva 31");
+    expect(container.querySelector("nav")).toBeNull();
+  });
+
   it("keeps storno details and discrepancy selection accessible without nesting controls", async () => {
     const onToggleMarked = vi.fn();
     const statement: ParsedStatement = {
@@ -108,6 +190,9 @@ describe("statement review navigation", () => {
     };
     await act(async () => root.render(<StornoContractsSectionPanel statement={statement} matchesByContractNumber={{}} presentation={presentation} markingControls={{ markingMode: true, markedItems: {}, onToggleMarked, statementKey: "test", statementLabel: "Testovací výpis" }} />));
     await act(async () => button("Storna").click());
+    expect(button("Nespárované").getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector("article")).toBeNull();
+    await act(async () => button("Nespárované").click());
     const rowToggle = container.querySelector<HTMLButtonElement>("article button")!;
     expect(rowToggle.getAttribute("aria-expanded")).toBe("false");
     expect(rowToggle.textContent).toContain("TEST-42");

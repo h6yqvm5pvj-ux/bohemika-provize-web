@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addMonthsToMonthKey,
   classifyLifeSplitCommissionCode,
+  classifyGeneralCommissionCode,
+  isKooperativaCStatementRow,
   commissionCodeAliasesForPayoutHistory,
   expectedPremiumIncreaseAmountFromItems,
   formatMonthKey,
@@ -23,6 +25,27 @@ import {
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
+  it.each(["C101", "C102", "C103", "C104", "C105", "C106", " c111 "])(
+    "recognizes Kooperativa Auto %s as a statement-paid subsequent commission", code => {
+      expect(classifyGeneralCommissionCode("KOO_NAMIRU", code)).toEqual({ kind: "subsequent", label: "Následná provize dle výpisu" });
+      expect(isKooperativaCStatementRow({ product: "KOO_NAMIRU", type: code })).toBe(true);
+      expect(commissionCodeAliasesForPayoutHistory(code)).not.toContain("B101");
+    }
+  );
+
+  it.each(["CPP_1C_II", "KOO_OBCAN", "KOOP_FLEXI", "UNKNOWN"])(
+    "keeps C101 meaning scoped to Kooperativa Auto rather than %s", product => {
+      expect(classifyGeneralCommissionCode(product, "C101").kind).toBe("unexpected");
+      expect(isKooperativaCStatementRow({ product, type: "C101" })).toBe(false);
+    }
+  );
+
+  it.each(["C101suffix", "C201", "CP101", "CPZ101", "CZ101"])(
+    "does not infer a Kooperativa C1 subsequent payout for %s", code => {
+      expect(isKooperativaCStatementRow({ product: "KOO_NAMIRU", type: code })).toBe(false);
+      expect(classifyGeneralCommissionCode("KOO_NAMIRU", code).kind).not.toBe("subsequent");
+    }
+  );
   it.each(["CPP_CS_Z", "CPP_CS6"])("maps %s to ČPP travel insurance without annualizing the premium", code => {
     expect(resolveStatementProduct(code)).toMatchObject({
       rawCode: code, productKey: "cppcestovko", category: "travel", usesAnnualPremiumBase: false,

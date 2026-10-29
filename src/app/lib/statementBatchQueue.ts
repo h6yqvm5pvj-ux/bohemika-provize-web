@@ -1,9 +1,9 @@
 import type { PaymentFrequency, Product } from "@/app/types/domain";
 
-export type StatementBatchQueueProduct = Extract<Product, "cppAuto" | "domex" | "kooperativaAuto" | "uniqaAuto" | "allianzAuto" | "cppcestovko" | "pillowAuto">;
+export type StatementBatchQueueProduct = Extract<Product, "cppAuto" | "domex" | "kooperativaAuto" | "uniqaAuto" | "allianzAuto" | "cppcestovko" | "pillowAuto" | "zamex">;
 
 export const isStatementBatchQueueProduct = (value: unknown): value is StatementBatchQueueProduct =>
-  value === "cppAuto" || value === "domex" || value === "kooperativaAuto" || value === "uniqaAuto" || value === "allianzAuto" || value === "cppcestovko" || value === "pillowAuto";
+  value === "cppAuto" || value === "domex" || value === "kooperativaAuto" || value === "uniqaAuto" || value === "allianzAuto" || value === "cppcestovko" || value === "pillowAuto" || value === "zamex";
 
 export const canQueueStatementProduct = (product: Product, replacementActive: boolean): product is StatementBatchQueueProduct =>
   isStatementBatchQueueProduct(product) && (!replacementActive || product === "cppAuto");

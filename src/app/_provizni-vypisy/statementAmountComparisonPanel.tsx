@@ -8,6 +8,7 @@ import {
   paymentAmountWithFrequencyLabel,
 } from "./statementParsing";
 import styles from "./statementContractDetail.module.css";
+import { isHigherStatementCommission as isHigherCommission } from "./statementCommissionComparisons";
 import type {
   CommissionAmountComparison,
 } from "./statementTypes";
@@ -36,13 +37,6 @@ const formatSignedWholeMoney = (value: number): string => {
   const sign = value > 0 ? "+" : value < 0 ? "-" : "";
   return sign + formatWholeMoney(Math.abs(value)) + " Kč";
 };
-
-const isHigherCommission = (comparison: CommissionAmountComparison): boolean =>
-  comparison.status === "diff" &&
-  Number.isFinite(comparison.expectedAmount) &&
-  Number.isFinite(comparison.statementAmount) &&
-  comparison.expectedAmount > 0 &&
-  comparison.difference > COMMISSION_AMOUNT_TOLERANCE;
 
 const amountComparisonStatusLabel = (comparison: CommissionAmountComparison): string => {
   if (isHigherCommission(comparison)) return "Vyšší provize";
@@ -135,7 +129,8 @@ export function AmountComparisonPanel({
           : null,
     };
   };
-  const issueCount = comparisons.filter((comparison) => comparison.status !== "ok").length;
+  const issueCount = comparisons.filter((comparison) => comparison.status !== "ok" && !isHigherCommission(comparison)).length;
+  const higherCount = comparisons.filter(isHigherCommission).length;
   const baseChangeCount = baseComparisons.filter(
     (comparison) =>
       comparison.canBeAnniversaryPremiumChange &&
@@ -162,7 +157,7 @@ export function AmountComparisonPanel({
         ? "Rozdíl základny"
         : baseChangeCount > 0
           ? "Změna pojistného"
-          : "Vše sedí";
+          : higherCount > 0 ? "Vyšší provize" : "Vše sedí";
   const baseStatusLabel = (comparison: PremiumBaseComparison): string => {
     if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
       return "Sedí";
