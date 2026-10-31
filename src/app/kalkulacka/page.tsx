@@ -9,7 +9,7 @@ import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, Users } from "lucide-react";
+import { CircleHelp, Users } from "lucide-react";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -22,23 +22,7 @@ import {
   type MaxCizinKomplexVariant,
 } from "../types/domain";
 
-import {
-  getCoefficientSummary,
-  isNeonHistoricalPeriod,
-  isCppAutoHistoricalPeriod,
-  isAllianzAutoHistoricalPeriod,
-  isCsobAutoHistoricalPeriod,
-  isUniqaAutoEarlyHistoricalPeriod,
-  isUniqaAutoHistoricalPeriod,
-  isUniqaFlotilaHistoricalPeriod,
-  isPillowAutoHistoricalPeriod,
-  isKooperativaAutoHistoricalPeriod,
-  isMaxEfekt5Period,
-  isMaxEfekt7Period,
-  isDomexEarlyHistoricalPeriod,
-  isDomexHistoricalPeriod,
-  productCoefficientValidityError,
-} from "../lib/productFormulas";
+import { productCoefficientValidityError } from "../lib/productFormulas";
 import { calculateCommission } from "../lib/calculateCommission";
 import { calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
 import { canQueueStatementProduct, statementBatchQueueReplacementError, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
@@ -135,11 +119,38 @@ import {
 } from "./endorsementCalculation";
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
-import { withPdfImportTimeout } from "./pdfImportOperation";
+import { PDF_PRODUCT_DETECTION_TIMEOUT_MS, PDF_DATA_IMPORT_TIMEOUT_MS, withPdfImportTimeout } from "./pdfImportOperation";
+import { importSingleContractPdf } from "./calculatorSinglePdfImport";
 import { useContractReview } from "./useContractReview";
 import { buildContractReviewWarnings } from "./contractReview";
 import { CalculatorContractReviewModal } from "./CalculatorContractReviewModal";
+import {
+  applyCalculatorPdfFormValues,
+  createEmptyAutoPdfFormValues,
+  createEmptyPropertyPdfFormValues,
+  mapReviewPdfFormValues,
+} from "./calculatorPdfFormValues";
+import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
+import { useCalculatorCoefficients } from "./useCalculatorCoefficients";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
+
+import { CalculatorBulkPdfImportPanel } from "./CalculatorBulkPdfImportPanel";
+import {
+  parsedPdfTextValue,
+  parsedPdfNumberValue,
+  parsedPdfRoundedNumberValue,
+  parsedPdfBooleanValue,
+  parsedSlaviaAutoDetailValue,
+  parsedPdfFrequencyValue,
+  isBulkImportProduct,
+  isBulkImportProductAllowedForSelection,
+  parsedPdfBooleanOrNumberValue,
+  hasParsedDomexDetail,
+  buildAutoBulkImportWarnings,
+  formatAutoBulkImportWarnings,
+  type AutoBulkImportRow,
+  type AutoBulkImportRowStatus,
+} from "./calculatorBulkPdfImport";
 
 import { CalculatorProductAndPdfSection } from "./CalculatorProductAndPdfSection";
 import entryStyles from "./calculatorEntry.module.css";
@@ -189,18 +200,11 @@ import {
   type UserSearchApiResponse,
 } from "./tipContractSettings";
 import {
-  BULK_PDF_PRODUCTS,
-  buildPdfImportIssueMessage,
   buildPdfParserReport,
   detectProductFromPdfLazy,
-  failedPdfImportMessage,
-  hasAutomatedPdfImport,
-  manualPdfImportMessage,
   parseContractPdfByProduct,
-  parseMaxCizinKomplexPdfLazy,
   resolveDetectedPdfProduct,
   type ParsedContractPdf,
-  unreadablePdfImportMessage,
 } from "./calculatorPdfImport";
 import {
   getContractsMutationError,
@@ -241,162 +245,11 @@ const SETTINGS_KEYS = {
   tipsterMode: "settings.tipsterMode",
   tipsterPercent: "settings.tipsterPercent",
 };
-const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
-const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
-const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
 const AUTO_BULK_IMPORT_MAX_FILES = 25;
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE = "2025-01-01";
 const DOMEX_BULK_IMPORT_MIN_CONTRACT_SIGNED_DATE_LABEL = "01.01.2025";
-const BULK_IMPORT_PRODUCTS = BULK_PDF_PRODUCTS;
-const BULK_IMPORT_PRODUCT_SET = new Set<Product>(BULK_IMPORT_PRODUCTS);
-const PAYMENT_FREQUENCIES: PaymentFrequency[] = [
-  "monthly",
-  "quarterly",
-  "semiannual",
-  "annual",
-];
 const profileModeStorageKey = (email: string | null | undefined) =>
   email ? `${SETTINGS_KEYS.mode}:${email}` : SETTINGS_KEYS.mode;
-
-const parsedPdfTextValue = (parsed: ParsedContractPdf, key: string): string => {
-  const value = parsed[key];
-  if (typeof value === "string") return value.trim();
-  if (value == null) return "";
-  return String(value).trim();
-};
-
-const parsedPdfNumberValue = (
-  parsed: ParsedContractPdf,
-  key: string
-): number | null => {
-  const value = parsed[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-};
-
-const parsedPdfRoundedNumberValue = (
-  parsed: ParsedContractPdf,
-  key: string
-): number | null => {
-  const value = parsedPdfNumberValue(parsed, key);
-  return value == null ? null : Math.round(value);
-};
-
-const parsedPdfBooleanValue = (parsed: ParsedContractPdf, key: string): boolean =>
-  parsed[key] === true;
-
-const parsedSlaviaAutoDetailValue = (
-  parsed: ParsedContractPdf
-): SlaviaAutoCoverageDetail | null => {
-  const value = parsed.carSlaviaDetail;
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as SlaviaAutoCoverageDetail)
-    : null;
-};
-
-const parsedPdfFrequencyValue = (
-  parsed: ParsedContractPdf
-): PaymentFrequency | null => {
-  const value = parsed.frequency;
-  return typeof value === "string" &&
-    PAYMENT_FREQUENCIES.includes(value as PaymentFrequency)
-    ? (value as PaymentFrequency)
-    : null;
-};
-
-const isBulkImportProduct = (
-  product: Product | null | undefined
-): product is Product => Boolean(product && BULK_IMPORT_PRODUCT_SET.has(product));
-
-const isBulkImportProductAllowedForSelection = (
-  importProduct: Product,
-  selectedProduct: Product | null | undefined
-): boolean =>
-  isBulkImportProduct(importProduct) && isBulkImportProduct(selectedProduct);
-
-const parsedPdfBooleanOrNumberValue = (
-  parsed: ParsedContractPdf,
-  booleanKey: string,
-  numberKey: string
-): boolean =>
-  parsedPdfBooleanValue(parsed, booleanKey) ||
-  parsedPdfNumberValue(parsed, numberKey) != null;
-
-const hasParsedDomexDetail = (parsed: ParsedContractPdf): boolean =>
-  Boolean(
-    parsedPdfTextValue(parsed, "domexAddress") ||
-      parsedPdfTextValue(parsed, "domexPropertyType") ||
-      parsedPdfTextValue(parsed, "domexPropertyCoverage") ||
-      parsedPdfNumberValue(parsed, "domexPropertySumInsured") != null ||
-      parsedPdfNumberValue(parsed, "domexPropertyDeductible") != null ||
-      parsedPdfTextValue(parsed, "domexHouseholdType") ||
-      parsedPdfTextValue(parsed, "domexHouseholdCoverage") ||
-      parsedPdfNumberValue(parsed, "domexHouseholdSumInsured") != null ||
-      parsedPdfNumberValue(parsed, "domexHouseholdDeductible") != null ||
-      parsedPdfNumberValue(parsed, "domexOutbuildingSumInsured") != null ||
-      parsedPdfNumberValue(parsed, "domexLiabilitySumInsured") != null ||
-      parsedPdfNumberValue(parsed, "domexLiabilityDeductible") != null ||
-      parsedPdfBooleanValue(parsed, "domexLiabilityMobile") ||
-      parsedPdfBooleanValue(parsed, "domexLiabilityTenant") ||
-      parsedPdfBooleanValue(parsed, "domexLiabilityLandlord") ||
-      parsedPdfBooleanValue(parsed, "domexAssistancePlus")
-  );
-
-const buildAutoBulkImportWarnings = ({
-  product,
-  parsed,
-  productDetected,
-  detectionConfidence,
-}: {
-  product: Product;
-  parsed: ParsedContractPdf;
-  productDetected: boolean;
-  detectionConfidence: "high" | "medium" | null;
-}): string[] => {
-  const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
-    ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
-    : [];
-  if (!productDetected) {
-    warnings.push(
-      `produkt se nepodařilo rozpoznat, použil se vybraný produkt ${productLabel(product)}`
-    );
-  } else if (detectionConfidence === "medium") {
-    warnings.push(`produkt byl rozpoznán jen se střední jistotou jako ${productLabel(product)}`);
-  }
-  if (parsed.ocrTextUsed === true) {
-    warnings.push("PDF bylo načtené přes OCR");
-  }
-
-  const clientName = parsedPdfTextValue(parsed, "clientName");
-  if (clientName && clientName.split(/\s+/).filter(Boolean).length < 2) {
-    warnings.push("jméno klienta vypadá neúplně");
-  }
-
-  const contractNumber = parsedPdfTextValue(parsed, "contractNumber");
-  if (contractNumber && !/^\d{6,14}$/.test(contractNumber.replace(/\s+/g, ""))) {
-    warnings.push("číslo smlouvy má nezvyklý formát");
-  }
-
-  const signedDate = parsedPdfTextValue(parsed, "contractSignedDate");
-  if (signedDate && !isIsoDay(signedDate)) {
-    warnings.push("datum sjednání má nezvyklý formát");
-  }
-
-  const policyStartDate = parsedPdfTextValue(parsed, "policyStartDate");
-  if (policyStartDate && !isIsoDay(policyStartDate)) {
-    warnings.push("datum počátku má nezvyklý formát");
-  }
-
-  return warnings;
-};
-
-const formatAutoBulkImportWarnings = (warnings: string[]): string => {
-  const uniqueWarnings = Array.from(
-    new Set(warnings.map((warning) => warning.trim()).filter(Boolean))
-  );
-  return uniqueWarnings.length > 0
-    ? `Zkontroluj: ${uniqueWarnings.join("; ")}.`
-    : "";
-};
 
 const compactErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error && error.message.trim() ? error.message.trim() : fallback;
@@ -414,55 +267,6 @@ const invalidateContractsCaches = () => {
 };
 const TIPSTER_PERCENT_PRESETS = [10, 20, 30, 40, 50, 75, 100];
 const EMAIL_LOOKUP_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const AUTO_TERMS_PREVIEW_BY_PRODUCT: Partial<Record<Product, string>> = {
-  cppAuto: "/provize/cppauto.jpg",
-  slaviaauto: "/provize/slaviaauto.jpg",
-  slaviaflotila: "/provize/slaviaflotila.pdf",
-  allianzAuto: "/provize/allianzauto.jpg",
-  csobAuto: "/provize/csobauto.jpg",
-  uniqaAuto: "/provize/uniqaauto.jpg",
-  uniqaflotila: "/provize/uniqaflotila.jpg",
-  pillowAuto: "/provize/pillowauto.jpg",
-  kooperativaAuto: "/provize/koopauto.jpg",
-  koopflotila: "/provize/koopflotila.pdf",
-  cpphafan: "/provize/cpphafan.pdf",
-  koopodzam: "/provize/koopodzam.pdf",
-  kooppmop: "/provize/kooppmop.pdf",
-  zamex: "/provize/cppzamex.pdf",
-  cppsimplex: "/provize/cppsimplex.pdf",
-  cppPPRbez: "/provize/cppbezupisu.pdf",
-  cppPPRs: "/provize/cppupis.pdf",
-  cppbytex: "/provize/bytexprovize.pdf",
-  domex: "/provize/domex2024.pdf",
-  domexneuron: "/provize/domexneuron.pdf",
-  maxdomov: "/provize/maxdomov2025.pdf",
-  maximaMaxEfekt: "/provize/maxefekt7.pdf",
-  pillowInjury: "/provize/pillowuraznemoc.pdf",
-  pillowmajetek: "/provize/pillowmajetek.pdf",
-  allianzmujdomov: "/provize/allianzmujdomov.pdf",
-  cppcestovko: "/provize/cppcestovko.pdf",
-  koopcestovko: "/provize/koopcestovko.pdf",
-  axacestovko: "/provize/axacs.pdf",
-};
-const PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/pillowhistoricke.jpg";
-const UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/uniqahistoricke.jpg";
-const UNIQA_AUTO_EARLY_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/BHMK-UNIQA-AUTO-230101-01_page-0001.jpg";
-const UNIQA_FLOTILA_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/uniqaflotilahis.pdf";
-const ALLIANZ_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/AlliHistoricke.jpg";
-const CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/csobhistoricke.jpg";
-const CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/cpphistorickeauto.jpg";
-const KOOPERATIVA_AUTO_HISTORICAL_TERMS_PREVIEW_URL =
-  "/provize/koophistoricke.jpg";
-const MAXEFEKT5_TERMS_PREVIEW_URL = "/provize/maxefekt5.pdf";
-const DOMEX_EARLY_HISTORICAL_TERMS_PREVIEW_URL = "/provize/domexPLUS.pdf";
-const DOMEX_HISTORICAL_TERMS_PREVIEW_URL = "/provize/domex2023.pdf";
 const MAX_CIZIN_KOMPLEX_VARIANT_OPTIONS: {
   id: MaxCizinKomplexVariant;
   label: string;
@@ -513,8 +317,6 @@ const notifyStatementParentContractEvent = ({
   );
 };
 
-const isPdfImportTimeoutError = (error: unknown): boolean =>
-  error instanceof Error && error.name === PDF_IMPORT_TIMEOUT_ERROR_NAME;
 const notifyStatementParentContractSaved = (
   payload: Omit<Parameters<typeof notifyStatementParentContractEvent>[0], "type">
 ) =>
@@ -626,35 +428,6 @@ const shouldAutoMarkPaidByPolicyStartDate = (policyStartDateIso: string): boolea
 };
 
 type CalculatorViewMode = "addContract" | "inheritedContract" | "commissionOnly";
-
-type AutoBulkImportRowStatus =
-  | "queued"
-  | "processing"
-  | "success"
-  | "review"
-  | "warning"
-  | "skipped"
-  | "error";
-
-type AutoBulkReviewDraft = {
-  file: File;
-  product: Product;
-  parsed: ParsedContractPdf;
-  warnings: string[];
-  isReplacement: boolean;
-  replacementNumber: string;
-};
-
-type AutoBulkImportRow = {
-  id: string;
-  fileName: string;
-  status: AutoBulkImportRowStatus;
-  productLabel: string | null;
-  contractNumber: string | null;
-  clientName: string | null;
-  message: string;
-  reviewDraft?: AutoBulkReviewDraft | null;
-};
 
 // ---------- Kalkulačka ----------
 
@@ -800,6 +573,92 @@ export default function CalculatorPage() {
   const [renovationOriginalPremiumText, setRenovationOriginalPremiumText] = useState("");
   const [renovationIncreaseText, setRenovationIncreaseText] = useState("");
   const [renovationGuaranteeStatus, setRenovationGuaranteeStatus] = useState<FlexiRenovationGuaranteeStatus>("unknown");
+  const pdfFormSetters = useMemo<CalculatorPdfFormSetters>(() => ({
+    autoCarMake: setAutoCarMake,
+    autoCarPlate: setAutoCarPlate,
+    autoCarVin: setAutoCarVin,
+    autoCarTp: setAutoCarTp,
+    autoCarOrv: setAutoCarOrv,
+    autoCarAnnualMileage: setAutoCarAnnualMileage,
+    autoCarAllianzScope: setAutoCarAllianzScope,
+    autoCarLiabilityLimit: setAutoCarLiabilityLimit,
+    autoCarAddonSmartGap: setAutoCarAddonSmartGap,
+    autoCarAddonServisPro: setAutoCarAddonServisPro,
+    autoCarSlaviaDetail: setAutoCarSlaviaDetail,
+    autoCarHullSumInsured: setAutoCarHullSumInsured,
+    autoCarHullSumInsuredDraft: setAutoCarHullSumInsuredDraft,
+    autoCarHullSumInsuredText: setAutoCarHullSumInsuredText,
+    autoCarHullDeductible: setAutoCarHullDeductible,
+    autoCarHullDeductibleText: setAutoCarHullDeductibleText,
+    autoCarHullRiskAccident: setAutoCarHullRiskAccident,
+    autoCarHullRiskTheft: setAutoCarHullRiskTheft,
+    autoCarHullRiskNatural: setAutoCarHullRiskNatural,
+    autoCarHullRiskVandalism: setAutoCarHullRiskVandalism,
+    autoCarHullRiskAnimalCollision: setAutoCarHullRiskAnimalCollision,
+    autoCarAssistancePlan: setAutoCarAssistancePlan,
+    autoCarAddonEso: setAutoCarAddonEso,
+    autoCarAddonNaturalRisks: setAutoCarAddonNaturalRisks,
+    autoCarAddonGlass: setAutoCarAddonGlass,
+    autoCarAddonGlassLimit: setAutoCarAddonGlassLimit,
+    autoCarAddonAnimalCollision: setAutoCarAddonAnimalCollision,
+    autoCarAddonAnimalCollisionLimit: setAutoCarAddonAnimalCollisionLimit,
+    autoCarAddonAnimalDamage: setAutoCarAddonAnimalDamage,
+    autoCarAddonAnimalDamageLimit: setAutoCarAddonAnimalDamageLimit,
+    autoCarAddonVandalism: setAutoCarAddonVandalism,
+    autoCarAddonTheft: setAutoCarAddonTheft,
+    autoCarAddonNatural: setAutoCarAddonNatural,
+    autoCarAddonGap: setAutoCarAddonGap,
+    autoCarAddonFireExplosion: setAutoCarAddonFireExplosion,
+    autoCarAddonLegalAdvice: setAutoCarAddonLegalAdvice,
+    autoCarAddonReplacementCar: setAutoCarAddonReplacementCar,
+    autoCarAddonLuggage: setAutoCarAddonLuggage,
+    autoCarAddonTransportedGoods: setAutoCarAddonTransportedGoods,
+    autoCarAddonPothole: setAutoCarAddonPothole,
+    autoCarAddonNonFaultAccident: setAutoCarAddonNonFaultAccident,
+    autoCarAddonKeyLossTheft: setAutoCarAddonKeyLossTheft,
+    domexAddress: setDomexAddress,
+    domexPropertyType: setDomexPropertyType,
+    domexPropertyCoverage: setDomexPropertyCoverage,
+    domexPropertySumInsured: setDomexPropertySumInsured,
+    domexPropertyDeductible: setDomexPropertyDeductible,
+    domexHouseholdType: setDomexHouseholdType,
+    domexHouseholdCoverage: setDomexHouseholdCoverage,
+    domexHouseholdSumInsured: setDomexHouseholdSumInsured,
+    domexHouseholdDeductible: setDomexHouseholdDeductible,
+    domexOutbuildingSumInsured: setDomexOutbuildingSumInsured,
+    domexLiabilitySumInsured: setDomexLiabilitySumInsured,
+    domexLiabilityDeductible: setDomexLiabilityDeductible,
+    domexLiabilityMobile: setDomexLiabilityMobile,
+    domexLiabilityTenant: setDomexLiabilityTenant,
+    domexLiabilityLandlord: setDomexLiabilityLandlord,
+    domexAssistancePlus: setDomexAssistancePlus,
+    neonPdfDetailFields: setNeonPdfDetailFields,
+    autoCarAddonKlika: setAutoCarAddonKlika,
+    autoCarAddonTheftLimit: setAutoCarAddonTheftLimit,
+    autoCarAddonNaturalLimit: setAutoCarAddonNaturalLimit,
+    autoCarAddonOwnDamage: setAutoCarAddonOwnDamage,
+    autoCarAddonOwnDamageLimit: setAutoCarAddonOwnDamageLimit,
+    autoCarAddonGapLimit: setAutoCarAddonGapLimit,
+    autoCarAddonPassengerInjury: setAutoCarAddonPassengerInjury,
+    domexNote: setDomexNote,
+    contractNumber: setContractNumber,
+    clientName: setClientName,
+    policyStartDate: setPolicyStartDate,
+    policyEndDate: setPolicyEndDate,
+    pensionTargetAge: setPensionTargetAge,
+    contractSignedDate: setContractSignedDate,
+    stornoDate: setStornoDate,
+    amountText: setAmountText,
+    renovationOriginalPremiumText: setRenovationOriginalPremiumText,
+    renovationIncreaseText: setRenovationIncreaseText,
+    renovationGuaranteeStatus: setRenovationGuaranteeStatus,
+    frequency: setFrequency,
+    comfortPaymentText: setComfortPaymentText,
+    durationYears: setDurationYears,
+    durationMonths: setDurationMonths,
+    maxCizinKomplexVariant: setMaxCizinKomplexVariant,
+  }), []);
+
   const flexiRenovationActive = product === "flexi" && refreshOriginalOpen;
   const flexiRenovationBase = useMemo(() => {
     if (!flexiRenovationActive || !renovationOriginalPremiumText.trim() || !renovationIncreaseText.trim()) return null;
@@ -1300,387 +1159,25 @@ export default function CalculatorPage() {
   const [neonPreviewError, setNeonPreviewError] = useState<string | null>(null);
   const [neonDocAction, setNeonDocAction] = useState<"download" | "open" | null>(null);
   const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
-  const contractSignedDateForNeon = useMemo(() => {
-    const signedDate = contractSignedDate.trim();
-    return isIsoDay(signedDate) ? signedDate : null;
-  }, [contractSignedDate]);
-  const isNeonHistoricalBySignedDate = useMemo(
-    () =>
-      product === "neon" && isNeonHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isCppAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "cppAuto" &&
-      isCppAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isAllianzAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "allianzAuto" &&
-      isAllianzAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isCsobAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "csobAuto" &&
-      isCsobAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isUniqaAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "uniqaAuto" &&
-      isUniqaAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isUniqaAutoEarlyHistoricalBySignedDate = useMemo(
-    () =>
-      product === "uniqaAuto" &&
-      isUniqaAutoEarlyHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isUniqaFlotilaHistoricalBySignedDate = useMemo(
-    () =>
-      product === "uniqaflotila" &&
-      isUniqaFlotilaHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isPillowAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "pillowAuto" &&
-      isPillowAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isKooperativaAutoHistoricalBySignedDate = useMemo(
-    () =>
-      product === "kooperativaAuto" &&
-      isKooperativaAutoHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isMaxEfekt5BySignedDate = useMemo(
-    () =>
-      product === "maximaMaxEfekt" &&
-      isMaxEfekt5Period(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isDomexEarlyHistoricalBySignedDate = useMemo(
-    () =>
-      product === "domex" &&
-      isDomexEarlyHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const isDomexHistoricalBySignedDate = useMemo(
-    () =>
-      product === "domex" &&
-      isDomexHistoricalPeriod(contractSignedDateForNeon),
-    [product, contractSignedDateForNeon]
-  );
-  const neonCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2024-06-30";
-    return "2024-07-01";
-  }, [neonCoefficientView]);
-  const cppAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const allianzAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const csobAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const uniqaAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "olderHistorical") return "2023-02-01";
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const uniqaFlotilaCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const pillowAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const kooperativaAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const maxEfektCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2023-04-21";
-    return "2026-04-23";
-  }, [neonCoefficientView]);
-  const domexCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "olderHistorical") return "2017-06-01";
-    if (neonCoefficientView === "historical") return "2023-06-01";
-    return "2024-09-01";
-  }, [neonCoefficientView]);
-  const coefficientDateForView = useMemo(() => {
-    if (product === "neon") return neonCoefficientDateForView;
-    if (product === "maximaMaxEfekt") return maxEfektCoefficientDateForView;
-    if (product === "domex") return domexCoefficientDateForView;
-    if (product === "cppAuto") return cppAutoCoefficientDateForView;
-    if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
-    if (product === "csobAuto") return csobAutoCoefficientDateForView;
-    if (product === "uniqaAuto") return uniqaAutoCoefficientDateForView;
-    if (product === "uniqaflotila") return uniqaFlotilaCoefficientDateForView;
-    if (product === "pillowAuto") return pillowAutoCoefficientDateForView;
-    if (product === "kooperativaAuto") return kooperativaAutoCoefficientDateForView;
-    return contractSignedDateForNeon;
-  }, [
-    product,
-    neonCoefficientDateForView,
-    cppAutoCoefficientDateForView,
-    allianzAutoCoefficientDateForView,
-    csobAutoCoefficientDateForView,
-    uniqaAutoCoefficientDateForView,
-    uniqaFlotilaCoefficientDateForView,
-    pillowAutoCoefficientDateForView,
-    kooperativaAutoCoefficientDateForView,
-    maxEfektCoefficientDateForView,
-    domexCoefficientDateForView,
+  const {
     contractSignedDateForNeon,
-  ]);
-  const isMaxEfekt5InCoefModal = useMemo(
-    () =>
-      product === "maximaMaxEfekt" &&
-      isMaxEfekt5Period(coefficientDateForView),
-    [product, coefficientDateForView]
-  );
-  const isMaxEfekt7InCoefModal = useMemo(
-    () =>
-      product === "maximaMaxEfekt" &&
-      isMaxEfekt7Period(coefficientDateForView),
-    [product, coefficientDateForView]
-  );
-  const isDomexHistoricalInCoefModal = useMemo(
-    () => product === "domex" && isDomexHistoricalPeriod(coefficientDateForView),
-    [product, coefficientDateForView]
-  );
-  const isDomexEarlyHistoricalInCoefModal = useMemo(
-    () =>
-      product === "domex" &&
-      isDomexEarlyHistoricalPeriod(coefficientDateForView),
-    [product, coefficientDateForView]
-  );
-  const isNeonHistoricalInCoefModal = useMemo(
-    () => product === "neon" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isCppAutoHistoricalInCoefModal = useMemo(
-    () => product === "cppAuto" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isAllianzAutoHistoricalInCoefModal = useMemo(
-    () => product === "allianzAuto" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isCsobAutoHistoricalInCoefModal = useMemo(
-    () => product === "csobAuto" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isUniqaAutoHistoricalInCoefModal = useMemo(
-    () =>
-      product === "uniqaAuto" &&
-      (neonCoefficientView === "historical" ||
-        neonCoefficientView === "olderHistorical"),
-    [product, neonCoefficientView]
-  );
-  const isUniqaAutoEarlyHistoricalInCoefModal = useMemo(
-    () => product === "uniqaAuto" && neonCoefficientView === "olderHistorical",
-    [product, neonCoefficientView]
-  );
-  const isUniqaFlotilaHistoricalInCoefModal = useMemo(
-    () => product === "uniqaflotila" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isPillowAutoHistoricalInCoefModal = useMemo(
-    () => product === "pillowAuto" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const isKooperativaAutoHistoricalInCoefModal = useMemo(
-    () => product === "kooperativaAuto" && neonCoefficientView === "historical",
-    [product, neonCoefficientView]
-  );
-  const immediatePayoutInfo = useMemo(() => {
-    if (product === "flexi") {
-      if (mode === "accelerated") {
-        return "Okamžitá provize je součet 1. provize A101, 2. provize B0301 a 50 % z provize B36. Zbývajících 50 % z B36 zůstává jako provize po 3 letech.";
-      }
-      return "Okamžitá provize je součet 1. provize A101 a 2. provize B0301.";
-    }
-    if (product === "maximaMaxEfekt") {
-      if (mode === "accelerated") {
-        return "Okamžitá provize je součet provize A101, provize B0301 a 50 % z provize B3601. Zbývajících 50 % z B3601 zůstává jako provize po 3 letech.";
-      }
-      return "Okamžitá provize je součet provize A101 a provize B0301.";
-    }
-    if (product === "pillowInjury") {
-      if (mode === "accelerated") {
-        return "Okamžitá provize je součet provize A101, provize B0301 a 50 % z provize B36. Zbývajících 50 % z B36 zůstává jako provize po 3 letech.";
-      }
-      return "Okamžitá provize je součet provize A101 a provize B0301.";
-    }
-    if (product !== "neon") return null;
-    if (isNeonHistoricalInCoefModal) {
-      return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
-    }
-    if (mode === "accelerated") {
-      return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících a 50 % z 3. provize po 36 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
-    }
-    return "Okamžitá provize je součet 1. provize a 2. provize po 3 měsících (Při zpracování karty klienta je provize po 3 měsících vyplacena současně s 1. provizí).";
-  }, [product, isNeonHistoricalInCoefModal, mode]);
-  const canImportFromPdf = useMemo(
-    () => !tipsterModeEnabled,
-    [tipsterModeEnabled]
-  );
-
-  const coefList = useMemo(
-    () =>
-      getCoefficientSummary(
-        product ?? null,
-        position ?? null,
-        mode ?? null,
-        maxCizinKomplexVariant,
-        coefficientDateForView
-      ),
-    [
-      product,
-      position,
-      mode,
-      maxCizinKomplexVariant,
-      coefficientDateForView,
-    ]
-  );
-  const coefExplanation = useMemo(() => {
-    if (!product) return "";
-    const payLabel = frequencyLabel(frequency);
-    const payPerYear = paymentsPerYear(frequency);
-    switch (product) {
-      case "conseqzenit":
-        return "Provize A101 je pevná částka v Kč z tabulky pro zvolenou pozici a pásmo příspěvku klienta. Ve všech třech pásmech se použije částka přímo, bez násobení příspěvkem či procentem. Vyplácí se jednou, bez následných provizí. Platnost od 01.08.2024.";
-      case "neon":
-        return "Výpočet: měsíční pojistné × 12 × doba trvání × koeficient. Následné provize jsou roční: roční pojistné × koeficient (2.–5. rok a 5.–10. rok).";
-      case "flexi":
-        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 6. roku do konce zadané doby.";
-      case "maximaMaxEfekt":
-        return "Výpočet: roční pojistné × doba trvání × koeficient pro okamžitou/po 3/po 4 letech. Následná: roční pojistné × koeficient ročně od 5. roku.";
-      case "maxcizinkomplex":
-        return `Výpočet: jednorázové pojistné × koeficient (${maxCizinKomplexVariant === "premium" ? "PREMIUM" : "EXCLUSIVE / STANDARD"}). Provize je vyplacena pouze 1×.`;
-      case "pillowInjury":
-        return "Výpočet: roční pojistné (měsíční × 12) × koeficient/100 pro jednotlivé položky. Koeficienty platné od 01.10.2023.";
-      case "domex":
-        return isDomexHistoricalInCoefModal
-          ? `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Historická následná provize se vyplácí maximálně 4 roky.`
-          : `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Aktuální následná provize se vyplácí po dobu aktivní smlouvy.`;
-      case "domexneuron":
-        return `Výpočet: platba (${payLabel}) × koeficient A101 nebo B101. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.09.2026.`;
-      case "cppbytex":
-        return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}). Následná provize se vyplácí maximálně 4 roky. Provizní režim nemá vliv.`;
-      case "cpphafan":
-      case "koopmajetekobcan":
-      case "koopfit":
-      case "koopodzam":
-      case "kooppmop":
-        return `Výpočet: platba (${payLabel}) × koeficient. Roční verze násobí počet plateb/rok (${payPerYear}).`;
-      case "pillowmajetek":
-        return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.10.2023.`;
-      case "maxdomov":
-        return `Výpočet: platba (${payLabel}) × koeficient (získatelská i následná). Roční částka = × počet plateb (${payPerYear}).`;
-      case "allianzmujdomov":
-        return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×) a z něj se počítá okamžitá i následná provize. Koeficienty platné od 01.06.2020.`;
-      case "cppsimplex":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.09.2021.`;
-      case "uniqaAuto":
-        if (isUniqaAutoEarlyHistoricalInCoefModal) {
-          return `Výpočet: částka za zvolenou frekvenci (${payLabel}) se přepočte na roční pojistné (${payPerYear}×). V 1. roce se použije získatelský koeficient, od 1. výročí následný koeficient.`;
-        }
-        return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
-      case "uniqaflotila":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}).`;
-      case "slaviaflotila":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}). Koeficienty platné od 01.08.2025. Zrychlený režim výpočet nemění.`;
-      case "koopflotila":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částka = × počet plateb (${payPerYear}). Koeficienty platné od 01.04.2026.`;
-      case "cppAuto":
-      case "slaviaauto":
-      case "allianzAuto":
-      case "csobAuto":
-      case "pillowAuto":
-      case "kooperativaAuto":
-        return `Výpočet: platba (${payLabel}) × koeficient; roční částka = × počet plateb (${payPerYear}).`;
-      case "zamex":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 15.04.2023.`;
-      case "cppPPRs":
-        return `Výpočet: platba (${payLabel}) × stejný koeficient pro okamžitou i následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.06.2023.`;
-      case "cppPPRbez":
-        return `Výpočet: platba (${payLabel}) × koeficient pro okamžitou (získatelskou) nebo následnou provizi. Roční částky = × počet plateb (${payPerYear}). Koeficienty platné od 01.06.2023.`;
-      case "cppcestovko":
-        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 01.09.2019.";
-      case "axacestovko":
-        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 15.04.2021.";
-      case "koopcestovko":
-        return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 01.09.2019.";
-      case "comfortcc":
-        return "Výpočet: následná provize z platby = pravidelná platba × koeficient. U postupného poplatku je tato částka započtená i do okamžité provize. Pokud zadáš cílovou částku, Celkem dopočítá celý součet za všechny výplaty následné.";
-      default:
-        return "";
-    }
-  }, [
-    product,
-    frequency,
-    maxCizinKomplexVariant,
-    isUniqaAutoEarlyHistoricalInCoefModal,
-    isDomexHistoricalInCoefModal,
-  ]);
-  const autoTermsPreviewUrl = useMemo(() => {
-    if (!product) return null;
-    if (product === "cppAuto" && isCppAutoHistoricalInCoefModal) {
-      return CPP_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "allianzAuto" && isAllianzAutoHistoricalInCoefModal) {
-      return ALLIANZ_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "csobAuto" && isCsobAutoHistoricalInCoefModal) {
-      return CSOB_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "uniqaAuto" && isUniqaAutoEarlyHistoricalInCoefModal) {
-      return UNIQA_AUTO_EARLY_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "uniqaAuto" && isUniqaAutoHistoricalInCoefModal) {
-      return UNIQA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "uniqaflotila" && isUniqaFlotilaHistoricalInCoefModal) {
-      return UNIQA_FLOTILA_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "pillowAuto" && isPillowAutoHistoricalInCoefModal) {
-      return PILLOW_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (
-      product === "kooperativaAuto" &&
-      isKooperativaAutoHistoricalInCoefModal
-    ) {
-      return KOOPERATIVA_AUTO_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "maximaMaxEfekt" && isMaxEfekt5InCoefModal) {
-      return MAXEFEKT5_TERMS_PREVIEW_URL;
-    }
-    if (product === "maximaMaxEfekt" && !isMaxEfekt7InCoefModal) {
-      return null;
-    }
-    if (product === "domex" && isDomexEarlyHistoricalInCoefModal) {
-      return DOMEX_EARLY_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    if (product === "domex" && isDomexHistoricalInCoefModal) {
-      return DOMEX_HISTORICAL_TERMS_PREVIEW_URL;
-    }
-    return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
-  }, [
-    product,
+    isNeonHistoricalBySignedDate,
+    isCppAutoHistoricalBySignedDate,
+    isAllianzAutoHistoricalBySignedDate,
+    isCsobAutoHistoricalBySignedDate,
+    isUniqaAutoHistoricalBySignedDate,
+    isUniqaAutoEarlyHistoricalBySignedDate,
+    isUniqaFlotilaHistoricalBySignedDate,
+    isPillowAutoHistoricalBySignedDate,
+    isKooperativaAutoHistoricalBySignedDate,
+    isMaxEfekt5BySignedDate,
+    isDomexEarlyHistoricalBySignedDate,
+    isDomexHistoricalBySignedDate,
     isMaxEfekt5InCoefModal,
     isMaxEfekt7InCoefModal,
+    isDomexHistoricalInCoefModal,
+    isDomexEarlyHistoricalInCoefModal,
+    isNeonHistoricalInCoefModal,
     isCppAutoHistoricalInCoefModal,
     isAllianzAutoHistoricalInCoefModal,
     isCsobAutoHistoricalInCoefModal,
@@ -1689,25 +1186,25 @@ export default function CalculatorPage() {
     isUniqaFlotilaHistoricalInCoefModal,
     isPillowAutoHistoricalInCoefModal,
     isKooperativaAutoHistoricalInCoefModal,
-    isDomexEarlyHistoricalInCoefModal,
-    isDomexHistoricalInCoefModal,
-  ]);
-  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
-  const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
-  const neonPreviewRole: "poradce" | "manazer" = (
-    timelineMatchedPosition?.position ?? position
-  ).startsWith("poradce")
-    ? "poradce"
-    : "manazer";
-  const neonTermsPreviewUrl =
-    product === "neon"
-      ? `/api/documents/neon?type=pdf&period=${neonPeriod}`
-      : null;
-  const neonPreviewImageUrl =
-    product === "neon"
-      ? `/api/documents/neon?type=preview&period=${neonPeriod}&role=${neonPreviewRole}`
-      : null;
-  const showNeonTermsPreview = product === "neon";
+    immediatePayoutInfo,
+    coefList,
+    coefExplanation,
+    autoTermsPreviewUrl,
+    showAutoTermsPreview,
+    neonPeriod,
+    neonTermsPreviewUrl,
+    neonPreviewImageUrl,
+    showNeonTermsPreview,
+  } = useCalculatorCoefficients({
+    product, position, mode, frequency, contractSignedDate,
+    maxCizinKomplexVariant, neonCoefficientView,
+    documentPosition: timelineMatchedPosition?.position ?? position,
+  });
+  const canImportFromPdf = useMemo(
+    () => !tipsterModeEnabled,
+    [tipsterModeEnabled]
+  );
+
   const handleNeonDocumentAction = async (action: "download" | "open") => {
     if (!user || !neonTermsPreviewUrl) return;
 
@@ -2439,79 +1936,15 @@ export default function CalculatorPage() {
 
   useEffect(() => {
     if (!isAutoProduct(product)) {
-      setAutoCarMake("");
-      setAutoCarPlate("");
-      setAutoCarVin("");
-      setAutoCarTp("");
-      setAutoCarOrv("");
-      setAutoCarAnnualMileage("");
-      setAutoCarAllianzScope("");
-      setAutoCarLiabilityLimit(null);
-      setAutoCarSlaviaDetail(null);
-      setAutoCarHullSumInsured(null);
-      setAutoCarHullSumInsuredText("");
-      setAutoCarHullSumInsuredDraft("");
-      setAutoCarHullDeductible(null);
-      setAutoCarHullDeductibleText("");
-      setAutoCarHullRiskAccident(false);
-      setAutoCarHullRiskTheft(false);
-      setAutoCarHullRiskNatural(false);
-      setAutoCarHullRiskVandalism(false);
-      setAutoCarHullRiskAnimalCollision(false);
-      setAutoCarAssistancePlan("");
-      setAutoCarAddonEso(false);
-      setAutoCarAddonNaturalRisks(false);
-      setAutoCarAddonKlika(false);
-      setAutoCarAddonGlass(false);
-      setAutoCarAddonGlassLimit(null);
-      setAutoCarAddonAnimalCollision(false);
-      setAutoCarAddonAnimalCollisionLimit(null);
-      setAutoCarAddonAnimalDamage(false);
-      setAutoCarAddonAnimalDamageLimit(null);
-      setAutoCarAddonVandalism(false);
-      setAutoCarAddonTheft(false);
-      setAutoCarAddonTheftLimit(null);
-      setAutoCarAddonNatural(false);
-      setAutoCarAddonNaturalLimit(null);
-      setAutoCarAddonOwnDamage(false);
-      setAutoCarAddonOwnDamageLimit(null);
-      setAutoCarAddonGap(false);
-      setAutoCarAddonGapLimit(null);
-      setAutoCarAddonSmartGap(false);
-      setAutoCarAddonServisPro(false);
-      setAutoCarAddonFireExplosion(false);
-      setAutoCarAddonLegalAdvice(false);
-      setAutoCarAddonReplacementCar(false);
-      setAutoCarAddonLuggage(false);
-      setAutoCarAddonTransportedGoods(false);
-      setAutoCarAddonPothole(false);
-      setAutoCarAddonNonFaultAccident(false);
-      setAutoCarAddonPassengerInjury(false);
-      setAutoCarAddonKeyLossTheft(false);
+      applyCalculatorPdfFormValues(createEmptyAutoPdfFormValues(), pdfFormSetters);
     }
-  }, [product]);
+  }, [product, pdfFormSetters]);
 
   useEffect(() => {
     if (product !== "domex" && product !== "domexneuron" && product !== "maxdomov") {
-      setDomexAddress("");
-      setDomexPropertyType("");
-      setDomexPropertyCoverage("");
-      setDomexPropertySumInsured(null);
-      setDomexPropertyDeductible(null);
-      setDomexHouseholdType("");
-      setDomexHouseholdCoverage("");
-      setDomexHouseholdSumInsured(null);
-      setDomexHouseholdDeductible(null);
-      setDomexOutbuildingSumInsured(null);
-      setDomexLiabilitySumInsured(null);
-      setDomexLiabilityDeductible(null);
-      setDomexLiabilityMobile(false);
-      setDomexLiabilityTenant(false);
-      setDomexLiabilityLandlord(false);
-      setDomexAssistancePlus(false);
-      setDomexNote("");
+      applyCalculatorPdfFormValues(createEmptyPropertyPdfFormValues(), pdfFormSetters);
     }
-  }, [product]);
+  }, [product, pdfFormSetters]);
 
   useEffect(() => {
     if (product !== "neon") {
@@ -3105,26 +2538,6 @@ export default function CalculatorPage() {
     setSaveMessage("Smlouva z TIPU byla vypnutá.");
   };
 
-  const looksLikeMaxCizinKomplexPdf = (
-    parsed: ParsedContractPdf | null | undefined
-  ): boolean => {
-    if (!parsed) return false;
-    return Boolean(
-      parsed.maxCizinKomplexVariant ||
-        (typeof parsed.durationMonths === "number" && parsed.durationMonths > 0) ||
-        typeof parsed.amount === "number" ||
-        parsed.policyStartDate ||
-        parsed.contractSignedDate
-    );
-  };
-
-  const showMaxCizinKomplexHint = () => {
-    setPdfImportError(
-      "PDF vypadá jako MAXIMA Cizinci. V poli Produkt vyber sekci Cizinci -> MAXIMA Komplexní zdravotní pojištění cizinců a nahraj PDF znovu."
-    );
-    setPdfImportStatus(null);
-  };
-
   const notifyPdfParserFailure = (file: File, product: Product, parsed: ParsedContractPdf,
     ocrAttempted: boolean, signal: AbortSignal, isCurrent: () => boolean) => {
     if (!user || impersonatedUserEmail || signal.aborted) return;
@@ -3147,913 +2560,31 @@ export default function CalculatorPage() {
     });
   };
 
-  const handlePdfImport = async (file: File | null) => {
-    if (!file) return;
-    pdfImportAbortRef.current?.abort();
-    const importController = new AbortController();
-    pdfImportAbortRef.current = importController;
-    const importRunId = pdfImportRunIdRef.current + 1;
-    pdfImportRunIdRef.current = importRunId;
-    const isCurrentPdfImport = () => pdfImportRunIdRef.current === importRunId && !importController.signal.aborted;
-    let allowPdfImportProgress = true;
-    let ocrActive = false;
-
-    pdfParserReportCounts.current = { pending: 0, sent: 0, failed: 0 };
-    setPdfParserReportStatus(null);
-    setPdfImporting(true);
-    setPensionTargetAge(null);
-    setPdfImportError(null);
-    setPdfImportStatus(
-      "PDF je připravené k přiložení. Zkouším z něj načíst data…"
-    );
-    setImportedContractPdfFile(file);
-    setStatementClientNamePrefillActive(false);
-    setPdfClientNameLoaded(false);
-    let importProduct: Product | null = hasSelectedProduct ? product : null;
-    let productDetected = false;
-    try {
-      const detected = await withPdfImportTimeout(
-        signal => detectProductFromPdfLazy(file, {
-          signal,
-          allowOcr: true,
-          onOcrStart: () => {
-            ocrActive = true;
-            if (isCurrentPdfImport()) setPdfImportStatus("PDF je sken. Rozpoznávám produkt a údaje přes OCR…");
-          },
-          onOcrProgress: (progress) => {
-            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
-            setPdfImportStatus(progress.page > 0
-              ? `Rozpoznávám sken: strana ${progress.page}/${progress.totalPages} (${Math.round(progress.progress * 100)} %)…`
-              : "Připravuji rozpoznávání skenu…");
-          },
-        }),
-        PDF_PRODUCT_DETECTION_TIMEOUT_MS,
-        "Automatické rozpoznání produktu z PDF trvá moc dlouho.",
-        () => ocrActive,
-        importController.signal
-      );
-      if (!isCurrentPdfImport()) return;
-      if (detected) {
-        productDetected = true;
-        const detectedProduct = resolveDetectedPdfProduct(detected.product, importProduct);
-        if (detectedProduct !== product) {
-          importProduct = detectedProduct;
-          setProduct(detectedProduct);
-          setHasSelectedProduct(true);
-          setProductPickerSectionForProduct(detectedProduct);
-          setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detectedProduct)}. Načítám data…`);
-        } else {
-          importProduct = detectedProduct;
-          setHasSelectedProduct(true);
-        }
-      } else if (importProduct) {
-        setPdfImportStatus(
-          `Produkt z PDF jsem nerozpoznal. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
-        );
-      } else {
-        setPdfImportStatus(
-          "PDF je připravené k přiložení, ale produkt se nepodařilo automaticky rozpoznat."
-        );
-      }
-    } catch (detectErr) {
-      console.warn("Auto-detekce produktu z PDF selhala", detectErr);
-      if (!isCurrentPdfImport()) return;
-      if (importProduct) {
-        setPdfImportStatus(
-          isPdfImportTimeoutError(detectErr)
-            ? `PDF je připravené k přiložení. Rozpoznání produktu trvalo moc dlouho, zkouším vybraný produkt ${productLabel(importProduct)}…`
-            : `Produkt z PDF se nepodařilo rozpoznat. Zkouším import podle vybraného produktu ${productLabel(importProduct)}…`
-        );
-      } else {
-        setPdfImportStatus(
-          "PDF je připravené k přiložení, ale produkt se nepodařilo automaticky rozpoznat."
-        );
-      }
-    }
-    if (!importProduct) {
-      setImportedContractPdfFile(file);
-      setPdfImportError(
-        "Vyber produkt ručně. Údaje z tohoto PDF zatím nebyly načtené, ale PDF zůstane připravené k přiložení po uložení smlouvy."
-      );
-      setPdfImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      return;
-    }
-    if (
-      importProduct === "cppAuto" ||
-      importProduct === "slaviaauto" ||
-      importProduct === "allianzAuto" ||
-      importProduct === "csobAuto" ||
-      importProduct === "uniqaAuto" ||
-      importProduct === "pillowAuto" ||
-      importProduct === "kooperativaAuto"
-    ) {
-      setAutoCarMake("");
-      setAutoCarPlate("");
-      setAutoCarVin("");
-      setAutoCarTp("");
-      setAutoCarOrv("");
-      setAutoCarAnnualMileage("");
-      setAutoCarAllianzScope("");
-      setAutoCarLiabilityLimit(null);
-      setAutoCarSlaviaDetail(null);
-      setAutoCarHullSumInsured(null);
-      setAutoCarHullSumInsuredText("");
-      setAutoCarHullSumInsuredDraft("");
-      setAutoCarHullDeductible(null);
-      setAutoCarHullDeductibleText("");
-      setAutoCarHullRiskAccident(false);
-      setAutoCarHullRiskTheft(false);
-      setAutoCarHullRiskNatural(false);
-      setAutoCarHullRiskVandalism(false);
-      setAutoCarHullRiskAnimalCollision(false);
-      setAutoCarAssistancePlan("");
-      setAutoCarAddonEso(false);
-      setAutoCarAddonNaturalRisks(false);
-      setAutoCarAddonKlika(false);
-      setAutoCarAddonGlass(false);
-      setAutoCarAddonGlassLimit(null);
-      setAutoCarAddonAnimalCollision(false);
-      setAutoCarAddonAnimalCollisionLimit(null);
-      setAutoCarAddonAnimalDamage(false);
-      setAutoCarAddonAnimalDamageLimit(null);
-      setAutoCarAddonVandalism(false);
-      setAutoCarAddonTheft(false);
-      setAutoCarAddonTheftLimit(null);
-      setAutoCarAddonNatural(false);
-      setAutoCarAddonNaturalLimit(null);
-      setAutoCarAddonOwnDamage(false);
-      setAutoCarAddonOwnDamageLimit(null);
-      setAutoCarAddonGap(false);
-      setAutoCarAddonGapLimit(null);
-      setAutoCarAddonSmartGap(false);
-      setAutoCarAddonServisPro(false);
-      setAutoCarAddonFireExplosion(false);
-      setAutoCarAddonLegalAdvice(false);
-      setAutoCarAddonReplacementCar(false);
-      setAutoCarAddonLuggage(false);
-      setAutoCarAddonTransportedGoods(false);
-      setAutoCarAddonPothole(false);
-      setAutoCarAddonNonFaultAccident(false);
-      setAutoCarAddonPassengerInjury(false);
-      setAutoCarAddonKeyLossTheft(false);
-    }
-    if (
-      importProduct === "domex" ||
-      importProduct === "domexneuron" ||
-      importProduct === "maxdomov"
-    ) {
-      setDomexAddress("");
-      setDomexPropertyType("");
-      setDomexPropertyCoverage("");
-      setDomexPropertySumInsured(null);
-      setDomexPropertyDeductible(null);
-      setDomexHouseholdType("");
-      setDomexHouseholdCoverage("");
-      setDomexHouseholdSumInsured(null);
-      setDomexHouseholdDeductible(null);
-      setDomexOutbuildingSumInsured(null);
-      setDomexLiabilitySumInsured(null);
-      setDomexLiabilityDeductible(null);
-      setDomexLiabilityMobile(false);
-      setDomexLiabilityTenant(false);
-      setDomexLiabilityLandlord(false);
-      setDomexAssistancePlus(false);
-      setDomexNote("");
-    }
-    if (importProduct === "neon") {
-      setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
-    }
-    try {
-      if (!hasAutomatedPdfImport(importProduct)) {
-        setImportedContractPdfFile(file);
-        setPdfImportStatus(manualPdfImportMessage(importProduct));
-        setPdfImportError(
-          productDetected
-            ? null
-            : `Produkt z PDF jsem nerozpoznal. Vyber produkt ručně; PDF se při uložení přiloží.`
-        );
-        return;
-      }
-
-      const parsed = await withPdfImportTimeout(
-        signal => parseContractPdfByProduct(importProduct, file, {
-          signal,
-          allowOcr: true,
-          onOcrStart: () => {
-            ocrActive = true;
-            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
-            setPdfImportStatus("PDF vypadá jako sken. Spouštím OCR…");
-          },
-          onOcrProgress: (progress) => {
-            if (!isCurrentPdfImport() || !allowPdfImportProgress) return;
-            const pagePart =
-              progress.page > 0
-                ? `strana ${progress.page}/${progress.totalPages}`
-                : "připravuji OCR";
-            const percent =
-              progress.progress > 0
-                ? ` (${Math.round(progress.progress * 100)} %)`
-                : "";
-            setPdfImportStatus(`PDF je sken, OCR ${pagePart}${percent}…`);
-          },
-        }),
-        PDF_DATA_IMPORT_TIMEOUT_MS,
-        "Automatické čtení dat z PDF trvá moc dlouho.",
-        () => ocrActive,
-        importController.signal
-      );
-      if (!isCurrentPdfImport()) return;
-      allowPdfImportProgress = false;
-      if (!parsed) {
-        setImportedContractPdfFile(file);
-        setPdfImportStatus(
-          "PDF se při uložení přiloží k detailu záznamu, údaje prosím doplň ručně."
-        );
-        setPdfImportError(
-          unreadablePdfImportMessage({ product: importProduct, productDetected })
-        );
-        return;
-      }
-      const importIssueMessage = buildPdfImportIssueMessage({ product: importProduct, parsed });
-      setPensionTargetAge(importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null);
-      if (["conseqzenit", "cppPPRbez", "cppPPRs"].includes(importProduct)) {
-        if (!parsed.contractNumber) setContractNumber("");
-        if (!parsed.clientName) setClientName("");
-        if (!parsed.policyStartDate) setPolicyStartDate("");
-        if (!parsed.contractSignedDate) setContractSignedDate("");
-        if (typeof parsed.amount !== "number") setAmountText("");
-      }
-
-      let applied = 0;
-      const parsedIsEndorsement =
-        importProduct === "neon" &&
-        "isEndorsement" in parsed &&
-        parsed.isEndorsement === true;
-      let endorsementPreparedFromPdf = false;
-
-      if (parsed.contractNumber) {
-        setContractNumber(parsed.contractNumber);
-        applied += 1;
-      }
-      if (parsed.clientName) {
-        setClientName(parsed.clientName);
-        setPdfClientNameLoaded(true);
-        setClientSuggestionsOpen(true);
-        applied += 1;
-      }
-      if (parsed.policyStartDate) {
-        setPolicyStartDate(parsed.policyStartDate);
-        applied += 1;
-      }
-      if ("policyEndDate" in parsed && (typeof parsed.policyEndDate === "string" || ["conseqzenit", "cppPPRbez", "cppPPRs"].includes(importProduct))) {
-        setPolicyEndDate(typeof parsed.policyEndDate === "string" ? parsed.policyEndDate : "");
-        if (parsed.policyEndDate) applied += 1;
-      }
-      if (parsed.contractSignedDate) {
-        setContractSignedDate(parsed.contractSignedDate);
-        applied += 1;
-      }
-      if (typeof parsed.amount === "number") {
-        setAmountText(String(parsed.amount));
-        applied += 1;
-      }
-      if (importProduct === "flexi") {
-        setRenovationOriginalPremiumText("");
-        setRenovationIncreaseText("");
-        setRenovationGuaranteeStatus("unknown");
-        if (typeof parsed.amount !== "number") setAmountText("");
-      }
-      if (parsedIsEndorsement || importProduct === "flexi") {
-        setRefreshOriginalOpen(false);
-        setRefreshOriginalContractNumber("");
-        setRefreshOriginalMissingInSystem(false);
-        setRefreshOriginalPdfLookupNumber(null);
-        setRefreshOriginalLookup({
-          status: "idle",
-          progress: 0,
-          adviserName: null,
-          original: null,
-        });
-      }
-      if (!isInheritedContractMode && supportsOriginalContractReplacement(importProduct)) {
-        const parsedRefreshOriginalContractNumber =
-          "refreshOriginalContractNumber" in parsed &&
-          typeof parsed.refreshOriginalContractNumber === "string"
-            ? parsed.refreshOriginalContractNumber.trim()
-            : "";
-        const parsedIsRefresh = "isRefresh" in parsed && parsed.isRefresh === true;
-        if (parsedIsRefresh || parsedRefreshOriginalContractNumber) {
-          setRefreshOriginalOpen(true);
-          setRefreshOriginalMissingInSystem(false);
-          setRefreshOriginalPdfLookupNumber(null);
-          if (parsedRefreshOriginalContractNumber) {
-            setRefreshOriginalContractNumber(parsedRefreshOriginalContractNumber);
-            setRefreshOriginalPdfLookupNumber(
-              importProduct === "neon" && parsedIsRefresh
-                ? parsedRefreshOriginalContractNumber
-                : null
-            );
-            applied += 1;
-          }
-        }
-      }
-      if ("comfortPayment" in parsed && typeof parsed.comfortPayment === "number") {
-        setComfortPaymentText(String(parsed.comfortPayment));
-        applied += 1;
-      }
-      if (parsed.frequency) {
-        const allowedForProduct = allowedFrequencies(importProduct);
-        if (allowedForProduct.includes(parsed.frequency)) {
-          setFrequency(parsed.frequency);
-        }
-      }
-      if ("domexAddress" in parsed) {
-        const address = typeof parsed.domexAddress === "string" ? parsed.domexAddress.trim() : "";
-        setDomexAddress(address);
-        if (address) applied += 1;
-      }
-      if ("domexPropertyType" in parsed) {
-        const propertyType =
-          typeof parsed.domexPropertyType === "string" ? parsed.domexPropertyType.trim() : "";
-        setDomexPropertyType(propertyType);
-        if (propertyType) applied += 1;
-      }
-      if ("domexPropertyCoverage" in parsed) {
-        const propertyCoverage =
-          typeof parsed.domexPropertyCoverage === "string"
-            ? parsed.domexPropertyCoverage.trim()
-            : "";
-        setDomexPropertyCoverage(propertyCoverage);
-        if (propertyCoverage) applied += 1;
-      }
-      if ("domexPropertySumInsured" in parsed) {
-        const sumInsured =
-          typeof parsed.domexPropertySumInsured === "number" &&
-          Number.isFinite(parsed.domexPropertySumInsured)
-            ? Math.round(parsed.domexPropertySumInsured)
-            : null;
-        setDomexPropertySumInsured(sumInsured);
-        if (sumInsured != null) applied += 1;
-      }
-      if ("domexPropertyDeductible" in parsed) {
-        const deductible =
-          typeof parsed.domexPropertyDeductible === "number" &&
-          Number.isFinite(parsed.domexPropertyDeductible)
-            ? Math.round(parsed.domexPropertyDeductible)
-            : null;
-        setDomexPropertyDeductible(deductible);
-        if (deductible != null) applied += 1;
-      }
-      if ("domexHouseholdType" in parsed) {
-        const householdType =
-          typeof parsed.domexHouseholdType === "string" ? parsed.domexHouseholdType.trim() : "";
-        setDomexHouseholdType(householdType);
-        if (householdType) applied += 1;
-      }
-      if ("domexHouseholdCoverage" in parsed) {
-        const householdCoverage =
-          typeof parsed.domexHouseholdCoverage === "string"
-            ? parsed.domexHouseholdCoverage.trim()
-            : "";
-        setDomexHouseholdCoverage(householdCoverage);
-        if (householdCoverage) applied += 1;
-      }
-      if ("domexHouseholdSumInsured" in parsed) {
-        const householdSumInsured =
-          typeof parsed.domexHouseholdSumInsured === "number" &&
-          Number.isFinite(parsed.domexHouseholdSumInsured)
-            ? Math.round(parsed.domexHouseholdSumInsured)
-            : null;
-        setDomexHouseholdSumInsured(householdSumInsured);
-        if (householdSumInsured != null) applied += 1;
-      }
-      if ("domexHouseholdDeductible" in parsed) {
-        const householdDeductible =
-          typeof parsed.domexHouseholdDeductible === "number" &&
-          Number.isFinite(parsed.domexHouseholdDeductible)
-            ? Math.round(parsed.domexHouseholdDeductible)
-            : null;
-        setDomexHouseholdDeductible(householdDeductible);
-        if (householdDeductible != null) applied += 1;
-      }
-      if ("domexOutbuildingSumInsured" in parsed) {
-        const outbuildingSumInsured =
-          typeof parsed.domexOutbuildingSumInsured === "number" &&
-          Number.isFinite(parsed.domexOutbuildingSumInsured)
-            ? Math.round(parsed.domexOutbuildingSumInsured)
-            : null;
-        setDomexOutbuildingSumInsured(outbuildingSumInsured);
-        if (outbuildingSumInsured != null) applied += 1;
-      }
-      if ("domexLiabilitySumInsured" in parsed) {
-        const liabilitySumInsured =
-          typeof parsed.domexLiabilitySumInsured === "number" &&
-          Number.isFinite(parsed.domexLiabilitySumInsured)
-            ? Math.round(parsed.domexLiabilitySumInsured)
-            : null;
-        setDomexLiabilitySumInsured(liabilitySumInsured);
-        if (liabilitySumInsured != null) applied += 1;
-      }
-      if ("domexLiabilityDeductible" in parsed) {
-        const liabilityDeductible =
-          typeof parsed.domexLiabilityDeductible === "number" &&
-          Number.isFinite(parsed.domexLiabilityDeductible)
-            ? Math.round(parsed.domexLiabilityDeductible)
-            : null;
-        setDomexLiabilityDeductible(liabilityDeductible);
-        if (liabilityDeductible != null) applied += 1;
-      }
-      if ("domexLiabilityMobile" in parsed) {
-        const hasAddon = parsed.domexLiabilityMobile === true;
-        setDomexLiabilityMobile(hasAddon);
-        if (hasAddon) applied += 1;
-      }
-      if ("domexLiabilityTenant" in parsed) {
-        const hasAddon = parsed.domexLiabilityTenant === true;
-        setDomexLiabilityTenant(hasAddon);
-        if (hasAddon) applied += 1;
-      }
-      if ("domexLiabilityLandlord" in parsed) {
-        const hasAddon = parsed.domexLiabilityLandlord === true;
-        setDomexLiabilityLandlord(hasAddon);
-        if (hasAddon) applied += 1;
-      }
-      if ("domexAssistancePlus" in parsed) {
-        const hasAssistance = parsed.domexAssistancePlus === true;
-        setDomexAssistancePlus(hasAssistance);
-        if (hasAssistance) applied += 1;
-      }
-      if (importProduct === "neon" && parsed.riskFields && typeof parsed.riskFields === "object") {
-        const riskFields = parsed.riskFields as Record<string, unknown>;
-        const nextNeonFields = createEmptyNeonPdfDetailFields();
-        let riskApplied = 0;
-        const applyText = (field: NeonPdfEditorTextField, value: unknown) => {
-          if (value == null) return;
-          const normalized = typeof value === "string" ? value.trim() : String(value).trim();
-          if (!normalized) return;
-          nextNeonFields[field] = normalized;
-          riskApplied += 1;
-        };
-        const applyBoolean = (field: NeonPdfEditorBooleanField, value: unknown) => {
-          nextNeonFields[field] = value === true;
-          if (value === true) riskApplied += 1;
-        };
-
-        applyText("version", riskFields.version ?? "neon_life");
-        applyText("deathType", riskFields.deathType);
-        applyText("deathAmount", riskFields.deathAmount);
-        applyText("death2Type", riskFields.death2Type);
-        applyText("death2Amount", riskFields.death2Amount);
-        applyText("deathTerminalAmount", riskFields.deathTerminalAmount);
-        applyBoolean("waiverInvalidity", riskFields.waiverInvalidity);
-        applyBoolean("waiverUnemployment", riskFields.waiverUnemployment);
-        applyText("invalidityAType", riskFields.invalidityAType);
-        applyText("invalidityA1", riskFields.invalidityA1);
-        applyText("invalidityA2", riskFields.invalidityA2);
-        applyText("invalidityA3", riskFields.invalidityA3);
-        applyText("invalidityBType", riskFields.invalidityBType);
-        applyText("invalidityB1", riskFields.invalidityB1);
-        applyText("invalidityB2", riskFields.invalidityB2);
-        applyText("invalidityB3", riskFields.invalidityB3);
-        applyBoolean("invalidityPension", riskFields.invalidityPension);
-        applyText("criticalType", riskFields.criticalType);
-        applyText("criticalVariant", riskFields.criticalVariant);
-        applyText("criticalAmount", riskFields.criticalAmount);
-        applyText("childSurgeryAmount", riskFields.childSurgeryAmount);
-        applyText("vaccinationCompAmount", riskFields.vaccinationCompAmount);
-        applyText("diabetesAmount", riskFields.diabetesAmount);
-        applyText("deathAccidentAmount", riskFields.deathAccidentAmount);
-        applyText("injuryPermanentAmount", riskFields.injuryPermanentAmount);
-        applyText(
-          "injuryPermanentFulfillmentFrom",
-          riskFields.injuryPermanentFulfillmentFrom
-        );
-        applyText("injuryPermanentProgression", riskFields.injuryPermanentProgression);
-        applyText("injuryPermanent2Amount", riskFields.injuryPermanent2Amount);
-        applyText(
-          "injuryPermanent2FulfillmentFrom",
-          riskFields.injuryPermanent2FulfillmentFrom
-        );
-        applyText("injuryPermanent2Progression", riskFields.injuryPermanent2Progression);
-        applyText("hospitalizationIllnessAmount", riskFields.hospitalizationIllnessAmount);
-        applyText("hospitalizationInjuryAmount", riskFields.hospitalizationInjuryAmount);
-        applyText("accidentDailyBenefitStart", riskFields.accidentDailyBenefitStart);
-        applyText("accidentDailyBenefitBackpay", riskFields.accidentDailyBenefitBackpay);
-        applyText("accidentDailyBenefit", riskFields.accidentDailyBenefit);
-        applyText("workIncapacityStart", riskFields.workIncapacityStart);
-        applyText("workIncapacityBackpay", riskFields.workIncapacityBackpay);
-        applyText("workIncapacityAmount", riskFields.workIncapacityAmount);
-        applyBoolean("workIncapacityInjury", riskFields.workIncapacityInjury);
-        applyBoolean("workIncapacityIllness", riskFields.workIncapacityIllness);
-        applyText("workIncapacity2Start", riskFields.workIncapacity2Start);
-        applyText("workIncapacity2Backpay", riskFields.workIncapacity2Backpay);
-        applyText("workIncapacity2Amount", riskFields.workIncapacity2Amount);
-        applyBoolean("workIncapacity2Injury", riskFields.workIncapacity2Injury);
-        applyBoolean("workIncapacity2Illness", riskFields.workIncapacity2Illness);
-        applyText("careDependencyAmount", riskFields.careDependencyAmount);
-        applyText("specialAidAmount", riskFields.specialAidAmount);
-        applyText("caregivingAmount", riskFields.caregivingAmount);
-        applyText("reproductionCostAmount", riskFields.reproductionCostAmount);
-        applyBoolean("cppHelp", riskFields.cppHelp);
-        applyText("liabilityCitizenLimit", riskFields.liabilityCitizenLimit);
-        applyText("liabilityEmployeeLimit", riskFields.liabilityEmployeeLimit);
-        applyBoolean("travelInsurance", riskFields.travelInsurance);
-
-        setNeonPdfDetailFields(nextNeonFields);
-        applied += riskApplied;
-      }
-      if ("durationYears" in parsed && typeof parsed.durationYears === "number") {
-        const [min, max] = durationRange(importProduct);
-        const yrs = Math.min(max, Math.max(min, parsed.durationYears));
-        setDurationYears(yrs);
-        applied += 1;
-      }
-      if ("durationMonths" in parsed && typeof parsed.durationMonths === "number") {
-        setDurationMonths(normalizedDurationMonths(importProduct, parsed.durationMonths));
-        applied += 1;
-      }
-      if (
-        "maxCizinKomplexVariant" in parsed &&
-        (parsed.maxCizinKomplexVariant === "exclusiveStandard" ||
-          parsed.maxCizinKomplexVariant === "premium")
-      ) {
-        setMaxCizinKomplexVariant(parsed.maxCizinKomplexVariant);
-        applied += 1;
-      }
-      if ("carMake" in parsed) {
-        const carMake = typeof parsed.carMake === "string" ? parsed.carMake.trim() : "";
-        setAutoCarMake(carMake);
-        if (carMake) applied += 1;
-      }
-      if ("carPlate" in parsed) {
-        const plate = typeof parsed.carPlate === "string" ? parsed.carPlate.trim() : "";
-        setAutoCarPlate(plate);
-        if (plate) applied += 1;
-      }
-      if ("carVin" in parsed) {
-        const vin = typeof parsed.carVin === "string" ? parsed.carVin.trim() : "";
-        setAutoCarVin(vin);
-        if (vin) applied += 1;
-      }
-      if ("carTp" in parsed) {
-        const tp = typeof parsed.carTp === "string" ? parsed.carTp.trim() : "";
-        setAutoCarTp(tp);
-        if (tp) applied += 1;
-      }
-      if ("carOrv" in parsed) {
-        const orv = typeof parsed.carOrv === "string" ? parsed.carOrv.trim() : "";
-        setAutoCarOrv(orv);
-        if (orv) applied += 1;
-      }
-      if ("carAnnualMileage" in parsed) {
-        const annualMileage =
-          typeof parsed.carAnnualMileage === "string"
-            ? parsed.carAnnualMileage.trim()
-            : "";
-        setAutoCarAnnualMileage(annualMileage);
-        if (annualMileage) applied += 1;
-      }
-      if ("carAllianzScope" in parsed) {
-        const scope =
-          typeof parsed.carAllianzScope === "string"
-            ? parsed.carAllianzScope.trim()
-            : "";
-        setAutoCarAllianzScope(scope);
-        if (scope) applied += 1;
-      }
-      if ("carLiabilityLimit" in parsed) {
-        const liabilityLimit =
-          typeof parsed.carLiabilityLimit === "number" &&
-          Number.isFinite(parsed.carLiabilityLimit)
-            ? Math.round(parsed.carLiabilityLimit)
-            : null;
-        setAutoCarLiabilityLimit(liabilityLimit);
-        if (liabilityLimit != null) applied += 1;
-        if (importProduct === "cppAuto" && liabilityLimit === 200_000_000) {
-          setAutoCarAddonSmartGap(true);
-          setAutoCarAddonServisPro(true);
-          applied += 2;
-        }
-      }
-      if ("carSlaviaDetail" in parsed) {
-        const slaviaDetail = parsedSlaviaAutoDetailValue(parsed);
-        setAutoCarSlaviaDetail(slaviaDetail);
-        if (slaviaDetail) applied += 1;
-      }
-      if ("carHullSumInsured" in parsed) {
-        const hullSumInsured =
-          typeof parsed.carHullSumInsured === "number" &&
-          Number.isFinite(parsed.carHullSumInsured)
-            ? Math.round(parsed.carHullSumInsured)
-            : null;
-        setAutoCarHullSumInsured(hullSumInsured);
-        setAutoCarHullSumInsuredDraft("");
-        if (hullSumInsured != null) applied += 1;
-      }
-      if ("carHullSumInsuredText" in parsed) {
-        const hullSumInsuredText =
-          typeof parsed.carHullSumInsuredText === "string"
-            ? parsed.carHullSumInsuredText.trim()
-            : "";
-        setAutoCarHullSumInsuredText(hullSumInsuredText);
-        setAutoCarHullSumInsuredDraft("");
-        if (hullSumInsuredText) {
-          setAutoCarHullSumInsured(null);
-          applied += 1;
-        }
-      }
-      if ("carHullDeductible" in parsed) {
-        const hullDeductible =
-          typeof parsed.carHullDeductible === "number" &&
-          Number.isFinite(parsed.carHullDeductible)
-            ? Math.round(parsed.carHullDeductible)
-            : null;
-        setAutoCarHullDeductible(hullDeductible);
-        if (hullDeductible != null) applied += 1;
-      }
-      if ("carHullDeductibleText" in parsed) {
-        const hullDeductibleText =
-          typeof parsed.carHullDeductibleText === "string"
-            ? parsed.carHullDeductibleText.trim()
-            : "";
-        setAutoCarHullDeductibleText(hullDeductibleText);
-        if (hullDeductibleText) applied += 1;
-      }
-      if ("carHullRiskAccident" in parsed) {
-        const risk = parsed.carHullRiskAccident === true;
-        setAutoCarHullRiskAccident(risk);
-        if (risk) applied += 1;
-      }
-      if ("carHullRiskTheft" in parsed) {
-        const risk = parsed.carHullRiskTheft === true;
-        setAutoCarHullRiskTheft(risk);
-        if (risk) applied += 1;
-      }
-      if ("carHullRiskNatural" in parsed) {
-        const risk = parsed.carHullRiskNatural === true;
-        setAutoCarHullRiskNatural(risk);
-        if (risk) applied += 1;
-      }
-      if ("carHullRiskVandalism" in parsed) {
-        const risk = parsed.carHullRiskVandalism === true;
-        setAutoCarHullRiskVandalism(risk);
-        if (risk) applied += 1;
-      }
-      if ("carHullRiskAnimalCollision" in parsed) {
-        const risk = parsed.carHullRiskAnimalCollision === true;
-        setAutoCarHullRiskAnimalCollision(risk);
-        if (risk) applied += 1;
-      }
-      if ("carAssistancePlan" in parsed) {
-        const assistance =
-          typeof parsed.carAssistancePlan === "string"
-            ? parsed.carAssistancePlan.trim()
-            : "";
-        setAutoCarAssistancePlan(assistance);
-        if (assistance) applied += 1;
-      }
-      if ("carAddonEso" in parsed) {
-        const addon = parsed.carAddonEso === true;
-        setAutoCarAddonEso(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonNaturalRisks" in parsed) {
-        const addon = parsed.carAddonNaturalRisks === true;
-        setAutoCarAddonNaturalRisks(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonGlass" in parsed) {
-        const addon = parsed.carAddonGlass === true;
-        setAutoCarAddonGlass(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonGlassLimit" in parsed) {
-        const limit =
-          typeof parsed.carAddonGlassLimit === "number" &&
-          Number.isFinite(parsed.carAddonGlassLimit)
-            ? Math.round(parsed.carAddonGlassLimit)
-            : null;
-        setAutoCarAddonGlassLimit(limit);
-        if (limit != null) {
-          setAutoCarAddonGlass(true);
-          applied += 1;
-        }
-      }
-      if ("carAddonAnimalCollision" in parsed) {
-        const addon = parsed.carAddonAnimalCollision === true;
-        setAutoCarAddonAnimalCollision(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonAnimalCollisionLimit" in parsed) {
-        const limit =
-          typeof parsed.carAddonAnimalCollisionLimit === "number" &&
-          Number.isFinite(parsed.carAddonAnimalCollisionLimit)
-            ? Math.round(parsed.carAddonAnimalCollisionLimit)
-            : null;
-        setAutoCarAddonAnimalCollisionLimit(limit);
-        if (limit != null) {
-          setAutoCarAddonAnimalCollision(true);
-          applied += 1;
-        }
-      }
-      if ("carAddonAnimalDamage" in parsed) {
-        const addon = parsed.carAddonAnimalDamage === true;
-        setAutoCarAddonAnimalDamage(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonAnimalDamageLimit" in parsed) {
-        const limit =
-          typeof parsed.carAddonAnimalDamageLimit === "number" &&
-          Number.isFinite(parsed.carAddonAnimalDamageLimit)
-            ? Math.round(parsed.carAddonAnimalDamageLimit)
-            : null;
-        setAutoCarAddonAnimalDamageLimit(limit);
-        if (limit != null) {
-          setAutoCarAddonAnimalDamage(true);
-          applied += 1;
-        }
-      }
-      if ("carAddonVandalism" in parsed) {
-        const addon = parsed.carAddonVandalism === true;
-        setAutoCarAddonVandalism(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonTheft" in parsed) {
-        const addon = parsed.carAddonTheft === true;
-        setAutoCarAddonTheft(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonNatural" in parsed) {
-        const addon = parsed.carAddonNatural === true;
-        setAutoCarAddonNatural(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonGap" in parsed) {
-        const addon = parsed.carAddonGap === true;
-        setAutoCarAddonGap(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonSmartGap" in parsed) {
-        const addon = parsed.carAddonSmartGap === true;
-        setAutoCarAddonSmartGap(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonServisPro" in parsed) {
-        const addon = parsed.carAddonServisPro === true;
-        setAutoCarAddonServisPro(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonFireExplosion" in parsed) {
-        const addon = parsed.carAddonFireExplosion === true;
-        setAutoCarAddonFireExplosion(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonLegalAdvice" in parsed) {
-        const addon = parsed.carAddonLegalAdvice === true;
-        setAutoCarAddonLegalAdvice(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonReplacementCar" in parsed) {
-        const addon = parsed.carAddonReplacementCar === true;
-        setAutoCarAddonReplacementCar(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonLuggage" in parsed) {
-        const addon = parsed.carAddonLuggage === true;
-        setAutoCarAddonLuggage(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonTransportedGoods" in parsed) {
-        const addon = parsed.carAddonTransportedGoods === true;
-        setAutoCarAddonTransportedGoods(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonPothole" in parsed) {
-        const addon = parsed.carAddonPothole === true;
-        setAutoCarAddonPothole(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonNonFaultAccident" in parsed) {
-        const addon = parsed.carAddonNonFaultAccident === true;
-        setAutoCarAddonNonFaultAccident(addon);
-        if (addon) applied += 1;
-      }
-      if ("carAddonKeyLossTheft" in parsed) {
-        const addon = parsed.carAddonKeyLossTheft === true;
-        setAutoCarAddonKeyLossTheft(addon);
-        if (addon) applied += 1;
-      }
-
-      if (parsedIsEndorsement && !isInheritedContractMode) {
-        setEndorsementWorkflowActive(true);
-        const parsedContractNumber =
-          typeof parsed.contractNumber === "string" ? parsed.contractNumber.trim() : "";
-        const parsedSignedDate =
-          typeof parsed.contractSignedDate === "string"
-            ? parsed.contractSignedDate.trim()
-            : "";
-        const parsedAmount =
-          typeof parsed.amount === "number" && Number.isFinite(parsed.amount)
-            ? parsed.amount
-            : null;
-        endorsementPreparedFromPdf = await handlePrepareEndorsement({
-          productOverride: importProduct,
-          contractNumberOverride: parsedContractNumber,
-          contractSignedDateOverride: parsedSignedDate,
-          newPremiumAmountOverride: parsedAmount ?? 0,
-          source: "pdf",
-        });
-      }
-
-      if (applied === 0 && importProduct !== "maxcizinkomplex") {
-        try {
-          const maxCizinParsed = await withPdfImportTimeout(
-            signal => parseMaxCizinKomplexPdfLazy(file, { signal, allowOcr: false }),
-            5_000,
-            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho.",
-            undefined,
-            importController.signal
-          );
-          if (!isCurrentPdfImport()) return;
-          if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
-            showMaxCizinKomplexHint();
-            return;
-          }
-        } catch {
-          // ignore fallback detection error
-        }
-      }
-
-      setImportedContractPdfFile(file);
-      const attachmentNote = parsedIsEndorsement
-        ? " PDF se při uložení přiloží k detailu dodatku."
-        : " PDF se při uložení přiloží k detailu záznamu.";
-      const productDetectionPrefix = productDetected
-        ? ""
-        : `Produkt z PDF jsem nerozpoznal; použil jsem vybraný produkt ${productLabel(importProduct)}. `;
-      const ocrPrefix = parsed.ocrTextUsed === true ? "PDF bylo skenované, načteno přes OCR. " : "";
-      setPdfImportStatus(
-        parsedIsEndorsement
-          ? endorsementPreparedFromPdf
-            ? `${ocrPrefix}${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Připravil jsem dodatek podle rozdílu proti poslední uložené hodnotě smlouvy.${attachmentNote}`
-            : `${ocrPrefix}${productDetectionPrefix}Načtena žádanka o změnu z PDF (${applied} polí). Původní smlouvu se nepodařilo automaticky porovnat, zkontroluj hlášku a klikni na Změna znovu.${attachmentNote}`
-          : applied > 0
-          ? `${ocrPrefix}${productDetectionPrefix}Načteno z PDF (${applied} polí). Zkontroluj prosím.${attachmentNote}`
-          : importProduct === "cppsimplex"
-            ? `${ocrPrefix}${productDetectionPrefix}PDF pro ČPP Simplex nahráno. Extrakci polí doladíme v dalším kroku.${attachmentNote}`
-            : `${ocrPrefix}${productDetectionPrefix}V PDF se nenašla čitelná data, doplň ručně.${attachmentNote}`
-      );
-      setPdfImportError(importIssueMessage);
-      notifyPdfParserFailure(file, importProduct, parsed, ocrActive, importController.signal, isCurrentPdfImport);
-    } catch (err) {
-      console.error("PDF import selhal", err);
-      if (!isCurrentPdfImport()) return;
-      const importTimedOut = isPdfImportTimeoutError(err);
-      allowPdfImportProgress = false;
-      if (!importTimedOut && importProduct !== "maxcizinkomplex") {
-        try {
-          const maxCizinParsed = await withPdfImportTimeout(
-            signal => parseMaxCizinKomplexPdfLazy(file, { signal, allowOcr: false }),
-            5_000,
-            "Fallback rozpoznání MAXIMA Cizinci trvá moc dlouho.",
-            undefined,
-            importController.signal
-          );
-          if (!isCurrentPdfImport()) return;
-          if (looksLikeMaxCizinKomplexPdf(maxCizinParsed)) {
-            showMaxCizinKomplexHint();
-            return;
-          }
-        } catch {
-          // ignore fallback detection error
-        }
-      }
-      setImportedContractPdfFile(file);
-      setPdfImportError(
-        importTimedOut
-          ? "Automatické čtení PDF trvalo příliš dlouho, takže jsem ho odblokoval. PDF zůstává připravené jako příloha."
-          : importProduct
-            ? failedPdfImportMessage(importProduct, productDetected)
-            : "Produkt z PDF se nepodařilo rozpoznat. Vyber produkt ručně."
-      );
-      setPdfImportStatus(
-        importTimedOut
-          ? "PDF se při uložení přiloží k detailu smlouvy. Údaje doplň ručně a můžeš pokračovat bez čekání na parser."
-          : null
-      );
-    } finally {
-      allowPdfImportProgress = false;
-      if (isCurrentPdfImport()) {
-        setPdfImporting(false);
-      }
-      if (isCurrentPdfImport() && fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
+  const handlePdfImport = (file: File | null) => importSingleContractPdf(file, {
+    product, hasSelectedProduct, isInheritedContractMode, pdfFormSetters,
+    refs: { pdfImportAbortRef, pdfImportRunIdRef, pdfParserReportCounts, fileInputRef },
+    ui: {
+      setPdfParserReportStatus,
+      setPdfImporting,
+      setPdfImportError,
+      setPdfImportStatus,
+      setImportedContractPdfFile,
+      setStatementClientNamePrefillActive,
+      setPdfClientNameLoaded,
+      setProduct,
+      setHasSelectedProduct,
+      setProductPickerSectionForProduct,
+      setClientSuggestionsOpen,
+      setRefreshOriginalOpen,
+      setRefreshOriginalContractNumber,
+      setRefreshOriginalMissingInSystem,
+      setRefreshOriginalPdfLookupNumber,
+      setRefreshOriginalLookup,
+      setEndorsementWorkflowActive,
+    },
+    handlePrepareEndorsement,
+    notifyPdfParserFailure,
+  });
 
   const handlePdfFiles = (files: File[]) => {
     if (files.length === 0 || saving || pdfImporting || autoBulkImporting) return;
@@ -4107,29 +2638,6 @@ export default function CalculatorPage() {
 
     const reviewProduct = draft.product;
     const parsed = draft.parsed;
-    const parsedFrequency = parsedPdfFrequencyValue(parsed);
-    const amount = parsedPdfNumberValue(parsed, "amount");
-    const liabilityLimit = parsedPdfRoundedNumberValue(parsed, "carLiabilityLimit");
-    const hullSumInsuredText = parsedPdfTextValue(parsed, "carHullSumInsuredText");
-    const hullSumInsured = parsedPdfRoundedNumberValue(parsed, "carHullSumInsured");
-    const hullDeductible = parsedPdfRoundedNumberValue(parsed, "carHullDeductible");
-    const hullDeductibleText = parsedPdfTextValue(parsed, "carHullDeductibleText");
-    const glassLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGlassLimit");
-    const animalCollisionLimit = parsedPdfRoundedNumberValue(
-      parsed,
-      "carAddonAnimalCollisionLimit"
-    );
-    const animalDamageLimit = parsedPdfRoundedNumberValue(
-      parsed,
-      "carAddonAnimalDamageLimit"
-    );
-    const theftLimit = parsedPdfRoundedNumberValue(parsed, "carAddonTheftLimit");
-    const naturalLimit = parsedPdfRoundedNumberValue(parsed, "carAddonNaturalLimit");
-    const ownDamageLimit = parsedPdfRoundedNumberValue(parsed, "carAddonOwnDamageLimit");
-    const gapLimit = parsedPdfRoundedNumberValue(parsed, "carAddonGapLimit");
-    const cppPremiumLiabilityBundle =
-      reviewProduct === "cppAuto" && liabilityLimit === 200_000_000;
-
     setCalculatorViewMode("addContract");
     setProduct(reviewProduct);
     setHasSelectedProduct(true);
@@ -4155,22 +2663,7 @@ export default function CalculatorPage() {
     setMissingFields([]);
     setSaveMessage("Zkontroluj načtená pole a pak smlouvu ulož ručně.");
 
-    setContractNumber(parsedPdfTextValue(parsed, "contractNumber"));
-    setClientName(parsedPdfTextValue(parsed, "clientName"));
-    setPolicyStartDate(parsedPdfTextValue(parsed, "policyStartDate"));
-    setPolicyEndDate(parsedPdfTextValue(parsed, "policyEndDate"));
-    setPensionTargetAge(reviewProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null);
-    setContractSignedDate(parsedPdfTextValue(parsed, "contractSignedDate"));
-    setStornoDate("");
-    setAmountText(amount != null ? String(amount) : "");
-    setRenovationOriginalPremiumText("");
-    setRenovationIncreaseText("");
-    setRenovationGuaranteeStatus("unknown");
-    if (parsedFrequency && allowedFrequencies(reviewProduct).includes(parsedFrequency)) {
-      setFrequency(parsedFrequency);
-    } else {
-      setFrequency(allowedFrequencies(reviewProduct)[0] ?? "annual");
-    }
+    applyCalculatorPdfFormValues(mapReviewPdfFormValues(reviewProduct, parsed), pdfFormSetters);
 
     setRefreshOriginalOpen(draft.isReplacement);
     setRefreshOriginalContractNumber(
@@ -4184,135 +2677,6 @@ export default function CalculatorPage() {
       adviserName: null,
       original: null,
     });
-
-    setAutoCarMake(parsedPdfTextValue(parsed, "carMake"));
-    setAutoCarPlate(parsedPdfTextValue(parsed, "carPlate"));
-    setAutoCarVin(parsedPdfTextValue(parsed, "carVin"));
-    setAutoCarTp(parsedPdfTextValue(parsed, "carTp"));
-    setAutoCarOrv(parsedPdfTextValue(parsed, "carOrv"));
-    setAutoCarAnnualMileage(parsedPdfTextValue(parsed, "carAnnualMileage"));
-    setAutoCarAllianzScope(parsedPdfTextValue(parsed, "carAllianzScope"));
-    setAutoCarLiabilityLimit(liabilityLimit);
-    setAutoCarSlaviaDetail(parsedSlaviaAutoDetailValue(parsed));
-    if (hullSumInsuredText) {
-      setAutoCarHullSumInsured(null);
-      setAutoCarHullSumInsuredText(hullSumInsuredText);
-    } else {
-      setAutoCarHullSumInsured(hullSumInsured);
-      setAutoCarHullSumInsuredText("");
-    }
-    setAutoCarHullSumInsuredDraft("");
-    setAutoCarHullDeductible(hullDeductible);
-    setAutoCarHullDeductibleText(hullDeductibleText);
-    setAutoCarHullRiskAccident(parsedPdfBooleanValue(parsed, "carHullRiskAccident"));
-    setAutoCarHullRiskTheft(parsedPdfBooleanValue(parsed, "carHullRiskTheft"));
-    setAutoCarHullRiskNatural(parsedPdfBooleanValue(parsed, "carHullRiskNatural"));
-    setAutoCarHullRiskVandalism(parsedPdfBooleanValue(parsed, "carHullRiskVandalism"));
-    setAutoCarHullRiskAnimalCollision(
-      parsedPdfBooleanValue(parsed, "carHullRiskAnimalCollision")
-    );
-    setAutoCarAssistancePlan(parsedPdfTextValue(parsed, "carAssistancePlan"));
-    setAutoCarAddonEso(parsedPdfBooleanValue(parsed, "carAddonEso"));
-    setAutoCarAddonNaturalRisks(parsedPdfBooleanValue(parsed, "carAddonNaturalRisks"));
-    setAutoCarAddonKlika(parsedPdfBooleanValue(parsed, "carAddonKlika"));
-    setAutoCarAddonGlass(
-      parsedPdfBooleanOrNumberValue(parsed, "carAddonGlass", "carAddonGlassLimit")
-    );
-    setAutoCarAddonGlassLimit(glassLimit);
-    setAutoCarAddonAnimalCollision(
-      parsedPdfBooleanOrNumberValue(
-        parsed,
-        "carAddonAnimalCollision",
-        "carAddonAnimalCollisionLimit"
-      )
-    );
-    setAutoCarAddonAnimalCollisionLimit(animalCollisionLimit);
-    setAutoCarAddonAnimalDamage(
-      parsedPdfBooleanOrNumberValue(
-        parsed,
-        "carAddonAnimalDamage",
-        "carAddonAnimalDamageLimit"
-      )
-    );
-    setAutoCarAddonAnimalDamageLimit(animalDamageLimit);
-    setAutoCarAddonVandalism(parsedPdfBooleanValue(parsed, "carAddonVandalism"));
-    setAutoCarAddonTheft(
-      parsedPdfBooleanOrNumberValue(parsed, "carAddonTheft", "carAddonTheftLimit")
-    );
-    setAutoCarAddonTheftLimit(theftLimit);
-    setAutoCarAddonNatural(
-      parsedPdfBooleanOrNumberValue(parsed, "carAddonNatural", "carAddonNaturalLimit")
-    );
-    setAutoCarAddonNaturalLimit(naturalLimit);
-    setAutoCarAddonOwnDamage(
-      parsedPdfBooleanOrNumberValue(
-        parsed,
-        "carAddonOwnDamage",
-        "carAddonOwnDamageLimit"
-      )
-    );
-    setAutoCarAddonOwnDamageLimit(ownDamageLimit);
-    setAutoCarAddonGap(
-      parsedPdfBooleanOrNumberValue(parsed, "carAddonGap", "carAddonGapLimit")
-    );
-    setAutoCarAddonGapLimit(gapLimit);
-    setAutoCarAddonSmartGap(
-      parsedPdfBooleanValue(parsed, "carAddonSmartGap") || cppPremiumLiabilityBundle
-    );
-    setAutoCarAddonServisPro(
-      parsedPdfBooleanValue(parsed, "carAddonServisPro") || cppPremiumLiabilityBundle
-    );
-    setAutoCarAddonFireExplosion(
-      parsedPdfBooleanValue(parsed, "carAddonFireExplosion")
-    );
-    setAutoCarAddonLegalAdvice(parsedPdfBooleanValue(parsed, "carAddonLegalAdvice"));
-    setAutoCarAddonReplacementCar(
-      parsedPdfBooleanValue(parsed, "carAddonReplacementCar")
-    );
-    setAutoCarAddonLuggage(parsedPdfBooleanValue(parsed, "carAddonLuggage"));
-    setAutoCarAddonTransportedGoods(
-      parsedPdfBooleanValue(parsed, "carAddonTransportedGoods")
-    );
-    setAutoCarAddonPothole(parsedPdfBooleanValue(parsed, "carAddonPothole"));
-    setAutoCarAddonNonFaultAccident(
-      parsedPdfBooleanValue(parsed, "carAddonNonFaultAccident")
-    );
-    setAutoCarAddonPassengerInjury(
-      parsedPdfBooleanValue(parsed, "carAddonPassengerInjury")
-    );
-    setAutoCarAddonKeyLossTheft(parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft"));
-
-    setDomexAddress(parsedPdfTextValue(parsed, "domexAddress"));
-    setDomexPropertyType(parsedPdfTextValue(parsed, "domexPropertyType"));
-    setDomexPropertyCoverage(parsedPdfTextValue(parsed, "domexPropertyCoverage"));
-    setDomexPropertySumInsured(
-      parsedPdfRoundedNumberValue(parsed, "domexPropertySumInsured")
-    );
-    setDomexPropertyDeductible(
-      parsedPdfRoundedNumberValue(parsed, "domexPropertyDeductible")
-    );
-    setDomexHouseholdType(parsedPdfTextValue(parsed, "domexHouseholdType"));
-    setDomexHouseholdCoverage(parsedPdfTextValue(parsed, "domexHouseholdCoverage"));
-    setDomexHouseholdSumInsured(
-      parsedPdfRoundedNumberValue(parsed, "domexHouseholdSumInsured")
-    );
-    setDomexHouseholdDeductible(
-      parsedPdfRoundedNumberValue(parsed, "domexHouseholdDeductible")
-    );
-    setDomexOutbuildingSumInsured(
-      parsedPdfRoundedNumberValue(parsed, "domexOutbuildingSumInsured")
-    );
-    setDomexLiabilitySumInsured(
-      parsedPdfRoundedNumberValue(parsed, "domexLiabilitySumInsured")
-    );
-    setDomexLiabilityDeductible(
-      parsedPdfRoundedNumberValue(parsed, "domexLiabilityDeductible")
-    );
-    setDomexLiabilityMobile(parsedPdfBooleanValue(parsed, "domexLiabilityMobile"));
-    setDomexLiabilityTenant(parsedPdfBooleanValue(parsed, "domexLiabilityTenant"));
-    setDomexLiabilityLandlord(parsedPdfBooleanValue(parsed, "domexLiabilityLandlord"));
-    setDomexAssistancePlus(parsedPdfBooleanValue(parsed, "domexAssistancePlus"));
-    setDomexNote(parsedPdfTextValue(parsed, "domexNote"));
 
     setAutoBulkImportRows((currentRows) =>
       currentRows.map((item) =>
@@ -8544,128 +6908,6 @@ export default function CalculatorPage() {
   })();
   const showAutoBulkImport =
     hasSelectedProduct && isBulkImportProduct(product) && isAddContractMode && !isInheritedContractMode && canImportFromPdf;
-  const autoBulkImportCounts = autoBulkImportRows.reduce(
-    (acc, row) => {
-      if (row.status === "success" || row.status === "warning") acc.saved += 1;
-      if (row.status === "review") acc.review += 1;
-      if (row.status === "skipped") acc.skipped += 1;
-      if (row.status === "error") acc.failed += 1;
-      if (row.status === "processing") acc.processing += 1;
-      return acc;
-    },
-    { saved: 0, review: 0, skipped: 0, failed: 0, processing: 0 }
-  );
-  const renderAutoBulkImportPanel = () => {
-    if (!showAutoBulkImport || (!autoBulkImportStatus && autoBulkImportRows.length === 0)) return null;
-
-    const rowTone = (status: AutoBulkImportRowStatus): string => {
-      switch (status) {
-        case "success":
-          return "border-emerald-200 bg-emerald-50 text-emerald-900";
-        case "review":
-        case "warning":
-          return "border-amber-200 bg-amber-50 text-amber-950";
-        case "skipped":
-          return "border-slate-200 bg-slate-50 text-slate-700";
-        case "error":
-          return "border-rose-200 bg-rose-50 text-rose-900";
-        case "processing":
-          return "border-violet-200 bg-violet-50 text-violet-950";
-        case "queued":
-        default:
-          return "border-slate-200 bg-white text-slate-700";
-      }
-    };
-
-    const rowIcon = (status: AutoBulkImportRowStatus) => {
-      if (status === "processing") {
-        return <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} aria-hidden="true" />;
-      }
-      if (status === "success") {
-        return <CheckCircle2 className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />;
-      }
-      if (status === "review" || status === "warning" || status === "error") {
-        return <AlertTriangle className="h-4 w-4" strokeWidth={2.4} aria-hidden="true" />;
-      }
-      return <span className="h-2.5 w-2.5 rounded-full bg-current opacity-45" aria-hidden="true" />;
-    };
-
-    return (
-      <section className={formStyles.batchFeedback} aria-label="Hromadné zpracování PDF">
-        {autoBulkImportStatus && <p className={formStyles.importStatus} role="status">{autoBulkImportStatus}</p>}
-        {autoBulkImportRows.length > 0 && (
-          <div className="mt-3 space-y-2">
-            <div className="flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.1em]">
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800">
-                Uloženo {autoBulkImportCounts.saved}
-              </span>
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
-                Ke kontrole {autoBulkImportCounts.review}
-              </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700">
-                Přeskočeno {autoBulkImportCounts.skipped}
-              </span>
-              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-800">
-                Chyby {autoBulkImportCounts.failed}
-              </span>
-              {autoBulkImportCounts.processing > 0 && (
-                <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-violet-800">
-                  Běží {autoBulkImportCounts.processing}
-                </span>
-              )}
-            </div>
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-              {autoBulkImportRows.map((row) => (
-                <div
-                  key={row.id}
-                  className={`grid grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-xl border px-3 py-2 text-xs ${rowTone(
-                    row.status
-                  )}`}
-                >
-                  <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center">
-                    {rowIcon(row.status)}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-bold">
-                      <span className="max-w-full truncate">{row.fileName}</span>
-                      {row.productLabel && (
-                        <span className="shrink-0 text-[11px] font-black">
-                          {row.productLabel}
-                        </span>
-                      )}
-                      {row.contractNumber && (
-                        <span className="shrink-0 text-[11px] font-black">
-                          {row.contractNumber}
-                        </span>
-                      )}
-                    </div>
-                    {row.clientName && (
-                      <p className="mt-0.5 truncate font-semibold opacity-80">
-                        {row.clientName}
-                      </p>
-                    )}
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <p className="font-semibold opacity-80">{row.message}</p>
-                      {row.status === "review" && row.reviewDraft ? (
-                        <button
-                          type="button"
-                          onClick={() => loadAutoBulkReviewDraft(row.id)}
-                          disabled={autoBulkImporting || saving || pdfImporting}
-                          className="ui-focus inline-flex min-h-8 items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1 text-[11px] font-black text-amber-950 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Zkontrolovat
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-    );
-  };
   const renderProductAndPdfSection = (large = false) => (
       <CalculatorProductAndPdfSection
         canImportFromPdf={canImportFromPdf && isAddContractMode}
@@ -8703,7 +6945,15 @@ export default function CalculatorPage() {
           resetPdfDropState();
           handlePdfFiles(files);
         }}
-        pdfAdditionalContent={renderAutoBulkImportPanel()}
+        pdfAdditionalContent={
+          <CalculatorBulkPdfImportPanel
+            visible={showAutoBulkImport}
+            status={autoBulkImportStatus}
+            rows={autoBulkImportRows}
+            busy={autoBulkImporting || saving || pdfImporting}
+            onReview={loadAutoBulkReviewDraft}
+          />
+        }
         onDragEnter={handlePdfDragEnter}
         onDragOver={handlePdfDragOver}
         onDragLeave={handlePdfDragLeave}

@@ -37,6 +37,7 @@ import {
   reauthenticateWithCredential,
   TotpMultiFactorGenerator,
   signInWithCustomToken,
+  signOut,
 } from "firebase/auth";
 
 import { auth } from "../firebase";
@@ -53,6 +54,8 @@ import {
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
 import { signInAfterMfaSetup } from "@/app/lib/mfaSetupSignIn";
+import { clearServerSession } from "@/app/lib/authSession";
+import { removeTotp } from "@/app/lib/mfaRemoval";
 import { requestMfaEmailCode, confirmMfaEmailCode, completeMfaEnrollment, type MfaEnrollmentSecret } from "@/app/lib/mfaEnrollment";
 import {
   createPasskeyForUser,
@@ -687,7 +690,7 @@ const EXPECTED_MFA_ERROR_CODES = new Set<string>([
 
 const isExpectedMfaError = (error: unknown): boolean => {
   const code = (error as { code?: string })?.code;
-  return typeof code === "string" && EXPECTED_MFA_ERROR_CODES.has(code);
+  return typeof code === "string" && (EXPECTED_MFA_ERROR_CODES.has(code) || code.startsWith("mfa-removal/"));
 };
 
 const logMfaIssue = (context: string, error: unknown) => {
@@ -702,6 +705,7 @@ const logMfaIssue = (context: string, error: unknown) => {
 const resolveMfaErrorMessage = (error: unknown, fallback: string): string => {
   const err = error as { code?: string };
   const message = error instanceof Error ? error.message.trim() : "";
+  if (err?.code?.startsWith("mfa-removal/") && message) return message;
   if (
     err?.code === "auth/wrong-password" ||
     err?.code === "auth/invalid-credential" ||
@@ -2933,20 +2937,15 @@ export default function SettingsPage() {
     setMfaStatus(null);
 
     try {
-      const reauthenticated = await reauthenticateForMfaChange(user);
-      if (!reauthenticated) return;
-
-      await multiFactor(user).unenroll(mfaTotpUid);
-      await syncMfaState(user);
+      const removed = await removeTotp(user, () => reauthenticateForMfaChange(user));
+      if (!removed) return;
 
       setMfaPassword("");
       setMfaReauthCode("");
       setMfaDisableConfirmOpen(false);
       clearMfaDraft();
-      setMfaStatus({
-        type: "success",
-        message: "2FA bylo vypnuto.",
-      });
+      await Promise.allSettled([clearServerSession(), signOut(auth)]);
+      window.location.replace("/login");
     } catch (error) {
       logMfaIssue("handleDisableMfa", error);
       setMfaStatus({

@@ -671,8 +671,8 @@ export default function LoginPage() {
 
   return (
     <LoginShell
-      title={mfaResolver ? "Ověř své přihlášení" : "Vítej zpátky"}
-      description={mfaResolver ? "Už jen kód z tvé ověřovací aplikace." : "Přihlas se do svého pracovního prostoru."}
+      title={mfaResolver ? "Ověř své přihlášení" : "Přihlášení"}
+      description={mfaResolver ? "Zadej kód z ověřovací aplikace." : undefined}
       busy={loading || passkeyLoading}
     >
             <form
@@ -686,13 +686,13 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-email"
-                      className="text-sm font-medium text-violet-100/80"
+                      className={`text-sm font-medium ${loginStyles.label}`}
                     >
                       E-mail
                     </label>
                     <div className="relative">
                       <Mail
-                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-100/48"
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
                         aria-hidden="true"
                       />
                       <input
@@ -712,7 +712,7 @@ export default function LoginPage() {
                   <div className="space-y-1.5">
                     <label
                       htmlFor="login-password"
-                      className="text-sm font-medium text-violet-100/80"
+                      className={`text-sm font-medium ${loginStyles.label}`}
                     >
                       Heslo
                     </label>
@@ -731,7 +731,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={handleReset}
                         disabled={loading || resetBusy}
-                        className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
+                        className={`text-[11px] font-medium transition disabled:opacity-60 ${loginStyles.textLink}`}
                       >
                         {resetBusy ? "Odesílám žádost…" : "Zapomenuté heslo?"}
                       </button>
@@ -740,15 +740,15 @@ export default function LoginPage() {
                 </>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-violet-300/25 bg-white/[0.07] px-3 py-2 text-xs text-violet-100/82">
+                  <div className={loginStyles.info}>
                     Přihlášení pokračuje přes 2FA.
                     {mfaHintLabel
                       ? ` Faktor: ${mfaHintLabel}.`
                       : " Potvrď ho kódem z Microsoft Authenticator."}
                   </div>
                   <fieldset className="space-y-3" aria-describedby="mfa-code-help">
-                    <legend className="flex items-center gap-2 text-sm font-medium text-violet-100/80">
-                      <ShieldCheck className="h-4 w-4 text-violet-200/75" aria-hidden="true" />
+                    <legend className={`flex items-center gap-2 text-sm font-medium ${loginStyles.label}`}>
+                      <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                       Jednorázový kód (2FA)
                     </legend>
                     <div className="grid grid-cols-6 gap-2 sm:gap-3">
@@ -793,11 +793,11 @@ export default function LoginPage() {
                             event.preventDefault();
                             applyMfaDigits(index, event.clipboardData.getData("text"));
                           }}
-                          className="h-14 min-w-0 w-full [min-inline-size:0] rounded-2xl border border-violet-300/30 bg-white/[0.08] text-center text-xl font-bold tabular-nums text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition placeholder:text-violet-100/38 hover:border-violet-200/45 focus:border-violet-200/80 focus:bg-white/[0.13] focus:ring-2 focus:ring-violet-200/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          className={loginStyles.otpInput}
                         />
                       ))}
                     </div>
-                    <p id="mfa-code-help" className="text-xs text-violet-100/58">
+                    <p id="mfa-code-help" className={`text-xs ${loginStyles.hint}`}>
                       Kód z Microsoft Authenticatoru má 6 číslic.
                     </p>
                   </fieldset>
@@ -806,7 +806,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={clearMfaState}
                       disabled={loading}
-                      className="text-[11px] font-medium text-violet-100/68 transition hover:text-white disabled:opacity-60"
+                      className={`text-[11px] font-medium transition disabled:opacity-60 ${loginStyles.textLink}`}
                     >
                       Zpět na přihlášení heslem
                     </button>
@@ -814,19 +814,19 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {setupNotice && <p role="status" className={surface.notice}>{setupNotice}</p>}
+              {setupNotice && <p role="status" className={`${surface.notice} ${loginStyles.notice}`}>{setupNotice}</p>}
               {error && (
-                <p role="alert" className={`${surface.notice} ${surface.noticeError}`}>
+                <p role="alert" className={`${surface.notice} ${surface.noticeError} ${loginStyles.notice} ${loginStyles.noticeError}`}>
                   {error}
                 </p>
               )}
               {error === ACCOUNT_BLOCKED_MESSAGE && (
-                <Link href="/ucet/zabezpeceni?recovery=1" className={surface.secondary}>
+                <Link href="/ucet/zabezpeceni?recovery=1" className={`${surface.secondary} ${loginStyles.secondary}`}>
                   Nastavit dvoufázové ověření (2FA)
                 </Link>
               )}
               {resetStatus && (
-                <p role="status" className={`${surface.notice} ${surface.noticeSuccess}`}>
+                <p role="status" className={`${surface.notice} ${surface.noticeSuccess} ${loginStyles.notice} ${loginStyles.noticeSuccess}`}>
                   {resetStatus}
                 </p>
               )}
@@ -838,9 +838,9 @@ export default function LoginPage() {
                     checked={rememberThisDevice}
                     onChange={(event) => setRememberThisDevice(event.target.checked)}
                     disabled={loading}
-                    className="h-4 w-4 rounded border-violet-200/60 bg-transparent text-violet-500 focus:ring-violet-200/60 focus:ring-offset-0 focus:ring-offset-transparent"
+                    className="h-4 w-4 rounded border-slate-300 bg-white focus:ring-violet-300 focus:ring-offset-0"
                   />
-                  <span className="text-violet-100/82">
+                  <span className={loginStyles.rememberLabel}>
                     Zůstat přihlášený na tomto zařízení
                   </span>
                 </label>
@@ -869,10 +869,10 @@ export default function LoginPage() {
 
               {!mfaResolver && passkeySupported ? (
                 <div className="space-y-3 pt-1">
-                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-100/45">
-                    <span className="h-px flex-1 bg-violet-200/15" />
+                  <div className={loginStyles.passkeyDivider}>
+                    <span />
                     <span>nebo</span>
-                    <span className="h-px flex-1 bg-violet-200/15" />
+                    <span />
                   </div>
                   <button
                     type="button"
@@ -880,7 +880,7 @@ export default function LoginPage() {
                     disabled={loading || passkeyLoading}
                     className={`${surface.secondary} ${loginStyles.secondary} w-full`}
                   >
-                    <KeyRound className="h-4 w-4 text-violet-100/82" aria-hidden="true" />
+                    <KeyRound className="h-4 w-4" aria-hidden="true" />
                     {passkeyLoading
                       ? "Otevírám ověření…"
                       : isIosDevice

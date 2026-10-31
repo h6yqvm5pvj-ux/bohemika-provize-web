@@ -1042,7 +1042,7 @@ export function AccountSecurityPanel({
                       Vypnout dvoufázové ověření?
                     </h3>
                     <p className="mt-1 text-xs font-semibold leading-relaxed !text-rose-100/90">
-                      Přihlašování přes heslo už nebude chráněné kódem z aplikace.
+                      Po odebrání se odhlásíš. Přístup obnovíš po potvrzení e-mailu a nastavení nového 2FA.
                     </p>
                   </div>
                 </div>

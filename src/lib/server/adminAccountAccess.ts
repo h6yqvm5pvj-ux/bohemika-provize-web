@@ -30,9 +30,9 @@ function emailConfirmationComplete(user: UserRecord, block: FirebaseFirestore.Do
       user.multiFactor?.enrolledFactors.some(f => f.factorId === "totp" && f.uid === block.mfaEmailConfirmedFactorUid) === true);
 }
 
-export async function resetAccountMfa({ auth, db, uid, actorUid }: {
-  auth: Auth; db: Firestore; uid: string; actorUid: string;
-}): Promise<AdminAccountAccess> {
+export async function requireMfaEnrollmentApproval({ db, uid, actorUid }: {
+  db: Firestore; uid: string; actorUid: string;
+}): Promise<void> {
   const ref = db.collection("accountBlocks").doc(uid);
   await db.runTransaction(async tx => {
     const before = (await tx.get(ref)).data();
@@ -42,6 +42,13 @@ export async function resetAccountMfa({ auth, db, uid, actorUid }: {
     delete next.mfaRecoveryApproval;
     tx.set(ref, next);
   });
+}
+
+export async function resetAccountMfa({ auth, db, uid, actorUid }: {
+  auth: Auth; db: Firestore; uid: string; actorUid: string;
+}): Promise<AdminAccountAccess> {
+  const ref = db.collection("accountBlocks").doc(uid);
+  await requireMfaEnrollmentApproval({ db, uid, actorUid });
   // Removing the factor revokes old sessions but does not disable password
   // sign-in. An independent administrator block remains in force.
   await auth.updateUser(uid, { multiFactor: { enrolledFactors: null } });

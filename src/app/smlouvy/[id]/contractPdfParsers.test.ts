@@ -28,15 +28,27 @@ const parserCases = [
 
 describe("on-demand contract PDF parsers", () => {
   const loadedParsers: string[] = [];
+  const parserLoadErrors = new Map<string, Error>();
+  const parserRunErrors = new Map<string, Error>();
 
   beforeEach(() => {
     vi.resetModules();
     loadedParsers.length = 0;
+    parserLoadErrors.clear();
+    parserRunErrors.clear();
     for (const parserName of new Set(parserCases.map(([, name]) => name))) {
+      // Register each module once. Queuing two doMock calls for the same ID
+      // before an import lets Vitest's parallel ID resolution choose the winner.
       vi.doMock(`@/app/lib/${parserName}`, () => {
         loadedParsers.push(parserName);
+        const loadError = parserLoadErrors.get(parserName);
+        if (loadError) throw loadError;
         return {
-          [parserName]: async (file: File) => ({ parserName, file }),
+          [parserName]: async (file: File) => {
+            const runError = parserRunErrors.get(parserName);
+            if (runError) throw runError;
+            return { parserName, file };
+          },
         };
       });
     }
@@ -76,9 +88,20 @@ describe("on-demand contract PDF parsers", () => {
 
   it("propagates a parser loading failure to the existing UI error handler", async () => {
     const error = new Error("PDF parser chunk unavailable");
-    vi.doMock("@/app/lib/parseAllianzAutoPdf", () => { throw error; });
+    parserLoadErrors.set("parseAllianzAutoPdf", error);
     const { PDF_REIMPORT_PARSERS } = await import("./contractDetailPdfReimport");
 
-    await expect(PDF_REIMPORT_PARSERS.allianzAuto!({} as File)).rejects.toThrow();
+    // Vitest wraps a factory failure; verify that the actual load error is its cause.
+    await expect(PDF_REIMPORT_PARSERS.allianzAuto!({} as File)).rejects.toMatchObject({ cause: error });
+    expect(loadedParsers).toEqual(["parseAllianzAutoPdf"]);
+  });
+
+  it("propagates a failure after the parser module loads", async () => {
+    const error = new Error("Synthetic PDF cannot be parsed");
+    parserRunErrors.set("parseAllianzAutoPdf", error);
+    const { PDF_REIMPORT_PARSERS } = await import("./contractDetailPdfReimport");
+
+    await expect(PDF_REIMPORT_PARSERS.allianzAuto!({} as File)).rejects.toBe(error);
+    expect(loadedParsers).toEqual(["parseAllianzAutoPdf"]);
   });
 });

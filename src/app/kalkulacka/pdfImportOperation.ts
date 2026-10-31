@@ -1,3 +1,10 @@
+export const PDF_PRODUCT_DETECTION_TIMEOUT_MS = 8_000;
+export const PDF_DATA_IMPORT_TIMEOUT_MS = 15_000;
+const PDF_IMPORT_TIMEOUT_ERROR_NAME = "PdfImportTimeoutError";
+
+export const isPdfImportTimeoutError = (error: unknown): boolean =>
+  error instanceof Error && error.name === PDF_IMPORT_TIMEOUT_ERROR_NAME;
+
 /** A deadline owns an AbortSignal so timing out also stops the PDF/OCR worker. */
 export async function withPdfImportTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
@@ -16,7 +23,7 @@ export async function withPdfImportTimeout<T>(
   };
   const timeout = () => {
     const error = new Error(timeoutMessage);
-    error.name = "PdfImportTimeoutError";
+    error.name = PDF_IMPORT_TIMEOUT_ERROR_NAME;
     rejectFailure(error);
     controller.abort();
   };
