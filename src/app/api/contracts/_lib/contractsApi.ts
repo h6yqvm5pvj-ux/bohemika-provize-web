@@ -105,12 +105,7 @@ import {
   normalizeSubscriptionStatus as normalizeSubscriptionStatusValue,
   type SubscriptionEffectiveState,
 } from "@/lib/subscriptionAccess";
-import {
-  deleteContractPdfAttachment,
-  normalizeStoredContractPdfAttachment,
-  toPublicContractPdfAttachment,
-  type StoredContractPdfAttachment,
-} from "@/lib/server/contractPdfStorage";
+import { toPublicContractPdfAttachment } from "@/lib/server/contractPdfStorage";
 import {
   isValidContractNumber,
   validateContractCoreInvariants,
@@ -7853,7 +7848,7 @@ export async function handleContractsDelete(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Neplatný JSON payload." }, { status: 400 });
   }
 
-  const entries = Array.isArray(body.entries) ? body.entries : [];
+  const entries = Array.isArray(body?.entries) ? body.entries : [];
   if (entries.length === 0) {
     return NextResponse.json({ ok: false, error: "Chybí položky ke smazání." }, { status: 400 });
   }
@@ -7870,7 +7865,10 @@ export async function handleContractsDelete(req: NextRequest) {
   const allowedOwners = new Set<string>([email, ...contractAccessEmails]);
   const dirtyOwners = new Set<string>();
   const tipCleanupTargets = new Set<string>();
-  const contractPdfCleanupTargets: StoredContractPdfAttachment[] = [];
+  const scheduledEntries = new Set<string>();
+  let pendingOwners = new Set<string>();
+  let pendingTipCleanupTargets = new Set<string>();
+  let pendingDeleted = 0;
   let deleted = 0;
   const db = adminDb;
   let batch = db.batch();
@@ -7880,77 +7878,85 @@ export async function handleContractsDelete(req: NextRequest) {
   const commitBatch = async () => {
     if (opsInBatch === 0) return;
     await trackCashflowWrite(() => batch.commit());
+    // Only a confirmed commit authorizes TIP cleanup and a deleted count. A
+    // lost acknowledgement can mean the write succeeded, so do not guess.
+    for (const owner of pendingOwners) dirtyOwners.add(owner);
+    for (const target of pendingTipCleanupTargets) tipCleanupTargets.add(target);
+    deleted += pendingDeleted;
     batch = db.batch();
     opsInBatch = 0;
+    pendingOwners = new Set<string>();
+    pendingTipCleanupTargets = new Set<string>();
+    pendingDeleted = 0;
   };
 
-  for (const item of entries) {
-    const owner = normalizeEmail(item.ownerEmail);
-    const entryId = item.entryId as string | undefined;
-    if (!owner || !isSafeContractNoteId(entryId)) continue;
-    if (!allowedOwners.has(owner)) continue;
+  let failure: { status: number; error: string } | null = null;
+  try {
+    for (const item of entries) {
+      const owner = normalizeEmail(item.ownerEmail);
+      const entryId = item.entryId as string | undefined;
+      if (!owner || !isSafeContractNoteId(entryId)) continue;
+      if (!allowedOwners.has(owner)) continue;
+      const targetKey = JSON.stringify([owner, entryId]);
+      if (scheduledEntries.has(targetKey)) continue;
+      scheduledEntries.add(targetKey);
 
-    const entryRef = db
-      .collection("users")
-      .doc(owner)
-      .collection("entries")
-      .doc(entryId);
-    try {
+      const entryRef = db
+        .collection("users")
+        .doc(owner)
+        .collection("entries")
+        .doc(entryId);
       const entrySnap = await entryRef.get();
-      if (entrySnap.exists) {
-        const entryData = entrySnap.data() as ContractDoc;
-        const contractPdfAttachment = normalizeStoredContractPdfAttachment(
-          (entryData as { contractPdfAttachment?: unknown }).contractPdfAttachment
-        );
-        if (contractPdfAttachment) {
-          contractPdfCleanupTargets.push(contractPdfAttachment);
-        }
-        const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
-        if (tipsterEmail) {
-          const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
-          const tipsterUserDocId = (tipsterProfile?.docId ?? tipsterEmail).trim();
-          if (tipsterUserDocId) {
-            const sourceKey = tipPayoutSourceKey(owner, entryId);
-            tipCleanupTargets.add(
-              JSON.stringify({
-                tipsterUserDocId,
-                sourceKey,
-              })
-            );
-          }
+      if (!entrySnap.exists) continue;
+      if (!entrySnap.updateTime) {
+        throw new Error("Contract version unavailable.");
+      }
+      const entryData = entrySnap.data() as ContractDoc;
+      const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
+      if (tipsterEmail) {
+        const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);
+        const tipsterUserDocId = (tipsterProfile?.docId ?? tipsterEmail).trim();
+        if (tipsterUserDocId) {
+          const sourceKey = tipPayoutSourceKey(owner, entryId);
+          pendingTipCleanupTargets.add(
+            JSON.stringify({
+              tipsterUserDocId,
+              sourceKey,
+            })
+          );
         }
       }
-    } catch (tipReadErr) {
-      markCashflowMutationIncomplete();
-      console.warn(
-        "DELETE /api/contracts: načtení TIP metadata selhalo:",
-        tipReadErr
-      );
-    }
-    const contractRef = db
-      .collection(CONTRACT_REFS_COLLECTION)
-      .doc(contractRefDocId(owner, entryId));
+      const contractRef = db
+        .collection(CONTRACT_REFS_COLLECTION)
+        .doc(contractRefDocId(owner, entryId));
 
-    markHallOwnerDirty(batch, db, owner);
-    batch.delete(entryRef);
-    batch.delete(contractRef);
-    batch.delete(clientContractLinkRef(db, owner, entryId));
-    opsInBatch += 4;
-    deleted += 1;
-    dirtyOwners.add(owner);
+      markHallOwnerDirty(batch, db, owner);
+      // A concurrent transfer, edit or upload invalidates the deletion; never
+      // remove a newer or transferred record.
+      batch.delete(entryRef, { lastUpdateTime: entrySnap.updateTime });
+      batch.delete(contractRef);
+      batch.delete(clientContractLinkRef(db, owner, entryId));
+      opsInBatch += 4;
+      pendingDeleted += 1;
+      pendingOwners.add(owner);
 
-    if (opsInBatch >= BATCH_LIMIT) {
-      await commitBatch();
+      if (opsInBatch >= BATCH_LIMIT) {
+        await commitBatch();
+      }
     }
+    await commitBatch();
+  } catch (error) {
+    markCashflowMutationIncomplete();
+    const conflict = error && typeof error === "object" && "code" in error
+      && [5, 9, 10].includes(Number(error.code));
+    failure = conflict
+      ? { status: 409, error: "Smlouva se mezitím změnila. Obnov seznam a zkus smazání znovu." }
+      : { status: 503, error: "Smlouvy se nepodařilo bezpečně smazat. Obnov seznam a zkus to znovu." };
   }
-  await commitBatch();
   try {
     await markTeamOverviewOwnersDirty(dirtyOwners);
-  } catch (markErr) {
-    console.warn(
-      "DELETE /api/contracts: team-overview invalidace selhala:",
-      markErr
-    );
+  } catch {
+    console.warn("DELETE /api/contracts: team-overview invalidace selhala.");
   }
 
   for (const packedTarget of tipCleanupTargets) {
@@ -7971,27 +7977,18 @@ export async function handleContractsDelete(req: NextRequest) {
         tipsterUserDocId,
         sourceKey,
       });
-    } catch (tipDeleteErr) {
+    } catch {
       markCashflowMutationIncomplete();
-      console.warn(
-        "DELETE /api/contracts: TIP payout cleanup selhal:",
-        tipDeleteErr
-      );
+      console.warn("DELETE /api/contracts: TIP payout cleanup selhal.");
     }
   }
 
-  for (const attachment of contractPdfCleanupTargets) {
-    try {
-      await deleteContractPdfAttachment(attachment);
-    } catch (pdfDeleteErr) {
-      console.warn(
-        "DELETE /api/contracts: PDF přílohu se nepodařilo smazat ze Storage:",
-        pdfDeleteErr
-      );
-    }
-  }
+  // Retain encrypted PDFs until a separate cleanup can verify every reference.
+  // Deleting a contract does not prove another record no longer uses its file.
 
-  return withRateLimit(NextResponse.json({ ok: true, deleted }));
+  return withRateLimit(failure
+    ? NextResponse.json({ ok: false, error: failure.error, deleted }, { status: failure.status })
+    : NextResponse.json({ ok: true, deleted }));
   });
 }
 

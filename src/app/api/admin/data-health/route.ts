@@ -1,6 +1,7 @@
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { businessLookupToken } from "@/lib/server/businessDataEncryption";
 import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
+import { withContractHistory } from "@/lib/server/contractHistory";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,9 +24,10 @@ import { SUPPORTED_PRODUCTS } from "@/app/lib/productFormulas";
 import type { PaymentFrequency, Product } from "@/app/types/domain";
 import { adminAuthErrorResponse, getAdminAuthContext } from "@/lib/server/adminAuth";
 import {
-  deleteContractPdfAttachment,
   normalizeStoredContractPdfAttachment,
 } from "@/lib/server/contractPdfStorage";
+import { normalizeClientNameForDuplicate } from "../../contracts/_lib/contractsApi.identity";
+import { isSafeContractNoteId } from "../../contracts/notes/contractNotes";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import {
   buildTeamOverviewReadModelDocuments,
@@ -2089,6 +2091,10 @@ export async function POST(req: NextRequest) {
   });
 }
 
+class DuplicateCleanupError extends Error {
+  constructor(message: string, readonly status = 409) { super(message); }
+}
+
 export async function DELETE(req: NextRequest) {
   return withCashflowMutation("app/api/admin/data-health/route:DELETE", async () => {
   const authCtx = await getAdminAuthContext(req, {
@@ -2123,7 +2129,7 @@ export async function DELETE(req: NextRequest) {
   const entryId = normalizeText(body.entryId);
   const requestedContractNumber = normalizeContractNumber(body.contractNumber);
   const confirmationNumber = normalizeContractNumber(body.confirmContractNumber);
-  if (!ownerEmail || !entryId || !requestedContractNumber) {
+  if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(ownerEmail) || !isSafeContractNoteId(entryId) || !requestedContractNumber) {
     return NextResponse.json(
       { ok: false, error: "Chybí ownerEmail, entryId nebo contractNumber." },
       { status: 400 }
@@ -2137,6 +2143,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   const db = adminDb;
+  try {
   const targetPath = entryPath(ownerEmail, entryId);
   const entryRef = db.doc(targetPath);
   const entrySnap = await entryRef.get();
@@ -2191,9 +2198,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   const cleanupWarnings: string[] = [];
-  const contractPdfAttachment = normalizeStoredContractPdfAttachment(
-    entryData.contractPdfAttachment
-  );
   const dirtyOwners = collectDirtyOwnersFromEntry(ownerEmail, entryData);
   const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
   const sourceKey = tipPayoutSourceKey(ownerEmail, entryId);
@@ -2203,9 +2207,19 @@ export async function DELETE(req: NextRequest) {
     .doc(contractNumberClaimDocId(targetEntry.normalizedNumber));
   const claimSnap = await claimRef.get();
   const claimData = (claimSnap.data() ?? {}) as Record<string, unknown>;
-  const remainingEntries = Array.from(duplicateByPath.values())
-    .filter((entry) => entry.path !== targetEntry.path)
-    .sort(compareDuplicateSurvivors);
+  const candidates = Array.from(duplicateByPath.values())
+    .filter((entry) => entry.path !== targetEntry.path);
+  // Preserve the exact records the admin reviewed. A transfer, edit, upload or
+  // competing duplicate cleanup must invalidate this operation atomically.
+  const remainingSnapshots = await Promise.all(candidates.map(entry => db.doc(entry.path).get()));
+  const remainingEntries = remainingSnapshots.map(snapshot => {
+    const current = snapshot.exists ? contractEntryFromData({ id: snapshot.id, path: snapshot.ref.path,
+      ownerEmail: ownerEmailFromPath(snapshot.ref.path) ?? "", data: snapshot.data() ?? {} }) : null;
+    if (!current || current.normalizedNumber !== requestedContractNumber) {
+      throw new DuplicateCleanupError("Ponechaná smlouva se změnila. Obnov kontrolu duplicit.");
+    }
+    return current;
+  }).sort(compareDuplicateSurvivors);
   const claimEntryPath = normalizeText(claimData.entryPath);
   const claimPointsToRemaining = remainingEntries.some(
     (entry) => entry.path === claimEntryPath
@@ -2224,34 +2238,85 @@ export async function DELETE(req: NextRequest) {
   const shouldDeleteClaim =
     claimSnap.exists && claimEntryPath === targetEntry.path && !replacementClaimPayload;
 
-  const batch = db.batch();
-  markHallOwnerDirty(batch, db, ownerEmail);
-  batch.delete(entryRef);
-  batch.delete(contractRef);
-  batch.delete(clientContractLinkRef(db, ownerEmail, entryId));
-  if (shouldDeleteClaim) batch.delete(claimRef);
-  if (replacementClaimPayload) {
-    batch.set(
-      claimRef,
-      {
-        ...replacementClaimPayload,
-        ...(claimSnap.exists ? {} : { createdAt: new Date() }),
-        reassignedAt: new Date(),
-        reassignedFromEntryPath: targetEntry.path,
-      },
-      { merge: true }
-    );
-  }
-  if (survivorForIndex && survivorContractRefPayload) {
-    batch.set(
-      db
-        .collection(CONTRACT_REFS_COLLECTION)
-        .doc(contractRefDocId(survivorForIndex.ownerEmail, survivorForIndex.id)),
-      survivorContractRefPayload,
-      { merge: true }
-    );
-  }
-  await trackCashflowWrite(() => batch.commit());
+  const preservedPdf = await trackCashflowWrite(() => db.runTransaction(async transaction => {
+    const snapshots = await transaction.getAll(entryRef, claimRef, ...remainingSnapshots.map(snapshot => snapshot.ref));
+    const expectedSnapshots = [entrySnap, claimSnap, ...remainingSnapshots];
+    snapshots.forEach((snapshot, index) => {
+      const expected = expectedSnapshots[index];
+      if (snapshot.exists !== expected.exists || (expected.exists &&
+        (!snapshot.updateTime || !expected.updateTime || !snapshot.updateTime.isEqual(expected.updateTime)))) {
+        throw new DuplicateCleanupError("Smlouvy se mezitím změnily. Obnov kontrolu duplicit a zkus akci znovu.");
+      }
+    });
+    for (const snapshot of snapshots.slice(2)) {
+      const current = contractEntryFromData({ id: snapshot.id, path: snapshot.ref.path,
+        ownerEmail: ownerEmailFromPath(snapshot.ref.path) ?? "", data: snapshot.data() ?? {} });
+      if (!current || current.normalizedNumber !== requestedContractNumber) {
+        throw new DuplicateCleanupError("Ponechaná smlouva se změnila. Obnov kontrolu duplicit.");
+      }
+    }
+
+    const currentSource = snapshots[0].data() ?? {};
+    const sourcePdf = normalizeStoredContractPdfAttachment(currentSource.contractPdfAttachment);
+    if (currentSource.contractPdfAttachment != null && !sourcePdf) {
+      throw new DuplicateCleanupError("Smazání odmítnuto. PDF příloha vyžaduje kontrolu, aby nedošlo k její ztrátě.");
+    }
+    if (sourcePdf) {
+      const survivorSnapshot = snapshots.slice(2).find(snapshot => snapshot.ref.path === survivorForIndex?.path);
+      const survivorData = survivorSnapshot?.data() ?? {};
+      const sourceClient = normalizeClientNameForDuplicate(targetEntry.clientName);
+      const survivorClient = normalizeClientNameForDuplicate(survivorForIndex?.clientName);
+      if (remainingEntries.length !== 1 || !survivorForIndex || !survivorSnapshot ||
+        survivorForIndex.ownerEmail !== ownerEmail || !targetEntry.productKey ||
+        !SUPPORTED_PRODUCTS.includes(targetEntry.productKey as Product) ||
+        targetEntry.productKey !== survivorForIndex.productKey || !sourceClient || sourceClient !== survivorClient) {
+        throw new DuplicateCleanupError("Smazání odmítnuto. PDF nelze bezpečně přiřadit k jedné stejné smlouvě, klientovi a vlastníkovi.");
+      }
+      const survivorPdf = normalizeStoredContractPdfAttachment(survivorData.contractPdfAttachment);
+      if (survivorData.contractPdfAttachment != null && (!survivorPdf ||
+        survivorPdf.bucketName !== sourcePdf.bucketName || survivorPdf.storagePath !== sourcePdf.storagePath ||
+        survivorPdf.sha256 !== sourcePdf.sha256)) {
+        throw new DuplicateCleanupError("Smazání odmítnuto. Ponechaná smlouva už má jiné nebo neplatné PDF. Nejprve zkontroluj obě přílohy.");
+      }
+      if (!survivorPdf) {
+        transaction.update(survivorSnapshot.ref, withContractHistory(transaction, survivorSnapshot.ref, survivorData, {
+          contractPdfAttachment: sourcePdf,
+          contractPdfAttachmentUpdatedAt: new Date(),
+        }, { actorEmail: authCtx.adminEmail, kind: "attachment", title: "Zachováno PDF při odstranění duplicity",
+          changes: [{ label: "Soubor", before: null, after: sourcePdf.originalName }] }));
+      }
+    }
+
+    markHallOwnerDirty(transaction, db, ownerEmail);
+    transaction.delete(entryRef);
+    transaction.delete(contractRef);
+    transaction.delete(clientContractLinkRef(db, ownerEmail, entryId));
+    if (shouldDeleteClaim) transaction.delete(claimRef);
+    if (replacementClaimPayload) {
+      transaction.set(
+        claimRef,
+        {
+          ...replacementClaimPayload,
+          ...(claimSnap.exists ? {} : { createdAt: new Date() }),
+          reassignedAt: new Date(),
+          reassignedFromEntryPath: targetEntry.path,
+        },
+        { merge: true }
+      );
+    }
+    if (survivorForIndex && survivorContractRefPayload) {
+      transaction.set(
+        db
+          .collection(CONTRACT_REFS_COLLECTION)
+          .doc(contractRefDocId(survivorForIndex.ownerEmail, survivorForIndex.id)),
+        survivorContractRefPayload,
+        { merge: true }
+      );
+    }
+    // The file remains at its encrypted storage path. The retained metadata
+    // points to it; no storage deletion is safe or necessary for this action.
+    return Boolean(sourcePdf);
+  }));
 
   let deletedTipPayouts = 0;
   try {
@@ -2259,23 +2324,15 @@ export async function DELETE(req: NextRequest) {
       tipsterEmail,
       sourceKey,
     });
-  } catch (error) {
+  } catch {
     markCashflowMutationIncomplete();
-    cleanupWarnings.push(`TIP payout cleanup selhal: ${formatError(error)}`);
+    cleanupWarnings.push("TIP payout cleanup selhal.");
   }
 
   try {
     await markTeamOverviewOwnersDirty(dirtyOwners);
-  } catch (error) {
-    cleanupWarnings.push(`Invalidace týmových součtů selhala: ${formatError(error)}`);
-  }
-
-  if (contractPdfAttachment) {
-    try {
-      await deleteContractPdfAttachment(contractPdfAttachment);
-    } catch (error) {
-      cleanupWarnings.push(`PDF přílohu se nepodařilo smazat: ${formatError(error)}`);
-    }
+  } catch {
+    cleanupWarnings.push("Invalidace týmových součtů selhala.");
   }
 
   return NextResponse.json({
@@ -2292,6 +2349,16 @@ export async function DELETE(req: NextRequest) {
     warnings: cleanupWarnings,
     deletedContract: duplicateMemberFromEntry(targetEntry),
     deletedBy: authCtx.adminEmail,
+    preservedPdf,
   });
+  } catch (error) {
+    if (error instanceof DuplicateCleanupError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
+    }
+    const conflict = error && typeof error === "object" && "code" in error && [9, 10].includes(Number(error.code));
+    return NextResponse.json({ ok: false, error: conflict
+      ? "Smlouvy se mezitím změnily. Obnov kontrolu duplicit a zkus akci znovu."
+      : "Odstranění duplicity se nepodařilo potvrdit. Obnov kontrolu duplicit před další akcí." }, { status: conflict ? 409 : 503 });
+  }
   });
 }

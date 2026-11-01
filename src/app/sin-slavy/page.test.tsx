@@ -18,7 +18,7 @@ import HallOfFamePage from "./page";
 function response(currentUserId = "anna"): HallOfFamePeriodsResponse {
   const periods = Object.fromEntries((["month", "3months", "6months", "year"] as HallPeriod[]).map((key, index) => {
     const row = { id: "anna", rank: 1, name: "Anna", profileAvatar: "", contracts: index + 1, annualPremium: (index + 1) * 12000, leaderRatioPct: 100 };
-    const rankings: HallRankings = { life: [row], auto: [], property: [], business: [{ ...row, name: "Boris", id: "boris" }], gold: [] };
+    const rankings: HallRankings = { life: [row], auto: [], property: [], business: [{ ...row, name: "Boris", id: "boris" }] };
     return [key, { rankings, period: { key, startDate: ["2026-09-01", "2026-07-01", "2026-04-01", "2025-10-01"][index], endDate: "2026-09-14" } }];
   })) as Record<HallPeriod, HallPeriodResult>;
   return { ok: true, periods, currentUserId, updatedAtMs: Date.now() };
@@ -35,6 +35,8 @@ describe("hall page categories and loading", () => {
     mocks.effectiveEmail = user.email;
     mocks.fetch.mockResolvedValue(response());
     mocks.authChanged.mockImplementation((_auth, listener) => { authListener = listener; listener(user); return () => {}; });
+    vi.spyOn(window, "matchMedia").mockImplementation(() => ({ matches: false } as MediaQueryList));
+    vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -42,11 +44,13 @@ describe("hall page categories and loading", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    delete document.documentElement.dataset.motion;
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
   async function mount() { await act(async () => root.render(<HallOfFamePage />)); }
   async function click(label: string) {
-    const button = [...container.querySelectorAll("button")].find((element) => element.textContent === label);
+    const button = [...container.querySelectorAll("button")].find((element) => element.textContent?.trim() === label);
     expect(button).toBeDefined();
     await act(async () => button!.click());
   }
@@ -107,5 +111,35 @@ describe("hall page categories and loading", () => {
     await act(async () => finish(response()));
     expect(container.textContent).toContain("Pro zobrazení výsledků se přihlas");
     expect(container.querySelector("tbody")).toBeNull();
+  });
+
+  it("reveals and focuses my position beyond the first page without fetching again", async () => {
+    const payload = response("member-12");
+    for (const result of Object.values(payload.periods)) {
+      result.rankings.life = Array.from({ length: 12 }, (_, index) => ({
+        id: `member-${index + 1}`, rank: index + 1, name: `Synthetic member ${index + 1}`,
+        profileAvatar: "", contracts: 12 - index, annualPremium: (24 - index) * 12000, leaderRatioPct: 100 - index,
+      }));
+    }
+    mocks.fetch.mockResolvedValue(payload);
+    await mount();
+    expect(container.querySelector("#hall-member-member-12")).toBeNull();
+    expect(container.querySelector('[aria-label="Tvoje umístění"]')?.textContent).toContain("12. místo z 12");
+    await click("Najít mě v žebříčku");
+    expect(document.activeElement?.id).toBe("hall-member-member-12");
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" });
+    expect(mocks.fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(["setting", "system"])("locates a winner without motion when disabled by %s", async source => {
+    if (source === "setting") document.documentElement.dataset.motion = "off";
+    else vi.mocked(window.matchMedia).mockImplementation(query => ({ matches: query.includes("prefers-reduced-motion") } as MediaQueryList));
+    await mount();
+    const button = container.querySelector<HTMLButtonElement>('button[aria-label="Anna: zobrazit v žebříčku"]');
+    expect(button).not.toBeNull();
+    await act(async () => button!.click());
+    expect(document.activeElement?.id).toBe("hall-member-anna");
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "instant" });
+    expect(mocks.fetch).toHaveBeenCalledOnce();
   });
 });

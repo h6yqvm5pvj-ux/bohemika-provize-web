@@ -70,7 +70,7 @@ describe("global hall API access and periods", () => {
       expect(body.rankings.property).toEqual(month.rankings.property);
       expect(body.rankings.life).toEqual([]);
       expect(body.rankings.auto).toEqual([]);
-      expect(body.rankings.gold).toEqual([]);
+      expect(Object.keys(body.rankings)).toEqual(["life", "auto", "property", "business"]);
     }
     expect(mocks.group).toHaveBeenCalledOnce();
   });

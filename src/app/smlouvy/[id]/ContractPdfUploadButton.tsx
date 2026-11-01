@@ -33,6 +33,7 @@ function uploadError(error: unknown): string {
   const status = error && typeof error === "object" && "status" in error ? Number(error.status) : null;
   if (status === 401 || status === 403) return "K této smlouvě nemáš oprávnění nahrát PDF.";
   if (status === 409) return "Ke smlouvě už bylo PDF připojeno nebo se mezitím změnila. Obnov detail.";
+  if (status === 503) return "Výsledek nahrání se nepodařilo potvrdit. Obnov detail před dalším nahráním.";
   return "PDF se nepodařilo nahrát. Zkus to znovu.";
 }
 

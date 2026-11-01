@@ -45,6 +45,6 @@ describe("hall calendar periods", () => {
     ], new Date("2026-09-14T12:00:00Z"));
     expect(Object.values(results).map((result) => result.rankings.life[0].contracts)).toEqual([2, 3, 4, 5]);
     expect(results.year.rankings.life[0].annualPremium).toBe(500);
-    expect(results.month.rankings.gold).toEqual([]);
+    expect(Object.keys(results.month.rankings)).toEqual(["life", "auto", "property", "business"]);
   });
 });

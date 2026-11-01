@@ -13,7 +13,6 @@ import {
   buildContractPdfStoredFileName,
   contractPdfContentDisposition,
   createContractPdfAttachmentReadStream,
-  deleteContractPdfAttachment,
   isStorageNotFoundError,
   normalizeStoredContractPdfAttachment,
   toPublicContractPdfAttachment,
@@ -197,33 +196,48 @@ export async function POST(req: NextRequest) {
       contractPdfAttachmentUpdatedAt: FieldValue.serverTimestamp(),
     }, { actorEmail: ctx.actorEmail, kind: "attachment", title: previousAttachment ? "Nahrazeno PDF smlouvy" : "Nahráno PDF smlouvy",
       changes: [{ label: "Soubor", before: previousAttachment?.originalName ?? null, after: uploaded.originalName }] }), { lastUpdateTime: loaded.entrySnap.updateTime! });
-    await trackCashflowWrite(() => batch.commit());
-  } catch (error) {
-    if (uploaded) {
+    const prepared = uploaded;
+    await trackCashflowWrite(async () => {
       try {
-        await deleteContractPdfAttachment(uploaded);
-      } catch {
-        console.warn("POST /api/contracts/attachment: cleanup po chybě selhal.");
+        await batch.commit();
+      } catch (error) {
+        // A transport failure does not prove the atomic write was rejected.
+        // Confirm through the same per-record authorization boundary before
+        // reporting success to either the caller or the mutation tracker.
+        try {
+          const current = await loadContractForAttachment({
+            ownerEmail, entryId, viewerEmail: ctx.email, teamEmails: ctx.contractAccessEmails,
+          });
+          const saved = current.ok ? normalizeStoredContractPdfAttachment(current.contract.contractPdfAttachment) : null;
+          if (saved && saved.bucketName === prepared.bucketName && saved.storagePath === prepared.storagePath &&
+            saved.sha256 === prepared.sha256) {
+            uploaded = saved;
+            return;
+          }
+        } catch {
+          // Preserve the encrypted object when the result cannot be established.
+        }
+        throw error;
       }
-    }
-    if (error && typeof error === "object" && "code" in error && [9, 10].includes(Number(error.code))) {
-      return withRateLimit(jsonError("Smlouva se mezitím změnila. Obnov detail a zkus nahrání znovu.", 409));
+    });
+  } catch (error) {
+    // Firestore and Storage cannot commit together. Never destroy a prepared
+    // PDF here: it may already be referenced, including after a transfer.
+    if (uploaded) {
+      const conflict = error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code));
+      return withRateLimit(jsonError(conflict
+        ? "Smlouva se mezitím změnila. Obnov detail před dalším nahráním."
+        : "Uložení PDF se nepodařilo spolehlivě potvrdit. Obnov detail před dalším nahráním.", conflict ? 409 : 503));
     }
     const message = error instanceof Error && PUBLIC_PDF_VALIDATION_ERRORS.has(error.message)
       ? error.message : "PDF se nepodařilo uložit. Zkus nahrání znovu.";
     return withRateLimit(jsonError(message, 400));
   }
 
-  if (
-    previousAttachment &&
-    previousAttachment.storagePath !== uploaded.storagePath
-  ) {
-    try {
-      await deleteContractPdfAttachment(previousAttachment);
-    } catch {
-      console.warn("POST /api/contracts/attachment: staré PDF se nepodařilo smazat.");
-    }
-  }
+  if (!uploaded) return withRateLimit(jsonError("Uložení PDF se nepodařilo potvrdit. Obnov detail smlouvy.", 503));
+
+  // Keep superseded encrypted files for a separate, verified cleanup. Immediate
+  // deletion could invalidate a reference retained by another contract record.
 
   let clientCardEmail: ClientCardEmailImportStatus | "unavailable" = "skipped";
   if (loaded.contract.productKey === "cppAuto" && ctx.email === ownerEmail && !ctx.isImpersonating) {

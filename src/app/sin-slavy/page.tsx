@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowDown, ArrowLeft, BriefcaseBusiness, CalendarDays, CarFront, Check, ChevronDown, Crown, Globe2, Home, Medal, Search, ShieldCheck, Sparkles, Trophy, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUpRight, BriefcaseBusiness, CalendarDays, CarFront, Check, ChevronDown, Crown, Globe2, Home, Medal, Search, ShieldCheck, Trophy, X } from "lucide-react";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import { AppLayout } from "@/components/AppLayout";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
@@ -14,13 +14,14 @@ import { useEffectiveUserEmail } from "@/app/lib/useAdminImpersonation";
 import type { HallCategory, HallOfFamePeriodsResponse, HallPeriod, HallRow } from "./hallOfFame.types";
 import styles from "./hallOfFame.module.css";
 import { HallOfFameLoader } from "./HallOfFameLoader";
+import { HallPersonalPosition } from "./HallPersonalPosition";
+import { useHallSpatialTilt } from "./useHallSpatialTilt";
 
 const CATEGORIES = [
   { key: "life", label: "Životní pojištění", icon: ShieldCheck },
   { key: "auto", label: "Auto", icon: CarFront },
   { key: "property", label: "Majetek a odpovědnost", icon: Home },
   { key: "business", label: "Podnikatelé", icon: BriefcaseBusiness },
-  { key: "gold", label: "Zlato", icon: Sparkles },
 ] as const;
 const PERIODS: { key: HallPeriod; label: string }[] = [
   { key: "month", label: "Aktuální měsíc" },
@@ -35,9 +36,10 @@ const dateLabel = (value: string) => value.split("-").reverse().map(Number).join
 const premiumLabel = (category: HallCategory) => category === "life" ? "Měsíční pojistné" : "Roční pojistné";
 const formatPremium = (annualPremium: number, category: HallCategory) => formatMoney(category === "life" ? annualPremium / 12 : annualPremium);
 
-function WinnerCard({ row, isMe, category }: { row: HallRow; isMe: boolean; category: HallCategory }) {
+function WinnerCard({ row, isMe, category, onLocate }: { row: HallRow; isMe: boolean; category: HallCategory; onLocate: () => void }) {
+  const tilt = useHallSpatialTilt();
   return (
-    <article className={styles.winner} data-rank={row.rank} aria-label={`${row.rank}. místo: ${row.name}`}>
+    <article className={styles.winner} data-rank={row.rank} aria-label={`${row.rank}. místo: ${row.name}`} {...tilt}>
       <div className={styles.winnerBody}>
         <span className={styles.winnerLabel}>
           {row.rank === 1 ? <Crown size={14} aria-hidden="true" /> : <Medal size={14} aria-hidden="true" />}
@@ -51,6 +53,9 @@ function WinnerCard({ row, isMe, category }: { row: HallRow; isMe: boolean; cate
         <span className={styles.premiumLabel}>{premiumLabel(category)}</span>
         <strong className={styles.winnerAmount}>{formatPremium(row.annualPremium, category)}</strong>
         <span className={styles.winnerContracts}>Počet smluv <b>{number(row.contracts)}</b></span>
+        <button type="button" className={styles.winnerAction} onClick={onLocate} aria-label={`${row.name}: zobrazit v žebříčku`}>
+          Najít v žebříčku <ArrowUpRight size={14} aria-hidden="true" />
+        </button>
       </div>
       <div className={styles.podiumStep} aria-hidden="true"><span>{String(row.rank).padStart(2, "0")}</span><Trophy size={22} strokeWidth={1.25} /></div>
     </article>
@@ -68,7 +73,9 @@ export default function HallOfFamePage() {
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [locateRequest, setLocateRequest] = useState(0);
-  const locatePending = useRef(false);
+  const locatePending = useRef<string | null>(null);
+  const heroTilt = useHallSpatialTilt();
+  const stageTilt = useHallSpatialTilt();
   const effectiveEmail = useEffectiveUserEmail(authUser?.email);
   const hall = useMemo(() => snapshot ? { ...snapshot.periods[period], currentUserId: snapshot.currentUserId } : null, [snapshot, period]);
 
@@ -97,7 +104,6 @@ export default function HallOfFamePage() {
 
   const rankedRows = useMemo(() => hall?.rankings[activeCategory] ?? [], [hall, activeCategory]);
   const filteredRows = useMemo(() => rankedRows.filter((row) => normalize(row.name).includes(normalize(query))), [rankedRows, query]);
-  const myRow = rankedRows.find((row) => row.id === hall?.currentUserId);
   const activeTab = CATEGORIES.find((category) => category.key === activeCategory)!;
   const rankingLabel = activeCategory === "life" ? "měsíčního pojistného" : "ročního pojistného";
   const overallContracts = rankedRows.reduce((sum, row) => sum + row.contracts, 0);
@@ -106,18 +112,20 @@ export default function HallOfFamePage() {
 
   useEffect(() => {
     if (!locatePending.current || !hall) return;
-    const row = document.getElementById(`hall-member-${hall.currentUserId}`);
+    const row = document.getElementById(`hall-member-${locatePending.current}`);
     if (!row) return;
-    locatePending.current = false;
+    locatePending.current = null;
     row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    const reduceMotion = document.documentElement.dataset.motion === "off" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.scrollIntoView({ block: "center", behavior: reduceMotion ? "instant" : "smooth" });
   }, [locateRequest, hall]);
 
-  function findMe() {
-    if (!myRow) return;
+  function locateMember(id: string) {
+    const index = rankedRows.findIndex(row => row.id === id);
+    if (index < 0) return;
     setQuery("");
-    setVisibleCount(Math.max(PAGE_SIZE, Math.ceil((rankedRows.indexOf(myRow) + 1) / PAGE_SIZE) * PAGE_SIZE));
-    locatePending.current = true;
+    setVisibleCount(Math.max(PAGE_SIZE, Math.ceil((index + 1) / PAGE_SIZE) * PAGE_SIZE));
+    locatePending.current = id;
     setLocateRequest((value) => value + 1);
   }
 
@@ -128,20 +136,18 @@ export default function HallOfFamePage() {
           <span><Trophy size={14} aria-hidden="true" /> Úspěchy napříč celou aplikací</span>
           <Link href="/"><ArrowLeft size={14} aria-hidden="true" /> Zpět na přehled</Link>
         </div>
-        <header className={styles.hero}>
+        <header className={styles.hero} {...heroTilt}>
           <div className={styles.heroCopy}>
             <span className={styles.eyebrow}>Prostor pro výjimečné výsledky</span>
             <h1>Síň slávy<span>.</span></h1>
-            <p>Skvělé výsledky si zaslouží být vidět.<br />Objev ty nejlepší napříč všemi týmy.</p>
-            <div className={styles.heroMeta}><Globe2 size={14} aria-hidden="true" /> Společný žebříček všech uživatelů</div>
           </div>
-          <div className={styles.heroArt} aria-hidden="true">
+          <div className={styles.heroSurface} aria-hidden="true"><div className={styles.heroArt}>
             <div className={styles.heroOrbit} />
             <div className={styles.heroTrophy}>
-              <Image src="/illustrations/team/hall-trophy-modern-transparent-v2.webp" alt="" width={390} height={390} sizes="(max-width: 360px) 125px, (max-width: 540px) 154px, (max-width: 1100px) 237px, 258px" priority className={styles.heroImage} />
+              <Image src="/illustrations/team/hall-trophy-modern-transparent-v2.webp" alt="" width={390} height={390} sizes="(max-width: 540px) 118px, 188px" priority className={styles.heroImage} />
               <span className={styles.trophyBrand} />
             </div>
-          </div>
+          </div></div>
         </header>
 
         <div className={styles.filters}>
@@ -168,15 +174,13 @@ export default function HallOfFamePage() {
           <div className={styles.state} role="status"><span className={styles.emptyMedal}><Trophy size={34} strokeWidth={1.4} aria-hidden="true" /></span><span className={styles.eyebrow}>{activeTab.label}</span><h2>První příčka zatím čeká</h2><p>V této kategorii za zvolené období není žádná produkce.<br />Zkus jiné období nebo se podívej na další kategorii.</p></div>
         ) : (
           <>
-            <section className={styles.champions} aria-labelledby="champions-title">
-              <div className={styles.sectionHeading}><div><span className={styles.sectionKicker}>Nejlepší v kategorii</span><h2 id="champions-title">{activeTab.label}</h2></div><span className={styles.rankingRule}><ArrowDown size={13} aria-hidden="true" /> Podle {rankingLabel}</span></div>
-              <div className={styles.podium} data-count={Math.min(rankedRows.length, 3)}>{rankedRows.slice(0, 3).map((row) => <WinnerCard key={row.id} row={row} category={activeCategory} isMe={row.id === hall?.currentUserId} />)}</div>
-            </section>
-
-            <section className={styles.myPosition} aria-label="Tvoje umístění">
-              <div className={styles.myRank}>{myRow ? <strong>{myRow.rank}<span>.</span></strong> : <Medal size={25} aria-hidden="true" />}</div>
-              <div className={styles.myCopy}><h2>Tvoje umístění{myRow && <span>{myRow.rank <= 3 ? "Na stupních vítězů" : `${myRow.rank}. místo z ${number(rankedRows.length)}`}</span>}</h2><p>{myRow ? <>{formatPremium(myRow.annualPremium, activeCategory)} <span>· Počet smluv: {number(myRow.contracts)}</span></> : "V této kategorii za zvolené období zatím nemáš produkci."}</p></div>
-              {myRow && <button type="button" onClick={findMe}>Najít mě v žebříčku <ArrowDown size={15} aria-hidden="true" /></button>}
+            <HallPersonalPosition rows={rankedRows} currentUserId={hall?.currentUserId ?? ""} category={activeCategory}
+              onFindMe={() => { if (hall) locateMember(hall.currentUserId); }} />
+            <section className={styles.champions} aria-labelledby="champions-title" {...stageTilt}>
+              <div className={styles.stageFloor} aria-hidden="true" />
+              <div className={styles.sectionHeading}><div><span className={styles.sectionKicker}>Stupně vítězů</span><h2 id="champions-title">{activeTab.label}</h2></div><span className={styles.rankingRule}><ArrowDown size={13} aria-hidden="true" /> Podle {rankingLabel}</span></div>
+              <div key={`${activeCategory}-${period}`} className={styles.podium} data-count={Math.min(rankedRows.length, 3)}>{rankedRows.slice(0, 3).map((row) => <WinnerCard key={row.id} row={row} category={activeCategory} isMe={row.id === hall?.currentUserId} onLocate={() => locateMember(row.id)} />)}</div>
+              <div className={styles.stageMeta}><span><Trophy size={13} aria-hidden="true" /> Nejlepší {number(Math.min(rankedRows.length, 3))} z {number(rankedRows.length)} účastníků</span><span>Výsledky za zvolené období</span></div>
             </section>
 
             <section className={styles.leaderboard} aria-labelledby="leaderboard-title">

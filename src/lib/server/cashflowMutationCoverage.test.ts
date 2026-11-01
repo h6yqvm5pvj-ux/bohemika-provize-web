@@ -115,11 +115,17 @@ describe("cashflow mutation source coverage", () => {
 
   it("keeps failed TIP cleanup blocking even when the response remains successful", () => {
     const source = readFileSync("src/app/api/admin/data-health/route.ts", "utf8");
-    expect(source).toMatch(/catch \(error\) \{\s+markCashflowMutationIncomplete\(\);\s+cleanupWarnings\.push\(`TIP payout cleanup/);
+    expect(source).toMatch(/catch(?: \(error\))? \{\s+markCashflowMutationIncomplete\(\);\s+cleanupWarnings\.push\([`"]TIP payout cleanup/);
     const contracts = readFileSync("src/app/api/contracts/_lib/contractsApi.ts", "utf8");
     const swallowedTipFailures = [...contracts.matchAll(/catch \((?:tipSyncErr|refreshTipSyncErr|tipReadErr|tipDeleteErr)\) \{([^}]+)/g)];
-    expect(swallowedTipFailures).toHaveLength(7);
+    // DELETE now aborts on source/TIP metadata read failures instead of
+    // swallowing them; its post-commit cleanup no longer logs a raw error.
+    expect(swallowedTipFailures).toHaveLength(5);
     for (const [, body] of swallowedTipFailures) expect(body).toMatch(/^\s*markCashflowMutationIncomplete\(\);/);
+    const deletion = contracts.slice(contracts.indexOf("export async function handleContractsDelete("),
+      contracts.indexOf("export async function handleContractsList("));
+    expect(deletion).toMatch(/await deleteTipPayoutDocsForSource\([\s\S]*?catch \{\s*markCashflowMutationIncomplete\(\);/);
+    expect(deletion).toMatch(/catch \(error\) \{\s*markCashflowMutationIncomplete\(\);/);
   });
 
   it("keeps partial statement processing blocked after an operational lookup failure", () => {

@@ -1,4 +1,4 @@
-export type HallCategory = "life" | "auto" | "property" | "business" | "gold";
+export type HallCategory = "life" | "auto" | "property" | "business";
 export type HallRow = {
   id: string;
   rank: number;

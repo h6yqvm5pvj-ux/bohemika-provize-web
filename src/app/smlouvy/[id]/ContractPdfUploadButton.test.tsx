@@ -104,6 +104,14 @@ describe("late contract PDF attachment", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("asks to refresh after an unconfirmed upload without claiming the PDF was lost", async () => {
+    requestUpload.mockRejectedValue(Object.assign(new Error("private storage details"), { status: 503 }));
+    await render(); await choose(pdf());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Obnov detail před dalším nahráním");
+    expect(container.textContent).not.toContain("private storage details");
+    expect(onUploaded).not.toHaveBeenCalled();
+  });
+
   it("prevents duplicate requests while an upload is pending", async () => {
     const pending = deferred<{ ok: boolean; attachment: typeof attachment }>();
     requestUpload.mockReturnValue(pending.promise);

@@ -55,7 +55,7 @@ export function buildHallRankingsFromStats(members: HallMember[], stats: HallPer
 }
 
 const CATEGORIES: Record<HallCategory, Category[]> = {
-  life: ["life"], auto: ["auto"], property: ["property", "travel", "foreigners", "other"], business: ["business"], gold: ["comfort"],
+  life: ["life"], auto: ["auto"], property: ["property", "travel", "foreigners", "other"], business: ["business"],
 };
 const amount = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 export const hallParticipantId = (email: string) => createHash("sha256").update(email.trim().toLowerCase()).digest("hex").slice(0, 24);

@@ -127,7 +127,7 @@ describe("first PDF attachment from contract detail", () => {
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
-  it.each([9, 10])("returns a safe conflict and removes only the new file after concurrent update %s", async code => {
+  it.each([9, 10])("returns a safe conflict and preserves files after an unconfirmed concurrent update %s", async code => {
     const previous = { storagePath: "existing.pdf", originalName: "existing.pdf" };
     const uploaded = { sha256: "new-hash", storagePath: "new.pdf", originalName: "new.pdf" };
     mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractPdfAttachment: previous }), updateTime: "version" });
@@ -137,17 +137,16 @@ describe("first PDF attachment from contract detail", () => {
     const response = await POST(request());
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining("mezitím změnila") });
-    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(uploaded);
-    expect(mocks.remove).not.toHaveBeenCalledWith(previous);
+    expect(mocks.remove).not.toHaveBeenCalled();
     expect(mocks.fill).not.toHaveBeenCalled();
   });
 
-  it("keeps legacy authorized replacement available when onlyIfMissing is omitted", async () => {
+  it("keeps legacy authorized replacement available and retains the previous encrypted PDF", async () => {
     const previous = { storagePath: "existing.pdf", originalName: "existing.pdf" };
     mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractPdfAttachment: previous }), updateTime: "version" });
     mocks.normalize.mockReturnValue(previous);
     expect((await POST(request())).status).toBe(200);
-    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(previous);
+    expect(mocks.remove).not.toHaveBeenCalled();
   });
 
   it("does not expose unexpected storage errors in the response or cleanup logs", async () => {
@@ -214,7 +213,7 @@ describe("CPP Auto attachment contact import", () => {
   });
   it("never enriches after a rejected upload or failed commit", async () => {
     mocks.commit.mockRejectedValue(new Error("failed"));
-    expect((await POST(request())).status).toBe(400);
+    expect((await POST(request())).status).toBe(503);
     expect(mocks.fill).not.toHaveBeenCalled();
   });
   it("preserves authentication rejection", async () => {
