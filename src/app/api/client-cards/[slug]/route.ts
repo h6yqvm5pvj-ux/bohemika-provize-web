@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { canAccessClientCards } from "@/app/_klienti/clientAccess";
 import { isClientCardSlug } from "@/app/_klienti/clientIdentity";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 import {
   MAX_CLIENT_CARD_REQUEST_BYTES,
   parseClientCardDraft,
@@ -124,6 +125,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       // from a current form should clear an existing company identifier.
       const updatedCard = Object.prototype.hasOwnProperty.call(body.card, "companyId")
         ? card : { ...card, companyId: current.card?.companyId ?? "" };
+      // The saved IČO may be supplied only by the current record when an older
+      // tab omits it. Apply the company hint after resolving that value.
+      updatedCard.clientName = formatClientDisplayName(
+        (body.card as Record<string, unknown>).clientName as string,
+        { isCompany: Boolean(updatedCard.companyId) },
+      );
       const revision = current.revision + 1;
       transaction.set(access.ref, {
         ownerUid: access.ctx.uid,

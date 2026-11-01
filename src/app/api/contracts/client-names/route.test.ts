@@ -18,6 +18,10 @@ beforeEach(() => {
   mocks.get.mockResolvedValue({ docs: ["Jan Buček", "Jan Bůček", " JAN   BUČEK ", "", null].map(clientName => ({ data: () => ({ clientName }) })) });
 });
 describe("complete client name directory", () => {
+  it("formats legacy personal names while preserving company spelling and distinct accent identities", async () => {
+    mocks.get.mockResolvedValue({ docs: ["JAN BUČEK", "Jan Buček", "JAN BŮČEK", "PEMI Cars s.r.o."].map(clientName => ({ data: () => ({ clientName }) })) });
+    expect(await (await GET(request())).json()).toEqual({ ok: true, names: ["Jan Buček", "Jan Bůček", "PEMI Cars s.r.o."] });
+  });
   it("reads only names and keeps accent variants while deduplicating spelling and spacing", async () => {
     const response = await GET(request());
     expect(await response.json()).toEqual({ ok: true, names: ["Jan Buček", "Jan Bůček"] });

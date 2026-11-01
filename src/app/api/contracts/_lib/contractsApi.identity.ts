@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { businessLookupToken } from "@/lib/server/businessDataEncryption";
 
 import { toDate } from "@/app/lib/formatters";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 
 const CREATE_REPLAY_IGNORED_FIELDS = new Set<string>([
   "allowedEmails",
@@ -93,7 +94,10 @@ export const createReplayComparableJson = (
       (key === "commissionMode" && expected.acquisitionType === "inherited"))
     .sort()
     .forEach((key) => {
-      out[key] = normalizeCreateReplayValue(source[key]);
+      const value = source[key];
+      out[key] = normalizeCreateReplayValue(
+        key === "clientName" && typeof value === "string" ? formatClientDisplayName(value) : value,
+      );
     });
   return JSON.stringify(out);
 };

@@ -1,5 +1,5 @@
 import "../../../../../tests/helpers/privateEncryptionTestKey";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { Firestore } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateFirestore } from "../../../../../tests/helpers/privateFirestore";
@@ -57,6 +57,88 @@ beforeEach(() => {
 });
 
 describe("contract response privacy at the API boundary", () => {
+  it.each(["cppPPRbez", "cppAuto", "maxdomov", "cppcestovko"])("loads the explicitly linked %s amendment family from an original without chain metadata", async productKey => {
+    entry("root", { productKey, rootContractEntryId: null });
+    entry("decrease", { productKey, parentContractEntryId: "root", policyStartDate: "2026-02-01",
+      previousInputAmount: 1000, newInputAmount: 800, premiumDelta: -200 });
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    expect((await response.json()).timeline.map((item: { id: string }) => item.id)).toEqual(["root", "decrease"]);
+  });
+
+  it.each([owner, manager, admin])("loads non-life linked ancestors and descendants for an authorized %s", async viewer => {
+    entry("root", { productKey: "cppPPRbez", rootContractEntryId: null });
+    entry("decrease", { productKey: "cppPPRbez", parentContractEntryId: "root", policyStartDate: "2026-02-01" });
+    asUser(viewer, viewer === admin);
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=decrease`), "detail");
+    expect(response.status).toBe(200);
+    expect((await response.json()).timeline.map((item: { id: string }) => item.id)).toEqual(["root", "decrease"]);
+  });
+
+  it("keeps an inaccessible non-life amendment out of a former manager's timeline", async () => {
+    entry("root", { productKey: "cppAuto", rootContractEntryId: null, managerEmailSnapshot: former });
+    entry("decrease", { productKey: "cppAuto", parentContractEntryId: "root", note: "private non-life sibling sentinel" });
+    asUser(former);
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.timeline.map((item: { id: string }) => item.id)).toEqual(["root"]);
+    expect(JSON.stringify(body)).not.toContain("private non-life sibling sentinel");
+  });
+
+  it("rejects an unrelated viewer before exposing a non-life family", async () => {
+    entry("root", { productKey: "cppAuto" });
+    entry("decrease", { productKey: "cppAuto", parentContractEntryId: "root", note: "private family sentinel" });
+    asUser(former);
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(403);
+    expect(JSON.stringify(await response.json())).not.toContain("private family sentinel");
+  });
+
+  it("requires authentication before reading a non-life family", async () => {
+    entry("root", { productKey: "cppAuto" });
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    const { handleContractsGet } = await import("./contractsApi");
+    const reads = vi.spyOn(mocks.db!, "collection");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(401);
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it("does not merge unrelated same-number records, foreign owners, different products or disconnected parents", async () => {
+    entry("root", { productKey: "cppPPRbez", rootContractEntryId: null });
+    entry("decrease", { productKey: "cppPPRbez", parentContractEntryId: "root", policyStartDate: "2026-02-01" });
+    entry("legacy-same-number", { productKey: "cppPPRbez", rootContractEntryId: null, note: "unrelated legacy sentinel" });
+    entry("wrong-product", { productKey: "cppAuto", parentContractEntryId: "root", note: "wrong product sentinel" });
+    entry("wrong-number", { productKey: "cppPPRbez", contractNumber: "54321", parentContractEntryId: "root", note: "wrong number sentinel" });
+    entry("disconnected", { productKey: "cppPPRbez", parentContractEntryId: "missing", note: "disconnected sentinel" });
+    entry("self-parent", { productKey: "cppPPRbez", parentContractEntryId: "self-parent", note: "self-parent sentinel" });
+    entry("cycle-a", { productKey: "cppPPRbez", parentContractEntryId: "cycle-b", note: "cycle sentinel" });
+    entry("cycle-b", { productKey: "cppPPRbez", parentContractEntryId: "cycle-a", note: "cycle sentinel" });
+    const foreignPath = `users/${former}/entries/foreign`;
+    store.records.set(foreignPath, sealPrivateRecord(foreignPath, { userEmail: former, contractNumber: "12345",
+      productKey: "cppPPRbez", entryType: "endorsement", rootContractEntryId: "root", parentContractEntryId: "root", note: "foreign owner sentinel" }));
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.timeline.map((item: { id: string }) => item.id)).toEqual(["root", "decrease"]);
+    expect(JSON.stringify(body)).not.toContain("sentinel");
+  });
+
+  it.each(["comfortcc", "conseqzenit"])("keeps %s outside proportional insurance timelines", async productKey => {
+    entry("root", { productKey });
+    entry("decrease", { productKey, parentContractEntryId: "root", note: "unsupported product sentinel" });
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    expect((await response.json()).timeline.map((item: { id: string }) => item.id)).toEqual(["root"]);
+  });
+
   it.each([owner, manager, admin])("filters confirmed premium changes by their author for %s", async viewer => {
     const makeChange = (writtenBy: string, key: string) => ({ key, statementId: key, statementNumber: "10", statementPeriod: null,
       statementDate: null, productCode: "CPP_NEON", annualIncrease: 1548, previousMonthlyPremium: 2350,

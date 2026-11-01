@@ -3,6 +3,7 @@ import { calculateFlexiRenovationBase, type FlexiRenovationInput, type FlexiReno
 import type { InheritedContractFields } from "@/app/lib/inheritedContracts";
 import { normalizeTransferEffectiveDate } from "./contractsApi.transfer";
 import { toDate } from "@/app/lib/formatters";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 import {
   isAutoProduct,
   type ProductInstitutionId,
@@ -364,6 +365,9 @@ export const parseRequiredTrimmedText = (
 ): ParseResult<string> => {
   if (typeof value !== "string") {
     return { ok: false, error: `Pole ${field} musí být text.` };
+  }
+  if (field === "clientName" && /[\u0000-\u001f\u007f]/.test(value)) {
+    return { ok: false, error: "Pole clientName obsahuje nepovolené řídicí znaky." };
   }
   const trimmed = value.trim();
   if (!trimmed) {
@@ -1540,7 +1544,7 @@ export const normalizeCreateEntryPayload = ({
         items: [],
         total: 0,
       },
-      clientName: clientNameParsed.value,
+      clientName: formatClientDisplayName(clientNameParsed.value),
       userId: ownerUid,
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,

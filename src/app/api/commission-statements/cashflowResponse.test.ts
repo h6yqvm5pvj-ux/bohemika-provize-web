@@ -164,6 +164,15 @@ describe("cashflow statement response", () => {
     expect(item.paidCommissionKeys).toEqual(["123456:B101"]);
   });
 
+  it.each([
+    { productCode: "KOO_NAMIRU", expected: ["123456:B102", "123456:C102"] },
+    { productCode: "CPP_ACPIV", expected: ["123456:C102"] },
+  ])("publishes the exact subsequent alias only for Kooperativa Auto: $productCode", async ({ productCode, expected }) => {
+    const cells = [1, "123456", "16.02.2023", "17.02.2023", "Testovací klient", "Z", productCode, "C102", 7175, "", "", "7", 500, 0];
+    mocks.records.get("statement_000001")!.html = `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
+    expect((await read("shape=cashflow")).items[0].paidCommissionKeys).toEqual(expected);
+  });
+
   it("preserves B36 half aliases and excludes storno in ordinary other-payment rows", async () => {
     mocks.records.get("statement_000001")!.html = `<DIV ID="ostatni_platby"><TABLE>
       <TR><TH>50 % provize B36 B036 smlouvy 123456 smlouvy 123456</TH></TR>

@@ -33,8 +33,11 @@ export async function GET(req: NextRequest) {
       const data = doc.data();
       const card = parseClientCardDraft(openPrivateValue(data.card, clientCardContext(ctx.uid, doc.id)));
       if (data.ownerUid !== ctx.uid || !card || !isClientCardSlug(doc.id)) throw new Error("Invalid client card");
-      // The directory never receives birth numbers or identity documents.
-      return { slug: doc.id, clientName: card.clientName, phone: card.phone, email: card.email, permanentAddress: card.permanentAddress };
+      // Only a company hint is needed to preserve brand spelling; keep the
+      // actual IČO, birth numbers and identity documents inside the private card.
+      return { slug: doc.id, clientName: card.clientName, phone: card.phone, email: card.email, permanentAddress: card.permanentAddress,
+        ...(card.companyId ? { isCompany: true } : {}),
+      };
     });
     return privateResponse(withRateLimitHeaders(NextResponse.json({ ok: true, cards }), ctx));
   } catch {

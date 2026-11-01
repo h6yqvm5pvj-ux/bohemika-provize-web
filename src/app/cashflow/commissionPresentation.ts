@@ -151,10 +151,10 @@ export function nonLifeCommissionDetail(item: CashflowItem): NonLifeCommissionDe
     return {
       commissionTypeLabel: item.payoutPlanStatus === "matched" ? "Následná provize" : item.payoutPlanStatus === "correction" ? "Storno / srážka z výpisu" : item.commissionLabel || "C výplata z výpisu",
       commissionText: item.payoutPlanStatus === "matched"
-        ? `Výplata ${item.commissionCode} nahrazuje potvrzenou položku plánu ${item.matchedPlannedCode}. Původní odhad se už nezapočítává.`
+        ? `Výplata ${item.commissionCode} automaticky nahrazuje položku plánu ${item.matchedPlannedCode}. Původní odhad se už nezapočítává.`
         : item.payoutPlanStatus === "correction"
         ? "Oprava zůstává samostatnou položkou se skutečnou částkou z výpisu."
-        : "Výplata je započítaná. Její vztah k plánu zatím není potvrzený; přiřazení najdeš v detailu smlouvy.",
+        : "Výplata je započítaná ve skutečné částce z výpisu.",
       payoutModeLabel: "Skutečná částka z výpisu",
       firstAnniversaryLabel: null,
     };

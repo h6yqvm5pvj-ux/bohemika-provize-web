@@ -1,0 +1,110 @@
+.overview {
+  display: grid;
+  gap: 18px;
+  margin-block: 24px 28px;
+  padding: 22px;
+  border: 1px solid #e4ddec;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #fcfaff, #f8f9fc);
+  scroll-margin-top: 88px;
+}
+
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px 18px;
+}
+
+.heading h2 {
+  margin: 0;
+  color: #30213f;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: -.02em;
+}
+
+.heading p {
+  margin: 5px 0 0;
+  color: #766b82;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.family {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid #e3d9ed;
+  border-radius: 7px;
+  color: #795991;
+  background: #f4edf9;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 16px 15px;
+  border: 1px solid #e8e2ee;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 2px 7px #32204603;
+}
+
+.card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  margin: 0;
+  color: #6c6079;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.card h3 svg { flex-shrink: 0; color: #a18ab5; }
+.recorded h3 svg { color: #6a9b8a; }
+.amount {
+  margin: 10px 0 0;
+  color: #302640;
+  font-size: clamp(21px, 2.25vw, 28px);
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: -.045em;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.recorded .amount { color: #286a58; }
+.forecast .amount { color: #70439a; }
+.amount[data-negative="true"] { color: #aa4865; }
+.detail { margin: 8px 0 0; color: #766883; font-size: 11px; font-weight: 600; line-height: 1.6; }
+.footnote { margin: auto 0 0; padding-top: 16px; color: #74687d; font-size: 10px; line-height: 1.6; }
+.basis { margin: -4px 0 0; color: #74687d; font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 860px) {
+  .metrics { gap: 10px; }
+  .overview { padding: 18px; }
+  .card { padding: 16px 12px 13px; }
+}
+
+@media (max-width: 639px) {
+  .overview { margin-block: 18px 22px; padding: 16px 12px; gap: 15px; }
+  .metrics { grid-template-columns: minmax(0, 1fr); }
+  .card { padding: 16px; }
+  .card h3 { min-height: 0; }
+  .amount { font-size: 27px; }
+  .footnote { padding-top: 11px; }
+}

@@ -51,6 +51,23 @@ describe("contract commission installment interaction", () => {
     expect(details.open).toBe(true);
   });
 
+  it("settles only the exact B installment from a Kooperativa C receipt and keeps recipients separate", async () => {
+    const subsequent = { title: "Následná provize", code: "B102", amount: 742.54 };
+    await act(async () => root.render(<ContractCommissionSection {...props} product="kooperativaAuto"
+      paymentFrequency="annual" adviserItems={[subsequent]} paymentBasedAdviserTotals={null}
+      commissionPayouts={[
+        { code: "C101", amount: 1065.13, writtenBy: owner },
+        { code: "C102", amount: 1065.13, writtenBy: manager },
+      ]} />));
+    expect(container.textContent).toContain("Čeká na zápis");
+    expect(container.textContent).not.toContain("Vyplaceno");
+    await act(async () => root.render(<ContractCommissionSection {...props} product="kooperativaAuto"
+      paymentFrequency="annual" adviserItems={[subsequent]} paymentBasedAdviserTotals={null}
+      commissionPayouts={[{ code: "C102", amount: 1065.13, writtenBy: owner }]} />));
+    expect(container.textContent).toContain("Vyplaceno");
+    expect(container.textContent).not.toContain("Čeká na zápis");
+  });
+
   it("separates the adviser, each manager and legacy records when calculating paid counts", async () => {
     await act(async () => root.render(<ContractCommissionSection {...props}
       isOwnContract={false} showAnyMeziprovision viewerEmail={manager}

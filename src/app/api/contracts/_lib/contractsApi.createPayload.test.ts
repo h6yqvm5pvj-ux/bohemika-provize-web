@@ -38,6 +38,20 @@ const normalizedPayload = (raw: unknown = baseEntry()) => {
 };
 
 describe("contracts create payload parsing", () => {
+  it.each(["JAN NOVÁK", "jan novák", "jAn   nOvÁk"])("normalizes personal name casing on create: %s", clientName => {
+    expect(normalizedPayload(baseEntry({ clientName })).clientName).toBe("Jan Novák");
+  });
+
+  it.each(["PEMI Cars s.r.o.", "ČSOB a.s.", "Parkett s.r Woody"])("preserves company spelling and legal-form identity: %s", clientName => {
+    expect(normalizedPayload(baseEntry({ clientName })).clientName).toBe(clientName);
+  });
+
+  it.each(["Jan\u0000Novák", "Jan\nNovák", "Jan Novák\u007f"])("rejects control characters in a client name: %j", clientName => {
+    const result = normalizeCreateEntryPayload({ raw: baseEntry({ clientName }), ownerEmail, ownerUid });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("clientName");
+  });
+
   it("accepts CONSEQ Zenit with only its requested fields and an optional end date", () => {
     const payload = normalizedPayload(baseEntry({
       productKey: "conseqzenit", contractSignedDate: "2024-08-01",

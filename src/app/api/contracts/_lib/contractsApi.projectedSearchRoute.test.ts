@@ -101,7 +101,7 @@ describe("contract search projection integration", () => {
     const { handleContractsList } = await import("./contractsApi");
     const response = await handleContractsList(new NextRequest(`${request().url}&shape=clientDirectory`));
     const payload = await response.json();
-    expect(payload.contracts[0]).toMatchObject({ id: "a", clientName: "X test", clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", productKey: "neon", contractSignedDate: ts });
+    expect(payload.contracts[0]).toMatchObject({ id: "a", clientName: "X Test", clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", productKey: "neon", contractSignedDate: ts });
     expect(payload.contracts[0]).not.toHaveProperty("note");
     expect(payload.contracts[0]).not.toHaveProperty("total");
     expect(payload.contracts[0]).not.toHaveProperty("items");

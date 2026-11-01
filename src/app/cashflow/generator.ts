@@ -5,8 +5,11 @@ import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
-import { applyConfirmedPayoutMatches } from "./payoutPlanMatching";
+import { baseCommissionCodeForPayoutComparison } from "../lib/commissionPayoutRules";
+import { describeKooperativaCPayout, isKooperativaCPayout } from "../lib/kooperativaCPayoutMeaning";
 import { calendarDate } from "../lib/calendarDates";
+import { createEndorsementCommissionPlan } from "../lib/endorsementCommissionPlan";
+import { commissionPeriodForCode } from "../lib/commissionPeriodForCode";
 
 export { estimatePayoutDate } from "../lib/commissionPayoutDate";
 
@@ -217,13 +220,16 @@ const STATEMENT_ONLY_COMMISSION_PAYOUT_STATUSES = new Set([
   "storno",
 ]);
 
-function uniqueCommissionCodes(codes: Array<string | null | undefined>): string[] {
+function uniqueCommissionCodes(codes: Array<string | null | undefined>, product?: EntryDoc["productKey"]): string[] {
   const result = new Set<string>();
 
   for (const code of codes) {
     const normalizedCode = normalizeCommissionCode(code);
     if (!normalizedCode || normalizedCode === "TOTAL") continue;
-    for (const alias of commissionCodeAliasesForCashflow(normalizedCode)) {
+    const comparableCode = isKooperativaCPayout(product, normalizedCode)
+      ? baseCommissionCodeForPayoutComparison(normalizedCode, product) : normalizedCode;
+    if (comparableCode !== normalizedCode) result.add(normalizedCode);
+    for (const alias of commissionCodeAliasesForCashflow(comparableCode)) {
       const normalizedAlias = normalizeCommissionCode(alias);
       if (normalizedAlias && normalizedAlias !== "TOTAL") {
         result.add(normalizedAlias);
@@ -350,19 +356,20 @@ function findSettledCommissionPayout(
   metadata: Partial<
     Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
   >,
-  expectedDate: Date
+  expectedDate: Date,
+  product?: EntryDoc["productKey"]
 ): IndexedCommissionPayout | null {
   const itemCodes = uniqueCommissionCodes([
     metadata.commissionCode,
     ...(metadata.commissionCodeAliases ?? []),
-  ]);
+  ], product);
   if (itemCodes.length === 0) return null;
 
   const itemCodeSet = new Set(itemCodes);
   const matchingPayouts = payouts.filter((indexedPayout) => {
     if (consumedPayoutKeys.has(indexedPayout.key)) return false;
 
-    const payoutCodes = uniqueCommissionCodes([indexedPayout.payout.code]);
+    const payoutCodes = uniqueCommissionCodes([indexedPayout.payout.code], product);
     return payoutCodes.some((code) => itemCodeSet.has(code));
   });
   if (matchingPayouts.length === 0) return null;
@@ -487,9 +494,11 @@ export function generateCashflow(
   entries: EntryDoc[],
   horizonYears = 10,
   viewerEmail?: string | null,
-  asOf: Date = new Date()
+  asOf: Date = new Date(),
+  timelineEntries: EntryDoc[] = entries
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
+  const endorsementPlan = createEndorsementCommissionPlan(timelineEntries);
   let globalItemSequence = 0;
   const now = calendarDate(asOf, asOf);
   const horizonEnd = calendarDate(now,
@@ -499,7 +508,6 @@ export function generateCashflow(
   );
 
   for (const entry of entries) {
-    const entryOutputStart = out.length;
     const baseEntryId = entry.originalEntryId ?? entry.id;
     const ownerEmail = entry.userEmail ?? null;
     const normalizedOwnerEmail = ownerEmail
@@ -512,6 +520,9 @@ export function generateCashflow(
     const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
     const settledPayouts = indexSettledCommissionPayouts(scopedPayouts, now);
     const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts, now);
+    const payoutPeriods = new Map([...settledPayouts, ...statementOnlyPayouts].map(record =>
+      [record.key, commissionPeriodForCode(entry, record.payout.code)]
+    ));
     const consumedPayoutKeys = new Set<string>();
 
     const start =
@@ -533,6 +544,7 @@ export function generateCashflow(
     );
     const product = entry.productKey;
     const currentMonthlyPremiumRaw =
+      endorsementPlan.currentPremium(entry, dateToIsoDay(now)) ??
       entry.effectiveInputAmount ??
       entry.newInputAmount ??
       entry.inputAmount ??
@@ -669,23 +681,36 @@ export function generateCashflow(
       if (date > horizonLimit) return;
       if (stornoCutoffDate && isFromStornoMonth(date, stornoCutoffDate)) return;
 
+      // The premium belongs to the insured period, including when the statement
+      // arrives later. Initial commissions use the original start, not payday.
+      const commissionPeriod = commissionPeriods.get(date.getTime()) ?? start;
+      const commissionPeriodStart = dateToIsoDay(commissionPeriod);
+      const premiumChange = endorsementPlan.adjust(entry, amount, dateToIsoDay(commissionPeriod));
+      const plannedAmount = premiumChange?.amount ?? amount;
+
       const settledPayout = findSettledCommissionPayout(
-        settledPayouts,
+        settledPayouts.filter(record => {
+          if (!isSplitImmediateProduct(product)) return true;
+          const period = payoutPeriods.get(record.key);
+          return !period || period === commissionPeriodStart;
+        }),
         consumedPayoutKeys,
         amount,
         metadata,
-        date
+        date,
+        product
       );
       if (settledPayout) {
         consumedPayoutKeys.add(settledPayout.key);
       }
+      if (!settledPayout && plannedAmount === 0) return;
       const outputDate = settledPayout?.date ?? date;
       const outputAmount =
         settledPayout && Number.isFinite(Number(settledPayout.payout.amount))
           ? Number(settledPayout.payout.amount)
-          : amount;
+          : plannedAmount;
 
-      out.push({
+      const projectedItem: CashflowItem = {
         id: `${entry.id}-${outputDate.getTime()}-${metadata.commissionCode ?? ""}-${settledPayout?.key ?? note ?? ""}-${globalItemSequence++}`,
         date: outputDate,
         amount: outputAmount,
@@ -722,18 +747,66 @@ export function generateCashflow(
         durationYears: entry.durationYears ?? null,
         payoutStatus: settledPayout ? "paid" : undefined,
         predictedAmount: settledPayout ? amount : null,
+        ...(!settledPayout && premiumChange ? {
+          premiumChangeOriginalAmount: premiumChange.originalAmount,
+          premiumChangeEffectiveDate: premiumChange.effectiveDate,
+          premiumChangeEntryId: premiumChange.endorsementEntryId,
+        } : {}),
         originalDate:
           settledPayout && monthSerial(outputDate) !== monthSerial(date)
             ? date
             : null,
         commissionPayoutKey: settledPayout?.key ?? null,
-        ...(product === "kooperativaAuto" && /^B1\d{2,}$/.test(metadata.commissionCode ?? "")
-          ? { commissionPeriodStart: dateToIsoDay(commissionPeriods.get(date.getTime())) }
-          : {}),
+        commissionPeriodStart,
         commissionStatementNumber: settledPayout?.payout.statementNumber ?? null,
         commissionStatementPeriod: settledPayout?.payout.statementPeriod ?? null,
         ...metadata,
-      });
+        ...(settledPayout && isKooperativaCPayout(product, settledPayout.payout.code) ? {
+          // A C payout settles the B installment with the same suffix. Keep the
+          // original statement code and receipt; old manual links are irrelevant.
+          commissionCode: normalizeCommissionCode(settledPayout.payout.code),
+          commissionCodeAliases: uniqueCommissionCodes([settledPayout.payout.code, metadata.commissionCode], product),
+          commissionLabel: "Následná provize",
+          payoutPlanStatus: "matched" as const,
+          matchedPlannedCode: metadata.commissionCode,
+          isStatementOnly: false,
+        } : {}),
+      };
+      out.push(projectedItem);
+
+      // A smaller actual payment may settle only part of a revised entitlement.
+      // Count payments only when their code identifies this exact insured period;
+      // ambiguous range rows retain the existing statement reconciliation.
+      if (settledPayout && premiumChange && product !== "maxdomov" &&
+        payoutPeriods.get(settledPayout.key) === commissionPeriodStart) {
+        const itemCodes = new Set(uniqueCommissionCodes([
+          metadata.commissionCode, ...(metadata.commissionCodeAliases ?? []),
+        ], product));
+        const paidForPeriod = statementOnlyPayouts.filter(record =>
+          payoutPeriods.get(record.key) === commissionPeriodStart &&
+          uniqueCommissionCodes([record.payout.code], product).some(code => itemCodes.has(code))
+        ).reduce((sum, record) => sum + Number(record.payout.amount), 0);
+        const remaining = Math.round((plannedAmount - paidForPeriod) * 100) / 100;
+        if (remaining > 10) {
+          // Partition the revised expectation into receipts and the balance;
+          // the month's predicted total must not count the entitlement twice.
+          projectedItem.predictedAmount = paidForPeriod;
+          out.push({
+            ...projectedItem,
+            id: `${projectedItem.id}-remaining`, date,
+            amount: remaining, payoutStatus: "predicted", predictedAmount: null,
+            isPartialPayoutBalance: true,
+            ...metadata,
+            payoutPlanStatus: undefined, matchedPlannedCode: null,
+            originalDate: null, commissionPayoutKey: null,
+            commissionStatementNumber: null, commissionStatementPeriod: null,
+            note: `${projectedItem.note} · Zbývá doplatit`,
+            premiumChangeOriginalAmount: Math.max(0, Math.round((amount - paidForPeriod) * 100) / 100),
+            premiumChangeEffectiveDate: premiumChange.effectiveDate,
+            premiumChangeEntryId: premiumChange.endorsementEntryId,
+          });
+        }
+      }
     };
 
     const pushUnmatchedStatementPayouts = () => {
@@ -746,8 +819,9 @@ export function generateCashflow(
 
         consumedPayoutKeys.add(indexedPayout.key);
         const code = normalizeCommissionCode(indexedPayout.payout.code);
-        const commissionLabel = commissionLabelFromCode(code);
-        const aliases = uniqueCommissionCodes([code]);
+        const meaning = describeKooperativaCPayout({ product, policyStartDate: entry.policyStartDate, payout: indexedPayout.payout, payouts: scopedPayouts ?? [], calendar: now });
+        const commissionLabel = meaning?.label ?? commissionLabelFromCode(code);
+        const aliases = uniqueCommissionCodes([code], product);
         const payoutStatus = String(indexedPayout.payout.status ?? "").trim().toLowerCase();
         const isStatementStorno = payoutStatus === "storno" || amount < 0;
 
@@ -792,6 +866,8 @@ export function generateCashflow(
           payoutStatus: "paid",
           predictedAmount: 0,
           isStatementOnly: true,
+          ...(meaning?.kind === "correction" ? { payoutPlanStatus: "correction" as const } : {}),
+          commissionPeriodStart: payoutPeriods.get(indexedPayout.key) ?? null,
           originalDate: null,
           commissionPayoutKey: indexedPayout.key,
           commissionStatementNumber: indexedPayout.payout.statementNumber ?? null,
@@ -826,10 +902,10 @@ export function generateCashflow(
     };
 
     const annPlusYears = (years: number) => {
-      const period = inherited
-        ? periodAfterMonths(years * 12)
+      const period = periodAfterMonths(years * 12);
+      const payoutPeriod = inherited ? period
         : calendarDate(start, start.getFullYear() + years, start.getMonth(), start.getDate());
-      const payout = estimatePayoutDate(period);
+      const payout = estimatePayoutDate(payoutPeriod);
       commissionPeriods.set(payout.getTime(), period);
       return payout;
     };
@@ -1405,10 +1481,6 @@ export function generateCashflow(
     }
 
     pushUnmatchedStatementPayouts();
-    if (entry.productKey === "kooperativaAuto") {
-      const entryItems = out.splice(entryOutputStart);
-      out.push(...applyConfirmedPayoutMatches(entry, entryItems, viewerEmail, now));
-    }
   }
 
   return out.sort((a, b) => a.date.getTime() - b.date.getTime());

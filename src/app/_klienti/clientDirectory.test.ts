@@ -58,6 +58,44 @@ describe("contract-derived directory", () => {
     expect(clients[0]).toMatchObject({ name: "Ing. Petr Novák", phone: "777 999 888", email: "", address: "Brno" });
     expect(filterClientDirectory(clients, "old@example.test", "all", "name")).toHaveLength(1);
   });
+  it("formats personal names without changing the saved card identity, contacts or original aliases", () => {
+    const slug = clientSlugForName("Miroslav Hruška")!;
+    const clients = buildClientDirectory([
+      contract("one", "MIROSLAV HRUŠKA"), contract("two", "Miroslav Hruška"),
+    ], [{ slug, clientName: "MIROSLAV HRUŠKA", phone: "777 999 888", email: "saved@example.test", permanentAddress: "Brno" }]);
+    expect(clients).toHaveLength(1);
+    expect(clients[0]).toMatchObject({ slug, name: "Miroslav Hruška", phone: "777 999 888", email: "saved@example.test", address: "Brno", aliases: ["MIROSLAV HRUŠKA", "Miroslav Hruška"] });
+    expect(clients[0].contracts).toHaveLength(2);
+  });
+  it("finds legal-form and reordered company variants without combining separate cards", () => {
+    const clients = buildClientDirectory([
+      contract("one", "Parkett s.r Woody", { productKey: "cppAuto" }),
+      contract("two", "Woody Parkett s.r.o.", { productKey: "neon", status: "storno" }),
+      contract("other-form", "Woody Parkett a.s.", { productKey: "cppAuto" }),
+    ]);
+    expect(clients).toHaveLength(3);
+    expect(clients.find(client => client.contracts[0].id === "one")?.name).toBe("Parkett s.r Woody");
+    for (const query of ["Woody Parkett sro", "Parkett Woody s.r.", "Woody Parkett s r o"]) {
+      expect(filterClientDirectory(clients, query, "all", "name").map(client => client.contracts[0].id).sort()).toEqual(["one", "two"]);
+      expect(filterClientDirectory(clients, query, "active", "name", "auto").map(client => client.contracts[0].id)).toEqual(["one"]);
+      expect(filterClientDirectory(clients, query, "archived", "name", "life").map(client => client.contracts[0].id)).toEqual(["two"]);
+    }
+    expect(filterClientDirectory(clients, "Woody Parkett a s", "all", "name").map(client => client.contracts[0].id)).toEqual(["other-form"]);
+    expect(filterClientDirectory(clients, "Woody Woody sro", "all", "name")).toEqual([]);
+    expect(filterClientDirectory(clients, "sro", "all", "name")).toEqual([]);
+  });
+  it("preserves a saved company brand without a legal suffix using only the summary hint", () => {
+    const slug = clientSlugForName("PEMI Cars")!;
+    const clients = buildClientDirectory([contract("brand", "PEMI Cars")], [{
+      slug, clientName: "PEMI Cars", phone: "", email: "brand@example.test", permanentAddress: "", isCompany: true,
+    }]);
+    expect(clients[0]).toMatchObject({ slug, name: "PEMI Cars", email: "brand@example.test" });
+    expect(filterClientDirectory(clients, "cars pemi", "all", "name").map(client => client.slug)).toEqual([slug]);
+  });
+  it("retains general address searches containing words that also mark companies", () => {
+    const clients = buildClientDirectory([contract("person", "Petr Novák", { clientAddress: "Obec Malá Lhota" })]);
+    expect(filterClientDirectory(clients, "obec lhota", "all", "name").map(client => client.contracts[0].id)).toEqual(["person"]);
+  });
   it("searches without accents, across word order, phone spacing and contract numbers", () => {
     const clients = buildClientDirectory([contract("a", "Bc. Petr Novák", { clientPhone: "+420 777 123 456", contractNumber: "123 / 456", clientEmail: "petr@example.test" }), contract("b", "Jana Bílá", { status: "storno" })]);
     for (const query of ["novak petr", "Bc.", "777123456", "777 123456", "123456", "petr@example"]) expect(filterClientDirectory(clients, query, "all", "name").map((c) => c.name)).toEqual(["Petr Novák"]);

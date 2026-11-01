@@ -17,3 +17,34 @@ describe("life payout audit by annual base", () => {
     ]));
   });
 });
+
+
+describe("Kooperativa Auto subsequent C payout audit", () => {
+  it("includes C102 differences in the subsequent filter and retains the source code", () => {
+    const payout = { key: "C102-underpayment", code: "C102", status: "difference" as const,
+      amount: 80, expectedAmount: 100, difference: -20, writtenBy: "owner@example.test" };
+    const summary = commissionAuditSummaryForContract({
+      productKey: "kooperativaAuto", commissionPayouts: [payout],
+    }, { mode: "difference", codeFilter: "subsequent" });
+    expect(summary.differenceCount).toBe(1);
+    expect(summary.items).toEqual([expect.objectContaining({ code: "C102", amount: 80, difference: -20 })]);
+    expect(commissionAuditSummaryForContract({
+      productKey: "cppAuto", commissionPayouts: [payout],
+    }, { mode: "difference", codeFilter: "subsequent" }).items).toEqual([]);
+  });
+
+  it("resolves a C102 career mismatch with its B102 correction and corrected payment", () => {
+    const summary = commissionAuditSummaryForContract({
+      productKey: "kooperativaAuto", position: "poradce7",
+      commissionPayouts: [
+        { key: "mismatch", code: "C102", status: "difference", amount: 80, expectedAmount: 100,
+          career: "6", differenceReason: "career_mismatch", writtenBy: "owner@example.test", statementChronologyMs: 1 },
+        { key: "correction", code: "B102", status: "storno", amount: -80,
+          writtenBy: "owner@example.test", statementChronologyMs: 2 },
+        { key: "fixed", code: "B102", status: "paid", amount: 100,
+          career: "7", writtenBy: "owner@example.test", statementChronologyMs: 3 },
+      ],
+    }, { mode: "career_mismatch", codeFilter: "subsequent" });
+    expect(summary.items).toEqual([]);
+  });
+});

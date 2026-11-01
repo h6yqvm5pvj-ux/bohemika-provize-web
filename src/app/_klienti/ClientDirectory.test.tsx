@@ -147,7 +147,7 @@ describe("client directory filters and client cards", () => {
       contract("outside-policy", "Cizí klient", { adviserEmail: "outsider@example.test" }),
     ];
     await render();
-    expect(names()).toEqual(["Týmový klient"]);
+    expect(names()).toEqual(["Týmový Klient"]);
     expect(container.querySelector('[aria-label="Produkty klienta včetně archivu"]')).toBeNull();
     const clientLink = container.querySelector<HTMLAnchorElement>('a[href^="/klienti/"]')!;
     expect(new URL(clientLink.href).searchParams.get("advisers")).toBe(selectedAdviser);
@@ -160,8 +160,8 @@ describe("client directory filters and client cards", () => {
     await click("Vymazat hledání a filtry");
     expect(button("Týmoví klienti").getAttribute("aria-pressed")).toBe("true");
     expect(mocks.load.mock.lastCall?.[4]?.selection).toEqual({ scope: "team", advisers: [] });
-    expect(names()).toEqual(["Další týmový klient", "Týmový klient"]);
+    expect(names()).toEqual(["Další Týmový Klient", "Týmový Klient"]);
     await enter(productSelect(), "life");
-    expect(names()).toEqual(["Další týmový klient"]);
+    expect(names()).toEqual(["Další Týmový Klient"]);
   });
 });

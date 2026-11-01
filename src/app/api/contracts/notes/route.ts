@@ -6,6 +6,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { authorizeContractNoteLocation } from "@/lib/server/contractNoteLocation";
+import { resolveContractNoteFamily } from "@/lib/server/contractNoteFamily";
 import { requireContractsEntryGuard } from "../_lib/contractsApi";
 import {
   canManageContractOwner,
@@ -33,6 +34,27 @@ const commitNotes = async (batch: FirebaseFirestore.WriteBatch, withRateLimit: (
 const CONTRACT_NOTES_COLLECTION = "contractNotes";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RATE_LIMIT = { limit: 120, windowMs: 60_000 } as const;
+const NOTE_PAGE_SIZE = 100;
+type NoteCursor = Pick<ContractNoteDto, "createdAtMs" | "sourceEntryId" | "id">;
+const compareNotes = (left: NoteCursor, right: NoteCursor) => right.createdAtMs - left.createdAtMs ||
+  (left.sourceEntryId ?? "").localeCompare(right.sourceEntryId ?? "") || left.id.localeCompare(right.id);
+const encodeCursor = ({ createdAtMs, sourceEntryId, id }: NoteCursor) => Buffer.from(JSON.stringify({ createdAtMs, sourceEntryId, id })).toString("base64url");
+const decodeCursor = (raw: string): NoteCursor | null => {
+  if (raw.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(raw)) return null;
+  try {
+    const value = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (!value || typeof value !== "object" || Array.isArray(value) ||
+        typeof value.createdAtMs !== "number" || !Number.isSafeInteger(value.createdAtMs) || Math.abs(value.createdAtMs) > 8.64e15 ||
+        !isSafeContractNoteId(value.sourceEntryId) || !isSafeContractNoteId(value.id)) return null;
+    return { createdAtMs: value.createdAtMs, sourceEntryId: value.sourceEntryId, id: value.id };
+  } catch { return null; }
+};
+const familyReadConflict = () => Object.assign(new Error("Smlouva se mezitím změnila. Obnov detail smlouvy."), { statusCode: 409 });
+const familyAccessState = (data: ContractDoc) => JSON.stringify([
+  data.productKey, data.contractNumber, data.entryType, data.rootContractEntryId,
+  data.parentContractEntryId, data.contractNotesPath, data.userEmail,
+  data.managerEmailSnapshot, data.managerChain, data.managerOverrides,
+]);
 
 type FirestoreTimestamp = {
   seconds?: number;
@@ -78,6 +100,7 @@ const noteDto = (
   id: string,
   data: Record<string, unknown>,
   path: string,
+  sourceEntryId: string,
   legacy = false
 ): ContractNoteDto => {
   data = openPrivateRecord(path, data);
@@ -88,6 +111,7 @@ const noteDto = (
     numberOrNull(data.updatedAtMs) ?? toMillis(data.updatedAt) ?? createdAtMs;
   return {
     id,
+    sourceEntryId,
     text: typeof data.text === "string" ? data.text.trim() : "",
     reminderEnabled: data.reminderEnabled === true,
     reminderAtMs: numberOrNull(data.reminderAtMs),
@@ -117,11 +141,15 @@ const authorizeContract = async ({
   ownerEmail,
   entryId,
   mutation,
+  canonical = false,
+  sourceEntryId,
 }: {
   req: NextRequest;
   ownerEmail: string;
   entryId: string;
   mutation: boolean;
+  canonical?: boolean;
+  sourceEntryId?: unknown;
 }) => {
   const guard = await requireContractsEntryGuard(req, {
     namespace: mutation ? "api:contracts:notes:write" : "api:contracts:notes:read",
@@ -195,20 +223,54 @@ const authorizeContract = async ({
     };
   }
 
+  if (sourceEntryId !== undefined && !isSafeContractNoteId(sourceEntryId)) {
+    return { ok: false as const, response: guard.withRateLimit(
+      NextResponse.json({ ok: false, error: "Neplatná identifikace poznámky." }, { status: 400 })
+    ) };
+  }
   let notesParent;
+  let family;
+  let selectedSnap = contractSnap;
+  const canAccessFamilyEntry = (candidate: ContractDoc) => hasContractAccess({
+    viewerEmail: guard.ctx.email, teamEmails: guard.ctx.contractAccessEmails,
+    ownerEmail, contract: candidate,
+  }) || (mutation && guard.ctx.canManageContractsAsAdmin === true);
   try {
-    notesParent = await authorizeContractNoteLocation(contractRef, contract);
+    family = await resolveContractNoteFamily(contractSnap, canAccessFamilyEntry);
+    const targetId = canonical ? family.root.id : sourceEntryId ?? entryId;
+    const selected = family.entries.find(snapshot => snapshot.id === targetId);
+    if (!selected) {
+      return { ok: false as const, response: guard.withRateLimit(
+        NextResponse.json({ ok: false, error: "Poznámka nebyla nalezena." }, { status: 404 })
+      ) };
+    }
+    selectedSnap = selected;
+    notesParent = await authorizeContractNoteLocation(selected.ref, selected.data()!);
   } catch (error) {
     if (!(error instanceof Error) || !("statusCode" in error) || error.statusCode !== 409) throw error;
     return { ok: false as const, response: guard.withRateLimit(
       NextResponse.json({ ok: false, error: error.message }, { status: 409 })
     ) };
   }
+  const familyState = family.entries.map(snapshot => ({ snapshot, state: familyAccessState(snapshot.data() as ContractDoc) }));
   return {
     ok: true as const,
-    contract: openPrivateRecord(contractRef.path, contract) as ContractDoc,
-    contractRef,
-    contractSnap,
+    contract: openPrivateRecord(selectedSnap.ref.path, selectedSnap.data()!) as ContractDoc,
+    contractRef: selectedSnap.ref,
+    contractSnap: selectedSnap,
+    family: family.entries,
+    verifyFamily: async () => {
+      for (let start = 0; start < familyState.length; start += 6) {
+        await Promise.all(familyState.slice(start, start + 6).map(async ({ snapshot, state }) => {
+          const current = await snapshot.ref.get();
+          if (!current.exists) throw familyReadConflict();
+          const data = current.data() as ContractDoc;
+          if ((snapshot.updateTime && current.updateTime && typeof snapshot.updateTime.isEqual === "function" && !snapshot.updateTime.isEqual(current.updateTime)) ||
+              familyAccessState(data) !== state || !canAccessFamilyEntry(data)) throw familyReadConflict();
+          await authorizeContractNoteLocation(current.ref, data);
+        }));
+      }
+    },
     notesRef: notesParent.collection(CONTRACT_NOTES_COLLECTION),
     actorEmail: guard.ctx.actorEmail,
     reminderRecipientEmail: guard.ctx.email,
@@ -219,33 +281,64 @@ const authorizeContract = async ({
 export async function GET(req: NextRequest) {
   const ownerEmail = normalizeEmail(req.nextUrl.searchParams.get("ownerEmail"));
   const entryId = normalizeEntryId(req.nextUrl.searchParams.get("entryId"));
-  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: false });
+  const linkedNoteId = normalizeEntryId(req.nextUrl.searchParams.get("noteId"));
+  const sourceEntryId = req.nextUrl.searchParams.get("sourceEntryId") ?? undefined;
+  const rawCursor = req.nextUrl.searchParams.get("cursor");
+  const cursor = rawCursor === null ? null : decodeCursor(rawCursor);
+  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: false, sourceEntryId });
   if (!access.ok) return access.response;
-
-  const snapshot = await access.notesRef.orderBy("createdAtMs", "desc").limit(100).get();
-  const notes = snapshot.docs
-    .map((docSnap) => noteDto(docSnap.id, docSnap.data(), docSnap.ref.path))
-    .filter((note) => note.text);
-
-  const legacyText =
-    typeof access.contract.note === "string" ? access.contract.note.trim() : "";
-  if (legacyText && !notes.some((note) => note.id === "legacy")) {
-    const legacyCreatedAtMs = toMillis(access.contract.createdAt) ?? Date.now();
-    notes.push({
-      id: "legacy",
-      text: legacyText,
-      reminderEnabled: false,
-      reminderAtMs: null,
-      reminderLastSentForAtMs: null,
-      reminderSentAtMs: null,
-      createdAtMs: legacyCreatedAtMs,
-      updatedAtMs: legacyCreatedAtMs,
-      legacy: true,
-    });
-    notes.sort((left, right) => right.createdAtMs - left.createdAtMs);
+  if (rawCursor !== null && (!cursor || !access.family.some(source => source.id === cursor.sourceEntryId))) {
+    return access.withRateLimit(NextResponse.json({ ok: false, error: "Neplatná stránka poznámek. Obnov detail smlouvy." }, { status: 400 }));
+  }
+  if (linkedNoteId && !isSafeContractNoteId(linkedNoteId)) {
+    return access.withRateLimit(NextResponse.json({ ok: false, error: "Neplatná identifikace poznámky." }, { status: 400 }));
   }
 
-  return access.withRateLimit(NextResponse.json({ ok: true, notes }));
+  const notes: ContractNoteDto[] = [];
+  // Bound concurrent reads; any failed source fails the whole response instead
+  // of making existing notes or reminders appear to have disappeared.
+  try {
+    for (let start = 0; start < access.family.length; start += 6) {
+      const feeds = await Promise.all(access.family.slice(start, start + 6).map(async source => {
+        const parent = source.id === access.contractSnap.id ? access.notesRef.parent! : await authorizeContractNoteLocation(source.ref, source.data()!);
+        const sourceData = source.id === access.contractSnap.id ? access.contract : openPrivateRecord(source.ref.path, source.data()!) as ContractDoc;
+        const snapshot = await parent.collection(CONTRACT_NOTES_COLLECTION).orderBy("createdAtMs", "desc").limit(NOTE_PAGE_SIZE).get();
+        const feed = snapshot.docs.map(doc => noteDto(doc.id, doc.data(), doc.ref.path, source.id)).filter(note => note.text);
+        const legacyText = typeof sourceData.note === "string" ? sourceData.note.trim() : "";
+        if (legacyText && !feed.some(note => note.id === "legacy")) {
+          const createdAtMs = toMillis(sourceData.createdAt) ?? Date.now();
+          feed.push({ id: "legacy", sourceEntryId: source.id, text: legacyText, reminderEnabled: false,
+            reminderAtMs: null, reminderLastSentForAtMs: null, reminderSentAtMs: null,
+            createdAtMs, updatedAtMs: createdAtMs, legacy: true });
+        }
+        return feed;
+      }));
+      notes.push(...feeds.flat());
+    }
+  } catch (error) {
+    if (!(error instanceof Error) || !("statusCode" in error) || error.statusCode !== 409) throw error;
+    return access.withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: 409 }));
+  }
+  notes.sort(compareNotes);
+  const remaining = cursor ? notes.filter(note => compareNotes(note, cursor) > 0) : notes;
+  const feed = remaining.slice(0, NOTE_PAGE_SIZE);
+  const nextCursor = remaining.length > NOTE_PAGE_SIZE ? encodeCursor(feed[feed.length - 1]) : null;
+  // Existing reminder links keep opening their exact note even when it falls
+  // outside the newest policy notes or the source's bounded query.
+  if (linkedNoteId && !feed.some(note => note.id === linkedNoteId && note.sourceEntryId === access.contractRef.id)) {
+    let linkedNote = notes.find(note => note.id === linkedNoteId && note.sourceEntryId === access.contractRef.id);
+    if (!linkedNote) {
+      const snapshot = await access.notesRef.doc(linkedNoteId).get();
+      if (snapshot.exists) linkedNote = noteDto(snapshot.id, snapshot.data()!, snapshot.ref.path, access.contractRef.id);
+    }
+    if (linkedNote?.text) feed.push(linkedNote);
+  }
+  try { await access.verifyFamily(); }
+  catch (error) {
+    if (!(error instanceof Error) || !("statusCode" in error) || error.statusCode !== 409) throw error;
+    return access.withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: 409 }));
+  }
+  return access.withRateLimit(NextResponse.json({ ok: true, notes: feed, nextCursor }));
 }
 
 export async function POST(req: NextRequest) {
@@ -259,7 +352,7 @@ export async function POST(req: NextRequest) {
   }
   const ownerEmail = normalizeEmail(body.ownerEmail);
   const entryId = normalizeEntryId(body.entryId);
-  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true });
+  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true, canonical: true });
   if (!access.ok) return access.response;
 
   const normalized = normalizeContractNoteMutation(body);
@@ -273,7 +366,7 @@ export async function POST(req: NextRequest) {
   const noteRef = access.notesRef.doc();
   const data: Record<string, unknown> = {
     ownerEmail,
-    entryId,
+    entryId: access.contractRef.id,
     contractNumber:
       typeof access.contract.contractNumber === "string"
         ? access.contract.contractNumber.trim()
@@ -313,7 +406,7 @@ export async function POST(req: NextRequest) {
   if (conflict) return conflict;
 
   return access.withRateLimit(
-    NextResponse.json({ ok: true, note: noteDto(noteRef.id, sealedData, noteRef.path) })
+    NextResponse.json({ ok: true, note: noteDto(noteRef.id, sealedData, noteRef.path, access.contractRef.id) })
   );
   });
 }
@@ -330,7 +423,7 @@ export async function PATCH(req: NextRequest) {
   const ownerEmail = normalizeEmail(body.ownerEmail);
   const entryId = normalizeEntryId(body.entryId);
   const noteId = normalizeEntryId(body.noteId);
-  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true });
+  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true, sourceEntryId: body.sourceEntryId });
   if (!access.ok) return access.response;
   if (!isSafeContractNoteId(noteId)) {
     return access.withRateLimit(
@@ -366,7 +459,7 @@ export async function PATCH(req: NextRequest) {
     nowMs;
   const updateData: Record<string, unknown> = {
     ownerEmail,
-    entryId,
+    entryId: access.contractRef.id,
     contractNumber:
       typeof access.contract.contractNumber === "string"
         ? access.contract.contractNumber.trim()
@@ -422,7 +515,7 @@ export async function PATCH(req: NextRequest) {
         ...existingData,
         ...sealedUpdate,
         createdAtMs,
-      }, noteRef.path),
+      }, noteRef.path, access.contractRef.id),
     })
   );
   });
@@ -440,7 +533,7 @@ export async function DELETE(req: NextRequest) {
   const ownerEmail = normalizeEmail(body.ownerEmail);
   const entryId = normalizeEntryId(body.entryId);
   const noteId = normalizeEntryId(body.noteId);
-  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true });
+  const access = await authorizeContract({ req, ownerEmail, entryId, mutation: true, sourceEntryId: body.sourceEntryId });
   if (!access.ok) return access.response;
   if (!isSafeContractNoteId(noteId)) {
     return access.withRateLimit(

@@ -16,9 +16,14 @@ const normalizedCommissionCode = (value: unknown): string =>
     .replace(/\s+/g, "");
 
 export const baseCommissionCodeForPayoutComparison = (
-  value: unknown
+  value: unknown,
+  product?: Product | null,
 ): string => {
   const code = normalizedCommissionCode(value);
+  // Kooperativa Auto reports the same subsequent installment as C1xx in
+  // statements and B1xx in the contractual plan. Keep this product-specific:
+  // C codes from other insurers do not necessarily have the same meaning.
+  if (product === "kooperativaAuto" && /^C1\d{2,}$/.test(code)) return `B${code.slice(1)}`;
   const closingRoleMatch = code.match(/^(?:APZ|AP|AZ)(\d+)$/);
   return closingRoleMatch ? `A${closingRoleMatch[1]}` : code;
 };

@@ -5,6 +5,10 @@ import { PayoutDifferenceExplanationContent } from "./PayoutDifferenceExplanatio
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
+import { createEndorsementCommissionPlan } from "@/app/lib/endorsementCommissionPlan";
+import { commissionPeriodAfterMonths, commissionPeriodForCode } from "@/app/lib/commissionPeriodForCode";
+import { periodsPerYear } from "@/app/lib/productFormulas/shared";
+import { generateCashflow } from "@/app/cashflow/generator";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -14,13 +18,14 @@ import {
 } from "../../types/domain";
 import {
   cleanResultTitle,
+  formatDate,
   formatMoney,
   positionLabel,
 } from "./contractDetailHelpers";
 import {
   hasNeonImmediateCoefficient,
 } from "./contractDetailLogic";
-import { type ContractCommissionPayout } from "./contractDetailTypes";
+import { type ContractCommissionPayout, type ContractDoc } from "./contractDetailTypes";
 import { ContractSectionHeading } from "./ContractDetailUi";
 
 export type MeziprovisionCard = {
@@ -51,6 +56,8 @@ type ContractCommissionSectionProps = {
   contractDurationYears?: number | null;
   paymentFrequency?: PaymentFrequency | null;
   policyStartDate?: unknown;
+  commissionEntry?: ContractDoc | null;
+  commissionTimeline?: ContractDoc[];
   onOpenStatement?: (statementId: string) => void;
   statementPreviewLoadingId?: string | null;
   adviserBreakdownPosition: Position | null;
@@ -120,9 +127,6 @@ const isB0301Title = (title: string): boolean =>
 const displayNoteForCommissionItem = (item: CommissionResultItemDTO): string | undefined =>
   isB0301Title(item.title) ? B0301_IMMEDIATE_NOTE : item.note;
 
-const sumCommissionItems = (commissionItems: CommissionResultItemDTO[]): number =>
-  commissionItems.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
-
 export type CommissionPayoutReadStatus = "pending" | "paid" | "partial" | "storno";
 
 type CommissionInstallment = {
@@ -130,10 +134,13 @@ type CommissionInstallment = {
   code: string | null;
   label: string;
   amount: number;
+  anniversaryYears: number;
+  commissionPeriod?: string | null;
+  requirePeriodMatch?: boolean;
 };
 
-const normalizePayoutCode = (value: string | null | undefined): string =>
-  baseCommissionCodeForPayoutComparison(value);
+const normalizePayoutCode = (value: string | null | undefined, product?: Product): string =>
+  baseCommissionCodeForPayoutComparison(value, product);
 
 const normalizeEmail = (value: string | null | undefined): string =>
   String(value ?? "").trim().toLowerCase();
@@ -194,7 +201,8 @@ const payoutCodesForCommissionItem = (
   item: CommissionResultItemDTO,
   product: Product | undefined
 ): string[] => {
-  const explicitCode = normalizePayoutCode(item.code);
+  const explicitCode = normalizePayoutCode(item.code, product);
+  if (product === "kooperativaAuto" && /^B1\d+$/.test(explicitCode)) return [explicitCode];
   return Array.from(
     new Set(
       [
@@ -237,9 +245,10 @@ const recurringInstallmentsFromStartYear = ({
     const year = startYear + index;
     return {
       key: `${keyPrefix}-${year}`,
-      code: null,
+      code: `B${101 + index}`,
       label: `${year}. rok`,
       amount,
+      anniversaryYears: year,
     };
   });
 };
@@ -263,6 +272,7 @@ const recurringInstallmentsForCommissionItem = (
       code: `B10${index + 1}`,
       label: `${year}. rok`,
       amount,
+      anniversaryYears: year - 1,
     }));
   }
 
@@ -279,6 +289,7 @@ const recurringInstallmentsForCommissionItem = (
       code: `B20${index + 1}`,
       label: `${year}. rok`,
       amount,
+      anniversaryYears: year - 1,
     }));
   }
 
@@ -307,16 +318,17 @@ const recurringInstallmentsForCommissionItem = (
 
 const payoutRecordsForCodes = (
   payouts: ContractCommissionPayout[],
-  codes: string[]
+  codes: string[],
+  product?: Product
 ): ContractCommissionPayout[] => {
-  const normalizedCodes = new Set(codes.map(normalizePayoutCode).filter(Boolean));
+  const normalizedCodes = new Set(codes.map(code => normalizePayoutCode(code, product)).filter(Boolean));
   if (normalizedCodes.size === 0) return [];
 
   return payouts.filter((payout) => {
     const payoutTargets = [
-      normalizePayoutCode(payout.code),
-      normalizePayoutCode(payout.key),
-      normalizePayoutCode(payout.title),
+      normalizePayoutCode(payout.code, product),
+      normalizePayoutCode(payout.key, product),
+      normalizePayoutCode(payout.title, product),
     ].filter(Boolean);
 
     return payoutTargets.some((target) => normalizedCodes.has(target));
@@ -335,10 +347,11 @@ const payoutAmountsMatch = (
 
 const payoutRecordsCanOffset = (
   payout: ContractCommissionPayout,
-  storno: ContractCommissionPayout
+  storno: ContractCommissionPayout,
+  product?: Product
 ): boolean => {
-  const payoutCode = normalizePayoutCode(payout.code);
-  const stornoCode = normalizePayoutCode(storno.code);
+  const payoutCode = normalizePayoutCode(payout.code, product);
+  const stornoCode = normalizePayoutCode(storno.code, product);
   if (payoutCode && stornoCode && payoutCode !== stornoCode) return false;
 
   const payoutCareer = normalizePayoutCode(payout.career);
@@ -347,7 +360,8 @@ const payoutRecordsCanOffset = (
 };
 
 const fullyOffsetPayoutRecordIndexes = (
-  records: ContractCommissionPayout[]
+  records: ContractCommissionPayout[],
+  product?: Product
 ): Set<number> => {
   const pairedIndexes = new Set<number>();
 
@@ -363,7 +377,7 @@ const fullyOffsetPayoutRecordIndexes = (
         !isStornoPayoutRecord(payout) &&
         validPayoutAmount(payout.amount) > 0 &&
         payoutAmountsMatch(payout.amount, stornoAmount) &&
-        payoutRecordsCanOffset(payout, storno)
+        payoutRecordsCanOffset(payout, storno, product)
     );
     if (payoutIndex < 0) return;
 
@@ -375,9 +389,10 @@ const fullyOffsetPayoutRecordIndexes = (
 };
 
 const activePayoutRecordsAfterFullStornos = (
-  records: ContractCommissionPayout[]
+  records: ContractCommissionPayout[],
+  product?: Product
 ): ContractCommissionPayout[] => {
-  const offsetIndexes = fullyOffsetPayoutRecordIndexes(records);
+  const offsetIndexes = fullyOffsetPayoutRecordIndexes(records, product);
   if (offsetIndexes.size === 0) return records;
   return records.filter((_, index) => !offsetIndexes.has(index));
 };
@@ -385,14 +400,15 @@ const activePayoutRecordsAfterFullStornos = (
 export const payoutStatusForCodes = (
   payouts: ContractCommissionPayout[],
   codes: string[],
-  expectedAmount: number
+  expectedAmount: number,
+  product?: Product
 ): {
   status: CommissionPayoutReadStatus;
   paidAmount: number;
   records: ContractCommissionPayout[];
 } => {
-  const records = payoutRecordsForCodes(payouts, codes);
-  const activeRecords = activePayoutRecordsAfterFullStornos(records);
+  const records = payoutRecordsForCodes(payouts, codes, product);
+  const activeRecords = activePayoutRecordsAfterFullStornos(records, product);
   const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
   const paidAmount = nonStornoRecords.reduce(
     (sum, record) => sum + validPayoutAmount(record.amount),
@@ -643,6 +659,28 @@ export const payoutExplanationForRecords = (
   };
 };
 
+const anniversaryYearsForCommissionItem = (item: CommissionResultItemDTO): number => {
+  const title = cleanResultTitle(item.title).toLowerCase();
+  if (title.includes("po 3 letech")) return 3;
+  if (title.includes("po 4 letech")) return 4;
+  return 0;
+};
+
+type CommissionRowPlan = {
+  amount: number;
+  state: ReturnType<typeof payoutStatusForCodes>;
+  adjustment: ReturnType<ReturnType<typeof createEndorsementCommissionPlan>["adjust"]>;
+};
+
+const installmentAmountLabel = (installments: { amount: number }[], fallback: number): string => {
+  const amounts = installments.map((installment) => installment.amount);
+  const minimum = Math.min(...amounts);
+  const maximum = Math.max(...amounts);
+  return amounts.length === 0 ? formatMoney(fallback)
+    : minimum === maximum ? formatMoney(minimum)
+      : `${formatMoney(minimum)} – ${formatMoney(maximum)}`;
+};
+
 export function ContractCommissionSection({
   product,
   isOwnContract,
@@ -660,6 +698,8 @@ export function ContractCommissionSection({
   contractDurationYears = null,
   paymentFrequency = null,
   policyStartDate = null,
+  commissionEntry = null,
+  commissionTimeline = [],
   onOpenStatement,
   statementPreviewLoadingId = null,
   adviserBreakdownPosition,
@@ -675,6 +715,141 @@ export function ContractCommissionSection({
   const normalizedViewerEmail = normalizeEmail(viewerEmail);
   const normalizedOwnerEmail = normalizeEmail(contractOwnerEmail);
   const trimmedCommissionWarning = commissionWarning?.trim() || null;
+  const premiumPlan = createEndorsementCommissionPlan(commissionTimeline);
+  const planEntry = commissionEntry
+    ? { ...commissionEntry, userEmail: commissionEntry.userEmail ?? normalizedOwnerEmail }
+    : null;
+  const commissionStart = policyStartDate ?? commissionEntry?.policyStartDate ?? commissionEntry?.contractSignedDate;
+  const projectCommissionRow = (
+    amount: number,
+    payouts: ContractCommissionPayout[],
+    codes: string[],
+    anniversaryYears = 0,
+    commissionPeriod?: string | null
+  ): CommissionRowPlan => {
+    const state = payoutStatusForCodes(payouts, codes, amount, product);
+    const period = commissionPeriod === undefined
+      ? commissionPeriodAfterMonths(commissionStart, anniversaryYears * 12)
+      : commissionPeriod;
+    const adjustment = planEntry && period && state.status !== "paid"
+      ? premiumPlan.adjust(planEntry, amount, period)
+      : null;
+    const expectedAmount = adjustment?.amount ?? amount;
+    return {
+      amount: expectedAmount,
+      state: adjustment ? payoutStatusForCodes(payouts, codes, expectedAmount, product) : state,
+      adjustment,
+    };
+  };
+  const renderPremiumAdjustment = (plan: CommissionRowPlan) => {
+    if (!plan.adjustment) return null;
+    const href = `#contract-entry-${plan.adjustment.endorsementEntryId}`;
+    return (
+      <span className="mt-1 block text-xs font-medium text-sky-800" data-premium-adjustment="true">
+        <span>Původně {formatMoney(plan.adjustment.originalAmount)} · </span>
+        <a className="underline underline-offset-2" href={href}>dle dodatku od {formatDate(plan.adjustment.effectiveDate)}</a>
+      </span>
+    );
+  };
+  const renderPaidRemainder = (plan: CommissionRowPlan) => plan.adjustment && plan.state.paidAmount > 0 ? (
+    <span className="block text-xs font-medium text-slate-500">
+      Z výpisů {formatMoney(plan.state.paidAmount)}
+      {plan.state.status === "partial" ? ` · zbývá ${formatMoney(Math.max(0, plan.amount - plan.state.paidAmount))}` : ""}
+    </span>
+  ) : null;
+  const payoutsForRecurringInstallment = (payouts: ContractCommissionPayout[], installment: CommissionInstallment) =>
+    !installment.requirePeriodMatch ? payouts : payouts.filter((record) => planEntry &&
+      commissionPeriodForCode(planEntry, record.code || record.key || record.title) === installment.commissionPeriod);
+  const recurringInstallmentsForItem = (
+    item: CommissionResultItemDTO,
+    payouts: ContractCommissionPayout[]
+  ): CommissionInstallment[] => {
+    const existing = recurringInstallmentsForCommissionItem(item, product, contractDurationYears);
+    if (existing.length > 0 || !planEntry || !commissionTimeline.some((entry) => entry.changeType === "decrease" ||
+      (typeof entry.premiumDelta === "number" && entry.premiumDelta < 0)) ||
+      !/následná|pečovatelská/i.test(item.title)) return existing;
+    // Reuse the original schedule so payment intervals and policy ages agree
+    // with cashflow; the projection below applies the premium change once.
+    const schedule = generateCashflow([{
+      ...planEntry, items: [item], commissionPayouts: [], cashflowPayoutMatches: [], source: "own",
+    }], Math.min(80, Math.max(10, contractDurationYears ?? 10)), normalizedOwnerEmail, new Date(), []);
+    const installments = schedule.flatMap((scheduled): CommissionInstallment[] => {
+      const period = scheduled.commissionPeriodStart ?? commissionPeriodForCode(planEntry, scheduled.commissionCode);
+      return !period ? [] : [{
+        key: `period-${period}-${scheduled.commissionCode ?? ""}`,
+        code: scheduled.commissionCode ?? null,
+        label: formatDate(period), amount: scheduled.amount, anniversaryYears: 0, commissionPeriod: period,
+      }];
+    });
+    const codeCounts = new Map<string, number>();
+    installments.forEach((installment) => {
+      const code = normalizePayoutCode(installment.code);
+      codeCounts.set(code, (codeCounts.get(code) ?? 0) + 1);
+    });
+    installments.forEach((installment) => {
+      installment.requirePeriodMatch = (codeCounts.get(normalizePayoutCode(installment.code)) ?? 0) > 1;
+    });
+    return installments.some((installment) => projectCommissionRow(
+      installment.amount, payoutsForRecurringInstallment(payouts, installment), payoutTargetsForInstallment(installment), 0, installment.commissionPeriod
+    ).adjustment) ? installments : existing;
+  };
+  const commissionSummary = (
+    items: CommissionResultItemDTO[], payouts: ContractCommissionPayout[],
+    originalTotal: number, paymentTotals: { immediate: number; subsequent: number } | null
+  ) => {
+    const hasSplitImmediate = isSplitImmediateProduct(product) && items.some((item) => isSplitImmediateComponentTitle(item.title));
+    let totalDelta = 0;
+    let immediateDelta = 0;
+    const annualSubsequentDeltas = new Map<number, number>();
+    const annualSubsequentCounts = new Map<number, number>();
+    for (const item of items) {
+      const isSubsequent = /následná|pečovatelská/i.test(item.title);
+      if ((item.excludeFromTotal && !(paymentTotals && isSubsequent)) ||
+        (hasSplitImmediate && isLegacyImmediateTotalTitle(item.title))) continue;
+      const amount = validPayoutAmount(item.amount);
+      const acquisition = acquisitionCommissionInstallments({ item, product, frequency: paymentFrequency, policyStartDate });
+      if (acquisition.length > 0) {
+        const delta = acquisition.reduce((sum, installment, index) => sum + projectCommissionRow(
+          installment.amount, payoutsForAcquisitionInstallment(payouts, installment), installment.codes, 0,
+          commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual")))
+        ).amount - installment.amount, 0);
+        immediateDelta += delta;
+        totalDelta += delta;
+        continue;
+      }
+      const recurring = recurringInstallmentsForItem(item, payouts);
+      if (recurring.length > 0) {
+        recurring.forEach((installment) => {
+          const delta = projectCommissionRow(installment.amount, payoutsForRecurringInstallment(payouts, installment), payoutTargetsForInstallment(installment),
+            installment.anniversaryYears, installment.commissionPeriod).amount - installment.amount;
+          if (paymentTotals && installment.commissionPeriod) {
+            const start = commissionPeriodAfterMonths(commissionStart, 0);
+            if (start) {
+              const months = (Number(installment.commissionPeriod.slice(0, 4)) - Number(start.slice(0, 4))) * 12 +
+                Number(installment.commissionPeriod.slice(5, 7)) - Number(start.slice(5, 7));
+              const year = Math.floor(months / 12);
+              annualSubsequentDeltas.set(year, (annualSubsequentDeltas.get(year) ?? 0) + delta);
+              annualSubsequentCounts.set(year, (annualSubsequentCounts.get(year) ?? 0) + 1);
+            }
+          } else totalDelta += delta;
+        });
+        continue;
+      }
+      const delta = projectCommissionRow(amount, payouts, payoutCodesForCommissionItem(item, product), anniversaryYearsForCommissionItem(item)).amount - amount;
+      totalDelta += delta;
+      if (!isSubsequent) immediateDelta += delta;
+    }
+    const annualAmounts = paymentTotals && annualSubsequentDeltas.size > 0
+      ? [...annualSubsequentDeltas].filter(([year]) =>
+        annualSubsequentCounts.get(year) === periodsPerYear(paymentFrequency ?? "annual")
+      ).map(([, delta]) => ({ amount: paymentTotals.subsequent + delta }))
+      : [];
+    return {
+      total: originalTotal + totalDelta,
+      immediate: (paymentTotals?.immediate ?? 0) + immediateDelta,
+      subsequent: installmentAmountLabel(annualAmounts, paymentTotals?.subsequent ?? 0),
+    };
+  };
   const [payoutDifferenceExplanation, setPayoutDifferenceExplanation] =
     useState<PayoutDifferenceExplanation | null>(null);
 
@@ -711,14 +886,21 @@ export function ContractCommissionSection({
     normalizedOwnerEmail,
     isOwnContract
   );
+  const adviserSummary = commissionSummary(adviserItems, adviserPayouts, adviserTotalDisplay, paymentBasedAdviserTotals);
 
   const renderPayoutStatusChip = (
     status: CommissionPayoutReadStatus,
     paidAmount: number,
     expectedAmount: number,
-    records: ContractCommissionPayout[]
+    records: ContractCommissionPayout[],
+    adjusted = false
   ) => {
-    const differenceAmount = payoutDifferenceAmountFromRecords({
+    const adjustedDifference = paidAmount - expectedAmount;
+    const differenceAmount = adjusted
+      ? paidAmount > expectedAmount + COMMISSION_PAYOUT_AMOUNT_TOLERANCE
+        ? Math.round(adjustedDifference * 100) / 100
+        : null
+      : payoutDifferenceAmountFromRecords({
       expectedAmount,
       paidAmount,
       records,
@@ -728,7 +910,7 @@ export function ContractCommissionSection({
     return (
       <>
         <span className={`${styles.status} ${payoutStatusClass(status)}`}>
-          {payoutStatusLabel(status, paidAmount)}
+          {adjusted && expectedAmount === 0 && paidAmount === 0 ? "Bez nároku" : payoutStatusLabel(status, paidAmount)}
         </span>
         {stornoAmount !== null && (
           <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
@@ -802,7 +984,11 @@ export function ContractCommissionSection({
     key: string,
     payoutsForRows: ContractCommissionPayout[]
   ) => {
-    const total = sumCommissionItems(commissionItems);
+    const parts = commissionItems.map((part) => ({
+      part,
+      plan: projectCommissionRow(validPayoutAmount(part.amount), payoutsForRows, payoutCodesForCommissionItem(part, product)),
+    }));
+    const total = parts.reduce((sum, { plan }) => sum + plan.amount, 0);
 
     return (
       <details key={key} className="group">
@@ -832,14 +1018,9 @@ export function ContractCommissionSection({
         </summary>
 
         <div className={styles.breakdown}>
-          {commissionItems.map((part) => {
+          {parts.map(({ part, plan }) => {
             const partNote = displayNoteForCommissionItem(part);
-            const codes = payoutCodesForCommissionItem(part, product);
-            const payoutState = payoutStatusForCodes(
-              payoutsForRows,
-              codes,
-              validPayoutAmount(part.amount)
-            );
+            const payoutState = plan.state;
 
             return (
               <div
@@ -848,6 +1029,7 @@ export function ContractCommissionSection({
               >
                 <span className="min-w-0 text-sm font-medium text-slate-800">
                   <span>{cleanResultTitle(part.title)}</span>
+                  {renderPremiumAdjustment(plan)}
                   {partNote && (
                     <span className="mt-1 block text-xs font-semibold text-red-600">
                       {partNote}
@@ -856,12 +1038,14 @@ export function ContractCommissionSection({
                   {renderPayoutRecordHint(payoutState.records)}
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
-                  <span>{formatMoney(part.amount)}</span>
+                  <span>{formatMoney(plan.amount)}</span>
+                  {renderPaidRemainder(plan)}
                   {renderPayoutStatusChip(
                     payoutState.status,
                     payoutState.paidAmount,
-                    validPayoutAmount(part.amount),
-                    payoutState.records
+                    plan.amount,
+                    payoutState.records,
+                    Boolean(plan.adjustment)
                   )}
                 </span>
               </div>
@@ -894,25 +1078,23 @@ export function ContractCommissionSection({
       : commissionRowClass;
     const itemNote = displayNoteForCommissionItem(item);
     const payoutCodes = payoutCodesForCommissionItem(item, product);
-    const payoutState = payoutStatusForCodes(
-      payoutsForRows,
-      payoutCodes,
-      validPayoutAmount(item.amount)
+    const plan = projectCommissionRow(
+      validPayoutAmount(item.amount), payoutsForRows, payoutCodes, anniversaryYearsForCommissionItem(item)
     );
-    const recurringInstallments = recurringInstallmentsForCommissionItem(
-      item,
-      product,
-      contractDurationYears
-    );
+    const payoutState = plan.state;
+    const recurringInstallments = recurringInstallmentsForItem(item, payoutsForRows);
 
     const acquisitionInstallments = acquisitionCommissionInstallments({
       item, product, frequency: paymentFrequency, policyStartDate,
     });
     if (acquisitionInstallments.length > 0) {
-      const installments = acquisitionInstallments.map((installment) => {
+      const installments = acquisitionInstallments.map((installment, index) => {
         const records = payoutsForAcquisitionInstallment(payoutsForRows, installment);
-        const state = payoutStatusForCodes(records, installment.codes, installment.amount);
-        return { ...installment, state, records };
+        const installmentPlan = projectCommissionRow(
+          installment.amount, records, installment.codes, 0,
+          commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual")))
+        );
+        return { ...installment, amount: installmentPlan.amount, state: installmentPlan.state, records, plan: installmentPlan };
       });
       const paidCount = installments.filter(({ state }) => state.status === "paid").length;
       const total = installments.reduce((sum, installment) => sum + installment.amount, 0);
@@ -936,7 +1118,7 @@ export function ContractCommissionSection({
             </span>
             <span className={styles.installmentSummaryAmount}>
               <span className="flex flex-col items-end gap-1">
-                <span>{formatMoney(item.amount)} <span className={styles.perInstallment}>/ splátka</span></span>
+                <span>{installmentAmountLabel(installments, item.amount)} <span className={styles.perInstallment}>/ splátka</span></span>
                 <span className={`${styles.status} ${payoutStatusClass(status)}`}>
                   {status === "partial" ? "Částečně vyplaceno" : payoutStatusLabel(status, 0)}
                 </span>
@@ -954,6 +1136,7 @@ export function ContractCommissionSection({
                   <span className="min-w-0 text-sm font-medium text-slate-800">
                     <span>{installment.label} <span className={styles.installmentCode}>{installment.code}</span></span>
                     {installment.period && <span className={styles.installmentMeta}>Období splátky · {installment.period}</span>}
+                    {renderPremiumAdjustment(installment.plan)}
                     {renderPayoutRecordHint(installment.state.records)}
                     {onOpenStatement && sources.length > 0 && (
                       <span className={styles.installmentSources}>
@@ -971,8 +1154,9 @@ export function ContractCommissionSection({
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 text-sm font-semibold text-slate-950">
                     <span>{formatMoney(installment.amount)}</span>
-                    {installment.state.paidAmount > 0 && <span className={styles.installmentMeta}>Z výpisů {formatMoney(installment.state.paidAmount)}</span>}
-                    {renderPayoutStatusChip(installment.state.status, installment.state.paidAmount, installment.amount, installment.state.records)}
+                    {installment.plan.adjustment ? renderPaidRemainder(installment.plan)
+                      : installment.state.paidAmount > 0 && <span className={styles.installmentMeta}>Z výpisů {formatMoney(installment.state.paidAmount)}</span>}
+                    {renderPayoutStatusChip(installment.state.status, installment.state.paidAmount, installment.amount, installment.state.records, Boolean(installment.plan.adjustment))}
                   </span>
                 </div>
               );
@@ -983,19 +1167,15 @@ export function ContractCommissionSection({
     }
 
     if (recurringInstallments.length > 0) {
-      const paidInstallments = recurringInstallments.filter(
-        (installment) => {
-          const installmentTargets = payoutTargetsForInstallment(installment);
-          return (
-            payoutStatusForCodes(
-              payoutsForRows,
-              installmentTargets,
-              installment.amount
-            ).status === "paid"
-          );
-        }
-      ).length;
-      const recurringTotal = recurringInstallments.reduce((sum, installment) => sum + installment.amount, 0);
+      const installments = recurringInstallments.map((installment) => {
+        const installmentPlan = projectCommissionRow(
+          installment.amount, payoutsForRecurringInstallment(payoutsForRows, installment), payoutTargetsForInstallment(installment), installment.anniversaryYears,
+          installment.commissionPeriod
+        );
+        return { ...installment, amount: installmentPlan.amount, plan: installmentPlan };
+      });
+      const paidInstallments = installments.filter(({ plan }) => plan.state.status === "paid").length;
+      const recurringTotal = installments.reduce((sum, installment) => sum + installment.amount, 0);
 
       return (
         <details key={key} className="group">
@@ -1017,7 +1197,7 @@ export function ContractCommissionSection({
               </span>
             </span>
             <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-base font-semibold text-slate-900">
-              {formatMoney(item.amount)}
+              {installmentAmountLabel(installments, item.amount)}
               <ChevronDown
                 size={18}
                 strokeWidth={2.2}
@@ -1028,13 +1208,8 @@ export function ContractCommissionSection({
           </summary>
 
           <div className={styles.breakdown}>
-            {recurringInstallments.map((installment) => {
-              const installmentTargets = payoutTargetsForInstallment(installment);
-              const installmentState = payoutStatusForCodes(
-                payoutsForRows,
-                installmentTargets,
-                installment.amount
-              );
+            {installments.map((installment) => {
+              const installmentState = installment.plan.state;
 
               return (
                 <div
@@ -1046,15 +1221,18 @@ export function ContractCommissionSection({
                       {installment.label}
                       {installment.code ? ` · ${installment.code}` : ""}
                     </span>
+                    {renderPremiumAdjustment(installment.plan)}
                     {renderPayoutRecordHint(installmentState.records)}
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
                     <span>{formatMoney(installment.amount)}</span>
+                    {renderPaidRemainder(installment.plan)}
                     {renderPayoutStatusChip(
                       installmentState.status,
                       installmentState.paidAmount,
                       validPayoutAmount(installment.amount),
-                      installmentState.records
+                      installmentState.records,
+                      Boolean(installment.plan.adjustment)
                     )}
                   </span>
                 </div>
@@ -1073,6 +1251,7 @@ export function ContractCommissionSection({
           </span>
           <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
             <span>{cleanResultTitle(item.title)}</span>
+            {renderPremiumAdjustment(plan)}
             {itemNote && (
               <span className="mt-1 block text-xs font-semibold text-red-600">
                 {itemNote}
@@ -1082,21 +1261,23 @@ export function ContractCommissionSection({
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap text-right text-base font-semibold text-slate-900">
-          <span>{formatMoney(item.amount)}</span>
+          <span>{formatMoney(plan.amount)}</span>
+          {renderPaidRemainder(plan)}
           {payoutCodes.length > 0 &&
             renderPayoutStatusChip(
               payoutState.status,
               payoutState.paidAmount,
-              validPayoutAmount(item.amount),
-              payoutState.records
+              plan.amount,
+              payoutState.records,
+              Boolean(plan.adjustment)
             )}
         </span>
       </>
     );
 
-    if (!clickable) {
+    if (!clickable || plan.adjustment) {
       return (
-        <div key={key} className={rowClass}>
+        <div key={key} className={plan.adjustment ? commissionRowClass : rowClass}>
           {content}
         </div>
       );
@@ -1173,6 +1354,8 @@ export function ContractCommissionSection({
         <section className="space-y-3">
           {meziprovisionCards.map((card) => {
             const isExpanded = expandedMeziprovisionKeys.includes(card.key);
+            const cardPayouts = payoutsForWriter(card.email ?? normalizedViewerEmail);
+            const cardSummary = isExpanded ? commissionSummary(card.items, cardPayouts, card.totalDisplay, card.totals) : null;
             return (
               <div key={card.key} className="space-y-2.5">
                 <button
@@ -1214,7 +1397,7 @@ export function ContractCommissionSection({
                           card.position,
                           card.mode,
                           card.key,
-                          payoutsForWriter(card.email ?? normalizedViewerEmail)
+                          cardPayouts
                         )}
                       </div>
 
@@ -1225,13 +1408,13 @@ export function ContractCommissionSection({
                               <div className={commissionTotalLineClass}>
                                 <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
                                 <span className={commissionTotalValueClass}>
-                                  {formatMoney(card.totals.immediate)}
+                                  {formatMoney(cardSummary?.immediate ?? card.totals.immediate)}
                                 </span>
                               </div>
                               <div className={commissionTotalLineClass}>
                                 <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
                                 <span className={commissionTotalValueClass}>
-                                  {formatMoney(card.totals.subsequent)}
+                                  {cardSummary?.subsequent ?? formatMoney(card.totals.subsequent)}
                                 </span>
                               </div>
                             </div>
@@ -1239,7 +1422,7 @@ export function ContractCommissionSection({
                             <div className={`${commissionTotalLineClass} w-full`}>
                               <span className={commissionTotalLabelClass}>Celkem meziprovize</span>
                               <span className={commissionTotalValueClass}>
-                                {formatMoney(card.totalDisplay)}
+                                {formatMoney(cardSummary?.total ?? card.totalDisplay)}
                               </span>
                             </div>
                           )}
@@ -1280,13 +1463,13 @@ export function ContractCommissionSection({
                     <div className={commissionTotalLineClass}>
                       <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
                       <span className={commissionTotalValueClass}>
-                        {formatMoney(paymentBasedAdviserTotals.immediate)}
+                        {formatMoney(adviserSummary.immediate)}
                       </span>
                     </div>
                     <div className={commissionTotalLineClass}>
                       <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
                       <span className={commissionTotalValueClass}>
-                        {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                        {adviserSummary.subsequent}
                       </span>
                     </div>
                   </div>
@@ -1294,7 +1477,7 @@ export function ContractCommissionSection({
                   <div className={`${commissionTotalLineClass} w-full`}>
                     <span className={commissionTotalLabelClass}>Celkem</span>
                     <span className={commissionTotalValueClass}>
-                      {formatMoney(adviserTotalDisplay)}
+                      {formatMoney(adviserSummary.total)}
                     </span>
                   </div>
                 )}
@@ -1342,13 +1525,13 @@ export function ContractCommissionSection({
                       <div className={commissionTotalLineClass}>
                         <span className={commissionTotalLabelClass}>Celkem v 1. roce</span>
                         <span className={commissionTotalValueClass}>
-                          {formatMoney(paymentBasedAdviserTotals.immediate)}
+                          {formatMoney(adviserSummary.immediate)}
                         </span>
                       </div>
                       <div className={commissionTotalLineClass}>
                         <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
                         <span className={commissionTotalValueClass}>
-                          {formatMoney(paymentBasedAdviserTotals.subsequent)}
+                          {adviserSummary.subsequent}
                         </span>
                       </div>
                     </div>
@@ -1356,7 +1539,7 @@ export function ContractCommissionSection({
                     <div className={`${commissionTotalLineClass} w-full`}>
                       <span className={commissionTotalLabelClass}>Celkem</span>
                       <span className={commissionTotalValueClass}>
-                        {formatMoney(adviserTotalDisplay)}
+                        {formatMoney(adviserSummary.total)}
                       </span>
                     </div>
                   )}

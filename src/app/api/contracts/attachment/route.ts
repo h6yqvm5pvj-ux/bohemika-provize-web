@@ -36,6 +36,13 @@ const CONTRACT_ATTACHMENT_UPLOAD_RATE_LIMIT = 20;
 const CONTRACT_ATTACHMENT_DOWNLOAD_RATE_LIMIT = 120;
 const CONTRACT_ATTACHMENT_RATE_LIMIT_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PUBLIC_PDF_VALIDATION_ERRORS = new Set([
+  "PDF soubor je prázdný.",
+  "PDF je příliš velké. Maximální velikost je 12 MB.",
+  "Příloha musí být PDF soubor.",
+  "Příloha musí mít příponu .pdf.",
+  "Soubor nevypadá jako platné PDF.",
+]);
 
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -131,6 +138,11 @@ export async function POST(req: NextRequest) {
   if (!(fileRaw instanceof File)) {
     return withRateLimit(jsonError("Vyber PDF soubor smlouvy.", 400));
   }
+  const onlyIfMissingRaw = form.get("onlyIfMissing");
+  if (form.getAll("onlyIfMissing").length > 1 || (onlyIfMissingRaw != null && onlyIfMissingRaw !== "1")) {
+    return withRateLimit(jsonError("Neplatný režim nahrání PDF.", 400));
+  }
+  const onlyIfMissing = onlyIfMissingRaw === "1";
 
   const ownerEmail = normalizeEmail(form.get("ownerEmail"));
   const entryId = normalizeEntryId(form.get("entryId"));
@@ -152,6 +164,13 @@ export async function POST(req: NextRequest) {
     return withRateLimit(
       jsonError("PDF smlouvy může nahrát jen vlastník smlouvy.", 403)
     );
+  }
+
+  // A first-attachment action must never silently replace an existing file,
+  // including an attachment whose metadata requires repair. The snapshot's
+  // lastUpdateTime precondition also protects this check during the upload.
+  if (onlyIfMissing && loaded.contract.contractPdfAttachment != null) {
+    return withRateLimit(jsonError("Smlouva už má uloženou PDF přílohu. Obnov detail smlouvy.", 409));
   }
 
   const previousAttachment = normalizeStoredContractPdfAttachment(
@@ -183,14 +202,15 @@ export async function POST(req: NextRequest) {
     if (uploaded) {
       try {
         await deleteContractPdfAttachment(uploaded);
-      } catch (cleanupErr) {
-        console.warn("POST /api/contracts/attachment: cleanup po chybě selhal:", cleanupErr);
+      } catch {
+        console.warn("POST /api/contracts/attachment: cleanup po chybě selhal.");
       }
     }
-    const message =
-      error instanceof Error && error.message.trim()
-        ? error.message.trim()
-        : "PDF se nepodařilo uložit.";
+    if (error && typeof error === "object" && "code" in error && [9, 10].includes(Number(error.code))) {
+      return withRateLimit(jsonError("Smlouva se mezitím změnila. Obnov detail a zkus nahrání znovu.", 409));
+    }
+    const message = error instanceof Error && PUBLIC_PDF_VALIDATION_ERRORS.has(error.message)
+      ? error.message : "PDF se nepodařilo uložit. Zkus nahrání znovu.";
     return withRateLimit(jsonError(message, 400));
   }
 
@@ -200,8 +220,8 @@ export async function POST(req: NextRequest) {
   ) {
     try {
       await deleteContractPdfAttachment(previousAttachment);
-    } catch (cleanupErr) {
-      console.warn("POST /api/contracts/attachment: staré PDF se nepodařilo smazat:", cleanupErr);
+    } catch {
+      console.warn("POST /api/contracts/attachment: staré PDF se nepodařilo smazat.");
     }
   }
 
@@ -269,12 +289,12 @@ export async function GET(req: NextRequest) {
     if (isStorageNotFoundError(error)) {
       return withRateLimit(jsonError("PDF příloha nebyla nalezena.", 404));
     }
-    console.error("GET /api/contracts/attachment selhal:", error);
+    console.error("GET /api/contracts/attachment selhal.");
     return withRateLimit(jsonError("PDF přílohu se nepodařilo načíst.", 500));
   }
 
-  download.stream.once("error", (error) => {
-    console.error("GET /api/contracts/attachment: stream PDF selhal:", error);
+  download.stream.once("error", () => {
+    console.error("GET /api/contracts/attachment: stream PDF selhal.");
   });
   const responseStream = Readable.toWeb(download.stream) as ReadableStream<Uint8Array>;
 

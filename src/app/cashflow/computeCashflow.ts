@@ -314,7 +314,8 @@ export function computeCashflow(
     entriesForCashflow,
     CASHFLOW_FORECAST_YEARS,
     email,
-    asOf
+    asOf,
+    allEntries
   );
   const includeTipPayouts =
     tipsterMode ||

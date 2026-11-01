@@ -1,9 +1,11 @@
 import type { ClientCardDraft } from "./clientCardData";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
+import { matchesContractClientName, normalizeContractSearchText, prepareContractSearch } from "@/app/lib/contractSearch";
 import { clientIdentityKey, clientNameWithoutTitles, clientSlugForName, isClientCardSlug, normalizeClientSearch } from "./clientIdentity";
 import { clientContractProductLabel, contractOwnerEmail, splitClientContracts, toDate, uniqueContracts, type ClientContractItem } from "./clientCardHelpers";
 import { CLIENT_PRODUCT_GROUPS, clientProductGroup, type ClientProductFilter, type ClientProductGroup } from "./clientProducts";
 
-export type ClientCardSummary = Pick<ClientCardDraft, "clientName" | "phone" | "email" | "permanentAddress"> & { slug: string };
+export type ClientCardSummary = Pick<ClientCardDraft, "clientName" | "phone" | "email" | "permanentAddress"> & { slug: string; isCompany?: boolean };
 export type ClientDirectoryItem = {
   slug: string;
   name: string;
@@ -52,7 +54,7 @@ export function buildClientDirectory(contracts: ClientContractItem[], cards: Cli
     items.sort((a, b) => dateOf(b) - dateOf(a) || a.id.localeCompare(b.id));
     const aliases = [...new Set(items.map((item) => item.clientName!.trim().replace(/\s+/g, " ")))];
     const saved = savedBySlug.get(slug);
-    const name = saved?.clientName || clientNameWithoutTitles(aliases[0]);
+    const name = formatClientDisplayName(saved?.clientName || clientNameWithoutTitles(aliases[0]), { isCompany: saved?.isCompany });
     const phones = contactValues(items, "clientPhone");
     const emails = contactValues(items, "clientEmail");
     const addresses = contactValues(items, "clientAddress");
@@ -83,10 +85,13 @@ export type ClientSort = "name" | "contracts" | "recent";
 
 export function filterClientDirectory(clients: ClientDirectoryItem[], query: string, filter: ClientFilter, sort: ClientSort, product: ClientProductFilter = "all"): ClientDirectoryItem[] {
   const words = normalizeClientSearch(query).split(/\s+/).filter(Boolean);
+  const nameSearch = prepareContractSearch(query);
   const numberQuery = query.replace(/[\s()+./-]/g, "");
   return clients.filter((client) => {
     if (product !== "all" && !client.productGroups.includes(product)) return false;
-    const matchesText = words.every((word) => client.searchText.includes(word));
+    const matchesText = nameSearch.company
+      ? [client.name, ...client.aliases].some(name => matchesContractClientName(normalizeContractSearchText(name), nameSearch))
+      : words.every((word) => client.searchText.includes(word));
     const matchesNumber = /^\d{3,}$/.test(numberQuery) && (
       client.contracts.some((item) => [item.clientPhone, item.contractNumber].some((value) => value?.replace(/[\s()+./-]/g, "").includes(numberQuery))) ||
       client.phone.replace(/[\s()+./-]/g, "").includes(numberQuery)

@@ -35,6 +35,9 @@ const fixture = (): CashflowItem => ({
   subscriptionUserEmail: null, subscriptionUserName: null,
   subscriptionPeriodFrom: null, subscriptionPeriodUntil: null,
   payoutStatus: "shifted", predictedAmount: 125, isStatementOnly: false,
+  premiumChangeOriginalAmount: 150, premiumChangeEffectiveDate: "2026-08-01",
+  premiumChangeEntryId: "premium-decrease",
+  isPartialPayoutBalance: true,
   commissionPayoutKey: "key", commissionStatementNumber: "100",
   commissionStatementPeriod: "09/2026", originalDate: new Date("2026-08-25T00:00:00.000Z"),
   missedStatementPeriods: ["08/2026"], predictionAdjustment: {
@@ -170,6 +173,8 @@ describe("cashflow snapshot wire format", () => {
     repeated.months.push(repeated.months[0]);
     expect(parseCashflowSnapshot(repeated)).toBeNull();
     expect(parseCashflowSnapshot({ ...wire(), version: "future" })).toBeNull();
+    expect(parseCashflowSnapshot({ ...wire(), version: "cashflow-snapshot-wire-v2" })).toBeNull();
+    expect(parseCashflowSnapshot({ ...wire(), version: "cashflow-snapshot-wire-v3" })).toBeNull();
     expect(parseCashflowSnapshot({ ...wire(), identity: "untrusted" })).toBeNull();
     expect(parseCashflowSnapshot(Object.create(wire()))).toBeNull();
     expect(parseCashflowSnapshot({ ...wire(), items: new Array(1) })).toBeNull();

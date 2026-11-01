@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), normalize: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 const db = vi.hoisted(() => ({
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
@@ -13,7 +13,7 @@ vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: (_writer: 
 vi.mock("@/lib/server/cashflowMutationTracking", () => ({ withCashflowMutation: (_name: string, work: () => unknown) => work(), trackCashflowWrite: (work: () => unknown) => work() }));
 vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard, hasContractAccess: mocks.access, CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL: "override@example.test" }));
 vi.mock("@/lib/server/contractPdfStorage", () => ({
-  normalizeStoredContractPdfAttachment: () => null,
+  normalizeStoredContractPdfAttachment: mocks.normalize,
   uploadContractPdfAttachment: mocks.upload,
   deleteContractPdfAttachment: mocks.remove,
   buildContractPdfStoredFileName: () => "stored.pdf",
@@ -23,16 +23,18 @@ import { GET, POST } from "./route";
 
 const owner = "owner@example.test";
 const ctx = { email: owner, uid: "owner-uid", accountType: "advisor", actorEmail: owner, contractAccessEmails: [], isImpersonating: false };
-const request = (entryId = "entry") => {
+const request = (entryId = "entry", onlyIfMissing?: string | File) => {
   const form = new FormData();
   form.set("file", new File(["%PDF-fixture"], "contract.pdf", { type: "application/pdf" }));
   form.set("ownerEmail", owner); form.set("entryId", entryId);
+  if (onlyIfMissing !== undefined) form.set("onlyIfMissing", onlyIfMissing);
   return new NextRequest("http://localhost/api/contracts/attachment", { method: "POST", body: form });
 };
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.guard.mockResolvedValue({ ok: true, ctx, withRateLimit: (response: NextResponse) => response });
   mocks.access.mockReturnValue(true);
+  mocks.normalize.mockReturnValue(null);
   mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto" }), updateTime: "version" });
   mocks.upload.mockResolvedValue({ sha256: "verified-hash", storagePath: "file.pdf", originalName: "file.pdf" });
   mocks.commit.mockResolvedValue(undefined); mocks.fill.mockResolvedValue("saved");
@@ -67,6 +69,100 @@ describe("attachment contract boundary", () => {
     expect((await POST(request())).status).toBe(403);
     expect(mocks.get).not.toHaveBeenCalled();
     expect(mocks.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe("first PDF attachment from contract detail", () => {
+  it("allows the owner to attach a missing PDF and protects the source version", async () => {
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, attachment: { hasFile: true } });
+    expect(mocks.upload).toHaveBeenCalledOnce();
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      contractPdfAttachment: expect.objectContaining({ storagePath: "file.pdf" }),
+    }), { lastUpdateTime: "version" });
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it.each([{ storagePath: "existing.pdf" }, {}, "legacy-invalid-metadata"])(
+    "does not replace a previously attached file or malformed metadata: %j", async attachment => {
+      mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractPdfAttachment: attachment }), updateTime: "version" });
+      const response = await POST(request("entry", "1"));
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("už má") });
+      expect(mocks.upload).not.toHaveBeenCalled();
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.commit).not.toHaveBeenCalled();
+      expect(mocks.remove).not.toHaveBeenCalled();
+    }
+  );
+
+  it("checks authorization before disclosing that a PDF is already attached", async () => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ contractPdfAttachment: {} }), updateTime: "version" });
+    mocks.access.mockReturnValue(false);
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "Nemáš oprávnění pro tuto smlouvu." });
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("does not grant upload permission to a manager with read access", async () => {
+    mocks.guard.mockResolvedValue({ ok: true, ctx: { ...ctx, email: "manager@example.test", contractAccessEmails: [owner] }, withRateLimit: (response: NextResponse) => response });
+    expect((await POST(request("entry", "1"))).status).toBe(403);
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.commit).not.toHaveBeenCalled();
+  });
+
+  it.each(["0", "true", "", "replace", new File(["1"], "mode.txt")])("rejects an invalid upload mode before database access", async mode => {
+    expect((await POST(request("entry", mode))).status).toBe(400);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate upload modes", async () => {
+    const form = await request("entry", "1").formData();
+    form.append("onlyIfMissing", "1");
+    const response = await POST(new NextRequest("http://localhost/api/contracts/attachment", { method: "POST", body: form }));
+    expect(response.status).toBe(400);
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
+
+  it.each([9, 10])("returns a safe conflict and removes only the new file after concurrent update %s", async code => {
+    const previous = { storagePath: "existing.pdf", originalName: "existing.pdf" };
+    const uploaded = { sha256: "new-hash", storagePath: "new.pdf", originalName: "new.pdf" };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractPdfAttachment: previous }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(previous);
+    mocks.upload.mockResolvedValue(uploaded);
+    mocks.commit.mockRejectedValue(Object.assign(new Error("private document path"), { code }));
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("mezitím změnila") });
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(uploaded);
+    expect(mocks.remove).not.toHaveBeenCalledWith(previous);
+    expect(mocks.fill).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy authorized replacement available when onlyIfMissing is omitted", async () => {
+    const previous = { storagePath: "existing.pdf", originalName: "existing.pdf" };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractPdfAttachment: previous }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(previous);
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(previous);
+  });
+
+  it("does not expose unexpected storage errors in the response or cleanup logs", async () => {
+    mocks.upload.mockRejectedValue(new Error("private customer name /bucket/secret-storage-path"));
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "PDF se nepodařilo uložit. Zkus nahrání znovu." });
+  });
+
+  it.each([
+    "PDF soubor je prázdný.", "PDF je příliš velké. Maximální velikost je 12 MB.",
+    "Příloha musí být PDF soubor.", "Příloha musí mít příponu .pdf.", "Soubor nevypadá jako platné PDF.",
+  ])("preserves safe PDF validation feedback: %s", async message => {
+    mocks.upload.mockRejectedValue(new Error(message));
+    expect(await (await POST(request("entry", "1"))).json()).toEqual({ ok: false, error: message });
   });
 });
 

@@ -16,6 +16,20 @@ import {
 } from "./contractsApi.identity";
 
 describe("contracts create identity helpers", () => {
+  it("replays a legacy uppercase name after presentation normalization", () => {
+    const expected = { clientName: "Jan Novák", contractNumber: "TEST123" };
+    expect(idempotentReplayMatchesPayload({ ...expected, clientName: "JAN NOVÁK" }, expected)).toBe(true);
+    for (const clientName of ["Jan Novak", "Novák Jan", "Jana Nováková"]) {
+      expect(idempotentReplayMatchesPayload({ ...expected, clientName }, expected)).toBe(false);
+    }
+  });
+
+  it("does not treat forgiving company search aliases as idempotent payload equality", () => {
+    const expected = { clientName: "ABC Servis s.r.o." };
+    for (const clientName of ["Servis ABC s.r.o.", "ABC Servis a.s.", "ABC Servis s.r."]) {
+      expect(idempotentReplayMatchesPayload({ clientName }, expected)).toBe(false);
+    }
+  });
   it("does not replay an inherited contract with changed entitlement metadata", () => {
     const expected = { acquisitionType: "inherited", originalPosition: "poradce4", originalAdviserName: "Jan Novák",
       transferEffectiveDate: "2026-09-10", commissionMode: "standard" };

@@ -165,6 +165,7 @@ import {
   lifePremiumBaseNoticeKind,
 } from "./statementLifeCardNotices";
 import { groupStatementPreviewContracts } from "./statementPreviewGrouping";
+import { statementUnpairedContractFields } from "./statementUnpairedContractFields";
 import {
   StatementParseWarnings,
   StatementPreviewHeader,
@@ -6015,11 +6016,9 @@ function UnpairedContractsSection({
   const [expanded, setExpanded] = useState(false);
   const { items, inBrowser } = useStatementBrowserItems([
     ...lifeContracts.map(contract => ({
-      key: `life:${contract.contractNumber}-${contract.productCode}`,
-      searchText: `${contract.client} ${contract.contractNumber} ${contract.productLabel} ${contract.productCode}`,
+      ...statementUnpairedContractFields(contract),
       amount: lifeSplitContractTotal(contract),
       issueCount: lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
-      unpaired: true,
       render: () => <LifeSplitContractCard
         contract={contract}
         match={contractMatchForNumber(matchesByContractNumber, contract.contractNumber, lifeSplitContractMatchScope(contract))}
@@ -6032,12 +6031,9 @@ function UnpairedContractsSection({
       />,
     })),
     ...otherContracts.map(contract => ({
-      key: `other:${contract.key}`,
-      searchText: [contract.client, contract.contractNumber, ...contract.rows.map(row => `${row.product} ${resolveStatementProduct(row.product).label}`)].join(" "),
+      ...statementUnpairedContractFields(contract),
       amount: otherProductContractTotal(contract),
       issueCount: otherProductContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
-      unpaired: true,
-      hasA101: otherProductContractHasA101Commission(contract),
       render: () => <OtherProductContractCard
         contract={contract}
         match={contractMatchForNumber(matchesByContractNumber, contract.contractNumber, otherProductContractMatchScope(contract))}

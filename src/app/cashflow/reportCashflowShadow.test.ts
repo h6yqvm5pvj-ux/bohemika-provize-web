@@ -3,7 +3,7 @@
 import { webcrypto } from "node:crypto";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CASHFLOW_SHADOW_MAX_AGE_MS, hashCashflowValue } from "./shadowProtocol";
+import { CASHFLOW_SHADOW_MAX_AGE_MS, CASHFLOW_SHADOW_VERSION, hashCashflowValue } from "./shadowProtocol";
 import type { reportCashflowShadow as Reporter } from "./reportCashflowShadow";
 
 type ReportInput = Parameters<typeof Reporter>[0];
@@ -125,7 +125,7 @@ describe("reportCashflowShadow", () => {
     expect(new Headers(init?.headers).get("Content-Type")).toBe("application/json");
     const body = JSON.parse(String(init?.body));
     expect(body).toEqual({
-      version: "cashflow-shadow-v2",
+      version: CASHFLOW_SHADOW_VERSION,
       asOfMs: now,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       inputHash: await hashCashflowValue({ snapshot: args.snapshot, statements: args.statements }),
@@ -361,7 +361,7 @@ describe("reportCashflowShadow", () => {
     expect(new Headers(checkRequest?.headers).get("Authorization")).toBe("Bearer check-token");
     expect(vi.mocked(user.getIdToken).mock.calls).toEqual([[false], [false]]);
     expect(storedSummary()).toEqual({
-      version: "cashflow-shadow-v2",
+      version: CASHFLOW_SHADOW_VERSION,
       shadow: { status: "match", candidate: "verified", requestMs: 25, serverTimingMs: { cashflow_total: 20, cashflow_inputs: 15 } },
       check: { status: "match", requestMs: 7, serverTimingMs: { cashflow_total: 4.5, cashflow_storage: 3 } },
     });
@@ -382,7 +382,7 @@ describe("reportCashflowShadow", () => {
     fetchMock.mockResolvedValueOnce(Response.json(result));
     expect(await report(input())).toEqual(result);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(storedSummary()).toMatchObject({ version: "cashflow-shadow-v2", shadow: { status: result.status } });
+    expect(storedSummary()).toMatchObject({ version: CASHFLOW_SHADOW_VERSION, shadow: { status: result.status } });
     expect(storedSummary().check).toBeUndefined();
   });
 

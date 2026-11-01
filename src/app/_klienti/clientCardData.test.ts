@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyClientCard, MAX_CLIENT_IDENTITY_DOCUMENTS, parseClientCardDraft } from "./clientCardData";
 
-const card = createEmptyClientCard("Testovací klient");
+const card = createEmptyClientCard("Testovací Klient");
 const document = { id: "doc-1", type: "identity-card", validFrom: "2024-02-29", validTo: "2034-02-28", number: "TEST-123", issuedBy: "Test" };
 
 describe("client card input validation", () => {
+  it("normalizes a person's saved name without modifying contacts or documents", () => {
+    const parsed = parseClientCardDraft({ ...card, clientName: "  JAN   NOVÁK ", email: "jan@example.test", identityDocuments: [document] });
+    expect(parsed).toEqual({ ...card, clientName: "Jan Novák", email: "jan@example.test", identityDocuments: [document] });
+  });
+  it("preserves the spelling of an unmarked business with an IČO", () => {
+    expect(parseClientCardDraft({ ...card, clientName: "PEMI Cars", companyId: "00123456" })?.clientName).toBe("PEMI Cars");
+  });
   it("reads older cards without an IČO and keeps leading zeros in a new IČO", () => {
     const legacy = { ...card } as Record<string, unknown>;
     delete legacy.companyId;

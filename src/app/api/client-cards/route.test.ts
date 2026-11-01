@@ -37,6 +37,17 @@ describe("private client directory summaries", () => {
     expect((await GET(request())).status).toBe(status);
     expect(mocks.collection).not.toHaveBeenCalled();
   });
+  it("returns only a company hint to preserve brand spelling without exposing the IČO", async () => {
+    const company = { ...card, clientName: "PEMI Cars", companyId: "00123456" };
+    const slug = clientSlugForName(company.clientName);
+    mocks.get.mockResolvedValue({ docs: [{ id: slug, data: () => ({ ownerUid: ctx.uid, card: company }) }] });
+    const response = await GET(request());
+    const result = await response.json();
+    expect(response.status).toBe(200);
+    expect(result).toEqual({ ok: true, cards: [{ slug, clientName: "PEMI Cars", phone: company.phone, email: "", permanentAddress: "", isCompany: true }] });
+    expect(JSON.stringify(result)).not.toContain(company.companyId);
+    expect(JSON.stringify(result)).not.toContain(company.birthNumber);
+  });
   it.each([{ ...ctx, email: "" }, { ...ctx, isImpersonating: true }])("denies unavailable accounts before reading data", async (ctx) => {
     mocks.guard.mockResolvedValue({ ok: true, ctx });
     expect((await GET(request())).status).toBe(403);

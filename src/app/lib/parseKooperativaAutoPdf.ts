@@ -77,7 +77,9 @@ export const normalizeCzechCompanyId = (
   value: string | null | undefined
 ): string | null => {
   if (!value) return null;
-  const digits = value.replace(/\D+/g, "");
+  // In particular, a DIČ (CZ…) must never supply a missing policyholder IČO.
+  if (!/^[\d\s]+$/.test(value.trim())) return null;
+  const digits = value.replace(/\s+/g, "");
   return digits.length === 8 ? digits : null;
 };
 
@@ -86,34 +88,85 @@ type PositionedTextItem = {
   text: string;
   x: number;
   y: number;
+  lineIndex: number;
 };
 
-const readValueToRightOfLabel = (
-  items: PositionedTextItem[],
-  label: RegExp,
-  normalize: (value: string | null | undefined) => string | null
-): string | null => {
-  const labels = items.filter((item) =>
-    label.test(stripDiacritics(item.text).toLowerCase().trim())
-  );
+const policyholderHeading = (line: string): boolean =>
+  /^(?:b\s*[.)\-–—:]?\s+)?pojistnik(?:\s*\/\s*pojisteny)?(?:\s*\([^)]*\))?\s*:?$/i.test(line);
 
-  for (const labelItem of labels) {
-    const candidates = items
-      .filter(
-        (item) =>
-          item.page === labelItem.page &&
-          item.x > labelItem.x &&
-          Math.abs(item.y - labelItem.y) <= 4
-      )
-      .sort((left, right) => left.x - right.x);
-    for (const candidate of candidates) {
-      const normalized = normalize(candidate.text);
-      if (normalized) return normalized;
+const identitySectionBoundary = (line: string): boolean =>
+  (!identityFieldLabel(line) && /^[a-z]\s*[.)\-–—:]?\s+\p{L}/iu.test(line)) ||
+  /^(?:pojisteny|vlastnik|provozovatel|ridic|udaje o vozidle|pojistitel|kooperativa pojistovna|pojistny zprostredkovatel|zprostredkovatel|zastupce|zastoupen|zastupujici|statutarni|zmocnenec|kontaktni osoba|osoba opravnena|osoba jednajici|opravnena osoba|jednajici osoba)\b/i.test(line);
+
+const identityFieldLabel = (line: string): boolean =>
+  /^(?:rodne\s+cislo|datum\s+narozeni|typ\s+osoby|i\s*c(?:\s*o)?|dic|jmeno|prijmeni|nazev|adresa|telefon|mobil|e-?mail|statni\s+obcanstvi|pohlavi)\b/i.test(line) || /[:：]\s*$/.test(line);
+
+/** Sensitive identifiers are accepted only inside the identified policyholder
+ * block. No full-document fallback is allowed for missing or ambiguous fields. */
+function policyholderIdentity(
+  lines: string[], asciiLines: string[], positionedItems: PositionedTextItem[]
+): Pick<KooperativaAutoPdfResult, "birthNumber" | "policyholderBirthDate" | "companyId" | "policyholderType"> {
+  const starts = asciiLines.flatMap((line, index) => policyholderHeading(line) ? [index] : []);
+  const bounds = starts.map(start => {
+    let end = Math.min(lines.length, start + 128);
+    for (let index = start + 1; index < end; index++) {
+      if (policyholderHeading(asciiLines[index]) || identitySectionBoundary(asciiLines[index])) { end = index; break; }
     }
-  }
-
-  return null;
-};
+    return { start, end };
+  });
+  const values = (label: RegExp, normalize: (value: string) => string | null, sections = bounds): Set<string> => {
+    const found = new Set<string>();
+    for (const { start, end } of sections) {
+      for (let index = start; index < end; index++) {
+        const match = asciiLines[index].match(label);
+        if (!match) continue;
+        const inline = lines[index].slice(match[0].length).replace(/^\s*[:：\-]\s*/, "").trim();
+        const inlineValue = normalize(inline);
+        if (inlineValue) { found.add(inlineValue); continue; }
+        const labels = positionedItems.filter(item => item.lineIndex === index);
+        const rowValues = labels.flatMap(labelItem => positionedItems.filter(item =>
+          item.lineIndex > start && item.lineIndex < end && item.page === labelItem.page &&
+          item.x > labelItem.x && Math.abs(item.y - labelItem.y) <= 4
+        ).map(item => normalize(item.text)).filter((value): value is string => value != null));
+        if (rowValues.length) { rowValues.forEach(value => found.add(value)); continue; }
+        const next = lines[index + 1];
+        if (index + 1 < end && next && !identityFieldLabel(asciiLines[index + 1])) {
+          const value = normalize(next);
+          if (value) found.add(value);
+        }
+      }
+    }
+    return found;
+  };
+  const birthLabel = /^rodne\s+cislo(?:\s*\/\s*i\s*c(?:\s*o)?)?\b/i;
+  const companyLabel = /^(?:i\s*c(?:\s*o)?|rodne\s+cislo\s*\/\s*i\s*c(?:\s*o)?)\b/i;
+  const dateLabel = /^datum\s+narozeni\b/i;
+  const normalizeBirth = (value: string) => /^\d{6}\/?\d{3,4}$/.test(value.replace(/\s+/g, "")) ? normalizeCzechBirthNumber(value) : null;
+  const birthNumbers = values(birthLabel, normalizeBirth);
+  const companyIds = values(companyLabel, normalizeCzechCompanyId);
+  const birthDates = values(dateLabel, toDateInput);
+  const types = values(/^typ\s+osoby\b/i, value => {
+    const type = stripDiacritics(value).toLowerCase();
+    if (/pravnicka\s+osoba/.test(type)) return "legal_entity";
+    if (/fyzicka\s+osoba|obcan/.test(type)) return "natural_person";
+    return null;
+  });
+  if ([birthNumbers, companyIds, birthDates, types].some(found => found.size > 1)) return {};
+  // Do not combine two different policyholders just because their PDF blocks
+  // happen to provide different kinds of identifier instead of the same field.
+  const sectionIdentities = bounds.map(bound => new Set([
+    ...[...values(birthLabel, normalizeBirth, [bound])].map(value => `rc:${value}`),
+    ...[...values(companyLabel, normalizeCzechCompanyId, [bound])].map(value => `ic:${value}`),
+    ...[...values(dateLabel, toDateInput, [bound])].map(value => `dob:${value}`),
+  ])).filter(tokens => tokens.size > 0);
+  if (sectionIdentities.some(tokens => ![...tokens].some(token => sectionIdentities[0].has(token)))) return {};
+  return {
+    ...(birthNumbers.size ? { birthNumber: [...birthNumbers][0] } : {}),
+    ...(companyIds.size ? { companyId: [...companyIds][0] } : {}),
+    ...(birthDates.size ? { policyholderBirthDate: [...birthDates][0] } : {}),
+    ...(types.size ? { policyholderType: [...types][0] as "legal_entity" | "natural_person" } : {}),
+  };
+}
 
 const pickBestContractNumber = (candidates: string[]): string | null => {
   if (candidates.length === 0) return null;
@@ -485,17 +538,19 @@ export async function parseKooperativaAutoPdf(
   const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
   const positionedTextItems: PositionedTextItem[] = [];
+  let lineIndex = 0;
 
   for (let i = 1; i <= doc.pages.length; i++) {
     const page = doc.pages[i - 1];
     const content = { items: page.items };
     content.items.forEach((item: any) => {
       if (typeof item?.str !== "string" || !item.str.trim()) return;
-      positionedTextItems.push({
-        page: i,
-        text: item.str.trim(),
-        x: Number(item.transform?.[4] ?? 0),
-        y: Number(item.transform?.[5] ?? 0),
+      item.str.split(/\n+/).map((line: string) => line.trim()).filter(Boolean).forEach((text: string) => {
+        positionedTextItems.push({
+          page: i, text, lineIndex: lineIndex++,
+          x: Number(item.transform?.[4] ?? 0),
+          y: Number(item.transform?.[5] ?? 0),
+        });
       });
     });
     const text = content.items
@@ -544,45 +599,7 @@ export async function parseKooperativaAutoPdf(
   }
   result.contractNumber = pickBestContractNumber(contractCandidates);
 
-  const birthNumberByLabel =
-    readNearestValueByLabel(lines, asciiLines, /rodne\s+cislo/i, 3) ??
-    fullText.match(/Rodn[eé]\s+č[ií]slo\s*[:\-]?\s*(\d{6}\s*\/?\s*\d{3,4})/i)?.[1] ??
-    null;
-  const birthNumber = normalizeCzechBirthNumber(birthNumberByLabel);
-  if (birthNumber) result.birthNumber = birthNumber;
-
-  const policyholderTypeRaw = readNearestValueByLabel(
-    lines,
-    asciiLines,
-    /typ\s+osoby/i,
-    3
-  );
-  const policyholderType = stripDiacritics(policyholderTypeRaw ?? "").toLowerCase();
-  if (/pravnicka\s+osoba/.test(policyholderType)) {
-    result.policyholderType = "legal_entity";
-  } else if (/fyzicka\s+osoba|obcan/.test(policyholderType)) {
-    result.policyholderType = "natural_person";
-  }
-
-  const companyId =
-    readValueToRightOfLabel(
-      positionedTextItems,
-      /^ic(?:o)?$/i,
-      normalizeCzechCompanyId
-    ) ??
-    normalizeCzechCompanyId(
-      readNearestValueByLabel(lines, asciiLines, /\bic(?:o)?\b/i, 3)
-    );
-  if (companyId) result.companyId = companyId;
-
-  const policyholderBirthDate =
-    readValueToRightOfLabel(
-      positionedTextItems,
-      /^datum\s+narozeni$/i,
-      toDateInput
-    ) ??
-    toDateInput(readNearestValueByLabel(lines, asciiLines, /datum\s+narozeni/i, 3));
-  if (policyholderBirthDate) result.policyholderBirthDate = policyholderBirthDate;
+  Object.assign(result, policyholderIdentity(lines, asciiLines, positionedTextItems));
 
   const fullName =
     normalizeName(

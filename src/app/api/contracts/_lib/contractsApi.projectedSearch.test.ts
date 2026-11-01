@@ -112,6 +112,18 @@ describe("projected legacy contract search", () => {
     const oldCursor = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters(), cursor: { ts, key: null }, pageSize: 2 });
     expect(oldCursor?.map(doc => doc.id)).toEqual(["legacy", "backfilled"]);
   });
+  it("finds company spelling/order variants without loading another form or unrelated contracts", async () => {
+    const { db, state } = database([
+      entry("company", { clientName: "Parkett s.r Woody" }),
+      entry("other-form", { clientName: "Woody Parkett a.s." }),
+      entry("other", { clientName: "Woody Other s.r.o." }),
+    ]);
+    for (const q of ["Woody Parkett sro", "Woody Parkett s.r.", "Woody Parkett s r o"]) {
+      const page = await readProjectedContractSearchPage({ db, ownerEmail, filters: filters({ q }), cursor: null, pageSize: 30 });
+      expect(page?.map(doc => doc.id)).toEqual(["company"]);
+      expect(state.hydrated).toEqual(["company"]);
+    }
+  });
 
   it("keeps undated matches after dated rows and honors signedFrom without substituting creation time", async () => {
     const { db } = database([

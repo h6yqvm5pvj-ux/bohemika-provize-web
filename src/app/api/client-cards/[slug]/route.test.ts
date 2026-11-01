@@ -28,7 +28,7 @@ vi.mock("@/lib/server/firebaseAdmin", () => ({
 import { GET, PUT } from "./route";
 
 const owner = { uid: "owner-uid", email: CLIENT_CARD_PILOT_OWNER_EMAIL, isImpersonating: false };
-const card = { ...createEmptyClientCard("Testovací klient"), birthNumber: "900101/0000" };
+const card = { ...createEmptyClientCard("Testovací Klient"), birthNumber: "900101/0000" };
 const context = (slug = TEST_CLIENT_SLUG) => ({ params: Promise.resolve({ slug }) });
 const request = (method = "GET", body?: unknown) => new NextRequest(
   `https://bohemka.app/api/client-cards/${TEST_CLIENT_SLUG}`,
@@ -152,6 +152,30 @@ describe("client card authorization and persistence", () => {
     expect(openPrivateValue(mocks.write.mock.calls[0][1].card, `${mocks.write.mock.calls[0][0]}:card`)).toEqual(card);
     expect(JSON.stringify(mocks.write.mock.calls[0][1])).not.toContain(card.clientName);
     expectPrivate(response);
+  });
+
+  it("normalizes a personal name while retaining the same encrypted UID and card namespace", async () => {
+    const slug = clientSlugForName("JAN NOVÁK")!;
+    const input = { ...card, clientName: "JAN NOVÁK" };
+    const response = await PUT(request("PUT", { card: input, expectedRevision: 0 }), context(slug));
+    expect(response.status).toBe(200);
+    expect((await response.json()).card).toEqual({ ...input, clientName: "Jan Novák" });
+    const [path, stored] = mocks.write.mock.calls[0];
+    expect(path).toBe(`clientCardsPrivate/${owner.uid}/cards/${slug}`);
+    expect(openPrivateValue(stored.card, `${path}:card`)).toEqual({ ...input, clientName: "Jan Novák" });
+    expect(clientSlugForName("Jan Novák")).toBe(slug);
+  });
+
+  it("preserves an unmarked business spelling when an older tab omits its saved IČO", async () => {
+    const savedCard = { ...card, clientName: "PEMI Cars", companyId: "00123456" };
+    mocks.get.mockResolvedValue({ data: () => ({ ownerUid: owner.uid, card: savedCard, revision: 3 }) });
+    const legacy = { ...savedCard } as Record<string, unknown>;
+    delete legacy.companyId;
+    const response = await PUT(request("PUT", { card: legacy, expectedRevision: 3 }), context());
+    expect(response.status).toBe(200);
+    expect((await response.json()).card).toEqual(savedCard);
+    const [path, stored] = mocks.write.mock.calls[0];
+    expect(openPrivateValue(stored.card, `${path}:card`)).toEqual(savedCard);
   });
 
   it("persists explicit blank fields when updating a saved card", async () => {

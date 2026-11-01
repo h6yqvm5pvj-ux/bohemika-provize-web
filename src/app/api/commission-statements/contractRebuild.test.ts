@@ -41,6 +41,7 @@ const writes: string[] = [];
 const versions = new Map<string, number>();
 let beforeReset: (() => void) | undefined;
 let beforeReplayCommit: (() => void) | undefined;
+let failedCollectionRead: string | undefined;
 const baseContext = {
   email: viewer,
   actorEmail: viewer,
@@ -71,6 +72,205 @@ const write = (path: string, patch: Record<string, unknown>) => {
   records.set(path, { ...records.get(path), ...structuredClone(patch) });
   versions.set(path, (versions.get(path) ?? 0) + 1);
 };
+
+describe("statement comparisons after premium-decrease endorsements", () => {
+  const decreasePath = `users/${owner}/entries/decrease`;
+  const rowHtml = (code: string, commission: number, base = 9600) => {
+    const cells = [1, contractNumber, "01.01.2024", "01.01.2024", "Synthetic client", "Z", "CPP_NEON", code, base, "", "", "3", commission, 0];
+    return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+  };
+  const setup = (rows = rowHtml("B102", 80)) => {
+    setContext({ teamEmails: [owner] });
+    records.set(entryPath, {
+      contractNumber, productKey: "neon", userEmail: owner, entryType: "contract",
+      policyStartDate: "2024-01-01", contractSignedDate: "2023-12-01", inputAmount: 1000,
+      position: "poradce3", commissionMode: "standard", frequencyRaw: "monthly", durationYears: 15,
+      items: [{ code: "B101-B104", title: "Následná provize (2.–5. rok)", amount: 100 },
+        { code: "B3601", title: "Provize po 3 letech", amount: 500 },
+        { code: "B3601_HALF", title: "Provize 50% z B3601", amount: 600 },
+        { code: "B201-B206", title: "Pečovatelská provize (5.–10. rok)", amount: 10 }],
+      commissionPayouts: [],
+    });
+    records.set(decreasePath, {
+      contractNumber, productKey: "neon", userEmail: owner, entryType: "endorsement",
+      rootContractEntryId: "entry-1", parentContractEntryId: "entry-1", policyStartDate: "2026-01-01",
+      previousInputAmount: 1000, newInputAmount: 800, premiumDelta: -200, items: [],
+    });
+    records.set(statementPath, { statementNumber: "1", statementDate: "23.02.2028",
+      period: "01.01.2028 - 31.01.2028", html: `<div id="provize"><table>${rows}</table></div>` });
+  };
+  const payouts = () => records.get(entryPath)!.commissionPayouts as Record<string, unknown>[];
+
+  it("compares each future commission with the reduced premium while retaining original periods and calculations", async () => {
+    setup([rowHtml("B101", 100, 12000), rowHtml("B102", 80), rowHtml("B3601", 400),
+      rowHtml("B3601_HALF", 600, 12000), rowHtml("B201", 8)].join(""));
+    const items = structuredClone(records.get(entryPath)!.items);
+    const amendment = structuredClone(records.get(decreasePath));
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "B101", amount: 100, expectedAmount: 100, systemBaseAmount: 12000, difference: 0, status: "paid" }),
+      expect.objectContaining({ code: "B102", amount: 80, expectedAmount: 80, systemBaseAmount: 9600, difference: 0, status: "paid" }),
+      expect.objectContaining({ code: "B3601", amount: 400, expectedAmount: 400, difference: 0, status: "paid" }),
+      expect.objectContaining({ code: "B3601_HALF", amount: 600, expectedAmount: 600, difference: 0, status: "paid" }),
+      expect.objectContaining({ code: "B201", amount: 8, expectedAmount: 8, difference: 0, status: "paid" }),
+    ]));
+    expect(records.get(entryPath)!.items).toEqual(items);
+    expect(records.get(entryPath)!.inputAmount).toBe(1000);
+    expect(records.get(decreasePath)).toEqual(amendment);
+    expect([...records.keys()].some(path => path.includes("accountingRepairDrafts"))).toBe(false);
+  });
+
+  it("still records a real underpayment against the adjusted expectation", async () => {
+    setup(rowHtml("B102", 60));
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toEqual([expect.objectContaining({ amount: 60, expectedAmount: 80,
+      difference: -20, status: "difference", differenceReason: "commission_amount_mismatch" })]);
+  });
+
+  it("uses the already authorized in-memory family during a normal saved-statement import", async () => {
+    setup();
+    records.set(`usersPrivate/${viewer}/commissionStatements/endorsement-statement`, { ...records.get(statementPath) });
+    for (const [id, path] of [["entry-1", entryPath], ["decrease", decreasePath]]) {
+      records.set(`contractRefs/${id}`, { ownerEmail: owner, entryId: id, entryPath: path, contractNumberNormalized: contractNumber });
+    }
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({ action: "reprocess-saved-statement", statementId: "endorsement-statement" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", expectedAmount: 80, status: "paid" }));
+    expect(reads).not.toContain(`users/${owner}/entries`);
+  });
+
+  it("loads the forced replay family only once across multiple saved statements", async () => {
+    setup();
+    records.set(`usersPrivate/${viewer}/commissionStatements/statement-2`, { ...records.get(statementPath),
+      statementNumber: "2", statementDate: "23.03.2028", period: "01.02.2028 - 29.02.2028",
+      html: `<div id="provize"><table>${rowHtml("B103", 80)}</table></div>` });
+    expect((await POST(request())).status).toBe(200);
+    expect(reads.filter(path => path === `users/${owner}/entries`)).toHaveLength(1);
+    expect(payouts()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "B102", expectedAmount: 80 }),
+      expect.objectContaining({ code: "B103", expectedAmount: 80 }),
+    ]));
+  });
+
+  it("keeps manager comparisons proportional to their own saved commission", async () => {
+    setup();
+    records.get(entryPath)!.managerOverrides = [{ email: viewer, position: "manazer8",
+      items: [{ code: "B101-B104", title: "Následná provize (2.–5. rok)", amount: 50 }] }];
+    const cells = [1, contractNumber, "01.01.2024", "Synthetic client", "Z", "CPP_NEON", "B102", 9600, "", "", "108", 40, 0];
+    records.get(statementPath)!.html = `<div id="manazer"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toEqual([expect.objectContaining({ code: "B102", amount: 40, expectedAmount: 40,
+      difference: 0, status: "paid" })]);
+  });
+
+  it("does not guess an entitlement period for an unsupported commission code", async () => {
+    setup(rowHtml("B105", 100, 12000));
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B105", expectedAmount: null, difference: null, status: "paid" }));
+  });
+
+  it("verifies a non-life installment period against the existing schedule", async () => {
+    setup(rowHtml("A102", 80, 800).replace("CPP_NEON", "CPP_PPR"));
+    Object.assign(records.get(entryPath)!, { productKey: "cppPPRbez", frequencyRaw: "semiannual",
+      items: [{ code: "A101-A102", title: "Okamžitá provize (z platby)", amount: 100 }] });
+    Object.assign(records.get(decreasePath)!, { productKey: "cppPPRbez", policyStartDate: "2024-07-01" });
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toEqual([expect.objectContaining({ code: "A102", expectedAmount: 80, status: "paid" })]);
+  });
+
+  it("does not apply a decrease twice to auto commissions already calculated from the statement base", async () => {
+    setup(rowHtml("B101", 64, 800).replace("CPP_NEON", "CPP_1C_II"));
+    Object.assign(records.get(entryPath)!, { productKey: "cppAuto", frequencyRaw: "quarterly",
+      items: [{ code: "A101", title: "Okamžitá provize", amount: 80 },
+        { code: "B101", title: "Následná provize", amount: 80 }] });
+    Object.assign(records.get(decreasePath)!, { productKey: "cppAuto", policyStartDate: "2024-07-01" });
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B101", amount: 64, expectedAmount: 64, difference: 0 }));
+  });
+
+  it("omits comparison for repeated fixed codes instead of assigning the wrong installment", async () => {
+    setup(rowHtml("A101", 80, 800).replace("CPP_NEON", "MAX_DOMOV"));
+    Object.assign(records.get(entryPath)!, { productKey: "maxdomov", frequencyRaw: "quarterly",
+      items: [{ code: "A101", title: "Okamžitá provize", amount: 100 },
+        { code: "B101", title: "Následná provize (z platby)", amount: 20 }] });
+    Object.assign(records.get(decreasePath)!, { productKey: "maxdomov", policyStartDate: "2024-07-01" });
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ expectedAmount: null, difference: null, status: "paid" }));
+  });
+
+  it("omits a manager auto comparison when the legacy schedule's period differs from its code's usual period", async () => {
+    setup();
+    Object.assign(records.get(entryPath)!, { productKey: "cppAuto", frequencyRaw: "monthly", contractSignedDate: "2023-12-28",
+      items: [{ code: "A101", title: "Okamžitá provize", amount: 100 },
+        { code: "B101", title: "Následná provize", amount: 100 }],
+      managerOverrides: [{ email: viewer, position: "manazer8", items: [{ code: "B101", title: "Následná provize", amount: 50 }] }] });
+    Object.assign(records.get(decreasePath)!, { productKey: "cppAuto", policyStartDate: "2024-12-01" });
+    const cells = [1, contractNumber, "01.01.2024", "Synthetic client", "Z", "CPP_1C_II", "B101", 800, "", "", "108", 40, 0];
+    records.get(statementPath)!.html = `<div id="manazer"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B101", expectedAmount: null, difference: null }));
+  });
+
+  it("retains all payments if the family cannot be read before an explicit replay", async () => {
+    setup();
+    const historical = [{ key: "paid", writtenBy: viewer, statementId: "statement-1", amount: 100 }];
+    records.get(entryPath)!.commissionPayouts = historical;
+    failedCollectionRead = `users/${owner}/entries`;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect((await POST(request())).status).toBe(500);
+      expect(records.get(entryPath)!.commissionPayouts).toEqual(historical);
+      expect(writes).toEqual([]);
+    } finally { log.mockRestore(); }
+  });
+
+  it("retains historical payments belonging to another writer during an explicit replay", async () => {
+    setup();
+    const historical = { key: "original-paid", writtenBy: owner, statementId: "private-history",
+      code: "B101", amount: 123, expectedAmount: 125, difference: -2, status: "paid" };
+    records.get(entryPath)!.commissionPayouts = [historical];
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(historical);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", expectedAmount: 80 }));
+    expect(reads.some(path => path.startsWith(`usersPrivate/${owner}/`))).toBe(false);
+  });
+
+  it("does not use an inaccessible sibling even when the viewer can access the original contract", async () => {
+    setup(rowHtml("B102", 100, 12000));
+    setContext();
+    records.get(entryPath)!.managerChain = [{ email: viewer }];
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", expectedAmount: 100, systemBaseAmount: 12000 }));
+    expect(writes).not.toContain(decreasePath);
+  });
+
+  it.each([
+    { rootContractEntryId: "another-root" },
+    { productKey: "flexi" },
+    { previousInputAmount: 2000 },
+    { policyStartDate: "2026-02-30" },
+  ])("ignores inconsistent or unrelated amendment fields %j", async patch => {
+    setup(rowHtml("B102", 100, 12000));
+    Object.assign(records.get(decreasePath)!, patch);
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", expectedAmount: 100 }));
+  });
+
+  it("keeps another owner's same-number history outside the family read", async () => {
+    setup(rowHtml("B102", 100, 12000));
+    records.delete(decreasePath);
+    const foreignPath = "users/foreign@example.test/entries/decrease";
+    records.set(foreignPath, { contractNumber, productKey: "neon", entryType: "endorsement",
+      rootContractEntryId: "entry-1", parentContractEntryId: "entry-1", policyStartDate: "2026-01-01",
+      previousInputAmount: 1000, newInputAmount: 500 });
+    expect((await POST(request())).status).toBe(200);
+    expect(payouts()).toContainEqual(expect.objectContaining({ expectedAmount: 100 }));
+    expect(reads.some(path => path.startsWith("users/foreign@example.test/"))).toBe(false);
+    expect(writes).not.toContain(foreignPath);
+  });
+});
 function document(path: string) {
   return {
     path, id: path.split("/").at(-1)!,
@@ -96,6 +296,7 @@ function collection(path: string, filters: Array<[string, unknown]> = [], limit 
     where: (field: string, _operator: string, value: unknown) => collection(path, [...filters, [field, value]], limit),
     limit: (value: number) => collection(path, filters, value),
     get: async () => {
+      if (path === failedCollectionRead) throw new Error("Synthetic collection read failure");
       reads.push(path);
       return { docs: [...records.keys()].filter(key => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes("/"))
         .filter(key => filters.every(([field, value]) => records.get(key)?.[field] === value)).slice(0, limit).map(snapshot) };
@@ -104,7 +305,7 @@ function collection(path: string, filters: Array<[string, unknown]> = [], limit 
 }
 
 beforeEach(() => {
-  vi.resetAllMocks(); records.clear(); versions.clear(); beforeReset = undefined; beforeReplayCommit = undefined; reads.length = 0; writes.length = 0;
+  vi.resetAllMocks(); records.clear(); versions.clear(); beforeReset = undefined; beforeReplayCommit = undefined; failedCollectionRead = undefined; reads.length = 0; writes.length = 0;
   setContext();
   mocks.collection.mockImplementation(collection);
   mocks.doc.mockImplementation(document);
@@ -252,7 +453,7 @@ describe("normal statement import author isolation", () => {
       items: [{ title: "Následná provize", code: "B101", amount: 605.57 }],
     });
     const before = structuredClone(records.get(entryPath))!;
-    const amounts = [["C101", 937.80], ["C103", 970.20], ["C105", 1019.40], ["C106", 769.80]] as const;
+    const amounts = [["C101", 937.80], ["C102", 1065.13], ["C103", 970.20], ["C105", 1019.40], ["C106", 769.80]] as const;
     const html = `<div id="provize"><table>${amounts.map(([code, amount], index) => {
       const cells = [index + 1, contractNumber, "16.02.2023", "17.02.2023", "Testovací klient", "Z", "KOO_NAMIRU", code, premium, "", "60,00%", "7", amount, 0];
       return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
@@ -264,12 +465,28 @@ describe("normal statement import author isolation", () => {
       const payouts = saved.commissionPayouts as ContractCommissionPayout[];
       expect(payouts).toHaveLength(amounts.length);
       expect(payouts).toEqual(expect.arrayContaining(amounts.map(([code, amount]) =>
-        expect.objectContaining({ code, amount, status: "paid", expectedAmount: null, difference: null, writtenBy: owner })
+        expect.objectContaining({ code, amount, status: "paid", expectedAmount: 605.57, difference: Math.round((amount - 605.57) * 100) / 100, writtenBy: owner })
       )));
       expect(saved).toMatchObject({ inputAmount: premium, effectiveInputAmount: premium, calculationInputAmount: premium, position: "poradce7", frequencyRaw: "semiannual", items: before.items });
       expect(saved.premiumStatementHistory ?? []).toEqual([]);
       expect(saved.commissionCoefficientSetOverride).toBeUndefined();
     }
+  });
+
+  it.each(["B102", "C102"])("compares %s as the same subsequent installment and preserves a real underpayment", async code => {
+    Object.assign(records.get(entryPath)!, {
+      productKey: "kooperativaAuto", frequencyRaw: "semiannual", position: "poradce7",
+      inputAmount: 7175, calculationInputAmount: 7175, effectiveInputAmount: 7175,
+      contractSignedDate: "2023-02-16", policyStartDate: "2023-02-17",
+      items: [{ title: "Následná provize", code: "B101", amount: 605.57 }],
+    });
+    const cells = [1, contractNumber, "16.02.2023", "17.02.2023", "Testovací klient", "Z", "KOO_NAMIRU", code, 7175, "", "", "7", 500, 0];
+    expect((await invoke("reprocess", `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`)).status).toBe(200);
+    expect(records.get(entryPath)!.commissionPayouts).toEqual([expect.objectContaining({
+      code, amount: 500, expectedAmount: 605.57, difference: -105.57, status: "difference",
+      differenceReason: "commission_amount_mismatch", writtenBy: owner,
+    })]);
+    expect(records.get(entryPath)!.inputAmount).toBe(7175);
   });
 
   it.each([

@@ -11,6 +11,8 @@ export type ContractNoteMutationInput = {
 
 export type ContractNoteDto = {
   id: string;
+  /** Storage entry within the authorized policy family, including old endorsements. */
+  sourceEntryId?: string;
   text: string;
   reminderEnabled: boolean;
   reminderAtMs: number | null;

@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  baseCommissionCodeForPayoutComparison,
   isHigherCommissionPayout,
   isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
 } from "./commissionPayoutRules";
+
+describe("product-specific commission code comparison", () => {
+  it.each(["C101", "C102", "C103", "C111", "C1100"])("maps Kooperativa Auto %s to the same B installment", code => {
+    expect(baseCommissionCodeForPayoutComparison(code, "kooperativaAuto")).toBe(`B${code.slice(1)}`);
+  });
+  it("normalizes case and whitespace without mutating statement codes", () => {
+    const source = { code: " c 102 " };
+    expect(baseCommissionCodeForPayoutComparison(source.code, "kooperativaAuto")).toBe("B102");
+    expect(source.code).toBe(" c 102 ");
+    expect(baseCommissionCodeForPayoutComparison("APZ101", "kooperativaAuto")).toBe("A101");
+  });
+  it.each(["cppAuto", "koopflotila", "neon", undefined] as const)("preserves C codes without the supported product rule (%s)", product => {
+    expect(baseCommissionCodeForPayoutComparison("C102", product)).toBe("C102");
+  });
+  it.each(["C201", "C102-C104", "C102suffix", "C10"])("does not map unrelated or malformed code %s", code => {
+    expect(baseCommissionCodeForPayoutComparison(code, "kooperativaAuto")).toBe(code.toUpperCase());
+  });
+});
 
 describe("higher commission payouts", () => {
   it("distinguishes a positive higher payment from an underpayment or an unknown expectation", () => {

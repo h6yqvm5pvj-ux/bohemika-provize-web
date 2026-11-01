@@ -166,6 +166,10 @@ export type CashflowItem = {
   subscriptionPeriodUntil?: string | null;
   payoutStatus?: "predicted" | "paid" | "shifted";
   predictedAmount?: number | null;
+  premiumChangeOriginalAmount?: number | null;
+  premiumChangeEffectiveDate?: string | null;
+  premiumChangeEntryId?: string | null;
+  isPartialPayoutBalance?: boolean;
   isStatementOnly?: boolean;
   commissionPayoutKey?: string | null;
   commissionPeriodStart?: string | null;

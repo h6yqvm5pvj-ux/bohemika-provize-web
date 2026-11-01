@@ -175,7 +175,13 @@ describe("computeCashflow", () => {
   // Fingerprints were captured from the original hook calculation and original
   // generator before extraction, with the clock frozen to the same local time.
   it.each(legacyCases)("preserves every legacy output field for %s", (_name, options, expected) => {
-    expect(fingerprint(computeCashflow(snapshotFixture(), { ...options, asOf }))).toBe(expected);
+    const legacyFields = computeCashflow(snapshotFixture(), { ...options, asOf }).map(item => {
+      // Entitlement periods were previously exposed only for Kooperativa B1
+      // rows. Compare every original field while allowing this new metadata.
+      if (item.productKey === "kooperativaAuto" && /^B1\d{2,}$/.test(item.commissionCode ?? "")) return item;
+      return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "commissionPeriodStart"));
+    });
+    expect(fingerprint(legacyFields)).toBe(expected);
   });
 
   it("keeps original transfer positions and uses current own and manager positions", () => {

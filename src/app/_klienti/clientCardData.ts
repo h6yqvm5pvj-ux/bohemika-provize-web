@@ -1,3 +1,5 @@
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
+
 export const IDENTITY_DOCUMENT_TYPE_VALUES = [
   "identity-card",
   "passport",
@@ -96,6 +98,7 @@ export function parseClientCardDraft(value: unknown): ClientCardDraft | null {
   }
   if (!card.clientName || !isDateOrEmpty(card.birthDate)) return null;
   if (card.companyId && !/^\d{8}$/.test(card.companyId)) return null;
+  card.clientName = formatClientDisplayName(card.clientName, { isCompany: Boolean(card.companyId) });
   if (card.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email)) return null;
   if (!Array.isArray(value.identityDocuments) || value.identityDocuments.length > MAX_CLIENT_IDENTITY_DOCUMENTS) {
     return null;

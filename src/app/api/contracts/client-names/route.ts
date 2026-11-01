@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireContractsEntryGuard } from "../_lib/contractsApi";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { clientNameExactKey } from "@/app/kalkulacka/clientNameMatching";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 
 export async function GET(req: NextRequest) {
   const guard = await requireContractsEntryGuard(req, {
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     for (const doc of snapshot.docs) {
       const rawName: unknown = doc.data().clientName;
       if (typeof rawName !== "string") continue;
-      const name = rawName.normalize("NFC").trim().replace(/\s+/g, " ");
+      const name = formatClientDisplayName(rawName);
       const key = clientNameExactKey(name);
       if (key && !names.has(key)) names.set(key, name);
     }

@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EntryDoc } from "../../src/app/cashflow/types";
 import { generateCashflow } from "../../src/app/cashflow/generator";
-import { openPrivateRecord } from "../../src/lib/server/privateRecords";
 
 const state = vi.hoisted(() => ({ db: null as Firestore | null }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
@@ -30,11 +29,6 @@ const invoke = (email: string, body: Record<string, unknown>) => POST(new NextRe
   method: "POST", headers: { "Content-Type": "application/json", "x-test-viewer": email },
   body: JSON.stringify({ ownerEmail: owner, entryId: "car", ...body }),
 }));
-const preview = async (email = owner) => {
-  const response = await invoke(email, { operation: "preview" });
-  expect(response.status).toBe(200);
-  return (await response.json()).preview;
-};
 const list = async (email: string) => {
   const response = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=${email === owner ? "my" : "team"}&shape=cashflow&limit=500`, { headers: { "x-test-viewer": email } }), { freshCashflowContext: true });
   expect(response.status).toBe(200);
@@ -75,45 +69,38 @@ afterAll(async () => {
   if (app) await deleteApp(app);
 });
 
-describe("C payout matching through real Firestore transactions and contract API", () => {
-  it("persists a match, returns it in cashflow shape, and preserves recipient privacy", async () => {
-    for (const [email, payoutKey] of [[owner, "own-c1"], [manager, "manager-c1"]]) {
-      const initial = await preview(email);
-      expect((await invoke(email, { operation: "assign", payoutKey, targetKey: initial.targets[0].key, revision: initial.revision })).status).toBe(200);
-    }
+describe("automatic C payouts through the contract API", () => {
+  it("uses actual C payouts without saved associations and preserves recipient privacy", async () => {
     const stored = (await entryRef().get()).data()!;
-    expect(stored.cashflowPayoutMatches).toHaveLength(2);
-    expect(stored.commissionPayouts).toHaveLength(3);
+    expect(stored.cashflowPayoutMatches).toBeUndefined();
     const ownContracts = await list(owner);
-    expect(ownContracts[0].cashflowPayoutMatches).toHaveLength(1);
-    expect(ownContracts[0].cashflowPayoutMatches![0].writtenBy).toBe(owner);
     expect(JSON.stringify(ownContracts[0].commissionPayouts)).not.toContain("manager-c1");
     const items = generateCashflow(ownContracts, 10, owner, new Date(2026, 8, 18));
-    expect(items.find(item => item.commissionPayoutKey === "own-c1")).toMatchObject({ amount: 320, commissionCode: "C101", payoutPlanStatus: "matched", matchedPlannedCode: "B101" });
-    expect(items.some(item => item.commissionCode === "B101")).toBe(false);
-    const history = await state.db!.collection("contractHistories").doc(stored.contractHistoryId).collection("events").get();
-    const matchingEvents = history.docs.map(doc => openPrivateRecord(doc.ref.path, doc.data())).filter(event => event.title === "Upraveno přiřazení výplaty v cashflow");
-    expect(matchingEvents).toHaveLength(2);
-    expect(matchingEvents.every(event => Array.isArray(event.changes) && event.changes.length === 0)).toBe(true);
+    expect(items.find(item => item.commissionPayoutKey === "own-c1")).toMatchObject({ amount: 320, commissionCode: "C101", payoutStatus: "paid" });
+    expect(items.find(item => item.commissionPayoutKey === "own-c2")).toMatchObject({ amount: 330, commissionCode: "C102", payoutStatus: "paid" });
+    expect(items.some(item => ["B101", "B102"].includes(item.commissionCode ?? ""))).toBe(false);
+    expect((await entryRef().get()).data()).toEqual(stored);
   });
-  it("commits only one of two simultaneous assignments to the same target", async () => {
-    const initial = await preview();
-    const responses = await Promise.all(["own-c1", "own-c2"].map(payoutKey => invoke(owner, { operation: "assign", payoutKey, targetKey: initial.targets[0].key, revision: initial.revision })));
-    expect(responses.map(response => response.status).sort()).toEqual([200, 409]);
-    expect((await entryRef().get()).data()!.cashflowPayoutMatches).toHaveLength(1);
+
+  it("rejects old manual operations without writing associations or history", async () => {
+    const before = (await entryRef().get()).data();
+    for (const operation of ["preview", "assign", "remove"]) {
+      expect((await invoke(owner, { operation, payoutKey: "own-c1", targetKey: "B102" })).status).toBe(410);
+    }
+    expect((await entryRef().get()).data()).toEqual(before);
   });
-  it("keeps changed source payouts but stops using their old confirmation", async () => {
-    const initial = await preview();
-    await invoke(owner, { operation: "assign", payoutKey: "own-c1", targetKey: initial.targets[0].key, revision: initial.revision });
+
+  it("uses an updated actual amount automatically without a renewed confirmation", async () => {
     const stored = (await entryRef().get()).data()!;
     stored.commissionPayouts[0].amount = 350;
     await entryRef().update({ commissionPayouts: stored.commissionPayouts });
     const items = generateCashflow(await list(owner), 10, owner, new Date(2026, 8, 18));
-    expect(items.find(item => item.commissionPayoutKey === "own-c1")).toMatchObject({ amount: 350, isStatementOnly: true, payoutPlanStatus: "unmatched" });
-    expect(items.some(item => item.commissionCode === "B101")).toBe(true);
+    expect(items.find(item => item.commissionPayoutKey === "own-c1")).toMatchObject({ amount: 350, commissionCode: "C101", payoutStatus: "paid" });
+    expect(items.some(item => item.commissionCode === "B101")).toBe(false);
   });
+
   it("denies an unrelated account without changing source or associations", async () => {
-    expect((await invoke(outside, { operation: "preview" })).status).toBe(403);
+    expect((await invoke(outside, { operation: "assign", writtenBy: owner })).status).toBe(403);
     const stored = (await entryRef().get()).data()!;
     expect(stored.cashflowPayoutMatches).toBeUndefined();
     expect(stored.commissionPayouts).toHaveLength(3);

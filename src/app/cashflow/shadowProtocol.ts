@@ -1,6 +1,8 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
 
-export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v2";
+// Commission plans now settle Kooperativa C payouts against equivalent B codes.
+// Older candidates must never be reused for the same unchanged source data.
+export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v4";
 export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
 export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;

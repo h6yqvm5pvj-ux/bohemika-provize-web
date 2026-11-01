@@ -9,9 +9,20 @@ import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ContractHistoryDialog } from "./ContractHistoryDialog";
+import { KooperativaContractStatusDialog } from "./KooperativaContractStatusDialog";
+import { useKooperativaContractStatus } from "./useKooperativaContractStatus";
+import { ContractPdfUploadButton, type ContractPdfUploadAttachment, type ContractPdfUploadResponse } from "./ContractPdfUploadButton";
 import { ContractSectionToggle } from "./ContractSectionToggle";
 import { ContractManagementDialog } from "./ContractManagementDialog";
 import { ContractDetailLoader } from "./ContractDetailLoader";
+import { ContractTimelineSection } from "./ContractTimelineSection";
+import { ContractDetailNavigation } from "./ContractDetailNavigation";
+import navigationStyles from "./contractDetailNavigation.module.css";
+import { contractEditSource, unifiedContractDetail, updateContractTimelineEntry } from "./contractTimelineDetails";
+import {
+  appendedContractNotesView, contractNoteEntryId, contractNoteMutationTarget, contractNotesReadTarget, contractNoteViewKey, linkedContractNoteKey,
+  removedContractNoteView, savedContractNoteView, sortedContractNotes, type ContractNotesViewState,
+} from "./contractNotesView";
 import actionStyles from "./contractDetailActions.module.css";
 import detailStyles from "./contractDetail.module.css";
 import noteStyles from "./contractNotes.module.css";
@@ -32,12 +43,12 @@ import {
   FileText,
   Gauge,
   History,
-  IdCard,
   Menu,
   Package,
   PencilLine,
   Plus,
   Settings2,
+  ShieldCheck,
   StickyNote,
   Tag,
   Trash2,
@@ -137,7 +148,6 @@ import {
   computeLegacyFrequencyOverrideTotal,
 } from "@/app/lib/managerOverrideTotals";
 import {
-  LIFE_PRODUCT_KEYS,
   type ContractsApiError,
   type ContractsApiResponseBase,
   type ContractDetailApiResponse,
@@ -152,8 +162,7 @@ import {
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
 import { ContractLifePremiumChanges } from "./ContractLifePremiumChanges";
 import { currentConfirmedLifePremium } from "@/app/lib/lifePremiumIncrease";
-import { ContractPayoutPlanMatching, type PayoutPlanRequest } from "./ContractPayoutPlanMatching";
-import { isKooperativaCPayout, type PayoutPlanPreview } from "@/app/cashflow/payoutPlanMatching";
+import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import {
   ContractAutoPremiumHistory,
   initialAnnualPremiumFromStatementHistory,
@@ -181,7 +190,6 @@ import {
 } from "@/app/lib/adminImpersonation";
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
-import { birthDateFromCzechBirthNumber } from "@/app/lib/czechBirthNumber";
 import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
 import type { ContractNoteDto } from "@/app/api/contracts/notes/contractNotes";
 
@@ -207,8 +215,6 @@ const ALLIANZ_PORTAL_ACTION_CONFIG: Record<
     url: ALLIANZ_AUTO_PAYMENT_CHECK_URL,
   },
 };
-const KOOPERATIVA_CONTRACT_STATUS_URL =
-  "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const SLAVIA_CONTRACT_VERIFICATION_URL =
   "https://www.slavia-pojistovna.cz/over-ps/";
 const UNIQA_ONLINE_TERMINATION_URL =
@@ -225,6 +231,7 @@ type ContractNotesApiResponse = ContractsApiResponseBase & {
   notes?: ContractNoteDto[];
   note?: ContractNoteDto;
   deleted?: string;
+  nextCursor?: string | null;
 };
 
 const localIsoDay = (value = new Date()): string => {
@@ -427,7 +434,8 @@ export default function ContractDetailPage() {
   const isEmbedded = searchParams?.get("embedded") === "1";
   const editRequested = searchParams?.get("edit") === "1";
   const linkedNoteId = searchParams?.get("noteId")?.trim() ?? "";
-  const handledEditRequestRef = useRef(false);
+  const handledEditRequestRef = useRef<string | null>(null);
+  const handledNoteScrollRef = useRef<string | null>(null);
   const backToContractsHref =
     searchParams?.get("from") === "list" ? "/smlouvy?restore=1" : "/smlouvy";
   const fromListSuffix =
@@ -439,14 +447,14 @@ export default function ContractDetailPage() {
 
   // slug: email___entryId
   let ownerEmail: string | null = null;
-  let entryId: string | null = null;
+  let requestedEntryId: string | null = null;
 
   if (typeof rawId === "string") {
     const decoded = decodeURIComponent(rawId);
     const parts = decoded.split("___");
     if (parts.length === 2) {
       ownerEmail = parts[0];
-      entryId = parts[1];
+      requestedEntryId = parts[1];
     }
   }
 
@@ -460,6 +468,13 @@ export default function ContractDetailPage() {
   );
 
   const [contract, setContract] = useState<ContractDoc | null>(null);
+  const [loadedDetailRequest, setLoadedDetailRequest] = useState<string | null>(null);
+  const detailRequestKey = `${ownerEmail ?? ""}___${requestedEntryId ?? ""}`;
+  // The requested URL can identify an amendment. Main-contract actions use the
+  // displayed root; only editing a historical source retains its explicit ID.
+  const entryId = loadedDetailRequest === detailRequestKey
+    ? contract?.id ?? requestedEntryId
+    : requestedEntryId;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contractTimeline, setContractTimeline] = useState<ContractDoc[]>([]);
@@ -501,16 +516,29 @@ export default function ContractDetailPage() {
   const [ownerManagerEmail, setOwnerManagerEmail] = useState<string | null>(null);
   const [ownerManagerPosition, setOwnerManagerPosition] = useState<Position | null>(null);
   const [currentChainEmails, setCurrentChainEmails] = useState<string[]>([]);
-  const [contractNotes, setContractNotes] = useState<ContractNoteDto[]>([]);
+  const [contractNotesState, setContractNotesState] = useState<ContractNotesViewState | null>(null);
   const [notesLoading, setNotesLoading] = useState(false);
+  const [loadingOlderNotesRequest, setLoadingOlderNotesRequest] = useState<{ requestKey: string; cursor: string } | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
-  const [noteEditorId, setNoteEditorId] = useState<string | null>(null);
+  const [storedNoteEditorId, setNoteEditorId] = useState<string | null>(null);
+  const [noteEditorRequestKey, setNoteEditorRequestKey] = useState<string | null>(null);
   const [noteReminderEnabled, setNoteReminderEnabled] = useState(false);
   const [noteReminderDate, setNoteReminderDate] = useState("");
   const [noteExpanded, setNoteExpanded] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
-  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteSavedRequestKey, setNoteSavedRequestKey] = useState<string | null>(null);
+  const notesReady = !loading && loadedDetailRequest === detailRequestKey && Boolean(contract);
+  const notesRequestKey = `${detailRequestKey}|${entryId ?? ""}|${user?.uid ?? ""}|${adminImpersonation?.email ?? ""}|${linkedNoteId}`;
+  const notesCurrent = notesReady && contractNotesState?.requestKey === notesRequestKey;
+  const contractNotes = useMemo(() => notesCurrent && contractNotesState ? contractNotesState.notes : [], [notesCurrent, contractNotesState]);
+  const noteSaved = noteSavedRequestKey === notesRequestKey;
+  const hasOlderNotes = notesCurrent && Boolean(contractNotesState?.nextCursor);
+  const loadingOlderNotes = loadingOlderNotesRequest?.requestKey === notesRequestKey;
+  const noteEditorId = noteEditorRequestKey === notesRequestKey ? storedNoteEditorId : null;
+  const linkedNoteKey = entryId
+    ? linkedContractNoteKey(contractNotes, entryId, requestedEntryId, linkedNoteId)
+    : null;
   const [noteDeleteConfirmId, setNoteDeleteConfirmId] = useState<string | null>(null);
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   const [updatingPaid, setUpdatingPaid] = useState(false);
@@ -543,17 +571,6 @@ export default function ContractDetailPage() {
     useState<AllianzOdometerIdentity | null>(null);
   const [allianzPortalLoading, setAllianzPortalLoading] = useState(false);
   const [allianzPortalError, setAllianzPortalError] = useState<string | null>(null);
-  const [showKooperativaStatusModal, setShowKooperativaStatusModal] = useState(false);
-  const [kooperativaBirthNumber, setKooperativaBirthNumber] = useState<string | null>(null);
-  const [kooperativaDirectBirthDate, setKooperativaDirectBirthDate] = useState<string | null>(null);
-  const [kooperativaCompanyId, setKooperativaCompanyId] = useState<string | null>(null);
-  const [kooperativaLegalEntity, setKooperativaLegalEntity] = useState(false);
-  const [kooperativaBirthNumberLoading, setKooperativaBirthNumberLoading] = useState(false);
-  const [kooperativaBirthNumberError, setKooperativaBirthNumberError] = useState<string | null>(null);
-  const [kooperativaPdfTemplateIssue, setKooperativaPdfTemplateIssue] = useState(false);
-  const [kooperativaStatusCountdown, setKooperativaStatusCountdown] = useState(3);
-  const [kooperativaStatusRedirected, setKooperativaStatusRedirected] = useState(false);
-  const [kooperativaStatusRedirectError, setKooperativaStatusRedirectError] = useState<string | null>(null);
   const [showContractPdfModal, setShowContractPdfModal] = useState(false);
   const [showContractPdfOptions, setShowContractPdfOptions] = useState(false);
   const [showContractActionsMenu, setShowContractActionsMenu] = useState(false);
@@ -568,8 +585,6 @@ export default function ContractDetailPage() {
   const contractPdfObjectUrlRef = useRef<string | null>(null);
   const contractPdfCanvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const allianzPortalRequestRef = useRef(0);
-  const kooperativaStatusRedirectTimerRef = useRef<number | null>(null);
-  const kooperativaBirthNumberRequestRef = useRef(0);
   const uniqaTerminationRequestRef = useRef(0);
   const [neonImmediateBreakdown, setNeonImmediateBreakdown] =
     useState<NeonImmediateBreakdown | null>(null);
@@ -584,13 +599,6 @@ export default function ContractDetailPage() {
     ? ALLIANZ_PORTAL_ACTION_CONFIG[allianzPortalAction]
     : null;
 
-  const clearKooperativaStatusRedirect = useCallback(() => {
-    if (kooperativaStatusRedirectTimerRef.current != null) {
-      window.clearInterval(kooperativaStatusRedirectTimerRef.current);
-      kooperativaStatusRedirectTimerRef.current = null;
-    }
-  }, []);
-
   const closeAllianzPortalModal = useCallback(() => {
     allianzPortalRequestRef.current += 1;
     setAllianzPortalIdentity(null);
@@ -599,34 +607,11 @@ export default function ContractDetailPage() {
     setAllianzPortalAction(null);
   }, []);
 
-  const closeKooperativaStatusModal = useCallback(() => {
-    clearKooperativaStatusRedirect();
-    kooperativaBirthNumberRequestRef.current += 1;
-    setKooperativaBirthNumber(null);
-    setKooperativaDirectBirthDate(null);
-    setKooperativaCompanyId(null);
-    setKooperativaLegalEntity(false);
-    setKooperativaBirthNumberLoading(false);
-    setKooperativaBirthNumberError(null);
-    setKooperativaPdfTemplateIssue(false);
-    setKooperativaStatusRedirectError(null);
-    setShowKooperativaStatusModal(false);
-  }, [clearKooperativaStatusRedirect]);
-
   const closeUniqaTerminationModal = useCallback(() => {
     uniqaTerminationRequestRef.current += 1;
     setUniqaTerminationPersonalIdLoading(false);
     setShowUniqaTerminationModal(false);
   }, []);
-
-  useEffect(() => {
-    return () => {
-      if (kooperativaStatusRedirectTimerRef.current != null) {
-        window.clearInterval(kooperativaStatusRedirectTimerRef.current);
-      }
-    };
-  }, []);
-
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -635,7 +620,6 @@ export default function ContractDetailPage() {
         closeUniqaTerminationModal();
         setSelectedTerminationReason(null);
         closeAllianzPortalModal();
-        closeKooperativaStatusModal();
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
         setShowContractActionsMenu(false);
@@ -649,7 +633,6 @@ export default function ContractDetailPage() {
       showTerminationReasonModal ||
       showUniqaTerminationModal ||
       showAllianzPortalModal ||
-      showKooperativaStatusModal ||
       showContractPdfModal ||
       showContractPdfOptions ||
       showContractActionsMenu ||
@@ -666,7 +649,6 @@ export default function ContractDetailPage() {
     showTerminationReasonModal,
     showUniqaTerminationModal,
     showAllianzPortalModal,
-    showKooperativaStatusModal,
     showContractPdfModal,
     showContractPdfOptions,
     showContractActionsMenu,
@@ -674,7 +656,6 @@ export default function ContractDetailPage() {
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
     closeAllianzPortalModal,
-    closeKooperativaStatusModal,
     closeUniqaTerminationModal,
   ]);
 
@@ -754,8 +735,8 @@ export default function ContractDetailPage() {
   );
 
   useEffect(() => {
-    if (!user || !ownerEmail || !entryId) {
-      setContractNotes([]);
+    if (!user || !ownerEmail || !entryId || !notesReady) {
+      setContractNotesState(null);
       setNotesLoading(false);
       return;
     }
@@ -764,19 +745,25 @@ export default function ContractDetailPage() {
     const loadNotes = async () => {
       setNotesLoading(true);
       setNoteError(null);
+      setContractNotesState(null);
+      setNoteEditorId(null);
+      setNoteEditorRequestKey(null);
+      setNoteDeleteConfirmId(null);
+      setNoteSavedRequestKey(null);
       try {
-        const query = new URLSearchParams({ ownerEmail, entryId });
+        const query = new URLSearchParams({ ownerEmail, ...contractNotesReadTarget(entryId, requestedEntryId, linkedNoteId) });
         const payload = await requestContractsApi<ContractNotesApiResponse>(
           `/api/contracts/notes?${query.toString()}`
         );
         if (cancelled) return;
-        const notes = Array.isArray(payload.notes) ? payload.notes : [];
-        setContractNotes(notes);
+        const notes = sortedContractNotes(Array.isArray(payload.notes) ? payload.notes : [], entryId);
+        setContractNotesState({ requestKey: notesRequestKey, notes,
+          nextCursor: typeof payload.nextCursor === "string" ? payload.nextCursor : null });
         if (linkedNoteId) setNoteExpanded(true);
       } catch (error) {
         if (cancelled) return;
         console.error("Načtení poznámek ke smlouvě selhalo:", error);
-        setContractNotes([]);
+        setContractNotesState(null);
         setNoteError("Poznámky se nepodařilo načíst.");
       } finally {
         if (!cancelled) setNotesLoading(false);
@@ -787,19 +774,27 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [entryId, linkedNoteId, ownerEmail, requestContractsApi, user]);
+  }, [entryId, notesReady, notesRequestKey, linkedNoteId, ownerEmail, requestedEntryId, requestContractsApi, user]);
 
   useEffect(() => {
-    if (!linkedNoteId || notesLoading) return;
+    if (!linkedNoteId) {
+      handledNoteScrollRef.current = null;
+      return;
+    }
+    if (notesLoading || !notesCurrent) return;
+    const scrollRequest = `${notesRequestKey}|${linkedNoteKey ?? "missing"}`;
+    if (handledNoteScrollRef.current === scrollRequest) return;
     setNoteExpanded(true);
     const frame = window.requestAnimationFrame(() => {
-      document.getElementById("contract-notes")?.scrollIntoView({
-        behavior: "smooth",
+      handledNoteScrollRef.current = scrollRequest;
+      const linked = linkedNoteKey ? document.getElementById(`contract-note-${encodeURIComponent(linkedNoteKey)}`) : null;
+      (linked ?? document.getElementById("contract-notes"))?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
         block: "center",
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [contractNotes, linkedNoteId, notesLoading]);
+  }, [linkedNoteId, linkedNoteKey, notesLoading, notesCurrent, notesRequestKey]);
 
   const clearContractPdfPreview = useCallback(() => {
     if (contractPdfObjectUrlRef.current) {
@@ -828,7 +823,7 @@ export default function ContractDetailPage() {
     let cancelled = false;
 
     const load = async () => {
-      if (!ownerEmail || !entryId) {
+      if (!ownerEmail || !requestedEntryId) {
         setError("Neplatný odkaz na smlouvu.");
         setLoading(false);
         setTimelineLoading(false);
@@ -845,7 +840,7 @@ export default function ContractDetailPage() {
       try {
         const params = new URLSearchParams({
           ownerEmail,
-          entryId,
+          entryId: requestedEntryId,
         });
         const payload = await requestContractsApi<ContractDetailApiResponse>(
           `/api/contracts/detail?${params.toString()}`
@@ -867,7 +862,12 @@ export default function ContractDetailPage() {
           return;
         }
 
-        setContract(payload.contract);
+        const timeline =
+          Array.isArray(payload.timeline) && payload.timeline.length > 0
+            ? payload.timeline
+            : [payload.contract];
+        setContract(unifiedContractDetail(payload.contract, timeline, ownerEmail));
+        setLoadedDetailRequest(detailRequestKey);
         setServerCanManageContract(payload.canManageContract === true);
         setCanTransferContracts(payload.canTransferContracts === true);
         setTransferTargets(
@@ -881,10 +881,6 @@ export default function ContractDetailPage() {
               (target): target is ContractTransferTarget => Boolean(target.email)
             )
         );
-        const timeline =
-          Array.isArray(payload.timeline) && payload.timeline.length > 0
-            ? payload.timeline
-            : [payload.contract];
         setContractTimeline(timeline);
         setOwnerPosition((payload.ownerMeta?.position as Position | null | undefined) ?? null);
         setOwnerManagerEmail(
@@ -939,7 +935,7 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [adminImpersonation?.email, entryId, ownerEmail, requestContractsApi, user]);
+  }, [adminImpersonation?.email, requestedEntryId, detailRequestKey, ownerEmail, requestContractsApi, user]);
 
   useEffect(() => {
     const contractNumber = contract?.contractNumber?.trim() ?? "";
@@ -1188,16 +1184,21 @@ export default function ContractDetailPage() {
         `${refreshReplacementOwnerEmail}___${refreshReplacementEntryId}`
       )}${fromListSuffix}`
     : null;
+  const todayForPremium = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Prague" });
   const latestTimelineEntry = useMemo(() => {
     const sourceEntries =
       contractTimeline.length > 0 ? contractTimeline : contract ? [contract] : [];
     if (sourceEntries.length === 0) return null;
-    return sourceEntries[sourceEntries.length - 1] ?? null;
-  }, [contract, contractTimeline]);
+    const effectiveEntries = sourceEntries
+      .map((entry, index) => ({ entry, index, day: endorsementCommissionDay(entry.policyStartDate) }))
+      .filter(({ entry, day }) => entry.entryType !== "endorsement" || Boolean(day && day <= todayForPremium))
+      .sort((left, right) => (left.day ?? "").localeCompare(right.day ?? "") || left.index - right.index);
+    return effectiveEntries[effectiveEntries.length - 1]?.entry ??
+      sourceEntries.find(entry => entry.entryType !== "endorsement") ?? contract;
+  }, [contract, contractTimeline, todayForPremium]);
   const premiumEntry = latestTimelineEntry ?? contract;
   const confirmedLifeChanges = [...new Map((contractTimeline.length ? contractTimeline : contract ? [contract] : [])
     .flatMap(entry => entry.confirmedLifePremiumChanges ?? []).map(change => [change.key, change])).values()];
-  const todayForPremium = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Prague" });
   const premiumEntryStart = toDate(premiumEntry?.policyStartDate)?.toLocaleDateString("sv-SE", { timeZone: "Europe/Prague" });
   const confirmedCurrentPremium = currentConfirmedLifePremium(confirmedLifeChanges, todayForPremium, premiumEntryStart);
   const premiumEntryIsEndorsement = premiumEntry?.entryType === "endorsement";
@@ -1265,74 +1266,6 @@ export default function ContractDetailPage() {
     if (Number.isFinite(prev) && Number.isFinite(next)) return next - prev;
     return null;
   })();
-  const modeLabel = (value?: CommissionMode | null) => {
-    if (value === "accelerated") return "Zrychlený";
-    if (value === "standard") return "Běžný";
-    return "—";
-  };
-  const timelineRows = useMemo(() => {
-    const normalizedOwner = normalizeEmail(ownerEmail);
-    const encodedFromList =
-      searchParams?.get("from") === "list" ? "?from=list" : "";
-
-    const premiumForEntry = (entry: ContractDoc): number => {
-      const isEntryEndorsement = entry.entryType === "endorsement";
-      const value = isEntryEndorsement
-        ? Number(
-            entry.newInputAmount ??
-              entry.effectiveInputAmount ??
-              entry.inputAmount ??
-              0
-          )
-        : Number(entry.inputAmount ?? 0);
-      return Number.isFinite(value) ? value : 0;
-    };
-
-    const deltaForEntry = (entry: ContractDoc): number | null => {
-      if (entry.entryType !== "endorsement") return null;
-      const explicit = Number(entry.premiumDelta ?? Number.NaN);
-      if (Number.isFinite(explicit)) return explicit;
-      const prev = Number(entry.previousInputAmount ?? Number.NaN);
-      const next = Number(
-        entry.newInputAmount ??
-          entry.effectiveInputAmount ??
-          entry.inputAmount ??
-          Number.NaN
-      );
-      if (Number.isFinite(prev) && Number.isFinite(next)) return next - prev;
-      return null;
-    };
-
-    return contractTimeline.map((entry, index) => {
-      const isCurrent = entry.id === contract?.id;
-      const isEntryEndorsement = entry.entryType === "endorsement";
-      const delta = deltaForEntry(entry);
-      const premiumAmount = premiumForEntry(entry);
-      const dateForOrder =
-        toDate(entry.policyStartDate) ??
-        toDate(entry.contractSignedDate) ??
-        toDate(entry.createdAt) ??
-        null;
-
-      return {
-        id: entry.id,
-        href: normalizedOwner
-          ? `/smlouvy/${encodeURIComponent(`${normalizedOwner}___${entry.id}`)}${encodedFromList}`
-          : null,
-        isCurrent,
-        step: index + 1,
-        label: isEntryEndorsement ? "Dodatek" : "Původní smlouva",
-        premiumAmount,
-        delta,
-        contractSignedText: formatDate(entry.contractSignedDate ?? entry.createdAt),
-        policyStartText: formatDate(entry.policyStartDate),
-        positionText: positionLabel(entry.position ?? null),
-        modeText: modeLabel(entry.commissionMode ?? null),
-        total: Number(entry.total ?? 0),
-        orderDateText: dateForOrder ? dateForOrder.toLocaleDateString("cs-CZ") : "—",
-      };
-    });
-  }, [contract?.id, contractTimeline, ownerEmail, searchParams]);
   const hasTimelineChange = useMemo(() => {
     if (isEndorsement) return true;
     return contractTimeline.some((entry) => entry.entryType === "endorsement");
@@ -1490,7 +1423,7 @@ export default function ContractDetailPage() {
   const hasAnyContractPdfAttachment = contractPdfOptions.length > 0;
   const selectedContractPdfFileName = selectedContractPdf?.fileName ?? contractPdfFileName;
   const downloadContractPdfBlob = useCallback(
-    async (option: ContractPdfOption): Promise<Blob> => {
+    async (option: ContractPdfOption, signal?: AbortSignal): Promise<Blob> => {
       if (!user) {
         throw new Error("Nejsi přihlášený.");
       }
@@ -1502,7 +1435,7 @@ export default function ContractDetailPage() {
       const response = await fetchAuthedBlob(
         user,
         `/api/contracts/attachment?${params.toString()}`,
-        { method: "GET" }
+        { method: "GET", signal }
       );
       if (!response.ok) {
         let message = "PDF smlouvy se nepodařilo načíst.";
@@ -1627,8 +1560,7 @@ export default function ContractDetailPage() {
       setContractPdfDownloading(false);
     }
   }, [contractPdfOptions, contractPdfDownloading, downloadContractPdfBlob, pushToast, user]);
-  const isLifeInsuranceContract = Boolean(prod && LIFE_PRODUCT_KEYS.has(prod));
-  const showTimelineSection = isLifeInsuranceContract && hasTimelineChange;
+  const showTimelineSection = hasTimelineChange;
   const isAutoCommissionProduct = isAutoProduct(prod ?? null);
   const isFrequencyAutoCommissionProduct = isFrequencyAutoPayoutProduct(prod ?? null);
   const signedPremiumEntry = useMemo(() => {
@@ -1750,11 +1682,13 @@ export default function ContractDetailPage() {
   const isManagerOnChain = useMemo(() => {
     if (!contract || !normalizedEffectiveUserEmail || !normalizedOwnerEmail) return false;
     if (normalizedEffectiveUserEmail === normalizedOwnerEmail) return false;
-    if (normalizeEmail(contract.managerEmailSnapshot) === normalizedEffectiveUserEmail) return true;
-    if (isEmailInChain(normalizedEffectiveUserEmail, contract.managerChain ?? null)) return true;
-    if (isEmailInChain(normalizedEffectiveUserEmail, contract.managerOverrides ?? null)) return true;
-    return false;
-  }, [contract, normalizedEffectiveUserEmail, normalizedOwnerEmail]);
+    const authorizedEntries = contractTimeline.length ? contractTimeline : [contract];
+    return authorizedEntries.some(entry =>
+      normalizeEmail(entry.managerEmailSnapshot) === normalizedEffectiveUserEmail ||
+      isEmailInChain(normalizedEffectiveUserEmail, entry.managerChain ?? null) ||
+      isEmailInChain(normalizedEffectiveUserEmail, entry.managerOverrides ?? null)
+    );
+  }, [contract, contractTimeline, normalizedEffectiveUserEmail, normalizedOwnerEmail]);
 
   const isManagerOnCurrentChain = useMemo(() => {
     if (!normalizedEffectiveUserEmail || !currentChainEmails.length) return false;
@@ -1786,7 +1720,12 @@ export default function ContractDetailPage() {
       throw new Error("Smlouva nebyla nalezena.");
     }
 
-    setContract(payload.contract);
+    const timeline =
+      Array.isArray(payload.timeline) && payload.timeline.length > 0
+        ? payload.timeline
+        : [payload.contract];
+    const mainContract = unifiedContractDetail(payload.contract, timeline, ownerEmail);
+    setContract(mainContract);
     setServerCanManageContract(payload.canManageContract === true);
     setCanTransferContracts(payload.canTransferContracts === true);
     setTransferTargets(
@@ -1800,10 +1739,6 @@ export default function ContractDetailPage() {
           (target): target is ContractTransferTarget => Boolean(target.email)
         )
     );
-    const timeline =
-      Array.isArray(payload.timeline) && payload.timeline.length > 0
-        ? payload.timeline
-        : [payload.contract];
     setContractTimeline(timeline);
     setOwnerPosition((payload.ownerMeta?.position as Position | null | undefined) ?? null);
     setOwnerManagerEmail(normalizeEmail(payload.ownerMeta?.managerEmail ?? null) || null);
@@ -1819,7 +1754,7 @@ export default function ContractDetailPage() {
     );
     setManagerPosition((payload.position as Position | null | undefined) ?? null);
 
-    return payload.contract;
+    return mainContract;
   }, [entryId, ownerEmail, requestContractsApi]);
 
   const handleResolvePremiumBase = useCallback(async (
@@ -1841,23 +1776,6 @@ export default function ContractDetailPage() {
       window.dispatchEvent(new Event("contracts:updated"));
     } catch { /* Cache invalidation is best effort. */ }
   }, [canManageContract, ownerEmail, entryId, contract, requestContractsApi, refreshContractDetail]);
-
-  const handlePayoutPlanRequest = useCallback(async (request: PayoutPlanRequest): Promise<PayoutPlanPreview> => {
-    const result = await requestContractsApi<ContractsApiResponseBase & { preview: PayoutPlanPreview }>("/api/contracts/payout-plan", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...request, ownerEmail, entryId }),
-    });
-    if (request.operation !== "preview") {
-      try {
-        sessionStorage.removeItem("contracts_cache_v3");
-        localStorage.setItem("contracts_last_updated", String(Date.now()));
-        window.dispatchEvent(new Event("contracts:updated"));
-      } catch { /* Best effort cache invalidation. */ }
-      // The returned preview already contains the committed state.
-      await refreshContractDetail().catch(() => undefined);
-    }
-    return result.preview;
-  }, [ownerEmail, entryId, requestContractsApi, refreshContractDetail]);
 
   const handleRebuildContractFromStatements = useCallback(async () => {
     const contractNumber = String(contract?.contractNumber ?? "").trim();
@@ -2131,7 +2049,11 @@ export default function ContractDetailPage() {
     return snapshotPosition ?? managerPosition ?? null;
   }, [contract, managerPosition, normalizedEffectiveUserEmail]);
 
-  const [editMode, setEditMode] = useState(false);
+  const [editModeRequested, setEditMode] = useState(false);
+  const [editSourceSelection, setEditSourceSelection] = useState<{ requestKey: string; entryId: string } | null>(null);
+  const editMode = editModeRequested && editSourceSelection?.requestKey === detailRequestKey;
+  const editSourceEntryId = editSourceSelection?.requestKey === detailRequestKey ? editSourceSelection.entryId : entryId;
+  const editContract = contractEditSource(contract, contractTimeline, editSourceEntryId, ownerEmail);
   const [editClientName, setEditClientName] = useState("");
   const [editClientEmail, setEditClientEmail] = useState("");
   const [editClientPhone, setEditClientPhone] = useState("");
@@ -3018,7 +2940,8 @@ export default function ContractDetailPage() {
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
 
-  const resetEditFields = useCallback(() => {
+  const resetEditFields = useCallback((source: ContractDoc | null = editContract) => {
+    const contract = source;
     if (!contract) return;
     setEditClientName(contract.clientName ?? "");
     setEditClientEmail(contract.clientEmail ?? "");
@@ -3586,35 +3509,59 @@ export default function ContractDetailPage() {
     setEditDomexLiabilityLandlord(!!propertyDetail?.liabilityLandlord);
     setEditDomexAssistancePlus(!!propertyDetail?.assistancePlus);
     setEditDomexNote(propertyDetail?.note ?? "");
-  }, [contract]);
+  }, [editContract]);
 
-  useEffect(() => {
-    if (!contract) return;
-    resetEditFields();
+  const beginEditSource = useCallback((sourceEntryId: string | null) => {
+    if (!canManageContract || savingDetails || refreshingPdfDetails || loading || loadedDetailRequest !== detailRequestKey) return;
+    const source = contractEditSource(contract, contractTimeline, sourceEntryId, ownerEmail);
+    if (!source) return;
+    setEditSourceSelection({ requestKey: detailRequestKey, entryId: source.id });
+    resetEditFields(source);
     setDetailsSaved(false);
     setDetailsError(null);
-  }, [contract, resetEditFields]);
+    setShowContractActionsMenu(false);
+    setEditMode(true);
+    window.requestAnimationFrame(() => document.getElementById("contract-edit-source")?.scrollIntoView({ block: "start" }));
+  }, [canManageContract, contract, contractTimeline, detailRequestKey, loadedDetailRequest, loading,
+    ownerEmail, refreshingPdfDetails, resetEditFields, savingDetails]);
+
+  useEffect(() => {
+    if (!contract || editMode) return;
+    resetEditFields(contract);
+    setDetailsSaved(false);
+    setDetailsError(null);
+  }, [contract, editMode, resetEditFields]);
 
   useEffect(() => {
     if (!editRequested) {
-      handledEditRequestRef.current = false;
+      handledEditRequestRef.current = null;
       return;
     }
-    if (handledEditRequestRef.current || !contract || !canManageContract) return;
+    if (handledEditRequestRef.current === detailRequestKey || loading || loadedDetailRequest !== detailRequestKey || !contract || !canManageContract) return;
 
-    handledEditRequestRef.current = true;
-    setDetailsSaved(false);
-    setEditMode(true);
-  }, [canManageContract, contract, editRequested]);
+    handledEditRequestRef.current = detailRequestKey;
+    const requestedSource = contractEditSource(contract, contractTimeline, requestedEntryId, ownerEmail);
+    beginEditSource(requestedSource?.id ?? contract.id);
+  }, [beginEditSource, canManageContract, contract, contractTimeline, detailRequestKey, editRequested, loadedDetailRequest, loading, ownerEmail, requestedEntryId]);
 
-  const handleRefreshDetailsFromPdf = async () => {
+  const handleRefreshDetailsFromPdf = async (sourceEntryId: string | null) => {
+    const source = contractEditSource(contract, contractTimeline, sourceEntryId, ownerEmail);
+    const entryId = source?.id;
+    const prod = source?.productKey;
+    const hasContractPdfAttachment = source?.contractPdfAttachment?.hasFile && source.contractPdfAttachment.contentType === "application/pdf";
+    const contractPdfFileName = source?.contractPdfAttachment?.originalName || "smlouva.pdf";
     if (
       !user ||
       !ownerEmail ||
       !entryId ||
-      !contract ||
+      !source ||
       !prod ||
       !canManageContract ||
+      loading ||
+      loadedDetailRequest !== detailRequestKey ||
+      editMode ||
+      savingDetails ||
+      refreshingPdfDetails ||
       !hasContractPdfAttachment
     ) {
       return;
@@ -3675,13 +3622,13 @@ export default function ContractDetailPage() {
       const contractPatch: Partial<ContractDoc> = {};
       let appliedCount = 0;
 
-      const topLevelMerge = mergeEmptyContractFields(contract, parsed);
+      const topLevelMerge = mergeEmptyContractFields(source, parsed);
       Object.assign(apiUpdates, topLevelMerge.updates);
       Object.assign(contractPatch, topLevelMerge.updates);
       appliedCount += topLevelMerge.appliedCount;
 
       if (prod === "domex" || prod === "domexneuron") {
-        const propertyMerge = mergeEmptyPropertyDetailFields(contract.domexDetail, parsed);
+        const propertyMerge = mergeEmptyPropertyDetailFields(source.domexDetail, parsed);
         if (propertyMerge.appliedCount > 0) {
           apiUpdates.domexDetail = propertyMerge.detail;
           contractPatch.domexDetail = propertyMerge.detail;
@@ -3690,7 +3637,7 @@ export default function ContractDetailPage() {
       }
 
       if (prod === "maxdomov") {
-        const propertyMerge = mergeEmptyPropertyDetailFields(contract.maxdomovDetail, parsed);
+        const propertyMerge = mergeEmptyPropertyDetailFields(source.maxdomovDetail, parsed);
         if (propertyMerge.appliedCount > 0) {
           apiUpdates.maxdomovDetail = propertyMerge.detail;
           contractPatch.maxdomovDetail = propertyMerge.detail;
@@ -3706,7 +3653,7 @@ export default function ContractDetailPage() {
         !Array.isArray(parsedSlaviaDetail)
       ) {
         const slaviaMerge = mergeEmptySlaviaAutoDetailFields(
-          contract.carSlaviaDetail,
+          source.carSlaviaDetail,
           parsedSlaviaDetail as Record<string, unknown>
         );
         if (slaviaMerge.appliedCount > 0) {
@@ -3724,7 +3671,7 @@ export default function ContractDetailPage() {
         !Array.isArray(riskFields)
       ) {
         const neonMerge = mergeEmptyNeonDetailFields(
-          contract.neonDetail,
+          source.neonDetail,
           riskFields as Record<string, unknown>
         );
         if (neonMerge.appliedCount > 0) {
@@ -3751,7 +3698,8 @@ export default function ContractDetailPage() {
         }),
       });
 
-      setContract((prev) => (prev ? { ...prev, ...contractPatch } : prev));
+      setContract((prev) => (prev?.id === entryId ? { ...prev, ...contractPatch } : prev));
+      setContractTimeline(previous => updateContractTimelineEntry(previous, entryId, entry => ({ ...entry, ...contractPatch })));
       setDetailsSaved(true);
       pushToast(`Z PDF doplněno ${appliedCount} prázdných polí.`, "success");
     } catch (e) {
@@ -3770,18 +3718,21 @@ export default function ContractDetailPage() {
   const saveContractDetails = useContractDetails();
 
   const handleSaveDetails = async () => {
-    if (!canManageContract || !ownerEmail || !entryId) return;
+    const source = contractEditSource(contract, contractTimeline, editSourceEntryId, ownerEmail);
+    const sourceEntryId = source?.id;
+    if (!canManageContract || !ownerEmail || !sourceEntryId || !source || !editMode || loading ||
+      loadedDetailRequest !== detailRequestKey || savingDetails || refreshingPdfDetails) return;
     setSavingDetails(true);
     setDetailsError(null);
     setDetailsSaved(false);
 
     try {
       const result = await saveContractDetails({
-        product: prod,
+        product: source.productKey,
         durationBounds,
         showDurationForProduct,
         ownerEmail,
-        entryId,
+        entryId: sourceEntryId,
         requestContractsApi,
         form: {
           editCarAddonAnimalCollision,
@@ -3962,8 +3913,9 @@ export default function ContractDetailPage() {
       }
 
       setContract((previous) =>
-        previous ? result.applyToContract(previous) : previous
+        previous?.id === sourceEntryId ? result.applyToContract(previous) : previous
       );
+      setContractTimeline(previous => updateContractTimelineEntry(previous, sourceEntryId, result.applyToContract));
       setEditMode(false);
       setDetailsSaved(true);
       pushToast("Detaily smlouvy byly uloženy.", "success");
@@ -3978,35 +3930,64 @@ export default function ContractDetailPage() {
 
   const resetNoteEditor = () => {
     setNoteEditorId(null);
+    setNoteEditorRequestKey(null);
     setNoteDraft("");
     setNoteReminderEnabled(false);
     setNoteReminderDate("");
     setNoteError(null);
   };
 
+  const handleLoadOlderNotes = async () => {
+    const cursor = contractNotesState?.nextCursor;
+    if (!ownerEmail || !entryId || !notesCurrent || !cursor || loadingOlderNotes || savingNote || deletingNoteId !== null) return;
+    setLoadingOlderNotesRequest({ requestKey: notesRequestKey, cursor });
+    setNoteError(null);
+    try {
+      const query = new URLSearchParams({ ownerEmail, entryId, cursor });
+      const payload = await requestContractsApi<ContractNotesApiResponse>(`/api/contracts/notes?${query.toString()}`);
+      setContractNotesState(current => appendedContractNotesView(current, notesRequestKey, entryId, cursor,
+        Array.isArray(payload.notes) ? payload.notes : [], typeof payload.nextCursor === "string" ? payload.nextCursor : null));
+    } catch {
+      setNoteError("Starší poznámky se nepodařilo načíst. Zkus to prosím znovu.");
+    } finally {
+      setLoadingOlderNotesRequest(current => current?.requestKey === notesRequestKey && current.cursor === cursor ? null : current);
+    }
+  };
+
   const handleStartNewNote = () => {
+    if (!notesCurrent || notesLoading || !entryId || savingNote || deletingNoteId !== null) return;
     setNoteExpanded(true);
     setNoteEditorId("new");
+    setNoteEditorRequestKey(notesRequestKey);
     setNoteDraft("");
     setNoteReminderEnabled(false);
     setNoteReminderDate(reminderDateAfterDays(7));
     setNoteDeleteConfirmId(null);
     setNoteError(null);
-    setNoteSaved(false);
+    setNoteSavedRequestKey(null);
   };
 
   const handleEditNote = (note: ContractNoteDto) => {
-    setNoteEditorId(note.id);
+    if (!notesCurrent || notesLoading || !entryId || savingNote || deletingNoteId !== null) return;
+    setNoteEditorId(contractNoteViewKey(note, entryId));
+    setNoteEditorRequestKey(notesRequestKey);
     setNoteDraft(note.text);
     setNoteReminderEnabled(note.reminderEnabled);
     setNoteReminderDate(localDateInputFromMs(note.reminderAtMs));
     setNoteDeleteConfirmId(null);
     setNoteError(null);
-    setNoteSaved(false);
+    setNoteSavedRequestKey(null);
   };
 
   const handleSaveNote = async () => {
-    if (!ownerEmail || !entryId || !canManageContract || !noteEditorId) return;
+    if (!ownerEmail || !entryId || !notesCurrent || !canManageContract || !noteEditorId || savingNote || deletingNoteId !== null) return;
+    const creating = noteEditorId === "new";
+    const existing = creating ? undefined : contractNotes.find(note => contractNoteViewKey(note, entryId) === noteEditorId);
+    const target = creating || existing ? contractNoteMutationTarget(entryId, existing) : null;
+    if (!target) {
+      setNoteError("Poznámku se nepodařilo určit. Obnov detail smlouvy.");
+      return;
+    }
     const text = noteDraft.trim();
     if (!text) {
       setNoteError("Napiš text poznámky.");
@@ -4022,10 +4003,9 @@ export default function ContractDetailPage() {
 
     setSavingNote(true);
     setNoteError(null);
-    setNoteSaved(false);
+    setNoteSavedRequestKey(null);
 
     try {
-      const creating = noteEditorId === "new";
       const payload = await requestContractsApi<ContractNotesApiResponse>("/api/contracts/notes", {
         method: creating ? "POST" : "PATCH",
         headers: {
@@ -4033,24 +4013,23 @@ export default function ContractDetailPage() {
         },
         body: JSON.stringify({
           ownerEmail,
-          entryId,
-          ...(creating ? {} : { noteId: noteEditorId }),
+          ...target,
           text,
           reminderEnabled: noteReminderEnabled,
           reminderAtMs,
         }),
       });
       if (!payload.note) throw new Error("Server nevrátil uloženou poznámku.");
-      setContractNotes((current) =>
-        [...current.filter((note) => note.id !== payload.note!.id), payload.note!].sort(
-          (left, right) => right.updatedAtMs - left.updatedAtMs
-        )
-      );
-      if (noteEditorId === "legacy") {
-        setContract((current) => (current ? { ...current, note: "" } : current));
+      setContractNotesState(current => savedContractNoteView(current, notesRequestKey, entryId, payload.note!, creating ? undefined : noteEditorId));
+      if (existing?.legacy || existing?.id === "legacy") {
+        const sourceEntryId = contractNoteEntryId(existing, entryId)!;
+        setContract(current => current?.id === sourceEntryId && normalizeEmail(current.userEmail) === normalizeEmail(ownerEmail)
+          ? { ...current, note: "" } : current);
+        setContractTimeline(previous => updateContractTimelineEntry(previous, sourceEntryId, entry =>
+          normalizeEmail(entry.userEmail) === normalizeEmail(ownerEmail) ? { ...entry, note: "" } : entry));
       }
       resetNoteEditor();
-      setNoteSaved(true);
+      setNoteSavedRequestKey(notesRequestKey);
       pushToast(
         noteReminderEnabled
           ? "Poznámka a připomínka byly uloženy."
@@ -4070,21 +4049,28 @@ export default function ContractDetailPage() {
     }
   };
 
-  const handleDeleteNote = async (noteId: string) => {
-    if (!ownerEmail || !entryId || !canManageContract) return;
-    setDeletingNoteId(noteId);
+  const handleDeleteNote = async (noteKey: string) => {
+    if (!ownerEmail || !entryId || !notesCurrent || !canManageContract || savingNote || deletingNoteId !== null) return;
+    const note = contractNotes.find(item => contractNoteViewKey(item, entryId) === noteKey);
+    const target = note ? contractNoteMutationTarget(entryId, note) : null;
+    if (!note || !target) return;
+    setDeletingNoteId(noteKey);
     setNoteError(null);
     try {
       await requestContractsApi<ContractNotesApiResponse>("/api/contracts/notes", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerEmail, entryId, noteId }),
+        body: JSON.stringify({ ownerEmail, ...target }),
       });
-      setContractNotes((current) => current.filter((note) => note.id !== noteId));
-      if (noteId === "legacy") {
-        setContract((current) => (current ? { ...current, note: "" } : current));
+      setContractNotesState(current => removedContractNoteView(current, notesRequestKey, entryId, noteKey));
+      if (note.legacy || note.id === "legacy") {
+        const sourceEntryId = contractNoteEntryId(note, entryId)!;
+        setContract(current => current?.id === sourceEntryId && normalizeEmail(current.userEmail) === normalizeEmail(ownerEmail)
+          ? { ...current, note: "" } : current);
+        setContractTimeline(previous => updateContractTimelineEntry(previous, sourceEntryId, entry =>
+          normalizeEmail(entry.userEmail) === normalizeEmail(ownerEmail) ? { ...entry, note: "" } : entry));
       }
-      if (noteEditorId === noteId) resetNoteEditor();
+      if (noteEditorId === noteKey) resetNoteEditor();
       setNoteDeleteConfirmId(null);
       pushToast("Poznámka byla odstraněna.", "success");
     } catch (error) {
@@ -4977,7 +4963,7 @@ export default function ContractDetailPage() {
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
 
-  const shellCardClass = "min-w-0 space-y-6 px-2 py-2 font-mono";
+  const shellCardClass = "min-w-0 font-mono";
   const surfaceCardClass =
     "rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]";
   const surfaceSoftClass =
@@ -5083,145 +5069,44 @@ export default function ContractDetailPage() {
     })();
   }, [contractPdfOptions, downloadContractPdfBlob, prod]);
 
-  const startKooperativaStatusRedirect = useCallback(() => {
-    clearKooperativaStatusRedirect();
-    setKooperativaStatusCountdown(3);
-    setKooperativaStatusRedirected(false);
-    setKooperativaStatusRedirectError(null);
-
-    const redirectAt = Date.now() + 3000;
-    const updateRedirectCountdown = () => {
-      const remainingMs = redirectAt - Date.now();
-      setKooperativaStatusCountdown(Math.max(0, Math.ceil(remainingMs / 1000)));
-      if (remainingMs > 0) return;
-
-      clearKooperativaStatusRedirect();
-      const popup = window.open(KOOPERATIVA_CONTRACT_STATUS_URL, "_blank");
-      if (popup) {
-        popup.opener = null;
-        setKooperativaStatusRedirected(true);
-      } else {
-        setKooperativaStatusRedirectError(
-          "Prohlížeč automatické otevření zablokoval. Otevři Kooperativu tlačítkem vpravo."
-        );
-      }
-    };
-
-    updateRedirectCountdown();
-    kooperativaStatusRedirectTimerRef.current = window.setInterval(
-      updateRedirectCountdown,
-      100
-    );
-  }, [clearKooperativaStatusRedirect]);
-
-  const handleKooperativaStatusCheckClick = useCallback(() => {
-    if (prod !== "kooperativaAuto") return;
-
-    clearKooperativaStatusRedirect();
-    const requestId = kooperativaBirthNumberRequestRef.current + 1;
-    kooperativaBirthNumberRequestRef.current = requestId;
-    setKooperativaBirthNumber(null);
-    setKooperativaDirectBirthDate(null);
-    setKooperativaCompanyId(null);
-    setKooperativaLegalEntity(false);
-    setKooperativaBirthNumberError(null);
-    setKooperativaPdfTemplateIssue(false);
-    setKooperativaBirthNumberLoading(true);
-    setKooperativaStatusCountdown(3);
-    setKooperativaStatusRedirected(false);
-    setKooperativaStatusRedirectError(null);
-    setShowKooperativaStatusModal(true);
-
-    if (!user || !ownerEmail || !entryId || !hasContractPdfAttachment) {
-      setKooperativaBirthNumberLoading(false);
-      setKooperativaBirthNumberError(
-        "Potřebný identifikační údaj lze automaticky načíst jen z originálního PDF smlouvy uloženého u této smlouvy."
-      );
-      startKooperativaStatusRedirect();
-      return;
-    }
-
-    void (async () => {
-      try {
-        const [pdfBlob, { parseKooperativaAutoPdf }] = await Promise.all([
-          downloadContractPdfBlob({
-            ownerEmail,
-            entryId,
-            fileName: contractPdfFileName,
-            label: "Původní smlouva",
-            meta: contractPdfFileName,
-            isCurrent: true,
-          }),
-          import("@/app/lib/parseKooperativaAutoPdf"),
-        ]);
-        const parsed = await parseKooperativaAutoPdf(
-          new File([pdfBlob], contractPdfFileName, { type: "application/pdf" })
-        );
-        if (kooperativaBirthNumberRequestRef.current !== requestId) return;
-
-        const isLegalEntity = parsed.policyholderType === "legal_entity";
-        setKooperativaLegalEntity(isLegalEntity);
-        if (isLegalEntity) {
-          if (!parsed.companyId) {
-            setKooperativaBirthNumberError(
-              "IČO se z originálního PDF nepodařilo načíst."
-            );
-            setKooperativaPdfTemplateIssue(true);
-            return;
-          }
-          setKooperativaCompanyId(parsed.companyId);
-          return;
-        }
-
-        if (parsed.policyholderBirthDate) {
-          setKooperativaDirectBirthDate(parsed.policyholderBirthDate);
-          return;
-        }
-
-        if (!parsed.birthNumber) {
-          setKooperativaBirthNumberError(
-            "Datum narození se z originálního PDF nepodařilo určit."
-          );
-          setKooperativaPdfTemplateIssue(true);
-          return;
-        }
-        setKooperativaBirthNumber(parsed.birthNumber);
-      } catch (error) {
-        if (kooperativaBirthNumberRequestRef.current !== requestId) return;
-        setKooperativaBirthNumberError(
-          error instanceof Error && error.message.trim()
-            ? error.message.trim()
-            : "Datum narození se z PDF nepodařilo určit."
-        );
-      } finally {
-        if (kooperativaBirthNumberRequestRef.current === requestId) {
-          setKooperativaBirthNumberLoading(false);
-          startKooperativaStatusRedirect();
-        }
-      }
-    })();
-  }, [
-    clearKooperativaStatusRedirect,
-    contractPdfFileName,
-    downloadContractPdfBlob,
-    entryId,
-    hasContractPdfAttachment,
-    ownerEmail,
-    prod,
-    startKooperativaStatusRedirect,
-    user,
-  ]);
-
-  const kooperativaBirthDate = useMemo(
-    () => {
-      if (kooperativaDirectBirthDate) {
-        const [year, month, day] = kooperativaDirectBirthDate.split("-");
-        if (year && month && day) return `${day}.${month}.${year}`;
-      }
-      return birthDateFromCzechBirthNumber(kooperativaBirthNumber);
-    },
-    [kooperativaBirthNumber, kooperativaDirectBirthDate]
-  );
+  const kooperativaSourcePdf = contractPdfOptions.find(option => option.isCurrent) ?? contractPdfOptions[0] ?? null;
+  const canAddContractPdf = Boolean(user && ownerEmail && entryId && contract && canManageContract &&
+    !hasContractPdfAttachment && !editMode && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const requestContractPdfUpload = useCallback((form: FormData, signal: AbortSignal) =>
+    requestContractsApi<ContractPdfUploadResponse>("/api/contracts/attachment", {
+      method: "POST", body: form, signal,
+      headers: adminImpersonation?.email ? withDefaultAdminImpersonationHeader(undefined, adminImpersonation.email) : undefined,
+    }), [adminImpersonation?.email, requestContractsApi]);
+  const handleContractPdfUploaded = useCallback((attachment: ContractPdfUploadAttachment) => {
+    if (!entryId || !ownerEmail) return;
+    setContract(current => current?.id === entryId && normalizeEmail(current.userEmail) === normalizeEmail(ownerEmail)
+      ? { ...current, contractPdfAttachment: attachment } : current);
+    setContractTimeline(previous => updateContractTimelineEntry(previous, entryId,
+      source => ({ ...source, contractPdfAttachment: attachment })));
+    try {
+      sessionStorage.removeItem("contracts_cache_v2");
+      sessionStorage.removeItem("contracts_cache_v3");
+      localStorage.setItem("contracts_last_updated", String(Date.now()));
+      window.dispatchEvent(new Event("contracts:updated"));
+    } catch { /* The attachment is already saved; browser cache invalidation is optional. */ }
+    pushToast("PDF smlouvy je nahrané.", "success");
+  }, [entryId, ownerEmail, pushToast]);
+  const kooperativaSourceAttachment = (contractTimeline.find(source => source.id === kooperativaSourcePdf?.entryId) ?? contract)?.contractPdfAttachment;
+  const kooperativaStatus = useKooperativaContractStatus({
+    contextKey: JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
+      contract?.contractNumber, kooperativaSourcePdf?.entryId, kooperativaSourcePdf?.fileName,
+      kooperativaSourceAttachment?.sha256, kooperativaSourceAttachment?.uploadedAtMs]),
+    enabled: prod === "kooperativaAuto" && Boolean(user && ownerEmail && entryId && canViewContract &&
+      !loading && !unauthorized && loadedDetailRequest === detailRequestKey),
+    contractNumber: contract?.contractNumber?.trim() ?? "",
+    sourcePdf: kooperativaSourcePdf,
+    downloadPdf: downloadContractPdfBlob,
+  });
+  const handleKooperativaStatusCheckClick = () => {
+    setShowContractPdfOptions(false);
+    setShowContractActionsMenu(false);
+    kooperativaStatus.open();
+  };
 
   const copyContractActionValue = useCallback(
     (value: string | null | undefined, label: string) => {
@@ -5369,23 +5254,21 @@ export default function ContractDetailPage() {
 
       <Toasts items={toasts} onDismiss={dismissToast} />
 
-      <div className="relative flex min-h-screen items-start justify-center px-3 py-5 sm:px-5 sm:py-9">
-        <div className="w-full max-w-[1220px]">
+      <div className="relative min-h-screen">
+        <div className="w-full">
           <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            {!isEmbedded && (
-              <Link
-                href={backToContractsHref}
-                className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white"
-              >
-                <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
-                <span>Zpět na smlouvy</span>
-              </Link>
-            )}
             <header className={detailStyles.header}>
               <div className={detailStyles.headerMain}>
                 <div className={detailStyles.headerMeta}>
+                  {!isEmbedded && (
+                    <Link href={backToContractsHref} className={detailStyles.headerBack}
+                      aria-label="Zpět na smlouvy" title="Zpět na smlouvy">
+                      <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
+                      <span>Zpět</span>
+                    </Link>
+                  )}
                   <button
                     type="button"
                     className={detailStyles.headerNumber}
@@ -5397,6 +5280,7 @@ export default function ContractDetailPage() {
                     <FileText size={14} strokeWidth={1.8} aria-hidden="true" />
                     <span>Smlouva č.</span>
                     <strong>{contract?.contractNumber?.trim() || "Neuvedeno"}</strong>
+                    <Copy className={detailStyles.headerCopy} size={12} strokeWidth={1.8} aria-hidden="true" />
                   </button>
                   {contractIsInherited && (
                     <span className={detailStyles.headerTag}>
@@ -5429,6 +5313,21 @@ export default function ContractDetailPage() {
                     </span>
                     <span>{contractLifecycleBadgeText}</span>
                   </span>
+                  {canManageContract && (
+                    <button
+                      type="button"
+                      onClick={handleTogglePaid}
+                      disabled={updatingPaid}
+                      aria-busy={updatingPaid}
+                      className={`${actionStyles.payment} ${detailStyles.headerPayment}`}
+                      data-paid={contract?.paid === true}
+                      aria-pressed={contract?.paid === true}
+                      title={contract?.paid ? "Označit jako nezaplacené" : "Označit jako zaplacené"}
+                    >
+                      {updatingPaid ? <Spinner className="h-3 w-3" /> : <span className={actionStyles.paymentDot} data-payment-dot aria-hidden="true" />}
+                      <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className={detailStyles.headerIdentity}>
@@ -5444,22 +5343,22 @@ export default function ContractDetailPage() {
                       </Link>
                     ) : contract?.clientName?.trim() || "Klient není uvedený"}
                   </h1>
+                  <p className={detailStyles.headerProduct}>{headerProductLabel}</p>
                 </div>
 
-                <div className={detailStyles.headerActions}>
-                  {canManageContract && (
-                    <button
-                      type="button"
-                      onClick={handleTogglePaid}
-                      disabled={updatingPaid}
-                      className={`${actionStyles.payment} ${detailStyles.headerPayment}`}
-                      data-paid={contract?.paid === true}
-                      aria-pressed={contract?.paid === true}
-                      title={contract?.paid ? "Označit jako nezaplacené" : "Označit jako zaplacené"}
-                    >
-                      {updatingPaid ? <Spinner className="h-4 w-4" /> : <span className={actionStyles.paymentDot} data-payment-dot aria-hidden="true" />}
-                      <span>{contract?.paid ? "Zaplaceno" : "Nezaplaceno"}</span>
-                    </button>
+                <div className={detailStyles.headerActions} data-editing={editMode}
+                  data-has-actions={Boolean(canAddContractPdf || (SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment) || cppExtranetDetailUrl || maxxContractDetailUrl || prod === "kooperativaAuto" || (canManageContract && editMode))}>
+                  <div className={detailStyles.headerDocumentActions}>
+
+                  {canAddContractPdf && ownerEmail && entryId && (
+                    <ContractPdfUploadButton
+                      key={`${detailRequestKey}|${entryId}|${user?.uid}|${adminImpersonation?.email ?? ""}`}
+                      ownerEmail={ownerEmail}
+                      entryId={entryId}
+                      className={`${actionStyles.button} ${detailStyles.headerPrimary}`}
+                      requestUpload={requestContractPdfUpload}
+                      onUploaded={handleContractPdfUploaded}
+                    />
                   )}
 
                   {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
@@ -5468,6 +5367,7 @@ export default function ContractDetailPage() {
                         type="button"
                         onClick={handleContractPdfButtonClick}
                         disabled={contractPdfLoading}
+                        aria-busy={contractPdfLoading}
                         aria-expanded={
                           contractPdfOptions.length > 1 ? showContractPdfOptions : undefined
                         }
@@ -5489,7 +5389,7 @@ export default function ContractDetailPage() {
                         )}
                       </button>
                       {showContractPdfOptions && contractPdfOptions.length > 1 && (
-                        <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-[0_18px_48px_rgba(15,23,42,0.22)]">
+                        <div className={detailStyles.headerPdfMenu}>
                           {contractPdfOptions.map((option) => (
                             <button
                               key={option.entryId}
@@ -5522,6 +5422,8 @@ export default function ContractDetailPage() {
                       type="button"
                       onClick={handleDownloadContractPdf}
                       disabled={contractPdfDownloading}
+                      aria-busy={contractPdfDownloading}
+                      aria-label="Stáhnout PDF smlouvy"
                       className={`${actionStyles.button} ${detailStyles.headerSecondary}`}
                     >
                       {contractPdfDownloading ? (
@@ -5529,10 +5431,21 @@ export default function ContractDetailPage() {
                       ) : (
                         <Download size={14} strokeWidth={2} aria-hidden="true" />
                       )}
-                      <span>{contractPdfDownloading ? "Stahuji…" : "Stáhnout smlouvu"}</span>
+                      <span>{contractPdfDownloading ? "Stahuji…" : "Stáhnout PDF"}</span>
                     </button>
                   )}
+                  </div>
 
+                  <div className={detailStyles.headerPortalActions}>
+                  {prod === "kooperativaAuto" && (
+                    <button type="button" onClick={handleKooperativaStatusCheckClick}
+                      aria-haspopup="dialog"
+                      className={`${actionStyles.button} ${detailStyles.headerPortal}`}>
+                      <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Stav smlouvy</span>
+                    </button>
+                  )}
+                  {(cppExtranetDetailUrl || maxxContractDetailUrl) && <span className={detailStyles.headerPortalLabel}>Portály</span>}
                   {[
                     { label: "ExtraNet", href: cppExtranetDetailUrl },
                     { label: "Maxx", href: maxxContractDetailUrl },
@@ -5547,14 +5460,16 @@ export default function ContractDetailPage() {
                         setShowContractPdfOptions(false);
                         setShowContractActionsMenu(false);
                       }}
-                      className={`${actionStyles.button} ${detailStyles.headerSecondary}`}
+                      className={`${actionStyles.button} ${detailStyles.headerPortal}`}
                     >
                       <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
                       <span>{label}</span>
                     </a>
                   ))}
+                  </div>
 
-                  <div className="relative">
+                  <div className={detailStyles.headerUtilityActions}>
+                  <div className={`relative ${detailStyles.headerMenu}`}>
                     <button
                       type="button"
                       onClick={() => {
@@ -5584,7 +5499,7 @@ export default function ContractDetailPage() {
                       <button
                         type="button"
                         onClick={handleSaveDetails}
-                        disabled={savingDetails}
+                        disabled={savingDetails || refreshingPdfDetails || !editContract}
                         className={`${saveButtonClass} ${detailStyles.headerPrimary}`}
                       >
                         {savingDetails && (
@@ -5595,16 +5510,17 @@ export default function ContractDetailPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          resetEditFields();
+                          resetEditFields(contract);
                           setEditMode(false);
                         }}
-                        disabled={savingDetails}
+                        disabled={savingDetails || refreshingPdfDetails}
                         className={`${ghostButtonClass} ${detailStyles.headerSecondary}`}
                       >
                         Zrušit
                       </button>
                     </>
                   )}
+                  </div>
                 </div>
               </div>
 
@@ -5615,15 +5531,16 @@ export default function ContractDetailPage() {
                       src={institutionLogo}
                       alt={institutionLabel || "Logo instituce"}
                       fill
-                      sizes="(max-width: 639px) 90px, 180px"
+                      sizes="(max-width: 639px) 86px, 112px"
                       className={detailStyles.headerLogoImage}
                     />
                   </div>
                 )}
-                <p className={detailStyles.headerProduct}>{headerProductLabel}</p>
+                {!institutionLogo && <span>{institutionLabel || "Smlouva"}</span>}
               </div>
             </header>
 
+            <div className={detailStyles.body}>
             {detailsError && (
               <div className={statusErrorClass}>
                 {detailsError}
@@ -5680,9 +5597,7 @@ export default function ContractDetailPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setShowContractActionsMenu(false);
-                          setDetailsSaved(false);
-                          setEditMode(true);
+                          beginEditSource(entryId);
                         }}
                         className={detailStyles.action}
                       >
@@ -5841,7 +5756,7 @@ export default function ContractDetailPage() {
                         </span>
                         <span className="min-w-0">
                           <span className={detailStyles.actionTitle}>
-                            Ověření stavu smlouvy
+                            Stav smlouvy
                           </span>
                           <span className={detailStyles.actionDescription}>
                             Kontrola smlouvy u Kooperativy
@@ -5894,8 +5809,14 @@ export default function ContractDetailPage() {
                   </div>
                 </aside>
                 <div className={detailStyles.content}>
+                <ContractDetailNavigation hasChanges={showTimelineSection} onOpenNotes={() => setNoteExpanded(true)} />
                 {editMode && (
-                  <section className={`${surfaceCardClass} grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]`}>
+                  <section id="contract-edit-source" className={`${surfaceCardClass} grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)]`}>
+                    <p className="text-sm font-semibold text-violet-800 lg:col-span-2">
+                      {editContract?.entryType === "endorsement"
+                        ? `Upravuješ dodatek s účinností od ${formatDate(editContract.policyStartDate)}.`
+                        : "Upravuješ původní smlouvu."}
+                    </p>
                     <div className="space-y-2.5">
                       <div className={`${metaLabelClass} inline-flex items-center gap-2`}>
                         <UserRound size={14} strokeWidth={2} aria-hidden="true" />
@@ -5960,7 +5881,7 @@ export default function ContractDetailPage() {
                   </div>
                 )}
                 <div className={detailStyles.sections}>
-                <section>
+                <section id="contract-overview" className={navigationStyles.anchorTarget}>
                   <div className={detailStyles.overview}>
                   <div className="min-w-0">
                     <ContractSectionHeading
@@ -6398,123 +6319,38 @@ export default function ContractDetailPage() {
             </section>
 
             {showTimelineSection && (
-              <section className={sectionPanelClass}>
-                <ContractSectionHeading
-                  icon={<CalendarDays size={17} strokeWidth={2.2} aria-hidden="true" />}
-                  className="mb-2.5"
-                >
-                  Timeline smlouvy
-                </ContractSectionHeading>
-
-                {timelineLoading && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    Načítám historii změn…
-                  </div>
-                )}
-                {timelineError && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    {timelineError}
-                  </div>
-                )}
-
-                {!timelineLoading && !timelineError && timelineRows.length > 0 && (
-                  <div className="space-y-2">
-                    {timelineRows.map((row) => {
-                      const rowContent = (
-                        <div
-                          className={`rounded-xl border px-4 py-3 transition ${
-                            row.isCurrent
-                              ? "border-slate-900 bg-slate-100"
-                              : "border-slate-200 bg-slate-50 hover:bg-white"
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-                                Krok {row.step}
-                              </span>
-                              <span
-                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                  row.label === "Dodatek"
-                                    ? "border-sky-300 bg-sky-100 text-sky-800"
-                                    : "border-slate-300 bg-slate-200 text-slate-800"
-                                }`}
-                              >
-                                {row.label}
-                              </span>
-                              {row.isCurrent && (
-                                <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
-                                  Otevřeno
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm font-semibold text-slate-900">
-                              {formatMoney(row.total)}
-                            </div>
-                          </div>
-
-                          <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs text-slate-600 sm:grid-cols-2">
-                            <p>
-                              Počátek: <span className="font-semibold text-slate-800">{row.policyStartText}</span>
-                            </p>
-                            <p>
-                              Sjednáno:{" "}
-                              <span className="font-semibold text-slate-800">
-                                {row.contractSignedText}
-                              </span>
-                            </p>
-                            <p>
-                              Pozice: <span className="font-semibold text-slate-800">{row.positionText}</span>
-                            </p>
-                            <p>
-                              Režim: <span className="font-semibold text-slate-800">{row.modeText}</span>
-                            </p>
-                            <p>
-                              Pojistné:{" "}
-                              <span className="font-semibold text-slate-800">
-                                {formatMoney(row.premiumAmount)}
-                              </span>
-                            </p>
-                            {row.delta != null ? (
-                              <p>
-                                Změna:{" "}
-                                <span
-                                  className={`font-semibold ${
-                                    row.delta >= 0 ? "text-emerald-700" : "text-rose-700"
-                                  }`}
-                                >
-                                  {row.delta >= 0 ? "+" : "−"}
-                                  {formatMoney(Math.abs(row.delta))}
-                                </span>
-                              </p>
-                            ) : (
-                              <p>
-                                Datum kroku:{" "}
-                                <span className="font-semibold text-slate-800">
-                                  {row.orderDateText}
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-
-                      if (row.href && !row.isCurrent) {
-                        return (
-                          <Link key={row.id} href={row.href} className="block">
-                            {rowContent}
-                          </Link>
-                        );
-                      }
-
-                      return <div key={row.id}>{rowContent}</div>;
-                    })}
-                  </div>
-                )}
-              </section>
+              <div id="contract-changes" className={navigationStyles.anchorTarget}>
+              <ContractTimelineSection
+                entries={contractTimeline}
+                ownerEmail={ownerEmail}
+                viewerEmail={normalizedViewerEmail}
+                selectedEntryId={requestedEntryId}
+                loading={timelineLoading}
+                error={timelineError}
+                onEditEntry={canManageContract ? beginEditSource : undefined}
+                editingDisabled={savingDetails || refreshingPdfDetails || editMode}
+                onRefreshPdf={canManageContract ? sourceEntryId => { void handleRefreshDetailsFromPdf(sourceEntryId); } : undefined}
+                pdfRefreshDisabled={savingDetails || refreshingPdfDetails || editMode}
+                onOpenStatement={handleOpenCommissionStatementPreview}
+                statementPreviewLoadingId={statementPreviewLoadingId}
+                onOpenPdf={(sourceEntryId) => {
+                  const option = contractPdfOptions.find(pdf => pdf.entryId === sourceEntryId);
+                  if (option) openContractPdfOption(option);
+                }}
+                onOpenNeonImmediateBreakdown={(sourceEntry, item, position, mode) => {
+                  const breakdown = buildNeonImmediateBreakdown(
+                    item.amount ?? 0, position, mode,
+                    toDateInputValue(sourceEntry.contractSignedDate ?? sourceEntry.createdAt)
+                  );
+                  if (breakdown) setNeonImmediateBreakdown(breakdown);
+                }}
+              />
+              </div>
             )}
 
             <div className={detailStyles.sections}>
+              <div id="contract-commissions" className={navigationStyles.anchorTarget}>
+              {showTimelineSection && <p className={navigationStyles.sourceHint}>Rozpis původní smlouvy. Provize jednotlivých dodatků najdeš v historii změn.</p>}
               <ContractCommissionSection
                 product={prod}
                 isOwnContract={isOwnContract}
@@ -6530,8 +6366,10 @@ export default function ContractDetailPage() {
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                 contractDurationYears={contract?.durationYears ?? null}
-                paymentFrequency={freq}
+                paymentFrequency={contract?.frequencyRaw ?? freq}
                 policyStartDate={contract?.policyStartDate}
+                commissionEntry={contract}
+                commissionTimeline={contractTimeline}
                 onOpenStatement={handleOpenCommissionStatementPreview}
                 statementPreviewLoadingId={statementPreviewLoadingId}
                 adviserBreakdownPosition={adviserBreakdownPosition}
@@ -6543,6 +6381,7 @@ export default function ContractDetailPage() {
                 onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
                 onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
               />
+              </div>
 
               <ContractAutoPremiumHistory
                 viewerEmail={normalizedViewerEmail ?? undefined}
@@ -6581,34 +6420,26 @@ export default function ContractDetailPage() {
 
               <ContractLifePremiumChanges changes={confirmedLifeChanges} onOpenStatement={handleOpenCommissionStatementPreview} />
 
-              {contract?.productKey === "kooperativaAuto" && (
-                contract.commissionPayouts?.some(payout => isKooperativaCPayout(contract.productKey, payout.code) && normalizeEmail(payout.writtenBy) === normalizedViewerEmail) ||
-                contract.cashflowPayoutMatches?.some(match => normalizeEmail(match.writtenBy) === normalizedViewerEmail)
-              ) && <ContractPayoutPlanMatching
-                key={`${ownerEmail}___${entryId}___${normalizedViewerEmail}`}
-                onRequest={handlePayoutPlanRequest}
-              />}
-
               {/* POZNÁMKY A PŘIPOMÍNKY */}
-              <section id="contract-notes" className={noteStyles.panel} aria-label="Poznámky a připomínky">
+              <section id="contract-notes" className={`${noteStyles.panel} ${navigationStyles.anchorTarget}`} aria-label="Poznámky a připomínky">
                 <div className={noteStyles.heading}>
                   <ContractSectionToggle
                     title="Poznámky a připomínky"
                     icon={<StickyNote size={17} strokeWidth={2} />}
-                    count={notesLoading ? "Načítám…" : noteCountLabel(contractNotes.length)}
+                    count={notesLoading ? "Načítám…" : `${hasOlderNotes ? "Načteno " : ""}${noteCountLabel(contractNotes.length)}`}
                     expanded={noteExpanded}
                     contentId={noteContentId}
                     onToggle={() => setNoteExpanded(value => !value)}
                   />
                   <div className={noteStyles.headingActions}>
                     {activeNoteReminderCount > 0 && (
-                      <span className={noteStyles.reminderCount} title="Aktivní připomínky" aria-label={`Aktivní připomínky: ${activeNoteReminderCount}`}>
+                      <span className={noteStyles.reminderCount} title={hasOlderNotes ? "Aktivní připomínky v načtených poznámkách" : "Aktivní připomínky"} aria-label={`Aktivní připomínky${hasOlderNotes ? " v načtených poznámkách" : ""}: ${activeNoteReminderCount}`}>
                         <BellRing size={13} strokeWidth={1.8} aria-hidden="true" />{activeNoteReminderCount}
                       </span>
                     )}
                     {noteSaved && <span className={noteStyles.saved} role="status">Uloženo</span>}
                     {canManageContract && noteEditorId === null && (
-                      <button type="button" onClick={handleStartNewNote} className={noteStyles.addButton}>
+                      <button type="button" onClick={handleStartNewNote} className={noteStyles.addButton} disabled={!notesCurrent || notesLoading || savingNote || deletingNoteId !== null}>
                         <Plus size={15} strokeWidth={2} aria-hidden="true" />Přidat poznámku
                       </button>
                     )}
@@ -6632,7 +6463,7 @@ export default function ContractDetailPage() {
                         <textarea
                           id={`${noteContentId}-text`}
                           value={noteDraft}
-                          onChange={(e) => { setNoteDraft(e.target.value); setNoteSaved(false); }}
+                          onChange={(e) => { setNoteDraft(e.target.value); setNoteSavedRequestKey(null); }}
                           maxLength={2000}
                           rows={3}
                           autoFocus
@@ -6699,11 +6530,12 @@ export default function ContractDetailPage() {
                     ) : contractNotes.length > 0 ? (
                       <div className={noteStyles.list}>
                         {contractNotes.map((note) => {
-                          const isLinkedNote = note.id === linkedNoteId;
+                          const noteKey = contractNoteViewKey(note, entryId ?? "");
+                          const isLinkedNote = noteKey === linkedNoteKey;
                           const wasEdited = note.updatedAtMs - note.createdAtMs > 60_000;
                           const reminderWasSent = !note.reminderEnabled && note.reminderLastSentForAtMs != null;
                           return (
-                            <article key={note.id} className={noteStyles.note} data-linked={isLinkedNote}>
+                            <article id={`contract-note-${encodeURIComponent(noteKey)}`} key={noteKey} className={noteStyles.note} data-linked={isLinkedNote}>
                               <span className={noteStyles.noteIcon} aria-hidden="true">
                                 {note.reminderEnabled ? <BellRing size={16} strokeWidth={1.6} /> : <StickyNote size={16} strokeWidth={1.6} />}
                               </span>
@@ -6714,7 +6546,7 @@ export default function ContractDetailPage() {
                                     {wasEdited && !note.legacy && <span>Upraveno {formatNoteTimestamp(note.updatedAtMs)}</span>}
                                     {isLinkedNote && <span className={noteStyles.linkedLabel}>Otevřeno z notifikace</span>}
                                   </div>
-                                  {canManageContract && noteDeleteConfirmId !== note.id && (
+                                  {canManageContract && noteDeleteConfirmId !== noteKey && (
                                     <div className={noteStyles.noteActions}>
                                       <button
                                         type="button"
@@ -6726,7 +6558,7 @@ export default function ContractDetailPage() {
                                       ><PencilLine size={15} strokeWidth={1.8} aria-hidden="true" /></button>
                                       <button
                                         type="button"
-                                        onClick={() => { setNoteDeleteConfirmId(note.id); setNoteError(null); }}
+                                        onClick={() => { setNoteDeleteConfirmId(noteKey); setNoteError(null); }}
                                         disabled={savingNote || deletingNoteId !== null}
                                         aria-label="Smazat poznámku"
                                         title="Smazat poznámku"
@@ -6742,12 +6574,12 @@ export default function ContractDetailPage() {
                                   <span className={noteStyles.reminder} data-sent="true"><BellRing size={13} strokeWidth={1.7} aria-hidden="true" />Připomenuto {formatReminderDate(note.reminderLastSentForAtMs!)}</span>
                                 ) : null}
 
-                                {canManageContract && noteDeleteConfirmId === note.id && (
+                                {canManageContract && noteDeleteConfirmId === noteKey && (
                                   <div className={noteStyles.deleteConfirmation}>
                                     <span>Opravdu tuto poznámku smazat?</span>
-                                    <button type="button" onClick={() => setNoteDeleteConfirmId(null)} disabled={deletingNoteId === note.id} className={noteStyles.cancelButton}>Zrušit</button>
-                                    <button type="button" onClick={() => void handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className={noteStyles.deleteButton}>
-                                      {deletingNoteId === note.id && <Spinner className="h-3.5 w-3.5 border-rose-300 border-t-white" />}
+                                    <button type="button" onClick={() => setNoteDeleteConfirmId(null)} disabled={deletingNoteId === noteKey} className={noteStyles.cancelButton}>Zrušit</button>
+                                    <button type="button" onClick={() => void handleDeleteNote(noteKey)} disabled={deletingNoteId === noteKey} className={noteStyles.deleteButton}>
+                                      {deletingNoteId === noteKey && <Spinner className="h-3.5 w-3.5 border-rose-300 border-t-white" />}
                                       Smazat
                                     </button>
                                   </div>
@@ -6758,6 +6590,16 @@ export default function ContractDetailPage() {
                         })}
                       </div>
                     ) : null}
+                    {hasOlderNotes && (
+                      <div className="flex justify-center border-t border-slate-100 px-5 py-4">
+                        <button type="button" onClick={() => void handleLoadOlderNotes()}
+                          disabled={loadingOlderNotes || savingNote || deletingNoteId !== null}
+                          className={noteStyles.addButton}>
+                          {loadingOlderNotes && <Spinner className="h-3.5 w-3.5 border-violet-200 border-t-violet-700" />}
+                          {loadingOlderNotes ? "Načítám starší poznámky…" : "Načíst starší poznámky"}
+                        </button>
+                      </div>
+                    )}
                   </div>
               </section>
             </div>
@@ -6766,6 +6608,7 @@ export default function ContractDetailPage() {
                 </div>
               </div>
             ) : null}
+            </div>
             </div>
 
           </div>
@@ -6823,7 +6666,7 @@ export default function ContractDetailPage() {
               {canManageContract && !editMode && hasContractPdfAttachment && (
                 <button
                   type="button"
-                  onClick={handleRefreshDetailsFromPdf}
+                  onClick={() => { void handleRefreshDetailsFromPdf(entryId); }}
                   disabled={refreshingPdfDetails}
                   className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-60"
                 >
@@ -7535,152 +7378,15 @@ export default function ContractDetailPage() {
         </div>
       )}
 
-      {showKooperativaStatusModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            aria-label="Zavřít ověření stavu smlouvy"
-            onClick={closeKooperativaStatusModal}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="kooperativa-status-title"
-            className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40 sm:p-7"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                  <IdCard size={14} strokeWidth={2.2} aria-hidden="true" />
-                  Kooperativa Auto
-                </div>
-                <h3
-                  id="kooperativa-status-title"
-                  className="mt-3 text-xl font-semibold tracking-tight text-slate-900"
-                >
-                  Ověření stavu smlouvy
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeKooperativaStatusModal}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-950"
-                aria-label="Zavřít ověření stavu smlouvy"
-              >
-                <X size={18} strokeWidth={2.4} aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                    Číslo smlouvy
-                  </p>
-                  <p className="mt-1 break-all font-mono text-base font-semibold text-slate-900">
-                    {contract?.contractNumber?.trim() || "Není uvedeno"}
-                  </p>
-                </div>
-                {contract?.contractNumber?.trim() && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyContractActionValue(contract.contractNumber, "Číslo smlouvy")
-                    }
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                    aria-label="Kopírovat číslo smlouvy"
-                    title="Kopírovat číslo smlouvy"
-                  >
-                    <Copy size={16} strokeWidth={2.2} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                    {kooperativaLegalEntity ? "IČO" : "Datum narození"}
-                  </p>
-                  <p className="mt-1 font-mono text-base font-semibold text-slate-900">
-                    {kooperativaBirthNumberLoading
-                      ? "Načítám..."
-                      : kooperativaLegalEntity
-                        ? kooperativaCompanyId ?? "Nepodařilo se načíst"
-                        : kooperativaBirthDate ?? "Nepodařilo se určit"}
-                  </p>
-                </div>
-                {(kooperativaLegalEntity ? kooperativaCompanyId : kooperativaBirthDate) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyContractActionValue(
-                        kooperativaLegalEntity ? kooperativaCompanyId : kooperativaBirthDate,
-                        kooperativaLegalEntity ? "IČO" : "Datum narození"
-                      )
-                    }
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                    aria-label={kooperativaLegalEntity ? "Kopírovat IČO" : "Kopírovat datum narození"}
-                    title={kooperativaLegalEntity ? "Kopírovat IČO" : "Kopírovat datum narození"}
-                  >
-                    <Copy size={16} strokeWidth={2.2} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-              {kooperativaBirthNumberError && (
-                <p className="text-sm text-rose-700">{kooperativaBirthNumberError}</p>
-              )}
-              {kooperativaPdfTemplateIssue && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900"
-                >
-                  <AlertTriangle
-                    className="mt-0.5 h-4 w-4 shrink-0"
-                    strokeWidth={2.2}
-                    aria-hidden="true"
-                  />
-                  <p>
-                    Identifikátor se v PDF nepodařilo najít. Může jít o novou šablonu;
-                    pro doplnění parseru předej originální PDF a číslo smlouvy.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-              <p>
-                {kooperativaLegalEntity
-                  ? "IČO dokážeme automaticky zobrazit pouze z originálního PDF smlouvy uloženého u této smlouvy."
-                  : "Datum narození dokážeme automaticky zobrazit pouze z originálního PDF smlouvy uloženého u této smlouvy."}
-              </p>
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-              <p className="text-sm font-medium text-slate-700" aria-live="polite">
-                {kooperativaBirthNumberLoading
-                  ? "Načítám údaje z originálního PDF..."
-                  : kooperativaStatusRedirectError
-                    ? kooperativaStatusRedirectError
-                    : kooperativaStatusRedirected
-                      ? "Kooperativa je otevřená v nové záložce."
-                      : `Kooperativa se otevře za ${kooperativaStatusCountdown} s.`}
-              </p>
-              {!kooperativaBirthNumberLoading && (
-                <a
-                  href={KOOPERATIVA_CONTRACT_STATUS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
-                >
-                  <ExternalLink size={15} strokeWidth={2.2} aria-hidden="true" />
-                  <span>Otevřít nyní</span>
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
+      {kooperativaStatus.isOpen && (
+        <KooperativaContractStatusDialog
+          contractNumber={contract?.contractNumber?.trim() ?? ""}
+          identity={kooperativaStatus.identity}
+          loading={kooperativaStatus.loading}
+          error={kooperativaStatus.error}
+          onClose={kooperativaStatus.close}
+          onCopy={copyContractActionValue}
+        />
       )}
 
       {showContractPdfModal && selectedContractPdf && (

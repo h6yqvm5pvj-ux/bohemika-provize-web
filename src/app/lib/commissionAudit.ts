@@ -1,7 +1,7 @@
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
-import { isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import { baseCommissionCodeForPayoutComparison, isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { toDate } from "@/app/lib/formatters";
 import type {
   CommissionResultItemDTO,
@@ -198,8 +198,8 @@ export function normalizeCommissionAuditCode(
   return String(code ?? "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
-function commissionCodeAliases(code: string): string[] {
-  const normalized = normalizeCommissionAuditCode(code);
+function commissionCodeAliases(code: string, product?: Product): string[] {
+  const normalized = baseCommissionCodeForPayoutComparison(code, product);
   if (!normalized || normalized === "TOTAL") return [];
 
   const installmentRangeMatch = normalized.match(/^([AB])(\d{3})-\1(\d{3})$/);
@@ -251,12 +251,12 @@ function commissionCodeAliases(code: string): string[] {
   return [normalized];
 }
 
-function uniqueCommissionCodes(codes: Array<string | null | undefined>): string[] {
+function uniqueCommissionCodes(codes: Array<string | null | undefined>, product?: Product): string[] {
   const out = new Set<string>();
   for (const code of codes) {
     const normalized = normalizeCommissionAuditCode(code);
     if (!normalized || normalized === "TOTAL") continue;
-    for (const alias of commissionCodeAliases(normalized)) {
+    for (const alias of commissionCodeAliases(normalized, product)) {
       if (alias && alias !== "TOTAL") out.add(alias);
     }
   }
@@ -282,10 +282,11 @@ function codeFilterAliases(filter: CommissionAuditCodeFilter): string[] {
 
 function codesMatchFilter(
   codes: Array<string | null | undefined>,
-  filter: CommissionAuditCodeFilter
+  filter: CommissionAuditCodeFilter,
+  product?: Product
 ): boolean {
   if (filter === "all") return true;
-  const itemCodes = new Set(uniqueCommissionCodes(codes));
+  const itemCodes = new Set(uniqueCommissionCodes(codes, product));
   if (itemCodes.size === 0) return false;
   if (filter === "subsequent") {
     return [...itemCodes].some(
@@ -405,11 +406,12 @@ function indexCommissionPayouts(
 
 function payoutCodesOverlap(
   left: CommissionAuditPayout,
-  right: CommissionAuditPayout
+  right: CommissionAuditPayout,
+  product?: Product
 ): boolean {
-  const leftCodes = new Set(uniqueCommissionCodes([left.code]));
+  const leftCodes = new Set(uniqueCommissionCodes([left.code], product));
   if (leftCodes.size === 0) return false;
-  return uniqueCommissionCodes([right.code]).some((code) => leftCodes.has(code));
+  return uniqueCommissionCodes([right.code], product).some((code) => leftCodes.has(code));
 }
 
 function payoutWrittenByKey(payout: CommissionAuditPayout): string {
@@ -418,9 +420,10 @@ function payoutWrittenByKey(payout: CommissionAuditPayout): string {
 
 function payoutsBelongTogether(
   left: CommissionAuditPayout,
-  right: CommissionAuditPayout
+  right: CommissionAuditPayout,
+  product?: Product
 ): boolean {
-  return payoutCodesOverlap(left, right) && payoutWrittenByKey(left) === payoutWrittenByKey(right);
+  return payoutCodesOverlap(left, right, product) && payoutWrittenByKey(left) === payoutWrittenByKey(right);
 }
 
 function payoutStatus(payout: CommissionAuditPayout): string {
@@ -487,10 +490,11 @@ function isLaterPayout(
 
 function correctionStornoMatchesMismatch(
   correction: CommissionAuditPayout,
-  mismatch: CommissionAuditPayout
+  mismatch: CommissionAuditPayout,
+  product?: Product
 ): boolean {
   return (
-    payoutsBelongTogether(correction, mismatch) &&
+    payoutsBelongTogether(correction, mismatch, product) &&
     isCorrectionStornoPayout(correction) &&
     amountsClose(finiteMoney(correction.amount), finiteMoney(mismatch.amount))
   );
@@ -504,7 +508,7 @@ function correctPaidPayoutMatchesMismatch(
   const expected = finiteMoney(mismatch.expectedAmount);
   return (
     expected != null &&
-    payoutsBelongTogether(paid, mismatch) &&
+    payoutsBelongTogether(paid, mismatch, contract.productKey) &&
     isCorrectPaidPayout(contract, paid) &&
     (amountsClose(finiteMoney(paid.amount), expected) ||
       amountsClose(finiteMoney(paid.expectedAmount), expected))
@@ -529,7 +533,7 @@ function unresolvedCareerMismatchPayoutKeys(
     const correction = laterPayouts.find(
       (candidate) =>
         !consumedCorrectionKeys.has(candidate.key) &&
-        correctionStornoMatchesMismatch(candidate.payout, mismatch.payout)
+        correctionStornoMatchesMismatch(candidate.payout, mismatch.payout, contract.productKey)
     );
     const correctPayment = laterPayouts.find(
       (candidate) =>
@@ -632,7 +636,8 @@ export function commissionAuditSummaryForContract(
     if (
       !codesMatchFilter(
         [item.commissionCode, ...(item.commissionCodeAliases ?? [])],
-        codeFilter
+        codeFilter,
+        contract.productKey
       )
     ) {
       continue;
@@ -688,7 +693,7 @@ export function commissionAuditSummaryForContract(
     if (isCareerMismatch && !unresolvedCareerMismatchKeys.has(indexedKey)) {
       continue;
     }
-    if (!codesMatchFilter([payout.code], codeFilter)) continue;
+    if (!codesMatchFilter([payout.code], codeFilter, contract.productKey)) continue;
     const payoutDate =
       dateFromPayoutMonthKey(payout.payoutMonthKey) ??
       toDate(payout.writtenAtMs) ??

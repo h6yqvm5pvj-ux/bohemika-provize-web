@@ -45,6 +45,7 @@ import {
   buildChildrenByManager,
 } from "@/app/lib/teamHierarchy";
 import { toDate } from "@/app/lib/formatters";
+import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   canSaveUnlinkedOriginalReplacement,
@@ -61,6 +62,7 @@ import {
 } from "@/app/lib/tipContractCommission";
 import {
   LIFE_PRODUCTS as CATALOG_LIFE_PRODUCTS,
+  PRODUCT_ORDER,
 } from "@/app/lib/productCatalog";
 import { measureCashflowContractPhase } from "@/lib/server/cashflowContractTiming";
 import type {
@@ -272,6 +274,9 @@ const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
   "maximaMaxEfekt",
   "pillowInjury",
 ]);
+const INSURANCE_TIMELINE_PRODUCTS = new Set<Product>(
+  PRODUCT_ORDER.filter(product => product !== "comfortcc" && product !== "conseqzenit")
+);
 const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
   "contractSignedDate",
@@ -593,6 +598,11 @@ const normalizeOptionalDisplayName = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed.slice(0, 200) : null;
 };
 
+const normalizeOptionalClientDisplayName = (value: unknown): string | null => {
+  const name = normalizeOptionalDisplayName(value);
+  return name ? formatClientDisplayName(name) : null;
+};
+
 const formatNameFromEmailAddress = (emailRaw: string | null | undefined): string | null => {
   const normalized = normalizeEmail(emailRaw);
   if (!normalized) return null;
@@ -678,6 +688,7 @@ const toContractResponseItem = (
   delete publicData.contractNumberSearchKeys;
   return {
     ...publicData,
+    clientName: normalizeOptionalClientDisplayName(data.clientName),
     contractPdfAttachment: toPublicContractPdfAttachment(
       (data as { contractPdfAttachment?: unknown }).contractPdfAttachment
     ),
@@ -736,7 +747,7 @@ const toContractListResponseItem = ({
       ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
-      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
     };
@@ -753,7 +764,7 @@ const toContractListResponseItem = ({
       originalAdviserName: normalizeOptionalDisplayName(data.originalAdviserName) ?? null,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
       entryType: data.entryType ?? null,
-      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       clientEmail: data.clientEmail ?? null,
       clientPhone: data.clientPhone ?? null,
       clientAddress: data.clientAddress ?? null,
@@ -779,7 +790,7 @@ const toContractListResponseItem = ({
       ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
-      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       contractSignedDate: toMillis(data.contractSignedDate),
       createdAt: toMillis(data.createdAt),
       productKey: data.productKey,
@@ -878,7 +889,7 @@ const toContractListResponseItem = ({
                 : null,
           }))
         : [],
-      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       contractNumber: data.contractNumber ?? null,
       contractSignedDate: toMillis(data.contractSignedDate),
       policyStartDate: toMillis((data as any).policyStartDate),
@@ -950,7 +961,7 @@ const toContractListResponseItem = ({
           ? data.durationMonths
           : undefined,
       contractNumber: data.contractNumber ?? null,
-      clientName: normalizeOptionalDisplayName(data.clientName) ?? null,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       position: data.position ?? null,
       commissionMode: data.commissionMode ?? null,
       ownerCurrentPosition: ownerContext?.position ?? null,
@@ -2654,7 +2665,7 @@ const normalizePatchUpdates = (
     if (UPDATE_FIELDS_REQUIRED_TEXT_FIELDS.has(field)) {
       const parsed = parseRequiredTrimmedText(rawValue, field, 200);
       if (!parsed.ok) return parsed;
-      normalized[field] = parsed.value;
+      normalized[field] = field === "clientName" ? formatClientDisplayName(parsed.value) : parsed.value;
       continue;
     }
 
@@ -4150,17 +4161,28 @@ export async function handleContractsGet(
     if (
       includeTimeline &&
       productKey &&
-      LIFE_TIMELINE_PRODUCTS.has(productKey) &&
+      INSURANCE_TIMELINE_PRODUCTS.has(productKey) &&
       contractNumber
     ) {
       try {
-        const timelineSnap = await adminDb
-          ?.collection("users")
+        const entriesRef = adminDb!
+          .collection("users")
           .doc(detailOwnerEmail)
-          .collection("entries")
-          .where("contractNumber", "==", contractNumber)
-          .get();
-        const timelineEntries = (timelineSnap?.docs ?? []).filter((snap) => hasContractAccess({
+          .collection("entries");
+        const targetRootId = normalizeRootEntryId(contract);
+        const legacyLifeTimeline = LIFE_TIMELINE_PRODUCTS.has(productKey);
+        let timelineDocs: FirebaseFirestore.DocumentSnapshot[] = [];
+        if (legacyLifeTimeline) {
+          timelineDocs = (await entriesRef.where("contractNumber", "==", contractNumber).get()).docs;
+        } else if (isSafeContractNoteId(targetRootId)) {
+          const [family, root] = await Promise.all([
+            entriesRef.where("rootContractEntryId", "==", targetRootId).get(),
+            targetRootId === detailSnap.id ? Promise.resolve(detailSnap) : entriesRef.doc(targetRootId).get(),
+          ]);
+          timelineDocs = [...new Map([root, ...family.docs].filter(snap => snap.exists)
+            .map(snap => [snap.id, snap])).values()];
+        }
+        const timelineEntries = timelineDocs.filter((snap) => hasContractAccess({
           viewerEmail: email, teamEmails: contractAccessEmails,
           ownerEmail: detailOwnerEmail, contract: snap.data() as ContractDoc,
         })).map((snap) =>
@@ -4178,9 +4200,9 @@ export async function handleContractsGet(
           })
         );
 
-        const targetRootId = normalizeRootEntryId(contract);
         const sameProductEntries = timelineEntries.filter(
-          (entry) => entry.productKey === productKey
+          (entry) => entry.productKey === productKey &&
+            normalizeContractNumber(entry.contractNumber) === normalizeContractNumber(contractNumber)
         );
         const hasExplicitChainIds =
           Boolean((contract.rootContractEntryId ?? "").trim()) ||
@@ -4192,6 +4214,29 @@ export async function handleContractsGet(
           scopedTimeline = sameProductEntries.filter(
             (entry) => normalizeRootEntryId(entry) === targetRootId
           );
+        }
+        if (!legacyLifeTimeline) {
+          // A shared policy number alone does not establish a non-life family.
+          // Include only an authorized root and explicitly linked descendants.
+          const linkedIds = new Set(scopedTimeline.filter(entry => entry.id === targetRootId && entry.entryType !== "endorsement")
+            .map(entry => entry.id));
+          const children = new Map<string, string[]>();
+          for (const entry of scopedTimeline) {
+            const parent = entry.parentContractEntryId;
+            if (entry.entryType !== "endorsement" || entry.rootContractEntryId !== targetRootId || !parent || parent === entry.id) continue;
+            const siblings = children.get(parent) ?? [];
+            siblings.push(entry.id);
+            children.set(parent, siblings);
+          }
+          const linkedQueue = [...linkedIds];
+          for (let index = 0; index < linkedQueue.length; index++) {
+            for (const child of children.get(linkedQueue[index]) ?? []) {
+              if (linkedIds.has(child)) continue;
+              linkedIds.add(child);
+              linkedQueue.push(child);
+            }
+          }
+          scopedTimeline = scopedTimeline.filter(entry => linkedIds.has(entry.id));
         }
 
         if (!scopedTimeline.some((entry) => entry.id === contract.id)) {

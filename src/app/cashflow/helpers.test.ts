@@ -70,6 +70,24 @@ describe("cashflow calendar period", () => {
 });
 
 describe("cashflow commission statements", () => {
+  it("keeps a partial payout balance pending when the statement already contains the paid portion", () => {
+    const balance: CashflowItem = {
+      id: "balance", date: new Date(2025, 2, 25), amount: 75, productKey: "neon",
+      ownerEmail: "adviser@example.test", entryId: "root", contractNumber: "11111111",
+      commissionCode: "B3601", isPartialPayoutBalance: true, payoutStatus: "predicted",
+    };
+    const result = applyStatementMissingPayoutShifts({
+      cashflowItems: [balance], enabled: true,
+      statementsByMonthKey: { "2025-3": [commissionStatement({
+        paidContractNumbers: ["11111111"], paidCommissionKeys: ["11111111:B3601"],
+        payoutMonthKey: "2025-3",
+      })] },
+    });
+    expect(result).toEqual([expect.objectContaining({
+      amount: 75, date: new Date(2025, 3, 25), originalDate: balance.date, payoutStatus: "shifted",
+    })]);
+  });
+
   it("counts a re-uploaded statement only once", () => {
     const statements = [
       commissionStatement(),

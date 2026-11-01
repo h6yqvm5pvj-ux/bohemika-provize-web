@@ -1109,6 +1109,7 @@ export function applyStatementMissingPayoutShifts({
       }
 
       if (
+        !item.isPartialPayoutBalance &&
         hasPaidCommissionForItem({
           item,
           normalizedContractNumber,

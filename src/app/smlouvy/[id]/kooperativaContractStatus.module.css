@@ -1,0 +1,62 @@
+.dialog {
+  width: min(580px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8e6;
+  border-radius: 26px;
+  background: #fff;
+  color: #182f2a;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 24px 90px #0c262e33;
+}
+
+.dialog[open] { display: flex; flex-direction: column; }
+.dialog::backdrop { background: #10252980; backdrop-filter: blur(7px); }
+.header { position: relative; padding: 28px 28px 24px; background: linear-gradient(115deg, #f1f8f4, #f7faf9); border-bottom: 1px solid #e4ece7; }
+.brand { display: flex; align-items: center; gap: 11px; color: #526a60; font-size: 12px; font-weight: 600; letter-spacing: .035em; }
+.logo { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #dfebe2; border-radius: 12px; background: #fff; }
+.logo img { width: 28px; height: 28px; object-fit: contain; }
+.header h2 { margin: 22px 0 8px; color: #183d30; font-size: 27px; font-weight: 650; line-height: 1.15; letter-spacing: -.045em; }
+.header p { max-width: 400px; margin: 0; color: #62756c; font-size: 14px; line-height: 1.6; }
+.close { position: absolute; top: 24px; right: 24px; display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #dce7df; border-radius: 50%; background: #fff9; color: #5e7368; cursor: pointer; transition: background .15s, border-color .15s; }
+.close:hover { border-color: #b6cdc0; background: #fff; }
+.body { min-height: 0; overflow-y: auto; padding: 24px 28px; }
+.fields { display: grid; gap: 12px; margin: 0; }
+.field { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 18px; border: 1px solid #e3eae6; border-radius: 14px; background: #fff; }
+.fieldText { min-width: 0; }
+.field dt { margin-bottom: 6px; color: #718079; font-size: 12px; font-weight: 500; }
+.field dd { margin: 0; overflow-wrap: anywhere; color: #243f33; font-size: 19px; font-weight: 650; line-height: 1.3; font-variant-numeric: tabular-nums; letter-spacing: .015em; }
+.copy { display: inline-flex; min-width: 44px; min-height: 44px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; padding: 10px 12px; border: 1px solid #dce8e0; border-radius: 10px; background: #f5f9f6; color: #3a7155; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+.copy:hover { border-color: #b9d3c2; background: #eaf3ed; }
+.loading { display: inline-flex; align-items: center; gap: 9px; color: #7b8b82; font-size: 14px; font-weight: 500; }
+.loading svg { animation: spin .9s linear infinite; }
+.error { display: flex; align-items: flex-start; gap: 9px; margin: 16px 0 0; padding: 12px 14px; border: 1px solid #f1dbc5; border-radius: 11px; background: #fdf7f0; color: #906335; font-size: 13px; line-height: 1.6; }
+.error svg { margin-top: 2px; flex-shrink: 0; }
+.note { margin: 12px 1px 0; color: #76837c; font-size: 12px; line-height: 1.5; }
+.footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 28px; border-top: 1px solid #e8eeea; background: #fafcfb; }
+.footer p { max-width: 160px; margin: 0; color: #7b8981; font-size: 12px; line-height: 1.55; }
+.openPortal { display: inline-flex; min-height: 46px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 12px; padding: 11px 16px; border: 1px solid #187447; border-radius: 11px; background: #187447; color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; transition: background .15s; }
+.openPortal:hover { background: #105c36; }
+.dialog button:focus-visible, .openPortal:focus-visible { outline: 3px solid #81b99b; outline-offset: 3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 460px) {
+  .dialog { max-height: calc(100dvh - 24px); border-radius: 20px; }
+  .header { padding: 22px 20px; }
+  .header h2 { margin-top: 20px; font-size: 25px; }
+  .close { top: 18px; right: 16px; }
+  .body { padding: 20px; }
+  .field { gap: 10px; padding: 15px 13px; }
+  .field dd { font-size: 17px; }
+  .copy { padding: 10px; }
+  .copy span { display: none; }
+  .footer { flex-direction: column; align-items: stretch; gap: 12px; padding: 17px 20px 20px; }
+  .footer p { max-width: none; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading svg { animation: none; }
+  .dialog button, .openPortal { transition: none; }
+}

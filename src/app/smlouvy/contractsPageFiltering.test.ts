@@ -66,6 +66,14 @@ describe("contract filter results in the page and API", () => {
     expect(matching([grouped], { query: "novak jan" })).toEqual(["group"]);
     expect(matching([grouped], { query: "novak cerna" })).toEqual([]);
   });
+  it.each(["Woody Parkett sro", "Woody Parkett s.r.", "Woody Parkett s r o"])("matches company variant %s identically in the page and API", query => {
+    const values = [contract("match", { clientName: "Parkett s.r Woody" }),
+      contract("other-form", { clientName: "Woody Parkett a.s." }),
+      contract("other", { clientName: "Woody Other s.r.o." })];
+    const server = parseContractListFilters(new URLSearchParams({ q: query }));
+    expect(matching(values, { query })).toEqual(["match"]);
+    expect(values.filter(item => contractMatchesListFilters(item as ApiContract, server)).map(item => item.id)).toEqual(["match"]);
+  });
 
   it.each(CAREER_POSITIONS)("filters the saved signing position %s in both the page and API", position => {
     const values = [...CAREER_POSITIONS.map(value => contract(value, { position: value })), contract("missing")];

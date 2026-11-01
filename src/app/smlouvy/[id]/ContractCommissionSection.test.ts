@@ -52,6 +52,25 @@ describe("contract commission payout display helpers", () => {
     expect(state.records).toEqual(payouts);
   });
 
+  it("automatically settles the matching Kooperativa B installment from its C statement code", () => {
+    const payout: ContractCommissionPayout = { code: "C102", amount: 1065.13, status: "paid",
+      payoutMonthKey: "2025-09", statementNumber: "64" };
+    expect(payoutStatusForCodes([payout], ["B102"], 742.54, "kooperativaAuto")).toEqual({
+      status: "paid", paidAmount: 1065.13, records: [payout],
+    });
+    expect(payoutStatusForCodes([payout], ["B103"], 742.54, "kooperativaAuto").status).toBe("pending");
+    expect(payoutStatusForCodes([payout], ["B102"], 742.54, "cppAuto").status).toBe("pending");
+    expect(payout.code).toBe("C102");
+    expect(payout.amount).toBe(1065.13);
+  });
+
+  it("keeps C corrections visible without settling a Kooperativa B installment", () => {
+    const correction: ContractCommissionPayout = { code: "C103", amount: -100, status: "storno" };
+    expect(payoutStatusForCodes([correction], ["B103"], 742.54, "kooperativaAuto")).toEqual({
+      status: "storno", paidAmount: 0, records: [correction],
+    });
+  });
+
   it("does not compare multiple matching installments with one installment amount", () => {
     const payouts: ContractCommissionPayout[] = [
       {

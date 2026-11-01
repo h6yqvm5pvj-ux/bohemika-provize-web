@@ -1,3 +1,5 @@
+import { clientCompanySearchParts, formatClientDisplayName } from "@/app/lib/clientNamePresentation";
+
 export type ClientNameMatchKind = "exact" | "normalized" | "reordered" | "prefix" | "similar";
 export type ClientNameMatch = { name: string; kind: ClientNameMatchKind };
 
@@ -16,14 +18,11 @@ export const clientNameExactKey = (name: string): string =>
 const titles = new Set(["ing", "mgr", "bc", "bca", "mudr", "judr", "rndr", "mvdr", "phdr", "pharmdr", "doc", "prof", "phd", "csc", "dis", "mba"]);
 const fold = (name: string) => clientNameExactKey(name).normalize("NFD").replace(/\p{M}/gu, "");
 const words = (name: string) => fold(name).replace(/\bph\s*\.\s*d\.?/g, "phd").match(/[\p{L}\p{N}]+/gu) ?? [];
-const isCompany = (tokens: string[]) =>
-  /(?:^| )(?:s r o|a s|z s|o p s|sro|as|zs|ops|spol|druzstvo|nadace|ustav|obec|urad)(?: |$)/.test(tokens.join(" "));
-
 function nameParts(name: string) {
   const rawTokens = words(name);
-  const company = isCompany(rawTokens);
+  const company = clientCompanySearchParts(name);
   const tokens = company ? rawTokens : rawTokens.filter((token) => !titles.has(token));
-  return { name: name.trim().replace(/\s+/g, " "), exactKey: clientNameExactKey(name), tokens, company };
+  return { name: formatClientDisplayName(name), exactKey: clientNameExactKey(name), tokens, company };
 }
 
 export function createClientNameIndex(names: readonly string[]) {
@@ -72,16 +71,23 @@ function singleTypo(left: string, right: string): boolean {
 
 function matchKind(query: ReturnType<typeof nameParts>, candidate: ReturnType<typeof nameParts>): ClientNameMatchKind | null {
   if (query.exactKey === candidate.exactKey) return "exact";
+  if (query.company && candidate.company) {
+    if (query.company.form !== candidate.company.form || query.company.words.length === 0) return null;
+    const q = query.company.words;
+    const c = candidate.company.words;
+    if (q.join(" ") === c.join(" ")) return "normalized";
+    if (q.length === c.length && [...q].sort().join(" ") === [...c].sort().join(" ")) return "reordered";
+    return distinctTokenMatch(q, c, (left, right) => right.startsWith(left)) ? "prefix" : null;
+  }
   const q = query.tokens;
   const c = candidate.tokens;
   if (q.join(" ") === c.join(" ")) return "normalized";
   const sameWords = q.length === c.length && [...q].sort().join(" ") === [...c].sort().join(" ");
   if (!query.company && !candidate.company && q.length >= 2 && sameWords) return "reordered";
-  if (query.company !== candidate.company && (query.company || q.length >= 2)) return null;
+  if (Boolean(query.company) !== Boolean(candidate.company) && (query.company || q.length >= 2)) return null;
 
-  if (query.company || candidate.company) {
-    // Company word order matters; do not apply person-name typo/reordering rules.
-    return q.every((token, index) => c[index]?.startsWith(token)) ? "prefix" : null;
+  if (candidate.company) {
+    return distinctTokenMatch(q, candidate.company.words, (left, right) => right.startsWith(left)) ? "prefix" : null;
   }
   const allowInitial = q.length >= 2 && q.some(token => token.length >= 3);
   if (distinctTokenMatch(q, c, (left, right) => left === right ||
