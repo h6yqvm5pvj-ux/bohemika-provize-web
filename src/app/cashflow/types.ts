@@ -159,6 +159,7 @@ export type CashflowItem = {
   tipSourceAdviserEmail?: string | null;
   tipSourceAdviserName?: string | null;
   isSubscriptionPayment?: boolean;
+  isExtraPayout?: boolean;
   subscriptionPlan?: CashflowSubscriptionPlan | null;
   subscriptionUserEmail?: string | null;
   subscriptionUserName?: string | null;
@@ -191,6 +192,7 @@ export type MonthGroup = {
   predictedTotal: number;
   totalSource: "predicted" | "paid";
   statementPayoutTotal: number | null;
+  extraPayoutTotal?: number;
   items: CashflowItem[];
 };
 

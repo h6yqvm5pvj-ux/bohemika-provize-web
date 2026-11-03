@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 
 import type { CashflowSnapshot } from "@/app/cashflow/computeCashflow";
+import { normalizeCashflowExtraPayouts } from "@/app/cashflow/extraPayouts";
 import { dedupeCashflowCommissionStatements } from "@/app/cashflow/helpers";
 import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
 import type { CashflowCommissionStatementSummary, EntryDoc } from "@/app/cashflow/types";
@@ -8,6 +9,7 @@ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { CASHFLOW_CONTRACT_TIMING_PHASES, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
 import type { CashflowContractTimingObserver } from "./cashflowContractTiming";
 import type { AuthorizedContractsContext } from "@/app/api/contracts/_lib/contractsApi";
+import { loadPrivateCashflowExtraPayouts } from "./cashflowExtraPayouts";
 
 const CONTRACT_PAGE_LIMIT = CASHFLOW_CONTRACTS_PAGE_SIZE;
 const TIP_PAGE_LIMIT = 100;
@@ -277,11 +279,12 @@ export async function loadCashflowInputs(
       : await read("profile", "/api/user/profile");
     const effectiveEmail = normalizeEmail(profile.email);
     if (!effectiveEmail || !isObject(profile.profile) || profile.hasProfile !== true) return incomplete();
+    const profileData = profile.profile;
     if (options.authorizeEmail && !await wait(Promise.resolve(options.authorizeEmail(effectiveEmail)))) {
       throw new CashflowShadowInputsError("not_allowed", 403);
     }
-    const accountType = typeof profile.profile.accountType === "string" ? profile.profile.accountType
-      : typeof profile.profile.userRole === "string" ? profile.profile.userRole : "";
+    const accountType = typeof profileData.accountType === "string" ? profileData.accountType
+      : typeof profileData.userRole === "string" ? profileData.userRole : "";
     const tipsterMode = accountType.trim().toLowerCase() === "tipster";
 
     const collectContracts = async (scope: "my" | "team", onCashflowTeamReady?: (ownTotalCount: number) => void) => {
@@ -383,12 +386,28 @@ export async function loadCashflowInputs(
       };
     };
 
-    const [portfolio, tipPayouts, subscriptionPayments, statements] = await Promise.all([
+    const collectExtraPayouts = async () => {
+      ensureActive();
+      if (tipsterMode) return [];
+      if (!options.trustedProfile) return normalizeCashflowExtraPayouts(profileData.cashflowExtraPayouts);
+      try {
+        return await wait(loadPrivateCashflowExtraPayouts(effectiveEmail));
+      } catch (error) {
+        if (error instanceof CashflowShadowInputsError) throw error;
+        throw new CashflowShadowInputsError("upstream_failed");
+      }
+    };
+
+    const [portfolio, tipPayouts, subscriptionPayments, statements, extraPayouts] = await Promise.all([
       collectPortfolio(), collectTips(), collectSubscriptions(), collectStatements(),
+      collectExtraPayouts(),
     ]);
     ensureActive();
     return {
-      snapshot: { email: effectiveEmail, ...portfolio, tipPayouts, subscriptionPayments },
+      snapshot: {
+        email: effectiveEmail, ...portfolio, tipPayouts, subscriptionPayments,
+        ...(extraPayouts.length > 0 ? { extraPayouts } : {}),
+      },
       statements,
       effectiveEmail,
       tipsterMode,

@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { CashflowComputationOptions, CashflowSnapshot } from "@/app/cashflow/computeCashflow";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { cashflowShadowBudgetFailure, isCashflowShadowWithinBudget } from "./cashflowShadowBudget";
+import { CASHFLOW_EXTRA_PAYOUTS_MAX } from "@/app/cashflow/extraPayouts";
+import { hashCashflowValue } from "@/app/cashflow/shadowProtocol";
 
 const asOf = new Date("2026-09-12T12:00:00Z");
 const snapshot = (patch: Partial<CashflowSnapshot> = {}): CashflowSnapshot => ({
@@ -19,8 +21,43 @@ const selection = (patch: Partial<CashflowComputationOptions> = {}): CashflowCom
 });
 const managerOverrides: EntryDoc["managerOverrides"] = [{ email: "viewer@example.test",
   position: "manazer8", commissionMode: "standard", total: 1, items: [{ title: "Okamžitá provize", amount: 1 }] }];
+const extraPayouts = (count: number) => Array.from({ length: count }, (_, index) => ({
+  id: `extra-${index}`, title: "Testovací odměna", amountCzk: 200, payoutMonthKey: "2026-02", status: "paid" as const,
+}));
 
 describe("server cashflow shadow resource budget", () => {
+  it("counts extra receipts once without expanding them into subscription forecasts", () => {
+    const extras = extraPayouts(CASHFLOW_EXTRA_PAYOUTS_MAX);
+    const input = snapshot({ extraPayouts: extras, tipPayouts: Array.from({ length: 24_900 }, () => ({})) });
+    expect(cashflowShadowBudgetFailure(input, asOf)).toBeNull();
+    expect(cashflowShadowBudgetFailure({ ...input, tipPayouts: [...input.tipPayouts, {}] }, asOf)).toBe("output_estimate");
+    expect(cashflowShadowBudgetFailure(snapshot({ extraPayouts: extras }), asOf)).toBeNull();
+  });
+
+  it("counts extra receipts in the full source cap even when the selected view excludes them", () => {
+    const input = snapshot({ extraPayouts: extraPayouts(100), tipPayouts: Array.from({ length: 24_901 }, () => ({})) });
+    expect(cashflowShadowBudgetFailure(input, asOf, false, selection())).toBe("source_rows");
+    expect(cashflowShadowBudgetFailure({ ...input, tipPayouts: input.tipPayouts.slice(1) }, asOf, false, selection())).toBeNull();
+  });
+
+  it.each([null, {}, "invalid", extraPayouts(CASHFLOW_EXTRA_PAYOUTS_MAX + 1),
+    [{ ...extraPayouts(1)[0], amountCzk: NaN }], [{ ...extraPayouts(1)[0], payoutMonthKey: "2026-13" }],
+    [extraPayouts(1)[0], extraPayouts(1)[0]],
+  ])("fails closed on malformed extra-payment sources even in unrelated views %j", value => {
+    const input = snapshot({ extraPayouts: value as CashflowSnapshot["extraPayouts"] });
+    expect(cashflowShadowBudgetFailure(input, asOf)).toBe("entry_shape");
+    expect(cashflowShadowBudgetFailure(input, asOf, false, selection())).toBe("entry_shape");
+  });
+
+  it("includes extra receipt amounts and months in the existing full source hash", async () => {
+    const input = snapshot({ extraPayouts: extraPayouts(1) });
+    const hash = await hashCashflowValue({ snapshot: input, statements: [] });
+    const changedAmount = { ...input, extraPayouts: [{ ...input.extraPayouts![0], amountCzk: 201 }] };
+    const changedMonth = { ...input, extraPayouts: [{ ...input.extraPayouts![0], payoutMonthKey: "2026-03" }] };
+    expect(await hashCashflowValue({ snapshot: changedAmount, statements: [] })).not.toBe(hash);
+    expect(await hashCashflowValue({ snapshot: changedMonth, statements: [] })).not.toBe(hash);
+  });
+
   it("bounds only generated team paths while preserving the legacy whole-portfolio estimate", () => {
     const input = snapshot({
       ownEntries: entries(1_000, { userEmail: "viewer@example.test", productKey: "neon" }),

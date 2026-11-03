@@ -1,0 +1,70 @@
+.intro { padding-block: 64px 54px; color: var(--life-ink); }
+.kicker { display: flex; align-items: baseline; gap: 14px; margin: 0; color: var(--life-accent); font-size: 10px; font-weight: 600; line-height: 1.7; letter-spacing: .16em; text-transform: uppercase; }
+.kicker > span { font-weight: 400; font-variant-numeric: tabular-nums; }
+.intro h2.title { max-width: 24ch; margin: 24px 0 0; color: var(--life-ink); font-size: clamp(38px, 4.8vw, 66px); font-weight: 500; line-height: 1.08; letter-spacing: -.06em; text-wrap: pretty; }
+.title > span, .title > em { display: block; }
+.title > em { margin-top: 6px; color: var(--life-accent); font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -.055em; }
+.lead { max-width: 65ch; margin: 26px 0 0; color: var(--life-muted); font-size: 16px; line-height: 1.85; text-wrap: pretty; }
+.examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 64px; row-gap: 32px; margin-top: 48px; }
+.example { position: relative; min-width: 0; padding-top: 26px; border-top: 1px solid var(--life-line); }
+.exampleNumber { display: block; margin-bottom: 18px; color: var(--life-accent); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .1em; }
+.example h3 { max-width: 24ch; margin: 0; color: var(--life-ink); font-size: 25px; font-weight: 500; line-height: 1.25; letter-spacing: -.045em; text-wrap: pretty; }
+.example p { max-width: 57ch; margin: 15px 0 0; color: var(--life-muted); font-size: 14px; line-height: 1.9; }
+.conditions { max-width: 80ch; margin: 30px 0 0; color: var(--life-muted); font-size: 11px; line-height: 1.8; }
+.sources { margin-top: 10px; color: var(--life-muted); font-size: 11px; line-height: 1.8; }
+.sources summary { width: fit-content; min-height: 32px; padding-block: 6px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--life-line); text-underline-offset: 4px; }
+.sources summary::marker { color: var(--life-accent); }
+.sources summary:hover { color: var(--life-accent); }
+.sources ul { display: grid; gap: 5px; margin: 8px 0 0; padding: 0; list-style: none; }
+.sources a { display: inline-flex; align-items: center; gap: 5px; padding-block: 4px; color: inherit; text-decoration: underline; text-decoration-color: var(--life-line); text-underline-offset: 4px; }
+.sources a:hover { color: var(--life-accent); }
+.sources a svg { width: 12px; height: 12px; flex-shrink: 0; }
+.sources :is(summary, a):focus-visible { outline: 2px solid var(--life-accent); outline-offset: 4px; }
+.method { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 80px; padding-block: 54px 64px; border-top: 1px solid var(--life-line); color: var(--life-ink); }
+.methodHead { min-width: 0; }
+.method h2.methodTitle { max-width: 15ch; margin: 22px 0 0; font-size: clamp(30px, 3.2vw, 44px); font-weight: 500; line-height: 1.16; letter-spacing: -.055em; text-wrap: pretty; }
+.body { margin: 22px 0 0; color: var(--life-muted); font-size: 15px; line-height: 1.9; text-wrap: pretty; }
+.checks { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.checks li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-top: 1px solid var(--life-line); }
+.checks li:first-child { padding-top: 0; border-top: 0; }
+.checks li:last-child { padding-bottom: 0; }
+.checkNumber { padding-top: 4px; color: var(--life-accent); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: .08em; }
+.checks h3 { margin: 0; font-size: 20px; font-weight: 500; line-height: 1.3; letter-spacing: -.035em; }
+.checks p { margin: 9px 0 0; color: var(--life-muted); font-size: 13px; line-height: 1.85; }
+.outcome { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 80px; padding-block: 54px 70px; border-top: 1px solid var(--life-line); color: var(--life-ink); }
+.outcome h2.outcomeTitle { max-width: 16ch; margin: 22px 0 0; color: var(--life-accent); font-family: Georgia, "Times New Roman", serif; font-size: clamp(34px, 3.7vw, 50px); font-style: italic; font-weight: 400; line-height: 1.13; letter-spacing: -.05em; text-wrap: pretty; }
+.outcomeBody { min-width: 0; }
+.outcomeBody .body { margin-top: 0; }
+.cta { display: inline-flex; align-items: center; justify-content: center; gap: 22px; max-width: 100%; min-height: 56px; margin-top: 28px; padding: 10px 12px 10px 23px; border: 1px solid var(--life-ink); border-radius: 999px; background: var(--life-ink); color: var(--life-page); font-size: 12px; font-weight: 600; line-height: 1.5; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.cta svg { width: 32px; height: 32px; flex-shrink: 0; padding: 8px; border: 1px solid currentColor; border-radius: 50%; opacity: .8; transition: transform .2s; }
+.cta:hover { background: color-mix(in srgb, var(--life-ink) 92%, var(--life-accent)); box-shadow: 0 8px 24px #0825301a; }
+.cta:hover svg { transform: rotate(45deg); }
+.cta:focus-visible { outline: 2px solid var(--life-accent); outline-offset: 5px; }
+@media (max-width: 1023px) {
+  .examples { column-gap: 36px; }
+  .method, .outcome { gap: 40px; }
+}
+@media (max-width: 767px) {
+  .intro { padding-block: 38px 34px; }
+  .kicker { gap: 11px; font-size: 9px; letter-spacing: .13em; }
+  .intro h2.title { margin-top: 20px; font-size: clamp(34px, 8.2vw, 46px); line-height: 1.12; }
+  .lead { margin-top: 22px; font-size: 14px; line-height: 1.8; }
+  .examples { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 32px; }
+  .example { padding-top: 22px; }
+  .exampleNumber { margin-bottom: 14px; }
+  .example h3 { max-width: none; font-size: 23px; }
+  .example p { margin-top: 12px; font-size: 13px; line-height: 1.85; }
+  .conditions { margin-top: 24px; }
+  .method, .outcome { grid-template-columns: minmax(0, 1fr); gap: 30px; padding-block: 34px 40px; }
+  .method h2.methodTitle { max-width: 18ch; margin-top: 18px; font-size: 31px; }
+  .body { margin-top: 18px; font-size: 14px; line-height: 1.85; }
+  .checks li { grid-template-columns: 25px minmax(0, 1fr); gap: 12px; padding-block: 18px; }
+  .checks h3 { font-size: 19px; }
+  .outcome h2.outcomeTitle { max-width: 18ch; margin-top: 18px; font-size: 36px; }
+  .cta { gap: 16px; margin-top: 24px; padding-left: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cta, .cta svg { transition: none; }
+}
+:global(html[data-motion="off"]) .cta,
+:global(html[data-motion="off"]) .cta svg { transition: none; }

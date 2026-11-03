@@ -58,52 +58,72 @@
 .yearContent { padding: 12px 16px 16px; }
 .yearToggle:focus-visible, .monthCard:focus-visible { outline: 3px solid #9c73d5; outline-offset: 3px; }
 
-.chart { padding: 16px 18px 12px; border: 1px solid #eeebf4; border-radius: 15px; background: linear-gradient(180deg, #fdfcfe, #fff 75%); }
-.chartHeading { display: flex; min-height: 44px; justify-content: space-between; align-items: flex-start; gap: 14px; }
-.chartTitle { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; letter-spacing: -0.25px; }
-.chartTitle svg { color: #9c7abe; }
-.chartSubtitle { margin-top: 3px; color: #62586e; font-size: 14px; }
-.chartHighlight { text-align: right; }
-.chartHighlight p { color: #62586e; font-size: 13px; }
-.chartHighlight strong { display: block; margin-top: 4px; color: #6e41a4; font-size: 26px; font-weight: 700; line-height: 1.3; letter-spacing: -0.6px; }
+.chart { padding: 20px 22px 16px; border: 1px solid #eae3f1; border-radius: 18px; background: radial-gradient(ellipse at 85% 0%, #f6f0fc80, transparent 58%), #fff; }
+.chartHeading { display: flex; min-height: 54px; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.chartTitle { display: flex; align-items: center; gap: 9px; color: #30283d; font-size: 16px; font-weight: 650; letter-spacing: -0.25px; }
+.chartTitle svg { color: #9868c4; }
+.chartSubtitle { margin-top: 5px; color: #71677e; font-size: 13px; }
+.chartHighlight { min-width: 0; margin-left: auto; text-align: right; }
+.chartHighlight p { color: #71677e; font-size: 12px; }
+.chartHighlight strong { display: block; margin-top: 4px; color: #6e41a4; font-size: 28px; font-weight: 700; line-height: 1.3; letter-spacing: -0.7px; overflow-wrap: anywhere; }
 .capitalize { text-transform: capitalize; }
-.chartScroller { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-color: #ded3ec transparent; scrollbar-width: thin; }
-.chartCanvas { --plot-height: 150px; --axis-width: 56px; --plot-top: 34px; position: relative; min-width: 0; padding-top: var(--plot-top); padding-left: var(--axis-width); padding-bottom: 4px; }
-.plotGrid { position: absolute; top: var(--plot-top); right: 0; left: var(--axis-width); height: var(--plot-height); pointer-events: none; }
-.gridLine, .zeroLine { position: absolute; right: 0; left: 0; border-top: 1px dashed #eae6f0; }
-.zeroLine { border-top: 1px solid #dbd6e5; }
-.gridLine > span, .zeroLine > span { position: absolute; right: calc(100% + 8px); width: 44px; transform: translateY(-50%); color: #62586e; font-size: 12px; text-align: right; white-space: nowrap; }
-.columns { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
-.column { position: relative; min-width: 0; padding: 0; border-radius: 8px; cursor: pointer; outline-offset: 1px; }
-.column::before { position: absolute; inset: -8px 0 0; border-radius: 10px; background: #955dd708; content: ""; opacity: 0; transition: opacity 160ms; }
-.column:not(:disabled):hover::before, .column:focus-visible::before, .currentColumn::before { opacity: 1; }
-.column:focus-visible { outline: 2px solid #9565cb; }
-.column:disabled { cursor: default; }
-.barTrack { position: relative; display: block; height: var(--plot-height); margin-inline: auto; width: 62%; max-width: 46px; }
-.currentMonthArrow { position: absolute; z-index: 1; left: 50%; width: 18px; height: 18px; color: #8b5bc1; transform: translate(-50%, calc(-100% - 7px)); filter: drop-shadow(0 1px 1px #ffffff); pointer-events: none; }
-.bar { position: absolute; top: var(--bar-top); left: 0; width: 100%; height: var(--bar-height); border: 1px solid #b58cdf; border-bottom: 0; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, #c3a0e7 0%, #d9c3ee 100%); box-shadow: inset 0 1px 0 #ffffff70; transform-origin: bottom; animation: barReveal 520ms cubic-bezier(0.22, 0.8, 0.3, 1) both; animation-delay: var(--bar-delay); transition: filter 160ms; }
-.paidColumn .bar { border-color: #398169; background: linear-gradient(180deg, #61a68b 0%, #398169 100%); }
-.pastColumn::before { content: none; }
-.pastColumn:not(.paidColumn):not(.negativeColumn) .bar { border-color: #b8c0cc; background: linear-gradient(180deg, #b9c2ce, #dce1e8); }
-.pastColumn .monthLabel, .pastColumn .zeroMarker { color: #626d7f; }
-.column:not(:disabled):hover .bar, .column:focus-visible .bar { filter: saturate(1.25) brightness(0.96); }
-.negativeColumn .bar { border: 1px solid #d8869c; border-top: 0; border-radius: 0 0 7px 7px; background: linear-gradient(180deg, #f0c2cd, #dd96aa); transform-origin: top; }
-.missingMarker, .zeroMarker { position: absolute; left: 50%; padding: 0 3px; background: #fff; transform: translate(-50%, -50%); color: #737080; font-size: 14px; line-height: 1; }
-.zeroMarker { color: #8c65b3; font-size: 13px; }
-.monthLabel { position: relative; display: flex; height: 30px; align-items: center; justify-content: center; color: #62586e; font-size: 13px; font-weight: 500; }
+.chartScroller { min-width: 0; }
+.chartCanvas { --plot-height: 220px; --axis-width: 64px; position: relative; min-width: 0; height: calc(var(--plot-height) + 32px); margin-top: 30px; padding-left: var(--axis-width); }
+.plotGrid { position: absolute; top: 0; right: 0; left: var(--axis-width); height: var(--plot-height); pointer-events: none; }
+.gridLine, .zeroLine { position: absolute; right: 0; left: 0; border-top: 1px dashed #eae5f0; }
+.zeroLine { border-top: 1px solid #dcd4e6; }
+.gridLine > span, .zeroLine > span { position: absolute; right: calc(100% + 12px); width: 52px; transform: translateY(-50%); color: #786e85; font-size: 11px; text-align: right; white-space: nowrap; }
+.linePlot { container-type: inline-size; position: relative; min-width: 0; height: var(--plot-height); }
+.lineSvg { position: absolute; z-index: 0; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.linePath { stroke-linecap: round; stroke-linejoin: round; }
+.lineRevealMask { transform-origin: 0 0; }
+.linePlot[data-curve-reveal="waiting"] .lineRevealMask { transform: scaleX(0); }
+.linePlot[data-curve-reveal="running"] .lineRevealMask { animation: curveReveal var(--curve-reveal-duration) linear both; }
+.linePlot[data-curve-reveal="waiting"] .lineMonthTarget[data-tone] .linePointTrack { opacity: 0; }
+.linePlot[data-curve-reveal="running"] .lineMonthTarget[data-tone] .linePointTrack { animation: pointReveal 100ms linear var(--point-reveal-delay) both; }
+.linePlot[data-curve-paused="true"] .lineRevealMask,
+.linePlot[data-curve-paused="true"] .lineMonthTarget[data-tone] .linePointTrack { animation-play-state: paused; }
+.lineTargets { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0; height: calc(var(--plot-height) + 32px); }
+.lineMonthTarget { --point-color: #9560c8; --point-glow: #9560c827; position: relative; display: block; min-width: 0; height: calc(var(--plot-height) + 32px); padding: 0; border: 0; border-radius: 8px; background: transparent; text-align: center; cursor: pointer; appearance: none; }
+.lineMonthTarget[data-tone="paid"], .linePoint[data-tone="paid"] { --point-color: #398169; --point-glow: #39816926; }
+.lineMonthTarget[data-tone="past"], .linePoint[data-tone="past"] { --point-color: #9ca8ba; --point-glow: #9ca8ba28; }
+.lineMonthTarget[data-tone="negative"], .linePoint[data-tone="negative"] { --point-color: #cc718e; --point-glow: #cc718e28; }
+.lineMonthTarget::before { position: absolute; inset: -6px 0 32px; border-radius: 8px; background: linear-gradient(90deg, transparent calc(50% - 0.5px), #a78bb956 calc(50% - 0.5px), #a78bb956 calc(50% + 0.5px), transparent calc(50% + 0.5px)), linear-gradient(180deg, #9868c408, #9868c403); content: ""; opacity: 0; transition: opacity 160ms; }
+.lineMonthTarget[data-active="true"]::before { opacity: 1; }
+.lineMonthTarget:focus-visible { outline: 2px solid #9565cb; outline-offset: 2px; }
+.lineMonthTarget:disabled { cursor: default; }
+.linePointTrack { position: relative; display: block; height: var(--plot-height); }
+.linePoint { position: absolute; z-index: 2; left: 50%; width: 8px; height: 8px; border: 2px solid #fff; border-radius: 50%; background: var(--point-color); box-shadow: 0 0 0 1px var(--point-color), 0 1px 4px #35204018; transform: translate(-50%, -50%); transition: width 180ms, height 180ms, border-width 180ms, box-shadow 180ms; }
+.lineMonthTarget[data-active="true"] .linePoint { z-index: 3; width: 18px; height: 18px; border-width: 3px; box-shadow: 0 0 0 1px var(--point-color), 0 0 0 7px var(--point-glow), 0 3px 12px #35204024; }
+.currentMonthArrow { position: absolute; z-index: 1; left: 50%; width: 16px; height: 16px; color: #8b5bc1; transform: translate(-50%, calc(-100% - 9px)); filter: drop-shadow(0 1px 1px #fff); pointer-events: none; }
+.missingMarker { position: absolute; left: 50%; padding: 0 3px; background: #fff; transform: translate(-50%, -50%); color: #9b91a5; font-size: 14px; line-height: 1; }
+.monthLabel { position: relative; display: flex; height: 32px; align-items: center; justify-content: center; color: #71677e; font-size: 12px; font-weight: 500; transition: color 160ms; }
 .compactMonthLabel { display: none; }
-.column:disabled .monthLabel { color: #737080; }
-.currentColumn .monthLabel { color: #7744b3; font-weight: 700; }
-.currentDot { position: absolute; bottom: 1px; width: 4px; height: 4px; border-radius: 50%; background: #9d71cd; }
-.chartFooter { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.lineMonthTarget:disabled .monthLabel { color: #9b91a5; }
+.lineMonthTarget[data-tone="past"] .monthLabel { color: #788295; }
+.lineMonthTarget[data-active="true"] .monthLabel, .lineMonthTarget[aria-current="date"] .monthLabel, .currentColumn .monthLabel { color: #7744b3; font-weight: 700; }
+.currentDot { position: absolute; bottom: 0; width: 4px; height: 4px; border-radius: 50%; background: #9d71cd; }
+.lineTooltip { --tooltip-half: min(92px, calc(50cqw - 8px)); --tooltip-center: clamp(var(--tooltip-half), var(--tooltip-x), calc(100cqw - var(--tooltip-half))); position: absolute; z-index: 4; top: var(--tooltip-y); left: var(--tooltip-center); display: flex; width: 184px; max-width: calc(100% - 16px); flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid #ffffff22; border-radius: 13px; background: #241d30; box-shadow: 0 12px 30px -8px #24132f50, 0 2px 7px #24132f26, inset 0 1px 0 #ffffff08; transform: translate(-50%, calc(-100% - 16px)); pointer-events: none; }
+.lineTooltip::after { position: absolute; bottom: -5px; left: clamp(12px, calc(50% + var(--tooltip-x) - var(--tooltip-center)), calc(100% - 12px)); width: 8px; height: 8px; border: solid #ffffff22; border-width: 0 1px 1px 0; background: #241d30; transform: translateX(-50%) rotate(45deg); content: ""; }
+.lineTooltipTrend { display: flex; align-items: center; gap: 7px; margin-bottom: 1px; color: #69dfb1; font-size: 26px; font-weight: 700; line-height: 1.1; letter-spacing: -0.7px; }
+.lineTooltipTrend > svg { flex-shrink: 0; }
+.lineTooltipTrend > span { min-width: 0; overflow-wrap: anywhere; }
+.lineTooltipTrend[data-trend="down"] { color: #ffa1b8; }
+.lineTooltipTrend[data-trend="flat"] { color: #cdc4d9; }
+.lineTooltipDetails { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 3px 8px; }
+.lineTooltipMonth { color: #c9bfd5; font-size: 11px; font-weight: 500; line-height: 1.4; text-transform: capitalize; }
+.lineTooltipAmount { color: #fff; font-size: 16px; font-weight: 650; line-height: 1.2; letter-spacing: -0.4px; overflow-wrap: anywhere; }
+.lineTooltipSource { color: #c9bfd5; font-size: 10px; line-height: 1.4; }
+.lineTooltipComparison { margin-top: 3px; padding-top: 6px; border-top: 1px solid #ffffff14; color: #afa1bf; font-size: 10px; line-height: 1.3; }
+.chartFooter { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: #62586e; font-size: 12px; }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { display: inline-block; height: 9px; width: 9px; border-radius: 3px; }
+.legend i { display: inline-block; height: 8px; width: 8px; border-radius: 50%; }
 .legendPaid { background: #398169; }
-.legendPredicted { border: 1px solid #c5a4e5; background: #decbf1; }
-.legendPast { border: 1px solid #b8c0cc; background: #cdd4de; }
+.legendPredicted { background: #9560c8; }
+.legendPast { background: #9ca8ba; }
 .legend .legendMissing { height: auto; font-style: normal; line-height: 9px; }
-.legendNegative { background: #de9aad; }
+.legendNegative { background: #cc718e; }
 .chartHint { display: flex; flex-shrink: 0; align-items: center; gap: 4px; color: #62586e; font-size: 12px; }
 .monthsDisclosure { margin-top: 12px; border: 1px solid #e9e5f0; border-radius: 12px; background: #fff; }
 .monthsHeading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border-radius: 11px; list-style: none; cursor: pointer; }
@@ -118,29 +138,35 @@
 .monthsChevron svg { transition: transform 180ms; }
 .monthsDisclosure[open] > .monthsHeading { border-bottom: 1px solid #eee9f4; border-radius: 11px 11px 0 0; background: #faf8fd; }
 .monthsDisclosure[open] > .monthsHeading .monthsChevron svg { transform: rotate(180deg); }
-.months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 10px; }
-.monthCard { display: flex; min-width: 0; flex-direction: column; gap: 9px; padding: 14px; border: 1px solid #d9dce6; border-radius: 13px; background: #fff; text-align: left; cursor: pointer; transition: border-color 170ms, box-shadow 170ms, background 170ms; }
-.monthCard:not(:disabled):hover { border-color: #c4abdf; background: #fefcff; box-shadow: 0 4px 14px -8px #7845b330; }
-.monthCard:disabled { cursor: default; }
-.pastMonthCard { border-color: #e2e6ec; background: #f4f6f8; }
-.pastMonthCard .monthName, .pastMonthCard .monthAmount:not(.negativeAmount) { color: #626d7f; }
-.pastBadge { color: #566278; background: #e9edf2; }
-.pastMonthCard .predictedDot { background: #8660ac; }
-.currentMonthCard, .currentMonthCard:not(:disabled):hover { border-color: #9164ba; background: #f5eefc; box-shadow: inset 0 0 0 1px #9164ba, 0 4px 14px -8px #7845b340; }
-.monthCardTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
-.monthName { color: #334056; font-size: 14px; font-weight: 650; text-transform: capitalize; }
-.paidBadge, .predictedBadge, .pastBadge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; border-radius: 5px; padding: 3px 5px; font-size: 11px; font-weight: 500; white-space: nowrap; }
-.paidBadge { color: #21634e; background: #e7f3ec; font-weight: 600; }
-.predictedBadge { color: #704496; background: #eee5f8; font-weight: 600; }
-.predictedDot { width: 4px; height: 4px; border-radius: 50%; background: #b193cf; }
-.monthAmount { font-size: clamp(23px, 2vw, 26px); font-weight: 700; line-height: 1.2; letter-spacing: -0.7px; overflow-wrap: anywhere; }
-.negativeAmount { color: #a33754; }
-.monthCardBottom { display: flex; justify-content: space-between; align-items: center; gap: 4px; color: #566278; font-size: 12px; }
-.monthCardBottom > svg { color: #a59bac; transition: color 150ms, transform 150ms; }
-.monthCard:hover .monthCardBottom > svg { color: #8957be; transform: translate(1px, -1px); }
-.currentMonthText { color: #663b8d; font-weight: 700; }
+.months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px; }
+.monthCard { display: flex; min-width: 0; min-height: 140px; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid #45404f; border-radius: 14px; background: radial-gradient(ellipse at 10% 0%, #ffffff05, transparent 70%), linear-gradient(145deg, #2b2833, #211e28); box-shadow: inset 0 1px 0 #ffffff05, 0 3px 8px -5px #1d102f38; text-align: left; cursor: pointer; transition: border-color 170ms, box-shadow 170ms, transform 170ms; }
+.monthCard:not(:disabled):hover, .monthCard:focus-visible { border-color: #a180c2; box-shadow: inset 0 1px 0 #ffffff08, 0 10px 22px -13px #5935778c; transform: translateY(-2px); }
+.pastMonthCard { border-color: #413c49; background: linear-gradient(145deg, #27242f, #211e27); }
+.pastMonthCard .monthName { color: #dad5e3; }
+.currentMonthCard, .currentMonthCard:not(:disabled):hover { border-color: #b28bde; background: radial-gradient(ellipse at 0% 0%, #a36de326, transparent 75%), linear-gradient(145deg, #30283c, #25202f); box-shadow: inset 0 1px 0 #ffffff08, 0 0 0 1px #9f6cd91c, 0 5px 20px -10px #935bc563; }
+.monthCardTop { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 7px; flex-wrap: wrap; }
+.monthName { color: #eeeaf5; font-size: 14px; font-weight: 650; text-transform: capitalize; }
+.paidBadge, .predictedBadge, .pastBadge { display: inline-flex; min-width: 0; max-width: 100%; flex-shrink: 1; align-items: center; gap: 4px; border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; font-size: 10px; font-weight: 600; line-height: 1.3; text-align: left; overflow-wrap: anywhere; }
+.paidBadge > svg, .pastBadge > svg, .predictedDot { flex-shrink: 0; }
+.paidBadge { border-color: #65d7a124; color: #9be5bd; background: #56c28c14; }
+.predictedBadge { border-color: #b78de929; color: #d9b8fd; background: #a876dc17; }
+.pastBadge { border-color: #bcb1cd20; color: #c6bed1; background: #d0c5df0b; }
+.predictedDot { width: 5px; height: 5px; border-radius: 50%; background: #c6a0f0; }
+.monthAmount { color: #f7f4fc; font-size: clamp(24px, 2vw, 28px); font-weight: 700; line-height: 1.2; letter-spacing: -0.8px; overflow-wrap: anywhere; }
+.negativeAmount { color: #ffa9c0; }
+.monthCardBottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; margin-top: auto; padding-top: 9px; border-top: 1px solid #ffffff0b; color: #bbb2c8; font-size: 11px; line-height: 1.5; }
+.monthCardBottom > span { min-width: 0; }
+.monthCardBottom > svg { flex-shrink: 0; color: #a69ab8; transition: color 150ms, transform 150ms; }
+.monthCard:not(:disabled):hover .monthCardBottom > svg, .monthCard:focus-visible .monthCardBottom > svg { color: #dfc4ff; transform: translate(1px, -1px); }
+.currentMonthText { color: #dab6ff; font-weight: 600; }
+.monthCard:disabled { border-color: #45404d; background: linear-gradient(145deg, #27242d, #211f27); box-shadow: inset 0 1px 0 #ffffff03; cursor: default; }
+.monthCard:disabled .monthName { color: #bbb3c7; }
+.monthCard:disabled .monthAmount { color: #a69bb6; }
+.monthCard:disabled .monthCardBottom { color: #ada3bb; }
+.monthCard:disabled.currentMonthCard { border-color: #8d6aa9; }
 
-@keyframes barReveal { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes curveReveal { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pointReveal { from { opacity: 0; } to { opacity: 1; } }
 
 @media (max-width: 1199px) {
   .years { grid-template-columns: 1fr; }
@@ -152,8 +178,9 @@
   .yearIcon { display: none; }
   .yearContent { padding: 12px; }
   .yearTotal, .yearOpen .yearTotal { font-size: 25px; }
-  .chart { padding: 14px 14px 12px; }
-  .chartCanvas { --plot-height: 130px; --axis-width: 52px; }
+  .chart { padding: 16px 14px 14px; }
+  .chartCanvas { --plot-height: 190px; --axis-width: 52px; margin-top: 26px; }
+  .gridLine > span, .zeroLine > span { right: calc(100% + 8px); width: 44px; }
   .chartTitle { font-size: 14px; }
   .chartHighlight strong { font-size: 22px; }
   .chartFooter { flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -177,12 +204,8 @@
   .chartTitle { gap: 5px; font-size: 13px; }
   .chartTitle svg { width: 15px; }
   .chartSubtitle { max-width: 130px; font-size: 12px; line-height: 1.5; }
-  .chartCanvas { --axis-width: 46px; }
+  .chartCanvas { --plot-height: 180px; --axis-width: 46px; }
   .gridLine > span, .zeroLine > span { right: calc(100% + 6px); width: 40px; font-size: 11px; }
-  .columns { gap: 2px; }
-  .barTrack { width: 70%; }
-  .bar { border-radius: 4px 4px 0 0; }
-  .negativeColumn .bar { border-radius: 0 0 4px 4px; }
   .monthLabel { font-size: 11px; }
   .fullMonthLabel { display: none; }
   .compactMonthLabel { display: inline; }
@@ -192,10 +215,14 @@
   .monthsHeading { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 10px; }
   .monthsHint { display: none; }
   .months { gap: 8px; padding: 8px; }
-  .monthCard { padding: 10px 8px; }
-  .monthCardTop { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .monthCard { min-height: 150px; gap: 10px; padding: 12px 10px; border-radius: 12px; }
+  .monthCardTop { align-items: flex-start; flex-direction: column; gap: 6px; }
   .monthAmount { font-size: 22px; }
   .monthCardBottom { font-size: 11px; }
+}
+
+@media (max-width: 359px) {
+  .monthAmount { font-size: 18px; overflow-wrap: normal; }
 }
 
 @container (max-width: 600px) {
@@ -219,6 +246,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bar { animation: none; }
-  .year, .yearChevron, .yearChevron svg, .yearCompactChevron, .column::before, .bar, .monthCard, .monthCardBottom > svg, .monthsChevron svg { transition: none; }
+  .linePlot[data-curve-reveal] .lineRevealMask { transform: none; animation: none; }
+  .linePlot[data-curve-reveal] .lineMonthTarget[data-tone] .linePointTrack { opacity: 1; animation: none; }
+  .year, .yearChevron, .yearChevron svg, .yearCompactChevron, .lineMonthTarget::before, .linePoint, .monthLabel, .monthCard, .monthCardBottom > svg, .monthsChevron svg { transition: none; }
+  .monthCard:not(:disabled):is(:hover, :focus-visible), .monthCard:not(:disabled):is(:hover, :focus-visible) .monthCardBottom > svg { transform: none; }
 }
+
+:global(:root[data-motion="off"]) .linePlot[data-curve-reveal] .lineRevealMask { transform: none; animation: none; }
+:global(:root[data-motion="off"]) .linePlot[data-curve-reveal] .lineMonthTarget[data-tone] .linePointTrack { opacity: 1; animation: none; }
+:global(:root[data-motion="off"]) .lineMonthTarget::before, :global(:root[data-motion="off"]) .linePoint, :global(:root[data-motion="off"]) .monthLabel { transition: none; }
+:global(:root[data-motion="off"]) .monthCard, :global(:root[data-motion="off"]) .monthCardBottom > svg { transition: none; }
+:global(:root[data-motion="off"]) .monthCard:not(:disabled):is(:hover, :focus-visible), :global(:root[data-motion="off"]) .monthCard:not(:disabled):is(:hover, :focus-visible) .monthCardBottom > svg { transform: none; }

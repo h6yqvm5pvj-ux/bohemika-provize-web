@@ -3,6 +3,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const scripts = [
+  "add-cashflow-extra-payout.mjs",
   "backfill-manager-chain-timeline.ts",
   "fix-neon-immediate-split-items.mjs",
   "fix-flexi-immediate-split-items.mjs",
@@ -79,7 +80,7 @@ describe("cashflow maintenance script coverage", () => {
             if (!ts.isArrowFunction(callback) || !namedCall(tracking, "trackCashflowScriptWrite")) {
               errors.push(`untracked ${method} on line ${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`);
             } else {
-              const expectedDatabase = ["backfill-neon-policy-end-dates.mjs", "backfill-contract-list-index-fields.mjs"].includes(script) ? "adminDb" : "db";
+              const expectedDatabase = ["add-cashflow-extra-payout.mjs", "backfill-neon-policy-end-dates.mjs", "backfill-contract-list-index-fields.mjs"].includes(script) ? "adminDb" : "db";
               if (tracking.arguments[1]?.getText(source) !== expectedDatabase) errors.push("write must track its own database");
             }
           }

@@ -6,7 +6,7 @@ import type {
   MonthGroup,
 } from "./types";
 
-export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v4";
+export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v5";
 export const CASHFLOW_SNAPSHOT_MAX_ITEMS = 25_000;
 export const CASHFLOW_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_MONTHS = 2_400;
@@ -83,6 +83,7 @@ const itemFields = {
   commissionCodeAliases: { kind: "strings", optional: true }, commissionLabel: optionalText,
   isTipPayout: optionalBoolean, tipSourceAdviserEmail: optionalText,
   tipSourceAdviserName: optionalText, isSubscriptionPayment: optionalBoolean,
+  isExtraPayout: optionalBoolean,
   subscriptionPlan: { ...optionalText, values: ["monthly", "semiannual", "yearly"] },
   subscriptionUserEmail: optionalText, subscriptionUserName: optionalText,
   subscriptionPeriodFrom: optionalText, subscriptionPeriodUntil: optionalText,
@@ -116,6 +117,7 @@ const monthFields = {
   label: { kind: "text" }, total: { kind: "number" }, predictedTotal: { kind: "number" },
   totalSource: { kind: "text", values: ["predicted", "paid"] },
   statementPayoutTotal: { kind: "number", nullable: true },
+  extraPayoutTotal: { kind: "number", optional: true },
 } satisfies Record<Exclude<keyof MonthGroup, "items">, Field>;
 
 function invalid(): never { throw new Error("Invalid cashflow snapshot."); }

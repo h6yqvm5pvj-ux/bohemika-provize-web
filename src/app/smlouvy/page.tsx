@@ -1580,15 +1580,19 @@ function ContractsPageContent() {
     };
 
     const syncMetrics = () => {
+      const scrollY = window.scrollY;
+      const viewportHeight = window.innerHeight;
       const listTop = contractsListRef.current
-        ? contractsListRef.current.getBoundingClientRect().top + window.scrollY
+        ? contractsListRef.current.getBoundingClientRect().top + scrollY
         : 0;
-      setContractsWindowMetrics({
-        scrollY: window.scrollY,
-        viewportHeight: window.innerHeight,
-        listTop,
-        rowHeight,
-      });
+      setContractsWindowMetrics((previous) =>
+        previous.scrollY === scrollY &&
+        previous.viewportHeight === viewportHeight &&
+        previous.listTop === listTop &&
+        previous.rowHeight === rowHeight
+          ? previous
+          : { scrollY, viewportHeight, listTop, rowHeight }
+      );
     };
 
     const onWindowChange = () => {
@@ -1604,12 +1608,15 @@ function ContractsPageContent() {
       measureRow();
       onWindowChange();
     };
+    // Initialize the viewport before async data arrives; only long lists need ongoing tracking.
+    measureRow();
+    syncMetrics();
+    if (effectiveFilteredContracts.length <= CONTRACT_LIST_WINDOWING_THRESHOLD) return;
+
     const resizeObserver = new ResizeObserver(() => {
       if (contractsListRef.current?.clientWidth !== listWidth) onResize();
     });
     if (contractsListRef.current) resizeObserver.observe(contractsListRef.current);
-    measureRow();
-    syncMetrics();
     window.addEventListener("scroll", onWindowChange, { passive: true });
     window.addEventListener("resize", onResize);
 

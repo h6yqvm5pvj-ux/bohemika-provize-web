@@ -61,6 +61,7 @@ vi.mock("./actions", () => ({ refreshAuthenticatedRoutes: mocks.refreshRoutes })
 
 import LoginPage from "./page";
 import { clearServerSession, SERVER_SESSION_REQUEST_TIMEOUT_MS } from "@/app/lib/authSession";
+import { consumeLoginTransition } from "@/lib/loginTransition";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -81,6 +82,7 @@ describe("login verification boundary", () => {
   let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
   beforeEach(async () => {
+    consumeLoginTransition();
     vi.clearAllMocks();
     mocks.listeners.clear();
     mocks.auth.currentUser = mocks.cachedUser;
@@ -107,6 +109,7 @@ describe("login verification boundary", () => {
   });
 
   afterEach(async () => {
+    consumeLoginTransition();
     await act(async () => root.unmount());
     container.remove();
     vi.useRealTimers();
@@ -150,6 +153,7 @@ describe("login verification boundary", () => {
   const expectNotLoggedIn = () => {
     expect(sessionPosts()).toHaveLength(0);
     expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(consumeLoginTransition()).toBe(false);
   };
 
   it("preserves the server's account block even if the browser reports TOTP enrollment", async () => {
@@ -159,6 +163,7 @@ describe("login verification boundary", () => {
     await enterPassword(); await submit();
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(mocks.profile).not.toHaveBeenCalled();
+    expect(consumeLoginTransition()).toBe(false);
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("kontaktuj administrátora");
     expect(container.querySelector('a[href="/ucet/zabezpeceni?recovery=1"]')?.textContent).toContain("Nastavit dvoufázové ověření");
@@ -172,6 +177,7 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(0);
     expect(mocks.profile).not.toHaveBeenCalled();
     expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/ucet/zabezpeceni");
+    expect(consumeLoginTransition()).toBe(false);
     expect(container.textContent).not.toContain("Přístup k účtu je zablokován");
     expect(container.querySelector<HTMLInputElement>("#login-password")?.value).toBe("");
     expect(mocks.setupSession.mock.invocationCallOrder[0]).toBeLessThan(mocks.signOut.mock.invocationCallOrder[0]);
@@ -284,6 +290,7 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(1);
     expect(new Headers(sessionPosts()[0][1]?.headers).get("Authorization")).toBe("Bearer fresh-token");
     expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+    expect(consumeLoginTransition()).toBe(true);
   });
 
   it("stays logged out when the passkey prompt is cancelled and allows another attempt", async () => {
@@ -368,9 +375,11 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(1);
     expect(mocks.refreshRoutes).toHaveBeenCalledOnce();
     expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(consumeLoginTransition()).toBe(false);
     expect(container.querySelector('[role="status"]')?.textContent).toContain("Dokončuji přihlášení");
     await act(async () => refresh.resolve());
     expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+    expect(consumeLoginTransition()).toBe(true);
   });
 
   it("stays on login when the new cookie cannot be verified before route invalidation", async () => {
@@ -380,6 +389,7 @@ describe("login verification boundary", () => {
     expect(mocks.router.replace).not.toHaveBeenCalled();
     expect(mocks.signOut).toHaveBeenCalled();
     expect(container.textContent).toContain("Nepodařilo se bezpečně dokončit přihlášení");
+    expect(consumeLoginTransition()).toBe(false);
   });
 
   it("aborts a timed-out session request and lets the user retry passkey login", async () => {
@@ -433,6 +443,7 @@ describe("login verification boundary", () => {
     expect(sessionPosts()).toHaveLength(1);
     expect(new Headers(sessionPosts()[0][1]?.headers).get("Authorization")).toBe("Bearer fresh-token");
     expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+    expect(consumeLoginTransition()).toBe(true);
   });
 
   it("does not let cached Firebase state skip 2FA, including after an incorrect code", async () => {
@@ -455,6 +466,7 @@ describe("login verification boundary", () => {
     expect(mocks.resolveMfa).toHaveBeenLastCalledWith({ uid: "totp-factor", code: "654321" });
     expect(sessionPosts()).toHaveLength(1);
     expect(mocks.router.replace).toHaveBeenCalledExactlyOnceWith("/");
+    expect(consumeLoginTransition()).toBe(true);
   });
 
   it("does not complete a timed-out password attempt when Firebase finishes it later", async () => {

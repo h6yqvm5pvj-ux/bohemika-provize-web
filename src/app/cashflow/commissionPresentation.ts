@@ -4,12 +4,23 @@ import type { CashflowItem } from "./types";
 
 export type CashflowDisplayGroup = {
   id: string;
+  contractGroupId?: string;
   leadItem: CashflowItem;
   items: CashflowItem[];
   amount: number;
   stornoFundAmount: number;
   netAmount: number;
 };
+
+/** A cancelled contract can still have valid historical positive commissions. */
+export function isCashflowCancellation(item: CashflowItem): boolean {
+  if (item.isSubscriptionPayment || item.productKey === "subscription") return false;
+  return item.amount < 0 || /(?:^|·)\s*storno z výpisu\s*$/i.test(item.note ?? "");
+}
+
+export function cashflowItemDisplayStatus(item: CashflowItem) {
+  return isCashflowCancellation(item) ? "cancelled" : item.payoutStatus ?? "predicted";
+}
 
 export function commissionMeaning(
   label: string | null,
@@ -72,7 +83,8 @@ export function commissionLabelForItem(item: CashflowItem): string | null {
   );
 }
 
-export function payoutStatusLabel(status: CashflowItem["payoutStatus"] | undefined): string {
+export function payoutStatusLabel(status: CashflowItem["payoutStatus"] | "cancelled" | undefined): string {
+  if (status === "cancelled") return "Stornováno";
   if (status === "paid") return "Vyplaceno";
   if (status === "shifted") return "Přesunuto";
   return "Předpoklad";

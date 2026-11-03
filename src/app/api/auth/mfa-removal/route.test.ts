@@ -42,10 +42,12 @@ describe("self-scoped MFA removal API", () => {
     expect((await POST(request(body, headers as Record<string, string>))).status).toBe(status);
     expect(mocks.prepare).not.toHaveBeenCalled(); expect(mocks.complete).not.toHaveBeenCalled();
   });
-  it("rejects expired, blocked or non-MFA authentication without leaking SDK errors", async () => {
+  it.each(["prepare", "complete"])("rejects expired, blocked or non-MFA authentication for %s without leaking SDK errors", async action => {
     mocks.verify.mockRejectedValue(new Error("private-provider-response"));
-    const response = await POST(request()); expect(response.status).toBe(401);
-    expect(await response.text()).not.toContain("private-provider-response"); expect(mocks.prepare).not.toHaveBeenCalled();
+    const response = await POST(request({ action, ...(action === "complete" ? { challengeId } : {}) })); expect(response.status).toBe(401);
+    expect(await response.text()).not.toContain("private-provider-response");
+    expect(mocks.prepare).not.toHaveBeenCalled(); expect(mocks.complete).not.toHaveBeenCalled();
+    expect(mocks.user).not.toHaveBeenCalled();
   });
   it.each(["ip", "user", "unavailable"])("fails closed for %s rate limiting", async scope => {
     if (scope === "user") mocks.limit.mockResolvedValueOnce({ allowed: true, store: "firestore" });

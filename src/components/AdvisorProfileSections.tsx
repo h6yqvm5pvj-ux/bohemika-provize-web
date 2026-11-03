@@ -18,12 +18,13 @@ import {
   Sparkles,
 } from "lucide-react";
 import Image from "next/image";
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import { PartnerLogoSculpture } from "@/components/PartnerLogoSculpture";
 import { VigMetalModel } from "@/components/VigMetalModel";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 import minimalStyles from "./OnlineCardMinimal.module.css";
 import { useServiceIconMotion } from "./useServiceIconMotion";
+import { ServiceIconsCanvas } from "./service-icons/ServiceIconsCanvas";
 
 type PartnerInsurer = {
   label: string;
@@ -78,56 +79,56 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
 const ADVISOR_SERVICES = [
   {
     label: "Životní a úrazové pojištění",
-    artwork: "/images/online-card-services/life-v3.webp",
+    artwork: "/images/online-card-services/life-v5.webp",
     icon: HeartHandshake,
     iconClass: "text-blue-200",
     accentClass: "bg-blue-300/80",
   },
   {
     label: "Pojištění majetku a odpovědnosti",
-    artwork: "/images/online-card-services/property-v3.webp",
+    artwork: "/images/online-card-services/property-v5.webp",
     icon: HousePlus,
     iconClass: "text-emerald-200",
     accentClass: "bg-emerald-300/80",
   },
   {
     label: "Pojištění vozidel a flotil",
-    artwork: "/images/online-card-services/vehicle-v3.webp",
+    artwork: "/images/online-card-services/vehicle-v5.webp",
     icon: CarFront,
     iconClass: "text-sky-200",
     accentClass: "bg-sky-300/80",
   },
   {
     label: "Cestovní pojištění",
-    artwork: "/images/online-card-services/travel-v3.webp",
+    artwork: "/images/online-card-services/travel-v5.webp",
     icon: PlaneTakeoff,
     iconClass: "text-indigo-200",
     accentClass: "bg-indigo-300/80",
   },
   {
     label: "Pojištění cizinců",
-    artwork: "/images/online-card-services/foreigners-v3.webp",
+    artwork: "/images/online-card-services/foreigners-v5.webp",
     icon: Languages,
     iconClass: "text-rose-200",
     accentClass: "bg-rose-300/80",
   },
   {
     label: "Investice",
-    artwork: "/images/online-card-services/investments-v3.webp",
+    artwork: "/images/online-card-services/investments-v5.webp",
     icon: ChartNoAxesCombined,
     iconClass: "text-cyan-200",
     accentClass: "bg-cyan-300/80",
   },
   {
     label: "Úvěry a hypotéky",
-    artwork: "/images/online-card-services/mortgage-v3.webp",
+    artwork: "/images/online-card-services/mortgage-v5.webp",
     icon: Landmark,
     iconClass: "text-lime-200",
     accentClass: "bg-lime-300/80",
   },
   {
     label: "Investiční zlato a stříbro",
-    artwork: "/images/online-card-services/precious-metals-v3.webp",
+    artwork: "/images/online-card-services/precious-metals-v5.webp",
     icon: Gem,
     iconClass: "text-amber-200",
     accentClass: "bg-amber-300/80",
@@ -194,6 +195,7 @@ export function AdvisorProfileSections({
 }: AdvisorProfileSectionsProps) {
   const copy = ONLINE_CARD_COPY[locale];
   const { regionRef, allowed: motionAllowed, active: motionActive, running: motionRunning, toggle: toggleMotion } = useServiceIconMotion(minimal);
+  const serviceViewportRef = useRef<HTMLDivElement>(null);
   const {
     regionRef: partnerRegionRef,
     allowed: partnerMotionAllowed,
@@ -231,6 +233,7 @@ export function AdvisorProfileSections({
               </div>
               <p className={minimalStyles.sectionLead}>{copy.advisor.serviceLead}</p>
             </div>
+            <div ref={serviceViewportRef} className={minimalStyles.serviceViewport}>
             <div ref={regionRef} id="card-service-icons" className={minimalStyles.services} data-icon-motion={motionRunning ? "running" : "paused"} role="region" aria-label={copy.advisor.serviceKicker} tabIndex={0}>
               {ADVISOR_SERVICES.map((service, index) => {
                 const href = index === 0 ? lifeInsurancePageHref
@@ -239,14 +242,14 @@ export function AdvisorProfileSections({
                       : index === 7 ? goldPageHref : undefined;
                 const content = (
                   <>
-                    <span className={minimalStyles.serviceArtwork} style={{ "--icon-delay": `${index * -0.65}s` } as CSSProperties} aria-hidden="true">
+                    <span className={minimalStyles.serviceArtwork} data-service-icon={index} aria-hidden="true">
                       <span className={minimalStyles.serviceSculpture}>
                         <Image
                           src={service.artwork}
                           alt=""
                           width={384}
                           height={384}
-                          sizes="88px"
+                          sizes="112px"
                           className={minimalStyles.serviceIllustration}
                         />
                       </span>
@@ -261,6 +264,8 @@ export function AdvisorProfileSections({
                   <div key={service.label} className={minimalStyles.service}>{content}</div>
                 );
               })}
+            </div>
+            <ServiceIconsCanvas hostRef={serviceViewportRef} rowRef={regionRef} running={motionRunning} className={minimalStyles.serviceCanvas} />
             </div>
             <div className={`${minimalStyles.sectionAction} ${minimalStyles.serviceActions}`}>
               {motionAllowed ? (
@@ -291,9 +296,6 @@ export function AdvisorProfileSections({
               <div className={minimalStyles.companyIntro}>
                 <p>{copy.advisor.companyLead}</p>
               </div>
-            </div>
-            <div className={minimalStyles.companyCopy}>
-              {copy.advisor.companyParagraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
             </div>
             <p className={`${minimalStyles.eyebrow} ${minimalStyles.pillarsLabel}`}>{copy.advisor.pillarsKicker}</p>
             <div className={minimalStyles.pillars}>
@@ -489,7 +491,7 @@ export function AdvisorProfileSections({
                   Bohemika <span className="bg-[linear-gradient(110deg,#c4b5fd_5%,#7dd3fc_56%,#c4b5fd_96%)] bg-clip-text text-transparent">a.s.</span>
                 </h2>
               </div>
-              <div className={`relative h-full overflow-hidden rounded-[38px_38px_12px_38px] border p-6 shadow-[0_34px_100px_rgba(3,2,14,0.3)] sm:p-10 ${panelClass}`}>
+              <div className={`relative overflow-hidden rounded-[38px_38px_12px_38px] border p-6 shadow-[0_34px_100px_rgba(3,2,14,0.3)] sm:p-10 ${panelClass}`}>
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_102%_2%,rgba(125,211,252,0.12),transparent_31%),linear-gradient(135deg,rgba(37,99,235,0.11),transparent_55%)]" />
                 <div
                   className={`pointer-events-none absolute -right-10 -top-14 h-[400px] w-[276px] [mask-image:radial-gradient(ellipse_at_center,black_36%,transparent_73%)] sm:-right-14 sm:-top-20 sm:h-[490px] sm:w-[340px] ${
@@ -519,16 +521,6 @@ export function AdvisorProfileSections({
                   <p className={`max-w-3xl text-2xl leading-[1.2] tracking-[-0.035em] sm:text-[2.15rem] ${titleClass}`}>
                     {copy.advisor.companyLead}
                   </p>
-                  <div className={`mt-9 space-y-4 border-t pt-7 sm:mt-11 sm:pt-8 ${dividerClass}`}>
-                    {copy.advisor.companyParagraphs.map((paragraph) => (
-                      <p
-                        key={paragraph}
-                        className={`max-w-3xl text-sm leading-relaxed sm:text-[15px] ${bodyClass}`}
-                      >
-                        {paragraph}
-                      </p>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>

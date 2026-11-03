@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import "../../../../../tests/helpers/privateEncryptionTestKey";
+import { sealPrivateValue } from "@/lib/server/privateEncryption";
 
 const mocks = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
+  getUserByEmail: vi.fn(),
   records: new Map<string, Record<string, unknown>>(),
   reads: [] as string[],
   gate: null as Promise<void> | null,
@@ -38,7 +41,7 @@ vi.mock("@/lib/server/firebaseAdmin", () => {
       return query(100);
     },
   });
-  return { adminDb: { collection }, adminAuth: { verifyIdToken: mocks.verifyIdToken } };
+  return { adminDb: { collection }, adminAuth: { verifyIdToken: mocks.verifyIdToken, getUserByEmail: mocks.getUserByEmail } };
 });
 vi.mock("@/lib/server/loginAttemptLockout", () => ({
   getLoginAttemptStatus: vi.fn().mockResolvedValue({ locked: false }),
@@ -50,7 +53,7 @@ vi.mock("@/lib/server/rateLimit", () => ({
 }));
 vi.mock("@/lib/server/advisorSetupGuard", () => ({ checkAdvisorSetup: vi.fn(), advisorSetupError: vi.fn() }));
 
-import { GET } from "./route";
+import { GET, PATCH } from "./route";
 
 const email = "advisor@example.test";
 const rawEmail = "Advisor@Example.Test";
@@ -106,5 +109,61 @@ describe("profile database loading", () => {
     const response = await GET(new NextRequest("https://example.test/api/user/profile"));
     expect(response.status).toBe(401);
     expect(mocks.reads).toEqual([]);
+  });
+
+  it("returns paid rewards only from the owner-bound private ledger without audit metadata", async () => {
+    const payout = { id: "reward", title: "Mimořádná odměna", amountCzk: 1200, payoutMonthKey: "2026-02", status: "paid" };
+    mocks.records.set(`users/${email}`, { cashflowExtraPayouts: [{ ...payout, amountCzk: 999999 }] });
+    mocks.records.set(`usersPrivate/${email}`, {
+      cashflowExtraPayouts: sealPrivateValue([{ ...payout, source: "internal", recordedAtMs: 123 }], `usersPrivate/${email}:cashflowExtraPayouts`),
+      cashflowExtraPayoutsUpdatedAtMs: 123,
+    });
+    vi.stubEnv("PRIVATE_DATA_ENCRYPTION_REQUIRED", "true");
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.profile.cashflowExtraPayouts).toEqual([payout]);
+    expect(body.profile).not.toHaveProperty("cashflowExtraPayoutsUpdatedAtMs");
+    expect(JSON.stringify(body)).not.toMatch(/privateEncryption|recordedAtMs|internal/);
+  });
+
+  it("ignores forged public-profile rewards and refuses owner writes through PATCH", async () => {
+    const forged = [{ id: "forged", title: "Reward", amountCzk: 999999, payoutMonthKey: "2026-02", status: "paid" }];
+    mocks.records.set(`users/${email}`, { cashflowExtraPayouts: forged });
+    const loaded = await (await GET(request())).json();
+    expect(loaded.profile).not.toHaveProperty("cashflowExtraPayouts");
+    mocks.reads.length = 0;
+    const patched = await PATCH(new NextRequest("https://example.test/api/user/profile", {
+      method: "PATCH", headers: { Authorization: "Bearer test-token", "Content-Type": "application/json" },
+      body: JSON.stringify({ cashflowExtraPayouts: forged }),
+    }));
+    expect(patched.status).toBe(400);
+    expect(mocks.reads).toEqual([]);
+    expect((await patched.json()).error).toContain("není povolené");
+  });
+
+  it("denies a regular user's attempt to read another private reward ledger", async () => {
+    const req = request();
+    req.headers.set("x-bohemika-impersonate-email", "other@example.test");
+    expect((await GET(req)).status).toBe(403);
+    expect(mocks.reads).toEqual([]);
+    expect(mocks.getUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("opens a verified impersonation's ledger with the target's encryption context", async () => {
+    const target = "represented@example.test";
+    const payout = { id: "target-reward", title: "Reward", amountCzk: 100, payoutMonthKey: "2026-03", status: "paid" };
+    mocks.verifyIdToken.mockResolvedValue({ uid: "admin-uid", email: "admin@example.test", admin: true, adminRole: "admin" });
+    mocks.getUserByEmail.mockResolvedValue({ uid: "target-uid", email: target, disabled: false });
+    mocks.records.set(`users/${target}`, { email: target });
+    mocks.records.set(`usersPrivate/${target}`, {
+      cashflowExtraPayouts: sealPrivateValue([payout], `usersPrivate/${target}:cashflowExtraPayouts`),
+    });
+    const req = request();
+    req.headers.set("x-bohemika-impersonate-email", target);
+    const response = await GET(req);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ email: target, profile: { cashflowExtraPayouts: [payout] } });
+    expect(mocks.reads.some(path => path.startsWith(`usersPrivate/${email}`))).toBe(false);
   });
 });

@@ -30,6 +30,7 @@ import {
   type OnlineCardTranslations,
 } from "@/lib/onlineCardI18n";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { readCashflowExtraPayouts } from "@/lib/server/cashflowExtraPayouts";
 
 export const runtime = "nodejs";
 
@@ -1111,7 +1112,13 @@ export async function GET(req: NextRequest) {
       ...(publicData ?? {}),
       ...(privateData ?? {}),
     };
+    // Public profile fields are user editable. Only the authorized private ledger
+    // can contribute paid rewards, and its envelope/audit fields stay server-side.
+    delete profileRaw.cashflowExtraPayouts;
+    delete profileRaw.cashflowExtraPayoutsUpdatedAtMs;
     const profile = serializeProfilePayload(profileRaw);
+    const extraPayouts = readCashflowExtraPayouts(privateData?.cashflowExtraPayouts, email);
+    if (extraPayouts.length > 0) profile.cashflowExtraPayouts = extraPayouts;
     const sanitizedTimeline = sanitizePositionTimeline(profile.positionTimeline);
     if (sanitizedTimeline) {
       profile.positionTimeline = sanitizedTimeline;

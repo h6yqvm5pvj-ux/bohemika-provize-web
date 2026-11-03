@@ -66,3 +66,17 @@ export function formatChartAmount(value: number): string {
   const suffix = divisor === 1_000_000 ? " mil." : divisor === 1000 ? " tis." : "";
   return `${new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 }).format(value / divisor)}${suffix}`;
 }
+
+/** Compare adjacent calendar months only; a non-positive base has no meaningful growth rate. */
+export function cashflowMonthPercentageChange(
+  month: MonthGroup | null | undefined,
+  previous: MonthGroup | null | undefined,
+): number | null {
+  if (!month || !previous || !Number.isFinite(month.total) || !Number.isFinite(previous.total)
+    || previous.total <= 0
+    || month.year * 12 + month.monthIndex !== previous.year * 12 + previous.monthIndex + 1) return null;
+
+  const percentage = Math.round((month.total / previous.total - 1) * 1000) / 10;
+  if (!Number.isFinite(percentage)) return null;
+  return percentage === 0 ? 0 : percentage;
+}

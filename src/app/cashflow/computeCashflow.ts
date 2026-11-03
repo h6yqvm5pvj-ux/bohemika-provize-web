@@ -1,5 +1,6 @@
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { calendarDate } from "@/app/lib/calendarDates";
+import { normalizeCashflowExtraPayouts, type CashflowExtraPayout } from "./extraPayouts";
 
 import {
   type CommissionMode,
@@ -69,6 +70,7 @@ export type CashflowSnapshot = {
   teamEntriesRaw: EntryDoc[];
   tipPayouts: TipPayoutApiItem[];
   subscriptionPayments: SubscriptionPaymentApiItem[];
+  extraPayouts?: CashflowExtraPayout[];
 };
 
 export type CashflowComputationOptions = {
@@ -500,7 +502,28 @@ export function computeCashflow(
         return items;
       })()
     : [];
-  const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems].sort(
+  const extraPayoutItems: CashflowItem[] = !tipsterMode && scopeFilter !== "team" && productFilter === "all"
+    ? normalizeCashflowExtraPayouts(snapshot.extraPayouts).map(payout => {
+      const [year, month] = payout.payoutMonthKey.split("-").map(Number);
+      return {
+        id: `extra-payout-${payout.id}`,
+        // The source records a month, not an exact payment day.
+        date: calendarDate(asOf, year, month - 1, 1),
+        amount: payout.amountCzk,
+        productKey: "unknown",
+        source: "own",
+        clientName: null,
+        contractNumber: null,
+        ownerEmail: email,
+        entryId: null,
+        commissionLabel: payout.title,
+        isExtraPayout: true,
+        payoutStatus: "paid",
+        predictedAmount: 0,
+      };
+    })
+    : [];
+  const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems, ...extraPayoutItems].sort(
     (a, b) => a.date.getTime() - b.date.getTime()
   );
   return cashflow;

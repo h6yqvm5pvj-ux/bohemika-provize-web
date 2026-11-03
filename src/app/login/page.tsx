@@ -42,6 +42,7 @@ import { PasskeyLoginLoader, type PasskeyLoginStage } from "./PasskeyLoginLoader
 import passkeyStyles from "./passkeyLoginLoader.module.css";
 import loginStyles from "./login.module.css";
 import { ACCOUNT_BLOCKED_MESSAGE, isAccountBlockedError, MFA_REAUTH_REQUIRED_CODE, MFA_REAUTH_REQUIRED_MESSAGE } from "@/lib/accountSecurity";
+import { requestLoginTransition } from "@/lib/loginTransition";
 
 const EXPECTED_LOGIN_ERROR_CODES = new Set<string>([
   "auth/multi-factor-auth-required",
@@ -270,6 +271,7 @@ export default function LoginPage() {
       setMfaDigits(createEmptyMfaDigits());
       setMfaHintUid(null);
       setMfaHintLabel(null);
+      requestLoginTransition();
       router.replace(resolveSafeLoginNextPath("/"));
     },
     [router]

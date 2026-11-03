@@ -53,6 +53,8 @@ import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess"
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
 import { MobilePullToRefresh } from "@/components/MobilePullToRefresh";
+import Preloader from "@/components/Preloader";
+import { consumeLoginTransition } from "@/lib/loginTransition";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -180,6 +182,14 @@ export function AppLayout({
 
   const [authReady, setAuthReady] = useState(false);
   const [authInitTimedOut, setAuthInitTimedOut] = useState(false);
+  const [showLoginPreloader, setShowLoginPreloader] = useState(false);
+  useLayoutEffect(() => {
+    if (!embedded && consumeLoginTransition()) {
+      // Resolve the client-only handoff before paint while keeping SSR markup stable.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowLoginPreloader(true);
+    }
+  }, [embedded]);
   const [language, setLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [canCreateUsers, setCanCreateUsers] = useState(false);
@@ -583,10 +593,19 @@ export function AppLayout({
     router.replace("/admin/zadosti");
   }, [router]);
 
+  const loginPreloader = showLoginPreloader ? (
+    <Preloader
+      loading={!authInitTimedOut && !profileLoadError && (!authReady || Boolean(user && loadingProfile))}
+      loadingText="Připravuji tvůj účet…"
+      onComplete={() => setShowLoginPreloader(false)}
+    />
+  ) : null;
+
   // Pokud auth není připravené, nerenderuj obsah (zamezení blikání nechráněného UI)
   if (!authReady) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white text-slate-900">
+        {loginPreloader}
         <div className="max-w-sm px-6 text-center">
           <div className="text-sm text-slate-700">
             {authInitTimedOut
@@ -613,6 +632,7 @@ export function AppLayout({
 
   if (profileLoadError) {
     return <main className="flex min-h-screen items-center justify-center bg-white p-6 text-slate-900">
+      {loginPreloader}
       <div role="alert" className="max-w-md space-y-4 text-center">
         <h1 className="text-xl font-semibold">{profileLoadError === "reauth" ? "Přihlaste se prosím znovu" : profileLoadError === "blocked" ? "Přístup k účtu je zablokován" : "Profil se nepodařilo načíst"}</h1>
         <p>{profileLoadError === "reauth"
@@ -631,6 +651,7 @@ export function AppLayout({
 
   return (
     <main className="app-shell-root relative min-h-[100dvh] text-slate-900">
+      {loginPreloader}
       <MobilePullToRefresh />
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"

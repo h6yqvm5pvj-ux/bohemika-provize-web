@@ -13,7 +13,7 @@ import {
 import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } from "../types";
 import { CashflowMonthSections } from "./CashflowMonthSections";
 import { CashflowCommissionCard } from "./CashflowCommissionCard";
-import type { CashflowDisplayGroup } from "../commissionPresentation";
+import { isCashflowCancellation, type CashflowDisplayGroup } from "../commissionPresentation";
 import { formatCashflowGroupCount, paidSubscriptionAmount } from "../cashflowLabels";
 
 type CashflowMonthModalProps = {
@@ -38,6 +38,7 @@ function normalizeGroupKeyPart(value?: string | null): string {
 }
 
 function cashflowGroupKey(item: CashflowItem): string {
+  if (item.isExtraPayout) return `extra:${item.id}`;
   if (item.isTipPayout) return `tip:${item.id}`;
   if (item.isSubscriptionPayment) return `subscription:${item.id}`;
   const contractNumber = normalizeGroupKeyPart(item.contractNumber);
@@ -58,7 +59,7 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
   const order: string[] = [];
 
   for (const item of items) {
-    const key = cashflowGroupKey(item);
+    const key = `${cashflowGroupKey(item)}|${isCashflowCancellation(item) ? "cancelled" : "commission"}`;
     const group = groupsByKey.get(key);
     if (group) {
       group.push(item);
@@ -68,13 +69,13 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
     }
   }
 
-  return order.map((key) => {
+  return order.map((key): CashflowDisplayGroup => {
     const groupItems = groupsByKey.get(key) ?? [];
     const amount = groupItems.reduce((sum, item) => sum + item.amount, 0);
     const stornoFundAmount = groupItems.reduce(
       (sum, item) =>
         sum +
-        (item.isSubscriptionPayment || item.productKey === STORNO_EXEMPT_PRODUCT
+        (item.isExtraPayout || item.isSubscriptionPayment || item.productKey === STORNO_EXEMPT_PRODUCT
           ? 0
           : item.amount * STORNO_FUND_RATE),
       0
@@ -82,6 +83,7 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
 
     return {
       id: key,
+      contractGroupId: cashflowGroupKey(groupItems[0]),
       leadItem: groupItems[0],
       items: groupItems,
       amount,
@@ -124,6 +126,13 @@ export function CashflowMonthModal({
     month.items.every((item) => item.isSubscriptionPayment === true);
   const isPaidMonth = month.totalSource === "paid";
   const subscriptionReceipts = paidSubscriptionAmount(month);
+  const extraPayoutReceipts = month.extraPayoutTotal ?? month.items.reduce(
+    (sum, item) => sum + (item.isExtraPayout && item.payoutStatus === "paid" ? item.amount : 0), 0
+  );
+  const hasAdditionalReceipts = subscriptionReceipts !== 0 || extraPayoutReceipts !== 0;
+  const otherPaidCommissions = month.statementPayoutTotal == null
+    ? Math.round((month.total - subscriptionReceipts - extraPayoutReceipts) * 100) / 100
+    : 0;
   const predictedTotal = month.predictedTotal ?? month.total;
   const payoutDifference = month.total - predictedTotal;
   const stornoFund = calculateStornoFund(month.items);
@@ -229,14 +238,16 @@ export function CashflowMonthModal({
                       <>
                         <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
                           <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
-                            {subscriptionReceipts !== 0 ? "Přijato celkem" : "Vyplaceno"}
+                            {hasAdditionalReceipts ? "Přijato celkem" : "Vyplaceno"}
                           </div>
                           <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
                             {formatMoney(month.total)}
                           </div>
-                          {subscriptionReceipts !== 0 && <div className="mt-2 space-y-0.5 text-[9px] text-emerald-700 sm:text-xs">
-                            <p>Výpis: {formatMoney(month.statementPayoutTotal ?? 0)}</p>
-                            <p>Předplatné: {formatMoney(subscriptionReceipts)}</p>
+                          {hasAdditionalReceipts && <div className="mt-2 space-y-0.5 text-[9px] text-emerald-700 sm:text-xs">
+                            {month.statementPayoutTotal != null && <p>Výpis: {formatMoney(month.statementPayoutTotal)}</p>}
+                            {otherPaidCommissions !== 0 && <p>Vyplacené provize: {formatMoney(otherPaidCommissions)}</p>}
+                            {subscriptionReceipts !== 0 && <p>Předplatné: {formatMoney(subscriptionReceipts)}</p>}
+                            {extraPayoutReceipts !== 0 && <p>Mimořádné odměny: {formatMoney(extraPayoutReceipts)}</p>}
                           </div>}
                         </div>
 

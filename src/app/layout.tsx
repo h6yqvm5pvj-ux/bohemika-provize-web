@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
 import "./globals.css";
+import "lenis/dist/lenis.css";
+import { SmoothScroll } from "@/components/SmoothScroll";
 import { PwaBootstrap } from "@/components/PwaBootstrap";
 import { ClientCardPrivacyCleanup } from "@/components/ClientCardPrivacyCleanup";
 import { ContractTerminationPrivacyCleanup } from "@/components/ContractTerminationPrivacyCleanup";
@@ -50,6 +52,7 @@ export default async function RootLayout({
   return (
     <html lang="cs">
       <body className="antialiased">
+        <SmoothScroll />
         <ClientCardPrivacyCleanup />
         <ContractTerminationPrivacyCleanup />
         <MeetingRecordPrivacyCleanup />

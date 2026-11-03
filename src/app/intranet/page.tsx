@@ -37,6 +37,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Smile,
   Sparkles,
   TrendingUp,
@@ -1086,6 +1087,7 @@ export default function IntranetPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const effectiveEmail = useEffectiveUserEmail(user?.email);
   const [selectedSection, setSelectedSection] = useState<FeedSection>("all");
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [view, setView] = useState<WallView>("all");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1163,16 +1165,22 @@ export default function IntranetPage() {
   const [deepLinkPostId, setDeepLinkPostId] = useState<string | null>(null);
 
   const readerDialogRef = useRef<HTMLDivElement | null>(null);
+  const filtersToggleRef = useRef<HTMLButtonElement | null>(null);
   const postComposerRef = useRef<HTMLDivElement | null>(null);
   const readerTriggerRef = useRef<HTMLElement | null>(null);
   const readerPostId = readerPost?.id;
   useEffect(() => {
     if (!readerPostId) return;
+    const filterToggle = filtersToggleRef.current;
     readerDialogRef.current?.focus();
     return () => {
       const trigger = readerTriggerRef.current;
-      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
-      else document.querySelector<HTMLElement>('[aria-label="Zobrazení příspěvků"] [aria-pressed="true"]')?.focus({ preventScroll: true });
+      if (trigger?.isConnected && trigger.getClientRects().length) trigger.focus({ preventScroll: true });
+      else {
+        const activeFilter = document.querySelector<HTMLElement>('[aria-label="Zobrazení příspěvků"] [aria-pressed="true"]');
+        const fallback = activeFilter?.getClientRects().length ? activeFilter : filterToggle;
+        if (fallback?.isConnected) fallback.focus({ preventScroll: true });
+      }
     };
   }, [readerPostId]);
 
@@ -1297,14 +1305,18 @@ export default function IntranetPage() {
   }, [deepLinkSection, deepLinkPostId]);
 
   useEffect(() => {
-    if (!postModalOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
+    if (!postModalOpen && !readerPostId) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [postModalOpen, readerPostId]);
+
+  useEffect(() => {
+    if (!postModalOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
     const frame = requestAnimationFrame(() => postComposerRef.current?.querySelector<HTMLInputElement>('input[type="text"]')?.focus());
     return () => {
       cancelAnimationFrame(frame);
-      document.body.style.overflow = previousOverflow;
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, [postModalOpen]);
@@ -2355,9 +2367,9 @@ export default function IntranetPage() {
         <div className={styles.content}>
           <header className={styles.pageHeader}>
             <div className={styles.heading}>
-              <span className={styles.headingIcon}><LayoutGrid size={24} aria-hidden="true" /></span>
-              <div>
-                <h1>Intranet</h1>
+              <div className={styles.headingCopy}>
+                <span className={styles.headingEyebrow}>Pro kolegy</span>
+                <h1>Intranet<span className={styles.headingDot} aria-hidden="true">.</span></h1>
                 <p>Novinky, zkušenosti a odpovědi na jednom místě.</p>
               </div>
             </div>
@@ -2371,11 +2383,22 @@ export default function IntranetPage() {
             </div>
           </header>
 
-          <div className={styles.filterPanel}>
+          <div className={styles.wallLayout}>
+          <aside className={styles.filterPanel} aria-label="Filtry intranetu">
+            <div className={styles.filterPanelHeader}>
+              <div className={styles.filterPanelTitle}><SlidersHorizontal size={17} aria-hidden="true" /><strong>Procházet intranet</strong></div>
+              <button ref={filtersToggleRef} type="button" className={styles.filterToggle} aria-expanded={filtersExpanded} aria-controls="intranet-filters"
+                onClick={() => setFiltersExpanded(value => !value)}>
+                {filtersExpanded ? "Skrýt" : "Filtry"}<ChevronDown size={16} aria-hidden="true" />
+              </button>
+            </div>
+          <div id="intranet-filters" className={styles.filterBody} data-expanded={filtersExpanded}>
+          <WallFeedFilters view={view} onViewChange={next => { setView(next); setPendingFocusPostId(null); }} search={searchInput} onSearchChange={value => { setSearchInput(value); setPendingFocusPostId(null); }} sectionLabel={selectedSection === "all" ? "ve všech kategoriích" : `v sekci ${currentSectionLabel}`} />
           <nav className={styles.categoryNav} aria-label="Sekce intranetu">
+            <h2 className={styles.filterGroupLabel}>Sekce</h2>
             <div className={styles.categoryList}>
               <button type="button" onClick={() => { setSelectedSection("all"); setPendingFocusPostId(null); }} aria-pressed={selectedSection === "all"}
-                className={styles.categoryButton}><LayoutGrid size={16} aria-hidden="true" />Vše</button>
+                className={styles.categoryButton}><LayoutGrid size={16} aria-hidden="true" /><span>Všechny sekce</span>{selectedSection === "all" && <CheckCircle2 size={15} className={styles.filterSelectedCheck} aria-hidden="true" />}</button>
               {INTRANET_SECTIONS.map((section) => {
                 const visual = SECTION_VISUALS[section.key];
                 const SectionIcon = visual.icon;
@@ -2390,14 +2413,16 @@ export default function IntranetPage() {
                     className={styles.categoryButton}
                   >
                     <SectionIcon size={16} aria-hidden="true" />
-                    {section.label}
+                    <span>{section.label}</span>
+                    {isActive && <CheckCircle2 size={15} className={styles.filterSelectedCheck} aria-hidden="true" />}
                   </button>
                 );
               })}
             </div>
           </nav>
-          <WallFeedFilters view={view} onViewChange={next => { setView(next); setPendingFocusPostId(null); }} search={searchInput} onSearchChange={value => { setSearchInput(value); setPendingFocusPostId(null); }} sectionLabel={selectedSection === "all" ? "ve všech kategoriích" : `v sekci ${currentSectionLabel}`} />
           </div>
+          </aside>
+          <div className={styles.feedColumn}>
           <div className={styles.feedHeading}>
             <div>
               <h2>{searchQuery ? "Výsledky hledání" : view === "saved" ? "Uložené příspěvky" : view === "unread" ? "Nepřečtené příspěvky" : view === "following" ? "Sledované diskuse" : selectedSection === "all" ? "Novinky a diskuse" : currentSectionLabel}</h2>
@@ -2406,9 +2431,9 @@ export default function IntranetPage() {
             {!loadingPosts && !postsError && <span className={styles.feedCount}>{postsHasMore ? `${visiblePosts.length}+` : visiblePosts.length} {postsHasMore || visiblePosts.length === 0 || visiblePosts.length > 4 ? "příspěvků" : visiblePosts.length === 1 ? "příspěvek" : "příspěvky"}</span>}
           </div>
 
-          <section>
+          <section className={styles.wallFeed} aria-label="Příspěvky intranetu">
             {loadingPosts ? (
-              <div className="grid gap-3">
+              <div className={styles.postList}>
                 {Array.from({ length: 4 }).map((_, idx) => (
                   <div
                     key={`wall-skeleton-${idx}`}
@@ -2443,7 +2468,7 @@ export default function IntranetPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid gap-3">
+              <div className={styles.postList}>
                 {visiblePosts.map((post) => {
                   const visual = SECTION_VISUALS[post.section] ?? SECTION_VISUALS.obecne;
                   const SectionIcon = visual.icon;
@@ -2461,6 +2486,7 @@ export default function IntranetPage() {
                     <article
                       key={post.id}
                       data-post-id={post.id}
+                      data-unread={post.readAtMs === null}
                       aria-label={post.title}
                       ref={(node) => { postCardRefs.current[post.id] = node; }}
                       className={`${styles.wallCard} ${post.pinned ? styles.pinnedCard : ""} ${post.important ? styles.importantCard : ""} ${highlightPostId === post.id ? styles.highlightedCard : ""}`}
@@ -2864,16 +2890,19 @@ export default function IntranetPage() {
               </div>
             )}
           </section>
+          </div>
+          </div>
         </div>
       </div>
 
       {readerPost ? (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center px-3 py-4">
+        <div className={styles.readerOverlay}>
           <button
             type="button"
-            className="absolute inset-0 bg-slate-950/70 backdrop-blur-md"
+            className={styles.readerBackdrop}
             onClick={() => setReaderPost(null)}
             aria-label="Zavřít celý příspěvek"
+            tabIndex={-1}
           />
 
           <div
@@ -2891,86 +2920,57 @@ export default function IntranetPage() {
               if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last.focus(); }
               else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
             }}
-            className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_38px_110px_rgba(2,6,23,0.58)]"
+            className={`${wallFont.className} ${styles.readerDialog}`}
           >
-            <div
-              className={`h-1.5 shrink-0 bg-gradient-to-r ${readerVisual.rail}`}
-              aria-hidden="true"
-            />
-            <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3.5 sm:px-6">
-              <div className="flex min-w-0 items-center gap-3">
-                <ProfileAvatar
-                  src={readerPost.author.profileAvatar}
-                  name={readerPost.author.name}
-                  className="h-11 w-11 rounded-2xl text-[2.75rem] shadow-inner ring-1 ring-slate-200"
-                  sizes="44px"
-                />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={[
-                        "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold",
-                        readerVisual.badge,
-                      ].join(" ")}
-                    >
-                      <ReaderSectionIcon className="h-3.5 w-3.5" />
-                      {readerPost.sectionLabel}
-                    </span>
-                    <span className="truncate text-xs font-semibold text-slate-600">
-                      {readerPost.author.name}
-                    </span>
-                    <SpecialistBadge specialist={readerPost.author.specialist} />
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3.5 w-3.5" />
-                      {formatDateTime(readerPost.createdAtMs)}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      {wallPostReadingMinutes(readerPost.text)} min čtení
-                    </span>
-                  </div>
-                </div>
-              </div>
-
+            <div className={styles.readerTopbar}>
+              <div className={styles.readerBrand}><BookOpen size={17} aria-hidden="true" /><span>Čtení příspěvku</span></div>
               <button
                 type="button"
                 onClick={() => setReaderPost(null)}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 transition hover:border-slate-500 hover:bg-slate-100"
+                className={styles.readerClose}
                 aria-label="Zavřít celý příspěvek"
               >
-                <X className="h-4 w-4" />
+                <X size={19} aria-hidden="true" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-6 sm:px-7 sm:py-8">
-              <article className="mx-auto max-w-3xl">
-                {readerPost.important && <div className="mb-4"><span className={styles.importantBadge}><TriangleAlert size={15} aria-hidden="true" />Důležité</span></div>}
+            <div className={styles.readerScroll} tabIndex={0} role="document" aria-label="Obsah příspěvku">
+              <article className={styles.readerArticle}>
+                <div className={styles.readerCategoryRow}>
+                  <span className={`${styles.categoryBadge} ${readerVisual.badge}`}><ReaderSectionIcon size={13} aria-hidden="true" />{readerPost.sectionLabel}</span>
+                  {readerPost.important && <span className={styles.importantBadge}><TriangleAlert size={14} aria-hidden="true" />Důležité</span>}
+                  {readerPost.pinned && <span className={styles.pinnedBadge}><Pin size={13} aria-hidden="true" />Připnuto</span>}
+                </div>
                 <h2
                   id="intranet-reader-title"
-                  className="text-3xl font-black leading-[1.12] tracking-[-0.035em] text-slate-950 sm:text-4xl"
+                  className={styles.readerTitle}
                 >
                   {readerPost.title}
                 </h2>
-                <div className={`mt-5 h-1 w-20 rounded-full bg-gradient-to-r ${readerVisual.rail}`} />
+                <div className={styles.readerAuthorRow}>
+                  <ProfileAvatar src={readerPost.author.profileAvatar} name={readerPost.author.name} className={styles.readerAvatar} sizes="42px" />
+                  <div className={styles.readerAuthorIdentity}>
+                    <div><strong>{readerPost.author.name}</strong><SpecialistBadge specialist={readerPost.author.specialist} /></div>
+                    <p className={styles.readerMeta}><Clock3 size={12} aria-hidden="true" />{formatDateTime(readerPost.createdAtMs)}</p>
+                  </div>
+                </div>
                 <LinkedText
                   text={readerPost.text}
-                  className="mt-7 whitespace-pre-wrap text-[16px] leading-8 text-slate-700 sm:text-[17px] sm:leading-8"
+                  className={styles.readerText}
                 />
 
-                <div className="mt-6">{personalActions(readerPost)}</div>
-                {personalErrors[readerPost.id] && <p role="alert" className="mt-3 text-sm text-red-700">{personalErrors[readerPost.id]}</p>}
+                <div className={styles.readerPersonalActions}>{personalActions(readerPost)}</div>
+                {personalErrors[readerPost.id] && <p role="alert" className={styles.readerError}>{personalErrors[readerPost.id]}</p>}
                 {readerPost.sources.length > 0 ? (
-                  <div className="mt-8 border-t border-slate-200 pt-5">
+                  <div className={styles.readerSources}>
                     <button
                       type="button"
                       onClick={() => setSourcesModalPost(readerPost)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-sm font-bold text-sky-800 transition hover:border-sky-300 hover:bg-sky-100"
+                      className={styles.readerSourcesButton}
                     >
-                      <Link2 className="h-4 w-4" />
+                      <Link2 size={15} aria-hidden="true" />
                       Zobrazit zdroje
-                      <span className="rounded-full border border-sky-300/70 bg-white/70 px-1.5 py-0.5 text-xs leading-none">
+                      <span>
                         {readerPost.sources.length}
                       </span>
                     </button>
@@ -2978,6 +2978,10 @@ export default function IntranetPage() {
                 ) : null}
               </article>
             </div>
+            <footer className={styles.readerFooter}>
+              <span className={styles.readerFooterHint}><BookOpen size={14} aria-hidden="true" />{wallPostReadingMinutes(readerPost.text)} min čtení</span>
+              <button type="button" className={styles.readerDone} onClick={() => setReaderPost(null)}>Zpět na nástěnku<ArrowUpRight size={14} aria-hidden="true" /></button>
+            </footer>
           </div>
         </div>
       ) : null}

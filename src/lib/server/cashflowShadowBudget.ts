@@ -5,6 +5,7 @@ import { toDate } from "@/app/lib/formatters";
 import { monthsBetweenPayments } from "@/app/cashflow/generator";
 import { CASHFLOW_FORECAST_YEARS, INTELLIGENT_PREDICTION_CONFIG, matchesProductFilter, normalizeContractNumberSearch } from "@/app/cashflow/helpers";
 import { isSubscriptionCashflowOwner } from "@/app/cashflow/subscriptionCashflow";
+import { CASHFLOW_EXTRA_PAYOUTS_MAX, normalizeCashflowExtraPayouts } from "@/app/cashflow/extraPayouts";
 
 const MAX_ESTIMATED_OUTPUT_ITEMS = 25_000;
 const MAX_PAYOUT_MATCH_WORK = 2_000_000;
@@ -78,7 +79,8 @@ export function estimateCashflowShadowLifeReviewItems(entry: EntryDoc, scheduled
  * team rows twice (own and override paths can both include them), include every
  * statement-only payout and bound life reviews by their formula schedules when
  * prediction is on.
- * Each subscription row gets 1 actual + 120 forecasts. Bounds are not truncation.
+ * Each subscription row gets 1 actual + 120 forecasts. Each extra receipt gets
+ * exactly one actual item. Bounds are not truncation.
  * A validated view selection can narrow generation paths; without it, legacy
  * callers keep the whole-portfolio estimate. All source shape/date/nesting
  * checks remain independent of selection, as does the caller's full input hash.
@@ -95,19 +97,24 @@ export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Da
   const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
   const maxDateYear = asOf.getFullYear() + 100;
   if (!Array.isArray(snapshot.tipPayouts) || !Array.isArray(snapshot.subscriptionPayments)) return "output_estimate";
+  const extraPayouts = snapshot.extraPayouts === undefined ? [] : snapshot.extraPayouts;
+  if (!Array.isArray(extraPayouts) || extraPayouts.length > CASHFLOW_EXTRA_PAYOUTS_MAX ||
+    normalizeCashflowExtraPayouts(extraPayouts).length !== extraPayouts.length) return "entry_shape";
   if (!Array.isArray(snapshot.ownEntries) || !Array.isArray(snapshot.teamEntriesRaw)) return "entry_shape";
   const includeTips = !selection || selection.tipsterMode || selection.productFilter === "tip" ||
     (selection.productFilter === "all" && selection.scopeFilter !== "team");
   const includeSubscriptions = !selection || (isSubscriptionCashflowOwner(snapshot.email) && !selection.tipsterMode &&
     selection.scopeFilter !== "team" && ["all", "subscription"].includes(selection.productFilter));
+  const includeExtraPayouts = !selection || (!selection.tipsterMode && selection.scopeFilter !== "team" && selection.productFilter === "all");
   let estimatedOutputItems = (includeTips ? snapshot.tipPayouts.length : 0) +
-    (includeSubscriptions ? snapshot.subscriptionPayments.length * 121 : 0);
+    (includeSubscriptions ? snapshot.subscriptionPayments.length * 121 : 0) +
+    (includeExtraPayouts ? extraPayouts.length : 0);
   let payoutMatchWork = 0;
   let nestedRows = 0;
   if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return "output_estimate";
   if (snapshot.ownEntries.length + snapshot.teamEntriesRaw.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
   if (selection && snapshot.ownEntries.length + snapshot.teamEntriesRaw.length +
-    snapshot.tipPayouts.length + snapshot.subscriptionPayments.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
+    snapshot.tipPayouts.length + snapshot.subscriptionPayments.length + extraPayouts.length > MAX_ESTIMATED_OUTPUT_ITEMS) return "source_rows";
 
   const entryFailure = (entry: EntryDoc, fromTeam: boolean): CashflowServerResourceLimit | null => {
     if (!entry || typeof entry !== "object") return "entry_shape";

@@ -66,7 +66,7 @@ export default function LifeInsuranceShellClient({ slug, initialLocale = "cs" }:
           </div>
         </div>
       </header>
-      <LifeInsuranceContent advisorSlug={slug} theme={theme} locale={locale} />
+      <LifeInsuranceContent advisorSlug={slug} theme={theme} locale={locale} presentationEffects />
     </div>
   );
 }

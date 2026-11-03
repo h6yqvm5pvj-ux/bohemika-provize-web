@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildYearChart, buildYearMonthSlots, includeCurrentYear } from "./yearChart";
+import { buildYearChart, buildYearMonthSlots, cashflowMonthPercentageChange, includeCurrentYear } from "./yearChart";
 import type { MonthGroup, YearGroup } from "./types";
 
 const month = (monthIndex: number, total: number): MonthGroup => ({
@@ -85,5 +85,53 @@ describe("annual cashflow chart", () => {
     expect(chart.position(-1000)).toBe(100);
     expect(chart.strongest?.monthIndex).toBe(1);
     expect(chart.months[2]).toBeNull();
+  });
+});
+
+describe("cashflow month percentage change", () => {
+  it.each([
+    [1000, 1813, 81.3],
+    [1000, 750, -25],
+    [1000, 1000, 0],
+    [1000, 0, -100],
+    [1000, -500, -150],
+    [3, 4, 33.3],
+  ])("compares displayed amounts from %s to %s as %s percent", (previous, current, expected) => {
+    expect(cashflowMonthPercentageChange(month(1, current), month(0, previous))).toBe(expected);
+  });
+
+  it("uses actual totals independently of payout and prediction metadata", () => {
+    const previous = { ...month(7, 1000), predictedTotal: 2000, totalSource: "paid" as const, statementPayoutTotal: 800 };
+    const current = { ...month(8, 1350), predictedTotal: 1450, totalSource: "paid" as const, statementPayoutTotal: 1000 };
+    expect(cashflowMonthPercentageChange(current, previous)).toBe(35);
+    expect(cashflowMonthPercentageChange({ ...current, totalSource: "predicted" }, previous)).toBe(35);
+  });
+
+  it("requires an immediately preceding calendar month, including December of the previous year", () => {
+    const january = month(0, 1500);
+    const december = { ...month(11, 1000), key: "2025-12", year: 2025 };
+    expect(cashflowMonthPercentageChange(january, december)).toBe(50);
+    expect(cashflowMonthPercentageChange(january, month(11, 1000))).toBeNull();
+    expect(cashflowMonthPercentageChange(month(2, 1500), month(0, 1000))).toBeNull();
+    expect(cashflowMonthPercentageChange(month(1, 1500), month(1, 1000))).toBeNull();
+    expect(cashflowMonthPercentageChange(month(0, 1500), month(1, 1000))).toBeNull();
+  });
+
+  it("omits missing, non-positive or non-finite comparison bases and invalid current amounts", () => {
+    const current = month(1, 1500);
+    for (const previous of [null, undefined, month(0, 0), month(0, -100), month(0, NaN), month(0, Infinity)]) {
+      expect(cashflowMonthPercentageChange(current, previous)).toBeNull();
+    }
+    for (const invalid of [null, undefined, month(1, NaN), month(1, Infinity)]) {
+      expect(cashflowMonthPercentageChange(invalid, month(0, 1000))).toBeNull();
+    }
+    expect(cashflowMonthPercentageChange(month(1, 0), month(0, 0))).toBeNull();
+    expect(cashflowMonthPercentageChange(month(1, Number.MAX_VALUE), month(0, Number.MIN_VALUE))).toBeNull();
+  });
+
+  it("normalizes a decrease rounded to zero so it cannot produce a negative zero badge", () => {
+    const percentage = cashflowMonthPercentageChange(month(1, 999.99), month(0, 1000));
+    expect(percentage).toBe(0);
+    expect(Object.is(percentage, -0)).toBe(false);
   });
 });

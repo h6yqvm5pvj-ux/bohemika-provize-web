@@ -26,18 +26,38 @@ describe("cashflow month sections", () => {
     expect(sections.find((section) => section.id === "property")?.groups.map((value) => value.id)).not.toContain("kooppmop");
   });
 
-  it("keeps grouped commission parts together and counts their items, including negative payouts", () => {
+  it("keeps grouped positive commission parts together and separates cancellation payouts", () => {
     const grouped = group("neon", 450);
     grouped.items = [
-      { ...grouped.leadItem, id: "first", amount: 600 },
-      { ...grouped.leadItem, id: "second", amount: -150 },
+      { ...grouped.leadItem, id: "first", amount: 300 },
+      { ...grouped.leadItem, id: "second", amount: 150 },
     ];
     const sections = buildCashflowMonthSections([grouped, group("flexi", -50)]);
-    expect(sections).toHaveLength(1);
+    expect(sections.map(section => section.id)).toEqual(["life", "cancelled"]);
     expect(sections[0].groups[0]).toBe(grouped);
-    expect(sections[0].itemCount).toBe(3);
-    expect(sections[0].groups).toHaveLength(2);
-    expect(sections[0].total).toBe(400);
+    expect(sections[0].itemCount).toBe(2);
+    expect(sections[0].groups).toHaveLength(1);
+    expect(sections[0].total).toBe(450);
+    expect(sections[1].label).toBe("Stornované");
+    expect(sections[1].itemCount).toBe(1);
+    expect(sections[1].total).toBe(-50);
+    expect(sections.reduce((sum, section) => sum + section.total, 0)).toBe(400);
+  });
+
+  it("uses the statement cancellation marker without mistaking a cancelled contract's positive receipt", () => {
+    const explicitCancellation = group("neon", 100, { note: "Vlastní · storno z výpisu" });
+    const historicalPaid = group("flexi", 500, { contractStatus: "storno", payoutStatus: "paid" });
+    const sections = buildCashflowMonthSections([explicitCancellation, historicalPaid]);
+    expect(sections.find(section => section.id === "cancelled")?.groups).toEqual([explicitCancellation]);
+    expect(sections.find(section => section.id === "life")?.groups).toEqual([historicalPaid]);
+    expect(sections.reduce((sum, section) => sum + section.total, 0)).toBe(600);
+  });
+
+  it("keeps negative subscription payments in their payment category", () => {
+    const refund = group("subscription", -100, { isSubscriptionPayment: true });
+    const sections = buildCashflowMonthSections([refund]);
+    expect(sections.map(section => section.id)).toEqual(["subscription"]);
+    expect(sections[0].total).toBe(-100);
   });
 
   it("preserves tips, subscriptions and unknown products without adding empty insurance sections", () => {

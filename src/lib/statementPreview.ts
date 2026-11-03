@@ -19,7 +19,16 @@ a[href^="javascript:toggleLayer"] {
   cursor: pointer;
 }
 </style>`;
-  const toggleScript = `<script>${STATEMENT_TOGGLE_SCRIPT}</script>`;
+  // Client navigation retains the initial document's CSP. Read its live nonce,
+  // rather than the nonce or route-specific hashes from a later RSC response.
+  // Only our fixed script receives it; imported HTML never supplies this value.
+  const documentNonce = typeof document === "undefined"
+    ? ""
+    : document.querySelector<HTMLScriptElement>("script[nonce]")?.nonce ?? "";
+  const nonceAttribute = /^[A-Za-z0-9+/_-]+={0,2}$/.test(documentNonce)
+    ? ` nonce="${documentNonce}"`
+    : "";
+  const toggleScript = `<script${nonceAttribute}>${STATEMENT_TOGGLE_SCRIPT}</script>`;
   const htmlWithStyle = /<\/head>/i.test(html)
     ? html.replace(/<\/head>/i, `${previewStyle}</head>`)
     : `${previewStyle}${html}`;

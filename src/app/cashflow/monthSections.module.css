@@ -42,7 +42,9 @@
 .auto { border-color: #e3e5f8; background: #f2f3fd; color: #787bb8; }
 .tip { border-color: #f0ddf3; background: #fbf2fd; color: #a76db0; }
 .subscription { border-color: #dcf0e5; background: #f0faf5; color: #60977a; }
+.extra { border-color: #f2e7c9; background: #fdf8eb; color: #9a7930; }
 .other { border-color: #e7e9ed; background: #f5f6f9; color: #7d8594; }
+.cancelled { border-color: #f2d7df; background: #fff1f4; color: #a33754; }
 .identity { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .title { color: #334056; font-size: 16px; font-weight: 600; line-height: 1.35; letter-spacing: -0.15px; }
 .count { color: #566278; font-size: 14px; line-height: 1.4; }

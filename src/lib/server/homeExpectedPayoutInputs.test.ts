@@ -7,7 +7,9 @@ import { loadExpectedPayoutInputs, loadExpectedPayoutStatements } from "./homeEx
 
 const handlers = vi.hoisted(() => ({
   profile: vi.fn(), contracts: vi.fn(), tips: vi.fn(), subscriptions: vi.fn(), statements: vi.fn(),
+  extraPayouts: vi.fn(),
 }));
+vi.mock("./cashflowExtraPayouts", () => ({ loadPrivateCashflowExtraPayouts: handlers.extraPayouts }));
 vi.mock("@/app/api/user/profile/route", () => ({ GET: handlers.profile }));
 vi.mock("@/app/api/contracts/_lib/contractsApi", () => ({ handleContractsList: handlers.contracts }));
 vi.mock("@/app/api/tip-payouts/list/route", () => ({ GET: handlers.tips }));
@@ -34,6 +36,7 @@ beforeEach(() => {
   handlers.contracts.mockImplementation(() => json(list()));
   handlers.tips.mockImplementation(() => json({ ok: true, payouts: [], hasMore: false }));
   handlers.statements.mockImplementation(() => json(statementResponse()));
+  handlers.extraPayouts.mockResolvedValue([]);
 });
 afterEach(() => vi.useRealTimers());
 
@@ -83,11 +86,24 @@ describe("home expected payout source loading", () => {
     expect(handlers.statements).not.toHaveBeenCalled();
     expect(handlers.subscriptions).not.toHaveBeenCalled();
     expect(handlers.tips).toHaveBeenCalledOnce();
+    expect(handlers.extraPayouts).toHaveBeenCalledExactlyOnceWith(email);
     for (const [inner, options] of handlers.contracts.mock.calls) {
       expect(options).toMatchObject({ freshCashflowContext: true, authorizedContext: guard });
       expect((inner as NextRequest).headers.get("authorization")).toBe("Bearer synthetic-token");
       expect((inner as NextRequest).nextUrl.searchParams.get("targetEmail")).toBeNull();
     }
+  });
+
+  it("includes private paid rewards for the verified target and propagates storage failures", async () => {
+    const payout = { id: "reward", title: "Reward", amountCzk: 100, payoutMonthKey: "2026-02", status: "paid" };
+    handlers.extraPayouts.mockResolvedValue([payout]);
+    const loaded = await loadExpectedPayoutInputs(request(), context, [], { authorizedContext: authorized() });
+    expect(loaded.snapshot.extraPayouts).toEqual([payout]);
+    expect(handlers.extraPayouts).toHaveBeenCalledWith(email);
+    expect(handlers.extraPayouts).not.toHaveBeenCalledWith("foreign@example.test");
+    handlers.extraPayouts.mockRejectedValue(new Error("synthetic private storage failure"));
+    await expect(loadExpectedPayoutInputs(request(), context, [], { authorizedContext: authorized() }))
+      .rejects.toMatchObject({ code: "upstream_failed", status: 503 });
   });
 
   it.each(["email", "uid", "accountType"])("rejects a mismatched verified %s before portfolio reads", async field => {

@@ -22,6 +22,7 @@ import {
   type CashflowLoadingProgress,
 } from "./loadingProgress";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
+import { normalizeCashflowExtraPayouts, type CashflowExtraPayout } from "./extraPayouts";
 import type {
   CashflowItem,
   EntryDoc,
@@ -193,6 +194,31 @@ async function fetchContractsSnapshot(
     const response = await fetch(path, { headers, cache: "no-store", signal });
     ensureActive();
     return response;
+  };
+
+  const requestExtraPayouts = async (): Promise<CashflowExtraPayout[]> => {
+    const path = "/api/user/profile";
+    let res = await requestWithToken(path, bearerToken);
+    if (res.status === 401) {
+      ensureActive();
+      bearerToken = await currentUser.getIdToken(true);
+      ensureActive();
+      res = await requestWithToken(path, bearerToken);
+    }
+    const data: unknown = await res.json();
+    ensureActive();
+    if (!res.ok || !data || typeof data !== "object" || Array.isArray(data) ||
+      !("ok" in data) || data.ok !== true) {
+      throw new Error("Nepodařilo se načíst mimořádné odměny.");
+    }
+    const payload = data as Record<string, unknown>;
+    if (typeof payload.email !== "string" || payload.email.trim().toLowerCase() !== email ||
+      !payload.profile || typeof payload.profile !== "object" || Array.isArray(payload.profile)) {
+      throw new Error("Nepodařilo se ověřit vlastníka mimořádných odměn.");
+    }
+    return normalizeCashflowExtraPayouts(
+      (payload.profile as Record<string, unknown>).cashflowExtraPayouts
+    );
   };
 
   const requestContracts = async (
@@ -505,6 +531,9 @@ async function fetchContractsSnapshot(
     console.warn("[cashflow] načtení TIP výplat selhalo, pokračuji bez nich.", tipErr);
     return [] as TipPayoutApiItem[];
   });
+  // A missing paid reward would make the financial total incorrect. Keep this
+  // source mandatory, with the same account/cancellation guards as the portfolio.
+  const extraPayoutsPromise = mode === "tipster" ? Promise.resolve([]) : requestExtraPayouts();
   const subscriptionPaymentsPromise = collectSubscriptionPayments().catch((subscriptionErr) => {
     ensureActive();
     console.warn(
@@ -518,6 +547,7 @@ async function fetchContractsSnapshot(
   // awaiting callers without leaving an unobserved parallel rejection.
   void tipPayoutsPromise.catch(() => undefined);
   void subscriptionPaymentsPromise.catch(() => undefined);
+  void extraPayoutsPromise.catch(() => undefined);
 
   if (mode === "tipster") {
     onProgress({
@@ -608,6 +638,7 @@ async function fetchContractsSnapshot(
   });
   const tipPayouts = await tipPayoutsPromise;
   const subscriptionPayments = await subscriptionPaymentsPromise;
+  const extraPayouts = await extraPayoutsPromise;
   ensureActive();
   onProgress({
     percent: 96,
@@ -626,6 +657,7 @@ async function fetchContractsSnapshot(
     teamEntriesRaw,
     tipPayouts,
     subscriptionPayments,
+    ...(extraPayouts.length > 0 ? { extraPayouts } : {}),
   };
 }
 

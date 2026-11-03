@@ -50,7 +50,8 @@ describe("shared cashflow download cancellation", () => {
   });
   const flush = () => act(async () => { await vi.advanceTimersByTimeAsync(0); });
   const current = (id = "one") => latest.get(id)!;
-  const bySource = (source: "my" | "team" | "tips" | "subscriptions") => requests.filter(request => {
+  const bySource = (source: "my" | "team" | "tips" | "subscriptions" | "profile") => requests.filter(request => {
+    if (source === "profile") return request.url.pathname === "/api/user/profile";
     if (source === "tips") return request.url.pathname === "/api/tip-payouts/list";
     if (source === "subscriptions") return request.url.pathname === "/api/subscription-payments/list";
     return request.url.pathname === "/api/contracts/list" && request.url.searchParams.get("scope") === source;
@@ -59,7 +60,9 @@ describe("shared cashflow download cancellation", () => {
     ok: true, contracts: [{ id, userEmail: email }], hasMore: false, nextCursorToken: null,
     position: "poradce2", commissionMode: "standard", hasTeam: false, teamEmails: [], totalCount: 1, ...extras,
   });
-  const bodyFor = (request: PendingRequest, marker = "fresh") => request.url.pathname === "/api/tip-payouts/list"
+  const bodyFor = (request: PendingRequest, marker = "fresh") => request.url.pathname === "/api/user/profile"
+    ? { ok: true, email, hasProfile: true, profile: {} }
+    : request.url.pathname === "/api/tip-payouts/list"
     ? { ok: true, payouts: [], hasMore: false }
     : request.url.pathname === "/api/subscription-payments/list"
       ? { ok: true, payments: [], hasMore: false }
@@ -124,7 +127,7 @@ describe("shared cashflow download cancellation", () => {
     await finishPending("complete"); await flush();
     expect(current("two")).toMatchObject({ ready: true, loading: false, error: null });
     expect(current("two").rawSnapshot?.ownEntries[0].id).toBe("complete");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("survives StrictMode setup-cleanup-setup without joining a stranded aborted task", async () => {
@@ -149,7 +152,7 @@ describe("shared cashflow download cancellation", () => {
     await render([{ id: "one" }, { id: "two" }]);
     expect(signal(tipsterRequest).aborted).toBe(true);
     expect(standardRequests.every(request => !signal(request).aborted)).toBe(true);
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
     await deliver(tipsterRequest, { ok: true, payouts: [{ id: "abandoned-tipster" }], hasMore: false });
     await finishPending("standard-success"); await flush();
     expect(current().rawSnapshot).toBe(current("two").rawSnapshot);
@@ -184,7 +187,7 @@ describe("shared cashflow download cancellation", () => {
     expect(console.error).not.toHaveBeenCalled(); expect(console.warn).not.toHaveBeenCalled();
     await render();
     expect(current()).toMatchObject({ loading: true, ready: false, rawSnapshot: null });
-    expect(requests).toHaveLength(requestCount + 3);
+    expect(requests).toHaveLength(requestCount + 4);
     await finishPending("new-complete"); await flush();
     expect(current().rawSnapshot?.ownEntries.map(item => item.id)).toEqual(["new-complete"]);
   });
@@ -263,7 +266,7 @@ describe("shared cashflow download cancellation", () => {
     await render([{ id: "one" }, { id: "two" }]); const shared = [...requests];
     await render([{ id: "one", options: { reloadKey: 1 } }, { id: "two" }]);
     expect(shared.every(request => !signal(request).aborted)).toBe(true);
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
     await finishPending("shared-reload"); await flush();
     expect(current().rawSnapshot).toBe(current("two").rawSnapshot);
     expect(current().rawSnapshot?.ownEntries[0].id).toBe("shared-reload");
@@ -281,11 +284,11 @@ describe("shared cashflow download cancellation", () => {
 
   it("does not refresh any token or retry requests when 401 arrives after cancellation", async () => {
     email = `subscription-cancellation-${sequence}@example.test`; mocks.auth.currentUser!.email = email;
-    await render(); const abandoned = [...requests]; expect(abandoned).toHaveLength(3);
+    await render(); const abandoned = [...requests]; expect(abandoned).toHaveLength(4);
     await render([]);
     for (const request of abandoned) await deliver(request, { ok: false }, 401);
     expect(mocks.auth.currentUser!.getIdToken).toHaveBeenCalledOnce();
-    expect(requests).toHaveLength(3); expect(console.error).not.toHaveBeenCalled(); expect(console.warn).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(4); expect(console.error).not.toHaveBeenCalled(); expect(console.warn).not.toHaveBeenCalled();
   });
 
   it("does not retry if cancellation happens during the forced token refresh", async () => {
@@ -295,14 +298,14 @@ describe("shared cashflow download cancellation", () => {
     await render(); await deliver(bySource("tips")[0]); await deliver(bySource("my")[0], { ok: false }, 401);
     expect(mocks.auth.currentUser!.getIdToken).toHaveBeenLastCalledWith(true);
     await render([]); await act(async () => { resolveToken("synthetic-refreshed-token"); });
-    expect(requests).toHaveLength(2); expect(console.error).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(3); expect(console.error).not.toHaveBeenCalled();
   });
 
-  it.each(["tips", "subscriptions"] as const)("does not swallow cancellation during %s JSON parsing into a cacheable empty source", async source => {
+  it.each(["tips", "subscriptions", "profile"] as const)("does not swallow cancellation during %s JSON parsing into a cacheable empty source", async source => {
     email = `subscription-cancellation-${sequence}@example.test`; mocks.auth.currentUser!.email = email;
     await render(); const resolveJson = await pauseJson(bySource(source)[0]); const abandoned = [...requests];
     await render([]);
-    await resolveJson(source === "tips" ? { ok: true, payouts: [], hasMore: false } : { ok: true, payments: [], hasMore: false });
+    await resolveJson(bodyFor(bySource(source)[0]));
     for (const request of abandoned.filter(item => !item.delivered)) await deliver(request, bodyFor(request, "partial"));
     await flush(); await render();
     expect(current()).toMatchObject({ loading: true, rawSnapshot: null }); expect(bySource("my")).toHaveLength(2);
@@ -335,11 +338,55 @@ describe("shared cashflow download cancellation", () => {
     expect(current().rawSnapshot?.ownEntries[0].id).toBe("recovered");
   });
 
+  it("loads normalized private rewards through the authenticated fresh profile source", async () => {
+    const payout = { id: "reward", title: "Mimořádná odměna", amountCzk: 1200, payoutMonthKey: "2026-02", status: "paid" };
+    await render();
+    const profile = bySource("profile")[0];
+    expect(profile.init.cache).toBe("no-store");
+    expect(new Headers(profile.init.headers).get("Authorization")).toBe("Bearer synthetic-token");
+    await deliver(profile, { ok: true, email, profile: { cashflowExtraPayouts: [{ ...payout, source: "audit" }] } });
+    await finishPending(); await flush();
+    expect(current()).toMatchObject({ ready: true, loading: false, error: null });
+    expect(current().rawSnapshot?.extraPayouts).toEqual([payout]);
+  });
+
+  it.each(["denied", "foreign-owner", "malformed"])("does not cache a financial total when the rewards source is %s", async failure => {
+    await render();
+    await deliver(bySource("profile")[0], failure === "denied" ? { ok: false }
+      : failure === "foreign-owner" ? { ok: true, email: "foreign@example.test", profile: {} }
+        : { ok: true, email }, failure === "denied" ? 403 : 200);
+    await finishPending(); await flush();
+    expect(current()).toMatchObject({ ready: true, loading: false, rawSnapshot: null });
+    expect(current().error).toBeTruthy();
+    await render([{ id: "one", options: { reloadKey: 1 } }]);
+    expect(bySource("profile")).toHaveLength(2);
+    await finishPending(); await flush();
+    expect(current().error).toBeNull();
+    expect(current().rawSnapshot).not.toHaveProperty("extraPayouts");
+  });
+
+  it("refreshes a profile 401 once and forwards verified impersonation on both attempts", async () => {
+    mocks.auth.currentUser!.email = "admin@example.test";
+    mocks.impersonatedEmail = email;
+    mocks.auth.currentUser!.getIdToken.mockResolvedValueOnce("original-token").mockResolvedValueOnce("refreshed-token");
+    await render();
+    await deliver(bySource("profile")[0], { ok: false }, 401);
+    expect(mocks.auth.currentUser!.getIdToken).toHaveBeenLastCalledWith(true);
+    const retries = bySource("profile");
+    expect(retries).toHaveLength(2);
+    for (const profile of retries) expect(new Headers(profile.init.headers).get("x-bohemika-impersonate-email")).toBe(email);
+    expect(new Headers(retries[1].init.headers).get("Authorization")).toBe("Bearer refreshed-token");
+    await finishPending(); await flush();
+    expect(current()).toMatchObject({ ready: true, loading: false, error: null });
+    expect(current().rawSnapshot?.email).toBe(email);
+  });
+
   it("keeps optional source failures as empty sources and preserves a successful portfolio", async () => {
     email = `subscription-cancellation-${sequence}@example.test`; mocks.auth.currentUser!.email = email;
     await render();
     await deliver(bySource("tips")[0], { ok: false }, 500);
     await deliver(bySource("subscriptions")[0], { ok: false }, 500);
+    await deliver(bySource("profile")[0]);
     await deliver(bySource("my")[0]); await flush();
     expect(current()).toMatchObject({ ready: true, loading: false, error: null });
     expect(current().rawSnapshot?.tipPayouts).toEqual([]); expect(current().rawSnapshot?.subscriptionPayments).toEqual([]);
@@ -365,7 +412,7 @@ describe("shared cashflow download cancellation", () => {
     expect(current().rawSnapshot?.ownEntries[0].id).toBe("overlapping-read");
     const count = requests.length;
     await render([]); await render();
-    expect(requests).toHaveLength(count + 2);
+    expect(requests).toHaveLength(count + 3);
     expect(current()).toMatchObject({ loading: true, rawSnapshot: null });
     await finishPending("after-mutation"); await flush();
     expect(current().rawSnapshot?.ownEntries[0].id).toBe("after-mutation");

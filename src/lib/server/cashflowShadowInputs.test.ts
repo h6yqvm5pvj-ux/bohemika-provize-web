@@ -57,6 +57,19 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("cashflow shadow independent inputs", () => {
+  it("includes only normalized rewards from the protected effective profile and omits them for tipsters", async () => {
+    const payout = { id: "reward", title: "Reward", amountCzk: 100, payoutMonthKey: "2026-02", status: "paid" };
+    handlers.profile.mockImplementation(() => json(profile("represented@example.test", {
+      cashflowExtraPayouts: [{ ...payout, internalAudit: "private" }, { ...payout, id: "negative", amountCzk: -1 }],
+    })));
+    const loaded = await loadCashflowShadowInputs(request());
+    expect(loaded.snapshot.email).toBe("represented@example.test");
+    expect(loaded.snapshot.extraPayouts).toEqual([payout]);
+    handlers.profile.mockImplementation(() => json(profile("represented@example.test", {
+      accountType: "tipster", cashflowExtraPayouts: [payout],
+    })));
+    expect((await loadCashflowShadowInputs(request())).snapshot).not.toHaveProperty("extraPayouts");
+  });
   it("preserves every input and handler request when source timing is enabled", async () => {
     const original = await loadCashflowShadowInputs(request(), { freshCashflowContext: true });
     const trace = () => Object.values(handlers).map(handler => handler.mock.calls.map(([req, options]) =>

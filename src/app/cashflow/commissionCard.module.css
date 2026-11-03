@@ -9,6 +9,11 @@
 }
 .card:hover { border-color: #cec3dd; }
 .card[open] { border-color: #cbb6e2; }
+.card[data-cancelled="true"] { border-color: #edcbd5; border-left-color: #bc5f7b; }
+.card[data-cancelled="true"] > .summary { box-shadow: inset 3px 0 #bc5f7b; }
+.card[data-cancelled="true"] .settlementNet { background: #fff1f4; }
+.card[data-cancelled="true"] .settlementNet dt { color: #94536a; }
+.status.cancelled { border-color: #edcbd5; background: #fff0f3; color: #a33754; }
 .summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 15px 18px; border-radius: 13px; list-style: none; cursor: pointer; }
 .summary::-webkit-details-marker { display: none; }
 .summary::marker { content: ""; }
@@ -66,6 +71,7 @@
 .meaning { margin-top: 12px; color: #566278; font-size: 13px; line-height: 1.65; }
 .meaning strong { color: #536078; font-weight: 500; }
 .settlement { display: flex; flex-direction: column; gap: 14px; padding: 3px 0 3px 18px; border-left: 1px solid #ece8f2; }
+.settlement.extraSettlement { grid-template-columns: minmax(0, 1fr); }
 .settlement > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .settlement dt { color: #566278; font-size: 13px; }
 .settlement dd { color: #566278; font-size: 13px; font-weight: 500; white-space: nowrap; }

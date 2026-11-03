@@ -95,6 +95,9 @@ describe("actual cashflow data hook worker boundary", () => {
       const account = token?.replace(/^Bearer synthetic:/, "") ?? "";
       const snapshot = snapshots.get(account);
       if (!snapshot) throw new Error("Only authenticated synthetic fixtures are available.");
+      if (url.pathname === "/api/user/profile") {
+        return Response.json({ ok: true, email: account, hasProfile: true, profile: { cashflowExtraPayouts: snapshot.extraPayouts } });
+      }
       if (url.pathname === "/api/tip-payouts/list") {
         return Response.json({ ok: true, payouts: snapshot.tipPayouts, hasMore: false });
       }

@@ -335,7 +335,7 @@ const predictionProduct = (item: CashflowItem): Product | null => {
 };
 
 const isPredictionEligibleItem = (item: CashflowItem, today: Date): boolean => {
-  if (item.isTipPayout || item.isSubscriptionPayment || item.isStatementOnly) return false;
+  if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout || item.isStatementOnly) return false;
   if (item.payoutStatus === "paid") return false;
   if (!Number.isFinite(item.amount) || item.amount <= 0) return false;
   return monthDistance(currentMonthStart(today), item.date) >= 0;
@@ -588,7 +588,7 @@ const collectLifeReviewCandidates = (
   const candidates = new Map<string, LifeReviewCandidate>();
 
   for (const item of cashflowItems) {
-    if (item.isTipPayout || item.isSubscriptionPayment || item.isStatementOnly) continue;
+    if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout || item.isStatementOnly) continue;
     if (isStornoStatus(item.contractStatus)) continue;
 
     const product = predictionProduct(item);
@@ -1070,7 +1070,7 @@ export function applyStatementMissingPayoutShifts({
   };
 
   return cashflowItems.flatMap((item): CashflowItem[] => {
-    if (item.isTipPayout || item.isSubscriptionPayment) return [item];
+    if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout) return [item];
     if (item.payoutStatus === "paid") return [item];
 
     const normalizedContractNumber = normalizeContractNumberSearch(item.contractNumber);
@@ -1177,6 +1177,9 @@ export function groupItemsByMonth(
 
     const group = map.get(key)!;
     group.total += item.amount;
+    if (item.isExtraPayout && item.payoutStatus === "paid" && Number.isFinite(item.amount)) {
+      group.extraPayoutTotal = (group.extraPayoutTotal ?? 0) + item.amount;
+    }
     group.predictedTotal += item.isStatementOnly
       ? 0
       : item.predictedAmount ?? item.amount;
@@ -1184,9 +1187,16 @@ export function groupItemsByMonth(
   }
 
   const groups = Array.from(map.values());
-  groups.forEach((group) =>
-    group.items.sort(compareCashflowItemsForDisplay)
-  );
+  groups.forEach((group) => {
+    group.items.sort(compareCashflowItemsForDisplay);
+    if (group.extraPayoutTotal != null) {
+      group.extraPayoutTotal = Math.round(group.extraPayoutTotal * 100) / 100;
+      // An independent receipt must not turn unpaid commissions into paid income.
+      group.total = Math.round(group.items.reduce((sum, item) =>
+        item.payoutStatus === "paid" ? sum + item.amount : sum, 0) * 100) / 100;
+      group.totalSource = "paid";
+    }
+  });
 
   groups.sort((a, b) => {
     if (a.year !== b.year) return a.year - b.year;
@@ -1287,8 +1297,8 @@ export function applyStatementPayoutTotalsToMonths({
     const payoutTotal = statementPayoutTotal(statementsByMonthKey[month.key]);
     if (payoutTotal == null) return month;
 
-    // Commission statements settle commissions only. Subscription receipts are
-    // independent income; forecasts must not be presented as received money.
+    // Statements settle commissions only. Independent paid receipts are added
+    // afterwards; forecasts must not be presented as received money.
     const subscriptionReceipts = month.items.reduce((sum, item) =>
       (item.isSubscriptionPayment === true || item.productKey === "subscription") &&
       item.payoutStatus === "paid" && Number.isFinite(item.amount)
@@ -1296,7 +1306,7 @@ export function applyStatementPayoutTotalsToMonths({
 
     return {
       ...month,
-      total: Math.round((payoutTotal + subscriptionReceipts) * 100) / 100,
+      total: Math.round((payoutTotal + subscriptionReceipts + (month.extraPayoutTotal ?? 0)) * 100) / 100,
       totalSource: "paid",
       statementPayoutTotal: payoutTotal,
     };
@@ -1359,7 +1369,7 @@ export function groupMonthsByYear(monthGroups: MonthGroup[]): YearGroup[] {
 
 export function calculateStornoFund(items: CashflowItem[]): number {
   return items.reduce((sum, item) => {
-    if (item.isSubscriptionPayment) return sum;
+    if (item.isSubscriptionPayment || item.isExtraPayout) return sum;
     if (item.productKey === STORNO_EXEMPT_PRODUCT) return sum;
     const amount = Number(item.amount);
     if (!Number.isFinite(amount)) return sum;

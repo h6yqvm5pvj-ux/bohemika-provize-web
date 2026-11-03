@@ -26,6 +26,8 @@ import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import { OnlineCardTestimonials } from "@/components/OnlineCardTestimonials";
 import { OnlineCardMeetingForm } from "@/components/OnlineCardMeetingForm";
 import { OnlineCardHeroVisual } from "@/components/OnlineCardHeroVisual";
+import Preloader from "@/components/Preloader";
+import TileReveal from "@/components/TileReveal";
 import type { PremiumOnlineCardValue } from "@/components/PremiumOnlineCardPreview";
 import styles from "@/components/OnlineCardMinimal.module.css";
 import {
@@ -46,6 +48,18 @@ type OnlineCardPublicClientProps = {
   card: PremiumOnlineCardValue;
   initialLocale: OnlineCardLocale;
 };
+
+const REVEAL_IMAGES = [
+  "/images/online-card-services/property-v5.webp",
+  "/images/online-card-services/life-v5.webp",
+  "/images/online-card-services/travel-v5.webp",
+  "/images/online-card-services/vehicle-v5.webp",
+  "/icons/bohemika-chrome-symbol.png",
+  "/images/online-card-services/investments-v5.webp",
+  "/images/online-card-services/mortgage-v5.webp",
+  "/images/online-card-services/precious-metals-v5.webp",
+  "/images/online-card-services/foreigners-v5.webp",
+] as const;
 
 const sanitizeWebsite = (value: string): string => {
   const trimmed = value.trim();
@@ -363,8 +377,6 @@ export default function OnlineCardPublicClient({
   };
 
   const nameParts = localizedCard.fullName.trim().split(/\s+/);
-  const givenName = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : localizedCard.fullName;
-  const surname = nameParts.length > 1 ? nameParts.at(-1) : "";
   const advisorInitials = [nameParts[0], nameParts.length > 1 ? nameParts.at(-1) : ""]
     .map(part => part?.charAt(0) ?? "")
     .join("");
@@ -372,6 +384,7 @@ export default function OnlineCardPublicClient({
 
   return (
     <>
+      <Preloader key={slug} brand="Bohemika" theme="online-card" loadingText={copy.public.loading} />
       <div className={styles.shell} data-theme={theme}>
         <header className={styles.nav}>
           <div className={[styles.container, styles.navInner].join(" ")}>
@@ -407,11 +420,19 @@ export default function OnlineCardPublicClient({
           <div className={styles.container}>
           <div className={styles.heroGrid}>
             <div className={styles.heroIdentity}>
-              <div className={styles.heroTopline}>
-                <p className={styles.eyebrow}>{copy.preview.advisorProfile}</p>
-                {localizedCard.title ? <p className={styles.role}>{localizedCard.title}</p> : null}
+              <p className={styles.heroKicker}>{copy.public.heroKicker}</p>
+              <p className={styles.heroStatement}>
+                <span>{copy.public.heroHeadline}</span>{" "}
+                <em>{copy.public.heroHeadlineAccent}</em>
+              </p>
+              <p className={styles.heroDescription}>{copy.public.heroDescription}</p>
+              <div className={styles.advisorIdentity}>
+                <span className={styles.advisorMonogram} aria-hidden="true">{advisorInitials}</span>
+                <div>
+                  <h1 id="card-name" className={styles.name}>{localizedCard.fullName}</h1>
+                  <p className={styles.role}>{localizedCard.title || copy.preview.advisorProfile}</p>
+                </div>
               </div>
-              <h1 id="card-name" className={styles.name}>{givenName}{surname ? <> <span className={styles.surname}>{surname}</span></> : null}</h1>
               <div className={styles.actions}>
                 <button type="button" className={styles.primaryButton} onClick={openModal}>{copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" /></button>
                 <button type="button" className={styles.heroSaveButton} onClick={handleDownloadContactVCard}><Download aria-hidden="true" />{copy.public.saveContact}</button>
@@ -457,6 +478,24 @@ export default function OnlineCardPublicClient({
             {status.message}
           </p>
         ) : null}
+
+        <TileReveal
+          images={REVEAL_IMAGES}
+          className={styles.storyReveal}
+          headline={
+            <>
+              <p className={styles.storyKicker}>{copy.public.revealKicker}</p>
+              <h2 className={styles.storyTitle}>
+                {copy.public.revealTitle}{" "}<span>{copy.public.revealTitleAccent}</span>
+              </h2>
+              <p className={styles.storyDescription}>{copy.public.revealDescription}</p>
+            </>
+          }
+        >
+          <button type="button" className={styles.storyButton} onClick={openModal}>
+            {copy.preview.scheduleMeeting}<ArrowUpRight aria-hidden="true" />
+          </button>
+        </TileReveal>
 
         <AdvisorProfileSections
           minimal

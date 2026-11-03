@@ -1,4 +1,5 @@
 import { CASHFLOW_PRODUCTS_BY_FILTER } from "./helpers";
+import { isCashflowCancellation } from "./commissionPresentation";
 import type { CashflowItem, ProductFilter } from "./types";
 
 export const MONTH_SECTION_LABELS = {
@@ -12,13 +13,16 @@ export const MONTH_SECTION_LABELS = {
   auto: "Auta",
   tip: "TIP provize",
   subscription: "Předplatné",
+  extra: "Mimořádné odměny",
   other: "Ostatní",
+  cancelled: "Stornované",
 } as const;
 
 export type MonthSectionId = keyof typeof MONTH_SECTION_LABELS;
 
 export type CashflowSectionGroup = {
   id: string;
+  contractGroupId?: string;
   leadItem: CashflowItem;
   items: CashflowItem[];
   amount: number;
@@ -34,6 +38,8 @@ type MonthSection<T extends CashflowSectionGroup> = {
 
 function sectionForItem(item: CashflowItem): MonthSectionId {
   const product = item.productKey;
+  if (item.isExtraPayout) return "extra";
+  if (isCashflowCancellation(item)) return "cancelled";
   if (item.isSubscriptionPayment || product === "subscription") return "subscription";
   if (item.isTipPayout) return "tip";
   if (product === "unknown") return "other";

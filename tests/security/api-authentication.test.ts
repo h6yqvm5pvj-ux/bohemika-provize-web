@@ -137,7 +137,10 @@ describe.each([
       });
       doubles.isBlocked.mockResolvedValue(bearer === "blocked-account");
     }
-    const body = route.startsWith("cashflow/") ? {
+    // MFA removal validates its small, self-scoped command before verifying the
+    // token. Use a valid command so every rejected identity exercises the auth
+    // guard; forged target fields are covered by its dedicated route tests.
+    const body = route === "auth/mfa-removal" ? { action: "prepare" } : route.startsWith("cashflow/") ? {
       version: route === "cashflow/view" ? CASHFLOW_SERVER_PILOT_VERSION : CASHFLOW_SHADOW_VERSION,
       kind: "view", asOfMs: Date.now(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,

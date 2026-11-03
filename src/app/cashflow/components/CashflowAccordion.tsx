@@ -75,7 +75,9 @@ export function CashflowAccordion({
 
             <div id={contentId} hidden={!yearOpen}>
               {yearOpen && <div className={styles.yearContent}>
-                <CashflowYearChart yearGroup={yearGroup} onSelectMonth={onSelectMonth} />
+                <CashflowYearChart yearGroup={yearGroup}
+                  previousMonth={yearGroups.find(year => year.year === yearGroup.year - 1)?.months.find(month => month.monthIndex === 11) ?? null}
+                  onSelectMonth={onSelectMonth} />
                 <details className={styles.monthsDisclosure} data-months-disclosure={yearGroup.year}>
                   <summary className={styles.monthsHeading}>
                     <span className={styles.monthsTitle}><CalendarDays size={16} aria-hidden="true" />Měsíční přehled</span>

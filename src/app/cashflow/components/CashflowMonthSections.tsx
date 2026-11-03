@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import {
   BriefcaseBusiness, CarFront, ChevronDown, Coins, CreditCard,
-  Globe2, HeartPulse, House, Layers3, Plane, Tags, type LucideIcon,
+  Gift, Globe2, HeartPulse, House, Layers3, Plane, RotateCcw, Tags, type LucideIcon,
 } from "lucide-react";
 
 import { formatMoney } from "@/app/lib/formatters";
@@ -24,7 +24,9 @@ const SECTION_ICONS: Record<MonthSectionId, LucideIcon> = {
   auto: CarFront,
   tip: Tags,
   subscription: CreditCard,
+  extra: Gift,
   other: Layers3,
+  cancelled: RotateCcw,
 };
 
 export function CashflowMonthSections<T extends CashflowSectionGroup>({ groups, monthKey, children }: {
@@ -50,7 +52,7 @@ export function CashflowMonthSections<T extends CashflowSectionGroup>({ groups, 
               </span>
             </span>
             <span className={styles.total}>
-              <span className={styles.totalLabel}>{section.id === "subscription" ? "Součet plateb" : "Před odpočtem"}</span>
+              <span className={styles.totalLabel}>{section.id === "extra" ? "Vyplaceno" : section.id === "subscription" ? "Součet plateb" : "Před odpočtem"}</span>
               <span className={`${styles.amount} ${section.total < 0 ? styles.negative : ""}`}>{formatMoney(section.total)}</span>
             </span>
             <span className={styles.chevron}><ChevronDown size={18} aria-hidden="true" /></span>

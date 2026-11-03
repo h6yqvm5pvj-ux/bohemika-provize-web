@@ -18,13 +18,15 @@ export function WallFeedFilters({ view, onViewChange, search, onSearchChange, se
   ] as const;
   return (
     <div className={styles.feedFilters}>
-      <div role="group" aria-label="Zobrazení příspěvků" className={styles.viewOptions}>
-        {options.map(({ value, label, Icon }) => <button key={value} type="button" aria-pressed={view === value} onClick={() => onViewChange(value)} className={styles.viewButton}><Icon size={15} aria-hidden="true" />{label}</button>)}
-      </div>
+      <label className={styles.filterGroupLabel} htmlFor="intranet-search">Hledat příspěvek</label>
       <div className={styles.searchField}>
         <Search size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
-        <input type="search" maxLength={120} aria-label="Hledat podle názvu, textu nebo autora" placeholder={`Hledat ${sectionLabel}`} value={search} onChange={event => onSearchChange(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-base text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm" />
+        <input id="intranet-search" type="search" maxLength={120} aria-label="Hledat podle názvu, textu nebo autora" placeholder={`Hledat ${sectionLabel}`} value={search} onChange={event => onSearchChange(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-base text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm" />
         {search && <button type="button" aria-label="Vymazat hledání" onClick={event => { onSearchChange(""); event.currentTarget.parentElement?.querySelector("input")?.focus(); }} className="p-1 text-slate-500"><X size={15} aria-hidden="true" /></button>}
+      </div>
+      <h2 className={styles.filterGroupLabel}>Zobrazení</h2>
+      <div role="group" aria-label="Zobrazení příspěvků" className={styles.viewOptions}>
+        {options.map(({ value, label, Icon }) => <button key={value} type="button" aria-pressed={view === value} onClick={() => onViewChange(value)} className={styles.viewButton}><Icon size={15} aria-hidden="true" /><span>{label}</span>{view === value && <Check size={15} className={styles.filterSelectedCheck} aria-hidden="true" />}</button>)}
       </div>
     </div>
   );
