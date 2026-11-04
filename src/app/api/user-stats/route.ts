@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldPath, type QuerySnapshot } from "firebase-admin/firestore";
 
@@ -56,8 +57,6 @@ type AuthContext = {
 type DailyContractRow = {
   product: string;
   premium: number;
-  comfortGradual: boolean;
-  comfortPayment: number;
 };
 
 type HistoryItem = {
@@ -165,7 +164,7 @@ function parseHistoryItems(snap: QuerySnapshot): HistoryItem[] {
   });
 }
 
-function sanitizeDailyContracts(value: unknown): DailyContractRow[] | null {
+function sanitizeDailyContracts(value: unknown, skipRetired = false): DailyContractRow[] | null {
   if (!Array.isArray(value)) return [];
   if (value.length > 120) return null;
 
@@ -176,20 +175,17 @@ function sanitizeDailyContracts(value: unknown): DailyContractRow[] | null {
     const product =
       typeof raw.product === "string" ? raw.product.trim() : "";
     if (!product || product.length > 80) return null;
+    if (isRetiredProduct(product)) {
+      if (skipRetired) continue;
+      return null;
+    }
 
     const premium = parseFiniteInRange(raw.premium, 0, 1_000_000_000);
-    const comfortPayment = parseFiniteInRange(
-      raw.comfortPayment,
-      0,
-      1_000_000_000
-    );
-    if (premium == null || comfortPayment == null) return null;
+    if (premium == null) return null;
 
     out.push({
       product,
       premium,
-      comfortGradual: raw.comfortGradual === true,
-      comfortPayment,
     });
   }
 
@@ -560,7 +556,7 @@ export async function GET(req: NextRequest) {
         if (dayIndex == null) return null;
 
         const data = (docSnap.data() as Record<string, unknown> | undefined) ?? {};
-        const contracts = sanitizeDailyContracts(data.contracts);
+        const contracts = sanitizeDailyContracts(data.contracts, true);
         if (contracts == null) return null;
 
         return {

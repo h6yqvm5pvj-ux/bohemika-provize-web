@@ -276,9 +276,6 @@ type CommissionCalculationContext = {
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPayment: number;
-  comfortGradual: boolean;
-  comfortTargetAmount: number;
 };
 
 const calculateEndorsementCommission = ({
@@ -304,9 +301,6 @@ export type PrepareEndorsementDraftInput = {
   durationManualOverride: boolean;
   frequency: PaymentFrequency;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPayment: number;
-  comfortGradual: boolean;
-  comfortTargetAmount: number;
 };
 
 export type PrepareEndorsementDraftResult =
@@ -343,9 +337,6 @@ export const prepareEndorsementDraft = ({
   durationManualOverride,
   frequency,
   maxCizinKomplexVariant,
-  comfortPayment,
-  comfortGradual,
-  comfortTargetAmount,
 }: PrepareEndorsementDraftInput): PrepareEndorsementDraftResult => {
   const previousPremiumAmount = source.effectiveInputAmount;
   const deltaAmount = newPremiumAmount - previousPremiumAmount;
@@ -434,9 +425,6 @@ export const prepareEndorsementDraft = ({
         durationYears: endorsementDurationYears,
         durationMonths,
         maxCizinKomplexVariant,
-        comfortPayment,
-        comfortGradual,
-        comfortTargetAmount,
       });
       const result = sourceResult ?? negativeImmediateCommissionResult(fallbackResult);
       items = result?.items ?? [];
@@ -455,9 +443,6 @@ export const prepareEndorsementDraft = ({
       durationYears: endorsementDurationYears,
       durationMonths,
       maxCizinKomplexVariant,
-      comfortPayment,
-      comfortGradual,
-      comfortTargetAmount,
     });
     items = result?.items ?? [];
     total = result?.total ?? 0;

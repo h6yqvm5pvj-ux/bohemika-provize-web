@@ -1,5 +1,6 @@
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { calendarDate } from "@/app/lib/calendarDates";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { normalizeCashflowExtraPayouts, type CashflowExtraPayout } from "./extraPayouts";
 
 import {
@@ -216,6 +217,7 @@ export function computeCashflow(
     null;
   const allEntriesByKey = new Map<string, EntryDoc>();
   const pushEntry = (entry: EntryDoc) => {
+    if (isRetiredProduct(entry.productKey)) return;
     const ownerEmail = normalizeEmail(entry.userEmail);
     const docId = String(entry.id ?? "").trim();
     if (!ownerEmail || !docId) return;
@@ -248,7 +250,7 @@ export function computeCashflow(
       predictionBaselinePosition: null,
       predictionCommissionMode: predictionModeForEntry(entry, "own"),
     }));
-  const teamRaw = snapshot.teamEntriesRaw;
+  const teamRaw = snapshot.teamEntriesRaw.filter(entry => !isRetiredProduct(entry.productKey));
 
   const overrides: EntryDoc[] = [];
   if (teamRaw.length > 0) {
@@ -325,6 +327,7 @@ export function computeCashflow(
     (productFilter === "all" && scopeFilter !== "team");
   const tipCashflowItems: CashflowItem[] = includeTipPayouts
     ? snapshot.tipPayouts.reduce<CashflowItem[]>((acc, payout, index) => {
+        if (isRetiredProduct(payout.productKey)) return acc;
         const payoutTs =
           typeof payout.payoutDate === "number" && Number.isFinite(payout.payoutDate)
             ? payout.payoutDate

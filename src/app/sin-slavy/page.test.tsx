@@ -19,7 +19,7 @@ function response(currentUserId = "anna"): HallOfFamePeriodsResponse {
   const periods = Object.fromEntries((["month", "3months", "6months", "year"] as HallPeriod[]).map((key, index) => {
     const row = { id: "anna", rank: 1, name: "Anna", profileAvatar: "", contracts: index + 1, annualPremium: (index + 1) * 12000, leaderRatioPct: 100 };
     const rankings: HallRankings = { life: [row], auto: [], property: [], business: [{ ...row, name: "Boris", id: "boris" }] };
-    return [key, { rankings, period: { key, startDate: ["2026-09-01", "2026-07-01", "2026-04-01", "2025-10-01"][index], endDate: "2026-09-14" } }];
+    return [key, { rankings, period: { key, startDate: ["2026-09-01", "2026-06-01", "2026-03-01", "2025-09-01"][index], endDate: key === "month" ? "2026-09-14" : "2026-08-31" } }];
   })) as Record<HallPeriod, HallPeriodResult>;
   return { ok: true, periods, currentUserId, updatedAtMs: Date.now() };
 }
@@ -61,11 +61,18 @@ describe("hall page categories and loading", () => {
     await click("Podnikatelé");
     expect(container.querySelector("tbody")?.textContent).toContain("Boris");
     expect(container.querySelector("tbody")?.textContent).not.toContain("Anna");
-    for (const [label, premium] of [["Poslední 3 měsíce", "24.000 Kč"], ["Posledních 6 měsíců", "36.000 Kč"], ["Poslední rok", "48.000 Kč"], ["Aktuální měsíc", "12.000 Kč"]]) {
+    for (const [label, premium, range] of [
+      ["3 dokončené měsíce", "24.000 Kč", "1. 6. 2026 – 31. 8. 2026"],
+      ["6 dokončených měsíců", "36.000 Kč", "1. 3. 2026 – 31. 8. 2026"],
+      ["12 dokončených měsíců", "48.000 Kč", "1. 9. 2025 – 31. 8. 2026"],
+      ["Aktuální měsíc", "12.000 Kč", "1. 9. 2026 – 14. 9. 2026"],
+    ]) {
       await click(label);
       expect(container.querySelector("tbody")?.textContent).toContain(premium);
+      expect(container.textContent).toContain(range);
       expect(container.textContent).not.toContain("Chystáme stupně vítězů");
     }
+    expect(container.textContent).toContain("Delší období zahrnují poslední 3, 6 nebo 12 celých dokončených kalendářních měsíců.");
     expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith(user, "/api/team-overview?action=hallOfFame&includePeriods=true");
     await click("Majetek a odpovědnost");
     expect(container.textContent).toContain("První příčka zatím čeká");
@@ -77,7 +84,7 @@ describe("hall page categories and loading", () => {
     mocks.fetch.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     await mount();
     expect(container.textContent).toContain("Chystáme stupně vítězů");
-    await click("Poslední rok");
+    await click("12 dokončených měsíců");
     await click("Podnikatelé");
     await act(async () => finish(response()));
     expect(container.querySelector("tbody")?.textContent).toContain("48.000 Kč");

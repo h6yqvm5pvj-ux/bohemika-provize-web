@@ -42,7 +42,7 @@ const products = {
   slaviaflotila: true, allianzAuto: true, allianzmujdomov: true,
   csobAuto: true, uniqaAuto: true, uniqaflotila: true, pillowAuto: true,
   kooperativaAuto: true, koopflotila: true, koopcestovko: true,
-  cppcestovko: true, axacestovko: true, comfortcc: true, cppPPRs: true,
+  cppcestovko: true, axacestovko: true, cppPPRs: true,
   cppPPRbez: true, unknown: true, subscription: true,
 } satisfies Record<CashflowProductKey, true>;
 const positions = {

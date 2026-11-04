@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, Target } from "lucide-react";
 import { createPortal } from "react-dom";
 import styles from "./homeWidgets.module.css";
@@ -62,7 +62,6 @@ export function MonthlyGoalSection({
   onSaveGoal,
 }: Props) {
   const copy = MONTHLY_GOAL_COPY[language];
-  const ringId = useId().replace(/:/g, "");
   const [editOpen, setEditOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -115,7 +114,7 @@ export function MonthlyGoalSection({
   };
 
   return (
-    <section className={`monthly-goal-card ${styles.card} ${styles.goal} ${isLiteUI ? "" : styles.elevated}`} data-lite={isLiteUI}>
+    <section className={`monthly-goal-card ${styles.card} ${styles.goal} ${isLiteUI ? "" : styles.elevated}`} data-lite={isLiteUI} aria-label={copy.monthlyGoal}>
       {editOpen && createPortal(
         <div className={styles.modalBackdrop}>
           <div ref={modalRef} className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="monthly-goal-title"
@@ -155,35 +154,8 @@ export function MonthlyGoalSection({
         </div>
         <div className={styles.goalRing} data-complete={showProgress && rawProgress >= 100} role="progressbar" aria-label="Plnění měsíčního cíle" aria-valuemin={0} aria-valuemax={100} aria-valuenow={showProgress ? progressForRing : undefined} aria-valuetext={loading ? copy.loading : unavailable ? "Plnění není k dispozici" : !hasGoal ? copy.notSet : `${progressLabel} %`}>
           <svg viewBox="0 0 144 144" aria-hidden="true" className={styles.goalRingSvg}>
-            <defs>
-              <radialGradient id={`${ringId}-rim`}>
-                <stop offset="78%" stopColor="#edf4ef" />
-                <stop offset="91%" stopColor="#dce9e1" />
-                <stop offset="98%" stopColor="#f8fcfa" />
-                <stop offset="100%" stopColor="#dce7e1" />
-              </radialGradient>
-              <radialGradient id={`${ringId}-track`}>
-                <stop offset="75%" stopColor="#c2d7ca" />
-                <stop offset="84%" stopColor="#e2ede6" />
-                <stop offset="92%" stopColor="#edf5f0" />
-                <stop offset="100%" stopColor="#c8ddcf" />
-              </radialGradient>
-              <radialGradient id={`${ringId}-face`} cx="40%" cy="30%" r="75%">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="75%" stopColor="#f7faf8" />
-                <stop offset="100%" stopColor="#e7f0ea" />
-              </radialGradient>
-              <linearGradient id={`${ringId}-green`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#249466" />
-                <stop offset="40%" stopColor="#59ce96" />
-                <stop offset="70%" stopColor="#3cb57f" />
-                <stop offset="100%" stopColor="#218b5d" />
-              </linearGradient>
-            </defs>
-            <circle cx="72" cy="72" r="68" fill={`url(#${ringId}-rim)`} stroke="#f7fbf9" strokeWidth="1" />
-            <circle cx="72" cy="72" r="61" fill={`url(#${ringId}-track)`} />
-            <circle cx="72" cy="72" r="44" fill={`url(#${ringId}-face)`} stroke="#ffffff" strokeWidth="1.5" />
-            <circle cx="72" cy="72" r="55" pathLength="100" transform="rotate(-90 72 72)" stroke={`url(#${ringId}-green)`} className={styles.goalRingFill} strokeDasharray="100 100" style={{ strokeDashoffset: 100 - (showProgress ? progressForRing : 0), opacity: showProgress && progressForRing > 0 ? 1 : 0 }} />
+            <circle cx="72" cy="72" r="60" fill="none" stroke="var(--line)" strokeWidth="8" />
+            <circle cx="72" cy="72" r="60" pathLength="100" transform="rotate(-90 72 72)" stroke="var(--accent)" className={styles.goalRingFill} strokeDasharray="100 100" style={{ strokeDashoffset: 100 - (showProgress ? progressForRing : 0), opacity: showProgress && progressForRing > 0 ? 1 : 0 }} />
           </svg>
           <div className={styles.goalRingLabel}>
             {loading ? <span className={styles.goalRingStatus} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</span>

@@ -36,7 +36,6 @@ const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
   "koopodzam",
   "maxdomov",
   "maxcizinkomplex",
-  "comfortcc",
 ];
 
 describe("AUTOMATED_PDF_PRODUCTS", () => {
@@ -64,10 +63,8 @@ describe("AUTOMATED_PDF_PRODUCTS", () => {
     expect(hasAutomatedPdfImport("maximaMaxEfekt")).toBe(false);
   });
 
-  it("keeps Comfort CC available for single import but excludes it from batch import", () => {
-    expect(hasAutomatedPdfImport("comfortcc")).toBe(true);
-    expect(BULK_PDF_PRODUCTS).not.toContain("comfortcc");
-    expect(BULK_PDF_PRODUCTS).toHaveLength(AUTOMATED_PDF_PRODUCTS.length - 1);
+  it("offers all supported PDF parsers for batch import", () => {
+    expect(BULK_PDF_PRODUCTS).toEqual(AUTOMATED_PDF_PRODUCTS);
   });
 });
 

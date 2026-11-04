@@ -175,6 +175,7 @@ export type ContractDetailsForm = {
   editNeonWorkIncapacityInjury: boolean;
   editNeonWorkIncapacityStart: string;
   editPolicyEnd: string;
+  editAutomaticRenewal?: boolean | null;
   editPolicyStart: string;
 };
 
@@ -217,6 +218,10 @@ export const buildContractDetailsSavePlan = ({
       const signedDate = form.editContractSigned ? new Date(form.editContractSigned) : null;
       const startDate = form.editPolicyStart ? new Date(form.editPolicyStart) : null;
       const endDate = form.editPolicyEnd ? new Date(form.editPolicyEnd) : null;
+      const automaticRenewal = typeof form.editAutomaticRenewal === "boolean" ? form.editAutomaticRenewal : null;
+      if (product === "domexneuron" && automaticRenewal === false && !endDate) {
+        return { ok: false, error: "U smlouvy bez prolongace vyplň konec pojistného období." };
+      }
       if (startDate && endDate && endDate.getTime() < startDate.getTime()) {
         return {
           ok: false as const,
@@ -509,7 +514,11 @@ export const buildContractDetailsSavePlan = ({
         contractNumber: trimmedNumber || null,
         contractSignedDate: signedDate ?? null,
         policyStartDate: startDate ?? null,
-        policyEndDate: endDate ?? null,
+        // An unknown renewal flag cannot turn a printed period boundary into maturity.
+        ...(product === "domexneuron" && automaticRenewal == null ? {} : {
+          policyEndDate: product === "domexneuron" && automaticRenewal === true ? null : endDate ?? null,
+        }),
+        ...(product === "domexneuron" ? { automaticRenewal, policyTermEndDate: endDate ?? null } : {}),
         ...autoFields,
         ...neonUpdate,
         ...flexiUpdate,

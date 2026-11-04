@@ -10,6 +10,22 @@ import {
 import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
 
 describe("single PDF form mapping", () => {
+  it("keeps a renewing DOMEX term end separate from the effective contract end", () => {
+    const { values } = mapSinglePdfFormValues("domexneuron", {
+      automaticRenewal: true, policyTermEndDate: "2027-10-31", policyEndDate: null,
+    });
+    expect(values).toMatchObject({ automaticRenewal: true, policyTermEndDate: "2027-10-31", policyEndDate: "" });
+    expect(pdfImportResetValues("domexneuron")).toMatchObject({ automaticRenewal: null, policyTermEndDate: "", policyEndDate: "" });
+  });
+
+  it("sets the effective end only for a fixed term DOMEX and preserves unknown renewal", () => {
+    expect(mapSinglePdfFormValues("domexneuron", { automaticRenewal: false, policyTermEndDate: "2027-10-31" }).values)
+      .toMatchObject({ automaticRenewal: false, policyEndDate: "2027-10-31" });
+    expect(mapSinglePdfFormValues("domexneuron", { automaticRenewal: "ANO", policyTermEndDate: "2027-10-31" }).values)
+      .toMatchObject({ automaticRenewal: null, policyEndDate: "" });
+    expect(mapReviewPdfFormValues("domexneuron", { automaticRenewal: true, policyTermEndDate: "2027-10-31", policyEndDate: "2027-10-31" }))
+      .toMatchObject({ automaticRenewal: true, policyEndDate: "", policyTermEndDate: "2027-10-31" });
+  });
   it("maps contract identity, dates, premium and an allowed frequency without mutating parser data", () => {
     const parsed = Object.freeze({
       contractNumber: "1234567890", clientName: "Jana Testovací", contractSignedDate: "2026-10-01",
@@ -145,7 +161,7 @@ describe("batch review and form resets", () => {
     const first = pdfImportResetValues("neon");
     const second = pdfImportResetValues("neon");
     expect(first.neonPdfDetailFields).not.toBe(second.neonPdfDetailFields);
-    expect(pdfImportResetValues("comfortcc")).toEqual({});
+    expect(pdfImportResetValues("conseqzenit")).toEqual({});
   });
 
   it("does not copy ownership, permissions or unrelated parser fields into form state", () => {

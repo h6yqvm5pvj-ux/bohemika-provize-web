@@ -267,7 +267,6 @@ type Category =
   | "business"
   | "travel"
   | "foreigners"
-  | "comfort"
   | "other";
 type ProductionCategory =
   | "life"
@@ -275,8 +274,7 @@ type ProductionCategory =
   | "property"
   | "business"
   | "travel"
-  | "foreigners"
-  | "comfort";
+  | "foreigners";
 type AggregateMetrics = { contracts: number; annualPremium: number; monthlyPremium: number };
 type ContractStats = {
   total: number;

@@ -4,7 +4,6 @@ import {
 } from "@/app/types/domain";
 import {
   AUTO_PRODUCTS,
-  COMFORT_PRODUCTS,
   LIFE_PRODUCTS,
   LIABILITY_PRODUCTS,
   PROPERTY_PRODUCTS,
@@ -102,7 +101,6 @@ const thematicEmojiForProduct = (productKey: Product | null | undefined): string
   if (!productKey) return "📄";
   if (AUTO_PRODUCTS.includes(productKey)) return "🚗";
   if (TRAVEL_PRODUCTS.includes(productKey)) return "✈️";
-  if (COMFORT_PRODUCTS.includes(productKey)) return "⚡";
   if (LIABILITY_PRODUCTS.includes(productKey)) return "🛡️";
   if (PROPERTY_PRODUCTS.includes(productKey)) return "🏠";
   if (LIFE_PRODUCTS.includes(productKey)) return "❤️";

@@ -9,6 +9,9 @@ import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ContractHistoryDialog } from "./ContractHistoryDialog";
+import { ContractPaymentDetailsDialog } from "./ContractPaymentDetailsDialog";
+import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
+import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 import { KooperativaContractStatusDialog } from "./KooperativaContractStatusDialog";
 import { useKooperativaContractStatus } from "./useKooperativaContractStatus";
 import { ContractPdfUploadButton, type ContractPdfUploadAttachment, type ContractPdfUploadResponse } from "./ContractPdfUploadButton";
@@ -45,6 +48,7 @@ import {
   History,
   Menu,
   Package,
+  QrCode,
   PencilLine,
   Plus,
   Settings2,
@@ -546,6 +550,7 @@ export default function ContractDetailPage() {
   const [updatingStorno, setUpdatingStorno] = useState(false);
   const [stornoError, setStornoError] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [paymentDetailsRequestKey, setPaymentDetailsRequestKey] = useState<string | null>(null);
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showTerminationReasonModal, setShowTerminationReasonModal] =
     useState(false);
@@ -2062,6 +2067,7 @@ export default function ContractDetailPage() {
   const [editContractSigned, setEditContractSigned] = useState("");
   const [editPolicyStart, setEditPolicyStart] = useState("");
   const [editPolicyEnd, setEditPolicyEnd] = useState("");
+  const [editAutomaticRenewal, setEditAutomaticRenewal] = useState<boolean | null>(null);
   const [editDuration, setEditDuration] = useState<number | null>(null);
   const [editCarMake, setEditCarMake] = useState("");
   const [editCarPlate, setEditCarPlate] = useState("");
@@ -2950,7 +2956,8 @@ export default function ContractDetailPage() {
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractSigned(toDateInputValue(contract.contractSignedDate ?? contract.createdAt));
     setEditPolicyStart(toDateInputValue(contract.policyStartDate));
-    setEditPolicyEnd(toDateInputValue(contract.policyEndDate));
+    setEditPolicyEnd(toDateInputValue(contract.productKey === "domexneuron" ? contract.policyTermEndDate ?? contract.policyEndDate : contract.policyEndDate));
+    setEditAutomaticRenewal(contract.automaticRenewal ?? null);
     setEditDuration(
       typeof contract.durationYears === "number" && !Number.isNaN(contract.durationYears)
         ? contract.durationYears
@@ -3903,6 +3910,7 @@ export default function ContractDetailPage() {
           editNeonWorkIncapacityInjury,
           editNeonWorkIncapacityStart,
           editPolicyEnd,
+          editAutomaticRenewal,
           editPolicyStart,
         },
       });
@@ -5108,6 +5116,25 @@ export default function ContractDetailPage() {
     kooperativaStatus.open();
   };
 
+  const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
+  const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
+    contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "domex") && paymentSourcePdf && user &&
+    canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
+    const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
+      (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
+    if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
+    const details = await loadContractPaymentDetailsFromPdf({
+      contractNumber: contract?.contractNumber ?? "",
+      fileName: paymentSourcePdf.fileName,
+      downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),
+      signal,
+    });
+    if (!viewerIsCurrent() || signal.aborted) throw new DOMException("Načítání bylo zrušeno.", "AbortError");
+    return details;
+  }, [adminImpersonation?.email, canReadPaymentDetails, contract?.contractNumber, downloadContractPdfBlob, paymentSourcePdf, user]);
+
   const copyContractActionValue = useCallback(
     (value: string | null | undefined, label: string) => {
       const text = String(value ?? "").trim();
@@ -5432,6 +5459,18 @@ export default function ContractDetailPage() {
                         <Download size={14} strokeWidth={2} aria-hidden="true" />
                       )}
                       <span>{contractPdfDownloading ? "Stahuji…" : "Stáhnout PDF"}</span>
+                    </button>
+                  )}
+                  {canReadPaymentDetails && (
+                    <button type="button" aria-haspopup="dialog"
+                      onClick={() => {
+                        setShowContractPdfOptions(false);
+                        setShowContractActionsMenu(false);
+                        setPaymentDetailsRequestKey(paymentDetailsContextKey);
+                      }}
+                      className={`${actionStyles.button} ${detailStyles.headerSecondary}`}>
+                      <QrCode size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Platební údaje</span>
                     </button>
                   )}
                   </div>
@@ -6167,21 +6206,42 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
-                      <div className={contractOverviewRowClass}>
-                        <dt className={keyValueLabelClass}>{contract.productKey === "conseqzenit" ? "Datum konce" : "Pojištění do"}</dt>
-                        <dd className={contractOverviewValueClass}>
-                          {editMode && !isStornoContract ? (
-                            <input
-                              type="date"
-                              value={editPolicyEnd}
-                              onChange={(e) => setEditPolicyEnd(e.target.value)}
-                              className={inputCompactClass}
-                            />
-                          ) : (
-                            formatDate(policyEndDateForDisplay)
-                          )}
-                        </dd>
-                      </div>
+                      {!(contract.productKey === "domexneuron" && (editMode ? editAutomaticRenewal : contract.automaticRenewal) === true) && (
+                        <div className={contractOverviewRowClass}>
+                          <dt className={keyValueLabelClass}>{contract.productKey === "domexneuron" ? "Konec pojistného období" : contract.productKey === "conseqzenit" ? "Datum konce" : "Pojištění do"}</dt>
+                          <dd className={contractOverviewValueClass}>
+                            {editMode && !isStornoContract ? (
+                              <input
+                                type="date"
+                                value={editPolicyEnd}
+                                onChange={(e) => setEditPolicyEnd(e.target.value)}
+                                className={inputCompactClass}
+                              />
+                            ) : (
+                              formatDate(contract.productKey === "domexneuron" ? contract.policyTermEndDate ?? policyEndDateForDisplay : policyEndDateForDisplay)
+                            )}
+                          </dd>
+                        </div>
+                      )}
+                      {contract.productKey === "domexneuron" && (
+                        <div className={contractOverviewRowClass}>
+                          <dt className={keyValueLabelClass}>Prolongace smlouvy</dt>
+                          <dd className={contractOverviewValueClass}>
+                            {editMode ? (
+                              <select
+                                aria-label="Prolongace smlouvy"
+                                value={editAutomaticRenewal == null ? "" : editAutomaticRenewal ? "yes" : "no"}
+                                onChange={(event) => setEditAutomaticRenewal(event.target.value === "" ? null : event.target.value === "yes")}
+                                className={inputCompactClass}
+                              >
+                                <option value="">Neurčeno</option>
+                                <option value="yes">ANO</option>
+                                <option value="no">NE</option>
+                              </select>
+                            ) : contract.automaticRenewal == null ? "Neurčeno" : contract.automaticRenewal ? "ANO" : "NE"}
+                          </dd>
+                        </div>
+                      )}
                       {contract.productKey === "conseqzenit" && (
                         <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Smlouva do věku</dt>
@@ -6803,6 +6863,10 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {canReadPaymentDetails && paymentDetailsRequestKey === paymentDetailsContextKey && (
+        <ContractPaymentDetailsDialog key={paymentDetailsContextKey} open
+          onClose={() => setPaymentDetailsRequestKey(null)} loadPaymentDetails={loadPaymentDetails} />
+      )}
       {showHistoryModal && contract && ownerEmail && entryId && (
         <ContractHistoryDialog ownerEmail={ownerEmail} entryId={entryId} contractNumber={contract.contractNumber ?? ""}
           request={requestContractsApi} onClose={() => setShowHistoryModal(false)}

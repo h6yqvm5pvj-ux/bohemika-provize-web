@@ -48,6 +48,6 @@ describe("commission entitlement periods", () => {
   it("requires start date and payment frequency instead of guessing from payout dates", () => {
     expect(commissionPeriodForCode({ productKey: "neon" }, "B101")).toBeNull();
     expect(commissionPeriodForCode({ productKey: "cppAuto", policyStartDate: "2020-01-01" }, "A102")).toBeNull();
-    expect(commissionPeriodForCode({ productKey: "comfortcc", policyStartDate: "2020-01-01" }, "A101")).toBeNull();
+    expect(commissionPeriodForCode({ productKey: "conseqzenit", policyStartDate: "2020-01-01" }, "A101")).toBeNull();
   });
 });

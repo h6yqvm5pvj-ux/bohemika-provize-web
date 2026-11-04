@@ -81,12 +81,6 @@ const INSTITUTION_PORTAL_TARGETS: InstitutionPortalTarget[] = [
     href: "https://www.conseq.cz/my-conseq/login?returnurl=%2fmy-conseq%2f",
     logoPath: "/icons/conseq.png",
   },
-  {
-    key: "comfort-commodity",
-    label: "Comfort Commodity",
-    href: "https://eshop.comfort-commodity.cz/#/",
-    logoPath: "/icons/cclogo.png",
-  },
 ];
 
 type InstitutionPortalLinksModalProps = {

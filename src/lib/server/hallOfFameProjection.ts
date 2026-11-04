@@ -5,7 +5,7 @@ import { aggregateHallEntries, hallDayKey, hallParticipantId, HALL_PERIOD_MONTHS
 import type { HallPeriod } from "@/app/sin-slavy/hallOfFame.types";
 
 const COLLECTION = "hallOfFameOwners";
-const VERSION = 2;
+const VERSION = 4;
 const PERIODS = Object.keys(HALL_PERIOD_MONTHS) as HallPeriod[];
 type Writer = { set(ref: DocumentReference, data: Record<string, unknown>): unknown };
 type OwnerStats = Record<HallPeriod, HallStats>;

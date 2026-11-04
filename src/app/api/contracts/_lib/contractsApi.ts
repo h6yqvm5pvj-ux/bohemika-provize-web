@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { loadHomeProductionOwners, parseProductionWindow } from "@/lib/server/homeProduction";
 import { combineOwnerProduction } from "@/app/home/productionSummary";
@@ -108,6 +109,7 @@ import {
 import { toPublicContractPdfAttachment } from "@/lib/server/contractPdfStorage";
 import {
   isValidContractNumber,
+  parsePolicyTermEndDate,
   validateContractCoreInvariants,
 } from "./contractsApi.validation";
 import { readProjectedContractSearchPage } from "./contractsApi.projectedSearch";
@@ -270,13 +272,14 @@ const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
   "pillowInjury",
 ]);
 const INSURANCE_TIMELINE_PRODUCTS = new Set<Product>(
-  PRODUCT_ORDER.filter(product => product !== "comfortcc" && product !== "conseqzenit")
+  PRODUCT_ORDER.filter(product => product !== "conseqzenit")
 );
 const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "policyTermEndDate",
   "stornoDate",
   "refreshReplacedBySignedDate",
   "replacementReplacedBySignedDate",
@@ -285,6 +288,7 @@ const UPDATE_FIELDS_ALLOWED_DATE_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "policyTermEndDate",
   "stornoDate",
 ]);
 const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
@@ -299,6 +303,8 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "policyTermEndDate",
+  "automaticRenewal",
   "carMake",
   "carPlate",
   "carVin",
@@ -394,6 +400,7 @@ const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
   "carAddonGapLimit",
 ]);
 const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
+  "automaticRenewal",
   "carHullRiskAccident",
   "carHullRiskTheft",
   "carHullRiskNatural",
@@ -691,6 +698,7 @@ const toContractResponseItem = (
     createdAt: toMillis(data.createdAt),
     policyStartDate: toMillis((data as any).policyStartDate),
     policyEndDate: toMillis((data as any).policyEndDate),
+    policyTermEndDate: toMillis(data.policyTermEndDate),
     stornoDate: toMillis((data as any).stornoDate),
     id: docId,
     adviserEmail: normalizedOwner,
@@ -791,7 +799,6 @@ const toContractListResponseItem = ({
       productKey: data.productKey,
       inputAmount: data.inputAmount,
       frequencyRaw: data.frequencyRaw ?? null,
-      comfortPayment: data.comfortPayment ?? null,
       items: Array.isArray(data.items) ? data.items : [],
       managerOverrides: Array.isArray(data.managerOverrides)
         ? data.managerOverrides
@@ -861,7 +868,6 @@ const toContractListResponseItem = ({
       previousInputAmount: data.previousInputAmount ?? null,
       newInputAmount: data.newInputAmount ?? null,
       premiumDelta: data.premiumDelta ?? null,
-      comfortPayment: data.comfortPayment ?? null,
       frequencyRaw: data.frequencyRaw ?? null,
       durationYears: data.durationYears ?? null,
       durationMonths: data.durationMonths ?? null,
@@ -2405,9 +2411,6 @@ const computeManagerOverridesForChain = ({
   durationYears,
   durationMonths,
   maxCizinKomplexVariant,
-  comfortPayment,
-  comfortGradual,
-  comfortTargetAmount,
 }: {
   managerChain: NormalizedManagerChainEntry[];
   adviserPosition: Position;
@@ -2421,9 +2424,6 @@ const computeManagerOverridesForChain = ({
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPayment: number | null;
-  comfortGradual: boolean | null;
-  comfortTargetAmount: number | null;
 }): NormalizedManagerOverrideEntry[] => {
   const overrides: NormalizedManagerOverrideEntry[] = [];
   let childPositionForBaseline: Position | null = adviserPosition;
@@ -2454,9 +2454,6 @@ const computeManagerOverridesForChain = ({
       durationYears,
       durationMonths,
       maxCizinKomplexVariant,
-      comfortPayment,
-      comfortGradual,
-      comfortTargetAmount,
     });
     const baselineResult = childPositionForBaseline
       ? calculateCommission({
@@ -2471,9 +2468,6 @@ const computeManagerOverridesForChain = ({
           durationYears,
           durationMonths,
           maxCizinKomplexVariant,
-          comfortPayment,
-          comfortGradual,
-          comfortTargetAmount,
         })
       : null;
 
@@ -2601,6 +2595,7 @@ const toDateForUpdateField = (
   field: string,
   value: unknown
 ): { ok: true; value: Date | null } | { ok: false; error: string } => {
+  if (field === "policyTermEndDate") return parsePolicyTermEndDate(value);
   if (!UPDATE_DATE_FIELDS.has(field)) {
     return { ok: true, value: null };
   }
@@ -3319,6 +3314,7 @@ async function fetchContractsForOwners(
     docId: string,
     ownerEmail: string
   ): boolean => {
+    if (isRetiredProduct(data.productKey)) return false;
     if (!cursorTs) return true;
     const sortDate = contractSortDate(data);
     if (!sortDate) return false;
@@ -3684,13 +3680,12 @@ async function countContractEntriesForOwners(
   try {
     const counts = await Promise.all(
       owners.map(async (owner) => {
-        const snapshot = await adminDb!
-          .collection("users")
-          .doc(owner)
-          .collection("entries")
-          .count()
-          .get();
-        return snapshot.data().count;
+        const entries = adminDb!.collection("users").doc(owner).collection("entries");
+        const [snapshot, retired] = await Promise.all([
+          entries.count().get(),
+          entries.where("productKey", "==", "comfortcc").count().get(),
+        ]);
+        return Math.max(0, snapshot.data().count - retired.data().count);
       })
     );
     return counts.reduce((sum, count) => sum + count, 0);
@@ -4115,6 +4110,9 @@ export async function handleContractsGet(
     }
 
     const contractRaw = detailSnap.data() as ContractDoc;
+    if (isRetiredProduct(contractRaw.productKey)) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Smlouva nebyla nalezena." }, { status: 404 }));
+    }
     const canAccess = hasContractAccess({
       viewerEmail: email,
       teamEmails: contractAccessEmails,
@@ -4598,6 +4596,7 @@ const resolveContractsFindContracts = async ({
       const snap = await ref.get();
       if (!snap.exists) continue;
       const contract = snap.data() as ContractDoc;
+      if (isRetiredProduct(contract.productKey)) continue;
       if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
         continue;
       }
@@ -5493,9 +5492,6 @@ export async function handleContractsCreate(req: NextRequest) {
       durationYears: normalizedEntry.payload.durationYears,
       durationMonths: normalizedEntry.payload.durationMonths,
       maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
-      comfortPayment: normalizedEntry.payload.comfortPayment,
-      comfortGradual: normalizedEntry.payload.comfortGradual,
-      comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
     });
     if (!trustedResult) {
       return NextResponse.json(
@@ -5546,9 +5542,6 @@ export async function handleContractsCreate(req: NextRequest) {
               durationYears: normalizedEntry.payload.durationYears,
               durationMonths: normalizedEntry.payload.durationMonths,
               maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
-              comfortPayment: normalizedEntry.payload.comfortPayment,
-              comfortGradual: normalizedEntry.payload.comfortGradual,
-              comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
             });
       const decreaseResult =
         sourceDecreaseResult ??
@@ -5604,9 +5597,6 @@ export async function handleContractsCreate(req: NextRequest) {
       durationYears: normalizedEntry.payload.durationYears,
       durationMonths: normalizedEntry.payload.durationMonths,
       maxCizinKomplexVariant: normalizedEntry.payload.maxCizinKomplexVariant,
-      comfortPayment: normalizedEntry.payload.comfortPayment,
-      comfortGradual: normalizedEntry.payload.comfortGradual,
-      comfortTargetAmount: normalizedEntry.payload.comfortTargetAmount,
     });
     if (isNeonDecreaseEndorsement) {
       trustedManagerOverrides = trustedManagerOverrides
@@ -6097,6 +6087,7 @@ const resolveContractFamilyForTransfer = async ({
   }
 
   const selectedData = (selectedSnap.data() ?? {}) as ContractDoc;
+  if (isRetiredProduct(selectedData.productKey)) throw contractTransferError("Smlouva nebyla nalezena.", 404);
   const explicitRootId =
     typeof selectedData.rootContractEntryId === "string"
       ? selectedData.rootContractEntryId.trim()
@@ -7205,6 +7196,7 @@ export async function handleContractsPatch(
       const batch = adminDb.batch();
       if (entrySnap.exists) {
         const data = (entrySnap.data() ?? {}) as ContractDoc;
+        if (isRetiredProduct(data.productKey)) return withRateLimit(NextResponse.json({ ok: false, error: "Smlouva nebyla nalezena." }, { status: 404 }));
         const duplicateLookupKey = buildDuplicateLookupKey({
           entryType: data.entryType,
           productKey: data.productKey,
@@ -7788,6 +7780,7 @@ export async function handleContractsPatch(
       const snap = await tx.get(entryRef);
       if (!snap.exists) return false;
       const currentData = (snap.data() ?? {}) as ContractDoc;
+      if (isRetiredProduct(currentData.productKey)) return false;
       tx.update(entryRef, withContractHistory(tx, entryRef, currentData, {
         paid,
         userEmail: normalizeEmail(currentData.userEmail) || owner,
@@ -7912,6 +7905,7 @@ export async function handleContractsDelete(req: NextRequest) {
         throw new Error("Contract version unavailable.");
       }
       const entryData = entrySnap.data() as ContractDoc;
+      if (isRetiredProduct(entryData.productKey)) continue;
       const tipsterEmail = normalizeEmail(entryData.tipContractTipsterEmail);
       if (tipsterEmail) {
         const tipsterProfile = await loadUserProfileByEmail(tipsterEmail);

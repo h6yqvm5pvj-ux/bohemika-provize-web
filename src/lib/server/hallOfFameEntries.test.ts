@@ -5,32 +5,37 @@ import { hallEntryReadWindow, readHallEntryDocuments } from "./hallOfFameEntries
 const now = new Date("2026-09-28T10:00:00Z");
 describe("hall source query bounds", () => {
   it.each([
-    ["2026-09-28T10:00:00Z", "2025-09-30T22:00:00.000Z", "2026-09-28T22:00:00.000Z"],
-    ["2026-03-29T10:00:00Z", "2025-03-31T22:00:00.000Z", "2026-03-29T22:00:00.000Z"],
-    ["2026-03-28T10:00:00Z", "2025-03-31T22:00:00.000Z", "2026-03-28T23:00:00.000Z"],
-    ["2026-10-25T10:00:00Z", "2025-10-31T23:00:00.000Z", "2026-10-25T23:00:00.000Z"],
-    ["2026-10-24T10:00:00Z", "2025-10-31T23:00:00.000Z", "2026-10-24T22:00:00.000Z"],
-    ["2026-12-31T23:01:00Z", "2026-01-31T23:00:00.000Z", "2027-01-01T23:00:00.000Z"],
+    ["2026-09-28T10:00:00Z", "2025-08-31T22:00:00.000Z", "2026-09-28T22:00:00.000Z"],
+    ["2026-03-29T10:00:00Z", "2025-02-28T23:00:00.000Z", "2026-03-29T22:00:00.000Z"],
+    ["2026-03-28T10:00:00Z", "2025-02-28T23:00:00.000Z", "2026-03-28T23:00:00.000Z"],
+    ["2026-10-25T10:00:00Z", "2025-09-30T22:00:00.000Z", "2026-10-25T23:00:00.000Z"],
+    ["2026-10-24T10:00:00Z", "2025-09-30T22:00:00.000Z", "2026-10-24T22:00:00.000Z"],
+    ["2026-12-31T23:01:00Z", "2025-12-31T23:00:00.000Z", "2027-01-01T23:00:00.000Z"],
+    ["2026-11-03T10:00:00Z", "2025-10-31T23:00:00.000Z", "2026-11-03T23:00:00.000Z"],
   ])("uses Czech calendar boundaries at %s", (date, from, to) => {
     const result = hallEntryReadWindow(new Date(date));
     expect(result.from.toISOString()).toBe(from); expect(result.to.toISOString()).toBe(to);
   });
 
-  function database(fail = false) {
+  function database(fail = false, includeRetired = false) {
     const calls: unknown[][][] = [];
     const selection = vi.fn();
-    const doc = (path: string) => ({ id: path.split("/").at(-1), ref: { path } });
+    const doc = (path: string, productKey = "neon") => ({ id: path.split("/").at(-1), ref: { path }, data: () => ({ productKey }) });
     const query = (steps: unknown[][] = []): any => ({
       where: (...args: unknown[]) => query([...steps, ["where", ...args]]),
       orderBy: (...args: unknown[]) => query([...steps, ["orderBy", ...args]]),
       startAt: (...args: unknown[]) => query([...steps, ["startAt", ...args]]),
       select: (...fields: string[]) => { selection(...fields); return query(steps); },
       get: async () => { calls.push(steps); if (fail && calls.length === 2) throw new Error("source failed");
-        return { docs: [doc("users/z/entries/same-id"), doc("users/a/entries/same-id")] }; },
+        return { docs: [doc("users/z/entries/same-id"), doc("users/a/entries/same-id"), ...(includeRetired ? [doc("users/a/entries/retired", " COMFORTCC ")] : [])] }; },
     });
     const group = vi.fn(() => query());
     return { db: { collectionGroup: group } as unknown as Firestore, calls, selection, group };
   }
+  it("excludes legacy retired product documents from every source stream", async () => {
+    const docs = await readHallEntryDocuments(database(false, true).db, ["a@example.test"], now);
+    expect(docs.map(doc => doc.ref.path)).toEqual(["users/a/entries/same-id", "users/z/entries/same-id"]);
+  });
   it("uses both date fields, numeric ranges and legacy cursors without exposing unused fields", async () => {
     const fake = database();
     const docs = await readHallEntryDocuments(fake.db, ["a@example.test"], now);

@@ -37,7 +37,6 @@ describe("team production goals", () => {
         categories: {
           life: 6_000.55,
           auto: 0,
-          comfort: 5,
           travel: 0,
         },
       },
@@ -48,6 +47,7 @@ describe("team production goals", () => {
         },
       },
     });
+    expect(goals?.team.categories).not.toHaveProperty("comfort");
     expect(
       normalizeTeamProductionGoalsInput({
         yearMonth: "2026-09",

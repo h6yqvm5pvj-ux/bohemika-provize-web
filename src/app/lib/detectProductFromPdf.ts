@@ -5,6 +5,7 @@ export type PdfProductDetection = {
   product: Product;
   confidence: "high" | "medium";
   reason: string;
+  requiresDomexNeuronConfirmation?: boolean;
 };
 
 type DetectionRule = {
@@ -266,28 +267,22 @@ const DETECTION_RULES: DetectionRule[] = [
       "Na 1. stránce jsou texty „životní pojištění FLEXI“ a „Kooperativa pojišťovna“.",
   },
   {
-    product: "comfortcc",
-    mustContain: [{ page: "any", text: normalizeText("COMFORT COMMODITY") }],
-    confidence: "high",
-    reason: "V PDF je nalezen text „COMFORT COMMODITY“.",
-  },
-  {
     product: "domexneuron",
     page: 1,
     allOf: [
-      normalizeText("Česká podnikatelská pojišťovna, a.s."),
+      normalizeText("Česká podnikatelská pojišťovna"),
       normalizeText("DOMEX NEURON"),
     ],
     confidence: "high",
     reason:
-      "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna, a.s.“ a „DOMEX NEURON“.",
+      "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna“ a „DOMEX NEURON“.",
   },
   {
     product: "domex",
     page: 1,
-    allOf: [normalizeText("Česká podnikatelská pojišťovna, a.s."), normalizeText("DOMEX")],
+    allOf: [normalizeText("Česká podnikatelská pojišťovna"), normalizeText("DOMEX")],
     confidence: "high",
-    reason: "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna, a.s.“ a „DOMEX“.",
+    reason: "Na 1. stránce jsou texty „Česká podnikatelská pojišťovna“ a „DOMEX“.",
   },
   {
     product: "maxdomov",
@@ -595,6 +590,39 @@ async function detectProductInDocument(
     }
 
     if (matched) {
+      if (rule.product === "domex") {
+        const documentPages = await Promise.all(
+          doc.pages.map((_, index) => ensurePageText(index + 1))
+        );
+        const containsLabel = (label: string) => documentPages.some(
+          pageText => pageContainsText(pageText, normalizeText(label))
+        );
+        const neuronLayout = [
+          "Frekvence placení",
+          "Výše pravidelné platby",
+          "Automatická obnova ke konci pojistného období",
+        ].every(containsLabel);
+        const legacyLayout = [
+          "Frekvence splátek pojistného",
+          "Výše platby",
+        ].every(containsLabel);
+
+        if (neuronLayout && !legacyLayout) {
+          return {
+            product: "domexneuron",
+            confidence: "high",
+            reason: "PDF DOMEX odpovídá formuláři Neuron podle polí frekvence placení, pravidelné platby a automatické obnovy.",
+          };
+        }
+        if (!legacyLayout || neuronLayout) {
+          return {
+            product: "domex",
+            confidence: "medium",
+            reason: "V PDF je nalezen DOMEX, ale jeho variantu nelze spolehlivě určit. Potvrď, zda jde o DOMEX Neuron.",
+            requiresDomexNeuronConfirmation: true,
+          };
+        }
+      }
       return {
         product: rule.product,
         confidence: rule.confidence,

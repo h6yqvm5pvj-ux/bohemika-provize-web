@@ -7,12 +7,12 @@ import { calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } fro
 
 const defaults: ComponentProps<typeof CalculatorAmountAndActionsSection> = {
   product: "flexi", frequency: "monthly", isLifeProduct: true, tipsterModeEnabled: false,
-  comfortGradual: false, amountText: "", comfortPaymentText: "", comfortTargetAmountText: "",
-  comfortPayoutCount: null, missingFields: [], hasTipContractConfig: false,
+  amountText: "",
+  missingFields: [], hasTipContractConfig: false,
   refreshOriginalOpen: false, refreshOriginalContractNumber: "OLD123", refreshOriginalMissingInSystem: false,
   refreshOriginalLookupStatus: "notFound", refreshOriginalLookupProgress: 100, refreshOriginalLookupAdviserName: null,
-  onComfortGradualChange: vi.fn(), onAmountTextChange: vi.fn(), onComfortPaymentTextChange: vi.fn(),
-  onComfortTargetAmountTextChange: vi.fn(), onRefreshOriginalContractNumberChange: vi.fn(),
+  onAmountTextChange: vi.fn(),
+  onRefreshOriginalContractNumberChange: vi.fn(),
   onRefreshOriginalMissingInSystemChange: vi.fn(), onOpenTipContractModal: vi.fn(), onToggleRefreshOriginal: vi.fn(),
   onPrepareEndorsement: vi.fn(),
 };

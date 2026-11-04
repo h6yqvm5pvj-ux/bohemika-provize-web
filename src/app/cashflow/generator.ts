@@ -10,6 +10,7 @@ import { describeKooperativaCPayout, isKooperativaCPayout } from "../lib/koopera
 import { calendarDate } from "../lib/calendarDates";
 import { createEndorsementCommissionPlan } from "../lib/endorsementCommissionPlan";
 import { commissionPeriodForCode } from "../lib/commissionPeriodForCode";
+import { isRetiredProduct } from "../lib/retiredProducts";
 
 export { estimatePayoutDate } from "../lib/commissionPayoutDate";
 
@@ -498,7 +499,7 @@ export function generateCashflow(
   timelineEntries: EntryDoc[] = entries
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
-  const endorsementPlan = createEndorsementCommissionPlan(timelineEntries);
+  const endorsementPlan = createEndorsementCommissionPlan(timelineEntries.filter(entry => !isRetiredProduct(entry.productKey)));
   let globalItemSequence = 0;
   const now = calendarDate(asOf, asOf);
   const horizonEnd = calendarDate(now,
@@ -508,6 +509,7 @@ export function generateCashflow(
   );
 
   for (const entry of entries) {
+    if (isRetiredProduct(entry.productKey)) continue;
     const baseEntryId = entry.originalEntryId ?? entry.id;
     const ownerEmail = entry.userEmail ?? null;
     const normalizedOwnerEmail = ownerEmail
@@ -1410,56 +1412,6 @@ export function generateCashflow(
             payout.getMonth() + stepMonths,
             payout.getDate()
           );
-        }
-        break;
-      }
-
-      case "comfortcc": {
-        const immediateComfort = items.find((item) =>
-          item.title.includes("okamžitá provize")
-        );
-        const subsequentComfort = items.find((item) =>
-          item.title.includes("následná provize")
-        );
-
-        const first = estimatePayoutDate(start, agreement);
-
-        if (immediateComfort && first <= entryHorizonEnd) {
-          pushItem(
-            immediateComfort.amount,
-            first,
-            "Comfort Commodity – okamžitá provize"
-          );
-        }
-
-        if (subsequentComfort && first <= entryHorizonEnd) {
-          rememberRecurringPeriod(first, first);
-          // 1. výplatní měsíc: následná jde zároveň s okamžitou
-          pushItem(
-            subsequentComfort.amount,
-            first,
-            "Comfort Commodity – následná (měsíčně)"
-          );
-
-          // další měsíce: už jen následná
-          let payout = calendarDate(first,
-            first.getFullYear(),
-            first.getMonth() + 1,
-            first.getDate()
-          );
-          while (payout <= entryHorizonEnd) {
-            rememberRecurringPeriod(payout, first);
-            pushItem(
-              subsequentComfort.amount,
-              payout,
-              "Comfort Commodity – následná (měsíčně)"
-            );
-            payout = calendarDate(payout,
-              payout.getFullYear(),
-              payout.getMonth() + 1,
-              payout.getDate()
-            );
-          }
         }
         break;
       }

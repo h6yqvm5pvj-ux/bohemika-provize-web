@@ -41,6 +41,21 @@ beforeEach(() => {
 });
 
 describe("attachment contract boundary", () => {
+  it.each([401, 403])("denies payment PDF reads when the entry guard returns %s", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ error: "Přístup zamítnut." }, { status }) });
+    const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
+    expect(response.status).toBe(status);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.normalize).not.toHaveBeenCalled();
+  });
+
+  it("denies payment PDF reads for another user's contract before accessing the file", async () => {
+    mocks.access.mockReturnValue(false);
+    const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
+    expect(response.status).toBe(403);
+    expect(mocks.normalize).not.toHaveBeenCalled();
+  });
+
   it.each(["old-id/contractNotes/note-id", "../entries/other", "x".repeat(161)])(
     "rejects manipulated IDs before database or storage access: %s", async entryId => {
       // A retained note can still exist under the former owner's entry path.

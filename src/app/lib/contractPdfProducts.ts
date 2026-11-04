@@ -5,7 +5,7 @@ export const AUTOMATED_PDF_PRODUCTS: readonly Product[] = [
   "conseqzenit", "cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto",
   "pillowAuto", "kooperativaAuto", "cppcestovko", "axacestovko", "koopcestovko",
   "cppsimplex", "cppPPRbez", "cppPPRs", "neon", "flexi", "domexneuron", "domex",
-  "cppbytex", "cpphafan", "zamex", "koopodzam", "maxdomov", "maxcizinkomplex", "comfortcc",
+  "cppbytex", "cpphafan", "zamex", "koopodzam", "maxdomov", "maxcizinkomplex",
 ];
 
 const automatedProducts = new Set<Product>(AUTOMATED_PDF_PRODUCTS);

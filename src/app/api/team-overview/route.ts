@@ -4,6 +4,7 @@ import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowM
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { authorizeContractNoteLocation } from "@/lib/server/contractNoteLocation";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
@@ -2227,7 +2228,7 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
       const docs = await readHallEntryDocuments(db, batchOwners, now);
       for (const doc of docs) {
         const data = doc.data() as Record<string, unknown>;
-        if (isInheritedContract(data)) continue;
+        if (isInheritedContract(data) || isRetiredProduct(data.productKey)) continue;
         const signed = toDate(data.contractSignedDate ?? data.createdAt);
         if (!signed) continue;
         const signedDate = hallDayKey(signed);
@@ -2235,7 +2236,7 @@ async function loadGlobalHallOfFame(): Promise<GlobalHallCache> {
         const ownerEmail = normalizeEmail((data.userEmail as string | undefined) ?? doc.ref.parent.parent?.id);
         if (!ownerSet.has(ownerEmail)) continue;
         const category = categorizeProduct(data.productKey as Product | undefined);
-        entries.push({ id: doc.id, ownerEmail, category, signedDate, annualPremium: annualPremiumFromEntry(data, category) });
+        entries.push({ id: doc.id, ownerEmail, category, signedDate, annualPremium: annualPremiumFromEntry(data) });
       }
       return entries;
     });

@@ -260,8 +260,7 @@ export async function proxy(req: NextRequest) {
   }
 
   const isMeetingEmbed = pathname.startsWith("/embed/schuzka/");
-  const isOnlineCardEmbed =
-    pathname === "/embed/zlato" || pathname === "/embed/zivotni-pojisteni";
+  const isOnlineCardEmbed = pathname === "/embed/zivotni-pojisteni";
   const isContractDetailEmbed =
     pathname.startsWith("/smlouvy/") && req.nextUrl.searchParams.get("embedded") === "1";
   const isTipDetailEmbed =

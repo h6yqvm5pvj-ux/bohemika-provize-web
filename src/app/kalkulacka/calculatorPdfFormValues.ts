@@ -85,6 +85,7 @@ export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormVal
 }
 
 export function pdfImportResetValues(importProduct: Product): Partial<CalculatorPdfFormValues> {
+  if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, policyTermEndDate: "", policyEndDate: "" };
   if (["cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"].includes(importProduct)) return createEmptyAutoPdfFormValues();
   if (["domex", "domexneuron", "maxdomov"].includes(importProduct)) return createEmptyPropertyPdfFormValues();
   if (importProduct === "neon") return { neonPdfDetailFields: createEmptyNeonPdfDetailFields() };
@@ -95,7 +96,7 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
   const values: Partial<CalculatorPdfFormValues> = {};
   let applied = 0;
   values.pensionTargetAge = importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
-  if (["conseqzenit", "cppPPRbez", "cppPPRs"].includes(importProduct)) {
+  if (["conseqzenit", "cppPPRbez", "cppPPRs", "domexneuron"].includes(importProduct)) {
     if (!parsed.contractNumber) values.contractNumber = "";
     if (!parsed.clientName) values.clientName = "";
     if (!parsed.policyStartDate) values.policyStartDate = "";
@@ -118,6 +119,12 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     values.policyEndDate = typeof parsed.policyEndDate === "string" ? parsed.policyEndDate : "";
     if (parsed.policyEndDate) applied += 1;
   }
+  if (importProduct === "domexneuron") {
+    values.automaticRenewal = typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null;
+    values.policyTermEndDate = parsedPdfTextValue(parsed, "policyTermEndDate");
+    values.policyEndDate = values.automaticRenewal === true ? "" : parsedPdfTextValue(parsed, "policyEndDate") || (values.automaticRenewal === false ? values.policyTermEndDate : "");
+    if (values.automaticRenewal !== null) applied += 1;
+  }
   if (parsed.contractSignedDate) {
     values.contractSignedDate = parsed.contractSignedDate;
     applied += 1;
@@ -131,10 +138,6 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     values.renovationIncreaseText = "";
     values.renovationGuaranteeStatus = "unknown";
     if (typeof parsed.amount !== "number") values.amountText = "";
-  }
-  if ("comfortPayment" in parsed && typeof parsed.comfortPayment === "number") {
-    values.comfortPaymentText = String(parsed.comfortPayment);
-    applied += 1;
   }
   if (parsed.frequency) {
     const allowedForProduct = allowedFrequencies(importProduct);
@@ -190,6 +193,10 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.clientName = parsedPdfTextValue(parsed, "clientName");
   values.policyStartDate = parsedPdfTextValue(parsed, "policyStartDate");
   values.policyEndDate = parsedPdfTextValue(parsed, "policyEndDate");
+  values.automaticRenewal = reviewProduct === "domexneuron" && typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null;
+  values.policyTermEndDate = reviewProduct === "domexneuron" ? parsedPdfTextValue(parsed, "policyTermEndDate") : "";
+  if (reviewProduct === "domexneuron" && values.automaticRenewal === true) values.policyEndDate = "";
+  if (reviewProduct === "domexneuron" && values.automaticRenewal === false && !values.policyEndDate) values.policyEndDate = values.policyTermEndDate;
   values.pensionTargetAge = reviewProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
   values.contractSignedDate = parsedPdfTextValue(parsed, "contractSignedDate");
   values.stornoDate = "";

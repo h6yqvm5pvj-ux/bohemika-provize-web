@@ -40,7 +40,6 @@ type CalculatorDurationAndFrequencySectionProps = {
   isLifeProduct: boolean;
   frequency: PaymentFrequency;
   allowedFrequencies: PaymentFrequency[];
-  comfortGradual: boolean;
   amountText: string;
   amountReadOnly?: boolean;
   onToggleDurationHelp: () => void;
@@ -69,7 +68,6 @@ export function CalculatorDurationAndFrequencySection({
   isLifeProduct,
   frequency,
   allowedFrequencies,
-  comfortGradual,
   amountText,
   amountReadOnly = false,
   onToggleDurationHelp,
@@ -92,10 +90,6 @@ export function CalculatorDurationAndFrequencySection({
   const amountLabel =
     product === "conseqzenit"
       ? "Výše příspěvku klienta v Kč"
-      : product === "comfortcc"
-      ? comfortGradual
-        ? "1% z Poplatku v 1. platbě"
-        : "Poplatek"
       : isLifeProduct ? "Měsíční pojistné" : "Částka";
   const renderDurationYearsField = (labelClassName: string) => (
     <div className="space-y-1">
@@ -258,7 +252,7 @@ export function CalculatorDurationAndFrequencySection({
                 value={amountText}
                 readOnly={amountReadOnly}
                 onChange={(event) => onAmountTextChange(event.target.value)}
-                placeholder={product === "comfortcc" ? "Zadejte poplatek" : placeholderForAmount(product, frequency)}
+                placeholder={placeholderForAmount(product, frequency)}
               />
               {amountReadOnly && <p className="text-xs text-slate-500">Součet původního pojistného a navýšení z renovace.</p>}
             </div>

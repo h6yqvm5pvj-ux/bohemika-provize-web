@@ -33,7 +33,6 @@ import {
   TrendingDown,
   TrendingUp,
   UsersRound,
-  WalletCards,
   type LucideIcon,
 } from "lucide-react";
 
@@ -253,7 +252,6 @@ import {
   managerCommissionRowIdentity,
   normalizeCommissionTitle,
   normalizeContractNumberForMatch,
-  normalizeProductCode,
   normalizeStatementCommissionCode,
   normalizeText,
   normalizedRowText,
@@ -899,7 +897,7 @@ type ManagerCommissionRowSectionKey =
   | "unpairedBusiness"
   | "unpairedTravel"
   | "unpairedForeigners"
-  | "unpairedTroyOunce"
+
   | "unpairedInvestment"
   | "unpairedOther"
   | "life"
@@ -908,7 +906,7 @@ type ManagerCommissionRowSectionKey =
   | "business"
   | "travel"
   | "foreigners"
-  | "troyOunce"
+
   | "investment"
   | "other";
 
@@ -944,7 +942,7 @@ const MANAGER_COMMISSION_ROW_SECTION_ORDER: ManagerCommissionRowSectionKey[] = [
   "travel",
   "foreigners",
   "investment",
-  "troyOunce",
+
   "other",
   "unpairedLife",
   "unpairedAuto",
@@ -953,7 +951,7 @@ const MANAGER_COMMISSION_ROW_SECTION_ORDER: ManagerCommissionRowSectionKey[] = [
   "unpairedTravel",
   "unpairedForeigners",
   "unpairedInvestment",
-  "unpairedTroyOunce",
+
   "unpairedOther",
 ];
 
@@ -995,12 +993,6 @@ const managerCommissionRowSectionMeta = (
       return {
         label: "Nespárované / Cizinci",
         description: "Řádky zdravotního pojištění cizinců bez jednoznačné shody v týmových smlouvách.",
-        className: "border-amber-200 bg-amber-50 text-amber-950",
-      };
-    case "unpairedTroyOunce":
-      return {
-        label: "Nespárované / Zlato",
-        description: "Zlaté položky z produktů TU_* bez jednoznačné shody v týmu.",
         className: "border-amber-200 bg-amber-50 text-amber-950",
       };
     case "unpairedInvestment":
@@ -1051,12 +1043,6 @@ const managerCommissionRowSectionMeta = (
         description: "Meziprovize ze zdravotního pojištění cizinců.",
         className: "border-indigo-200 bg-indigo-50 text-indigo-950",
       };
-    case "troyOunce":
-      return {
-        label: "Troyská unce / zlato",
-        description: "Položky z produktů TU_*.",
-        className: "border-violet-200 bg-violet-50 text-violet-950",
-      };
     case "investment":
       return {
         label: "Investice",
@@ -1099,9 +1085,6 @@ const managerCommissionRowSectionIcon = (
     case "unpairedInvestment":
     case "investment":
       return HandCoins;
-    case "unpairedTroyOunce":
-    case "troyOunce":
-      return WalletCards;
     case "other":
       return ListChecks;
   }
@@ -1119,8 +1102,6 @@ const managerCommissionRowSectionKey = (
   matchesByContractNumber: ContractMatchesByNumber
 ): ManagerCommissionRowSectionKey => {
   const product = resolveStatementProduct(row.product);
-  const rawCode = normalizeProductCode(product.rawCode);
-
   const matchNotice = managerCommissionMatchNotice(
     contractMatchForNumber(matchesByContractNumber, row.contractNumber, "team")
   );
@@ -1131,7 +1112,6 @@ const managerCommissionRowSectionKey = (
     if (product.category === "business") return "unpairedBusiness";
     if (product.category === "travel") return "unpairedTravel";
     if (product.category === "foreigners") return "unpairedForeigners";
-    if (rawCode.startsWith("TU_")) return "unpairedTroyOunce";
     if (product.category === "investment") return "unpairedInvestment";
     return "unpairedOther";
   }
@@ -1142,7 +1122,6 @@ const managerCommissionRowSectionKey = (
   if (product.category === "business") return "business";
   if (product.category === "travel") return "travel";
   if (product.category === "foreigners") return "foreigners";
-  if (rawCode.startsWith("TU_")) return "troyOunce";
   if (product.category === "investment") return "investment";
 
   return "other";
@@ -1433,7 +1412,6 @@ const generalCommissionKindClass = (kind: GeneralCommissionKind): string => {
     case "increase":
       return "border-cyan-200 bg-cyan-50 text-cyan-800";
     case "unexpected":
-    case "troyOunce":
       return "border-amber-200 bg-amber-50 text-amber-900";
     case "penalty":
       return "border-rose-200 bg-rose-50 text-rose-800";
@@ -1476,7 +1454,6 @@ const otherProductContractPrimaryCategory = (
   if (contractHasProductCategory(contract, "foreigners")) return "foreigners";
   if (contractHasProductCategory(contract, "travel")) return "travel";
   if (contractHasProductCategory(contract, "investment")) return "investment";
-  if (contractHasProductCategory(contract, "comfort")) return "comfort";
   return "other";
 };
 
@@ -1497,8 +1474,6 @@ const otherProductContractCategoryLabel = (
       return "Cizinci";
     case "investment":
       return "Investice";
-    case "comfort":
-      return "Comfort";
     case "life":
       return "Životní pojištění";
     default:

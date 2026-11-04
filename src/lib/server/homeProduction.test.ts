@@ -15,10 +15,19 @@ function database() {
   const writer = { set: (reference: { path: string }, data: Record<string, unknown>) => documents.set(reference.path, data) };
   const tx = { ...writer, get: vi.fn(async (reference: { path: string }) => snapshot(reference)), getAll: async (...refs: { path: string }[]) => refs.map(snapshot) };
   const db = { collection: (name: string) => ({ doc: (id: string) => ref(`${name}/${id}`) }), runTransaction: async (run: (t: typeof tx) => unknown) => run(tx) } as unknown as Firestore;
-  return { db, documents, writer, tx, readEntries, query, empty: () => { entries = []; }, malformed: () => { entries[0].items = {}; entries[0].managerOverrides = {}; } };
+  return { db, documents, writer, tx, readEntries, query, empty: () => { entries = []; }, retired: () => { entries[0].productKey = "comfortcc"; }, malformed: () => { entries[0].items = {}; entries[0].managerOverrides = {}; } };
 }
 
 describe("persisted home production", () => {
+  it("rebuilds old cached totals and excludes retired contracts from the replacement", async () => {
+    const fake = database();
+    await loadOwnerHomeProduction(fake.db, email, window);
+    const stored = [...fake.documents.values()].find(data => data.summary)!;
+    stored.version = 1;
+    fake.retired();
+    expect((await loadOwnerHomeProduction(fake.db, email, window)).current).toMatchObject({ count: 0, immediate: 0 });
+    expect(fake.readEntries).toHaveBeenCalledTimes(4);
+  });
   it("reads only the requested date interval and reuses totals with zero contract reads on the next request", async () => {
     const { db, readEntries, query } = database();
     const first = await loadOwnerHomeProduction(db, email, window);

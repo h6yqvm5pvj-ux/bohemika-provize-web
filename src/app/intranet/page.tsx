@@ -24,7 +24,6 @@ import {
   HeartPulse,
   Home,
   Image as ImageIcon,
-  Landmark,
   Link2,
   Loader2,
   Maximize2,
@@ -314,11 +313,6 @@ const SECTION_VISUALS: Record<IntranetSectionKey, SectionVisual> = {
     icon: TrendingUp,
     badge: "border-amber-200/80 bg-amber-50/80 text-amber-800",
     rail: "from-amber-400 via-orange-500 to-orange-600",
-  },
-  zlato: {
-    icon: Landmark,
-    badge: "border-yellow-200/80 bg-yellow-50/80 text-yellow-900",
-    rail: "from-yellow-300 via-amber-400 to-orange-500",
   },
   obecne: {
     icon: Wrench,

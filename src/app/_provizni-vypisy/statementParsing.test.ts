@@ -25,6 +25,13 @@ import {
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
+  it.each(["TU_JN", "TU_ZP", "TU_ZS"])("keeps retired statement product %s outside insurance classifications", product => {
+    expect(resolveStatementProduct(product)).toMatchObject({ rawCode: product, productKey: null, category: "unknown" });
+    for (const code of ["A1", "A2", "A3", "B1"]) {
+      expect(classifyGeneralCommissionCode(product, code)).toEqual({ kind: "unknown", label: `Nezařazený kód ${code}` });
+    }
+  });
+
   it.each(["C101", "C102", "C103", "C104", "C105", "C106", " c111 "])(
     "recognizes Kooperativa Auto %s as a statement-paid subsequent commission", code => {
       expect(classifyGeneralCommissionCode("KOO_NAMIRU", code)).toEqual({ kind: "subsequent", label: "Následná provize dle výpisu" });

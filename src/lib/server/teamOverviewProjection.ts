@@ -1,13 +1,14 @@
 import type { DocumentReference, Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import type { ContractStats } from "@/app/api/team-overview/teamOverview.types";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { toDate } from "@/app/lib/formatters";
 import { hallParticipantId } from "./hallOfFame";
 import { getAllBatched } from "./firestoreReads";
 import { buildTeamOverviewReadModelDocuments, TEAM_OVERVIEW_MODEL_VERSION } from "./teamOverviewReadModel";
 import { consumeOwnerEntry, currentYearMonth, emptyContractStats, previousMonthToDateEnd, previousYearMonth } from "./teamOverviewStats";
 
-const VERSION = 1;
+const VERSION = 2;
 // A periodic rebuild also bounds staleness after unsupported, direct database edits.
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const OWNER_BATCH_SIZE = 10;
@@ -85,6 +86,7 @@ export function buildTeamOverviewOwnerProjections(docs: QueryDocumentSnapshot[],
   const previousMonthToDateEndMs = previousMonthToDateEnd(now);
   for (const doc of docs) {
     const data = doc.data();
+    if (isRetiredProduct(data.productKey)) continue;
     const email = String(data.userEmail ?? doc.ref.parent.parent?.id ?? "").trim().toLowerCase();
     if (!ownerSet.has(email) || seen.has(`${email}___${doc.id}`)) continue;
     consumeOwnerEntry({ stats: all, activeStats: active, ownerSet, seen, data, entryId: doc.id,

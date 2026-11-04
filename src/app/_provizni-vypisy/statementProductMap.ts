@@ -60,7 +60,6 @@ export const STATEMENT_PRODUCT_CATEGORY_OPTIONS: Array<{
   { value: "business", label: "Podnikatelé" },
   { value: "travel", label: "Cestovní pojištění" },
   { value: "foreigners", label: "Cizinci" },
-  { value: "comfort", label: "Comfort" },
   { value: "investment", label: "Investice" },
   { value: "unknown", label: "Nezařazeno" },
 ];
@@ -89,7 +88,7 @@ export const statementProductBaseRuleLabel = (
 export const inferStatementProductCategory = (
   rawCode: string
 ): StatementProductCategory => {
-  if (/^(?:TU_|INVESTIKA|EFEKTIKA|CON_|COLOS_)/.test(rawCode)) return "investment";
+  if (/^(?:INVESTIKA|EFEKTIKA|CON_|COLOS_)/.test(rawCode)) return "investment";
   if (/FLEXI|NEON|N_LIFE|N_RISK|PRANI|PILLOW.*(?:UR|NM)/.test(rawCode)) {
     return "life";
   }
@@ -98,7 +97,6 @@ export const inferStatementProductCategory = (
   if (/DOM|BYTEX|ZAMEX|HAFAN|OBCAN|OD_ZAM/.test(rawCode)) return "property";
   if (/CIZIN/.test(rawCode)) return "foreigners";
   if (/CEST|_CS/.test(rawCode)) return "travel";
-  if (/COMFORT|CC/.test(rawCode)) return "comfort";
   return "unknown";
 };
 
@@ -435,24 +433,6 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     label: "COLOS_NEMO",
     category: "investment",
     isInvestmentSection: true,
-  }),
-  defaultEntry({
-    code: "TU_ZLATO",
-    label: "Troyská unce - zlato",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
-  }),
-  defaultEntry({
-    code: "TU_ESHOPJN",
-    label: "Troyská unce - nákup",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
-  }),
-  defaultEntry({
-    code: "TU_ZP",
-    label: "Troyská unce - z poplatku",
-    category: "investment",
-    note: "U Troyské unce se význam kódů A/B liší podle varianty produktu.",
   }),
 ].sort((a, b) => a.code.localeCompare(b.code, "cs"));
 

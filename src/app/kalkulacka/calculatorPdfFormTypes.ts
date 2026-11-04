@@ -75,6 +75,8 @@ export type CalculatorPdfFormValues = {
   clientName: string;
   policyStartDate: string;
   policyEndDate: string;
+  policyTermEndDate: string;
+  automaticRenewal: boolean | null;
   pensionTargetAge: number | null;
   contractSignedDate: string;
   stornoDate: string;
@@ -83,7 +85,6 @@ export type CalculatorPdfFormValues = {
   renovationIncreaseText: string;
   renovationGuaranteeStatus: FlexiRenovationGuaranteeStatus;
   frequency: PaymentFrequency;
-  comfortPaymentText: string;
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant;

@@ -14,7 +14,6 @@ import {
   PRODUCT_ORDER,
   hasProductGroup,
   isAutoProduct,
-  isComfortProduct,
   isLifeProduct,
   isPropertyProduct,
   isTravelProduct,
@@ -73,8 +72,7 @@ type ProductCategory =
   | "propertyLiability"
   | "travel"
   | "foreigners"
-  | "entrepreneurs"
-  | "gold";
+  | "entrepreneurs";
 
 type EntryDoc = {
   id: string;
@@ -126,8 +124,6 @@ type AggregatedStats = {
   autoContracts: number;
   propertyAnnual: number;
   propertyContracts: number;
-  goldTotal: number;
-  goldContracts: number;
 };
 
 type CategoryReportStats = {
@@ -199,8 +195,6 @@ type ExportShareSnapshot = {
   autoAnnual: number;
   propertyContracts: number;
   propertyAnnual: number;
-  goldContracts: number;
-  goldTotal: number;
   topProductName: string;
   topProductAnnual: number;
 };
@@ -222,7 +216,6 @@ const CATEGORY_FILTERS: { key: ProductCategory; label: string }[] = [
   { key: "travel", label: "Cestovko" },
   { key: "foreigners", label: "Cizinci" },
   { key: "entrepreneurs", label: "Podnikatelé" },
-  { key: "gold", label: "Zlato" },
 ];
 
 const ALL_CATEGORY_KEYS: ProductCategory[] = CATEGORY_FILTERS.map((c) => c.key);
@@ -255,7 +248,6 @@ function productCategory(p: Product): ProductCategory {
   if (TRAVEL_PRODUCTS.has(p)) return "travel";
   if (isLifeProduct(p)) return "life";
   if (isAutoProduct(p)) return "auto";
-  if (isComfortProduct(p)) return "gold";
   return "propertyLiability";
 }
 
@@ -280,8 +272,6 @@ function emptyStats(): AggregatedStats {
     autoContracts: 0,
     propertyAnnual: 0,
     propertyContracts: 0,
-    goldTotal: 0,
-    goldContracts: 0,
   };
 }
 
@@ -475,8 +465,6 @@ function themeIconSvg(kind: ThemeIconKind): string {
       return `<svg ${base}><rect x="5" y="3" width="14" height="18" rx="2.5"/><circle cx="12" cy="11" r="2.5"/><path d="M8.5 16.5h7M9 7h6"/></svg>`;
     case "entrepreneurs":
       return `<svg ${base}><path d="M9.5 7V5.8A2.8 2.8 0 0 1 12.3 3h-.6a2.8 2.8 0 0 1 2.8 2.8V7"/><rect x="3" y="7" width="18" height="13" rx="2.2"/><path d="M3 12h18"/><path d="M9.5 12v1.3h5V12"/></svg>`;
-    case "gold":
-      return `<svg ${base}><ellipse cx="12" cy="6.5" rx="6.5" ry="3.2"/><path d="M5.5 6.5v5c0 1.8 2.9 3.2 6.5 3.2s6.5-1.4 6.5-3.2v-5"/><path d="M5.5 11.5v4c0 1.8 2.9 3.2 6.5 3.2s6.5-1.4 6.5-3.2v-4"/></svg>`;
     default:
       return `<svg ${base}><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>`;
   }
@@ -1314,7 +1302,7 @@ export default function ExportProductionPage() {
       if (!e) continue;
 
       const p = entry.productKey;
-      if (!p) continue;
+      if (!p || !PRODUCT_ORDER.includes(p)) continue;
 
       // filtr podle zvolených kategorií
       const cat = productCategory(p);
@@ -1330,14 +1318,9 @@ export default function ExportProductionPage() {
       const isAuto = isAutoProduct(p);
       const isProperty =
         isPropertyProduct(p) || isTravelProduct(p) || hasProductGroup(p, "liability");
-      const isGold = isComfortProduct(p);
-      const isNonLife = !isLife && !isGold;
-
-      const annualForProduct = isGold
-        ? amount
-        : isLife
-          ? amount * 12
-          : toAnnualPremium(amount, entry.frequencyRaw);
+      const annualForProduct = isLife
+        ? amount * 12
+        : toAnnualPremium(amount, entry.frequencyRaw);
       const prevProd = perProduct.get(p) ?? { annual: 0, contracts: 0 };
       perProduct.set(p, {
         annual: prevProd.annual + annualForProduct,
@@ -1399,10 +1382,7 @@ export default function ExportProductionPage() {
       if (isLife) {
         stats.lifeMonthly += amount;
         stats.lifeContracts += 1;
-      } else if (isGold) {
-        stats.goldTotal += amount;
-        stats.goldContracts += 1;
-      } else if (isNonLife) {
+      } else {
         const annual = toAnnualPremium(amount, entry.frequencyRaw);
         stats.nonLifeAnnual += annual;
         stats.nonLifeContracts += 1;
@@ -1435,8 +1415,6 @@ export default function ExportProductionPage() {
       summary.autoContracts += stats.autoContracts;
       summary.propertyAnnual += stats.propertyAnnual;
       summary.propertyContracts += stats.propertyContracts;
-      summary.goldTotal += stats.goldTotal;
-      summary.goldContracts += stats.goldContracts;
     }
 
     // hezký HTML layout (glassy cards)
@@ -1467,7 +1445,7 @@ export default function ExportProductionPage() {
     const currentUserIsManager =
       currentUserPosition?.startsWith("manazer") === true;
     const userPerformanceValue = (stats: PerUserStats) =>
-      stats.lifeAnnual + stats.nonLifeAnnual + stats.goldTotal;
+      stats.lifeAnnual + stats.nonLifeAnnual;
     const perUserList = Array.from(perUser.values()).sort((a, b) => {
       const aIsReportOwner = currentUserIsManager && a.email === reportOwnerEmail;
       const bIsReportOwner = currentUserIsManager && b.email === reportOwnerEmail;
@@ -1528,9 +1506,7 @@ export default function ExportProductionPage() {
         metrics.push(`<span>${formatMoney(stats.monthly)} měsíčně</span>`);
       }
       metrics.push(
-        `<span>${formatMoney(stats.annual)} ${
-          category === "gold" ? "objem" : "ročně"
-        }</span>`
+        `<span>${formatMoney(stats.annual)} ročně</span>`
       );
       metrics.push(`<span>${contractCountLabel(stats.contracts)}</span>`);
       return metrics.join("");
@@ -1648,9 +1624,9 @@ export default function ExportProductionPage() {
       .join("");
 
     const topProductEntry = sortedProductEntries[0] ?? null;
-    const totalAnnual = summary.lifeAnnual + summary.nonLifeAnnual + summary.goldTotal;
+    const totalAnnual = summary.lifeAnnual + summary.nonLifeAnnual;
     const totalContracts =
-      summary.lifeContracts + summary.nonLifeContracts + summary.goldContracts;
+      summary.lifeContracts + summary.nonLifeContracts;
 
     const companyLogoSrc = companyLogoDataUrl ?? new URL("/icons/bohemika_logo.png", window.location.origin).href;
     const html = `
@@ -1682,7 +1658,7 @@ export default function ExportProductionPage() {
               <div class="report-totals">
                 <div class="report-total"><span>Počet smluv</span><strong>${totalContracts}</strong></div>
                 <div class="report-total"><span>Roční pojistné celkem</span><strong>${formatMoney(summary.lifeAnnual + summary.nonLifeAnnual)}</strong></div>
-                <div class="report-total"><span>${cats.has("gold") ? "Objem zlata" : "Životní · měsíční pojistné"}</span><strong>${formatMoney(cats.has("gold") ? summary.goldTotal : summary.lifeMonthly)}</strong></div>
+                <div class="report-total"><span>Životní · měsíční pojistné</span><strong>${formatMoney(summary.lifeMonthly)}</strong></div>
               </div>
 
             <div class="divider"></div>
@@ -1803,8 +1779,6 @@ export default function ExportProductionPage() {
       autoAnnual: summary.autoAnnual,
       propertyContracts: summary.propertyContracts,
       propertyAnnual: summary.propertyAnnual,
-      goldContracts: summary.goldContracts,
-      goldTotal: summary.goldTotal,
       topProductName: topProductEntry ? productLabel(topProductEntry[0]) : "",
       topProductAnnual: topProductEntry ? topProductEntry[1].annual : 0,
     };

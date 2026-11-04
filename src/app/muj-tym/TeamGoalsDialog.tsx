@@ -184,7 +184,7 @@ function TeamGoalsDialogContent({
     <HelpDialog
       isOpen
       title="Měsíční cíle"
-      description={`Cíle pro ${goals.yearMonth}: životko podle měsíčního pojistného, zlato podle počtu smluv a ostatní produkty podle ročního pojistného.`}
+      description={`Cíle pro ${goals.yearMonth}: životko podle měsíčního pojistného a ostatní produkty podle ročního pojistného.`}
       eyebrow="Cíle a predikce"
       eyebrowIcon={<Flag className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />}
       onClose={onClose}

@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 // src/app/lib/cashflowGenerator.ts
 import { type Product, type PaymentFrequency } from "../types/domain";
 import { cppBytexSubsequentPayoutYears } from "./productFormulas/cppbytex";
@@ -150,6 +151,7 @@ export const CashflowGenerator = {
     };
 
     for (const entry of entries) {
+      if (isRetiredProduct(entry.productKey)) continue;
       const parsedStart = parseDateFromUnknown(entry.policyStartDate);
       const parsedSigned = parseDateFromUnknown(entry.contractSignedDate);
       const parsedCreated = parseDateFromUnknown(entry.createdAt);
@@ -474,47 +476,6 @@ export const CashflowGenerator = {
           while (payout <= horizonEnd) {
             addItem(amount, payout);
             payout = addMonths(payout, stepMonths);
-          }
-          break;
-        }
-
-        // ============= Comfort Commodity – okamžitá + měsíční následná =============
-        case "comfortcc": {
-          const immediateComfort = items.find((i) =>
-            i.titleLower.includes("okamžitá provize")
-          );
-          const subsequentComfort = items.find((i) =>
-            i.titleLower.includes("následná provize")
-          );
-
-          const firstPayout = estimatePayoutDate(start, agreement);
-
-          if (immediateComfort && firstPayout <= horizonEnd) {
-            addItem(
-              immediateComfort.amount,
-              firstPayout,
-              "Comfort Commodity – okamžitá provize"
-            );
-          }
-
-          if (subsequentComfort && firstPayout <= horizonEnd) {
-            // 1. výplatní měsíc: následná jde zároveň s okamžitou
-            addItem(
-              subsequentComfort.amount,
-              firstPayout,
-              "Comfort Commodity – následná provize (měsíčně)"
-            );
-
-            // další měsíce: už jen následná
-            let payout = addMonths(firstPayout, 1);
-            while (payout <= horizonEnd) {
-              addItem(
-                subsequentComfort.amount,
-                payout,
-                "Comfort Commodity – následná provize (měsíčně)"
-              );
-              payout = addMonths(payout, 1);
-            }
           }
           break;
         }

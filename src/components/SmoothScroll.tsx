@@ -2,7 +2,7 @@
 
 import Lenis from "lenis";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
@@ -11,6 +11,11 @@ function cancelMomentum(current: Lenis | null) {
   // Cancel Lenis without an instant scrollTo that would abort native smooth scrolling.
   current.stop();
   current.start();
+}
+
+function cancelFrame(frame: RefObject<number | null>) {
+  if (frame.current !== null) window.cancelAnimationFrame(frame.current);
+  frame.current = null;
 }
 
 function motionDisabled(root: HTMLElement, media: MediaQueryList): boolean {
@@ -33,19 +38,42 @@ function pageScrollLocked(root: HTMLElement, body: HTMLElement): boolean {
 export function SmoothScroll() {
   const pathname = usePathname();
   const instance = useRef<Lenis | null>(null);
+  const frame = useRef<number | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const finePointer = window.matchMedia("(pointer: fine)");
+    let unsubscribeVirtualScroll: (() => void) | undefined;
 
     const destroy = () => {
+      cancelFrame(frame);
+      unsubscribeVirtualScroll?.();
+      unsubscribeVirtualScroll = undefined;
       const current = instance.current;
       instance.current = null;
       current?.destroy();
     };
-    const stopMomentum = () => cancelMomentum(instance.current);
+    const stopMomentum = () => {
+      cancelFrame(frame);
+      cancelMomentum(instance.current);
+    };
+    const advance = (time: number) => {
+      frame.current = null;
+      const current = instance.current;
+      if (!current || current.isScrolling !== "smooth") return;
+      current.raf(time);
+      if (current.isScrolling === "smooth") frame.current = window.requestAnimationFrame(advance);
+    };
+    const onVirtualScroll = () => {
+      const current = instance.current;
+      if (!current || frame.current !== null) return;
+      // Lenis emits before starting wheel inertia. Refresh its clock while idle
+      // so the next frame does not include the entire time since the last scroll.
+      current.raf(performance.now());
+      frame.current = window.requestAnimationFrame(advance);
+    };
     // A native smooth request must cancel inertia before Lenis' next instant RAF write.
     const wrapWindowScroll = (original: typeof window.scrollTo): typeof window.scrollTo =>
       function(this: Window, ...args: [options?: ScrollToOptions] | [x: number, y: number]) {
@@ -76,7 +104,7 @@ export function SmoothScroll() {
       }
       if (instance.current) return;
       instance.current = new Lenis({
-        autoRaf: true,
+        autoRaf: false,
         lerp: 0.15,
         smoothWheel: true,
         syncTouch: false,
@@ -87,6 +115,7 @@ export function SmoothScroll() {
         virtualScroll: ({ event, deltaX, deltaY }) => !event.ctrlKey && !event.metaKey && !event.shiftKey
           && Math.abs(deltaY) >= Math.abs(deltaX),
       });
+      unsubscribeVirtualScroll = instance.current.on("virtual-scroll", onVirtualScroll);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (SCROLL_KEYS.has(event.key)) stopMomentum();
@@ -140,6 +169,7 @@ export function SmoothScroll() {
   }, []);
 
   useEffect(() => {
+    cancelFrame(frame);
     const current = instance.current;
     cancelMomentum(current);
     current?.resize();

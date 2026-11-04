@@ -16,7 +16,6 @@ import {
 import {
   calculateAllianzAuto,
   calculateAxaCestovko,
-  calculateComfortCC,
   calculateCppAuto,
   calculateCppCestovko,
   calculateCppHafan,
@@ -92,7 +91,7 @@ const PRODUCT_SET = new Set<Product>([
   "kooperativaAuto",
   "cppcestovko",
   "axacestovko",
-  "comfortcc",
+
   "cppPPRs",
   "cppPPRbez",
 ]);
@@ -143,9 +142,6 @@ type EntryRecord = {
   inputAmount?: unknown;
   calculationInputAmount?: unknown;
   effectiveInputAmount?: unknown;
-  comfortPayment?: unknown;
-  comfortGradual?: unknown;
-  comfortTargetAmount?: unknown;
   managerEmailSnapshot?: unknown;
   managerPositionSnapshot?: unknown;
   managerModeSnapshot?: unknown;
@@ -460,7 +456,6 @@ function allowedFrequencies(product: Product): PaymentFrequency[] {
       return ["quarterly", "semiannual", "annual"];
     case "cppcestovko":
     case "axacestovko":
-    case "comfortcc":
       return ["annual"];
   }
 }
@@ -653,18 +648,6 @@ function computeItemsForEntry(
       return calculateCppCestovko(val, pos);
     case "axacestovko":
       return calculateAxaCestovko(val, pos);
-    case "comfortcc":
-      return calculateComfortCC({
-        fee: val,
-        payment: toNonNegativeNumber(entry.comfortPayment),
-        targetAmount:
-          entry.comfortGradual === true
-            ? toNonNegativeNumber(entry.comfortTargetAmount)
-            : 0,
-        isSavings: entry.comfortGradual === true,
-        isGradualFee: entry.comfortGradual === true,
-        position: pos,
-      });
     default:
       return null;
   }

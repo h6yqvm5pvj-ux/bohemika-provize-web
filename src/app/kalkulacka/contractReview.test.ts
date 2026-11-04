@@ -112,7 +112,7 @@ describe("contract review warnings", () => {
     expect(warnings[0]).toContain("začátkem 14, 48");
   });
 
-  it.each<Product>(["pillowAuto", "comfortcc", "conseqzenit", "maxdomov", "cpphafan", "cppPPRbez", "cppPPRs", "cppbytex", "koopflotila", "uniqaflotila", "slaviaflotila"])(
+  it.each<Product>(["pillowAuto", "conseqzenit", "maxdomov", "cpphafan", "cppPPRbez", "cppPPRs", "cppbytex", "koopflotila", "uniqaflotila", "slaviaflotila"])(
     "keeps only generic number checks when %s has insufficient or inconsistent evidence", (product) => {
       expect(buildContractReviewWarnings({ ...valid, product, contractNumber: "123456789" })).toEqual([]);
       expect(buildContractReviewWarnings({ ...valid, product, contractNumber: "123" })).toHaveLength(1);
@@ -160,10 +160,9 @@ describe("contract review warnings", () => {
     }
   });
 
-  it("checks travel cover as a whole contract and does not treat investment fees as insurance premiums", () => {
+  it("checks travel cover as a whole contract", () => {
     expect(buildContractReviewWarnings({ ...valid, product: "cppcestovko", contractNumber: "1800000001", amount: 20_000 })).toEqual([]);
     expect(buildContractReviewWarnings({ ...valid, product: "cppcestovko", contractNumber: "1800000001", amount: 31_000 }).join(" ")).toContain("za smlouvu");
     expect(buildContractReviewWarnings({ ...valid, product: "maxcizinkomplex", amount: 90_000 })).toEqual([]);
-    expect(buildContractReviewWarnings({ ...valid, product: "comfortcc", amount: 2_000_000 })).toEqual([]);
   });
 });

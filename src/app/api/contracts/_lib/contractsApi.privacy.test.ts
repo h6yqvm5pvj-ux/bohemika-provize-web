@@ -57,6 +57,60 @@ beforeEach(() => {
 });
 
 describe("contract response privacy at the API boundary", () => {
+  const renewalRequest = (updates: Record<string, unknown>) => new NextRequest("https://example.test/api/contracts", {
+    method: "PATCH", body: JSON.stringify({ action: "updateFields", ownerEmail: owner, entryId: "root", updates }),
+  });
+  const neuron = () => entry("root", { productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
+    automaticRenewal: true, policyEndDate: null, policyTermEndDate: new Date("2027-11-04") });
+
+  it("returns the Neuron term boundary as a date while leaving actual maturity empty", async () => {
+    neuron();
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    expect((await response.json()).contract).toMatchObject({ automaticRenewal: true, policyEndDate: null, policyTermEndDate: Date.parse("2027-11-04") });
+  });
+
+  it("lets the owner disable prolongation with a matching actual maturity", async () => {
+    neuron();
+    const { handleContractsPatch, handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsPatch(renewalRequest({ automaticRenewal: false,
+      policyTermEndDate: "2027-11-04T00:00:00.000Z", policyEndDate: "2027-11-04" }));
+    expect(response.status).toBe(200);
+    const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await detail.json()).contract).toMatchObject({ automaticRenewal: false, policyEndDate: Date.parse("2027-11-04"), policyTermEndDate: Date.parse("2027-11-04") });
+    expect((await handleContractsPatch(renewalRequest({ automaticRenewal: true, policyEndDate: null }))).status).toBe(200);
+    const renewed = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await renewed.json()).contract).toMatchObject({ automaticRenewal: true, policyEndDate: null, policyTermEndDate: Date.parse("2027-11-04") });
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("denies a Neuron prolongation change by %s", async actor => {
+    neuron();
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else {
+      asUser(actor === "tipster" ? tip : former);
+      if (actor === "tipster") store.records.set(`users/${tip}`, { userId: tip, accountType: "tipster" });
+    }
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    const response = await handleContractsPatch(renewalRequest({ automaticRenewal: false, policyEndDate: "2027-11-04" }));
+    expect(response.status).toBe(actor === "unauthenticated" ? 401 : 403);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each([
+    { automaticRenewal: "false" }, { automaticRenewal: false },
+    { policyTermEndDate: "2027-02-30" },
+    { automaticRenewal: false, policyEndDate: "2028-11-04" },
+    { automaticRenewal: false, policyEndDate: "2027-11-04", productKey: "domex" },
+  ])("rejects manipulated Neuron renewal updates without writing: %j", async updates => {
+    neuron();
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest(updates))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
   it.each(["cppPPRbez", "cppAuto", "maxdomov", "cppcestovko"])("loads the explicitly linked %s amendment family from an original without chain metadata", async productKey => {
     entry("root", { productKey, rootContractEntryId: null });
     entry("decrease", { productKey, parentContractEntryId: "root", policyStartDate: "2026-02-01",
@@ -130,13 +184,84 @@ describe("contract response privacy at the API boundary", () => {
     expect(JSON.stringify(body)).not.toContain("sentinel");
   });
 
-  it.each(["comfortcc", "conseqzenit"])("keeps %s outside proportional insurance timelines", async productKey => {
+  it.each(["conseqzenit"])("keeps %s outside proportional insurance timelines", async productKey => {
     entry("root", { productKey });
     entry("decrease", { productKey, parentContractEntryId: "root", note: "unsupported product sentinel" });
     const { handleContractsGet } = await import("./contractsApi");
     const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
     expect(response.status).toBe(200);
     expect((await response.json()).timeline.map((item: { id: string }) => item.id)).toEqual(["root"]);
+  });
+
+  it.each([owner, manager, admin])("returns 404 for a retired contract to %s while supported contracts remain accessible", async viewer => {
+    entry("retired", { productKey: "comfortcc", note: "retired private sentinel", rootContractEntryId: null });
+    entry("root", { rootContractEntryId: null });
+    asUser(viewer, viewer === admin);
+    const { handleContractsGet } = await import("./contractsApi");
+    const retired = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=retired`), "detail");
+    expect(retired.status).toBe(404);
+    expect(await retired.json()).toEqual({ ok: false, error: "Smlouva nebyla nalezena." });
+    const valid = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(valid.status).toBe(200);
+    expect((await valid.json()).contract.id).toBe("root");
+    expect(store.records.has(`users/${owner}/entries/retired`)).toBe(true);
+  });
+
+  it.each([owner, manager, admin])("omits retired contracts from lists and single/bulk matching for %s", async viewer => {
+    if (viewer === admin) store.records.set(`users/${owner}`, { ...store.records.get(`users/${owner}`), managerEmail: admin });
+    entry("retired", { productKey: "comfortcc", rootContractEntryId: null, note: "retired private sentinel", contractSignedDate: "2026-01-01" });
+    entry("root", { rootContractEntryId: null });
+    asUser(viewer, viewer === admin);
+    const { handleContractsList, handleContractsFind, handleContractsFindBulk } = await import("./contractsApi");
+    const scope = viewer === owner ? "my" : "team";
+    const list = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=${scope}&limit=5`));
+    expect(list.status).toBe(200);
+    const listed = await list.json();
+    expect(listed.contracts.map((item: { id: string }) => item.id)).toEqual(["root"]);
+    expect(listed.hasMore).toBe(false);
+    expect(listed.nextCursor).toBe(new Date("2025-01-01").getTime());
+    const find = await handleContractsFind(new NextRequest(`https://example.test/api/contracts/find?scope=${scope}&q=12345`));
+    expect(find.status).toBe(200);
+    expect((await find.json()).contracts.map((item: { id: string }) => item.id)).toEqual(["root"]);
+    const bulk = await handleContractsFindBulk(new NextRequest("https://example.test/api/contracts/find", { method: "POST",
+      body: JSON.stringify({ requests: [{ key: "match", q: "12345", scope }] }) }));
+    expect(bulk.status).toBe(200);
+    expect((await bulk.json()).results[0].contracts.map((item: { id: string }) => item.id)).toEqual(["root"]);
+  });
+
+  it.each([false, true])("rejects retired contract creation without changing stored records (wrapped=%s)", async wrapped => {
+    const raw = { productKey: "comfortcc", entryType: "contract", frequencyRaw: "annual", clientName: "Test Client",
+      contractNumber: "987654", contractSignedDate: "2026-01-01", policyStartDate: "2026-02-01", inputAmount: 1000 };
+    const before = structuredClone([...store.records]);
+    const { handleContractsCreate } = await import("./contractsApi");
+    const response = await handleContractsCreate(new NextRequest("https://example.test/api/contracts", { method: "POST",
+      body: JSON.stringify(wrapped ? { entry: raw } : raw) }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("productKey") });
+    expect([...store.records]).toEqual(before);
+  });
+
+  it("does not let a retired product payload bypass cross-owner creation authorization", async () => {
+    const { handleContractsCreate } = await import("./contractsApi");
+    const before = structuredClone([...store.records]);
+    const response = await handleContractsCreate(new NextRequest("https://example.test/api/contracts", { method: "POST",
+      body: JSON.stringify({ ownerEmail: former, entry: { productKey: "comfortcc" } }) }));
+    expect(response.status).toBe(403);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it("requires authentication before retired contract reads, matching or creation", async () => {
+    entry("retired", { productKey: "comfortcc" });
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    const { handleContractsGet, handleContractsList, handleContractsFind, handleContractsCreate } = await import("./contractsApi");
+    const reads = vi.spyOn(mocks.db!, "collection");
+    for (const response of [
+      await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=retired`), "detail"),
+      await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my")),
+      await handleContractsFind(new NextRequest("https://example.test/api/contracts/find?scope=my&q=12345")),
+      await handleContractsCreate(new NextRequest("https://example.test/api/contracts", { method: "POST", body: JSON.stringify({ productKey: "comfortcc" }) })),
+    ]) expect(response.status).toBe(401);
+    expect(reads).not.toHaveBeenCalled();
   });
 
   it.each([owner, manager, admin])("filters confirmed premium changes by their author for %s", async viewer => {
@@ -197,6 +322,7 @@ describe("contract response privacy at the API boundary", () => {
     });
     entry("allowed", { tipContractTipsterEmail: tip, inputAmount: 2000, note: "allowed sibling private note" });
     entry("forbidden", { inputAmount: 9876, note: "forbidden sibling private note" });
+    entry("retired", { productKey: "comfortcc", tipContractTipsterEmail: tip, inputAmount: 9999 });
     asUser(tip);
     const { handleContractsFind, handleContractsFindBulk } = await import("./contractsApi");
     const response = method === "GET"
@@ -212,6 +338,7 @@ describe("contract response privacy at the API boundary", () => {
       tipContractTipsterPercent: 15, tipContractTipsterAmountFirstYear: 123 });
     expect(root.lifePremiumChanges.map((item: { id: string }) => item.id).sort()).toEqual(["allowed", "root"]);
     const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("comfortcc");
     for (const secret of ["sentinel", "future secret", "private-history", "private-contact", "private note", "9876", "99999"])
       expect(serialized).not.toContain(secret);
     expect(root).not.toHaveProperty("note");

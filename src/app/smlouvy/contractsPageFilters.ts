@@ -1,7 +1,6 @@
 import type { Product } from "@/app/types/domain";
 import {
   AUTO_PRODUCTS,
-  COMFORT_PRODUCTS,
   PENSION_PRODUCTS,
   INSTITUTION_CATALOG,
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
@@ -47,7 +46,6 @@ export const PRODUCT_CATEGORY_MAP: Record<ProductCategory, Product[]> = {
   auto: AUTO_PRODUCTS,
   property: CONTRACT_PROPERTY_LIABILITY_PRODUCTS,
   travel: CONTRACT_TRAVEL_PRODUCTS,
-  comfort: COMFORT_PRODUCTS,
   business: CONTRACT_BUSINESS_PRODUCTS,
   foreigners: CONTRACT_FOREIGNER_PRODUCTS,
 };
@@ -60,7 +58,6 @@ export const CATEGORY_DEFS: { id: ProductCategory; label: string }[] = [
   { id: "travel", label: "Cestovko" },
   { id: "business", label: "Podnikatelé" },
   { id: "foreigners", label: "Cizinci" },
-  { id: "comfort", label: "Comfort Commodity" },
 ];
 
 export const INSTITUTION_DEFS: { id: Institution; label: string }[] = Array.from(

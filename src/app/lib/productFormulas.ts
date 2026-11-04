@@ -195,14 +195,6 @@ import {
   KOOP_CESTOVKO_COEFFICIENT_VALID_FROM,
   koopCestovkoCoefficient,
 } from "./productFormulas/koopcestovko";
-import {
-  calculateComfortCCSimple,
-  calculateComfortCCOneOff,
-  calculateComfortCCGradual,
-  calculateComfortCC,
-  comfortCCImmediateCoefficient,
-  comfortCCSubsequentCoefficient,
-} from "./productFormulas/comfortcc";
 
 export {
   calculateConseqZenit,
@@ -274,10 +266,6 @@ export {
   AXA_CESTOVKO_COEFFICIENT_VALID_FROM,
   calculateKoopCestovko,
   KOOP_CESTOVKO_COEFFICIENT_VALID_FROM,
-  calculateComfortCCSimple,
-  calculateComfortCCOneOff,
-  calculateComfortCCGradual,
-  calculateComfortCC,
 };
 
 export {
@@ -320,7 +308,7 @@ export const SUPPORTED_PRODUCTS: Product[] = [
   "cppcestovko",
   "axacestovko",
   "koopcestovko",
-  "comfortcc",
+
 ];
 
 const AUTO_ACQUISITION_COEFFICIENT_LABEL =
@@ -874,11 +862,6 @@ export function getCoefficientSummary(
           ).toLocaleDateString("cs-CZ")})`,
           value: koopCestovkoCoefficient(position),
         },
-      ];
-    case "comfortcc":
-      return [
-        { label: "Okamžitá provize", value: comfortCCImmediateCoefficient(position) },
-        { label: "Následná provize", value: comfortCCSubsequentCoefficient(position) },
       ];
     default:
       return [];

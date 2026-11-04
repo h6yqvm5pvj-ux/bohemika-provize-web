@@ -890,7 +890,6 @@ const buildSharedExportPreviewHtml = (item: MailboxItem): string | null => {
   const totalAnnual = parseNonNegativeNumber(metadata.totalAnnual);
   const lifeAnnual = parseNonNegativeNumber(metadata.lifeAnnual);
   const nonLifeAnnual = parseNonNegativeNumber(metadata.nonLifeAnnual);
-  const goldTotal = parseNonNegativeNumber(metadata.goldTotal);
 
   return `
     <html>
@@ -1030,10 +1029,6 @@ const buildSharedExportPreviewHtml = (item: MailboxItem): string | null => {
             <div class="stat">
               <div class="label">Neživot (roční)</div>
               <div class="value">${escapeHtml(formatMoney(nonLifeAnnual))}</div>
-            </div>
-            <div class="stat">
-              <div class="label">Zlato</div>
-              <div class="value">${escapeHtml(formatMoney(goldTotal))}</div>
             </div>
           </div>
 

@@ -145,6 +145,26 @@ describe("home summaries independent of TIP completion", () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
+  it("excludes retired products from current rows and historical team rows", async () => {
+    const retired = { ...entry("retired", 8, 99_999), productKey: "comfortcc" } as unknown as EntryDoc;
+    await render({ ...props, teamHistoryMonths: 6 });
+    await act(async () => {
+      contractCalls("my")[0].job.resolve(contracts([...own, retired]));
+      contractCalls("team")[0].job.resolve(contracts([...team, { ...retired, id: "retired-team" }]));
+    });
+    await act(async () => {
+      tipCalls()[0].job.resolve(tips());
+      contractCalls("team")[1].job.resolve(contracts([
+        entry("insurance-history", 4, 50, "team@example.test"),
+        { ...retired, id: "retired-history" },
+      ]));
+    });
+    expect(latest.myEntries.some(item => item.id === "retired")).toBe(false);
+    expect(latest.teamEntries.map(item => item.id)).toEqual(["insurance-history"]);
+    expect(latest.myImmediateSum).toBe(100);
+    expect(latest.teamImmediateSum).toBe(200);
+  });
+
   it("clears cached freshness and leaderboard on denied access", async () => {
     await render(); await settleSummaries();
     await act(async () => tipCalls()[0].job.resolve(currentTips()));
@@ -176,7 +196,7 @@ describe("home summaries independent of TIP completion", () => {
     expect(latest).toMatchObject({ tipSummaryLoading: false, tipSummaryError: null,
       myTipContractsCount: 2, myTipImmediateSum: 60, myTipImmediatePrevSum: 40 });
     expect(mocks.write).toHaveBeenCalledTimes(1);
-    expect(mocks.write.mock.calls[0][0]).toContain("v8-home-freshness|advisor-uid|advisor@example.test|");
+    expect(mocks.write.mock.calls[0][0]).toContain("v9-home-insurance-only|advisor-uid|advisor@example.test|");
     expect(mocks.write.mock.calls[0][1]).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60 });
     const query = tipCalls()[0].url.searchParams;
     expect(Object.fromEntries(query)).toEqual({ limit: "100", shape: "home", payoutFrom: String(day(7, 1)),

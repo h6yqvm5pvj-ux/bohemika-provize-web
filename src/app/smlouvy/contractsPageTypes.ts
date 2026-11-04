@@ -131,7 +131,6 @@ export type ProductCategory =
   | "auto"
   | "property"
   | "travel"
-  | "comfort"
   | "business"
   | "foreigners";
 export type Institution = ProductInstitutionId;

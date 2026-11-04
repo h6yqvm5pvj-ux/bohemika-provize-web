@@ -146,7 +146,6 @@ export type ContractDoc = {
   createdFromCommissionStatementAtMs?: number | null;
   createdFromCommissionStatementChronologyMs?: number | null;
   createdFromCommissionStatementId?: string | null;
-  comfortPayment?: number | null;
   frequencyRaw?: PaymentFrequency | null;
   durationYears?: number | null;
   durationMonths?: number | null;
@@ -440,6 +439,8 @@ export type ContractDoc = {
   contractSignedDate?: FirestoreTimestamp | Date | string | number | null;
   policyStartDate?: FirestoreTimestamp | Date | string | number | null;
   policyEndDate?: FirestoreTimestamp | Date | string | number | null;
+  policyTermEndDate?: FirestoreTimestamp | Date | string | number | null;
+  automaticRenewal?: boolean | null;
   pensionTargetAge?: number | null;
 };
 
@@ -607,7 +608,7 @@ export type ContractListProductCategory =
   | "auto"
   | "property"
   | "travel"
-  | "comfort"
+
   | "business"
   | "foreigners";
 

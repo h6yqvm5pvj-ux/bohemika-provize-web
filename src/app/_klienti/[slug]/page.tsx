@@ -649,7 +649,6 @@ const FALLBACK_LOGOS: Partial<Record<InstitutionLogoKey, { src: string; alt: str
   csob: { src: "/icons/csb.png", alt: "ČSOB" },
   pillow: { src: "/icons/pillow.png", alt: "Pillow" },
   axa: { src: "/icons/axalogo.png", alt: "AXA" },
-  comfort: { src: "/icons/cclogo.png", alt: "Comfort Commodity" },
 };
 
 function asProductKey(value: ClientContractItem["productKey"]): Product | null {

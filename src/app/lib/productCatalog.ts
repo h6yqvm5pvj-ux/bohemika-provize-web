@@ -11,7 +11,7 @@ export type ProductInstitutionId =
   | "csob"
   | "pillow"
   | "axa"
-  | "comfort";
+;
 
 export type ProductPrimaryCategory =
   | "pension"
@@ -19,7 +19,7 @@ export type ProductPrimaryCategory =
   | "auto"
   | "property"
   | "travel"
-  | "comfort";
+;
 
 export type ProductGroup = ProductPrimaryCategory | "liability";
 
@@ -59,7 +59,6 @@ const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
   csob: { id: "csob", label: "ČSOB", logoPath: "/icons/csb.png" },
   pillow: { id: "pillow", label: "Pillow", logoPath: "/icons/pillow.png" },
   axa: { id: "axa", label: "AXA", logoPath: "/icons/axalogo.png" },
-  comfort: { id: "comfort", label: "Comfort Commodity", logoPath: "/icons/cclogo.png" },
 };
 
 export const INSTITUTION_CATALOG = INSTITUTIONS;
@@ -98,7 +97,7 @@ export const PRODUCT_ORDER: Product[] = [
   "cppcestovko",
   "axacestovko",
   "maxcizinkomplex",
-  "comfortcc",
+
   "conseqzenit",
 ];
 
@@ -315,12 +314,6 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
     institutionId: "maxima",
     category: "travel",
   },
-  comfortcc: {
-    label: "Comfort Commodity",
-    icon: "/icons/trezor.webp",
-    institutionId: "comfort",
-    category: "comfort",
-  },
 };
 
 const catalogEntries = PRODUCT_ORDER.map((id) => {
@@ -356,7 +349,6 @@ export const LIFE_PRODUCTS = byCategory("life");
 export const AUTO_PRODUCTS = byCategory("auto");
 export const PROPERTY_PRODUCTS = byCategory("property");
 export const TRAVEL_PRODUCTS = byCategory("travel");
-export const COMFORT_PRODUCTS = byCategory("comfort");
 export const PENSION_PRODUCTS = byCategory("pension");
 export const LIABILITY_PRODUCTS = PRODUCT_ORDER.filter((product) =>
   PRODUCT_CATALOG[product].groups.includes("liability")
@@ -442,8 +434,4 @@ export function isPropertyProduct(product?: Product | null): boolean {
 
 export function isTravelProduct(product?: Product | null): boolean {
   return productCategory(product) === "travel";
-}
-
-export function isComfortProduct(product?: Product | null): boolean {
-  return productCategory(product) === "comfort";
 }

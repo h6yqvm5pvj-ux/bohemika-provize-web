@@ -9,7 +9,7 @@ export const TEAM_GOAL_CATEGORIES: Category[] = [
   "auto",
   "property",
   "business",
-  "comfort",
+
   "other",
 ];
 
@@ -22,7 +22,6 @@ export const TEAM_GOAL_CATEGORY_METRICS: Record<Category, TeamGoalMetric> = {
   business: "annualPremium",
   travel: "annualPremium",
   foreigners: "annualPremium",
-  comfort: "contracts",
   other: "annualPremium",
 };
 
@@ -33,7 +32,6 @@ export const TEAM_GOAL_CATEGORY_LABELS: Record<Category, string> = {
   business: "Podnikatelé",
   travel: "Cestovní pojištění",
   foreigners: "Cizinci",
-  comfort: "Zlato",
   other: "Ostatní",
 };
 
@@ -63,7 +61,6 @@ export const emptyGoalCategories = (): Record<Category, number> => ({
   business: 0,
   travel: 0,
   foreigners: 0,
-  comfort: 0,
   other: 0,
 });
 

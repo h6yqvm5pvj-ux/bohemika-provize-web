@@ -5,25 +5,20 @@ import { useMailboxRefresh } from "./posta/useMailboxRefresh";
 
 import homeWidgetStyles from "./home/components/homeWidgets.module.css";
 import { QuickActionsContent } from "./home/components/QuickActionsContent";
+import { HomeCustomizationPanel } from "./home/components/HomeCustomizationPanel";
+import { HomeProductionHelp } from "./home/components/HomeProductionHelp";
+import { HomePageSurface } from "./home/components/HomePageSurface";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactElement } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
-  BarChart3,
-  Coins,
-  Gauge,
   Globe2,
   Mail,
   Radar,
   RefreshCw,
   SlidersHorizontal,
   Smartphone,
-  Target,
-  Trophy,
-  WalletCards,
-  X,
-  Zap,
 } from "lucide-react";
 
 import { auth } from "./firebase";
@@ -79,11 +74,6 @@ import {
 
 import { DeferredHomeWidget } from "./home/components/DeferredHomeWidget";
 import { ExpectedPayoutSection } from "./home/components/ExpectedPayoutSection";
-
-const GoldWidget = dynamic(
-  () => import("./home/components/GoldWidget").then((mod) => mod.GoldWidget),
-  { ssr: false }
-);
 
 const ExpectedPayoutWidget = dynamic(
   () =>
@@ -161,83 +151,6 @@ function cleanDisplayName(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function HomeBackgroundLines() {
-  return (
-    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden="true">
-      <svg
-        className="absolute -right-20 top-8 h-[34rem] w-[58rem] opacity-70"
-        viewBox="0 0 920 540"
-        fill="none"
-      >
-        <defs>
-          <linearGradient id="homeLinePrimary" x1="34" y1="74" x2="876" y2="386" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#ec4899" stopOpacity="0" />
-            <stop offset="0.38" stopColor="#ec4899" stopOpacity="0.34" />
-            <stop offset="0.72" stopColor="#38bdf8" stopOpacity="0.26" />
-            <stop offset="1" stopColor="#38bdf8" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="homeLineSecondary" x1="58" y1="320" x2="822" y2="106" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#0f172a" stopOpacity="0" />
-            <stop offset="0.42" stopColor="#0f172a" stopOpacity="0.14" />
-            <stop offset="1" stopColor="#a855f7" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M42 134C180 42 314 34 446 110C578 186 676 182 876 54"
-          stroke="url(#homeLinePrimary)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M74 302C220 210 342 218 484 292C628 368 744 360 860 284"
-          stroke="url(#homeLineSecondary)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-        <path
-          d="M106 458C248 374 390 364 526 416C642 460 748 464 848 410"
-          stroke="url(#homeLinePrimary)"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeDasharray="10 14"
-        />
-      </svg>
-
-      <svg
-        className="absolute -left-24 bottom-4 h-[28rem] w-[48rem] opacity-60"
-        viewBox="0 0 760 430"
-        fill="none"
-      >
-        <defs>
-          <linearGradient id="homeLineLeft" x1="22" y1="310" x2="724" y2="92" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#38bdf8" stopOpacity="0" />
-            <stop offset="0.46" stopColor="#38bdf8" stopOpacity="0.22" />
-            <stop offset="0.78" stopColor="#ec4899" stopOpacity="0.2" />
-            <stop offset="1" stopColor="#ec4899" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M28 318C140 230 248 202 380 226C502 248 602 208 724 98"
-          stroke="url(#homeLineLeft)"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <path
-          d="M84 380C208 314 326 300 454 322C560 340 652 318 728 260"
-          stroke="url(#homeLineLeft)"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeDasharray="8 12"
-        />
-      </svg>
-
-      <span className="absolute left-[18%] top-24 h-px w-72 -rotate-6 bg-[linear-gradient(90deg,transparent,rgba(15,23,42,0.12),transparent)]" />
-      <span className="absolute right-[12%] top-[37rem] h-px w-96 rotate-3 bg-[linear-gradient(90deg,transparent,rgba(236,72,153,0.18),transparent)]" />
-      <span className="absolute left-[31%] bottom-16 h-px w-80 -rotate-3 bg-[linear-gradient(90deg,transparent,rgba(56,189,248,0.18),transparent)]" />
-    </div>
-  );
-}
-
 type PersonalSeriesPoint = {
   label: string;
   lifeMonthly: number;
@@ -265,7 +178,6 @@ const HOME_WIDGETS_DEFAULT: HomeWidgets = {
   monthlyGoal: true,
   teamLeaderboard: true,
   productionChart: true,
-  goldWidget: false,
   quickActions: true,
 };
 
@@ -279,7 +191,6 @@ const quickActionsKey = (email?: string | null) =>
   email ? `home.quickActions:${email.toLowerCase()}` : null;
 
 const HOME_LAYOUT_DEFAULT: HomeSection[] = [
-  "gold",
   "summary",
   "expectedPayout",
   "goal",
@@ -330,12 +241,6 @@ const HOME_COPY: Record<
       life: string;
       other: string;
     };
-    goldFetch: {
-      apiError: string;
-      dataError: string;
-      invalidPrice: string;
-      priceError: string;
-    };
   }
 > = {
   cs: {
@@ -356,7 +261,6 @@ const HOME_COPY: Record<
       monthlyGoal: "Měsíční cíl",
       teamLeaderboard: "Žebříček týmu",
       productionChart: "Graf produkce",
-      goldWidget: "Cena zlata",
       quickActions: "Rychlé akce (pomůcky)",
     },
     managerOnlyNote: "Jen pro manažery s týmem",
@@ -380,12 +284,6 @@ const HOME_COPY: Record<
     leaderboard: {
       life: "Životní pojištění",
       other: "Vedlejší produkty",
-    },
-    goldFetch: {
-      apiError: "API vrací chybu",
-      dataError: "Nepodařilo se načíst data o zlatu.",
-      invalidPrice: "Neplatná cena zlata.",
-      priceError: "Nepodařilo se načíst cenu zlata.",
     },
   },
 };
@@ -466,6 +364,16 @@ const normalizeQuickActions = (
   return normalized;
 };
 
+const normalizeHomeWidgets = (input: unknown): HomeWidgets => {
+  const normalized = { ...HOME_WIDGETS_DEFAULT };
+  if (!input || typeof input !== "object" || Array.isArray(input)) return normalized;
+  const raw = input as Record<string, unknown>;
+  for (const key of Object.keys(HOME_WIDGETS_DEFAULT) as (keyof HomeWidgets)[]) {
+    if (typeof raw[key] === "boolean") normalized[key] = raw[key];
+  }
+  return normalized;
+};
+
 const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {
   if (typeof window === "undefined") return null;
   const key = homeWidgetsKey(email ?? null);
@@ -473,8 +381,7 @@ const readLocalHomeWidgets = (email?: string | null): HomeWidgets | null => {
   const raw = window.localStorage.getItem(key);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<HomeWidgets>;
-    return { ...HOME_WIDGETS_DEFAULT, ...parsed };
+    return normalizeHomeWidgets(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -559,15 +466,7 @@ export default function HomePage() {
   const homeLayoutRef = useRef<HomeSection[]>(HOME_LAYOUT_DEFAULT);
   const layoutDirtyRef = useRef(false);
   const [performanceMode, setPerformanceMode] = useState<PerformanceMode>(PERFORMANCE_DEFAULT);
-  const [goldLoading, setGoldLoading] = useState(false);
-  const [goldError, setGoldError] = useState<string | null>(null);
-  const [goldReloadKey, setGoldReloadKey] = useState(0);
   const [homeReloadKey, setHomeReloadKey] = useState(0);
-  const [goldData, setGoldData] = useState<{
-    czkPerOz: number;
-    ts: number;
-    changePct: number | null;
-  } | null>(null);
   const [subPickerOpen, setSubPickerOpen] = useState(false);
   const [subSearch, setSubSearch] = useState("");
   const [portalLinksModalOpen, setPortalLinksModalOpen] = useState(false);
@@ -644,12 +543,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    setLanguage(
-      applyHomeLanguagePreference(
+    let active = true;
+    // Hydrate the browser preference after mount; ignore an unmounted page.
+    queueMicrotask(() => {
+      if (active) setLanguage(applyHomeLanguagePreference(
         window.localStorage.getItem(APP_LANGUAGE_LOCAL_STORAGE_KEY)
-      )
-    );
+      ));
+    });
 
     const onStorage = (ev: StorageEvent) => {
       if (ev.key && ev.key !== APP_LANGUAGE_LOCAL_STORAGE_KEY) return;
@@ -663,6 +563,7 @@ export default function HomePage() {
     window.addEventListener("storage", onStorage);
     window.addEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
     return () => {
+      active = false;
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(APP_LANGUAGE_EVENT, onCustom as EventListener);
     };
@@ -671,21 +572,36 @@ export default function HomePage() {
   // auth
   useEffect(() => {
     let resolved = false;
+    let lastUserId: string | null = null;
+    const clearProfileState = (ready: boolean) => {
+      setAccessProfile(null);
+      setAccessProfileHasTeam(false);
+      setAccessProfileError(null);
+      setAccessProfileReady(ready);
+      setMailUnreadCount(0);
+    };
+    const clearSignedOutState = () => {
+      lastUserId = null;
+      setUser(null);
+      clearProfileState(true);
+      setAuthReady(true);
+    };
     const readyFallbackTimer = window.setTimeout(() => {
       if (resolved) return;
       console.warn("Auth ready timeout on home page; continuing as guest.");
-      setUser(null);
-      setAuthReady(true);
+      clearSignedOutState();
     }, 5000);
 
     const unsub = onAuthStateChanged(auth, (fbUser) => {
       resolved = true;
       window.clearTimeout(readyFallbackTimer);
       if (!fbUser) {
-        setUser(null);
-        setAuthReady(true);
+        clearSignedOutState();
         return;
       }
+      // A restored/switched account must load its own profile before using home data.
+      if (fbUser.uid !== lastUserId) clearProfileState(false);
+      lastUserId = fbUser.uid;
       setUser(fbUser);
       setAuthReady(true);
     });
@@ -729,14 +645,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!authReady) return;
-    if (!user) {
-      setAccessProfile(null);
-      setAccessProfileHasTeam(false);
-      setAccessProfileError(null);
-      setAccessProfileReady(true);
-      return;
-    }
+    if (!authReady || !user) return;
 
     let cancelled = false;
     const requestScopeEmail = normalizedEmail;
@@ -805,7 +714,6 @@ export default function HomePage() {
     }
   }, [normalizedEmail]);
   useMailboxRefresh(authReady && Boolean(user), refreshMailUnreadCount, 45_000);
-  useEffect(() => { if (!user) setMailUnreadCount(0); }, [user]);
 
 
   const pushHomeSettingsToCloud = useCallback(async (payload: {
@@ -883,7 +791,6 @@ export default function HomePage() {
     if (!advisorDataEmail) return;
     invalidateHomeCache(advisorDataEmail);
     setHomeReloadKey((k) => k + 1);
-    setGoldReloadKey((k) => k + 1);
   };
 
   // Nastavení domova jsou vždy synchronizována s profilem; lokální uložiště slouží
@@ -940,7 +847,7 @@ export default function HomePage() {
         }
 
         if (cloudWidgets) {
-          const merged = { ...HOME_WIDGETS_DEFAULT, ...cloudWidgets };
+          const merged = normalizeHomeWidgets(cloudWidgets);
           setHomeWidgets(merged);
           const key = homeWidgetsKey(email);
           if (typeof window !== "undefined" && key) {
@@ -995,86 +902,23 @@ export default function HomePage() {
     homeLayoutRef.current = homeLayout;
   }, [homeLayout]);
 
-  useEffect(() => {
-    if (!hasTeam) {
-      setChartMode("personal");
-      setSelectedSubordinate(null);
-    }
-  }, [hasTeam]);
-
-  useEffect(() => {
-    if (!homeWidgets.productionChart) {
-      setSubPickerOpen(false);
-    }
-  }, [homeWidgets.productionChart]);
-
-  useEffect(() => {
-    if (!homeWidgets.goldWidget) return;
-    let cancelled = false;
-    let requestInFlight = false;
-    const loadGold = async () => {
-      if (requestInFlight) return;
-      requestInFlight = true;
-      setGoldLoading(true);
-      setGoldError(null);
-      try {
-        const res = await fetch("/api/gold?range=d1", { cache: "no-store" });
-        if (!res.ok) throw new Error(copy.goldFetch.apiError);
-        const j = (await res.json()) as any;
-        if (j?.ok !== true) throw new Error(String(j?.message || j?.error || copy.goldFetch.dataError));
-
-        const czkPerOz = Number(j?.czkPerOz);
-        const ts = Number(j?.ts || Date.now());
-        const changePctRaw = j?.changes?.d1 ?? j?.changesPct?.["1d"];
-        const changePct = Number.isFinite(Number(changePctRaw)) ? Number(changePctRaw) : null;
-
-        if (!Number.isFinite(czkPerOz) || czkPerOz <= 0) {
-          throw new Error(copy.goldFetch.invalidPrice);
-        }
-
-        if (cancelled) return;
-        setGoldData({ czkPerOz, ts, changePct });
-      } catch (e) {
-        if (!cancelled) {
-          setGoldError((e as any)?.message || copy.goldFetch.priceError);
-          setGoldData(null);
-        }
-      } finally {
-        requestInFlight = false;
-        if (!cancelled) setGoldLoading(false);
-      }
-    };
-    void loadGold();
-    const intervalId = window.setInterval(() => {
-      void loadGold();
-    }, 5 * 60_000);
-    const handleWindowFocus = () => {
-      void loadGold();
-    };
-    window.addEventListener("focus", handleWindowFocus);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleWindowFocus);
-    };
-  }, [homeWidgets.goldWidget, goldReloadKey, copy.goldFetch]);
+  if (!hasTeam && (chartMode !== "personal" || selectedSubordinate !== null)) {
+    setChartMode("personal");
+    setSelectedSubordinate(null);
+  }
+  if (!homeWidgets.productionChart && subPickerOpen) setSubPickerOpen(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const key = homeLayoutKey(normalizedEmail);
     if (!key) return;
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      setHomeLayout(HOME_LAYOUT_DEFAULT);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as HomeSection[];
-      const cleaned = parsed.filter((s) => HOME_LAYOUT_DEFAULT.includes(s));
-      setHomeLayout(cleaned.length ? cleaned : HOME_LAYOUT_DEFAULT);
-    } catch {
-      setHomeLayout(HOME_LAYOUT_DEFAULT);
-    }
+    let active = true;
+    // Defer device-only layout hydration and cancel it when the identity changes.
+    queueMicrotask(() => {
+      if (!active) return;
+      setHomeLayout(normalizeHomeLayout(readLocalHomeLayout(normalizedEmail)));
+    });
+    return () => { active = false; };
   }, [normalizedEmail]);
 
   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
@@ -1112,21 +956,15 @@ export default function HomePage() {
   const showMonthlyGoalSection = homeWidgets.monthlyGoal;
   const showLeaderboardSection = showTeamBox && homeWidgets.teamLeaderboard;
   const showChartSection = false;
-  const showGoldWidget = homeWidgets.goldWidget;
   const showQuickActions = homeWidgets.quickActions;
   const reorderEnabled = widgetPanelOpen;
-  const goldChangePct = goldData?.changePct ?? null;
   const isLiteUI = performanceMode === "lite";
-  const goldChangeAbs =
-    goldData?.czkPerOz && goldChangePct != null ? (goldData.czkPerOz * goldChangePct) / 100 : null;
-  const goldDir = goldChangePct == null ? "flat" : goldChangePct > 0 ? "up" : goldChangePct < 0 ? "down" : "flat";
   const homeRefreshBusy =
     summaryRefreshing ||
     summaryLoading ||
     tipSummaryLoading ||
     historyLoading ||
-    expectedPayoutLoading ||
-    goldLoading;
+    expectedPayoutLoading;
 
   const handleSectionDragStart = (id: HomeSection) => {
     setDraggingSection(id);
@@ -1168,22 +1006,232 @@ export default function HomePage() {
     }
   };
 
+  const saveMonthlyGoal = async (value: number) => {
+    const currentUser = auth.currentUser;
+    if (!normalizedEmail || !currentUser) return;
+    if (effectiveUserEmail(currentUser.email) !== normalizedEmail) return;
+    const profilePatch = resolveUserProfilePatchRequest();
+    try {
+      invalidateHomeCache(normalizedEmail);
+      await fetchAuthedJsonOrThrow(currentUser, profilePatch.url, {
+        method: "PATCH",
+        headers: profilePatch.headers,
+        body: JSON.stringify({ monthlyGoal: value }),
+      });
+      invalidateUserProfileCache(normalizedEmail);
+      setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: value } : prev));
+    } catch (e) {
+      console.error("Uložení měsíčního cíle selhalo", e);
+      throw e;
+    }
+  };
+
+  const subordinates = useMemo(() => {
+    const map = new Map<string, { email: string; name: string }>();
+    for (const entry of teamEntries) {
+      const email = (entry.userEmail ?? "").toLowerCase();
+      if (!email) continue;
+      const adviserName = cleanDisplayName(entry.adviserName);
+      const existing = map.get(email);
+      if (!existing || adviserName) {
+        map.set(email, { email, name: adviserName || existing?.name || nameFromEmail(email) });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, HOME_LOCALES[language])
+    );
+  }, [language, teamEntries]);
+
+  const chartEntries = useMemo(() => {
+    if (!hasTeam) return myEntries;
+    switch (chartMode) {
+      case "team":
+        return teamEntries;
+      case "combined":
+        return [...myEntries, ...teamEntries];
+      case "specific":
+        if (!selectedSubordinate) return [];
+        return teamEntries.filter(
+          (e) => (e.userEmail ?? "").toLowerCase() === selectedSubordinate
+        );
+      case "personal":
+      default:
+        return myEntries;
+    }
+  }, [chartMode, hasTeam, myEntries, teamEntries, selectedSubordinate]);
+
+  const personalProductionSeries = useMemo(() => {
+    const lifeProducts: Product[] = [
+      "neon",
+      "flexi",
+      "maximaMaxEfekt",
+      "pillowInjury",
+    ];
+
+    type MonthRow = PersonalSeriesPoint & { key: string };
+    const months: MonthRow[] = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const shortMonth = formatHomeMonthShortLabel(d, language);
+      months.push({
+        key,
+        label: `${shortMonth} ${String(d.getFullYear()).slice(2)}`,
+        lifeMonthly: 0,
+        otherAnnual: 0,
+        totalCombined: 0,
+      });
+    }
+
+    const monthIndex = new Map(months.map((m, idx) => [m.key, idx]));
+
+    for (const entry of chartEntries) {
+      if (isInheritedContract(entry)) continue;
+      const signed = entrySignedDate(entry);
+      if (!signed) continue;
+
+      const key = `${signed.getFullYear()}-${signed.getMonth()}`;
+      const idx = monthIndex.get(key);
+      if (idx === undefined) continue;
+
+      const amount = entry.inputAmount ?? 0;
+      if (!amount || !Number.isFinite(amount)) continue;
+
+      const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
+      const product = entry.productKey as Product | undefined;
+
+      const isLife = product ? lifeProducts.includes(product) : false;
+
+      if (isLife) {
+        months[idx].lifeMonthly += normalizeToMonthly(amount, freq);
+      } else {
+        months[idx].otherAnnual += normalizeToAnnual(amount, freq);
+      }
+    }
+
+    for (const m of months) {
+      m.totalCombined = m.lifeMonthly + m.otherAnnual;
+    }
+
+    return months;
+  }, [chartEntries, language]);
+
+  // ---------- žebříček týmu ----------
+
+  const leaderboardEntries: TeamLeaderboardEntry[] = useMemo(() => {
+    if (!isManager || !hasTeam) return [];
+    if (lbRange === "month" && monthlyLeaderboard) {
+      return monthlyLeaderboard.filter(row => lbProductFilter === "life" ? row.hasLife : row.hasOther).map(row => ({
+        email: row.email, name: cleanDisplayName(row.name) || nameFromEmail(row.email),
+        totalPremium: lbProductFilter === "life" ? row.life : row.other,
+      })).sort((a, b) => b.totalPremium - a.totalPremium);
+    }
+    if (teamEntries.length === 0) return [];
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
+
+    const lifeProducts: Product[] = [
+      "neon",
+      "flexi",
+      "maximaMaxEfekt",
+      "pillowInjury",
+    ];
+
+    const sums = new Map<string, number>();
+    const names = new Map<string, string>();
+
+    for (const entry of teamEntries) {
+      if (isInheritedContract(entry)) continue;
+      const signed = entrySignedDate(entry);
+      if (!signed) continue;
+
+      // filtr rozsahu
+      if (lbRange === "month") {
+        if (
+          signed.getFullYear() !== currentYear ||
+          signed.getMonth() !== currentMonth
+        ) {
+          continue;
+        }
+      } else if (lbRange === "year") {
+        if (signed < twelveMonthsAgo) continue;
+      } else if (lbRange === "sixMonths") {
+        if (signed < sixMonthsAgo) continue;
+      }
+
+      const pk = entry.productKey;
+      const isLife =
+        pk != null && lifeProducts.includes(pk as Product);
+
+      if (lbProductFilter === "life" && !isLife) continue;
+      if (lbProductFilter === "other" && isLife) continue;
+
+      const email = entry.userEmail ?? "";
+      if (!email) continue;
+      const adviserName = cleanDisplayName(entry.adviserName);
+      if (adviserName || !names.has(email)) {
+        names.set(email, adviserName || nameFromEmail(email));
+      }
+
+      const rawPremium = entry.inputAmount ?? 0;
+      if (!rawPremium || !Number.isFinite(rawPremium)) continue;
+
+      const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
+      const premium = isLife
+        ? rawPremium
+        : normalizeToAnnual(rawPremium, freq);
+
+      const prev = sums.get(email) ?? 0;
+      sums.set(email, prev + premium);
+    }
+
+    const rows: TeamLeaderboardEntry[] = Array.from(sums.entries())
+      .map(([email, totalPremium]) => ({
+        email,
+        name: names.get(email) || nameFromEmail(email),
+        totalPremium,
+      }))
+      .sort((a, b) => b.totalPremium - a.totalPremium);
+
+    return rows;
+  }, [isManager, hasTeam, teamEntries, monthlyLeaderboard, lbProductFilter, lbRange]);
+
+  const leaderboardLabel =
+    lbProductFilter === "life"
+      ? copy.leaderboard.life
+      : copy.leaderboard.other;
+
+  const isSectionVisible = (sec: HomeSection) => {
+    switch (sec) {
+      case "summary":
+        return showProductionSummary;
+      case "goal":
+        return showMonthlyGoalSection;
+      case "expectedPayout":
+        return showExpectedPayoutSection;
+      case "leaderboard":
+        return showLeaderboardSection;
+      case "chart":
+        return showChartSection;
+      case "quickActions":
+        return showQuickActions;
+      default:
+        return false;
+    }
+  };
+
   const renderSection = (id: HomeSection): ReactElement | null => {
     switch (id) {
-      case "gold":
-        if (!showGoldWidget) return null;
-        return (
-          <GoldWidget
-            language={language}
-            isLiteUI={isLiteUI}
-            goldLoading={goldLoading}
-            goldData={goldData}
-            goldChangePct={goldChangePct}
-            goldChangeAbs={goldChangeAbs}
-            goldDir={goldDir as "up" | "down" | "flat"}
-            goldError={goldError}
-          />
-        );
       case "summary":
         if (!showProductionSummary) return null;
         return (
@@ -1312,234 +1360,6 @@ export default function HomePage() {
     }
   };
 
-  const saveMonthlyGoal = async (value: number) => {
-    const currentUser = auth.currentUser;
-    if (!normalizedEmail || !currentUser) return;
-    if (effectiveUserEmail(currentUser.email) !== normalizedEmail) return;
-    const profilePatch = resolveUserProfilePatchRequest();
-    try {
-      invalidateHomeCache(normalizedEmail);
-      await fetchAuthedJsonOrThrow(currentUser, profilePatch.url, {
-        method: "PATCH",
-        headers: profilePatch.headers,
-        body: JSON.stringify({ monthlyGoal: value }),
-      });
-      invalidateUserProfileCache(normalizedEmail);
-      setUserMeta((prev) => (prev ? { ...prev, monthlyGoal: value } : prev));
-    } catch (e) {
-      console.error("Uložení měsíčního cíle selhalo", e);
-      throw e;
-    }
-  };
-
-  const subordinates = useMemo(() => {
-    const map = new Map<string, { email: string; name: string }>();
-    for (const entry of teamEntries) {
-      const email = (entry.userEmail ?? "").toLowerCase();
-      if (!email) continue;
-      const adviserName = cleanDisplayName(entry.adviserName);
-      const existing = map.get(email);
-      if (!existing || adviserName) {
-        map.set(email, { email, name: adviserName || existing?.name || nameFromEmail(email) });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, HOME_LOCALES[language])
-    );
-  }, [language, teamEntries]);
-
-  const chartEntries = useMemo(() => {
-    if (!hasTeam) return myEntries;
-    switch (chartMode) {
-      case "team":
-        return teamEntries;
-      case "combined":
-        return [...myEntries, ...teamEntries];
-      case "specific":
-        if (!selectedSubordinate) return [];
-        return teamEntries.filter(
-          (e) => (e.userEmail ?? "").toLowerCase() === selectedSubordinate
-        );
-      case "personal":
-      default:
-        return myEntries;
-    }
-  }, [chartMode, hasTeam, myEntries, teamEntries, selectedSubordinate]);
-
-  const personalProductionSeries = useMemo(() => {
-    const lifeProducts: Product[] = [
-      "neon",
-      "flexi",
-      "maximaMaxEfekt",
-      "pillowInjury",
-    ];
-
-    type MonthRow = PersonalSeriesPoint & { key: string };
-    const months: MonthRow[] = [];
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const shortMonth = formatHomeMonthShortLabel(d, language);
-      months.push({
-        key,
-        label: `${shortMonth} ${String(d.getFullYear()).slice(2)}`,
-        lifeMonthly: 0,
-        otherAnnual: 0,
-        totalCombined: 0,
-      });
-    }
-
-    const monthIndex = new Map(months.map((m, idx) => [m.key, idx]));
-
-    for (const entry of chartEntries) {
-      if (isInheritedContract(entry)) continue;
-      const signed = entrySignedDate(entry);
-      if (!signed) continue;
-
-      const key = `${signed.getFullYear()}-${signed.getMonth()}`;
-      const idx = monthIndex.get(key);
-      if (idx === undefined) continue;
-
-      const amount =
-        entry.inputAmount ??
-        (entry.comfortPayment != null ? entry.comfortPayment : 0);
-      if (!amount || !Number.isFinite(amount)) continue;
-
-      const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
-      const product = entry.productKey as Product | undefined;
-
-      const isLife = product ? lifeProducts.includes(product) : false;
-
-      if (isLife) {
-        months[idx].lifeMonthly += normalizeToMonthly(amount, freq);
-      } else {
-        months[idx].otherAnnual += normalizeToAnnual(amount, freq);
-      }
-    }
-
-    for (const m of months) {
-      m.totalCombined = m.lifeMonthly + m.otherAnnual;
-    }
-
-    return months;
-  }, [chartEntries, language]);
-
-  // ---------- žebříček týmu ----------
-
-  const leaderboardEntries: TeamLeaderboardEntry[] = useMemo(() => {
-    if (!isManager || !hasTeam) return [];
-    if (lbRange === "month" && monthlyLeaderboard) {
-      return monthlyLeaderboard.filter(row => lbProductFilter === "life" ? row.hasLife : row.hasOther).map(row => ({
-        email: row.email, name: cleanDisplayName(row.name) || nameFromEmail(row.email),
-        totalPremium: lbProductFilter === "life" ? row.life : row.other,
-      })).sort((a, b) => b.totalPremium - a.totalPremium);
-    }
-    if (teamEntries.length === 0) return [];
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-    twelveMonthsAgo.setHours(0, 0, 0, 0);
-
-    const lifeProducts: Product[] = [
-      "neon",
-      "flexi",
-      "maximaMaxEfekt",
-      "pillowInjury",
-    ];
-
-    const sums = new Map<string, number>();
-    const names = new Map<string, string>();
-
-    for (const entry of teamEntries) {
-      if (isInheritedContract(entry)) continue;
-      const signed = entrySignedDate(entry);
-      if (!signed) continue;
-
-      // filtr rozsahu
-      if (lbRange === "month") {
-        if (
-          signed.getFullYear() !== currentYear ||
-          signed.getMonth() !== currentMonth
-        ) {
-          continue;
-        }
-      } else if (lbRange === "year") {
-        if (signed < twelveMonthsAgo) continue;
-      } else if (lbRange === "sixMonths") {
-        if (signed < sixMonthsAgo) continue;
-      }
-
-      const pk = entry.productKey;
-      const isLife =
-        pk != null && lifeProducts.includes(pk as Product);
-
-      if (lbProductFilter === "life" && !isLife) continue;
-      if (lbProductFilter === "other" && isLife) continue;
-
-      const email = entry.userEmail ?? "";
-      if (!email) continue;
-      const adviserName = cleanDisplayName(entry.adviserName);
-      if (adviserName || !names.has(email)) {
-        names.set(email, adviserName || nameFromEmail(email));
-      }
-
-      const rawPremium = entry.inputAmount ?? 0;
-      if (!rawPremium || !Number.isFinite(rawPremium)) continue;
-
-      const freq = (entry.frequencyRaw ?? "annual") as PaymentFrequency;
-      const premium = isLife
-        ? rawPremium
-        : normalizeToAnnual(rawPremium, freq);
-
-      const prev = sums.get(email) ?? 0;
-      sums.set(email, prev + premium);
-    }
-
-    const rows: TeamLeaderboardEntry[] = Array.from(sums.entries())
-      .map(([email, totalPremium]) => ({
-        email,
-        name: names.get(email) || nameFromEmail(email),
-        totalPremium,
-      }))
-      .sort((a, b) => b.totalPremium - a.totalPremium);
-
-    return rows;
-  }, [isManager, hasTeam, teamEntries, monthlyLeaderboard, lbProductFilter, lbRange]);
-
-  const leaderboardLabel =
-    lbProductFilter === "life"
-      ? copy.leaderboard.life
-      : copy.leaderboard.other;
-
-  const isSectionVisible = (sec: HomeSection) => {
-    switch (sec) {
-      case "gold":
-        return showGoldWidget;
-      case "summary":
-        return showProductionSummary;
-      case "goal":
-        return showMonthlyGoalSection;
-      case "expectedPayout":
-        return showExpectedPayoutSection;
-      case "leaderboard":
-        return showLeaderboardSection;
-      case "chart":
-        return showChartSection;
-      case "quickActions":
-        return showQuickActions;
-      default:
-        return false;
-    }
-  };
-
   const visibleSections = homeLayout.filter(isSectionVisible);
 
   if (!authReady) {
@@ -1605,9 +1425,8 @@ export default function HomePage() {
           }}
         />
       )}
-      <div className="relative isolate w-full overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f8fafc_100%)] px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
-        <HomeBackgroundLines />
-        <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-6 font-mono text-slate-900">
+      <HomePageSurface isLiteUI={isLiteUI} className="w-full flex-1 px-3 py-6 sm:px-4 sm:py-8 lg:px-8">
+        <div className="relative z-10 mx-auto w-full max-w-6xl min-w-0 space-y-4 font-mono text-slate-900">
         <header className={headerStyles.header}>
           <div className={headerStyles.top}>
             <div className={headerStyles.heading}>
@@ -1636,6 +1455,7 @@ export default function HomePage() {
                 onClick={() => setWidgetPanelOpen((prev) => !prev)}
                 className={headerStyles.utilityButton}
                 aria-expanded={widgetPanelOpen}
+                aria-controls={widgetPanelOpen ? "home-customization-panel" : undefined}
                 aria-label={copy.customizeHomeAria}
                 title={copy.customizeButtonTitle}
               >
@@ -1644,97 +1464,20 @@ export default function HomePage() {
               </button>
 
               {widgetPanelOpen && (
-                <div className="fixed left-1/2 top-20 z-[110] max-h-[calc(100dvh-6rem)] w-[calc(100vw-2rem)] max-w-[24rem] -translate-x-1/2 overflow-y-auto rounded-[26px] border border-violet-100 bg-white p-2 shadow-[0_24px_70px_rgba(49,25,105,0.28)] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:z-[110] sm:mt-3 sm:w-[23rem] sm:max-w-none sm:translate-x-0">
-                  <div className="rounded-[20px] bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-800 px-4 py-4 !text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 [&_svg]:!stroke-white">
-                          <SlidersHorizontal size={19} aria-hidden="true" />
-                        </span>
-                        <div className="text-base font-extrabold !text-white">{copy.customizeTitle}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setWidgetPanelOpen(false)}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 !text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white [&_svg]:!stroke-white"
-                        aria-label={copy.close}
-                      >
-                        <X size={16} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 px-1 pb-1 pt-3">
-                    {[
-                      { key: "productionSummary" as const, label: copy.widgetLabels.productionSummary, icon: BarChart3, iconClass: "bg-violet-100 text-violet-700", disabled: false },
-                      { key: "expectedPayout" as const, label: copy.widgetLabels.expectedPayout, icon: WalletCards, iconClass: "bg-fuchsia-100 text-fuchsia-700", disabled: false },
-                      { key: "monthlyGoal" as const, label: copy.widgetLabels.monthlyGoal, icon: Target, iconClass: "bg-rose-100 text-rose-700", disabled: false },
-                      { key: "goldWidget" as const, label: copy.widgetLabels.goldWidget, icon: Coins, iconClass: "bg-amber-100 text-amber-700", disabled: false },
-                      { key: "teamLeaderboard" as const, label: copy.widgetLabels.teamLeaderboard, icon: Trophy, iconClass: "bg-sky-100 text-sky-700", disabled: !showTeamBox, note: copy.managerOnlyNote },
-                      { key: "quickActions" as const, label: copy.widgetLabels.quickActions, icon: Zap, iconClass: "bg-emerald-100 text-emerald-700", disabled: false },
-                    ].map((opt) => {
-                      const checked = homeWidgets[opt.key];
-                      const Icon = opt.icon;
-                      return (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          role="switch"
-                          aria-checked={checked}
-                          disabled={opt.disabled}
-                          onClick={() => handleWidgetToggle(opt.key)}
-                          className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
-                            opt.disabled
-                              ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-55"
-                              : "border-slate-200 bg-slate-50/80 hover:border-violet-200 hover:bg-violet-50/60"
-                          }`}
-                        >
-                          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${opt.iconClass}`}>
-                            <Icon size={18} aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold text-slate-800">{opt.label}</span>
-                            {opt.note && opt.disabled ? (
-                              <span className="mt-0.5 block text-[11px] text-slate-500">{opt.note}</span>
-                            ) : null}
-                          </span>
-                          <span className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition ${checked ? "bg-violet-700" : "bg-slate-300"}`}>
-                            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={performanceMode === "default"}
-                    onClick={() => updatePerformanceMode(performanceMode === "lite" ? "default" : "lite")}
-                    className="mx-1 mb-1 mt-3 flex w-[calc(100%_-_0.5rem)] items-center gap-3 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 text-left transition hover:bg-violet-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
-                  >
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm">
-                      <Gauge size={18} aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold text-slate-900">{copy.performance.title}</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
-                        {performanceMode === "lite" ? copy.performance.liteDescription : copy.performance.defaultDescription}
-                      </span>
-                    </span>
-                    <span className="text-right">
-                      <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700">
-                        {performanceMode === "lite" ? copy.performance.liteLabel : copy.performance.defaultLabel}
-                      </span>
-                      <span className={`mt-1.5 inline-flex h-5 w-9 rounded-full p-0.5 transition ${performanceMode === "default" ? "bg-violet-700" : "bg-slate-300"}`}>
-                        <span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${performanceMode === "default" ? "translate-x-4" : "translate-x-0"}`} />
-                      </span>
-                    </span>
-                  </button>
-                  <p className="px-3 pb-2 pt-2 text-center text-[11px] leading-4 text-slate-500">
-                    Nastavení domova se synchronizuje na všech tvých zařízeních.
-                  </p>
-                </div>
+                <HomeCustomizationPanel
+                  id="home-customization-panel"
+                  title={copy.customizeTitle}
+                  closeLabel={copy.close}
+                  widgetLabels={copy.widgetLabels}
+                  managerOnlyNote={copy.managerOnlyNote}
+                  performance={copy.performance}
+                  widgets={homeWidgets}
+                  showTeamBox={showTeamBox}
+                  performanceMode={performanceMode}
+                  onClose={() => setWidgetPanelOpen(false)}
+                  onToggleWidget={handleWidgetToggle}
+                  onPerformanceModeChange={updatePerformanceMode}
+                />
               )}
             </div>
             </div>
@@ -1781,7 +1524,7 @@ export default function HomePage() {
 
             <Link
               href="/posta"
-              className={headerStyles.action}
+              className={`${headerStyles.action} ${headerStyles.primaryAction}`}
               aria-label={copy.mail}
               title={copy.mail}
             >
@@ -1793,6 +1536,12 @@ export default function HomePage() {
                 </span>
               ) : null}
             </Link>
+
+            <HomeProductionHelp
+              className={headerStyles.action}
+              showTeamBox={showTeamBox}
+              showOnlyTeamProduction={showOnlyTeamProduction}
+            />
 
             </nav>
           </div>
@@ -1853,7 +1602,7 @@ export default function HomePage() {
           })}
         </div>
         </div>
-      </div>
+      </HomePageSurface>
     </AppLayout>
   );
 }

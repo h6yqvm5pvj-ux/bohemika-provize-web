@@ -7,7 +7,6 @@ import {
   calculateStornoFund,
   formatMoney,
   sortCashflowItemsForDisplay,
-  STORNO_EXEMPT_PRODUCT,
   STORNO_FUND_RATE,
 } from "../helpers";
 import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } from "../types";
@@ -75,7 +74,7 @@ function buildCashflowDisplayGroups(items: CashflowItem[]): CashflowDisplayGroup
     const stornoFundAmount = groupItems.reduce(
       (sum, item) =>
         sum +
-        (item.isExtraPayout || item.isSubscriptionPayment || item.productKey === STORNO_EXEMPT_PRODUCT
+        (item.isExtraPayout || item.isSubscriptionPayment
           ? 0
           : item.amount * STORNO_FUND_RATE),
       0

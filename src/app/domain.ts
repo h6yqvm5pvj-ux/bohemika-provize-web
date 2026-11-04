@@ -33,7 +33,7 @@ export type Product =
   | "koopcestovko"
   | "cppcestovko"
   | "axacestovko"
-  | "comfortcc"
+
   | "cppPPRs"
   | "cppPPRbez";
 
@@ -80,12 +80,7 @@ export interface CommissionResultItemDTO {
 export interface CommissionResultDTO {
   items: CommissionResultItemDTO[];
   total: number;
-}
-
-// ---------- Comfort Commodity pomocné typy ----------
-
-export type ComfortVariant = "lumpSum" | "savings"; // Jednorázový nákup / Spoření
-export type ComfortFeeType = "upfront" | "gradual"; // Jednorázový / Postupný poplatek
+} // Jednorázový / Postupný poplatek
 
 // ---------- CommissionEntry (to co ukládáš do historie) ----------
 
@@ -94,7 +89,7 @@ export interface CommissionEntry {
   createdAt: Date;                   // agreementDate
   position: Position;                // Store.shared.position
   inputAmount: number;               // input / fee / payment
-  frequencyRaw?: PaymentFrequency | null; // selectedFrequency.rawValue nebo null (comfortcc)
+  frequencyRaw?: PaymentFrequency | null;
   result: CommissionResultDTO;       // result DTO
   contractNumber?: string | null;
   premiumFrequencyRaw?: string | null;   // zatím neřešíme – může být vždy null
@@ -127,12 +122,6 @@ export interface CalculatorFormState {
   durationYears: number;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant;
-
-  // Comfort Commodity
-  comfortVariant: ComfortVariant;
-  comfortFeeType: ComfortFeeType;
-  comfortFeeText: string;
-  comfortPaymentText: string;
 
   // výstupy
   resultItems: CommissionResultItemDTO[];

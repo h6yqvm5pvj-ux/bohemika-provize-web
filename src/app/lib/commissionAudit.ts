@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -615,15 +616,11 @@ export function commissionAuditSummaryForContract(
   overdueStart.setDate(overdueStart.getDate() - overdueDays);
   const items: CommissionAuditItem[] = [];
 
-  if (mode === "off") {
+  if (mode === "off" || isRetiredProduct(contract.productKey)) {
     return emptyCommissionAuditSummary();
   }
 
   if (contractLifecycleStatus(contract, now) === "storno") {
-    return emptyCommissionAuditSummary();
-  }
-
-  if (contract.productKey === "comfortcc") {
     return emptyCommissionAuditSummary();
   }
 

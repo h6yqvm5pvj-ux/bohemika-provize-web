@@ -1,0 +1,24 @@
+.surface { position: relative; isolation: isolate; min-width: 0; min-height: 100dvh; overflow: clip; background: #ffffff; }
+.content { position: relative; z-index: 1; min-width: 0; }
+.background { position: absolute; inset: 0; pointer-events: none; }
+.background { z-index: 0; }
+.viewport { position: sticky; top: 0; width: 100%; height: 100dvh; }
+.artwork { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.artwork::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 5% 75%, #d6bce92b, transparent 50%), radial-gradient(ellipse at 95% 18%, #c4a1dd26, transparent 45%); }
+.artwork canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; opacity: 0; }
+.artwork[data-production-renderer="ready"] canvas { opacity: 1; }
+.artwork [data-production-artwork-fallback] { position: absolute; inset: 0; }
+.artwork[data-production-renderer="ready"] [data-production-artwork-fallback] { visibility: hidden; }
+.artwork [data-shape] { position: absolute; display: block; aspect-ratio: 1; }
+.artwork [data-shape="ring"], .artwork [data-shape="orbit"] {
+  width: clamp(190px, 27vw, 340px);
+  border-radius: 50%;
+  background: conic-gradient(from 30deg, #f9f2ff, #bea0d6 12%, #72508e 24%, #e0c8f2 39%, #ffffff 48%, #ab86c6 62%, #5f3b77 75%, #e9d7f6 90%, #f9f2ff);
+  -webkit-mask: radial-gradient(closest-side, transparent 50%, #000 52% 96%, transparent 99%);
+  mask: radial-gradient(closest-side, transparent 50%, #000 52% 96%, transparent 99%);
+}
+.artwork [data-shape="ring"] { left: -5%; bottom: 3%; transform: rotate(-25deg) scaleY(.78); }
+.artwork [data-shape="orbit"] { width: clamp(150px, 22vw, 270px); right: -1%; top: 43%; transform: rotate(25deg) scaleY(.62); }
+.artwork [data-shape="pearl"] { top: 5%; right: 5%; width: clamp(120px, 17vw, 210px); border-radius: 50%; background: radial-gradient(ellipse at 27% 23%, #ffffff 2%, #ede0f7 14%, #b997d2 36%, #8862a4 59%, #d9bde9 76%, #76508f 95%); box-shadow: inset -8px -8px 14px #5c377b26; }
+@media (max-width: 650px) { .artwork [data-shape="orbit"] { width: 150px; right: -18%; top: 50%; }.artwork [data-shape="ring"] { left: -18%; bottom: 12%; }.artwork [data-shape="pearl"] { right: -5%; top: 9%; } }
+@media (forced-colors: active) { .background { display: none; }.surface { background: Canvas; } }

@@ -1,4 +1,5 @@
 import type { Product } from "../../types/domain";
+import { toDate } from "../../lib/formatters";
 import type { ContractDoc } from "./contractDetailTypes";
 
 type PdfReimportParser = (file: File) => Promise<unknown>;
@@ -35,7 +36,6 @@ export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> =
   koopodzam: async file => (await import("@/app/lib/parseKoopOdzamPdf")).parseKoopOdzamPdf(file),
   maxdomov: async file => (await import("@/app/lib/parseMaxdomovPdf")).parseMaxdomovPdf(file),
   maxcizinkomplex: async file => (await import("@/app/lib/parseMaxCizinKomplexPdf")).parseMaxCizinKomplexPdf(file),
-  comfortcc: async file => (await import("@/app/lib/parseComfortPdf")).parseComfortPdf(file),
 };
 
 const PDF_CONTRACT_FIELD_MAP = [
@@ -43,6 +43,8 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["clientName", "clientName"],
   ["policyStartDate", "policyStartDate"],
   ["policyEndDate", "policyEndDate"],
+  ["policyTermEndDate", "policyTermEndDate"],
+  ["automaticRenewal", "automaticRenewal"],
   ["targetAge", "pensionTargetAge"],
   ["contractSignedDate", "contractSignedDate"],
   ["durationYears", "durationYears"],
@@ -294,6 +296,7 @@ const parsedPdfValueForContractField = (
       ? rawValue
       : null;
   }
+  if (field === "automaticRenewal") return typeof rawValue === "boolean" ? rawValue : null;
 
   if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
     const value =
@@ -391,6 +394,17 @@ export const mergeEmptyContractFields = (
 
   for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
     if (contractField === "pensionTargetAge" && currentContract.productKey !== "conseqzenit") continue;
+    if ((contractField === "automaticRenewal" || contractField === "policyTermEndDate") && currentContract.productKey !== "domexneuron") continue;
+    const renewal = currentContract.automaticRenewal ?? parsed.automaticRenewal;
+    if (currentContract.productKey === "domexneuron" && contractField === "policyEndDate" && renewal === true) continue;
+    if (contractField === "policyTermEndDate" && renewal === false && !isEmptyReimportValue(currentContract.policyEndDate)) {
+      const currentEnd = toDate(currentContract.policyEndDate);
+      const parsedTermEnd = toDate(parsed[parsedKey]);
+      if (!currentEnd || !parsedTermEnd || !Number.isFinite(currentEnd.getTime()) || !Number.isFinite(parsedTermEnd.getTime()) ||
+        currentEnd.toISOString().slice(0, 10) !== parsedTermEnd.toISOString().slice(0, 10)) continue;
+    }
+    // Reimport fills empty fields; a populated end date needs explicit review before enabling renewal.
+    if (contractField === "automaticRenewal" && parsed.automaticRenewal === true && !isEmptyReimportValue(currentContract.policyEndDate)) continue;
     if (!isEmptyReimportValue(currentContract[contractField])) continue;
 
     const parsedValue = parsedPdfValueForContractField(contractField, parsed[parsedKey]);

@@ -1,6 +1,5 @@
 import { DataFreshness } from "./DataFreshness";
 import styles from "./homeWidgets.module.css";
-import Image from "next/image";
 import { WalletCards } from "lucide-react";
 
 import { type AppLanguage } from "@/lib/appLanguage";
@@ -67,12 +66,11 @@ export function ExpectedPayoutSection({
       : copy.currentMonth;
 
   return (
-    <section className={`${styles.card} ${initialLoading ? styles.payoutLoading : styles.dark} ${styles.payout} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
-      {!loading && <Image src="/images/money-wallet.png" alt="" width={1268} height={1241} aria-hidden="true" className={`${styles.ghost} ${styles.walletGhost}`} />}
+    <section className={`${styles.card} ${initialLoading ? styles.payoutLoading : ""} ${styles.payout} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate" aria-label={copy.title}>
       <div className={styles.content}>
         <h2 className={styles.title}><span className={styles.icon}><WalletCards aria-hidden="true" /></span>{copy.title}</h2>
-        <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} dark={!initialLoading} />
-        {deferred ? <p className="mt-5 text-sm text-slate-300">Výplata se načte při zobrazení.</p> : error && !updatedAt ? null : loading && !updatedAt ? <div className="mt-5"><LoadingProgressPanel title={copy.loadingTitle} description={copy.loadingDescription} accentLabel={copy.loadingAccent} visual="money" /></div> : (
+        <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} />
+        {deferred ? <p className={styles.empty}>Výplata se načte při zobrazení.</p> : error && !updatedAt ? null : loading && !updatedAt ? <div className="mt-5"><LoadingProgressPanel title={copy.loadingTitle} description={copy.loadingDescription} accentLabel={copy.loadingAccent} visual="money" /></div> : (
           <div className={styles.payoutLayout}>
             <div>
               <p className={`${styles.label} ${styles.payoutPeriod}`}>{copy.netPayout} · {payoutPeriodLabel}</p>

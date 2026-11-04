@@ -38,6 +38,47 @@ const normalizedPayload = (raw: unknown = baseEntry()) => {
 };
 
 describe("contracts create payload parsing", () => {
+  const neuronEntry = (overrides: Record<string, unknown> = {}) => baseEntry({
+    productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
+    frequencyRaw: "semiannual", policyTermEndDate: "2027-11-04", ...overrides,
+  });
+
+  it("stores the term boundary without expiring a renewable Neuron contract", () => {
+    expect(normalizedPayload(neuronEntry({ automaticRenewal: true }))).toMatchObject({
+      automaticRenewal: true, policyEndDate: null, policyTermEndDate: new Date("2027-11-04"),
+    });
+  });
+
+  it("uses the term boundary as maturity when Neuron renewal is disabled", () => {
+    expect(normalizedPayload(neuronEntry({ automaticRenewal: false }))).toMatchObject({
+      automaticRenewal: false, policyEndDate: new Date("2027-11-04"), policyTermEndDate: new Date("2027-11-04"),
+    });
+    expect(normalizedPayload(neuronEntry({ policyTermEndDate: null }))).toMatchObject({ automaticRenewal: null, policyEndDate: null });
+  });
+
+  it.each([
+    { automaticRenewal: "ANO" }, { automaticRenewal: 1 }, { automaticRenewal: {} },
+    { automaticRenewal: true, policyEndDate: "2027-11-04" },
+    { automaticRenewal: false, policyEndDate: "2028-11-04" },
+    { automaticRenewal: false, policyTermEndDate: null },
+    { policyTermEndDate: "2026-11-03" }, { policyTermEndDate: "2027-02-30" },
+    { policyTermEndDate: [] }, { policyTermEndDate: true },
+    { productKey: "domex", automaticRenewal: true },
+  ])("rejects manipulated or inconsistent Neuron renewal fields: %j", overrides => {
+    expect(normalizeCreateEntryPayload({ raw: neuronEntry(overrides), ownerEmail, ownerUid })).toMatchObject({ ok: false });
+  });
+
+  it.each(["comfortcc", " COMFORTCC ", ["comfortcc"], { productKey: "comfortcc" }])("rejects a retired or manipulated product key: %j", productKey => {
+    const result = normalizeCreateEntryPayload({ raw: baseEntry({ productKey }), ownerEmail, ownerUid });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("productKey") });
+    expect(result).not.toHaveProperty("payload");
+  });
+
+  it.each(["comfortPayment", "comfortGradual", "comfortTargetAmount"])("rejects the removed product field %s on a supported product", field => {
+    const result = normalizeCreateEntryPayload({ raw: baseEntry({ [field]: field === "comfortGradual" ? true : 1000 }), ownerEmail, ownerUid });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining(field) });
+  });
+
   it.each(["JAN NOVÁK", "jan novák", "jAn   nOvÁk"])("normalizes personal name casing on create: %s", clientName => {
     expect(normalizedPayload(baseEntry({ clientName })).clientName).toBe("Jan Novák");
   });

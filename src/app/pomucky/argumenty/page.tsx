@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Search, Tag } from "lucide-react";
 import { AppLayout } from "@/components/AppLayout";
 
-type ObjectionCategory = "life" | "nonLife" | "investment" | "gold" | "general";
+type ObjectionCategory = "life" | "nonLife" | "investment" | "general";
 type FilterCategory = "all" | ObjectionCategory;
 
 type Objection = {
@@ -24,7 +24,6 @@ const CATEGORY_META: {
   { id: "life", label: "Životní pojištění", shortLabel: "Život" },
   { id: "nonLife", label: "Neživotní pojištění", shortLabel: "Neživot" },
   { id: "investment", label: "Investice", shortLabel: "Investice" },
-  { id: "gold", label: "Zlato", shortLabel: "Zlato" },
   { id: "general", label: "Obecné námitky", shortLabel: "Obecné" },
 ];
 
@@ -58,13 +57,6 @@ const CATEGORY_TONE: Record<
     dotGlow: "bg-teal-300",
     bullet: "bg-teal-400",
     badge: "bg-teal-50 text-teal-700 border-teal-200",
-  },
-  gold: {
-    bar: "bg-amber-400",
-    dot: "bg-amber-500",
-    dotGlow: "bg-amber-300",
-    bullet: "bg-amber-400",
-    badge: "bg-amber-50 text-amber-700 border-amber-200",
   },
   general: {
     bar: "bg-slate-400",
@@ -198,31 +190,6 @@ const OBJECTIONS: Objection[] = [
     ],
   },
 
-  // -------- Zlato --------
-  {
-    id: "gold-mrtva-investice",
-    category: "gold",
-    title: "Zlato nic nevydělává, je to mrtvá investice.",
-    bullets: [
-      "Je pravda, že zlato nevyplácí **úrok ani dividendu** – jeho úloha je jiná.",
-      "Používá se hlavně jako **pojistka proti krizi a inflaci** – doplněk k portfoliu, ne jediná investice.",
-      "Ukážeme si, jak může **5–15 % portfolia ve zlatě** snížit výkyvy při pádech na trzích.",
-      "Naopak zlato poskytuje velice atraktivní, často až bezkonkurenční zhodnocení v poměru k rizikovosti.",
-    ],
-  },
-  {
-    id: "gold-proc-zlato",
-    category: "gold",
-    title: "Proč bych měl investovat do zlata?",
-    bullets: [
-      "Je to reálné aktivum, ne jen slib na papíře nebo číslo v aplikaci.",
-      "Chrání finance před úpadkem, inflací a umí je atraktivně zhodnotit.",
-      "Bezpečný přístav v krizích – války, finanční krize, pád banky, měnová reforma. V nejistotě roste zájem o zlato.",
-      "Likvidita – zlato lze snadno kdykoliv směnit zpět na peníze.",
-      "Diskrétnost – zlato je váš fyzický majetek, máte nad ním kontrolu pouze vy.",
-      "Investiční slitky a mince jsou osvobozené od 21% DPH.",
-    ],
-  },
 ];
 
 // jednoduchý markdown: **tučné**
@@ -273,7 +240,7 @@ export default function ArgumentsPage() {
           </h1>
           <p className="text-sm text-slate-600">
             Rychlý tahák k nejčastějším námitkám klientů – Život, Neživot,
-            Investice, Zlato a obecné situace.
+            Investice a obecné situace.
           </p>
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.06)]">
             <Tag className="h-3.5 w-3.5" />

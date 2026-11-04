@@ -16,9 +16,6 @@ const baseInput = (
   durationYears: 15,
   durationMonths: null,
   maxCizinKomplexVariant: null,
-  comfortPayment: null,
-  comfortGradual: null,
-  comfortTargetAmount: null,
   ...overrides,
 });
 
@@ -295,7 +292,7 @@ describe("calculateCommission", () => {
       "koopcestovko",
       "cppcestovko",
       "axacestovko",
-      "comfortcc",
+
       "cppPPRs",
       "cppPPRbez",
     ];
@@ -309,9 +306,6 @@ describe("calculateCommission", () => {
           durationMonths: productKey === "maxcizinkomplex" ? 12 : null,
           maxCizinKomplexVariant:
             productKey === "maxcizinkomplex" ? "exclusiveStandard" : null,
-          comfortPayment: productKey === "comfortcc" ? 1_000 : null,
-          comfortGradual: productKey === "comfortcc" ? false : null,
-          comfortTargetAmount: null,
         })
       );
 

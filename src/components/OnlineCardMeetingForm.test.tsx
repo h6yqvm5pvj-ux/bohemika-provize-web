@@ -27,6 +27,15 @@ async function fill(name: string, value: string) {
 async function send() { await act(async () => { container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); }
 
 describe("one-step meeting form", () => {
+  it.each([
+    ["cs", "Jiné"],
+    ["en", "Other"],
+    ["uk", "Інше"],
+  ] as const)("keeps the final inquiry topic mapped correctly in %s", async (locale, topic) => {
+    await act(async () => root.render(<OnlineCardMeetingForm slug="advisor" locale={locale} initialSelectedTopics={["other"]} />));
+    await fill("fullName", "Jan Novák"); await fill("phone", "+420777000111"); await send();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ topics: [topic], locale });
+  });
   it("submits a name and phone without email, topic or message", async () => {
     await act(async () => root.render(<OnlineCardMeetingForm slug="advisor" onSubmitted={submit} />));
     expect(container.querySelector('input[type="email"]')).toBeNull();

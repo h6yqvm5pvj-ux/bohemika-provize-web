@@ -1,15 +1,16 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onlineCardHref } from "@/lib/onlineCardNavigation";
+import { ONLINE_CARD_COPY } from "@/lib/onlineCardI18n";
+import { AdvisorProfileSections } from "@/components/AdvisorProfileSections";
 import Vehicle from "./[slug]/pojisteni-vozidla/VehicleInsuranceShellClient";
-import Gold from "./[slug]/zlato/GoldInvestmentShellClient";
 import Life from "./[slug]/zivotni-pojisteni/LifeInsuranceShellClient";
 
 vi.mock("next/image", () => ({ default: () => null }));
 vi.mock("@/components/vehicle-insurance/VehicleInsuranceContent", () => ({ VehicleInsuranceContent: ({ locale }: { locale: string }) => <p data-content-language={locale} /> }));
-vi.mock("@/components/gold-investment/GoldInvestmentContent", () => ({ GoldInvestmentContent: ({ locale }: { locale: string }) => <p data-content-language={locale} /> }));
 vi.mock("@/components/LifeInsuranceContent", () => ({ LifeInsuranceContent: ({ locale }: { locale: string }) => <p data-content-language={locale} /> }));
 
 let root: Root;
@@ -22,7 +23,16 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 describe("profile service language navigation", () => {
-  it.each([Vehicle, Gold, Life])("keeps the inbound language, updates links and persists a language change", async Component => {
+  it.each(["cs", "en", "uk"] as const)("keeps remaining service links and translations aligned in %s", locale => {
+    const section = document.createElement("div");
+    section.innerHTML = renderToStaticMarkup(<AdvisorProfileSections minimal locale={locale} lifeInsurancePageHref="/life" vehicleInsurancePageHref="/vehicle" travelInsurancePageHref="/travel" />);
+    const services = [...section.querySelectorAll('[data-service-icon]')].map(icon => icon.parentElement!);
+    expect(services).toHaveLength(7);
+    expect(services.map(service => service.textContent)).toEqual([...ONLINE_CARD_COPY[locale].advisor.services]);
+    expect(services.map(service => service.getAttribute("href"))).toEqual(["/life", null, "/vehicle", "/travel", null, null, null]);
+    expect(section.querySelectorAll('[data-service-icon="7"]')).toHaveLength(0);
+  });
+  it.each([Vehicle, Life])("keeps the inbound language, updates links and persists a language change", async Component => {
     await act(async () => root.render(<Component slug="advisor" initialLocale="en" />));
     expect(document.documentElement.lang).toBe("en");
     expect(container.querySelector("[data-content-language]")?.getAttribute("data-content-language")).toBe("en");

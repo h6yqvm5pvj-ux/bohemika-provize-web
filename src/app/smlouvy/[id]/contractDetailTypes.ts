@@ -214,9 +214,6 @@ export type ContractDoc = {
   premiumDecreaseAmount?: number | null;
   changeType?: "increase" | "decrease" | "same" | string | null;
   frequencyRaw?: PaymentFrequency | null;
-  comfortPayment?: number | null;
-  comfortGradual?: boolean | null;
-  comfortTargetAmount?: number | null;
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: ContractCommissionPayout[] | null;
@@ -283,6 +280,8 @@ export type ContractDoc = {
 
   policyStartDate?: FirestoreTimestamp | Date | string | null;
   policyEndDate?: FirestoreTimestamp | Date | string | null;
+  policyTermEndDate?: FirestoreTimestamp | Date | string | null;
+  automaticRenewal?: boolean | null;
   pensionTargetAge?: number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;

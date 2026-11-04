@@ -1,6 +1,6 @@
 import type { AggregateMetrics, ContractStats } from "@/app/api/team-overview/teamOverview.types";
 
-export const TEAM_OVERVIEW_MODEL_VERSION = 6;
+export const TEAM_OVERVIEW_MODEL_VERSION = 7;
 
 const finiteNumber = (value: unknown): number => {
   const parsed = Number(value);

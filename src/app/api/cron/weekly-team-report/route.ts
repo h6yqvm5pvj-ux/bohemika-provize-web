@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { timingSafeEqual } from "node:crypto";
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -169,10 +170,6 @@ function annualPremiumFromEntry(
 
   if (isLifeProduct(product)) {
     return rawAmount * 12;
-  }
-
-  if (productCategory(product) === "comfort") {
-    return rawAmount;
   }
 
   return rawAmount * paymentsPerYear(normalizeFrequency(data.frequencyRaw));
@@ -383,6 +380,7 @@ async function loadWeeklyOwnerTotals(
 
       docsByPath.forEach((docSnap) => {
         const data = (docSnap.data() ?? {}) as Record<string, unknown>;
+        if (isRetiredProduct(data.productKey)) return;
         const effectiveDate = toDate(data.contractSignedDate ?? data.createdAt);
         const effectiveMs = effectiveDate?.getTime() ?? null;
         if (effectiveMs == null || effectiveMs < sinceMs || effectiveMs > untilMs) {

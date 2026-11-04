@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 import { CAREER_POSITIONS } from "@/app/lib/careerPositions";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -17,7 +18,6 @@ import {
 export { normalizeSearchValue, normalizeContractNumberForSearch };
 import {
   AUTO_PRODUCTS,
-  COMFORT_PRODUCTS,
   PENSION_PRODUCTS,
   INSTITUTION_CATALOG,
   LIFE_PRODUCTS,
@@ -66,7 +66,6 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   auto: AUTO_PRODUCTS,
   property: CONTRACT_LIST_PROPERTY_LIABILITY_PRODUCTS,
   travel: CONTRACT_LIST_TRAVEL_PRODUCTS,
-  comfort: COMFORT_PRODUCTS,
   business: CONTRACT_LIST_BUSINESS_PRODUCTS,
   foreigners: CONTRACT_LIST_FOREIGNER_PRODUCTS,
 };
@@ -76,7 +75,7 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>(
   "auto",
   "property",
   "travel",
-  "comfort",
+
   "business",
   "foreigners",
 ]);
@@ -475,6 +474,7 @@ export function contractMatchesListFilters(
   ownerEmail?: string | null,
   search: PreparedContractSearch = prepareContractSearch(filters.query),
 ): boolean {
+  if (isRetiredProduct(contract.productKey)) return false;
   const product = contract.productKey as Product | undefined;
   if (filters.signedFrom) {
     const signed = contractSortDate(contract);

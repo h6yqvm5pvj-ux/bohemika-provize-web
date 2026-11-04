@@ -874,7 +874,6 @@ function getProductDisplayName(productKey) {
     case "koopcestovko": return "✈️ Kooperativa Cestovko";
     case "cppcestovko": return "✈️ ČPP Cestovko";
     case "axacestovko": return "✈️ AXA Cestovko";
-    case "comfortcc": return "💰 ComfortCommodity";
     default: return productKey || "Neznámý produkt";
   }
 }
@@ -1155,7 +1154,7 @@ exports.notifyManagerOnNewEntry = onDocumentCreated(
 );
 
 /* ------------------------------------------------------------------ */
-/*  2) CRON – notifikace na blížící se výročí smluv (mimo cestovko + comfort) */
+/*  2) CRON – notifikace na blížící se výročí smluv (mimo cestovní pojištění) */
 /* ------------------------------------------------------------------ */
 
 exports.notifyAutoAnniversary = onSchedule(

@@ -29,6 +29,19 @@ function database() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("team overview owner projections", () => {
+  it("rebuilds the pre-retirement model and excludes retired source rows from both active and total statistics", async () => {
+    const { db, rows } = database();
+    const read = vi.fn(async () => [entry()]);
+    await loadTeamOverviewOwnerStats(db, [owners[0]], now, read);
+    const cached = rows.get(`teamOverviewTotals/${owners[0]}`)!;
+    cached.version = 6;
+    (cached.projection as Record<string, unknown>).version = 1;
+    read.mockResolvedValue([entry(owners[0], "retired", { productKey: "comfortcc" })]);
+    const result = await loadTeamOverviewOwnerStats(db, [owners[0]], now, read);
+    expect(result.all[owners[0]]).toMatchObject({ total: 0, month: 0, institutionMetrics: {} });
+    expect(result.active[owners[0]].total).toBe(0);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
   it("reuses durable results past the old five-minute expiry and stores compatible monthly documents", async () => {
     const { db, rows } = database();
     const read = vi.fn(async () => [entry()]);

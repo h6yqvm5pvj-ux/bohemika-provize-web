@@ -64,7 +64,7 @@ const form = (overrides: Partial<ContractDetailsForm> = {}): ContractDetailsForm
   }) as ContractDetailsForm;
 
 const buildPlan = (
-  product: "allianzAuto" | "neon" | "flexi" | "maxdomov" | "domex",
+  product: "allianzAuto" | "neon" | "flexi" | "maxdomov" | "domex" | "domexneuron",
   overrides: Partial<ContractDetailsForm> = {},
   showDurationForProduct = false
 ) =>
@@ -76,6 +76,36 @@ const buildPlan = (
   });
 
 describe("useContractDetails", () => {
+  it("separates the renewable term boundary from actual maturity", () => {
+    const plan = buildPlan("domexneuron", { editAutomaticRenewal: true, editPolicyEnd: "2027-11-04" });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates).toMatchObject({ automaticRenewal: true, policyTermEndDate: new Date("2027-11-04"), policyEndDate: null });
+    const finite = buildPlan("domexneuron", { editAutomaticRenewal: false, editPolicyEnd: "2027-11-04" });
+    expect(finite.ok && finite.updates.policyEndDate).toEqual(new Date("2027-11-04"));
+    expect(buildPlan("domexneuron", { editAutomaticRenewal: false })).toMatchObject({ ok: false });
+  });
+
+  it("does not infer a Neuron maturity when saving edits with unknown renewal", async () => {
+    const requests: RequestInit[] = [];
+    const requestContractsApi: ContractDetailsApiRequest = async <T>(_path: string, init?: RequestInit) => {
+      if (init) requests.push(init);
+      return { ok: true } as T;
+    };
+    const result = await saveContractDetails({
+      product: "domexneuron", durationBounds: null, showDurationForProduct: false,
+      ownerEmail: "advisor@example.test", entryId: "neuron-1", requestContractsApi,
+      form: form({ editClientName: "Upravené jméno", editAutomaticRenewal: null, editPolicyEnd: "2027-11-04" }),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const body = JSON.parse(requests[0].body as string);
+    expect(body.updates).toMatchObject({ automaticRenewal: null, policyTermEndDate: "2027-11-04T00:00:00.000Z" });
+    expect(body.updates).not.toHaveProperty("policyEndDate");
+    expect(result.applyToContract({ id: "neuron-1", policyEndDate: null } as ContractDoc)).toMatchObject({ policyEndDate: null });
+    expect(result.applyToContract({ id: "neuron-1", policyEndDate: "2028-11-04" } as ContractDoc)).toMatchObject({ policyEndDate: "2028-11-04" });
+  });
+
   it("zachová výpočet a lokální aktualizaci pro auto", () => {
     const plan = buildPlan(
       "allianzAuto",

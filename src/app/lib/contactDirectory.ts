@@ -71,13 +71,6 @@ export const CONTACT_INSTITUTIONS: ContactInstitution[] = [
       "bg-[radial-gradient(circle_at_92%_8%,rgba(250,204,21,0.17),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(71,85,105,0.08),transparent_42%)]",
   },
   {
-    key: "comfort-commodity",
-    label: "Comfort Commodity",
-    logoPath: "/icons/cclogo.png",
-    accentClass:
-      "bg-[radial-gradient(circle_at_92%_8%,rgba(159,18,57,0.14),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(202,138,4,0.1),transparent_42%)]",
-  },
-  {
     key: "csob",
     label: "ČSOB Pojišťovna",
     logoPath: "/icons/csb.png",
@@ -216,13 +209,6 @@ export const DEFAULT_DIRECTORY_CONTACTS: DirectoryContact[] = [
       { value: "terezabartunkova@investika.cz", label: "Tereza Bartůňková" },
       { value: "administrace@investika.cz", label: "Administrace" },
     ],
-  },
-  {
-    id: "comfort-commodity",
-    institutionKey: "comfort-commodity",
-    person: "Tereza Mičková",
-    phone: { display: "+420 734 232 022", href: "+420734232022" },
-    emails: [{ value: "info@comfort-commodity.cz" }],
   },
   {
     id: "csob",

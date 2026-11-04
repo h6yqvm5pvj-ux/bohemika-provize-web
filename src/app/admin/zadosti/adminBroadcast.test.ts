@@ -110,10 +110,10 @@ describe("admin broadcast rules", () => {
     expect(
       resolveAdminBroadcastTarget({
         targetPath: "/pomucky",
-        toolTargetPath: "/pomucky/zlato",
+        toolTargetPath: "/pomucky/proklepka-vozidla",
         customTargetPath: "",
       })
-    ).toEqual({ effectivePath: "/pomucky/zlato", label: "Pomůcky: Zlato" });
+    ).toEqual({ effectivePath: "/pomucky/proklepka-vozidla", label: "Pomůcky: Proklepka vozidla" });
     expect(
       resolveAdminBroadcastTarget({
         targetPath: "__custom__",
@@ -200,7 +200,7 @@ describe("admin broadcast rules", () => {
         emoji: " 📣 ",
         title: " Nová pomůcka ",
         message: " Krátký text ",
-        targetPath: " /pomucky/zlato ",
+        targetPath: " /pomucky/proklepka-vozidla ",
         recipientMode: "group",
         recipientEmail: "IGNORED@example.cz",
         recipientGroup: "managers",
@@ -214,7 +214,7 @@ describe("admin broadcast rules", () => {
         emoji: "📣",
         title: "Nová pomůcka",
         message: "Krátký text",
-        targetPath: "/pomucky/zlato",
+        targetPath: "/pomucky/proklepka-vozidla",
         targetMode: "group",
         recipientEmail: undefined,
         recipientGroup: "managers",

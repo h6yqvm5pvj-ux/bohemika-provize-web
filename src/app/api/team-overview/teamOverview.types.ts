@@ -27,7 +27,7 @@ export type Category =
   | "business"
   | "travel"
   | "foreigners"
-  | "comfort"
+
   | "other";
 
 export type AggregateMetrics = {

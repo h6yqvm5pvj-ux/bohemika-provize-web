@@ -42,9 +42,6 @@ const endorsementInput = (): PrepareEndorsementDraftInput => ({
   durationManualOverride: false,
   frequency: "monthly",
   maxCizinKomplexVariant: null,
-  comfortPayment: 0,
-  comfortGradual: false,
-  comfortTargetAmount: 0,
 });
 
 const prepare = (overrides: Partial<PrepareEndorsementDraftInput> = {}) =>

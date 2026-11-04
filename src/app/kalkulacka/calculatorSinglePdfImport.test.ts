@@ -102,6 +102,29 @@ describe("single PDF import workflow", () => {
     expect(values.domexAddress).toBe("Testovací 1");
   });
 
+  it.each([[true, "domexneuron"], [false, "domex"]] as const)("asks about an ambiguous DOMEX before parsing (%s)", async (answer, expectedProduct) => {
+    const { options, ui, values } = harness();
+    mocks.detect.mockResolvedValue({ product: "domex", confidence: "medium", requiresDomexNeuronConfirmation: true });
+    options.confirmDomexNeuron = vi.fn(async () => answer);
+    mocks.parse.mockResolvedValue({ ...parsed, automaticRenewal: true, policyTermEndDate: "2027-10-31", policyEndDate: null });
+    await importSingleContractPdf(file(), options);
+    expect(options.confirmDomexNeuron).toHaveBeenCalledExactlyOnceWith(expect.any(AbortSignal));
+    expect(mocks.parse).toHaveBeenCalledWith(expectedProduct, expect.any(File), expect.any(Object));
+    expect(ui.setProduct).toHaveBeenCalledWith(expectedProduct);
+    if (answer) expect(values).toMatchObject({ automaticRenewal: true, policyEndDate: "", policyTermEndDate: "2027-10-31" });
+  });
+
+  it("keeps an ambiguous DOMEX unparsed when the user cancels", async () => {
+    const { options, ui, input } = harness();
+    mocks.detect.mockResolvedValue({ product: "domex", confidence: "medium", requiresDomexNeuronConfirmation: true });
+    options.confirmDomexNeuron = vi.fn(async () => null);
+    await importSingleContractPdf(file(), options);
+    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(ui.setProduct).not.toHaveBeenCalled();
+    expect(ui.setPdfImporting).toHaveBeenLastCalledWith(false);
+    expect(input.value).toBe("");
+  });
+
   it("uses the selected product after detection fails without logging parser input", async () => {
     const { options, ui } = harness();
     mocks.detect.mockRejectedValue(new Error("Sensitive synthetic client content"));

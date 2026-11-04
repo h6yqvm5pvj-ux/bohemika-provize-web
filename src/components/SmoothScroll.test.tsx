@@ -14,6 +14,10 @@ type LenisDouble = {
   resize: Mock;
   stop: Mock;
   start: Mock;
+  raf: Mock<(time: number) => void>;
+  on: Mock<(event: "virtual-scroll", callback: () => void) => () => void>;
+  virtualScrollListeners: Set<() => void>;
+  emitVirtualScroll: () => void;
   scrollTo: Mock<(position: number, options?: ScrollToOptions) => void>;
 };
 
@@ -42,6 +46,13 @@ vi.mock("lenis", () => ({
       this.animatedScroll = window.scrollY;
       this.isStopped = false;
     });
+    raf = vi.fn((_time: number) => { void _time; });
+    virtualScrollListeners = new Set<() => void>();
+    on = vi.fn((_event: "virtual-scroll", callback: () => void) => {
+      this.virtualScrollListeners.add(callback);
+      return () => { this.virtualScrollListeners.delete(callback); };
+    });
+    emitVirtualScroll = () => this.virtualScrollListeners.forEach(callback => callback());
     scrollTo = vi.fn((position: number, _options?: ScrollToOptions) => {
       void _options;
       this.animatedScroll = position;
@@ -81,6 +92,8 @@ describe("document smooth scrolling", () => {
   let nativeScroll: MockInstance<Window["scroll"]>;
   let nativeScrollIntoView: MockInstance<Element["scrollIntoView"]>;
   let nativeWindowDescriptors: Record<"scrollTo" | "scrollBy" | "scroll", PropertyDescriptor>;
+  let frames: Map<number, FrameRequestCallback>;
+  let nextFrameId: number;
 
   const render = async () => { await act(async () => root.render(<SmoothScroll />)); };
   const nativeEvent = async (event: Event, target: EventTarget = window) => {
@@ -95,12 +108,25 @@ describe("document smooth scrolling", () => {
     });
   };
   const current = () => state.instances.at(-1)!;
+  const runFrame = (time: number) => {
+    const callbacks = [...frames.values()];
+    frames.clear();
+    callbacks.forEach(callback => callback(time));
+  };
 
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     state.instances.length = 0;
     state.construct.mockClear();
     state.pathname = "/cashflow";
+    frames = new Map();
+    nextFrameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(id => { frames.delete(id); });
     scrollY = 0;
     vi.spyOn(window, "scrollY", "get").mockImplementation(() => scrollY);
     nativeWindowDescriptors = {
@@ -160,7 +186,7 @@ describe("document smooth scrolling", () => {
     expect(first.scrollTo).not.toHaveBeenCalled();
     expect(nativeScrollTo).not.toHaveBeenCalled();
     expect(first.options).toMatchObject({
-      autoRaf: true, smoothWheel: true, syncTouch: false, allowNestedScroll: true,
+      autoRaf: false, smoothWheel: true, syncTouch: false, allowNestedScroll: true,
       overscroll: false, anchors: false,
     });
     expect(first.options.lerp).toBeGreaterThan(0);
@@ -206,6 +232,66 @@ describe("document smooth scrolling", () => {
     expect(first.start).not.toHaveBeenCalled();
     expect(state.construct).toHaveBeenCalledOnce();
     document.documentElement.classList.remove("synthetic-theme");
+  });
+
+  it("keeps idle pages free of animation frames and runs only until wheel inertia ends", async () => {
+    await render();
+    const controller = current();
+    expect(frames.size).toBe(0);
+    expect(controller.raf).not.toHaveBeenCalled();
+
+    vi.spyOn(performance, "now").mockReturnValue(1_000);
+    controller.emitVirtualScroll();
+    controller.isScrolling = "smooth";
+    controller.emitVirtualScroll();
+    expect(controller.raf).toHaveBeenCalledExactlyOnceWith(1_000);
+    expect(frames.size).toBe(1);
+
+    runFrame(1_016);
+    expect(controller.raf).toHaveBeenLastCalledWith(1_016);
+    expect(frames.size).toBe(1);
+    controller.raf.mockImplementationOnce(() => { controller.isScrolling = false; });
+    runFrame(1_032);
+    expect(frames.size).toBe(0);
+
+    // Native nested scrolling can emit virtual input without starting inertia.
+    controller.emitVirtualScroll();
+    const calls = controller.raf.mock.calls.length;
+    runFrame(1_048);
+    expect(controller.raf).toHaveBeenCalledTimes(calls);
+    expect(frames.size).toBe(0);
+
+    vi.mocked(performance.now).mockReturnValue(100_000);
+    controller.emitVirtualScroll();
+    controller.isScrolling = "smooth";
+    expect(controller.raf).toHaveBeenLastCalledWith(100_000);
+    runFrame(100_016);
+    expect(controller.raf).toHaveBeenLastCalledWith(100_016);
+
+    await act(async () => root.render(null));
+    expect(controller.virtualScrollListeners.size).toBe(0);
+    controller.emitVirtualScroll();
+    expect(frames.size).toBe(0);
+  });
+
+  it.each(["pointer", "navigation", "hidden", "unmount"] as const)("cancels pending frames on %s", async reason => {
+    await render();
+    const controller = current();
+    controller.emitVirtualScroll();
+    controller.isScrolling = "smooth";
+    expect(frames.size).toBe(1);
+    const calls = controller.raf.mock.calls.length;
+
+    if (reason === "pointer") await nativeEvent(new Event("pointerdown"));
+    if (reason === "navigation") { state.pathname = "/smlouvy"; await render(); }
+    if (reason === "hidden") {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      await nativeEvent(new Event("visibilitychange"), document);
+    }
+    if (reason === "unmount") await act(async () => root.render(null));
+    expect(frames.size).toBe(0);
+    runFrame(1_000);
+    expect(controller.raf).toHaveBeenCalledTimes(calls);
   });
 
   it.each(["system", "document", "storage", "coarse"] as const)("keeps %s motion preferences native and responds when they change", async preference => {

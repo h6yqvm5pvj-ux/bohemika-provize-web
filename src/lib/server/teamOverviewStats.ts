@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { toDate } from "@/app/lib/formatters";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -43,19 +44,17 @@ export function categorizeProduct(p?: Product | null): Category {
       return "property";
     case "travel":
       return "travel";
-    case "comfort":
-      return "comfort";
     default:
       return "other";
   }
 }
 
-export function annualPremiumFromEntry(data: Record<string, unknown>, category: Category): number {
+export function annualPremiumFromEntry(data: Record<string, unknown>): number {
+  if (isRetiredProduct(data.productKey)) return 0;
   const raw = Number(data?.inputAmount ?? 0);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   const product = data?.productKey as Product | undefined;
   if (isLifeProduct(product)) return raw * 12;
-  if (category === "comfort") return raw;
   return raw * paymentsPerYear((data?.frequencyRaw ?? "annual") as PaymentFrequency);
 }
 
@@ -77,7 +76,6 @@ function emptyCategoryCounts(): Record<Category, number> {
     business: 0,
     travel: 0,
     foreigners: 0,
-    comfort: 0,
     other: 0,
   };
 }
@@ -90,7 +88,6 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
     business: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
   };
 }
@@ -107,7 +104,6 @@ function emptyInstitutionByCategory(): Record<Category, Record<string, Aggregate
     business: {},
     travel: {},
     foreigners: {},
-    comfort: {},
     other: {},
   };
 }
@@ -174,13 +170,14 @@ export function accumulateContractEntry({
   monthStart: number;
   currentMonthToDateEnd: number;
 }) {
+  if (isRetiredProduct(data.productKey)) return;
   const current = stats[ownerEmail] ?? emptyContractStats();
   current.total += 1;
 
   const category = categorizeProduct(data.productKey as Product | undefined);
   current.categories[category] = (current.categories[category] ?? 0) + 1;
 
-  const annualPremium = annualPremiumFromEntry(data, category);
+  const annualPremium = annualPremiumFromEntry(data);
   const monthlyPremium = annualPremium / 12;
 
   const byCategory = current.categoryMetrics[category] ?? {
@@ -268,6 +265,7 @@ export function consumeOwnerEntry({
   monthStart: number;
   currentMonthToDateEnd: number;
 }) {
+  if (isRetiredProduct(data.productKey)) return;
   const ownerEmail = ((data.userEmail as string | undefined) ?? ownerEmailRaw ?? "").trim().toLowerCase();
   if (!ownerEmail || !ownerSet.has(ownerEmail)) return;
 

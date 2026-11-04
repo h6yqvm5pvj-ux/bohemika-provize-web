@@ -157,10 +157,6 @@ const CATEGORY_CHECKLIST: Record<string, string[]> = {
     "Zeptej se, zda neproběhla rekonstrukce, přístavba nebo pořízení cennějšího vybavení.",
     "Pokud klient nevyužívá valorizaci, ověř, zda pojistné částky stále odpovídají dnešní hodnotě nemovitosti a domácnosti.",
   ],
-  comfort: [
-    "Zkontroluj aktuální investiční strategii a tempo spoření.",
-    "Platí stále původní investiční cíl klienta?",
-  ],
 };
 const AUTO_CHECKLIST = [
   "Přepočítej smlouvu napříč pojišťovnami; u výročí může aktuálně vycházet lépe jiná pojišťovna.",

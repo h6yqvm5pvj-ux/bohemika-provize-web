@@ -171,7 +171,6 @@ const statementProductLogoMeta = (product: StatementProductMeta): StatementProdu
   }
 
   const rawCode = normalizeProductCode(product.rawCode);
-  if (rawCode.startsWith("TU_")) return { src: "/icons/gold.png", alt: "Troyská unce" };
   if (rawCode.startsWith("CON_")) return { src: "/icons/conseq.png", alt: "Conseq" };
   if (rawCode === "INVESTIKA" || rawCode === "EFEKTIKA" || rawCode === "MONETIKA") {
     return { src: "/icons/invstk.png", alt: product.label };
@@ -185,9 +184,6 @@ const statementProductLogoMeta = (product: StatementProductMeta): StatementProdu
   if (rawCode.startsWith("ALL")) return { src: "/icons/allianz.png", alt: "Allianz" };
   if (rawCode.startsWith("PIL")) return { src: "/icons/pillow.png", alt: "Pillow" };
   if (rawCode.startsWith("SLA")) return { src: "/icons/slavialogo.png", alt: "SLAVIA" };
-  if (rawCode.includes("COMFORT") || rawCode === "CC") {
-    return { src: "/icons/cclogo.png", alt: "Comfort Commodity" };
-  }
 
   switch (product.category) {
     case "life":

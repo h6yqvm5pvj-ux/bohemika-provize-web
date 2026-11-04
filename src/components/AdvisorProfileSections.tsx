@@ -5,7 +5,6 @@ import {
   Building2,
   CarFront,
   ChartNoAxesCombined,
-  Gem,
   Handshake,
   HeartHandshake,
   HousePlus,
@@ -40,7 +39,6 @@ type AdvisorProfileSectionsProps = {
   theme?: "dark" | "light";
   locale?: OnlineCardLocale;
   connectToHero?: boolean;
-  goldPageHref?: string;
   lifeInsurancePageHref?: string;
   vehicleInsurancePageHref?: string;
   travelInsurancePageHref?: string;
@@ -57,8 +55,6 @@ const PARTNER_INSURERS: PartnerInsurer[] = [
   { label: "Pillow", logoPath: "/icons/pillow.png" },
   { label: "iNVESTiKA", logoPath: "/icons/invstk.png" },
   { label: "Investona", logoPath: "/icons/investona.png" },
-  { label: "Comfort Commodity", logoPath: "/icons/cclogo1.png" },
-  { label: "Ekka Gold", logoPath: "/images/ekkagold.png", darkTile: true },
   { label: "MAXIMA", logoPath: "/icons/maxima.png" },
   { label: "SLAVIA", logoPath: "/icons/slavialogo.png" },
   { label: "AXA", logoPath: "/icons/axalogo.png" },
@@ -71,7 +67,6 @@ function getPartnerLogoClassName(insurer: PartnerInsurer) {
   if (insurer.label === "ČPP") return "object-contain p-1 scale-[1.3]";
   if (insurer.label === "iNVESTiKA") return "object-contain p-1 scale-[1.4]";
   if (insurer.label === "Investona") return "object-contain p-1 scale-[1.16]";
-  if (insurer.label === "Ekka Gold") return "object-contain p-2 scale-[1.08]";
   if (mediumHighlightedLogos.includes(insurer.label)) return "object-contain p-1.5 scale-[1.24]";
   return "object-contain p-2.5";
 }
@@ -126,13 +121,6 @@ const ADVISOR_SERVICES = [
     iconClass: "text-lime-200",
     accentClass: "bg-lime-300/80",
   },
-  {
-    label: "Investiční zlato a stříbro",
-    artwork: "/images/online-card-services/precious-metals-v5.webp",
-    icon: Gem,
-    iconClass: "text-amber-200",
-    accentClass: "bg-amber-300/80",
-  },
 ];
 
 const SERVICE_MOTION_COPY = {
@@ -186,7 +174,6 @@ export function AdvisorProfileSections({
   theme = "dark",
   locale = "cs",
   connectToHero = false,
-  goldPageHref,
   lifeInsurancePageHref,
   vehicleInsurancePageHref,
   travelInsurancePageHref,
@@ -238,8 +225,7 @@ export function AdvisorProfileSections({
               {ADVISOR_SERVICES.map((service, index) => {
                 const href = index === 0 ? lifeInsurancePageHref
                   : index === 2 ? vehicleInsurancePageHref
-                    : index === 3 ? travelInsurancePageHref
-                      : index === 7 ? goldPageHref : undefined;
+                    : index === 3 ? travelInsurancePageHref : undefined;
                 const content = (
                   <>
                     <span className={minimalStyles.serviceArtwork} data-service-icon={index} aria-hidden="true">
@@ -393,8 +379,6 @@ export function AdvisorProfileSections({
                   ? vehicleInsurancePageHref
                 : index === 3
                   ? travelInsurancePageHref
-                : index === ADVISOR_SERVICES.length - 1
-                  ? goldPageHref
                   : undefined;
               const isDetailService = Boolean(servicePageHref);
 
@@ -417,12 +401,10 @@ export function AdvisorProfileSections({
                       ? "Zjistit více o pojištění vozidel"
                     : index === 3
                       ? "Vybrat cestovní pojištění podle své cesty"
-                      : index === ADVISOR_SERVICES.length - 1
-                        ? "Zjistit více o investičním zlatě a stříbru"
-                        : undefined
+                      : undefined
                 }
                 className={`group inline-flex items-center gap-3 px-1 py-2 text-left text-sm font-semibold text-blue-50 sm:text-[15px] vizitka-anim-up ${
-                  index >= ADVISOR_SERVICES.length - 2 ? "lg:translate-x-[calc(50%+0.375rem)]" : ""
+                  index === ADVISOR_SERVICES.length - 1 ? "lg:col-start-2" : ""
                 } ${isDetailService ? "cursor-pointer rounded-xl outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-blue-200/80" : ""}`}
                 style={{ animationDelay: `${300 + index * 75}ms` }}
               >

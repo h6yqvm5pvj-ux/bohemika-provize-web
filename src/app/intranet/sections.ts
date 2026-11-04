@@ -6,7 +6,6 @@ export type IntranetSectionKey =
   | "cizinci"
   | "cestovko"
   | "investice"
-  | "zlato"
   | "obecne"
   | "pomoc";
 
@@ -23,7 +22,6 @@ export const INTRANET_SECTIONS: readonly IntranetSectionOption[] = [
   { key: "cizinci", label: "Cizinci" },
   { key: "cestovko", label: "Cestovko" },
   { key: "investice", label: "Investice" },
-  { key: "zlato", label: "Zlato" },
   { key: "obecne", label: "Obecné" },
   { key: "pomoc", label: "Pomoc" },
 ] as const;

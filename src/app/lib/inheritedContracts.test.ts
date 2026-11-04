@@ -31,8 +31,7 @@ describe("inherited commission entitlement", () => {
     const calculate = (position: "poradce4" | "manazer8") => {
       const result = calculateCommission({ productKey: "cppAuto", position, inputAmount: 2000,
         frequencyRaw: "quarterly", contractSignedDateIso, commissionMode: "standard",
-        durationYears: null, durationMonths: null, maxCizinKomplexVariant: null,
-        comfortPayment: null, comfortGradual: null, comfortTargetAmount: null });
+        durationYears: null, durationMonths: null, maxCizinKomplexVariant: null, });
       expect(result).not.toBeNull();
       return inheritedCommissionResult(result!);
     };

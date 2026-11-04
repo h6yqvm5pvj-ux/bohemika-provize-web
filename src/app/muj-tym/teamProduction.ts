@@ -7,7 +7,6 @@ export const PRODUCTION_CATEGORY_TABS: { key: ProductionCategory; label: string 
   { key: "auto", label: "Auta" },
   { key: "property", label: "Majetek a odpovědnost občanů" },
   { key: "business", label: "Podnikatelé" },
-  { key: "comfort", label: "Zlato" },
   { key: "foreigners", label: "Cizinci" },
   { key: "travel", label: "Cestovko" },
 ];
@@ -19,9 +18,6 @@ export function insurerLogoPath(insurer: string): string | null {
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("allianz")) return "/icons/allianz.png";
   if (normalized.includes("slavia")) return "/icons/slavialogo.png";
-  if (normalized.includes("comfort") || normalized.includes("commodity")) {
-    return "/icons/cclogo.png";
-  }
   if (normalized.includes("uniqa")) return "/icons/uniqa.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
   if (normalized.includes("pillow")) return "/icons/pillow.png";

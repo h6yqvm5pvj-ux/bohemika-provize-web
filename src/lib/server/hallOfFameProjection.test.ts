@@ -21,12 +21,39 @@ afterEach(() => vi.restoreAllMocks());
 describe("persistent hall aggregates", () => {
   it("uses the persisted totals on another load without reading any contracts", async () => {
     const { db } = database();
-    const entries = [entry(owners[0]), entry(owners[1]), entry(owners[0], "old", "2026-07-01"), entry(owners[0], "future", "2026-09-19")];
+    const entries = [entry(owners[0]), entry(owners[1]), entry(owners[0], "old", "2026-07-01"), entry(owners[1], "completed", "2026-08-31"), entry(owners[0], "future", "2026-09-19")];
     const read = vi.fn(async () => entries);
     const first = await loadHallOwnerStats(db, owners, now, read);
     expect(first).toEqual(aggregateHallEntries(entries, now));
     expect(await loadHallOwnerStats(db, owners, now, read)).toEqual(first);
     expect(read).toHaveBeenCalledOnce();
+  });
+  it("rebuilds old same-day projections before using the completed-month rules", async () => {
+    const { db, rows } = database();
+    const entries = [entry(owners[0]), entry(owners[0], "completed", "2026-08-31")];
+    const read = vi.fn(async () => entries);
+    await loadHallOwnerStats(db, [owners[0]], now, read);
+    const path = `hallOfFameOwners/${hallParticipantId(owners[0])}`;
+    const old = rows.get(path)!;
+    const stats = old.stats as Record<string, unknown>;
+    rows.set(path, { ...old, version: 2, stats: { ...stats, "3months": { categoryMetrics: { business: { contracts: 2, annualPremium: 24000, monthlyPremium: 0 } } } } });
+    const result = await loadHallOwnerStats(db, [owners[0]], now, read);
+    expect(result["3months"][owners[0]].categoryMetrics.business?.contracts).toBe(1);
+    expect(result.month[owners[0]].categoryMetrics.business?.contracts).toBe(1);
+    expect(rows.get(path)?.version).toBe(4);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+  it("rebuilds same-day pre-retirement totals instead of reusing obsolete contract counts", async () => {
+    const { db, rows } = database();
+    const read = vi.fn(async () => [entry(owners[0])]);
+    await loadHallOwnerStats(db, [owners[0]], now, read);
+    const path = `hallOfFameOwners/${hallParticipantId(owners[0])}`;
+    rows.set(path, { ...rows.get(path), version: 3 });
+    read.mockResolvedValue([]);
+    const result = await loadHallOwnerStats(db, [owners[0]], now, read);
+    expect(result.month[owners[0]].categoryMetrics).toEqual({});
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(rows.get(path)?.version).toBe(4);
   });
   it("rebuilds only the changed owner's aggregates, including removal of the last contract", async () => {
     const { db, writer } = database();
@@ -84,7 +111,8 @@ describe("persistent hall aggregates", () => {
     const next = await loadHallOwnerStats(db, [owners[0]], new Date("2026-12-31T23:01:00Z"), read);
     expect(first.month[owners[0]].categoryMetrics.business?.contracts).toBe(1);
     expect(next.month[owners[0]].categoryMetrics.business?.contracts).toBe(1);
-    expect(next.year[owners[0]].categoryMetrics.business?.contracts).toBe(2);
+    expect(first.year[owners[0]].categoryMetrics).toEqual({});
+    expect(next.year[owners[0]].categoryMetrics.business?.contracts).toBe(1);
     expect(read).toHaveBeenCalledTimes(2);
   });
   it("does not persist partial results after a failed source read", async () => {

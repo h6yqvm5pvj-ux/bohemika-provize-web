@@ -131,6 +131,49 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects Neuron from shared provisions even without Neuron in the title", async () => {
+    pdfState.pages = [
+      ["PRO POJIŠTĚNÍ MAJETKU A ODPOVĚDNOSTI OBČANŮ DOMEX+", "Česká", "podnikatelská", "pojišťovna, a. s."],
+      ["POJISTNÍK"],
+      ["SPOLEČNÁ USTANOVENÍ", "Frekvence placení: Pololetní", "Výše pravidelné platby: 1 500 Kč", "Automatická obnova ke konci pojistného období: ANO"],
+    ];
+
+    const detected = await detectProductFromPdf(makePdfFile());
+    expect(detected).toMatchObject({ product: "domexneuron", confidence: "high" });
+    expect(detected?.requiresDomexNeuronConfirmation).not.toBe(true);
+  });
+
+  it("recognizes the legacy DOMEX payment labels without asking about Neuron", async () => {
+    pdfState.pages = [
+      ["Česká podnikatelská pojišťovna, a.s.", "DOMEX+"],
+      ["Frekvence splátek pojistného: Roční", "Výše platby: 3 000 Kč"],
+    ];
+
+    const detected = await detectProductFromPdf(makePdfFile());
+    expect(detected).toMatchObject({ product: "domex", confidence: "high" });
+    expect(detected?.requiresDomexNeuronConfirmation).not.toBe(true);
+  });
+
+  it.each([
+    [],
+    ["Frekvence placení: Roční", "Výše pravidelné platby: 3 000 Kč"],
+    ["0090012345", "Pojistná smlouva uzavřena dne: 4. 11. 2026"],
+    ["Frekvence placení: Roční", "Výše pravidelné platby: 3 000 Kč", "Automatická obnova ke konci pojistného období: NE", "Frekvence splátek pojistného: Roční", "Výše platby: 3 000 Kč"],
+  ])("asks about Neuron when DOMEX variant markers are missing or conflicting: %j", async (...markers) => {
+    pdfState.pages = [["Česká podnikatelská pojišťovna, a. s.", "DOMEX+", ...markers]];
+
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "domex",
+      confidence: "medium",
+      requiresDomexNeuronConfirmation: true,
+    });
+  });
+
+  it("does not identify Neuron payment labels without a DOMEX insurer heading", async () => {
+    pdfState.pages = [["Jiná pojišťovna", "DOMEX+", "Frekvence placení", "Výše pravidelné platby", "Automatická obnova ke konci pojistného období"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toBeNull();
+  });
+
   it("detects Kooperativa KOLUMBUS travel insurance anywhere in the PDF", async () => {
     pdfState.pages = [
       ["Průvodní strana", "Kooperativa pojišťovna, a.s."],

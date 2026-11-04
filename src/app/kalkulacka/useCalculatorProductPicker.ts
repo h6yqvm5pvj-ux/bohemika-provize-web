@@ -12,8 +12,7 @@ export type ProductPickerSectionKey =
   | "entrepreneurs"
   | "travel"
   | "foreigners"
-  | "investments"
-  | "gold";
+  | "investments";
 
 export type ProductPickerColumn = {
   key: ProductPickerSectionKey;
@@ -85,11 +84,6 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     key: "pension",
     title: "Penzijáky",
     products: ["conseqzenit"],
-  },
-  {
-    key: "gold",
-    title: "Zlato",
-    products: ["comfortcc"],
   },
 ];
 

@@ -35,6 +35,9 @@ type CalculatorContractDetailsSectionProps = {
   contractDateWarningText: string | null;
   showPolicyEndDateField: boolean;
   policyEndDate: string;
+  showAutomaticRenewal?: boolean;
+  automaticRenewal?: boolean | null;
+  onAutomaticRenewalChange?: (value: boolean) => void;
   stornoDate: string;
   onClientNameChange: (value: string) => void;
   onClientNameFocus: () => void;
@@ -67,6 +70,9 @@ export function CalculatorContractDetailsSection({
   contractDateWarningText,
   showPolicyEndDateField,
   policyEndDate,
+  showAutomaticRenewal = false,
+  automaticRenewal = null,
+  onAutomaticRenewalChange,
   stornoDate,
   onClientNameChange,
   onClientNameFocus,
@@ -270,13 +276,28 @@ export function CalculatorContractDetailsSection({
             <p className="text-[11px] text-amber-700">{contractDateWarningText}</p>
           )}
         </div>
-        {showPolicyEndDateField && (
+        {showAutomaticRenewal && (
+          <fieldset className="space-y-1">
+            <legend className="text-sm font-semibold text-slate-800">Prolongace smlouvy</legend>
+            <div className="flex gap-2">
+              {([true, false] as const).map((value) => (
+                <button key={String(value)} type="button" aria-pressed={automaticRenewal === value}
+                  onClick={() => onAutomaticRenewalChange?.(value)}
+                  className={`rounded-xl border px-4 py-2 text-sm font-semibold ${automaticRenewal === value ? "border-violet-700 bg-violet-700 text-white" : "border-violet-200 bg-white text-slate-800"}`}>
+                  {value ? "ANO" : "NE"}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">{automaticRenewal === true ? "Smlouva se automaticky obnovuje do storna." : automaticRenewal === false ? "Smlouva skončí k uvedenému datu." : "Automatická obnova není potvrzená. Ověř ji podle smlouvy."}</p>
+          </fieldset>
+        )}
+        {showPolicyEndDateField && !(showAutomaticRenewal && automaticRenewal === true) && (
           <div className="space-y-1">
-            <label className="block text-sm font-semibold text-slate-800">{pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}</label>
+            <label className="block text-sm font-semibold text-slate-800">{showAutomaticRenewal ? "Pojištění do" : pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}</label>
             <input
               type="date"
               className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
-              aria-label={pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}
+              aria-label={showAutomaticRenewal ? "Pojištění do" : pensionProduct ? "Datum konce (volitelné)" : "Pojištění do (volitelné)"}
               value={policyEndDate}
               onChange={(event) => onPolicyEndDateChange(event.target.value)}
             />

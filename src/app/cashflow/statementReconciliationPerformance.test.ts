@@ -3,7 +3,7 @@ import { calendarDate } from "@/app/lib/calendarDates";
 import { applyStatementMissingPayoutShifts, normalizeContractNumberSearch, toDate } from "./helpers";
 import type { CashflowCommissionStatementSummary, CashflowItem } from "./types";
 
-// Frozen original reconciliation before adding per-call monthly indexes. Keep
+// Reference reconciliation for supported products before monthly indexing. Keep
 // the former array scans and prefix matching as an independent regression oracle.
 const monthKeyFromDate = (date: Date): string =>
   `${date.getFullYear()}-${date.getMonth() + 1}`;
@@ -84,7 +84,7 @@ const hasPaidCommissionForItem = ({
   );
   if (hasAnyPaidCodeForContract) {
     if (commissionCodes.length === 0) {
-      return item.productKey === "comfortcc" && paidContracts.has(normalizedContractNumber);
+      return false;
     }
 
     return commissionCodes.some((code) =>
@@ -208,16 +208,16 @@ const original = (cashflowItems: CashflowItem[], statementsByMonthKey: Statement
   originalStatementMissingPayoutShifts({ cashflowItems, statementsByMonthKey, enabled });
 
 describe("indexed statement reconciliation equivalence", () => {
-  it("preserves paid aliases, Comfort fallback, shifts, empty months and bypassed sources", () => {
+  it("preserves paid aliases, missing codes, shifts, empty months and bypassed sources", () => {
     const statements: StatementsByMonth = {
-      "2026-1": [statement({ paidContractNumbers: ["CONTRACT-1", "COMFORT-1", "NO-CODE", "NEXT"],
-        paidCommissionKeys: ["CONTRACT1:A102", "COMFORT1:A101", "NOCODE:A101", "NEXT:B101"] })],
+      "2026-1": [statement({ paidContractNumbers: ["CONTRACT-1", "UNMATCHED-1", "NO-CODE", "NEXT"],
+        paidCommissionKeys: ["CONTRACT1:A102", "UNMATCHED1:A101", "NOCODE:A101", "NEXT:B101"] })],
       "2026-2": [statement({ period: "second month", paidContractNumbers: ["NEXT"], paidCommissionKeys: [] })],
       "2026-3": [statement({ period: "empty paid contracts", paidContractNumbers: [], paidCommissionKeys: [] })],
     };
     const items = [
       item({ id: "alias", commissionCodeAliases: [" A 1 0 2 "] }),
-      item({ id: "comfort", productKey: "comfortcc", contractNumber: "COMFORT-1", commissionCode: null }),
+      item({ id: "unmatched", productKey: "cppAuto", contractNumber: "UNMATCHED-1", commissionCode: null }),
       item({ id: "missing-code", contractNumber: "NO-CODE", commissionCode: null }),
       item({ id: "shifted-paid", contractNumber: "NEXT", commissionCode: "A101" }),
       item({ id: "missing-number", contractNumber: null }),
@@ -232,7 +232,9 @@ describe("indexed statement reconciliation equivalence", () => {
     const actual = reconcile(items, statements);
     expect(actual).toEqual(original(items, statements));
     expect(actual.find(row => row.id === "alias")?.payoutStatus).toBe("paid");
-    expect(actual.find(row => row.id === "comfort")?.payoutStatus).toBe("paid");
+    expect(actual.find(row => row.id.startsWith("unmatched"))).toMatchObject({
+      payoutStatus: "shifted", date: new Date(2026, 2, 25),
+    });
     expect(actual.find(row => row.id.startsWith("shifted-paid"))).toMatchObject({
       date: new Date(2026, 1, 25), payoutStatus: "paid", missedStatementPeriods: ["synthetic period"],
     });
@@ -245,7 +247,7 @@ describe("indexed statement reconciliation equivalence", () => {
     "XCONTRACT1:A101", "CONTRACT-1:A101", " contract1:a101 ", "CONTRACT1:A 101", ":A101",
   ])("retains original prefix and code behavior for malformed key %s", key => {
     const statements = { "2026-1": [statement({ paidContractNumbers: ["CONTRACT-1"], paidCommissionKeys: [key] })] };
-    const items = [item(), item({ id: "comfort", productKey: "comfortcc", commissionCode: null }),
+    const items = [item(), item({ id: "unmatched", productKey: "cppAuto", commissionCode: null }),
       item({ id: "no-code", commissionCode: null })];
 
     expect(reconcile(items, statements)).toEqual(original(items, statements));

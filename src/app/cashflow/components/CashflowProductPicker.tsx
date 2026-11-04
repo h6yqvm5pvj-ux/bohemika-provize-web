@@ -4,7 +4,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  BriefcaseBusiness, CarFront, Check, ChevronDown, Coins, CreditCard,
+  BriefcaseBusiness, CarFront, Check, ChevronDown, CreditCard,
   Globe2, HeartPulse, House, Landmark, Plane, Sparkles, Tag,
   type LucideIcon,
 } from "lucide-react";
@@ -16,7 +16,7 @@ export type CashflowProductOption = { value: ProductFilter; label: string };
 const PRODUCT_ICONS: Record<ProductFilter, LucideIcon> = {
   all: Sparkles, tip: Tag, subscription: CreditCard, life: HeartPulse,
   auto: CarFront, property: House, entrepreneurs: BriefcaseBusiness,
-  travel: Plane, foreigners: Globe2, gold: Coins, pension: Landmark,
+  travel: Plane, foreigners: Globe2, pension: Landmark,
 };
 
 const searchLabel = (value: string) => value.toLocaleLowerCase("cs")

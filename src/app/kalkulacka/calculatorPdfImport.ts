@@ -232,10 +232,6 @@ async function parseProduct(
     }
     case "maxcizinkomplex":
       return parseMaxCizinKomplexPdfLazy(file, options);
-    case "comfortcc": {
-      const { parseComfortPdf } = await import("../lib/parseComfortPdf");
-      return parseComfortPdf(file, options);
-    }
     case "cppcestovko": {
       const { parseCppCestovkoPdf } = await import("../lib/parseCppCestovkoPdf");
       return parseCppCestovkoPdf(file, options);
@@ -284,14 +280,7 @@ export async function parseContractPdfByProduct(
   };
 }
 
-/**
- * Comfort CC is intentionally excluded from batch import: its contract PDF
- * does not reliably describe the commercial setup needed for unattended save.
- * It remains available for regular, single-PDF import.
- */
-export const BULK_PDF_PRODUCTS: readonly Product[] = AUTOMATED_PDF_PRODUCTS.filter(
-  (product) => product !== "comfortcc"
-);
+export const BULK_PDF_PRODUCTS: readonly Product[] = AUTOMATED_PDF_PRODUCTS;
 
 export const manualPdfImportMessage = (product: Product): string =>
   `Pro produkt ${productLabelFromCatalog(product, product)} zatím není automatické načítání dat z PDF hotové. PDF se při uložení přiloží ke smlouvě, údaje prosím vyplň ručně.`;

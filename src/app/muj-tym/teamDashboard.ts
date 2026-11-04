@@ -11,7 +11,6 @@ export type TeamDashboardCategory =
   | "business"
   | "travel"
   | "foreigners"
-  | "comfort"
   | "other";
 
 export const TEAM_DASHBOARD_CATEGORIES: TeamDashboardCategory[] = [
@@ -19,7 +18,6 @@ export const TEAM_DASHBOARD_CATEGORIES: TeamDashboardCategory[] = [
   "auto",
   "property",
   "business",
-  "comfort",
   "foreigners",
   "travel",
   "other",

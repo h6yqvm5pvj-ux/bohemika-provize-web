@@ -3,18 +3,14 @@ import { type UIEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
-  CircleHelp,
   HeartPulse,
   ShieldCheck,
   Minus,
 } from "lucide-react";
 import { type AppLanguage } from "@/lib/appLanguage";
-import { HelpDialog } from "@/components/HelpDialog";
 import { AnimatedMoney, AnimatedNumber } from "./AnimatedNumbers";
 import { LoadingProgressPanel } from "./LoadingProgressPanel";
 
-import { ProductionIllustration } from "./ProductionIllustration";
 import styles from "./ProductionSummarySection.module.css";
 import type { ProductionPremiums } from "../productionPremiums";
 
@@ -170,6 +166,7 @@ type ProductionColumnProps = {
   amountPending?: boolean;
   amountUnavailable?: boolean;
   countUnavailable?: boolean;
+  animate?: boolean;
 };
 
 type ProductionCard = ProductionColumnProps & {
@@ -191,40 +188,44 @@ function ProductionColumn({
   amountPending = false,
   amountUnavailable = false,
   countUnavailable = false,
+  animate = true,
 }: ProductionColumnProps) {
   return (
-    <article className={styles.column} data-tone={tone}>
-      <div className={styles.cardHeader}>
-        <div className={styles.illustration}><ProductionIllustration tone={tone} /></div>
-        <h2>{titleTop} {titleBottom}</h2>
-      </div>
-      <div className={styles.commission}>
-        <p className={styles.label}>{commissionLabel}</p>
-        <p className={styles.amount} aria-label={amountPending ? "Načítám TIP produkci" : amountUnavailable ? "Částka není k dispozici" : undefined}>
-          {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} currencyClassName={styles.currency} />}</p>
+    <div className={styles.cardBackdrop}>
+      <article className={styles.column} data-tone={tone}>
+        <div className={styles.paper}>
+          <div className={styles.cardHeader}>
+            <h2><span>{titleTop}</span>{" "}<span>{titleBottom}</span></h2>
+          </div>
+          <div className={styles.commission}>
+            <p className={styles.label}>{commissionLabel}</p>
+            <p className={styles.amount} aria-label={amountPending ? "Načítám TIP produkci" : amountUnavailable ? "Částka není k dispozici" : undefined}>
+              {amountPending ? "…" : amountUnavailable ? "—" : <AnimatedMoney value={amountValue} currencyClassName={styles.currency} animate={animate} />}</p>
+          </div>
+          {premiums && (
+            <dl aria-label="Pojistné sjednaných smluv" className={styles.premiums}>
+              <div className={styles.premiumRow}>
+                <dt><HeartPulse size={15} aria-hidden="true" /><span>Životní<small>Měsíčně</small></span></dt>
+                <dd><AnimatedMoney value={premiums.lifeMonthly} currencyClassName={styles.premiumCurrency} animate={animate} /></dd>
+              </div>
+              <div className={styles.premiumRow}>
+                <dt><ShieldCheck size={15} aria-hidden="true" /><span>Vedlejší<small>Ročně</small></span></dt>
+                <dd><AnimatedMoney value={premiums.otherAnnual} currencyClassName={styles.premiumCurrency} animate={animate} /></dd>
+              </div>
+            </dl>
+          )}
+          {description && <p className={styles.description}>{description}</p>}
+        </div>
         <div className={styles.commissionFooter}>
-          {amountPending || amountUnavailable ? <p role="status" className="text-xs leading-relaxed text-slate-600">
+          {amountPending || amountUnavailable ? <p role="status" className={styles.status}>
             {amountPending ? "Načítám TIP produkci…" : "TIP produkce není k dispozici."}
           </p> : <TrendInline currentValue={amountValue} previousValue={previousAmountValue} previousMonthLabel={previousMonthLabel} />}
           <div className={styles.contractCount}>
-            <span>{countLabel}</span><strong>{countUnavailable ? "—" : <AnimatedNumber value={countValue} />}</strong>
+            <span>{countLabel}</span><strong>{countUnavailable ? "—" : <AnimatedNumber value={countValue} animate={animate} />}</strong>
           </div>
         </div>
-      </div>
-      {premiums && (
-        <dl aria-label="Pojistné sjednaných smluv" className={styles.premiums}>
-          <div className={styles.premiumRow}>
-            <dt><HeartPulse size={15} aria-hidden="true" /><span>Životní<small>Měsíční pojistné</small></span></dt>
-            <dd><AnimatedMoney value={premiums.lifeMonthly} /></dd>
-          </div>
-          <div className={styles.premiumRow}>
-            <dt><ShieldCheck size={15} aria-hidden="true" /><span>Vedlejší<small>Roční pojistné</small></span></dt>
-            <dd><AnimatedMoney value={premiums.otherAnnual} /></dd>
-          </div>
-        </dl>
-      )}
-      {description && <p className={styles.description}>{description}</p>}
-    </article>
+      </article>
+    </div>
   );
 }
 
@@ -256,7 +257,6 @@ export function ProductionSummarySection({
 }: Props) {
   const copy = PRODUCTION_SUMMARY_COPY[language];
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
-  const [helpOpen, setHelpOpen] = useState(false);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
   const containerShellClass = `${styles.shell} ${isLiteUI ? "" : styles.elevated}`;
   // Karta tipařské produkce má být viditelná už od první tipařské smlouvy,
@@ -365,107 +365,8 @@ export function ProductionSummarySection({
 
   if (error && !updatedAt) return <section className={containerShellClass}><p role="alert" className="p-6 text-sm">{error}</p></section>;
 
-  const helpButton = (
-    <button
-      type="button"
-      onClick={() => setHelpOpen(true)}
-      aria-label="Otevřít nápovědu k produkci"
-      title="Nápověda"
-      className={styles.helpButton}
-    >
-      <CircleHelp className="h-5 w-5" strokeWidth={2.25} aria-hidden="true" />
-    </button>
-  );
-
-  const helpDialog = (
-    <HelpDialog
-      isOpen={helpOpen}
-      onClose={() => setHelpOpen(false)}
-      title={showTeamBox ? "Nápověda k týmové produkci" : "Nápověda k produkci poradce"}
-      description="Tahle karta ukazuje provizní produkci za aktuální měsíc."
-    >
-      <div className="space-y-5 text-sm leading-6 text-slate-700">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
-          <p className="font-semibold">Základní pravidlo</p>
-          <p className="mt-1">
-            Zobrazují se zde pouze smlouvy, u kterých datum uzavření spadá do
-            aktuálního měsíce. Datum vytvoření záznamu v aplikaci pro tento
-            přehled nerozhoduje.
-          </p>
-        </div>
-
-        <section>
-          <h3 className="text-base font-bold text-slate-950">Pojistné sjednaných smluv</h3>
-          <p className="mt-1">
-            Životní pojištění ukazuje součet měsíčního pojistného. Vedlejší produkty
-            ukazují součet ročního pojistného ostatních pojištění; splátky se přepočítávají
-            podle frekvence placení. Jde o pojistné evidované u stejných smluv jako počet
-            smluv výše, nikoli o provize nebo upravenou provizní základnu.
-            Tým zahrnuje celé pojistné podřízených smluv, celkem je součet vlastní a týmové části.
-            Samostatné TIP výplaty ani nákupy zlata se do pojistného nepřičítají.
-          </p>
-        </section>
-
-        {!showOnlyTeamProduction ? (
-          <>
-            <section>
-              <h3 className="text-base font-bold text-slate-950">Vlastní produkce</h3>
-              <p className="mt-1">
-                Součet okamžitých provizí ze smluv, které má poradce sjednané v
-                aktuálním měsíci. U produktů rozdělených na provizní kódy se počítá
-                jen okamžitá část, například A101, B0301 a polovina B36/B3601.
-                Následné provize a souhrnné řádky se do této částky nezapočítávají.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-base font-bold text-slate-950">TIP</h3>
-              <p className="mt-1">
-                Pokud má poradce TIP výplaty, aplikace je zobrazuje samostatně.
-                Počet TIPů vychází ze zdrojových smluv v aktuálním měsíci a částka
-                sčítá kladné TIP výplaty. Když je u TIPu známé datum uzavření
-                zdrojové smlouvy, používá se ono; jinak se použije datum výplaty.
-              </p>
-            </section>
-          </>
-        ) : null}
-
-        {showTeamBox ? (
-          <>
-            <section>
-              <h3 className="text-base font-bold text-slate-950">Týmová produkce</h3>
-              <p className="mt-1">
-                Manažer zde vidí meziprovize ze smluv v podřízené týmové
-                struktuře, opět pouze za smlouvy s datem uzavření v aktuálním
-                měsíci. Do částky se počítají jen okamžité části meziprovize,
-                ne celá meziprovize ani pozdější následné části.
-              </p>
-            </section>
-
-            {!showOnlyTeamProduction ? (
-              <section>
-                <h3 className="text-base font-bold text-slate-950">Celková produkce</h3>
-                <p className="mt-1">
-                  Celková produkce je součet vlastní produkce, týmové produkce a
-                  případných TIP výplat. Počet smluv v celkové kartě je součet
-                  vlastních a týmových smluv; TIP má vlastní počet zvlášť.
-                </p>
-              </section>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </HelpDialog>
-  );
-
   return (
     <section className={containerShellClass} data-fixed-box-theme="slate" aria-label="Přehled produkce">
-      <div className={styles.header}>
-        <div><BarChart3 size={16} aria-hidden="true" /><span>Přehled produkce</span><span className={styles.period}>Aktuální měsíc</span></div>
-        {helpButton}
-      </div>
-      {helpDialog}
-      <div className="px-5"><DataFreshness updatedAt={updatedAt} refreshing={refreshing} error={error} /></div>
       {loading && !updatedAt ? (
         <div className={styles.loading}><LoadingProgressPanel title={copy.loadingTitle}
           description={showOnlyTeamProduction ? "Připravuji přehled týmových smluv a provizí." : copy.loadingDescription}
@@ -475,7 +376,7 @@ export function ProductionSummarySection({
         <div className={styles.mobile}>
           <div ref={mobileCarouselRef} onScroll={handleMobileCarouselScroll} className={styles.carousel}>
             <div className={styles.track}>
-              {mobileCards.map(card => <div key={card.id} className={styles.slide}><ProductionColumn {...card} /></div>)}
+              {mobileCards.map(card => <div key={card.id} className={styles.slide}><ProductionColumn {...card} animate={!isLiteUI} /></div>)}
             </div>
           </div>
           {mobileCards.length > 1 && <div className={styles.pagination} aria-label="Výběr produkce">
@@ -489,9 +390,10 @@ export function ProductionSummarySection({
           </div>}
         </div>
         <div className={styles.desktop} data-columns={desktopCards.length}>
-          {desktopCards.map(card => <ProductionColumn key={card.id} {...card} />)}
+          {desktopCards.map(card => <ProductionColumn key={card.id} {...card} animate={!isLiteUI} />)}
         </div>
       </>}
+      <div className={styles.freshness}><DataFreshness updatedAt={updatedAt} refreshing={refreshing} error={error} /></div>
     </section>
   );
 }

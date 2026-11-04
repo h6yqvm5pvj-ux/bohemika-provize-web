@@ -57,7 +57,6 @@ const REVEAL_IMAGES = [
   "/icons/bohemika-chrome-symbol.png",
   "/images/online-card-services/investments-v5.webp",
   "/images/online-card-services/mortgage-v5.webp",
-  "/images/online-card-services/precious-metals-v5.webp",
   "/images/online-card-services/foreigners-v5.webp",
 ] as const;
 
@@ -502,7 +501,6 @@ export default function OnlineCardPublicClient({
           theme={theme}
           locale={locale}
           onScheduleMeeting={openModal}
-          goldPageHref={onlineCardHref(`/vizitka/${slug}/zlato`, locale)}
           lifeInsurancePageHref={onlineCardHref(`/vizitka/${slug}/zivotni-pojisteni`, locale)}
           vehicleInsurancePageHref={onlineCardHref(`/vizitka/${slug}/pojisteni-vozidla`, locale)}
           travelInsurancePageHref={onlineCardHref(`/vizitka/${slug}/cestovni-pojisteni`, locale)}

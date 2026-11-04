@@ -89,9 +89,28 @@ describe("persistent client–contract links", () => {
   });
   it("does not overwrite a checkpoint completed by another request", async () => {
     records.set(sourcePath("one"), petr);
-    beforeTransaction = () => records.set(`clientContractIndex/${owner}`, { version: 2, buildVersion: 2, processed: 42 });
+    beforeTransaction = () => records.set(`clientContractIndex/${owner}`, { version: 3, buildVersion: 3, processed: 42 });
     expect(await ensureClientContractIndex(db, owner)).toEqual({ ready: true, processed: 42 });
     expect(records.has(linkPath("one"))).toBe(false);
+  });
+  it("hides old retired-product links before rebuilding and removes only their derived links during a version upgrade", async () => {
+    const legacy = { ...petr, productKey: "comfortcc", ownerEmail: owner, entryId: "legacy", clientSlug: clientSlugForName(petr.clientName) };
+    records.set(sourcePath("legacy"), legacy);
+    records.set(linkPath("legacy"), legacy);
+    records.set(sourcePath("active"), petr);
+    records.set(`clientContractIndex/${owner}`, { version: 2, buildVersion: 2, after: "zzz", processed: 99 });
+    expect(await readClientContractLinks(db, owner, null, null, null)).toEqual([]);
+    expect(await ensureClientContractIndex(db, owner)).toEqual({ ready: true, processed: 2 });
+    expect(records.has(linkPath("legacy"))).toBe(false);
+    expect(records.get(sourcePath("legacy"))).toEqual(legacy);
+    expect((await readClientContractLinks(db, owner, null, null, null)).map(item => item.id)).toEqual(["active"]);
+  });
+  it("does not create links for retired products and removes an existing link even for an unrelated patch", () => {
+    const legacy = { ...petr, productKey: " COMFORTCC " };
+    expect(clientContractIndexRecord(legacy, owner)).toBeNull();
+    records.set(linkPath("legacy"), legacy);
+    writeClientContractLink(writer, ref(sourcePath("legacy")), legacy, { note: "synthetic note" });
+    expect(records.has(linkPath("legacy"))).toBe(false);
   });
   it("uses author indexes for lists, filters shared cards and converts timestamps", async () => {
     writeClientContractLink(writer, ref(sourcePath("own")), {}, { ...petr, policyStartDate: Timestamp.fromMillis(1_780_000_000_000) });

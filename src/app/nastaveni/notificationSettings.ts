@@ -67,7 +67,6 @@ export const INTRANET_SECTION_ICON_BY_KEY: Record<IntranetSectionKey, LucideIcon
   cizinci: UserRound,
   cestovko: Sparkles,
   investice: TrendingUp,
-  zlato: Landmark,
   obecne: Wrench,
   pomoc: CircleHelp,
 };

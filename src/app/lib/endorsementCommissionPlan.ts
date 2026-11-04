@@ -38,7 +38,7 @@ type PlanNode = {
   premium: number | null;
 };
 
-const PRODUCTS = new Set<string>(PRODUCT_ORDER.filter(product => product !== "comfortcc" && product !== "conseqzenit"));
+const PRODUCTS = new Set<string>(PRODUCT_ORDER.filter(product => product !== "conseqzenit"));
 const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const pragueDay = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Prague", year: "numeric", month: "2-digit", day: "2-digit",

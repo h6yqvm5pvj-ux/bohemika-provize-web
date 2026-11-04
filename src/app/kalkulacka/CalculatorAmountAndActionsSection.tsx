@@ -25,11 +25,7 @@ type CalculatorAmountAndActionsSectionProps = {
   tipsterModeEnabled: boolean;
   showContractActions?: boolean;
   showManualEntryOption?: boolean;
-  comfortGradual: boolean;
   amountText: string;
-  comfortPaymentText: string;
-  comfortTargetAmountText: string;
-  comfortPayoutCount: number | null;
   missingFields: string[];
   hasTipContractConfig: boolean;
   refreshOriginalOpen: boolean;
@@ -46,10 +42,7 @@ type CalculatorAmountAndActionsSectionProps = {
   onRenovationIncreaseChange?: (value: string) => void;
   onRenovationGuaranteeStatusChange?: (value: FlexiRenovationGuaranteeStatus) => void;
   inlineEndorsementDraft?: EndorsementDraft | null;
-  onComfortGradualChange: (value: boolean) => void;
   onAmountTextChange: (value: string) => void;
-  onComfortPaymentTextChange: (value: string) => void;
-  onComfortTargetAmountTextChange: (value: string) => void;
   onRefreshOriginalContractNumberChange: (value: string) => void;
   onRefreshOriginalMissingInSystemChange: (value: boolean) => void;
   onOpenTipContractModal: () => void;
@@ -68,11 +61,7 @@ export function CalculatorAmountAndActionsSection({
   tipsterModeEnabled,
   showContractActions = true,
   showManualEntryOption = false,
-  comfortGradual,
   amountText,
-  comfortPaymentText,
-  comfortTargetAmountText,
-  comfortPayoutCount,
   missingFields,
   hasTipContractConfig,
   refreshOriginalOpen,
@@ -89,10 +78,7 @@ export function CalculatorAmountAndActionsSection({
   onRenovationIncreaseChange,
   onRenovationGuaranteeStatusChange,
   inlineEndorsementDraft,
-  onComfortGradualChange,
   onAmountTextChange,
-  onComfortPaymentTextChange,
-  onComfortTargetAmountTextChange,
   onRefreshOriginalContractNumberChange,
   onRefreshOriginalMissingInSystemChange,
   onOpenTipContractModal,
@@ -101,11 +87,10 @@ export function CalculatorAmountAndActionsSection({
   onCancelEndorsement,
   onSwitchToManualEntry,
 }: CalculatorAmountAndActionsSectionProps) {
-  const showComfortControls = product === "comfortcc";
   const showContractActionButtons = !tipsterModeEnabled &&
     (showContractActions || (product === "flexi" && showManualEntryOption));
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
-  const showHeading = showAmountInput || showComfortControls;
+  const showHeading = showAmountInput;
   const tipContractActionButtonClass = styles.actionButton;
   const activeTipContractActionButtonClass = `${styles.actionButton} ${styles.actionActive}`;
   const refreshContractActionButtonClass = styles.actionButton;
@@ -119,7 +104,7 @@ export function CalculatorAmountAndActionsSection({
   const replacementStornoDescription = originalReplacementStornoDescription(product);
   const replacementSaveLabel = product === "flexi" ? "Renovaci" : "Náhradu";
 
-  if (!showAmountInput && !showComfortControls && !showContractActionButtons && !showManualEntryButton) {
+  if (!showAmountInput && !showContractActionButtons && !showManualEntryButton) {
     return null;
   }
 
@@ -132,41 +117,10 @@ export function CalculatorAmountAndActionsSection({
         </div>
       )}
       <div className="space-y-3">
-        {showComfortControls && (
-          <section className="space-y-2">
-            <div className="text-sm font-semibold text-slate-800">Comfort Commodity</div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <div className="mb-1 text-[12px] uppercase text-slate-400">Poplatek</div>
-                <div className="ui-chip-group">
-                  <button
-                    type="button"
-                    onClick={() => onComfortGradualChange(false)}
-                    className={`ui-chip ui-focus px-3 py-1.5 text-sm ${!comfortGradual ? "ui-chip-active" : ""}`}
-                  >
-                    Jednorázový poplatek
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onComfortGradualChange(true)}
-                    className={`ui-chip ui-focus px-3 py-1.5 text-sm ${comfortGradual ? "ui-chip-active" : ""}`}
-                  >
-                    Postupný poplatek
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
         {showAmountInput && (
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-800">
-              {product === "comfortcc"
-                ? comfortGradual
-                  ? "1% z Poplatku v 1. platbě"
-                  : "Poplatek (zde se určuje provize z poplatku klienta)"
-                : product === "conseqzenit" ? "Výše příspěvku klienta v Kč" : "Částka"}
+              {product === "conseqzenit" ? "Výše příspěvku klienta v Kč" : "Částka"}
             </label>
             <input
               type="number"
@@ -175,41 +129,8 @@ export function CalculatorAmountAndActionsSection({
               }`}
               value={amountText}
               onChange={(event) => onAmountTextChange(event.target.value)}
-              placeholder={product === "comfortcc" ? "Zadejte poplatek" : placeholderForAmount(product, frequency)}
+              placeholder={placeholderForAmount(product, frequency)}
             />
-          </div>
-        )}
-
-        {showComfortControls && (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="block text-sm font-semibold text-slate-800">Pravidelná platba</label>
-              <input
-                type="number"
-                className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
-                value={comfortPaymentText}
-                onChange={(event) => onComfortPaymentTextChange(event.target.value)}
-                placeholder="Zadejte pravidelnou platbu"
-              />
-            </div>
-
-            {comfortGradual && (
-              <div className="space-y-1">
-                <label className="block text-sm font-semibold text-slate-800">Cílová částka (volitelné)</label>
-                <input
-                  type="number"
-                  className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-violet-700 focus:ring-2 focus:ring-violet-700"
-                  value={comfortTargetAmountText}
-                  onChange={(event) => onComfortTargetAmountTextChange(event.target.value)}
-                  placeholder="Např. 200000"
-                />
-                {comfortPayoutCount && (
-                  <p className="text-xs text-slate-600">
-                    Následná provize z platby bude vyplacena celkem {comfortPayoutCount}x.
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
 

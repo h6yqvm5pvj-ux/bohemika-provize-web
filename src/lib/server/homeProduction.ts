@@ -4,7 +4,7 @@ import { hallParticipantId } from "./hallOfFame";
 import { summarizeOwnerProduction, type OwnerProductionSummary, type ProductionWindow } from "@/app/home/productionSummary";
 import type { EntryDoc } from "@/app/home/useHomeData";
 
-const VERSION = 1;
+const VERSION = 2;
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const FIELDS = ["contractSignedDate", "createdAt", "acquisitionType", "productKey", "inputAmount", "frequencyRaw", "items", "managerOverrides"];
 

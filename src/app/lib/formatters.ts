@@ -25,6 +25,24 @@ type PositionLabelOptions = {
   emptyLabel?: string;
 };
 
+// Lists and animated totals reuse a few formats. Keep only formatter settings,
+// never amounts or account data, and bound the cache for caller-supplied locales.
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+const MONEY_FORMATTER_CACHE_LIMIT = 32;
+
+function moneyFormatter(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = JSON.stringify([locale, options]);
+  const cached = moneyFormatters.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.NumberFormat(locale, options);
+  if (moneyFormatters.size >= MONEY_FORMATTER_CACHE_LIMIT) {
+    moneyFormatters.delete(moneyFormatters.keys().next().value!);
+  }
+  moneyFormatters.set(key, formatter);
+  return formatter;
+}
+
 export const POSITION_LABELS: Record<Position, string> = {
   poradce1: "Poradce 1",
   poradce2: "Poradce 2",
@@ -101,10 +119,10 @@ export function formatMoney(
   if (value == null || !Number.isFinite(value)) return emptyValueLabel;
   if (options?.nonPositiveAsEmpty && value <= 0) return emptyValueLabel;
 
-  const formatted = value.toLocaleString(locale, {
+  const formatted = moneyFormatter(locale, {
     minimumFractionDigits: options?.minFractionDigits,
     maximumFractionDigits: options?.maxFractionDigits ?? 0,
-  });
+  }).format(value);
 
   const withDotThousands = locale.toLowerCase().startsWith("cs")
     ? formatted.replace(/[\u00a0\u202f\s]+/g, ".")

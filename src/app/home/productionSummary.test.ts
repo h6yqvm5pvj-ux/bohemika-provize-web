@@ -33,13 +33,16 @@ describe("monthly production arithmetic", () => {
     expect(combineOwnerProduction(owners, "owner@example.test", "my").current.immediate).toBe(200);
     expect(JSON.stringify(combineOwnerProduction(owners, "boss@example.test", "team"))).not.toContain("another@example.test");
   });
-  it("retains the distinct premium-card and leaderboard rules for life, other products and gold", () => {
+  it("excludes retired products from commissions, counts, managers, premiums and leaderboards", () => {
     const result = summarizeOwnerProduction([
       entry("life", { productKey: "flexi", inputAmount: 1200, frequencyRaw: "annual" }),
-      entry("auto"), entry("gold", { productKey: "comfortcc", inputAmount: 500, frequencyRaw: "monthly" }),
+      entry("auto"), entry("legacy", { productKey: "comfortcc" as EntryDoc["productKey"], inputAmount: 500, frequencyRaw: "monthly", managerOverrides: [{ email: "boss@example.test", total: 999 }] }),
+      entry("legacy-previous", { productKey: " COMFORTCC " as EntryDoc["productKey"], contractSignedDate: window.from }),
     ], window);
+    expect(result.current).toMatchObject({ count: 2, immediate: 200, managers: {} });
     expect(result.current.premiums).toEqual({ lifeMonthly: 1200, otherAnnual: 4000 });
-    expect(result.current.leaderboard).toEqual({ life: 1200, other: 10000, hasLife: true, hasOther: true });
+    expect(result.current.leaderboard).toEqual({ life: 1200, other: 4000, hasLife: true, hasOther: true });
+    expect(result.previous).toEqual(summarizeOwnerProduction([], window).previous);
   });
   it("moves the entire contribution between months after a signing-date correction", () => {
     const before = summarizeOwnerProduction([entry("a")], window);

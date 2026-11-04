@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseDomexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type DomexPdfResult = {
   isRefresh?: boolean | null;
@@ -8,9 +9,16 @@ export type DomexPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
+  policyEndDate?: string | null;
+  /** Printed end of the current term, even when the policy renews automatically. */
+  policyTermEndDate?: string | null;
+  automaticRenewal?: boolean | null;
   contractSignedDate?: string | null;
   amount?: number | null;
+  annualPremium?: number | null;
   frequency?: PaymentFrequency | null;
+  pdfImportWarnings?: string[];
+  paymentDetails?: ContractPaymentDetails | null;
   domexAddress?: string | null;
   domexPropertyType?: string | null;
   domexPropertyCoverage?: string | null;
@@ -38,6 +46,58 @@ type PositionedTextItem = {
 const LINE_Y_TOLERANCE = 2;
 const WORD_GAP_THRESHOLD = 1.5;
 
+const parseDomexPaymentDetails = (
+  pages: string[][],
+  contractNumber: string | null | undefined,
+  allowContractNumberFallback: boolean,
+): ContractPaymentDetails | null => {
+  if (!contractNumber || !/^\d{6,10}$/.test(contractNumber)) return null;
+  let payment: ContractPaymentDetails | null = null;
+  const labelPattern = /^(castka\s+k\s+uhrade|cislo\s+uctu|variabilni\s+symbol|datum\s+splatnosti)\s*:?\s*(.*)$/;
+
+  for (const page of pages) {
+    const normalized = page.map(normalizeSearchText);
+    for (let index = 0; index < normalized.length; index++) {
+      if (!/^castka\s+k\s+uhrade\b/.test(normalized[index])) continue;
+      const values = new Map<string, string>();
+      // Payment labels and their values form one adjacent block on one page.
+      for (let step = 0; step < 8 && index + step < normalized.length; step++) {
+        const match = normalized[index + step].match(labelPattern);
+        if (!match) break;
+        const [, label, inline] = match;
+        if (step > 0 && label === "castka k uhrade") break;
+        if (values.has(label)) return null;
+        let value = inline.trim();
+        if (!value) {
+          const next = normalized[index + step + 1];
+          if (!next || labelPattern.test(next)) return null;
+          value = next;
+          step += 1;
+        }
+        values.set(label, value);
+      }
+      const rawAmount = values.get("castka k uhrade");
+      const amountMatch = rawAmount?.match(/^((?:\d+|\d{1,3}(?: \d{3})+)(?:[.,]\d{1,2})?)\s*(?:kc|czk)$/);
+      const amount = amountMatch ? Number(amountMatch[1].replace(/ /g, "").replace(",", ".")) : null;
+      const explicitSymbol = values.get("variabilni symbol");
+      if (explicitSymbol !== undefined && explicitSymbol !== contractNumber) return null;
+      const rawDueDate = values.get("datum splatnosti");
+      const dueDate = rawDueDate && /^\d{1,2}\.\s*\d{1,2}\.\s*\d{4}$/.test(rawDueDate) ? toDateInput(rawDueDate) : null;
+      if (rawDueDate !== undefined && !dueDate) return null;
+      const candidate = normalizeContractPaymentDetails({
+        amount,
+        accountNumber: values.get("cislo uctu"),
+        variableSymbol: explicitSymbol ?? (allowContractNumberFallback ? contractNumber : null),
+        dueDate,
+      });
+      if (!candidate) return null;
+      if (payment && JSON.stringify(payment) !== JSON.stringify(candidate)) return null;
+      payment = candidate;
+    }
+  }
+  return payment;
+};
+
 const toDateInput = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const m = value.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
@@ -46,7 +106,8 @@ const toDateInput = (value: string | null | undefined): string | null => {
   const d = Number(dRaw);
   const mm = Number(mRaw);
   const y = Number(yRaw);
-  if (!d || !mm || !y) return null;
+  const date = new Date(Date.UTC(y, mm - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mm - 1 || date.getUTCDate() !== d) return null;
   return `${y.toString().padStart(4, "0")}-${mm.toString().padStart(2, "0")}-${d
     .toString()
     .padStart(2, "0")}`;
@@ -61,7 +122,7 @@ const parseAmount = (val: string | null | undefined): number | null => {
   if (!candidate) return null;
   const cleaned = candidate.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
-  return Number.isFinite(num) ? Math.round(num) : null;
+  return Number.isFinite(num) ? Math.round(num * 100) / 100 : null;
 };
 
 const stripDiacritics = (text: string) =>
@@ -134,6 +195,7 @@ const normalizeDomexClientName = (value: string | null | undefined): string | nu
     .replace(/\s+Telefon\b.*$/i, "")
     .replace(/\s+E-?mail\b.*$/i, "")
     .replace(/\s+Trval[ýy]\s+pobyt\b.*$/i, "")
+    .replace(/\s+Datum\s+narozen[ií]\b.*$/i, "")
     .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -161,7 +223,7 @@ const pickDomexValueAfterLabel = (
       const nextAscii = asciiLines[idx + step] ?? "";
       if (!next) continue;
       if (
-        /^(rodne\s+cis(?:lo|io)|telefon|e-?mail|trvaly\s+pobyt|elektronicka\s+komunikace|pojisteny|misto\s+pojisteni|adresa|tarifni\s+zona)\b/.test(
+        /^(rodne\s+cis(?:lo|io)|datum\s+narozeni|telefon|e-?mail|trvaly\s+pobyt|bydliste|statni\s+prislusnost|elektronicka\s+komunikace|pojisteny|misto\s+pojisteni|adresa|tarifni\s+zona)\b/.test(
           nextAscii
         )
       ) {
@@ -289,10 +351,12 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
 export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): Promise<DomexPdfResult> {
   const doc = await readPdfText(file, options);
   const lines: string[] = [];
+  const pages: string[][] = [];
 
   for (let i = 1; i <= doc.pages.length; i++) {
     const page = doc.pages[i - 1];
     const pageLines = await extractLayoutLinesFromPage(page);
+    pages.push(pageLines);
     lines.push(...pageLines);
   }
 
@@ -302,6 +366,11 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
   const ascii = normalizeSearchText(normalized);
 
   const result: DomexPdfResult = {};
+  const warnings: string[] = [];
+  const sharedSectionIndex = asciiLines.findIndex((line) => /^spolecna\s+ustanoveni\b/.test(line));
+  const sharedText = normalizeSearchText(
+    (sharedSectionIndex >= 0 ? lines.slice(sharedSectionIndex) : lines).join(" ")
+  );
 
   // Náhrada smlouvy -> číslo nahrazované smlouvy.
   const replacementOriginalContractNumber = pickDomexReplacementOriginalContractNumber(
@@ -326,39 +395,62 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
     const digits = pickLastLongNumber(contractMatch);
     if (digits) result.contractNumber = digits;
   }
+  const paymentDetails = parseDomexPaymentDetails(pages, result.contractNumber, Boolean(contractFromPolicyLabel));
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   // Jméno a příjmení pojistníka
+  // An agent or an insured person can have the same label elsewhere in the PDF.
+  const policyholderStart = asciiLines.findIndex((line) => /^pojistnik\s*:?$/.test(line));
+  const policyholderEnd = policyholderStart >= 0
+    ? asciiLines.findIndex((line, index) => index > policyholderStart && /^(?:pojisteny|misto\s+pojisteni|pojisteni\s+staveb|spolecna\s+ustanoveni)\b/.test(line))
+    : -1;
+  const nameLines = policyholderStart >= 0
+    ? lines.slice(policyholderStart + 1, policyholderEnd >= 0 ? policyholderEnd : undefined)
+    : lines;
+  const nameAsciiLines = nameLines.map(normalizeSearchText);
   const nameMatch =
     normalizeDomexClientName(
       pickDomexValueAfterLabel(
-        lines,
-        asciiLines,
+        nameLines,
+        nameAsciiLines,
         /jmeno\s+a\s+prijmeni\b/i,
         /Jm[eé]no\s+a\s+(?:př[ií]jmen[ií]|prijmeni|pfijmeni)\s*:?\s*/i,
         4
       )
     ) ??
     normalizeDomexClientName(
-      normalized.match(/Jméno\s+a\s+příjmení\s+(.+?)(?:\s+Rodné\s+číslo|$)/i)?.[1]
-    ) ??
-    normalizeDomexClientName(
-      ascii.match(/jmeno\s+a\s+prijmeni\s+(.+?)(?:\s+rodne\s+cis(?:lo|io)|$)/i)?.[1]
+      nameLines.join(" ").match(/Jm[eé]no\s+a\s+př[ií]jmen[ií]\s*:?\s+(.+?)(?:\s+Rodn[eé]\s+č[ií]slo|$)/i)?.[1]
     );
   if (nameMatch) {
     result.clientName = nameMatch;
   }
 
   // Počátek pojištění
-  const startMatch =
-    fullText.match(/Počátek\s+pojištění[^\d]*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1] ??
-    ascii.match(/pocatek pojisteni[^\d]*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1];
+  const startMatch = sharedText.match(/pocatek\s+pojisteni\s*:?\s*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1];
   const startIso = toDateInput(startMatch);
   if (startIso) {
     result.policyStartDate = startIso;
   }
 
-  // Datum sjednání (nabídka vytvořena)
+  const endMatch = sharedText.match(/konec\s+pojisteni\s*:?\s*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1];
+  const endIso = toDateInput(endMatch);
+  const renewalLabel = /automaticka\s+obnova\s+ke\s+konci\s+pojistneho\s+obdobi\s*:?\s*(ano|ne)\b/i;
+  const renewalMatch = sharedText.match(renewalLabel)?.[1];
+  if (renewalMatch) result.automaticRenewal = renewalMatch === "ano";
+  if (endIso) result.policyTermEndDate = endIso;
+  if (result.automaticRenewal === true) {
+    result.policyEndDate = null;
+  } else if (result.automaticRenewal === false) {
+    result.policyEndDate = endIso;
+    if (!endIso) warnings.push("Prolongace: smlouva se automaticky neobnovuje, ale datum konce pojištění chybí nebo je neplatné.");
+  } else if (endIso || /automaticka\s+obnova\s+ke\s+konci\s+pojistneho\s+obdobi/i.test(sharedText)) {
+    // A term end alone does not say whether an automatically renewed policy ends.
+    warnings.push("Prolongace: ověř ANO / NE a datum konce pojištění podle PDF.");
+  }
+
+  // The actual signing date takes priority over creation/printing dates.
   const signedMatch =
+    ascii.match(/pojistna\s+smlouva\s+uzavrena\s+dne\s*:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
     fullText.match(/Nabídka\s+vytvořena\s+dne:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
     ascii.match(/nabidka vytvorena dne:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1];
   const signedFallbackFromFooter =
@@ -371,8 +463,12 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
 
   // Frekvence splátek
   const freqMatch =
-    ascii.match(/frekvence splatek pojistneho\s*([a-z]+)/i)?.[1] ??
-    ascii.match(/pojistne obdobi\s*([a-z]+)/i)?.[1];
+    sharedText.match(/frekvence\s+placeni\s*:?\s*([a-z]+)/i)?.[1] ??
+    sharedText.match(/frekvence\s+splatek\s+pojistneho\s*:?\s*([a-z]+)/i)?.[1] ??
+    // In Neuron the annual insurance term is independent of payment frequency.
+    (!/frekvence\s+placeni\b/i.test(sharedText)
+      ? sharedText.match(/pojistne\s+obdobi\s*:?\s*([a-z]+)/i)?.[1]
+      : undefined);
   if (freqMatch) {
     if (freqMatch.startsWith("ctvrt")) result.frequency = "quarterly";
     else if (freqMatch.startsWith("polo")) result.frequency = "semiannual";
@@ -382,12 +478,20 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
 
   // Výše platby
   const amountMatch =
-    fullText.match(/Výše\s+platby[^\d]*([\d\s.,]+)/i)?.[1] ??
-    ascii.match(/vyse platby[^\d]*([\d\s.,]+)/i)?.[1];
+    sharedText.match(/vyse\s+pravidelne\s+platby\s*:?\s*([\d\s.,]+)/i)?.[1] ??
+    sharedText.match(/vyse\s+platby\s*:?\s*([\d\s.,]+)/i)?.[1];
   const amount = parseAmount(amountMatch);
   if (amount != null) {
     result.amount = amount;
   }
+
+  const annualPremium = parseAmount(sharedText.match(/rocni\s+pojistne\s+po\s+slevach\s+a\s+prirazkach\s*:?\s*([\d\s.,]+)/i)?.[1]);
+  if (annualPremium != null) result.annualPremium = annualPremium;
+  const periods = result.frequency === "quarterly" ? 4 : result.frequency === "semiannual" ? 2 : result.frequency === "annual" ? 1 : result.frequency === "monthly" ? 12 : null;
+  if (amount != null && annualPremium != null && periods && Math.abs(amount * periods - annualPremium) > periods / 2) {
+    warnings.push("Pojistné: součet pravidelných plateb podle frekvence se liší od ročního pojistného po slevách a přirážkách.");
+  }
+  if (warnings.length) result.pdfImportWarnings = warnings;
 
   // Místo pojištění -> adresa
   const placeIndexes = findLabelIndexes(asciiLines, /misto\s+pojisteni/i);

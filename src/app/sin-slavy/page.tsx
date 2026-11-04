@@ -25,9 +25,9 @@ const CATEGORIES = [
 ] as const;
 const PERIODS: { key: HallPeriod; label: string }[] = [
   { key: "month", label: "Aktuální měsíc" },
-  { key: "3months", label: "Poslední 3 měsíce" },
-  { key: "6months", label: "Posledních 6 měsíců" },
-  { key: "year", label: "Poslední rok" },
+  { key: "3months", label: "3 dokončené měsíce" },
+  { key: "6months", label: "6 dokončených měsíců" },
+  { key: "year", label: "12 dokončených měsíců" },
 ];
 const PAGE_SIZE = 10;
 const number = (value: number) => value.toLocaleString("cs-CZ");
@@ -207,7 +207,7 @@ export default function HallOfFamePage() {
               )}
               <div className={styles.listFooter}><span aria-live="polite">Zobrazeno {number(Math.min(visibleCount, filteredRows.length))} z {number(filteredRows.length)}{query ? " nalezených" : " umístění"}</span>{filteredRows.length > visibleCount && <button type="button" onClick={() => setVisibleCount((value) => value + PAGE_SIZE)}>Zobrazit další <ChevronDown size={15} aria-hidden="true" /></button>}</div>
             </section>
-            <footer className={styles.summary}><span><Globe2 size={14} aria-hidden="true" /> Celá aplikace · {activeTab.label}</span><span>Celkem <strong>{formatPremium(overallPremium, activeCategory)}</strong><i>·</i>Počet smluv <strong>{number(overallContracts)}</strong></span><p>Počítají se smlouvy sjednané ve zvoleném období. Delší období zahrnují aktuální a předchozí kalendářní měsíce.</p></footer>
+            <footer className={styles.summary}><span><Globe2 size={14} aria-hidden="true" /> Celá aplikace · {activeTab.label}</span><span>Celkem <strong>{formatPremium(overallPremium, activeCategory)}</strong><i>·</i>Počet smluv <strong>{number(overallContracts)}</strong></span><p>Počítají se smlouvy sjednané ve zvoleném období. Aktuální měsíc zahrnuje produkci do dneška. Delší období zahrnují poslední 3, 6 nebo 12 celých dokončených kalendářních měsíců.</p></footer>
           </>
         )}
       </div>

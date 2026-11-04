@@ -7,7 +7,6 @@ export const MONTH_SECTION_LABELS = {
   property: "Majetek a odpovědnost",
   entrepreneurs: "Podnikatele",
   travel: "Cestovní pojištění",
-  gold: "Zlato",
   pension: "Penzijáky",
   foreigners: "Cizinci",
   auto: "Auta",
@@ -46,7 +45,7 @@ function sectionForItem(item: CashflowItem): MonthSectionId {
 
   // Business liability also matches the property filter. Give it exactly one section.
   const priority: Exclude<ProductFilter, "all" | "tip" | "subscription">[] = [
-    "entrepreneurs", "life", "property", "travel", "gold", "pension", "foreigners", "auto",
+    "entrepreneurs", "life", "property", "travel", "pension", "foreigners", "auto",
   ];
   return priority.find((category) => CASHFLOW_PRODUCTS_BY_FILTER[category].includes(product)) ?? "other";
 }

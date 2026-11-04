@@ -1,5 +1,6 @@
 import type { Firestore, QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { hallPeriodRanges } from "./hallOfFame";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 
 const FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType"];
 const localTime = new Intl.DateTimeFormat("en-GB", {
@@ -22,8 +23,10 @@ function pragueMidnight(day: string): Date {
 }
 
 export function hallEntryReadWindow(now: Date) {
-  const { startDate, endDate } = hallPeriodRanges(now).year;
-  const tomorrow = new Date(`${endDate}T00:00:00Z`);
+  const ranges = hallPeriodRanges(now);
+  // Read the union of the completed year and the still-running current month.
+  const { startDate } = ranges.year;
+  const tomorrow = new Date(`${ranges.month.endDate}T00:00:00Z`);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   return { from: pragueMidnight(startDate), to: pragueMidnight(tomorrow.toISOString().slice(0, 10)) };
 }
@@ -54,7 +57,9 @@ export async function readHallEntryDocuments(db: Firestore, ownerEmails: string[
   await Promise.all(Array.from({ length: 2 }, async () => {
     while (next < queries.length) {
       const snapshot = await queries[next++].get();
-      for (const doc of snapshot.docs) docs.set(doc.ref.path, doc);
+      for (const doc of snapshot.docs) {
+        if (!isRetiredProduct(doc.data().productKey)) docs.set(doc.ref.path, doc);
+      }
     }
   }));
   // Preserve the former collection-group document order, including old duplicate

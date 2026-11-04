@@ -201,7 +201,7 @@ describe("server cashflow shadow resource budget", () => {
   it("caps nested arrays and avoids multiplying aggregated auto commissions", () => {
     const items = Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 }));
     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { items }) }), asOf)).toBe(true);
-    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { productKey: "comfortcc", items }) }), asOf)).toBe(false);
+    expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: entries(50, { productKey: "cppcestovko", items }) }), asOf)).toBe(false);
     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ items: Array.from({ length: 129 }, () => ({ title: "Provize", amount: 1 })) })] }), asOf)).toBe(false);
     expect(isCashflowShadowWithinBudget(snapshot({ ownEntries: [entry({ commissionPayouts: Array.from({ length: 501 }, () => ({})) })] }), asOf)).toBe(false);
     expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: [entry({ managerOverrides: Array.from({ length: 21 }, () => ({ email: null, position: null, commissionMode: null, items: [], total: 0 })) })] }), asOf)).toBe(false);
@@ -212,7 +212,7 @@ describe("server cashflow shadow resource budget", () => {
       email: "viewer@example.test", position: null, commissionMode: null, total: 4,
       items: Array.from({ length: 4 }, () => ({ title: "Provize", amount: 1 })),
     }];
-    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(25, { productKey: "comfortcc", managerOverrides }) }), asOf)).toBe(false);
+    expect(isCashflowShadowWithinBudget(snapshot({ teamEntriesRaw: entries(25, { productKey: "cppcestovko", managerOverrides }) }), asOf)).toBe(false);
   });
 
   it("bounds payout matching work even when output size alone fits", () => {

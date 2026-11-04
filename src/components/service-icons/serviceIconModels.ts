@@ -130,14 +130,6 @@ export function createServiceIconModel(gl: OGLRenderingContext, index: number, m
       block("chrome", [.34, .17, .18], [.105, -.95, 0]);
       break;
     }
-    default: {
-      block("chrome", [1.45, .48, .63], [.16, -.25, -.08], [.08, .1, -.22]);
-      block("gold", [1.45, .48, .63], [-.16, .24, .14], [.08, -.1, .28]);
-      for (let line = 0; line < 3; line++) {
-        block("gold", [.14, .018, .012], [-.26 + line * .17, .26, .465], [0, 0, .28]);
-      }
-      break;
-    }
   }
 
   // Normalize the complete silhouette, including wheels, handle and key teeth.

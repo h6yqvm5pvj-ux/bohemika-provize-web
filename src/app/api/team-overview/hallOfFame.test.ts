@@ -50,8 +50,13 @@ describe("global hall API access and periods", () => {
       contract("simplex-a", "a@example.test", "2026-09-02", 1000, { productKey: "cppsimplex", frequencyRaw: "monthly" }),
       contract("pmop-b", "other-team@example.test", "2026-09-03", 15000, { productKey: "kooppmop" }),
       contract("pprs-b", "other-team@example.test", "2026-09-04", 3000, { productKey: "cppPPRs", frequencyRaw: "quarterly" }),
+      contract("closed-property-a", "a@example.test", "2026-08-01", 24000, { productKey: "domex" }),
+      contract("closed-simplex-a", "a@example.test", "2026-08-02", 1200, { productKey: "cppsimplex", frequencyRaw: "monthly" }),
+      contract("closed-pmop-b", "other-team@example.test", "2026-08-03", 14000, { productKey: "kooppmop" }),
+      contract("closed-pprs-b", "other-team@example.test", "2026-08-04", 4000, { productKey: "cppPPRs", frequencyRaw: "quarterly" }),
       contract("pprbez-a", "a@example.test", "2026-07-01", 5000, { productKey: "cppPPRbez", frequencyRaw: "semiannual" }),
       contract("inherited", "other-team@example.test", "2026-09-02", 999999, { productKey: "cppsimplex", acquisitionType: "inherited" }),
+      contract("closed-inherited", "other-team@example.test", "2026-08-02", 999999, { productKey: "cppsimplex", acquisitionType: "inherited" }),
       contract("future", "other-team@example.test", "2026-09-15", 999999, { productKey: "cppsimplex" }),
     ] });
     const { GET } = await import("./route");
@@ -64,10 +69,10 @@ describe("global hall API access and periods", () => {
     for (const period of ["3months", "6months", "year"]) {
       const body = await (await GET(request(`hallOfFame&period=${period}`))).json();
       expect(body.rankings.business).toEqual([
-        expect.objectContaining({ name: "Boris", annualPremium: 27000, contracts: 2, rank: 1 }),
-        expect.objectContaining({ name: "Anna", annualPremium: 22000, contracts: 2, rank: 2 }),
+        expect.objectContaining({ name: "Boris", annualPremium: 30000, contracts: 2, rank: 1 }),
+        expect.objectContaining({ name: "Anna", annualPremium: 24400, contracts: 2, rank: 2 }),
       ]);
-      expect(body.rankings.property).toEqual(month.rankings.property);
+      expect(body.rankings.property).toEqual([expect.objectContaining({ name: "Anna", annualPremium: 24000, contracts: 1, rank: 1 })]);
       expect(body.rankings.life).toEqual([]);
       expect(body.rankings.auto).toEqual([]);
       expect(Object.keys(body.rankings)).toEqual(["life", "auto", "property", "business"]);
@@ -81,13 +86,14 @@ describe("global hall API access and periods", () => {
       contract("quarter", "a@example.test", "2026-07-01", 2000),
       contract("half", "a@example.test", "2026-04-01", 3000),
       contract("year", "a@example.test", "2025-10-01", 4000),
+      contract("year-start", "a@example.test", "2025-09-01", 5000),
     ] });
     const { GET } = await import("./route");
     const response = await GET(request("hallOfFame&includePeriods=true"));
     const body = await response.json();
     expect(body.currentUserId).toBe(hallParticipantId("a@example.test"));
     expect(Object.keys(body.periods)).toEqual(["month", "3months", "6months", "year"]);
-    expect(Object.values(body.periods).map((value: any) => value.rankings.life[0].contracts)).toEqual([1, 2, 3, 4]);
+    expect(Object.values(body.periods).map((value: any) => value.rankings.life[0].contracts)).toEqual([1, 1, 2, 4]);
     expect(body.rankings).toBeUndefined();
     expect(JSON.stringify(body)).not.toMatch(/@example.test|private-phone|managerEmail|userEmail/);
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
@@ -103,7 +109,10 @@ describe("global hall API access and periods", () => {
     mocks.users.mockResolvedValue({ docs: owners.map((email) => profile(email, email.split("@")[0])) });
     const pending: (() => void)[] = [];
     mocks.group.mockImplementation((batch: string[]) => new Promise((resolve) => {
-      pending.push(() => resolve({ docs: batch.map((owner) => contract(owner, owner, "2026-09-01", 1000)) }));
+      pending.push(() => resolve({ docs: batch.flatMap((owner) => [
+        contract(`${owner}-current`, owner, "2026-09-01", 1000),
+        contract(`${owner}-closed`, owner, "2026-08-01", 1000),
+      ]) }));
     }));
     const { GET } = await import("./route");
     const first = GET(request());
@@ -202,22 +211,57 @@ describe("global hall API access and periods", () => {
     mocks.group.mockResolvedValue({ docs: [
       contract("current-a", "a@example.test", "2026-09-01", 1000),
       contract("current-b", "other-team@example.test", "2026-09-14", 2000),
-      contract("quarter-a", "a@example.test", "2026-07-01", 2000),
-      contract("half-b", "other-team@example.test", "2026-04-01", 4000),
-      contract("year-a", "a@example.test", "2025-10-01", 9000),
-      contract("old", "other-team@example.test", "2025-09-30", 999999),
+      contract("quarter-a", "a@example.test", "2026-06-01", 2000),
+      contract("half-b", "other-team@example.test", "2026-03-01", 4000),
+      contract("year-a", "a@example.test", "2025-09-01", 9000),
+      contract("old", "other-team@example.test", "2025-08-31", 999999),
       contract("future", "other-team@example.test", "2026-09-15", 999999),
       contract("inherited", "other-team@example.test", "2026-09-02", 999999, { acquisitionType: "inherited" }),
       contract("undated", "other-team@example.test", null, 999999),
     ] });
     const { GET } = await import("./route");
-    for (const [period, winner, premium, contracts] of [["month", "Boris", 24000, 1], ["3months", "Anna", 36000, 2], ["6months", "Boris", 72000, 2], ["year", "Anna", 144000, 3]]) {
+    for (const [period, winner, premium, contracts] of [["month", "Boris", 24000, 1], ["3months", "Anna", 24000, 1], ["6months", "Boris", 48000, 1], ["year", "Anna", 132000, 2]]) {
       const response = await GET(request(`hallOfFame&period=${period}`));
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.period.key).toBe(period);
       expect(body.rankings.life[0]).toMatchObject({ name: winner, annualPremium: premium, contracts });
     }
+    expect(mocks.group).toHaveBeenCalledOnce();
+  });
+  it("counts August through October on November 3 and keeps November production in the current month only", async () => {
+    vi.setSystemTime(new Date("2026-11-03T09:25:32Z"));
+    mocks.group.mockResolvedValue({ docs: [
+      contract("august-start", "a@example.test", "2026-08-01", 2010),
+      contract("august-middle", "a@example.test", "2026-08-15", 1742),
+      contract("august-end", "a@example.test", "2026-08-31", 1250),
+      contract("october-a", "a@example.test", "2026-10-06", 1497),
+      contract("october-b", "a@example.test", "2026-10-08", 2257),
+      contract("october-c", "a@example.test", "2026-10-12", 1695),
+      contract("october-d", "a@example.test", "2026-10-25", 1754),
+      contract("october-end", "a@example.test", "2026-10-31", 236),
+      contract("november-current", "a@example.test", "2026-11-02", 9999),
+      contract("before-quarter", "a@example.test", "2026-07-31", 4000),
+      contract("before-half", "a@example.test", "2026-02-28", 500),
+      contract("year-start", "a@example.test", "2025-11-01", 7000),
+      contract("before-year", "a@example.test", "2025-10-31", 999999),
+    ] });
+    const { GET } = await import("./route");
+    const response = await GET(request("hallOfFame&includePeriods=true"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    for (const [period, startDate, endDate, monthlyPremium, contracts] of [
+      ["month", "2026-11-01", "2026-11-03", 9999, 1],
+      ["3months", "2026-08-01", "2026-10-31", 12441, 8],
+      ["6months", "2026-05-01", "2026-10-31", 16441, 9],
+      ["year", "2025-11-01", "2026-10-31", 23941, 11],
+    ] as const) {
+      expect(body.periods[period].period).toEqual({ key: period, startDate, endDate });
+      expect(body.periods[period].rankings.life).toEqual([
+        expect.objectContaining({ name: "Anna", contracts, annualPremium: monthlyPremium * 12 }),
+      ]);
+    }
+    expect(JSON.stringify(body)).not.toMatch(/@example.test|private-phone|managerEmail|userEmail/);
     expect(mocks.group).toHaveBeenCalledOnce();
   });
   it("uses creation date for legacy entries and counts shared tip contracts only for their owner", async () => {
@@ -235,11 +279,15 @@ describe("global hall API access and periods", () => {
   it("expires the cache at the Prague month boundary even within its normal lifetime", async () => {
     vi.setSystemTime(new Date("2026-09-30T21:59:50Z"));
     const { GET } = await import("./route");
-    expect((await (await GET(request())).json()).rankings.life).toHaveLength(2);
+    const before = await (await GET(request("hallOfFame&includePeriods=true"))).json();
+    expect(before.periods.month.rankings.life).toHaveLength(2);
+    expect(before.periods["3months"].rankings.life).toEqual([]);
     vi.setSystemTime(new Date("2026-09-30T22:00:01Z"));
-    const next = await (await GET(request())).json();
-    expect(next.period).toEqual({ key: "month", startDate: "2026-10-01", endDate: "2026-10-01" });
-    expect(next.rankings.life).toEqual([]);
+    const next = await (await GET(request("hallOfFame&includePeriods=true"))).json();
+    expect(next.periods.month.period).toEqual({ key: "month", startDate: "2026-10-01", endDate: "2026-10-01" });
+    expect(next.periods.month.rankings.life).toEqual([]);
+    expect(next.periods["3months"].period).toEqual({ key: "3months", startDate: "2026-07-01", endDate: "2026-09-30" });
+    expect(next.periods["3months"].rankings.life).toHaveLength(2);
     expect(mocks.group).toHaveBeenCalledTimes(2);
   });
 });

@@ -671,10 +671,8 @@ const classifyGeneralCommissionCode = (
   if (!cleanCode) return { kind: "unknown", label: "Nezařazený kód" };
   if (cleanCode === "ATP101") return { kind: "tip", label: "Provize z TIPU" };
   if (cleanProduct.startsWith("TU_")) {
-    return {
-      kind: "troyOunce",
-      label: "Troyská unce - význam kódu závisí na variantě produktu",
-    };
+    // Historical rows keep their recorded amounts without insurance-specific interpretation.
+    return { kind: "unknown", label: `Nezařazený kód ${cleanCode}` };
   }
   if (cleanCode === "KOMP") return { kind: "compensation", label: "Kompenzační provize" };
   if (cleanCode === "PK") return { kind: "office", label: "Prémie na kancelář" };
@@ -903,34 +901,6 @@ const COMMISSION_CODE_RULES: CommissionCodeRule[] = [
     label: "Provize s postupným vyplácením - jen produkt Exclusive",
     category: "other",
     matchers: [/^PVYP2$/],
-  },
-];
-
-const TROY_OUNCE_COMMISSION_CODE_RULES: CommissionCodeRule[] = [
-  {
-    codes: "A1",
-    label: "TU_JN - za nákup; TU_ZP - z poplatku, Přednostní; TU_ZS - z poplatku",
-    category: "troyOunce",
-    matchers: [/^A1$/],
-  },
-  {
-    codes: "A2",
-    label: "TU_JN - přirážka zprostředkovatele; TU_ZP - z měsíční splátky, Poměrně",
-    category: "troyOunce",
-    matchers: [/^A2$/],
-  },
-  {
-    codes: "A3",
-    label:
-      "TU_ZP - z poplatku nebo měsíční splátky, Postupně; TU_ZP - přirážka zprostředkovatele",
-    category: "troyOunce",
-    matchers: [/^A3$/],
-  },
-  {
-    codes: "B1",
-    label: "TU_ZS - přirážka zprostředkovatele",
-    category: "troyOunce",
-    matchers: [/^B1$/],
   },
 ];
 
@@ -1703,7 +1673,6 @@ export {
   COMMISSION_CODE_RULES,
   INVESTMENT_SECTION_PRODUCT_CODES,
   MANAGER_COMMISSION_AMOUNT_TOLERANCE,
-  TROY_OUNCE_COMMISSION_CODE_RULES,
   addMonthsToLocalDate,
   addMonthsToMonthKey,
   addYearsToLocalDate,

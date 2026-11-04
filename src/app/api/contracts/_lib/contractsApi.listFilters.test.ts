@@ -40,6 +40,16 @@ const contract = (overrides: Partial<ContractDoc> = {}): ContractDoc => ({
 });
 
 describe("contracts API list filters", () => {
+  it.each(["comfortcc", " COMFORTCC "])("excludes retired product %s even without user filters or with stale category metadata", productKey => {
+    const variants: Record<string, string>[] = [{}, { q: "AB1234" }, { categories: "life", institutions: "cpp" }];
+    for (const params of variants) {
+      const filters = parseContractListFilters(new URLSearchParams(params));
+      expect(contractMatchesListFilters(contract(), filters, "advisor@example.com")).toBe(true);
+      expect(contractMatchesListFilters(contract({ productKey: productKey as ContractDoc["productKey"],
+        productCategory: "life", institutionId: "cpp" }), filters, "advisor@example.com")).toBe(false);
+    }
+  });
+
   it.each(["1", "true", "false", "0", "anything", "{\"userEmail\":\"other@example.test\"}"])("validates the commission-ended flag %s", raw => {
     const filters = parseContractListFilters(new URLSearchParams({ commissionEndedOnly: raw }));
     const enabled = raw === "1" || raw === "true";

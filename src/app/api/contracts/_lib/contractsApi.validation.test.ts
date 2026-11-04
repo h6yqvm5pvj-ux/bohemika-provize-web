@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ContractDoc } from "./contractsApi.types";
-import { validateContractCoreInvariants } from "./contractsApi.validation";
+import { parsePolicyTermEndDate, validateContractCoreInvariants } from "./contractsApi.validation";
 
 const baseContract: ContractDoc = {
   clientName: "Jan Novak",
@@ -14,6 +14,22 @@ const baseContract: ContractDoc = {
 };
 
 describe("contracts API validation", () => {
+  const neuron: ContractDoc = { ...baseContract, productKey: "domexneuron", contractSignedDate: new Date("2026-11-04"),
+    policyStartDate: new Date("2026-11-05"), automaticRenewal: true, policyTermEndDate: new Date("2027-11-04"), policyEndDate: null };
+
+  it("validates prolongation independently of client date controls", () => {
+    expect(validateContractCoreInvariants(neuron, { automaticRenewal: false, policyEndDate: new Date("2027-11-04") })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants(neuron, { automaticRenewal: false })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(neuron, { policyEndDate: new Date("2027-11-04") })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(neuron, { automaticRenewal: "false" })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(neuron, { policyTermEndDate: new Date("2026-11-03") })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(baseContract, { automaticRenewal: true })).toMatchObject({ ok: false });
+  });
+
+  it.each(["2027-02-30", "2027-13-04", "2101-01-01", true, [], {}, "not-a-date"])("rejects an invalid term boundary: %j", value => {
+    expect(parsePolicyTermEndDate(value)).toMatchObject({ ok: false });
+  });
+
   const inheritedCpp: ContractDoc = {
     ...baseContract, productKey: "cppAuto", acquisitionType: "inherited",
     contractSignedDate: new Date("2012-08-08"), policyStartDate: new Date("2012-08-14"),

@@ -855,9 +855,6 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   if (normalized.includes("allianz")) return "/icons/allianz.png";
   if (normalized.includes("axa")) return "/icons/axalogo.png";
   if (normalized.includes("slavia")) return "/icons/slavialogo.png";
-  if (normalized.includes("comfort") || normalized.includes("commodity")) {
-    return "/icons/cclogo.png";
-  }
   if (normalized.includes("maxima")) return "/icons/maxima.png";
   if (normalized.includes("čsob") || normalized.includes("csob")) return "/icons/csb.png";
   if (normalized === "kb" || normalized.includes("komerční pojišťovna")) {
@@ -881,7 +878,6 @@ const splitInsurerAndProduct = (value: string): { insurerName: string; productNa
     "Allianz",
     "AXA",
     "Slavia",
-    "Comfort Commodity",
     "Simplea",
     "Pillow",
     "YOU PLUS",

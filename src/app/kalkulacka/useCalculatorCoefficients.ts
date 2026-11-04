@@ -403,8 +403,6 @@ export function useCalculatorCoefficients({
         return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 15.04.2021.";
       case "koopcestovko":
         return "Výpočet: pojistné × koeficient (jednorázově). Koeficienty platné od 01.09.2019.";
-      case "comfortcc":
-        return "Výpočet: následná provize z platby = pravidelná platba × koeficient. U postupného poplatku je tato částka započtená i do okamžité provize. Pokud zadáš cílovou částku, Celkem dopočítá celý součet za všechny výplaty následné.";
       default:
         return "";
     }

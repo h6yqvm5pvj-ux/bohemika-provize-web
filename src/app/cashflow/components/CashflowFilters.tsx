@@ -47,7 +47,6 @@ const PRODUCT_FILTER_OPTIONS: CashflowProductOption[] = [
   { value: "entrepreneurs", label: "Podnikatele" },
   { value: "travel", label: "Cestovní" },
   { value: "foreigners", label: "Cizinci" },
-  { value: "gold", label: "Zlato" },
   { value: "pension", label: "Penzijáky" },
 ];
 

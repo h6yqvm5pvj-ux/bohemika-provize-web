@@ -46,6 +46,7 @@ type SinglePdfImportOptions = {
     setEndorsementWorkflowActive: (value: boolean) => void;
   };
   handlePrepareEndorsement: (options: PrepareEndorsementOptions) => Promise<boolean>;
+  confirmDomexNeuron?: (signal: AbortSignal) => Promise<boolean | null>;
   notifyPdfParserFailure: (
     file: File, product: Product, parsed: ParsedContractPdf,
     ocrAttempted: boolean, signal: AbortSignal, isCurrent: () => boolean,
@@ -144,7 +145,19 @@ export async function importSingleContractPdf(file: File | null, options: Single
     if (!isCurrentPdfImport()) return;
     if (detected) {
       productDetected = true;
-      const detectedProduct = resolveDetectedPdfProduct(detected.product, importProduct);
+      let detectedProduct = resolveDetectedPdfProduct(detected.product, importProduct);
+      if (detected.requiresDomexNeuronConfirmation) {
+        setPdfImportStatus("Potvrď prosím, zda jde o DOMEX Neuron.");
+        const isNeuron = await options.confirmDomexNeuron?.(importController.signal) ?? null;
+        if (!isCurrentPdfImport()) return;
+        if (isNeuron === null) {
+          setPdfImportStatus("Rozpoznání DOMEX bylo zrušeno. PDF zůstává připravené jako příloha.");
+          setPdfImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+        detectedProduct = isNeuron ? "domexneuron" : "domex";
+      }
       if (detectedProduct !== product) {
         importProduct = detectedProduct;
         setProduct(detectedProduct);

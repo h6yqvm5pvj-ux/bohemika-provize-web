@@ -26,7 +26,6 @@ describe("TIP offer calculation", () => {
       (product) =>
         !AUTO_PRODUCTS.includes(product) &&
         !LIFE_PRODUCTS.includes(product) &&
-        product !== "comfortcc" &&
         !averagedTravelProducts.includes(
           product as (typeof averagedTravelProducts)[number]
         )
@@ -39,7 +38,7 @@ describe("TIP offer calculation", () => {
         AUTO_PRODUCTS.length -
         LIFE_PRODUCTS.length -
         averagedTravelProducts.length +
-        2
+        3
     );
   });
 
@@ -89,9 +88,6 @@ describe("TIP offer calculation", () => {
       durationYears: 30,
       durationMonths: null,
       maxCizinKomplexVariant: "exclusiveStandard" as const,
-      comfortPayment: null,
-      comfortGradual: false,
-      comfortTargetAmount: null,
     };
     const neon = calculateCommission({ productKey: "neon", ...commonInput });
     const flexi = calculateCommission({ productKey: "flexi", ...commonInput });
@@ -150,9 +146,6 @@ describe("TIP offer calculation", () => {
       durationYears: null,
       durationMonths: null,
       maxCizinKomplexVariant: "exclusiveStandard" as const,
-      comfortPayment: null,
-      comfortGradual: false,
-      comfortTargetAmount: null,
     };
     const products = [
       "cppcestovko",
@@ -196,9 +189,6 @@ describe("TIP offer calculation", () => {
       durationYears: null,
       durationMonths: null,
       maxCizinKomplexVariant: "exclusiveStandard",
-      comfortPayment: null,
-      comfortGradual: false,
-      comfortTargetAmount: null,
     });
     const expectedA501 = sumCommissionByCode(calculated?.items ?? [], "A501");
     const result = calculateTipOfferProduct({

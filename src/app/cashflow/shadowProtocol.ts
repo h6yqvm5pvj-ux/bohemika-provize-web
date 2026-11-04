@@ -1,8 +1,8 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
 
-// Commission plans now settle Kooperativa C payouts against equivalent B codes.
-// Older candidates must never be reused for the same unchanged source data.
-export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v4";
+// Retired contracts are excluded from forecasts and totals.
+// Do not reuse candidates calculated before product retirement.
+export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v5";
 export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
 export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;
@@ -36,7 +36,7 @@ export type CashflowShadowResult = {
 
 const productFilters = new Set([
   "pension", "all", "tip", "subscription", "life", "auto", "property",
-  "entrepreneurs", "travel", "foreigners", "gold",
+  "entrepreneurs", "travel", "foreigners",
 ]);
 const hashPattern = /^[a-f0-9]{64}$/;
 

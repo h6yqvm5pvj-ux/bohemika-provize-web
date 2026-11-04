@@ -349,19 +349,16 @@ function categorizeProduct(product?: Product | null): Category {
       return "property";
     case "travel":
       return "travel";
-    case "comfort":
-      return "comfort";
     default:
       return "other";
   }
 }
 
-function annualPremiumFromEntry(data: Record<string, unknown>, category: Category): number {
+function annualPremiumFromEntry(data: Record<string, unknown>): number {
   const raw = Number(data.inputAmount ?? 0);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
   const product = productFromEntry(data.productKey);
   if (isLifeProduct(product)) return raw * 12;
-  if (category === "comfort") return raw;
   return raw * paymentsPerYear((data.frequencyRaw ?? "annual") as PaymentFrequency);
 }
 
@@ -377,7 +374,6 @@ function emptyCategoryCounts(): Record<Category, number> {
     business: 0,
     travel: 0,
     foreigners: 0,
-    comfort: 0,
     other: 0,
   };
 }
@@ -390,7 +386,6 @@ function emptyCategoryMetrics(): Record<Category, AggregateMetrics> {
     business: emptyAggregateMetrics(),
     travel: emptyAggregateMetrics(),
     foreigners: emptyAggregateMetrics(),
-    comfort: emptyAggregateMetrics(),
     other: emptyAggregateMetrics(),
   };
 }
@@ -403,7 +398,6 @@ function emptyInstitutionByCategory(): Record<Category, Record<string, Aggregate
     business: {},
     travel: {},
     foreigners: {},
-    comfort: {},
     other: {},
   };
 }
@@ -1244,7 +1238,7 @@ function accumulateTeamOverviewEntry({
   const category = categorizeProduct(product);
   current.categories[category] = (current.categories[category] ?? 0) + 1;
 
-  const annualPremium = annualPremiumFromEntry(data, category);
+  const annualPremium = annualPremiumFromEntry(data);
   const monthlyPremium = annualPremium / 12;
   addAggregateContract(current.categoryMetrics[category], annualPremium, monthlyPremium);
 

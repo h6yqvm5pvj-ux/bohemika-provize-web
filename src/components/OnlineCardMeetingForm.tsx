@@ -6,7 +6,7 @@ import styles from "./OnlineCardMeetingForm.module.css";
 import { ONLINE_CARD_COPY, type OnlineCardLocale } from "@/lib/onlineCardI18n";
 import { isValidOnlineCardEmail, isValidOnlineCardPhone, type OnlineCardContactMethod } from "@/lib/onlineCardContact";
 
-const TOPIC_IDS = ["vehicle", "property", "liability", "life-accident", "foreign-health", "loans-mortgage", "investments", "precious-metals", "other"] as const;
+const TOPIC_IDS = ["vehicle", "property", "liability", "life-accident", "foreign-health", "loans-mortgage", "investments", "other"] as const;
 type MeetingTopicId = (typeof TOPIC_IDS)[number];
 type Props = {
   slug: string;

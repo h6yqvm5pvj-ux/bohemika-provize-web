@@ -35,7 +35,6 @@ export type GeneralCommissionKind =
   | "penalty"
   | "compensation"
   | "gradual"
-  | "troyOunce"
   | "unknown";
 
 export type StatementProductCategory =
@@ -164,7 +163,6 @@ export type CommissionCodeCategory =
   | "tip"
   | "adjustment"
   | "office"
-  | "troyOunce"
   | "other";
 
 export type CommissionCodeRule = {

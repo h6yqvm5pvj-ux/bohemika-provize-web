@@ -1,6 +1,6 @@
 import { DataFreshness } from "./DataFreshness";
 import styles from "./homeWidgets.module.css";
-import { HeartPulse, Layers3, Trophy } from "lucide-react";
+import { BarChart3, HeartPulse, Layers3, Trophy } from "lucide-react";
 import { AnimatedMoney } from "./AnimatedNumbers";
 
 import { type AppLanguage } from "@/lib/appLanguage";
@@ -44,7 +44,7 @@ const TEAM_LEADERBOARD_COPY: Record<
     sixMonths: "6M",
     year: "12M",
     loading: "Načítám týmovou produkci…",
-    empty: "Pro zvolené období a typ produktu zatím nemá tým žádnou produkci.",
+    empty: "Zatím bez produkce pro toto období.",
     premium: "Pojistné",
   },
 };
@@ -65,8 +65,10 @@ export function TeamLeaderboardSection({
   const copy = TEAM_LEADERBOARD_COPY[language];
   const visibleEntries = entries.slice(0, 10);
   const leadingPremium = Math.max(0, ...visibleEntries.map(row => Number.isFinite(row.totalPremium) ? row.totalPremium : 0));
+  const isEmpty = entries.length === 0 && !(error && !updatedAt) && !(loading && !updatedAt);
+  const freshness = <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} />;
   return (
-    <section className={`${styles.card} ${styles.leaderboard} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate">
+    <section className={`${styles.card} ${styles.leaderboard} ${isLiteUI ? "" : styles.elevated}`} data-fixed-box-theme="slate" data-empty={isEmpty} aria-label={copy.title}>
       <h2 className={styles.title}><span className={styles.icon}><Trophy aria-hidden="true" /></span>{copy.title}</h2>
       <div className={styles.filters}>
         <div className={styles.chips} role="group" aria-label="Typ produktu">
@@ -79,16 +81,19 @@ export function TeamLeaderboardSection({
           <button type="button" onClick={() => onRangeChange("year")} aria-pressed={lbRange === "year"}>{copy.year}</button>
         </div>
       </div>
-      <DataFreshness updatedAt={updatedAt} refreshing={loading} error={error} />
+      {!isEmpty && freshness}
       {error && !updatedAt ? null : loading && !updatedAt ? <div className={`${styles.empty} ${styles.loading}`} role="status"><span className={styles.spinner} aria-hidden="true" />{copy.loading}</div>
-        : entries.length === 0 ? <p className={styles.empty}>{copy.empty}</p>
+        : isEmpty ? <>
+          <p className={styles.leaderboardEmpty}><BarChart3 size={16} aria-hidden="true" /><span>{copy.empty}</span></p>
+          <div className={styles.emptyFreshness}>{freshness}</div>
+        </>
         : <>
           <div className={styles.rankLegend}><span>{leaderboardLabel}</span><span>{copy.premium} · {lbProductFilter === "life" ? "měsíčně" : "ročně"}</span></div>
           <ol className={styles.rankList}>
             {visibleEntries.map((row, index) => <li key={row.email} className={styles.rankRow}>
               <span className={styles.rankBadge}>{index + 1}</span>
               <div className={styles.rankName} title={row.name}>{row.name}</div>
-              <div className={styles.rankAmount}><strong><AnimatedMoney value={row.totalPremium} /></strong></div>
+              <div className={styles.rankAmount}><strong><AnimatedMoney value={row.totalPremium} animate={!isLiteUI} /></strong></div>
               <div className={styles.rankTrack} aria-hidden="true"><span style={{ width: `${leadingPremium > 0 && Number.isFinite(row.totalPremium) ? Math.max(0, row.totalPremium) / leadingPremium * 100 : 0}%` }} /></div>
             </li>)}
           </ol>

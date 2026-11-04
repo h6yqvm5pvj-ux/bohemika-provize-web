@@ -26,6 +26,8 @@ import type {
 import {
   isReasonableContractDate,
   isValidContractNumber,
+  parsePolicyTermEndDate,
+  validateContractRenewal,
 } from "./contractsApi.validation";
 import type { ContractListProductCategory } from "./contractsApi.types";
 
@@ -46,14 +48,16 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "commissionMode",
   "inputAmount",
   "effectiveInputAmount",
-  "comfortPayment",
-  "comfortGradual",
-  "comfortTargetAmount",
+
+
+
   "frequencyRaw",
   "clientName",
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "policyTermEndDate",
+  "automaticRenewal",
   "pensionTargetAge",
   "status",
   "stornoDate",
@@ -184,7 +188,7 @@ export const SUPPORTED_PRODUCTS = new Set<Product>([
   "koopcestovko",
   "cppcestovko",
   "axacestovko",
-  "comfortcc",
+
   "cppPPRs",
   "cppPPRbez",
 ]);
@@ -671,9 +675,6 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   commissionMode: CommissionMode | null;
   inputAmount: number;
   effectiveInputAmount: number;
-  comfortPayment: number | null;
-  comfortGradual: boolean | null;
-  comfortTargetAmount: number | null;
   frequencyRaw: PaymentFrequency;
   items: CommissionResultItemDTO[];
   total: number;
@@ -686,6 +687,8 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   contractSignedDate: Date;
   policyStartDate: Date;
   policyEndDate: Date | null;
+  policyTermEndDate?: Date | null;
+  automaticRenewal?: boolean | null;
   pensionTargetAge?: number | null;
   status: "active" | "storno";
   stornoDate: Date | null;
@@ -1199,6 +1202,20 @@ export const normalizeCreateEntryPayload = ({
   if (!policyStartParsed.ok) return policyStartParsed;
   const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
   if (!policyEndParsed.ok) return policyEndParsed;
+  const policyTermEndParsed = parsePolicyTermEndDate(raw.policyTermEndDate);
+  if (!policyTermEndParsed.ok) return policyTermEndParsed;
+  const automaticRenewalParsed = parseOptionalBoolean(raw.automaticRenewal, "automaticRenewal");
+  if (!automaticRenewalParsed.ok) return automaticRenewalParsed;
+  const effectivePolicyEnd = automaticRenewalParsed.value === false
+    ? policyEndParsed.value ?? policyTermEndParsed.value : policyEndParsed.value;
+  const renewalValidation = validateContractRenewal({
+    productKey: productParsed.value,
+    automaticRenewal: automaticRenewalParsed.value,
+    policyTermEndDate: policyTermEndParsed.value,
+    policyStartDate: policyStartParsed.value,
+    policyEndDate: effectivePolicyEnd,
+  });
+  if (!renewalValidation.ok) return renewalValidation;
   const pensionTargetAgeParsed = parseOptionalInteger(raw.pensionTargetAge, "pensionTargetAge", { min: 1, max: 120 });
   if (!pensionTargetAgeParsed.ok) return pensionTargetAgeParsed;
   const statusParsed = parseOptionalContractStatus(raw.status, "status");
@@ -1212,8 +1229,8 @@ export const normalizeCreateEntryPayload = ({
     };
   }
   if (
-    policyEndParsed.value &&
-    policyEndParsed.value.getTime() < policyStartParsed.value.getTime()
+    effectivePolicyEnd &&
+    effectivePolicyEnd.getTime() < policyStartParsed.value.getTime()
   ) {
     return {
       ok: false,
@@ -1254,15 +1271,6 @@ export const normalizeCreateEntryPayload = ({
     "effectiveInputAmount"
   );
   if (!effectiveInputAmountParsed.ok) return effectiveInputAmountParsed;
-  const comfortPaymentParsed = parseOptionalFiniteNumber(raw.comfortPayment, "comfortPayment");
-  if (!comfortPaymentParsed.ok) return comfortPaymentParsed;
-  const comfortGradualParsed = parseOptionalBoolean(raw.comfortGradual, "comfortGradual");
-  if (!comfortGradualParsed.ok) return comfortGradualParsed;
-  const comfortTargetAmountParsed = parseOptionalFiniteNumber(
-    raw.comfortTargetAmount,
-    "comfortTargetAmount"
-  );
-  if (!comfortTargetAmountParsed.ok) return comfortTargetAmountParsed;
   const durationYearsParsed = parseOptionalInteger(raw.durationYears, "durationYears", {
     min: 1,
     max: 120,
@@ -1534,9 +1542,6 @@ export const normalizeCreateEntryPayload = ({
       commissionMode: commissionModeParsed.value,
       inputAmount: inputAmountParsed.value ?? 0,
       effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
-      comfortPayment: comfortPaymentParsed.value,
-      comfortGradual: comfortGradualParsed.value,
-      comfortTargetAmount: comfortTargetAmountParsed.value,
       frequencyRaw: freqParsed.value,
       items: [],
       total: 0,
@@ -1548,7 +1553,11 @@ export const normalizeCreateEntryPayload = ({
       userId: ownerUid,
       contractSignedDate: signedDateParsed.value,
       policyStartDate: policyStartParsed.value,
-      policyEndDate: policyEndParsed.value,
+      policyEndDate: effectivePolicyEnd,
+      ...(productParsed.value === "domexneuron" ? {
+        policyTermEndDate: policyTermEndParsed.value,
+        automaticRenewal: automaticRenewalParsed.value,
+      } : {}),
       pensionTargetAge: productParsed.value === "conseqzenit" ? pensionTargetAgeParsed.value : null,
       status: lifecycleStatus,
       stornoDate: stornoDateParsed.value,

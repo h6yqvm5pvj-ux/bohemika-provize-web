@@ -66,7 +66,6 @@ export const CASHFLOW_PRODUCTS_BY_FILTER: Record<
   entrepreneurs: ["cppsimplex", "cppPPRs", "cppPPRbez", "kooppmop"],
   travel: ["cppcestovko", "axacestovko", "koopcestovko"],
   foreigners: ["maxcizinkomplex"],
-  gold: ["comfortcc"],
 };
 
 const MONTH_LABELS = [
@@ -85,7 +84,6 @@ const MONTH_LABELS = [
 ];
 
 export const STORNO_FUND_RATE = 0.15;
-export const STORNO_EXEMPT_PRODUCT: Product = "comfortcc";
 export const CASHFLOW_FORECAST_YEARS = 10;
 
 export const INTELLIGENT_PREDICTION_CONFIG = {
@@ -1009,7 +1007,7 @@ const hasPaidCommissionForItem = ({
   const hasAnyPaidCodeForContract = contractsWithPaidCommissionCodes.has(normalizedContractNumber.toUpperCase());
   if (hasAnyPaidCodeForContract) {
     if (commissionCodes.length === 0) {
-      return item.productKey === "comfortcc" && paidContracts.has(normalizedContractNumber);
+      return false;
     }
 
     return commissionCodes.some((code) =>
@@ -1370,7 +1368,6 @@ export function groupMonthsByYear(monthGroups: MonthGroup[]): YearGroup[] {
 export function calculateStornoFund(items: CashflowItem[]): number {
   return items.reduce((sum, item) => {
     if (item.isSubscriptionPayment || item.isExtraPayout) return sum;
-    if (item.productKey === STORNO_EXEMPT_PRODUCT) return sum;
     const amount = Number(item.amount);
     if (!Number.isFinite(amount)) return sum;
     return sum + amount * STORNO_FUND_RATE;

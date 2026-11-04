@@ -66,13 +66,13 @@ describe("parsed PDF values", () => {
 });
 
 describe("bulk PDF import eligibility and details", () => {
-  it("allows mixing supported bulk products but excludes manual and single-import-only products", () => {
+  it("allows mixing supported bulk products but excludes products without a parser", () => {
     expect(isBulkImportProductAllowedForSelection("cppAuto", "domex")).toBe(true);
     expect(isBulkImportProductAllowedForSelection("domex", "cppAuto")).toBe(true);
-    expect(isBulkImportProductAllowedForSelection("comfortcc", "cppAuto")).toBe(false);
-    expect(isBulkImportProductAllowedForSelection("cppAuto", "comfortcc")).toBe(false);
+    expect(isBulkImportProductAllowedForSelection("maximaMaxEfekt", "cppAuto")).toBe(false);
+    expect(isBulkImportProductAllowedForSelection("cppAuto", "maximaMaxEfekt")).toBe(false);
     expect(isBulkImportProductAllowedForSelection("cppAuto", null)).toBe(false);
-    for (const product of ["pillowmajetek", "comfortcc", null, undefined] as const) {
+    for (const product of ["pillowmajetek", "maximaMaxEfekt", null, undefined] as const) {
       expect(isBulkImportProduct(product)).toBe(false);
     }
   });

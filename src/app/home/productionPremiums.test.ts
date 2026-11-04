@@ -48,7 +48,7 @@ describe("production premium summary", () => {
 
   it("excludes gold, unknown products and invalid amounts without polluting totals", () => {
     expect(summarizeProductionPremiums([
-      entry("comfortcc", 100000, "monthly"), { inputAmount: 1000, contractSignedDate: signed },
+      entry("comfortcc" as Product, 100000, "monthly"), { inputAmount: 1000, contractSignedDate: signed },
       entry("neon", NaN), entry("neon", Infinity), entry("domex", -10), entry("neon", 0),
     ], start, end)).toEqual({ lifeMonthly: 0, otherAnnual: 0 });
   });

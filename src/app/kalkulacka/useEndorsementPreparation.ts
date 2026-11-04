@@ -53,9 +53,6 @@ type UseEndorsementPreparationParams = {
   mode: CommissionMode;
   frequency: PaymentFrequency;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPaymentText: string;
-  comfortGradual: boolean;
-  comfortTargetAmountText: string;
   isSavingForSubordinate: boolean;
   resolveEndorsementPositionForSignedDate: (signedDateIso: string) => Position | null;
   setEndorsementWorkflowActive: Dispatch<SetStateAction<boolean>>;
@@ -86,9 +83,6 @@ export const useEndorsementPreparation = ({
   mode,
   frequency,
   maxCizinKomplexVariant,
-  comfortPaymentText,
-  comfortGradual,
-  comfortTargetAmountText,
   isSavingForSubordinate,
   resolveEndorsementPositionForSignedDate,
   setEndorsementWorkflowActive,
@@ -213,9 +207,6 @@ export const useEndorsementPreparation = ({
           durationManualOverride: endorsementDurationManualOverride,
           frequency,
           maxCizinKomplexVariant,
-          comfortPayment: parseNumber(comfortPaymentText),
-          comfortGradual,
-          comfortTargetAmount: parseNumber(comfortTargetAmountText),
         });
 
         if (prepared.sourceDurationYears != null && shouldShowDuration(targetProduct)) {
@@ -248,9 +239,6 @@ export const useEndorsementPreparation = ({
     },
     [
       amountText,
-      comfortGradual,
-      comfortPaymentText,
-      comfortTargetAmountText,
       contractNumber,
       contractSignedDate,
       durationMonths,

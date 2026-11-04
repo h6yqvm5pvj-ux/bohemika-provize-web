@@ -1,0 +1,59 @@
+.panel {
+  position: fixed;
+  isolation: isolate;
+  left: 50%;
+  top: 80px;
+  z-index: 110;
+  width: min(390px, calc(100vw - 24px));
+  max-height: calc(100dvh - 96px);
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-50%);
+  border: 1px solid #d7c9e1;
+  border-radius: 32px;
+  background:
+    radial-gradient(ellipse at 0 100%, #cdb4df40, transparent 55%),
+    radial-gradient(ellipse at 100% 0, #bda5ce35, transparent 50%),
+    linear-gradient(135deg, #fffffffa, #eee4f5ed 42%, #fffffff5 72%, #e5d7efed);
+  box-shadow: 0 20px 50px #43275529, inset 0 0 0 1px #ffffffd9, inset 3px 0 6px #ffffffb3;
+  color: #443052;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  scrollbar-width: thin;
+  scrollbar-color: #c5afd4 #f5f1f7;
+}
+
+.panel::before { content: ""; position: absolute; inset: 0; z-index: -1; padding: 3px; border-radius: inherit; pointer-events: none; background: linear-gradient(125deg, #ffffff, #ffffff26 18%, #ffffffed 25%, #a58ab86b 35%, #ffffff24 48%, #ffffff 79%, #9877ae5c 91%, #ffffff); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.surface { position: relative; padding: 17px; border: 2px solid #ffffff; border-radius: 23px; background-color: #f5f1f7; background-image: radial-gradient(circle at 1px 1px, #d0bddc 1.5px, transparent 2px), linear-gradient(90deg, #dcd0e580 1px, transparent 1px), linear-gradient(#dcd0e580 1px, transparent 1px); background-size: 40px 40px; box-shadow: 0 2px 4px #43275512, inset 0 0 0 1px #d7c9e180; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.heading h2 { margin: 0; color: #704987; font-size: 21px; font-weight: 740; line-height: 1.15; letter-spacing: -.045em; }
+.headerIcon, .icon { display: inline-grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border: 1px solid #ffffff; border-radius: 11px; background: linear-gradient(140deg, #fcf9ff, #e6d6ef); color: #79538f; box-shadow: inset 0 1px 1px #ffffff, 0 2px 5px #79538f0d; }
+.headerIcon { width: 38px; height: 38px; border-radius: 12px; }
+.close { display: inline-grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; padding: 0; border: 1px solid #d7c9e1; border-radius: 10px; background: #ffffffb3; color: #79538f; cursor: pointer; }
+.close:hover { background: #eee5f5; border-color: #bda5ce; }
+.sectionLabel { margin: 20px 0 9px; color: #6f5a7c; font-size: 10px; font-weight: 650; line-height: 1.5; text-transform: uppercase; letter-spacing: .1em; }
+.widgetList { display: grid; gap: 7px; }
+.widget, .performance { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 56px; padding: 10px; border: 1px solid #dfd2e8; border-radius: 14px; background: #ffffffc7; text-align: left; cursor: pointer; transition: border-color .15s, background-color .15s; }
+.widget[aria-checked="true"] { border-color: #d7c5e3; background: #fdfaffed; }
+.widget:hover:not(:disabled), .performance:hover { border-color: #bda5ce; background: #f7f0fbed; }
+.widget:disabled { opacity: .6; cursor: not-allowed; }
+.widgetText { display: grid; flex: 1; min-width: 0; gap: 3px; }
+.widgetLabel { color: #4e365d; font-size: 12px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.note { color: #6f5a7c; font-size: 11px; font-weight: 450; line-height: 1.45; overflow-wrap: anywhere; }
+.switchTrack { position: relative; display: inline-flex; flex-shrink: 0; width: 36px; height: 22px; border: 1px solid #d2c2dd; border-radius: 999px; background: #ddd3e5; box-shadow: inset 0 1px 2px #54366d0d; transition: background-color .15s, border-color .15s; }
+.switchTrack > span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px #43275526; transition: transform .15s; }
+.switchTrack[data-checked="true"] { border-color: #79538f; background: linear-gradient(135deg, #9671ac, #704987); }
+.switchTrack[data-checked="true"] > span { transform: translateX(14px); }
+.performance { margin-top: 14px; padding: 12px 10px; background: linear-gradient(125deg, #ffffffed, #eee5f5e6); }
+.performanceState { display: grid; flex-shrink: 0; justify-items: end; gap: 6px; }
+.mode { max-width: 74px; color: #79538f; font-size: 9px; font-weight: 700; line-height: 1.3; text-transform: uppercase; letter-spacing: .05em; }
+.syncNote { display: flex; align-items: flex-start; justify-content: center; gap: 6px; margin: 13px 2px 0; color: #6f5a7c; font-size: 10px; line-height: 1.6; }
+.syncNote svg { flex-shrink: 0; margin-top: 2px; }
+.panel button:focus-visible { outline: 2px solid #79538f; outline-offset: 3px; }
+
+@media (min-width: 640px) { .panel { position: absolute; left: auto; right: 0; top: calc(100% + 12px); transform: none; } }
+@media (max-width: 360px) { .surface { padding: 14px; }.heading h2 { font-size: 19px; }.headerIcon { width: 32px; height: 32px; border-radius: 10px; }.widget, .performance { gap: 8px; padding-inline: 8px; }.icon { width: 30px; height: 30px; border-radius: 10px; }.mode { max-width: 61px; } }
+@media (prefers-reduced-motion: reduce) { .widget, .performance, .switchTrack, .switchTrack > span { transition: none; } }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .panel { background: #e8dfee; }.surface { background: #f5f1f7; }.widget, .performance { background: #ffffff; } }
+@media (forced-colors: active) { .panel, .surface, .widget, .performance, .icon, .headerIcon, .close { border-color: CanvasText; background: Canvas; color: CanvasText; box-shadow: none; }.panel::before { display: none; }.heading h2, .widgetLabel, .note, .sectionLabel, .mode, .syncNote { color: CanvasText; }.switchTrack { border-color: ButtonText; background: Canvas; }.switchTrack[data-checked="true"] { border-color: Highlight; background: Highlight; }.switchTrack > span { background: ButtonText; box-shadow: none; }.switchTrack[data-checked="true"] > span { background: HighlightText; }.panel button:focus-visible { outline-color: Highlight; } }

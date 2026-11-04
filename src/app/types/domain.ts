@@ -33,7 +33,7 @@ export type Product =
   | "koopcestovko"
   | "cppcestovko"
   | "axacestovko"
-  | "comfortcc"
+
   | "cppPPRs"
   | "cppPPRbez";
 

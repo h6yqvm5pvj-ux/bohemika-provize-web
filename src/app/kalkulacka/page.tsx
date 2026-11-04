@@ -5,6 +5,7 @@ import { deliverPdfParserReport } from "./pdfParserReportDelivery";
 import { openPreviewWindow } from "@/lib/openPreviewWindow";
 import dynamic from "next/dynamic";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
+import { useDomexNeuronConfirmation } from "./useDomexNeuronConfirmation";
 
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -481,9 +482,6 @@ export default function CalculatorPage() {
   const selectedTipContractUserEmail = tipContractSelectedUser?.email ?? null;
   const foundTipContractLookupEmail =
     tipContractLookupState.status === "found" ? tipContractLookupState.email : null;
-  const [comfortGradual, setComfortGradual] = useState<boolean>(false);
-  const [comfortPaymentText, setComfortPaymentText] = useState<string>("");
-  const [comfortTargetAmountText, setComfortTargetAmountText] = useState<string>("");
 
   const [clientName, setClientName] = useState<string>("");
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
@@ -492,6 +490,9 @@ export default function CalculatorPage() {
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
   const [policyStartDate, setPolicyStartDate] = useState<string>("");
   const [policyEndDate, setPolicyEndDate] = useState<string>("");
+  const [policyTermEndDate, setPolicyTermEndDate] = useState("");
+  const [automaticRenewal, setAutomaticRenewal] = useState<boolean | null>(null);
+  const { confirmDomexNeuron, domexNeuronConfirmation } = useDomexNeuronConfirmation();
   const [pensionTargetAge, setPensionTargetAge] = useState<number | null>(null);
   const [enteredStornoDate, setStornoDate] = useState<string>("");
   const stornoDate = product === "conseqzenit" ? "" : enteredStornoDate;
@@ -645,6 +646,8 @@ export default function CalculatorPage() {
     clientName: setClientName,
     policyStartDate: setPolicyStartDate,
     policyEndDate: setPolicyEndDate,
+    policyTermEndDate: setPolicyTermEndDate,
+    automaticRenewal: setAutomaticRenewal,
     pensionTargetAge: setPensionTargetAge,
     contractSignedDate: setContractSignedDate,
     stornoDate: setStornoDate,
@@ -653,7 +656,6 @@ export default function CalculatorPage() {
     renovationIncreaseText: setRenovationIncreaseText,
     renovationGuaranteeStatus: setRenovationGuaranteeStatus,
     frequency: setFrequency,
-    comfortPaymentText: setComfortPaymentText,
     durationYears: setDurationYears,
     durationMonths: setDurationMonths,
     maxCizinKomplexVariant: setMaxCizinKomplexVariant,
@@ -926,8 +928,8 @@ export default function CalculatorPage() {
   }, []);
 
   const contractDateIssues = useMemo(
-    () => collectContractDateIssues(contractSignedDate, policyStartDate, policyEndDate),
-    [contractSignedDate, policyStartDate, policyEndDate]
+    () => collectContractDateIssues(contractSignedDate, policyStartDate, product === "domexneuron" ? policyTermEndDate || policyEndDate : policyEndDate),
+    [contractSignedDate, policyStartDate, policyEndDate, policyTermEndDate, product]
   );
   const contractDateErrors = useMemo(
     () => contractDateIssues.filter((issue) => issue.severity === "error"),
@@ -1101,13 +1103,6 @@ export default function CalculatorPage() {
     setEndorsementDurationManualOverride(false);
     setEndorsementPreviewSource(null);
   }, [originalReplacementWorkflowActive]);
-  const comfortPayoutCount = useMemo(() => {
-    if (product !== "comfortcc" || !comfortGradual) return null;
-    const payment = parseNumber(comfortPaymentText);
-    const targetAmount = parseNumber(comfortTargetAmountText);
-    if (payment <= 0 || targetAmount <= 0) return null;
-    return Math.max(1, Math.ceil(targetAmount / payment));
-  }, [product, comfortGradual, comfortPaymentText, comfortTargetAmountText]);
 
   const [managerEmailSnapshot, setManagerEmailSnapshot] = useState<string | null>(null);
   const [managerPositionSnapshot, setManagerPositionSnapshot] = useState<Position | null>(null);
@@ -1697,12 +1692,6 @@ export default function CalculatorPage() {
       setFrequency(allowed[0]);
     }
 
-    if (product !== "comfortcc") {
-      setComfortGradual(false);
-      setComfortPaymentText("");
-      setComfortTargetAmountText("");
-    }
-
     const [min, max] = durationRange(product);
     if (durationYears == null) {
       if (product !== "neon" && product !== "maximaMaxEfekt") {
@@ -1754,7 +1743,6 @@ export default function CalculatorPage() {
         if (key === "dobu trvání smlouvy") {
           return product === "maximaMaxEfekt" && durationYears == null;
         }
-        if (key === "pravidelnou platbu") return product === "comfortcc" && comfortGradual && parseNumber(comfortPaymentText) <= 0;
         if (key === "dobu trvání v měsících") {
           return (
             product === "maxcizinkomplex" &&
@@ -1771,10 +1759,8 @@ export default function CalculatorPage() {
     contractSignedDate,
     policyStartDate,
     durationYears,
-    comfortPaymentText,
     product,
     hasSelectedProduct,
-    comfortGradual,
     durationMonths,
   ]);
 
@@ -2562,6 +2548,7 @@ export default function CalculatorPage() {
 
   const handlePdfImport = (file: File | null) => importSingleContractPdf(file, {
     product, hasSelectedProduct, isInheritedContractMode, pdfFormSetters,
+    confirmDomexNeuron,
     refs: { pdfImportAbortRef, pdfImportRunIdRef, pdfParserReportCounts, fileInputRef },
     ui: {
       setPdfParserReportStatus,
@@ -2816,17 +2803,27 @@ export default function CalculatorPage() {
             "Rozpoznání produktu z PDF trvá moc dlouho.",
             () => batchOcrActive,
             batchController.signal
-          ).catch((detectErr) => {
-            console.warn("Batch import: detekce produktu selhala", detectErr);
+          ).catch(() => {
+            console.warn("Batch import: detekce produktu selhala");
             return null;
           });
 
           if (batchController.signal.aborted) break;
           const productDetected = Boolean(detected);
           const detectionConfidence = detected?.confidence ?? null;
-          const importProduct = detected
+          let importProduct = detected
             ? resolveDetectedPdfProduct(detected.product, hasSelectedProduct ? product : null)
             : (isBulkImportProduct(product) ? product : null);
+          if (detected?.requiresDomexNeuronConfirmation) {
+            setAutoBulkImportStatus(`Zpracovávám ${processedCount + 1}/${files.length}: potvrď DOMEX Neuron.`);
+            const isNeuron = await confirmDomexNeuron(batchController.signal);
+            if (batchController.signal.aborted) break;
+            if (isNeuron === null) {
+              finishRow(index, { status: "skipped", message: "Určení varianty DOMEX bylo zrušeno." }, "skipped");
+              continue;
+            }
+            importProduct = isNeuron ? "domexneuron" : "domex";
+          }
           if (!importProduct) {
             finishRow(
               index,
@@ -2945,7 +2942,6 @@ export default function CalculatorPage() {
             parsed.maxCizinKomplexVariant === "premium"
               ? parsed.maxCizinKomplexVariant
               : null;
-          const parsedComfortPayment = parsedPdfNumberValue(parsed, "comfortPayment");
           rows = updateAutoBulkRow(rows, index, {
             contractNumber: contractNumberFromPdf || null,
             clientName: clientNameFromPdf || null,
@@ -2959,6 +2955,7 @@ export default function CalculatorPage() {
           if (!policyStartDateIso) missing.push("datum počátku");
           if (parsedAmount == null || parsedAmount <= 0) missing.push("pojistné");
           if (!parsedFrequency) missing.push("frekvenci");
+          if (importProduct === "domexneuron" && parsed.automaticRenewal === false && !policyEndDateIso) missing.push("datum konce");
 
           if (missing.length > 0) {
             finishRow(
@@ -3001,7 +2998,7 @@ export default function CalculatorPage() {
           const dateIssues = collectContractDateIssues(
             signedDateIso,
             policyStartDateIso,
-            policyEndDateIso
+            importProduct === "domexneuron" ? parsedPdfTextValue(parsed, "policyTermEndDate") || policyEndDateIso : policyEndDateIso
           );
           const dateErrors = dateIssues.filter((issue) => issue.severity === "error");
           const dateWarnings = dateIssues.filter((issue) => issue.severity === "warning");
@@ -3372,19 +3369,15 @@ export default function CalculatorPage() {
             inputAmount: amountForSave,
             calculationInputAmount: amountForSave,
             effectiveInputAmount: amountForSave,
-            comfortPayment:
-              importProduct === "comfortcc" &&
-              parsedComfortPayment != null &&
-              parsedComfortPayment > 0
-                ? parsedComfortPayment
-                : null,
-            comfortGradual: importProduct === "comfortcc" ? false : null,
-            comfortTargetAmount: null,
             frequencyRaw: frequencyForSave,
             clientName: clientNameFromPdf,
             contractSignedDate: signedDateIso,
             policyStartDate: policyStartDateIso,
             policyEndDate: policyEndDateIso || null,
+            ...(importProduct === "domexneuron" ? {
+              automaticRenewal: typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null,
+              policyTermEndDate: parsedPdfTextValue(parsed, "policyTermEndDate") || null,
+            } : {}),
             pensionTargetAge: importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null,
             status: "active",
             stornoDate: null,
@@ -3707,9 +3700,6 @@ export default function CalculatorPage() {
       durationYears,
       durationMonths,
       maxCizinKomplexVariant,
-      comfortPayment: parseNumber(comfortPaymentText),
-      comfortGradual,
-      comfortTargetAmount: parseNumber(comfortTargetAmountText),
     });
 
     if (!result) {
@@ -3748,9 +3738,6 @@ export default function CalculatorPage() {
     flexiRenovationActive,
     flexiRenovationBase,
     contractSignedDateForNeon,
-    comfortGradual,
-    comfortPaymentText,
-    comfortTargetAmountText,
     maxCizinKomplexVariant,
   ]);
 
@@ -3777,6 +3764,10 @@ export default function CalculatorPage() {
     }
     if (!supportsPolicyEndDate(product)) {
       setPolicyEndDate("");
+    }
+    if (product !== "domexneuron") {
+      setAutomaticRenewal(null);
+      setPolicyTermEndDate("");
     }
     if (product !== "conseqzenit") setPensionTargetAge(null);
   }, [product]);
@@ -3806,14 +3797,12 @@ export default function CalculatorPage() {
     setContractSignedDate("");
     setPolicyStartDate("");
     setPolicyEndDate("");
+    setAutomaticRenewal(null);
+    setPolicyTermEndDate("");
     setStornoDate("");
     setPensionTargetAge(null);
     setContractNumber("");
     setContractNumberLiveCheck({ status: "idle" });
-
-    setComfortGradual(false);
-    setComfortPaymentText("");
-    setComfortTargetAmountText("");
 
     setAutoCarMake("");
     setAutoCarPlate("");
@@ -4145,9 +4134,6 @@ export default function CalculatorPage() {
     mode,
     frequency,
     maxCizinKomplexVariant,
-    comfortPaymentText,
-    comfortGradual,
-    comfortTargetAmountText,
     isSavingForSubordinate,
     resolveEndorsementPositionForSignedDate,
     setEndorsementWorkflowActive,
@@ -4166,9 +4152,7 @@ export default function CalculatorPage() {
   const reviewContractBeforeSave = () => {
     const reviewYears = endorsementDraft ? endorsementDraft.durationYears : durationYears;
     const reviewMonths = endorsementDraft ? endorsementDraft.durationMonths : durationMonths;
-    const amountLabel = product === "comfortcc"
-      ? comfortGradual ? "1 % z poplatku v 1. platbě" : "Poplatek"
-      : product === "conseqzenit" ? "Měsíční příspěvek klienta"
+    const amountLabel = product === "conseqzenit" ? "Měsíční příspěvek klienta"
       : isLifeProduct ? "Měsíční pojistné" : "Pojistné za platební období";
     const rows = [
       { label: "Klient", value: clientName.trim() },
@@ -4180,14 +4164,13 @@ export default function CalculatorPage() {
       { label: "Datum sjednání", value: formatIsoDay(contractSignedDate.trim()) },
       { label: "Počátek", value: formatIsoDay(policyStartDate.trim()) },
     ];
-    if (policyEndDate.trim()) rows.push({ label: "Konec smlouvy", value: formatIsoDay(policyEndDate.trim()) });
+    if (policyEndDate.trim() && !(product === "domexneuron" && automaticRenewal === true)) rows.push({ label: "Konec smlouvy", value: formatIsoDay(policyEndDate.trim()) });
+    if (product === "domexneuron") {
+      rows.push({ label: "Prolongace smlouvy", value: automaticRenewal === null ? "Neurčeno" : automaticRenewal ? "ANO" : "NE" });
+    }
     if (stornoDate.trim() && !endorsementDraft) rows.push({ label: "Datum storna", value: formatIsoDay(stornoDate.trim()) });
     if (shouldShowDuration(product)) rows.push({ label: "Doba trvání", value: durationYearsLabel(reviewYears ?? normalizedDurationYears(product, reviewYears)) ?? "—" });
     if (shouldShowDurationMonths(product)) rows.push({ label: "Doba trvání v měsících", value: String(normalizedDurationMonths(product, reviewMonths)) });
-    if (product === "comfortcc") {
-      rows.push({ label: "Pravidelná platba", value: formatMoneyResult(parseNumber(comfortPaymentText)) });
-      if (comfortGradual && parseNumber(comfortTargetAmountText) > 0) rows.push({ label: "Cílová částka", value: formatMoneyResult(parseNumber(comfortTargetAmountText)) });
-    }
     if (originalReplacementWorkflowActive) {
       rows.push({ label: "Původní smlouva", value: refreshOriginalMissingInSystem ? "Není v systému" : refreshOriginalContractNumber.trim() });
     }
@@ -4241,6 +4224,7 @@ export default function CalculatorPage() {
     if (!contractNumber.trim()) missing.push("číslo smlouvy");
     if (!contractSignedDate.trim()) missing.push("datum sjednání");
     if (!policyStartDate.trim()) missing.push("datum počátku");
+    if (product === "domexneuron" && automaticRenewal === false && !policyEndDate.trim()) missing.push("datum konce");
     if (product === "maximaMaxEfekt" && endorsementDraft.durationYears == null) {
       missing.push("dobu trvání smlouvy");
     }
@@ -4564,17 +4548,13 @@ export default function CalculatorPage() {
     }
 
     const value = parseNumber(amountText);
-    const comfortPayment = parseNumber(comfortPaymentText);
-    const comfortTargetAmount = parseNumber(comfortTargetAmountText);
     const missing: string[] = [];
     if (value <= 0) missing.push("částku");
     if (!clientName.trim()) missing.push("jméno klienta");
     if (!contractNumber.trim()) missing.push("číslo smlouvy");
     if (!contractSignedDate.trim()) missing.push("datum sjednání");
     if (!policyStartDate.trim()) missing.push("datum počátku");
-    if (product === "comfortcc" && comfortGradual && comfortPayment <= 0) {
-      missing.push("pravidelnou platbu");
-    }
+    if (product === "domexneuron" && automaticRenewal === false && !policyEndDate.trim()) missing.push("datum konce");
     if (product === "maximaMaxEfekt" && durationYears == null) {
       missing.push("dobu trvání smlouvy");
     }
@@ -4931,21 +4911,15 @@ export default function CalculatorPage() {
             productKey: product,
             entryType: "contract" as ContractEntryType,
             commissionMode: canChooseMode ? calculationMode : null,
-            inputAmount: product === "comfortcc" ? value : value,
+            inputAmount: value,
             calculationInputAmount,
             effectiveInputAmount: value,
-            comfortPayment:
-              product === "comfortcc" && comfortPayment > 0 ? comfortPayment : null,
-            comfortGradual: product === "comfortcc" ? comfortGradual : null,
-            comfortTargetAmount:
-              product === "comfortcc" && comfortGradual && comfortTargetAmount > 0
-                ? comfortTargetAmount
-                : null,
             frequencyRaw: frequency,
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             policyEndDate: policyEndDate.trim() || null,
+            ...(product === "domexneuron" ? { automaticRenewal, policyTermEndDate: policyTermEndDate.trim() || null } : {}),
             pensionTargetAge: product === "conseqzenit" ? pensionTargetAge : null,
             status: trimmedStornoDate ? "storno" : "active",
             stornoDate: trimmedStornoDate || null,
@@ -5585,7 +5559,7 @@ export default function CalculatorPage() {
       : "Kalkulačka provizí";
   const showAddContractHelp = isAddContractMode || tipsterModeEnabled;
   const hasFrequencyPicker = allowed.length > 1;
-  const showPolicyEndDateField = supportsPolicyEndDate(product);
+  const showPolicyEndDateField = product === "domexneuron" || supportsPolicyEndDate(product);
   const lastSavedContractHref = lastSavedContractRef
     ? `/smlouvy/${encodeURIComponent(
         `${lastSavedContractRef.ownerEmail}___${lastSavedContractRef.entryId}`
@@ -6733,9 +6707,6 @@ export default function CalculatorPage() {
       durationYears: years,
       durationMonths,
       maxCizinKomplexVariant,
-      comfortPayment: parseNumber(comfortPaymentText),
-      comfortGradual,
-      comfortTargetAmount: parseNumber(comfortTargetAmountText),
     });
   };
 
@@ -6963,6 +6934,7 @@ export default function CalculatorPage() {
   
     return (
     <AppLayout active="calc" embedded={statementEmbedMode}>
+      {domexNeuronConfirmation}
       {contractReview && <CalculatorContractReviewModal review={contractReview} onResolve={resolveReview} />}
       <ContractSaveSuccessOverlay
         visible={Boolean(saveSuccessFlash)}
@@ -7239,7 +7211,6 @@ export default function CalculatorPage() {
                 isLifeProduct={isLifeProduct}
                 frequency={frequency}
                 allowedFrequencies={allowed}
-                comfortGradual={comfortGradual}
                 amountText={amountText}
                 amountReadOnly={flexiRenovationActive}
                 onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
@@ -7271,11 +7242,7 @@ export default function CalculatorPage() {
                 tipsterModeEnabled={tipsterModeEnabled}
                 showContractActions={isAddContractMode && !isInheritedContractMode}
                 showManualEntryOption={isCommissionOnlyMode}
-                comfortGradual={comfortGradual}
                 amountText={amountText}
-                comfortPaymentText={comfortPaymentText}
-                comfortTargetAmountText={comfortTargetAmountText}
-                comfortPayoutCount={comfortPayoutCount}
                 missingFields={missingFields}
                 hasTipContractConfig={Boolean(tipContractConfig)}
                 refreshOriginalOpen={refreshOriginalOpen}
@@ -7294,10 +7261,7 @@ export default function CalculatorPage() {
                 onRenovationIncreaseChange={setRenovationIncreaseText}
                 onRenovationGuaranteeStatusChange={setRenovationGuaranteeStatus}
                 inlineEndorsementDraft={product === "neon" ? endorsementDraft : null}
-                onComfortGradualChange={setComfortGradual}
                 onAmountTextChange={setAmountText}
-                onComfortPaymentTextChange={setComfortPaymentText}
-                onComfortTargetAmountTextChange={setComfortTargetAmountText}
                 onRefreshOriginalContractNumberChange={(value) => {
                   setRefreshOriginalContractNumber(value);
                   setRefreshOriginalPdfLookupNumber(null);
@@ -7373,7 +7337,15 @@ export default function CalculatorPage() {
               contractDateErrorText={contractDateErrorText}
               contractDateWarningText={contractDateWarningText}
               showPolicyEndDateField={showPolicyEndDateField}
-              policyEndDate={policyEndDate}
+              policyEndDate={product === "domexneuron" ? policyTermEndDate || policyEndDate : policyEndDate}
+              showAutomaticRenewal={product === "domexneuron"}
+              automaticRenewal={automaticRenewal}
+              onAutomaticRenewalChange={(value) => {
+                const endDate = policyTermEndDate || policyEndDate;
+                setPolicyTermEndDate(endDate);
+                setAutomaticRenewal(value);
+                setPolicyEndDate(value ? "" : endDate);
+              }}
               stornoDate={stornoDate}
               onClientNameChange={(value) => {
                 setClientName(value);
@@ -7393,7 +7365,12 @@ export default function CalculatorPage() {
               onContractSignedDateChange={setContractSignedDate}
               onContractNumberChange={setContractNumber}
               onPolicyStartDateChange={setPolicyStartDate}
-              onPolicyEndDateChange={setPolicyEndDate}
+              onPolicyEndDateChange={(value) => {
+                if (product === "domexneuron") {
+                  setPolicyTermEndDate(value);
+                  setPolicyEndDate(automaticRenewal === true ? "" : value);
+                } else setPolicyEndDate(value);
+              }}
               onStornoDateChange={setStornoDate}
             />
 

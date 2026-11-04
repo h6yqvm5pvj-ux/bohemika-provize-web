@@ -55,8 +55,6 @@ type ExportSnapshot = {
   autoAnnual: number;
   propertyContracts: number;
   propertyAnnual: number;
-  goldContracts: number;
-  goldTotal: number;
   topProductName: string;
   topProductAnnual: number;
 };
@@ -83,8 +81,6 @@ const parseSnapshot = (raw: unknown): ExportSnapshot => {
     autoAnnual: parseNonNegativeNumber(row.autoAnnual),
     propertyContracts: parseNonNegativeInt(row.propertyContracts),
     propertyAnnual: parseNonNegativeNumber(row.propertyAnnual),
-    goldContracts: parseNonNegativeInt(row.goldContracts),
-    goldTotal: parseNonNegativeNumber(row.goldTotal),
     topProductName: clampText(row.topProductName, 120),
     topProductAnnual: parseNonNegativeNumber(row.topProductAnnual),
   };
@@ -196,8 +192,6 @@ export async function POST(req: NextRequest) {
         autoAnnual: Math.round(snapshot.autoAnnual),
         propertyContracts: snapshot.propertyContracts,
         propertyAnnual: Math.round(snapshot.propertyAnnual),
-        goldContracts: snapshot.goldContracts,
-        goldTotal: Math.round(snapshot.goldTotal),
         topProductName: snapshot.topProductName,
         topProductAnnual: Math.round(snapshot.topProductAnnual),
       },
@@ -237,8 +231,6 @@ export async function POST(req: NextRequest) {
         autoAnnual: Math.round(snapshot.autoAnnual),
         propertyContracts: snapshot.propertyContracts,
         propertyAnnual: Math.round(snapshot.propertyAnnual),
-        goldContracts: snapshot.goldContracts,
-        goldTotal: Math.round(snapshot.goldTotal),
         topProductName: snapshot.topProductName,
         topProductAnnual: Math.round(snapshot.topProductAnnual),
       },

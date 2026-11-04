@@ -1,7 +1,6 @@
 import {
   Briefcase,
   Car,
-  Coins,
   Globe2,
   HeartPulse,
   House,
@@ -19,7 +18,6 @@ const CATEGORY_ICONS: Record<Category, LucideIcon> = {
   business: Briefcase,
   travel: Plane,
   foreigners: Globe2,
-  comfort: Coins,
   other: Shapes,
 };
 
@@ -30,7 +28,6 @@ const CATEGORY_ICON_COLORS: Record<Category, string> = {
   business: "bg-indigo-50 text-indigo-600",
   travel: "bg-cyan-50 text-cyan-600",
   foreigners: "bg-teal-50 text-teal-600",
-  comfort: "bg-yellow-50 text-yellow-700",
   other: "bg-slate-100 text-slate-600",
 };
 

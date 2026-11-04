@@ -72,7 +72,6 @@ const generalCommissionKindClass = (kind: GeneralCommissionKind): string => {
     case "increase":
       return "border-cyan-200 bg-cyan-50 text-cyan-800";
     case "unexpected":
-    case "troyOunce":
       return "border-amber-200 bg-amber-50 text-amber-900";
     case "penalty":
       return "border-rose-200 bg-rose-50 text-rose-800";

@@ -13,7 +13,6 @@ import {
   calculateAllianzAuto,
   calculateAllianzMujDomov,
   calculateAxaCestovko,
-  calculateComfortCC,
   calculateConseqZenit,
   calculateCppAuto,
   calculateCppBytex,
@@ -63,9 +62,6 @@ export type CommissionCalculationInput = {
   durationYears: number | null;
   durationMonths: number | null;
   maxCizinKomplexVariant: MaxCizinKomplexVariant | null;
-  comfortPayment: number | null;
-  comfortGradual: boolean | null;
-  comfortTargetAmount: number | null;
 };
 
 const paymentsPerYear = (frequency: PaymentFrequency): number =>
@@ -154,7 +150,6 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "axacestovko":
     case "koopcestovko":
     case "maxcizinkomplex":
-    case "comfortcc":
       return ["annual"];
   }
 };
@@ -197,14 +192,12 @@ export function calculateCommission({
   frequencyRaw,
   durationYears,
   maxCizinKomplexVariant,
-  comfortPayment,
-  comfortGradual,
-  comfortTargetAmount,
 }: CommissionCalculationInput): CommissionResultDTO | null {
   if (!position) return null;
 
   const safeAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
   const allowedFrequencies = allowedFrequenciesForProduct(productKey);
+  if (!allowedFrequencies?.length) return null;
   const usedFrequency = allowedFrequencies.includes(frequencyRaw)
     ? frequencyRaw
     : allowedFrequencies[0];
@@ -368,22 +361,5 @@ export function calculateCommission({
       return calculateAxaCestovko(safeAmount, position);
     case "koopcestovko":
       return calculateKoopCestovko(safeAmount, position);
-    case "comfortcc":
-      return calculateComfortCC({
-        fee: safeAmount,
-        payment:
-          typeof comfortPayment === "number" && Number.isFinite(comfortPayment)
-            ? Math.max(0, comfortPayment)
-            : 0,
-        targetAmount:
-          comfortGradual &&
-          typeof comfortTargetAmount === "number" &&
-          Number.isFinite(comfortTargetAmount)
-            ? Math.max(0, comfortTargetAmount)
-            : 0,
-        isSavings: Boolean(comfortGradual),
-        isGradualFee: Boolean(comfortGradual),
-        position,
-      });
   }
 }

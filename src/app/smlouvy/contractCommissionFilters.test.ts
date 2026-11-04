@@ -48,11 +48,10 @@ describe("commission filters using real cashflow and payout calculations", () =>
     }
   });
 
-  it("excludes settled commissions, cancelled policies and unsupported gold products", () => {
+  it("excludes settled commissions, cancelled policies", () => {
     const settled = base("settled", { commissionPayouts: [{ key: "paid", code: "APZ101", amount: 100, status: "paid", payoutMonthKey: "2026-8", writtenBy: owner }] });
     expect(matches(settled, "overdue")).toBe(false);
     expect(matches(base("storno", { status: "storno" }), "all")).toBe(false);
-    expect(matches(base("gold", { productKey: "comfortcc" }), "all")).toBe(false);
   });
 
   it("does not include old overdue or distant future commissions outside the shown windows", () => {

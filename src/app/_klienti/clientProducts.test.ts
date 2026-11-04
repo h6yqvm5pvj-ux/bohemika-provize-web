@@ -25,7 +25,6 @@ describe("client product groups", () => {
     ["cppcestovko", "travel"],
     ["maxcizinkomplex", "travel"],
     ["conseqzenit", "pension"],
-    ["comfortcc", "investment"],
   ])("classifies %s as %s", (product, group) => {
     expect(clientProductGroup(product)).toBe(group);
   });

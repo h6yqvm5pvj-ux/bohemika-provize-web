@@ -22,7 +22,6 @@ const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
   "/icons/csb.png": "csob",
   "/icons/pillow.png": "pillow",
   "/icons/axalogo.png": "axa",
-  "/icons/cclogo.png": "comfort",
   "/icons/kblogo.png": "kb",
   "/icons/generali.png": "generali",
   "/icons/metlife.png": "metlife",
@@ -45,9 +44,6 @@ export function institutionLogoKeyFromInsurerName(
   if (normalized.includes("maxima")) return "maxima";
   if (normalized.includes("allianz")) return "allianz";
   if (normalized.includes("slavia")) return "slavia";
-  if (normalized.includes("comfort") || normalized.includes("commodity")) {
-    return "comfort";
-  }
   if (normalized === "kb" || normalized.includes("komerční pojišťovna")) {
     return "kb";
   }

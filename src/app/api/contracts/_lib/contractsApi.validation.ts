@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { toDate } from "@/app/lib/formatters";
 import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
 
@@ -14,6 +15,8 @@ const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
   "contractSignedDate",
   "policyStartDate",
   "policyEndDate",
+  "policyTermEndDate",
+  "automaticRenewal",
 ]);
 
 const UPDATE_FIELDS_LIFECYCLE_KEYS = new Set<string>([
@@ -42,10 +45,51 @@ const toIsoDay = (value: Date): string => {
 export const isValidContractNumber = (value: string): boolean =>
   CONTRACT_NUMBER_RE.test(value);
 
+export const parsePolicyTermEndDate = (value: unknown):
+  { ok: true; value: Date | null } | { ok: false; error: string } => {
+  if (value == null || value === "") return { ok: true, value: null };
+  const isoDate = typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}\.\d{3}Z)?$/.test(value) ? value : null;
+  const date = value instanceof Date ? value : isoDate ? new Date(isoDate.length === 10 ? `${isoDate}T00:00:00.000Z` : isoDate) : null;
+  if (!date || !isReasonableContractDate(date) ||
+    (isoDate != null && (isoDate.length === 10 ? date.toISOString().slice(0, 10) : date.toISOString()) !== isoDate)) {
+    return { ok: false, error: "Pole policyTermEndDate má neplatné datum." };
+  }
+  return { ok: true, value: date };
+};
+
+export const validateContractRenewal = ({ productKey, automaticRenewal, policyTermEndDate, policyStartDate, policyEndDate }: {
+  productKey: unknown;
+  automaticRenewal: unknown;
+  policyTermEndDate: unknown;
+  policyStartDate: Date | null;
+  policyEndDate: Date | null;
+}): ValidationResult => {
+  if (automaticRenewal != null && typeof automaticRenewal !== "boolean") {
+    return { ok: false, error: "Pole automaticRenewal musí být boolean nebo null." };
+  }
+  if (productKey !== "domexneuron" && (automaticRenewal != null || policyTermEndDate != null)) {
+    return { ok: false, error: "Prolongaci lze uložit pouze k produktu DOMEX Neuron." };
+  }
+  const termEnd = toDate(policyTermEndDate);
+  if (policyTermEndDate != null && (!termEnd || !isReasonableContractDate(termEnd) || !policyStartDate || termEnd < policyStartDate)) {
+    return { ok: false, error: "Pole policyTermEndDate má neplatnou hodnotu." };
+  }
+  if (automaticRenewal === true && policyEndDate != null) {
+    return { ok: false, error: "Smlouva s prolongací nesmí mít vyplněný konec smlouvy." };
+  }
+  if (automaticRenewal === false && (!policyEndDate || (termEnd && utcDayIndex(termEnd) !== utcDayIndex(policyEndDate)))) {
+    return { ok: false, error: "Smlouva bez prolongace musí mít konec smlouvy shodný s koncem pojistného období." };
+  }
+  return { ok: true };
+};
+
 export const validateContractCoreInvariants = (
   existing: ContractDoc,
   patch: Record<string, unknown>
 ): ValidationResult => {
+  if (isRetiredProduct(existing.productKey)) {
+    return { ok: false, error: "Produkt již není podporován." };
+  }
   const shouldValidateCore = [...UPDATE_FIELDS_CONTRACT_CORE_KEYS].some((key) =>
     hasOwn(patch, key)
   );
@@ -93,6 +137,17 @@ export const validateContractCoreInvariants = (
   const finalStornoDate = toDate(
     hasOwn(patch, "stornoDate") ? patch.stornoDate : existing.stornoDate
   );
+
+  if (shouldValidateCore) {
+    const renewalValidation = validateContractRenewal({
+      productKey: existing.productKey,
+      automaticRenewal: hasOwn(patch, "automaticRenewal") ? patch.automaticRenewal : existing.automaticRenewal,
+      policyTermEndDate: hasOwn(patch, "policyTermEndDate") ? patch.policyTermEndDate : existing.policyTermEndDate,
+      policyStartDate: finalPolicyStartDate,
+      policyEndDate: finalPolicyEndDate,
+    });
+    if (!renewalValidation.ok) return renewalValidation;
+  }
 
   if (shouldValidateCore) {
     if (!finalSignedDate || !isReasonableContractDate(finalSignedDate)) {

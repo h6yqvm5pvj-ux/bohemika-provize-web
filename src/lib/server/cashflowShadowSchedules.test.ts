@@ -14,7 +14,7 @@ const products: Record<Product, true> = {
   maxdomov: true, cppsimplex: true, cppAuto: true, slaviaauto: true, slaviaflotila: true,
   allianzAuto: true, allianzmujdomov: true, csobAuto: true, uniqaAuto: true, uniqaflotila: true,
   pillowAuto: true, kooperativaAuto: true, koopflotila: true, koopcestovko: true,
-  cppcestovko: true, axacestovko: true, comfortcc: true, cppPPRs: true, cppPPRbez: true,
+  cppcestovko: true, axacestovko: true, cppPPRs: true, cppPPRbez: true,
 };
 const positions: Record<Position, true> = {
   poradce1: true, poradce2: true, poradce3: true, poradce4: true, poradce5: true,

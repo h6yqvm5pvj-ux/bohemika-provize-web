@@ -297,7 +297,7 @@ export function AdminBroadcastSection({
                     onChange={(event) => controller.updateCustomTargetPath(event.target.value)}
                     disabled={controller.targetPath !== "__custom__"}
                     className={`${classes.field} disabled:cursor-not-allowed disabled:opacity-50`}
-                    placeholder="/pomucky/zlato"
+                    placeholder="/pomucky/proklepka-vozidla"
                     aria-label="Vlastní cesta"
                   />
                 )}

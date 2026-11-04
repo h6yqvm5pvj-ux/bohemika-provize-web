@@ -73,7 +73,6 @@ const POSITION_VALUES: Position[] = [
 const POSITION_SET = new Set<Position>(POSITION_VALUES);
 const COMMISSION_MODE_SET = new Set<CommissionMode>(["accelerated", "standard"]);
 const HOME_SECTION_SET = new Set([
-  "gold",
   "summary",
   "expectedPayout",
   "goal",
@@ -649,7 +648,7 @@ function sanitizeHomeWidgets(value: unknown): Record<string, boolean> | null {
     "monthlyGoal",
     "teamLeaderboard",
     "productionChart",
-    "goldWidget",
+
     "quickActions",
   ];
   for (const key of keys) {

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import {
   ArrowRight, BriefcaseBusiness, CarFront, Check, ChartNoAxesCombined,
-  Coins, Globe2, HeartPulse, House, Package, PiggyBank, Plane, Search, SearchX, X,
+  Globe2, HeartPulse, House, Package, PiggyBank, Plane, Search, SearchX, X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -35,7 +35,6 @@ const SECTION_ICONS = {
   travel: Plane,
   foreigners: Globe2,
   investments: ChartNoAxesCombined,
-  gold: Coins,
 };
 
 function productCount(count: number) {

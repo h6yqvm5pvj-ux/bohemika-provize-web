@@ -27,13 +27,13 @@ async function seed(email: string, rows: Record<string, unknown>[]) {
 // semantics. All fixtures are life products; product/frequency math is unchanged
 // and independently covered by the route's category tests.
 function production(docs: QueryDocumentSnapshot[], emails: string[], date = now): HallProductionEntry[] {
-  const range = hallPeriodRanges(date).year;
+  const ranges = hallPeriodRanges(date);
   return docs.flatMap(doc => {
     const data = doc.data(); if (isInheritedContract(data)) return [];
     const signed = toDate(data.contractSignedDate ?? data.createdAt); if (!signed) return [];
     const signedDate = hallDayKey(signed);
     const ownerEmail = String(data.userEmail ?? doc.ref.parent.parent?.id).trim().toLowerCase();
-    if (!emails.includes(ownerEmail) || signedDate < range.startDate || signedDate > range.endDate) return [];
+    if (!emails.includes(ownerEmail) || signedDate < ranges.year.startDate || signedDate > ranges.month.endDate) return [];
     return [{ id: doc.id, ownerEmail, signedDate, category: "life" as const, annualPremium: Number(data.inputAmount) * 12 }];
   });
 }

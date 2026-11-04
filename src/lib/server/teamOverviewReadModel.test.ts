@@ -14,7 +14,6 @@ const categories = (life: number): Record<Category, number> => ({
   business: 0,
   travel: 0,
   foreigners: 0,
-  comfort: 0,
   other: 0,
 });
 
@@ -45,7 +44,6 @@ const stats = ({ total, month, previousMonth }: {
     business: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
   },
   categories: categories(total),
@@ -56,7 +54,6 @@ const stats = ({ total, month, previousMonth }: {
     business: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     foreigners: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
   },
   institutionMetrics: {
@@ -71,7 +68,6 @@ const stats = ({ total, month, previousMonth }: {
     business: {},
     travel: {},
     foreigners: {},
-    comfort: {},
     other: {},
   },
 });

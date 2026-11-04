@@ -89,9 +89,6 @@ export type EntryDoc = {
   inputAmount?: number | null;
   contractNumber?: string | null;
   clientName?: string | null;
-  comfortPayment?: number | null;
-  comfortGradual?: boolean | null;
-  comfortTargetAmount?: number | null;
 
   policyStartDate?: unknown;
   policyEndDate?: unknown;
@@ -237,7 +234,6 @@ export type ProductFilter =
   | "property"
   | "entrepreneurs"
   | "travel"
-  | "foreigners"
-  | "gold";
+  | "foreigners";
 
 export type ScopeFilter = "combined" | "own" | "team";

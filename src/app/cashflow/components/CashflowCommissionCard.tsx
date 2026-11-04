@@ -3,7 +3,7 @@ import {
   commissionLabelForItem, commissionMeaning, dateRangeLabel,
   cashflowItemDisplayStatus, nonLifeCommissionDetail, payoutStatusLabel, type CashflowDisplayGroup,
 } from "../commissionPresentation";
-import { formatMoney, frequencyText, productLabel, STORNO_EXEMPT_PRODUCT, STORNO_FUND_RATE } from "../helpers";
+import { formatMoney, frequencyText, productLabel, STORNO_FUND_RATE } from "../helpers";
 import { subscriptionPlanLabel } from "../subscriptionCashflow";
 import styles from "../commissionCard.module.css";
 
@@ -96,7 +96,7 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
                   <th scope="col">{isExtra ? "Částka" : "Po odpočtu"}</th>
                 </tr></thead>
                 <tbody>{group.items.map((part) => {
-                  const deduction = part.isExtraPayout || part.isSubscriptionPayment || part.productKey === STORNO_EXEMPT_PRODUCT
+                  const deduction = part.isExtraPayout || part.isSubscriptionPayment
                     ? 0 : part.amount * STORNO_FUND_RATE;
                   const net = part.amount - deduction;
                   return <tr key={part.id}>
@@ -137,7 +137,7 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
           <div><dt>Zdroj</dt><dd>{sourceLabel}</dd></div>
           {isContract && <div><dt>Frekvence platby</dt><dd>{frequencyText(item.frequency)}</dd></div>}
           {!isSubscription && !isExtra && item.inputAmount != null && Number.isFinite(item.inputAmount) && item.inputAmount > 0 && <div>
-            <dt>{item.productKey === STORNO_EXEMPT_PRODUCT ? "Částka ve smlouvě" : "Zadané pojistné"}</dt><dd>{formatMoney(item.inputAmount)}</dd>
+            <dt>Zadané pojistné</dt><dd>{formatMoney(item.inputAmount)}</dd>
           </div>}
           {nonLife && <div><dt>Typ provize</dt><dd>{cancelled ? "Storno / srážka" : nonLife.commissionTypeLabel}</dd></div>}
           {nonLife && <div><dt>Výplata provize</dt><dd>{cancelled ? "Oprava podle výpisu" : nonLife.payoutModeLabel}</dd></div>}

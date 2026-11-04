@@ -40,7 +40,6 @@ describe("CONSEQ Zenit DPS", () => {
       productKey: "conseqzenit", position: "manazer4", commissionMode,
       contractSignedDateIso: "2024-08-01", inputAmount: 500, frequencyRaw: "quarterly",
       durationYears: 30, durationMonths: 12, maxCizinKomplexVariant: null,
-      comfortPayment: null, comfortGradual: null, comfortTargetAmount: null,
     });
     expect(result?.total).toBe(84);
     expect(result?.items).toHaveLength(1);

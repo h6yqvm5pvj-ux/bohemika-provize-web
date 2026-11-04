@@ -242,9 +242,6 @@ export function calculateTipOfferProduct({
         : null,
       durationMonths: null,
       maxCizinKomplexVariant: "exclusiveStandard",
-      comfortPayment: null,
-      comfortGradual: false,
-      comfortTargetAmount: null,
     });
     return sumCommissionByCode(result?.items ?? [], commissionCode);
   });

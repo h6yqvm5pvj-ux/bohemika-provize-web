@@ -125,9 +125,6 @@ export function preloadFormulaModule(product?: Product | null) {
     case "koopcestovko":
       import("../../lib/productFormulas/koopcestovko");
       break;
-    case "comfortcc":
-      import("../../lib/productFormulas/comfortcc");
-      break;
     default:
       break;
   }
@@ -417,9 +414,6 @@ export async function calculateResultForPosition(
 
   const amount = c.calculationInputAmount ?? c.inputAmount ?? 0;
   const freq = (c.frequencyRaw ?? "annual") as PaymentFrequency;
-  const comfortPayment = c.comfortPayment ?? 0;
-  const comfortTargetAmount = c.comfortTargetAmount ?? 0;
-  const comfortGradual = !!c.comfortGradual;
   const maxCizinKomplexVariant: MaxCizinKomplexVariant =
     c.maxCizinKomplexVariant === "premium" ? "premium" : "exclusiveStandard";
 
@@ -630,19 +624,6 @@ export async function calculateResultForPosition(
         "../../lib/productFormulas/koopcestovko"
       );
       return calculateKoopCestovko(amount, position);
-    }
-    case "comfortcc": {
-      const { calculateComfortCC } = await import(
-        "../../lib/productFormulas/comfortcc"
-      );
-      return calculateComfortCC({
-        fee: amount,
-        payment: comfortGradual ? comfortPayment : 0,
-        targetAmount: comfortGradual ? comfortTargetAmount : 0,
-        isSavings: comfortGradual,
-        isGradualFee: comfortGradual,
-        position,
-      });
     }
     default:
       return null;

@@ -4,6 +4,18 @@ import { generateCashflow } from "./generator";
 import type { EntryDoc } from "./types";
 
 describe("generateCashflow", () => {
+  it.each(["comfortcc", " COMFORTCC "])("ignores retired cached product %s before generic and statement payout handling", productKey => {
+    const entry: EntryDoc = {
+      id: "retired-contract",
+      productKey: productKey as EntryDoc["productKey"],
+      policyStartDate: "2026-09-01",
+      contractSignedDate: "2026-09-01",
+      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }],
+      commissionPayouts: [{ key: "paid", code: "A101", status: "paid", amount: 1000, payoutMonthKey: "2026-9" }],
+    };
+    expect(generateCashflow([entry], 2, undefined, new Date(2026, 8, 1))).toEqual([]);
+  });
+
   describe("ČPP NEON first commission", () => {
     const asOf = new Date(2026, 7, 18);
     const fixture = (signed: unknown, start = new Date(2026, 8, 15)): EntryDoc => ({

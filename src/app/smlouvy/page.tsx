@@ -132,7 +132,6 @@ const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const CONTRACT_SEARCH_DEBOUNCE_MS = 200;
 const CONTRACT_SEARCH_CACHE_TTL_MS = 60_000;
 const CONTRACT_SEARCH_CACHE_MAX_ENTRIES = 24;
-const GOLD_PRODUCT: Product = "comfortcc";
 const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   conseqzenit: "Zenit DPS",
   neon: "Životní pojištění NEON",
@@ -166,7 +165,6 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
   cppcestovko: "Cestovní pojištění",
   axacestovko: "Cestovní pojištění",
   maxcizinkomplex: "Komplexní zdravotní pojištění cizinců",
-  comfortcc: "Comfort Commodity",
   cppPPRs: "KOMPLEX – ÚPIS",
   cppPPRbez: "KOMPLEX",
 };
@@ -177,7 +175,6 @@ const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
   auto: Car,
   property: Home,
   travel: Plane,
-  comfort: CircleDollarSign,
   business: BriefcaseBusiness,
   foreigners: UsersRound,
 };
@@ -216,10 +213,6 @@ function premiumDisplayForContract(c: ContractDoc): {
 
   if (product && LIFE_PRODUCTS.has(product)) {
     return { amount, cadenceLabel: "MĚSÍČNĚ" };
-  }
-
-  if (product === GOLD_PRODUCT) {
-    return { amount, cadenceLabel: null };
   }
 
   return {

@@ -10,6 +10,27 @@ import {
 } from "./contractDetailPdfReimport";
 
 describe("PDF reimport detailu smlouvy", () => {
+  it("imports explicit false renewal and preserves a renewable term independently", () => {
+    const contract = { id: "neuron", productKey: "domexneuron" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { automaticRenewal: false, policyEndDate: "2027-11-04", policyTermEndDate: "2027-11-04" })).toEqual({
+      updates: { automaticRenewal: false, policyEndDate: "2027-11-04", policyTermEndDate: "2027-11-04" }, appliedCount: 3,
+    });
+    expect(mergeEmptyContractFields(contract, { automaticRenewal: true, policyEndDate: "2027-11-04", policyTermEndDate: "2027-11-04" })).toEqual({
+      updates: { automaticRenewal: true, policyTermEndDate: "2027-11-04" }, appliedCount: 2,
+    });
+    expect(mergeEmptyContractFields({ ...contract, automaticRenewal: false, policyEndDate: "2027-11-04" }, { automaticRenewal: true })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
+  it("skips a term boundary that conflicts with a preserved fixed maturity", () => {
+    const contract = { id: "neuron", productKey: "domexneuron", automaticRenewal: false, policyEndDate: "2027-11-04" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { automaticRenewal: true, policyTermEndDate: "2028-11-04", clientName: "Doplněný klient" })).toEqual({
+      updates: { clientName: "Doplněný klient" }, appliedCount: 1,
+    });
+    expect(mergeEmptyContractFields(contract, { automaticRenewal: false, policyTermEndDate: "2027-11-04" })).toEqual({
+      updates: { policyTermEndDate: "2027-11-04" }, appliedCount: 1,
+    });
+  });
+
   it("doplní cílový věk z PDF i do dříve uložené DPS smlouvy", () => {
     const contract = { id: "dps-1", productKey: "conseqzenit", policyEndDate: "2040-04-12" } as ContractDoc;
     expect(mergeEmptyContractFields(contract, { targetAge: 65, policyEndDate: "2040-04-12" })).toEqual({

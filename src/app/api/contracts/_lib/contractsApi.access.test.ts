@@ -35,6 +35,21 @@ const user = (
 });
 
 describe("contracts access helpers", () => {
+  it.each(["owner@example.com", "manager@example.com", "boss@example.com", "director@example.com", "override@example.com", "admin@example.com"])("denies a retired contract to %s even when the supported contract is accessible", viewerEmail => {
+    const contract: ContractDoc = {
+      productKey: "neon", userEmail: "owner@example.com", managerEmailSnapshot: "boss@example.com",
+      managerChain: [{ email: "director@example.com" }], managerOverrides: [{ email: "override@example.com" }],
+    };
+    const access = { viewerEmail, teamEmails: ["manager@example.com", "admin@example.com"].includes(viewerEmail)
+      ? ["owner@example.com"] : [], ownerEmail: "owner@example.com", contract };
+    expect(hasContractAccess(access)).toBe(true);
+    for (const productKey of ["comfortcc", " COMFORTCC "]) {
+      expect(hasContractAccess({ ...access, contract: { ...contract, productKey: productKey as ContractDoc["productKey"] } })).toBe(false);
+    }
+    expect(hasContractAccess({ ...access, viewerEmail: "", contract })).toBe(false);
+    expect(hasContractAccess({ ...access, viewerEmail: "outside@example.com", teamEmails: [], contract })).toBe(false);
+  });
+
   it("normalizes identity and profile inputs", () => {
     expect(normalizeAccessEmail(" Advisor@Example.COM ")).toBe(
       "advisor@example.com"

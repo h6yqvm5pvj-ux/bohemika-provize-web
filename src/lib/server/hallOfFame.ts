@@ -9,13 +9,14 @@ export const HALL_PERIOD_MONTHS: Record<HallPeriod, number> = { month: 1, "3mont
 const dayFormatter = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague", year: "numeric", month: "2-digit", day: "2-digit" });
 export const hallDayKey = (date: Date) => dayFormatter.format(date);
 
-/** Calendar months through today, consistently in the application's Czech timezone. */
+/** The current month runs through today; longer periods contain completed Czech calendar months. */
 export function hallPeriodRanges(now: Date): Record<HallPeriod, HallPeriodRange> {
-  const endDate = hallDayKey(now);
-  const [year, month] = endDate.split("-").map(Number);
+  const today = hallDayKey(now);
+  const [year, month] = today.split("-").map(Number);
+  const lastMonthEnd = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10);
   return Object.fromEntries(Object.entries(HALL_PERIOD_MONTHS).map(([key, months]) => {
-    const start = new Date(Date.UTC(year, month - months, 1));
-    return [key, { key, startDate: start.toISOString().slice(0, 10), endDate }];
+    const start = new Date(Date.UTC(year, key === "month" ? month - 1 : month - months - 1, 1));
+    return [key, { key, startDate: start.toISOString().slice(0, 10), endDate: key === "month" ? today : lastMonthEnd }];
   })) as Record<HallPeriod, HallPeriodRange>;
 }
 

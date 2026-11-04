@@ -166,6 +166,17 @@ const legacyCases: Array<[string, CashflowComputationOptions, string]> = [
 ];
 
 describe("computeCashflow", () => {
+  it("excludes retired own, team and TIP records from a cached snapshot", () => {
+    const clean = snapshotFixture();
+    const cached = snapshotFixture();
+    const retiredProduct = "comfortcc" as EntryDoc["productKey"];
+    cached.ownEntries.push({ ...cached.ownEntries[0], id: "retired-own", productKey: retiredProduct });
+    cached.teamEntriesRaw.push({ ...cached.teamEntriesRaw[1], id: "retired-team", productKey: retiredProduct });
+    cached.tipPayouts.push({ ...cached.tipPayouts[0], id: "retired-tip", productKey: retiredProduct });
+    const options: CashflowComputationOptions = { scopeFilter: "combined", productFilter: "all", asOf };
+    expect(computeCashflow(cached, options)).toEqual(computeCashflow(clean, options));
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(asOf);

@@ -58,4 +58,10 @@ describe("preview security policy", () => {
     expect(result.headers.get("X-Frame-Options")).toBe("DENY");
     expect(result.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
   });
+
+  it("keeps the retired product embed under the default framing policy", async () => {
+    const result = await response("/embed/zlato");
+    expect(result.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(result.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+  });
 });

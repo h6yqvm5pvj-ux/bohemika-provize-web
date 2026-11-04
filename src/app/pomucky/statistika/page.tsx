@@ -22,7 +22,6 @@ import {
   calculateAllianzAuto,
   calculateAllianzMujDomov,
   calculateAxaCestovko,
-  calculateComfortCC,
   calculateCppAuto,
   calculateCppBytex,
   calculateSlaviaAuto,
@@ -58,8 +57,6 @@ type ContractEntry = {
   product: Product;
   premium: string;
   commission: number;
-  comfortGradual?: boolean;
-  comfortPayment?: string;
 };
 
 type DayEntry = {
@@ -91,8 +88,6 @@ type UserStatsDailyResponse = {
     contracts: Array<{
       product: string;
       premium: number;
-      comfortGradual: boolean;
-      comfortPayment: number;
     }>;
     updatedAt: number | null;
   }>;
@@ -162,7 +157,6 @@ function formatMoney(value: number): string {
 
 function premiumLabel(product: Product): string {
   if (isTravelProduct(product)) return "Jednorázové pojistné";
-  if (product === "comfortcc") return "Poplatek v 1. platbě";
   return isLifeProduct(product) ? "Měsíční pojistné" : "Roční pojistné";
 }
 
@@ -198,8 +192,6 @@ function calculateCommission(
   mode: CommissionMode
 ): number {
   const premium = parseNumberSafe(contract.premium);
-  const comfortPayment = parseNumberSafe(contract.comfortPayment ?? "");
-  const isComfortGradual = !!contract.comfortGradual;
   if (!Number.isFinite(premium) || premium <= 0) return 0;
   const pos = position ?? DEFAULT_POSITION;
   const m = mode ?? DEFAULT_MODE;
@@ -266,16 +258,6 @@ function calculateCommission(
       return immediateCommission(calculateAxaCestovko(premium, pos));
     case "koopcestovko":
       return immediateCommission(calculateKoopCestovko(premium, pos));
-    case "comfortcc":
-      return immediateCommission(
-        calculateComfortCC({
-          fee: premium,
-          payment: isComfortGradual ? comfortPayment : 0,
-          isSavings: isComfortGradual,
-          isGradualFee: isComfortGradual,
-          position: pos,
-        })
-      );
     default:
       return 0;
   }
@@ -422,24 +404,18 @@ function StatistikaPageInner() {
 
         payload.dailyStats.forEach((row) => {
           if (row.dayIndex < 0 || row.dayIndex >= daysInMonth) return;
-          const contracts: ContractEntry[] = row.contracts.map((c) => {
+          const contracts: ContractEntry[] = row.contracts.filter((c) => PRODUCT_SET.has(c.product as Product)).map((c) => {
             const product = normalizeProduct(c.product);
             const premiumStr = toInputValue(c.premium);
-            const comfortGradual = Boolean(c.comfortGradual);
-            const comfortPaymentStr = toInputValue(c.comfortPayment);
             return {
               id: makeId(),
               product,
               premium: premiumStr,
-              comfortGradual,
-              comfortPayment: comfortPaymentStr,
               commission: calculateCommission(
                 {
                   id: "",
                   product,
                   premium: premiumStr,
-                  comfortGradual,
-                  comfortPayment: comfortPaymentStr,
                   commission: 0,
                 },
                 positionForCalc,
@@ -530,8 +506,6 @@ function StatistikaPageInner() {
         product: DEFAULT_PRODUCT,
         premium: "",
         commission: 0,
-        comfortGradual: false,
-        comfortPayment: "",
       };
       next[idx] = { ...prev[idx], contracts: [...prev[idx].contracts, newEntry] };
       return next;
@@ -627,8 +601,6 @@ function StatistikaPageInner() {
         contracts: day.contracts.map((c) => ({
           product: c.product,
           premium: parseNumberSafe(c.premium),
-          comfortGradual: !!c.comfortGradual,
-          comfortPayment: parseNumberSafe(c.comfortPayment ?? ""),
         })),
         updatedAt: Date.now(),
       };
@@ -1116,78 +1088,13 @@ function StatistikaPageInner() {
                       />
                     </div>
 
-                    {contract.product === "comfortcc" ? (
-                      <div className="space-y-2">
-                        <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleContractChange(safeSelectedIdx, contract.id, {
-                                comfortGradual: false,
-                              })
-                            }
-                            disabled={!canEdit}
-                            className={`px-3 py-1.5 text-xs rounded-full transition ${
-                              contract.comfortGradual
-                                ? "text-slate-800"
-                                : "bg-white text-slate-900 shadow"
-                            }`}
-                          >
-                            Jednorázový poplatek
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleContractChange(safeSelectedIdx, contract.id, {
-                                comfortGradual: true,
-                              })
-                            }
-                            disabled={!canEdit}
-                            className={`px-3 py-1.5 text-xs rounded-full transition ${
-                              contract.comfortGradual
-                                ? "bg-white text-slate-900 shadow"
-                                : "text-slate-800"
-                            }`}
-                          >
-                            Postupný poplatek
-                          </button>
-                        </div>
-
-                        {contract.comfortGradual ? (
-                          <label className="space-y-1 block">
-                            <span className="text-xs text-slate-600">Pravidelná platba</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={contract.comfortPayment ?? ""}
-                              onChange={(e) =>
-                                handleContractChange(safeSelectedIdx, contract.id, {
-                                  comfortPayment: e.target.value,
-                                })
-                              }
-                              disabled={!canEdit}
-                              className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
-                            />
-                          </label>
-                        ) : null}
-                      </div>
-                    ) : (
                       <div className="space-y-1">
                         <span className="text-xs text-slate-600">Provize (odhad)</span>
                         <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700">
                           {formatMoney(contract.commission)}
                         </div>
                       </div>
-                    )}
 
-                    {contract.product === "comfortcc" ? (
-                      <div className="space-y-1">
-                        <span className="text-xs text-slate-600">Provize (odhad)</span>
-                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-700">
-                          {formatMoney(contract.commission)}
-                        </div>
-                      </div>
-                    ) : null}
 
                       <div className="flex items-end justify-end">
                         <button

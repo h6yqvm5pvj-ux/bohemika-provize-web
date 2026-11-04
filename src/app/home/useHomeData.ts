@@ -3,6 +3,7 @@ import { isHomeProductionSummary } from "./productionSummary";
 import { startHomeTiming } from "./homePerformance";
 import { useCalendarMonth } from "./useCalendarMonth";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
@@ -47,9 +48,6 @@ export type EntryDoc = {
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
   commissionMode?: CommissionMode | null;
   position?: Position | null;
-  comfortPayment?: number | null;
-  comfortGradual?: boolean | null;
-  comfortTargetAmount?: number | null;
 };
 
 export type UserMeta = {
@@ -170,8 +168,8 @@ type UserProfileApiResponse = {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
-// v5 could persist an apparent TIP zero after a failed request.
-const HOME_CACHE_VERSION = "v8-home-freshness";
+// Older summaries and history may include products that are no longer supported.
+const HOME_CACHE_VERSION = "v9-home-insurance-only";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamHistoryRangeCache = new Map<
@@ -216,7 +214,7 @@ const normalizeTeamHistoryMonths = (months: number): number =>
 
 const teamHistoryRangeCacheKey = (email: string, months: number, uid: string): string => {
   const now = new Date();
-  return `${email.toLowerCase()}|${uid}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
+  return `${email.toLowerCase()}|${HOME_CACHE_VERSION}|${uid}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
 };
 
 const fetchTeamHistoryRange = async (
@@ -282,6 +280,7 @@ const fetchTeamHistoryRange = async (
 
     let oldestTsOnPage: number | null = null;
     chunk.forEach((item) => {
+      if (isRetiredProduct(item.productKey)) return;
       const owner = (
         item.adviserEmail ?? item.userEmail ?? email
       ).toLowerCase();
@@ -763,6 +762,7 @@ export function useHomeData({
 
             let oldestTsOnPage: number | null = null;
             chunk.forEach((item) => {
+              if (isRetiredProduct(item.productKey)) return;
               const owner = (
                 (item.adviserEmail as string | undefined) ??
                 (item.userEmail as string | undefined) ??

@@ -22,7 +22,6 @@ const CATEGORY_GROUPS: Record<ProductPrimaryCategory, ClientProductGroup> = {
   life: "life",
   travel: "travel",
   pension: "pension",
-  comfort: "investment",
 };
 
 // Keep the business portfolio consistent with Contracts and the anniversary radar.

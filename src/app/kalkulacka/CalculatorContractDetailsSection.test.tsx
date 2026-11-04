@@ -24,14 +24,17 @@ describe("client name field", () => {
   let container: HTMLDivElement;
   const selected = vi.fn();
   const retry = vi.fn();
-  function Harness({ initialName = "Jan Buček", source = "pdf", status = "ready", pension = false }: {
-    initialName?: string; source?: Props["clientNameSource"]; status?: ClientNameLookupStatus; pension?: boolean;
+  function Harness({ initialName = "Jan Buček", source = "pdf", status = "ready", pension = false, neuron = false }: {
+    initialName?: string; source?: Props["clientNameSource"]; status?: ClientNameLookupStatus; pension?: boolean; neuron?: boolean;
   }) {
     const [name, setName] = useState(initialName);
     const [currentSource, setSource] = useState(source);
     const [open, setOpen] = useState(true);
+    const [renewal, setRenewal] = useState<boolean | null>(true);
     return <CalculatorContractDetailsSection {...fixedProps}
-      pensionProduct={pension} showPolicyEndDateField={pension}
+      pensionProduct={pension} showPolicyEndDateField={pension || neuron}
+      showAutomaticRenewal={neuron} automaticRenewal={renewal} onAutomaticRenewalChange={setRenewal}
+      policyEndDate={neuron ? "2027-10-31" : ""}
       clientName={name} clientNameSource={currentSource} clientLookupStatus={status}
       clientNameMatches={status === "ready" ? matchClientName(name, directory) : []}
       clientSuggestionsOpen={open} onRetryClientLookup={retry}
@@ -81,6 +84,27 @@ describe("client name field", () => {
     expect(container.querySelector('[aria-label="Datum konce (volitelné)"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Datum počátku smlouvy"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="Datum storna (volitelné)"]')).toBeNull();
+  });
+
+  it("hides the entire end-date field with DOMEX prolongation and restores it when prolongation is disabled", async () => {
+    await act(async () => root.render(<Harness neuron />));
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("fieldset button"));
+    expect(buttons.map(button => button.textContent)).toEqual(["ANO", "NE"]);
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[aria-label="Konec pojistného období"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Pojištění do"]')).toBeNull();
+    expect(container.textContent).not.toContain("Pojištění do");
+    expect(container.textContent).not.toContain("Do storna");
+    await act(async () => buttons[1].click());
+    expect(buttons[1].getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Pojištění do"]')?.value).toBe("2027-10-31");
+    expect(container.textContent).toContain("Smlouva skončí k uvedenému datu.");
+    expect(container.textContent).not.toContain("Do storna");
+    await act(async () => buttons[0].click());
+    expect(container.querySelector('[aria-label="Pojištění do"]')).toBeNull();
+    expect(container.textContent).not.toContain("Pojištění do");
+    await act(async () => buttons[1].click());
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Pojištění do"]')?.value).toBe("2027-10-31");
   });
 
   it("requires a choice between accent variants and supports arrow keys and Enter", async () => {

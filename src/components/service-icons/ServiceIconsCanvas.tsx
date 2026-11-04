@@ -89,7 +89,8 @@ export function ServiceIconsCanvas({ hostRef, rowRef, running, className }: Serv
       const scene = new Transform();
       const camera = new Camera(gl, { near: 1, far: 2000, left: -1, right: 1, bottom: -1, top: 1 });
       camera.position.z = 1000;
-      for (let index = 0; index < 8; index++) {
+      const serviceIconCount = row.querySelectorAll("[data-service-icon]").length;
+      for (let index = 0; index < serviceIconCount; index++) {
         const model = createServiceIconModel(gl, index, materials);
         model.root.setParent(scene);
         model.root.traverse(node => {

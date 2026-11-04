@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { createHash } from "node:crypto";
 import { businessLookupToken } from "./businessDataEncryption";
 import { FieldPath, FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
@@ -10,7 +11,7 @@ import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 // single client document without limit. Equality queries use automatic indexes.
 const COLLECTION = "clientContractIndex";
 export const CLIENT_CONTRACT_LINKS_COLLECTION = "clientContractLinks";
-const VERSION = 2;
+const VERSION = 3;
 const BACKFILL_PAGE_SIZE = 150;
 const fields = [
   "entryType", "clientName", "clientEmail", "clientPhone", "clientAddress",
@@ -30,7 +31,7 @@ export const clientContractLinkRef = (db: Firestore, owner: string, entryId: str
 
 export function clientContractIndexRecord(data: Record<string, unknown>, owner: string): Record<string, unknown> | null {
   const clientSlug = typeof data.clientName === "string" ? clientSlugForName(data.clientName) : null;
-  if (!clientSlug || data.entryType === "endorsement") return null;
+  if (!clientSlug || data.entryType === "endorsement" || isRetiredProduct(data.productKey)) return null;
   const record: Record<string, unknown> = { clientSlug };
   for (const field of projection) {
     const value = data[field];
@@ -44,7 +45,7 @@ export function clientContractIndexRecord(data: Record<string, unknown>, owner: 
 
 /** Must share the contract's transaction/batch and its concurrency precondition. */
 export function writeClientContractLink(writer: IndexWriter, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>, transfer = false) {
-  if (!transfer && Object.keys(before).length > 0 && !projection.some(field => Object.hasOwn(patch, field))) return;
+  if (!transfer && Object.keys(before).length > 0 && !isRetiredProduct(before.productKey) && !projection.some(field => Object.hasOwn(patch, field))) return;
   const parts = ref.path.split("/");
   if (parts.length !== 4 || parts[0] !== "users" || parts[2] !== "entries") throw new Error("Invalid contract index source");
   const oldOwner = parts[1]!;
@@ -100,7 +101,7 @@ export async function readClientContractLinks(db: Firestore, owner: string, auth
   const snapshots = await Promise.all(queries.map(query => query.get()));
   return snapshots.flatMap(snapshot => snapshot.docs.flatMap(doc => {
     const data = doc.data();
-    if (data.ownerEmail !== owner || (slug && data.clientSlug !== slug)) return [];
+    if (isRetiredProduct(data.productKey) || data.ownerEmail !== owner || (slug && data.clientSlug !== slug)) return [];
     if (allowed && !allowed.has(String(data.originalAdviserEmail ?? ""))) return [];
     return [clientContractFromIndex(data, adviserName)];
   }));

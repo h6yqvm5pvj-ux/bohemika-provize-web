@@ -4,7 +4,7 @@ import styles from "./page.module.css";
 export const metadata: Metadata = {
   title: "Jakub Rauscher | Manažer",
   description:
-    "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění, investice a drahé kovy.",
+    "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění a investice.",
   alternates: {
     canonical: "/jakubrauscher",
   },
@@ -18,14 +18,13 @@ export const metadata: Metadata = {
     url: "/jakubrauscher",
     title: "Jakub Rauscher | Manažer",
     description:
-      "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění, investice a drahé kovy.",
+      "Osobní vizitka Jakuba Rauschera. Specializace na komplexní pojištění a investice.",
   },
 };
 
 const highlightBadges = [
   "Komplexní pojištění",
   "Investiční strategie",
-  "Zlato a stříbro",
 ] as const;
 
 const specializations = [
@@ -40,12 +39,6 @@ const specializations = [
     description:
       "Návrh dlouhodobé investiční cesty podle cílů, horizontu a rizikového profilu klienta.",
     label: "02",
-  },
-  {
-    title: "Investice do zlata a stříbra",
-    description:
-      "Zařazení fyzických drahých kovů jako stabilizační složky portfolia a ochrany hodnoty majetku.",
-    label: "03",
   },
 ] as const;
 
@@ -84,8 +77,7 @@ export default function JakubRauscherPage() {
             </h1>
 
             <p className={styles.lead}>
-              Specializace na komplexní pojištění a investice, investice do
-              zlata a stříbra.
+              Specializace na komplexní pojištění a investice.
             </p>
 
             <ul className={styles.badges} aria-label="Hlavní zaměření">

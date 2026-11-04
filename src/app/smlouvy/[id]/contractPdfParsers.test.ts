@@ -23,7 +23,6 @@ const parserCases = [
   ["koopodzam", "parseKoopOdzamPdf"],
   ["maxdomov", "parseMaxdomovPdf"],
   ["maxcizinkomplex", "parseMaxCizinKomplexPdf"],
-  ["comfortcc", "parseComfortPdf"],
 ] as const;
 
 describe("on-demand contract PDF parsers", () => {

@@ -41,6 +41,7 @@ export const POSITION_ORDER: Position[] = [
 ];
 
 const POLICY_END_DATE_PRODUCTS = new Set<Product>([
+  "domexneuron",
   "conseqzenit",
   "cppcestovko",
   "axacestovko",
@@ -591,7 +592,6 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "axacestovko":
     case "koopcestovko":
     case "maxcizinkomplex":
-    case "comfortcc":
       return ["annual"];
   }
 }
@@ -620,7 +620,6 @@ export function defaultFrequencyText(product: Product): string {
     case "axacestovko":
     case "koopcestovko":
     case "maxcizinkomplex":
-    case "comfortcc":
       return "Frekvence: jednorázově";
     default:
       return "";
@@ -632,9 +631,6 @@ export function placeholderForAmount(
   freq: PaymentFrequency
 ): string {
   if (product === "conseqzenit") return "Zadejte výši příspěvku klienta v Kč";
-  if (product === "comfortcc") {
-    return "Zadejte výši poplatku / platby";
-  }
   if (
     product === "cppcestovko" ||
     product === "axacestovko" ||
@@ -696,7 +692,7 @@ export function roundToCents(value: number): number {
 }
 
 export const SUPPORTED_LABEL =
-  "Tento produkt zatím není na webu dopočítaný – aktuálně počítáme všechny produkty kromě Comfort Commodity.";
+  "Tento produkt zatím není na webu dopočítaný.";
 
 export function paymentBasedTotals(
   items: CommissionResultItemDTO[],

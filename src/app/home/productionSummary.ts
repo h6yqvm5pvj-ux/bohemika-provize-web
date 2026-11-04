@@ -1,3 +1,4 @@
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import type { EntryDoc } from "./useHomeData";
 import { entrySignedDate, normalizeToAnnual } from "./homeUtils";
 import { summarizeProductionPremiums, type ProductionPremiums } from "./productionPremiums";
@@ -34,9 +35,10 @@ const emptyMonth = (): OwnerProductionMonth => ({
 
 /** Shared arithmetic with the existing home view; no position-based recalculation. */
 export function summarizeOwnerProduction(entries: readonly EntryDoc[], window: ProductionWindow): OwnerProductionSummary {
+  const activeEntries = entries.filter(entry => !isRetiredProduct(entry.productKey));
   const current = emptyMonth();
   const previous = emptyMonth();
-  for (const entry of entries) {
+  for (const entry of activeEntries) {
     if (isInheritedContract(entry)) continue;
     const signed = entrySignedDate(entry)?.getTime();
     if (signed == null || signed < window.from || signed >= window.to) continue;
@@ -62,8 +64,8 @@ export function summarizeOwnerProduction(entries: readonly EntryDoc[], window: P
       else { month.leaderboard.other += normalizeToAnnual(amount, entry.frequencyRaw); month.leaderboard.hasOther = true; }
     }
   }
-  current.premiums = summarizeProductionPremiums(entries, new Date(window.split), new Date(window.to));
-  previous.premiums = summarizeProductionPremiums(entries, new Date(window.from), new Date(window.split));
+  current.premiums = summarizeProductionPremiums(activeEntries, new Date(window.split), new Date(window.to));
+  previous.premiums = summarizeProductionPremiums(activeEntries, new Date(window.from), new Date(window.split));
   return { current, previous };
 }
 

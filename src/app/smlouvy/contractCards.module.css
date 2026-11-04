@@ -127,7 +127,6 @@
 .card[data-category="travel"] .illustration,
 .card[data-category="foreigners"] .illustration { --illustration-accent: #337f96; }
 .card[data-category="pension"] .illustration,
-.card[data-category="comfort"] .illustration { --illustration-accent: #9c752f; }
 .card[data-category="business"] .illustration { --illustration-accent: #6574b2; }
 
 .illustrationBackdrop {
@@ -169,7 +168,6 @@
 .cardButton:focus-visible :where([data-category="life"]) .illustrationIcon svg { animation-name: heartBeat; }
 .cardButton:focus-visible :where([data-category="travel"]) .illustrationIcon svg { animation-name: planeFlight; }
 .cardButton:focus-visible :where([data-category="pension"]) .illustrationIcon svg { animation-name: coinBounce; }
-.cardButton:focus-visible :where([data-category="comfort"]) .illustrationIcon svg { animation-name: coinTurn; }
 .cardButton:focus-visible :where([data-category="business"]) .illustrationIcon svg { animation-name: caseLift; }
 .cardButton:focus-visible :where([data-category="foreigners"]) .illustrationIcon svg { animation-name: peopleGreeting; }
 .cardButton:focus-visible .illustrationWindow { animation: windowLight 1100ms ease-in-out 1; }
@@ -184,7 +182,6 @@
   .cardButton:hover :where([data-category="life"]) .illustrationIcon svg { animation-name: heartBeat; }
   .cardButton:hover :where([data-category="travel"]) .illustrationIcon svg { animation-name: planeFlight; }
   .cardButton:hover :where([data-category="pension"]) .illustrationIcon svg { animation-name: coinBounce; }
-  .cardButton:hover :where([data-category="comfort"]) .illustrationIcon svg { animation-name: coinTurn; }
   .cardButton:hover :where([data-category="business"]) .illustrationIcon svg { animation-name: caseLift; }
   .cardButton:hover :where([data-category="foreigners"]) .illustrationIcon svg { animation-name: peopleGreeting; }
   .cardButton:hover .illustrationWindow { animation: windowLight 1100ms ease-in-out 1; }

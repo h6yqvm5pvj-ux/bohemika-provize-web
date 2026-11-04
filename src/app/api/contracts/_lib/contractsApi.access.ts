@@ -1,5 +1,6 @@
 import type { Position } from "@/app/types/domain";
 import { collectSubordinateHierarchy } from "@/app/lib/teamHierarchy";
+import { isRetiredProduct } from "@/app/lib/retiredProducts";
 
 import type { ContractDoc, UserNode } from "./contractsApi.types";
 
@@ -87,6 +88,7 @@ export const hasContractAccess = ({
   ownerEmail: string;
   contract: ContractDoc;
 }): boolean => {
+  if (isRetiredProduct(contract.productKey)) return false;
   const normalizedViewer = normalizeAccessEmail(viewerEmail);
   const normalizedOwner = normalizeAccessEmail(ownerEmail);
   if (!normalizedViewer || !normalizedOwner) return false;

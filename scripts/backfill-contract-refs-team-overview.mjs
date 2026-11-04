@@ -39,7 +39,6 @@ const PRODUCT_CATEGORY = {
   kooperativaAuto: "auto",
   cppcestovko: "travel",
   axacestovko: "travel",
-  comfortcc: "comfort",
 };
 
 const PRODUCT_INSTITUTION_LABEL = {
@@ -65,7 +64,6 @@ const PRODUCT_INSTITUTION_LABEL = {
   pillowAuto: "Pillow",
   pillowInjury: "Pillow",
   axacestovko: "AXA",
-  comfortcc: "Comfort Commodity",
 };
 
 function hasArg(name) {
@@ -130,11 +128,10 @@ function paymentsPerYear(freq) {
   }
 }
 
-function annualPremiumFromEntry(data, category) {
+function annualPremiumFromEntry(data) {
   const raw = toFiniteNumber(data?.inputAmount);
   if (raw <= 0) return 0;
   if (isLifeProduct(data?.productKey)) return raw * 12;
-  if (category === "comfort") return raw;
   return raw * paymentsPerYear(data?.frequencyRaw ?? "annual");
 }
 
@@ -144,7 +141,6 @@ function emptyCategoryCounts() {
     auto: 0,
     property: 0,
     travel: 0,
-    comfort: 0,
     other: 0,
   };
 }
@@ -155,7 +151,6 @@ function emptyCategoryMetrics() {
     auto: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     property: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     travel: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
-    comfort: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
     other: { contracts: 0, annualPremium: 0, monthlyPremium: 0 },
   };
 }
@@ -166,7 +161,6 @@ function emptyInstitutionByCategory() {
     auto: {},
     property: {},
     travel: {},
-    comfort: {},
     other: {},
   };
 }
@@ -295,7 +289,7 @@ async function main() {
       stats.total += 1;
       stats.categories[category] = (stats.categories[category] ?? 0) + 1;
 
-      const annualPremium = annualPremiumFromEntry(data, category);
+      const annualPremium = annualPremiumFromEntry(data);
       const monthlyPremium = annualPremium / 12;
 
       const byCategory = stats.categoryMetrics[category] ?? {

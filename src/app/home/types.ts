@@ -5,7 +5,6 @@ export type LeaderboardRange = "month" | "sixMonths" | "year";
 export type ChartMode = "personal" | "team" | "combined" | "specific";
 export type PerformanceMode = "default" | "lite";
 export type HomeSection =
-  | "gold"
   | "summary"
   | "expectedPayout"
   | "goal"
@@ -25,7 +24,6 @@ export type HomeWidgets = {
   monthlyGoal: boolean;
   teamLeaderboard: boolean;
   productionChart: boolean;
-  goldWidget: boolean;
   quickActions: boolean;
 };
 
