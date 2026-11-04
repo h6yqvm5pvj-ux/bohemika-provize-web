@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { collectPdfBreakRanges, choosePdfSliceEndCssY } from "./productionPdf";
 
@@ -16,18 +17,18 @@ describe("production report pagination", () => {
     expect(choosePdfSliceEndCssY({ startY: 1800, desiredEndY: 2700, contentEndY: 1900, pageCssHeight: 900, ranges: [] })).toBe(1900);
   });
 
-  it("reads row bounds from the isolated document used for PDF rendering", () => {
-    const iframe = document.createElement("iframe");
-    document.body.appendChild(iframe);
+  it("reads row bounds from the isolated document used for PDF rendering", async () => {
+    const renderWindow = new Window();
     try {
-      const doc = iframe.contentDocument!;
+      const doc = renderWindow.document;
       doc.body.innerHTML = '<div class="page"><table class="product-table"><tbody><tr><td>Český název</td></tr></tbody></table></div>';
-      const page = doc.querySelector<HTMLElement>(".page")!;
+      const page = doc.querySelector(".page")!;
       const row = page.querySelector("tr")!;
-      page.getBoundingClientRect = () => ({top:100,left:0,width:760,height:1000,bottom:1100,right:760,x:0,y:100,toJSON(){}});
-      row.getBoundingClientRect = () => ({top:900,left:0,width:690,height:45,bottom:945,right:690,x:0,y:900,toJSON(){}});
-      expect(collectPdfBreakRanges(page)).toContainEqual({top:800,bottom:845,kind:"row"});
-    } finally { iframe.remove(); }
+      page.getBoundingClientRect = () => new renderWindow.DOMRect(0, 100, 760, 1000);
+      row.getBoundingClientRect = () => new renderWindow.DOMRect(0, 900, 690, 45);
+      expect(page.ownerDocument).not.toBe(document);
+      expect(collectPdfBreakRanges(page as unknown as HTMLElement)).toContainEqual({top:800,bottom:845,kind:"row"});
+    } finally { await renderWindow.happyDOM.close(); }
   });
 
   it("rechecks overlapping ranges so moving a section does not orphan its heading", () => {

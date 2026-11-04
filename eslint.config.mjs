@@ -2,6 +2,8 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
+// The scoped React Hooks override preserves the existing lint behavior during
+// the Next.js security upgrade; its Zod dependency remains on a patched version.
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
