@@ -3,7 +3,7 @@ import { toDate } from "../../lib/formatters";
 import type { ContractDoc } from "./contractDetailTypes";
 
 type PdfReimportParser = (file: File) => Promise<unknown>;
-type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]>;
+type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]> & NonNullable<ContractDoc["domexDetail"]>;
 type PropertyDetailField = keyof PropertyDetail;
 type NeonDetail = NonNullable<ContractDoc["neonDetail"]>;
 type NeonDetailField = keyof NeonDetail;
@@ -45,6 +45,7 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["policyEndDate", "policyEndDate"],
   ["policyTermEndDate", "policyTermEndDate"],
   ["automaticRenewal", "automaticRenewal"],
+  ["premiumIndexationEnabled", "premiumIndexationEnabled"],
   ["targetAge", "pensionTargetAge"],
   ["contractSignedDate", "contractSignedDate"],
   ["durationYears", "durationYears"],
@@ -122,8 +123,12 @@ const BOOLEAN_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
   "carAddonKeyLossTheft",
 ]);
 
-const PROPERTY_PDF_DETAIL_FIELD_MAP = [
+export const PROPERTY_PDF_DETAIL_FIELD_MAP = [
   ["domexAddress", "address"],
+  ["domexPropertyAddress", "propertyAddress"],
+  ["domexHouseholdAddress", "householdAddress"],
+  ["domexPropertyAssistance", "propertyAssistance"],
+  ["domexHouseholdAssistance", "householdAssistance"],
   ["domexPropertyType", "propertyType"],
   ["domexPropertyCoverage", "propertyCoverage"],
   ["domexPropertySumInsured", "sumInsured"],
@@ -296,7 +301,7 @@ const parsedPdfValueForContractField = (
       ? rawValue
       : null;
   }
-  if (field === "automaticRenewal") return typeof rawValue === "boolean" ? rawValue : null;
+  if (field === "automaticRenewal" || field === "premiumIndexationEnabled") return typeof rawValue === "boolean" ? rawValue : null;
 
   if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
     const value =
@@ -321,6 +326,12 @@ const parsedPdfValueForPropertyDetailField = (
   rawValue: unknown
 ): string | number | boolean | null => {
   if (rawValue == null) return null;
+  if (field === "propertyAddress" || field === "householdAddress") {
+    return typeof rawValue === "string" ? rawValue.trim() || null : null;
+  }
+  if (field === "propertyAssistance" || field === "householdAssistance") {
+    return rawValue === "basic" || rawValue === "plus" ? rawValue : null;
+  }
 
   if (NUMBER_PROPERTY_DETAIL_FIELDS.has(field)) {
     const value =
@@ -394,7 +405,7 @@ export const mergeEmptyContractFields = (
 
   for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
     if (contractField === "pensionTargetAge" && currentContract.productKey !== "conseqzenit") continue;
-    if ((contractField === "automaticRenewal" || contractField === "policyTermEndDate") && currentContract.productKey !== "domexneuron") continue;
+    if ((contractField === "automaticRenewal" || contractField === "premiumIndexationEnabled" || contractField === "policyTermEndDate") && currentContract.productKey !== "domexneuron") continue;
     const renewal = currentContract.automaticRenewal ?? parsed.automaticRenewal;
     if (currentContract.productKey === "domexneuron" && contractField === "policyEndDate" && renewal === true) continue;
     if (contractField === "policyTermEndDate" && renewal === false && !isEmptyReimportValue(currentContract.policyEndDate)) {

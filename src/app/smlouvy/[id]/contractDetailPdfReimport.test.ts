@@ -10,6 +10,24 @@ import {
 } from "./contractDetailPdfReimport";
 
 describe("PDF reimport detailu smlouvy", () => {
+  it.each([true, false])("fills unknown Neuron indexation from an explicit answer (%s)", (premiumIndexationEnabled) => {
+    const contract = { id: "neuron", productKey: "domexneuron", premiumIndexationEnabled: null } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { premiumIndexationEnabled })).toEqual({
+      updates: { premiumIndexationEnabled }, appliedCount: 1,
+    });
+  });
+
+  it.each([undefined, null, "ANO", "NE", 1, 0, {}])("does not fill indexation from an unknown or manipulated answer (%j)", (premiumIndexationEnabled) => {
+    const contract = { id: "neuron", productKey: "domexneuron" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { premiumIndexationEnabled })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
+  it("preserves an existing indexation decision and restricts the field to Neuron", () => {
+    const contract = { id: "neuron", productKey: "domexneuron", premiumIndexationEnabled: false } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, { premiumIndexationEnabled: true })).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields({ ...contract, premiumIndexationEnabled: null, productKey: "domex" }, { premiumIndexationEnabled: true })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
   it("imports explicit false renewal and preserves a renewable term independently", () => {
     const contract = { id: "neuron", productKey: "domexneuron" } as ContractDoc;
     expect(mergeEmptyContractFields(contract, { automaticRenewal: false, policyEndDate: "2027-11-04", policyTermEndDate: "2027-11-04" })).toEqual({
@@ -92,6 +110,29 @@ describe("PDF reimport detailu smlouvy", () => {
       },
       appliedCount: 2,
     });
+  });
+
+  it("keeps manual Neuron locations and basic assistance while filling absent household fields", () => {
+    expect(mergeEmptyPropertyDetailFields({
+      propertyAddress: "Ruční stavba 1", propertyAssistance: "basic", householdAddress: null, householdAssistance: null,
+    }, {
+      domexPropertyAddress: "PDF stavba se nesmí přepsat", domexPropertyAssistance: "plus",
+      domexHouseholdAddress: " PDF domácnost 2 ", domexHouseholdAssistance: "plus", domexHouseholdSumInsured: 500_000,
+    })).toEqual({ detail: {
+      propertyAddress: "Ruční stavba 1", propertyAssistance: "basic", householdAddress: "PDF domácnost 2",
+      householdAssistance: "plus", householdSumInsured: 500_000,
+    }, appliedCount: 3 });
+  });
+
+  it.each([null, undefined, "", false, true, "BASIC", "PLUS", 1, {}])("does not infer scoped assistance during reimport: %j", assistance => {
+    expect(mergeEmptyPropertyDetailFields({}, { domexPropertyAssistance: assistance, domexHouseholdAssistance: assistance }))
+      .toEqual({ detail: {}, appliedCount: 0 });
+  });
+
+  it("does not copy a shared legacy address or malformed addresses into specific Neuron locations", () => {
+    expect(mergeEmptyPropertyDetailFields({ address: "Dřívější společná adresa" }, {
+      domexPropertyAddress: {}, domexHouseholdAddress: false,
+    })).toEqual({ detail: { address: "Dřívější společná adresa" }, appliedCount: 0 });
   });
 
   it("doplní rizika NEONu, ale nepřepíše dříve uloženou variantu", () => {

@@ -59,6 +59,10 @@ export type ContractDetailsForm = {
   editContractNumber: string;
   editContractSigned: string;
   editDomexAddress: string;
+  editDomexPropertyAddress?: string;
+  editDomexHouseholdAddress?: string;
+  editDomexPropertyAssistance?: string;
+  editDomexHouseholdAssistance?: string;
   editDomexAssistancePlus: boolean;
   editDomexDeductible: string;
   editDomexHouseholdCoverage: string;
@@ -176,6 +180,7 @@ export type ContractDetailsForm = {
   editNeonWorkIncapacityStart: string;
   editPolicyEnd: string;
   editAutomaticRenewal?: boolean | null;
+  editPremiumIndexationEnabled?: boolean | null;
   editPolicyStart: string;
 };
 
@@ -360,7 +365,15 @@ export const buildContractDetailsSavePlan = ({
             };
 
       const propertyDetailPayload = {
-        address: form.editDomexAddress.trim() || null,
+        address: (product === "domexneuron"
+          ? form.editDomexPropertyAddress?.trim() || form.editDomexHouseholdAddress?.trim() || form.editDomexAddress.trim()
+          : form.editDomexAddress.trim()) || null,
+        ...(product === "domexneuron" ? {
+          propertyAddress: form.editDomexPropertyAddress?.trim() || null,
+          householdAddress: form.editDomexHouseholdAddress?.trim() || null,
+          propertyAssistance: form.editDomexPropertyAssistance === "basic" || form.editDomexPropertyAssistance === "plus" ? form.editDomexPropertyAssistance : null,
+          householdAssistance: form.editDomexHouseholdAssistance === "basic" || form.editDomexHouseholdAssistance === "plus" ? form.editDomexHouseholdAssistance : null,
+        } : {}),
         propertyType: form.editDomexPropertyType.trim() || null,
         propertyCoverage: form.editDomexPropertyCoverage.trim() || null,
         sumInsured: toNumberOrNull(form.editDomexSumInsured),
@@ -518,7 +531,11 @@ export const buildContractDetailsSavePlan = ({
         ...(product === "domexneuron" && automaticRenewal == null ? {} : {
           policyEndDate: product === "domexneuron" && automaticRenewal === true ? null : endDate ?? null,
         }),
-        ...(product === "domexneuron" ? { automaticRenewal, policyTermEndDate: endDate ?? null } : {}),
+        ...(product === "domexneuron" ? {
+          automaticRenewal,
+          policyTermEndDate: endDate ?? null,
+          premiumIndexationEnabled: typeof form.editPremiumIndexationEnabled === "boolean" ? form.editPremiumIndexationEnabled : null,
+        } : {}),
         ...autoFields,
         ...neonUpdate,
         ...flexiUpdate,

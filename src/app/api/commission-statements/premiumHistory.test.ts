@@ -72,6 +72,41 @@ const autoSubsequentRow: PremiumStatementRow = {
 };
 
 describe("premium statement history", () => {
+  it("stores proven Neuron indexation with the contractual anniversary and original statement provenance", () => {
+    const entry = premiumHistoryEntryFromStatementRow({
+      row: { ...autoSubsequentRow, productCode: "CPP_DOMEX+", productKey: "domex", basePremium: 12600, commission: 175.14 },
+      contract: { productKey: "domexneuron", premiumIndexationEnabled: true, frequencyRaw: "semiannual",
+        inputAmount: 6000, position: "poradce1", policyStartDate: "2026-11-05" },
+      statementId: "synthetic-neuron-source", ...statementContext, statementNumber: "synthetic-neuron",
+      periodEndMs: Date.UTC(2027, 10, 30), statementChronologyMs: Date.UTC(2027, 10, 30),
+    });
+    expect(entry).toMatchObject({ changeReason: "indexation", premiumKind: "auto_change",
+      statementId: "synthetic-neuron-source", statementNumber: "synthetic-neuron", source: "own",
+      anniversaryDate: "2027-11-05", previousPremium: 6000, newPremium: 6300,
+      previousAnnualPremium: 12000, newAnnualPremium: 12600, differenceAnnual: 600, basePremiumPeriod: "annual" });
+  });
+
+  it.each([false, null, undefined])("does not invent Neuron premium history for indexation flag %s", premiumIndexationEnabled => {
+    expect(premiumHistoryEntryFromStatementRow({
+      row: { ...autoSubsequentRow, productCode: "CPP_DOMEX+", productKey: "domex", basePremium: 12600, commission: 350.28 },
+      contract: { productKey: "domexneuron", premiumIndexationEnabled, frequencyRaw: "annual",
+        inputAmount: 12000, position: "poradce1", policyStartDate: "2026-11-05" },
+      statementId: "synthetic-neuron-source", ...statementContext,
+      periodEndMs: Date.UTC(2027, 10, 30), statementChronologyMs: Date.UTC(2027, 10, 30),
+    })).toBeNull();
+  });
+
+  it("does not use the original validFrom in the statement as evidence that an indexation is already effective", () => {
+    expect(premiumHistoryEntryFromStatementRow({
+      row: { ...autoSubsequentRow, productCode: "CPP_DOMEX+", productKey: "domex", basePremium: 12600,
+        commission: 350.28, validFrom: "05.11.2026" },
+      contract: { productKey: "domexneuron", premiumIndexationEnabled: true, frequencyRaw: "annual",
+        inputAmount: 12000, position: "poradce1", policyStartDate: "2026-11-05" },
+      statementId: "synthetic-neuron-source", ...statementContext,
+      periodEndMs: Date.UTC(2026, 10, 30), statementChronologyMs: Date.UTC(2026, 10, 30),
+    })).toBeNull();
+  });
+
   it("never turns a life commission base into a premium change", () => {
     const change = premiumHistoryEntryFromStatementRow({
       row: {

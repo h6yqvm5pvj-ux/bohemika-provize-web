@@ -2,8 +2,8 @@ import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode } from ".
 import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow } from "./statementTypes";
 import { isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
 
-export const isHigherStatementCommission = (comparison: { status: CommissionAmountComparisonStatus; expectedAmount?: number; statementAmount?: number }): boolean =>
-  comparison.status === "diff" && isHigherCommissionPayout({ amount: comparison.statementAmount ?? Number.NaN,
+export const isHigherStatementCommission = (comparison: { status: CommissionAmountComparisonStatus; expectedAmount?: number; statementAmount?: number; acceptHigherCommission?: boolean }): boolean =>
+  comparison.acceptHigherCommission !== false && comparison.status === "diff" && isHigherCommissionPayout({ amount: comparison.statementAmount ?? Number.NaN,
     expectedAmount: comparison.expectedAmount, tolerance: COMMISSION_AMOUNT_TOLERANCE });
 
 export const STATEMENT_AMOUNT_PRESENCE_TOLERANCE = 0.005;
@@ -50,7 +50,7 @@ export function statementCommissionGroups(rows: CommissionRow[]): { code: string
 export function buildStatementCodeComparisons({ rows, keyPrefix, expectedForRows }: {
   rows: CommissionRow[];
   keyPrefix: string;
-  expectedForRows: (rows: CommissionRow[]) => { amount: number; periods?: number; detailLines?: string[] };
+  expectedForRows: (rows: CommissionRow[]) => { amount: number; periods?: number; detailLines?: string[]; acceptHigherCommission?: boolean };
 }): CommissionAmountComparison[] {
   return statementCommissionGroups(rows)
     .filter(group => group.rows.some(row => hasStatementAmountForComparison(row.commission)))
@@ -65,6 +65,7 @@ export function buildStatementCodeComparisons({ rows, keyPrefix, expectedForRows
         difference: statementAmount - expected.amount,
         status: comparisonStatus(statementAmount, expected.amount),
         detailLines: expected.detailLines,
+        ...(expected.acceptHigherCommission === undefined ? {} : { acceptHigherCommission: expected.acceptHigherCommission }),
       };
     });
 }

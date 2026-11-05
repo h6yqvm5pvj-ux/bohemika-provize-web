@@ -47,6 +47,10 @@ export type CalculatorPdfFormValues = {
   autoCarAddonNonFaultAccident: boolean;
   autoCarAddonKeyLossTheft: boolean;
   domexAddress: string;
+  domexPropertyAddress: string;
+  domexHouseholdAddress: string;
+  domexPropertyAssistance: "basic" | "plus" | null;
+  domexHouseholdAssistance: "basic" | "plus" | null;
   domexPropertyType: string;
   domexPropertyCoverage: string;
   domexPropertySumInsured: number | null;
@@ -77,6 +81,7 @@ export type CalculatorPdfFormValues = {
   policyEndDate: string;
   policyTermEndDate: string;
   automaticRenewal: boolean | null;
+  premiumIndexationEnabled: boolean | null;
   pensionTargetAge: number | null;
   contractSignedDate: string;
   stornoDate: string;

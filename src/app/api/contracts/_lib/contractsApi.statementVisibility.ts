@@ -1,5 +1,6 @@
 import { canViewStatementDerivedRecord, normalizeAccessEmail as normalizeEmail } from "./contractsApi.access";
 import type { ContractDoc } from "./contractsApi.types";
+import { createDomexNeuronPremiumTimeline } from "@/app/lib/domexNeuronPremiumHistory";
 
 export type StatementDataViewer = {
   viewerEmail: string;
@@ -45,6 +46,11 @@ export const filterStatementDerivedContractDataForViewer = <T extends ContractDo
 
   return {
     ...contract,
+    // Authorized viewers share policy premium facts, not another recipient's
+    // private statement identity, commission amount or provider row metadata.
+    ...(contract.productKey === "domexneuron" &&
+      (Object.hasOwn(contract, "premiumStatementHistory") || Object.hasOwn(contract, "premiumIndexationHistory"))
+      ? { premiumIndexationHistory: createDomexNeuronPremiumTimeline(contract).changes } : {}),
     confirmedLifePremiumChanges: Array.isArray(contract.confirmedLifePremiumChanges)
       ? contract.confirmedLifePremiumChanges.filter(canViewRecord)
       : [],

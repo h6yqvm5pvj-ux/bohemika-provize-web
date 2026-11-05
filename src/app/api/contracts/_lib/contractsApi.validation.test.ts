@@ -17,6 +17,20 @@ describe("contracts API validation", () => {
   const neuron: ContractDoc = { ...baseContract, productKey: "domexneuron", contractSignedDate: new Date("2026-11-04"),
     policyStartDate: new Date("2026-11-05"), automaticRenewal: true, policyTermEndDate: new Date("2027-11-04"), policyEndDate: null };
 
+  it.each([true, false, null])("validates Neuron premium indexation independently of prolongation: %j", premiumIndexationEnabled => {
+    expect(validateContractCoreInvariants(neuron, { premiumIndexationEnabled })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants({ ...neuron, automaticRenewal: false, policyEndDate: new Date("2027-11-04") }, { premiumIndexationEnabled }))
+      .toEqual({ ok: true });
+  });
+
+  it.each(["ANO", "false", 1, 0, [], {}])("rejects malformed premium-indexation updates: %j", premiumIndexationEnabled => {
+    expect(validateContractCoreInvariants(neuron, { premiumIndexationEnabled })).toMatchObject({ ok: false });
+  });
+
+  it.each([true, false])("rejects premium indexation on a different product: %j", premiumIndexationEnabled => {
+    expect(validateContractCoreInvariants(baseContract, { premiumIndexationEnabled })).toMatchObject({ ok: false });
+  });
+
   it("validates prolongation independently of client date controls", () => {
     expect(validateContractCoreInvariants(neuron, { automaticRenewal: false, policyEndDate: new Date("2027-11-04") })).toEqual({ ok: true });
     expect(validateContractCoreInvariants(neuron, { automaticRenewal: false })).toMatchObject({ ok: false });

@@ -21,20 +21,28 @@ beforeEach(() => {
   mocks.links.mockResolvedValue([]); mocks.readPdf.mockResolvedValue({ status: "found", email: "petr@example.test" }); mocks.save.mockResolvedValue("saved");
 });
 
-describe("client email after a CPP Auto PDF upload", () => {
+describe.each(["cppAuto", "domexneuron"])("client email after a %s PDF upload", productKey => {
+  const productContract = { ...contract, productKey };
+  beforeEach(() => {
+    mocks.get.mockImplementation(async path => path.startsWith("users/") ? snap(productContract) : { data: () => undefined });
+  });
   it("fills the private card using a verified stored PDF", async () => {
     expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).toBe("saved");
     expect(mocks.readPdf).toHaveBeenCalledWith(attachment, contract.clientName);
     expect(mocks.save).toHaveBeenCalledWith(db, adviser, expect.objectContaining({ email: "petr@example.test" }));
   });
   it("skips an existing email before downloading or parsing any PDF", async () => {
-    mocks.get.mockImplementation(async path => path.startsWith("users/") ? snap() : { data: () => ({ card: { ...createEmptyClientCard("Petr Novák"), email: "existing@example.test" } }) });
+    mocks.get.mockImplementation(async path => path.startsWith("users/") ? snap(productContract) : { data: () => ({ card: { ...createEmptyClientCard("Petr Novák"), email: "existing@example.test" } }) });
     expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).toBe("existing");
     expect(mocks.readPdf).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.links).not.toHaveBeenCalled();
   });
-  it.each([{ productKey: "neon" }, { entryType: "endorsement" }, { originalAdviserEmail: "other@example.test" }])("does not import outside the personally concluded CPP Auto scope: %j", patch => {
-    mocks.get.mockResolvedValue(snap({ ...contract, ...patch }));
-    return expect(fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).resolves.toBe("skipped");
+  it.each([{ productKey: "neon" }, { entryType: "endorsement" }, { originalAdviserEmail: "other@example.test" },
+    { acquisitionType: "inherited" }, { userEmail: "other@example.test" },
+  ])("does not import outside the personally concluded product scope: %j", async patch => {
+    mocks.get.mockResolvedValue(snap({ ...productContract, ...patch }));
+    expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).toBe("skipped");
+    expect(mocks.readPdf).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
   });
   it("does not read a replaced attachment", async () => {
     expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", "different-hash")).toBe("stale");
@@ -42,10 +50,10 @@ describe("client email after a CPP Auto PDF upload", () => {
   });
   it("preserves existing phone/address and rejects different known emails", async () => {
     mocks.links.mockResolvedValue([{ id: "other" }]);
-    mocks.getAll.mockResolvedValue([snap({ ...contract, clientPhone: "777123456", clientAddress: "Test 1", clientEmail: "different@example.test" } as typeof contract, "other")]);
+    mocks.getAll.mockResolvedValue([snap({ ...productContract, clientPhone: "777123456", clientAddress: "Test 1", clientEmail: "different@example.test" } as typeof contract, "other")]);
     expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).toBe("conflict");
     expect(mocks.save).not.toHaveBeenCalled();
-    mocks.getAll.mockResolvedValue([snap({ ...contract, clientPhone: "777123456", clientAddress: "Test 1" } as typeof contract, "other")]);
+    mocks.getAll.mockResolvedValue([snap({ ...productContract, clientPhone: "777123456", clientAddress: "Test 1" } as typeof contract, "other")]);
     expect(await fillClientCardEmailFromUploadedPdf(db, adviser, "entry", attachment.sha256)).toBe("saved");
     expect(mocks.save.mock.calls[0][2].directory).toMatchObject({ phone: "777123456", address: "Test 1" });
   });

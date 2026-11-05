@@ -166,5 +166,8 @@ describe("system contract matching helpers", () => {
     ).toBe("storno od 15. 03. 2026");
     expect(statementProductMatchesSystemProduct("koopmajetekobcan", "koopfit")).toBe(true);
     expect(statementProductMatchesSystemProduct("neon", "koopfit")).toBe(false);
+    expect(statementProductMatchesSystemProduct("domex", "domexneuron")).toBe(true);
+    expect(statementProductMatchesSystemProduct("domexneuron", "domex")).toBe(true);
+    expect(statementProductMatchesSystemProduct("cppAuto", "domexneuron")).toBe(false);
   });
 });

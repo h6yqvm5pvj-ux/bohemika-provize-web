@@ -25,6 +25,7 @@ vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: mocks.hist
 
 import { POST } from "./route";
 import { calculateCppPPRbez } from "@/app/lib/productFormulas/cppPPRbez";
+import { calculateDomexNeuron } from "@/app/lib/productFormulas/domexNeuron";
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "@/app/smlouvy/[id]/contractCommissionInstallments";
 import { payoutStatusForCodes } from "@/app/smlouvy/[id]/ContractCommissionSection";
 import type { ContractCommissionPayout } from "@/app/smlouvy/[id]/contractDetailTypes";
@@ -72,6 +73,154 @@ const write = (path: string, patch: Record<string, unknown>) => {
   records.set(path, { ...records.get(path), ...structuredClone(patch) });
   versions.set(path, (versions.get(path) ?? 0) + 1);
 };
+
+describe("DOMEX Neuron observed anniversary indexation", () => {
+  const setup = (flag: boolean | null = true, frequency = "annual", input = 12000) => {
+    records.clear(); versions.clear(); reads.length = 0; writes.length = 0;
+    setContext({ email: owner, actorEmail: owner });
+    const initial = calculateDomexNeuron(input, frequency as "annual", "poradce1");
+    records.set("contractRefs/neuron-reference", { ownerEmail: owner, entryId: "entry-1", entryPath, contractNumberNormalized: contractNumber });
+    records.set(entryPath, {
+      contractNumber, userEmail: owner, entryType: "contract", productKey: "domexneuron", frequencyRaw: frequency,
+      position: "poradce1", inputAmount: input, calculationInputAmount: input, effectiveInputAmount: input,
+      policyStartDate: "2026-11-05", contractSignedDate: "2026-11-04", premiumIndexationEnabled: flag,
+      commissionPayouts: [], premiumStatementHistory: [], items: initial.items, total: initial.total,
+    });
+  };
+  const upload = async (options: { year?: number; code?: string; base?: number; commission?: number; career?: string;
+    manager?: boolean; additionalRows?: Array<{ code: string; base: number; commission: number }> } = {}) => {
+    const { year = 2027, code = "B101", base = 12600, commission = 350.28, career = "1" } = options;
+    const rows = [{ code, base, commission }, ...(options.additionalRows ?? [])].map((item, index) => {
+      const cells = options.manager
+        ? [index + 1, contractNumber, "04.11.2026", "Synthetic client", "R", "CPP_DOMEX+", item.code, item.base, "", "", career, item.commission, 0]
+        : [index + 1, contractNumber, "04.11.2026", "05.11.2026", "Synthetic client", "R", "CPP_DOMEX+", item.code, item.base, "", "", career, item.commission, 0];
+      return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    }).join("");
+    const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+      method: "POST", body: JSON.stringify({
+        html: `<div id="${options.manager ? "manazer" : "provize"}"><table>${rows}</table></div>`,
+        header: { statementNumber: `neuron-${year}-${code}`, statementDate: `30.11.${year}`, period: `01.11.${year} - 30.11.${year}` },
+      }),
+    }));
+    const payload = await response.json();
+    expect(response.status, JSON.stringify(payload)).toBe(200);
+    return payload;
+  };
+  const payouts = () => records.get(entryPath)!.commissionPayouts as Record<string, unknown>[];
+  const history = () => records.get(entryPath)!.premiumStatementHistory as Record<string, unknown>[];
+
+  it("records the actual premium and paid B commission while retaining the original acquisition calculation", async () => {
+    setup();
+    const before = structuredClone(records.get(entryPath));
+    await upload();
+    expect(payouts()).toEqual([expect.objectContaining({ amount: 350.28, expectedAmount: 350.28, difference: 0, status: "paid" })]);
+    expect(history()).toEqual([expect.objectContaining({ changeReason: "indexation", premiumKind: "auto_change",
+      previousPremium: 12000, newPremium: 12600, newAnnualPremium: 12600, anniversaryDate: "2027-11-05", writtenBy: owner })]);
+    expect(records.get(entryPath)).toMatchObject({ inputAmount: 12000, calculationInputAmount: 12000, effectiveInputAmount: 12600,
+      items: before!.items, total: before!.total });
+    expect([...records.keys()].some(path => path.includes("accountingRepairDrafts") || path.includes("externalUpdateTasks"))).toBe(false);
+  });
+
+  it.each([false, null])("does not automatically grow premiums or hide a higher B mismatch for flag %s", async flag => {
+    setup(flag);
+    await upload();
+    expect(history()).toEqual([]);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(12000);
+    expect(payouts()).toEqual([expect.objectContaining({ status: "difference", differenceReason: "commission_amount_mismatch" })]);
+  });
+
+  it.each([
+    { commission: 400 }, { career: "2" }, { year: 2026 },
+  ])("does not turn unsupported anniversary evidence into automatic growth: %j", async options => {
+    setup(); await upload(options);
+    expect(history()).toEqual([]);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(12000);
+    expect(payouts()[0].status).toBe("difference");
+  });
+
+  it("resolves an annual base for a quarterly premium and prices later installments from dated history", async () => {
+    setup(true, "quarterly", 3000);
+    await upload({ commission: 87.57 });
+    expect(history()).toEqual([expect.objectContaining({ basePremiumPeriod: "annual", newAnnualPremium: 12600, newPremium: 3150 })]);
+    await upload({ code: "B102", commission: 87.57, year: 2028 });
+    expect(history()).toHaveLength(1);
+    expect(payouts()).toEqual(expect.arrayContaining([expect.objectContaining({ code: "B102", expectedAmount: 87.57, status: "paid" })]));
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(3150);
+  });
+
+  it("preserves ordinary higher acquisition A behavior", async () => {
+    setup(false); await upload({ code: "A101", commission: 1396.08 });
+    expect(payouts()[0].status).toBe("paid");
+    expect(history()).toEqual([]);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(12000);
+  });
+
+  it("retains already effective indexation after disabling future automatic growth and during rebuild", async () => {
+    setup(); await upload();
+    records.get(entryPath)!.premiumIndexationEnabled = false;
+    await upload({ year: 2028, code: "B102" });
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", expectedAmount: 350.28, status: "paid" }));
+    await upload({ year: 2029, code: "B103", base: 13200, commission: 366.96 });
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B103", expectedAmount: 350.28, status: "difference" }));
+    expect((await POST(request())).status).toBe(200);
+    expect(history()).toHaveLength(1);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(12600);
+  });
+
+  it("uses an already confirmed own premium for a manager's later B installment", async () => {
+    setup(true, "quarterly", 3000); await upload({ commission: 87.57 });
+    records.get(entryPath)!.managerOverrides = [{ email: owner, position: "manazer4",
+      items: [{ code: "B101-B104", title: "Následná provize", amount: 15 }] }];
+    await upload({ manager: true, career: "104", code: "B102", year: 2028, commission: 15.75 });
+    expect(payouts()).toContainEqual(expect.objectContaining({ code: "B102", amount: 15.75, expectedAmount: 15.75, status: "paid" }));
+    expect(history()).toHaveLength(1);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(3150);
+  });
+
+  it("does not treat duplicate same-source B codes as proof of a premium increase", async () => {
+    setup(); await upload({ additionalRows: [{ code: "B101", base: 12600, commission: 350.28 }] });
+    expect(history()).toEqual([]);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(12000);
+    // The existing payout merger coalesces identical semantic payments.
+    expect(payouts()).toHaveLength(1);
+    expect(payouts().every(entry => entry.status === "difference")).toBe(true);
+  });
+
+  it("calculates multiple anniversary premiums in chronological order inside one reversed statement", async () => {
+    setup(); await upload({ year: 2028, code: "B102", base: 13200, commission: 366.96,
+      additionalRows: [{ code: "B101", base: 12600, commission: 350.28 }] });
+    const normalized = () => history().map(entry => [entry.anniversaryDate, entry.previousAnnualPremium, entry.newAnnualPremium]);
+    const reversed = normalized();
+    expect(reversed).toEqual([["2027-11-05", 12000, 12600], ["2028-11-05", 12600, 13200]]);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(13200);
+    setup(); await upload({ year: 2028, additionalRows: [{ code: "B102", base: 13200, commission: 366.96 }] });
+    expect(normalized()).toEqual(reversed);
+    expect(records.get(entryPath)!.effectiveInputAmount).toBe(13200);
+  });
+
+  it("rebuilds repeated and out-of-order statements without duplicating or regressing current premiums", async () => {
+    const result = () => ({ premium: records.get(entryPath)!.effectiveInputAmount,
+      history: history().map(entry => [entry.anniversaryDate, entry.previousAnnualPremium, entry.newAnnualPremium]),
+      payouts: payouts().map(entry => [entry.code, entry.amount, entry.expectedAmount, entry.status]).sort(),
+    });
+    setup(); await upload(); await upload({ year: 2028, code: "B102", base: 13200, commission: 366.96 });
+    const chronological = result();
+    setup(); await upload({ year: 2028, code: "B102", base: 13200, commission: 366.96 }); await upload();
+    expect(result()).toEqual(chronological);
+    expect((await POST(request())).status).toBe(200);
+    expect(result()).toEqual(chronological);
+    expect((await POST(request())).status).toBe(200);
+    expect(result()).toEqual(chronological);
+  });
+
+  it("does not let an unrelated user update the premium by supplying an owner", async () => {
+    setup(); const before = structuredClone(records.get(entryPath));
+    setContext({ email: viewer, actorEmail: viewer });
+    await upload();
+    expect(records.get(entryPath)).toEqual(before);
+    expect(writes).not.toContain(entryPath);
+  });
+});
 
 describe("statement comparisons after premium-decrease endorsements", () => {
   const decreasePath = `users/${owner}/entries/decrease`;

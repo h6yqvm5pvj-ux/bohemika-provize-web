@@ -22,6 +22,24 @@ beforeEach(() => {
 });
 
 describe("reading stored PDF emails", () => {
+  it("reads the identified DOMEX Neuron policyholder from positioned fields without using another role's email", async () => {
+    mocks.content.mockResolvedValue({ items: [
+      item("ZPROSTŘEDKOVATEL", 30, 800, 140),
+      item("E-mail: poradce@example.test", 30, 780, 180),
+      item("POJISTNÍK", 30, 760, 80),
+      item("Jméno a příjmení:", 30, 740, 90), item("Mgr. Tereza Novotná", 140, 740, 120),
+      item("Rodné číslo: 000000/0000", 30, 720, 180),
+      item("E-mail:", 30, 700, 40), item("TEREZA@", 80, 700, 50), item("EXAMPLE.TEST", 130, 700, 80),
+      item("POJIŠTĚNÝ", 30, 680, 80),
+      item("Jméno a příjmení: Petr Pojištěný", 30, 660, 180),
+      item("E-mail: pojisteny@example.test", 30, 640, 180),
+    ] });
+    expect(await readClientEmailFromStoredPdf(attachment, "Tereza Novotná")).toEqual({
+      status: "found", email: "tereza@example.test",
+    });
+    expect(mocks.destroy).toHaveBeenCalledOnce();
+  });
+
   it("joins split glyphs using their positions and releases the PDF afterwards", async () => {
     expect(await readClientEmailFromStoredPdf(attachment, "Bc. Petr Novák")).toEqual({ status: "found", email: "petr@example.test" });
     expect(mocks.getDocument).toHaveBeenCalledWith(expect.objectContaining({ isEvalSupported: false }));

@@ -31,9 +31,11 @@ describe("client name field", () => {
     const [currentSource, setSource] = useState(source);
     const [open, setOpen] = useState(true);
     const [renewal, setRenewal] = useState<boolean | null>(true);
+    const [indexation, setIndexation] = useState<boolean | null>(null);
     return <CalculatorContractDetailsSection {...fixedProps}
       pensionProduct={pension} showPolicyEndDateField={pension || neuron}
       showAutomaticRenewal={neuron} automaticRenewal={renewal} onAutomaticRenewalChange={setRenewal}
+      showPremiumIndexation={neuron} premiumIndexationEnabled={indexation} onPremiumIndexationChange={setIndexation}
       policyEndDate={neuron ? "2027-10-31" : ""}
       clientName={name} clientNameSource={currentSource} clientLookupStatus={status}
       clientNameMatches={status === "ready" ? matchClientName(name, directory) : []}
@@ -88,7 +90,7 @@ describe("client name field", () => {
 
   it("hides the entire end-date field with DOMEX prolongation and restores it when prolongation is disabled", async () => {
     await act(async () => root.render(<Harness neuron />));
-    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("fieldset button"));
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('fieldset[aria-label="Prolongace smlouvy"] button'));
     expect(buttons.map(button => button.textContent)).toEqual(["ANO", "NE"]);
     expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelector('[aria-label="Konec pojistného období"]')).toBeNull();
@@ -105,6 +107,30 @@ describe("client name field", () => {
     expect(container.textContent).not.toContain("Pojištění do");
     await act(async () => buttons[1].click());
     expect(container.querySelector<HTMLInputElement>('[aria-label="Pojištění do"]')?.value).toBe("2027-10-31");
+  });
+
+  it("allows explicit Neuron indexation consent, rejection and unknown independently of renewal", async () => {
+    await act(async () => root.render(<Harness neuron />));
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('fieldset[aria-label="Valorizace"] button'));
+    const renewal = container.querySelector<HTMLButtonElement>('fieldset[aria-label="Prolongace smlouvy"] button')!;
+    expect(buttons.map(button => button.textContent)).toEqual(["ANO", "NE", "Neurčeno"]);
+    expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+    await act(async () => buttons[0].click());
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain("Valorizace je zapnutá.");
+    await act(async () => buttons[1].click());
+    expect(buttons[1].getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain("Valorizace je vypnutá.");
+    await act(async () => buttons[2].click());
+    expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain("Valorizace není potvrzená.");
+    expect(renewal.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[aria-label="Pojištění do"]')).toBeNull();
+  });
+
+  it("hides the indexation editor for other products", async () => {
+    await act(async () => root.render(<Harness />));
+    expect(container.querySelector('fieldset[aria-label="Valorizace"]')).toBeNull();
   });
 
   it("requires a choice between accent variants and supports arrow keys and Enter", async () => {

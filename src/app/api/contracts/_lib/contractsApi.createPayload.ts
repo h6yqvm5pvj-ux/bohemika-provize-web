@@ -27,6 +27,7 @@ import {
   isReasonableContractDate,
   isValidContractNumber,
   parsePolicyTermEndDate,
+  validateContractPremiumIndexation,
   validateContractRenewal,
 } from "./contractsApi.validation";
 import type { ContractListProductCategory } from "./contractsApi.types";
@@ -58,6 +59,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "policyEndDate",
   "policyTermEndDate",
   "automaticRenewal",
+  "premiumIndexationEnabled",
   "pensionTargetAge",
   "status",
   "stornoDate",
@@ -313,7 +315,7 @@ export const FLEXI_DETAIL_ALLOWED_KEYS = new Set<string>([
   "addonTravel",
 ]);
 
-export const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
+export const MAXDOMOV_DETAIL_ALLOWED_KEYS = new Set<string>([
   "address",
   "propertyType",
   "propertyCoverage",
@@ -331,6 +333,14 @@ export const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
   "liabilityLandlord",
   "assistancePlus",
   "note",
+]);
+
+export const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
+  ...MAXDOMOV_DETAIL_ALLOWED_KEYS,
+  "propertyAddress",
+  "householdAddress",
+  "propertyAssistance",
+  "householdAssistance",
 ]);
 
 export const SLAVIA_AUTO_DETAIL_ALLOWED_KEYS = new Set<string>([
@@ -588,6 +598,17 @@ export const sanitizeDetailObject = (
       output[key] = null;
       continue;
     }
+    if (field === "domexDetail" && (key === "propertyAssistance" || key === "householdAssistance")) {
+      if (raw !== "basic" && raw !== "plus") {
+        return { ok: false, error: `Pole ${field}.${key} musí být basic, plus nebo null.` };
+      }
+      output[key] = raw;
+      continue;
+    }
+    if (field === "domexDetail" && (key === "propertyAddress" || key === "householdAddress") &&
+      (typeof raw !== "string" || /[\u0000-\u001f\u007f]/.test(raw))) {
+      return { ok: false, error: `Pole ${field}.${key} musí být text bez řídicích znaků nebo null.` };
+    }
     if (typeof raw === "string") {
       const trimmed = raw.trim();
       const maxLen = key === "note" ? 2_000 : 200;
@@ -689,6 +710,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   policyEndDate: Date | null;
   policyTermEndDate?: Date | null;
   automaticRenewal?: boolean | null;
+  premiumIndexationEnabled?: boolean | null;
   pensionTargetAge?: number | null;
   status: "active" | "storno";
   stornoDate: Date | null;
@@ -1189,7 +1211,7 @@ export const normalizeCreateEntryPayload = ({
   const maxdomovDetailParsed = sanitizeDetailObject(
     raw.maxdomovDetail,
     "maxdomovDetail",
-    DOMEX_DETAIL_ALLOWED_KEYS
+    MAXDOMOV_DETAIL_ALLOWED_KEYS
   );
   if (!maxdomovDetailParsed.ok) return maxdomovDetailParsed;
 
@@ -1206,6 +1228,13 @@ export const normalizeCreateEntryPayload = ({
   if (!policyTermEndParsed.ok) return policyTermEndParsed;
   const automaticRenewalParsed = parseOptionalBoolean(raw.automaticRenewal, "automaticRenewal");
   if (!automaticRenewalParsed.ok) return automaticRenewalParsed;
+  const premiumIndexationParsed = parseOptionalBoolean(raw.premiumIndexationEnabled, "premiumIndexationEnabled");
+  if (!premiumIndexationParsed.ok) return premiumIndexationParsed;
+  const indexationValidation = validateContractPremiumIndexation({
+    productKey: productParsed.value,
+    premiumIndexationEnabled: premiumIndexationParsed.value,
+  });
+  if (!indexationValidation.ok) return indexationValidation;
   const effectivePolicyEnd = automaticRenewalParsed.value === false
     ? policyEndParsed.value ?? policyTermEndParsed.value : policyEndParsed.value;
   const renewalValidation = validateContractRenewal({
@@ -1558,6 +1587,7 @@ export const normalizeCreateEntryPayload = ({
       ...(productParsed.value === "domexneuron" ? {
         policyTermEndDate: policyTermEndParsed.value,
         automaticRenewal: automaticRenewalParsed.value,
+        premiumIndexationEnabled: premiumIndexationParsed.value,
       } : {}),
       pensionTargetAge: productParsed.value === "conseqzenit" ? pensionTargetAgeParsed.value : null,
       status: lifecycleStatus,

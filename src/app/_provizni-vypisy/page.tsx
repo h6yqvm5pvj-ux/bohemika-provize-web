@@ -44,6 +44,7 @@ import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase }
 import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
 import { lifeSplitPremiumReductionReview } from "./statementLifePremiumReduction";
 import { extendStatementCorrectionsWithStoredHistory } from "./statementStoredCorrections";
+import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementExpectation } from "./statementDomexNeuronIndexation";
 import {
   buildStatementCodeComparisons,
   isHigherStatementCommission,
@@ -2510,6 +2511,10 @@ const otherProductPremiumBaseComparisonForContract = (
 
   const statementBase = otherProductPremiumBaseForComparison(contract, systemContract);
   if (!statementBase) return null;
+  if (domexNeuronStatementBaseIsConfirmed({
+    rows: contract.rows, contract: systemContract, statementBase: statementBase.base, statementPeriod,
+    careerMismatch: statementCareerMismatch(contract.rows, systemContract?.position).mismatched,
+  })) return null;
 
   const comparison = premiumBaseComparison(
     statementBase.base,
@@ -3806,6 +3811,12 @@ const buildOtherProductAmountComparisons = (
           const expectedPerPeriod = expectedAmountFromIndependentStatementBase(
             rows, systemContract, group.matcher
           ) ?? expectedClosestAmountFromItems(items, statementAmount, group.matcher);
+          const indexation = domexNeuronStatementExpectation({
+            rows, contract: systemContract, statementPeriod, expectedAmount: expectedPerPeriod,
+            trustedItems: items,
+            careerMismatch: statementCareerMismatch(rows, systemContract.position).mismatched,
+          });
+          if (indexation.indexation.applicable) return indexation;
           const bundle = subsequentPayoutBundleInfo({
             rows, statementAmount, expectedPerPeriod, systemContract, statementPeriod,
           });
@@ -4102,13 +4113,33 @@ const managerCommissionPremiumBaseMismatch = (
   };
 };
 
+const managerDomexNeuronExpectation = (
+  row: ManagerCommissionRow,
+  systemContract: MatchedSystemContract | null,
+  currentUserEmail: string | null | undefined,
+  statementPeriod: string | null | undefined,
+  sameCodeRows: ManagerCommissionRow[],
+  expectedAmount: number = 0
+) => {
+  const override = managerOverrideForViewer(systemContract, currentUserEmail);
+  return domexNeuronStatementExpectation({
+    rows: sameCodeRows, contract: systemContract, statementPeriod, expectedAmount,
+    source: "manager", trustedItems: override?.items ?? [],
+    careerMismatch: statementCareerMismatch([row], override?.position).mismatched,
+  });
+};
+
 const managerCommissionBaseComparison = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null,
-  currentUserEmail: string | null | undefined
+  currentUserEmail: string | null | undefined,
+  statementPeriod?: string | null,
+  sameCodeRows: ManagerCommissionRow[] = [row]
 ): PremiumBaseComparison | null => {
   if (usesIndependentStatementCommissionBase(row.product)) return null;
-  if (managerCommissionPaymentBundleInfo(row, systemContract, currentUserEmail)) return null;
+  const indexation = managerDomexNeuronExpectation(row, systemContract, currentUserEmail, statementPeriod, sameCodeRows).indexation;
+  if (indexation.status === "confirmed") return null;
+  if (!indexation.applicable && managerCommissionPaymentBundleInfo(row, systemContract, currentUserEmail)) return null;
   const statementBase = Number(row.base);
   if (!Number.isFinite(statementBase) || statementBase <= ANNUAL_PREMIUM_TOLERANCE) {
     return null;
@@ -4202,7 +4233,9 @@ const managerCommissionDifferenceReason = (
 const buildManagerCommissionAmountComparison = (
   row: ManagerCommissionRow,
   systemContract: MatchedSystemContract | null,
-  currentUserEmail: string | null | undefined
+  currentUserEmail: string | null | undefined,
+  statementPeriod?: string | null,
+  sameCodeRows: ManagerCommissionRow[] = [row]
 ): CommissionAmountComparison | null => {
   if (row.isStorno || row.commission < 0) return null;
   if (!systemContract) return null;
@@ -4212,19 +4245,16 @@ const buildManagerCommissionAmountComparison = (
   if (items.length === 0) return null;
   if (isLifeIncreaseCode(row.type) && (!matchesLifePremiumIncrease(systemContract, row.base) || lifeIncreaseExpectedAmount(items, [row.type]) == null)) return null;
 
-  const paymentBundle = managerCommissionPaymentBundleInfo(
-    row,
-    systemContract,
-    currentUserEmail
+  const expectedAbsAmount = expectedManagerAmountForStatementBase(
+    row, systemContract, expectedManagerAmountFromItems(items, row)
   );
-  const expectedAbsAmount =
-    paymentBundle?.expectedAmount ??
-    expectedManagerAmountForStatementBase(
-      row,
-      systemContract,
-      expectedManagerAmountFromItems(items, row)
-    );
-  const expectedAmount = expectedAbsAmount;
+  const indexation = managerDomexNeuronExpectation(
+    row, systemContract, currentUserEmail, statementPeriod, sameCodeRows, expectedAbsAmount
+  );
+  const paymentBundle = indexation.indexation.applicable ? null : managerCommissionPaymentBundleInfo(
+    row, systemContract, currentUserEmail
+  );
+  const expectedAmount = paymentBundle?.expectedAmount ?? indexation.amount;
   const status = comparisonStatus(
     row.commission,
     expectedAmount,
@@ -4238,7 +4268,8 @@ const buildManagerCommissionAmountComparison = (
     expectedAmount,
     difference: row.commission - expectedAmount,
     status,
-    detailLines: paymentBundle?.detailLines,
+    detailLines: indexation.detailLines ?? paymentBundle?.detailLines,
+    acceptHigherCommission: indexation.acceptHigherCommission,
     ...managerCommissionDifferenceReason(row, systemContract, currentUserEmail, status),
   };
 };
@@ -6048,6 +6079,7 @@ function ManagerCommissionRowCard({
   group,
   matchesByContractNumber,
   currentUserEmail,
+  statementPeriod,
   managerAmountComparisonsByRowKey,
   suggestedStornoDate,
   markingControls,
@@ -6058,6 +6090,7 @@ function ManagerCommissionRowCard({
   group: ManagerCommissionContractGroup;
   matchesByContractNumber: ContractMatchesByNumber;
   currentUserEmail?: string | null;
+  statementPeriod?: string | null;
   managerAmountComparisonsByRowKey: Map<string, CommissionAmountComparison>;
   suggestedStornoDate: Date | null;
   markingControls?: MarkingControls;
@@ -6099,7 +6132,9 @@ function ManagerCommissionRowCard({
     const comparison = managerCommissionBaseComparison(
       item,
       matchedContract,
-      currentUserEmail
+      currentUserEmail,
+      statementPeriod,
+      rowItems.filter(other => normalizeCommissionCode(other.type) === normalizeCommissionCode(item.type))
     );
     if (!comparison) return;
     const comparisonKey = [
@@ -6431,6 +6466,7 @@ function ManagerCommissionsSection({
   advisors = [],
   matchesByContractNumber,
   currentUserEmail,
+  statementPeriod,
   suggestedStornoDate,
   markingControls,
   onRequestSystemStorno,
@@ -6438,6 +6474,7 @@ function ManagerCommissionsSection({
   advisors?: ManagerCommissionAdvisor[];
   matchesByContractNumber: ContractMatchesByNumber;
   currentUserEmail?: string | null;
+  statementPeriod?: string | null;
   suggestedStornoDate: Date | null;
   markingControls?: MarkingControls;
   onRequestSystemStorno?: (target: StornoStatementActionTarget) => void;
@@ -6544,7 +6581,10 @@ function ManagerCommissionsSection({
               const comparison = buildManagerCommissionAmountComparison(
                 row,
                 matchedContract,
-                currentUserEmail
+                currentUserEmail,
+                statementPeriod,
+                sortedRows.filter(other => normalizeContractNumberForMatch(other.contractNumber) === normalizeContractNumberForMatch(row.contractNumber) &&
+                  normalizeCommissionCode(other.type) === normalizeCommissionCode(row.type))
               );
               if (!comparison) continue;
               managerAmountComparisonsByRowKey.set(
@@ -6671,6 +6711,7 @@ function ManagerCommissionsSection({
                                   group={group}
                                   matchesByContractNumber={matchesByContractNumber}
                                   currentUserEmail={currentUserEmail}
+                                  statementPeriod={statementPeriod}
                                   managerAmountComparisonsByRowKey={managerAmountComparisonsByRowKey}
                                   suggestedStornoDate={suggestedStornoDate}
                                   markingControls={markingControls}
@@ -7203,6 +7244,7 @@ function StatementPreview({
         advisors={statement.managerCommissions}
         matchesByContractNumber={matchesByContractNumber}
         currentUserEmail={currentUserEmail}
+        statementPeriod={statement.header.period}
         suggestedStornoDate={suggestedStornoDateForStatement(statement.header)}
         markingControls={markingControls}
         onRequestSystemStorno={onRequestSystemStorno}

@@ -64,6 +64,7 @@ export type EntryDoc = {
   parentContractEntryId?: string | null;
   calculationInputAmount?: number | null;
   effectiveInputAmount?: number | null;
+  premiumIndexationHistory?: import("../lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   previousInputAmount?: number | null;
   newInputAmount?: number | null;
   premiumDelta?: number | null;

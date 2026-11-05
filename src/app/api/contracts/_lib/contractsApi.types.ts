@@ -200,6 +200,7 @@ export type ContractDoc = {
   premiumStatementHistory?: {
     key?: string | null;
     premiumKind?: "auto_change" | "life_increase" | string | null;
+    changeReason?: "indexation";
     statementId?: string | null;
     statementNumber?: string | null;
     statementPeriod?: string | null;
@@ -341,6 +342,10 @@ export type ContractDoc = {
   carAddonKeyLossTheft?: boolean | null;
   domexDetail?: {
     address?: string | null;
+    propertyAddress?: string | null;
+    householdAddress?: string | null;
+    propertyAssistance?: "basic" | "plus" | null;
+    householdAssistance?: "basic" | "plus" | null;
     propertyType?: string | null;
     propertyCoverage?: string | null;
     sumInsured?: number | null;
@@ -441,6 +446,8 @@ export type ContractDoc = {
   policyEndDate?: FirestoreTimestamp | Date | string | number | null;
   policyTermEndDate?: FirestoreTimestamp | Date | string | number | null;
   automaticRenewal?: boolean | null;
+  premiumIndexationEnabled?: boolean | null;
+  premiumIndexationHistory?: import("@/app/lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   pensionTargetAge?: number | null;
 };
 

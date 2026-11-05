@@ -11,6 +11,7 @@ import { calendarDate } from "../lib/calendarDates";
 import { createEndorsementCommissionPlan } from "../lib/endorsementCommissionPlan";
 import { commissionPeriodForCode } from "../lib/commissionPeriodForCode";
 import { isRetiredProduct } from "../lib/retiredProducts";
+import { createDomexNeuronPremiumTimeline } from "../lib/domexNeuronPremiumHistory";
 
 export { estimatePayoutDate } from "../lib/commissionPayoutDate";
 
@@ -545,7 +546,9 @@ export function generateCashflow(
       policyEndPayoutDate ?? (status === "dozita" ? now : horizonEnd)
     );
     const product = entry.productKey;
+    const neuronPremiumTimeline = product === "domexneuron" ? createDomexNeuronPremiumTimeline(entry) : null;
     const currentMonthlyPremiumRaw =
+      neuronPremiumTimeline?.premiumAtDate(dateToIsoDay(now)) ??
       endorsementPlan.currentPremium(entry, dateToIsoDay(now)) ??
       entry.effectiveInputAmount ??
       entry.newInputAmount ??
@@ -1122,7 +1125,7 @@ export function generateCashflow(
         let immediateDomexInstallmentIndex = 0;
         let subsequentDomexInstallmentIndex = 0;
         while (payout <= entryHorizonEnd) {
-          rememberRecurringPeriod(payout, firstPayout);
+          const commissionPeriod = rememberRecurringPeriod(payout, firstPayout);
           const isImmediatePayout = payout < subsequentStart;
           const isWithinSubsequentWindow =
             subsequentEnd == null || payout < subsequentEnd;
@@ -1131,12 +1134,16 @@ export function generateCashflow(
           } else if (isWithinSubsequentWindow) {
             subsequentDomexInstallmentIndex += 1;
           }
-          const amount =
+          const baseAmount =
             isImmediatePayout
               ? immediateDomexAmount
               : isWithinSubsequentWindow
               ? subsequentDomex?.amount ?? (product === "zamex" ? immediateDomexAmount : undefined)
               : undefined;
+          const indexationRatio = !isImmediatePayout && neuronPremiumTimeline
+            ? neuronPremiumTimeline.ratioAtDate(dateToIsoDay(commissionPeriod)) : 1;
+          const amount = baseAmount != null && indexationRatio !== 1
+            ? Math.round(baseAmount * indexationRatio * 100) / 100 : baseAmount;
           if (amount && Number.isFinite(amount) && amount !== 0) {
             pushItem(
               amount,

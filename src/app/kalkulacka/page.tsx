@@ -133,6 +133,7 @@ import {
   createEmptyPropertyPdfFormValues,
   mapReviewPdfFormValues,
 } from "./calculatorPdfFormValues";
+import { parsedDomexAssistanceValue } from "./calculatorPdfPropertyFields";
 import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
 import { useCalculatorCoefficients } from "./useCalculatorCoefficients";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
@@ -494,6 +495,7 @@ export default function CalculatorPage() {
   const [policyEndDate, setPolicyEndDate] = useState<string>("");
   const [policyTermEndDate, setPolicyTermEndDate] = useState("");
   const [automaticRenewal, setAutomaticRenewal] = useState<boolean | null>(null);
+  const [premiumIndexationEnabled, setPremiumIndexationEnabled] = useState<boolean | null>(null);
   const { confirmDomexNeuron, domexNeuronConfirmation } = useDomexNeuronConfirmation();
   const [pensionTargetAge, setPensionTargetAge] = useState<number | null>(null);
   const [enteredStornoDate, setStornoDate] = useState<string>("");
@@ -553,6 +555,10 @@ export default function CalculatorPage() {
   const [autoCarAddonPassengerInjury, setAutoCarAddonPassengerInjury] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [domexAddress, setDomexAddress] = useState<string>("");
+  const [domexPropertyAddress, setDomexPropertyAddress] = useState("");
+  const [domexHouseholdAddress, setDomexHouseholdAddress] = useState("");
+  const [domexPropertyAssistance, setDomexPropertyAssistance] = useState<"basic" | "plus" | null>(null);
+  const [domexHouseholdAssistance, setDomexHouseholdAssistance] = useState<"basic" | "plus" | null>(null);
   const [domexPropertyType, setDomexPropertyType] = useState<string>("");
   const [domexPropertyCoverage, setDomexPropertyCoverage] = useState<string>("");
   const [domexPropertySumInsured, setDomexPropertySumInsured] = useState<number | null>(null);
@@ -620,6 +626,10 @@ export default function CalculatorPage() {
     autoCarAddonNonFaultAccident: setAutoCarAddonNonFaultAccident,
     autoCarAddonKeyLossTheft: setAutoCarAddonKeyLossTheft,
     domexAddress: setDomexAddress,
+    domexPropertyAddress: setDomexPropertyAddress,
+    domexHouseholdAddress: setDomexHouseholdAddress,
+    domexPropertyAssistance: setDomexPropertyAssistance,
+    domexHouseholdAssistance: setDomexHouseholdAssistance,
     domexPropertyType: setDomexPropertyType,
     domexPropertyCoverage: setDomexPropertyCoverage,
     domexPropertySumInsured: setDomexPropertySumInsured,
@@ -650,6 +660,7 @@ export default function CalculatorPage() {
     policyEndDate: setPolicyEndDate,
     policyTermEndDate: setPolicyTermEndDate,
     automaticRenewal: setAutomaticRenewal,
+    premiumIndexationEnabled: setPremiumIndexationEnabled,
     pensionTargetAge: setPensionTargetAge,
     contractSignedDate: setContractSignedDate,
     stornoDate: setStornoDate,
@@ -3311,6 +3322,12 @@ export default function CalculatorPage() {
             importProduct === "maxdomov"
               ? {
                   address: parsedPdfTextValue(parsed, "domexAddress") || null,
+                  ...(importProduct === "domexneuron" ? {
+                    propertyAddress: parsedPdfTextValue(parsed, "domexPropertyAddress") || null,
+                    householdAddress: parsedPdfTextValue(parsed, "domexHouseholdAddress") || null,
+                    propertyAssistance: parsedDomexAssistanceValue(parsed.domexPropertyAssistance),
+                    householdAssistance: parsedDomexAssistanceValue(parsed.domexHouseholdAssistance),
+                  } : {}),
                   propertyType: parsedPdfTextValue(parsed, "domexPropertyType") || null,
                   propertyCoverage:
                     parsedPdfTextValue(parsed, "domexPropertyCoverage") || null,
@@ -3378,6 +3395,7 @@ export default function CalculatorPage() {
             policyEndDate: policyEndDateIso || null,
             ...(importProduct === "domexneuron" ? {
               automaticRenewal: typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null,
+              premiumIndexationEnabled: typeof parsed.premiumIndexationEnabled === "boolean" ? parsed.premiumIndexationEnabled : null,
               policyTermEndDate: parsedPdfTextValue(parsed, "policyTermEndDate") || null,
             } : {}),
             pensionTargetAge: importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null,
@@ -3851,6 +3869,10 @@ export default function CalculatorPage() {
     setAutoCarAddonKeyLossTheft(false);
 
     setDomexAddress("");
+    setDomexPropertyAddress("");
+    setDomexHouseholdAddress("");
+    setDomexPropertyAssistance(null);
+    setDomexHouseholdAssistance(null);
     setDomexPropertyType("");
     setDomexPropertyCoverage("");
     setDomexPropertySumInsured(null);
@@ -4163,6 +4185,7 @@ export default function CalculatorPage() {
     if (policyEndDate.trim() && !(product === "domexneuron" && automaticRenewal === true)) rows.push({ label: "Konec smlouvy", value: formatIsoDay(policyEndDate.trim()) });
     if (product === "domexneuron") {
       rows.push({ label: "Prolongace smlouvy", value: automaticRenewal === null ? "Neurčeno" : automaticRenewal ? "ANO" : "NE" });
+      rows.push({ label: "Valorizace", value: premiumIndexationEnabled === null ? "Neurčeno" : premiumIndexationEnabled ? "ANO" : "NE" });
     }
     if (stornoDate.trim() && !endorsementDraft) rows.push({ label: "Datum storna", value: formatIsoDay(stornoDate.trim()) });
     if (shouldShowDuration(product)) rows.push({ label: "Doba trvání", value: durationYearsLabel(reviewYears ?? normalizedDurationYears(product, reviewYears)) ?? "—" });
@@ -4918,7 +4941,7 @@ export default function CalculatorPage() {
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             policyEndDate: policyEndDate.trim() || null,
-            ...(product === "domexneuron" ? { automaticRenewal, policyTermEndDate: policyTermEndDate.trim() || null } : {}),
+            ...(product === "domexneuron" ? { automaticRenewal, premiumIndexationEnabled, policyTermEndDate: policyTermEndDate.trim() || null } : {}),
             pensionTargetAge: product === "conseqzenit" ? pensionTargetAge : null,
             status: trimmedStornoDate ? "storno" : "active",
             stornoDate: trimmedStornoDate || null,
@@ -5152,6 +5175,12 @@ export default function CalculatorPage() {
               product === "domex" || product === "domexneuron"
                 ? {
                     address: domexAddress.trim() || null,
+                    ...(product === "domexneuron" ? {
+                      propertyAddress: domexPropertyAddress.trim() || null,
+                      householdAddress: domexHouseholdAddress.trim() || null,
+                      propertyAssistance: domexPropertyAssistance,
+                      householdAssistance: domexHouseholdAssistance,
+                    } : {}),
                     propertyType: domexPropertyType.trim() || null,
                     propertyCoverage: domexPropertyCoverage.trim() || null,
                     sumInsured: domexPropertySumInsured,
@@ -6211,6 +6240,10 @@ export default function CalculatorPage() {
   const domexPdfEditorFields: DomexPdfDetailEditorFields | null = isDomexPdfDetailProduct
     ? {
         address: domexAddress,
+        propertyAddress: domexPropertyAddress,
+        householdAddress: domexHouseholdAddress,
+        propertyAssistance: domexPropertyAssistance ?? "",
+        householdAssistance: domexHouseholdAssistance ?? "",
         propertyType: domexPropertyType,
         propertyCoverage: domexPropertyCoverage,
         sumInsured: domexPdfNumberText(domexPropertySumInsured),
@@ -6242,6 +6275,18 @@ export default function CalculatorPage() {
     switch (field) {
       case "address":
         setDomexAddress(value);
+        return;
+      case "propertyAddress":
+        setDomexPropertyAddress(value);
+        return;
+      case "householdAddress":
+        setDomexHouseholdAddress(value);
+        return;
+      case "propertyAssistance":
+        setDomexPropertyAssistance(parsedDomexAssistanceValue(value));
+        return;
+      case "householdAssistance":
+        setDomexHouseholdAssistance(parsedDomexAssistanceValue(value));
         return;
       case "propertyType":
         setDomexPropertyType(value);
@@ -6304,6 +6349,7 @@ export default function CalculatorPage() {
     domexPdfEditorFields != null ? (
       <CalculatorDomexPdfDetailEditor
         fields={domexPdfEditorFields}
+        neuron={product === "domexneuron"}
         onTextChange={handleDomexPdfEditorTextChange}
         onBooleanChange={handleDomexPdfEditorBooleanChange}
       />
@@ -6337,22 +6383,25 @@ export default function CalculatorPage() {
       if (value) items.push({ section, label, value: "Ano" });
     };
 
-    addText("property", "Adresa", domexAddress);
+    addText("property", "Adresa", product === "domexneuron" ? domexPropertyAddress : domexAddress);
     addText("property", "Typ nemovitosti", domexPropertyTypeLabel(domexPropertyType));
     addText("property", "Rozsah", domexCoverageLabel(domexPropertyCoverage));
     addMoney("property", "Pojistná částka", domexPropertySumInsured);
     addMoney("property", "Spoluúčast", domexPropertyDeductible);
+    if (product === "domexneuron" && domexPropertyAssistance) addText("property", "Asistence", domexPropertyAssistance === "plus" ? "PLUS" : "Základní");
     addMoney("outbuilding", "Pojistná částka", domexOutbuildingSumInsured);
+    if (product === "domexneuron") addText("household", "Adresa", domexHouseholdAddress);
     addText("household", "Typ", domexHouseholdTypeLabel(domexHouseholdType));
     addText("household", "Rozsah", domexCoverageLabel(domexHouseholdCoverage));
     addMoney("household", "Pojistná částka", domexHouseholdSumInsured);
     addMoney("household", "Spoluúčast", domexHouseholdDeductible);
+    if (product === "domexneuron" && domexHouseholdAssistance) addText("household", "Asistence", domexHouseholdAssistance === "plus" ? "PLUS" : "Základní");
     addMoney("liability", "Pojistná částka", domexLiabilitySumInsured);
     addMoney("liability", "Spoluúčast", domexLiabilityDeductible);
     addBoolean("liability", "Náhrada újmy mobilní elektronice", domexLiabilityMobile);
     addBoolean("liability", "Odpovědnost nájemce na věci nemovité", domexLiabilityTenant);
     addBoolean("liability", "Odpovědnost pronajímatele", domexLiabilityLandlord);
-    addBoolean("assistance", "Asistence PLUS", domexAssistancePlus);
+    if (product !== "domexneuron") addBoolean("assistance", "Asistence PLUS", domexAssistancePlus);
     addText("note", "Poznámka", domexNote);
 
     return items;
@@ -7328,6 +7377,9 @@ export default function CalculatorPage() {
               policyEndDate={product === "domexneuron" ? policyTermEndDate || policyEndDate : policyEndDate}
               showAutomaticRenewal={product === "domexneuron"}
               automaticRenewal={automaticRenewal}
+              showPremiumIndexation={product === "domexneuron"}
+              premiumIndexationEnabled={premiumIndexationEnabled}
+              onPremiumIndexationChange={setPremiumIndexationEnabled}
               onAutomaticRenewalChange={(value) => {
                 const endDate = policyTermEndDate || policyEndDate;
                 setPolicyTermEndDate(endDate);

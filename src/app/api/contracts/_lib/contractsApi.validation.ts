@@ -17,6 +17,7 @@ const UPDATE_FIELDS_CONTRACT_CORE_KEYS = new Set<string>([
   "policyEndDate",
   "policyTermEndDate",
   "automaticRenewal",
+  "premiumIndexationEnabled",
 ]);
 
 const UPDATE_FIELDS_LIFECYCLE_KEYS = new Set<string>([
@@ -83,6 +84,19 @@ export const validateContractRenewal = ({ productKey, automaticRenewal, policyTe
   return { ok: true };
 };
 
+export const validateContractPremiumIndexation = ({ productKey, premiumIndexationEnabled }: {
+  productKey: unknown;
+  premiumIndexationEnabled: unknown;
+}): ValidationResult => {
+  if (premiumIndexationEnabled != null && typeof premiumIndexationEnabled !== "boolean") {
+    return { ok: false, error: "Pole premiumIndexationEnabled musí být boolean nebo null." };
+  }
+  if (productKey !== "domexneuron" && premiumIndexationEnabled != null) {
+    return { ok: false, error: "Valorizaci lze uložit pouze k produktu DOMEX Neuron." };
+  }
+  return { ok: true };
+};
+
 export const validateContractCoreInvariants = (
   existing: ContractDoc,
   patch: Record<string, unknown>
@@ -139,6 +153,12 @@ export const validateContractCoreInvariants = (
   );
 
   if (shouldValidateCore) {
+    const indexationValidation = validateContractPremiumIndexation({
+      productKey: existing.productKey,
+      premiumIndexationEnabled: hasOwn(patch, "premiumIndexationEnabled")
+        ? patch.premiumIndexationEnabled : existing.premiumIndexationEnabled,
+    });
+    if (!indexationValidation.ok) return indexationValidation;
     const renewalValidation = validateContractRenewal({
       productKey: existing.productKey,
       automaticRenewal: hasOwn(patch, "automaticRenewal") ? patch.automaticRenewal : existing.automaticRenewal,

@@ -102,6 +102,22 @@ describe("single PDF import workflow", () => {
     expect(values.domexAddress).toBe("Testovací 1");
   });
 
+  it("imports distinct Neuron locations and clears previous scoped details before the next PDF", async () => {
+    const { options, values } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockResolvedValue({ ...parsed,
+      domexPropertyAddress: " Stavba 1 ", domexHouseholdAddress: " Domácnost 2 ",
+      domexPropertyAssistance: "basic", domexHouseholdAssistance: "plus",
+    });
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ domexPropertyAddress: "Stavba 1", domexHouseholdAddress: "Domácnost 2",
+      domexPropertyAssistance: "basic", domexHouseholdAssistance: "plus" });
+    mocks.parse.mockResolvedValue({ ...parsed, domexHouseholdSumInsured: 500_000 });
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ domexPropertyAddress: "", domexHouseholdAddress: "",
+      domexPropertyAssistance: null, domexHouseholdAssistance: null, domexHouseholdSumInsured: 500_000 });
+  });
+
   it.each([[true, "domexneuron"], [false, "domex"]] as const)("asks about an ambiguous DOMEX before parsing (%s)", async (answer, expectedProduct) => {
     const { options, ui, values } = harness();
     mocks.detect.mockResolvedValue({ product: "domex", confidence: "medium", requiresDomexNeuronConfirmation: true });
@@ -304,6 +320,19 @@ describe("single PDF import workflow", () => {
     expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("");
     expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
     expect(ui.setRefreshOriginalLookup).toHaveBeenLastCalledWith({ status: "idle", progress: 0, adviserName: null, original: null });
+  });
+
+  it("does not carry indexation consent from one DOMEX Neuron PDF into the next", async () => {
+    const { options, values } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockResolvedValueOnce({ ...parsed, premiumIndexationEnabled: true });
+    await importSingleContractPdf(file(), options);
+    expect(values.premiumIndexationEnabled).toBe(true);
+    mocks.parse.mockResolvedValueOnce({ ...parsed, premiumIndexationEnabled: false });
+    await importSingleContractPdf(file(), options);
+    expect(values.premiumIndexationEnabled).toBe(false);
+    await importSingleContractPdf(file(), options);
+    expect(values.premiumIndexationEnabled).toBeNull();
   });
 
   it("keeps a DOMEX Neuron replacement open for manual correction when its original number is missing", async () => {

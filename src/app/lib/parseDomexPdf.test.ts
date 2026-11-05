@@ -136,6 +136,41 @@ describe("parseDomexPdf", () => {
   });
 
   it.each([
+    ["Valorizace: ANO", true],
+    ["Valorizace NE", false],
+    ["VALORIZACE:\u00a0ano", true],
+    ["Valorizace:\nNE", false],
+    ["Pojistné období: Roční Valorizace: ANO Frekvence placení: Pololetní", true],
+  ] as const)("reads explicit indexation fields: %s", async (label, expected) => {
+    pdfState.lines.splice(12, 0, ...label.split("\n"));
+    expect((await parseDomexPdf(makePdfFile())).premiumIndexationEnabled).toBe(expected);
+  });
+
+  it.each(["Valorizace:", "Valorizace: možná", "Valorizace: 1", "Valorizace: ANO / NE", "Valorizace: ANO NE", "Valorizace: ano-ne"])(
+    "keeps indexation unknown for incomplete, invalid or ambiguous answers: %s", async (label) => {
+      pdfState.lines.splice(12, 0, ...label.split("\n"));
+      expect((await parseDomexPdf(makePdfFile())).premiumIndexationEnabled).toBeNull();
+    },
+  );
+
+  it("does not infer indexation from automatic renewal or explanatory prose", async () => {
+    pdfState.lines.unshift("Při valorizaci se pojistné může změnit.");
+    const result = await parseDomexPdf(makePdfFile());
+    expect(result.automaticRenewal).toBe(true);
+    expect(result.premiumIndexationEnabled).toBeNull();
+  });
+
+  it.each([
+    [["Valorizace: NE", "Valorizace: NE"], false],
+    [["Valorizace: ANO", "Valorizace: ANO"], true],
+    [["Valorizace: ANO", "Valorizace: NE"], true],
+    [["Valorizace: NE", "Valorizace: ANO"], true],
+  ] as const)("reads separate building and household indexation fields before shared provisions: %s", async (fields, expected) => {
+    pdfState.lines.splice(10, 0, "POJIŠTĚNÍ STAVEB", fields[0], "POJIŠTĚNÍ DOMÁCNOSTI", fields[1]);
+    expect((await parseDomexPdf(makePdfFile())).premiumIndexationEnabled).toBe(expected);
+  });
+
+  it.each([
     ["Čtvrtletní", "quarterly", "1 200"],
     ["Roční", "annual", "4 800"],
   ])("maps %s payments independently of the annual term", async (label, frequency, amount) => {
@@ -206,6 +241,25 @@ describe("parseDomexPdf", () => {
     });
     expect(result.pdfImportWarnings).toBeUndefined();
     expect(result.automaticRenewal).toBeUndefined();
+  });
+
+  it("keeps legacy property parsing when a generic liability heading is present", async () => {
+    pdfState.lines = ["POJIŠTĚNÍ STAVEB", "Předmět pojištění Rodinný dům", "Rozsah pojištění MAXI",
+      "Pojistné částky, pojistné a spoluúčast", "Hlavní stavba", "Pojistná částka 4 000 000 Kč", "Spoluúčast 1 000 Kč",
+      "POJIŠTĚNÍ DOMÁCNOSTI", "Předmět pojištění Trvale obydlená domácnost", "Rozsah pojištění MINI",
+      "Pojistné částky, pojistné a spoluúčast", "Trvale obydlená domácnost", "Pojistná částka 400 000 Kč", "Spoluúčast 500 Kč",
+      "POJIŠTĚNÍ ODPOVĚDNOSTI", "Limit pojistného plnění 20 000 000 Kč"];
+    expect(await parseDomexPdf(makePdfFile())).toMatchObject({ domexPropertyType: "dum", domexPropertyCoverage: "maxi",
+      domexPropertySumInsured: 4_000_000, domexHouseholdType: "trvale", domexHouseholdCoverage: "mini", domexHouseholdSumInsured: 400_000 });
+  });
+
+  it("uses the scoped Neuron fields and does not infer legacy addons from risk names", async () => {
+    pdfState.lines.push("POJIŠTĚNÍ STAVEB", "HLAVNÍ STAVBA – Rodinný dům", "Místo pojištění: Testovací 12, Praha",
+      "Varianta pojištění: MAXI", "Požár; Výbuch", "Pojistná částka 4 700 000 Kč",
+      "Náhrada újmy na mobilním telefonu, tabletu a notebooku DPPBOZ", "Odpovědnost nájemce na věci nemovité DPPBOZ");
+    expect(await parseDomexPdf(makePdfFile())).toMatchObject({ domexPropertyType: "dum", domexPropertyAddress: "Testovací 12, Praha",
+      domexPropertyCoverage: "maxi", domexPropertySumInsured: 4_700_000, domexHouseholdType: null, domexHouseholdSumInsured: null,
+      domexOutbuildingSumInsured: null, domexLiabilityMobile: null, domexLiabilityTenant: null, domexLiabilityLandlord: null });
   });
 
   it("keeps the offer number separate from the original policy in stacked Neuron boxes", async () => {

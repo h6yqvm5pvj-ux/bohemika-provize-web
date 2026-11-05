@@ -21,6 +21,14 @@ const render = (props: ComponentProps<typeof AmountComparisonPanel>) => {
 };
 
 describe("commission comparison badges", () => {
+  it("does not excuse an unproven DOMEX Neuron overpayment as a higher commission", () => {
+    const container = render({ comparisons: [{ ...comparison(333.60, 350.28), acceptHigherCommission: false }] });
+    const badge = container.querySelector("tbody tr td:last-child span")!;
+    expect(badge.textContent).toBe("Rozdíl");
+    expect(badge.getAttribute("data-tone")).toBe("error");
+    expect(container.textContent).not.toContain("Vyšší provize");
+  });
+
   it("shows a green growth badge and difference when the paid commission exceeds the expected amount", () => {
     const comparisons = [comparison(76.10, 94.31)];
     const container = render({ comparisons });

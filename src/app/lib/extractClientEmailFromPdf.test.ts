@@ -2,6 +2,35 @@ import { describe, expect, it } from "vitest";
 import { extractClientEmailFromPdfLines as extract } from "./extractClientEmailFromPdf";
 
 describe("emails eligible for permanent client-card storage", () => {
+  it("reads the DOMEX Neuron policyholder email between the intermediary and insured sections", () => {
+    expect(extract([
+      "Číslo nabídky pojistné smlouvy 0090000017",
+      "ZPROSTŘEDKOVATEL",
+      "Jméno a příjmení: Jiří Poradce E-mail: poradce@example.test",
+      "POJISTNÍK",
+      "Jméno a příjmení: Mgr. Tereza Novotná Rodné číslo: 000000/0000",
+      "E-mail: TEREZA@EXAMPLE.TEST Telefon: 777123456",
+      "POJIŠTĚNÝ",
+      "Jméno a příjmení: Petr Pojištěný E-mail: pojisteny@example.test",
+      "MÍSTO POJIŠTĚNÍ",
+    ], "Tereza Novotná")).toEqual({ status: "found", email: "tereza@example.test" });
+  });
+
+  it("does not replace a missing Neuron policyholder email with the agent's or insured person's email", () => {
+    expect(extract([
+      "ZPROSTŘEDKOVATEL", "E-mail: poradce@example.test",
+      "POJISTNÍK", "Jméno a příjmení: Mgr. Tereza Novotná", "E-mail:",
+      "POJIŠTĚNÝ", "Jméno a příjmení: Petr Pojištěný", "E-mail: pojisteny@example.test",
+    ], "Tereza Novotná")).toEqual({ status: "not-found", email: null });
+  });
+
+  it("requires the Neuron policyholder to identify the client card being filled", () => {
+    expect(extract([
+      "POJISTNÍK", "Jméno a příjmení: Tereza Novotná", "E-mail: tereza@example.test",
+      "POJIŠTĚNÝ", "Jméno a příjmení: Petr Pojištěný", "E-mail: pojisteny@example.test",
+    ], "Petr Pojištěný")).toEqual({ status: "name-mismatch", email: null });
+  });
+
   it("reads the identified policyholder, normalizing titles and email case", () => {
     expect(extract(["Pojistník (Vy)", "Jméno a příjmení: Bc. Petr Novák", "E-mail: PETR@EXAMPLE.TEST", "Zprostředkovatel", "poradce@example.test"], "Petr Novák")).toEqual({ status: "found", email: "petr@example.test" });
   });

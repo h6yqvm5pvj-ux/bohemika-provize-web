@@ -21,7 +21,7 @@ export async function fillClientCardEmailFromUploadedPdf(
 ): Promise<ClientCardEmailImportStatus> {
   const source = await db.collection("users").doc(adviser.email).collection("entries").doc(entryId).get();
   const contract = source.data() as ContractDoc | undefined;
-  if (!contract || contract.productKey !== "cppAuto" || contract.entryType === "endorsement" || originalAdviserEmailForContract(contract, adviser.email) !== adviser.email) return "skipped";
+  if (!contract || !["cppAuto", "domexneuron"].includes(contract.productKey ?? "") || contract.entryType === "endorsement" || originalAdviserEmailForContract(contract, adviser.email) !== adviser.email) return "skipped";
   const slug = clientSlugForName(contract.clientName);
   const attachment = normalizeStoredContractPdfAttachment(contract.contractPdfAttachment);
   if (!slug || !attachment || attachment.sha256 !== expectedPdfSha256) return "stale";

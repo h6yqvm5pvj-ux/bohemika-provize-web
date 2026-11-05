@@ -30,8 +30,11 @@ import { PremiumHistorySourceDialog } from "./PremiumHistorySourceDialog";
 import styles from "./autoPremiumHistory.module.css";
 import { resolveAutoPremiumBasis, premiumBaseSourceKey, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 import { PremiumBaseReview, type PremiumBaseReviewItem, type ResolvePremiumBase } from "./PremiumBaseReview";
+import type { DomexNeuronPremiumHistoryChange } from "@/app/lib/domexNeuronPremiumHistory";
 
 type ContractAutoPremiumHistoryProps = {
+  premiumIndexationEnabled?: boolean | null;
+  premiumIndexationHistory?: readonly DomexNeuronPremiumHistoryChange[] | null;
   viewerEmail?: string;
   baseResolutions?: PremiumBaseResolution[] | null;
   onResolveBase?: ResolvePremiumBase;
@@ -54,6 +57,7 @@ type ContractAutoPremiumHistoryProps = {
 type PremiumChangeStatus = "initial" | "increased" | "decreased" | "same" | "detected";
 
 type PremiumHistoryRow = {
+  changeReason?: "indexation";
   key: string;
   premiumKind: ContractAutoPremiumStatementHistoryEntry["premiumKind"];
   statementId: string | null;
@@ -113,6 +117,7 @@ const premiumHistorySemanticKey = (row: PremiumHistoryRow): string =>
 
 const premiumHistoryCompletenessScore = (row: PremiumHistoryRow): number => {
   let score = 0;
+  if (row.changeReason) score += 1;
   if (row.basePremiumPeriod) score += 20;
   if (row.previousAnnualPremium != null) score += 10;
   if (row.newAnnualPremium != null) score += 10;
@@ -630,9 +635,10 @@ export const buildStoredPremiumHistoryRows = (
       const status =
         premiumKind === "auto_initial"
           ? "initial"
-          : premiumStatusFromDifference(differenceAnnual);
+          : premiumStatusFromDifference(differenceAnnual, entry.changeReason === "indexation" ? 0.01 : ANNUAL_PREMIUM_TOLERANCE);
 
       return {
+        changeReason: entry.changeReason === "indexation" ? "indexation" : undefined,
         key:
           entry.key ??
           `${entry.statementId ?? "statement"}-${entry.rowId ?? annualNewPremium}`,
@@ -728,6 +734,8 @@ const shouldSuppressDetectedPremiumRow = (
 };
 
 export function ContractAutoPremiumHistory({
+  premiumIndexationEnabled,
+  premiumIndexationHistory,
   viewerEmail,
   baseResolutions,
   onResolveBase,
@@ -786,11 +794,31 @@ export function ContractAutoPremiumHistory({
     paymentFrequency,
     product
   );
+  if (product === "domexneuron") {
+    // Premium facts are shared with authorized contract readers. Private
+    // statement identities remain visible only through verifiedHistory.
+    const publicHistory = (premiumIndexationHistory ?? []).map(change => {
+      const day = toDate(change.effectiveDate);
+      return {
+        key: `indexation-${change.effectiveDate}-${change.paymentPremium}`,
+        premiumKind: "auto_change" as const, changeReason: "indexation" as const,
+        anniversaryDate: change.effectiveDate,
+        anniversaryNumber: day && policyStart ? Math.max(1, day.getFullYear() - policyStart.getFullYear()) : 1,
+        newPremium: change.paymentPremium,
+        newAnnualPremium: Math.round(change.paymentPremium * paymentsPerYear(frequency) * 100) / 100,
+        basePremiumPeriod: "payment" as const,
+      };
+    });
+    for (const row of buildStoredPremiumHistoryRows(publicHistory, frequency, product)) {
+      if (!storedRows.some(existing => existing.anniversaryDate.getTime() === row.anniversaryDate.getTime() &&
+        existing.newAnnualPremium === row.newAnnualPremium)) storedRows.push(row);
+    }
+  }
   const storedChangeRows = storedRows.filter(
     (row) => row.premiumKind !== "auto_initial" && row.status !== "same"
   );
 
-  if (!showAutoStatementScan && storedChangeRows.length === 0) return null;
+  if (!showAutoStatementScan && product !== "domexneuron" && storedChangeRows.length === 0) return null;
 
   const rowsByKey = new Map<string, PremiumHistoryRow>();
   storedChangeRows.forEach((row) => rowsByKey.set(row.key, row));
@@ -856,6 +884,15 @@ export function ContractAutoPremiumHistory({
       </div>
 
       <div id={contentId} hidden={!isExpanded}>
+      {product === "domexneuron" && (
+        <p className={styles.message}>
+          {premiumIndexationEnabled === true
+            ? "Valorizace: ANO. Pojistné se může při výročí zvýšit. Historie zachycuje skutečné změny z provizních výpisů; budoucí výpočty vycházejí z posledního potvrzeného pojistného."
+            : premiumIndexationEnabled === false
+              ? "Valorizace: NE. Pojistné se automaticky nezvyšuje."
+              : "Valorizace: neurčena. Automatické zvýšení pojistného se neuplatňuje, dokud není valorizace potvrzena."}
+        </p>
+      )}
       <div className={styles.summary}>
         <div className={styles.summaryStart}>
           <span className={styles.label}>Při sjednání</span>
@@ -918,7 +955,7 @@ export function ContractAutoPremiumHistory({
                 : null);
             const displayStatus =
               row.status === "detected"
-                ? premiumStatusFromDifference(rowDifferenceAnnual)
+                ? premiumStatusFromDifference(rowDifferenceAnnual, row.changeReason === "indexation" ? 0.01 : ANNUAL_PREMIUM_TOLERANCE)
                 : row.status;
             const StatusIcon = statusIcon(displayStatus);
             const isLifeIncrease = row.premiumKind === "life_increase";
@@ -936,7 +973,7 @@ export function ContractAutoPremiumHistory({
                 <article className={styles.eventContent}>
                   <div className={styles.eventTop}>
                     <div className={styles.eventHeading}>
-                      <h4>{isLifeIncrease ? "Změna pojistného" : `${row.anniversaryNumber}. výročí`}</h4>
+                      <h4>{isLifeIncrease ? "Změna pojistného" : `${row.changeReason === "indexation" ? "Valorizace · " : ""}${row.anniversaryNumber}. výročí`}</h4>
                       <span className={styles.eventDate}>
                         <CalendarDays size={13} aria-hidden="true" />
                         {isLifeIncrease ? "Účinnost " : ""}{formatDate(row.anniversaryDate)}

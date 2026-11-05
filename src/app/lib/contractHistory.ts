@@ -26,6 +26,7 @@ const LABELS: Record<string, string> = {
   contractSignedDate: "Datum sjednání", policyStartDate: "Počátek smlouvy",
   policyEndDate: "Konec smlouvy", stornoDate: "Datum storna", status: "Stav smlouvy",
   policyTermEndDate: "Konec pojistného období", automaticRenewal: "Prolongace smlouvy",
+  premiumIndexationEnabled: "Valorizace pojistného",
   paid: "Zaplaceno", inputAmount: "Částka / pojistné", effectiveInputAmount: "Aktuální částka / pojistné",
   frequencyRaw: "Frekvence platby", durationYears: "Doba trvání (roky)", durationMonths: "Doba trvání (měsíce)",
   pensionTargetAge: "Cílový věk spoření", note: "Poznámka", isRefresh: "Refresh",

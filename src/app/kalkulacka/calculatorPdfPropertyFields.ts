@@ -1,9 +1,23 @@
 import type { CalculatorPdfFormValues, PdfFormMappingResult } from "./calculatorPdfFormTypes";
 import type { ParsedContractPdf } from "./calculatorPdfImport";
 
+export const parsedDomexAssistanceValue = (value: unknown): "basic" | "plus" | null =>
+  value === "basic" || value === "plus" ? value : null;
+
 export function mapPropertyPdfFormValues(parsed: ParsedContractPdf): PdfFormMappingResult {
   const values: Partial<CalculatorPdfFormValues> = {};
   let applied = 0;
+  for (const field of ["domexPropertyAddress", "domexHouseholdAddress"] as const) {
+    if (!(field in parsed)) continue;
+    const address = typeof parsed[field] === "string" ? parsed[field].trim() : "";
+    values[field] = address;
+    if (address) applied += 1;
+  }
+  for (const field of ["domexPropertyAssistance", "domexHouseholdAssistance"] as const) {
+    if (!(field in parsed)) continue;
+    values[field] = parsedDomexAssistanceValue(parsed[field]);
+    if (values[field] != null) applied += 1;
+  }
   if ("domexAddress" in parsed) {
     const address = typeof parsed.domexAddress === "string" ? parsed.domexAddress.trim() : "";
     values.domexAddress = address;

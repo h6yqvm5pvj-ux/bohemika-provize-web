@@ -180,7 +180,7 @@ describe("first PDF attachment from contract detail", () => {
   });
 });
 
-describe("CPP Auto attachment contact import", () => {
+describe("contract PDF private contact import", () => {
   it.each(["cppPPRbez", "cppPPRs"])("fills IČO only after committing a KOMPLEX PDF: %s", async productKey => {
     mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
     mocks.fillCompanyId.mockResolvedValue("saved");
@@ -201,22 +201,25 @@ describe("CPP Auto attachment contact import", () => {
     expect((await POST(request())).status).toBe(200);
     expect(mocks.fillCompanyId).not.toHaveBeenCalled();
   });
-  it("imports into the authenticated owner's card after the PDF is committed", async () => {
+  it.each(["cppAuto", "domexneuron"])("imports %s into the authenticated owner's card after the PDF is committed", async productKey => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
     const response = await POST(request());
     expect(await response.json()).toMatchObject({ ok: true, clientCardEmail: "saved" });
     expect(mocks.fill).toHaveBeenCalledWith(db, { email: owner, uid: "owner-uid" }, "entry", "verified-hash");
     expect(mocks.commit.mock.invocationCallOrder[0]).toBeLessThan(mocks.fill.mock.invocationCallOrder[0]);
   });
-  it("keeps the successful upload if email enrichment fails", async () => {
+  it.each(["cppAuto", "domexneuron"])("keeps the successful %s upload if email enrichment fails", async productKey => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
     mocks.fill.mockRejectedValue(new Error("private PDF details"));
     const response = await POST(request());
     expect(await response.json()).toEqual({ ok: true, attachment: { hasFile: true }, clientCardEmail: "unavailable" });
     expect(mocks.remove).not.toHaveBeenCalled();
   });
-  it.each([
+  it.each(["cppAuto", "domexneuron"].flatMap(productKey => [
     { ...ctx, isImpersonating: true, impersonation: { actorRole: "admin" } },
     { ...ctx, email: "override@example.test", contractAccessEmails: [owner] },
-  ])("does not create cards while impersonating or uploading for someone else", async context => {
+  ].map(context => ({ productKey, context }))))("does not create cards while impersonating or uploading for someone else: $productKey", async ({ productKey, context }) => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
     mocks.guard.mockResolvedValue({ ok: true, ctx: context, withRateLimit: (response: NextResponse) => response });
     expect((await POST(request())).status).toBe(200);
     expect(mocks.fill).not.toHaveBeenCalled();

@@ -1,13 +1,76 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildStoredPremiumHistoryRows,
+  ContractAutoPremiumHistory,
   initialAnnualPremiumFromStatementHistory,
   resolveAutoSignedAnnualPremiumValue,
   signedAnnualPremiumMatchesStatementChange,
 } from "./ContractAutoPremiumHistory";
 
 describe("auto premium history display helpers", () => {
+  it.each([true, false, null])("shows the Neuron indexation setting without inventing future premium changes: %s", value => {
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "domexneuron", premiumIndexationEnabled: value,
+      policyStartDate: "2026-10-12", signedAnnualPremium: 4800,
+      systemAnnualPremium: 4800, paymentFrequency: "semiannual", statements: [],
+    }));
+    expect(html).toContain("Změny pojistného");
+    expect(html).toContain(value === true ? "Valorizace: ANO" : value === false ? "Valorizace: NE" : "Valorizace: neurčena");
+    expect(html).not.toContain("Valorizace · 1. výročí");
+    if (value === true) expect(html).toContain("posledního potvrzeného pojistného");
+  });
+
+  it("labels a confirmed Neuron indexation with its premiums, anniversary and statement source", () => {
+    const storedHistory = [{
+      key: "indexation-1", premiumKind: "auto_change" as const, changeReason: "indexation" as const,
+      anniversaryNumber: 1, anniversaryDate: "2027-10-12", validFrom: "2026-10-12",
+      previousPremium: 2400, newPremium: 2520,
+      previousAnnualPremium: 4800, newAnnualPremium: 5040, differenceAnnual: 240,
+      basePremiumPeriod: "payment" as const, source: "own" as const,
+      statementId: "statement-1", statementNumber: "SYNTH-001", commissionCode: "B101",
+    }];
+    expect(buildStoredPremiumHistoryRows(storedHistory, "semiannual", "domexneuron")[0]).toMatchObject({
+      changeReason: "indexation", previousAnnualPremium: 4800, newAnnualPremium: 5040, differenceAnnual: 240,
+    });
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "domexneuron", premiumIndexationEnabled: true, storedHistory,
+      systemAnnualPremium: 5040, signedAnnualPremium: 4800, statements: [], paymentFrequency: "semiannual",
+    }));
+    expect(html).toContain("Valorizace · 1. výročí");
+    expect(html).toContain("Historie změn pojistného");
+    expect(html).toContain("Zdroj změny");
+  });
+
+  it("shows shared premium changes without another viewer's statement details", () => {
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "domexneuron", premiumIndexationEnabled: true,
+      policyStartDate: "2026-10-12", signedAnnualPremium: 4800,
+      systemAnnualPremium: 4801, paymentFrequency: "annual", statements: [],
+      premiumIndexationHistory: [{ effectiveDate: "2027-10-12", paymentPremium: 4801 }],
+    }));
+    expect(html).toContain("Valorizace · 1. výročí");
+    expect(html).toContain("Pojistné zvýšeno");
+    expect(html).not.toContain("Zobrazit výpis");
+  });
+
+  it("keeps an accessible source once when the same change is also shared as premium-only facts", () => {
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "domexneuron", premiumIndexationEnabled: true,
+      policyStartDate: "2026-10-12", signedAnnualPremium: 4800,
+      systemAnnualPremium: 5040, paymentFrequency: "annual", statements: [],
+      premiumIndexationHistory: [{ effectiveDate: "2027-10-12", paymentPremium: 5040 }],
+      storedHistory: [{
+        key: "indexation-1", premiumKind: "auto_change", changeReason: "indexation",
+        anniversaryNumber: 1, anniversaryDate: "2027-10-12", newPremium: 5040,
+        previousPremium: 4800, statementId: "own-synthetic-source", basePremiumPeriod: "annual",
+      }],
+    }));
+    expect(html.match(/Valorizace · 1. výročí/g)).toHaveLength(1);
+  });
+
   it("prefers the statement initial base for auto contracts created from statements", () => {
     expect(
       resolveAutoSignedAnnualPremiumValue({

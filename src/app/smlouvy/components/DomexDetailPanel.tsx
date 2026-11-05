@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ExternalLink,
   House,
   HousePlus,
@@ -13,6 +14,10 @@ import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
 
 type DomexDetail = {
   address?: string | null;
+  propertyAddress?: string | null;
+  householdAddress?: string | null;
+  propertyAssistance?: "basic" | "plus" | null;
+  householdAssistance?: "basic" | "plus" | null;
   propertyType?: string | null;
   propertyCoverage?: string | null;
   sumInsured?: number | null;
@@ -33,6 +38,10 @@ type DomexDetail = {
 
 export type DomexFields = {
   address: string;
+  propertyAddress: string;
+  householdAddress: string;
+  propertyAssistance: string;
+  householdAssistance: string;
   propertyType: string;
   propertyCoverage: string;
   sumInsured: string;
@@ -55,6 +64,7 @@ type DomexFieldKey = keyof DomexFields;
 
 type Props = {
   prod?: Product | null;
+  premiumIndexationEnabled?: boolean | null;
   editMode: boolean;
   fields: DomexFields;
   domexDetail: DomexDetail;
@@ -117,15 +127,16 @@ const propertyTypeLabel = (val?: string | null): string => {
   return map[key] ?? (val ?? "—");
 };
 
-export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange }: Props) {
+export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fields, domexDetail, onChange }: Props) {
   if (prod !== "domex" && prod !== "domexneuron" && prod !== "maxdomov") return null;
+  const isNeuron = prod === "domexneuron";
 
   const hasValue = (v?: string | null) => !!(v && v.trim().length > 0);
   const hasNum = (v?: number | null) => v != null && Number.isFinite(v);
 
   const showPropertyBlock =
     editMode ||
-    hasValue(domexDetail?.address) ||
+    (isNeuron ? hasValue(domexDetail?.propertyAddress) || hasValue(domexDetail?.propertyAssistance) : hasValue(domexDetail?.address)) ||
     hasValue(domexDetail?.propertyType) ||
     hasValue(domexDetail?.propertyCoverage) ||
     hasNum(domexDetail?.sumInsured) ||
@@ -135,12 +146,15 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
 
   const showHouseholdBlock =
     editMode ||
+    (isNeuron && (hasValue(domexDetail?.householdAddress) || hasValue(domexDetail?.householdAssistance))) ||
     hasValue(domexDetail?.householdType) ||
     hasValue(domexDetail?.householdCoverage) ||
     hasNum(domexDetail?.householdSumInsured) ||
     hasNum(domexDetail?.householdDeductible);
 
-  const showAssistance = editMode || !!domexDetail?.assistancePlus;
+  const showAssistance = isNeuron
+    ? editMode || hasValue(domexDetail?.propertyAssistance) || hasValue(domexDetail?.householdAssistance)
+    : editMode || !!domexDetail?.assistancePlus;
 
   const showLiabilityBlock =
     editMode ||
@@ -151,16 +165,28 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
     !!domexDetail?.liabilityLandlord;
 
   const showNote = editMode || hasValue(domexDetail?.note);
+  const propertyAddress = domexDetail?.propertyAddress === undefined
+    ? domexDetail?.address ?? "" : domexDetail.propertyAddress ?? "";
   const resolvedAddress = (editMode
-    ? fields.address
-    : domexDetail?.address ?? ""
+    ? isNeuron ? fields.propertyAddress : fields.address
+    : isNeuron ? propertyAddress : domexDetail?.address ?? ""
   ).trim();
-  const cuzkHref = resolvedAddress.length >= 2
+  const cuzkHref = !isNeuron && resolvedAddress.length >= 2
     ? `/cuzk?address=${encodeURIComponent(resolvedAddress)}`
     : null;
+  const hasInsuredAmounts = editMode
+    ? [fields.sumInsured, fields.householdSumInsured].some(value => Number(value.replace(/\s/g, "").replace(",", ".")) > 0)
+    : [domexDetail?.sumInsured, domexDetail?.householdSumInsured].some(value => hasNum(value) && value! > 0);
+  const assistanceLabel = (value?: string | null) => value === "plus" ? "Asistence PLUS" : value === "basic" ? "Domácí asistence" : "Neurčeno";
 
   return (
     <>
+      {isNeuron && premiumIndexationEnabled === true && hasInsuredAmounts && (
+        <p role="note" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-2">
+          <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>Uvedené pojistné částky vycházejí z PDF a mohou se v čase navyšovat z důvodu schválené valorizace.</span>
+        </p>
+      )}
       {showPropertyBlock && (
         <>
           <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
@@ -170,14 +196,14 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
           </div>
           <div className="space-y-2 text-sm text-slate-900">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-              <span className="shrink-0 text-slate-600">Adresa</span>
+              <span className="shrink-0 text-slate-600">{isNeuron ? "Místo pojištění" : "Adresa"}</span>
               <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-center justify-end gap-2">
                 <span className="min-w-0 max-w-full font-semibold text-right [overflow-wrap:anywhere]">
                   {editMode ? (
                     <input
                       type="text"
-                      value={fields.address}
-                      onChange={(e) => onChange("address", e.target.value)}
+                      value={isNeuron ? fields.propertyAddress : fields.address}
+                      onChange={(e) => onChange(isNeuron ? "propertyAddress" : "address", e.target.value)}
                       aria-label="Adresa pojištěné nemovitosti"
                       className="w-44 max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                       placeholder="Adresa"
@@ -209,19 +235,21 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
                     className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
                   >
                     <option value="">Vyber typ</option>
-                    <option value="byt">Byt</option>
-                    <option value="dum">Dům</option>
+                    <option value="byt">{isNeuron ? "Bytová jednotka" : "Byt"}</option>
+                    <option value="dum">{isNeuron ? "Rodinný dům" : "Dům"}</option>
                     <option value="chata">Chata</option>
                     <option value="rekreace">Rekreační objekt</option>
                     <option value="ostatni">Ostatní</option>
                   </select>
                 ) : (
-                  propertyTypeLabel(domexDetail?.propertyType)
+                  isNeuron && domexDetail?.propertyType === "dum" ? "Rodinný dům"
+                    : isNeuron && domexDetail?.propertyType === "byt" ? "Bytová jednotka"
+                    : propertyTypeLabel(domexDetail?.propertyType)
                 )}
               </span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-600">Rozsah</span>
+              <span className="text-slate-600">{isNeuron ? "Varianta pojištění" : "Rozsah"}</span>
               <span className="font-semibold text-right">
                 {editMode ? (
                   <select
@@ -312,6 +340,22 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
           <span>Pojištění domácnosti</span>
         </div>
         <div className="space-y-2 text-sm text-slate-900">
+          {isNeuron && (
+            <div className="flex justify-between gap-2">
+              <span className="text-slate-600">Místo pojištění</span>
+              <span className="min-w-0 font-semibold text-right [overflow-wrap:anywhere]">
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={fields.householdAddress}
+                    onChange={(event) => onChange("householdAddress", event.target.value)}
+                    aria-label="Adresa pojištěné domácnosti"
+                    className="w-44 max-w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900"
+                  />
+                ) : domexDetail?.householdAddress || "—"}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Typ</span>
             <span className="font-semibold text-right">
@@ -335,7 +379,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
             </span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Rozsah</span>
+            <span className="text-slate-600">{isNeuron ? "Varianta pojištění" : "Rozsah"}</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <select
@@ -395,14 +439,41 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
         <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
         <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
           <LifeBuoy size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>Asistence PLUS</span>
+          <span>{isNeuron ? "Asistenční služby" : "Asistence PLUS"}</span>
         </div>
-        <ToggleRow
-          label="Asistence PLUS"
-          checked={fields.assistancePlus}
-          onChange={(val) => onChange("assistancePlus", val)}
-          disabled={!editMode}
-        />
+        {isNeuron ? (
+          <dl className="space-y-2 text-sm text-slate-900">
+            {([
+              ["Stavba", "propertyAssistance"],
+              ["Domácnost", "householdAssistance"],
+            ] as const).map(([label, key]) => (editMode || hasValue(domexDetail?.[key])) && (
+              <div key={key} className="flex justify-between gap-2">
+                <dt className="text-slate-600">{label}</dt>
+                <dd className="font-semibold text-right">
+                  {editMode ? (
+                    <select
+                      aria-label={`Asistence ${label.toLowerCase()}`}
+                      value={fields[key]}
+                      onChange={(event) => onChange(key, event.target.value)}
+                      className="w-44 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+                    >
+                      <option value="">Neurčeno / nepojištěno</option>
+                      <option value="basic">Domácí asistence</option>
+                      <option value="plus">Asistence PLUS</option>
+                    </select>
+                  ) : assistanceLabel(domexDetail?.[key])}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <ToggleRow
+            label="Asistence PLUS"
+            checked={fields.assistancePlus}
+            onChange={(val) => onChange("assistancePlus", val)}
+            disabled={!editMode}
+          />
+        )}
         </div>
       )}
 
@@ -414,7 +485,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
         </div>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
-            <span className="text-slate-600">Pojistná částka</span>
+            <span className="text-slate-600">{isNeuron ? "Limit pojistného plnění" : "Pojistná částka"}</span>
             <span className="font-semibold text-right">
               {editMode ? (
                 <input
@@ -445,7 +516,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
               )}
             </span>
           </div>
-          <div className="space-y-1">
+          {!isNeuron && <div className="space-y-1">
             <ToggleRow
               label="Náhrada újmy mobilní elektronice"
               checked={fields.liabilityMobile}
@@ -464,7 +535,7 @@ export function DomexDetailPanel({ prod, editMode, fields, domexDetail, onChange
               onChange={(val) => onChange("liabilityLandlord", val)}
               disabled={!editMode}
             />
-          </div>
+          </div>}
         </div>
         </div>
       )}

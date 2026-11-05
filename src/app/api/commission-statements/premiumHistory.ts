@@ -15,6 +15,8 @@ import {
 import { commissionStatementIdentityKey } from "./statementIdentity";
 import { mergeRebuiltStatementRecords, ownsStatementRecord, statementRecordArray } from "./statementRebuildScope";
 import { resolveAutoPremiumBasis, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
+import { isDomexNeuronStatementProduct, resolveDomexNeuronIndexation } from "@/app/lib/domexNeuronIndexation";
+import type { Position } from "@/app/types/domain";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
 const LEGACY_STATEMENT_CREATED_CONTRACT_WINDOW_MS = 15 * 60 * 1000;
@@ -30,6 +32,7 @@ export type PremiumStatementRow = {
   signedAt: string | null;
   validFrom: string | null;
   source: "own" | "manager";
+  commission?: number | null;
 };
 
 export type PremiumHistoryContract = {
@@ -39,6 +42,8 @@ export type PremiumHistoryContract = {
   inputAmount?: number | null;
   effectiveInputAmount?: number | null;
   calculationInputAmount?: number | null;
+  premiumIndexationEnabled?: boolean | null;
+  position?: Position | null;
   createdAt?: unknown;
   createdFromCommissionStatement?: unknown;
   createdFromCommissionStatementId?: unknown;
@@ -52,6 +57,7 @@ export type PremiumHistoryContract = {
 };
 
 export type PremiumStatementHistoryEntry = {
+  changeReason?: "indexation";
   sourceBasePremium?: number;
   paymentFrequencyAtImport?: string | null;
   basePremiumResolutionKey?: string;
@@ -404,6 +410,7 @@ export const premiumHistoryEntryFromStatementRow = ({
   nowMs,
   writtenBy,
   allowCurrentPremiumFallback = true,
+  indexationCoefficient,
 }: {
   row: PremiumStatementRow;
   contract: PremiumHistoryContract;
@@ -417,6 +424,7 @@ export const premiumHistoryEntryFromStatementRow = ({
   nowMs: number;
   writtenBy: string;
   allowCurrentPremiumFallback?: boolean;
+  indexationCoefficient?: number | null;
 }): PremiumStatementHistoryEntry | null => {
   if (row.premiumKind === "life_increase") {
     // U životních produktů je základna NV/NB řádku pouze podklad pro
@@ -426,6 +434,39 @@ export const premiumHistoryEntryFromStatementRow = ({
 
   if (!isAutoProduct(contract.productKey ?? null) && !isPropertyProduct(contract.productKey ?? null)) {
     return null;
+  }
+  if (contract.productKey === "domexneuron") {
+    if (row.premiumKind !== "auto_change" || !isDomexNeuronStatementProduct(row)) return null;
+    const start = toMillis(contract.policyStartDate);
+    const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(row.commissionCode, contract.frequencyRaw);
+    const anniversaryDate = start == null || anniversaryNumber == null ? null : addUtcYearsClamped(start, anniversaryNumber);
+    if (anniversaryDate == null) return null;
+    const previousAnnualPremium = autoPremiumBeforeStatement(contract, anniversaryDate, { allowCurrentFallback: allowCurrentPremiumFallback });
+    const indexation = resolveDomexNeuronIndexation({
+      contract, row, previousAnnualPremium, coefficient: indexationCoefficient,
+      referenceDate: periodEndMs ?? statementChronologyMs,
+    });
+    if (indexation.status !== "confirmed") return null;
+    const payments = contractPaymentPeriodsPerYear(contract);
+    const previousAnnual = previousAnnualPremium ?? contractCurrentAutoAnnualPremium(contract);
+    if (previousAnnual == null) return null;
+    const previousPremium = Math.round(previousAnnual / payments * 100) / 100;
+    const annualPremium = indexation.annualPremium!;
+    const paymentPremium = indexation.paymentPremium!;
+    return {
+      changeReason: "indexation", premiumKind: "auto_change",
+      key: compactHash([statementId, row.rowId, row.contractNumber, row.productCode, row.commissionCode,
+        row.basePremium, indexation.basePremiumPeriod, anniversaryNumber].join(":"), 32),
+      statementId, statementNumber, statementPeriod, statementDate, statementChronologyMs, payoutMonthKey,
+      anniversaryNumber: anniversaryNumber!, anniversaryDate: isoDateFromMs(anniversaryDate),
+      previousPremium, newPremium: paymentPremium, difference: Math.round((paymentPremium - previousPremium) * 100) / 100,
+      previousAnnualPremium: previousAnnual, newAnnualPremium: annualPremium,
+      differenceAnnual: Math.round((annualPremium - previousAnnual) * 100) / 100,
+      basePremiumPeriod: indexation.basePremiumPeriod!, sourceBasePremium: row.basePremium,
+      paymentFrequencyAtImport: contract.frequencyRaw ?? null,
+      productCode: row.productCode, commissionCode: row.commissionCode, rowId: row.rowId,
+      validFrom: row.validFrom, source: row.source, writtenAtMs: nowMs, writtenBy,
+    };
   }
   if (row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
 

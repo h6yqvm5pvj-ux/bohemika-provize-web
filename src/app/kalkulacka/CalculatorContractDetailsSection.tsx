@@ -38,6 +38,9 @@ type CalculatorContractDetailsSectionProps = {
   showAutomaticRenewal?: boolean;
   automaticRenewal?: boolean | null;
   onAutomaticRenewalChange?: (value: boolean) => void;
+  showPremiumIndexation?: boolean;
+  premiumIndexationEnabled?: boolean | null;
+  onPremiumIndexationChange?: (value: boolean | null) => void;
   stornoDate: string;
   onClientNameChange: (value: string) => void;
   onClientNameFocus: () => void;
@@ -73,6 +76,9 @@ export function CalculatorContractDetailsSection({
   showAutomaticRenewal = false,
   automaticRenewal = null,
   onAutomaticRenewalChange,
+  showPremiumIndexation = false,
+  premiumIndexationEnabled = null,
+  onPremiumIndexationChange,
   stornoDate,
   onClientNameChange,
   onClientNameFocus,
@@ -277,7 +283,7 @@ export function CalculatorContractDetailsSection({
           )}
         </div>
         {showAutomaticRenewal && (
-          <fieldset className="space-y-1">
+          <fieldset className="space-y-1" aria-label="Prolongace smlouvy">
             <legend className="text-sm font-semibold text-slate-800">Prolongace smlouvy</legend>
             <div className="flex gap-2">
               {([true, false] as const).map((value) => (
@@ -289,6 +295,21 @@ export function CalculatorContractDetailsSection({
               ))}
             </div>
             <p className="text-xs text-slate-500">{automaticRenewal === true ? "Smlouva se automaticky obnovuje do storna." : automaticRenewal === false ? "Smlouva skončí k uvedenému datu." : "Automatická obnova není potvrzená. Ověř ji podle smlouvy."}</p>
+          </fieldset>
+        )}
+        {showPremiumIndexation && (
+          <fieldset className="space-y-1" aria-label="Valorizace">
+            <legend className="text-sm font-semibold text-slate-800">Valorizace</legend>
+            <div className="flex flex-wrap gap-2">
+              {([true, false, null] as const).map((value) => (
+                <button key={String(value)} type="button" aria-pressed={premiumIndexationEnabled === value}
+                  onClick={() => onPremiumIndexationChange?.(value)}
+                  className={`rounded-xl border px-4 py-2 text-sm font-semibold ${premiumIndexationEnabled === value ? "border-violet-700 bg-violet-700 text-white" : "border-violet-200 bg-white text-slate-800"}`}>
+                  {value === null ? "Neurčeno" : value ? "ANO" : "NE"}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">{premiumIndexationEnabled === true ? "Valorizace je zapnutá." : premiumIndexationEnabled === false ? "Valorizace je vypnutá." : "Valorizace není potvrzená. Ověř ANO / NE podle smlouvy."}</p>
           </fieldset>
         )}
         {showPolicyEndDateField && !(showAutomaticRenewal && automaticRenewal === true) && (

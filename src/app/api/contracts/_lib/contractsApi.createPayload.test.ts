@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DOMEX_DETAIL_ALLOWED_KEYS,
+  MAXDOMOV_DETAIL_ALLOWED_KEYS,
   normalizeCreateEntryPayload,
   sanitizeDetailObject,
 } from "./contractsApi.createPayload";
@@ -41,6 +42,64 @@ describe("contracts create payload parsing", () => {
   const neuronEntry = (overrides: Record<string, unknown> = {}) => baseEntry({
     productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     frequencyRaw: "semiannual", policyTermEndDate: "2027-11-04", ...overrides,
+  });
+
+  it("keeps separate DOMEX property/household addresses and assistance levels", () => {
+    expect(normalizedPayload(neuronEntry({ domexDetail: {
+      address: "Původní místo 1, Testov", propertyAddress: "  Testovací 11, Testov  ", householdAddress: "  Testovací 22, Testov ",
+      propertyAssistance: "basic", householdAssistance: "plus", assistancePlus: true,
+    } })).domexDetail).toEqual({
+      address: "Původní místo 1, Testov", propertyAddress: "Testovací 11, Testov", householdAddress: "Testovací 22, Testov",
+      propertyAssistance: "basic", householdAssistance: "plus", assistancePlus: true,
+    });
+    expect(normalizedPayload(neuronEntry({ domexDetail: {
+      propertyAddress: " ", householdAddress: null, propertyAssistance: null, householdAssistance: null,
+    } })).domexDetail).toEqual({
+      propertyAddress: null, householdAddress: null, propertyAssistance: null, householdAssistance: null,
+    });
+  });
+
+  it.each(["propertyAssistance", "householdAssistance"])("accepts only exact assistance enum values for %s", field => {
+    for (const value of [true, false, 0, 1, "", "PLUS", "ano", " basic ", {}, []]) {
+      expect(normalizeCreateEntryPayload({ raw: neuronEntry({ domexDetail: { [field]: value } }), ownerEmail, ownerUid }))
+        .toMatchObject({ ok: false, error: expect.stringContaining(`domexDetail.${field}`) });
+    }
+  });
+
+  it.each(["propertyAddress", "householdAddress"])("validates %s as a bounded plain-text address", field => {
+    for (const value of [true, 1, {}, [], "x".repeat(201), "Test\u0000ov", "Test\nov", "Test\u007fov"]) {
+      expect(normalizeCreateEntryPayload({ raw: neuronEntry({ domexDetail: { [field]: value } }), ownerEmail, ownerUid }))
+        .toMatchObject({ ok: false, error: expect.stringContaining(`domexDetail.${field}`) });
+    }
+    expect(normalizedPayload(neuronEntry({ domexDetail: { [field]: "x".repeat(200) } })).domexDetail)
+      .toEqual({ [field]: "x".repeat(200) });
+  });
+
+  it.each(["propertyAddress", "householdAddress", "propertyAssistance", "householdAssistance"])("keeps the new DOMEX field %s outside the MAXDOMOV allowlist", field => {
+    const value = field.endsWith("Assistance") ? "plus" : "Testovací 11, Testov";
+    expect(sanitizeDetailObject({ [field]: value }, "maxdomovDetail", MAXDOMOV_DETAIL_ALLOWED_KEYS))
+      .toMatchObject({ ok: false });
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ productKey: "maxdomov", maxdomovDetail: { [field]: value } }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining(`maxdomovDetail.${field}`) });
+  });
+
+  it.each([true, false, null])("preserves the explicit Neuron premium-indexation setting: %j", premiumIndexationEnabled => {
+    expect(normalizedPayload(neuronEntry({ premiumIndexationEnabled }))).toMatchObject({ premiumIndexationEnabled });
+  });
+
+  it("keeps an omitted Neuron premium-indexation setting unknown", () => {
+    expect(normalizedPayload(neuronEntry()).premiumIndexationEnabled).toBeNull();
+    expect(normalizedPayload(baseEntry())).not.toHaveProperty("premiumIndexationEnabled");
+  });
+
+  it.each(["ANO", "false", "", 0, 1, [], {}])("rejects malformed Neuron premium-indexation input: %j", premiumIndexationEnabled => {
+    expect(normalizeCreateEntryPayload({ raw: neuronEntry({ premiumIndexationEnabled }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("premiumIndexationEnabled") });
+  });
+
+  it.each([true, false])("rejects premium indexation for a different product: %j", premiumIndexationEnabled => {
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ premiumIndexationEnabled }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("DOMEX Neuron") });
   });
 
   it("stores the term boundary without expiring a renewable Neuron contract", () => {

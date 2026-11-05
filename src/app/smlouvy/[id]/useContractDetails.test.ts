@@ -76,6 +76,36 @@ const buildPlan = (
   });
 
 describe("useContractDetails", () => {
+  it("saves Neuron addresses and assistance independently without adding them to other products", () => {
+    const details = {
+      editDomexPropertyAddress: " Testovací 10, Město A ",
+      editDomexHouseholdAddress: " Ukázková 20, Město B ",
+      editDomexPropertyAssistance: "basic", editDomexHouseholdAssistance: "plus",
+      editDomexSumInsured: "5 200 000", editDomexHouseholdSumInsured: "850 000",
+    };
+    const plan = buildPlan("domexneuron", details);
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.domexDetail).toMatchObject({
+      address: "Testovací 10, Město A", propertyAddress: "Testovací 10, Město A", householdAddress: "Ukázková 20, Město B",
+      propertyAssistance: "basic", householdAssistance: "plus", sumInsured: 5_200_000, householdSumInsured: 850_000,
+    });
+    expect(plan.applyToContract({ id: "neuron-1" } as ContractDoc).domexDetail).toMatchObject({ propertyAssistance: "basic", householdAssistance: "plus" });
+    const legacy = buildPlan("maxdomov", details);
+    expect(legacy.ok && legacy.updates.maxdomovDetail).not.toHaveProperty("propertyAddress");
+    expect(legacy.ok && legacy.updates.maxdomovDetail).not.toHaveProperty("householdAssistance");
+  });
+
+  it.each([true, false, null])("preserves the explicit Neuron premium indexation setting %s", value => {
+    const plan = buildPlan("domexneuron", { editPremiumIndexationEnabled: value });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.premiumIndexationEnabled).toBe(value);
+    expect(plan.applyToContract({ id: "neuron-1" } as ContractDoc).premiumIndexationEnabled).toBe(value);
+    const otherProduct = buildPlan("domex", { editPremiumIndexationEnabled: value });
+    expect(otherProduct.ok && otherProduct.updates).not.toHaveProperty("premiumIndexationEnabled");
+  });
+
   it("separates the renewable term boundary from actual maturity", () => {
     const plan = buildPlan("domexneuron", { editAutomaticRenewal: true, editPolicyEnd: "2027-11-04" });
     expect(plan.ok).toBe(true);

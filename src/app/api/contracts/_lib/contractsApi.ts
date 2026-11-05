@@ -1,4 +1,5 @@
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
+import { createDomexNeuronPremiumTimeline } from "@/app/lib/domexNeuronPremiumHistory";
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
 import { loadHomeProductionOwners, parseProductionWindow } from "@/lib/server/homeProduction";
 import { combineOwnerProduction } from "@/app/home/productionSummary";
@@ -127,6 +128,7 @@ import {
 } from "./contractsApi.listFilters";
 import {
   DOMEX_DETAIL_ALLOWED_KEYS,
+  MAXDOMOV_DETAIL_ALLOWED_KEYS,
   FLEXI_DETAIL_ALLOWED_KEYS,
   NEON_DETAIL_ALLOWED_KEYS,
   SLAVIA_AUTO_DETAIL_ALLOWED_KEYS,
@@ -306,6 +308,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "policyEndDate",
   "policyTermEndDate",
   "automaticRenewal",
+  "premiumIndexationEnabled",
   "carMake",
   "carPlate",
   "carVin",
@@ -402,6 +405,7 @@ const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
 ]);
 const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "automaticRenewal",
+  "premiumIndexationEnabled",
   "carHullRiskAccident",
   "carHullRiskTheft",
   "carHullRiskNatural",
@@ -945,6 +949,9 @@ const toContractListResponseItem = ({
           ? data.premiumDelta
           : undefined,
       refreshCommissionBase: data.refreshCommissionBase ?? null,
+      ...(data.productKey === "domexneuron" ? {
+        premiumIndexationHistory: createDomexNeuronPremiumTimeline(data).changes,
+      } : {}),
       items: Array.isArray(data.items) ? data.items : [],
       cashflowPayoutMatches: Array.isArray(data.cashflowPayoutMatches) ? data.cashflowPayoutMatches : [],
       commissionPayouts: Array.isArray(data.commissionPayouts)
@@ -2733,7 +2740,7 @@ const normalizePatchUpdates = (
     }
 
     if (field === "maxdomovDetail") {
-      const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
+      const parsed = sanitizeDetailObject(rawValue, field, MAXDOMOV_DETAIL_ALLOWED_KEYS);
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;
       continue;

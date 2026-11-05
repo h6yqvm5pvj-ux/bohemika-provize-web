@@ -383,6 +383,8 @@ export const statementProductMatchesSystemProduct = (
 ): boolean => {
   if (!expectedProductKey || !systemProductKey) return false;
   if (expectedProductKey === systemProductKey) return true;
+  if ((expectedProductKey === "domex" || expectedProductKey === "domexneuron") &&
+      (systemProductKey === "domex" || systemProductKey === "domexneuron")) return true;
   return (
     KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS.has(expectedProductKey) &&
     KOOPERATIVA_OBCAN_STATEMENT_PRODUCTS.has(systemProductKey)

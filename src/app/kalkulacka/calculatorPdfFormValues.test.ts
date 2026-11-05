@@ -10,6 +10,22 @@ import {
 import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
 
 describe("single PDF form mapping", () => {
+  it.each([true, false])("preserves explicit DOMEX Neuron indexation in single and batch-review mappings (%s)", (premiumIndexationEnabled) => {
+    expect(mapSinglePdfFormValues("domexneuron", { premiumIndexationEnabled }).values.premiumIndexationEnabled).toBe(premiumIndexationEnabled);
+    expect(mapReviewPdfFormValues("domexneuron", { premiumIndexationEnabled }).premiumIndexationEnabled).toBe(premiumIndexationEnabled);
+  });
+
+  it.each([undefined, null, "ANO", "NE", 1, 0, {}])("keeps missing or manipulated indexation unknown (%j)", (premiumIndexationEnabled) => {
+    expect(mapSinglePdfFormValues("domexneuron", { premiumIndexationEnabled }).values.premiumIndexationEnabled).toBeNull();
+    expect(mapReviewPdfFormValues("domexneuron", { premiumIndexationEnabled }).premiumIndexationEnabled).toBeNull();
+  });
+
+  it("resets indexation before another Neuron PDF and ignores the field for other products", () => {
+    expect(pdfImportResetValues("domexneuron").premiumIndexationEnabled).toBeNull();
+    expect(mapSinglePdfFormValues("domex", { premiumIndexationEnabled: true }).values).not.toHaveProperty("premiumIndexationEnabled");
+    expect(mapReviewPdfFormValues("domex", { premiumIndexationEnabled: true }).premiumIndexationEnabled).toBeNull();
+  });
+
   it("keeps a renewing DOMEX term end separate from the effective contract end", () => {
     const { values } = mapSinglePdfFormValues("domexneuron", {
       automaticRenewal: true, policyTermEndDate: "2027-10-31", policyEndDate: null,
@@ -81,6 +97,27 @@ describe("single PDF form mapping", () => {
 });
 
 describe("PDF coverage details", () => {
+  it("keeps the Neuron building and household addresses and assistance variants separate", () => {
+    const parsed = {
+      domexPropertyAddress: "  Syntetická 1, Testov  ", domexHouseholdAddress: " Modelová 2, Testov ",
+      domexPropertyAssistance: "basic", domexHouseholdAssistance: "plus",
+      domexPropertyType: "dum", domexPropertyCoverage: "maxi", domexPropertySumInsured: 4_000_000,
+      domexHouseholdType: "trvale", domexHouseholdCoverage: "opti", domexHouseholdSumInsured: 500_000,
+    };
+    for (const values of [mapSinglePdfFormValues("domexneuron", parsed).values, mapReviewPdfFormValues("domexneuron", parsed)]) {
+      expect(values).toMatchObject({
+        ...parsed, domexPropertyAddress: "Syntetická 1, Testov", domexHouseholdAddress: "Modelová 2, Testov",
+      });
+    }
+  });
+
+  it.each([null, undefined, false, true, "", "BASIC", "PLUS", "základní", 0, 1, {}])("does not infer Neuron assistance from an unsupported value: %j", assistance => {
+    const parsed = { domexPropertyAssistance: assistance, domexHouseholdAssistance: assistance };
+    for (const values of [mapSinglePdfFormValues("domexneuron", parsed).values, mapReviewPdfFormValues("domexneuron", parsed)]) {
+      expect(values).toMatchObject({ domexPropertyAssistance: null, domexHouseholdAssistance: null });
+    }
+  });
+
   it.each([null, "1000", NaN, Infinity, -Infinity, {}, []])("does not coerce an invalid numeric coverage limit: %j", (limit) => {
     const { values, applied } = mapSinglePdfFormValues("cppAuto", { carAddonGlassLimit: limit, domexPropertySumInsured: limit });
     expect(values.autoCarAddonGlassLimit).toBeNull();
@@ -135,6 +172,21 @@ describe("PDF coverage details", () => {
 });
 
 describe("batch review and form resets", () => {
+  it("clears both Neuron locations and assistance before another PDF, without inferring cover for missing sections", () => {
+    const previous = mapReviewPdfFormValues("domexneuron", {
+      domexPropertyAddress: "Stará stavba 1", domexHouseholdAddress: "Stará domácnost 2",
+      domexPropertyAssistance: "plus", domexHouseholdAssistance: "basic",
+    });
+    for (const reset of [pdfImportResetValues("domexneuron"), mapReviewPdfFormValues("domexneuron", {}), mapReviewPdfFormValues("cppAuto", {})]) {
+      expect({ ...previous, ...reset }).toMatchObject({
+        domexPropertyAddress: "", domexHouseholdAddress: "", domexPropertyAssistance: null, domexHouseholdAssistance: null,
+      });
+    }
+    const householdOnly = mapReviewPdfFormValues("domexneuron", { domexHouseholdAddress: "Pouze domácnost 3", domexHouseholdAssistance: "basic" });
+    expect(householdOnly).toMatchObject({ domexPropertyAddress: "", domexPropertyAssistance: null,
+      domexHouseholdAddress: "Pouze domácnost 3", domexHouseholdAssistance: "basic" });
+  });
+
   it("clears old vehicle fields when opening a property row, then clears property fields for the next vehicle", () => {
     const vehicle = mapReviewPdfFormValues("cppAuto", { clientName: "Klient A", carPlate: "TEST01", carAddonGlassLimit: 5000 });
     const property = { ...vehicle, ...mapReviewPdfFormValues("domex", { clientName: "Klient B", domexAddress: "Testovací 1" }) };

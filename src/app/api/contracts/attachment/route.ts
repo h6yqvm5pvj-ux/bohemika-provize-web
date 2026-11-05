@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
   // deletion could invalidate a reference retained by another contract record.
 
   let clientCardEmail: ClientCardEmailImportStatus | "unavailable" = "skipped";
-  if (loaded.contract.productKey === "cppAuto" && ctx.email === ownerEmail && !ctx.isImpersonating) {
+  if (["cppAuto", "domexneuron"].includes(loaded.contract.productKey ?? "") && ctx.email === ownerEmail && !ctx.isImpersonating) {
     try {
       clientCardEmail = await fillClientCardEmailFromUploadedPdf(loaded.entryRef.firestore, { email: ctx.email, uid: ctx.uid }, entryId, uploaded.sha256);
     } catch {

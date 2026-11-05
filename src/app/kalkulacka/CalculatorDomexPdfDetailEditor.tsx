@@ -14,6 +14,10 @@ import {
 
 export type DomexPdfEditorTextField =
   | "address"
+  | "propertyAddress"
+  | "householdAddress"
+  | "propertyAssistance"
+  | "householdAssistance"
   | "propertyType"
   | "propertyCoverage"
   | "sumInsured"
@@ -37,6 +41,7 @@ export type DomexPdfDetailEditorFields = Record<DomexPdfEditorTextField, string>
   Record<DomexPdfEditorBooleanField, boolean>;
 
 type Props = {
+  neuron?: boolean;
   fields: DomexPdfDetailEditorFields;
   onTextChange: (field: DomexPdfEditorTextField, value: string) => void;
   onBooleanChange: (field: DomexPdfEditorBooleanField, value: boolean) => void;
@@ -64,6 +69,12 @@ const COVERAGE_OPTIONS = [
   { value: "maxi", label: "MAXI" },
   { value: "vip", label: "VIP" },
   { value: "nop", label: "NOP" },
+];
+
+const ASSISTANCE_OPTIONS = [
+  { value: "", label: "Neuvedeno" },
+  { value: "basic", label: "Základní" },
+  { value: "plus", label: "PLUS" },
 ];
 
 function EditSection({
@@ -175,6 +186,7 @@ function TogglePill({
 
 export function CalculatorDomexPdfDetailEditor({
   fields,
+  neuron = false,
   onTextChange,
   onBooleanChange,
 }: Props) {
@@ -183,10 +195,10 @@ export function CalculatorDomexPdfDetailEditor({
       <EditSection title="Pojištění stavby" icon={House}>
         <div className="mb-3">
           <TextInput
-            label="Adresa"
-            value={fields.address}
+            label={neuron ? "Adresa stavby" : "Adresa"}
+            value={neuron ? fields.propertyAddress : fields.address}
             placeholder="Místo pojištění"
-            onChange={(value) => onTextChange("address", value)}
+            onChange={(value) => onTextChange(neuron ? "propertyAddress" : "address", value)}
           />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -214,6 +226,8 @@ export function CalculatorDomexPdfDetailEditor({
             placeholder="Spoluúčast v Kč"
             onChange={(value) => onTextChange("deductible", value)}
           />
+          {neuron && <SelectInput label="Asistence ke stavbě" value={fields.propertyAssistance}
+            options={ASSISTANCE_OPTIONS} onChange={(value) => onTextChange("propertyAssistance", value)} />}
         </div>
       </EditSection>
 
@@ -228,6 +242,8 @@ export function CalculatorDomexPdfDetailEditor({
 
       <EditSection title="Pojištění domácnosti" icon={Sofa}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {neuron && <TextInput label="Adresa domácnosti" value={fields.householdAddress}
+            placeholder="Místo pojištění domácnosti" onChange={(value) => onTextChange("householdAddress", value)} />}
           <SelectInput
             label="Typ"
             value={fields.householdType}
@@ -252,6 +268,8 @@ export function CalculatorDomexPdfDetailEditor({
             placeholder="Spoluúčast v Kč"
             onChange={(value) => onTextChange("householdDeductible", value)}
           />
+          {neuron && <SelectInput label="Asistence k domácnosti" value={fields.householdAssistance}
+            options={ASSISTANCE_OPTIONS} onChange={(value) => onTextChange("householdAssistance", value)} />}
         </div>
       </EditSection>
 
@@ -289,7 +307,7 @@ export function CalculatorDomexPdfDetailEditor({
         </div>
       </EditSection>
 
-      <EditSection title="Asistence" icon={LifeBuoy}>
+      {!neuron && <EditSection title="Asistence" icon={LifeBuoy}>
         <div className="flex flex-wrap gap-2">
           <TogglePill
             label="Asistence PLUS"
@@ -297,7 +315,7 @@ export function CalculatorDomexPdfDetailEditor({
             onChange={(value) => onBooleanChange("assistancePlus", value)}
           />
         </div>
-      </EditSection>
+      </EditSection>}
 
       <EditSection title="Poznámka" icon={FileText}>
         <label>

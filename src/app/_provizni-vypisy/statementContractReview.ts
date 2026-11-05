@@ -13,7 +13,7 @@ export type StatementContractReview = {
 };
 
 export function statementContractReview({ unpaired, issueCount, premiumChange, corrected = false, ...checks }: Omit<Parameters<typeof statementContractIsVerified>[0], "comparisons"> & {
-  comparisons: (Pick<CommissionAmountComparison, "status"> & Partial<Pick<CommissionAmountComparison, "expectedAmount" | "statementAmount">>)[];
+  comparisons: (Pick<CommissionAmountComparison, "status"> & Partial<Pick<CommissionAmountComparison, "expectedAmount" | "statementAmount" | "acceptHigherCommission">>)[];
   unpaired: boolean;
   issueCount: number;
   premiumChange?: "increase" | "decrease";

@@ -358,6 +358,7 @@ export type ManagerOverrideSummary = {
 };
 
 export type PremiumStatementHistoryEntry = {
+  changeReason?: "indexation";
   premiumKind?: string | null;
   statementPeriod?: string | null;
   anniversaryDate?: string | null;
@@ -397,6 +398,8 @@ export type ContractCommissionPayoutRecord = {
 };
 
 export type MatchedSystemContract = {
+  premiumIndexationEnabled?: boolean | null;
+  premiumIndexationHistory?: import("@/app/lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
   id: string;
   adviserEmail: string | null;
@@ -584,6 +587,7 @@ export type CommissionAmountComparison = {
   expectedAmount: number;
   difference: number;
   status: CommissionAmountComparisonStatus;
+  acceptHigherCommission?: boolean;
   reason?: CommissionAmountComparisonReason | null;
   reasonTitle?: string | null;
   reasonLines?: string[];

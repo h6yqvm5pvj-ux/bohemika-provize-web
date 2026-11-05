@@ -1,6 +1,8 @@
 // src/app/smlouvy/[id]/page.tsx
 "use client";
 
+import { domexNeuronPremiumAtDate, scaleDomexNeuronSubsequentItems } from "@/app/lib/domexNeuronPremiumHistory";
+
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 
 import { buildInteractiveStatementHtml } from "@/lib/statementPreview";
@@ -1217,7 +1219,9 @@ export default function ContractDetailPage() {
           premiumEntry?.inputAmount ??
           0
       )
-    : Number(premiumEntry?.inputAmount ?? 0));
+    : premiumEntry?.productKey === "domexneuron"
+      ? domexNeuronPremiumAtDate(premiumEntry, todayForPremium) ?? Number(premiumEntry.inputAmount ?? 0)
+      : Number(premiumEntry?.inputAmount ?? 0));
   const refreshCommissionBase = contract?.refreshCommissionBase ?? null;
   const refreshCalculationMonthlyPremium = Number(
     isNeonRefreshContract
@@ -2068,6 +2072,7 @@ export default function ContractDetailPage() {
   const [editPolicyStart, setEditPolicyStart] = useState("");
   const [editPolicyEnd, setEditPolicyEnd] = useState("");
   const [editAutomaticRenewal, setEditAutomaticRenewal] = useState<boolean | null>(null);
+  const [editPremiumIndexationEnabled, setEditPremiumIndexationEnabled] = useState<boolean | null>(null);
   const [editDuration, setEditDuration] = useState<number | null>(null);
   const [editCarMake, setEditCarMake] = useState("");
   const [editCarPlate, setEditCarPlate] = useState("");
@@ -2223,6 +2228,10 @@ export default function ContractDetailPage() {
   const [editFlexiAddonLiabilityCitizen, setEditFlexiAddonLiabilityCitizen] = useState("");
   const [editFlexiAddonTravel, setEditFlexiAddonTravel] = useState(false);
   const [editDomexAddress, setEditDomexAddress] = useState("");
+  const [editDomexPropertyAddress, setEditDomexPropertyAddress] = useState("");
+  const [editDomexHouseholdAddress, setEditDomexHouseholdAddress] = useState("");
+  const [editDomexPropertyAssistance, setEditDomexPropertyAssistance] = useState("");
+  const [editDomexHouseholdAssistance, setEditDomexHouseholdAssistance] = useState("");
   const [editDomexPropertyType, setEditDomexPropertyType] = useState("");
   const [editDomexPropertyCoverage, setEditDomexPropertyCoverage] = useState("");
   const [editDomexSumInsured, setEditDomexSumInsured] = useState("");
@@ -2404,6 +2413,10 @@ export default function ContractDetailPage() {
 
   const domexFields: DomexFields = {
     address: editDomexAddress,
+    propertyAddress: editDomexPropertyAddress,
+    householdAddress: editDomexHouseholdAddress,
+    propertyAssistance: editDomexPropertyAssistance,
+    householdAssistance: editDomexHouseholdAssistance,
     propertyType: editDomexPropertyType,
     propertyCoverage: editDomexPropertyCoverage,
     sumInsured: editDomexSumInsured,
@@ -2887,6 +2900,18 @@ export default function ContractDetailPage() {
         case "address":
           setEditDomexAddress(String(value));
           break;
+        case "propertyAddress":
+          setEditDomexPropertyAddress(String(value));
+          break;
+        case "householdAddress":
+          setEditDomexHouseholdAddress(String(value));
+          break;
+        case "propertyAssistance":
+          setEditDomexPropertyAssistance(String(value));
+          break;
+        case "householdAssistance":
+          setEditDomexHouseholdAssistance(String(value));
+          break;
         case "propertyType":
           setEditDomexPropertyType(String(value));
           break;
@@ -2958,6 +2983,7 @@ export default function ContractDetailPage() {
     setEditPolicyStart(toDateInputValue(contract.policyStartDate));
     setEditPolicyEnd(toDateInputValue(contract.productKey === "domexneuron" ? contract.policyTermEndDate ?? contract.policyEndDate : contract.policyEndDate));
     setEditAutomaticRenewal(contract.automaticRenewal ?? null);
+    setEditPremiumIndexationEnabled(contract.premiumIndexationEnabled ?? null);
     setEditDuration(
       typeof contract.durationYears === "number" && !Number.isNaN(contract.durationYears)
         ? contract.durationYears
@@ -3467,6 +3493,13 @@ export default function ContractDetailPage() {
         ? contract.maxdomovDetail
         : contract.domexDetail;
     setEditDomexAddress(propertyDetail?.address ?? "");
+    setEditDomexPropertyAddress(contract.domexDetail?.propertyAddress === undefined
+      ? contract.productKey === "domexneuron" && (propertyDetail?.propertyType || propertyDetail?.sumInsured != null)
+        ? propertyDetail?.address ?? "" : ""
+      : contract.domexDetail.propertyAddress ?? "");
+    setEditDomexHouseholdAddress(contract.domexDetail?.householdAddress ?? "");
+    setEditDomexPropertyAssistance(contract.domexDetail?.propertyAssistance ?? "");
+    setEditDomexHouseholdAssistance(contract.domexDetail?.householdAssistance ?? "");
     setEditDomexPropertyType(propertyDetail?.propertyType ?? "");
     setEditDomexPropertyCoverage(propertyDetail?.propertyCoverage ?? "");
     setEditDomexSumInsured(
@@ -3794,6 +3827,10 @@ export default function ContractDetailPage() {
           editContractNumber,
           editContractSigned,
           editDomexAddress,
+          editDomexPropertyAddress,
+          editDomexHouseholdAddress,
+          editDomexPropertyAssistance,
+          editDomexHouseholdAssistance,
           editDomexAssistancePlus,
           editDomexDeductible,
           editDomexHouseholdCoverage,
@@ -3911,6 +3948,7 @@ export default function ContractDetailPage() {
           editNeonWorkIncapacityStart,
           editPolicyEnd,
           editAutomaticRenewal,
+          editPremiumIndexationEnabled,
           editPolicyStart,
         },
       });
@@ -4481,6 +4519,9 @@ export default function ContractDetailPage() {
 
   // vyfiltrované položky bez řádku "Celkem" a bez ročních součtů u produktů placených dle platby
   const filterPaymentBasedItems = (arr: CommissionResultItemDTO[]) => {
+    if (contract?.productKey === "domexneuron") {
+      arr = scaleDomexNeuronSubsequentItems(contract, arr, todayForPremium);
+    }
     if (isPerPaymentSeparatedPeriodProduct(prod)) {
       const perPaymentItems = arr.filter((it) =>
         (it.title ?? "").toLowerCase().includes("(z platby)")
@@ -5174,6 +5215,7 @@ export default function ContractDetailPage() {
       {(prod === "domex" || prod === "domexneuron" || prod === "maxdomov") && (
         <DomexDetailPanel
           prod={prod}
+          premiumIndexationEnabled={editMode ? editPremiumIndexationEnabled : contract?.premiumIndexationEnabled}
           editMode={editMode}
           fields={domexFields}
           domexDetail={
@@ -6242,6 +6284,25 @@ export default function ContractDetailPage() {
                           </dd>
                         </div>
                       )}
+                      {contract.productKey === "domexneuron" && (
+                        <div className={contractOverviewRowClass}>
+                          <dt className={keyValueLabelClass}>Valorizace pojistného</dt>
+                          <dd className={contractOverviewValueClass}>
+                            {editMode ? (
+                              <select
+                                aria-label="Valorizace pojistného"
+                                value={editPremiumIndexationEnabled == null ? "" : editPremiumIndexationEnabled ? "yes" : "no"}
+                                onChange={(event) => setEditPremiumIndexationEnabled(event.target.value === "" ? null : event.target.value === "yes")}
+                                className={inputCompactClass}
+                              >
+                                <option value="">Neurčeno</option>
+                                <option value="yes">ANO</option>
+                                <option value="no">NE</option>
+                              </select>
+                            ) : contract.premiumIndexationEnabled == null ? "Neurčeno" : contract.premiumIndexationEnabled ? "ANO" : "NE"}
+                          </dd>
+                        </div>
+                      )}
                       {contract.productKey === "conseqzenit" && (
                         <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Smlouva do věku</dt>
@@ -6444,6 +6505,8 @@ export default function ContractDetailPage() {
               </div>
 
               <ContractAutoPremiumHistory
+                premiumIndexationEnabled={contract?.premiumIndexationEnabled}
+                premiumIndexationHistory={contract?.premiumIndexationHistory}
                 viewerEmail={normalizedViewerEmail ?? undefined}
                 baseResolutions={contract?.premiumStatementBaseResolutions}
                 onResolveBase={canManageContract ? handleResolvePremiumBase : undefined}

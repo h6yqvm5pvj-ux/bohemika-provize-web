@@ -61,6 +61,7 @@ export type ContractAutoPremiumStatementHistoryEntry = {
   paymentFrequencyAtImport?: string | null;
   key?: string | null;
   premiumKind?: "auto_change" | "life_increase" | string | null;
+  changeReason?: "indexation";
   statementId?: string | null;
   statementNumber?: string | null;
   statementPeriod?: string | null;
@@ -282,6 +283,8 @@ export type ContractDoc = {
   policyEndDate?: FirestoreTimestamp | Date | string | null;
   policyTermEndDate?: FirestoreTimestamp | Date | string | null;
   automaticRenewal?: boolean | null;
+  premiumIndexationEnabled?: boolean | null;
+  premiumIndexationHistory?: import("@/app/lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   pensionTargetAge?: number | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
   createdAt?: FirestoreTimestamp | Date | string | null;
@@ -356,6 +359,10 @@ export type ContractDoc = {
 
   domexDetail?: {
     address?: string | null;
+    propertyAddress?: string | null;
+    householdAddress?: string | null;
+    propertyAssistance?: "basic" | "plus" | null;
+    householdAssistance?: "basic" | "plus" | null;
     propertyType?: string | null;
     propertyCoverage?: string | null;
     sumInsured?: number | null;

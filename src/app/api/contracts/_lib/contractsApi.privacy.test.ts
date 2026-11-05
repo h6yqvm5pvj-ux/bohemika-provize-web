@@ -63,6 +63,168 @@ describe("contract response privacy at the API boundary", () => {
   const neuron = () => entry("root", { productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     automaticRenewal: true, policyEndDate: null, policyTermEndDate: new Date("2027-11-04") });
 
+  it("roundtrips separate DOMEX addresses and assistance levels without adding them to slim lists", async () => {
+    neuron();
+    const { handleContractsPatch, handleContractsGet, handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsPatch(renewalRequest({ domexDetail: {
+      address: "Původní místo 1, Testov", propertyAddress: "  Testovací 11, Testov ", householdAddress: " Testovací 22, Testov  ",
+      propertyAssistance: "basic", householdAssistance: "plus", assistancePlus: true,
+    } }));
+    expect(response.status).toBe(200);
+    const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await detail.json()).contract.domexDetail).toEqual({
+      address: "Původní místo 1, Testov", propertyAddress: "Testovací 11, Testov", householdAddress: "Testovací 22, Testov",
+      propertyAssistance: "basic", householdAssistance: "plus", assistancePlus: true,
+    });
+    for (const shape of ["contractList", "cashflow"]) {
+      const list = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=my&shape=${shape}&limit=5`));
+      const body = await list.json();
+      expect(body.contracts[0]).not.toHaveProperty("domexDetail");
+      expect(JSON.stringify(body)).not.toContain("Testovací 11");
+      expect(JSON.stringify(body)).not.toContain("Testovací 22");
+    }
+    expect((await handleContractsPatch(renewalRequest({ domexDetail: {
+      propertyAddress: " ", householdAddress: null, propertyAssistance: null, householdAssistance: null,
+    } }))).status).toBe(200);
+    const cleared = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await cleared.json()).contract.domexDetail).toEqual({
+      propertyAddress: null, householdAddress: null, propertyAssistance: null, householdAssistance: null,
+    });
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("denies DOMEX address/assistance updates by %s", async actor => {
+    neuron();
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else {
+      asUser(actor === "tipster" ? tip : former);
+      if (actor === "tipster") store.records.set(`users/${tip}`, { userId: tip, accountType: "tipster" });
+    }
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    const response = await handleContractsPatch(renewalRequest({ domexDetail: {
+      propertyAddress: "Testovací 11, Testov", householdAddress: "Testovací 22, Testov", propertyAssistance: "plus", householdAssistance: "basic",
+    } }));
+    expect(response.status).toBe(actor === "unauthenticated" ? 401 : 403);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each([
+    { propertyAssistance: true }, { propertyAssistance: "PLUS" }, { householdAssistance: " " }, { householdAssistance: {} },
+    { propertyAddress: true }, { householdAddress: 123 }, { propertyAddress: "x".repeat(201) }, { householdAddress: "Test\u0000ov" },
+  ])("rejects manipulated DOMEX property details without writing: %j", async domexDetail => {
+    neuron();
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ domexDetail }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each(["propertyAddress", "householdAddress", "propertyAssistance", "householdAssistance"])("rejects the DOMEX field %s in a MAXDOMOV update", async field => {
+    entry("root", { productKey: "maxdomov" });
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    const value = field.endsWith("Assistance") ? "plus" : "Testovací 11, Testov";
+    expect((await handleContractsPatch(renewalRequest({ maxdomovDetail: { [field]: value } }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it("roundtrips the owner's Neuron premium indexation without changing premium or prolongation", async () => {
+    neuron();
+    const { handleContractsPatch, handleContractsGet } = await import("./contractsApi");
+    for (const premiumIndexationEnabled of [true, false, null]) {
+      expect((await handleContractsPatch(renewalRequest({ premiumIndexationEnabled }))).status).toBe(200);
+      const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+      expect((await detail.json()).contract).toMatchObject({
+        premiumIndexationEnabled, inputAmount: 1000, automaticRenewal: true, policyEndDate: null,
+      });
+    }
+  });
+
+  it.each([true, false])("includes Neuron premium indexation in authorized statement matching: %j", async premiumIndexationEnabled => {
+    neuron();
+    const { handleContractsPatch, handleContractsFind, handleContractsFindBulk } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ premiumIndexationEnabled }))).status).toBe(200);
+    const find = await handleContractsFind(new NextRequest("https://example.test/api/contracts/find?scope=my&q=12345"));
+    expect(find.status).toBe(200);
+    expect((await find.json()).contracts).toEqual([expect.objectContaining({ premiumIndexationEnabled })]);
+    const bulk = await handleContractsFindBulk(new NextRequest("https://example.test/api/contracts/find", {
+      method: "POST", body: JSON.stringify({ requests: [{ key: "my:12345", scope: "my", q: "12345" }] }),
+    }));
+    expect(bulk.status).toBe(200);
+    expect((await bulk.json()).results[0].contracts).toEqual([expect.objectContaining({ premiumIndexationEnabled })]);
+  });
+
+  it("shares only effective policy premium facts in cashflow without another recipient's statement metadata", async () => {
+    entry("root", { productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05", frequencyRaw: "annual",
+      premiumStatementHistory: [
+        { premiumKind: "auto_change", changeReason: "indexation", anniversaryDate: "2027-11-05", newPremium: 1100,
+          writtenBy: owner, rowId: "private-indexation-row", statementNumber: "private-indexation-statement" },
+        { premiumKind: "auto_change", changeReason: "indexation", anniversaryDate: "2028-11-05", newPremium: 1200,
+          writtenBy: former, statementNumber: "foreign-indexation-statement" },
+        { premiumKind: "life_increase", newPremium: 9000, writtenBy: owner },
+      ] });
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=cashflow&limit=5"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.contracts[0].premiumIndexationHistory).toEqual([
+      { effectiveDate: "2027-11-05", paymentPremium: 1100 },
+      { effectiveDate: "2028-11-05", paymentPremium: 1200 },
+    ]);
+    expect(body.contracts[0].premiumStatementHistory).toEqual([]);
+    expect(JSON.stringify(body)).not.toContain("private-indexation");
+    expect(JSON.stringify(body)).not.toContain("foreign-indexation");
+  });
+
+  it("keeps derived premium facts behind the contract's read authorization", async () => {
+    entry("root", { productKey: "domexneuron", frequencyRaw: "annual", premiumStatementHistory: [
+      { premiumKind: "auto_change", changeReason: "indexation", anniversaryDate: "2027-11-05", newPremium: 1100, writtenBy: owner },
+    ] });
+    asUser(former);
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(403);
+    expect(await response.json()).not.toHaveProperty("contract");
+  });
+
+  it("does not let a client write the derived premium history", async () => {
+    neuron();
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ premiumIndexationHistory: [{ effectiveDate: "2027-11-05", paymentPremium: 90000 }] }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("denies a premium-indexation change by %s", async actor => {
+    neuron();
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else {
+      asUser(actor === "tipster" ? tip : former);
+      if (actor === "tipster") store.records.set(`users/${tip}`, { userId: tip, accountType: "tipster" });
+    }
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ premiumIndexationEnabled: true }))).status)
+      .toBe(actor === "unauthenticated" ? 401 : 403);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each(["ANO", "false", "", 1, 0, [], {}])("rejects manipulated premium-indexation input without writing: %j", async premiumIndexationEnabled => {
+    neuron();
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ premiumIndexationEnabled }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each([true, false])("rejects premium-indexation updates on a different product: %j", async premiumIndexationEnabled => {
+    entry("root");
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ premiumIndexationEnabled }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
   it("returns the Neuron term boundary as a date while leaving actual maturity empty", async () => {
     neuron();
     const { handleContractsGet } = await import("./contractsApi");

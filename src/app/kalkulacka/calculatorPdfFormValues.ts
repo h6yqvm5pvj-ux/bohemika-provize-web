@@ -3,7 +3,7 @@ import type { CalculatorPdfFormValues, CalculatorPdfFormSetters, PdfFormMappingR
 import { allowedFrequencies, durationRange, normalizedDurationMonths } from "./calculatorHelpers";
 import { parsedPdfBooleanOrNumberValue, parsedPdfBooleanValue, parsedPdfFrequencyValue, parsedPdfNumberValue, parsedPdfRoundedNumberValue, parsedPdfTextValue, parsedSlaviaAutoDetailValue } from "./calculatorBulkPdfImport";
 import { mapAutoPdfFormValues } from "./calculatorPdfAutoFields";
-import { mapPropertyPdfFormValues } from "./calculatorPdfPropertyFields";
+import { mapPropertyPdfFormValues, parsedDomexAssistanceValue } from "./calculatorPdfPropertyFields";
 import { mapNeonPdfFormValues } from "./calculatorPdfNeonFields";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 import type { ParsedContractPdf } from "./calculatorPdfImport";
@@ -65,6 +65,10 @@ export function createEmptyAutoPdfFormValues(): Partial<CalculatorPdfFormValues>
 export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormValues> {
   return {
     domexAddress: "",
+    domexPropertyAddress: "",
+    domexHouseholdAddress: "",
+    domexPropertyAssistance: null,
+    domexHouseholdAssistance: null,
     domexPropertyType: "",
     domexPropertyCoverage: "",
     domexPropertySumInsured: null,
@@ -85,7 +89,7 @@ export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormVal
 }
 
 export function pdfImportResetValues(importProduct: Product): Partial<CalculatorPdfFormValues> {
-  if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, policyTermEndDate: "", policyEndDate: "" };
+  if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, premiumIndexationEnabled: null, policyTermEndDate: "", policyEndDate: "" };
   if (["cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"].includes(importProduct)) return createEmptyAutoPdfFormValues();
   if (["domex", "domexneuron", "maxdomov"].includes(importProduct)) return createEmptyPropertyPdfFormValues();
   if (importProduct === "neon") return { neonPdfDetailFields: createEmptyNeonPdfDetailFields() };
@@ -121,9 +125,11 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
   }
   if (importProduct === "domexneuron") {
     values.automaticRenewal = typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null;
+    values.premiumIndexationEnabled = typeof parsed.premiumIndexationEnabled === "boolean" ? parsed.premiumIndexationEnabled : null;
     values.policyTermEndDate = parsedPdfTextValue(parsed, "policyTermEndDate");
     values.policyEndDate = values.automaticRenewal === true ? "" : parsedPdfTextValue(parsed, "policyEndDate") || (values.automaticRenewal === false ? values.policyTermEndDate : "");
     if (values.automaticRenewal !== null) applied += 1;
+    if (values.premiumIndexationEnabled !== null) applied += 1;
   }
   if (parsed.contractSignedDate) {
     values.contractSignedDate = parsed.contractSignedDate;
@@ -194,6 +200,7 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.policyStartDate = parsedPdfTextValue(parsed, "policyStartDate");
   values.policyEndDate = parsedPdfTextValue(parsed, "policyEndDate");
   values.automaticRenewal = reviewProduct === "domexneuron" && typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null;
+  values.premiumIndexationEnabled = reviewProduct === "domexneuron" && typeof parsed.premiumIndexationEnabled === "boolean" ? parsed.premiumIndexationEnabled : null;
   values.policyTermEndDate = reviewProduct === "domexneuron" ? parsedPdfTextValue(parsed, "policyTermEndDate") : "";
   if (reviewProduct === "domexneuron" && values.automaticRenewal === true) values.policyEndDate = "";
   if (reviewProduct === "domexneuron" && values.automaticRenewal === false && !values.policyEndDate) values.policyEndDate = values.policyTermEndDate;
@@ -264,6 +271,10 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.autoCarAddonPassengerInjury = parsedPdfBooleanValue(parsed, "carAddonPassengerInjury");
   values.autoCarAddonKeyLossTheft = parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft");
   values.domexAddress = parsedPdfTextValue(parsed, "domexAddress");
+  values.domexPropertyAddress = parsedPdfTextValue(parsed, "domexPropertyAddress");
+  values.domexHouseholdAddress = parsedPdfTextValue(parsed, "domexHouseholdAddress");
+  values.domexPropertyAssistance = parsedDomexAssistanceValue(parsed.domexPropertyAssistance);
+  values.domexHouseholdAssistance = parsedDomexAssistanceValue(parsed.domexHouseholdAssistance);
   values.domexPropertyType = parsedPdfTextValue(parsed, "domexPropertyType");
   values.domexPropertyCoverage = parsedPdfTextValue(parsed, "domexPropertyCoverage");
   values.domexPropertySumInsured = parsedPdfRoundedNumberValue(parsed, "domexPropertySumInsured");

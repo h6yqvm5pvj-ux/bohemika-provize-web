@@ -5,6 +5,8 @@ import { saveLifeStatementPremiumChange } from "@/lib/server/lifeStatementPremiu
 import { isLifeIncreaseCode, matchesLifePremiumIncrease, lifeIncreaseExpectedAmount } from "@/app/lib/lifePremiumIncrease";
 import { createEndorsementCommissionPlan, type EndorsementCommissionPlanEntry } from "@/app/lib/endorsementCommissionPlan";
 import { commissionPeriodForCode } from "@/app/lib/commissionPeriodForCode";
+import { resolveDomexNeuronIndexation } from "@/app/lib/domexNeuronIndexation";
+import { domexNeuronPremiumAtDate } from "@/app/lib/domexNeuronPremiumHistory";
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { cashflowCalendarDate } from "@/lib/server/cashflowCalendar";
@@ -57,6 +59,7 @@ import {
 } from "@/app/lib/productFormulas";
 import {
   autoSubsequentCoefficientForProduct,
+  anniversaryNumberFromInstallmentCommissionCode,
   isAutoSubsequentCommissionCode,
 } from "@/app/lib/productFormulas/autoCommission";
 import {
@@ -241,6 +244,7 @@ type ContractCommissionStornoSummaryRecord = {
 };
 
 type ContractPremiumStatementHistoryEntry = {
+  changeReason?: "indexation";
   key: string;
   premiumKind: AutoPremiumStatementRow["premiumKind"];
   statementId: string;
@@ -1721,7 +1725,10 @@ const prepareContractStatementReset = ({
   statementIds?: Set<string>;
 }): { patch: Record<string, unknown>; summary: ContractStatementRebuildResetSummary } => {
   const canReplay = (record: unknown) => ownsStatementRecord(record, ctxEmail) &&
-    (!statementIds || statementIds.has(String((record as { statementId: unknown }).statementId)));
+    (!statementIds || statementIds.has(String((record as { statementId: unknown }).statementId))) &&
+    // Disabling future indexation cannot erase a previously confirmed fact.
+    !(contract.productKey === "domexneuron" && contract.premiumIndexationEnabled !== true &&
+      (record as { changeReason?: unknown }).changeReason === "indexation");
   const existingPayouts = statementRecordArray(contract.commissionPayouts);
   const keptPayouts = existingPayouts.filter((payout) => !canReplay(payout));
   const existingPremiumHistory = statementRecordArray(contract.premiumStatementHistory);
@@ -1762,6 +1769,12 @@ const prepareContractStatementReset = ({
     patch.premiumUpdatedFromStatementChronologyMs = null;
     patch.premiumUpdatedFromStatementId = null;
     patch.premiumUpdatedFromStatementWrittenBy = null;
+    if (contract.productKey === "domexneuron") {
+      const latestKept = contractPremiumHistoryArray({ premiumStatementHistory: keptPremiumHistory } as ContractDoc)
+        .filter(entry => entry.changeReason === "indexation")
+        .sort((a, b) => a.anniversaryDate.localeCompare(b.anniversaryDate)).at(-1);
+      patch.effectiveInputAmount = latestKept?.newPremium ?? contract.inputAmount ?? null;
+    }
   }
   if (statementCreatedFlagPersisted) {
     patch.createdFromCommissionStatement = true;
@@ -2194,6 +2207,32 @@ const managerOverrideItemsForViewer = (
   return Array.isArray(override?.items) ? (override.items as CommissionResultItemDTO[]) : [];
 };
 
+const domexNeuronIndexationCoefficient = (
+  contract: ContractDoc,
+  row: Pick<CommissionStatementPayoutRow, "source" | "commissionCode" | "career">,
+  viewerEmail: string,
+): number | null | undefined => {
+  if (contract.productKey !== "domexneuron") return undefined;
+  const referencePosition = row.source === "manager"
+    ? normalizePositionValue(managerOverrideForViewer(contract, viewerEmail)?.position)
+    : normalizePositionValue(contract.position);
+  const career = statementCareerPositionFromValue(row.career);
+  if (career && referencePosition && career.position !== referencePosition) return null;
+  const initialPremium = finiteMoneyOrNull(contract.inputAmount) ?? finiteMoneyOrNull(contract.calculationInputAmount);
+  const items = row.source === "manager" ? managerOverrideItemsForViewer(contract, viewerEmail) : contract.items ?? [];
+  const expected = amountFromCommissionItems(items, row.commissionCode,
+    title => title.includes("nasledna provize") && !title.includes("za rok"));
+  if (initialPremium != null && initialPremium > 0 && expected != null && expected > 0) return expected / initialPremium;
+  return row.source === "manager" ? null : undefined;
+};
+
+const confirmedNeuronPremiumForCommission = (contract: ContractDoc, row: CommissionStatementPayoutRow): number | null => {
+  if (contract.productKey !== "domexneuron" || !/^B(?:C)?\d+$/.test(row.commissionCode)) return null;
+  const period = commissionPeriodForCode(contract, row.commissionCode);
+  if (!period) return null;
+  return domexNeuronPremiumAtDate(contract, period);
+};
+
 const expectedAutoSubsequentPayoutAmountForRow = (
   contract: ContractDoc,
   row: CommissionStatementPayoutRow
@@ -2261,6 +2300,11 @@ const baseExpectedPayoutAmountForRow = (
 
   const autoSubsequentExpected = expectedAutoSubsequentPayoutAmountForRow(contract, row);
   if (autoSubsequentExpected != null) return autoSubsequentExpected;
+  const neuronPremium = confirmedNeuronPremiumForCommission(contract, row);
+  if (neuronPremium != null) {
+    const rate = domexNeuronIndexationCoefficient(contract, row, viewerEmail ?? "");
+    if (rate != null && rate > 0) return Math.round(neuronPremium * rate * 100) / 100;
+  }
 
   if (/^A\d+$/.test(comparableCode) || /^AC\d+/.test(comparableCode)) {
     return amountFromItems((title) =>
@@ -3442,6 +3486,7 @@ const payoutRecordFromStatementRow = ({
   writtenBy,
   correctionInfo = null,
   endorsementContext,
+  indexationEvidenceUnambiguous = true,
 }: {
   row: CommissionStatementPayoutRow;
   contract: ContractDoc;
@@ -3455,8 +3500,15 @@ const payoutRecordFromStatementRow = ({
   writtenBy: string;
   correctionInfo?: StatementPayoutCorrectionInfo | null;
   endorsementContext?: StatementEndorsementContext;
+  indexationEvidenceUnambiguous?: boolean;
 }): ContractCommissionPayoutRecord => {
-  const expectedAmount = expectedPayoutAmountForRow(contract, row, writtenBy, endorsementContext);
+  const indexation = resolveDomexNeuronIndexation({
+    contract, row: { ...row, basePremium: row.baseAmount },
+    coefficient: indexationEvidenceUnambiguous ? domexNeuronIndexationCoefficient(contract, row, writtenBy) : null,
+    referenceDate: statementPeriod ?? statementChronologyMs ?? statementDate,
+  });
+  const expectedAmount = indexation.status === "confirmed" ? indexation.expectedCommission!
+    : expectedPayoutAmountForRow(contract, row, writtenBy, endorsementContext);
   const signedAmount = Math.round(row.commission * 100) / 100;
   const absAmount = Math.round(Math.abs(signedAmount) * 100) / 100;
   const difference =
@@ -3477,7 +3529,7 @@ const payoutRecordFromStatementRow = ({
     viewerEmail: writtenBy,
     endorsementContext,
   });
-  if (differenceReason === "commission_amount_mismatch" && isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance })) {
+  if (!indexation.applicable && differenceReason === "commission_amount_mismatch" && isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance })) {
     status = "paid";
     differenceReason = null;
   }
@@ -4371,11 +4423,23 @@ const processStatementWrites = async ({
       contract,
       statementChronologyMs
     );
-    const detectedPremiumHistoryEntries = contractPremiumRows
-      .map((row) =>
-        premiumHistoryEntryFromStatementRowRecord({
+    const indexationRowCounts = new Map<string, number>();
+    for (const row of contractPayoutRows) {
+      const key = `${row.source}:${normalizeCommissionCodeKey(row.commissionCode)}`;
+      indexationRowCounts.set(key, (indexationRowCounts.get(key) ?? 0) + 1);
+    }
+    const hasUnambiguousIndexation = (row: Pick<CommissionStatementPayoutRow, "source" | "commissionCode">) =>
+      indexationRowCounts.get(`${row.source}:${normalizeCommissionCodeKey(row.commissionCode)}`) === 1;
+    const indexationHistoryContract: ContractDoc = { ...contract, premiumStatementHistory: [...existingPremiumHistory] };
+    const orderedPremiumRows = contract.productKey === "domexneuron" ? [...contractPremiumRows].sort((a, b) =>
+      (anniversaryNumberFromInstallmentCommissionCode(a.commissionCode, contract.frequencyRaw) ?? 0) -
+      (anniversaryNumberFromInstallmentCommissionCode(b.commissionCode, contract.frequencyRaw) ?? 0)) : contractPremiumRows;
+    const detectedPremiumHistoryEntries = orderedPremiumRows
+      .map((row) => {
+        const payoutRow = contractPayoutRows.find(payout => payout.rowId === row.rowId && payout.source === row.source && payout.commissionCode === row.commissionCode);
+        const entry = premiumHistoryEntryFromStatementRowRecord({
           row,
-          contract,
+          contract: contract.productKey === "domexneuron" ? indexationHistoryContract : contract,
           statementId: docId,
           statementNumber,
           statementPeriod,
@@ -4386,8 +4450,12 @@ const processStatementWrites = async ({
           nowMs,
           writtenBy: ctxEmail,
           allowCurrentPremiumFallback: canApplyPremiumToCurrentContract,
-        })
-      )
+          indexationCoefficient: !hasUnambiguousIndexation(row) ? null
+            : payoutRow ? domexNeuronIndexationCoefficient(contract, payoutRow, ctxEmail) : undefined,
+        });
+        if (entry && contract.productKey === "domexneuron") indexationHistoryContract.premiumStatementHistory!.push(entry);
+        return entry;
+      })
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));
     const premiumHistoryEntries = detectedPremiumHistoryEntries;
     const premiumHistoryEntriesForMerge = premiumHistoryEntries;
@@ -4441,7 +4509,7 @@ const processStatementWrites = async ({
             autoInitialCommissionBaseUpdate.total
         ) > MONEY_MATCH_TOLERANCE ||
         contract.commissionCalculationStatus !== "statement_resolved_auto_initial_base");
-    const contractForPayoutExpectations: ContractDoc = neonRefreshStatementUpdate
+    let contractForPayoutExpectations: ContractDoc = neonRefreshStatementUpdate
       ? {
           ...contract,
           calculationInputAmount: neonRefreshStatementUpdate.statementMonthlyPremiumBase,
@@ -4488,6 +4556,10 @@ const processStatementWrites = async ({
           managerOverrides: coefficientSetOverride.managerOverrides,
         }
       : contract;
+    if (contract.productKey === "domexneuron") {
+      contractForPayoutExpectations = { ...contractForPayoutExpectations,
+        premiumStatementHistory: contractPremiumHistoryArray({ premiumStatementHistory: premiumMerge.merged } as ContractDoc) };
+    }
     const filteredContractPayoutRows = filterDuplicateStatementPayoutRowsForContract(
       contractPayoutRows,
       contract,
@@ -4515,6 +4587,7 @@ const processStatementWrites = async ({
         writtenBy: ctxEmail,
         correctionInfo: payoutCorrectionInfoByRowKey.get(row.rowKey) ?? null,
         endorsementContext,
+        indexationEvidenceUnambiguous: hasUnambiguousIndexation(row),
       })
     );
     const payoutMerge = mergeRebuiltStatementRecords({
@@ -4643,6 +4716,9 @@ const processStatementWrites = async ({
         updatePayload.premiumUpdatedFromStatementChronologyMs = statementChronologyMs;
         updatePayload.premiumUpdatedFromStatementId = docId;
         updatePayload.premiumUpdatedFromStatementWrittenBy = ctxEmail;
+        if (contract.productKey === "domexneuron" && latestPremium.changeReason === "indexation") {
+          updatePayload.effectiveInputAmount = latestPremium.newPremium;
+        }
       }
     } else if (premiumMerge.merged.length > 0) {
       updatePayload.premiumStatementHistory = premiumMerge.merged;
@@ -4728,7 +4804,7 @@ const processStatementWrites = async ({
       result.accountingRepairDrafts += 1;
     }
 
-    for (const premium of actionablePremiumHistoryEntries) {
+    for (const premium of actionablePremiumHistoryEntries.filter(entry => entry.changeReason !== "indexation")) {
       const isLifeIncrease = premium.premiumKind === "life_increase";
       const repairId = compactHash(`${docId}:premium:${resolution.ref.path}:${premium.key}`, 32);
       await batchWriter.set(

@@ -15,6 +15,7 @@ const scripts = [
   "fix-uniqa-auto-historical-coefficients.mjs",
   "fix-kooperativa-auto-historical-coefficients.mjs",
   "backfill-domex-period-totals.mjs",
+  "backfill-domex-neuron-pdf-details.mjs",
   "backfill-installment-commission-codes.mjs",
   "backfill-auto-subsequent-commission-items.mjs",
   "migrate-users-private-fields.mjs",

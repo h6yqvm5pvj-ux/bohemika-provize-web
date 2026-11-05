@@ -2,8 +2,9 @@ import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseDomexPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
+import { parseDomexNeuronProperty, type DomexNeuronPropertyFields, type DomexPropertyLayoutLine } from "./parseDomexNeuronProperty";
 
-export type DomexPdfResult = {
+export type DomexPdfResult = DomexNeuronPropertyFields & {
   isRefresh?: boolean | null;
   refreshOriginalContractNumber?: string | null;
   contractNumber?: string | null;
@@ -13,6 +14,7 @@ export type DomexPdfResult = {
   /** Printed end of the current term, even when the policy renews automatically. */
   policyTermEndDate?: string | null;
   automaticRenewal?: boolean | null;
+  premiumIndexationEnabled?: boolean | null;
   contractSignedDate?: string | null;
   amount?: number | null;
   annualPremium?: number | null;
@@ -23,6 +25,7 @@ export type DomexPdfResult = {
   domexPropertyType?: string | null;
   domexPropertyCoverage?: string | null;
   domexPropertySumInsured?: number | null;
+  domexOutbuildingSumInsured?: number | null;
   domexPropertyDeductible?: number | null;
   domexHouseholdType?: string | null;
   domexHouseholdCoverage?: string | null;
@@ -293,7 +296,7 @@ const pickDomexPolicyContractNumber = (lines: string[], asciiLines: string[]): s
   return null;
 };
 
-async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
+async function extractLayoutLinesFromPage(page: any): Promise<DomexPropertyLayoutLine[]> {
   const content = { items: page.items };
   const rawItems = (content?.items ?? []) as Array<{
     str?: unknown;
@@ -346,19 +349,22 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
         line += item.str;
         prevEndX = item.x + item.width;
       });
-      return line.replace(/\s+/g, " ").trim();
+      return { text: line.replace(/\s+/g, " ").trim(), items: row.items };
     })
-    .filter(Boolean);
+    .filter(line => Boolean(line.text));
 }
 
 export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): Promise<DomexPdfResult> {
   const doc = await readPdfText(file, options);
   const lines: string[] = [];
   const pages: string[][] = [];
+  const layoutPages: DomexPropertyLayoutLine[][] = [];
 
   for (let i = 1; i <= doc.pages.length; i++) {
     const page = doc.pages[i - 1];
-    const pageLines = await extractLayoutLinesFromPage(page);
+    const layoutLines = await extractLayoutLinesFromPage(page);
+    layoutPages.push(layoutLines);
+    const pageLines = layoutLines.map(line => line.text);
     pages.push(pageLines);
     lines.push(...pageLines);
   }
@@ -450,6 +456,25 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
     warnings.push("Prolongace: ověř ANO / NE a datum konce pojištění podle PDF.");
   }
 
+  // Neuron prints this field separately for buildings and households, before
+  // shared provisions. Any enabled insured section can increase the total.
+  // Require labelled answers; renewal and explanatory prose are not consent.
+  result.premiumIndexationEnabled = null;
+  const indexationValues: Array<boolean | null> = [];
+  asciiLines.forEach((line, index) => {
+    for (const label of line.matchAll(/(?:^valorizace\b\s*:?\s*|\bvalorizace\s*:\s*)/g)) {
+      const answer = line.slice(label.index + label[0].length).trim() || asciiLines[index + 1] || "";
+      const value = answer.match(/^(ano|ne)(?=\s|$)/)?.[1];
+      const ambiguous = /^(?:ano|ne)\s*(?:[/|,\-]\s*)?(?:ano|ne)\b/.test(answer);
+      indexationValues.push(value && !ambiguous ? value === "ano" : null);
+    }
+  });
+  if (indexationValues.length && indexationValues.every(value => value !== null)) {
+    result.premiumIndexationEnabled = indexationValues.some(value => value === true);
+  } else if (indexationValues.length) {
+    warnings.push("Valorizace: ověř ANO / NE podle PDF.");
+  }
+
   // Signing takes priority; offers use presentation before creation/printing.
   const signedMatch =
     ascii.match(/pojistna\s+smlouva\s+uzavrena\s+dne\s*:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
@@ -495,6 +520,18 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
     warnings.push("Pojistné: součet pravidelných plateb podle frekvence se liší od ročního pojistného po slevách a přirážkách.");
   }
   if (warnings.length) result.pdfImportWarnings = warnings;
+
+  const neuronProperty = parseDomexNeuronProperty(layoutPages);
+  if (neuronProperty) {
+    return {
+      ...result,
+      ...neuronProperty,
+      domexOutbuildingSumInsured: null,
+      domexLiabilityMobile: null,
+      domexLiabilityTenant: null,
+      domexLiabilityLandlord: null,
+    };
+  }
 
   // Místo pojištění -> adresa
   const placeIndexes = findLabelIndexes(asciiLines, /misto\s+pojisteni/i);
