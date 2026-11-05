@@ -1345,7 +1345,8 @@ export const normalizeCreateEntryPayload = ({
     };
   }
   const refreshOriginalMissingInSystem = refreshOriginalMissingParsed.value === true;
-  const refreshOriginalContractNumber = refreshOriginalMissingInSystem
+  const requiresOriginalStatementRefresh = refreshOriginalMissingInSystem && productParsed.value !== "domexneuron";
+  const refreshOriginalContractNumber = refreshOriginalMissingInSystem && productParsed.value !== "domexneuron"
     ? null
     : refreshOriginalParsed.value;
   const supportsOriginalReplacement = supportsOriginalContractReplacement(
@@ -1674,11 +1675,11 @@ export const normalizeCreateEntryPayload = ({
       flexiRenovation,
       refreshOriginalContractNumber,
       refreshOriginalMissingInSystem: refreshOriginalMissingInSystem || null,
-      requiresStatementRefresh: refreshOriginalMissingInSystem || null,
-      commissionCalculationStatus: refreshOriginalMissingInSystem
+      requiresStatementRefresh: requiresOriginalStatementRefresh || null,
+      commissionCalculationStatus: requiresOriginalStatementRefresh
         ? commissionCalculationStatusParsed.value || "provisional_refresh_missing_original"
         : null,
-      commissionBaseSource: refreshOriginalMissingInSystem
+      commissionBaseSource: requiresOriginalStatementRefresh
         ? commissionBaseSourceParsed.value || "calculator_provisional"
         : null,
       initialCommissionBase:

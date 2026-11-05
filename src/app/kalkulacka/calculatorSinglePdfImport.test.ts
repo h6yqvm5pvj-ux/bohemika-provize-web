@@ -277,6 +277,68 @@ describe("single PDF import workflow", () => {
     expect(ui.setRefreshOriginalPdfLookupNumber).toHaveBeenLastCalledWith("OLD123");
   });
 
+  it.each([true, undefined])("opens a DOMEX Neuron replacement from the original number (refresh flag: %s)", async (isRefresh) => {
+    const { options, ui, values } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockResolvedValue({
+      ...parsed, contractNumber: "0090000088", contractSignedDate: "2026-11-02",
+      isRefresh, refreshOriginalContractNumber: " 0020000077 ",
+    });
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(true);
+    expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("0020000077");
+    expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
+    expect(values).toMatchObject({ contractNumber: "0090000088", contractSignedDate: "2026-11-02" });
+    expect(options.handlePrepareEndorsement).not.toHaveBeenCalled();
+  });
+
+  it("clears the previous DOMEX Neuron replacement before importing an ordinary policy", async () => {
+    const { options, ui } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockResolvedValueOnce({ ...parsed, isRefresh: true, refreshOriginalContractNumber: "0020000077" });
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(true);
+    expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("0020000077");
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(false);
+    expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("");
+    expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
+    expect(ui.setRefreshOriginalLookup).toHaveBeenLastCalledWith({ status: "idle", progress: 0, adviserName: null, original: null });
+  });
+
+  it("keeps a DOMEX Neuron replacement open for manual correction when its original number is missing", async () => {
+    const { options, ui } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockResolvedValue({ ...parsed, isRefresh: true });
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(true);
+    expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("");
+  });
+
+  it.each(["failed", "unreadable"])("preserves the previous DOMEX Neuron replacement after an %s import", async (outcome) => {
+    const { options, ui } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    if (outcome === "failed") mocks.parse.mockRejectedValue(new Error("Synthetic parser error"));
+    else mocks.parse.mockResolvedValue(null);
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).not.toHaveBeenCalled();
+    expect(ui.setRefreshOriginalContractNumber).not.toHaveBeenCalled();
+    expect(ui.setRefreshOriginalLookup).not.toHaveBeenCalled();
+  });
+
+  it("does not change replacement state after a DOMEX Neuron import is cancelled", async () => {
+    const { options, ui } = harness();
+    mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });
+    mocks.parse.mockImplementation(() => new Promise(() => {}));
+    const running = importSingleContractPdf(file(), options);
+    await vi.waitFor(() => expect(mocks.parse).toHaveBeenCalled());
+    options.refs.pdfImportAbortRef.current?.abort();
+    await running;
+    expect(ui.setRefreshOriginalOpen).not.toHaveBeenCalled();
+    expect(ui.setRefreshOriginalContractNumber).not.toHaveBeenCalled();
+    expect(ui.setRefreshOriginalLookup).not.toHaveBeenCalled();
+  });
+
   it("shows the MAXIMA hint when an otherwise empty parse matches the fallback parser", async () => {
     const { options, ui } = harness();
     mocks.parse.mockResolvedValue({});

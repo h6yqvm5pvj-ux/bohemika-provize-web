@@ -17,10 +17,24 @@ describe("cashflow shadow protocol", () => {
   it("whitelists context and fingerprints, never trusts client identity or portfolio", () => {
     expect(parseCashflowShadowRequest({ ...valid(), email: "someone@example.test", snapshot: { amount: 999 } })).toEqual(valid());
   });
+  it.each([true, false])("preserves the optional shifted-only filter and its separate cache context (%s)", shiftedOnly => {
+    const original = valid();
+    const filtered = { ...original, options: { ...original.options, shiftedOnly } };
+    const parsed = parseCashflowShadowRequest(filtered);
+    expect(parsed).toEqual(filtered);
+    expect(cashflowCanonicalJson(parsed?.options)).not.toBe(cashflowCanonicalJson(original.options));
+  });
+  it("distinguishes enabled and disabled shifted-only cache contexts", () => {
+    const context = (shiftedOnly: boolean) => parseCashflowShadowRequest({
+      ...valid(), options: { ...valid().options, shiftedOnly },
+    })!.options;
+    expect(cashflowCanonicalJson(context(true))).not.toBe(cashflowCanonicalJson(context(false)));
+  });
   it.each([
     { scopeFilter: ["own"] }, { scopeFilter: "other" }, { productFilter: "other" },
     { tipsterMode: "false" }, { intelligentPredictionEnabled: 1 }, { showPastYears: null },
     { contractNumberQuery: "a".repeat(129) },
+    { shiftedOnly: "true" }, { shiftedOnly: 1 }, { shiftedOnly: null }, { shiftedOnly: [] },
   ])("rejects malformed filter context %j", (options) => {
     expect(parseCashflowShadowRequest({ ...valid(), options: { ...valid().options, ...options } })).toBeNull();
   });

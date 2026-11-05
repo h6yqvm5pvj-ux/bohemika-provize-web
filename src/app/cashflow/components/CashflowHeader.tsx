@@ -7,6 +7,7 @@ type CashflowHeaderProps = {
   calculating?: boolean;
   calculationFailed?: boolean;
   hasPaidMonthTotals?: boolean;
+  shiftedOnly?: boolean;
   forecastYears: number;
   intelligentPredictionEnabled: boolean;
   showPastYears: boolean;
@@ -21,6 +22,7 @@ export function CashflowHeader({
   calculating = false,
   calculationFailed = false,
   hasPaidMonthTotals = false,
+  shiftedOnly = false,
   forecastYears,
   intelligentPredictionEnabled,
   showPastYears,
@@ -41,8 +43,10 @@ export function CashflowHeader({
       <div className={styles.total}>
         <span className={styles.totalLabel}>{tipsterMode
           ? "Celkem očekávané TIP provize"
+          : shiftedOnly ? "Čeká na výplatu"
           : hasPaidMonthTotals ? "Celkem cashflow" : "Celkem očekávané cashflow"}</span>
         <strong className={styles.totalAmount} aria-label={calculating ? "Aktualizuji částku" : calculationFailed ? "Částka není k dispozici" : undefined}>{calculating ? "…" : calculationFailed ? "—" : formatMoney(totalCashflow)}</strong>
+        {shiftedOnly && !tipsterMode && <span className={styles.totalBasis}>Před odpočtem stornofondu</span>}
         <p className={styles.totalPeriod}>{showPastYears
           ? `Včetně minulých let · výhled na ${forecastYears} let`
           : `Letošní rok + výhled na ${forecastYears} let`}</p>

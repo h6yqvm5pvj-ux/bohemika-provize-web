@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { User as FirebaseUser } from "firebase/auth";
 import type { LucideIcon } from "lucide-react";
@@ -18,6 +18,7 @@ import {
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
+  CONTACT_DIRECTORY_CHANGED_EVENT,
   OPEN_CONTACT_DIRECTORY_EVENT,
   type DirectoryContact,
 } from "@/app/lib/contactDirectory";
@@ -27,6 +28,7 @@ import {
   normalizeGlobalSearch,
   type ContactSearchResult,
 } from "./globalSearchData";
+import { createContactSearchSession } from "./contactSearchSession";
 
 type ColleagueResult = {
   email: string;
@@ -60,8 +62,16 @@ type CachedSearchResults = {
   colleagues: ColleagueResult[];
   contracts: ContractResult[];
   posts: IntranetPostResult[];
+};
+
+type SearchResults = Omit<CachedSearchResults, "expiresAtMs"> & {
+  uid: string;
   contacts: ContactSearchResult[];
 };
+
+const emptySearchResults = (uid: string): SearchResults => ({
+  uid, colleagues: [], contracts: [], posts: [], contacts: [],
+});
 
 type GlobalSearchCommandProps = {
   user: FirebaseUser;
@@ -73,26 +83,6 @@ type GlobalSearchCommandProps = {
 const SEARCH_DEBOUNCE_MS = 70;
 const SEARCH_CACHE_TTL_MS = 60_000;
 const searchResultsCache = new Map<string, CachedSearchResults>();
-let contactDirectoryCache:
-  | { expiresAtMs: number; contacts: DirectoryContact[] }
-  | null = null;
-
-async function loadContactDirectory(user: FirebaseUser): Promise<DirectoryContact[]> {
-  if (contactDirectoryCache && contactDirectoryCache.expiresAtMs > Date.now()) {
-    return contactDirectoryCache.contacts;
-  }
-
-  const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
-    user,
-    "/api/contacts",
-  );
-  const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
-  contactDirectoryCache = {
-    expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS,
-    contacts,
-  };
-  return contacts;
-}
 
 function SearchGroup({
   label,
@@ -150,7 +140,12 @@ function SearchResultButton({
   );
 }
 
-export function GlobalSearchCommand({
+export function GlobalSearchCommand(props: GlobalSearchCommandProps) {
+  // Remount the entire search state when accounts change, before any result renders.
+  return <AccountSearchCommand key={props.user.uid} {...props} />;
+}
+
+function AccountSearchCommand({
   user,
   compact = false,
   dialogBelowDesktopHeader = true,
@@ -163,13 +158,16 @@ export function GlobalSearchCommand({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
-  const [colleagues, setColleagues] = useState<ColleagueResult[]>([]);
-  const [contracts, setContracts] = useState<ContractResult[]>([]);
-  const [posts, setPosts] = useState<IntranetPostResult[]>([]);
-  const [contacts, setContacts] = useState<ContactSearchResult[]>([]);
+  const [results, setResults] = useState<SearchResults>(() => emptySearchResults(user.uid));
+  const [contactSession] = useState(createContactSearchSession);
+  const [directoryVersion, setDirectoryVersion] = useState(0);
+  const belongsToCurrentUser = results.uid === user.uid;
+  const { colleagues, contracts, posts, contacts } = belongsToCurrentUser
+    ? results : emptySearchResults(user.uid);
+  const activeQuery = belongsToCurrentUser ? query : "";
 
-  const normalizedQuery = normalizeGlobalSearch(query);
-  const tools = useMemo(() => findToolSearchResults(query), [query]);
+  const normalizedQuery = normalizeGlobalSearch(activeQuery);
+  const tools = useMemo(() => findToolSearchResults(activeQuery), [activeQuery]);
   const clients = useMemo(() => {
     const unique = new Map<string, string>();
     contracts.forEach((contract) => {
@@ -181,6 +179,29 @@ export function GlobalSearchCommand({
   const hasResults =
     colleagues.length + contracts.length + posts.length + contacts.length + tools.length > 0;
   const isSearching = loading && open && normalizedQuery.length >= 2;
+
+  const handleOpen = useCallback(() => {
+    if (!open) {
+      contactSession.invalidate();
+      setResults(emptySearchResults(user.uid));
+    }
+    const hasSearchQuery = normalizedQuery.length >= 2;
+    setLoading(hasSearchQuery);
+    setSearchProgress(hasSearchQuery ? 8 : 0);
+    setOpen(true);
+  }, [contactSession, normalizedQuery, open, user.uid]);
+
+  useEffect(() => () => contactSession.invalidate(), [contactSession]);
+
+  useEffect(() => {
+    const invalidateContacts = () => {
+      contactSession.invalidate();
+      setResults((current) => ({ ...current, contacts: [] }));
+      setDirectoryVersion((version) => version + 1);
+    };
+    window.addEventListener(CONTACT_DIRECTORY_CHANGED_EVENT, invalidateContacts);
+    return () => window.removeEventListener(CONTACT_DIRECTORY_CHANGED_EVENT, invalidateContacts);
+  }, [contactSession]);
 
   useEffect(
     () => () => {
@@ -207,18 +228,18 @@ export function GlobalSearchCommand({
         target?.isContentEditable;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setOpen(true);
+        handleOpen();
       } else if (event.key === "Escape" && open) {
         event.preventDefault();
         setOpen(false);
       } else if (event.key === "/" && !isTyping && !open) {
         event.preventDefault();
-        setOpen(true);
+        handleOpen();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [handleOpen, open]);
 
   useEffect(() => {
     if (!open || normalizedQuery.length < 2) {
@@ -230,22 +251,10 @@ export function GlobalSearchCommand({
       void (async () => {
         setLoading(true);
         setSearchProgress(18);
-        const encodedQuery = encodeURIComponent(query.trim());
+        const encodedQuery = encodeURIComponent(activeQuery.trim());
         const cacheKey = `${user.uid}:${normalizedQuery}`;
-        const cached = searchResultsCache.get(cacheKey);
-        if (cached && cached.expiresAtMs > Date.now()) {
-          if (cancelled) return;
-          setColleagues(cached.colleagues);
-          setContracts(cached.contracts);
-          setPosts(cached.posts);
-          setContacts(cached.contacts);
-          setSearchProgress(100);
-          setLoading(false);
-          progressResetTimerRef.current = window.setTimeout(() => {
-            if (!cancelled) setSearchProgress(0);
-          }, 320);
-          return;
-        }
+        const cacheEntry = searchResultsCache.get(cacheKey);
+        const cached = cacheEntry && cacheEntry.expiresAtMs > Date.now() ? cacheEntry : null;
 
         let completedSources = 0;
         const reportSourceProgress = () => {
@@ -254,19 +263,22 @@ export function GlobalSearchCommand({
           setSearchProgress(Math.min(92, 18 + completedSources * 19));
         };
         const [usersResult, contractsResult, postsResult, contactsResult] = await Promise.allSettled([
-          fetchAuthedJsonOrThrow<UserSearchResponse>(
+          (cached ? Promise.resolve({ ok: true, users: cached.colleagues }) : fetchAuthedJsonOrThrow<UserSearchResponse>(
             user,
             `/api/user/search?q=${encodedQuery}`
-          ).finally(reportSourceProgress),
-          fetchAuthedJsonOrThrow<ContractSearchResponse>(
+          )).finally(reportSourceProgress),
+          (cached ? Promise.resolve({ ok: true, contracts: cached.contracts }) : fetchAuthedJsonOrThrow<ContractSearchResponse>(
             user,
             `/api/contracts?scope=my&shape=contractList&q=${encodedQuery}&limit=6`
-          ).finally(reportSourceProgress),
-          fetchAuthedJsonOrThrow<IntranetSearchResponse>(
+          )).finally(reportSourceProgress),
+          (cached ? Promise.resolve({ ok: true, posts: cached.posts }) : fetchAuthedJsonOrThrow<IntranetSearchResponse>(
             user,
             `/api/intranet/wall?q=${encodedQuery}&limit=6`
-          ).finally(reportSourceProgress),
-          loadContactDirectory(user).finally(reportSourceProgress),
+          )).finally(reportSourceProgress),
+          contactSession.load(user.uid, async () => {
+            const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(user, "/api/contacts");
+            return Array.isArray(payload.contacts) ? payload.contacts : [];
+          }).finally(reportSourceProgress),
         ]);
         if (cancelled) return;
         const nextColleagues = usersResult.status === "fulfilled" ? usersResult.value.users.slice(0, 5) : [];
@@ -275,19 +287,16 @@ export function GlobalSearchCommand({
         const nextPosts = postsResult.status === "fulfilled" ? postsResult.value.posts.slice(0, 5) : [];
         const nextContacts =
           contactsResult.status === "fulfilled"
-            ? findContactSearchResults(contactsResult.value, query)
+            ? findContactSearchResults(contactsResult.value, activeQuery)
             : [];
         searchResultsCache.set(cacheKey, {
           expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS,
           colleagues: nextColleagues,
           contracts: nextContracts,
           posts: nextPosts,
-          contacts: nextContacts,
         });
-        setColleagues(nextColleagues);
-        setContracts(nextContracts);
-        setPosts(nextPosts);
-        setContacts(nextContacts);
+        setResults({ uid: user.uid, colleagues: nextColleagues, contracts: nextContracts,
+          posts: nextPosts, contacts: nextContacts });
         setSearchProgress(100);
         setLoading(false);
         progressResetTimerRef.current = window.setTimeout(() => {
@@ -300,7 +309,7 @@ export function GlobalSearchCommand({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [normalizedQuery, open, query, user]);
+  }, [activeQuery, contactSession, directoryVersion, normalizedQuery, open, user]);
 
   const closeAndNavigate = (href: string) => {
     setOpen(false);
@@ -325,13 +334,6 @@ export function GlobalSearchCommand({
     const search = new URLSearchParams({ contacts: "1" });
     if (contactId) search.set("contact", contactId);
     router.push(`/?${search.toString()}`);
-  };
-
-  const handleOpen = () => {
-    const hasSearchQuery = normalizedQuery.length >= 2;
-    setLoading(hasSearchQuery);
-    setSearchProgress(hasSearchQuery ? 8 : 0);
-    setOpen(true);
   };
 
   const handleQueryChange = (value: string) => {
@@ -368,7 +370,7 @@ export function GlobalSearchCommand({
         ) : null}
       </button>
 
-      {open ? (
+      {open && belongsToCurrentUser ? (
         <div
           className={`fixed inset-x-0 bottom-0 top-0 z-[100] flex items-start justify-center px-3 pt-4 sm:px-6 sm:pt-6 ${
             dialogBelowDesktopHeader ? "lg:top-[68px]" : "lg:top-0"
@@ -390,7 +392,7 @@ export function GlobalSearchCommand({
               <Search className="h-5 w-5 shrink-0 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
               <input
                 ref={inputRef}
-                value={query}
+                value={activeQuery}
                 onChange={(event) => handleQueryChange(event.target.value)}
                 placeholder="Klient, smlouva, kontakt, kolega nebo pomůcka…"
                 className="min-w-0 flex-1 bg-transparent text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"

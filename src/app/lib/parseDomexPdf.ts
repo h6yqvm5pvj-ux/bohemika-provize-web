@@ -45,6 +45,7 @@ type PositionedTextItem = {
 
 const LINE_Y_TOLERANCE = 2;
 const WORD_GAP_THRESHOLD = 1.5;
+const DOMEX_CONTRACT_HEADER = /(?:nahrada\s+smlouvy|cislo\s+(?:nabidky\s+)?pojistne\s+smlouvy)\b/i;
 
 const parseDomexPaymentDetails = (
   pages: string[][],
@@ -263,6 +264,7 @@ const pickDomexReplacementOriginalContractNumber = (
     for (let step = 1; step <= 3; step++) {
       const nextLine = lines[idx + step] ?? "";
       if (!nextLine) continue;
+      if (DOMEX_CONTRACT_HEADER.test(asciiLines[idx + step] ?? "")) break;
       const nextLineNumber = pickFirstLongNumber(nextLine);
       if (nextLineNumber) return nextLineNumber;
     }
@@ -273,7 +275,7 @@ const pickDomexReplacementOriginalContractNumber = (
 const pickDomexPolicyContractNumber = (lines: string[], asciiLines: string[]): string | null => {
   for (let idx = 0; idx < asciiLines.length; idx++) {
     const asciiLine = asciiLines[idx] ?? "";
-    if (!/cislo\s+pojistne\s+smlouvy/i.test(asciiLine)) continue;
+    if (!/cislo\s+(?:nabidky\s+)?pojistne\s+smlouvy\b/i.test(asciiLine)) continue;
 
     const currentLineNumber = pickLastLongNumber(lines[idx] ?? "");
     if (currentLineNumber) return currentLineNumber;
@@ -283,6 +285,7 @@ const pickDomexPolicyContractNumber = (lines: string[], asciiLines: string[]): s
     for (let step = 1; step <= 3; step++) {
       const nextLine = lines[idx + step] ?? "";
       if (!nextLine) continue;
+      if (DOMEX_CONTRACT_HEADER.test(asciiLines[idx + step] ?? "")) break;
       const nextLineNumber = pickLastLongNumber(nextLine);
       if (nextLineNumber) return nextLineNumber;
     }
@@ -387,11 +390,10 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
   if (contractFromPolicyLabel) {
     result.contractNumber = contractFromPolicyLabel;
   } else {
-    const contractMatch =
-      fullText.match(/Číslo\s+pojistné\s+smlouvy[^\d]*([\d\s]{6,30})/i)?.[1] ??
-      ascii.match(/cislo pojistne smlouvy[^\d]*([\d\s]{6,30})/i)?.[1] ??
-      fullText.match(/Číslo\s+nabídky\s+pojistné\s+smlouvy[^\d]*([\d\s]{6,30})/i)?.[1] ??
-      ascii.match(/cislo nabidky pojistne smlouvy[^\d]*([\d\s]{6,30})/i)?.[1];
+    // A split label may span rows, but must not cross another labelled box.
+    const contractMatch = ascii.match(
+      /cislo\s+(?:nabidky\s+)?pojistne\s+smlouvy\s*:?\s*([\d\s]{6,30})/i
+    )?.[1];
     const digits = pickLastLongNumber(contractMatch);
     if (digits) result.contractNumber = digits;
   }
@@ -448,9 +450,10 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
     warnings.push("Prolongace: ověř ANO / NE a datum konce pojištění podle PDF.");
   }
 
-  // The actual signing date takes priority over creation/printing dates.
+  // Signing takes priority; offers use presentation before creation/printing.
   const signedMatch =
     ascii.match(/pojistna\s+smlouva\s+uzavrena\s+dne\s*:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
+    ascii.match(/nabidka\s+pojistne\s+smlouvy\s+predlozena\s*:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
     fullText.match(/Nabídka\s+vytvořena\s+dne:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1] ??
     ascii.match(/nabidka vytvorena dne:?\s*([0-9]{1,2}\.\s*[0-9]{1,2}\.\s*[0-9]{4})/i)?.[1];
   const signedFallbackFromFooter =

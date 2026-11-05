@@ -31,7 +31,9 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
   const cancelled = status === "cancelled";
   const statusLabel = status === "mixed" ? "Různé stavy"
     : isSubscription ? status === "paid" ? "Zaplaceno" : "Očekáváno"
-    : payoutStatusLabel(status);
+    : payoutStatusLabel(status, group.items);
+  const itemStatusLabels = group.items.map(part => payoutStatusLabel(cashflowItemDisplayStatus(part), [part]));
+  const hasDifferentStatusLabels = new Set(itemStatusLabels).size > 1;
   const hasDifferentDates = new Set(group.items.map((part) => part.date.toLocaleDateString("cs-CZ"))).size > 1;
   const sourceLabel = isExtra ? "Mimořádná odměna" : isTip ? "TIP provize" : isSubscription ? "Předplatné" : isTeam ? "Týmová smlouva" : "Vlastní smlouva";
   const periodLabel = isExtra ? item.date.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" }) : dateRangeLabel(group.items);
@@ -95,7 +97,7 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
                   {!isExtra && <th scope="col">Před odpočtem</th>}
                   <th scope="col">{isExtra ? "Částka" : "Po odpočtu"}</th>
                 </tr></thead>
-                <tbody>{group.items.map((part) => {
+                <tbody>{group.items.map((part, index) => {
                   const deduction = part.isExtraPayout || part.isSubscriptionPayment
                     ? 0 : part.amount * STORNO_FUND_RATE;
                   const net = part.amount - deduction;
@@ -108,10 +110,10 @@ export function CashflowCommissionCard({ group }: { group: CashflowDisplayGroup 
                       {part.premiumChangeOriginalAmount != null && part.premiumChangeEffectiveDate && <span className={styles.partMeta}>
                         Podle dodatku od {part.premiumChangeEffectiveDate.split("-").reverse().join(". ")}: {formatMoney(part.premiumChangeOriginalAmount)} → {formatMoney(part.predictionAdjustment?.baseAmount ?? part.amount)}
                       </span>}
-                      {!isExtra && (hasDifferentDates || status === "mixed") && <span className={styles.partMeta}>
+                      {!isExtra && (hasDifferentDates || hasDifferentStatusLabels) && <span className={styles.partMeta}>
                         {hasDifferentDates && part.date.toLocaleDateString("cs-CZ")}
-                        {hasDifferentDates && status === "mixed" && " · "}
-                        {status === "mixed" && payoutStatusLabel(cashflowItemDisplayStatus(part))}
+                        {hasDifferentDates && hasDifferentStatusLabels && " · "}
+                        {hasDifferentStatusLabels && itemStatusLabels[index]}
                       </span>}
                     </th>
                     {!isExtra && <td>{formatMoney(part.amount)}</td>}

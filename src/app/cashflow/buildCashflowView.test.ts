@@ -54,6 +54,46 @@ const statement = (
 afterEach(() => vi.useRealTimers());
 
 describe("server cashflow view preserves the displayed calculation", () => {
+  it("keeps only pending shifted payouts without paid receipts, cancellations or whole-account totals", () => {
+    const oldDate = new Date(2025, 11, 25);
+    const months = buildCashflowView([
+      item({ id: "pending", date: oldDate }),
+      item({ id: "paid-after-shift", payoutStatus: "paid", originalDate: oldDate, amount: 700 }),
+      item({ id: "negative", date: oldDate, amount: -100 }),
+      item({ id: "explicit-cancellation", date: oldDate, amount: 100, note: "Vlastní · storno z výpisu" }),
+      item({ id: "future", date: new Date(2027, 0, 25), amount: 500 }),
+    ], [
+      statement({ payoutMonthKey: "2025-12", paidContractNumbers: ["99999"], paidCommissionKeys: ["99999:A101"] }),
+      statement({ id: "statement-only", payoutMonthKey: "2026-2", payoutTotal: 9999 }),
+    ], { ...options, shiftedOnly: true }, asOf);
+
+    expect(months).toHaveLength(1);
+    expect(months[0]).toMatchObject({ key: "2026-1", total: 1000, totalSource: "predicted", statementPayoutTotal: null });
+    expect(months[0].items).toEqual([expect.objectContaining({ id: expect.stringContaining("pending"), originalDate: oldDate, payoutStatus: "shifted" })]);
+  });
+
+  it.each<Partial<CashflowViewOptions>>([
+    { scopeFilter: "own", productFilter: "auto" },
+    { scopeFilter: "team" },
+    { scopeFilter: "own", productFilter: "auto", contractNumberQuery: "12 345" },
+  ])("still reconciles shifted payouts in a selected scope/product/search %j", patch => {
+    const months = buildCashflowView([item({ date: new Date(2025, 11, 25) })], [
+      statement({ payoutMonthKey: "2025-12", paidContractNumbers: ["99999"], paidCommissionKeys: ["99999:A101"] }),
+    ], { ...options, ...patch, shiftedOnly: true }, asOf);
+
+    expect(months).toHaveLength(1);
+    expect(months[0]).toMatchObject({ key: "2026-1", total: 1000, totalSource: "predicted" });
+    expect(months[0].items[0].payoutStatus).toBe("shifted");
+  });
+
+  it("preserves the default view when the shifted-only filter is explicitly off", () => {
+    const items = [item()];
+    const statements = [statement()];
+    expect(buildCashflowView(items, statements, { ...options, shiftedOnly: false }, asOf))
+      .toEqual(buildCashflowView(items, statements, options, asOf));
+    expect(buildCashflowView(items, statements, { ...options, shiftedOnly: true }, asOf)).toEqual([]);
+  });
+
   it("carries unpaid December commission into January before hiding past years", () => {
     const oldDate = new Date(2025, 11, 25);
     const months = buildCashflowView([

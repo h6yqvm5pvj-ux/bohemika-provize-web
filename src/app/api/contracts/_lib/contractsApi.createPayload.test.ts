@@ -471,6 +471,7 @@ describe("contracts create payload parsing", () => {
   it.each([
     ["neon", "monthly"],
     ["domex", "annual"],
+    ["domexneuron", "annual"],
     ["cppAuto", "annual"],
     ["allianzAuto", "annual"],
   ] as const)(
@@ -482,6 +483,9 @@ describe("contracts create payload parsing", () => {
           frequencyRaw,
           isRefresh: true,
           refreshOriginalContractNumber: "OLD789",
+          ...(productKey === "domexneuron" ? {
+            contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
+          } : {}),
         }),
       );
 
@@ -507,7 +511,7 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, ČPP Auto a Allianz Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, ČPP Auto a Allianz Auto.",
     });
 
     const allianzReplacementPayload = normalizedPayload(
@@ -571,6 +575,30 @@ describe("contracts create payload parsing", () => {
       commissionCalculationStatus: "provisional_refresh_missing_original",
       commissionBaseSource: "calculator_provisional",
     });
+  });
+
+  it.each([{}, {
+    requiresStatementRefresh: true,
+    commissionCalculationStatus: "provisional_refresh_missing_original",
+    commissionBaseSource: "calculator_provisional",
+  }])("keeps an unlinked Neuron replacement independent of provisional refresh metadata: %j", metadata => {
+    expect(normalizedPayload(neuronEntry({
+      isRefresh: true,
+      refreshOriginalMissingInSystem: true,
+      refreshOriginalContractNumber: "OLD789",
+      ...metadata,
+    }))).toMatchObject({
+      productKey: "domexneuron", isRefresh: true,
+      refreshOriginalContractNumber: "OLD789", refreshOriginalMissingInSystem: true,
+      requiresStatementRefresh: null, commissionCalculationStatus: null, commissionBaseSource: null,
+    });
+  });
+
+  it.each(["NEW/<script>", "ABC123"])("validates the informational number of an unlinked Neuron replacement: %s", refreshOriginalContractNumber => {
+    expect(normalizeCreateEntryPayload({
+      raw: neuronEntry({ isRefresh: true, refreshOriginalMissingInSystem: true, refreshOriginalContractNumber }),
+      ownerEmail, ownerUid,
+    })).toMatchObject({ ok: false });
   });
 
   it("requires duration for MAXIMA Cizinci and defaults its variant", () => {

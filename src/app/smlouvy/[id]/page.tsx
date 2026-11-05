@@ -5119,7 +5119,7 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "domex") && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean(prod === "domexneuron" && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&

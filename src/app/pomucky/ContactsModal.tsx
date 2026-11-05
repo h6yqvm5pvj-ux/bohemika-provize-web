@@ -15,6 +15,12 @@ import {
   Save,
   Search,
   ContactRound,
+  UsersRound,
+  ShieldCheck,
+  UserRoundPlus,
+  Settings2,
+  ChevronDown,
+  RefreshCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -22,13 +28,16 @@ import Image from "next/image";
 import ui from "./directoryModal.module.css";
 import styles from "./contactsModal.module.css";
 import { useDirectoryDialog } from "./useDirectoryDialog";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
 import {
   CONTACT_INSTITUTION_BY_KEY,
   CONTACT_INSTITUTIONS,
-  DEFAULT_DIRECTORY_CONTACTS,
+  CONTACT_DIRECTORY_CHANGED_EVENT,
+  type ContactAudience,
+  type ContactDirectoryGroup,
+  type ContactGroupMember,
   type ContactEmail,
   type DirectoryContact,
 } from "@/app/lib/contactDirectory";
@@ -46,7 +55,10 @@ type CsobAlternative = {
 type ContactDirectoryResponse = {
   ok?: boolean;
   contacts?: DirectoryContact[];
+  groups?: ContactDirectoryGroup[];
   canManage?: boolean;
+  revision?: number;
+  publicVersion?: string;
   error?: string;
 };
 
@@ -54,7 +66,8 @@ type ModalView =
   | "contacts"
   | "csob-alternatives"
   | "institution-picker"
-  | "contact-form";
+  | "contact-form"
+  | "groups";
 
 type ContactDraft = {
   institutionKey: string;
@@ -62,13 +75,21 @@ type ContactDraft = {
   role: string;
   description: string;
   phone: string;
-  email1: string;
-  email1Label: string;
-  email2: string;
-  email2Label: string;
-  email2Cc: string;
+  emails: { value: string; label: string; cc: string }[];
   notice: string;
+  audience: ContactAudience;
 };
+
+type ContactMutation =
+  | { operation: "saveContact"; contact: DirectoryContact }
+  | { operation: "deleteContact"; contactId: string }
+  | {
+      operation: "saveGroup";
+      group: { id?: string; name: string; memberUids: string[] };
+    }
+  | { operation: "deleteGroup"; groupId: string };
+
+type GroupDraft = { id?: string; name: string; members: ContactGroupMember[] };
 
 const CSOB_ALTERNATIVES: CsobAlternative[] = [
   {
@@ -152,9 +173,7 @@ const CSOB_ALTERNATIVES: CsobAlternative[] = [
 ];
 
 const mailtoHref = ({ value, cc }: ContactEmail): string =>
-  cc
-    ? `mailto:${value}?cc=${encodeURIComponent(cc)}`
-    : `mailto:${value}`;
+  cc ? `mailto:${value}?cc=${encodeURIComponent(cc)}` : `mailto:${value}`;
 
 const emptyDraft = (institutionKey: string): ContactDraft => ({
   institutionKey,
@@ -162,12 +181,9 @@ const emptyDraft = (institutionKey: string): ContactDraft => ({
   role: "",
   description: "",
   phone: "",
-  email1: "",
-  email1Label: "",
-  email2: "",
-  email2Label: "",
-  email2Cc: "",
+  emails: [{ value: "", label: "", cc: "" }],
   notice: "",
+  audience: { type: "everyone" },
 });
 
 const draftFromContact = (contact: DirectoryContact): ContactDraft => ({
@@ -176,12 +192,15 @@ const draftFromContact = (contact: DirectoryContact): ContactDraft => ({
   role: contact.role ?? "",
   description: contact.description ?? "",
   phone: contact.phone?.display ?? "",
-  email1: contact.emails?.[0]?.value ?? "",
-  email1Label: contact.emails?.[0]?.label ?? "",
-  email2: contact.emails?.[1]?.value ?? "",
-  email2Label: contact.emails?.[1]?.label ?? "",
-  email2Cc: contact.emails?.[1]?.cc ?? "",
+  emails: contact.emails?.length
+    ? contact.emails.map((email) => ({
+        value: email.value,
+        label: email.label ?? "",
+        cc: email.cc ?? "",
+      }))
+    : [{ value: "", label: "", cc: "" }],
   notice: contact.notice ?? "",
+  audience: contact.audience ?? { type: "everyone" },
 });
 
 const phoneHref = (value: string): string => {
@@ -206,151 +225,335 @@ export function ContactsModal({
   onClose,
   user,
 }: ContactsModalProps) {
-  const [contacts, setContacts] = useState<DirectoryContact[]>(
-    DEFAULT_DIRECTORY_CONTACTS,
-  );
+  const identity = user ? `${user.uid}:${user.email ?? ""}` : "";
+  const [contacts, setContacts] = useState<DirectoryContact[]>([]);
+  const [groups, setGroups] = useState<ContactDirectoryGroup[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [publicVersion, setPublicVersion] = useState("");
   const [view, setView] = useState<ModalView>("contacts");
   const [formReturnView, setFormReturnView] = useState<ModalView>("contacts");
+  const [groupReturnView, setGroupReturnView] = useState<
+    "contacts" | "contact-form"
+  >("contacts");
   const [selectedInstitution, setSelectedInstitution] = useState<string | null>(
     null,
   );
+  const [audienceFilter, setAudienceFilter] = useState("all");
   const [canManage, setCanManage] = useState(false);
   const [editingMode, setEditingMode] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ContactDraft>(() => emptyDraft("pillow"));
+  const [draft, setDraft] = useState<ContactDraft>(() =>
+    emptyDraft("bohemika"),
+  );
+  const [groupDraft, setGroupDraft] = useState<GroupDraft>({
+    name: "",
+    members: [],
+  });
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberResults, setMemberResults] = useState<ContactGroupMember[]>([]);
+  const [memberSearching, setMemberSearching] = useState(false);
+  const [memberSearchError, setMemberSearchError] = useState("");
   const [loading, setLoading] = useState(Boolean(user));
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   const [status, setStatus] = useState<{
     tone: "error" | "success";
     text: string;
   } | null>(null);
-  const panelRef = useRef<HTMLElement>(null);
   const [search, setSearch] = useState("");
-  useDirectoryDialog(panelRef, onClose);
+  const panelRef = useRef<HTMLElement>(null);
   const highlightedContactRef = useRef<HTMLElement | null>(null);
   const contactContentRef = useRef<HTMLDivElement>(null);
+  const sessionEpoch = useRef(0);
+  const highlightedInitial = useRef("");
+  useDirectoryDialog(panelRef, onClose);
+
+  // Hide the previous account's data immediately, before effects clear its state.
+  const sessionReady = Boolean(user) && loadedFor === identity;
+  const currentContacts = sessionReady ? contacts : [];
+  const currentGroups = sessionReady ? groups : [];
+  const canEdit = sessionReady && canManage && !loading;
 
   useEffect(() => {
-    if (contactContentRef.current) contactContentRef.current.scrollTop = 0;
-  }, [search, selectedInstitution]);
-
-  const institutionsWithContacts = useMemo(
-    () =>
-      CONTACT_INSTITUTIONS.filter((institution) =>
-        contacts.some(
-          (contact) => contact.institutionKey === institution.key,
-        ),
-      ),
-    [contacts],
-  );
-
-  const availableInstitutions = useMemo(
-    () =>
-      CONTACT_INSTITUTIONS.filter(
-        (institution) =>
-          !contacts.some(
-            (contact) => contact.institutionKey === institution.key,
-          ),
-      ),
-    [contacts],
-  );
-
-  const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const query = normalizeSearch(search.trim());
-  const visibleContacts = contacts.filter((contact) => {
-    if (selectedInstitution && contact.institutionKey !== selectedInstitution) return false;
-    const text = [contact.person, contact.role, contact.description,
-      CONTACT_INSTITUTION_BY_KEY.get(contact.institutionKey)?.label,
-      contact.phone?.display, contact.phone?.href, ...(contact.emails ?? []).flatMap((email) => [email.value, email.label])
-    ].filter(Boolean).join(" ");
-    return !query || normalizeSearch(text).includes(query) ||
-      (/^[+\d\s]+$/.test(query) && Boolean(contact.phone?.href.replace(/\s/g, "").includes(query.replace(/\s/g, ""))));
-  });
-
-  useEffect(() => {
-    if (!initialContactId) return;
-    const contact = contacts.find((item) => item.id === initialContactId);
-    if (!contact) return;
-
+    sessionEpoch.current += 1;
+    highlightedInitial.current = "";
+    setContacts([]);
+    setGroups([]);
+    setLoadedFor(null);
+    setCanManage(false);
+    setRevision(0);
+    setPublicVersion("");
     setView("contacts");
-    setSelectedInstitution(contact.institutionKey);
-    const scrollTimer = window.setTimeout(() => {
-      highlightedContactRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 120);
-    return () => window.clearTimeout(scrollTimer);
-  }, [contacts, initialContactId]);
-
+    setEditingMode(false);
+    setEditingContactId(null);
+    setDraft(emptyDraft("bohemika"));
+    setGroupDraft({ name: "", members: [] });
+    setSearch("");
+    setSelectedInstitution(null);
+    setAudienceFilter("all");
+    setMemberQuery("");
+    setMemberResults([]);
+    setMemberSearchError("");
+    setStatus(null);
+    setSaving(false);
+    setNeedsRefresh(false);
+    return () => {
+      sessionEpoch.current += 1;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
-
+    const epoch = sessionEpoch.current;
+    const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
+    setLoadedFor(null);
+    setContacts([]);
+    setGroups([]);
+    setCanManage(false);
     void fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
       user,
       "/api/contacts",
-      { method: "GET" },
+      { method: "GET", signal: controller.signal },
     )
       .then((payload) => {
-        if (cancelled) return;
-        if (Array.isArray(payload.contacts)) setContacts(payload.contacts);
+        if (cancelled || epoch !== sessionEpoch.current) return;
+        if (
+          !Array.isArray(payload.contacts) ||
+          !Array.isArray(payload.groups) ||
+          !Number.isSafeInteger(payload.revision) ||
+          typeof payload.publicVersion !== "string" ||
+          !payload.publicVersion
+        ) {
+          throw new Error("Adresář se nepodařilo načíst.");
+        }
+        setContacts(payload.contacts);
+        setGroups(payload.groups);
+        setRevision(payload.revision!);
+        setPublicVersion(payload.publicVersion);
         setCanManage(payload.canManage === true);
+        setLoadedFor(identity);
+        setNeedsRefresh(false);
+        setStatus(null);
+        if (payload.canManage !== true) {
+          setEditingMode(false);
+          setView("contacts");
+          setDraft(emptyDraft("bohemika"));
+          setGroupDraft({ name: "", members: [] });
+        }
       })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn("Načtení adresáře kontaktů selhalo:", error);
+      .catch(() => {
+        if (cancelled || epoch !== sessionEpoch.current) return;
         setStatus({
           tone: "error",
-          text: "Nepodařilo se načíst aktuální změny. Zobrazují se výchozí kontakty.",
+          text: "Kontakty se nepodařilo načíst. Zkuste to prosím znovu.",
         });
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && epoch === sessionEpoch.current) setLoading(false);
       });
-
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [user]);
+  }, [user, identity, reloadVersion]);
 
-  const persistContacts = async (nextContacts: DirectoryContact[]) => {
-    if (!user || !canManage || saving) return false;
+  useEffect(() => {
+    const query = memberQuery.trim();
+    setMemberResults([]);
+    setMemberSearchError("");
+    if (view !== "groups" || !user || !canEdit || query.length < 2) {
+      setMemberSearching(false);
+      return;
+    }
+    const epoch = sessionEpoch.current;
+    const controller = new AbortController();
+    let cancelled = false;
+    setMemberSearching(true);
+    const timer = window.setTimeout(() => {
+      void fetchAuthedJsonOrThrow<{ users?: ContactGroupMember[] }>(
+        user,
+        "/api/contacts/members",
+        {
+          method: "POST",
+          body: JSON.stringify({ query }),
+          signal: controller.signal,
+        },
+      )
+        .then((payload) => {
+          if (!cancelled && epoch === sessionEpoch.current)
+            setMemberResults(Array.isArray(payload.users) ? payload.users : []);
+        })
+        .catch(() => {
+          if (!cancelled && epoch === sessionEpoch.current)
+            setMemberSearchError(
+              "Uživatele se nepodařilo vyhledat. Zkuste to znovu.",
+            );
+        })
+        .finally(() => {
+          if (!cancelled && epoch === sessionEpoch.current)
+            setMemberSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [memberQuery, user, canEdit, view]);
+
+  useEffect(() => {
+    if (contactContentRef.current) contactContentRef.current.scrollTop = 0;
+  }, [search, selectedInstitution, audienceFilter]);
+  useEffect(() => {
+    if (
+      !initialContactId ||
+      !sessionReady ||
+      highlightedInitial.current === `${identity}:${initialContactId}`
+    )
+      return;
+    const contact = contacts.find((item) => item.id === initialContactId);
+    if (!contact) return;
+    highlightedInitial.current = `${identity}:${initialContactId}`;
+    setView("contacts");
+    setSelectedInstitution(contact.institutionKey);
+    const timer = window.setTimeout(
+      () =>
+        highlightedContactRef.current?.scrollIntoView?.({
+          behavior: "smooth",
+          block: "center",
+        }),
+      120,
+    );
+    return () => window.clearTimeout(timer);
+  }, [contacts, initialContactId, identity, sessionReady]);
+
+  const institutionsWithContacts = CONTACT_INSTITUTIONS.filter((institution) =>
+    currentContacts.some(
+      (contact) => contact.institutionKey === institution.key,
+    ),
+  );
+  const availableInstitutions = CONTACT_INSTITUTIONS.filter(
+    (institution) =>
+      !currentContacts.some(
+        (contact) => contact.institutionKey === institution.key,
+      ),
+  );
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  const query = normalizeSearch(search.trim());
+  const audienceLabel = (audience: ContactAudience | undefined) => {
+    if (audience?.type === "specialists") return "Specialisti";
+    if (audience?.type === "group")
+      return (
+        currentGroups.find((group) => group.id === audience.groupId)?.name ??
+        "Vlastní skupina"
+      );
+    return "Všichni";
+  };
+  const visibleContacts = currentContacts.filter((contact) => {
+    if (selectedInstitution && contact.institutionKey !== selectedInstitution)
+      return false;
+    const audience = contact.audience ?? { type: "everyone" };
+    if (audienceFilter === "everyone" && audience.type !== "everyone")
+      return false;
+    if (audienceFilter === "specialists" && audience.type !== "specialists")
+      return false;
+    if (
+      audienceFilter.startsWith("group:") &&
+      (audience.type !== "group" ||
+        audience.groupId !== audienceFilter.slice(6))
+    )
+      return false;
+    const text = [
+      contact.person,
+      contact.role,
+      contact.description,
+      CONTACT_INSTITUTION_BY_KEY.get(contact.institutionKey)?.label,
+      contact.phone?.display,
+      contact.phone?.href,
+      ...(contact.emails ?? []).flatMap((email) => [email.value, email.label]),
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      !query ||
+      normalizeSearch(text).includes(query) ||
+      (/^[+\d\s]+$/.test(query) &&
+        Boolean(contact.phone?.href.includes(query.replace(/\s/g, ""))))
+    );
+  });
+
+  const persistMutation = async (
+    mutation: ContactMutation,
+  ): Promise<ContactDirectoryResponse | null> => {
+    if (!user || !canEdit || saving) return null;
+    const epoch = sessionEpoch.current;
     setSaving(true);
     setStatus(null);
+    setNeedsRefresh(false);
     try {
       const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(
         user,
         "/api/contacts",
         {
           method: "PUT",
-          body: JSON.stringify({ contacts: nextContacts }),
+          body: JSON.stringify({ ...mutation, revision, publicVersion }),
         },
       );
-      setContacts(
-        Array.isArray(payload.contacts) ? payload.contacts : nextContacts,
-      );
-      setStatus({ tone: "success", text: "Kontakty byly uloženy." });
-      return true;
+      if (epoch !== sessionEpoch.current) return null;
+      if (
+        !Array.isArray(payload.contacts) ||
+        !Array.isArray(payload.groups) ||
+        !Number.isSafeInteger(payload.revision) ||
+        typeof payload.publicVersion !== "string" ||
+        !payload.publicVersion
+      )
+        throw new Error(
+          "Server nevrátil aktuální adresář. Načtěte jej prosím znovu.",
+        );
+      setContacts(payload.contacts);
+      setGroups(payload.groups);
+      setRevision(payload.revision!);
+      setPublicVersion(payload.publicVersion);
+      setCanManage(payload.canManage === true);
+      if (payload.canManage !== true) {
+        setEditingMode(false);
+        setView("contacts");
+      }
+      window.dispatchEvent(new Event(CONTACT_DIRECTORY_CHANGED_EVENT));
+      return payload;
     } catch (error) {
+      if (epoch !== sessionEpoch.current) return null;
+      const conflict = Boolean(
+        error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "contact-directory/revision-conflict",
+      );
+      setNeedsRefresh(conflict);
       setStatus({
         tone: "error",
-        text:
-          error instanceof Error
+        text: conflict
+          ? "Adresář se mezitím změnil. Načtěte aktuální verzi a potom zkuste změnu uložit znovu. Rozepsané údaje zůstanou zachované."
+          : error instanceof Error
             ? error.message
-            : "Změny kontaktů se nepodařilo uložit.",
+            : "Změnu se nepodařilo uložit.",
       });
-      return false;
+      return null;
     } finally {
-      setSaving(false);
+      if (epoch === sessionEpoch.current) setSaving(false);
     }
   };
-
   const openNewContact = (
     institutionKey: string,
     returnView: ModalView = "contacts",
@@ -359,278 +562,558 @@ export function ContactsModal({
     setDraft(emptyDraft(institutionKey));
     setFormReturnView(returnView);
     setStatus(null);
+    setNeedsRefresh(false);
     setView("contact-form");
   };
-
   const openExistingContact = (contact: DirectoryContact) => {
     setEditingContactId(contact.id);
     setDraft(draftFromContact(contact));
     setFormReturnView("contacts");
     setStatus(null);
+    setNeedsRefresh(false);
     setView("contact-form");
   };
-
+  const openGroups = (
+    returnView: "contacts" | "contact-form",
+    create = false,
+  ) => {
+    setGroupReturnView(returnView);
+    setMemberQuery("");
+    setMemberResults([]);
+    setStatus(null);
+    setNeedsRefresh(false);
+    const selectedGroupId =
+      returnView === "contact-form" && draft.audience.type === "group"
+        ? draft.audience.groupId
+        : null;
+    const existing = create
+      ? null
+      : (currentGroups.find((group) => group.id === selectedGroupId) ??
+        currentGroups[0]);
+    setGroupDraft(
+      existing
+        ? {
+            id: existing.id,
+            name: existing.name,
+            members: existing.members ?? [],
+          }
+        : { name: "", members: [] },
+    );
+    setView("groups");
+  };
+  const returnFromCurrentView = () => {
+    if (saving) return;
+    setView(
+      view === "contact-form"
+        ? formReturnView
+        : view === "groups"
+          ? groupReturnView
+          : "contacts",
+    );
+    setStatus(null);
+    setNeedsRefresh(false);
+  };
+  const updateEmail = (
+    index: number,
+    key: "value" | "label" | "cc",
+    value: string,
+  ) =>
+    setDraft((current) => ({
+      ...current,
+      emails: current.emails.map((email, position) =>
+        position === index ? { ...email, [key]: value } : email,
+      ),
+    }));
   const saveDraft = async () => {
-    const person = draft.person.trim();
-    const role = draft.role.trim();
-    const description = draft.description.trim();
-    const phone = draft.phone.trim();
-    const email1 = draft.email1.trim();
-    const email2 = draft.email2.trim();
+    if (!canEdit || saving) return;
+    const person = draft.person.trim(),
+      role = draft.role.trim(),
+      description = draft.description.trim(),
+      phone = draft.phone.trim();
+    const fail = (text: string) => setStatus({ tone: "error", text });
     if (!person && !role && !description) {
-      setStatus({
-        tone: "error",
-        text: "Vyplňte jméno, roli nebo popis kontaktu.",
-      });
+      fail("Vyplňte jméno, roli nebo popis kontaktu.");
       return;
     }
-    if (!phone && !email1 && !email2) {
-      setStatus({
-        tone: "error",
-        text: "Vyplňte alespoň telefon nebo e-mail.",
-      });
+    if (!phone && !draft.emails.some((email) => email.value.trim())) {
+      fail("Vyplňte alespoň telefon nebo e-mail.");
       return;
     }
-
-    const previous = editingContactId
-      ? contacts.find((contact) => contact.id === editingContactId)
-      : null;
-    const emails: ContactEmail[] = [];
-    if (email1) {
-      emails.push({
-        value: email1,
-        ...(draft.email1Label.trim()
-          ? { label: draft.email1Label.trim() }
-          : {}),
-        ...(previous?.emails?.[0]?.value === email1 &&
-        previous.emails[0].cc
-          ? { cc: previous.emails[0].cc }
-          : {}),
-      });
+    if (phone && !/^\+?\d+$/.test(phoneHref(phone))) {
+      fail("Zkontrolujte telefonní číslo.");
+      return;
     }
-    if (email2) {
-      emails.push({
-        value: email2,
-        ...(draft.email2Label.trim()
-          ? { label: draft.email2Label.trim() }
-          : {}),
-        ...(draft.email2Cc.trim() ? { cc: draft.email2Cc.trim() } : {}),
-      });
+    if (
+      draft.emails.some(
+        (email) =>
+          !email.value.trim() && (email.label.trim() || email.cc.trim()),
+      )
+    ) {
+      fail("Doplňte e-mailovou adresu k vyplněnému popisku nebo kopii.");
+      return;
     }
-
-    const nextContact: DirectoryContact = {
+    const audience = draft.audience;
+    if (
+      audience.type === "group" &&
+      !currentGroups.some((group) => group.id === audience.groupId)
+    ) {
+      fail(
+        "Vyberte skupinu, pro kterou je kontakt určen, nebo vytvořte novou.",
+      );
+      return;
+    }
+    const emails: ContactEmail[] = draft.emails
+      .filter((email) => email.value.trim())
+      .map((email) => ({
+        value: email.value.trim(),
+        ...(email.label.trim() ? { label: email.label.trim() } : {}),
+        ...(email.cc.trim() ? { cc: email.cc.trim() } : {}),
+      }));
+    const contact: DirectoryContact = {
       id: editingContactId ?? newContactId(draft.institutionKey),
       institutionKey: draft.institutionKey,
+      audience: draft.audience,
       ...(person ? { person } : {}),
       ...(role ? { role } : {}),
       ...(description ? { description } : {}),
-      ...(phone
-        ? { phone: { display: phone, href: phoneHref(phone) } }
-        : {}),
-      ...(emails.length > 0 ? { emails } : {}),
+      ...(phone ? { phone: { display: phone, href: phoneHref(phone) } } : {}),
+      ...(emails.length ? { emails } : {}),
       ...(draft.notice.trim() ? { notice: draft.notice.trim() } : {}),
     };
-
-    const nextContacts = editingContactId
-      ? contacts.map((contact) =>
-          contact.id === editingContactId ? nextContact : contact,
-        )
-      : [...contacts, nextContact];
-    if (!(await persistContacts(nextContacts))) return;
-
-    setSelectedInstitution(draft.institutionKey);
-    setView("contacts");
+    if (!(await persistMutation({ operation: "saveContact", contact }))) return;
+    setSelectedInstitution(contact.institutionKey);
     setEditingContactId(null);
+    setView("contacts");
+    setStatus({ tone: "success", text: "Kontakt byl uložen." });
   };
-
   const deleteCurrentContact = async () => {
-    if (!editingContactId || saving) return;
-    const contact = contacts.find((item) => item.id === editingContactId);
-    const institution = contact
-      ? CONTACT_INSTITUTION_BY_KEY.get(contact.institutionKey)
-      : null;
     if (
-      !window.confirm(
-        `Opravdu chcete odstranit tento kontakt${
-          institution ? ` z instituce ${institution.label}` : ""
-        }?`,
-      )
-    ) {
+      !editingContactId ||
+      saving ||
+      !window.confirm("Opravdu chcete odstranit tento kontakt?")
+    )
       return;
-    }
-
-    const nextContacts = contacts.filter(
-      (item) => item.id !== editingContactId,
-    );
-    if (!(await persistContacts(nextContacts))) return;
-
-    const institutionStillExists = nextContacts.some(
-      (item) => item.institutionKey === contact?.institutionKey,
-    );
-    if (!institutionStillExists) setSelectedInstitution(null);
+    if (
+      !(await persistMutation({
+        operation: "deleteContact",
+        contactId: editingContactId,
+      }))
+    )
+      return;
     setEditingContactId(null);
     setView("contacts");
+    setStatus({ tone: "success", text: "Kontakt byl odstraněn." });
   };
-
-  const showBackButton = view !== "contacts";
-  const activeInstitution = selectedInstitution
-    ? CONTACT_INSTITUTION_BY_KEY.get(selectedInstitution)
-    : null;
-  const title =
-    view === "csob-alternatives"
-      ? "Alternativní kontakty ČSOB"
-      : view === "institution-picker"
-        ? "Přidat instituci"
-        : view === "contact-form"
-          ? editingContactId
-            ? "Upravit kontakt"
-            : "Nový kontakt"
-          : "Kontakty";
-  const subtitle =
-    view === "csob-alternatives"
-      ? "Regionální manažeři a další kontakty, na které se můžete obrátit, pokud Daniel Vlk není dostupný."
-      : view === "institution-picker"
-        ? "Vyberte spolupracující instituci, která zatím v kontaktech není. Logo i vzhled karty se doplní automaticky."
-        : view === "contact-form"
-          ? "Vyplňte obsah kontaktní karty. Povinný je alespoň telefon nebo e-mail."
-          : "Přímé kontakty na obchodní a administrativní podporu partnerských institucí.";
-
-  const returnFromCurrentView = () => {
-    if (view === "contact-form") {
-      setView(formReturnView);
-      setStatus(null);
+  const saveGroup = async () => {
+    if (!groupDraft.name.trim()) {
+      setStatus({ tone: "error", text: "Vyplňte název skupiny." });
       return;
     }
-    setView("contacts");
-    setStatus(null);
+    const previousIds = new Set(currentGroups.map((group) => group.id));
+    const payload = await persistMutation({
+      operation: "saveGroup",
+      group: {
+        ...(groupDraft.id ? { id: groupDraft.id } : {}),
+        name: groupDraft.name.trim(),
+        memberUids: groupDraft.members.map((member) => member.uid),
+      },
+    });
+    if (!payload) return;
+    const saved = payload.groups?.find((group) =>
+      groupDraft.id ? group.id === groupDraft.id : !previousIds.has(group.id),
+    );
+    if (saved) {
+      setGroupDraft({
+        id: saved.id,
+        name: saved.name,
+        members: saved.members ?? groupDraft.members,
+      });
+      if (groupReturnView === "contact-form") {
+        setDraft((current) => ({
+          ...current,
+          audience: { type: "group", groupId: saved.id },
+        }));
+        setView("contact-form");
+      }
+    }
+    setStatus({ tone: "success", text: "Skupina byla uložena." });
   };
+  const deleteGroup = async () => {
+    if (
+      !groupDraft.id ||
+      saving ||
+      !window.confirm(
+        "Opravdu chcete odstranit tuto skupinu? Kontakty zůstanou zachované.",
+      )
+    )
+      return;
+    const payload = await persistMutation({
+      operation: "deleteGroup",
+      groupId: groupDraft.id,
+    });
+    if (!payload) return;
+    const next = payload.groups?.[0];
+    setGroupDraft(
+      next
+        ? { id: next.id, name: next.name, members: next.members ?? [] }
+        : { name: "", members: [] },
+    );
+    setStatus({ tone: "success", text: "Skupina byla odstraněna." });
+  };
+  const toggleMember = (member: ContactGroupMember) =>
+    setGroupDraft((current) => ({
+      ...current,
+      members: current.members.some((item) => item.uid === member.uid)
+        ? current.members.filter((item) => item.uid !== member.uid)
+        : [...current.members, member],
+    }));
+  const groupContactCount = currentContacts.filter(
+    (contact) =>
+      contact.audience?.type === "group" &&
+      contact.audience.groupId === groupDraft.id,
+  ).length;
+  const institution = CONTACT_INSTITUTION_BY_KEY.get(draft.institutionKey);
+  const title =
+    view === "groups"
+      ? "Vlastní skupiny"
+      : view === "csob-alternatives"
+        ? "Alternativní kontakty ČSOB"
+        : view === "institution-picker"
+          ? "Přidat instituci"
+          : view === "contact-form"
+            ? editingContactId
+              ? "Upravit kontakt"
+              : "Nový kontakt"
+            : "Kontakty";
+  const subtitle =
+    view === "groups"
+      ? "Vytvořte skupinu a vyberte uživatele, kteří uvidí její kontakty."
+      : view === "contact-form"
+        ? "Kontaktní údaje a jejich dostupnost na jednom místě."
+        : view === "csob-alternatives"
+          ? "Regionální podpora a další kontaktní osoby."
+          : view === "institution-picker"
+            ? "Vyberte instituci, pro kterou chcete přidat první kontakt."
+            : "Obchodní a administrativní podpora partnerských institucí.";
+  const statusElement = status ? (
+    <div
+      className={styles.status}
+      data-tone={status.tone}
+      role={status.tone === "error" ? "alert" : "status"}
+    >
+      <span>{status.text}</span>
+      {needsRefresh && (
+        <button
+          type="button"
+          disabled={loading || saving}
+          onClick={() => setReloadVersion((version) => version + 1)}
+        >
+          <RefreshCw size={14} />
+          Načíst aktuální verzi
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className={ui.overlay}>
-      <button type="button" className={ui.backdrop} onClick={onClose} aria-label="Zavřít kontakty" tabIndex={-1} />
-      <section ref={panelRef} tabIndex={-1} className={`${ui.panel} ${styles.panel}`} data-directory={view === "contacts" || undefined} role="dialog" aria-modal="true" aria-labelledby="contacts-modal-title">
+      <button
+        type="button"
+        className={ui.backdrop}
+        onClick={onClose}
+        aria-label="Zavřít kontakty"
+        tabIndex={-1}
+      />
+      <section
+        ref={panelRef}
+        tabIndex={-1}
+        className={`${ui.panel} ${styles.panel}`}
+        data-directory={view === "contacts" || undefined}
+        data-editor={view === "contact-form" || view === "groups" || undefined}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contacts-modal-title"
+      >
         <header className={ui.header}>
-          <span className={ui.headerIcon}><ContactRound size={22} strokeWidth={1.7} aria-hidden="true" /></span>
+          <span className={ui.headerIcon}>
+            {view === "groups" ? (
+              <UsersRound size={22} aria-hidden="true" />
+            ) : (
+              <ContactRound size={22} strokeWidth={1.7} aria-hidden="true" />
+            )}
+          </span>
           <div className={ui.heading}>
-            {showBackButton ? <button type="button" onClick={returnFromCurrentView} className={ui.back}><ArrowLeft size={13} />Zpět na kontakty</button> : <p className={ui.eyebrow}>Adresář podpory</p>}
-            <h2 id="contacts-modal-title" className={ui.title}>{title}</h2>
+            {view !== "contacts" ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={returnFromCurrentView}
+                className={ui.back}
+              >
+                <ArrowLeft size={13} />
+                {view === "groups" && groupReturnView === "contact-form"
+                  ? "Zpět na kontakt"
+                  : "Zpět na kontakty"}
+              </button>
+            ) : (
+              <p className={ui.eyebrow}>Adresář podpory</p>
+            )}
+            <h2 id="contacts-modal-title" className={ui.title}>
+              {title}
+            </h2>
             <p className={ui.subtitle}>{subtitle}</p>
           </div>
           <div className={ui.headerActions}>
-            {view === "contacts" && canManage && <button type="button" onClick={() => { setEditingMode((current) => !current); setStatus(null); }} className={ui.edit} aria-pressed={editingMode} aria-label={editingMode ? "Dokončit úpravy" : "Editovat kontakty"}>
-              {editingMode ? <Check size={16} /> : <Pencil size={16} />}<span>{editingMode ? "Hotovo" : "Editovat"}</span>
-            </button>}
-            <button type="button" onClick={onClose} className={ui.close} aria-label="Zavřít"><X size={18} /></button>
+            {view === "contacts" && canEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMode((current) => !current);
+                  setStatus(null);
+                }}
+                className={ui.edit}
+                aria-pressed={editingMode}
+                aria-label={
+                  editingMode ? "Dokončit úpravy" : "Editovat kontakty"
+                }
+              >
+                {editingMode ? <Check size={16} /> : <Pencil size={16} />}
+                <span>{editingMode ? "Hotovo" : "Editovat"}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={ui.close}
+              aria-label="Zavřít"
+            >
+              <X size={18} />
+            </button>
           </div>
         </header>
 
-        {view === "contacts" ? (
+        {loading && (
+          <div className={styles.loading} role="status">
+            <span className={styles.spinner} />
+            Načítám kontakty…
+          </div>
+        )}
+        {!loading && !sessionReady && (
+          <div className={styles.loadFailure}>
+            {statusElement}
+            <p>
+              {user
+                ? "Aktuální adresář zatím není k dispozici."
+                : "Pro zobrazení kontaktů se přihlaste."}
+            </p>
+            {user && (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setReloadVersion((value) => value + 1)}
+              >
+                <RefreshCw size={15} />
+                Zkusit znovu
+              </button>
+            )}
+          </div>
+        )}
+
+        {!loading && sessionReady && view === "contacts" && (
           <div className={styles.directory}>
-            <nav className={styles.sidebar} aria-label="Filtrovat kontakty podle instituce">
+            <nav
+              className={styles.sidebar}
+              aria-label="Filtrovat kontakty podle instituce"
+            >
               <div className={styles.sidebarHeading}>
                 <p>Instituce</p>
                 <span>{institutionsWithContacts.length}</span>
               </div>
               <div className={styles.institutionList}>
-                <button type="button" onClick={() => setSelectedInstitution(null)} aria-pressed={selectedInstitution === null} className={styles.institutionButton}>
-                  <span className={`${styles.institutionLogo} ${styles.allInstitutions}`}><ContactRound size={22} strokeWidth={1.6} aria-hidden="true" /></span>
-                  <span className={styles.institutionLabel}>Všechny kontakty</span>
-                  <span className={styles.institutionCount}>{contacts.length}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedInstitution(null)}
+                  aria-pressed={selectedInstitution === null}
+                  className={styles.institutionButton}
+                >
+                  <span
+                    className={`${styles.institutionLogo} ${styles.allInstitutions}`}
+                  >
+                    <ContactRound size={22} aria-hidden="true" />
+                  </span>
+                  <span className={styles.institutionLabel}>
+                    Všechny kontakty
+                  </span>
+                  <span className={styles.institutionCount}>
+                    {currentContacts.length}
+                  </span>
                 </button>
-                {institutionsWithContacts.map((institution) => (
-                  <button key={institution.key} type="button" onClick={() => setSelectedInstitution(institution.key)} aria-pressed={selectedInstitution === institution.key} className={styles.institutionButton}>
-                    <span className={styles.institutionLogo}><Image src={institution.logoPath} alt="" width={64} height={40} /></span>
-                    <span className={styles.institutionLabel}>{institution.label}</span>
-                    <span className={styles.institutionCount}>{contacts.filter((contact) => contact.institutionKey === institution.key).length}</span>
+                {institutionsWithContacts.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setSelectedInstitution(item.key)}
+                    aria-pressed={selectedInstitution === item.key}
+                    className={styles.institutionButton}
+                  >
+                    <span className={styles.institutionLogo}>
+                      <Image
+                        src={item.logoPath}
+                        alt=""
+                        width={64}
+                        height={40}
+                      />
+                    </span>
+                    <span className={styles.institutionLabel}>
+                      {item.label}
+                    </span>
+                    <span className={styles.institutionCount}>
+                      {
+                        currentContacts.filter(
+                          (contact) => contact.institutionKey === item.key,
+                        ).length
+                      }
+                    </span>
                   </button>
                 ))}
               </div>
+              {canEdit && (
+                <button
+                  type="button"
+                  className={styles.manageGroups}
+                  aria-label="Spravovat skupiny"
+                  onClick={() => openGroups("contacts")}
+                >
+                  <UsersRound size={16} />
+                  <span>Spravovat skupiny</span>
+                  <span className={styles.institutionCount}>
+                    {currentGroups.length}
+                  </span>
+                </button>
+              )}
             </nav>
-
             <div className={styles.main}>
               <div className={`${ui.toolbar} ${styles.toolbar}`}>
-                <div className={ui.searchRow}>
-                  <div className={`${ui.search} ${styles.search}`}><Search size={17} aria-hidden="true" />
-                    <input aria-label="Hledat kontakt" placeholder="Jméno, instituce, telefon nebo e-mail…" value={search} onChange={(event) => setSearch(event.target.value)} />
-                    {search && <button type="button" onClick={() => setSearch("")} aria-label="Vymazat hledání"><X size={15} /></button>}
-                  </div>
-                </div>
-
-                {editingMode ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3">
-                    <p className="mr-auto text-xs font-semibold text-slate-500">
-                      Režim úprav je aktivní. Kliknutím na tužku upravíte kartu.
-                    </p>
-                    {selectedInstitution ? (
+                <div className={styles.directoryTools}>
+                  <div className={`${ui.search} ${styles.search}`}>
+                    <Search size={17} aria-hidden="true" />
+                    <input
+                      aria-label="Hledat kontakt"
+                      placeholder="Jméno, instituce, telefon nebo e-mail…"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                    />
+                    {search && (
                       <button
                         type="button"
-                        onClick={() => openNewContact(selectedInstitution)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-700 transition hover:border-violet-300 hover:bg-violet-50"
+                        onClick={() => setSearch("")}
+                        aria-label="Vymazat hledání"
                       >
-                        <Plus className="h-4 w-4" />
-                        Přidat kontakt
+                        <X size={15} />
                       </button>
-                    ) : null}
+                    )}
+                  </div>
+                  <label className={styles.audienceFilter}>
+                    <span>Určeno pro</span>
+                    <select
+                      aria-label="Filtrovat kontakty podle skupiny"
+                      value={audienceFilter}
+                      onChange={(event) =>
+                        setAudienceFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">Všechny dostupné</option>
+                      <option value="everyone">Všichni</option>
+                      {(canManage ||
+                        currentContacts.some(
+                          (contact) => contact.audience?.type === "specialists",
+                        )) && <option value="specialists">Specialisti</option>}
+                      {currentGroups.map((group) => (
+                        <option key={group.id} value={`group:${group.id}`}>
+                          {group.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </label>
+                </div>
+                {editingMode && canEdit && (
+                  <div className={styles.editToolbar}>
+                    <span>
+                      <Pencil size={13} />
+                      Úpravy adresáře
+                    </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        setStatus(null);
-                        setView("institution-picker");
-                      }}
-                      disabled={availableInstitutions.length === 0}
-                      className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-45"
+                      className={styles.secondaryButton}
+                      onClick={() => openGroups("contacts")}
                     >
-                      <Building2 className="h-4 w-4" />
-                      Přidat instituci
+                      <UsersRound size={15} />
+                      Skupiny
                     </button>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() =>
+                        openNewContact(
+                          selectedInstitution ??
+                            institutionsWithContacts[0]?.key ??
+                            "bohemika",
+                        )
+                      }
+                    >
+                      <Plus size={15} />
+                      Přidat kontakt
+                    </button>
+                    {availableInstitutions.length > 0 && (
+                      <button
+                        type="button"
+                        className={styles.textButton}
+                        onClick={() => setView("institution-picker")}
+                      >
+                        <Building2 size={15} />
+                        Přidat instituci
+                      </button>
+                    )}
                   </div>
-                ) : null}
-
-                {loading ? (
-                  <p className="mt-2 text-xs font-semibold text-slate-400">
-                    Načítám aktuální kontakty…
-                  </p>
-                ) : null}
-                {status ? (
-                  <p
-                    className={`mt-2 text-xs font-bold ${
-                      status.tone === "error"
-                        ? "text-rose-700"
-                        : "text-emerald-700"
-                    }`}
-                    role="status"
-                  >
-                    {status.text}
-                  </p>
-                ) : null}
+                )}
+                {statusElement}
               </div>
-
-              <div ref={contactContentRef} className={`${ui.content} ${styles.contactContent}`}>
+              <div
+                ref={contactContentRef}
+                className={`${ui.content} ${styles.contactContent}`}
+              >
                 <div className={styles.resultsHeading}>
                   <div>
-                    <p className={styles.resultsEyebrow}>Obchodní a administrativní podpora</p>
-                    <h3>{activeInstitution?.label ?? "Všechny kontakty"}</h3>
+                    <p className={styles.resultsEyebrow}>
+                      Kontakty, které máte k dispozici
+                    </p>
+                    <h3>
+                      {selectedInstitution
+                        ? CONTACT_INSTITUTION_BY_KEY.get(selectedInstitution)
+                            ?.label
+                        : "Všechny kontakty"}
+                    </h3>
                   </div>
-                  <span className={styles.resultsCount} role="status" aria-live="polite" aria-atomic="true">{visibleContacts.length} / {contacts.length} kontaktů</span>
+                  <span
+                    className={styles.resultsCount}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {visibleContacts.length} / {currentContacts.length} kontaktů
+                  </span>
                 </div>
                 <div className={styles.grid}>
                   {visibleContacts.map((contact) => {
-                    const institution = CONTACT_INSTITUTION_BY_KEY.get(
+                    const item = CONTACT_INSTITUTION_BY_KEY.get(
                       contact.institutionKey,
                     );
-                    if (!institution) return null;
-                    const contactTitle =
+                    if (!item) return null;
+                    const name =
                       contact.person ??
                       contact.description ??
                       contact.role ??
-                      institution.label;
-                    const institutionIsTitle = contactTitle === institution.label;
-                    const showRoleBadge =
-                      Boolean(contact.role) && contactTitle !== contact.role;
-                    const showDescription = Boolean(
-                      contact.person && contact.description,
-                    );
-
+                      item.label;
                     return (
                       <article
                         key={contact.id}
@@ -640,227 +1123,252 @@ export function ContactsModal({
                             : undefined
                         }
                         className={styles.card}
-                        data-highlighted={contact.id === initialContactId || undefined}
+                        data-highlighted={
+                          contact.id === initialContactId || undefined
+                        }
                       >
-                        <div>
-                          <div className={styles.cardHeader}>
-                            <span className={styles.logo}><Image src={institution.logoPath} alt="" width={64} height={44} /></span>
-                            <div className={styles.identity}>
-                              {!institutionIsTitle && <p className={styles.institution}>{institution.label}</p>}
-                              <h3 className={styles.name}>{contactTitle}</h3>
-                              {showRoleBadge && <span className={styles.role}>{contact.role}</span>}
-                            </div>
-                            {editingMode && <button type="button" onClick={() => openExistingContact(contact)} className={styles.editCard} aria-label={`Upravit kontakt ${contactTitle}`}><Pencil size={15} /></button>}
+                        <div className={styles.cardHeader}>
+                          <span className={styles.logo}>
+                            <Image
+                              src={item.logoPath}
+                              alt=""
+                              width={64}
+                              height={44}
+                            />
+                          </span>
+                          <div className={styles.identity}>
+                            {name !== item.label && (
+                              <p className={styles.institution}>{item.label}</p>
+                            )}
+                            <h3 className={styles.name}>{name}</h3>
+                            {contact.role && name !== contact.role && (
+                              <span className={styles.role}>
+                                {contact.role}
+                              </span>
+                            )}
                           </div>
-
-                          {showDescription ? (
-                            <p className={styles.description}>
-                              {contact.description}
-                            </p>
-                          ) : null}
-
-                          <div className={styles.methods}>
-                            {contact.phone && <a href={`tel:${contact.phone.href}`} className={styles.method}>
-                              <span className={styles.methodIcon}><Phone size={16} aria-hidden="true" /></span>
-                              <span className={styles.methodText}>{contact.phone.display}</span>
-                              <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
-                            </a>}
-                            {contact.emails?.map((email) => <a key={`${email.value}-${email.label ?? ""}`} href={mailtoHref(email)} className={styles.method}>
-                              <span className={styles.methodIcon}><Mail size={16} aria-hidden="true" /></span>
-                              <span className={styles.methodText}>{email.label && <small>{email.label}</small>}{email.value}</span>
-                              <ArrowUpRight size={15} className={styles.methodArrow} aria-hidden="true" />
-                            </a>)}
-                          </div>
-
-                          {contact.id === "csob" ? (
-                            <div className="mt-3 border-t border-sky-200/80 pt-3">
-                              <p className="text-xs font-bold leading-5 text-slate-600">
-                                V případě, že se nemůžete dovolat Vlkovi
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setStatus(null);
-                                  setView("csob-alternatives");
-                                }}
-                                className="group mt-2 inline-flex items-center gap-2 rounded-xl bg-sky-700 px-3.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-sky-800 hover:shadow-md"
-                              >
-                                Zobrazit alternativy
-                                <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                              </button>
-                            </div>
-                          ) : null}
-
-                          {contact.notice ? (
-                            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold leading-5 text-amber-950">
-                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-                              <p>{contact.notice}</p>
-                            </div>
-                          ) : null}
+                          {editingMode && canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => openExistingContact(contact)}
+                              className={styles.editCard}
+                              aria-label={`Upravit kontakt ${name}`}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                          )}
                         </div>
+                        <span
+                          className={styles.audienceBadge}
+                          data-audience={contact.audience?.type ?? "everyone"}
+                          aria-label={`Určeno pro: ${audienceLabel(contact.audience)}`}
+                        >
+                          {contact.audience?.type === "specialists" ? (
+                            <ShieldCheck size={12} />
+                          ) : (
+                            <UsersRound size={12} />
+                          )}
+                          {audienceLabel(contact.audience)}
+                        </span>
+                        {contact.person && contact.description && (
+                          <p className={styles.description}>
+                            {contact.description}
+                          </p>
+                        )}
+                        <div className={styles.methods}>
+                          {contact.phone && (
+                            <a
+                              href={`tel:${contact.phone.href}`}
+                              className={styles.method}
+                            >
+                              <span className={styles.methodIcon}>
+                                <Phone size={16} aria-hidden="true" />
+                              </span>
+                              <span className={styles.methodText}>
+                                {contact.phone.display}
+                              </span>
+                              <ArrowUpRight
+                                size={15}
+                                className={styles.methodArrow}
+                                aria-hidden="true"
+                              />
+                            </a>
+                          )}
+                          {contact.emails?.map((email) => (
+                            <a
+                              key={`${email.value}-${email.label ?? ""}`}
+                              href={mailtoHref(email)}
+                              className={styles.method}
+                            >
+                              <span className={styles.methodIcon}>
+                                <Mail size={16} aria-hidden="true" />
+                              </span>
+                              <span className={styles.methodText}>
+                                {email.label && <small>{email.label}</small>}
+                                {email.value}
+                              </span>
+                              <ArrowUpRight
+                                size={15}
+                                className={styles.methodArrow}
+                                aria-hidden="true"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                        {contact.id === "csob" && (
+                          <button
+                            type="button"
+                            className={styles.alternativesButton}
+                            onClick={() => {
+                              setStatus(null);
+                              setView("csob-alternatives");
+                            }}
+                          >
+                            Další regionální kontakty ČSOB
+                            <ArrowUpRight size={14} />
+                          </button>
+                        )}
+                        {contact.notice && (
+                          <div className={styles.notice}>
+                            <AlertTriangle size={15} aria-hidden="true" />
+                            <p>{contact.notice}</p>
+                          </div>
+                        )}
                       </article>
                     );
                   })}
-                  {visibleContacts.length === 0 && <div className={ui.empty}><Search size={28} /><p>Žádný kontakt neodpovídá hledání.</p><button type="button" onClick={() => { setSearch(""); setSelectedInstitution(null); }}>Zobrazit všechny kontakty</button></div>}
+                  {visibleContacts.length === 0 && (
+                    <div className={ui.empty}>
+                      <Search size={28} />
+                      <p>
+                        {currentContacts.length
+                          ? "Žádný kontakt neodpovídá zvolenému filtru."
+                          : "Zatím nemáte k dispozici žádné kontakty."}
+                      </p>
+                      {currentContacts.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearch("");
+                            setSelectedInstitution(null);
+                            setAudienceFilter("all");
+                          }}
+                        >
+                          Zrušit filtry
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        ) : null}
+        )}
 
-        {view === "csob-alternatives" ? (
+        {!loading && sessionReady && view === "csob-alternatives" && (
           <div className={ui.content}>
-            <div className="relative isolate overflow-hidden rounded-[24px] border border-sky-200 bg-white p-4 shadow-[0_16px_40px_rgba(3,105,161,0.1)] sm:p-5">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-56 w-80 opacity-[0.07] mix-blend-multiply">
-                <Image
-                  src="/icons/csb.png"
-                  alt=""
-                  fill
-                  sizes="320px"
-                  className="object-contain"
-                  aria-hidden="true"
-                />
-              </div>
-              <div className="relative grid grid-cols-1 gap-x-8 gap-y-0 md:grid-cols-2">
-                {CSOB_ALTERNATIVES.map((contact) => (
-                  <article
-                    key={contact.email}
-                    className="min-w-0 border-b border-slate-200/90 py-4 first:pt-0 md:[&:nth-child(2)]:pt-0"
-                  >
-                    <h3 className="text-base font-black tracking-[-0.015em] text-slate-950">
-                      {contact.name}
-                    </h3>
-                    <p className="mt-1 flex items-center gap-2 text-sm font-semibold text-sky-800">
-                      <MapPin className="h-4 w-4 shrink-0 text-sky-600" />
-                      {contact.region}
-                    </p>
-                    <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-x-5">
-                      <a
-                        href={`tel:${contact.phone.href}`}
-                        className="group inline-flex min-w-0 items-center gap-2 py-1 text-sm font-bold text-slate-700 transition hover:text-sky-800"
-                      >
-                        <Phone className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-sky-600" />
-                        {contact.phone.display}
-                      </a>
-                      <a
-                        href={`mailto:${contact.email}`}
-                        className="group inline-flex min-w-0 items-center gap-2 py-1 text-sm font-bold text-slate-700 transition hover:text-sky-800"
-                      >
-                        <Mail className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-sky-600" />
-                        <span className="break-all">{contact.email}</span>
-                      </a>
-                    </div>
-                  </article>
-                ))}
-              </div>
+            <div className={styles.alternativesGrid}>
+              {CSOB_ALTERNATIVES.map((contact) => (
+                <article key={contact.email} className={styles.alternativeCard}>
+                  <h3>{contact.name}</h3>
+                  <p>
+                    <MapPin size={14} />
+                    {contact.region}
+                  </p>
+                  <a href={`tel:${contact.phone.href}`}>
+                    <Phone size={14} />
+                    {contact.phone.display}
+                  </a>
+                  <a href={`mailto:${contact.email}`}>
+                    <Mail size={14} />
+                    {contact.email}
+                  </a>
+                </article>
+              ))}
             </div>
           </div>
-        ) : null}
+        )}
 
-        {view === "institution-picker" ? (
+        {!loading && canEdit && view === "institution-picker" && (
           <div className={ui.content}>
-            {availableInstitutions.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {availableInstitutions.map((institution) => (
-                  <button
-                    key={institution.key}
-                    type="button"
-                    onClick={() =>
-                      openNewContact(institution.key, "institution-picker")
-                    }
-                    className="group relative isolate min-h-36 overflow-hidden rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-[0_18px_36px_rgba(15,23,42,0.13)]"
-                  >
-                    <div
-                      className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
-                    />
-                    <div className="pointer-events-none absolute -right-8 -top-8 h-44 w-64 opacity-[0.13] mix-blend-multiply transition group-hover:scale-105 group-hover:opacity-[0.18]">
-                      <Image
-                        src={institution.logoPath}
-                        alt=""
-                        fill
-                        sizes="256px"
-                        className="object-contain"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <div className="relative flex h-full flex-col justify-between gap-8">
-                      <h3 className="max-w-[75%] text-xl font-black tracking-[-0.02em] text-slate-950">
-                        {institution.label}
-                      </h3>
-                      <span className="inline-flex w-fit items-center gap-2 rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white shadow-sm">
-                        <Plus className="h-4 w-4" />
-                        Vybrat instituci
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[22px] border border-slate-200 bg-white p-8 text-center shadow-sm">
-                <Check className="mx-auto h-10 w-10 text-emerald-600" />
-                <h3 className="mt-3 text-lg font-black text-slate-950">
-                  Všechny instituce už jsou přidané
-                </h3>
-                <p className="mt-2 text-sm text-slate-500">
-                  Další kartu přidáte po výběru instituce ve filtrech.
-                </p>
-              </div>
-            )}
+            <div className={styles.institutionPicker}>
+              {availableInstitutions.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => openNewContact(item.key, "institution-picker")}
+                >
+                  <Image src={item.logoPath} alt="" width={90} height={46} />
+                  <strong>{item.label}</strong>
+                  <span>
+                    <Plus size={14} />
+                    Vybrat instituci
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        ) : null}
+        )}
 
-        {view === "contact-form" ? (
-          <div className={ui.content}>
-            {(() => {
-              const institution = CONTACT_INSTITUTION_BY_KEY.get(
-                draft.institutionKey,
-              );
-              if (!institution) return null;
-
-              const inputClass =
-                "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-violet-400 focus:ring-4 focus:ring-violet-100";
-
-              return (
-                <div className="relative isolate overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.09)] sm:p-6">
-                  <div
-                    className={`pointer-events-none absolute inset-0 ${institution.accentClass}`}
-                  />
-                  <div className="pointer-events-none absolute -right-8 -top-10 h-52 w-80 opacity-[0.08] mix-blend-multiply">
-                    <Image
-                      src={institution.logoPath}
-                      alt=""
-                      fill
-                      sizes="320px"
-                      className="object-contain"
-                      aria-hidden="true"
-                    />
-                  </div>
-
-                  <form
-                    className="relative"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void saveDraft();
-                    }}
+        {!loading && canEdit && view === "contact-form" && institution && (
+          <form
+            className={styles.editorForm}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveDraft();
+            }}
+          >
+            <fieldset className={styles.editorScroll} disabled={saving}>
+              <div className={styles.editorGrid}>
+                <div className={styles.editorPrimary}>
+                  <section
+                    className={styles.formSection}
+                    aria-labelledby="contact-identity-title"
                   >
-                    <div className="mb-5 flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-700">
-                          Instituce
-                        </p>
-                        <h3 className="mt-1 text-2xl font-black tracking-[-0.025em] text-slate-950">
-                          {institution.label}
-                        </h3>
-                      </div>
-                      <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-bold text-slate-500">
-                        {editingContactId ? "Úprava karty" : "Nová karta"}
+                    <div className={styles.sectionHeading}>
+                      <span className={styles.sectionIcon}>
+                        <ContactRound size={18} />
                       </span>
+                      <div>
+                        <h3 id="contact-identity-title">Kontaktní osoba</h3>
+                        <p>Kdo vám pomůže a s čím se na něj obrátit.</p>
+                      </div>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <label className="text-xs font-black text-slate-600">
-                        Jméno / kontaktní osoba
+                    <div className={styles.institutionIdentity}>
+                      <span className={styles.formInstitutionLogo}>
+                        <Image
+                          src={institution.logoPath}
+                          alt=""
+                          width={90}
+                          height={44}
+                        />
+                      </span>
+                      <label className={styles.field}>
+                        <span>Instituce</span>
+                        <select
+                          aria-label="Instituce kontaktu"
+                          value={draft.institutionKey}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              institutionKey: event.target.value,
+                            }))
+                          }
+                        >
+                          {CONTACT_INSTITUTIONS.map((item) => (
+                            <option key={item.key} value={item.key}>
+                              {item.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className={styles.fieldGrid}>
+                      <label className={styles.field}>
+                        <span>Jméno / kontaktní osoba</span>
                         <input
+                          autoComplete="off"
+                          maxLength={120}
                           value={draft.person}
                           onChange={(event) =>
                             setDraft((current) => ({
@@ -868,14 +1376,13 @@ export function ContactsModal({
                               person: event.target.value,
                             }))
                           }
-                          maxLength={120}
                           placeholder="např. Jana Nováková"
-                          className={inputClass}
                         />
                       </label>
-                      <label className="text-xs font-black text-slate-600">
-                        Role / štítek
+                      <label className={styles.field}>
+                        <span>Role / štítek</span>
                         <input
+                          maxLength={80}
                           value={draft.role}
                           onChange={(event) =>
                             setDraft((current) => ({
@@ -883,14 +1390,14 @@ export function ContactsModal({
                               role: event.target.value,
                             }))
                           }
-                          maxLength={80}
                           placeholder="např. KAM"
-                          className={inputClass}
                         />
                       </label>
-                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
-                        Agenda / popis
+                      <label className={`${styles.field} ${styles.fullWidth}`}>
+                        <span>Agenda / popis</span>
                         <textarea
+                          rows={2}
+                          maxLength={500}
                           value={draft.description}
                           onChange={(event) =>
                             setDraft((current) => ({
@@ -898,173 +1405,593 @@ export function ContactsModal({
                               description: event.target.value,
                             }))
                           }
-                          maxLength={500}
-                          rows={2}
-                          placeholder="Co tento kontakt řeší"
-                          className={`${inputClass} resize-y`}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600">
-                        Telefon
-                        <input
-                          value={draft.phone}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              phone: event.target.value,
-                            }))
-                          }
-                          maxLength={40}
-                          inputMode="tel"
-                          placeholder="+420 123 456 789"
-                          className={inputClass}
-                        />
-                      </label>
-                      <div className="hidden sm:block" />
-                      <label className="text-xs font-black text-slate-600">
-                        První e-mail
-                        <input
-                          type="email"
-                          value={draft.email1}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              email1: event.target.value,
-                            }))
-                          }
-                          maxLength={180}
-                          placeholder="kontakt@instituce.cz"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600">
-                        Popisek prvního e-mailu
-                        <input
-                          value={draft.email1Label}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              email1Label: event.target.value,
-                            }))
-                          }
-                          maxLength={80}
-                          placeholder="např. Administrace"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600">
-                        Druhý e-mail
-                        <input
-                          type="email"
-                          value={draft.email2}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              email2: event.target.value,
-                            }))
-                          }
-                          maxLength={180}
-                          placeholder="podpora@instituce.cz"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600">
-                        Popisek druhého e-mailu
-                        <input
-                          value={draft.email2Label}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              email2Label: event.target.value,
-                            }))
-                          }
-                          maxLength={80}
-                          placeholder="např. Podpora"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
-                        Automaticky přidat do kopie (CC)
-                        <input
-                          type="email"
-                          value={draft.email2Cc}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              email2Cc: event.target.value,
-                            }))
-                          }
-                          maxLength={180}
-                          placeholder="volitelné — vztahuje se ke druhému e-mailu"
-                          className={inputClass}
-                        />
-                      </label>
-                      <label className="text-xs font-black text-slate-600 sm:col-span-2">
-                        Důležité upozornění
-                        <textarea
-                          value={draft.notice}
-                          onChange={(event) =>
-                            setDraft((current) => ({
-                              ...current,
-                              notice: event.target.value,
-                            }))
-                          }
-                          maxLength={500}
-                          rows={2}
-                          placeholder="Volitelné upozornění zobrazené ve žlutém boxu"
-                          className={`${inputClass} resize-y`}
+                          placeholder="S čím vám kontakt pomůže"
                         />
                       </label>
                     </div>
-
-                    {status ? (
-                      <p
-                        className={`mt-4 text-sm font-bold ${
-                          status.tone === "error"
-                            ? "text-rose-700"
-                            : "text-emerald-700"
-                        }`}
-                        role="status"
-                      >
-                        {status.text}
-                      </p>
-                    ) : null}
-
-                    <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5">
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-violet-800 disabled:cursor-wait disabled:opacity-60"
-                      >
-                        <Save className="h-4 w-4" />
-                        {saving ? "Ukládám…" : "Uložit kontakt"}
-                      </button>
+                  </section>
+                  <section
+                    className={styles.formSection}
+                    aria-labelledby="contact-methods-title"
+                  >
+                    <div className={styles.sectionHeading}>
+                      <span className={styles.sectionIcon}>
+                        <Phone size={18} />
+                      </span>
+                      <div>
+                        <h3 id="contact-methods-title">Jak se spojit</h3>
+                        <p>Vyplňte alespoň telefon nebo e-mail.</p>
+                      </div>
+                    </div>
+                    <label className={styles.field}>
+                      <span>Telefon</span>
+                      <input
+                        type="tel"
+                        autoComplete="off"
+                        maxLength={40}
+                        value={draft.phone}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                        placeholder="+420 123 456 789"
+                      />
+                    </label>
+                    <div className={styles.emailList}>
+                      {draft.emails.map((email, index) => (
+                        <div key={index} className={styles.emailEntry}>
+                          <div className={styles.emailHeading}>
+                            <span>
+                              <Mail size={13} />
+                              {index === 0 ? "E-mail" : `Další e-mail ${index}`}
+                            </span>
+                            {draft.emails.length > 1 && (
+                              <button
+                                type="button"
+                                aria-label={`Odebrat e-mail ${index + 1}`}
+                                onClick={() =>
+                                  setDraft((current) => ({
+                                    ...current,
+                                    emails: current.emails.filter(
+                                      (_, position) => position !== index,
+                                    ),
+                                  }))
+                                }
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <div className={styles.fieldGrid}>
+                            <label className={styles.field}>
+                              <span>Adresa e-mailu {index + 1}</span>
+                              <input
+                                type="email"
+                                autoComplete="off"
+                                maxLength={180}
+                                value={email.value}
+                                onChange={(event) =>
+                                  updateEmail(
+                                    index,
+                                    "value",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="kontakt@instituce.cz"
+                              />
+                            </label>
+                            <label className={styles.field}>
+                              <span>
+                                Popisek e-mailu {index + 1}
+                                <small>Volitelné</small>
+                              </span>
+                              <input
+                                maxLength={80}
+                                value={email.label}
+                                onChange={(event) =>
+                                  updateEmail(
+                                    index,
+                                    "label",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="např. Administrace"
+                              />
+                            </label>
+                          </div>
+                          <details
+                            className={styles.emailOptions}
+                            open={email.cc ? true : undefined}
+                          >
+                            <summary>Automatická kopie (CC)</summary>
+                            <label className={styles.field}>
+                              <span>Kopie e-mailu {index + 1}</span>
+                              <input
+                                type="email"
+                                maxLength={180}
+                                value={email.cc}
+                                onChange={(event) =>
+                                  updateEmail(index, "cc", event.target.value)
+                                }
+                                placeholder="kopie@instituce.cz"
+                              />
+                            </label>
+                          </details>
+                        </div>
+                      ))}
+                    </div>
+                    {draft.emails.length < 4 && (
                       <button
                         type="button"
-                        disabled={saving}
-                        onClick={returnFromCurrentView}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                        className={styles.textButton}
+                        onClick={() =>
+                          setDraft((current) => ({
+                            ...current,
+                            emails: [
+                              ...current.emails,
+                              { value: "", label: "", cc: "" },
+                            ],
+                          }))
+                        }
                       >
-                        Zrušit
+                        <Plus size={14} />
+                        Přidat další e-mail
                       </button>
-                      {editingContactId ? (
+                    )}
+                  </section>
+                  <details
+                    className={styles.noticeOptions}
+                    open={draft.notice ? true : undefined}
+                  >
+                    <summary>
+                      <AlertTriangle size={16} />
+                      <span>
+                        Důležité upozornění
+                        <small>Volitelná poznámka ke kontaktu</small>
+                      </span>
+                      <ChevronDown size={15} />
+                    </summary>
+                    <label className={styles.field}>
+                      <span>Upozornění pro uživatele</span>
+                      <textarea
+                        rows={3}
+                        maxLength={500}
+                        value={draft.notice}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            notice: event.target.value,
+                          }))
+                        }
+                        placeholder="např. Pouze pro interní komunikaci"
+                      />
+                    </label>
+                  </details>
+                </div>
+                <aside className={styles.audienceAside}>
+                  <fieldset className={styles.audienceSection}>
+                    <legend>Pro koho je kontakt určen?</legend>
+                    <p>
+                      Kontakt uvidí zvolení uživatelé v adresáři i při
+                      vyhledávání.
+                    </p>
+                    <div className={styles.audienceChoices}>
+                      {(
+                        [
+                          {
+                            type: "everyone",
+                            title: "Všichni",
+                            description: "Všichni přihlášení poradci",
+                            icon: UsersRound,
+                          },
+                          {
+                            type: "specialists",
+                            title: "Specialisti",
+                            description: "Specialisté a administrátoři",
+                            icon: ShieldCheck,
+                          },
+                          {
+                            type: "group",
+                            title: "Vlastní skupina",
+                            description: "Pouze vybraní členové skupiny",
+                            icon: UserRoundPlus,
+                          },
+                        ] as const
+                      ).map((option) => (
+                        <label
+                          key={option.type}
+                          className={styles.audienceChoice}
+                          data-selected={
+                            draft.audience.type === option.type || undefined
+                          }
+                        >
+                          <input
+                            type="radio"
+                            name="contact-audience"
+                            value={option.type}
+                            checked={draft.audience.type === option.type}
+                            onChange={() =>
+                              setDraft((current) => ({
+                                ...current,
+                                audience:
+                                  option.type === "group"
+                                    ? {
+                                        type: "group",
+                                        groupId:
+                                          current.audience.type === "group"
+                                            ? current.audience.groupId
+                                            : "",
+                                      }
+                                    : { type: option.type },
+                              }))
+                            }
+                          />
+                          <span className={styles.audienceIcon}>
+                            <option.icon size={18} />
+                          </span>
+                          <span>
+                            <strong>{option.title}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                          <span className={styles.radioIndicator}>
+                            {draft.audience.type === option.type && (
+                              <Check size={11} />
+                            )}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {draft.audience.type === "group" && (
+                      <div className={styles.groupSelection}>
+                        <label className={styles.field}>
+                          <span>Skupina kontaktu</span>
+                          <select
+                            aria-label="Skupina kontaktu"
+                            value={draft.audience.groupId}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                audience: {
+                                  type: "group",
+                                  groupId: event.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            <option value="">Vyberte skupinu…</option>
+                            {currentGroups.map((group) => (
+                              <option key={group.id} value={group.id}>
+                                {group.name} ({group.memberCount})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {currentGroups.length === 0 && (
+                          <p>Nejdříve vytvořte skupinu a vyberte její členy.</p>
+                        )}
+                        <div className={styles.groupSelectionActions}>
+                          <button
+                            type="button"
+                            className={styles.textButton}
+                            onClick={() => openGroups("contact-form", true)}
+                          >
+                            <Plus size={14} />
+                            Vytvořit skupinu
+                          </button>
+                          {currentGroups.length > 0 && (
+                            <button
+                              type="button"
+                              className={styles.textButton}
+                              onClick={() => openGroups("contact-form")}
+                            >
+                              <Settings2 size={14} />
+                              Upravit skupiny
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </fieldset>
+                  <div className={styles.accessNote}>
+                    <ShieldCheck size={18} />
+                    <p>
+                      Kontakty i skupiny mohou spravovat administrátoři a
+                      specialisté.
+                    </p>
+                  </div>
+                </aside>
+              </div>
+            </fieldset>
+            <footer className={styles.editorFooter}>
+              <div className={styles.footerStatus}>
+                {statusElement ?? (
+                  <p>
+                    <ShieldCheck size={14} />
+                    Dostupnost kontaktu se uloží spolu s jeho údaji.
+                  </p>
+                )}
+              </div>
+              <div className={styles.formActions}>
+                {editingContactId && (
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    disabled={saving}
+                    onClick={() => void deleteCurrentContact()}
+                  >
+                    <Trash2 size={15} />
+                    <span>Odstranit</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={saving}
+                  onClick={returnFromCurrentView}
+                >
+                  Zrušit
+                </button>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={saving}
+                >
+                  <Save size={15} />
+                  {saving ? "Ukládám…" : "Uložit kontakt"}
+                </button>
+              </div>
+            </footer>
+          </form>
+        )}
+
+        {!loading && canEdit && view === "groups" && (
+          <div className={styles.groupWorkspace}>
+            <aside className={styles.groupList}>
+              <div className={styles.groupListHeading}>
+                <span>Skupiny adresáře</span>
+                <button
+                  type="button"
+                  aria-label="Vytvořit novou skupinu"
+                  disabled={saving}
+                  onClick={() => {
+                    setGroupDraft({ name: "", members: [] });
+                    setMemberQuery("");
+                    setStatus(null);
+                  }}
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+              {currentGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  className={styles.groupListItem}
+                  aria-pressed={groupDraft.id === group.id}
+                  disabled={saving}
+                  onClick={() => {
+                    setGroupDraft({
+                      id: group.id,
+                      name: group.name,
+                      members: group.members ?? [],
+                    });
+                    setMemberQuery("");
+                    setStatus(null);
+                  }}
+                >
+                  <span className={styles.groupListIcon}>
+                    <UsersRound size={17} />
+                  </span>
+                  <span>
+                    <strong>{group.name}</strong>
+                    <small>{group.memberCount} členů</small>
+                  </span>
+                </button>
+              ))}
+              {!currentGroups.length && (
+                <p className={styles.groupListEmpty}>
+                  Vlastní skupiny se zobrazí zde.
+                </p>
+              )}
+            </aside>
+            <form
+              className={styles.groupEditor}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveGroup();
+              }}
+            >
+              <fieldset className={styles.groupEditorScroll} disabled={saving}>
+                <div className={styles.groupEditorHeading}>
+                  <span className={styles.sectionIcon}>
+                    <UsersRound size={20} />
+                  </span>
+                  <div>
+                    <p>{groupDraft.id ? "Úprava skupiny" : "Nová skupina"}</p>
+                    <h3>
+                      {groupDraft.id
+                        ? groupDraft.name || "Vlastní skupina"
+                        : "Spojte správné lidi"}
+                    </h3>
+                  </div>
+                </div>
+                <label className={styles.field}>
+                  <span>Název skupiny</span>
+                  <input
+                    required
+                    maxLength={80}
+                    value={groupDraft.name}
+                    onChange={(event) =>
+                      setGroupDraft((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="např. Podpora životního pojištění"
+                  />
+                </label>
+                <div className={styles.memberSection}>
+                  <div className={styles.memberHeading}>
+                    <div>
+                      <h4>Členové skupiny</h4>
+                      <p>
+                        Vybraní uživatelé uvidí kontakty přiřazené této skupině.
+                      </p>
+                    </div>
+                    <span>{groupDraft.members.length}</span>
+                  </div>
+                  <label className={styles.memberSearch}>
+                    <Search size={17} />
+                    <input
+                      aria-label="Vyhledat členy skupiny"
+                      maxLength={120}
+                      value={memberQuery}
+                      onChange={(event) => setMemberQuery(event.target.value)}
+                      placeholder="Hledejte podle jména nebo e-mailu…"
+                    />
+                    {memberQuery && (
+                      <button
+                        type="button"
+                        aria-label="Vymazat hledání členů"
+                        onClick={() => setMemberQuery("")}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </label>
+                  {memberSearching && (
+                    <p className={styles.searchHint} role="status">
+                      Vyhledávám uživatele…
+                    </p>
+                  )}
+                  {memberSearchError && (
+                    <p className={styles.memberError} role="alert">
+                      {memberSearchError}
+                    </p>
+                  )}
+                  {memberQuery.trim().length >= 2 &&
+                    !memberSearching &&
+                    !memberSearchError && (
+                      <div className={styles.memberResults}>
+                        {memberResults.length ? (
+                          memberResults.map((member) => (
+                            <label
+                              key={member.uid}
+                              className={styles.memberResult}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={groupDraft.members.some(
+                                  (selected) => selected.uid === member.uid,
+                                )}
+                                onChange={() => toggleMember(member)}
+                              />
+                              <span className={styles.memberAvatar}>
+                                {(member.name || member.email)
+                                  .slice(0, 1)
+                                  .toUpperCase()}
+                              </span>
+                              <span>
+                                <strong>{member.name || member.email}</strong>
+                                <small>{member.email}</small>
+                              </span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className={styles.searchHint}>
+                            Nenalezen žádný uživatel.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  {memberQuery.trim().length < 2 && (
+                    <p className={styles.searchHint}>
+                      Pro vyhledání zadejte alespoň 2 znaky.
+                    </p>
+                  )}
+                  <div className={styles.selectedMembers}>
+                    {groupDraft.members.map((member) => (
+                      <div key={member.uid} className={styles.selectedMember}>
+                        <span className={styles.memberAvatar}>
+                          {(member.name || member.email)
+                            .slice(0, 1)
+                            .toUpperCase()}
+                        </span>
+                        <span>
+                          <strong>{member.name || member.email}</strong>
+                          <small>{member.email}</small>
+                        </span>
                         <button
                           type="button"
-                          disabled={saving}
-                          onClick={() => void deleteCurrentContact()}
-                          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                          aria-label={`Odebrat člena ${member.name || member.email}`}
+                          onClick={() => toggleMember(member)}
                         >
-                          <Trash2 className="h-4 w-4" />
-                          Odstranit kartu
+                          <X size={15} />
                         </button>
-                      ) : null}
-                    </div>
-                  </form>
+                      </div>
+                    ))}
+                    {groupDraft.members.length === 0 && (
+                      <div className={styles.noMembers}>
+                        <UserRoundPlus size={23} />
+                        <p>Zatím jste nevybrali žádné členy.</p>
+                        <small>
+                          Kontakty skupiny budou zatím dostupné pouze správcům
+                          adresáře.
+                        </small>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              );
-            })()}
+                {groupDraft.id && (
+                  <p className={styles.groupUsage}>
+                    {groupContactCount > 0
+                      ? `Tato skupina je přiřazena ke kontaktům (${groupContactCount}). Před odstraněním skupiny kontakty přeřaďte.`
+                      : "Ke skupině zatím nejsou přiřazené žádné kontakty."}
+                  </p>
+                )}
+              </fieldset>
+              <footer className={styles.editorFooter}>
+                <div className={styles.footerStatus}>{statusElement}</div>
+                <div className={styles.formActions}>
+                  {groupDraft.id && (
+                    <button
+                      type="button"
+                      className={styles.deleteButton}
+                      disabled={saving || groupContactCount > 0}
+                      title={
+                        groupContactCount > 0
+                          ? "Nejdříve přeřaďte kontakty této skupiny."
+                          : undefined
+                      }
+                      onClick={() => void deleteGroup()}
+                    >
+                      <Trash2 size={15} />
+                      <span>Odstranit</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={saving}
+                    onClick={returnFromCurrentView}
+                  >
+                    Zpět
+                  </button>
+                  <button
+                    type="submit"
+                    className={styles.primaryButton}
+                    disabled={saving}
+                  >
+                    <Save size={15} />
+                    {saving ? "Ukládám…" : "Uložit skupinu"}
+                  </button>
+                </div>
+              </footer>
+            </form>
           </div>
-        ) : null}
+        )}
       </section>
     </div>
   );

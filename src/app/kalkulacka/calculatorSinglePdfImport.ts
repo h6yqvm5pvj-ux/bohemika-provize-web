@@ -269,7 +269,7 @@ export async function importSingleContractPdf(file: File | null, options: Single
       setClientSuggestionsOpen(true);
     }
 
-    if (parsedIsEndorsement || importProduct === "flexi") {
+    if (parsedIsEndorsement || importProduct === "flexi" || importProduct === "domexneuron") {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
       setRefreshOriginalMissingInSystem(false);

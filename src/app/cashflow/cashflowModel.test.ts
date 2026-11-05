@@ -55,6 +55,76 @@ function assertView(model: CashflowModel, input: CashflowDataset, options: Cashf
 }
 
 describe("cashflow model with bounded last-stage caches", () => {
+  it("keeps shifted overview, detail and total aligned and restores the complete view when disabled", () => {
+    const input = dataset();
+    input.statements = [{
+      ...input.statements[0], payoutMonthKey: "2025-12", period: "11/2025",
+      paidContractNumbers: ["99999"], paidCommissionKeys: ["99999:A101"], payoutTotal: 9000,
+    }];
+    const pending: CashflowItem = {
+      id: "pending", date: new Date(2025, 11, 25), amount: 1000, productKey: "cppAuto",
+      ownerEmail: "advisor@example.test", entryId: "contract", contractNumber: "12345", commissionCode: "A101",
+    };
+    const compute = vi.spyOn(computation, "computeCashflow").mockReturnValue([
+      pending,
+      { ...pending, id: "cancelled", amount: -100 },
+      { ...pending, id: "paid", date: new Date(2026, 8, 25), originalDate: pending.date, payoutStatus: "paid", amount: 700 },
+      { ...pending, id: "future", date: new Date(2027, 0, 25), amount: 500 },
+    ]);
+    const model = createCashflowModel(input);
+    const complete = model.view(defaultOptions);
+    const filteredOptions = { ...defaultOptions, shiftedOnly: true };
+    const filtered = model.view(filteredOptions);
+
+    expect(filtered.months).toEqual([expect.objectContaining({
+      key: "2026-1", total: 1000, totalSource: "predicted", statementPayoutTotal: null, itemCountLabel: "1 provize",
+    })]);
+    expect(model.month("2026-1")?.items).toEqual([expect.objectContaining({
+      id: expect.stringContaining("pending"), payoutStatus: "shifted", originalDate: pending.date,
+    })]);
+    expect(model.month("2026-9")).toBeNull();
+    expect(model.view(filteredOptions)).toBe(filtered);
+    expect(model.view({ ...defaultOptions, shiftedOnly: false })).toEqual(complete);
+    expect(model.month("2026-9")?.items.some(item => item.id === "paid")).toBe(true);
+    expect(compute).toHaveBeenCalledTimes(1);
+    model.dispose();
+  });
+
+  it("counts only displayed shifted matches when combined with scope, product and contract search", () => {
+    const input = dataset();
+    input.statements = [{
+      ...input.statements[0], payoutMonthKey: "2025-12", period: "11/2025",
+      paidContractNumbers: ["99999"], paidCommissionKeys: ["99999:A101"],
+    }];
+    const pending: CashflowItem = {
+      id: "pending", date: new Date(2025, 11, 25), amount: 1000, productKey: "cppAuto",
+      ownerEmail: "advisor@example.test", entryId: "contract", contractNumber: "12345", commissionCode: "A101",
+      clientName: "Syntetický klient", inputAmount: 5000, frequency: "annual",
+    };
+    const compute = vi.spyOn(computation, "computeCashflow").mockReturnValue([
+      pending,
+      { ...pending, id: "paid", payoutStatus: "paid" },
+      { ...pending, id: "future", date: new Date(2027, 0, 25) },
+    ]);
+    const model = createCashflowModel(input);
+    const options: CashflowViewOptions = {
+      ...defaultOptions, scopeFilter: "own", productFilter: "auto", contractNumberQuery: "12 345", shiftedOnly: true,
+    };
+    const filtered = model.view(options);
+
+    expect(compute).toHaveBeenLastCalledWith(input.snapshot, expect.objectContaining({ scopeFilter: "own", productFilter: "auto" }));
+    expect(filtered.months).toHaveLength(1);
+    expect(filtered.contractSearchStats).toEqual({
+      itemCount: 1, contractCount: 1,
+      summary: { productKey: "cppAuto", clientName: "Syntetický klient", inputAmount: 5000, frequency: "annual", contractStatus: null },
+    });
+    expect(model.view({ ...options, contractNumberQuery: "no-match" })).toEqual({
+      months: [], contractSearchStats: { itemCount: 0, contractCount: 0, summary: null },
+    });
+    expect(model.month("2026-1")).toBeNull();
+    model.dispose();
+  });
+
   for (const count of [30, 300, 1000]) {
     it.each(WORKER_FILTER_CASES)(`preserves every month field for ${count} contracts and $id`, ({ options }) => {
       const input = dataset(count);

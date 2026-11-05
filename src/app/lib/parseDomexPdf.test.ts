@@ -208,6 +208,78 @@ describe("parseDomexPdf", () => {
     expect(result.automaticRenewal).toBeUndefined();
   });
 
+  it("keeps the offer number separate from the original policy in stacked Neuron boxes", async () => {
+    pdfState.lines = [
+      "Číslo nabídky pojistné smlouvy",
+      "0090000018",
+      "Náhrada smlouvy",
+      "0030000012",
+      ...neuronLines().slice(2).filter(line => !line.startsWith("Pojistná smlouva uzavřena")),
+      "Nabídka pojistné smlouvy předložena: 11. 10. 2026 9:40",
+    ];
+    expect(await parseDomexPdf(makePdfFile())).toMatchObject({
+      contractNumber: "0090000018",
+      isRefresh: true,
+      refreshOriginalContractNumber: "0030000012",
+      contractSignedDate: "2026-10-11",
+    });
+  });
+
+  it("supports offer headers next to the replacement header in the legacy column layout", async () => {
+    pdfState.lines = [
+      "Náhrada smlouvy Číslo nabídky pojistné smlouvy",
+      "0030000012 0090000018",
+    ];
+    expect(await parseDomexPdf(makePdfFile())).toMatchObject({
+      isRefresh: true,
+      refreshOriginalContractNumber: "0030000012",
+      contractNumber: "0090000018",
+    });
+  });
+
+  it("does not mark an ordinary offer as a replacement", async () => {
+    pdfState.lines = ["Číslo nabídky pojistné smlouvy: 0090000018"];
+    const result = await parseDomexPdf(makePdfFile());
+    expect(result.contractNumber).toBe("0090000018");
+    expect(result.isRefresh).toBeUndefined();
+    expect(result.refreshOriginalContractNumber).toBeUndefined();
+  });
+
+  it("does not take the new policy number from the next labelled box as a missing original", async () => {
+    pdfState.lines = ["Náhrada smlouvy", "Číslo nabídky pojistné smlouvy", "0090000018"];
+    const result = await parseDomexPdf(makePdfFile());
+    expect(result.contractNumber).toBe("0090000018");
+    expect(result.isRefresh).toBeUndefined();
+    expect(result.refreshOriginalContractNumber).toBeUndefined();
+  });
+
+  it("does not take the original policy number from the next labelled box as a missing offer number", async () => {
+    pdfState.lines = ["Číslo nabídky pojistné smlouvy", "Náhrada smlouvy", "0030000012"];
+    const result = await parseDomexPdf(makePdfFile());
+    expect(result.contractNumber).toBeUndefined();
+    expect(result.refreshOriginalContractNumber).toBe("0030000012");
+  });
+
+  it.each([
+    ["Nabídka pojistné smlouvy předložena: 11. 10. 2026 9:40"],
+    ["NABIDKA POJISTNE SMLOUVY PREDLOZENA:\n11. 10. 2026"],
+    ["Nabídka\u00a0pojistné smlouvy předložena: 11.\u00a010.\u00a02026"],
+  ])("prefers the offer presentation date over creation and printing dates: %s", async (line) => {
+    pdfState.lines = neuronLines().filter(value => !value.startsWith("Pojistná smlouva uzavřena"));
+    pdfState.lines.push(line);
+    expect((await parseDomexPdf(makePdfFile())).contractSignedDate).toBe("2026-10-11");
+  });
+
+  it("keeps the signing date ahead of the offer presentation date", async () => {
+    pdfState.lines.push("Nabídka pojistné smlouvy předložena: 9. 10. 2026 9:40");
+    expect((await parseDomexPdf(makePdfFile())).contractSignedDate).toBe("2026-10-10");
+  });
+
+  it("rejects an impossible offer presentation date", async () => {
+    pdfState.lines = ["Nabídka pojistné smlouvy předložena: 31. 2. 2026 9:40"];
+    expect((await parseDomexPdf(makePdfFile())).contractSignedDate).toBeUndefined();
+  });
+
   it("does not take the insured person's name when the policyholder's name is missing", async () => {
     pdfState.lines = neuronLines().filter(line => !line.includes("Mgr. Tereza"));
     expect((await parseDomexPdf(makePdfFile())).clientName).toBeUndefined();

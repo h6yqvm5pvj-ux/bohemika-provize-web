@@ -334,7 +334,7 @@ export function CalculatorAmountAndActionsSection({
                     )}
                   </div>
                 )}
-                {product === "neon" && (
+                {(product === "neon" || product === "domexneuron") && (
                   <label className="flex items-start gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-800">
                     <input
                       type="checkbox"
@@ -345,7 +345,9 @@ export function CalculatorAmountAndActionsSection({
                     <span>
                       Původní smlouva není v systému
                       <span className="mt-0.5 block font-medium text-slate-600">
-                        Použij pro REFRESH, kde neumíme dopočítat správnou základnu z původní smlouvy.
+                        {product === "domexneuron"
+                          ? "Číslo původní smlouvy zůstane informativní. Při uložení se původní smlouva nepropojí ani automaticky nestornuje."
+                          : "Použij pro REFRESH, kde neumíme dopočítat správnou základnu z původní smlouvy."}
                       </span>
                     </span>
                   </label>
@@ -360,7 +362,7 @@ export function CalculatorAmountAndActionsSection({
                       : ""}
                   </p>
                 )}
-                {showContractActions && !refreshOriginalMissingInSystem && (
+                {showContractActions && (!refreshOriginalMissingInSystem || product === "domexneuron") && (
                   <>
                     <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
                       Číslo původní smlouvy
@@ -379,8 +381,10 @@ export function CalculatorAmountAndActionsSection({
                       }`}
                     />
                     <p className="text-[11px] text-slate-600">
-                      {canSaveUnlinkedOriginal
-                        ? `Pokud se původní smlouva najde u stejného vlastníka a produktu, při uložení se stornuje ${replacementStornoDescription}.`
+                      {product === "domexneuron" && refreshOriginalMissingInSystem
+                        ? "Číslo původní smlouvy (nepovinné, pouze pro informaci). Automatické storno je vypnuté."
+                        : canSaveUnlinkedOriginal
+                        ? `Pokud se původní smlouva najde u stejného vlastníka ${product === "domex" || product === "domexneuron" ? "jako DOMEX nebo DOMEX Neuron" : "a produktu"}, při uložení se stornuje ${replacementStornoDescription}.`
                         : `Při uložení se původní smlouva stornuje ${replacementStornoDescription}.`}
                     </p>
                   </>

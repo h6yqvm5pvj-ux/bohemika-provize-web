@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import {
+  Clock3,
   Search,
   SlidersHorizontal,
   UserRound,
@@ -26,6 +27,7 @@ type CashflowFiltersProps = {
   hasTeam: boolean;
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
+  shiftedOnly: boolean;
   showSubscriptionFilter?: boolean;
   contractNumberQuery: string;
   contractNumberSearchActive: boolean;
@@ -34,6 +36,7 @@ type CashflowFiltersProps = {
   contractNumberSummary: ContractSearchSummary | null;
   onScopeChange: (scope: ScopeFilter) => void;
   onProductChange: (filter: ProductFilter) => void;
+  onShiftedOnlyChange: (enabled: boolean) => void;
   onContractNumberChange: (value: string) => void;
 };
 
@@ -85,6 +88,7 @@ export function CashflowFilters({
   hasTeam,
   scopeFilter,
   productFilter,
+  shiftedOnly,
   showSubscriptionFilter = false,
   contractNumberQuery,
   contractNumberSearchActive,
@@ -93,6 +97,7 @@ export function CashflowFilters({
   contractNumberSummary,
   onScopeChange,
   onProductChange,
+  onShiftedOnlyChange,
   onContractNumberChange,
 }: CashflowFiltersProps) {
   const searchId = useId();
@@ -183,6 +188,11 @@ export function CashflowFilters({
           <CashflowProductPicker id={productId} options={productFilterOptions}
             value={productFilter} onChange={onProductChange} />
         </div>
+        <button type="button" aria-pressed={shiftedOnly}
+          className={`${styles.action} ${styles.shiftedFilter} ${shiftedOnly ? styles.actionActive : ""}`}
+          onClick={() => onShiftedOnlyChange(!shiftedOnly)}>
+          <Clock3 size={16} aria-hidden="true" />Jen přesunuté
+        </button>
       </div>
 
       {contractNumberSearchActive && <div id={searchResultId} role="status"

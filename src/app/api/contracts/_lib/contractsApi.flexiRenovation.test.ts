@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calculateFlexi } from "@/app/lib/productFormulas/flexi";
+import { calculateDomexNeuron } from "@/app/lib/productFormulas/domexNeuron";
 import { buildIdempotentEntryId } from "./contractsApi.identity";
 import { contractNoteLocationRef } from "@/lib/server/contractNoteLocation";
 
@@ -267,6 +268,106 @@ describe("saving ČPP Auto replacements from the statement queue", () => {
   ] as const)("rejects unauthorized or manipulated queue saves: %j", async (patch, status) => {
     const before = new Map(records);
     const { response } = await save({ ...cppReplacement, ...patch });
+    expect(response.status).toBe(status);
+    expect(records).toEqual(before);
+  });
+});
+
+describe("saving DOMEX Neuron replacements", () => {
+  const neuronReplacement = {
+    productKey: "domexneuron", frequencyRaw: "annual", durationYears: null, flexiRenovation: null,
+    contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
+    inputAmount: 12_000, effectiveInputAmount: 12_000,
+  };
+
+  it.each(["domexneuron", "domex"])("links an owned %s original and cancels it on the new policy start", async originalProduct => {
+    records.get(originalPath)!.productKey = originalProduct;
+    const { response, body, saved } = await save(neuronReplacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: "original" });
+    expect(saved).toMatchObject({
+      productKey: "domexneuron", isRefresh: true, refreshOriginalContractNumber: "OLD123",
+      total: calculateDomexNeuron(12_000, "annual", "poradce1").total,
+    });
+    expect(records.get(originalPath)).toMatchObject({
+      status: "storno", stornoDate: new Date("2026-11-05"), refreshReplacedByEntryId: body.entryId,
+    });
+  });
+
+  it.each(["missing", "foreignOwner", "wrongProduct"])("saves the replacement without changing an original that is %s", async situation => {
+    const foreignPath = "users/foreign@example.test/entries/original";
+    records.set(foreignPath, { productKey: "domex", contractNumber: "OLD123", status: "active" });
+    if (situation === "missing") records.delete(originalPath);
+    if (situation === "foreignOwner") mocks.find.mockImplementation(async (number: string) => number === "OLD123"
+      ? { entryPath: foreignPath, entryId: "original", ownerEmail: "foreign@example.test" } : null);
+    const beforeOriginal = records.has(originalPath) ? { ...records.get(originalPath)! } : undefined;
+    const beforeForeign = { ...records.get(foreignPath)! };
+    const { response, body, saved } = await save(neuronReplacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(JSON.stringify(body)).not.toContain("foreign@example.test");
+    expect(saved).toMatchObject({
+      productKey: "domexneuron", isRefresh: true, refreshOriginalContractNumber: "OLD123",
+      total: calculateDomexNeuron(12_000, "annual", "poradce1").total,
+      requiresStatementRefresh: null, commissionCalculationStatus: null, commissionBaseSource: null,
+    });
+    expect(records.get(originalPath)).toEqual(beforeOriginal);
+    expect(records.get(foreignPath)).toEqual(beforeForeign);
+  });
+
+  it("saves an explicitly unlinked replacement even without the original number", async () => {
+    records.delete(originalPath);
+    const { response, body, saved } = await save({
+      ...neuronReplacement, refreshOriginalMissingInSystem: true, refreshOriginalContractNumber: null,
+    });
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(saved).toMatchObject({
+      isRefresh: true, refreshOriginalMissingInSystem: true, refreshOriginalContractNumber: null,
+      total: calculateDomexNeuron(12_000, "annual", "poradce1").total,
+      requiresStatementRefresh: null, commissionCalculationStatus: null, commissionBaseSource: null,
+    });
+  });
+
+  it("preserves an explicitly unlinked original number without linking or cancelling an existing original", async () => {
+    records.get(originalPath)!.productKey = "domex";
+    const beforeOriginal = { ...records.get(originalPath)! };
+    const { response, body, saved } = await save({ ...neuronReplacement, refreshOriginalMissingInSystem: true });
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(saved).toMatchObject({
+      isRefresh: true, refreshOriginalMissingInSystem: true, refreshOriginalContractNumber: "OLD123",
+      total: calculateDomexNeuron(12_000, "annual", "poradce1").total,
+      requiresStatementRefresh: null, commissionCalculationStatus: null, commissionBaseSource: null,
+    });
+    expect(mocks.find).not.toHaveBeenCalledWith("OLD123");
+    expect(records.get(originalPath)).toEqual(beforeOriginal);
+  });
+
+  it("rejects an unauthenticated replacement without writing data", async () => {
+    mocks.guard.mockResolvedValue({ ok: false, response: Response.json({ ok: false }, { status: 401 }) });
+    const before = new Map(records);
+    const { response } = await save(neuronReplacement);
+    expect(response.status).toBe(401);
+    expect(records).toEqual(before);
+  });
+
+  it("rejects a tipster replacement without writing data", async () => {
+    records.get(`users/${owner}`)!.accountType = "tipster";
+    const before = new Map(records);
+    const { response } = await save(neuronReplacement);
+    expect(response.status).toBe(403);
+    expect(records).toEqual(before);
+  });
+
+  it.each([
+    [{ ownerEmail: "foreign@example.test" }, 403],
+    [{ refreshOriginalContractNumber: "NEW123" }, 400],
+    [{ refreshOriginalContractNumber: {} }, 400],
+    [{ isRefresh: "true" }, 400],
+  ] as const)("rejects unauthorized or manipulated replacements: %j", async (patch, status) => {
+    const before = new Map(records);
+    const { response } = await save({ ...neuronReplacement, ...patch });
     expect(response.status).toBe(status);
     expect(records).toEqual(before);
   });

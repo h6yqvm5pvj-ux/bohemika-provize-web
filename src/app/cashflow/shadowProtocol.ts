@@ -60,6 +60,7 @@ export function parseCashflowShadowRequest(value: unknown): CashflowShadowReques
     typeof options.tipsterMode !== "boolean" ||
     typeof options.showPastYears !== "boolean" ||
     typeof options.intelligentPredictionEnabled !== "boolean" ||
+    (options.shiftedOnly !== undefined && typeof options.shiftedOnly !== "boolean") ||
     typeof options.contractNumberQuery !== "string" || options.contractNumberQuery.length > 128
   ) return null;
   // Whitelist fields; never accept client identities or calculation inputs.
@@ -77,6 +78,7 @@ export function parseCashflowShadowRequest(value: unknown): CashflowShadowReques
       showPastYears: options.showPastYears,
       intelligentPredictionEnabled: options.intelligentPredictionEnabled,
       contractNumberQuery: options.contractNumberQuery,
+      ...(options.shiftedOnly !== undefined ? { shiftedOnly: options.shiftedOnly as boolean } : {}),
     },
   };
 }

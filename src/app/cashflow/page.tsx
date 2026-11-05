@@ -55,6 +55,7 @@ import { CashflowMonthModal } from "./components/CashflowMonthModal";
 import { IntelligentPredictionModal } from "./components/IntelligentPredictionModal";
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import { includeCurrentYear } from "./yearChart";
+import { isShiftedCashflowPayout } from "./commissionPresentation";
 import introStyles from "./cashflowIntro.module.css";
 import { systemSansFont } from "@/lib/fonts";
 
@@ -218,6 +219,7 @@ export default function CashflowPage() {
 
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("combined");
   const [productFilter, setProductFilter] = useState<ProductFilter>("all");
+  const [shiftedOnly, setShiftedOnly] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -395,8 +397,8 @@ export default function CashflowPage() {
     [calculationDeferred, rawSnapshot, cashflowDataEnabled, commissionStatements, calculationDay, calculationIdentity]);
   const workerOptions = useMemo<CashflowViewOptions>(() => ({
     scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears,
-    intelligentPredictionEnabled, contractNumberQuery,
-  }), [scopeFilter, productFilter, isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery]);
+    intelligentPredictionEnabled, contractNumberQuery, shiftedOnly: shiftedOnly && !isTipsterMode,
+  }), [scopeFilter, productFilter, isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery, shiftedOnly]);
   const workerView = useCashflowView({
     dataset: workerDataset, options: workerOptions, identity: calculationIdentity,
     enabled: Boolean(calculationDeferred && cashflowDataEnabled),
@@ -417,53 +419,26 @@ export default function CashflowPage() {
 
   const useStatementPayoutTotals =
     !isTipsterMode &&
+    !shiftedOnly &&
     !contractNumberSearchActive &&
     scopeFilter === "combined" &&
     productFilter === "all";
+  const reconcilePayouts = useStatementPayoutTotals || (!isTipsterMode && shiftedOnly);
 
   // Výpisy musí posouvat nevyplacené položky ještě před filtrem minulosti,
   // jinak by starší nevyplacená provize zmizela místo přesunu dopředu.
   const cashflowItemsForReconciliation = useMemo(
     () =>
-      useStatementPayoutTotals || contractNumberSearchActive
+      reconcilePayouts || contractNumberSearchActive
         ? cashflowItems
         : filterPastItems(cashflowItems, showPastYears),
-    [cashflowItems, contractNumberSearchActive, showPastYears, useStatementPayoutTotals]
+    [cashflowItems, contractNumberSearchActive, showPastYears, reconcilePayouts]
   );
 
   const filteredCashflowItems = useMemo(
     () => filterItemsByContractNumber(cashflowItemsForReconciliation, contractNumberQuery),
     [cashflowItemsForReconciliation, contractNumberQuery]
   );
-
-  const inlineContractSearchStats = useMemo(() => {
-    if (!contractNumberSearchActive) {
-      return { itemCount: 0, contractCount: 0, summary: null };
-    }
-
-    const contracts = new Map<string, CashflowItem>();
-    filteredCashflowItems.forEach((item) => {
-      const normalized = normalizeContractNumberSearch(item.contractNumber);
-      if (normalized && !contracts.has(normalized)) {
-        contracts.set(normalized, item);
-      }
-    });
-    const summaryItem = contracts.size === 1 ? Array.from(contracts.values())[0] : null;
-
-    return {
-      itemCount: filteredCashflowItems.length,
-      contractCount: contracts.size,
-      summary: summaryItem
-        ? {
-            productKey: summaryItem.productKey,
-            clientName: summaryItem.clientName ?? null,
-            inputAmount: summaryItem.inputAmount ?? null,
-            frequency: summaryItem.frequency ?? null,
-            contractStatus: summaryItem.contractStatus ?? null,
-          }
-        : null,
-    };
-  }, [contractNumberSearchActive, filteredCashflowItems]);
 
   const statementsByMonthKey = useMemo(() => {
     const map: Record<string, CashflowCommissionStatementSummary[]> = {};
@@ -495,9 +470,9 @@ export default function CashflowPage() {
       applyStatementMissingPayoutShifts({
         cashflowItems: filteredCashflowItems,
         statementsByMonthKey,
-        enabled: useStatementPayoutTotals,
+        enabled: reconcilePayouts,
       }),
-    [filteredCashflowItems, statementsByMonthKey, useStatementPayoutTotals]
+    [filteredCashflowItems, statementsByMonthKey, reconcilePayouts]
   );
 
   const predictionCashflowItems = useMemo(
@@ -517,9 +492,35 @@ export default function CashflowPage() {
     [contractNumberSearchActive, predictionCashflowItems, showPastYears]
   );
 
+  const displayedCashflowItems = useMemo(
+    () => shiftedOnly && !isTipsterMode ? periodCashflowItems.filter(isShiftedCashflowPayout) : periodCashflowItems,
+    [shiftedOnly, isTipsterMode, periodCashflowItems]
+  );
+  const searchStatsItems = shiftedOnly && !isTipsterMode ? displayedCashflowItems : filteredCashflowItems;
+  const inlineContractSearchStats = useMemo(() => {
+    if (!contractNumberSearchActive) return EMPTY_SEARCH_STATS;
+    const contracts = new Map<string, CashflowItem>();
+    searchStatsItems.forEach(item => {
+      const normalized = normalizeContractNumberSearch(item.contractNumber);
+      if (normalized && !contracts.has(normalized)) contracts.set(normalized, item);
+    });
+    const summaryItem = contracts.size === 1 ? Array.from(contracts.values())[0] : null;
+    return {
+      itemCount: searchStatsItems.length,
+      contractCount: contracts.size,
+      summary: summaryItem ? {
+        productKey: summaryItem.productKey,
+        clientName: summaryItem.clientName ?? null,
+        inputAmount: summaryItem.inputAmount ?? null,
+        frequency: summaryItem.frequency ?? null,
+        contractStatus: summaryItem.contractStatus ?? null,
+      } : null,
+    };
+  }, [contractNumberSearchActive, searchStatsItems]);
+
   const predictedMonthGroups = useMemo(
-    () => groupItemsByMonth(periodCashflowItems),
-    [periodCashflowItems]
+    () => groupItemsByMonth(displayedCashflowItems),
+    [displayedCashflowItems]
   );
 
   const inlineMonthGroups = useMemo(
@@ -573,7 +574,7 @@ export default function CashflowPage() {
           statements: commissionStatements, items: cashflowItems, months: monthGroups,
           options: {
             scopeFilter, productFilter, tipsterMode: isTipsterMode, showPastYears,
-            intelligentPredictionEnabled, contractNumberQuery,
+            intelligentPredictionEnabled, contractNumberQuery, shiftedOnly: shiftedOnly && !isTipsterMode,
           },
           signal: controller.signal,
         })
@@ -583,7 +584,7 @@ export default function CashflowPage() {
   }, [
     user, effectiveEmail, loading, cashflowReady, verificationInput, statementVerificationEmail,
     commissionStatements, cashflowItems, monthGroups, scopeFilter, productFilter,
-    isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery,
+    isTipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery, shiftedOnly,
   ]);
 
   const selectedMonthForDisplay = useMemo(() => {
@@ -736,6 +737,7 @@ export default function CashflowPage() {
                   calculating={calculating}
                   calculationFailed={Boolean(workerView.error)}
                   hasPaidMonthTotals={hasPaidMonthTotals}
+                  shiftedOnly={shiftedOnly}
                   forecastYears={CASHFLOW_FORECAST_YEARS}
                   intelligentPredictionEnabled={intelligentPredictionEnabled}
                   showPastYears={showPastYears}
@@ -754,6 +756,7 @@ export default function CashflowPage() {
                     hasTeam={hasTeam}
                     scopeFilter={scopeFilter}
                     productFilter={productFilter}
+                    shiftedOnly={shiftedOnly}
                     showSubscriptionFilter={canViewSubscriptionCashflow}
                     contractNumberQuery={contractNumberInput}
                     contractNumberSearchActive={contractNumberSearchActive || contractSearchPending}
@@ -762,6 +765,7 @@ export default function CashflowPage() {
                     contractNumberSummary={contractSearchStats.summary}
                     onScopeChange={setScopeFilter}
                     onProductChange={setProductFilter}
+                    onShiftedOnlyChange={setShiftedOnly}
                     onContractNumberChange={setContractNumberInput}
                   />
                 </div>
@@ -782,7 +786,9 @@ export default function CashflowPage() {
                     {workerView.error && <p role="alert" className="mb-4 rounded-2xl bg-rose-50 px-5 py-4 text-sm text-rose-700">{workerView.error}</p>}
                     {!calculating && !workerView.error && monthGroups.length === 0 && (
                       <p className="mb-4 rounded-[24px] border border-white/80 bg-white/90 px-5 py-4 text-sm text-slate-700 shadow-[0_16px_38px_rgba(15,23,42,0.11)] backdrop-blur-lg">
-                        {contractNumberSearchActive
+                        {shiftedOnly && !isTipsterMode
+                          ? "V aktuálním výběru nejsou žádné přesunuté výplaty."
+                          : contractNumberSearchActive
                           ? "Smlouva s tímto číslem není v aktuálním cashflow výběru."
                           : isTipsterMode
                           ? "Zatím nemáš žádné sjednané tipy, ze kterých by šlo cashflow zobrazit."
@@ -898,6 +904,11 @@ export default function CashflowPage() {
                 a omezit výběr podle typu produktu. Klikni na rok, potom na měsíc
                 a uvidíš konkrétní provize, ze kterých se částka skládá.
               </p>
+              {!isTipsterMode && <p className="mt-2">
+                Filtr Jen přesunuté zobrazí pouze provize, které podle nahraných
+                výpisů stále čekají na výplatu. Součet v záhlaví odpovídá aktuálnímu
+                výběru a je uvedený před odpočtem stornofondu.
+              </p>}
             </section>
 
             <section>

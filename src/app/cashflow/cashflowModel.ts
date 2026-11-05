@@ -1,6 +1,7 @@
 import { computeCashflow, type CashflowSnapshot } from "./computeCashflow";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import { formatCashflowItemCount } from "./cashflowLabels";
+import { isShiftedCashflowPayout } from "./commissionPresentation";
 import { hashCashflowValue } from "./shadowProtocol";
 import { calendarDate } from "@/app/lib/calendarDates";
 import {
@@ -73,8 +74,8 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
 
   // Dependencies mirror the original page useMemo chain. In particular,
   // typing a query, toggling history or prediction reuses generated items.
-  const beforeReconciliation = memo((items: CashflowItem[], searching: boolean, showPastYears: boolean, statementTotals: boolean, asOf: Date) =>
-    statementTotals || searching ? items : filterPastItems(items, showPastYears, asOf));
+  const beforeReconciliation = memo((items: CashflowItem[], searching: boolean, showPastYears: boolean, reconcileStatements: boolean, asOf: Date) =>
+    reconcileStatements || searching ? items : filterPastItems(items, showPastYears, asOf));
   const searchItems = memo((items: CashflowItem[], query: string) => filterItemsByContractNumber(items, query));
   const searchStats = memo((searching: boolean, items: CashflowItem[]): CashflowContractSearchStats => {
     if (!searching) return { itemCount: 0, contractCount: 0, summary: null };
@@ -104,6 +105,8 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
     applyIntelligentCashflowPrediction({ cashflowItems: items, enabled: enabled && !tipsterMode, today: asOf }));
   const periodItems = memo((searching: boolean, items: CashflowItem[], showPastYears: boolean, asOf: Date) =>
     searching ? items : filterPastItems(items, showPastYears, asOf));
+  const shiftedItems = memo((items: CashflowItem[], enabled: boolean) =>
+    enabled ? items.filter(isShiftedCashflowPayout) : items);
   const groupItems = memo((items: CashflowItem[]) => groupItemsByMonth(items));
   const statementTotals = memo((months: MonthGroup[], statements: StatementsByMonth, enabled: boolean) =>
     applyStatementPayoutTotalsToMonths({ monthGroups: months, statementsByMonthKey: statements, enabled }));
@@ -120,17 +123,20 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
       const { snapshot, statements, asOf } = dataset;
       const { scopeFilter, productFilter, tipsterMode, showPastYears, intelligentPredictionEnabled, contractNumberQuery } = options;
       const searching = normalizeContractNumberSearch(contractNumberQuery).length > 0;
-      const useStatementTotals = !tipsterMode && !searching && scopeFilter === "combined" && productFilter === "all";
+      const shiftedOnly = options.shiftedOnly === true;
+      const useStatementTotals = !shiftedOnly && !tipsterMode && !searching && scopeFilter === "combined" && productFilter === "all";
+      const reconcileStatements = useStatementTotals || (!tipsterMode && shiftedOnly);
       const items = itemsForScope(snapshot, scopeFilter, productFilter, tipsterMode, asOf);
       const byMonth = groupStatements(statements);
-      const beforeSearch = beforeReconciliation(items, searching, showPastYears, useStatementTotals, asOf);
+      const beforeSearch = beforeReconciliation(items, searching, showPastYears, reconcileStatements, asOf);
       const filtered = searchItems(beforeSearch, contractNumberQuery);
-      const stats = searchStats(searching, filtered);
       const includedStatements = periodStatements(searching, showPastYears, byMonth, asOf);
-      const reconciled = reconcile(filtered, byMonth, useStatementTotals);
+      const reconciled = reconcile(filtered, byMonth, reconcileStatements);
       const predicted = predict(reconciled, intelligentPredictionEnabled, tipsterMode, asOf);
       const includedItems = periodItems(searching, predicted, showPastYears, asOf);
-      const months = statementTotals(groupItems(includedItems), includedStatements, useStatementTotals);
+      const visibleItems = shiftedItems(includedItems, shiftedOnly);
+      const stats = searchStats(searching, shiftedOnly ? visibleItems : filtered);
+      const months = statementTotals(groupItems(visibleItems), includedStatements, useStatementTotals);
       const result = overview(months, stats);
       currentMonths = months;
       return result;

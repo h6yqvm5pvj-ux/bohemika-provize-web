@@ -108,6 +108,8 @@ import {
   type EndorsementDraft,
   toNonNegativeNumber,
 } from "./calculatorHelpers";
+import { matchesOriginalContractReplacementProduct } from "../lib/originalContractReplacement";
+import { calculatorReplacementCommissionMetadata, calculatorReplacementPayload } from "./calculatorReplacementPayload";
 import {
   buildEndorsementSourceEntries,
   contractOwnerEmail,
@@ -2108,13 +2110,13 @@ export default function CalculatorPage() {
         }
 
         const productMatch =
-          matchingContracts.find((item) => item.productKey === product) ?? matchingContracts[0];
+          matchingContracts.find((item) => matchesOriginalContractReplacementProduct(item.productKey, product)) ?? matchingContracts[0];
         const adviserName =
           typeof productMatch.adviserName === "string" && productMatch.adviserName.trim()
             ? productMatch.adviserName.trim()
             : null;
 
-        if (productMatch.productKey !== product) {
+        if (!matchesOriginalContractReplacementProduct(productMatch.productKey, product)) {
           setRefreshOriginalLookup({
             status: "wrongProduct",
             progress: 100,
@@ -3539,13 +3541,7 @@ export default function CalculatorPage() {
             paid: shouldAutoMarkPaidByPolicyStartDate(policyStartDateIso),
             isRefresh: isReplacementPdf,
             refreshOriginalMissingInSystem: replacementOriginalMissingInSystem,
-            requiresStatementRefresh: replacementOriginalMissingInSystem,
-            commissionCalculationStatus: replacementOriginalMissingInSystem
-              ? "provisional_refresh_missing_original"
-              : null,
-            commissionBaseSource: replacementOriginalMissingInSystem
-              ? "calculator_provisional"
-              : null,
+            ...calculatorReplacementCommissionMetadata(importProduct, replacementOriginalMissingInSystem),
             premiumUpdatedFromStatementAtMs: null,
             premiumUpdatedFromStatementChronologyMs: null,
             premiumUpdatedFromStatementId: null,
@@ -4577,10 +4573,13 @@ export default function CalculatorPage() {
       return;
     }
     const shouldReplaceOriginalContract = originalReplacementWorkflowActive;
-    const isRefreshWithoutOriginalInSystem =
-      shouldReplaceOriginalContract &&
-      product === "neon" &&
-      refreshOriginalMissingInSystem;
+    const replacementPayload = calculatorReplacementPayload({
+      product,
+      active: shouldReplaceOriginalContract,
+      originalMissingInSystem: refreshOriginalMissingInSystem,
+      originalContractNumber: refreshOriginalContractNumber,
+    });
+    const isRefreshWithoutOriginalInSystem = replacementPayload.refreshOriginalMissingInSystem;
     const trimmedRefreshOriginalContractNumber = refreshOriginalContractNumber.trim();
     if (
       shouldReplaceOriginalContract &&
@@ -5194,20 +5193,12 @@ export default function CalculatorPage() {
                   }
                 : null,
             paid: autoPaidByPolicyStartDate,
-            isRefresh: shouldReplaceOriginalContract,
+            ...replacementPayload,
             flexiRenovation: flexiRenovationBase ? {
               originalMonthlyPremium: flexiRenovationBase.originalMonthlyPremium,
               premiumIncreaseMonthly: flexiRenovationBase.premiumIncreaseMonthly,
               guaranteeStatus: flexiRenovationBase.guaranteeStatus,
             } : null,
-            refreshOriginalMissingInSystem: isRefreshWithoutOriginalInSystem,
-            requiresStatementRefresh: isRefreshWithoutOriginalInSystem,
-            commissionCalculationStatus: isRefreshWithoutOriginalInSystem
-              ? "provisional_refresh_missing_original"
-              : null,
-            commissionBaseSource: isRefreshWithoutOriginalInSystem
-              ? "calculator_provisional"
-              : null,
             premiumUpdatedFromStatementAtMs: statementPremiumSource?.capturedAtMs ?? null,
             premiumUpdatedFromStatementChronologyMs:
               statementPremiumSource?.statementChronologyMs ?? null,
@@ -5217,11 +5208,6 @@ export default function CalculatorPage() {
             createdFromCommissionStatementChronologyMs:
               statementPremiumSource?.statementChronologyMs ?? null,
             createdFromCommissionStatementId: statementPremiumSource?.statementId ?? null,
-            refreshOriginalContractNumber: shouldReplaceOriginalContract
-              ? isRefreshWithoutOriginalInSystem
-                ? null
-                : trimmedRefreshOriginalContractNumber
-              : null,
       };
 
       const saved = await saveContractEntry({
@@ -5269,7 +5255,9 @@ export default function CalculatorPage() {
       const replacementStornoDescription =
         originalReplacementStornoDescription(product);
       const savedMessage = isRefreshWithoutOriginalInSystem
-        ? "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
+        ? product === "domexneuron"
+          ? "Smlouva byla uložena jako Náhrada bez propojení s původní smlouvou. Číslo původní smlouvy zůstává informativní a automatické storno se neprovedlo."
+          : "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
         : shouldReplaceOriginalContract
           ? linkedRefreshOriginal
             ? `Smlouva byla uložena jako ${originalReplacementLabel(product)} a původní smlouva byla stornována ${replacementStornoDescription}.`
@@ -7270,7 +7258,7 @@ export default function CalculatorPage() {
                   setRefreshOriginalMissingInSystem(value);
                   setRefreshOriginalPdfLookupNumber(null);
                   if (value) {
-                    setRefreshOriginalContractNumber("");
+                    if (product !== "domexneuron") setRefreshOriginalContractNumber("");
                     setRefreshOriginalLookup({
                       status: "idle",
                       progress: 0,

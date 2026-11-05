@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canSaveUnlinkedOriginalReplacement,
+  matchesOriginalContractReplacementProduct,
   ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS,
   originalReplacementLabel,
   originalReplacementProductLabel,
@@ -23,7 +24,7 @@ describe("original contract replacement capabilities", () => {
     expect(supportsOriginalContractReplacement(null)).toBe(false);
   });
 
-  it.each(["flexi", "domex", "cppAuto", "allianzAuto"] as const)(
+  it.each(["flexi", "domex", "domexneuron", "cppAuto", "allianzAuto"] as const)(
     "umožní uložit produkt %s i bez nalezené původní smlouvy",
     (product) => {
       expect(canSaveUnlinkedOriginalReplacement(product)).toBe(true);
@@ -49,6 +50,10 @@ describe("original contract replacement capabilities", () => {
 
   it("vrací společné popisky produktu a termínu storna", () => {
     expect(originalReplacementProductLabel("domex")).toBe("DOMEX");
+    expect(originalReplacementProductLabel("domexneuron")).toBe("DOMEX Neuron");
+    expect(originalReplacementLabel("domexneuron")).toBe("Náhrada");
+    expect(usesPreviousDayReplacementStorno("domexneuron")).toBe(false);
+    expect(originalReplacementStornoDescription("domexneuron")).toBe("ke dni počátku nové smlouvy");
     expect(originalReplacementProductLabel("allianzAuto")).toBe("Allianz Auto");
     expect(originalReplacementStornoDescription("neon")).toBe(
       "ke dni počátku nové smlouvy",
@@ -56,5 +61,24 @@ describe("original contract replacement capabilities", () => {
     expect(originalReplacementStornoDescription("cppAuto")).toBe(
       "jeden den před datem počátku nové smlouvy",
     );
+  });
+
+  it.each([
+    ["domex", "domexneuron"],
+    ["domexneuron", "domex"],
+    ["domexneuron", "domexneuron"],
+    ["cppAuto", "cppAuto"],
+  ] as const)("povolí náhradu produktu %s produktem %s", (originalProduct, newProduct) => {
+    expect(matchesOriginalContractReplacementProduct(originalProduct, newProduct)).toBe(true);
+  });
+
+  it.each([
+    ["neon", "domexneuron"],
+    ["domexneuron", "cppAuto"],
+    ["maximaMaxEfekt", "maximaMaxEfekt"],
+    [null, "domexneuron"],
+    [null, null],
+  ] as const)("nepovolí náhradu produktu %s produktem %s", (originalProduct, newProduct) => {
+    expect(matchesOriginalContractReplacementProduct(originalProduct, newProduct)).toBe(false);
   });
 });

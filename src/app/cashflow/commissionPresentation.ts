@@ -22,6 +22,10 @@ export function cashflowItemDisplayStatus(item: CashflowItem) {
   return isCashflowCancellation(item) ? "cancelled" : item.payoutStatus ?? "predicted";
 }
 
+export function isShiftedCashflowPayout(item: CashflowItem): boolean {
+  return cashflowItemDisplayStatus(item) === "shifted";
+}
+
 export function commissionMeaning(
   label: string | null,
   isTipIncome: boolean,
@@ -83,10 +87,25 @@ export function commissionLabelForItem(item: CashflowItem): string | null {
   );
 }
 
-export function payoutStatusLabel(status: CashflowItem["payoutStatus"] | "cancelled" | undefined): string {
+export function payoutStatusLabel(
+  status: CashflowItem["payoutStatus"] | "cancelled" | undefined,
+  items: CashflowItem[] = []
+): string {
   if (status === "cancelled") return "Stornováno";
   if (status === "paid") return "Vyplaceno";
-  if (status === "shifted") return "Přesunuto";
+  if (status === "shifted") {
+    const offsets = items.map(({ date, originalDate }) =>
+      date instanceof Date && originalDate instanceof Date
+        ? (date.getFullYear() - originalDate.getFullYear()) * 12 + date.getMonth() - originalDate.getMonth()
+        : NaN
+    );
+    if (offsets.length === 0 || offsets.some(months => !Number.isFinite(months) || months <= 0)) return "Přesunuto";
+    const min = Math.min(...offsets);
+    const max = Math.max(...offsets);
+    const count = min === max ? String(min) : `${min}–${max}`;
+    const unit = max === 1 ? "měsíc" : max <= 4 ? "měsíce" : "měsíců";
+    return `Přesunuto o ${count} ${unit}`;
+  }
   return "Předpoklad";
 }
 

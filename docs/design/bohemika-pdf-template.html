@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="Obecná sazební šablona Bohemika PDF. Obsahuje pouze zástupná pole a smyšlené modelové hodnoty." />
+    <title>Bohemika PDF — obecná šablona</title>
+    <link rel="stylesheet" href="bohemika-pdf.css" />
+  </head>
+  <body>
+    <!-- Před předáním nahradit všechna pole, datum i skutečný počet stran. -->
+    <section class="page cover">
+      <header><span class="wordmark">bohemika<span>.</span></span><span>01 / Přehled pro klienta</span></header>
+      <div class="cover-top">
+        <div class="eyebrow">{{TÉMA_DOKUMENTU}}</div>
+        <h1>Přehledné srovnání.<br />Jistější rozhodnutí.<br /><span>Pro vaše potřeby.</span></h1>
+        <p class="lead">{{PRODUKT_A}}<br /><b>ve srovnání s {{PRODUKT_B}}</b></p>
+      </div>
+      <div class="client"><span>PŘIPRAVENO PRO</span><strong>{{JMÉNO_KLIENTA}}</strong><div>Zpracoval/a {{JMÉNO_PORADCE}}</div></div>
+      <div class="policy-grid">
+        <div><span>VARIANTA A</span><b>{{PRODUKT_A}}</b></div>
+        <div><span>VARIANTA B</span><b>{{PRODUKT_B}}</b></div>
+        <div><span>DATUM</span><b>{{DATUM}}</b></div>
+      </div>
+      <div class="note small">{{ROZSAH_SROVNÁNÍ_A_PODKLADY}} — doplňte, co dokument porovnává a které údaje je potřeba potvrdit.</div>
+      <div class="cover-bottom">
+        <h3>Na co se soustředit</h3>
+        <div class="three">
+          <div><b>01</b><h4>{{PRIORITA_1}}</h4><p>{{KRÁTKÉ_VYSVĚTLENÍ_1}}</p></div>
+          <div><b>02</b><h4>{{PRIORITA_2}}</h4><p>{{KRÁTKÉ_VYSVĚTLENÍ_2}}</p></div>
+          <div><b>03</b><h4>{{PRIORITA_3}}</h4><p>{{KRÁTKÉ_VYSVĚTLENÍ_3}}</p></div>
+        </div>
+      </div>
+      <footer><span>{{JMÉNO_KLIENTA}} · {{NÁZEV_DOKUMENTU}}</span><span>{{DATUM}} <i></i> 01 / 04</span></footer>
+    </section>
+
+    <section class="page">
+      <header><span class="wordmark">bohemika<span>.</span></span><span>02 / Důležité rozdíly</span></header>
+      <div class="eyebrow">Srovnání podmínek</div>
+      <h1>Co se mezi<br />variantami mění.</h1>
+      <p class="lead">{{ÚVOD_SROVNÁNÍ}} — vysvětlete rozdíly srozumitelně a v souvislostech.</p>
+      <table class="compare">
+        <thead><tr><th>Oblast</th><th class="gen">{{PRODUKT_A}}</th><th class="cpp">{{PRODUKT_B}}</th></tr></thead>
+        <tbody>
+          <tr><th>{{OBLAST_1}}</th><td>{{POPIS_A_1}}</td><td>{{POPIS_B_1}}</td></tr>
+          <tr><th>{{OBLAST_2}}</th><td>{{POPIS_A_2}}</td><td>{{POPIS_B_2}}</td></tr>
+          <tr><th>{{OBLAST_3}}</th><td>{{POPIS_A_3}}</td><td>{{POPIS_B_3}}</td></tr>
+          <tr><th>{{OBLAST_4}}</th><td>{{POPIS_A_4}}</td><td>{{POPIS_B_4}}</td></tr>
+          <tr><th>{{OBLAST_5}}</th><td>{{POPIS_A_5}}</td><td>{{POPIS_B_5}}</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><b>Co to znamená v praxi</b><p>{{PRAKTICKÝ_DOPAD_PRO_KLIENTA}}</p></div>
+      <div class="two compact">
+        <div><h3>Co doporučujeme ověřit</h3><p>{{DOPLŇUJÍCÍ_PODMÍNKY}}</p></div>
+        <div><h3>Další krok</h3><p>{{NAVRHOVANÝ_POSTUP}}</p></div>
+      </div>
+      <div class="source">Zdroje: {{ZDROJE_A_ODKAZY}}. Doplňte přesnou verzi dokumentů a odkazy.</div>
+      <footer><span>{{JMÉNO_KLIENTA}} · {{NÁZEV_DOKUMENTU}}</span><span>{{DATUM}} <i></i> 02 / 04</span></footer>
+    </section>
+
+    <section class="page progression-page">
+      <header><span class="wordmark">bohemika<span>.</span></span><span>03 / Modelový příklad</span></header>
+      <div class="eyebrow">Názorné vysvětlení</div>
+      <h1>Stejný základ.<br />Jiný výsledek.</h1>
+      <p class="lead">{{VYSVĚTLENÍ_MODELU}} — částky níže jsou smyšlenou ukázkou sazby, nikoliv pojistným výpočtem.</p>
+      <div class="case">
+        <span class="eyebrow">Ilustrační příklad</span>
+        <h2>{{NÁZEV_PŘÍKLADU}}</h2>
+        <p>{{PRINCIP_VÝPOČTU_A_JEHO_PŘEDPOKLADY}}</p>
+        <div class="case-values">
+          <div><span>VARIANTA A</span><b>150 000 Kč</b></div>
+          <div><span>VARIANTA B</span><b>300 000 Kč</b></div>
+          <div><span>MODELOVÝ ROZDÍL</span><b>+150 000 Kč</b></div>
+        </div>
+      </div>
+      <table class="data progression">
+        <thead><tr><th>Modelová situace</th><th class="gen">Varianta A</th><th class="cpp">Varianta B</th></tr></thead>
+        <tbody>
+          <tr><td>Příklad 1</td><td>50 000 Kč</td><td>50 000 Kč</td></tr>
+          <tr><td>Příklad 2</td><td>75 000 Kč</td><td>100 000 Kč</td></tr>
+          <tr><td>Příklad 3</td><td>100 000 Kč</td><td>200 000 Kč</td></tr>
+          <tr class="highlight"><td>Zvýrazněný příklad</td><td>150 000 Kč</td><td>300 000 Kč</td></tr>
+          <tr><td>Příklad 5</td><td>200 000 Kč</td><td>400 000 Kč</td></tr>
+          <tr><td>Příklad 6</td><td>300 000 Kč</td><td>600 000 Kč</td></tr>
+        </tbody>
+      </table>
+      <div class="note small">Smyšlené hodnoty slouží pouze jako ukázka vzhledu. V konkrétním dokumentu doplňte ověřený výpočet, jeho vstupy, jednotky a omezení. Neměňte dvě veličiny současně bez vysvětlení jejich dopadu.</div>
+      <div class="callout"><b>{{HLAVNÍ_POZNATEK}}</b><p>{{SROZUMITELNÉ_SHRNUTÍ_PŘÍKLADU}}</p></div>
+      <div class="source">Podklad výpočtu: {{OVĚŘENÝ_ZDROJ_A_VERZE}}.</div>
+      <footer><span>{{JMÉNO_KLIENTA}} · {{NÁZEV_DOKUMENTU}}</span><span>{{DATUM}} <i></i> 03 / 04</span></footer>
+    </section>
+
+    <section class="page final">
+      <header><span class="wordmark">bohemika<span>.</span></span><span>04 / Váš poradce</span></header>
+      <div class="advisor-top">
+        <div class="eyebrow">{{TÉMA_DOKUMENTU}}</div>
+        <h1>Dobré rozhodnutí<br />začíná u vašich<br /><span>skutečných potřeb.</span></h1>
+        <p class="lead">{{OSOBNÍ_ZÁVĚREČNÉ_SDĚLENÍ}}</p>
+      </div>
+      <div class="advisor-card">
+        <div class="advisor-info">
+          <span class="eyebrow">Srovnání zpracoval/a</span>
+          <h2>{{JMÉNO_PORADCE}}</h2>
+          <p class="advisor-role">{{VEŘEJNÁ_PROFESE}}</p>
+          <div class="contact-list">
+            <div class="contact">{{VEŘEJNÝ_TELEFON}}</div>
+            <div class="contact">{{VEŘEJNÝ_EMAIL}}</div>
+            <div class="small muted">{{DALŠÍ_VEŘEJNÝ_KONTAKT}}</div>
+          </div>
+          <div class="qr-row">
+            <div class="qr-placeholder" aria-label="Místo pro skutečný QR kód">QR</div>
+            <div><b>Moje online vizitka</b><p>{{VEŘEJNÁ_URL_VIZITKY}}<br />Doplňte odpovídající QR a klikací odkaz.</p></div>
+          </div>
+        </div>
+        <div class="advisor-art advisor-art-placeholder"><span class="wordmark">bohemika<span>.</span></span><p>{{VEŘEJNÝ_VIZUÁL_PORADCE}}</p></div>
+      </div>
+      <div class="final-note"><b>Další krok</b><p>{{DALŠÍ_POSTUP_A_KONTAKT}}</p></div>
+      <footer><span>{{JMÉNO_KLIENTA}} · {{NÁZEV_DOKUMENTU}}</span><span>{{DATUM}} <i></i> 04 / 04</span></footer>
+    </section>
+  </body>
+</html>

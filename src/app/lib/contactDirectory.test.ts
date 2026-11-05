@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   CONTACT_INSTITUTIONS,
-  DEFAULT_DIRECTORY_CONTACTS,
   describeContactDirectoryChange,
   normalizeDirectoryContacts,
 } from "./contactDirectory";
+
+import { DEFAULT_DIRECTORY_CONTACTS } from "@/lib/server/defaultContactDirectory";
 
 describe("contactDirectory", () => {
   it("obsahuje Pillow s připraveným logem", () => {
@@ -22,6 +23,31 @@ describe("contactDirectory", () => {
       DEFAULT_DIRECTORY_CONTACTS,
     );
   });
+
+  it("zařadí všechny starší kontakty do skupiny Všichni", () => {
+    const contacts = normalizeDirectoryContacts([{
+      id: "legacy-contact", institutionKey: "allianz", emails: [{ value: "legacy@example.test" }],
+    }]);
+    expect(contacts?.[0]?.audience).toEqual({ type: "everyone" });
+    expect(DEFAULT_DIRECTORY_CONTACTS.every(contact => contact.audience?.type === "everyone")).toBe(true);
+  });
+
+  it.each([null, "everyone", {}, { type: "unknown" }, { type: "group" },
+    { type: "everyone", groupId: "private-group" }, { type: "group", groupId: "../group" }])(
+    "odmítne neplatné omezení viditelnosti %j", audience => {
+      expect(normalizeDirectoryContacts([{
+        id: "restricted-contact", institutionKey: "allianz", emails: [{ value: "restricted@example.test" }], audience,
+      }])).toBeNull();
+    },
+  );
+
+  it.each([{ type: "everyone" }, { type: "specialists" }, { type: "group", groupId: "group-a" }])(
+    "zachová platné publikum %j", audience => {
+      expect(normalizeDirectoryContacts([{
+        id: "contact", institutionKey: "allianz", emails: [{ value: "contact@example.test" }], audience,
+      }])?.[0]?.audience).toEqual(audience);
+    },
+  );
 
   it("odmítne neznámou instituci a duplicitní ID", () => {
     expect(

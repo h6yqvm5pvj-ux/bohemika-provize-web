@@ -4,9 +4,23 @@ export type ContactEmail = {
   cc?: string;
 };
 
+export type ContactAudience =
+  | { type: "everyone" }
+  | { type: "specialists" }
+  | { type: "group"; groupId: string };
+
+export type ContactGroupMember = { uid: string; name: string; email: string };
+export type ContactDirectoryGroup = {
+  id: string;
+  name: string;
+  memberCount: number;
+  members?: ContactGroupMember[];
+};
+
 export type DirectoryContact = {
   id: string;
   institutionKey: string;
+  audience?: ContactAudience;
   person?: string;
   role?: string;
   description?: string;
@@ -26,6 +40,19 @@ export type ContactInstitution = {
 };
 
 export const OPEN_CONTACT_DIRECTORY_EVENT = "bohemika:open-contact-directory";
+export const CONTACT_DIRECTORY_CHANGED_EVENT = "bohemika:contact-directory-changed";
+
+export function normalizeContactAudience(value: unknown): ContactAudience | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if ((row.type === "everyone" || row.type === "specialists") && row.groupId === undefined) {
+    return { type: row.type };
+  }
+  if (row.type === "group" && typeof row.groupId === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(row.groupId)) {
+    return { type: "group", groupId: row.groupId };
+  }
+  return null;
+}
 
 export const CONTACT_INSTITUTIONS: ContactInstitution[] = [
   {
@@ -125,128 +152,6 @@ export const CONTACT_INSTITUTION_BY_KEY = new Map(
   CONTACT_INSTITUTIONS.map((institution) => [institution.key, institution]),
 );
 
-export const DEFAULT_DIRECTORY_CONTACTS: DirectoryContact[] = [
-  {
-    id: "bohemika-pavlina-bartkova",
-    institutionKey: "bohemika",
-    person: "Bc. Pavlína Bártková",
-    description:
-      "Správa sjednatelů, registrace, pohledávky a požadavky sjednatelů",
-    phone: { display: "+420 603 458 845", href: "+420603458845" },
-    emails: [
-      { value: "pavlina.bartkova@bohemika.eu", label: "Pavlína Bártková" },
-      { value: "pohledavky@bohemika.eu", label: "Pohledávky" },
-    ],
-  },
-  {
-    id: "bohemika-bela-kulhankova",
-    institutionKey: "bohemika",
-    person: "Běla Kulhánková",
-    description:
-      "Reklamace provizí vůči sjednatelům, zpracování žádostí, elektronizace smluv, bonusové akce a soutěže",
-    phone: { display: "+420 734 353 363", href: "+420734353363" },
-    emails: [{ value: "bela.kulhankova@bohemika.eu" }],
-  },
-  {
-    id: "cpp",
-    institutionKey: "cpp",
-    person: "Vojtěch Vodička",
-    role: "KAM",
-    phone: { display: "+420 734 522 927", href: "+420734522927" },
-    emails: [{ value: "vojtech.vodicka@cpp.cz" }],
-  },
-  {
-    id: "allianz-storno",
-    institutionKey: "allianz",
-    description: "Storno smluv",
-    emails: [{ value: "BO_storno_auta@allianz.cz", label: "Storno smluv" }],
-    notice: "Nesdělovat e-mail klientům, pouze pro interní účely!",
-  },
-  {
-    id: "allianz-metodicka-podpora",
-    institutionKey: "allianz",
-    description: "Metodická podpora a informace o smlouvách",
-    phone: { display: "+420 241 170 000", href: "+420241170000" },
-    emails: [{ value: "info@allianz.cz" }],
-  },
-  {
-    id: "allianz-eliska-stastna",
-    institutionKey: "allianz",
-    person: "Eliška Šťastná",
-    role: "KAM",
-    phone: { display: "+420 731 922 909", href: "+420731922909" },
-    emails: [{ value: "eliska.stastna@allianz.cz" }],
-  },
-  {
-    id: "uniqa",
-    institutionKey: "uniqa",
-    person: "Luboš Meruňka",
-    role: "KAM",
-    phone: { display: "+420 734 163 979", href: "+420734163979" },
-    emails: [{ value: "lubos.merunka@uniqa.cz" }],
-  },
-  {
-    id: "kooperativa",
-    institutionKey: "kooperativa",
-    person: "Jiří Kratochvíl",
-    emails: [
-      { value: "jkratochvil@koop.cz", label: "Jiří Kratochvíl" },
-      {
-        value: "podporasever@koop.cz",
-        label: "Podpora Sever",
-        cc: "jkratochvil@koop.cz",
-      },
-    ],
-    notice:
-      "Při e-mailu na Podporu Sever musí být v kopii také Jiří Kratochvíl. Kliknutím na adresu se kopie doplní automaticky.",
-  },
-  {
-    id: "investika",
-    institutionKey: "investika",
-    person: "Tereza Bartůňková",
-    phone: { display: "+420 702 218 819", href: "+420702218819" },
-    emails: [
-      { value: "terezabartunkova@investika.cz", label: "Tereza Bartůňková" },
-      { value: "administrace@investika.cz", label: "Administrace" },
-    ],
-  },
-  {
-    id: "csob",
-    institutionKey: "csob",
-    person: "Daniel Vlk",
-    role: "KAM",
-    phone: { display: "+420 604 293 177", href: "+420604293177" },
-    emails: [{ value: "dvlk@csob.cz" }],
-  },
-  {
-    id: "maxima",
-    institutionKey: "maxima",
-    person: "Alena Zikmundová",
-    phone: { display: "+420 736 777 434", href: "+420736777434" },
-    emails: [{ value: "zikmundova@maxima-as.cz" }],
-  },
-  {
-    id: "slavia",
-    institutionKey: "slavia",
-    phone: { display: "+420 731 011 598", href: "+420731011598" },
-    emails: [{ value: "Katerina.Kubatova@slavia-pojistovna.cz" }],
-  },
-  {
-    id: "pillow-martin-kroupa",
-    institutionKey: "pillow",
-    person: "Martin Kroupa",
-    role: "KAM",
-    description: "Online Ambasador",
-    phone: { display: "+420 790 388 478", href: "+420790388478" },
-    emails: [{ value: "martin.kroupa@pillow.cz" }],
-  },
-  {
-    id: "pillow-klientsky-servis",
-    institutionKey: "pillow",
-    description: "Klientský servis Pillow",
-    phone: { display: "+420 777 657 827", href: "+420777657827" },
-  },
-];
 
 export type ContactDirectoryChangeSummary = {
   kind: "added" | "updated" | "removed" | "multiple";
@@ -341,6 +246,11 @@ export function normalizeDirectoryContacts(
   for (const item of value) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
     const row = item as Record<string, unknown>;
+    // Only genuinely legacy records default to everyone. Invalid restrictions fail closed.
+    const audience = Object.prototype.hasOwnProperty.call(row, "audience")
+      ? normalizeContactAudience(row.audience)
+      : { type: "everyone" as const };
+    if (!audience) return null;
     const id = normalizeText(row.id, 80);
     const institutionKey = normalizeText(row.institutionKey, 80);
     if (
@@ -398,6 +308,7 @@ export function normalizeDirectoryContacts(
     contacts.push({
       id,
       institutionKey,
+      audience,
       ...(person ? { person } : {}),
       ...(role ? { role } : {}),
       ...(description ? { description } : {}),

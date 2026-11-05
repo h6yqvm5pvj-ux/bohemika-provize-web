@@ -31,6 +31,13 @@ export const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES = [
     stornoTiming: "policyStart",
   },
   {
+    product: "domexneuron",
+    productLabel: "DOMEX Neuron",
+    workflowLabel: "Náhrada",
+    canSaveUnlinkedOriginal: true,
+    stornoTiming: "policyStart",
+  },
+  {
     product: "cppAuto",
     productLabel: "ČPP Auto",
     workflowLabel: "Náhrada",
@@ -50,7 +57,7 @@ export const ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS =
   ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITIES.map(({ product }) => product);
 
 export const ORIGINAL_CONTRACT_REPLACEMENT_SUPPORT_LABEL =
-  "ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, ČPP Auto a Allianz Auto";
+  "ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, ČPP Auto a Allianz Auto";
 
 const ORIGINAL_CONTRACT_REPLACEMENT_CAPABILITY_MAP = new Map<
   Product,
@@ -74,6 +81,18 @@ export function supportsOriginalContractReplacement(
   product: Product | null | undefined,
 ): boolean {
   return Boolean(replacementCapability(product));
+}
+
+export function matchesOriginalContractReplacementProduct(
+  originalProduct: Product | null | undefined,
+  newProduct: Product | null | undefined,
+): boolean {
+  if (!supportsOriginalContractReplacement(newProduct)) return false;
+  if (originalProduct === newProduct) return true;
+  return (
+    (originalProduct === "domex" || originalProduct === "domexneuron") &&
+    (newProduct === "domex" || newProduct === "domexneuron")
+  );
 }
 
 export function canSaveUnlinkedOriginalReplacement(

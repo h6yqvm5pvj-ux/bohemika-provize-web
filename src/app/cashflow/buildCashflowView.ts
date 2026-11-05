@@ -16,6 +16,7 @@ import type {
   ProductFilter,
   ScopeFilter,
 } from "./types";
+import { isShiftedCashflowPayout } from "./commissionPresentation";
 
 export type CashflowViewOptions = {
   scopeFilter: ScopeFilter;
@@ -24,6 +25,7 @@ export type CashflowViewOptions = {
   showPastYears: boolean;
   intelligentPredictionEnabled: boolean;
   contractNumberQuery: string;
+  shiftedOnly?: boolean;
 };
 
 // Mirrors the page's existing composition, using the same business helpers.
@@ -35,8 +37,10 @@ export function buildCashflowView(
   asOf: Date,
 ): MonthGroup[] {
   const searching = normalizeContractNumberSearch(options.contractNumberQuery).length > 0;
-  const useStatementTotals = !options.tipsterMode && !searching &&
+  const shiftedOnly = options.shiftedOnly === true;
+  const useStatementTotals = !shiftedOnly && !options.tipsterMode && !searching &&
     options.scopeFilter === "combined" && options.productFilter === "all";
+  const reconcileStatements = useStatementTotals || (!options.tipsterMode && shiftedOnly);
   const statementsByMonth: Record<string, CashflowCommissionStatementSummary[]> = {};
   for (const statement of statements) {
     const key = statementMonthKey(statement);
@@ -47,20 +51,22 @@ export function buildCashflowView(
       b.statementDate ?? b.fileName, "cs",
     ));
   }
-  const beforeSearch = useStatementTotals || searching
+  const beforeSearch = reconcileStatements || searching
     ? items
     : filterPastItems(items, options.showPastYears, asOf);
   const filtered = filterItemsByContractNumber(beforeSearch, options.contractNumberQuery);
   const reconciled = applyStatementMissingPayoutShifts({
-    cashflowItems: filtered, statementsByMonthKey: statementsByMonth, enabled: useStatementTotals,
+    cashflowItems: filtered, statementsByMonthKey: statementsByMonth, enabled: reconcileStatements,
   });
   const predicted = applyIntelligentCashflowPrediction({
     cashflowItems: reconciled,
     enabled: options.intelligentPredictionEnabled && !options.tipsterMode,
     today: asOf,
   });
+  const periodItems = searching ? predicted : filterPastItems(predicted, options.showPastYears, asOf);
+  const visibleItems = shiftedOnly ? periodItems.filter(isShiftedCashflowPayout) : periodItems;
   return applyStatementPayoutTotalsToMonths({
-    monthGroups: groupItemsByMonth(searching ? predicted : filterPastItems(predicted, options.showPastYears, asOf)),
+    monthGroups: groupItemsByMonth(visibleItems),
     statementsByMonthKey: searching
       ? statementsByMonth
       : filterPastStatementMonths(statementsByMonth, options.showPastYears, asOf),

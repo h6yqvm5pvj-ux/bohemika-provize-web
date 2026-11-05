@@ -50,6 +50,7 @@ import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   canSaveUnlinkedOriginalReplacement,
+  matchesOriginalContractReplacementProduct,
   usesPreviousDayReplacementStorno,
 } from "@/app/lib/originalContractReplacement";
 import {
@@ -5213,7 +5214,7 @@ export async function handleContractsCreate(req: NextRequest) {
 
     const refreshWithoutOriginalInSystem =
       normalizedEntry.payload.entryType === "contract" &&
-      normalizedEntry.payload.productKey === "neon" &&
+      (normalizedEntry.payload.productKey === "neon" || normalizedEntry.payload.productKey === "domexneuron") &&
       normalizedEntry.payload.isRefresh === true &&
       normalizedEntry.payload.refreshOriginalMissingInSystem === true;
     const allowUnlinkedOriginalReplacement =
@@ -5276,7 +5277,7 @@ export async function handleContractsCreate(req: NextRequest) {
             );
             if (response) return response;
           }
-          if (refreshOriginalLink && originalData.productKey !== normalizedEntry.payload.productKey) {
+          if (refreshOriginalLink && !matchesOriginalContractReplacementProduct(originalData.productKey, normalizedEntry.payload.productKey)) {
             const response = skipUnlinkedOriginalIfAllowed(
               "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva."
             );
@@ -5810,7 +5811,7 @@ export async function handleContractsCreate(req: NextRequest) {
               entryTypeErr.statusCode = 400;
               throw entryTypeErr;
             }
-            if (originalData.productKey !== trustedPayload.productKey) {
+            if (!matchesOriginalContractReplacementProduct(originalData.productKey, trustedPayload.productKey)) {
               const productErr = new Error(
                 "Původní smlouva pro Refresh/Náhradu musí mít stejný produkt jako nová smlouva."
               ) as Error & { statusCode?: number };

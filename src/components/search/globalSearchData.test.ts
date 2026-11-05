@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DIRECTORY_CONTACTS } from "@/app/lib/contactDirectory";
+import { DEFAULT_DIRECTORY_CONTACTS } from "@/lib/server/defaultContactDirectory";
 import { TOOL_CATALOG } from "@/app/pomucky/toolCatalog";
 import { TOOL_HUB_TOOL_KEYS } from "@/app/pomucky/toolHub";
 
