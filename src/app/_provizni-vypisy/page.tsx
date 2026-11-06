@@ -43,6 +43,7 @@ import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase }
 import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
 import { lifeSplitPremiumReductionReview } from "./statementLifePremiumReduction";
 import { extendStatementCorrectionsWithStoredHistory } from "./statementStoredCorrections";
+import { statementKooperativaPremiumChange } from "./statementKooperativaPremiumChange";
 import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementExpectation } from "./statementDomexNeuronIndexation";
 import {
   buildStatementCodeComparisons,
@@ -1831,7 +1832,7 @@ type AutoPremiumChangeInfo = PremiumBaseMismatch & {
   referenceDate: Date | null;
   firstAnniversaryDate: Date | null;
   anniversaryDate: Date | null;
-  source: "stored_history" | "statement_period";
+  source: "stored_history" | "statement_period" | "commission_code";
 };
 
 type AutoPremiumAnniversaryWindow = {
@@ -2408,6 +2409,8 @@ const autoPremiumBaseForMismatch = (
   contract: OtherProductContractPreview,
   systemContract: MatchedSystemContract | null
 ): { base: number; period: "annual" | "payment" } | null => {
+  const cPremium = statementKooperativaPremiumChange(contract, systemContract);
+  if (cPremium) return cPremium.status === "resolved" ? { base: cPremium.base, period: cPremium.period } : null;
   const rowsWithBase = contract.rows.filter((row) => row.base > 0);
   const systemPaymentAmount = systemCurrentPremiumPaymentBase(systemContract);
 
@@ -2637,6 +2640,15 @@ const autoPremiumBaseReferenceForStatement = (
   systemContract: MatchedSystemContract | null,
   statementPeriod?: string | null
 ): AutoPremiumBaseReference | null => {
+  const cPremium = statementKooperativaPremiumChange(contract, systemContract);
+  if (cPremium?.status === "resolved") return {
+    annualPremiumBase: cPremium.previousAnnualPremium,
+    paymentPremiumBase: cPremium.previousAnnualPremium / cPremium.paymentsPerYear,
+    paymentsPerYear: cPremium.paymentsPerYear,
+    paymentFrequency: systemContract?.frequencyRaw ?? null,
+    referenceDate: cPremium.anniversaryDate,
+    source: "history",
+  };
   const current = autoCurrentPremiumBaseReference(systemContract);
   const paymentsPerYear =
     current?.paymentsPerYear ?? paymentsPerYearForFrequency(systemContract?.frequencyRaw);
@@ -2726,16 +2738,16 @@ const autoPremiumBaseComparisonForContract = (
     : null;
   if (!comparison) return null;
 
+  const cPremium = statementKooperativaPremiumChange(contract, systemContract);
   return {
     ...comparison,
     key: "auto-premium-base",
     label: "Základna pojistného",
-    // Změna pojistného u aut je běžná změna smlouvy, nikoliv nesrovnalost.
-    // Datum výročí dál uchováváme pro informaci v kartě, ale nerozhoduje o stavu.
-    canBeAnniversaryPremiumChange: true,
+    // C installments must identify an anniversary or corroborate its saved history.
+    canBeAnniversaryPremiumChange: cPremium?.status === "resolved" ? cPremium.confirmedAnniversary : !cPremium,
     firstAnniversaryDate: autoFirstAnniversaryDate(contract, systemContract),
     anniversaryDate:
-      autoPremiumAnniversaryWindowForStatement(contract, systemContract, statementPeriod)
+      (cPremium?.status === "resolved" ? cPremium : autoPremiumAnniversaryWindowForStatement(contract, systemContract, statementPeriod))
         ?.anniversaryDate ?? null,
     referenceDate: autoPremiumChangeStatementDate(statementPeriod),
   };
@@ -2947,6 +2959,12 @@ const autoPremiumChangeInfo = (
     statementPeriod
   );
   if (!mismatch || Math.abs(mismatch.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) return null;
+  const cPremium = statementKooperativaPremiumChange(contract, systemContract);
+  if (cPremium) return cPremium.status === "resolved" && cPremium.confirmedAnniversary ? {
+    ...mismatch, direction: mismatch.annualDifference > 0 ? "increase" : "decrease",
+    referenceDate: parsePeriodEndDate(statementPeriod), firstAnniversaryDate: autoFirstAnniversaryDate(contract, systemContract),
+    anniversaryDate: cPremium.anniversaryDate, source: "commission_code",
+  } : null;
   const anniversaryWindow = autoPremiumAnniversaryWindowForStatement(
     contract,
     systemContract,
@@ -3070,6 +3088,7 @@ const otherProductContractUncertaintyCount = (
   let count = 0;
 
   if (hasProductMismatch(expectedProductKey, systemContract)) count += 1;
+  if (statementKooperativaPremiumChange(reviewContract, systemContract)?.warning) count += 1;
   if (systemContract && !tipOnlyContract) {
     count += statementCareerIssueCount(reviewContract.rows, systemContractPositionRaw(systemContract));
     if (systemContractTimelinePositionMismatch(systemContract)) count += 1;
@@ -4738,6 +4757,13 @@ const buildStatementDiscrepancyIssues = (
     const expectedProductKey =
       productMetas.length === 1 ? productMetas[0]?.productKey ?? null : null;
 
+    const cPremiumWarning = statementKooperativaPremiumChange(reviewContract, systemContract)?.warning;
+    if (cPremiumWarning) addIssue({
+      key: discrepancyIssueKey(statementKey, "koop-c-premium", contract.contractNumber), statementKey,
+      source: "auto", severity: "warning", category, scope: matchScope,
+      contractNumber: contract.contractNumber, client: contract.client || "—", product: productLabel,
+      title: "Ověřit pojistné z C výplat", details: [cPremiumWarning],
+    });
 
     if (hasProductMismatch(expectedProductKey, systemContract)) {
       addIssue({
@@ -5527,6 +5553,7 @@ function OtherProductContractCard({
   const tipOnlyContract = otherProductContractHasOnlyTipRows(reviewContract);
   const matchScope = otherProductContractMatchScope(reviewContract);
   const hasKooperativaCPayouts = reviewContract.rows.some(isKooperativaCStatementRow);
+  const cPremiumWarning = statementKooperativaPremiumChange(reviewContract, systemContract)?.warning;
   const correctionLabel = statementKey
     ? correctedRowsLabel(statementKey, contract.rows, correctionContext)
     : null;
@@ -5639,7 +5666,7 @@ function OtherProductContractCard({
     comparisons: amountComparisonsForReview,
     baseComparisons: statementPremiumBaseComparison ? [statementPremiumBaseComparison] : [],
     hasWarnings: Boolean(
-      hasUnknown || hasCareerIssue || timelinePositionMismatch ||
+      hasUnknown || hasCareerIssue || timelinePositionMismatch || cPremiumWarning ||
       hasProductMismatch(expectedProductKey, systemContract) ||
       correctionLabel || currentCorrectionInfo || missingB36Warning ||
       autoPremiumChange || coefficientOverride ||
@@ -5841,6 +5868,8 @@ function OtherProductContractCard({
               </div>
             </div>
           )}
+
+          {cPremiumWarning && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-950">{cPremiumWarning}</p>}
 
           {coefficientOverride && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">

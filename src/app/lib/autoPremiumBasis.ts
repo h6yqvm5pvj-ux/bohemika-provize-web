@@ -2,6 +2,7 @@ import type { PaymentFrequency, Product } from "@/app/types/domain";
 import { isAnnualAutoPayoutProduct, isAutoProduct } from "./productCatalog";
 import { installmentPaymentsPerYear, installmentCommissionScheduleFromCode } from "./productFormulas/autoCommission";
 import { commissionStatementIdentityKey } from "@/app/api/commission-statements/statementIdentity";
+import { baseCommissionCodeForPayoutComparison } from "./commissionPayoutRules";
 
 export type PremiumBasePeriod = "annual" | "payment";
 export type PremiumBaseSource = {
@@ -50,7 +51,7 @@ export function premiumBaseSourceKey(source: PremiumBaseSource, contract: Premiu
  * it must not itself be presented as an anniversary price change. */
 export function previousConfirmedAutoAnnualPremium(source: PremiumBaseSource, contract: PremiumBaseContract): number | null {
   const paymentIndex = (code: string) => {
-    const schedule = installmentCommissionScheduleFromCode(code, contract.frequencyRaw);
+    const schedule = installmentCommissionScheduleFromCode(baseCommissionCodeForPayoutComparison(code, contract.productKey), contract.frequencyRaw);
     return schedule ? schedule.paymentIndex + (schedule.phase === "subsequent" ? schedule.paymentsPerYear : 0) : null;
   };
   const currentIndex = paymentIndex(source.commissionCode);

@@ -16,6 +16,7 @@ import { commissionStatementIdentityKey } from "./statementIdentity";
 import { mergeRebuiltStatementRecords, ownsStatementRecord, statementRecordArray } from "./statementRebuildScope";
 import { resolveAutoPremiumBasis, previousConfirmedAutoAnnualPremium, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
 import { isDomexNeuronStatementProduct, resolveDomexNeuronIndexation } from "@/app/lib/domexNeuronIndexation";
+import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import type { Position } from "@/app/types/domain";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
@@ -542,19 +543,21 @@ export const premiumHistoryEntryFromStatementRow = ({
 
   if (
     isAutoProduct(contract.productKey ?? null) &&
-    !isAutoSubsequentCommissionCode(row.commissionCode)
+    !isAutoSubsequentCommissionCode(baseCommissionCodeForPayoutComparison(row.commissionCode, contract.productKey))
   ) {
     return null;
   }
 
-  const policyStartMs = parseCzechDate(row.validFrom) ?? toMillis(contract.policyStartDate);
+  const policyStartMs = contract.productKey === "kooperativaAuto"
+    ? toMillis(contract.policyStartDate) ?? parseCzechDate(row.validFrom)
+    : parseCzechDate(row.validFrom) ?? toMillis(contract.policyStartDate);
   if (policyStartMs == null) return null;
 
   const scheduleFrequency = isAnnualAutoPayoutProduct(row.productKey ?? contract.productKey ?? null)
     ? "annual"
     : contract.frequencyRaw;
   const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(
-    row.commissionCode,
+    baseCommissionCodeForPayoutComparison(row.commissionCode, contract.productKey),
     scheduleFrequency
   );
   if (anniversaryNumber == null) return null;

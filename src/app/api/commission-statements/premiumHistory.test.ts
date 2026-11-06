@@ -72,6 +72,39 @@ const autoSubsequentRow: PremiumStatementRow = {
 };
 
 describe("premium statement history", () => {
+  it.each([
+    ["annual", "C102", 1], ["semiannual", "C103", 2], ["quarterly", "C105", 4], ["monthly", "C113", 12],
+  ] as const)("maps confirmed Kooperativa %s %s to one second-anniversary premium change", (frequencyRaw, code, payments) => {
+    const result = confirmedEntry({
+      row: { ...autoSubsequentRow, contractNumber: "0001234567", productCode: "KOO_NAMIRU", productKey: "kooperativaAuto",
+        commissionCode: code, basePremium: 1100, validFrom: "03.05.2023", signedAt: "01.05.2023" },
+      contract: { productKey: "kooperativaAuto", policyStartDate: "2023-05-03", frequencyRaw, inputAmount: 1000 },
+      statementId: "synthetic-koop-anniversary", ...statementContext, writtenBy: "owner@example.test",
+    });
+    expect(result).toMatchObject({ commissionCode: code, anniversaryNumber: 2, anniversaryDate: "2025-05-03",
+      previousAnnualPremium: 1000 * payments, newAnnualPremium: 1100 * payments,
+      previousPremium: 1000, newPremium: 1100, difference: 100, basePremiumPeriod: "payment" });
+  });
+
+  it.each([["semiannual", "C102"], ["quarterly", "C104"], ["monthly", "C112"]] as const)(
+    "does not store the %s %s midyear installment as another anniversary increase", (frequencyRaw, code) => {
+      expect(confirmedEntry({
+        row: { ...autoSubsequentRow, contractNumber: "0001234567", productCode: "KOO_NAMIRU", productKey: "kooperativaAuto",
+          commissionCode: code, basePremium: 1100, validFrom: "03.05.2023" },
+        contract: { productKey: "kooperativaAuto", policyStartDate: "2023-05-03", frequencyRaw, inputAmount: 1000 },
+        statementId: "synthetic-koop-midyear", ...statementContext, writtenBy: "owner@example.test",
+      })).toBeNull();
+    });
+
+  it("anchors a Kooperativa anniversary to the saved policy start when a row quotes a later validity date", () => {
+    expect(confirmedEntry({
+      row: { ...autoSubsequentRow, contractNumber: "0001234567", productCode: "KOO_NAMIRU", productKey: "kooperativaAuto",
+        commissionCode: "C103", basePremium: 1100, validFrom: "03.05.2024" },
+      contract: { productKey: "kooperativaAuto", policyStartDate: "2023-05-03", frequencyRaw: "semiannual", inputAmount: 1000 },
+      statementId: "synthetic-koop-policy-start", ...statementContext, writtenBy: "owner@example.test",
+    })).toMatchObject({ anniversaryDate: "2025-05-03", anniversaryNumber: 2 });
+  });
+
   it("stores proven Neuron indexation with the contractual anniversary and original statement provenance", () => {
     const entry = premiumHistoryEntryFromStatementRow({
       row: { ...autoSubsequentRow, productCode: "CPP_DOMEX+", productKey: "domex", basePremium: 12600, commission: 175.14 },

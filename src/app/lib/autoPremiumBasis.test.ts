@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { premiumBaseSourceKey, resolveAutoPremiumBasis, type PremiumBaseSource, type PremiumBaseResolution } from "./autoPremiumBasis";
+import { premiumBaseSourceKey, previousConfirmedAutoAnnualPremium, resolveAutoPremiumBasis, type PremiumBaseSource, type PremiumBaseResolution } from "./autoPremiumBasis";
 import { confirmedPremiumHistoryPatch, premiumHistoryEntryFromStatementRow, type PremiumHistoryContract, type PremiumStatementHistoryEntry } from "@/app/api/commission-statements/premiumHistory";
 
 const owner = "owner@example.test";
@@ -12,6 +12,17 @@ const confirmation = (period: "annual" | "payment", row = source): PremiumBaseRe
 const previous = { ...source, statementId: "november", statementNumber: "67", statementPeriod: "01.11.2025 - 30.11.2025", statementDate: "15.12.2025", basePremium: 2441, commissionCode: "B120" };
 
 describe("statement base units", () => {
+  it("uses the prior confirmed C installment as premium evidence without creating another anniversary", () => {
+    const koopContract = { ...contract, productKey: "kooperativaAuto" as const };
+    const current = { ...source, productCode: "KOO_NAMIRU", commissionCode: "C103", basePremium: 1200 };
+    const prior = { ...current, rowId: "prior-koop", commissionCode: "C102", basePremium: 1100 };
+    const confirmed: PremiumBaseResolution = { ...prior, key: premiumBaseSourceKey(prior, koopContract),
+      productKey: "kooperativaAuto", frequencyRaw: "semiannual", period: "payment", confirmedAtMs: 1,
+      confirmedBy: owner, writtenBy: owner, statementChronologyMs: 1, payoutMonthKey: null };
+    expect(previousConfirmedAutoAnnualPremium(current, { ...koopContract, premiumStatementBaseResolutions: [confirmed] })).toBe(2200);
+    expect(resolveAutoPremiumBasis(current, koopContract).status).toBe("ambiguous");
+  });
+
   it.each([1145, 1268, 2536, 5072])("never chooses a unit by proximity to a stored premium of %s", inputAmount => {
     expect(resolveAutoPremiumBasis(source, { ...contract, inputAmount } as PremiumHistoryContract)).toMatchObject({ status: "ambiguous", annualIfAnnual: 2536, annualIfPayment: 5072 });
   });

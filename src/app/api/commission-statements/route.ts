@@ -992,7 +992,7 @@ const nonLifePremiumKindFromCommissionCode = (
   value: string | null | undefined,
   productKey: Product
 ): "auto_initial" | "auto_change" | null => {
-  const comparableCode = baseCommissionCodeForStatementComparison(value);
+  const comparableCode = baseCommissionCodeForStatementComparison(value, productKey);
   const aliases = commissionCodeAliases(comparableCode);
   const isInitial = aliases.some((code) => /^A\d+$/.test(code) || /^AC\d+$/.test(code));
   if (isInitial) return "auto_initial";
@@ -4430,16 +4430,19 @@ const processStatementWrites = async ({
     }
     const hasUnambiguousIndexation = (row: Pick<CommissionStatementPayoutRow, "source" | "commissionCode">) =>
       indexationRowCounts.get(`${row.source}:${normalizeCommissionCodeKey(row.commissionCode)}`) === 1;
-    const indexationHistoryContract: ContractDoc = { ...contract, premiumStatementHistory: [...existingPremiumHistory] };
-    const orderedPremiumRows = contract.productKey === "domexneuron" ? [...contractPremiumRows].sort((a, b) =>
-      (anniversaryNumberFromInstallmentCommissionCode(a.commissionCode, contract.frequencyRaw) ?? 0) -
-      (anniversaryNumberFromInstallmentCommissionCode(b.commissionCode, contract.frequencyRaw) ?? 0)) : contractPremiumRows;
+    const orderedHistory = contract.productKey === "domexneuron" || contract.productKey === "kooperativaAuto";
+    const premiumHistoryContract: ContractDoc = { ...contract, premiumStatementHistory: [...existingPremiumHistory] };
+    const orderedPremiumRows = orderedHistory ? [...contractPremiumRows].sort((a, b) =>
+      contract.productKey === "kooperativaAuto"
+        ? (commissionPeriodForCode(contract, a.commissionCode) ?? "").localeCompare(commissionPeriodForCode(contract, b.commissionCode) ?? "")
+        : (anniversaryNumberFromInstallmentCommissionCode(a.commissionCode, contract.frequencyRaw) ?? 0) -
+          (anniversaryNumberFromInstallmentCommissionCode(b.commissionCode, contract.frequencyRaw) ?? 0)) : contractPremiumRows;
     const detectedPremiumHistoryEntries = orderedPremiumRows
       .map((row) => {
         const payoutRow = contractPayoutRows.find(payout => payout.rowId === row.rowId && payout.source === row.source && payout.commissionCode === row.commissionCode);
         const entry = premiumHistoryEntryFromStatementRowRecord({
           row,
-          contract: contract.productKey === "domexneuron" ? indexationHistoryContract : contract,
+          contract: orderedHistory ? premiumHistoryContract : contract,
           statementId: docId,
           statementNumber,
           statementPeriod,
@@ -4453,7 +4456,7 @@ const processStatementWrites = async ({
           indexationCoefficient: !hasUnambiguousIndexation(row) ? null
             : payoutRow ? domexNeuronIndexationCoefficient(contract, payoutRow, ctxEmail) : undefined,
         });
-        if (entry && contract.productKey === "domexneuron") indexationHistoryContract.premiumStatementHistory!.push(entry);
+        if (entry && orderedHistory) premiumHistoryContract.premiumStatementHistory!.push(entry);
         return entry;
       })
       .filter((entry): entry is ContractPremiumStatementHistoryEntry => Boolean(entry));

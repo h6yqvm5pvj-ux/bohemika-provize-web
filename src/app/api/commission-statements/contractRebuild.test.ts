@@ -593,6 +593,29 @@ describe("normal statement import author isolation", () => {
     });
   });
 
+  it("records Kooperativa C premium changes at their annual anniversaries in code order without changing the original premium", async () => {
+    Object.assign(records.get(entryPath)!, { productKey: "kooperativaAuto", frequencyRaw: "annual", position: "poradce7",
+      inputAmount: 10000, calculationInputAmount: 10000, effectiveInputAmount: 10000,
+      contractSignedDate: "2023-05-01", policyStartDate: "2023-05-03",
+      items: [{ title: "Následná provize", code: "B101", amount: 844 }] });
+    const html = `<div id="provize"><table>${[["C103", 12000], ["C102", 11000]].map(([code, base], index) => {
+      const cells = [index + 1, contractNumber, "01.05.2023", "03.05.2023", "Testovací klient", "Z", "KOO_NAMIRU", code,
+        base, "", "", "7", Number(base) * 0.0844, 0];
+      return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    }).join("")}</table></div>`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect((await invoke("reprocess", html)).status).toBe(200);
+      const saved = records.get(entryPath)!;
+      expect(saved.premiumStatementHistory).toEqual([
+        expect.objectContaining({ commissionCode: "C102", anniversaryDate: "2025-05-03", previousAnnualPremium: 10000, newAnnualPremium: 11000 }),
+        expect.objectContaining({ commissionCode: "C103", anniversaryDate: "2026-05-03", previousAnnualPremium: 11000, newAnnualPremium: 12000 }),
+      ]);
+      expect(saved.inputAmount).toBe(10000);
+      expect(saved.commissionPayouts).toHaveLength(2);
+      expect(records.get(ownStatementPath)!.autoPremiumRows).toHaveLength(2);
+    }
+  });
+
   it.each([
     { mode: "import", statusCode: "A001" }, { mode: "reprocess", statusCode: "A001" },
     { mode: "import", statusCode: "S001" }, { mode: "reprocess", statusCode: "S001" },
