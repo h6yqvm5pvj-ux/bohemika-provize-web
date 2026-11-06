@@ -231,6 +231,17 @@ describe("parseCppAutoPdf", () => {
     }
   });
 
+  it("keeps the explicit start date when later policy conditions mention the start of insurance", async () => {
+    pdfState.pages = [
+      textPage("Počátek pojištění: 3.11.2026 00:00 Konec pojištění: na dobu neurčitou"),
+      textPage("Počátek pojištění nastává v nula hodin, pokud se strany nedohodnou jinak.",
+        "Podmínky uvádějí počátek pojištění, který může být odlišný."),
+    ];
+    const result = await parseCppAutoPdf(makePdfFile());
+    expect(result.policyStartDate).toBe("2026-11-03");
+    expect(result.pdfImportWarnings?.some(warning => warning.includes("Počátek pojištění"))).toBe(false);
+  });
+
   it("does not turn an impossible explicit date into a plausible footer date", async () => {
     pdfState.pages = [textPage("Počátek pojištění: 31.2.2026", "Návrh pojistné smlouvy vyhotoven dne: 31.2.2026", "Tisk SUS Plus, 1.2.2026")];
     const result = await parseCppAutoPdf(makePdfFile());

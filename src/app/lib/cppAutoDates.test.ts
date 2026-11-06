@@ -45,6 +45,35 @@ describe("resolveCppAutoDates", () => {
     ])).toEqual({ policyStartDate: "2026-11-03", contractSignedDate: "2026-11-02", warnings: [] });
   });
 
+  it.each([
+    "Počátek pojištění nastává v nula hodin, pokud se strany nedohodnou jinak.",
+    "Podmínky uvádějí počátek pojištění, který může být odlišný.",
+    "Pro pozdější počátek pojištění se použije sjednané datum.",
+  ])("does not treat policy wording as a missing date field: %s", wording => {
+    expect(resolveCppAutoDates([
+      ["Počátek pojištění: 3.11.2026 00:00 Konec pojištění: na dobu neurčitou"],
+      [wording],
+    ])).toEqual({ policyStartDate: "2026-11-03", contractSignedDate: null, warnings: [] });
+    expect(resolveCppAutoDates([[wording]])).toEqual({ policyStartDate: null, contractSignedDate: null, warnings: [] });
+  });
+
+  it("accepts an explicit start date or a standalone label without a colon", () => {
+    expect(resolveCppAutoDates([["Počátek pojištění 3.11.2026"]])).toEqual({
+      policyStartDate: "2026-11-03", contractSignedDate: null, warnings: [],
+    });
+    expect(resolveCppAutoDates([["Počátek pojištění", "3.11.2026"]])).toEqual({
+      policyStartDate: "2026-11-03", contractSignedDate: null, warnings: [],
+    });
+  });
+
+  it("still rejects a genuinely unreadable duplicate start field", () => {
+    expect(resolveCppAutoDates([
+      ["Počátek pojištění: 3.11.2026"],
+      ["Počátek pojištění: nečitelné"],
+    ])).toEqual({ policyStartDate: null, contractSignedDate: null,
+      warnings: ["ČPP Auto: Počátek pojištění obsahuje neplatné nebo neúplné datum."] });
+  });
+
   it("returns null for conflicting explicit start dates", () => {
     const result = resolveCppAutoDates([[
       "Počátek pojištění: 3.11.2026",

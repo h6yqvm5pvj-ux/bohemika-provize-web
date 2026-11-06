@@ -8,7 +8,9 @@ type DateField = "start" | "prepared" | "presented" | "print";
 type DateCandidate = { field: DateField; value: string | null };
 
 const LABELS: ReadonlyArray<{ field: DateField; pattern: RegExp }> = [
-  { field: "start", pattern: /\bpocatek\s+pojisteni\b *:? */g },
+  // Policy conditions also mention "počátek pojištění" in prose. A field must
+  // have a colon, an immediate date, or end its visual row before the value.
+  { field: "start", pattern: /\bpocatek\s+pojisteni\b *(?:: *|(?=\d{1,2}\s*\.|\n|$))/g },
   {
     field: "prepared",
     pattern: /\bnavrh\s+pojistne\s+smlouvy\s+vyhotoven\s+dne\b *:? */g,
