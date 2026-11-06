@@ -43,7 +43,8 @@ export const normalizeStatementSearch = (text: string) =>
 export function filterStatementBrowserItems<T extends StatementBrowserItem>(items: T[], query: string, filter: ReviewFilter): T[] {
   const terms = normalizeStatementSearch(query).split(/\s+/).filter(Boolean);
   return items.filter(item =>
-    (filter !== "issues" || item.issueCount > 0 || item.review?.hasCommissionError || (item.review ? item.review.status === "unpaired" : item.unpaired)) &&
+    (filter !== "issues" || (!item.unpaired && item.review?.status !== "unpaired" &&
+      (item.issueCount > 0 || item.review?.hasCommissionError === true))) &&
     (filter !== "unpaired" || (item.review ? item.review.status === "unpaired" : item.unpaired)) &&
     (filter !== "increase" && filter !== "decrease" || item.review?.premiumChange === filter) &&
     (filter !== "commission-error" || item.review?.hasCommissionError === true) &&

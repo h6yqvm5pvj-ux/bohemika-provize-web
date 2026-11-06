@@ -64,7 +64,7 @@ function StatementHelpDialog({ dialogId, returnFocusRef, onClose }: { dialogId: 
             <p>Začni filtrem <strong>K prověření</strong>. Konkrétní smlouvu najdeš podle jména, čísla smlouvy nebo produktu. Kliknutím na řádek otevřeš detail a porovnání částek.</p>
             <dl className={styles.helpLegend}>
               <div><dt><CheckCircle2 size={16} aria-hidden="true" />Vše sedí</dt><dd>Smlouva je propojená se systémem a dostupné kontroly neukázaly rozdíl.</dd></div>
-              <div><dt><AlertCircle size={16} aria-hidden="true" />K prověření</dt><dd>Našli jsme rozdíl, chybějící údaj nebo smlouvu bez propojení. V detailu zjistíš, co zkontrolovat.</dd></div>
+              <div><dt><AlertCircle size={16} aria-hidden="true" />K prověření</dt><dd>Spárované smlouvy s rozdílem nebo chybějícím údajem. V detailu zjistíš, co zkontrolovat.</dd></div>
               <div><dt><Link2Off size={16} aria-hidden="true" />Bez propojení</dt><dd>Smlouvu se nepodařilo jednoznačně najít v systému. Zkontroluj její číslo a zda je už uložená.</dd></div>
             </dl>
             <p><strong>Smlouvy mimo Bohemka.App</strong> sdružují smlouvy bez jednoznačného propojení s uloženou smlouvou. Označení <strong>Detail kontroly</strong> znamená, že smlouva nemá potvrzený výsledek všech kontrol.</p>

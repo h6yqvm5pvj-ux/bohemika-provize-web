@@ -14,7 +14,7 @@ import type { ParsedStatement } from "./statementTypes";
 const items: StatementBrowserItem[] = [
   { key: "life:1", searchText: "Žaneta Nováková 001 ČPP NEON", amount: 1000, issueCount: 0, unpaired: false },
   { key: "other:2", searchText: "Petr Malý 002 Allianz Auto", amount: 250, issueCount: 2, unpaired: false },
-  { key: "other:3", searchText: "Ivana Nováková 003 ČPP DOMEX", amount: 500, issueCount: 0, unpaired: true },
+  { key: "other:3", searchText: "Ivana Nováková 003 ČPP DOMEX", amount: 500, issueCount: 1, unpaired: true },
 ];
 
 function Category({ entries }: { entries: StatementBrowserItem[] }) {
@@ -58,7 +58,7 @@ describe("statement review navigation", () => {
   it("combines accent-insensitive search terms with review status without changing source data", () => {
     expect(filterStatementBrowserItems(items, "novakova cpp", "all").map(item => item.key)).toEqual(["life:1", "other:3"]);
     expect(filterStatementBrowserItems(items, "  NOVÁKOVÁ  ", "unpaired").map(item => item.key)).toEqual(["other:3"]);
-    expect(filterStatementBrowserItems(items, "", "issues").map(item => item.key)).toEqual(["other:2", "other:3"]);
+    expect(filterStatementBrowserItems(items, "", "issues").map(item => item.key)).toEqual(["other:2"]);
     expect(items).toHaveLength(3);
   });
 
@@ -102,13 +102,16 @@ describe("statement review navigation", () => {
     expect(container.querySelectorAll("article")).toHaveLength(reviewItems.length);
   });
 
-  it("filters all categories together, includes unpaired contracts for review, and restores the full list", async () => {
+  it("filters all categories together, keeps unpaired contracts in their own filter, and restores the full list", async () => {
     await act(async () => root.render(<StatementContractBrowser items={items}><Category entries={items.slice(0, 1)} /><Category entries={items.slice(1)} /></StatementContractBrowser>));
     expect(container.querySelectorAll("[data-contract]")).toHaveLength(3);
+    expect(button("K prověření").textContent).toContain("1");
+    expect(button("Bez propojení").textContent).toContain("1");
     await act(async () => button("K prověření").click());
-    expect(container.querySelectorAll("[data-contract]")).toHaveLength(2);
+    expect(container.querySelectorAll("[data-contract]")).toHaveLength(1);
     expect(container.querySelectorAll("[data-category]")).toHaveLength(1);
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("750,00 Kč");
+    expect(container.querySelector("[data-contract]")?.textContent).toContain("Petr");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("250,00 Kč");
     await act(async () => button("Bez propojení").click());
     expect(container.querySelectorAll("[data-contract]")).toHaveLength(1);
     expect(container.querySelector("[data-contract]")?.textContent).toContain("Ivana");
