@@ -2,6 +2,7 @@ import type { PaymentFrequency, MaxCizinKomplexVariant } from "../types/domain";
 import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import type { FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
 import type { NeonPdfDetailEditorFields } from "./CalculatorNeonPdfDetailEditor";
+import type { DomexNeuronData } from "../lib/domexNeuronSchema";
 
 export type CalculatorPdfFormValues = {
   autoCarMake: string;
@@ -47,6 +48,7 @@ export type CalculatorPdfFormValues = {
   autoCarAddonNonFaultAccident: boolean;
   autoCarAddonKeyLossTheft: boolean;
   domexAddress: string;
+  domexNeuron: DomexNeuronData | null;
   domexPropertyAddress: string;
   domexHouseholdAddress: string;
   domexPropertyAssistance: "basic" | "plus" | null;

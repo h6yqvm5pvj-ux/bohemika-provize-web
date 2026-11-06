@@ -17,13 +17,14 @@ const parserCases = [
   ["neon", "parseNeonPdf"],
   ["flexi", "parseFlexiPdf"],
   ["domex", "parseDomexPdf"],
-  ["domexneuron", "parseDomexPdf"],
+  ["domexneuron", "parseDomexNeuronPdf"],
   ["cppbytex", "parseCppBytexPdf"],
   ["cpphafan", "parseCppHafanPdf"],
   ["koopodzam", "parseKoopOdzamPdf"],
   ["maxdomov", "parseMaxdomovPdf"],
   ["maxcizinkomplex", "parseMaxCizinKomplexPdf"],
 ] as const;
+const parserModuleName = (name: string) => name === "parseDomexNeuronPdf" ? "parseDomexPdf" : name;
 
 describe("on-demand contract PDF parsers", () => {
   const loadedParsers: string[] = [];
@@ -35,26 +36,25 @@ describe("on-demand contract PDF parsers", () => {
     loadedParsers.length = 0;
     parserLoadErrors.clear();
     parserRunErrors.clear();
-    for (const parserName of new Set(parserCases.map(([, name]) => name))) {
+    for (const parserName of new Set(parserCases.map(([, name]) => parserModuleName(name)))) {
       // Register each module once. Queuing two doMock calls for the same ID
       // before an import lets Vitest's parallel ID resolution choose the winner.
       vi.doMock(`@/app/lib/${parserName}`, () => {
         loadedParsers.push(parserName);
         const loadError = parserLoadErrors.get(parserName);
         if (loadError) throw loadError;
-        return {
-          [parserName]: async (file: File) => {
-            const runError = parserRunErrors.get(parserName);
+        const names = parserName === "parseDomexPdf" ? ["parseDomexPdf", "parseDomexNeuronPdf"] : [parserName];
+        return Object.fromEntries(names.map(name => [name, async (file: File) => {
+            const runError = parserRunErrors.get(name);
             if (runError) throw runError;
-            return { parserName, file };
-          },
-        };
+            return { parserName: name, file };
+          }]));
       });
     }
   });
 
   afterEach(() => {
-    for (const parserName of new Set(parserCases.map(([, name]) => name))) {
+    for (const parserName of new Set(parserCases.map(([, name]) => parserModuleName(name)))) {
       vi.doUnmock(`@/app/lib/${parserName}`);
     }
     vi.resetModules();
@@ -82,7 +82,7 @@ describe("on-demand contract PDF parsers", () => {
     const file = {} as File;
 
     await expect(PDF_REIMPORT_PARSERS[product]!(file)).resolves.toEqual({ parserName, file });
-    expect(loadedParsers).toEqual([parserName]);
+    expect(loadedParsers).toEqual([parserModuleName(parserName)]);
   });
 
   it("propagates a parser loading failure to the existing UI error handler", async () => {

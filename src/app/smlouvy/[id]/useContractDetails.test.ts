@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ContractDoc } from "./contractDetailTypes";
+import { createDomexNeuronDataFromLegacy } from "@/app/lib/domexNeuronMerge";
 import {
   buildContractDetailsSavePlan,
   saveContractDetails,
@@ -59,6 +60,7 @@ const form = (overrides: Partial<ContractDetailsForm> = {}): ContractDetailsForm
     get(target, key) {
       if (typeof key !== "string") return undefined;
       if (key in target) return target[key as keyof ContractDetailsForm];
+      if (key === "editDomexNeuron") return undefined;
       return BOOLEAN_FORM_FIELDS.has(key) ? false : "";
     },
   }) as ContractDetailsForm;
@@ -76,6 +78,69 @@ const buildPlan = (
   });
 
 describe("useContractDetails", () => {
+  const legacyDetail = {
+    address: "Stavba 1", propertyAddress: "Stavba 1", propertyType: "dum", sumInsured: 4_000_000,
+    householdAddress: "Domácnost 2", householdType: "trvale", householdSumInsured: 500_000,
+    liabilitySumInsured: 20_000_000, propertyAssistance: "basic" as const, assistancePlus: true, note: "Ručně zachovaná poznámka",
+  };
+
+  it("preserves every stored scalar and canonical object when unrelated details change", () => {
+    const currentDomexDetail = { ...legacyDetail, neuron: createDomexNeuronDataFromLegacy(legacyDetail) };
+    const plan = buildContractDetailsSavePlan({ product: "domexneuron", currentDomexDetail,
+      form: form({ editClientName: "Změněné jméno" }), durationBounds: null, showDurationForProduct: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.domexDetail).toEqual(currentDomexDetail);
+    expect(plan.applyToContract({ id: "neuron", domexDetail: currentDomexDetail } as ContractDoc).domexDetail).toEqual(currentDomexDetail);
+  });
+
+  it("does not restore a manually cleared canonical address from old scalar aliases", () => {
+    const baseline = createDomexNeuronDataFromLegacy(legacyDetail);
+    const changed = structuredClone(baseline);
+    changed.objects[0].address = null; changed.objects[0].fields.address = "not_found";
+    const currentDomexDetail = { ...legacyDetail, neuron: baseline };
+    const plan = buildContractDetailsSavePlan({ product: "domexneuron", currentDomexDetail,
+      form: form({ editDomexNeuron: changed }), durationBounds: null, showDurationForProduct: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.domexDetail).toMatchObject({ propertyAddress: null, sumInsured: 4_000_000,
+      householdAddress: "Domácnost 2", liabilitySumInsured: 20_000_000, neuron: changed });
+    expect(currentDomexDetail.propertyAddress).toBe("Stavba 1");
+  });
+
+  it("saves all canonical objects and projects explicit removal to compatibility aliases", () => {
+    const baseline = createDomexNeuronDataFromLegacy(legacyDetail);
+    const changed = structuredClone(baseline);
+    changed.objects = changed.objects.filter(object => object.kind !== "property");
+    changed.sections.property = "not_found";
+    const plan = buildContractDetailsSavePlan({ product: "domexneuron", currentDomexDetail: { ...legacyDetail, neuron: baseline },
+      form: form({ editDomexNeuron: changed }), durationBounds: null, showDurationForProduct: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.domexDetail).toMatchObject({ propertyAddress: null, propertyType: null, sumInsured: null,
+      householdAddress: "Domácnost 2", householdSumInsured: 500_000, neuron: changed });
+  });
+
+  it("keeps a legacy conversion manual and preserves unscoped saved assistance", () => {
+    const converted = createDomexNeuronDataFromLegacy(legacyDetail);
+    expect(converted.parserVersion).toBeNull();
+    const plan = buildContractDetailsSavePlan({ product: "domexneuron", currentDomexDetail: legacyDetail,
+      form: form({ editDomexNeuron: converted }), durationBounds: null, showDurationForProduct: false });
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.updates.domexDetail).toMatchObject({ ...legacyDetail, neuron: { parserVersion: null } });
+  });
+
+  it("rejects an invalid canonical model before sending any update", async () => {
+    const invalid = createDomexNeuronDataFromLegacy(legacyDetail);
+    Object.assign(invalid.objects[0], { coverage: "unexpected" });
+    const requestContractsApi = vi.fn();
+    const plan = await saveContractDetails({ product: "domexneuron", currentDomexDetail: legacyDetail,
+      form: form({ editDomexNeuron: invalid }), durationBounds: null, showDurationForProduct: false,
+      ownerEmail: "advisor@example.test", entryId: "synthetic", requestContractsApi });
+    expect(plan).toMatchObject({ ok: false }); expect(requestContractsApi).not.toHaveBeenCalled();
+  });
+
   it("saves Neuron addresses and assistance independently without adding them to other products", () => {
     const details = {
       editDomexPropertyAddress: " Testovací 10, Město A ",

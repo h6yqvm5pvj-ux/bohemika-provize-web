@@ -1,21 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { parseDomexPdf } from "./parseDomexPdf";
+import { parseDomexNeuronPdf, parseDomexPdf } from "./parseDomexPdf";
 
 const pdfState = vi.hoisted(() => ({
   lines: [] as string[],
   paymentItems: [] as Array<{ str: string; transform: number[]; width: number }>,
+  needsOcr: false,
+  extraPages: [] as Array<{ items: Array<{ str: string; transform: number[]; width: number }>; needsOcr: boolean }>,
 }));
 
 vi.mock("./pdfDocumentText", () => ({
   readPdfText: vi.fn(async () => ({
     pages: [{
+      needsOcr: pdfState.needsOcr,
       items: [...pdfState.lines.map((str, index) => ({
         str,
         transform: [1, 0, 0, 1, 30, 820 - index * 12],
         width: 300,
       })), ...pdfState.paymentItems],
-    }],
+    }, ...pdfState.extraPages],
     warnings: [],
     ocrTextUsed: false,
   })),
@@ -52,7 +55,56 @@ const paymentLines = () => [
 ];
 
 describe("parseDomexPdf", () => {
-  beforeEach(() => { pdfState.lines = neuronLines(); pdfState.paymentItems = []; });
+  beforeEach(() => { pdfState.lines = neuronLines(); pdfState.paymentItems = []; pdfState.needsOcr = false; pdfState.extraPages = []; });
+
+  it("records unreadable Neuron sections for a scan without claiming that they are absent or uncontracted", async () => {
+    pdfState.lines = [];
+    pdfState.needsOcr = true;
+    const result = await parseDomexNeuronPdf(makePdfFile());
+    expect(result.domexNeuron).toEqual({ parserVersion: 2, objects: [], sections: {
+      property: "unreadable", household: "unreadable", liability: "unreadable", assistance: "unreadable",
+    }, liabilityFields: { sumInsured: "unreadable", deductible: "unreadable" } });
+    expect((await parseDomexPdf(makePdfFile())).domexNeuron).toBeUndefined();
+  });
+
+  it("distinguishes readable missing sections in explicit Neuron mode from an unreadable document", async () => {
+    pdfState.lines = ["Toto je čitelný syntetický dokument bez údajů o majetku a bez jednotlivých pojištěných částí. ".repeat(3)];
+    const result = await parseDomexNeuronPdf(makePdfFile());
+    expect(result.domexNeuron.sections).toEqual({ property: "not_found", household: "not_found", liability: "not_found", assistance: "not_found" });
+    expect((await parseDomexPdf(makePdfFile())).domexNeuron).toBeUndefined();
+    pdfState.lines.push("POJIŠTĚNÍ DOMÁCNOSTI: Nesjednáno");
+    expect((await parseDomexNeuronPdf(makePdfFile())).domexNeuron.sections.household).toBe("not_insured");
+  });
+
+  it("preserves proved facts in mixed native/scanned PDFs while marking missing extraction as unreadable", async () => {
+    pdfState.lines.push("HLAVNÍ STAVBA – Rodinný dům", "Místo pojištění: Testovací 12, Praha", "Varianta pojištění: MAXI",
+      "Požár; Výbuch", "Pojistná částka 4 700 000 Kč");
+    pdfState.extraPages = [{ items: [], needsOcr: true }];
+    const result = await parseDomexNeuronPdf(makePdfFile());
+    expect(result.domexNeuron.sections).toMatchObject({ property: "found", household: "unreadable", liability: "unreadable" });
+    expect(result.domexNeuron.objects[0]).toMatchObject({ address: "Testovací 12, Praha", sumInsured: 4_700_000,
+      fields: { address: "found", sumInsured: "found", assistance: "unreadable" } });
+    expect(result.pdfImportWarnings).toContain("DOMEX Neuron: část PDF je nečitelná; seznam objektů a načtené údaje mohou být neúplné.");
+    pdfState.lines.push("POJIŠTĚNÍ DOMÁCNOSTI: Nesjednáno");
+    expect((await parseDomexNeuronPdf(makePdfFile())).domexNeuron.sections.household).toBe("not_insured");
+  });
+
+  it("does not call a short readable page corrupted without scan provenance", async () => {
+    pdfState.lines = ["Krátký čitelný dokument."];
+    expect((await parseDomexNeuronPdf(makePdfFile())).domexNeuron.sections.household).toBe("not_found");
+  });
+
+  it("preserves preexisting import warnings when the Neuron object limit is exceeded", async () => {
+    pdfState.lines = neuronLines().map(line => line.replace("2 400 Kč", "2 700 Kč"));
+    pdfState.lines.push(...Array.from({ length: 51 }, (_, index) => ["HLAVNÍ STAVBA – Rodinný dům", `Místo pojištění: Testovací ${index + 1}, Praha`,
+      "Varianta pojištění: MAXI", "Požár; Výbuch", "Pojistná částka 4 000 000 Kč"]).flat());
+    const result = await parseDomexNeuronPdf(makePdfFile());
+    expect(result.domexNeuron.objects).toHaveLength(50);
+    expect(result.pdfImportWarnings).toEqual(expect.arrayContaining([
+      "Pojistné: součet pravidelných plateb podle frekvence se liší od ročního pojistného po slevách a přirážkách.",
+      "DOMEX Neuron: PDF obsahuje více než 50 objektů; načtené údaje vyžadují ruční kontrolu.",
+    ]));
+  });
 
   it("extracts only the labelled payment block from positioned columns, preserving variable-symbol zeroes", async () => {
     pdfState.lines.push("Číslo účtu pojistníka: 178124-4159/0710");

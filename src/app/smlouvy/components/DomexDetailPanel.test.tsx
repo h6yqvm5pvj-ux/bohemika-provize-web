@@ -2,6 +2,8 @@ import React, { type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DomexDetailPanel, type DomexFields } from "./DomexDetailPanel";
+import { createDomexNeuronDataFromLegacy } from "@/app/lib/domexNeuronMerge";
+import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
 
 const fields: DomexFields = {
   address: "", propertyAddress: "", householdAddress: "", propertyAssistance: "", householdAssistance: "",
@@ -15,6 +17,42 @@ const render = (props: Partial<ComponentProps<typeof DomexDetailPanel>> = {}) =>
 );
 
 describe("DOMEX Neuron property details", () => {
+  it("uses the canonical array for every object and ignores stale scalar addresses and amounts", () => {
+    const neuron = createDomexNeuronDataFromLegacy({ propertyAddress: "Kanonická stavba 1", propertyType: "dum", sumInsured: 4_000_000 });
+    neuron.parserVersion = 2;
+    neuron.objects.push({ ...structuredClone(neuron.objects[0]), id: "property-2", address: "Kanonická stavba 2", sumInsured: 6_000_000 });
+    const html = render({ domexDetail: { neuron, propertyAddress: "Stará nesprávná adresa", sumInsured: 999_999 } });
+    expect(html).toContain("Kanonická stavba 1"); expect(html).toContain("Kanonická stavba 2");
+    expect(html).not.toContain("Stará nesprávná adresa"); expect(html).not.toContain("999");
+    expect(html).toContain("Verze parseru: 2");
+  });
+
+  it("keeps an explicitly empty canonical model empty instead of falling back to legacy insurance", () => {
+    const neuron = createDomexNeuronDataFromLegacy(null); neuron.parserVersion = 2;
+    neuron.sections.property = "not_insured"; neuron.sections.household = "not_found";
+    const html = render({ domexDetail: { neuron, propertyAddress: "Dřívější stavba 10", propertyType: "dum", sumInsured: 4_000_000 } });
+    expect(html).toContain("Nesjednáno"); expect(html).toContain("Nenalezeno v PDF");
+    expect(html).not.toContain("Dřívější stavba 10"); expect(html).not.toContain("data-object-id=");
+  });
+
+  it("keeps an existing aggregate and known liability riders as supplements rather than inventing addressed objects", () => {
+    const neuron = createDomexNeuronDataFromLegacy(null); neuron.parserVersion = 2;
+    const html = render({ domexDetail: { neuron, outbuildingSumInsured: 888_888, liabilityTenant: true } });
+    expect(html).toContain("Vedlejší stavby"); expect(html).toMatch(/888[.\s]?888/);
+    expect(html).toContain("Uložené doplňky odpovědnosti"); expect(html).toContain("Odpovědnost nájemce na věci nemovité");
+    expect(html).not.toContain("Odpovědnost pronajímatele"); expect(html).not.toContain("data-object-id=");
+  });
+
+  it("does not restore aliases when a canonical model is malformed", () => {
+    const neuron = { ...createDomexNeuronDataFromLegacy(null), objects: "invalid" };
+    const html = render({ domexDetail: { neuron: neuron as unknown as DomexNeuronData, propertyAddress: "Stará adresa 1" } });
+    expect(html).toContain("Údaje objektů nelze bezpečně přečíst"); expect(html).not.toContain("Stará adresa 1");
+  });
+
+  it("marks an older contract without a model as an unversioned legacy view", () => {
+    expect(render({ domexDetail: { propertyType: "dum", sumInsured: 100000 } })).toContain("Verze parseru: neuvedena");
+  });
+
   it("shows each insured object's address, variant, amount and assistance separately", () => {
     const html = render({ domexDetail: {
       propertyAddress: "Testovací 10, Město A", propertyType: "dum", propertyCoverage: "opti", sumInsured: 5_200_000,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import type { DomexPdfResult } from "@/app/lib/parseDomexPdf";
 import { planDomexNeuronPdfBackfill } from "./domexNeuronPdfBackfill";
+import { domexNeuronDataFixture } from "../../../tests/helpers/domexNeuronFixture";
 
 const current = (patch: Partial<ContractDoc> = {}): ContractDoc => ({
   productKey: "domexneuron", entryType: "contract", clientName: "Mgr. Jana Testovací", contractNumber: "0090000088",
@@ -21,6 +22,39 @@ const parsed = (patch: Partial<DomexPdfResult> = {}): DomexPdfResult => ({
 });
 
 describe("additive DOMEX Neuron PDF backfill plan", () => {
+  it("stores the bounded multiobject model and parser version and is idempotent", () => {
+    const pdf = parsed({ domexNeuron: domexNeuronDataFixture() });
+    const first = planDomexNeuronPdfBackfill(current(), pdf);
+    expect(first.status).toBe("ready");
+    if (first.status === "rejected") return;
+    const detail = first.patch.domexDetail as NonNullable<ContractDoc["domexDetail"]>;
+    expect(detail.neuron?.objects).toHaveLength(3);
+    expect(detail.neuron?.parserVersion).toBe(2);
+    expect(first.changedKeys).toContain("domexDetail.neuron");
+    const second = planDomexNeuronPdfBackfill({ ...current(), ...first.patch } as ContractDoc, pdf);
+    expect(second).toMatchObject({ status: "unchanged", patch: {}, changedKeys: [] });
+  });
+
+  it("upgrades parser metadata without changing known object values or any financial field", () => {
+    const saved = domexNeuronDataFixture({ parserVersion: 1 });
+    saved.objects[0].sumInsured = 7_000_000;
+    const first = planDomexNeuronPdfBackfill(current({ domexDetail: { neuron: saved } }),
+      parsed({ domexNeuron: domexNeuronDataFixture() }));
+    expect(first.status).toBe("ready");
+    if (first.status === "rejected") return;
+    const detail = first.patch.domexDetail as NonNullable<ContractDoc["domexDetail"]>;
+    expect(detail.neuron?.objects[0].sumInsured).toBe(7_000_000);
+    expect(detail.neuron?.parserVersion).toBe(2);
+    expect(first.conflictKeys).toContain("domexDetail.neuron.objects.0.sumInsured");
+    expect(Object.keys(first.patch)).not.toContain("inputAmount");
+    expect(Object.keys(first.patch)).not.toContain("items");
+  });
+
+  it("rejects malformed structured PDF output before returning a patch", () => {
+    expect(planDomexNeuronPdfBackfill(current(), parsed({ domexNeuron: {
+      ...domexNeuronDataFixture(), parserVersion: 99,
+    } }))).toMatchObject({ status: "rejected", reason: "invalid-pdf-data" });
+  });
   it("matches exact policy/client identity and fills only missing validated data", () => {
     const source = current(), pdf = parsed();
     const sourceBefore = structuredClone(source), pdfBefore = structuredClone(pdf);

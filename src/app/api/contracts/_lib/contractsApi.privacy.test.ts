@@ -4,6 +4,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateFirestore } from "../../../../../tests/helpers/privateFirestore";
 import { sealPrivateRecord } from "@/lib/server/privateRecords";
+import { domexNeuronDataFixture } from "../../../../../tests/helpers/domexNeuronFixture";
 
 const mocks = vi.hoisted(() => ({ db: null as Firestore | null, guard: vi.fn(), find: vi.fn() }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
@@ -62,6 +63,75 @@ describe("contract response privacy at the API boundary", () => {
   });
   const neuron = () => entry("root", { productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     automaticRenewal: true, policyEndDate: null, policyTermEndDate: new Date("2027-11-04") });
+
+  it("roundtrips all Neuron objects and states, keeps addresses out of slim responses and encrypts audit changes", async () => {
+    neuron();
+    const model = domexNeuronDataFixture();
+    const { handleContractsPatch, handleContractsGet, handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsPatch(renewalRequest({ domexDetail: { neuron: model } }));
+    expect(response.status).toBe(200);
+    const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await detail.json()).contract.domexDetail.neuron).toEqual(model);
+    for (const shape of ["clientNames", "clientDirectory", "home", "contractList", "cashflow"]) {
+      const list = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=my&shape=${shape}&limit=5`));
+      const body = await list.json();
+      expect(body.contracts[0]).not.toHaveProperty("domexDetail");
+      for (const object of model.objects) expect(JSON.stringify(body)).not.toContain(object.address);
+    }
+    const events = [...store.records].filter(([path]) => /^contractHistories\/[^/]+\/events\//.test(path)).map(([, data]) => data);
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(event.changes).toMatchObject({ privateEncryption: 1 });
+      for (const object of model.objects) expect(JSON.stringify(event)).not.toContain(object.address);
+    }
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("denies Neuron object changes by %s", async actor => {
+    neuron();
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else {
+      asUser(actor === "tipster" ? tip : former);
+      if (actor === "tipster") store.records.set(`users/${tip}`, { userId: tip, accountType: "tipster" });
+    }
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ domexDetail: { neuron: domexNeuronDataFixture() } }))).status)
+      .toBe(actor === "unauthenticated" ? 401 : 403);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each(["domex", "maxdomov", "neon"])("rejects Neuron object updates on %s without changing data", async productKey => {
+    entry("root", { productKey });
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ domexDetail: { neuron: domexNeuronDataFixture() } }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it.each([
+    {}, { ...domexNeuronDataFixture(), parserVersion: 999 },
+    { ...domexNeuronDataFixture(), sections: { ...domexNeuronDataFixture().sections, household: "missing" } },
+    { ...domexNeuronDataFixture(), objects: [domexNeuronDataFixture().objects[0], domexNeuronDataFixture().objects[0]] },
+    { ...domexNeuronDataFixture(), objects: [{ ...domexNeuronDataFixture().objects[0], address: { nested: true } }] },
+  ])("rejects hostile nested Neuron data without writing", async model => {
+    neuron();
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    expect((await handleContractsPatch(renewalRequest({ domexDetail: { neuron: model } }))).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
+
+  it("rejects the whole multi-edit when one target is an incompatible product", async () => {
+    neuron();
+    entry("legacy", { productKey: "domex", entryType: "contract" });
+    const before = structuredClone([...store.records]);
+    const { handleContractsPatch } = await import("./contractsApi");
+    const request = new NextRequest("https://example.test/api/contracts", { method: "PATCH", body: JSON.stringify({
+      action: "updateFields", ownerEmail: owner, entryIds: ["root", "legacy"], updates: { domexDetail: { neuron: domexNeuronDataFixture() } },
+    }) });
+    expect((await handleContractsPatch(request)).status).toBe(400);
+    expect([...store.records]).toEqual(before);
+  });
 
   it("roundtrips separate DOMEX addresses and assistance levels without adding them to slim lists", async () => {
     neuron();

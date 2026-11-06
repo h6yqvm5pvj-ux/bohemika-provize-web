@@ -11,8 +11,12 @@ import {
 } from "lucide-react";
 import type { Product } from "@/app/types/domain";
 import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
+import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
+import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
+import { DomexNeuronObjectsPanel, DomexNeuronParserVersion } from "@/components/insurance/DomexNeuronObjectsPanel";
 
 type DomexDetail = {
+  neuron?: DomexNeuronData | null;
   address?: string | null;
   propertyAddress?: string | null;
   householdAddress?: string | null;
@@ -69,6 +73,8 @@ type Props = {
   fields: DomexFields;
   domexDetail: DomexDetail;
   onChange: (key: DomexFieldKey, value: string | boolean) => void;
+  neuronData?: DomexNeuronData | null;
+  onNeuronChange?: (next: DomexNeuronData) => void;
 };
 
 const ToggleRow = ({
@@ -127,42 +133,46 @@ const propertyTypeLabel = (val?: string | null): string => {
   return map[key] ?? (val ?? "—");
 };
 
-export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fields, domexDetail, onChange }: Props) {
+export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fields, domexDetail, onChange, neuronData, onNeuronChange }: Props) {
   if (prod !== "domex" && prod !== "domexneuron" && prod !== "maxdomov") return null;
   const isNeuron = prod === "domexneuron";
+  const rawNeuron = isNeuron ? editMode ? neuronData ?? domexDetail?.neuron : domexDetail?.neuron : null;
+  const hasCanonicalNeuron = rawNeuron != null;
+  const canonicalNeuron = hasCanonicalNeuron ? normalizeDomexNeuronData(rawNeuron) : null;
 
   const hasValue = (v?: string | null) => !!(v && v.trim().length > 0);
   const hasNum = (v?: number | null) => v != null && Number.isFinite(v);
 
-  const showPropertyBlock =
+  const showPropertyBlock = !hasCanonicalNeuron && (
     editMode ||
     (isNeuron ? hasValue(domexDetail?.propertyAddress) || hasValue(domexDetail?.propertyAssistance) : hasValue(domexDetail?.address)) ||
     hasValue(domexDetail?.propertyType) ||
     hasValue(domexDetail?.propertyCoverage) ||
     hasNum(domexDetail?.sumInsured) ||
-    hasNum(domexDetail?.deductible);
+    hasNum(domexDetail?.deductible));
 
-  const showOutbuildingBlock = editMode || hasNum(domexDetail?.outbuildingSumInsured);
+  const showOutbuildingBlock = hasCanonicalNeuron ? hasNum(domexDetail?.outbuildingSumInsured)
+    : editMode || hasNum(domexDetail?.outbuildingSumInsured);
 
-  const showHouseholdBlock =
+  const showHouseholdBlock = !hasCanonicalNeuron && (
     editMode ||
     (isNeuron && (hasValue(domexDetail?.householdAddress) || hasValue(domexDetail?.householdAssistance))) ||
     hasValue(domexDetail?.householdType) ||
     hasValue(domexDetail?.householdCoverage) ||
     hasNum(domexDetail?.householdSumInsured) ||
-    hasNum(domexDetail?.householdDeductible);
+    hasNum(domexDetail?.householdDeductible));
 
-  const showAssistance = isNeuron
+  const showAssistance = !hasCanonicalNeuron && (isNeuron
     ? editMode || hasValue(domexDetail?.propertyAssistance) || hasValue(domexDetail?.householdAssistance)
-    : editMode || !!domexDetail?.assistancePlus;
+    : editMode || !!domexDetail?.assistancePlus);
 
-  const showLiabilityBlock =
+  const showLiabilityBlock = !hasCanonicalNeuron && (
     editMode ||
     hasNum(domexDetail?.liabilitySumInsured) ||
     hasNum(domexDetail?.liabilityDeductible) ||
     !!domexDetail?.liabilityMobile ||
     !!domexDetail?.liabilityTenant ||
-    !!domexDetail?.liabilityLandlord;
+    !!domexDetail?.liabilityLandlord);
 
   const showNote = editMode || hasValue(domexDetail?.note);
   const propertyAddress = domexDetail?.propertyAddress === undefined
@@ -178,13 +188,36 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
     ? [fields.sumInsured, fields.householdSumInsured].some(value => Number(value.replace(/\s/g, "").replace(",", ".")) > 0)
     : [domexDetail?.sumInsured, domexDetail?.householdSumInsured].some(value => hasNum(value) && value! > 0);
   const assistanceLabel = (value?: string | null) => value === "plus" ? "Asistence PLUS" : value === "basic" ? "Domácí asistence" : "Neurčeno";
+  const formAmount = (text: string) => {
+    const number = Number(text.replace(/\s/g, "").replace(",", "."));
+    return text.trim() && Number.isFinite(number) && number >= 0 ? number : null;
+  };
 
   return (
     <>
-      {isNeuron && premiumIndexationEnabled === true && hasInsuredAmounts && (
+      {isNeuron && !hasCanonicalNeuron && <div className="sm:col-span-2"><DomexNeuronParserVersion version={null} /></div>}
+      {hasCanonicalNeuron && canonicalNeuron && <DomexNeuronObjectsPanel
+        value={canonicalNeuron} editMode={editMode} onChange={onNeuronChange} premiumIndexationEnabled={premiumIndexationEnabled}
+        liability={{ sumInsured: editMode ? formAmount(fields.liabilitySumInsured) : domexDetail?.liabilitySumInsured ?? null,
+          deductible: editMode ? formAmount(fields.liabilityDeductible) : domexDetail?.liabilityDeductible ?? null }}
+        onLiabilityChange={(field, value) => onChange(field === "sumInsured" ? "liabilitySumInsured" : "liabilityDeductible", value == null ? "" : String(value))}
+      />}
+      {hasCanonicalNeuron && !canonicalNeuron && <p role="alert" className="text-sm text-amber-900 sm:col-span-2">Údaje objektů nelze bezpečně přečíst. Načtěte je znovu z PDF.</p>}
+      {hasCanonicalNeuron && (domexDetail?.liabilityMobile === true || domexDetail?.liabilityTenant === true || domexDetail?.liabilityLandlord === true) &&
+        <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
+          <h3 className="text-xs font-semibold text-slate-600">Uložené doplňky odpovědnosti</h3>
+          {([
+            ["liabilityMobile", "Náhrada újmy mobilní elektronice"],
+            ["liabilityTenant", "Odpovědnost nájemce na věci nemovité"],
+            ["liabilityLandlord", "Odpovědnost pronajímatele"],
+          ] as const).filter(([field]) => domexDetail?.[field] === true).map(([field, label]) =>
+            <ToggleRow key={field} label={label} checked={editMode ? fields[field] : true}
+              onChange={next => onChange(field, next)} disabled={!editMode} />)}
+        </div>}
+      {isNeuron && !hasCanonicalNeuron && premiumIndexationEnabled === true && hasInsuredAmounts && (
         <p role="note" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-2">
           <AlertTriangle size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>Uvedené pojistné částky vycházejí z PDF a mohou se v čase navyšovat z důvodu schválené valorizace.</span>
+          <span>Uvedené pojistné částky se mohou v čase navyšovat z důvodu schválené valorizace.</span>
         </p>
       )}
       {showPropertyBlock && (

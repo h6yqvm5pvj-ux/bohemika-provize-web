@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { domexNeuronDataFixture } from "../../../../tests/helpers/domexNeuronFixture";
 
 import type { ContractDoc } from "./contractDetailTypes";
 import {
@@ -122,6 +123,24 @@ describe("PDF reimport detailu smlouvy", () => {
       propertyAddress: "Ruční stavba 1", propertyAssistance: "basic", householdAddress: "PDF domácnost 2",
       householdAssistance: "plus", householdSumInsured: 500_000,
     }, appliedCount: 3 });
+  });
+
+  it.each([false, true])("fills scalar aliases from the address-matched saved object after PDF reordering (canonical=%s)", canonical => {
+    const saved = domexNeuronDataFixture();
+    const pdf = domexNeuronDataFixture();
+    [pdf.objects[0], pdf.objects[1]] = [pdf.objects[1], pdf.objects[0]];
+    saved.objects[0].sumInsured = null;
+    saved.objects[0].fields.sumInsured = "unreadable";
+    const result = mergeEmptyPropertyDetailFields({
+      propertyAddress: saved.objects[0].address, propertyType: "dum", sumInsured: null,
+      ...(canonical ? { neuron: saved } : {}),
+    }, {
+      domexNeuron: pdf, domexPropertyAddress: pdf.objects[0].address, domexPropertySumInsured: pdf.objects[0].sumInsured,
+    });
+    expect(result.detail.propertyAddress).toBe(saved.objects[0].address);
+    expect(result.detail.sumInsured).toBe(4_000_000);
+    expect(result.detail.neuron?.objects[0].sumInsured).toBe(4_000_000);
+    expect(result.detail.neuron?.objects[0].address).toBe(saved.objects[0].address);
   });
 
   it.each([null, undefined, "", false, true, "BASIC", "PLUS", 1, {}])("does not infer scoped assistance during reimport: %j", assistance => {

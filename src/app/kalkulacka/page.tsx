@@ -180,6 +180,9 @@ import {
   type DomexPdfDetailSummarySection,
 } from "./CalculatorDomexPdfDetailSummary";
 import { type DomexPdfDetailEditorFields, type DomexPdfEditorBooleanField, type DomexPdfEditorTextField } from "./CalculatorDomexPdfDetailEditor";
+import type { DomexNeuronData } from "../lib/domexNeuronSchema";
+import { normalizeDomexNeuronData } from "../lib/domexNeuronValidation";
+import { createDomexNeuronDataFromLegacy, projectDomexNeuronLegacy } from "../lib/domexNeuronMerge";
 import {
   CalculatorNeonPdfDetailSummary,
   type NeonPdfDetailSummaryItem,
@@ -231,6 +234,7 @@ const CalculatorProductPickerModal = dynamic(() => import("./CalculatorProductPi
 const CalculatorCoefficientModal = dynamic(() => import("./CalculatorCoefficientModal").then((module) => module.CalculatorCoefficientModal));
 const CalculatorAutoPdfDetailEditor = dynamic(() => import("./CalculatorAutoPdfDetailEditor").then((module) => module.CalculatorAutoPdfDetailEditor));
 const CalculatorDomexPdfDetailEditor = dynamic(() => import("./CalculatorDomexPdfDetailEditor").then((module) => module.CalculatorDomexPdfDetailEditor));
+const CalculatorDomexNeuronDetail = dynamic(() => import("./CalculatorDomexNeuronDetail").then(module => module.CalculatorDomexNeuronDetail));
 const CalculatorNeonPdfDetailEditor = dynamic(() => import("./CalculatorNeonPdfDetailEditor").then((module) => module.CalculatorNeonPdfDetailEditor));
 const ValidationErrorModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.ValidationErrorModal));
 const DuplicateContractModal = dynamic(() => import("./CalculatorWorkflowModals").then((module) => module.DuplicateContractModal));
@@ -555,6 +559,7 @@ export default function CalculatorPage() {
   const [autoCarAddonPassengerInjury, setAutoCarAddonPassengerInjury] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [domexAddress, setDomexAddress] = useState<string>("");
+  const [domexNeuron, setDomexNeuron] = useState<DomexNeuronData | null>(null);
   const [domexPropertyAddress, setDomexPropertyAddress] = useState("");
   const [domexHouseholdAddress, setDomexHouseholdAddress] = useState("");
   const [domexPropertyAssistance, setDomexPropertyAssistance] = useState<"basic" | "plus" | null>(null);
@@ -626,6 +631,7 @@ export default function CalculatorPage() {
     autoCarAddonNonFaultAccident: setAutoCarAddonNonFaultAccident,
     autoCarAddonKeyLossTheft: setAutoCarAddonKeyLossTheft,
     domexAddress: setDomexAddress,
+    domexNeuron: setDomexNeuron,
     domexPropertyAddress: setDomexPropertyAddress,
     domexHouseholdAddress: setDomexHouseholdAddress,
     domexPropertyAssistance: setDomexPropertyAssistance,
@@ -3323,6 +3329,7 @@ export default function CalculatorPage() {
               ? {
                   address: parsedPdfTextValue(parsed, "domexAddress") || null,
                   ...(importProduct === "domexneuron" ? {
+                    neuron: normalizeDomexNeuronData(parsed.domexNeuron),
                     propertyAddress: parsedPdfTextValue(parsed, "domexPropertyAddress") || null,
                     householdAddress: parsedPdfTextValue(parsed, "domexHouseholdAddress") || null,
                     propertyAssistance: parsedDomexAssistanceValue(parsed.domexPropertyAssistance),
@@ -3869,6 +3876,7 @@ export default function CalculatorPage() {
     setAutoCarAddonKeyLossTheft(false);
 
     setDomexAddress("");
+    setDomexNeuron(null);
     setDomexPropertyAddress("");
     setDomexHouseholdAddress("");
     setDomexPropertyAssistance(null);
@@ -5176,6 +5184,7 @@ export default function CalculatorPage() {
                 ? {
                     address: domexAddress.trim() || null,
                     ...(product === "domexneuron" ? {
+                      neuron: domexNeuron,
                       propertyAddress: domexPropertyAddress.trim() || null,
                       householdAddress: domexHouseholdAddress.trim() || null,
                       propertyAssistance: domexPropertyAssistance,
@@ -5197,6 +5206,7 @@ export default function CalculatorPage() {
                     liabilityLandlord: domexLiabilityLandlord ? true : null,
                     assistancePlus: domexAssistancePlus ? true : null,
                     note: domexNote.trim() || null,
+                    ...(product === "domexneuron" && domexNeuron ? projectDomexNeuronLegacy(domexNeuron) : {}),
                   }
                 : null,
             maxdomovDetail:
@@ -7433,10 +7443,29 @@ export default function CalculatorPage() {
               editor={autoPdfDetailEditor}
             />
 
-            <CalculatorDomexPdfDetailSummary
-              items={domexPdfDetailItems}
-              editor={domexPdfDetailEditor}
-            />
+            {product === "domexneuron" ? (
+              <CalculatorDomexNeuronDetail
+                value={domexNeuron ?? createDomexNeuronDataFromLegacy({
+                  address: domexAddress, propertyAddress: domexPropertyAddress,
+                  householdAddress: domexHouseholdAddress, propertyType: domexPropertyType,
+                  householdType: domexHouseholdType, propertyCoverage: domexPropertyCoverage,
+                  householdCoverage: domexHouseholdCoverage, sumInsured: domexPropertySumInsured,
+                  householdSumInsured: domexHouseholdSumInsured, deductible: domexPropertyDeductible,
+                  householdDeductible: domexHouseholdDeductible, propertyAssistance: domexPropertyAssistance,
+                  householdAssistance: domexHouseholdAssistance, liabilitySumInsured: domexLiabilitySumInsured,
+                  liabilityDeductible: domexLiabilityDeductible,
+                })}
+                onChange={setDomexNeuron}
+                liability={{ sumInsured: domexLiabilitySumInsured, deductible: domexLiabilityDeductible }}
+                onLiabilityChange={(field, value) => field === "sumInsured"
+                  ? setDomexLiabilitySumInsured(value) : setDomexLiabilityDeductible(value)}
+                premiumIndexationEnabled={premiumIndexationEnabled}
+                note={domexNote}
+                onNoteChange={setDomexNote}
+              />
+            ) : (
+              <CalculatorDomexPdfDetailSummary items={domexPdfDetailItems} editor={domexPdfDetailEditor} />
+            )}
 
             <CalculatorNeonPdfDetailSummary
               items={neonPdfDetailItems}

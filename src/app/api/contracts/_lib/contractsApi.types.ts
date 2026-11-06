@@ -341,6 +341,7 @@ export type ContractDoc = {
   carAddonPassengerInjury?: boolean | null;
   carAddonKeyLossTheft?: boolean | null;
   domexDetail?: {
+    neuron?: import("@/app/lib/domexNeuronSchema").DomexNeuronData | null;
     address?: string | null;
     propertyAddress?: string | null;
     householdAddress?: string | null;

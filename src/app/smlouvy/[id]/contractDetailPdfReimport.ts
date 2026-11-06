@@ -1,6 +1,8 @@
 import type { Product } from "../../types/domain";
 import { toDate } from "../../lib/formatters";
 import type { ContractDoc } from "./contractDetailTypes";
+import { normalizeDomexNeuronData } from "../../lib/domexNeuronValidation";
+import { mergeDomexNeuronPdfData, projectDomexNeuronLegacy } from "../../lib/domexNeuronMerge";
 
 type PdfReimportParser = (file: File) => Promise<unknown>;
 type PropertyDetail = NonNullable<ContractDoc["maxdomovDetail"]> & NonNullable<ContractDoc["domexDetail"]>;
@@ -30,7 +32,7 @@ export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> =
   neon: async file => (await import("@/app/lib/parseNeonPdf")).parseNeonPdf(file),
   flexi: async file => (await import("@/app/lib/parseFlexiPdf")).parseFlexiPdf(file),
   domex: async file => (await import("@/app/lib/parseDomexPdf")).parseDomexPdf(file),
-  domexneuron: async file => (await import("@/app/lib/parseDomexPdf")).parseDomexPdf(file),
+  domexneuron: async file => (await import("@/app/lib/parseDomexPdf")).parseDomexNeuronPdf(file),
   cppbytex: async file => (await import("@/app/lib/parseCppBytexPdf")).parseCppBytexPdf(file),
   cpphafan: async file => (await import("@/app/lib/parseCppHafanPdf")).parseCppHafanPdf(file),
   koopodzam: async file => (await import("@/app/lib/parseKoopOdzamPdf")).parseKoopOdzamPdf(file),
@@ -431,11 +433,19 @@ export const mergeEmptyContractFields = (
 export const mergeEmptyPropertyDetailFields = (
   currentDetail: ContractDoc["maxdomovDetail"] | ContractDoc["domexDetail"],
   parsed: Record<string, unknown>
-): { detail: PropertyDetail; appliedCount: number } => {
+): { detail: PropertyDetail; appliedCount: number; conflictKeys?: string[] } => {
   const detail: PropertyDetail = { ...(currentDetail ?? {}) };
   let appliedCount = 0;
+  let conflictKeys: string[] = [];
+  const incomingNeuron = normalizeDomexNeuronData(parsed.domexNeuron);
+  const currentNeuron = normalizeDomexNeuronData(currentDetail && "neuron" in currentDetail ? currentDetail.neuron : null);
+  const canonicalObjects = incomingNeuron != null || currentNeuron != null;
+  const objectAliases = new Set<string>(["address", "propertyAddress", "householdAddress", "propertyType", "propertyCoverage",
+    "sumInsured", "deductible", "propertyAssistance", "householdType", "householdCoverage", "householdSumInsured",
+    "householdDeductible", "householdAssistance", "assistancePlus"]);
 
   for (const [parsedKey, detailField] of PROPERTY_PDF_DETAIL_FIELD_MAP) {
+    if (canonicalObjects && objectAliases.has(detailField)) continue;
     if (!isEmptyReimportValue(detail[detailField])) continue;
 
     const parsedValue = parsedPdfValueForPropertyDetailField(detailField, parsed[parsedKey]);
@@ -447,7 +457,26 @@ export const mergeEmptyPropertyDetailFields = (
     appliedCount += 1;
   }
 
-  return { detail, appliedCount };
+  let mergedNeuron = currentNeuron;
+  if (incomingNeuron) {
+    const merged = mergeDomexNeuronPdfData(currentNeuron, incomingNeuron, currentDetail);
+    mergedNeuron = merged.data;
+    if (merged.appliedCount > 0) {
+      detail.neuron = merged.data;
+      appliedCount += merged.appliedCount;
+    }
+    conflictKeys = merged.conflictKeys;
+  }
+  // A PDF may reorder objects. Compatibility aliases must describe the first
+  // saved object after address matching, not the first object in the new PDF.
+  if (mergedNeuron) {
+    for (const [field, value] of Object.entries(projectDomexNeuronLegacy(mergedNeuron))) {
+      if (!isEmptyReimportValue(detail[field as PropertyDetailField]) || isEmptyReimportValue(value)) continue;
+      (detail as Record<string, unknown>)[field] = value;
+      appliedCount++;
+    }
+  }
+  return { detail, appliedCount, ...(conflictKeys.length ? { conflictKeys } : {}) };
 };
 
 export const mergeEmptyNeonDetailFields = (

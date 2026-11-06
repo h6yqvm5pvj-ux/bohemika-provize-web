@@ -26,7 +26,7 @@ describe("DOMEX Neuron property sections", () => {
       page(...building().slice(0, 3)),
       page(...building().slice(3), ...household().slice(0, 3)),
       page(...household().slice(3), ...liability(), "ASISTENČNÍ SLUŽBY", "Předmět pojištění Místo pojištění Sjednaný rozsah asistenčních služeb",
-        "HLAVNÍ STAVBA Testovací 12 Domácí asistence plus", "DOMÁCNOST Ukázková 34 Domácí asistence", "SPOLEČNÁ USTANOVENÍ"),
+        "HLAVNÍ STAVBA Testovací 12, 110 00 Praha Domácí asistence plus", "DOMÁCNOST Ukázková 34, 602 00 Brno Domácí asistence", "SPOLEČNÁ USTANOVENÍ"),
     ]);
     expect(result).toMatchObject({
       domexPropertyType: "dum", domexPropertyAddress: "Testovací 12, 110 00 Praha", domexPropertyCoverage: "maxi",
@@ -94,7 +94,8 @@ describe("DOMEX Neuron property sections", () => {
 
   it("resolves multiline assistance per insured part even if the table repeats full part headings", () => {
     expect(parseDomexNeuronProperty([page(...building(), ...household(), "ASISTENČNÍ SLUŽBY", "HLAVNÍ STAVBA – Rodinný dům",
-      "Domácí asistence", "plus", "DOMÁCNOST – Rekreační", "Domácí asistence")])).toMatchObject({
+      "Místo pojištění: Testovací 12, 110 00 Praha", "Domácí asistence", "plus", "DOMÁCNOST – Rekreační",
+      "Místo pojištění: Ukázková 34, 602 00 Brno", "Domácí asistence")])).toMatchObject({
       domexPropertyAssistance: "plus", domexHouseholdAssistance: "basic",
     });
   });
@@ -111,7 +112,7 @@ describe("DOMEX Neuron property sections", () => {
 
   it("does not let the later basic-versus-plus explanation override an already assigned household choice", () => {
     expect(parseDomexNeuronProperty([
-      page(...building(), ...household(), "ASISTENČNÍ SLUŽBY", "HLAVNÍ STAVBA Domácí asistence plus", "DOMÁCNOST Domácí asistence"),
+      page(...building(), ...household(), "ASISTENČNÍ SLUŽBY", "HLAVNÍ STAVBA Testovací 12, 110 00 Praha Domácí asistence plus", "DOMÁCNOST Ukázková 34, 602 00 Brno Domácí asistence"),
       page("Rozsah asistenčních služeb Domácí asistence Domácí asistence plus", "Další informace o variantách"),
     ])).toMatchObject({ domexPropertyAssistance: "plus", domexHouseholdAssistance: "basic" });
   });

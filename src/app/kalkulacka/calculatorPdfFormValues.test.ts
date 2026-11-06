@@ -8,6 +8,7 @@ import {
   pdfImportResetValues,
 } from "./calculatorPdfFormValues";
 import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
+import { domexNeuronDataFixture } from "../../../tests/helpers/domexNeuronFixture";
 
 describe("single PDF form mapping", () => {
   it.each([true, false])("preserves explicit DOMEX Neuron indexation in single and batch-review mappings (%s)", (premiumIndexationEnabled) => {
@@ -97,6 +98,25 @@ describe("single PDF form mapping", () => {
 });
 
 describe("PDF coverage details", () => {
+  it("retains every Neuron object and extraction status in single and batch review imports", () => {
+    const domexNeuron = domexNeuronDataFixture();
+    const parsed = { domexNeuron };
+    for (const values of [mapSinglePdfFormValues("domexneuron", parsed).values, mapReviewPdfFormValues("domexneuron", parsed)]) {
+      expect(values.domexNeuron).toEqual(domexNeuron);
+      expect(values.domexNeuron).not.toBe(domexNeuron);
+      expect(values.domexNeuron?.objects).toHaveLength(3);
+    }
+    expect(pdfImportResetValues("domexneuron").domexNeuron).toBeNull();
+    expect(mapReviewPdfFormValues("domex", parsed).domexNeuron).toBeNull();
+    expect(mapSinglePdfFormValues("domex", parsed).values).not.toHaveProperty("domexNeuron");
+  });
+
+  it("rejects malformed model data without borrowing a previous PDF's objects", () => {
+    const bad = { ...domexNeuronDataFixture(), parserVersion: 99 };
+    expect(mapSinglePdfFormValues("domexneuron", { domexNeuron: bad }).values.domexNeuron).toBeNull();
+    expect(mapReviewPdfFormValues("domexneuron", { domexNeuron: bad }).domexNeuron).toBeNull();
+    expect(mapReviewPdfFormValues("domexneuron", {}).domexNeuron).toBeNull();
+  });
   it("keeps the Neuron building and household addresses and assistance variants separate", () => {
     const parsed = {
       domexPropertyAddress: "  Syntetická 1, Testov  ", domexHouseholdAddress: " Modelová 2, Testov ",

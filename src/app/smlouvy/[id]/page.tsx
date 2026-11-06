@@ -2,6 +2,9 @@
 "use client";
 
 import { domexNeuronPremiumAtDate, scaleDomexNeuronSubsequentItems } from "@/app/lib/domexNeuronPremiumHistory";
+import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
+import { createDomexNeuronDataFromLegacy } from "@/app/lib/domexNeuronMerge";
+import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
 
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 
@@ -2228,6 +2231,7 @@ export default function ContractDetailPage() {
   const [editFlexiAddonLiabilityCitizen, setEditFlexiAddonLiabilityCitizen] = useState("");
   const [editFlexiAddonTravel, setEditFlexiAddonTravel] = useState(false);
   const [editDomexAddress, setEditDomexAddress] = useState("");
+  const [editDomexNeuron, setEditDomexNeuron] = useState<DomexNeuronData | null>(null);
   const [editDomexPropertyAddress, setEditDomexPropertyAddress] = useState("");
   const [editDomexHouseholdAddress, setEditDomexHouseholdAddress] = useState("");
   const [editDomexPropertyAssistance, setEditDomexPropertyAssistance] = useState("");
@@ -3493,6 +3497,9 @@ export default function ContractDetailPage() {
         ? contract.maxdomovDetail
         : contract.domexDetail;
     setEditDomexAddress(propertyDetail?.address ?? "");
+    setEditDomexNeuron(contract.productKey === "domexneuron"
+      ? contract.domexDetail?.neuron != null ? normalizeDomexNeuronData(contract.domexDetail.neuron) : createDomexNeuronDataFromLegacy(contract.domexDetail)
+      : null);
     setEditDomexPropertyAddress(contract.domexDetail?.propertyAddress === undefined
       ? contract.productKey === "domexneuron" && (propertyDetail?.propertyType || propertyDetail?.sumInsured != null)
         ? propertyDetail?.address ?? "" : ""
@@ -3661,6 +3668,7 @@ export default function ContractDetailPage() {
       const apiUpdates: Record<string, unknown> = {};
       const contractPatch: Partial<ContractDoc> = {};
       let appliedCount = 0;
+      let propertyConflictCount = 0;
 
       const topLevelMerge = mergeEmptyContractFields(source, parsed);
       Object.assign(apiUpdates, topLevelMerge.updates);
@@ -3669,6 +3677,7 @@ export default function ContractDetailPage() {
 
       if (prod === "domex" || prod === "domexneuron") {
         const propertyMerge = mergeEmptyPropertyDetailFields(source.domexDetail, parsed);
+        propertyConflictCount += propertyMerge.conflictKeys?.length ?? 0;
         if (propertyMerge.appliedCount > 0) {
           apiUpdates.domexDetail = propertyMerge.detail;
           contractPatch.domexDetail = propertyMerge.detail;
@@ -3678,6 +3687,7 @@ export default function ContractDetailPage() {
 
       if (prod === "maxdomov") {
         const propertyMerge = mergeEmptyPropertyDetailFields(source.maxdomovDetail, parsed);
+        propertyConflictCount += propertyMerge.conflictKeys?.length ?? 0;
         if (propertyMerge.appliedCount > 0) {
           apiUpdates.maxdomovDetail = propertyMerge.detail;
           contractPatch.maxdomovDetail = propertyMerge.detail;
@@ -3721,8 +3731,14 @@ export default function ContractDetailPage() {
         }
       }
 
+      const conflictMessage = propertyConflictCount > 0
+        ? `Údajů ke kontrole: ${propertyConflictCount}. Některé objekty nebo údaje nelze bezpečně spárovat; zkontrolujte detail.` : null;
+      const extractionMessage = prod === "domexneuron" && Array.isArray(parsed.pdfImportWarnings) && parsed.pdfImportWarnings.length > 0
+        ? "PDF vyžaduje kontrolu; seznam objektů nebo některé načtené údaje mohou být neúplné či nejednoznačné." : null;
+      const reviewMessage = [conflictMessage, extractionMessage].filter(Boolean).join(" ") || null;
       if (appliedCount === 0) {
-        pushToast("PDF neobsahuje žádná nová prázdná pole k doplnění.", "success");
+        if (reviewMessage) setDetailsError(reviewMessage);
+        pushToast(reviewMessage ?? "PDF neobsahuje žádná nová prázdná pole k doplnění.", reviewMessage ? "error" : "success");
         return;
       }
 
@@ -3741,7 +3757,8 @@ export default function ContractDetailPage() {
       setContract((prev) => (prev?.id === entryId ? { ...prev, ...contractPatch } : prev));
       setContractTimeline(previous => updateContractTimelineEntry(previous, entryId, entry => ({ ...entry, ...contractPatch })));
       setDetailsSaved(true);
-      pushToast(`Z PDF doplněno ${appliedCount} prázdných polí.`, "success");
+      if (reviewMessage) setDetailsError(reviewMessage);
+      pushToast(`Z PDF doplněno ${appliedCount} prázdných polí.${reviewMessage ? ` ${reviewMessage}` : ""}`, "success");
     } catch (e) {
       console.error("Doplnění detailů z PDF selhalo:", e);
       const message =
@@ -3769,6 +3786,7 @@ export default function ContractDetailPage() {
     try {
       const result = await saveContractDetails({
         product: source.productKey,
+        currentDomexDetail: source.domexDetail,
         durationBounds,
         showDurationForProduct,
         ownerEmail,
@@ -3827,6 +3845,7 @@ export default function ContractDetailPage() {
           editContractNumber,
           editContractSigned,
           editDomexAddress,
+          editDomexNeuron,
           editDomexPropertyAddress,
           editDomexHouseholdAddress,
           editDomexPropertyAssistance,
@@ -5218,6 +5237,8 @@ export default function ContractDetailPage() {
           premiumIndexationEnabled={editMode ? editPremiumIndexationEnabled : contract?.premiumIndexationEnabled}
           editMode={editMode}
           fields={domexFields}
+          neuronData={editDomexNeuron}
+          onNeuronChange={setEditDomexNeuron}
           domexDetail={
             prod === "maxdomov"
               ? contract?.maxdomovDetail ?? null

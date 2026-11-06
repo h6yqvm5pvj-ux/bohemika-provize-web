@@ -97,12 +97,23 @@ export const validateContractPremiumIndexation = ({ productKey, premiumIndexatio
   return { ok: true };
 };
 
+export const validateDomexNeuronDetailProduct = (productKey: unknown, detail: unknown): ValidationResult => {
+  if (detail && typeof detail === "object" && Object.hasOwn(detail, "neuron") && productKey !== "domexneuron") {
+    return { ok: false, error: "Model objektů domexDetail.neuron lze uložit pouze k produktu DOMEX Neuron." };
+  }
+  return { ok: true };
+};
+
 export const validateContractCoreInvariants = (
   existing: ContractDoc,
   patch: Record<string, unknown>
 ): ValidationResult => {
   if (isRetiredProduct(existing.productKey)) {
     return { ok: false, error: "Produkt již není podporován." };
+  }
+  if (hasOwn(patch, "domexDetail")) {
+    const neuronDetailValidation = validateDomexNeuronDetailProduct(existing.productKey, patch.domexDetail);
+    if (!neuronDetailValidation.ok) return neuronDetailValidation;
   }
   const shouldValidateCore = [...UPDATE_FIELDS_CONTRACT_CORE_KEYS].some((key) =>
     hasOwn(patch, key)

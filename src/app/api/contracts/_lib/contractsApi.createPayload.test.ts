@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { domexNeuronDataFixture } from "../../../../../tests/helpers/domexNeuronFixture";
 
 import {
   DOMEX_DETAIL_ALLOWED_KEYS,
@@ -42,6 +43,29 @@ describe("contracts create payload parsing", () => {
   const neuronEntry = (overrides: Record<string, unknown> = {}) => baseEntry({
     productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     frequencyRaw: "semiannual", policyTermEndDate: "2027-11-04", ...overrides,
+  });
+
+  it("keeps every Neuron object and extraction state with its parser version", () => {
+    const model = domexNeuronDataFixture();
+    const payload = normalizedPayload(neuronEntry({ domexDetail: { address: "Legacy shared address", neuron: model } }));
+    expect(payload.domexDetail).toEqual({ address: "Legacy shared address", neuron: model });
+    expect(normalizedPayload(neuronEntry({ domexDetail: { neuron: null } })).domexDetail).toEqual({ neuron: null });
+    expect(normalizedPayload(neuronEntry({ domexDetail: { neuron: domexNeuronDataFixture({ parserVersion: null }) } })).domexDetail)
+      .toMatchObject({ neuron: { parserVersion: null } });
+  });
+
+  it.each(["domex", "maxdomov", "neon"])("rejects the Neuron object model on %s", productKey => {
+    for (const model of [domexNeuronDataFixture(), null]) {
+      expect(normalizeCreateEntryPayload({ raw: neuronEntry({ productKey, policyTermEndDate: null, domexDetail: { neuron: model } }), ownerEmail, ownerUid }))
+        .toMatchObject({ ok: false, error: expect.stringContaining("DOMEX Neuron") });
+    }
+  });
+
+  it.each([{}, [], true, "model", { ...domexNeuronDataFixture(), parserVersion: 999 }, {
+    ...domexNeuronDataFixture(), objects: Array.from({ length: 51 }, (_, index) => ({ ...domexNeuronDataFixture().objects[0], id: `property-${index}` })),
+  }])("rejects malformed or oversized nested Neuron data", neuron => {
+    expect(normalizeCreateEntryPayload({ raw: neuronEntry({ domexDetail: { neuron } }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("domexDetail.neuron") });
   });
 
   it("keeps separate DOMEX property/household addresses and assistance levels", () => {

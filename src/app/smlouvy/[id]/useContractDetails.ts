@@ -5,6 +5,9 @@ import { useCallback } from "react";
 import type { Product } from "../../types/domain";
 import { isAutoProduct } from "./contractDetailHelpers";
 import type { ContractDoc } from "./contractDetailTypes";
+import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
+import { createDomexNeuronDataFromLegacy, projectDomexNeuronLegacy } from "@/app/lib/domexNeuronMerge";
+import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
 
 export type ContractDetailsForm = {
   editCarAddonAnimalCollision: boolean;
@@ -59,6 +62,7 @@ export type ContractDetailsForm = {
   editContractNumber: string;
   editContractSigned: string;
   editDomexAddress: string;
+  editDomexNeuron?: DomexNeuronData | null;
   editDomexPropertyAddress?: string;
   editDomexHouseholdAddress?: string;
   editDomexPropertyAssistance?: string;
@@ -189,6 +193,7 @@ export type ContractDetailsBuildInput = {
   form: ContractDetailsForm;
   durationBounds: readonly [number, number] | null;
   showDurationForProduct: boolean;
+  currentDomexDetail?: ContractDoc["domexDetail"];
 };
 
 export type ContractDetailsSavePlan =
@@ -207,6 +212,7 @@ export const buildContractDetailsSavePlan = ({
   form,
   durationBounds,
   showDurationForProduct,
+  currentDomexDetail,
 }: ContractDetailsBuildInput): ContractDetailsSavePlan => {
       const toNumberOrNull = (txt: string) => {
         const trimmed = txt.trim().replace(/\s+/g, "").replace(",", ".");
@@ -364,7 +370,7 @@ export const buildContractDetailsSavePlan = ({
               carAddonKeyLossTheft: null,
             };
 
-      const propertyDetailPayload = {
+      let propertyDetailPayload: Record<string, unknown> = {
         address: (product === "domexneuron"
           ? form.editDomexPropertyAddress?.trim() || form.editDomexHouseholdAddress?.trim() || form.editDomexAddress.trim()
           : form.editDomexAddress.trim()) || null,
@@ -391,6 +397,22 @@ export const buildContractDetailsSavePlan = ({
         assistancePlus: !!form.editDomexAssistancePlus,
         note: form.editDomexNote.trim() || null,
       };
+      const canonicalInput = form.editDomexNeuron ?? currentDomexDetail?.neuron;
+      if (product === "domexneuron" && canonicalInput != null) {
+        const neuron = normalizeDomexNeuronData(canonicalInput);
+        if (!neuron) return { ok: false, error: "Zkontroluj údaje a stavy objektů DOMEX Neuron." };
+        const baseline = currentDomexDetail?.neuron ?? createDomexNeuronDataFromLegacy(currentDomexDetail);
+        const changed = JSON.stringify(neuron) !== JSON.stringify(normalizeDomexNeuronData(baseline));
+        const supplementary: Record<string, unknown> = {};
+        for (const [field, formField] of [
+          ["outbuildingSumInsured", "editDomexOutbuildingSumInsured"], ["liabilitySumInsured", "editDomexLiabilitySumInsured"],
+          ["liabilityDeductible", "editDomexLiabilityDeductible"], ["liabilityMobile", "editDomexLiabilityMobile"],
+          ["liabilityTenant", "editDomexLiabilityTenant"], ["liabilityLandlord", "editDomexLiabilityLandlord"], ["note", "editDomexNote"],
+        ] as const) {
+          if (!currentDomexDetail || Object.hasOwn(form, formField)) supplementary[field] = propertyDetailPayload[field];
+        }
+        propertyDetailPayload = { ...currentDomexDetail, ...(changed ? projectDomexNeuronLegacy(neuron) : {}), ...supplementary, neuron };
+      }
 
       const propertyDetailUpdate =
         product === "domex" || product === "domexneuron"

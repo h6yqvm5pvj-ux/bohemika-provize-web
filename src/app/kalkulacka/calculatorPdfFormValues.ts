@@ -7,6 +7,7 @@ import { mapPropertyPdfFormValues, parsedDomexAssistanceValue } from "./calculat
 import { mapNeonPdfFormValues } from "./calculatorPdfNeonFields";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 import type { ParsedContractPdf } from "./calculatorPdfImport";
+import { normalizeDomexNeuronData } from "../lib/domexNeuronValidation";
 
 export function createEmptyAutoPdfFormValues(): Partial<CalculatorPdfFormValues> {
   return {
@@ -65,6 +66,7 @@ export function createEmptyAutoPdfFormValues(): Partial<CalculatorPdfFormValues>
 export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormValues> {
   return {
     domexAddress: "",
+    domexNeuron: null,
     domexPropertyAddress: "",
     domexHouseholdAddress: "",
     domexPropertyAssistance: null,
@@ -124,6 +126,7 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     if (parsed.policyEndDate) applied += 1;
   }
   if (importProduct === "domexneuron") {
+    values.domexNeuron = normalizeDomexNeuronData(parsed.domexNeuron);
     values.automaticRenewal = typeof parsed.automaticRenewal === "boolean" ? parsed.automaticRenewal : null;
     values.premiumIndexationEnabled = typeof parsed.premiumIndexationEnabled === "boolean" ? parsed.premiumIndexationEnabled : null;
     values.policyTermEndDate = parsedPdfTextValue(parsed, "policyTermEndDate");
@@ -271,6 +274,7 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.autoCarAddonPassengerInjury = parsedPdfBooleanValue(parsed, "carAddonPassengerInjury");
   values.autoCarAddonKeyLossTheft = parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft");
   values.domexAddress = parsedPdfTextValue(parsed, "domexAddress");
+  values.domexNeuron = reviewProduct === "domexneuron" ? normalizeDomexNeuronData(parsed.domexNeuron) : null;
   values.domexPropertyAddress = parsedPdfTextValue(parsed, "domexPropertyAddress");
   values.domexHouseholdAddress = parsedPdfTextValue(parsed, "domexHouseholdAddress");
   values.domexPropertyAssistance = parsedDomexAssistanceValue(parsed.domexPropertyAssistance);

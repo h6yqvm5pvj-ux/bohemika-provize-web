@@ -3,6 +3,7 @@ import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 import { type PaymentFrequency } from "../types/domain";
 import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 import { parseDomexNeuronProperty, type DomexNeuronPropertyFields, type DomexPropertyLayoutLine } from "./parseDomexNeuronProperty";
+import type { DomexNeuronData } from "./domexNeuronSchema";
 
 export type DomexPdfResult = DomexNeuronPropertyFields & {
   isRefresh?: boolean | null;
@@ -523,6 +524,7 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
 
   const neuronProperty = parseDomexNeuronProperty(layoutPages);
   if (neuronProperty) {
+    const importWarnings = [...new Set([...(result.pdfImportWarnings ?? []), ...(neuronProperty.pdfImportWarnings ?? [])])];
     return {
       ...result,
       ...neuronProperty,
@@ -530,6 +532,7 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
       domexLiabilityMobile: null,
       domexLiabilityTenant: null,
       domexLiabilityLandlord: null,
+      ...(importWarnings.length ? { pdfImportWarnings: importWarnings } : {}),
     };
   }
 
@@ -903,4 +906,46 @@ export async function parseDomexPdf(file: File, options: PdfReadOptions = {}): P
   }
 
   return result;
+}
+
+/** Explicit Neuron routing also records a failed extraction from a scan. A
+ * readable document missing a section remains not_found, never not_insured. */
+export async function parseDomexNeuronPdf(file: File, options: PdfReadOptions = {}): Promise<DomexPdfResult & { domexNeuron: DomexNeuronData }> {
+  const result = await parseDomexPdf(file, options);
+  const document = await readPdfText(file, options);
+  const textSize = (page: typeof document.pages[number]) => page.items.map(item => item.str).join("")
+    .replace(/[^\p{L}\p{N}]/gu, "").length;
+  const unreadable = document.pages.reduce((sum, page) => sum + textSize(page), 0) === 0 ||
+    document.pages.some(page => page.needsOcr && textSize(page) < 80);
+  const scoped = result.domexNeuron ? result : {
+    ...result, ...parseDomexNeuronProperty(await Promise.all(document.pages.map(extractLayoutLinesFromPage)), true)!,
+  };
+  const extracted = scoped.domexNeuron!;
+  const data: DomexNeuronData = {
+    ...extracted,
+    sections: { ...extracted.sections }, liabilityFields: { ...extracted.liabilityFields },
+    objects: extracted.objects.map(object => ({ ...object, fields: { ...object.fields } })),
+  };
+  if (unreadable) {
+    // Without page-level provenance a scanned page may hide another object or
+    // a missing field. Preserve proved facts and flag the incomplete extraction.
+    for (const key of Object.keys(data.sections) as (keyof DomexNeuronData["sections"])[]) {
+      if (data.sections[key] === "not_found") data.sections[key] = "unreadable";
+    }
+    for (const key of Object.keys(data.liabilityFields) as (keyof DomexNeuronData["liabilityFields"])[]) {
+      if (data.liabilityFields[key] === "not_found") data.liabilityFields[key] = "unreadable";
+    }
+    for (const object of data.objects) {
+      for (const key of Object.keys(object.fields) as (keyof typeof object.fields)[]) {
+        if (object.fields[key] === "not_found") object.fields[key] = "unreadable";
+      }
+    }
+  }
+  const warnings = [...new Set([...(result.pdfImportWarnings ?? []), ...(scoped.pdfImportWarnings ?? []),
+    ...(unreadable ? ["DOMEX Neuron: část PDF je nečitelná; seznam objektů a načtené údaje mohou být neúplné."] : [])])];
+  return {
+    ...scoped, domexNeuron: data,
+    domexOutbuildingSumInsured: null, domexLiabilityMobile: null, domexLiabilityTenant: null, domexLiabilityLandlord: null,
+    ...(warnings.length ? { pdfImportWarnings: warnings } : {}),
+  };
 }

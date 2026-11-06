@@ -22,7 +22,7 @@ if (apply) process.env.CASHFLOW_CACHE_TRACK_WRITES = "1";
 const jiti = createJiti(import.meta.url, { alias: { "@": `${process.cwd()}/src` }, fsCache: false });
 const { adminDb: db, adminAuth: auth } = await jiti.import("../src/lib/server/firebaseAdmin.ts");
 const { normalizeStoredContractPdfAttachment, downloadContractPdfAttachment, CONTRACT_PDF_MAX_BYTES } = await jiti.import("../src/lib/server/contractPdfStorage.ts");
-const { parseDomexPdf } = await jiti.import("../src/app/lib/parseDomexPdf.ts");
+const { parseDomexNeuronPdf } = await jiti.import("../src/app/lib/parseDomexPdf.ts");
 const { planDomexNeuronPdfBackfill } = await jiti.import("../src/lib/server/domexNeuronPdfBackfill.ts");
 const { withContractHistory } = await jiti.import("../src/lib/server/contractHistory.ts");
 const { contractListIndexFieldsForContract } = await jiti.import("../src/app/api/contracts/_lib/contractsApi.listFilters.ts");
@@ -53,7 +53,7 @@ async function run() {
         createHash("sha256").update(bytes).digest("hex") !== attachment.sha256) {
         throw new Error("PDF integrity check failed");
       }
-      parsed = await parseDomexPdf(new File([bytes], "stored-contract.pdf", { type: "application/pdf" }), { allowOcr: false });
+      parsed = await parseDomexNeuronPdf(new File([bytes], "stored-contract.pdf", { type: "application/pdf" }), { allowOcr: false });
     } finally { bytes.fill(0); }
     const plan = planDomexNeuronPdfBackfill(current, parsed);
     if (plan.status === "rejected") throw new Error("A source failed validation");

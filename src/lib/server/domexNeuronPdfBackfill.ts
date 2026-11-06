@@ -80,11 +80,13 @@ export function planDomexNeuronPdfBackfill(current: ContractDoc, parsed: DomexPd
     } else if (typeof raw !== "string" || /[\u0000-\u001f\u007f]/.test(raw)) return reject("invalid-pdf-data");
     rawDetail[field] = raw;
   }
+  if (parsed.domexNeuron != null) rawDetail.neuron = parsed.domexNeuron;
   const incomingDetail = sanitizeDetailObject(rawDetail, "domexDetail", DOMEX_DETAIL_ALLOWED_KEYS);
   if (!incomingDetail.ok) return reject("invalid-pdf-data");
   const currentDetail = current.domexDetail ?? {};
   if (!sanitizeDetailObject(currentDetail, "domexDetail", DOMEX_DETAIL_ALLOWED_KEYS).ok) return reject("invalid-current-data");
   for (const [field, value] of Object.entries(incomingDetail.value ?? {})) {
+    if (field === "neuron") continue;
     const previous = currentDetail[field as keyof typeof currentDetail];
     if (!empty(previous) && !empty(value) && canonical(previous) !== canonical(value)) conflicts.add(`domexDetail.${field}`);
   }
@@ -112,11 +114,13 @@ export function planDomexNeuronPdfBackfill(current: ContractDoc, parsed: DomexPd
     if (coreInput[field] !== undefined && empty(current[field]) && !(field in patch)) conflicts.add(field);
   }
   const propertyMerge = mergeEmptyPropertyDetailFields(currentDetail, parsed as Record<string, unknown>);
+  for (const key of propertyMerge.conflictKeys ?? []) conflicts.add(`domexDetail.neuron.${key}`);
   const validatedMerged = sanitizeDetailObject(propertyMerge.detail, "domexDetail", DOMEX_DETAIL_ALLOWED_KEYS);
   if (!validatedMerged.ok) return reject("invalid-merged-contract");
   const detail = { ...currentDetail };
   for (const [field, value] of Object.entries(validatedMerged.value ?? {})) {
-    if (empty(currentDetail[field as keyof typeof currentDetail]) && !empty(value)) {
+    const previous = currentDetail[field as keyof typeof currentDetail];
+    if ((field === "neuron" ? JSON.stringify(previous) !== JSON.stringify(value) : empty(previous)) && !empty(value)) {
       (detail as Record<string, unknown>)[field] = value;
       changedKeys.push(`domexDetail.${field}`);
     }

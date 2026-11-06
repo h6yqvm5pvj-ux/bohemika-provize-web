@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ContractDoc } from "./contractsApi.types";
 import { parsePolicyTermEndDate, validateContractCoreInvariants } from "./contractsApi.validation";
+import { domexNeuronDataFixture } from "../../../../../tests/helpers/domexNeuronFixture";
 
 const baseContract: ContractDoc = {
   clientName: "Jan Novak",
@@ -16,6 +17,13 @@ const baseContract: ContractDoc = {
 describe("contracts API validation", () => {
   const neuron: ContractDoc = { ...baseContract, productKey: "domexneuron", contractSignedDate: new Date("2026-11-04"),
     policyStartDate: new Date("2026-11-05"), automaticRenewal: true, policyTermEndDate: new Date("2027-11-04"), policyEndDate: null };
+
+  it("checks the Neuron object product restriction even for a detail-only patch", () => {
+    const domexDetail = { neuron: domexNeuronDataFixture() };
+    expect(validateContractCoreInvariants(neuron, { domexDetail })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants({ ...neuron, productKey: "domex" }, { domexDetail })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(baseContract, { domexDetail: { neuron: null } })).toMatchObject({ ok: false });
+  });
 
   it.each([true, false, null])("validates Neuron premium indexation independently of prolongation: %j", premiumIndexationEnabled => {
     expect(validateContractCoreInvariants(neuron, { premiumIndexationEnabled })).toEqual({ ok: true });

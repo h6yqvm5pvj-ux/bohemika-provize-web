@@ -211,8 +211,8 @@ async function parseProduct(
     }
     case "domex":
     case "domexneuron": {
-      const { parseDomexPdf } = await import("../lib/parseDomexPdf");
-      return parseDomexPdf(file, options);
+      const { parseDomexPdf, parseDomexNeuronPdf } = await import("../lib/parseDomexPdf");
+      return product === "domexneuron" ? parseDomexNeuronPdf(file, options) : parseDomexPdf(file, options);
     }
     case "cppbytex": {
       const { parseCppBytexPdf } = await import("../lib/parseCppBytexPdf");

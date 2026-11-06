@@ -4,6 +4,8 @@ import type { InheritedContractFields } from "@/app/lib/inheritedContracts";
 import { normalizeTransferEffectiveDate } from "./contractsApi.transfer";
 import { toDate } from "@/app/lib/formatters";
 import { formatClientDisplayName } from "@/app/lib/clientNamePresentation";
+import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
+import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
 import {
   isAutoProduct,
   type ProductInstitutionId,
@@ -29,6 +31,7 @@ import {
   parsePolicyTermEndDate,
   validateContractPremiumIndexation,
   validateContractRenewal,
+  validateDomexNeuronDetailProduct,
 } from "./contractsApi.validation";
 import type { ContractListProductCategory } from "./contractsApi.types";
 
@@ -341,6 +344,7 @@ export const DOMEX_DETAIL_ALLOWED_KEYS = new Set<string>([
   "householdAddress",
   "propertyAssistance",
   "householdAssistance",
+  "neuron",
 ]);
 
 export const SLAVIA_AUTO_DETAIL_ALLOWED_KEYS = new Set<string>([
@@ -566,22 +570,23 @@ const toIsoDay = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export const sanitizeDetailObject = (
+type DetailField = "neonDetail" | "flexiDetail" | "domexDetail" | "maxdomovDetail" | "carSlaviaDetail";
+type DetailValue = string | number | boolean | null;
+export function sanitizeDetailObject(value: unknown, field: "domexDetail", allowedKeys: Set<string>):
+  ParseResult<Record<string, DetailValue | DomexNeuronData> | null>;
+export function sanitizeDetailObject(value: unknown, field: Exclude<DetailField, "domexDetail">, allowedKeys: Set<string>):
+  ParseResult<Record<string, DetailValue> | null>;
+export function sanitizeDetailObject(
   value: unknown,
-  field:
-    | "neonDetail"
-    | "flexiDetail"
-    | "domexDetail"
-    | "maxdomovDetail"
-    | "carSlaviaDetail",
+  field: DetailField,
   allowedKeys: Set<string>
-): ParseResult<Record<string, string | number | boolean | null> | null> => {
+): ParseResult<Record<string, DetailValue | DomexNeuronData> | null> {
   if (value == null) return { ok: true, value: null };
   if (!isPlainObject(value)) {
     return { ok: false, error: `Pole ${field} musí být objekt nebo null.` };
   }
 
-  const output: Record<string, string | number | boolean | null> = {};
+  const output: Record<string, DetailValue | DomexNeuronData> = {};
   const keys = Object.keys(value);
   for (const key of keys) {
     if (!allowedKeys.has(key)) {
@@ -596,6 +601,12 @@ export const sanitizeDetailObject = (
     const raw = value[key];
     if (raw == null) {
       output[key] = null;
+      continue;
+    }
+    if (field === "domexDetail" && key === "neuron") {
+      const neuron = normalizeDomexNeuronData(raw);
+      if (!neuron) return { ok: false, error: "Pole domexDetail.neuron obsahuje neplatné údaje objektů nebo verze parseru." };
+      output[key] = neuron;
       continue;
     }
     if (field === "domexDetail" && (key === "propertyAssistance" || key === "householdAssistance")) {
@@ -642,7 +653,7 @@ export const sanitizeDetailObject = (
   }
 
   return { ok: true, value: output };
-};
+}
 
 export type NormalizedManagerChainEntry = {
   email: string | null;
@@ -1208,6 +1219,8 @@ export const normalizeCreateEntryPayload = ({
     DOMEX_DETAIL_ALLOWED_KEYS
   );
   if (!domexDetailParsed.ok) return domexDetailParsed;
+  const neuronDetailProductValidation = validateDomexNeuronDetailProduct(productParsed.value, domexDetailParsed.value);
+  if (!neuronDetailProductValidation.ok) return neuronDetailProductValidation;
   const maxdomovDetailParsed = sanitizeDetailObject(
     raw.maxdomovDetail,
     "maxdomovDetail",
