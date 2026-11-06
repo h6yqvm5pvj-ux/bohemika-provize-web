@@ -37,7 +37,7 @@ import {
 
 import { isAutoProduct } from "@/app/lib/productCatalog";
 import { isStatementBatchQueueProduct, isStatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
-import { isNeonRefreshStatementProductCode, isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
+import { baseCommissionCodeForPayoutComparison, isNeonRefreshStatementProductCode, isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { neonRefreshBaseReview, neonRefreshBaseStatus } from "./statementRefreshBaseReview";
 import { buildNeonRefreshConversionRequest, statementNeonRefreshRiskAnnualBase } from "./statementRefreshConversion";
 import { lifeSplitBaseComparisonSources, lifeSplitCommissionGroups } from "./statementLifeComparison";
@@ -46,6 +46,8 @@ import { extendStatementCorrectionsWithStoredHistory } from "./statementStoredCo
 import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementExpectation } from "./statementDomexNeuronIndexation";
 import {
   buildStatementCodeComparisons,
+  autoSubsequentExpectedAmountForRow,
+  isAmountComparisonExplainedByAutoPremiumChange,
   isHigherStatementCommission,
   comparisonStatus,
   hasStatementAmountForComparison,
@@ -87,7 +89,6 @@ import {
   normalizeNeonDurationYears,
 } from "@/app/lib/productFormulas/neon";
 import {
-  autoSubsequentCoefficientForProduct,
   isAutoSubsequentCommissionCode,
 } from "@/app/lib/productFormulas/autoCommission";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
@@ -2050,24 +2051,6 @@ const expectedAutoAmountFromItems = (
   return closestAmount(candidates, statementAmount) ?? 0;
 };
 
-const autoSubsequentExpectedAmountForRow = (
-  productKey: Product,
-  position: Position,
-  signedDateIso: string | null,
-  row: CommissionRow
-): number | null => {
-  if (!isAutoSubsequentCommissionCode(row.type)) return null;
-  const rowBase = Number(row.base);
-  if (!Number.isFinite(rowBase) || rowBase <= 0) return null;
-  const coefficient = autoSubsequentCoefficientForProduct(
-    productKey,
-    position,
-    signedDateIso
-  );
-  if (coefficient == null) return null;
-  return Math.round(rowBase * coefficient * 100) / 100;
-};
-
 const autoSubsequentExpectedAmountForRows = (
   productKey: Product,
   systemContract: MatchedSystemContract,
@@ -2218,7 +2201,7 @@ const autoCoefficientOverrideInfo = (
 
   const coefficientRows = contract.rows.filter((row) => {
     const rowProductKey = resolveStatementProduct(row.product).productKey;
-    const code = normalizeText(row.type).toUpperCase().replace(/\s+/g, "");
+    const code = baseCommissionCodeForPayoutComparison(row.type, rowProductKey);
     return (
       rowProductKey === productKey &&
       row.base > 0 &&
@@ -2272,7 +2255,7 @@ const autoCoefficientOverrideInfo = (
         ) ??
         expectedAutoAmountFromItems(
           comparableResult.items,
-          row.type,
+          baseCommissionCodeForPayoutComparison(row.type, productKey),
           row.commission,
           frequencyRaw
         );
@@ -2987,19 +2970,6 @@ const autoPremiumChangeInfo = (
   };
 };
 
-const isAmountComparisonExplainedByAutoPremiumChange = (
-  comparison: CommissionAmountComparison,
-  premiumChange: AutoPremiumChangeInfo | null
-): boolean =>
-  Boolean(
-    premiumChange &&
-      comparison.status === "diff" &&
-      ((premiumChange.annualDifference > COMMISSION_AMOUNT_TOLERANCE &&
-        comparison.difference > COMMISSION_AMOUNT_TOLERANCE) ||
-        (premiumChange.annualDifference < -COMMISSION_AMOUNT_TOLERANCE &&
-          comparison.difference < -COMMISSION_AMOUNT_TOLERANCE))
-  );
-
 const lifeSplitContractTotal = (contract: LifeSplitContractPreview): number =>
   sumRows(contract.rows) + sumPayments(contract.b36Payments);
 
@@ -3265,7 +3235,7 @@ const expectedAutoAmountForStatementRowBase = (
 
   const expected = expectedAutoAmountFromItems(
     comparableResult.items,
-    row.type,
+    baseCommissionCodeForPayoutComparison(row.type, productKey),
     row.commission,
     frequencyRaw
   );
@@ -3645,16 +3615,15 @@ const buildOtherProductAmountComparisons = (
 
   const coefficientOverride = autoCoefficientOverrideInfo(contract, systemContract);
   const items = coefficientOverride?.items ?? systemContract.items ?? [];
+  const comparisonContract = coefficientOverride
+    ? { ...systemContract, commissionCoefficientSetOverride: coefficientOverride.coefficientSet }
+    : systemContract;
   const isAutoContract = contractHasProductCategory(contract, "auto");
 
   if (isAutoContract) {
     const immediateRows = rowsByGeneralKinds(contract, ["closing", "installment"]);
     const immediateStatementAmount = sumRows(immediateRows);
-    // Kooperativa C payouts retain their actual statement amount. Their sequence
-    // does not identify a B installment or establish the calculator's B rate.
-    const subsequentRows = rowsByGeneralKinds(contract, ["subsequent"])
-      .filter(row => !isKooperativaCStatementRow(row));
-    const subsequentStatementAmount = sumRows(subsequentRows);
+    const subsequentRows = rowsByGeneralKinds(contract, ["subsequent"]);
     const premiumReference = autoPremiumBaseReferenceForStatement(
       contract,
       systemContract,
@@ -3662,7 +3631,7 @@ const buildOtherProductAmountComparisons = (
     );
     const immediateExpectedFromStatementBase = expectedAutoAmountForStatementRowBases(
       immediateRows,
-      systemContract
+      comparisonContract
     );
     const immediateExpectedAmount =
       immediateExpectedFromStatementBase ??
@@ -3689,55 +3658,54 @@ const buildOtherProductAmountComparisons = (
           ]
         : [];
 
-    if (hasRowsForAmountComparison(subsequentRows)) {
-      const productKey = systemContract.productKey;
-      const expectedSubsequent =
-        productKey && isAutoProduct(productKey)
-          ? autoSubsequentExpectedAmountForRows(productKey, systemContract, subsequentRows)
-          : null;
-      const expectedFromStatementBase = expectedAutoAmountForStatementRowBases(
-        subsequentRows,
-        systemContract
-      );
-      const rowSummedExpectedAmount = expectedFromStatementBase ?? expectedSubsequent;
-      const fallbackExpectedAmount = scaleAutoExpectedAmountForPremiumReference(
-        expectedClosestAmountFromItems(
-          items,
-          subsequentStatementAmount,
-          (title) =>
-            title.includes("nasledna") ||
-            title.includes("provize za rok") ||
-            title.includes("celkem za rok")
-        ),
-        systemContract,
-        premiumReference
-      );
-      const expectedAmount =
-        rowSummedExpectedAmount ?? fallbackExpectedAmount;
-      const expectedPerPeriod =
-        rowSummedExpectedAmount != null && subsequentRows.length > 0
-          ? Math.round((rowSummedExpectedAmount / subsequentRows.length) * 100) / 100
-          : fallbackExpectedAmount;
-      const subsequentBundleInfo = subsequentPayoutBundleInfo({
-        rows: subsequentRows,
-        statementAmount: subsequentStatementAmount,
-        expectedPerPeriod,
-        systemContract,
-        statementPeriod,
-      });
-      const finalExpectedAmount = subsequentBundleInfo?.expectedAmount ?? expectedAmount;
-      comparisons.push({
-        key: "auto-subsequent",
-        label: subsequentBundleInfo
-          ? `Následná provize (${subsequentBundleInfo.periods} období)`
-          : "Následná provize",
-        statementAmount: subsequentStatementAmount,
-        expectedAmount: finalExpectedAmount,
-        difference: subsequentStatementAmount - finalExpectedAmount,
-        status: comparisonStatus(subsequentStatementAmount, finalExpectedAmount),
-        detailLines: subsequentBundleInfo?.detailLines,
-      });
-    }
+    comparisons.push(...buildStatementCodeComparisons({
+      rows: subsequentRows,
+      keyPrefix: "auto-subsequent",
+      expectedForRows: (rows) => {
+        const subsequentStatementAmount = sumRows(rows);
+        const productKey = systemContract.productKey;
+        const expectedSubsequent =
+          productKey && isAutoProduct(productKey)
+            ? autoSubsequentExpectedAmountForRows(productKey, comparisonContract, rows)
+            : null;
+        const expectedFromStatementBase = expectedAutoAmountForStatementRowBases(
+          rows,
+          comparisonContract
+        );
+        const rowSummedExpectedAmount = expectedSubsequent ?? expectedFromStatementBase;
+        const fallbackExpectedAmount = scaleAutoExpectedAmountForPremiumReference(
+          expectedClosestAmountFromItems(
+            items,
+            subsequentStatementAmount,
+            (title) =>
+              title.includes("nasledna") ||
+              title.includes("provize za rok") ||
+              title.includes("celkem za rok")
+          ),
+          systemContract,
+          premiumReference
+        );
+        const expectedAmount =
+          rowSummedExpectedAmount ?? fallbackExpectedAmount;
+        const expectedPerPeriod =
+          rowSummedExpectedAmount != null && rows.length > 0
+            ? Math.round((rowSummedExpectedAmount / rows.length) * 100) / 100
+            : fallbackExpectedAmount;
+        const subsequentBundleInfo = subsequentPayoutBundleInfo({
+          rows,
+          statementAmount: subsequentStatementAmount,
+          expectedPerPeriod,
+          systemContract,
+          statementPeriod,
+        });
+        return {
+          amount: subsequentBundleInfo?.expectedAmount ?? expectedAmount,
+          usesStatementPremiumBase: rowSummedExpectedAmount != null,
+          periods: subsequentBundleInfo?.periods,
+          detailLines: subsequentBundleInfo?.detailLines,
+        };
+      },
+    }));
 
     const b36GrossAmount = b36PaidPaymentAmountsForComparison(contract.b36Payments).reduce(
       (sum, amount) => sum + amount,
@@ -5711,7 +5679,7 @@ function OtherProductContractCard({
               </span>
             )}
             {hasKooperativaCPayouts && (
-              <span className={detailStyles.badge} data-tone="info" title="Při zpracování se zapíše skutečná částka z výpisu. Vyšší provize sama o sobě neznamená navýšení pojistného.">
+              <span className={detailStyles.badge} data-tone="info" title="Porovnává se očekávaná a vyplacená následná provize. Při zpracování se zapíše skutečná částka z výpisu. Vyšší provize sama o sobě neznamená navýšení pojistného.">
                 Následná provize dle výpisu
               </span>
             )}

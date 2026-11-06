@@ -2,9 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { calculateKoopMajetekObcan } from "@/app/lib/productFormulas/koopmajetekobcan";
-import { buildStatementCodeComparisons, comparisonStatus, statementAmountForSinglePayout, statementCommissionGroups } from "./statementCommissionComparisons";
+import { autoSubsequentExpectedAmountForRow, buildStatementCodeComparisons, comparisonStatus, isAmountComparisonExplainedByAutoPremiumChange, statementAmountForSinglePayout, statementCommissionGroups } from "./statementCommissionComparisons";
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
-import { statementContractIsVerified } from "./statementContractReview";
+import { statementContractIsVerified, statementContractReview } from "./statementContractReview";
 import type { CommissionRow } from "./statementTypes";
 import { OtherProductCommissionTable } from "./statementContractTables";
 import { otherProductCardSummary } from "./statementCardMath";
@@ -58,6 +58,44 @@ describe("duplicate single-payout commissions", () => {
 });
 
 describe("statement comparisons for separate commission codes", () => {
+  it.each(["C101", "C102", "C103", "B102"])("compares Kooperativa Auto %s with the historical subsequent rate and preserves an underpayment", code => {
+    const source = row(code, 168.60, { product: "KOO_NAMIRU", base: 2823, career: "7" });
+    const expected = autoSubsequentExpectedAmountForRow("kooperativaAuto", "poradce7", "2023-05-10", source);
+    expect(expected).toBe(238.26);
+    const comparisons = buildStatementCodeComparisons({ rows: [source], keyPrefix: "auto-subsequent",
+      expectedForRows: () => ({ amount: expected!, usesStatementPremiumBase: true }) });
+    expect(comparisons[0]).toMatchObject({ label: code, statementAmount: 168.60, expectedAmount: 238.26, status: "diff" });
+    expect(comparisons[0].difference).toBeCloseTo(-69.66, 2);
+    expect(isAmountComparisonExplainedByAutoPremiumChange(comparisons[0], { annualDifference: -1000 })).toBe(false);
+    expect(statementContractReview({ matched: true, unpaired: false, issueCount: 0, comparisons, hasWarnings: false }))
+      .toMatchObject({ status: "commission-error", hasCommissionError: true });
+    const html = renderToStaticMarkup(createElement(AmountComparisonPanel, { comparisons }));
+    expect(html).toContain(code);
+    expect(html).toContain("238,26");
+    expect(html).toContain("168,60");
+    expect(html).toContain("1 rozdíl");
+  });
+
+  it("accepts a correct C payout and keeps different C payouts from cancelling each other's differences", () => {
+    const correct = row("C101", 605.57, { product: "KOO_NAMIRU", base: 7175 });
+    const compareAuto = (rows: CommissionRow[]) => buildStatementCodeComparisons({ rows, keyPrefix: "auto-subsequent",
+      expectedForRows: group => ({ amount: group.reduce((sum, item) => sum +
+        (autoSubsequentExpectedAmountForRow("kooperativaAuto", "poradce7", "2023-02-16", item) ?? 0), 0) }) });
+    expect(compareAuto([correct])[0]).toMatchObject({ expectedAmount: 605.57, status: "ok" });
+    const comparisons = compareAuto([{ ...correct, commission: 585.57 }, { ...correct, type: "C102", commission: 625.57 }]);
+    expect(comparisons.map(item => [item.label, item.status])).toEqual([["C101", "diff"], ["C102", "diff"]]);
+    expect(comparisons[0].difference).toBeCloseTo(-20, 2);
+    expect(comparisons[1].difference).toBeCloseTo(20, 2);
+  });
+
+  it("does not treat C codes of another insurer or missing premium bases as Kooperativa subsequent amounts", () => {
+    expect(autoSubsequentExpectedAmountForRow("cppAuto", "poradce7", "2023-05-10", row("C101"))).toBeNull();
+    expect(autoSubsequentExpectedAmountForRow("kooperativaAuto", "poradce7", "2023-05-10", row("C201"))).toBeNull();
+    for (const base of [0, -100, Number.NaN]) {
+      expect(autoSubsequentExpectedAmountForRow("kooperativaAuto", "poradce7", "2023-05-10", row("C101", 100, { base }))).toBeNull();
+    }
+  });
+
   it("keeps actual Kooperativa C amounts and codes when the premium base remains constant", () => {
     const rows = [row("C101", 937.80), row("C103", 970.20), row("C105", 1019.40), row("C106", 769.80)]
       .map(item => ({ ...item, product: "KOO_NAMIRU", base: 7175 }));

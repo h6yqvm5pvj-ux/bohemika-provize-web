@@ -1,10 +1,41 @@
 import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode } from "./statementParsing";
 import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow } from "./statementTypes";
-import { isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
+import { baseCommissionCodeForPayoutComparison, isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
+import { autoSubsequentCoefficientForProduct, isAutoSubsequentCommissionCode } from "@/app/lib/productFormulas/autoCommission";
+import type { Position, Product } from "@/app/types/domain";
+
+/** Use the same per-payment base and product-specific code aliases as payout import. */
+export const autoSubsequentExpectedAmountForRow = (
+  productKey: Product,
+  position: Position,
+  signedDateIso: string | null,
+  row: CommissionRow
+): number | null => {
+  const code = baseCommissionCodeForPayoutComparison(row.type, productKey);
+  if (!isAutoSubsequentCommissionCode(code)) return null;
+  const rowBase = Number(row.base);
+  if (!Number.isFinite(rowBase) || rowBase <= 0) return null;
+  const coefficient = autoSubsequentCoefficientForProduct(productKey, position, signedDateIso);
+  return coefficient == null ? null : Math.round(rowBase * coefficient * 100) / 100;
+};
 
 export const isHigherStatementCommission = (comparison: { status: CommissionAmountComparisonStatus; expectedAmount?: number; statementAmount?: number; acceptHigherCommission?: boolean }): boolean =>
   comparison.acceptHigherCommission !== false && comparison.status === "diff" && isHigherCommissionPayout({ amount: comparison.statementAmount ?? Number.NaN,
     expectedAmount: comparison.expectedAmount, tolerance: COMMISSION_AMOUNT_TOLERANCE });
+
+export const isAmountComparisonExplainedByAutoPremiumChange = (
+  comparison: CommissionAmountComparison,
+  premiumChange: { annualDifference: number } | null
+): boolean => Boolean(
+  premiumChange &&
+  // A row-base calculation already accounts for the premium change.
+  !comparison.usesStatementPremiumBase &&
+  comparison.status === "diff" &&
+  ((premiumChange.annualDifference > COMMISSION_AMOUNT_TOLERANCE &&
+    comparison.difference > COMMISSION_AMOUNT_TOLERANCE) ||
+    (premiumChange.annualDifference < -COMMISSION_AMOUNT_TOLERANCE &&
+    comparison.difference < -COMMISSION_AMOUNT_TOLERANCE))
+);
 
 export const STATEMENT_AMOUNT_PRESENCE_TOLERANCE = 0.005;
 
@@ -50,7 +81,7 @@ export function statementCommissionGroups(rows: CommissionRow[]): { code: string
 export function buildStatementCodeComparisons({ rows, keyPrefix, expectedForRows }: {
   rows: CommissionRow[];
   keyPrefix: string;
-  expectedForRows: (rows: CommissionRow[]) => { amount: number; periods?: number; detailLines?: string[]; acceptHigherCommission?: boolean };
+  expectedForRows: (rows: CommissionRow[]) => { amount: number; periods?: number; detailLines?: string[]; acceptHigherCommission?: boolean; usesStatementPremiumBase?: boolean };
 }): CommissionAmountComparison[] {
   return statementCommissionGroups(rows)
     .filter(group => group.rows.some(row => hasStatementAmountForComparison(row.commission)))
@@ -66,6 +97,7 @@ export function buildStatementCodeComparisons({ rows, keyPrefix, expectedForRows
         status: comparisonStatus(statementAmount, expected.amount),
         detailLines: expected.detailLines,
         ...(expected.acceptHigherCommission === undefined ? {} : { acceptHigherCommission: expected.acceptHigherCommission }),
+        ...(expected.usesStatementPremiumBase === undefined ? {} : { usesStatementPremiumBase: expected.usesStatementPremiumBase }),
       };
     });
 }

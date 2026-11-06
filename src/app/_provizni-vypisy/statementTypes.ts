@@ -588,6 +588,7 @@ export type CommissionAmountComparison = {
   difference: number;
   status: CommissionAmountComparisonStatus;
   acceptHigherCommission?: boolean;
+  usesStatementPremiumBase?: boolean;
   reason?: CommissionAmountComparisonReason | null;
   reasonTitle?: string | null;
   reasonLines?: string[];
