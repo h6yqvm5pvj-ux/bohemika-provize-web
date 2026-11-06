@@ -125,7 +125,7 @@ describe("A101 filtering of unpaired statement contracts", () => {
     expect(items).toHaveLength(10);
   });
 
-  it("filters A101 across every page within each product section", async () => {
+  it("shows and filters every contract within each expanded product section", async () => {
     const contracts = [
       ...Array.from({ length: 30 }, (_, index) => life(`DEFERRED-${index}`, "B101")),
       life("LIFE-A101", "A101", 1000),
@@ -137,9 +137,9 @@ describe("A101 filtering of unpaired statement contracts", () => {
     await act(async () => button("Bez propojení").click());
     await act(async () => button("Smlouvy mimo Bohemka.App").click());
     await act(async () => button("Životní pojištění").click());
-    expect(visibleContracts()).toHaveLength(15);
-    await act(async () => button("Další").click());
-    expect(visibleContracts()[0]).toBe("DEFERRED-15");
+    expect(visibleContracts()).toHaveLength(32);
+    expect(visibleContracts().slice(-2)).toEqual(["LIFE-A101", "OTHER-LIFE-A101"]);
+    expect(container.querySelector("nav")).toBeNull();
 
     const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox.parentElement?.textContent).toContain("2");
@@ -159,7 +159,7 @@ describe("A101 filtering of unpaired statement contracts", () => {
     await act(async () => button("Zrušit filtry").click());
     await act(async () => button("Smlouvy mimo Bohemka.App").click());
     await act(async () => button("Životní pojištění").click());
-    expect(visibleContracts()).toHaveLength(15);
+    expect(visibleContracts()).toHaveLength(32);
     expect(visibleContracts()[0]).toBe("DEFERRED-0");
     expect(items).toHaveLength(33);
   });

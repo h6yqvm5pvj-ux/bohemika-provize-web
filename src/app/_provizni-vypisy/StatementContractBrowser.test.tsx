@@ -62,7 +62,7 @@ describe("statement review navigation", () => {
     expect(items).toHaveLength(3);
   });
 
-  it("groups identical badges stably before pagination without mutating the source", () => {
+  it("groups identical badges stably without mutating the source", () => {
     const before = reviewItems.map(item => item.key);
     expect(sortStatementBrowserItems(reviewItems).map(item => item.key)).toEqual(["3", "1", "5", "2", "7", "0", "4", "6"]);
     expect(reviewItems.map(item => item.key)).toEqual(before);
@@ -130,21 +130,18 @@ describe("statement review navigation", () => {
     expect(container.querySelectorAll("[data-contract]")).toHaveLength(3);
   });
 
-  it("keeps long lists compact while making every contract and its detail reachable", async () => {
+  it("shows the entire list and keeps every contract detail reachable while filtering", async () => {
     const entries = Array.from({ length: 31 }, (_, index) => ({
       key: String(index), searchText: `Klient ${index + 1}`, amount: index + 1, issueCount: 0, unpaired: false,
       hasA101: index === 30,
       render: () => <StatementContractCard client={`Klient ${index + 1}`} contractNumber={`TEST-${index + 1}`} products="Testovací produkt" badges="K prověření" commission={index + 1}><p>Podrobnosti smlouvy {index + 1}</p></StatementContractCard>,
     }));
     await act(async () => root.render(<StatementContractList items={entries} enableA101Filter showFilters={false} />));
-    expect(container.querySelectorAll("article")).toHaveLength(15);
-    expect(button("Předchozí").disabled).toBe(true);
-    await act(async () => button("Další").click());
-    expect(container.querySelector("article")?.textContent).toContain("TEST-16");
-    await act(async () => button("Další").click());
-    expect(container.querySelectorAll("article")).toHaveLength(1);
-    expect(button("Další").disabled).toBe(true);
-    await act(async () => { container.querySelector("article button")!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    expect(container.querySelectorAll("article")).toHaveLength(31);
+    expect(container.querySelector("nav")).toBeNull();
+    const lastContract = container.querySelectorAll("article")[30];
+    expect(lastContract.textContent).toContain("TEST-31");
+    await act(async () => { lastContract.querySelector("button")!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     expect(container.textContent).toContain("Podrobnosti smlouvy 31");
     await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     expect(container.querySelectorAll("article")).toHaveLength(1);
@@ -152,10 +149,10 @@ describe("statement review navigation", () => {
     expect(container.textContent).toContain("TEST-31");
     await act(async () => button("Zrušit filtry").click());
     expect(container.querySelector("article")?.textContent).toContain("TEST-1");
-    expect(container.querySelectorAll("article")).toHaveLength(15);
+    expect(container.querySelectorAll("article")).toHaveLength(31);
   });
 
-  it("groups badges before pagination and resets the page when combining status and A101 filters", async () => {
+  it("groups the entire list by badge and combines status and A101 filters", async () => {
     const entries = Array.from({ length: 32 }, (_, index) => {
       const review = statementContractReview({ matched: true, unpaired: false, issueCount: 0, comparisons: [{ status: "ok" }],
         hasWarnings: false, premiumChange: index % 2 === 1 ? "increase" : undefined });
@@ -165,12 +162,10 @@ describe("statement review navigation", () => {
     });
     await act(async () => root.render(<StatementContractList items={entries} enableA101Filter />));
     const states = () => Array.from(container.querySelectorAll("article")).map(item => item.getAttribute("data-status"));
-    expect(states()).toEqual(Array(15).fill("increase"));
-    await act(async () => button("Další").click());
-    expect(states()).toEqual(["increase", ...Array(14).fill("ok")]);
+    expect(states()).toEqual([...Array(16).fill("increase"), ...Array(16).fill("ok")]);
+    expect(container.querySelector("nav")).toBeNull();
     await act(async () => button("Vše OK").click());
-    expect(states()).toEqual(Array(15).fill("ok"));
-    expect(button("Předchozí").disabled).toBe(true);
+    expect(states()).toEqual(Array(16).fill("ok"));
     await act(async () => button("Navýšení").click());
     await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     expect(states()).toEqual(["increase"]);

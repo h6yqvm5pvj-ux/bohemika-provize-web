@@ -194,12 +194,6 @@
 .a101Filter { display: inline-flex; align-items: center; gap: 8px; padding: 11px 2px; color: #60697d; font-size: 12px; line-height: 1.5; cursor: pointer; }
 .a101Filter input { width: 15px; height: 15px; accent-color: #73508b; }
 .a101Filter > span { padding: 1px 6px; border-radius: 5px; background: #f0edf5; color: #755b86; font-variant-numeric: tabular-nums; font-size: 11px; }
-.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; color: #62697b; font-size: 11px; }
-.pagination > div { display: flex; align-items: center; gap: 10px; }
-.pagination button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 34px; padding: 6px 9px; border: 1px solid #e2deeb; border-radius: 7px; background: #fff; color: #715383; font: inherit; cursor: pointer; }
-.pagination button:hover:not(:disabled) { background: #f5f1f9; border-color: #c8b3d8; }
-.pagination button:disabled { color: #8e8c9a; background: #f8f9fc; cursor: not-allowed; }
-.pagination button:focus-visible { outline: 2px solid #9975b5; outline-offset: 2px; }
 @container statement-card (max-width: 760px) {
   .cardToggle[data-compact="true"] .identity { gap: 2px; }
   .cardToggle[data-compact="true"] .badges { padding-top: 0; }
