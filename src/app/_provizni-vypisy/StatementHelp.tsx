@@ -68,7 +68,7 @@ function StatementHelpDialog({ dialogId, returnFocusRef, onClose }: { dialogId: 
               <div><dt><Link2Off size={16} aria-hidden="true" />Bez propojení</dt><dd>Smlouvu se nepodařilo jednoznačně najít v systému. Zkontroluj její číslo a zda je už uložená.</dd></div>
             </dl>
             <p><strong>Smlouvy mimo Bohemka.App</strong> sdružují smlouvy bez jednoznačného propojení s uloženou smlouvou. Označení <strong>Detail kontroly</strong> znamená, že smlouva nemá potvrzený výsledek všech kontrol.</p>
-            <p>Storna a provize manažera najdeš níže ve vlastních seznamech s vlastním hledáním. Storno znamená vrácení dříve vyplacené provize.</p>
+            <p>Storna provizí a provize manažera najdeš níže ve vlastních seznamech s vlastním hledáním. Storno provize je vrácení dřívější výplaty, například při opravě její výše. Správná výplata může přijít v pozdějším výpisu. Samotná vratka neznamená ukončení smlouvy.</p>
           </section>
 
           <section className={styles.helpStep}>

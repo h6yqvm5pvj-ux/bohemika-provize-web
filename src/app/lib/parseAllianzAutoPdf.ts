@@ -1,4 +1,5 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
+import { formatClientDisplayName } from "./clientNamePresentation";
 // src/app/lib/parseAllianzAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 
@@ -161,6 +162,9 @@ const toDateInput = (value: string | null | undefined): string | null => {
   const mm = Number(mRaw);
   const y = Number(yRaw);
   if (!d || !mm || !y) return null;
+  const date = new Date(0);
+  date.setUTCFullYear(y, mm - 1, d);
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mm - 1 || date.getUTCDate() !== d) return null;
   return `${y.toString().padStart(4, "0")}-${mm.toString().padStart(2, "0")}-${d
     .toString()
     .padStart(2, "0")}`;
@@ -324,11 +328,16 @@ export const extractAllianzAutoPolicyholderData = (
   )?.[1];
 
   return {
-    clientName,
+    clientName: clientName && clientName === clientName.toLocaleUpperCase("cs-CZ")
+      ? formatClientDisplayName(clientName, { isCompany: !birthNumber && Boolean(companyId) })
+      : clientName,
     personalId: normalizePolicyholderPersonalId(birthNumber ?? companyId),
     clientEmail: normalizePolicyholderEmail(sectionText),
   };
 };
+
+const VEHICLE_SECTION_END_RE = /^(?:rozsah\s+a\s+parametry|sjednany\s+balicek|souhrn\s+pojisteni|pojistnik|zprostredkovatel|podpisy)\b/i;
+const VEHICLE_FIELD_LABEL_RE = /(?:^|\s)(?:SPZ|RZ|Druh|Celkov[aá]|Datum|[ČC][íi]slo\s*TP\/ORV|VIN|[ÚU][čc]el|Zdvihov[yý]|Palivo|V[yý]kon|Ro[čc]n[íi]\s+n[aá]jezd)(?=\s|:|$)/i;
 
 const normalizeVehicleMakeModel = (value: string | null | undefined): string | null => {
   if (!value) return null;
@@ -338,6 +347,7 @@ const normalizeVehicleMakeModel = (value: string | null | undefined): string | n
     .replace(/^[\s:;,\-–—]+|[\s:;,\-–—]+$/g, "")
     .trim();
   if (!cleaned || cleaned.length < 2) return null;
+  if (VEHICLE_SECTION_END_RE.test(stripDiacritics(cleaned))) return null;
   if (!/[A-Za-zÀ-ž0-9]/.test(cleaned)) return null;
   return cleaned;
 };
@@ -351,6 +361,7 @@ const normalizePlate = (value: string | null | undefined): string | null => {
   if (!cleaned) return null;
   const beforeComma = cleaned.split(",")[0]?.trim() ?? "";
   if (!beforeComma) return null;
+  if (/^nesdelena\b/i.test(stripDiacritics(beforeComma))) return "nesdělena";
   const token = beforeComma.match(/[A-Za-z0-9]{3,12}/)?.[0] ?? beforeComma;
   const compact = token.replace(/\s+/g, "").toUpperCase();
   if (compact.length < 3) return null;
@@ -535,6 +546,7 @@ const isVehicleNoiseLine = (line: string): boolean => {
     ascii.includes("druh:") ||
     ascii.includes("ucel pouziti") ||
     ascii.includes("spz:") ||
+    ascii.includes("rz:") ||
     ascii.includes("datum 1. registrace") ||
     ascii.includes("cislo tp/orv") ||
     ascii.includes("vin:") ||
@@ -642,16 +654,16 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
   const startIso = toDateInput(startCandidate);
   if (startIso) result.policyStartDate = startIso;
 
-  const signedCandidate =
-    readNearestValueByLabel(lines, asciiLines, /datum\s+a\s+cas\s+vytvoreni\s+nabidky/i, 3) ??
+  const signedCandidates = [
     normalized.match(
       /Datum\s+a\s+čas\s+vytvořen[íi]\s+nab[íi]dky[^\d]*(\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{4})/i
-    )?.[1] ??
+    )?.[1],
     ascii.match(
       /datum\s+a\s+cas\s+vytvoreni\s+nabidky[^\d]*(\d{1,2}\s*[./]\s*\d{1,2}\s*[./]\s*\d{4})/i
-    )?.[1] ??
-    null;
-  const signedIso = toDateInput(signedCandidate);
+    )?.[1],
+    readNearestValueByLabel(lines, asciiLines, /datum\s+a\s+cas\s+vytvoreni\s+nabidky/i, 3),
+  ];
+  const signedIso = signedCandidates.map(toDateInput).find(date => date !== null);
   if (signedIso) result.contractSignedDate = signedIso;
 
   let amountCandidate: string | null = null;
@@ -714,7 +726,7 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
       null;
     if (inlineMake && !/\bdruh\s*:/i.test(inlineMake)) {
       const trimmedInline = inlineMake
-        .split(/\b(?:SPZ|Druh|Celkov[aá]|Datum|[ČC]íslo\s*TP\/ORV|VIN)\b/i)[0]
+        .split(VEHICLE_FIELD_LABEL_RE)[0]
         ?.trim();
       const normalizedInline = normalizeVehicleMakeModel(trimmedInline);
       if (normalizedInline) {
@@ -726,10 +738,11 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
     for (let step = 1; step <= 8; step++) {
       const candidateLine = lines[idx + step];
       if (!candidateLine) continue;
-      if (isVehicleNoiseLine(candidateLine)) continue;
+      if (VEHICLE_SECTION_END_RE.test(asciiLines[idx + step])) break;
       const trimmedCandidate = candidateLine
-        .split(/\b(?:SPZ|Druh|Celkov[aá]|Datum|[ČC]íslo\s*TP\/ORV|VIN)\b/i)[0]
+        .split(VEHICLE_FIELD_LABEL_RE)[0]
         ?.trim();
+      if (trimmedCandidate && isVehicleNoiseLine(trimmedCandidate)) continue;
       const normalizedCandidate = normalizeVehicleMakeModel(trimmedCandidate);
       if (normalizedCandidate) {
         makeCandidate = normalizedCandidate;
@@ -747,9 +760,9 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
   if (makeCandidate) result.carMake = makeCandidate;
 
   const plateRaw =
-    readNearestValueByLabel(lines, asciiLines, /^spz\s*:/i, 2) ??
-    normalized.match(/SPZ\s*:\s*([^,\n]{1,30}(?:,\s*[^,\n]{1,40})?)/i)?.[1] ??
-    ascii.match(/spz\s*:\s*([^,\n]{1,30}(?:,\s*[^,\n]{1,40})?)/i)?.[1] ??
+    readNearestValueByLabel(lines, asciiLines, /^(?:spz|rz)\s*(?::|$)/i, 2) ??
+    normalized.match(/\b(?:SPZ|RZ)\s*:\s*([^,\n]{1,30}(?:,\s*[^,\n]{1,40})?)/i)?.[1] ??
+    ascii.match(/\b(?:spz|rz)\s*:\s*([^,\n]{1,30}(?:,\s*[^,\n]{1,40})?)/i)?.[1] ??
     null;
   const plate = normalizePlate(plateRaw);
   if (plate) result.carPlate = plate;

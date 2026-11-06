@@ -593,6 +593,49 @@ describe("normal statement import author isolation", () => {
     });
   });
 
+  it.each([
+    { mode: "import", statusCode: "A001" }, { mode: "reprocess", statusCode: "A001" },
+    { mode: "import", statusCode: "S001" }, { mode: "reprocess", statusCode: "S001" },
+  ])("normal $mode preserves manual contract status through payouts and a reversal with code $statusCode", async ({ mode, statusCode }) => {
+    Object.assign(records.get(entryPath)!, {
+      status: "active", stornoDate: null, productKey: "kooperativaAuto", frequencyRaw: "semiannual", position: "poradce7",
+      inputAmount: 7175, calculationInputAmount: 7175, effectiveInputAmount: 7175,
+      contractSignedDate: "2023-02-16", policyStartDate: "2023-02-17",
+      items: [{ title: "Následná provize", code: "B101", amount: 605.57 }],
+    });
+    const before = structuredClone(records.get(entryPath))!;
+    const amounts = [1000, -1000, 605.57];
+    for (const [index, amount] of amounts.entries()) {
+      const isReversal = amount < 0;
+      const cells = isReversal
+        ? [1, contractNumber, "16.02.2023", "Testovací klient", "Z", "KOO_NAMIRU", "C103", statusCode, 7175, "", "60,00%", "7", amount, 0]
+        : [1, contractNumber, "16.02.2023", "17.02.2023", "Testovací klient", "Z", "KOO_NAMIRU", "C103", 7175, "", "60,00%", "7", amount, 0];
+      const html = `<div id="${isReversal ? "storna" : "provize"}"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
+      const header = { statementNumber: `correction-${index}`, statementDate: `28.0${index + 1}.2026`, period: `01.0${index + 1}.2026 - 28.0${index + 1}.2026` };
+      const statementId = `correction-${index}`;
+      records.set(`usersPrivate/${owner}/commissionStatements/${statementId}`, { html, ...header });
+      // Reprocessing the same document is idempotent and keeps earlier statements.
+      for (let attempt = 0; attempt < (mode === "reprocess" ? 2 : 1); attempt++) {
+        const response = await POST(new NextRequest("https://example.test/api/commission-statements", {
+          method: "POST", body: JSON.stringify(mode === "import" ? { html, header } : { action: "reprocess-saved-statement", statementId }),
+        }));
+        expect(response.status).toBe(200);
+        const saved = records.get(entryPath)!;
+        const payouts = saved.commissionPayouts as ContractCommissionPayout[];
+        expect(payouts.map(payout => Number(payout.amount)).sort((a, b) => a - b)).toEqual(amounts.slice(0, index + 1).sort((a, b) => a - b));
+        expect(saved).toMatchObject({ status: "active", stornoDate: null, items: before.items,
+          inputAmount: 7175, calculationInputAmount: 7175, effectiveInputAmount: 7175 });
+        if (index > 0) {
+          expect(payouts).toContainEqual(expect.objectContaining({ amount: -1000, status: "storno" }));
+          expect(saved.commissionStornoSummary).toMatchObject({ totalAmount: -1000, count: 1 });
+        }
+      }
+    }
+    const payouts = records.get(entryPath)!.commissionPayouts as ContractCommissionPayout[];
+    expect(payouts.reduce((sum, payout) => sum + Number(payout.amount), 0)).toBe(605.57);
+    expect(payouts).toContainEqual(expect.objectContaining({ amount: 605.57, status: "paid" }));
+  });
+
   it.each(["import", "reprocess"])("normal %s records actual Kooperativa C payouts without changing a constant premium", async mode => {
     const premium = 7175;
     Object.assign(records.get(entryPath)!, {

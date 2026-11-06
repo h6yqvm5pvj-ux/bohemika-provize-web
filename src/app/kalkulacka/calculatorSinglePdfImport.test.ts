@@ -177,14 +177,137 @@ describe("single PDF import workflow", () => {
     const { options, ui, values } = harness();
     values.autoCarPlate = "PREVIOUS";
     values.autoCarAddonGlass = true;
+    values.clientName = "Předchozí Klient";
+    values.contractNumber = "0090000001";
     mocks.parse.mockResolvedValue(null);
     const pdf = file();
     await importSingleContractPdf(pdf, options);
     expect(values).toMatchObject({ autoCarPlate: "", autoCarAddonGlass: false });
-    expect(values).not.toHaveProperty("clientName");
+    expect(values).toMatchObject({ clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "" });
     expect(ui.setImportedContractPdfFile).toHaveBeenLastCalledWith(pdf);
     expect(ui.setPdfImportError).toHaveBeenLastCalledWith(expect.any(String));
     expect(ui.setPdfImporting).toHaveBeenLastCalledWith(false);
+  });
+
+  it("does not retain a previous client's name when the next CPP PDF contains other fields but no readable policyholder", async () => {
+    const { options, ui, values } = harness();
+    values.clientName = "Předchozí Klient";
+    mocks.parse.mockResolvedValue({ ...parsed, clientName: undefined });
+    await importSingleContractPdf(file(), options);
+    expect(values.clientName).toBe("");
+    expect(values.contractNumber).toBe(parsed.contractNumber);
+    expect(ui.setPdfClientNameLoaded).toHaveBeenLastCalledWith(false);
+    expect(ui.setPdfImportError).toHaveBeenLastCalledWith(expect.stringContaining("pojistníka"));
+  });
+
+  it("fills unreadable identity fields from the statement only for the same identified contract", async () => {
+    const { options, ui, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: "123 4567890", clientName: "Klient z výpisu",
+      contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    mocks.parse.mockResolvedValue({ contractNumber: parsed.contractNumber, amount: 704 });
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ contractNumber: parsed.contractNumber, clientName: "Klient z výpisu",
+      contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02" });
+    expect(ui.setStatementClientNamePrefillActive).toHaveBeenLastCalledWith(true);
+    expect(ui.setPdfClientNameLoaded).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each([
+    { product: "cppAuto", contractNumber: "9999999999" },
+    { product: "cppAuto", contractNumber: "" },
+    { product: "cppAuto", contractNumber: "01234567890" },
+    { product: "csobAuto", contractNumber: parsed.contractNumber },
+  ] as const)("does not reuse statement identity for $product / $contractNumber", async ({ product, contractNumber }) => {
+    const { options, ui, values } = harness();
+    options.statementPrefill = { product, values: {
+      contractNumber, clientName: "Klient jiné smlouvy", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    mocks.parse.mockResolvedValue({ contractNumber: parsed.contractNumber, amount: 704 });
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ contractNumber: parsed.contractNumber, clientName: "", contractSignedDate: "", policyStartDate: "" });
+    expect(ui.setStatementClientNamePrefillActive).toHaveBeenLastCalledWith(false);
+  });
+
+  it.each([null, {}, { clientName: "Neověřené jméno z OCR", amount: 704 }])("preserves statement fields when a scan cannot identify the contract (%s)", async (result) => {
+    const { options, ui, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: parsed.contractNumber, clientName: "Klient z výpisu", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    Object.assign(values, options.statementPrefill.values, { amountText: "1899.5" });
+    mocks.parse.mockResolvedValue(result);
+    const pdf = file();
+    await importSingleContractPdf(pdf, options);
+    expect(values).toMatchObject({ ...options.statementPrefill.values, amountText: "1899.5" });
+    expect(ui.setStatementClientNamePrefillActive).toHaveBeenLastCalledWith(true);
+    expect(ui.setPdfClientNameLoaded).toHaveBeenLastCalledWith(false);
+    expect(ui.setImportedContractPdfFile).toHaveBeenLastCalledWith(pdf);
+    expect(ui.setPdfImportError).toHaveBeenLastCalledWith(expect.any(String));
+  });
+
+  it("keeps readable PDF identity fields ahead of the statement fallback", async () => {
+    const { options, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: parsed.contractNumber, clientName: "Klient z výpisu", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ clientName: parsed.clientName, contractSignedDate: parsed.contractSignedDate, policyStartDate: parsed.policyStartDate });
+  });
+
+  it.each(["failed", "timeout"])("keeps statement fields and the attachment when reading a scan ends with %s", async outcome => {
+    const { options, ui, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: parsed.contractNumber, clientName: "Klient z výpisu", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    Object.assign(values, options.statementPrefill.values, { amountText: "1899.5" });
+    const pdf = file();
+    if (outcome === "timeout") {
+      vi.useFakeTimers();
+      mocks.parse.mockImplementation(() => new Promise(() => {}));
+      const running = importSingleContractPdf(pdf, options);
+      await vi.waitFor(() => expect(mocks.parse).toHaveBeenCalled());
+      await vi.advanceTimersByTimeAsync(15000);
+      await running;
+    } else {
+      mocks.parse.mockRejectedValue(new Error("Synthetic scan read failure"));
+      await importSingleContractPdf(pdf, options);
+    }
+    expect(values).toMatchObject({ ...options.statementPrefill.values, amountText: "1899.5" });
+    expect(ui.setImportedContractPdfFile).toHaveBeenLastCalledWith(pdf);
+    expect(ui.setPdfImportError).toHaveBeenLastCalledWith(expect.any(String));
+    expect(ui.setPdfImportStatus).toHaveBeenLastCalledWith(expect.stringContaining("Údaje z výpisu zůstaly zachované"));
+    expect(ui.setPdfImporting).toHaveBeenLastCalledWith(false);
+  });
+
+  it("keeps the statement product when an unreadable scan was detected as another product", async () => {
+    const { options, ui, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: parsed.contractNumber, clientName: "Klient z výpisu", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    Object.assign(values, options.statementPrefill.values);
+    mocks.detect.mockResolvedValue({ product: "csobAuto", confidence: "high" });
+    mocks.parse.mockResolvedValue(null);
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject(options.statementPrefill.values);
+    expect(ui.setProduct).not.toHaveBeenCalled();
+    expect(ui.setPdfImportStatus).toHaveBeenLastCalledWith(expect.stringContaining("Údaje z výpisu zůstaly zachované"));
+  });
+
+  it("invalidates statement data before importing an identified different policy", async () => {
+    const { options, values } = harness();
+    options.statementPrefill = { product: "cppAuto", values: {
+      contractNumber: "9999999999", clientName: "Klient z výpisu", contractSignedDate: "2026-09-01", policyStartDate: "2026-09-02",
+    } };
+    Object.assign(values, options.statementPrefill.values);
+    options.onStatementPrefillInvalidated = vi.fn(() => { options.statementPrefill = null; });
+    mocks.parse.mockResolvedValue({ contractNumber: parsed.contractNumber, amount: 704 });
+    await importSingleContractPdf(file(), options);
+    expect(options.onStatementPrefillInvalidated).toHaveBeenCalledOnce();
+    expect(values).toMatchObject({ clientName: "", contractNumber: parsed.contractNumber, contractSignedDate: "", policyStartDate: "" });
+    mocks.parse.mockResolvedValue(null);
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ clientName: "", contractNumber: "", contractSignedDate: "", policyStartDate: "" });
   });
 
   it("allows a successful retry after a failed parser and keeps raw errors out of logs", async () => {
@@ -192,7 +315,8 @@ describe("single PDF import workflow", () => {
     mocks.parse.mockRejectedValueOnce(new Error("Sensitive synthetic PDF contents"));
     await importSingleContractPdf(file(), options);
     expect(ui.setPdfImportError).toHaveBeenLastCalledWith(expect.any(String));
-    expect(console.error).toHaveBeenCalledExactlyOnceWith("PDF import selhal");
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledExactlyOnceWith("PDF import selhal", { product: "cppAuto", reason: "read_failed" });
     await importSingleContractPdf(file(), options);
     expect(values.clientName).toBe("Jana Testovací");
     expect(ui.setPdfImportError).toHaveBeenLastCalledWith(null);
@@ -247,6 +371,34 @@ describe("single PDF import workflow", () => {
     expect(ui.setPdfImporting.mock.calls).toEqual([[true], [true], [false]]);
     expect(options.notifyPdfParserFailure).toHaveBeenCalledTimes(1);
     expect(vi.mocked(options.notifyPdfParserFailure).mock.calls[0][0]).toBe(newestFile);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not report a cancelled import as an error or change the form feedback", async () => {
+    const { options, ui } = harness();
+    mocks.parse.mockImplementation(() => new Promise(() => {}));
+    const running = importSingleContractPdf(file(), options);
+    await vi.waitFor(() => expect(mocks.parse).toHaveBeenCalled());
+    options.refs.pdfImportAbortRef.current?.abort();
+    await running;
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(ui.setPdfImportError).toHaveBeenCalledExactlyOnceWith(null);
+    expect(options.notifyPdfParserFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not report cancelled product detection as a failed import", async () => {
+    const { options, ui } = harness();
+    mocks.detect.mockImplementation(() => new Promise(() => {}));
+    const running = importSingleContractPdf(file(), options);
+    await vi.waitFor(() => expect(mocks.detect).toHaveBeenCalled());
+    options.refs.pdfImportAbortRef.current?.abort();
+    await running;
+    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(ui.setPdfImportError).toHaveBeenCalledExactlyOnceWith(null);
   });
 
   it("ignores late OCR progress after the import completes and marks OCR in its report", async () => {

@@ -381,6 +381,12 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     category: "property",
   }),
   defaultEntry({
+    code: "KOO_LUMBUS",
+    productKey: "koopcestovko",
+    label: "Kooperativa Cestovní pojištění",
+    category: "travel",
+  }),
+  defaultEntry({
     code: "CPP_CS6",
     productKey: "cppcestovko",
     label: "ČPP Cestovní pojištění",

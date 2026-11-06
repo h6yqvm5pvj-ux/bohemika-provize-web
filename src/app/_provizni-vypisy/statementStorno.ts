@@ -18,6 +18,7 @@ import {
 import { detectFullAutoCommissionStorno } from "./stornoInference";
 import type {
   ContractMatchState,
+  ContractStatusRule,
   MatchedSystemContract,
   OtherPayment,
   ParsedStatement,
@@ -35,9 +36,19 @@ export const suggestedStornoDateForStatement = (
   parsePeriodEndDate(header.period) ??
   new Date();
 
-export const stornoSystemUncertainty = (match: ContractMatchState | null): boolean => {
+/** A reversal is financial data; only an explicit contract status reports termination. */
+export const statementReportsContractTermination = (
+  rows: ReadonlyArray<Pick<StornoCommissionRow, "statusCode">>,
+  rules: readonly ContractStatusRule[]
+): boolean => {
+  const categories = new Map(rules.map(rule => [rule.code.trim().toUpperCase(), rule.category]));
+  const statuses = rows.map(row => categories.get(row.statusCode.trim().toUpperCase()));
+  return statuses.includes("storno") && statuses.every(status => status === "storno");
+};
+
+export const stornoSystemUncertainty = (match: ContractMatchState | null, terminationReported = false): boolean => {
   const contract = matchedSystemContract(match);
-  return isUnpairedContractMatch(match) || Boolean(contract && !systemContractIsStorno(contract));
+  return isUnpairedContractMatch(match) || Boolean(terminationReported && contract && !systemContractIsStorno(contract));
 };
 
 export const fullAutoStornoInferenceForGroup = ({
@@ -54,6 +65,7 @@ export const fullAutoStornoInferenceForGroup = ({
   currentUserEmail?: string | null;
 }): StornoStatementInference | null => {
   if (!systemContract || group.rows.length === 0) return null;
+  if (!statementReportsContractTermination(group.rows, statement.contractStatusRules)) return null;
   const statementHasAutoProduct = group.rows.some(
     (row) => resolveStatementProduct(row.product).category === "auto"
   );

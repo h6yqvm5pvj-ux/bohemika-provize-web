@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import {
   Car,
   HandCoins,
   HeartPulse,
   House,
+  Link2Off,
   Plane,
   ReceiptText,
   UsersRound,
@@ -18,7 +19,9 @@ import { resolveStatementProduct } from "./statementParsing";
 import type {
   LifeSplitContractPreview,
   OtherProductContractPreview,
+  StatementProductCategory,
 } from "./statementTypes";
+import styles from "./statementWorkspace.module.css";
 
 export type StatementProductSectionKind =
   | "life"
@@ -40,6 +43,79 @@ const SECTION_ICONS = {
   investment: HandCoins,
   other: ReceiptText,
 };
+
+type UnpairedContractListItem = ComponentProps<typeof StatementContractList>["items"][number] & {
+  category: StatementProductCategory | "other";
+};
+
+const UNPAIRED_PRODUCT_SECTIONS = [
+  { kind: "life", title: "Životní pojištění" },
+  { kind: "auto", title: "Auta" },
+  { kind: "property", title: "Majetek a odpovědnost" },
+  { kind: "foreigners", title: "Cizinci" },
+  { kind: "travel", title: "Cestovní pojištění" },
+  { kind: "investment", title: "Investice" },
+  { kind: "other", title: "Ostatní produkty" },
+] as const;
+
+function UnpairedProductSection({ title, kind, items, showFilters }: {
+  title: string;
+  kind: typeof UNPAIRED_PRODUCT_SECTIONS[number]["kind"];
+  items: UnpairedContractListItem[];
+  showFilters: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
+
+  return (
+    <StatementSection
+      title={title}
+      icon={SECTION_ICONS[kind]}
+      tone={kind === "life" || kind === "auto" || kind === "property" || kind === "travel" ? kind : "neutral"}
+      count={items.length}
+      amount={items.reduce((sum, item) => sum + item.amount, 0)}
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+    >
+      <StatementContractList items={items} showFilters={showFilters} enableA101Filter />
+    </StatementSection>
+  );
+}
+
+export function UnpairedContractsSectionPanel({ items: allItems }: { items: UnpairedContractListItem[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const { items, inBrowser } = useStatementBrowserItems(allItems);
+  if (items.length === 0) return null;
+
+  return (
+    <StatementSection
+      title="Smlouvy mimo Bohemka.App"
+      icon={Link2Off}
+      tone="unpaired"
+      count={items.length}
+      amount={items.reduce((sum, item) => sum + item.amount, 0)}
+      description="Zkontroluj číslo smlouvy a zda je uložená v systému."
+      badge="Nelze porovnat"
+      badgeTone="info"
+      expanded={expanded}
+      onToggle={() => setExpanded(value => !value)}
+    >
+      <p className={styles.sectionHint}>Tyto smlouvy jsme v systému jednoznačně nenašli. Otevři řádek smlouvy a zkontroluj její údaje.</p>
+      {UNPAIRED_PRODUCT_SECTIONS.map(({ kind, title }) => (
+        <UnpairedProductSection
+          key={kind}
+          title={title}
+          kind={kind}
+          items={items.filter(item => {
+            const category = item.category === "business" ? "property" : item.category;
+            return category === kind || (kind === "other" && !UNPAIRED_PRODUCT_SECTIONS.some(section => section.kind === category));
+          })}
+          showFilters={!inBrowser}
+        />
+      ))}
+    </StatementSection>
+  );
+}
 
 export function OtherProductsSectionPanel({
   title = "Ostatní smlouvy",

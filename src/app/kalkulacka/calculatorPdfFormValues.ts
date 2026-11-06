@@ -92,6 +92,7 @@ export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormVal
 
 export function pdfImportResetValues(importProduct: Product): Partial<CalculatorPdfFormValues> {
   if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, premiumIndexationEnabled: null, policyTermEndDate: "", policyEndDate: "" };
+  if (importProduct === "cppAuto") return { ...createEmptyAutoPdfFormValues(), clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "" };
   if (["cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"].includes(importProduct)) return createEmptyAutoPdfFormValues();
   if (["domex", "domexneuron", "maxdomov"].includes(importProduct)) return createEmptyPropertyPdfFormValues();
   if (importProduct === "neon") return { neonPdfDetailFields: createEmptyNeonPdfDetailFields() };
@@ -102,6 +103,14 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
   const values: Partial<CalculatorPdfFormValues> = {};
   let applied = 0;
   values.pensionTargetAge = importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
+  if (importProduct === "cppAuto") {
+    // A missing policyholder/identifier/date belongs to the current PDF; it
+    // cannot inherit the previous contract's core fields in a reused form.
+    if (!parsed.clientName) values.clientName = "";
+    if (!parsed.contractNumber) values.contractNumber = "";
+    if (!parsed.policyStartDate) values.policyStartDate = "";
+    if (!parsed.contractSignedDate) values.contractSignedDate = "";
+  }
   if (["conseqzenit", "cppPPRbez", "cppPPRs", "domexneuron"].includes(importProduct)) {
     if (!parsed.contractNumber) values.contractNumber = "";
     if (!parsed.clientName) values.clientName = "";

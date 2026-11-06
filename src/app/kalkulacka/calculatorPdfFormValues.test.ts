@@ -57,10 +57,17 @@ describe("single PDF form mapping", () => {
   });
 
   it("leaves absent optional fields untouched and distinguishes an explicit empty text field", () => {
-    expect(mapSinglePdfFormValues("cppAuto", {}).values).not.toHaveProperty("contractNumber");
+    expect(mapSinglePdfFormValues("slaviaauto", {}).values).not.toHaveProperty("contractNumber");
     expect(mapSinglePdfFormValues("cppAuto", {}).values).not.toHaveProperty("autoCarMake");
     expect(mapSinglePdfFormValues("cppAuto", { carMake: "  " }).values.autoCarMake).toBe("");
     expect(mapSinglePdfFormValues("cppAuto", { policyEndDate: "" }).values.policyEndDate).toBe("");
+  });
+
+  it("never keeps a previous CPP policyholder, identifier or date when the next PDF cannot prove it", () => {
+    const previous = { clientName: "Předchozí Klient", contractNumber: "0012345678", policyStartDate: "2026-10-01", contractSignedDate: "2026-09-30" };
+    expect({ ...previous, ...mapSinglePdfFormValues("cppAuto", { amount: 4200 }).values }).toMatchObject({
+      clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "", amountText: "4200",
+    });
   });
 
   it.each(["conseqzenit", "cppPPRbez", "cppPPRs"] as const)("clears missing required identity and premium fields for %s", (product) => {
@@ -229,7 +236,7 @@ describe("batch review and form resets", () => {
     const previous = { autoCarMake: "Old car", autoCarAddonGlass: true, autoCarAddonGlassLimit: 5000 };
     expect({ ...previous, ...pdfImportResetValues("cppAuto") }).toMatchObject({ autoCarMake: "", autoCarAddonGlass: false, autoCarAddonGlassLimit: null });
     expect(pdfImportResetValues("domex")).toEqual(createEmptyPropertyPdfFormValues());
-    expect(pdfImportResetValues("cppAuto")).toEqual(createEmptyAutoPdfFormValues());
+    expect(pdfImportResetValues("cppAuto")).toEqual({ ...createEmptyAutoPdfFormValues(), clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "" });
     const first = pdfImportResetValues("neon");
     const second = pdfImportResetValues("neon");
     expect(first.neonPdfDetailFields).not.toBe(second.neonPdfDetailFields);

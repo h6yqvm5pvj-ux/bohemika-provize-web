@@ -24,7 +24,6 @@ import {
   HeartPulse,
   House,
   ListChecks,
-  Link2Off,
   Loader2,
   Plane,
   Printer,
@@ -118,7 +117,7 @@ import workspaceStyles from "./statementWorkspace.module.css";
 import { StatementSection } from "./StatementSection";
 import { StatementContractCard } from "./StatementContractCard";
 import { StatementContractList } from "./StatementContractList";
-import { StatementContractBrowser, StatementWorkflow, useStatementBrowserItems, useStatementBrowserReview } from "./StatementContractBrowser";
+import { StatementContractBrowser, StatementWorkflow, useStatementBrowserReview } from "./StatementContractBrowser";
 import { StatementHelp } from "./StatementHelp";
 import { statementContractIsVerified, statementContractReview } from "./statementContractReview";
 import detailStyles from "./statementContractDetail.module.css";
@@ -176,7 +175,7 @@ import {
   type SystemMatchPresentation,
 } from "./statementSystemMatchUi";
 
-import { suggestedStornoDateForStatement } from "./statementStorno";
+import { groupStornoRowsByContract, statementReportsContractTermination, suggestedStornoDateForStatement } from "./statementStorno";
 import {
   contractMatchForNumber,
   dedupeEquivalentSystemContracts,
@@ -322,6 +321,7 @@ import type {
 
 const LifeSplitProductsSectionPanel = dynamic(() => import("./statementProductSections").then((module) => module.LifeSplitProductsSectionPanel));
 const OtherProductsSectionPanel = dynamic(() => import("./statementProductSections").then((module) => module.OtherProductsSectionPanel));
+const UnpairedContractsSectionPanel = dynamic(() => import("./statementProductSections").then((module) => module.UnpairedContractsSectionPanel));
 const LifeSplitCommissionTable = dynamic(() => import("./statementContractTables").then((module) => module.LifeSplitCommissionTable));
 const OtherProductCommissionTable = dynamic(() => import("./statementContractTables").then((module) => module.OtherProductCommissionTable));
 const StornoContractsSectionPanel = dynamic(() => import("./statementStornoPanels").then((module) => module.StornoContractsSectionPanel));
@@ -4499,9 +4499,9 @@ const buildStatementDiscrepancyIssues = (
       contractNumber: contractNumber || null,
       client,
       product,
-      title: "Storno z výpisu není označené v systému",
+      title: "Výpis uvádí ukončení smlouvy; ověř stav v systému",
       details: [
-        `Výpis: storno`,
+        "Výpis: ukončená smlouva",
         `Systém: ${systemContractStatusLabel(systemContract)}`,
       ],
       statementAmount,
@@ -4942,17 +4942,6 @@ const buildStatementDiscrepancyIssues = (
           currentUserEmail,
         })
       );
-      if (row.isStorno) {
-        const productMeta = resolveStatementProduct(row.product);
-        addStornoSystemStatusIssue({
-          contractNumber: row.contractNumber,
-          client: row.client || systemContract?.clientName || "—",
-          product: `${productMeta.label} · ${productMeta.rawCode}`,
-          match,
-          statementAmount: row.commission,
-          scope: "team",
-        });
-      }
     }
   }
 
@@ -4973,30 +4962,19 @@ const buildStatementDiscrepancyIssues = (
     });
   });
 
-  for (const row of statement.stornoRows) {
-    const match = contractMatchForNumber(matchesByContractNumber, row.contractNumber);
+  for (const group of groupStornoRowsByContract(statement.stornoRows)) {
+    if (!statementReportsContractTermination(group.rows, statement.contractStatusRules)) continue;
+    const row = group.rows[0];
+    const match = contractMatchForNumber(matchesByContractNumber, group.contractNumber);
     const product = `${resolveStatementProduct(row.product).label} · ${row.product}`;
     addStornoSystemStatusIssue({
       contractNumber: row.contractNumber,
       client: row.client || "—",
       product,
       match,
-      statementAmount: row.commission,
+      statementAmount: group.totalCommission,
     });
   }
-
-  statement.otherPayments
-    .filter((payment) => payment.isStorno)
-    .forEach((payment) => {
-      const match = contractMatchForNumber(matchesByContractNumber, payment.contractNumber);
-      addStornoSystemStatusIssue({
-        contractNumber: payment.contractNumber,
-        client: matchedSystemContract(match)?.clientName || "—",
-        product: "Ostatní platby",
-        match,
-        statementAmount: payment.amount,
-      });
-    });
 
   const severityOrder: Record<StatementDiscrepancySeverity, number> = {
     error: 0,
@@ -6019,10 +5997,10 @@ function UnpairedContractsSection({
   correctionContext?: StatementCorrectionContext;
   markingControls?: MarkingControls;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const { items, inBrowser } = useStatementBrowserItems([
+  const items = [
     ...lifeContracts.map(contract => ({
       ...statementUnpairedContractFields(contract),
+      category: "life" as const,
       amount: lifeSplitContractTotal(contract),
       issueCount: lifeSplitContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
       render: () => <LifeSplitContractCard
@@ -6038,6 +6016,7 @@ function UnpairedContractsSection({
     })),
     ...otherContracts.map(contract => ({
       ...statementUnpairedContractFields(contract),
+      category: otherProductContractPrimaryCategory(contract),
       amount: otherProductContractTotal(contract),
       issueCount: otherProductContractUncertaintyCount(contract, matchesByContractNumber, statementPeriod, statementKey, correctionContext),
       render: () => <OtherProductContractCard
@@ -6051,26 +6030,9 @@ function UnpairedContractsSection({
         markingControls={markingControls}
       />,
     })),
-  ]);
-  if (items.length === 0) return null;
+  ];
 
-  return (
-    <StatementSection
-      title="Smlouvy mimo Bohemka.App"
-      icon={Link2Off}
-      tone="unpaired"
-      count={items.length}
-      amount={items.reduce((sum, item) => sum + item.amount, 0)}
-      description="Zkontroluj číslo smlouvy a zda je uložená v systému."
-      badge="Nelze porovnat"
-      badgeTone="info"
-      expanded={expanded}
-      onToggle={() => setExpanded(value => !value)}
-    >
-      <p className={workspaceStyles.sectionHint}>Tyto smlouvy jsme v systému jednoznačně nenašli. Otevři řádek smlouvy a zkontroluj její údaje.</p>
-      <StatementContractList items={items} showFilters={!inBrowser} enableA101Filter />
-    </StatementSection>
-  );
+  return <UnpairedContractsSectionPanel items={items} />;
 }
 
 function ManagerCommissionRowCard({
@@ -7229,7 +7191,7 @@ function StatementPreview({
         </div>
       )}
 
-      {(statement.stornoRows.length > 0 || statement.otherPayments.some(payment => payment.isStorno) || statement.managerCommissions.length > 0) && <div className={workspaceStyles.additionalHeading}><h3>Další položky výpisu</h3><p>Storna a týmové provize mají vlastní seznamy a hledání.</p></div>}
+      {(statement.stornoRows.length > 0 || statement.otherPayments.some(payment => payment.isStorno) || statement.managerCommissions.length > 0) && <div className={workspaceStyles.additionalHeading}><h3>Další položky výpisu</h3><p>Storna provizí a týmové provize mají vlastní seznamy a hledání.</p></div>}
       <StornoContractsSectionPanel
         statement={statement}
         statementId={selectedStatementId}
@@ -7418,9 +7380,8 @@ export default function CommissionStatementsPage() {
   }, [user]);
 
   const openStornoActionModal = (target: StornoStatementActionTarget) => {
-    const suggestedDate = target.inference?.suggestedDate ?? target.suggestedDate;
     setStornoActionTarget(target);
-    setStornoActionDateInput(toDateInputValue(suggestedDate));
+    setStornoActionDateInput("");
     setStornoActionError(null);
   };
 
@@ -7626,7 +7587,7 @@ export default function CommissionStatementsPage() {
 
     const parsedDate = stornoActionDateInput ? new Date(stornoActionDateInput) : null;
     if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
-      setStornoActionError("Zadej platné datum storna.");
+      setStornoActionError("Zadej ověřené datum ukončení smlouvy.");
       return;
     }
 

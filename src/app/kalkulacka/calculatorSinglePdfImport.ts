@@ -1,6 +1,6 @@
 import type { Product } from "../types/domain";
 import type { RefreshOriginalLookupState } from "./calculatorApi";
-import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
+import type { CalculatorPdfFormSetters, CalculatorPdfFormValues } from "./calculatorPdfFormTypes";
 import type { PrepareEndorsementOptions } from "./useEndorsementPreparation";
 import { productLabel, supportsOriginalContractReplacement } from "./calculatorHelpers";
 import {
@@ -15,11 +15,18 @@ import { PDF_PRODUCT_DETECTION_TIMEOUT_MS, PDF_DATA_IMPORT_TIMEOUT_MS, isPdfImpo
 type CurrentValue<T> = { current: T };
 type PdfParserReportCounts = { pending: number; sent: number; failed: number };
 
+export type StatementContractPdfPrefill = {
+  product: Product;
+  values: Pick<CalculatorPdfFormValues, "contractNumber" | "clientName" | "contractSignedDate" | "policyStartDate">;
+};
+
 type SinglePdfImportOptions = {
   product: Product;
   hasSelectedProduct: boolean;
   isInheritedContractMode: boolean;
   pdfFormSetters: CalculatorPdfFormSetters;
+  statementPrefill?: StatementContractPdfPrefill | null;
+  onStatementPrefillInvalidated?: () => void;
   refs: {
     pdfImportAbortRef: CurrentValue<AbortController | null>;
     pdfImportRunIdRef: CurrentValue<number>;
@@ -99,6 +106,8 @@ export async function importSingleContractPdf(file: File | null, options: Single
   };
 
   if (!file) return;
+  const statementPrefill = options.statementPrefill?.values.contractNumber.trim()
+    ? options.statementPrefill : null;
   pdfImportAbortRef.current?.abort();
   const importController = new AbortController();
   pdfImportAbortRef.current = importController;
@@ -160,9 +169,11 @@ export async function importSingleContractPdf(file: File | null, options: Single
       }
       if (detectedProduct !== product) {
         importProduct = detectedProduct;
-        setProduct(detectedProduct);
-        setHasSelectedProduct(true);
-        setProductPickerSectionForProduct(detectedProduct);
+        if (!statementPrefill) {
+          setProduct(detectedProduct);
+          setHasSelectedProduct(true);
+          setProductPickerSectionForProduct(detectedProduct);
+        }
         setPdfImportStatus(`Rozpoznán produkt: ${productLabel(detectedProduct)}. Načítám data…`);
       } else {
         importProduct = detectedProduct;
@@ -178,8 +189,8 @@ export async function importSingleContractPdf(file: File | null, options: Single
       );
     }
   } catch (detectErr) {
-    console.warn("Auto-detekce produktu z PDF selhala");
     if (!isCurrentPdfImport()) return;
+    console.warn("Auto-detekce produktu z PDF selhala");
     if (importProduct) {
       setPdfImportStatus(
         isPdfImportTimeoutError(detectErr)
@@ -203,7 +214,21 @@ export async function importSingleContractPdf(file: File | null, options: Single
     }
     return;
   }
-  applyCalculatorPdfFormValues(pdfImportResetValues(importProduct), pdfFormSetters);
+  let preserveStatementFields = Boolean(statementPrefill);
+  const clearStatementFields = () => {
+    preserveStatementFields = false;
+    options.onStatementPrefillInvalidated?.();
+    applyCalculatorPdfFormValues({ clientName: "", contractNumber: "", contractSignedDate: "", policyStartDate: "", amountText: "" }, pdfFormSetters);
+    setStatementClientNamePrefillActive(false);
+  };
+  const resetValues = pdfImportResetValues(importProduct);
+  if (preserveStatementFields && statementPrefill) {
+    // A scan may yield no readable fields at all. Keep the selected statement
+    // contract while parsing, including any corrections already made in the form.
+    for (const field of ["clientName", "contractNumber", "contractSignedDate", "policyStartDate"] as const) delete resetValues[field];
+    setStatementClientNamePrefillActive(Boolean(statementPrefill.values.clientName));
+  }
+  applyCalculatorPdfFormValues(resetValues, pdfFormSetters);
   try {
     if (!hasAutomatedPdfImport(importProduct)) {
       setImportedContractPdfFile(file);
@@ -248,15 +273,44 @@ export async function importSingleContractPdf(file: File | null, options: Single
     if (!parsed) {
       setImportedContractPdfFile(file);
       setPdfImportStatus(
-        "PDF se při uložení přiloží k detailu záznamu, údaje prosím doplň ručně."
+        preserveStatementFields
+          ? "Údaje z výpisu zůstaly zachované. PDF se při uložení přiloží k detailu smlouvy."
+          : "PDF se při uložení přiloží k detailu záznamu, údaje prosím doplň ručně."
       );
       setPdfImportError(
         unreadablePdfImportMessage({ product: importProduct, productDetected })
       );
       return;
     }
+    if (preserveStatementFields && !parsed.contractNumber?.trim()) {
+      // Partial OCR without a contract number cannot safely replace the known
+      // statement identity or mix unverified PDF fields into that contract.
+      setPdfImportStatus("Údaje z výpisu zůstaly zachované. PDF se při uložení přiloží k detailu smlouvy.");
+      setPdfImportError("Číslo smlouvy v PDF se nepodařilo přečíst. Zkontroluj, že příloha patří k této smlouvě.");
+      notifyPdfParserFailure(file, importProduct, parsed, ocrActive, importController.signal, isCurrentPdfImport);
+      return;
+    }
     const importIssueMessage = buildPdfImportIssueMessage({ product: importProduct, parsed });
     const mapped = mapSinglePdfFormValues(importProduct, parsed);
+    if (statementPrefill && importProduct !== product) {
+      setProduct(importProduct);
+      setHasSelectedProduct(true);
+      setProductPickerSectionForProduct(importProduct);
+    }
+    // Only a PDF identified as the same contract can supplement statement fields.
+    const sameStatementContract = statementPrefill?.product === importProduct &&
+      Boolean(statementPrefill.values.contractNumber.trim()) && Boolean(parsed.contractNumber?.trim()) &&
+      statementPrefill.values.contractNumber.replace(/\s+/g, "") === parsed.contractNumber?.replace(/\s+/g, "");
+    if (preserveStatementFields && !sameStatementContract) clearStatementFields();
+    if (sameStatementContract) {
+      for (const field of ["clientName", "contractSignedDate", "policyStartDate"] as const) {
+        if (!parsed[field]?.trim() && statementPrefill.values[field]) mapped.values[field] = statementPrefill.values[field];
+      }
+      if (!parsed.clientName?.trim() && statementPrefill.values.clientName) {
+        setStatementClientNamePrefillActive(true);
+        setClientSuggestionsOpen(true);
+      }
+    }
     applyCalculatorPdfFormValues(mapped.values, pdfFormSetters);
     let applied = mapped.applied;
     const parsedIsEndorsement =
@@ -365,9 +419,9 @@ export async function importSingleContractPdf(file: File | null, options: Single
     setPdfImportError(importIssueMessage);
     notifyPdfParserFailure(file, importProduct, parsed, ocrActive, importController.signal, isCurrentPdfImport);
   } catch (err) {
-    console.error("PDF import selhal");
     if (!isCurrentPdfImport()) return;
     const importTimedOut = isPdfImportTimeoutError(err);
+    console.warn("PDF import selhal", { product: importProduct, reason: importTimedOut ? "timeout" : "read_failed" });
     allowPdfImportProgress = false;
     if (!importTimedOut && importProduct !== "maxcizinkomplex") {
       try {
@@ -396,7 +450,9 @@ export async function importSingleContractPdf(file: File | null, options: Single
           : "Produkt z PDF se nepodařilo rozpoznat. Vyber produkt ručně."
     );
     setPdfImportStatus(
-      importTimedOut
+      preserveStatementFields
+        ? "Údaje z výpisu zůstaly zachované. PDF zůstává připravené jako příloha; zkontroluj jeho obsah."
+        : importTimedOut
         ? "PDF se při uložení přiloží k detailu smlouvy. Údaje doplň ručně a můžeš pokračovat bez čekání na parser."
         : null
     );

@@ -123,7 +123,7 @@ import {
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
 import { PDF_PRODUCT_DETECTION_TIMEOUT_MS, PDF_DATA_IMPORT_TIMEOUT_MS, withPdfImportTimeout } from "./pdfImportOperation";
-import { importSingleContractPdf } from "./calculatorSinglePdfImport";
+import { importSingleContractPdf, type StatementContractPdfPrefill } from "./calculatorSinglePdfImport";
 import { useContractReview } from "./useContractReview";
 import { buildContractReviewWarnings } from "./contractReview";
 import { CalculatorContractReviewModal } from "./CalculatorContractReviewModal";
@@ -716,6 +716,7 @@ export default function CalculatorPage() {
     return () => controller.abort();
   }, [user?.uid]);
   const statementPrefillAppliedRef = useRef(false);
+  const statementContractPrefillRef = useRef<StatementContractPdfPrefill | null>(null);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
   const [statementCppA101QueueEligible, setStatementCppA101QueueEligible] = useState(false);
@@ -777,6 +778,7 @@ export default function CalculatorPage() {
       isStatementPrefill && params.get("cppA101QueueEligible") === "1"
     );
     if (!isStatementPrefill) {
+      statementContractPrefillRef.current = null;
       setStatementPremiumSource(null);
       return;
     }
@@ -808,6 +810,15 @@ export default function CalculatorPage() {
     const sourceStatementChronologyParam = sourceStatementChronologyRaw
       ? Number(sourceStatementChronologyRaw)
       : null;
+    statementContractPrefillRef.current = {
+      product: nextProduct,
+      values: {
+        contractNumber: contractNumberParam,
+        clientName: clientNameParam,
+        contractSignedDate: isIsoDay(contractSignedDateParam) ? contractSignedDateParam : "",
+        policyStartDate: isIsoDay(policyStartDateParam) ? policyStartDateParam : "",
+      },
+    };
 
     setProduct(nextProduct);
     setHasSelectedProduct(true);
@@ -2565,32 +2576,42 @@ export default function CalculatorPage() {
     });
   };
 
-  const handlePdfImport = (file: File | null) => importSingleContractPdf(file, {
-    product, hasSelectedProduct, isInheritedContractMode, pdfFormSetters,
-    confirmDomexNeuron,
-    refs: { pdfImportAbortRef, pdfImportRunIdRef, pdfParserReportCounts, fileInputRef },
-    ui: {
-      setPdfParserReportStatus,
-      setPdfImporting,
-      setPdfImportError,
-      setPdfImportStatus,
-      setImportedContractPdfFile,
-      setStatementClientNamePrefillActive,
-      setPdfClientNameLoaded,
-      setProduct,
-      setHasSelectedProduct,
-      setProductPickerSectionForProduct,
-      setClientSuggestionsOpen,
-      setRefreshOriginalOpen,
-      setRefreshOriginalContractNumber,
-      setRefreshOriginalMissingInSystem,
-      setRefreshOriginalPdfLookupNumber,
-      setRefreshOriginalLookup,
-      setEndorsementWorkflowActive,
-    },
-    handlePrepareEndorsement,
-    notifyPdfParserFailure,
-  });
+  const handlePdfImport = (file: File | null) => {
+    const statementPrefill = statementPremiumSource ? statementContractPrefillRef.current : null;
+    return importSingleContractPdf(file, {
+      product, hasSelectedProduct, isInheritedContractMode, pdfFormSetters,
+      statementPrefill: statementPrefill && statementPrefill.values.contractNumber.replace(/\s+/g, "") === contractNumber.replace(/\s+/g, "")
+        ? { product: statementPrefill.product, values: { clientName, contractNumber, contractSignedDate, policyStartDate } }
+        : null,
+      onStatementPrefillInvalidated: () => {
+        statementContractPrefillRef.current = null;
+        setStatementPremiumSource(null);
+      },
+      confirmDomexNeuron,
+      refs: { pdfImportAbortRef, pdfImportRunIdRef, pdfParserReportCounts, fileInputRef },
+      ui: {
+        setPdfParserReportStatus,
+        setPdfImporting,
+        setPdfImportError,
+        setPdfImportStatus,
+        setImportedContractPdfFile,
+        setStatementClientNamePrefillActive,
+        setPdfClientNameLoaded,
+        setProduct,
+        setHasSelectedProduct,
+        setProductPickerSectionForProduct,
+        setClientSuggestionsOpen,
+        setRefreshOriginalOpen,
+        setRefreshOriginalContractNumber,
+        setRefreshOriginalMissingInSystem,
+        setRefreshOriginalPdfLookupNumber,
+        setRefreshOriginalLookup,
+        setEndorsementWorkflowActive,
+      },
+      handlePrepareEndorsement,
+      notifyPdfParserFailure,
+    });
+  };
 
   const handlePdfFiles = (files: File[]) => {
     if (files.length === 0 || saving || pdfImporting || autoBulkImporting) return;
@@ -3798,6 +3819,8 @@ export default function CalculatorPage() {
   }, [product]);
 
   const resetContractFormAfterSave = () => {
+    statementContractPrefillRef.current = null;
+    setStatementPremiumSource(null);
     setAmountText("");
     setRenovationOriginalPremiumText("");
     setRenovationIncreaseText("");

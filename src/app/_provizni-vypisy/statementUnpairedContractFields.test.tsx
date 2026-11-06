@@ -3,9 +3,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StatementContractBrowser, useStatementBrowserItems } from "./StatementContractBrowser";
-import { StatementContractList } from "./StatementContractList";
-import { classifyLifeSplitCommissionCode } from "./statementParsing";
+import { StatementContractBrowser } from "./StatementContractBrowser";
+import { classifyLifeSplitCommissionCode, resolveStatementProduct } from "./statementParsing";
+import { UnpairedContractsSectionPanel } from "./statementProductSections";
 import { statementUnpairedContractFields } from "./statementUnpairedContractFields";
 import type { CommissionRow, LifeSplitContractPreview, OtherProductContractPreview } from "./statementTypes";
 
@@ -26,14 +26,10 @@ const other = (contractNumber: string, type: string, product = "CPP_1C_II", comm
 });
 const listItems = (contracts: Array<LifeSplitContractPreview | OtherProductContractPreview>) => contracts.map(contract => ({
   ...statementUnpairedContractFields(contract),
+  category: "productCode" in contract ? "life" as const : resolveStatementProduct(contract.rows[0].product).category,
   amount: contract.rows.reduce((sum, item) => sum + item.commission, 0), issueCount: 0,
   render: () => <article data-contract={contract.contractNumber}>{contract.contractNumber}</article>,
 }));
-
-function UnpairedList({ items }: { items: ReturnType<typeof listItems> }) {
-  const { items: visible, inBrowser } = useStatementBrowserItems(items);
-  return <StatementContractList items={visible} enableA101Filter showFilters={!inBrowser} />;
-}
 
 describe("A101 filtering of unpaired statement contracts", () => {
   let root: Root;
@@ -86,7 +82,50 @@ describe("A101 filtering of unpaired statement contracts", () => {
     expect(contract).toEqual(before);
   });
 
-  it("includes split life A101 beyond the current page together with other unpaired A101 contracts", async () => {
+  it("groups every unpaired contract once in the requested order and preserves counts and totals", async () => {
+    const contracts = [
+      other("AUTO", "A101", "CPP_ACPIII", 200),
+      other("TRAVEL", "A101", "CPP_CS6", 600),
+      life("LIFE", "B101", 100),
+      other("INVESTMENT", "A201", "INVESTIKA", 700),
+      other("PROPERTY", "A101", "CPP_DOMX", 300),
+      other("FOREIGNERS", "A101", "MAX_CIZIN", 500),
+      other("BUSINESS", "A101", "CPP_SIMPLE", 400),
+      other("UNKNOWN", "A101", "TEST_UNKNOWN", 800),
+      other("OTHER-LIFE", "A101", "KOO_PRANI", 50),
+    ];
+    const items = listItems(contracts);
+    items.push({ ...listItems([other("PENSION", "A101", "TEST_PENSION", 900)])[0], category: "pension" });
+    await act(async () => root.render(<StatementContractBrowser items={items}><UnpairedContractsSectionPanel items={items} /></StatementContractBrowser>));
+    const panel = container.querySelector('section[aria-label="Smlouvy mimo Bohemka.App"]')!;
+    const header = () => panel.querySelector(":scope > button")!.textContent!.replaceAll("\u00a0", " ");
+    expect(header()).toContain("10 smluv");
+    expect(header()).toContain("4 550,00 Kč");
+    await act(async () => button("Smlouvy mimo Bohemka.App").click());
+    const sections = [...panel.querySelectorAll("section[aria-label]")];
+    expect(sections.map(section => section.getAttribute("aria-label"))).toEqual([
+      "Životní pojištění", "Auta", "Majetek a odpovědnost", "Cizinci", "Cestovní pojištění", "Investice", "Ostatní produkty",
+    ]);
+    expect(sections[0].textContent).toContain("2 smlouvy");
+    expect(sections[0].textContent).toContain("150,00");
+    expect(sections[2].textContent).toContain("2 smlouvy");
+    expect(sections[2].textContent).toContain("700,00");
+    expect(visibleContracts()).toEqual([]);
+    for (const section of sections) {
+      await act(async () => section.querySelector<HTMLButtonElement>(":scope > button")!.click());
+    }
+    expect(visibleContracts()).toEqual(["LIFE", "OTHER-LIFE", "AUTO", "PROPERTY", "BUSINESS", "FOREIGNERS", "TRAVEL", "INVESTMENT", "UNKNOWN", "PENSION"]);
+    expect(container.querySelectorAll("button button, button input")).toHaveLength(0);
+
+    await act(async () => button("Vše OK").click());
+    expect(container.querySelector('section[aria-label="Smlouvy mimo Bohemka.App"]')).toBeNull();
+    await act(async () => button("Bez propojení").click());
+    await act(async () => button("Smlouvy mimo Bohemka.App").click());
+    expect(container.querySelectorAll('section[aria-label="Smlouvy mimo Bohemka.App"] section')).toHaveLength(7);
+    expect(items).toHaveLength(10);
+  });
+
+  it("filters A101 across every page within each product section", async () => {
     const contracts = [
       ...Array.from({ length: 30 }, (_, index) => life(`DEFERRED-${index}`, "B101")),
       life("LIFE-A101", "A101", 1000),
@@ -94,22 +133,32 @@ describe("A101 filtering of unpaired statement contracts", () => {
       other("AUTO-A101", "A101", "CPP_1C_II", 3000),
     ];
     const items = listItems(contracts);
-    await act(async () => root.render(<StatementContractBrowser items={items}><UnpairedList items={items} /></StatementContractBrowser>));
+    await act(async () => root.render(<StatementContractBrowser items={items}><UnpairedContractsSectionPanel items={items} /></StatementContractBrowser>));
     await act(async () => button("Bez propojení").click());
+    await act(async () => button("Smlouvy mimo Bohemka.App").click());
+    await act(async () => button("Životní pojištění").click());
     expect(visibleContracts()).toHaveLength(15);
     await act(async () => button("Další").click());
     expect(visibleContracts()[0]).toBe("DEFERRED-15");
 
     const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(checkbox.parentElement?.textContent).toContain("3");
+    expect(checkbox.parentElement?.textContent).toContain("2");
     await act(async () => checkbox.click());
-    expect(visibleContracts()).toEqual(["LIFE-A101", "OTHER-LIFE-A101", "AUTO-A101"]);
+    expect(visibleContracts()).toEqual(["LIFE-A101", "OTHER-LIFE-A101"]);
     expect(container.querySelector("nav")).toBeNull();
     const summary = container.querySelectorAll('[role="status"]')[1]?.textContent?.replaceAll("\u00a0", " ");
-    expect(summary).toContain("Zobrazeno 3 z 33 smluv");
-    expect(summary).toContain("6 000,00 Kč");
+    expect(summary).toContain("Zobrazeno 2 z 32 smluv");
+    expect(summary).toContain("3 000,00 Kč");
+
+    await act(async () => button("Auta").click());
+    const autoCheckbox = container.querySelector<HTMLInputElement>('section[aria-label="Auta"] input[type="checkbox"]')!;
+    expect(autoCheckbox.parentElement?.textContent).toContain("1");
+    await act(async () => autoCheckbox.click());
+    expect(visibleContracts()).toEqual(["LIFE-A101", "OTHER-LIFE-A101", "AUTO-A101"]);
 
     await act(async () => button("Zrušit filtry").click());
+    await act(async () => button("Smlouvy mimo Bohemka.App").click());
+    await act(async () => button("Životní pojištění").click());
     expect(visibleContracts()).toHaveLength(15);
     expect(visibleContracts()[0]).toBe("DEFERRED-0");
     expect(items).toHaveLength(33);

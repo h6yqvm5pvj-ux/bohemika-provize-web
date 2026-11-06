@@ -27,7 +27,7 @@ import {
 import {
   fullAutoStornoInferenceForGroup,
   groupStornoItemsByContract,
-  suggestedStornoDateForStatement,
+  statementReportsContractTermination,
 } from "./statementStorno";
 import {
   contractMatchForNumber,
@@ -109,87 +109,81 @@ export function StornoSystemStatusBadge({
     const stornoDate = toDate(contract.stornoDate);
     return (
       <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800 ring-1 ring-violet-100">
-        Storno v systému
+        Smlouva ukončená
         {stornoDate ? ` · ${formatLocalDate(stornoDate)}` : ""}
       </span>
     );
   }
 
   return (
-    <span className="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-bold text-white">
-      V systému není storno
+    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+      Smlouva: {systemContractStatusLabel(contract)}
     </span>
   );
 }
 
 export function StornoSystemActionPanel({
   target,
+  terminationReported = false,
   onRequestStorno,
 }: {
   target: StornoStatementActionTarget | null;
+  terminationReported?: boolean;
   onRequestStorno?: (target: StornoStatementActionTarget) => void;
 }) {
   if (!target || systemContractIsStorno(target.contract)) return null;
+
+  const manualAction = onRequestStorno && (
+    <button
+      type="button"
+      onClick={() => onRequestStorno(target)}
+      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+    >
+      <CalendarX className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+      Zadat ukončení smlouvy ručně
+    </button>
+  );
+
+  if (!terminationReported) {
+    return (
+      <div className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Storno provize může být opravou původní výplaty. Samo o sobě neznamená ukončení smlouvy;
+          její stav ani budoucí projekce se tím nemění.
+        </p>
+        {manualAction}
+      </div>
+    );
+  }
 
   const inference = target.inference ?? null;
   const inferenceAmountSourceLabel =
     inference?.matchedSource === "contract_item"
       ? "v detailu smlouvy je stejná provize"
       : "v historii výpisů je stejná výplata";
-  const inferenceDateSourceLabel =
-    inference?.referenceDateSource === "statement_period"
-      ? "konec období výpisu"
-      : inference?.referenceDateSource === "statement_period_overlap"
-        ? "překryv období výpisu s dvouměsíční lhůtou"
-        : inference?.referenceDateSource === "row_date"
-          ? "datum řádku storna"
-          : "navržené datum";
 
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-lg border border-violet-100 bg-violet-50/70 px-3 py-2 text-sm text-slate-900 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" strokeWidth={2.2} aria-hidden="true" />
         <div>
-          {inference ? (
-            <>
-              <div className="font-bold">
-                Pravděpodobně storno smlouvy do 2 měsíců od počátku
-              </div>
-              <div className="mt-0.5 font-medium text-slate-700">
+          <div className="font-bold">Stav smlouvy ve výpisu uvádí ukončení</div>
+          <div className="mt-0.5 font-medium text-slate-700">
+            Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
+          </div>
+          {inference && (
+              <div className="mt-1 text-xs font-medium text-slate-500">
                 Výpis vrací {formatMoney(inference.stornoAmount)} Kč z{" "}
                 {inference.commissionCode ?? "provize"} a {inferenceAmountSourceLabel}{" "}
-                {formatMoney(inference.matchedPaidAmount)} Kč.
+                {formatMoney(inference.matchedPaidAmount)} Kč. Shoda částek sama ukončení nepotvrzuje.
               </div>
-              <div className="mt-1 text-xs font-medium text-slate-500">
-                Čas: počátek {formatLocalDate(inference.policyStartDate)}, {inferenceDateSourceLabel}{" "}
-                {formatLocalDate(inference.suggestedDate)}, hranice 2 měsíců{" "}
-                {formatLocalDate(inference.fullStornoBoundaryDate)}. Výpis drží zápornou položku v
-                cashflow, tlačítko jen doplní storno smlouvy a zastaví další projekce.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="font-bold">Výpis hlásí storno, systém ne</div>
-              <div className="mt-0.5 font-medium text-slate-700">
-                Smlouva je v systému vedená jako {systemContractStatusLabel(target.contract)}.
-              </div>
-              <div className="mt-1 text-xs font-medium text-slate-500">
-                Datum storna před uložením ověř proklikem do MAXXu nebo Extranetu.
-              </div>
-            </>
           )}
+          <div className="mt-1 text-xs font-medium text-slate-500">
+            Ukončení smlouvy a jeho skutečné datum před uložením ověř v MAXXu nebo Extranetu.
+          </div>
         </div>
       </div>
-      {onRequestStorno && (
-        <button
-          type="button"
-          onClick={() => onRequestStorno(target)}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-3 py-2 text-sm font-bold text-white shadow-[0_12px_26px_rgba(15,23,42,0.16)] transition hover:bg-black"
-        >
-          <CalendarX className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-          {inference ? "Označit podle výpisu" : "Označit jako stornovanou"}
-        </button>
-      )}
+      {manualAction}
     </div>
   );
 }
@@ -244,6 +238,7 @@ export function StornoContractsSectionPanel({
     entries.reduce((sum, entry) => sum + entry.group.totalAmount, 0);
   const pairedNeedsSystemStornoCount = pairedStornoGroupEntries.filter(
     (entry) => entry.systemContract && !systemContractIsStorno(entry.systemContract)
+      && statementReportsContractTermination(entry.group.rows, statement.contractStatusRules)
   ).length;
   const stornoSections = [
     {
@@ -255,7 +250,7 @@ export function StornoContractsSectionPanel({
       onToggle: () => setPairedExpanded((value) => !value),
       icon: CheckCircle2,
       warningCount: pairedNeedsSystemStornoCount,
-      warningLabel: "čeká na označení storna",
+      warningLabel: "k ověření ukončení smlouvy",
       warningClass: "bg-amber-100 text-amber-900",
     },
     {
@@ -274,7 +269,7 @@ export function StornoContractsSectionPanel({
 
   return (
     <StatementSection
-      title="Storna"
+      title="Storna provizí"
       icon={AlertTriangle}
       tone="storno"
       count={combinedStornoGroups.length}
@@ -286,7 +281,7 @@ export function StornoContractsSectionPanel({
     >
       {expanded && (
       <div className="space-y-5">
-        <p className={workspaceStyles.sectionHint}>Storno znamená vrácení dříve vyplacené provize. V detailu zkontroluj částku i stav smlouvy v systému.</p>
+        <p className={workspaceStyles.sectionHint}>Storno provize je vrácení dřívější výplaty, například při opravě její výše. Správná provize může přijít v jiném výpisu. Samotná vratka neznamená ukončení smlouvy.</p>
           {stornoSections.map((section) => {
             const SectionIcon = section.icon;
             const sectionTotal = stornoSectionTotal(section.entries);
@@ -334,7 +329,8 @@ export function StornoContractsSectionPanel({
                     key: `storno-${group.key}-${groupIndex}`,
                     searchText: `${group.client} ${group.contractNumber} ${systemContract?.clientName ?? ""} ${group.rows.map(row => resolveStatementProduct(row.product).label).join(" ")}`,
                     amount: group.totalAmount,
-                    issueCount: !systemContract || !systemContractIsStorno(systemContract) ? 1 : 0,
+                    issueCount: !systemContract || (!systemContractIsStorno(systemContract)
+                      && statementReportsContractTermination(group.rows, statement.contractStatusRules)) ? 1 : 0,
                     unpaired: !systemContract,
                     render: () => <StornoContractGroupCard
                       statement={statement}
@@ -386,6 +382,7 @@ function StornoContractGroupCard({
   presentation: SystemMatchPresentation;
 }) {
   const row = group.rows[0] ?? null;
+  const terminationReported = statementReportsContractTermination(group.rows, statement.contractStatusRules);
   const stornoInference = fullAutoStornoInferenceForGroup({
     statement,
     statementId,
@@ -410,7 +407,7 @@ function StornoContractGroupCard({
   const statusRules = [
     ...new Map(
       group.rows
-        .map((item) => statusRuleByCode.get(item.statusCode))
+        .map((item) => statusRuleByCode.get(item.statusCode.trim().toUpperCase()))
         .filter((rule): rule is ContractStatusRule => Boolean(rule))
         .map((rule) => [rule.code, rule])
     ).values(),
@@ -437,8 +434,7 @@ function StornoContractGroupCard({
         contractNumber: group.contractNumber || systemContract.contractNumber || "",
         client: displayClient,
         product: productLabel,
-        suggestedDate:
-          stornoInference?.suggestedDate ?? suggestedStornoDateForStatement(statement.header),
+        suggestedDate: null,
         inference: stornoInference,
       }
     : null;
@@ -458,7 +454,7 @@ function StornoContractGroupCard({
         contractNumber: group.contractNumber,
         client: displayClient,
         product: productLabel,
-        title: "Ručně označené storno k opravě",
+        title: "Ručně označené storno provize k opravě",
         amount: group.totalAmount,
         details: [
           group.rows.length > 0 ? rowItemsLabel : null,
@@ -483,7 +479,12 @@ function StornoContractGroupCard({
       contractNumber={group.contractNumber ?? ""}
       products={<span className={detailStyles.product}>{productLabel}</span>}
       commission={group.totalAmount}
-      reviewSummary={{ label: systemContract ? systemContractIsStorno(systemContract) ? "Storno v systému" : "Prověřit stav storna" : "Bez propojení", tone: systemContract ? "warn" : "info" }}
+      reviewSummary={{
+        label: !systemContract ? "Bez propojení"
+          : terminationReported && !systemContractIsStorno(systemContract) ? "Prověřit ukončení smlouvy"
+          : "Storno provize",
+        tone: systemContract && terminationReported && !systemContractIsStorno(systemContract) ? "warn" : "info",
+      }}
       badges={systemContract ? <StornoSystemStatusBadge contract={systemContract} /> : <span className={detailStyles.badge} data-tone="info">Bez propojení</span>}
       marking={markedItem && <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />}
     >
@@ -518,7 +519,7 @@ function StornoContractGroupCard({
           {group.rows.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
-                <span>Položky storna</span>
+                <span>Stornované provize</span>
                 <span>Provize</span>
               </div>
               <div className="divide-y divide-slate-100">
@@ -575,7 +576,7 @@ function StornoContractGroupCard({
             expectedProductKey={row ? resolveStatementProduct(row.product).productKey : null}
             presentation={presentation}
           />
-          <StornoSystemActionPanel target={actionTarget} onRequestStorno={onRequestSystemStorno} />
+          <StornoSystemActionPanel target={actionTarget} terminationReported={terminationReported} onRequestStorno={onRequestSystemStorno} />
         </div>
     </StatementContractCard>
   );
