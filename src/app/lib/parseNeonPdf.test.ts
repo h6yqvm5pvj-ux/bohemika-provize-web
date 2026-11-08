@@ -65,6 +65,44 @@ describe("parseNeonPdf", () => {
     });
   });
 
+  it("marks travel insurance when it appears as an insured risk before the payment section", async () => {
+    pdfState.pages = [[
+      "ZÁKLADNÍ POJIŠTĚNÍ",
+      "Cestovní připojištění včetně COVIDU PLUS",
+      "Rozšířená varianta",
+      "800 Kč",
+      "SLEVY Z CELKOVÉ VÝŠE POJISTNÉHO",
+      "PLACENÍ POJISTNÉHO",
+    ]];
+
+    const parsed = await parseNeonPdf(makePdfFile());
+
+    expect(parsed.riskFields?.travelInsurance).toBe(true);
+    expect(parsed.risks?.some(risk => risk.title.includes("cestovni pripojisteni vcetne covidu plus"))).toBe(true);
+  });
+
+  it("does not mark travel insurance from general terms after the policy coverage table", async () => {
+    pdfState.pages = [
+      [
+        "ZÁKLADNÍ POJIŠTĚNÍ",
+        "Základní pojištění pro případ smrti s konstantní pojistnou částkou",
+        "1 000 000 Kč",
+        "SLEVY Z CELKOVÉ VÝŠE POJISTNÉHO",
+        "PLACENÍ POJISTNÉHO",
+      ],
+      [
+        "Zdravotní údaje uvedené ve zdravotním dotazníku se nezohledňují pro účely poskytnutí pojistného plnění z cestovního připojištění.",
+        "Doplňkové pojistné podmínky pro cestovní připojištění v pojištění osob.",
+        "Cestovní připojištění včetně COVIDU PLUS je upraveno následujícími podmínkami.",
+      ],
+    ];
+
+    const parsed = await parseNeonPdf(makePdfFile());
+
+    expect(parsed.riskFields?.travelInsurance).toBe(false);
+    expect(parsed.risks?.some(risk => risk.title.includes("cestovni pripojisteni"))).toBe(false);
+  });
+
   it("parses NEON payment details and does not append the following QR instruction number to the premium", async () => {
     pdfState.pages = [[
       "ŽIVOTNÍ POJIŠTĚNÍ NEON",

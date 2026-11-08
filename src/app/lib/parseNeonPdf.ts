@@ -304,6 +304,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   // Zachováme řádky, jen odstaníme diakritiku pro hledání.
   const asciiLines = lines.map((l) => stripDiacritics(l).toLowerCase().trim());
   const asciiText = stripDiacritics(fullText).toLowerCase();
+  const paymentSectionIndex = asciiLines.findIndex(line => /^placeni\s+pojistneho\b/.test(line));
+  const policyCoverageAsciiLines = paymentSectionIndex >= 0 ? asciiLines.slice(0, paymentSectionIndex) : asciiLines;
+  const hasPolicyCoverageTable = paymentSectionIndex >= 0 && policyCoverageAsciiLines.some(line =>
+    /^(?:zakladni pojisteni|volitelne pripojisteni|pripojisteni|urazove pripojisteni|dalsi pripojisteni|ostatni pripojisteni)\b/.test(line)
+  );
   const isNeonEndorsement =
     /zadanka\s+o\s+zmenu/i.test(asciiText) &&
     /\bneon\b/i.test(asciiText) &&
@@ -802,7 +807,7 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
 
   // Obecné čtení tabulky Pojisteni / Varianta / Pojistna castka
   const isHeader = (txt: string) =>
-    /pojisteni si prenana pri|pojisteny|pojisteni|pojistna doba|pojistna castka|pojistne kc|mesicni pojistne|strana|verze|kalkulator|vytvoreno/i.test(
+    /^(?:pojisteni|pojisteny|pojistna doba|pojistna castka|pojistne kc|mesicni pojistne|strana|verze|kalkulator|vytvoreno)\b/i.test(
       txt
     );
   const isCurrency = (txt: string) => /[\d\s]+k[cč]/.test(txt);
@@ -843,8 +848,8 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   ];
 
   let i = 0;
-  while (i < asciiLines.length) {
-    const line = asciiLines[i];
+  while (i < policyCoverageAsciiLines.length) {
+    const line = policyCoverageAsciiLines[i];
     if (
       !line ||
       !hasLetters(line) ||
@@ -868,8 +873,8 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     let cursor = i + 1;
 
     // posbírej variantu, ale zastav se na číslech/datel/částkách
-    while (cursor < asciiLines.length && cursor <= i + 6) {
-      const next = asciiLines[cursor];
+    while (cursor < policyCoverageAsciiLines.length && cursor <= i + 6) {
+      const next = policyCoverageAsciiLines[cursor];
       if (!next) {
         cursor++;
         continue;
@@ -882,8 +887,8 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
 
     // hledej pojistnou částku – první z více částek v řádku tabulky; jedinou částku bereme jen pokud je rozumně velká
     const currencyHits: number[] = [];
-    for (let k = cursor; k < asciiLines.length && k <= i + 10; k++) {
-      const txt = asciiLines[k];
+    for (let k = cursor; k < policyCoverageAsciiLines.length && k <= i + 10; k++) {
+      const txt = policyCoverageAsciiLines[k];
       if (isHeader(txt)) break;
       if (isCurrency(txt)) {
         const m = txt.match(/([\d\s]+)k[cč]/);
@@ -905,11 +910,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     if (
       amount == null &&
       /denni odskodne za pracovni neschopnost/.test(title) &&
-      cursor < asciiLines.length
+      cursor < policyCoverageAsciiLines.length
     ) {
       const numHits: number[] = [];
-      for (let k = cursor; k <= Math.min(i + 8, asciiLines.length - 1); k++) {
-        const t = asciiLines[k];
+      for (let k = cursor; k <= Math.min(i + 8, policyCoverageAsciiLines.length - 1); k++) {
+        const t = policyCoverageAsciiLines[k];
         if (isPureNumber(t)) {
           const val = parseAmount(t);
           if (val != null) numHits.push(val);
@@ -1279,12 +1284,12 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   if (caregiving != null) riskFields.caregivingAmount = String(caregiving);
 
   // Asistence a cestovní
-  if (asciiLines.some((l) => /asistence .*cpp pomoc/i.test(l))) {
+  if (policyCoverageAsciiLines.some((l) => /asistence .*cpp pomoc/i.test(l))) {
     riskFields.cppHelp = true;
   }
-  if (asciiLines.some((l) => /cestovni pripojisteni/i.test(l))) {
-    riskFields.travelInsurance = true;
-  }
+  const travelCoverageWasParsed = risks.some(r => normalize(r.title).includes("cestovni pripojisteni vcetne covidu plus"));
+  if (travelCoverageWasParsed) riskFields.travelInsurance = true;
+  else if (hasPolicyCoverageTable) riskFields.travelInsurance = false;
 
   // Odpovědnost
   const liabilityCitizen =
