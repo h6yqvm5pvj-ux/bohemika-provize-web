@@ -5,6 +5,8 @@ import {
   DOMEX_DETAIL_ALLOWED_KEYS,
   MAXDOMOV_DETAIL_ALLOWED_KEYS,
   normalizeCreateEntryPayload,
+  sanitizeKoopMajetekDetail,
+  sanitizeKoopOdzamDetail,
   sanitizeDetailObject,
 } from "./contractsApi.createPayload";
 
@@ -557,6 +559,7 @@ describe("contracts create payload parsing", () => {
     ["domexneuron", "annual"],
     ["cppAuto", "annual"],
     ["allianzAuto", "annual"],
+    ["koopodzam", "annual"],
   ] as const)(
     "povolí uložení Refresh/Náhrady pro produkt %s",
     (productKey, frequencyRaw) => {
@@ -594,7 +597,7 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, ČPP Auto a Allianz Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, Kooperativa majetek a odpovědnost občanů, Kooperativa odpovědnost zaměstnance, ČPP Auto a Allianz Auto.",
     });
 
     const allianzReplacementPayload = normalizedPayload(
@@ -777,6 +780,48 @@ describe("contracts create payload parsing", () => {
       ok: false,
       error: "Pole domexDetail.unknown není povolené.",
     });
+  });
+});
+
+describe("Kooperativa majetek detail payload", () => {
+  it("validates and normalizes coverage rows and rejects oversized or manipulated input", () => {
+    expect(sanitizeKoopMajetekDetail({ insuredCoverages: [{ name: " Domácnost ", variant: "KOMFORT", deductible: 1_000, sumInsured: 2_000_000 }] }))
+      .toEqual({ ok: true, value: { insuredCoverages: [{ name: "Domácnost", variant: "KOMFORT", deductible: 1_000, sumInsured: 2_000_000 }] } });
+    expect(sanitizeKoopMajetekDetail({ insuredCoverages: [{ name: "a".repeat(101), variant: null, deductible: 0, sumInsured: 1 }] }).ok).toBe(false);
+    expect(sanitizeKoopMajetekDetail({ insuredCoverages: [{ name: "Domácnost", unexpected: true }] }).ok).toBe(false);
+  });
+  it("persists coverage detail only on the Kooperativa property product", () => {
+    const detail = { insuredCoverages: [{ name: "Domácnost", variant: "KOMFORT", deductible: 1_000, sumInsured: 500_000 }] };
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ productKey: "koopmajetekobcan", koopMajetekDetail: detail }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: true, payload: { koopMajetekDetail: detail } });
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ koopMajetekDetail: detail }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("pouze k produktu") });
+  });
+});
+
+describe("Kooperativa employee liability detail payload", () => {
+  const detail = {
+    occupation: "Uklízečka",
+    vehicleRelatedDamage: false,
+    annualLimit: 150_000,
+    territorialScope: "Česká republika",
+    deductible: "10 % min. 1 000 Kč",
+  };
+
+  it("normalizes the five supported values and rejects malformed input", () => {
+    expect(sanitizeKoopOdzamDetail(detail)).toEqual({ ok: true, value: detail });
+    expect(sanitizeKoopOdzamDetail({ ...detail, vehicleRelatedDamage: "NE" })).toMatchObject({ ok: false });
+    expect(sanitizeKoopOdzamDetail({ ...detail, annualLimit: Number.POSITIVE_INFINITY })).toMatchObject({ ok: false });
+    expect(sanitizeKoopOdzamDetail({ ...detail, unexpected: "value" })).toMatchObject({ ok: false });
+    expect(sanitizeKoopOdzamDetail({ ...detail, occupation: "x".repeat(121) })).toMatchObject({ ok: false });
+    expect(sanitizeKoopOdzamDetail({})).toEqual({ ok: true, value: null });
+  });
+
+  it("persists employee liability detail only on the matching product", () => {
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ productKey: "koopodzam", koopOdzamDetail: detail }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: true, payload: { koopOdzamDetail: detail } });
+    expect(normalizeCreateEntryPayload({ raw: baseEntry({ koopOdzamDetail: detail }), ownerEmail, ownerUid }))
+      .toMatchObject({ ok: false, error: expect.stringContaining("pouze k produktu") });
   });
 });
 

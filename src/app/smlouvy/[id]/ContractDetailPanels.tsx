@@ -19,6 +19,16 @@ export const DomexDetailPanel = dynamic(
   { ssr: false, loading: DetailFallback }
 );
 
+export const KoopMajetekDetailPanel = dynamic(
+  () => import("../components/KoopMajetekDetailPanel").then((mod) => mod.KoopMajetekDetailPanel),
+  { ssr: false, loading: DetailFallback }
+);
+
+export const KoopOdzamDetailPanel = dynamic(
+  () => import("../components/KoopOdzamDetailPanel").then((mod) => mod.KoopOdzamDetailPanel),
+  { ssr: false, loading: DetailFallback }
+);
+
 export const FlexiDetailPanel = dynamic(
   () => import("../components/FlexiDetailPanel").then((mod) => mod.FlexiDetailPanel),
   { ssr: false, loading: DetailFallback }

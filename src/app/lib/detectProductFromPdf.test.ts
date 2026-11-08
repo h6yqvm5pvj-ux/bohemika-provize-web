@@ -186,6 +186,22 @@ describe("detectProductFromPdf", () => {
     });
   });
 
+  it("detects Kooperativa property and civil liability contracts", async () => {
+    pdfState.pages = [["Kooperativa pojišťovna, a.s."], ["Pojištění majetku a odpovědnosti"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "koopmajetekobcan",
+      confidence: "high",
+    });
+  });
+
+  it("detects the new Kooperativa employee liability contract wording", async () => {
+    pdfState.pages = [["Kooperativa", "Pojištění odpovědnosti zaměstnance"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({
+      product: "koopodzam",
+      confidence: "high",
+    });
+  });
+
   it("detects MAXDOMOV 3 from Maxima contract text", async () => {
     pdfState.pages = [["MAXIMA pojišťovna", "MAXDOMOV 3"]];
 

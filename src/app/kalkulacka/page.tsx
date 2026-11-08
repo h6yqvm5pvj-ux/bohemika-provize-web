@@ -10,7 +10,9 @@ import { useDomexNeuronConfirmation } from "./useDomexNeuronConfirmation";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CircleHelp, Users } from "lucide-react";
+import { CircleHelp, ShieldCheck, Users } from "lucide-react";
+import type { KoopMajetekCoverage } from "../lib/parseKoopMajetekObcanPdf";
+import type { KoopOdzamDetail } from "../lib/parseKoopOdzamPdf";
 import { auth } from "../firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -165,6 +167,7 @@ import { CalculatorAmountAndActionsSection } from "./CalculatorAmountAndActionsS
 import { useClientNameLookup } from "./useClientNameLookup";
 import { CalculatorContractDetailsSection } from "./CalculatorContractDetailsSection";
 import { CalculatorPositionModeSection } from "./CalculatorPositionModeSection";
+import { CalculatorKoopOdzamPdfDetailSummary } from "./CalculatorKoopOdzamPdfDetailSummary";
 import { CalculatorInheritedContractSection } from "./CalculatorInheritedContractSection";
 import { inheritedCommissionResult } from "@/app/lib/inheritedContracts";
 import {
@@ -559,6 +562,8 @@ export default function CalculatorPage() {
   const [autoCarAddonPassengerInjury, setAutoCarAddonPassengerInjury] = useState(false);
   const [autoCarAddonKeyLossTheft, setAutoCarAddonKeyLossTheft] = useState(false);
   const [domexAddress, setDomexAddress] = useState<string>("");
+  const [koopInsuredCoverages, setKoopInsuredCoverages] = useState<KoopMajetekCoverage[]>([]);
+  const [koopOdzamDetail, setKoopOdzamDetail] = useState<KoopOdzamDetail | null>(null);
   const [domexNeuron, setDomexNeuron] = useState<DomexNeuronData | null>(null);
   const [domexPropertyAddress, setDomexPropertyAddress] = useState("");
   const [domexHouseholdAddress, setDomexHouseholdAddress] = useState("");
@@ -631,6 +636,8 @@ export default function CalculatorPage() {
     autoCarAddonNonFaultAccident: setAutoCarAddonNonFaultAccident,
     autoCarAddonKeyLossTheft: setAutoCarAddonKeyLossTheft,
     domexAddress: setDomexAddress,
+    koopInsuredCoverages: setKoopInsuredCoverages,
+    koopOdzamDetail: setKoopOdzamDetail,
     domexNeuron: setDomexNeuron,
     domexPropertyAddress: setDomexPropertyAddress,
     domexHouseholdAddress: setDomexHouseholdAddress,
@@ -1966,6 +1973,10 @@ export default function CalculatorPage() {
     if (product !== "neon") {
       setNeonPdfDetailFields(createEmptyNeonPdfDetailFields());
     }
+  }, [product]);
+
+  useEffect(() => {
+    if (product !== "koopodzam") setKoopOdzamDetail(null);
   }, [product]);
 
   useEffect(() => {
@@ -3582,6 +3593,12 @@ export default function CalculatorPage() {
               importProduct === "domex" || importProduct === "domexneuron"
                 ? propertyDetailForSave
                 : null,
+            koopMajetekDetail: importProduct === "koopmajetekobcan"
+              ? { insuredCoverages: parsed.insuredCoverages ?? [] }
+              : null,
+            koopOdzamDetail: importProduct === "koopodzam"
+              ? parsed.employeeLiabilityDetail ?? null
+              : null,
             maxdomovDetail:
               importProduct === "maxdomov" ? propertyDetailForSave : null,
             paid: shouldAutoMarkPaidByPolicyStartDate(policyStartDateIso),
@@ -5232,6 +5249,10 @@ export default function CalculatorPage() {
                     ...(product === "domexneuron" && domexNeuron ? projectDomexNeuronLegacy(domexNeuron) : {}),
                   }
                 : null,
+            koopMajetekDetail: product === "koopmajetekobcan"
+              ? { insuredCoverages: koopInsuredCoverages }
+              : null,
+            koopOdzamDetail: product === "koopodzam" ? koopOdzamDetail : null,
             maxdomovDetail:
               product === "maxdomov"
                 ? {
@@ -7465,6 +7486,38 @@ export default function CalculatorPage() {
               hullSumPrompt={autoHullSumPrompt}
               editor={autoPdfDetailEditor}
             />
+
+            {product === "koopmajetekobcan" && koopInsuredCoverages.length > 0 && (
+              <section className="rounded-[1.15rem] border border-slate-200 bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.055)]">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                  <h2 className="inline-flex min-w-0 items-center gap-2 text-sm font-bold text-slate-950">
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                      <ShieldCheck size={16} strokeWidth={2.25} aria-hidden="true" />
+                    </span>
+                    <span>PDF → detail smlouvy</span>
+                  </h2>
+                  <span className="text-[11px] font-bold text-slate-500">{koopInsuredCoverages.length} položky</span>
+                </div>
+                <div className="space-y-3 pt-3">
+                  {koopInsuredCoverages.map((coverage, index) => (
+                    <section key={`${coverage.name}-${index}`} className="rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+                      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <ShieldCheck size={16} aria-hidden="true" />{coverage.name}
+                      </h3>
+                      <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                        {coverage.variant && <div><dt className="text-xs text-slate-500">Varianta pojištění</dt><dd className="text-sm font-semibold text-slate-900">{coverage.variant}</dd></div>}
+                        {coverage.sumInsured != null && <div><dt className="text-xs text-slate-500">Pojistná částka / limit plnění</dt><dd className="text-sm font-semibold text-slate-900">{formatMoney(coverage.sumInsured)}</dd></div>}
+                        {coverage.deductible != null && <div><dt className="text-xs text-slate-500">Spoluúčast</dt><dd className="text-sm font-semibold text-slate-900">{formatMoney(coverage.deductible)}</dd></div>}
+                      </dl>
+                    </section>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {product === "koopodzam" && (
+              <CalculatorKoopOdzamPdfDetailSummary detail={koopOdzamDetail} />
+            )}
 
             {product === "domexneuron" ? (
               <CalculatorDomexNeuronDetail

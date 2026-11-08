@@ -11,6 +11,28 @@ import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
 import { domexNeuronDataFixture } from "../../../tests/helpers/domexNeuronFixture";
 
 describe("single PDF form mapping", () => {
+  it("shows Kooperativa insured items after single and batch PDF import and clears stale items", () => {
+    const parsed = { insuredCoverages: [{ name: "Domácnost", variant: "KOMFORT", deductible: 500, sumInsured: 500_000 }] };
+    expect(mapSinglePdfFormValues("koopmajetekobcan", parsed).values.koopInsuredCoverages).toEqual(parsed.insuredCoverages);
+    expect(mapReviewPdfFormValues("koopmajetekobcan", parsed).koopInsuredCoverages).toEqual(parsed.insuredCoverages);
+    expect(pdfImportResetValues("koopmajetekobcan").koopInsuredCoverages).toEqual([]);
+    expect(mapReviewPdfFormValues("koopmajetekobcan", {}).koopInsuredCoverages).toEqual([]);
+  });
+  it("maps, resets, and scopes Kooperativa employee liability details", () => {
+    const detail = {
+      occupation: "Uklízečka",
+      vehicleRelatedDamage: false,
+      annualLimit: 150_000,
+      territorialScope: "Česká republika",
+      deductible: "10 % min. 1 000 Kč",
+    };
+    expect(mapSinglePdfFormValues("koopodzam", { employeeLiabilityDetail: detail }).values.koopOdzamDetail).toEqual(detail);
+    expect(mapReviewPdfFormValues("koopodzam", { employeeLiabilityDetail: detail }).koopOdzamDetail).toEqual(detail);
+    expect(pdfImportResetValues("koopodzam").koopOdzamDetail).toBeNull();
+    expect(mapReviewPdfFormValues("koopodzam", {}).koopOdzamDetail).toBeNull();
+    expect(mapSinglePdfFormValues("domex", { employeeLiabilityDetail: detail }).values).not.toHaveProperty("koopOdzamDetail");
+    expect(mapReviewPdfFormValues("domex", { employeeLiabilityDetail: detail }).koopOdzamDetail).toBeNull();
+  });
   it.each([true, false])("preserves explicit DOMEX Neuron indexation in single and batch-review mappings (%s)", (premiumIndexationEnabled) => {
     expect(mapSinglePdfFormValues("domexneuron", { premiumIndexationEnabled }).values.premiumIndexationEnabled).toBe(premiumIndexationEnabled);
     expect(mapReviewPdfFormValues("domexneuron", { premiumIndexationEnabled }).premiumIndexationEnabled).toBe(premiumIndexationEnabled);

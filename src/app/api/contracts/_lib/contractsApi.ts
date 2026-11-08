@@ -128,6 +128,8 @@ import {
 } from "./contractsApi.listFilters";
 import {
   DOMEX_DETAIL_ALLOWED_KEYS,
+  sanitizeKoopMajetekDetail,
+  sanitizeKoopOdzamDetail,
   MAXDOMOV_DETAIL_ALLOWED_KEYS,
   FLEXI_DETAIL_ALLOWED_KEYS,
   NEON_DETAIL_ALLOWED_KEYS,
@@ -360,6 +362,8 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "neonDetail",
   "flexiDetail",
   "domexDetail",
+  "koopMajetekDetail",
+  "koopOdzamDetail",
   "maxdomovDetail",
   "durationYears",
   "durationMonths",
@@ -2734,6 +2738,20 @@ const normalizePatchUpdates = (
 
     if (field === "domexDetail") {
       const parsed = sanitizeDetailObject(rawValue, field, DOMEX_DETAIL_ALLOWED_KEYS);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "koopMajetekDetail") {
+      const parsed = sanitizeKoopMajetekDetail(rawValue);
+      if (!parsed.ok) return parsed;
+      normalized[field] = parsed.value;
+      continue;
+    }
+
+    if (field === "koopOdzamDetail") {
+      const parsed = sanitizeKoopOdzamDetail(rawValue);
       if (!parsed.ok) return parsed;
       normalized[field] = parsed.value;
       continue;

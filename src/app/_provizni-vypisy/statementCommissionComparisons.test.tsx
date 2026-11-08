@@ -96,6 +96,15 @@ describe("statement comparisons for separate commission codes", () => {
     }
   });
 
+  it("converts an annual ČSOB Auto B101 base to one semiannual payout", () => {
+    const statementRow = row("B101", 269.28, { product: "CSOBP_AU_Z", base: 7650 });
+    const unscaledAnnualAmount = autoSubsequentExpectedAmountForRow(
+      "csobAuto", "poradce7", "2025-07-21", statementRow
+    );
+    expect(autoSubsequentExpectedAmountForRow("csobAuto", "poradce7", "2025-07-21", statementRow, "annual", 2))
+      .toBe(Math.round((unscaledAnnualAmount! / 2) * 100) / 100);
+  });
+
   it("keeps actual Kooperativa C amounts and codes when the premium base remains constant", () => {
     const rows = [row("C101", 937.80), row("C103", 970.20), row("C105", 1019.40), row("C106", 769.80)]
       .map(item => ({ ...item, product: "KOO_NAMIRU", base: 7175 }));

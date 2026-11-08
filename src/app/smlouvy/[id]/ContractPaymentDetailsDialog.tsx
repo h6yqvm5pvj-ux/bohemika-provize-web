@@ -6,22 +6,22 @@ import { CalendarDays, FileText, LoaderCircle, QrCode, WalletCards, X } from "lu
 import {
   buildContractPaymentQrPayload,
   normalizeContractPaymentDetails,
-  type ContractPaymentDetails,
 } from "@/app/lib/contractPaymentDetails";
+import type { ContractPdfDetails } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 import styles from "./contractPaymentDetails.module.css";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  loadPaymentDetails: (signal: AbortSignal) => Promise<ContractPaymentDetails>;
+  loadPaymentDetails: (signal: AbortSignal) => Promise<ContractPdfDetails>;
 };
 
 type PaymentState = {
   source: Props["loadPaymentDetails"];
 } & (
   | { error: true; message: string }
-  | { error: false; details: ContractPaymentDetails; qrDataUrl: string | null; qrFailed: boolean }
+  | { error: false; details: ContractPdfDetails; qrDataUrl: string | null; qrFailed: boolean }
 );
 
 const amountFormatter = new Intl.NumberFormat("cs-CZ", {
@@ -48,11 +48,12 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
     abortRef.current = controller;
     const isCurrent = () => !controller.signal.aborted;
     void (async () => {
-      let details: ContractPaymentDetails;
+      let details: ContractPdfDetails;
       try {
-        const normalized = normalizeContractPaymentDetails(await loadPaymentDetails(controller.signal));
+        const loaded = await loadPaymentDetails(controller.signal);
+        const normalized = normalizeContractPaymentDetails(loaded);
         if (!normalized) throw new Error("Invalid payment details");
-        details = normalized;
+        details = { ...normalized, ...(loaded.insuredItems?.length ? { insuredItems: loaded.insuredItems } : {}) };
       } catch (error) {
         if (isCurrent()) setState({ source: loadPaymentDetails, error: true, message: contractPaymentDetailsErrorMessage(error) });
         return;
@@ -123,7 +124,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
         <span className={styles.headerIcon}><WalletCards size={23} strokeWidth={1.6} aria-hidden="true" /></span>
         <div className={styles.heading}>
           <h2 id={titleId}>Platební údaje</h2>
-          <p id={descriptionId}>Údaje pro platbu uvedenou ve smlouvě.</p>
+          <p id={descriptionId}>Platební údaje a pojištěná rizika uvedená ve smlouvě.</p>
         </div>
         <button ref={closeRef} type="button" aria-label="Zavřít platební údaje" onClick={close}
           className={styles.close}><X size={17} aria-hidden="true" /></button>
@@ -135,12 +136,18 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
             <button type="button" onClick={retryLoad} className={styles.retry}>Zkusit znovu</button>
           </div>
             : <div className={styles.layout}>
-              <dl className={styles.details}>
-                <div className={styles.amount}><dt>Částka k úhradě</dt><dd>{amountFormatter.format(current.details.amount)}</dd></div>
-                <div className={styles.detail}><dt>Číslo účtu</dt><dd>{current.details.accountNumber}</dd></div>
-                <div className={styles.detail}><dt>Variabilní symbol</dt><dd>{current.details.variableSymbol}</dd></div>
-                {current.details.dueDate && <div className={styles.dueDate}><dt><CalendarDays size={14} aria-hidden="true" />Datum splatnosti</dt><dd>{formatDate(current.details.dueDate)}</dd></div>}
-              </dl>
+              <div className={styles.detailColumn}>
+                <dl className={styles.details}>
+                  <div className={styles.amount}><dt>Částka k úhradě</dt><dd>{amountFormatter.format(current.details.amount)}</dd></div>
+                  <div className={styles.detail}><dt>Číslo účtu</dt><dd>{current.details.accountNumber}</dd></div>
+                  <div className={styles.detail}><dt>Variabilní symbol</dt><dd>{current.details.variableSymbol}</dd></div>
+                  {current.details.dueDate && <div className={styles.dueDate}><dt><CalendarDays size={14} aria-hidden="true" />Datum splatnosti</dt><dd>{formatDate(current.details.dueDate)}</dd></div>}
+                </dl>
+                {current.details.insuredItems?.length ? <section className={styles.insuredItems} aria-label="Co je pojištěno">
+                  <h3>Co je pojištěno</h3>
+                  <ul>{current.details.insuredItems.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
+                </section> : null}
+              </div>
               <section className={styles.qrPanel} aria-label="QR platba">
                 <h3><QrCode size={14} aria-hidden="true" />QR platba</h3>
                 <div className={styles.qrFrame}>

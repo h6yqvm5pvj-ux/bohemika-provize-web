@@ -3,6 +3,8 @@ import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import type { FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
 import type { NeonPdfDetailEditorFields } from "./CalculatorNeonPdfDetailEditor";
 import type { DomexNeuronData } from "../lib/domexNeuronSchema";
+import type { KoopMajetekCoverage } from "../lib/parseKoopMajetekObcanPdf";
+import type { KoopOdzamDetail } from "../lib/parseKoopOdzamPdf";
 
 export type CalculatorPdfFormValues = {
   autoCarMake: string;
@@ -48,6 +50,8 @@ export type CalculatorPdfFormValues = {
   autoCarAddonNonFaultAccident: boolean;
   autoCarAddonKeyLossTheft: boolean;
   domexAddress: string;
+  koopInsuredCoverages: KoopMajetekCoverage[];
+  koopOdzamDetail: KoopOdzamDetail | null;
   domexNeuron: DomexNeuronData | null;
   domexPropertyAddress: string;
   domexHouseholdAddress: string;

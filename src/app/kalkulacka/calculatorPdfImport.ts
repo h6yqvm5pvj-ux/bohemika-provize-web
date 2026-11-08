@@ -226,6 +226,10 @@ async function parseProduct(
       const { parseKoopOdzamPdf } = await import("../lib/parseKoopOdzamPdf");
       return parseKoopOdzamPdf(file, options);
     }
+    case "koopmajetekobcan": {
+      const { parseKoopMajetekObcanPdf } = await import("../lib/parseKoopMajetekObcanPdf");
+      return parseKoopMajetekObcanPdf(file, options);
+    }
     case "maxdomov": {
       const { parseMaxdomovPdf } = await import("../lib/parseMaxdomovPdf");
       return parseMaxdomovPdf(file, options);

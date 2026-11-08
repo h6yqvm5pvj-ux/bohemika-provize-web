@@ -24,7 +24,7 @@ describe("original contract replacement capabilities", () => {
     expect(supportsOriginalContractReplacement(null)).toBe(false);
   });
 
-  it.each(["flexi", "domex", "domexneuron", "cppAuto", "allianzAuto"] as const)(
+  it.each(["flexi", "domex", "domexneuron", "koopmajetekobcan", "koopodzam", "cppAuto", "allianzAuto"] as const)(
     "umožní uložit produkt %s i bez nalezené původní smlouvy",
     (product) => {
       expect(canSaveUnlinkedOriginalReplacement(product)).toBe(true);
@@ -68,6 +68,7 @@ describe("original contract replacement capabilities", () => {
     ["domexneuron", "domex"],
     ["domexneuron", "domexneuron"],
     ["cppAuto", "cppAuto"],
+    ["koopodzam", "koopodzam"],
   ] as const)("povolí náhradu produktu %s produktem %s", (originalProduct, newProduct) => {
     expect(matchesOriginalContractReplacementProduct(originalProduct, newProduct)).toBe(true);
   });

@@ -66,7 +66,7 @@ describe("contract payment details dialog", () => {
     expect(dialog.open).toBe(true);
     expect(container.querySelector("h2")?.id).toBe(dialog.getAttribute("aria-labelledby"));
     expect(container.querySelector("h2")?.textContent).toBe("Platební údaje");
-    expect(container.textContent).toContain("Údaje pro platbu uvedenou ve smlouvě.");
+    expect(container.textContent).toContain("Platební údaje a pojištěná rizika uvedená ve smlouvě.");
     expect(container.textContent?.replace(/\s/g, " ")).toContain("1 234,5 Kč");
     expect(container.textContent).toContain(payment.accountNumber);
     expect(container.textContent).toContain("0001234567");
@@ -77,6 +77,14 @@ describe("contract payment details dialog", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toBe(png);
     expect(container.querySelector("img")?.getAttribute("alt")).toBe("QR platba podle smlouvy");
     expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("shows insured items parsed from the Kooperativa policy", async () => {
+    load.mockResolvedValue({ ...payment, insuredItems: ["Trvale obývaná domácnost", "Odpovědnost v běžném občanském životě"] });
+    await render();
+    expect(container.querySelector('[aria-label="Co je pojištěno"]')?.textContent)
+      .toContain("Trvale obývaná domácnost");
+    expect(container.textContent).toContain("Odpovědnost v běžném občanském životě");
   });
 
   it("shows a loading state and never inserts values from an invalid payment block", async () => {

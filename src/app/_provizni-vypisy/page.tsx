@@ -2073,7 +2073,14 @@ const autoSubsequentExpectedAmountForRows = (
       productKey,
       position,
       coefficientSignedDateIso,
-      row
+      row,
+      resolveStatementPremiumBasePeriod({
+        product: row.product,
+        statementBase: Number(row.base),
+        systemPaymentBase: systemCurrentPremiumPaymentBase(systemContract),
+        systemFrequency: systemContract.frequencyRaw,
+      }),
+      paymentsPerYearForFrequency(systemContract.frequencyRaw)
     );
     if (expected == null) return sum;
     hasExpected = true;

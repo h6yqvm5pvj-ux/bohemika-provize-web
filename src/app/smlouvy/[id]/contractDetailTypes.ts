@@ -381,6 +381,8 @@ export type ContractDoc = {
     assistancePlus?: boolean | null;
     note?: string | null;
   } | null;
+  koopMajetekDetail?: { insuredCoverages?: import("@/app/lib/parseKoopMajetekObcanPdf").KoopMajetekCoverage[] | null } | null;
+  koopOdzamDetail?: import("@/app/lib/parseKoopOdzamPdf").KoopOdzamDetail | null;
   maxdomovDetail?: {
     address?: string | null;
     propertyType?: string | null;

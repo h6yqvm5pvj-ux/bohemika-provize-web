@@ -41,7 +41,7 @@ describe("calculator replacement payload", () => {
     });
   });
 
-  it.each(["domex", "cppAuto", "allianzAuto", "flexi"] as const)("preserves the existing %s manual-save behavior", (product) => {
+  it.each(["domex", "cppAuto", "allianzAuto", "flexi", "koopodzam"] as const)("preserves the existing %s manual-save behavior", (product) => {
     expect(calculatorReplacementPayload({ ...replacement, product })).toMatchObject({
       refreshOriginalMissingInSystem: false, refreshOriginalContractNumber: "0020000077",
     });

@@ -9,14 +9,21 @@ export const autoSubsequentExpectedAmountForRow = (
   productKey: Product,
   position: Position,
   signedDateIso: string | null,
-  row: CommissionRow
+  row: CommissionRow,
+  basePeriod: "annual" | "payment" = "payment",
+  paymentsPerYear = 1
 ): number | null => {
   const code = baseCommissionCodeForPayoutComparison(row.type, productKey);
   if (!isAutoSubsequentCommissionCode(code)) return null;
   const rowBase = Number(row.base);
   if (!Number.isFinite(rowBase) || rowBase <= 0) return null;
   const coefficient = autoSubsequentCoefficientForProduct(productKey, position, signedDateIso);
-  return coefficient == null ? null : Math.round(rowBase * coefficient * 100) / 100;
+  if (coefficient == null) return null;
+  const expected = rowBase * coefficient;
+  const perPaymentExpected = basePeriod === "annual" && Number.isFinite(paymentsPerYear) && paymentsPerYear > 1
+    ? expected / paymentsPerYear
+    : expected;
+  return Math.round(perPaymentExpected * 100) / 100;
 };
 
 export const isHigherStatementCommission = (comparison: { status: CommissionAmountComparisonStatus; expectedAmount?: number; statementAmount?: number; acceptHigherCommission?: boolean }): boolean =>

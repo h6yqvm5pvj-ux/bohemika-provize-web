@@ -116,4 +116,19 @@ describe("FLEXI renovation form", () => {
     expect(container.textContent).not.toContain("Číslo původní smlouvy");
     expect(container.textContent).not.toContain("Smlouva z TIPU");
   });
+
+  it("shows the Náhrada button for Kooperativa property contracts", async () => {
+    const onToggleRefreshOriginal = vi.fn();
+    await act(async () => root.render(<CalculatorAmountAndActionsSection {...defaults}
+      product="koopmajetekobcan" showContractActions onToggleRefreshOriginal={onToggleRefreshOriginal} />));
+    const replacementButton = Array.from(container.querySelectorAll("button"))
+      .find(button => button.textContent?.trim() === "Náhrada");
+    expect(replacementButton).toBeDefined();
+    await act(async () => replacementButton!.click());
+    expect(onToggleRefreshOriginal).toHaveBeenCalledOnce();
+
+    await act(async () => root.render(<CalculatorAmountAndActionsSection {...defaults}
+      product="koopmajetekobcan" showContractActions refreshOriginalOpen />));
+    expect(container.textContent).toContain("Číslo původní smlouvy");
+  });
 });

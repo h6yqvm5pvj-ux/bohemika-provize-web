@@ -460,6 +460,16 @@ describe("single PDF import workflow", () => {
     expect(options.handlePrepareEndorsement).not.toHaveBeenCalled();
   });
 
+  it("opens a Kooperativa employee-liability replacement and fills its original number", async () => {
+    const { options, ui } = harness();
+    mocks.detect.mockResolvedValue({ product: "koopodzam", confidence: "high" });
+    mocks.parse.mockResolvedValue({ ...parsed, isRefresh: true, refreshOriginalContractNumber: "3952906628" });
+    await importSingleContractPdf(file(), options);
+    expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(true);
+    expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("3952906628");
+    expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
+  });
+
   it("clears the previous DOMEX Neuron replacement before importing an ordinary policy", async () => {
     const { options, ui } = harness();
     mocks.detect.mockResolvedValue({ product: "domexneuron", confidence: "high" });

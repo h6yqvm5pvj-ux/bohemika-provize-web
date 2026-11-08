@@ -115,6 +115,12 @@ export const validateContractCoreInvariants = (
     const neuronDetailValidation = validateDomexNeuronDetailProduct(existing.productKey, patch.domexDetail);
     if (!neuronDetailValidation.ok) return neuronDetailValidation;
   }
+  if (hasOwn(patch, "koopMajetekDetail") && patch.koopMajetekDetail != null && existing.productKey !== "koopmajetekobcan") {
+    return { ok: false, error: "Údaje koopMajetekDetail lze uložit pouze k produktu Kooperativa majetek a odpovědnost občanů." };
+  }
+  if (hasOwn(patch, "koopOdzamDetail") && patch.koopOdzamDetail != null && existing.productKey !== "koopodzam") {
+    return { ok: false, error: "Údaje koopOdzamDetail lze uložit pouze k produktu Kooperativa odpovědnost zaměstnance." };
+  }
   const shouldValidateCore = [...UPDATE_FIELDS_CONTRACT_CORE_KEYS].some((key) =>
     hasOwn(patch, key)
   );

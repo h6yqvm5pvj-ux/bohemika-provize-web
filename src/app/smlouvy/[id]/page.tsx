@@ -112,6 +112,8 @@ import type { FlexiFields } from "../components/FlexiDetailPanel";
 import {
   AutoDetailPanel,
   DomexDetailPanel,
+  KoopMajetekDetailPanel,
+  KoopOdzamDetailPanel,
   FlexiDetailPanel,
   NeonDetailPanel,
 } from "./ContractDetailPanels";
@@ -5179,13 +5181,14 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean(prod === "domexneuron" && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam") && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
       (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
     if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
     const details = await loadContractPaymentDetailsFromPdf({
+      product: prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : "domexneuron",
       contractNumber: contract?.contractNumber ?? "",
       fileName: paymentSourcePdf.fileName,
       downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),
@@ -5193,7 +5196,7 @@ export default function ContractDetailPage() {
     });
     if (!viewerIsCurrent() || signal.aborted) throw new DOMException("Načítání bylo zrušeno.", "AbortError");
     return details;
-  }, [adminImpersonation?.email, canReadPaymentDetails, contract?.contractNumber, downloadContractPdfBlob, paymentSourcePdf, user]);
+  }, [adminImpersonation?.email, canReadPaymentDetails, contract?.contractNumber, downloadContractPdfBlob, paymentSourcePdf, prod, user]);
 
   const copyContractActionValue = useCallback(
     (value: string | null | undefined, label: string) => {
@@ -5231,6 +5234,8 @@ export default function ContractDetailPage() {
           onChange={handleNeonFieldChange}
         />
       )}
+      {prod === "koopmajetekobcan" && <KoopMajetekDetailPanel coverages={contract?.koopMajetekDetail?.insuredCoverages ?? []} />}
+      {prod === "koopodzam" && <KoopOdzamDetailPanel detail={contract?.koopOdzamDetail ?? null} />}
       {(prod === "domex" || prod === "domexneuron" || prod === "maxdomov") && (
         <DomexDetailPanel
           prod={prod}
@@ -5533,7 +5538,7 @@ export default function ContractDetailPage() {
                       }}
                       className={`${actionStyles.button} ${detailStyles.headerSecondary}`}>
                       <QrCode size={14} strokeWidth={2} aria-hidden="true" />
-                      <span>Platební údaje</span>
+                      <span>{prod === "koopmajetekobcan" ? "Pojištění a platební údaje" : "Platební údaje"}</span>
                     </button>
                   )}
                   </div>

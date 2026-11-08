@@ -323,7 +323,7 @@ export async function importSingleContractPdf(file: File | null, options: Single
       setClientSuggestionsOpen(true);
     }
 
-    if (parsedIsEndorsement || importProduct === "flexi" || importProduct === "domexneuron") {
+    if (parsedIsEndorsement || importProduct === "flexi" || importProduct === "domexneuron" || importProduct === "koopodzam") {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
       setRefreshOriginalMissingInSystem(false);

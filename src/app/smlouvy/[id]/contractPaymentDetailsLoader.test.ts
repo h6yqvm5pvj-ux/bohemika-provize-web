@@ -2,16 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 
-const mocks = vi.hoisted(() => ({ parse: vi.fn() }));
-vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parse }));
+const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn() }));
+vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parseDomex }));
+vi.mock("@/app/lib/parseKoopMajetekObcanPdf", () => ({ parseKoopMajetekObcanPdf: mocks.parseKoop }));
+vi.mock("@/app/lib/parseKoopOdzamPdf", () => ({ parseKoopOdzamPdf: mocks.parseKoopOdzam }));
 
 const payment = { amount: 1250, accountNumber: "19-2000145399/0800", variableSymbol: "0012345678", dueDate: "2026-11-05" };
 function options() {
-  return { contractNumber: "0012345678", fileName: "synthetic.pdf", downloadPdf: vi.fn(async () => new Blob(["%PDF synthetic"])), signal: new AbortController().signal };
+  return { product: "domexneuron" as const, contractNumber: "0012345678", fileName: "synthetic.pdf", downloadPdf: vi.fn(async () => new Blob(["%PDF synthetic"])), signal: new AbortController().signal };
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.parse.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
+  mocks.parseDomex.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
+  mocks.parseKoop.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment, insuredItems: ["Pojištěná domácnost"] });
+  mocks.parseKoopOdzam.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
 });
 
 describe("payment details from authorized PDF", () => {
@@ -19,7 +23,22 @@ describe("payment details from authorized PDF", () => {
     const input = options();
     await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual(payment);
     expect(input.downloadPdf).toHaveBeenCalledExactlyOnceWith(input.signal);
-    expect(mocks.parse).toHaveBeenCalledWith(expect.any(File), { signal: input.signal, allowOcr: true });
+    expect(mocks.parseDomex).toHaveBeenCalledWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the Kooperativa property parser when the contract product is selected", async () => {
+    const input = { ...options(), product: "koopmajetekobcan" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({ ...payment, insuredItems: ["Pojištěná domácnost"] });
+    expect(mocks.parseKoop).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+    expect(mocks.parseDomex).not.toHaveBeenCalled();
+  });
+
+  it("uses the employee liability parser when the Kooperativa employee product is selected", async () => {
+    const input = { ...options(), product: "koopodzam" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual(payment);
+    expect(mocks.parseKoopOdzam).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+    expect(mocks.parseDomex).not.toHaveBeenCalled();
+    expect(mocks.parseKoop).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -28,7 +47,7 @@ describe("payment details from authorized PDF", () => {
     [{ contractNumber: "0012345678", paymentDetails: { ...payment, accountNumber: "invalid" } }, "paymentMissing"],
     [{ contractNumber: "0012345678" }, "paymentMissing"],
   ])("distinguishes missing instructions from a different contract without exposing values", async (parsed, code) => {
-    mocks.parse.mockResolvedValue(parsed);
+    mocks.parseDomex.mockResolvedValue(parsed);
     await expect(loadContractPaymentDetailsFromPdf(options())).rejects.toMatchObject({ name: "ContractPaymentDetailsError", code });
   });
 
@@ -36,7 +55,7 @@ describe("payment details from authorized PDF", () => {
     const input = options();
     input.downloadPdf.mockRejectedValue(new Error("Nemáš oprávnění pro tuto smlouvu."));
     await expect(loadContractPaymentDetailsFromPdf(input)).rejects.toMatchObject({ code: "pdfDownload" });
-    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(mocks.parseDomex).not.toHaveBeenCalled();
   });
 
   it("does not download after cancellation or invalid contract input", async () => {
@@ -53,11 +72,11 @@ describe("payment details from authorized PDF", () => {
     const controller = new AbortController();
     input.downloadPdf.mockImplementation(async () => { controller.abort(); return new Blob(["%PDF synthetic"]); });
     await expect(loadContractPaymentDetailsFromPdf({ ...input, signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
-    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(mocks.parseDomex).not.toHaveBeenCalled();
   });
 
   it("identifies a PDF reading failure without propagating its internal diagnostics", async () => {
-    mocks.parse.mockRejectedValue(new Error("Synthetic internal PDF content and path"));
+    mocks.parseDomex.mockRejectedValue(new Error("Synthetic internal PDF content and path"));
     await expect(loadContractPaymentDetailsFromPdf(options())).rejects.toMatchObject({ code: "pdfRead" });
     try {
       await loadContractPaymentDetailsFromPdf(options());

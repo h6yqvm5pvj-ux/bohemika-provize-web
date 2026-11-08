@@ -1,5 +1,6 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type KoopOdzamPdfResult = {
   contractNumber?: string | null;
@@ -9,6 +10,19 @@ export type KoopOdzamPdfResult = {
   amount?: number | null;
   frequency?: PaymentFrequency | null;
   annualAmount?: number | null;
+  paymentDetails?: ContractPaymentDetails | null;
+  employeeLiabilityDetail?: KoopOdzamDetail | null;
+  isRefresh?: boolean;
+  refreshOriginalContractNumber?: string;
+  pdfImportWarnings?: string[];
+};
+
+export type KoopOdzamDetail = {
+  occupation: string | null;
+  vehicleRelatedDamage: boolean | null;
+  annualLimit: number | null;
+  territorialScope: string | null;
+  deductible: string | null;
 };
 
 type PositionedTextItem = {
@@ -64,6 +78,14 @@ const parseAmount = (value: string | null | undefined): number | null => {
   if (!match) return null;
   const parsed = Number.parseFloat(match.replace(/\s+/g, "").replace(",", "."));
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
+};
+
+const parsePaymentAmount = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const match = value.replace(/\u00a0/g, " ").match(/(\d[\d\s]*(?:[.,]\d{1,2})?)/)?.[1];
+  if (!match) return null;
+  const parsed = Number(match.replace(/\s+/g, "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null;
 };
 
 const normalizeName = (value: string | null | undefined): string | null => {
@@ -221,6 +243,8 @@ const findContractNumber = (items: PositionedTextItem[]): string | null => {
     const number = extractContractNumber(raw);
     if (number) return number;
   }
+  const printedNumber = items.find((item) => /\bps\s*\d{6,14}\b/i.test(item.str))?.str.match(/\bps\s*(\d{6,14})\b/i)?.[1];
+  if (printedNumber) return printedNumber;
   return null;
 };
 
@@ -237,11 +261,81 @@ const findClientName = (items: PositionedTextItem[]): string | null => {
 
   const value = findRightValue(
     searchItems,
-    (item) => item.normalized === "titul, jmeno, prijmeni",
+    (item) => item.normalized === "titul, jmeno, prijmeni" || item.normalized === "jmeno",
     (item) => normalizeName(item.str) !== null
   );
 
   return normalizeName(value);
+};
+
+const findKoopOdzamDetail = (items: PositionedTextItem[]): KoopOdzamDetail | null => {
+  const occupationRaw = findRightValue(
+    items,
+    (item) => item.normalized === "povolani",
+    (item) => normalizeName(item.str) !== null
+  );
+  const vehicleRaw = findRightValue(
+    items,
+    (item) => item.normalized === "skoda souvisejici s rizenim a provozem dopravniho prostredku",
+    (item) => item.normalized === "ano" || item.normalized === "ne"
+  );
+  const annualLimitRaw = findRightValue(
+    items,
+    (item) => item.normalized === "rocni limit plneni",
+    (item) => parseAmount(item.str) !== null
+  );
+  const territorialScopeRaw = findRightValue(
+    items,
+    (item) => item.normalized === "uzemni rozsah",
+    (item) => normalizeName(item.str) !== null
+  );
+  const deductibleRaw = findRightValue(
+    items,
+    (item) => item.normalized === "spoluucast",
+    (item) => /\d|%/.test(item.str)
+  );
+  const occupation = normalizeName(occupationRaw);
+  const vehicleRelatedDamage = vehicleRaw == null ? null : normalizeText(vehicleRaw) === "ano";
+  const annualLimit = parseAmount(annualLimitRaw);
+  const territorialScope = normalizeName(territorialScopeRaw);
+  const deductible = deductibleRaw?.replace(/\s+/g, " ").trim() || null;
+  if (occupation == null && vehicleRelatedDamage == null && annualLimit == null && territorialScope == null && deductible == null) return null;
+  return { occupation, vehicleRelatedDamage, annualLimit, territorialScope, deductible };
+};
+
+const findKoopOdzamPaymentDetails = (
+  items: PositionedTextItem[],
+  contractNumber: string | null,
+): ContractPaymentDetails | null => {
+  const paymentStartIndex = items.findIndex((item) =>
+    item.normalized === "castka k uhrade" || item.normalized.startsWith("castka k uhrade ") || item.normalized.startsWith("castka k uhrade:"),
+  );
+  if (paymentStartIndex < 0) return null;
+  const paymentItems = items.slice(paymentStartIndex);
+
+  const valueFor = (label: string, accept: (value: string) => boolean): string | null => {
+    const normalizedLabel = normalizeText(label);
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const inlinePattern = new RegExp(`^\\s*${escapedLabel}\\s*:?\\s*(.+)$`, "i");
+    for (const item of paymentItems) {
+      const inline = item.str.match(inlinePattern)?.[1]?.trim();
+      if (inline && accept(inline)) return inline;
+    }
+    const matcher = (item: PositionedTextItem) => item.normalized === normalizedLabel;
+    return findRightValue(paymentItems, matcher, (item) => accept(item.str)) ??
+      findBelowValue(paymentItems, matcher, (item) => accept(item.str));
+  };
+
+  const amountRaw = valueFor("Částka k úhradě", (value) => parsePaymentAmount(value) !== null);
+  const accountNumber = valueFor("Číslo účtu", (value) => /(?:\d{1,6}-)?\d{2,10}\/\d{4}/.test(value));
+  const variableSymbol = valueFor("Variabilní symbol", (value) => /\b\d{1,10}\b/.test(value)) ?? contractNumber;
+  const dueDateRaw = valueFor("Datum splatnosti", (value) => extractDateToken(value) !== null);
+  return normalizeContractPaymentDetails({
+    amount: parsePaymentAmount(amountRaw),
+    accountNumber,
+    variableSymbol,
+    dueDate: toDateInput(extractDateToken(dueDateRaw)),
+  });
 };
 
 export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}): Promise<KoopOdzamPdfResult> {
@@ -250,14 +344,18 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
   const fullText = items.map((item) => item.str).join("\n");
   const fullTextAscii = stripDiacritics(fullText);
   const result: KoopOdzamPdfResult = {};
+  const employeeLiabilityDetail = findKoopOdzamDetail(items);
+  if (employeeLiabilityDetail) result.employeeLiabilityDetail = employeeLiabilityDetail;
 
   const contractNumber =
     findContractNumber(items) ??
     fullTextAscii.match(
-      /(?:Cislo\s+pojistne\s+smlouvy|Navrh\s+pojistne\s+smlouvy\s+c\.|Cislo\s+navrhu)\s*:?\s*(\d{6,14})\b/i
+      /(?:Cislo\s+pojistne\s+smlouvy|Navrh\s+pojistne\s+smlouvy\s+c\.|Cislo\s+navrhu|\bPS)\s*:?\s*(\d{6,14})\b/i
     )?.[1] ??
     null;
   if (contractNumber) result.contractNumber = contractNumber;
+  const paymentDetails = findKoopOdzamPaymentDetails(items, contractNumber);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   const clientName =
     findClientName(items) ??
@@ -284,7 +382,7 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
 
   const annualRaw = findRightValue(
     items,
-    (item) => item.normalized === "celkove rocni pojistne",
+    (item) => item.normalized === "celkove rocni pojistne po sleve" || item.normalized === "celkove rocni pojistne",
     (item) => parseAmount(item.str) !== null
   );
   const annualAmount = parseAmount(annualRaw);
@@ -298,20 +396,21 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
   const amount = parseAmount(periodRaw);
   if (amount != null && amount > 0) result.amount = amount;
 
-  const frequency = mapFrequency(frequencyRaw) ?? frequencyFromAmounts(amount, annualAmount);
+  const statedFrequency = mapFrequency(frequencyRaw);
+  const amountFrequency = frequencyFromAmounts(amount, annualAmount);
+  const frequency = statedFrequency ?? amountFrequency;
   if (frequency) result.frequency = frequency;
 
+  const warnings: string[] = [];
   if (amount != null && annualAmount != null && frequency) {
     const expectedAnnual = amount * paymentsPerYear(frequency);
-    if (Math.abs(expectedAnnual - annualAmount) > Math.max(5, annualAmount * 0.01)) {
-      const amountFrequency = frequencyFromAmounts(amount, annualAmount);
-      if (amountFrequency) result.frequency = amountFrequency;
+    if (Math.abs(expectedAnnual - annualAmount) > Math.max(1, annualAmount * 0.01)) {
+      warnings.push("Pojistné: částka za pojistné období při uvedené frekvenci neodpovídá celkovému ročnímu pojistnému; ověř částky a frekvenci v PDF.");
     }
   }
-
   const signedRaw = findRightValue(
     items,
-    (item) => item.normalized === "pojistna smlouva uzavrena dne",
+    (item) => item.normalized === "pojistna smlouva uzavrena dne" || item.normalized === "datum uzavreni smlouvy",
     (item) => extractDateToken(item.str) !== null
   );
   const proposalCreatedRaw = findRightValue(
@@ -326,6 +425,11 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
         /Pojistna\s+smlouva\s+uzavrena\s+dne[\s\S]{0,80}?(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i
       )?.[1] ?? null
     ) ??
+    toDateInput(
+      fullTextAscii.match(
+        /Datum\s+uzavreni\s+smlouvy\s*:?[\s\S]{0,80}?(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i
+      )?.[1] ?? null
+    ) ??
     toDateInput(extractDateToken(proposalCreatedRaw)) ??
     toDateInput(
       fullTextAscii.match(
@@ -333,6 +437,19 @@ export async function parseKoopOdzamPdf(file: File, options: PdfReadOptions = {}
       )?.[1] ?? null
     );
   if (contractSignedDate) result.contractSignedDate = contractSignedDate;
+
+  const replacementMatch = fullTextAscii.match(
+    /touto\s+smlouvou\s+nahrazujeme\s+vasi\s+predchozi\s+smlouvu\s+c\.?\s*([\d\s]{6,24})/i
+  );
+  if (replacementMatch) {
+    result.isRefresh = true;
+    const originalNumber = replacementMatch[1].replace(/\D/g, "");
+    if (originalNumber.length >= 6 && originalNumber.length <= 14) {
+      result.refreshOriginalContractNumber = originalNumber;
+    }
+  }
+
+  if (warnings.length) result.pdfImportWarnings = warnings;
 
   return result;
 }

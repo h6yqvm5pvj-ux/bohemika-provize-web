@@ -123,6 +123,126 @@ describe("parseKoopOdzamPdf", () => {
     expect(pdfState.cleanup).toHaveBeenCalledTimes(5);
   });
 
+  it("imports the new policy layout using the policyholder name and signing information labels", async () => {
+    pdfState.pages = [
+      [
+        { str: "Kooperativa", x: 33, y: 750 },
+        { str: "Pojištění odpovědnosti zaměstnance", x: 33, y: 730 },
+        { str: "Pojistník", x: 33, y: 658 },
+        { str: "Jméno", x: 33, y: 640, width: 33 },
+        { str: "Jana Testovací", x: 165, y: 640 },
+        { str: "Povolání", x: 33, y: 417, width: 45 },
+        { str: "Uklízečka", x: 165, y: 417 },
+        { str: "Škoda související s řízením a provozem dopravního prostředku", x: 33, y: 343, width: 250 },
+        { str: "NE", x: 300, y: 343 },
+        { str: "Roční limit plnění", x: 33, y: 328, width: 80 },
+        { str: "150 000 Kč", x: 165, y: 328 },
+        { str: "Územní rozsah", x: 33, y: 313, width: 70 },
+        { str: "Česká republika", x: 165, y: 313 },
+        { str: "Spoluúčast", x: 33, y: 299, width: 55 },
+        { str: "10 % min. 1 000 Kč", x: 165, y: 299 },
+        { str: "Počátek pojištění", x: 33, y: 137, width: 67 },
+        { str: "9. 11. 2026", x: 165, y: 137 },
+        { str: "Pojistné období", x: 33, y: 117, width: 61 },
+        { str: "roční", x: 165, y: 117 },
+        { str: "Strana 1/4, PS 3950000001", x: 33, y: 13 },
+      ],
+      [
+        { str: "Celkové roční pojistné po slevě", x: 33, y: 776, width: 125 },
+        { str: "884 Kč", x: 180, y: 776 },
+        { str: "Pojistné za pojistné období", x: 33, y: 764, width: 106 },
+        { str: "884 Kč", x: 180, y: 764 },
+      ],
+      [],
+      [
+        { str: "Datum uzavření smlouvy", x: 33, y: 400, width: 100 },
+        { str: "7. 11. 2026", x: 165, y: 400 },
+      ],
+    ];
+    await expect(parseKoopOdzamPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "3950000001",
+      clientName: "Jana Testovací",
+      policyStartDate: "2026-11-09",
+      contractSignedDate: "2026-11-07",
+      amount: 884,
+      annualAmount: 884,
+      frequency: "annual",
+      employeeLiabilityDetail: {
+        occupation: "Uklízečka",
+        vehicleRelatedDamage: false,
+        annualLimit: 150000,
+        territorialScope: "Česká republika",
+        deductible: "10 % min. 1 000 Kč",
+      },
+    });
+  });
+
+  it("preserves an affirmative answer for vehicle related damage", async () => {
+    pdfState.pages = [[
+      { str: "Škoda související s řízením a provozem dopravního prostředku", x: 33, y: 343, width: 250 },
+      { str: "ANO", x: 300, y: 343 },
+    ]];
+    await expect(parseKoopOdzamPdf(makePdfFile())).resolves.toMatchObject({
+      employeeLiabilityDetail: { vehicleRelatedDamage: true },
+    });
+  });
+
+  it("extracts validated payment instructions for the payment details dialog", async () => {
+    pdfState.pages = [
+      [{ str: "PS 3950000001", x: 33, y: 13 }],
+      [
+        { str: "Částka k úhradě", x: 33, y: 587, width: 90 },
+        { str: "2 006 Kč", x: 165, y: 587 },
+        { str: "Číslo účtu", x: 33, y: 565, width: 60 },
+        { str: "2226222/0800", x: 165, y: 565 },
+        { str: "Variabilní symbol", x: 33, y: 543, width: 75 },
+        { str: "3950000001", x: 165, y: 543 },
+        { str: "Datum splatnosti", x: 33, y: 521, width: 75 },
+        { str: "9. 11. 2026", x: 165, y: 521 },
+      ],
+    ];
+    await expect(parseKoopOdzamPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "3950000001",
+      paymentDetails: {
+        amount: 2006,
+        accountNumber: "2226222/0800",
+        variableSymbol: "3950000001",
+        dueDate: "2026-11-09",
+      },
+    });
+  });
+
+  it("keeps the printed payment frequency and warns when its premium does not match annual premium", async () => {
+    pdfState.pages = [
+      [
+        { str: "Pojistné období", x: 33, y: 400, width: 61 },
+        { str: "ročně", x: 165, y: 400 },
+      ],
+      [
+        { str: "Celkové roční pojistné po slevě", x: 33, y: 776, width: 125 },
+        { str: "1 000 Kč", x: 180, y: 776 },
+        { str: "Pojistné za pojistné období", x: 33, y: 764, width: 106 },
+        { str: "500 Kč", x: 180, y: 764 },
+      ],
+    ];
+    const result = await parseKoopOdzamPdf(makePdfFile());
+    expect(result).toMatchObject({
+      amount: 500,
+      annualAmount: 1000,
+      frequency: "annual",
+      pdfImportWarnings: [expect.stringContaining("neodpovídá celkovému ročnímu pojistnému")],
+    });
+    expect(buildPdfImportIssueMessage({ product: "koopodzam", parsed: result })).toContain("ověř částky a frekvenci");
+  });
+
+  it("recognizes a replacement marker and reads the previous contract number", async () => {
+    pdfState.pages = [[{ str: "Touto smlouvou nahrazujeme Vaši předchozí smlouvu č. 3952906628" }]];
+    await expect(parseKoopOdzamPdf(makePdfFile())).resolves.toMatchObject({
+      isRefresh: true,
+      refreshOriginalContractNumber: "3952906628",
+    });
+  });
+
   it.each(["Číslo pojistné smlouvy", "Číslo návrhu", "Návrh pojistné smlouvy č."])(
     "reads a number below %s even after a cover page",
     async (label) => {

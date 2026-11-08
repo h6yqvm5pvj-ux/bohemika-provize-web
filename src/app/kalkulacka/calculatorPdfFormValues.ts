@@ -91,6 +91,8 @@ export function createEmptyPropertyPdfFormValues(): Partial<CalculatorPdfFormVal
 }
 
 export function pdfImportResetValues(importProduct: Product): Partial<CalculatorPdfFormValues> {
+  if (importProduct === "koopmajetekobcan") return { koopInsuredCoverages: [] };
+  if (importProduct === "koopodzam") return { koopOdzamDetail: null };
   if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, premiumIndexationEnabled: null, policyTermEndDate: "", policyEndDate: "" };
   if (importProduct === "cppAuto") return { ...createEmptyAutoPdfFormValues(), clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "" };
   if (["cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"].includes(importProduct)) return createEmptyAutoPdfFormValues();
@@ -102,6 +104,16 @@ export function pdfImportResetValues(importProduct: Product): Partial<Calculator
 export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedContractPdf): PdfFormMappingResult {
   const values: Partial<CalculatorPdfFormValues> = {};
   let applied = 0;
+  if (importProduct === "koopmajetekobcan") {
+    values.koopInsuredCoverages = Array.isArray(parsed.insuredCoverages)
+      ? parsed.insuredCoverages.filter((item: unknown) => item && typeof item === "object" && typeof (item as { name?: unknown }).name === "string").slice(0, 12)
+      : [];
+    if (values.koopInsuredCoverages.length) applied += 1;
+  }
+  if (importProduct === "koopodzam") {
+    values.koopOdzamDetail = parsedKoopOdzamDetailValue(parsed.employeeLiabilityDetail);
+    if (values.koopOdzamDetail) applied += 1;
+  }
   values.pensionTargetAge = importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
   if (importProduct === "cppAuto") {
     // A missing policyholder/identifier/date belongs to the current PDF; it
@@ -283,6 +295,12 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.autoCarAddonPassengerInjury = parsedPdfBooleanValue(parsed, "carAddonPassengerInjury");
   values.autoCarAddonKeyLossTheft = parsedPdfBooleanValue(parsed, "carAddonKeyLossTheft");
   values.domexAddress = parsedPdfTextValue(parsed, "domexAddress");
+  values.koopInsuredCoverages = reviewProduct === "koopmajetekobcan" && Array.isArray(parsed.insuredCoverages)
+    ? parsed.insuredCoverages.filter((item: unknown) => item && typeof item === "object" && typeof (item as { name?: unknown }).name === "string").slice(0, 12)
+    : [];
+  values.koopOdzamDetail = reviewProduct === "koopodzam"
+    ? parsedKoopOdzamDetailValue(parsed.employeeLiabilityDetail)
+    : null;
   values.domexNeuron = reviewProduct === "domexneuron" ? normalizeDomexNeuronData(parsed.domexNeuron) : null;
   values.domexPropertyAddress = parsedPdfTextValue(parsed, "domexPropertyAddress");
   values.domexHouseholdAddress = parsedPdfTextValue(parsed, "domexHouseholdAddress");
@@ -315,4 +333,27 @@ export function applyCalculatorPdfFormValues(values: Partial<CalculatorPdfFormVa
     if (value !== undefined) setters[key](value);
   };
   (Object.keys(values) as Array<keyof CalculatorPdfFormValues>).forEach(apply);
+}
+
+function parsedKoopOdzamDetailValue(value: unknown): CalculatorPdfFormValues["koopOdzamDetail"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const detail = value as Record<string, unknown>;
+  const safeText = (candidate: unknown): string | null =>
+    typeof candidate === "string" && candidate.trim().length > 0 && candidate.length <= 120 && !/[\u0000-\u001f\u007f]/.test(candidate)
+      ? candidate.trim()
+      : null;
+  const vehicleRelatedDamage = detail.vehicleRelatedDamage === true || detail.vehicleRelatedDamage === false
+    ? detail.vehicleRelatedDamage
+    : null;
+  const annualLimit = typeof detail.annualLimit === "number" && Number.isFinite(detail.annualLimit) && detail.annualLimit >= 0 && detail.annualLimit <= 1_000_000_000
+    ? detail.annualLimit
+    : null;
+  const result = {
+    occupation: safeText(detail.occupation),
+    vehicleRelatedDamage,
+    annualLimit,
+    territorialScope: safeText(detail.territorialScope),
+    deductible: safeText(detail.deductible),
+  };
+  return Object.values(result).some((item) => item !== null) ? result : null;
 }

@@ -25,6 +25,21 @@ describe("contracts API validation", () => {
     expect(validateContractCoreInvariants(baseContract, { domexDetail: { neuron: null } })).toMatchObject({ ok: false });
   });
 
+  it("allows Koop property details only on the Koop property product", () => {
+    const koop: ContractDoc = { ...baseContract, productKey: "koopmajetekobcan" };
+    expect(validateContractCoreInvariants(koop, { koopMajetekDetail: { insuredCoverages: [] } })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants(baseContract, { koopMajetekDetail: { insuredCoverages: [] } })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(baseContract, { koopMajetekDetail: null })).toEqual({ ok: true });
+  });
+
+  it("allows employee liability details only on the Kooperativa employee product", () => {
+    const koop: ContractDoc = { ...baseContract, productKey: "koopodzam" };
+    const koopOdzamDetail = { occupation: "Uklízečka", vehicleRelatedDamage: false, annualLimit: 150_000, territorialScope: "Česká republika", deductible: "10 % min. 1 000 Kč" };
+    expect(validateContractCoreInvariants(koop, { koopOdzamDetail })).toEqual({ ok: true });
+    expect(validateContractCoreInvariants(baseContract, { koopOdzamDetail })).toMatchObject({ ok: false });
+    expect(validateContractCoreInvariants(baseContract, { koopOdzamDetail: null })).toEqual({ ok: true });
+  });
+
   it.each([true, false, null])("validates Neuron premium indexation independently of prolongation: %j", premiumIndexationEnabled => {
     expect(validateContractCoreInvariants(neuron, { premiumIndexationEnabled })).toEqual({ ok: true });
     expect(validateContractCoreInvariants({ ...neuron, automaticRenewal: false, policyEndDate: new Date("2027-11-04") }, { premiumIndexationEnabled }))

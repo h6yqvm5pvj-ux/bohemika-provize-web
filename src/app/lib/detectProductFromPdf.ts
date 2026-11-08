@@ -134,6 +134,38 @@ const DETECTION_RULES: DetectionRule[] = [
       "V PDF jsou nalezeny texty „Kooperativa“ a „Cestovní pojištění KOLUMBUS“.",
   },
   {
+    product: "koopodzam",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa") },
+      { page: "any", text: normalizeText("Pojištění odpovědnosti zaměstnance") },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa“ a „Pojištění odpovědnosti zaměstnance“.",
+  },
+  {
+    product: "koopodzam",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
+      {
+        page: "any",
+        text: normalizeText("pojištění odpovědnosti za škodu způsobenou zaměstnavateli"),
+      },
+    ],
+    confidence: "high",
+    reason:
+      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „pojištění odpovědnosti za škodu způsobenou zaměstnavateli“.",
+  },
+  {
+    product: "koopmajetekobcan",
+    mustContain: [
+      { page: "any", text: normalizeText("Kooperativa") },
+      { page: "any", text: normalizeText("Pojištění majetku a odpovědnosti") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „Kooperativa“ a „Pojištění majetku a odpovědnosti“.",
+  },
+  {
     product: "cppsimplex",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
@@ -172,21 +204,6 @@ const DETECTION_RULES: DetectionRule[] = [
     confidence: "high",
     reason:
       "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „HAFAN“.",
-  },
-  {
-    product: "koopodzam",
-    mustContain: [
-      { page: "any", text: normalizeText("Kooperativa pojišťovna") },
-      {
-        page: "any",
-        text: normalizeText(
-          "pojištění odpovědnosti za škodu způsobenou zaměstnavateli"
-        ),
-      },
-    ],
-    confidence: "high",
-    reason:
-      "V PDF jsou nalezeny texty „Kooperativa pojišťovna“ a „pojištění odpovědnosti za škodu způsobenou zaměstnavateli“.",
   },
   {
     product: "koopfit",

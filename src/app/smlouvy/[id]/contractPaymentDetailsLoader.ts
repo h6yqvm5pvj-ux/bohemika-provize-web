@@ -2,18 +2,21 @@ import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "@/
 import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 
 type Options = {
+  product: "domexneuron" | "koopmajetekobcan" | "koopodzam";
   contractNumber: string;
   fileName: string;
   downloadPdf: (signal: AbortSignal) => Promise<Blob>;
   signal: AbortSignal;
 };
 
+export type ContractPdfDetails = ContractPaymentDetails & { insuredItems?: string[] };
+
 const ensureActive = (signal: AbortSignal) => {
   if (signal.aborted) throw new DOMException("Načítání bylo zrušeno.", "AbortError");
 };
 
 /** Read the payment instructions from this contract's authorized PDF attachment. */
-export async function loadContractPaymentDetailsFromPdf({ contractNumber, fileName, downloadPdf, signal }: Options): Promise<ContractPaymentDetails> {
+export async function loadContractPaymentDetailsFromPdf({ product, contractNumber, fileName, downloadPdf, signal }: Options): Promise<ContractPdfDetails> {
   ensureActive(signal);
   const expectedNumber = typeof contractNumber === "string" ? contractNumber.replace(/\s/g, "") : "";
   if (!/^\d{1,10}$/.test(expectedNumber)) throw new ContractPaymentDetailsError("invalidContractNumber");
@@ -25,17 +28,28 @@ export async function loadContractPaymentDetailsFromPdf({ contractNumber, fileNa
     throw new ContractPaymentDetailsError("pdfDownload");
   }
   ensureActive(signal);
-  let parser: typeof import("@/app/lib/parseDomexPdf");
+  type PaymentPdfResult = { contractNumber?: string | null; paymentDetails?: unknown; insuredItems?: unknown };
+  type PaymentPdfParser = (file: File, options: { signal: AbortSignal; allowOcr: true }) => Promise<PaymentPdfResult>;
+  let parsePdf: PaymentPdfParser;
   try {
-    parser = await import("@/app/lib/parseDomexPdf");
+    if (product === "domexneuron") {
+      const parser = await import("@/app/lib/parseDomexPdf");
+      parsePdf = parser.parseDomexPdf;
+    } else if (product === "koopmajetekobcan") {
+      const parser = await import("@/app/lib/parseKoopMajetekObcanPdf");
+      parsePdf = parser.parseKoopMajetekObcanPdf;
+    } else {
+      const parser = await import("@/app/lib/parseKoopOdzamPdf");
+      parsePdf = parser.parseKoopOdzamPdf;
+    }
   } catch {
     ensureActive(signal);
     throw new ContractPaymentDetailsError("pdfReaderLoad");
   }
   ensureActive(signal);
-  let parsed: Awaited<ReturnType<typeof parser.parseDomexPdf>>;
+  let parsed: PaymentPdfResult;
   try {
-    parsed = await parser.parseDomexPdf(new File([pdf], fileName, { type: "application/pdf" }), { signal, allowOcr: true });
+    parsed = await parsePdf(new File([pdf], fileName, { type: "application/pdf" }), { signal, allowOcr: true });
   } catch {
     ensureActive(signal);
     throw new ContractPaymentDetailsError("pdfRead");
@@ -45,5 +59,14 @@ export async function loadContractPaymentDetailsFromPdf({ contractNumber, fileNa
   const details = normalizeContractPaymentDetails(parsed.paymentDetails);
   if (!details) throw new ContractPaymentDetailsError("paymentMissing");
   if (details.variableSymbol !== expectedNumber) throw new ContractPaymentDetailsError("contractMismatch");
-  return details;
+  const insuredItems = Array.isArray(parsed.insuredItems)
+    ? parsed.insuredItems.slice(0, 12).flatMap(value => {
+      if (typeof value !== "string") return [];
+      const label = value.trim();
+      return label.length >= 3 && label.length <= 100 && /\p{L}/u.test(label) && !/[\u0000-\u001f\u007f]/.test(label)
+        ? [label]
+        : [];
+    })
+    : [];
+  return { ...details, ...(insuredItems.length ? { insuredItems } : {}) };
 }

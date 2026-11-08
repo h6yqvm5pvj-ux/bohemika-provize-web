@@ -127,6 +127,8 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonKeyLossTheft",
   "neonDetail",
   "domexDetail",
+  "koopMajetekDetail",
+  "koopOdzamDetail",
   "maxdomovDetail",
   "paid",
   "isRefresh",
@@ -794,6 +796,8 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   carAddonKeyLossTheft: boolean | null;
   neonDetail: Record<string, unknown> | null;
   domexDetail: Record<string, unknown> | null;
+  koopMajetekDetail: { insuredCoverages: Array<{ name: string; variant: string | null; deductible: number | null; sumInsured: number | null }> } | null;
+  koopOdzamDetail: { occupation: string | null; vehicleRelatedDamage: boolean | null; annualLimit: number | null; territorialScope: string | null; deductible: string | null } | null;
   maxdomovDetail: Record<string, unknown> | null;
   paid: boolean;
   productCategory: ContractListProductCategory | null;
@@ -845,6 +849,86 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   createdFromCommissionStatementAtMs: number | null;
   createdFromCommissionStatementChronologyMs: number | null;
   createdFromCommissionStatementId: string | null;
+};
+
+export const sanitizeKoopMajetekDetail = (value: unknown): ParseResult<{
+  insuredCoverages: Array<{ name: string; variant: string | null; deductible: number | null; sumInsured: number | null }>;
+} | null> => {
+  if (value == null) return { ok: true, value: null };
+  if (!isPlainObject(value) || Object.keys(value).some(key => key !== "insuredCoverages") || !Array.isArray(value.insuredCoverages) || value.insuredCoverages.length > 12) {
+    return { ok: false, error: "Pole koopMajetekDetail obsahuje neplatné údaje pojištěných rizik." };
+  }
+  const coverages: Array<{ name: string; variant: string | null; deductible: number | null; sumInsured: number | null }> = [];
+  for (const item of value.insuredCoverages) {
+    if (!isPlainObject(item) || Object.keys(item).some(key => !["name", "variant", "deductible", "sumInsured"].includes(key))) {
+      return { ok: false, error: "Pole koopMajetekDetail.insuredCoverages obsahuje neplatnou položku." };
+    }
+    const { name, variant, deductible, sumInsured } = item;
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 100 || /[\u0000-\u001f\u007f]/.test(name) ||
+      (variant != null && (typeof variant !== "string" || variant.length > 40 || /[\u0000-\u001f\u007f]/.test(variant))) ||
+      (deductible != null && (typeof deductible !== "number" || !Number.isFinite(deductible) || deductible < 0 || deductible > 1_000_000_000)) ||
+      (sumInsured != null && (typeof sumInsured !== "number" || !Number.isFinite(sumInsured) || sumInsured < 0 || sumInsured > 1_000_000_000))) {
+      return { ok: false, error: "Pole koopMajetekDetail.insuredCoverages obsahuje neplatné hodnoty." };
+    }
+    coverages.push({ name: name.trim(), variant: typeof variant === "string" ? variant.trim() || null : null,
+      deductible: typeof deductible === "number" ? deductible : null, sumInsured: typeof sumInsured === "number" ? sumInsured : null });
+  }
+  return { ok: true, value: { insuredCoverages: coverages } };
+};
+
+export const sanitizeKoopOdzamDetail = (value: unknown): ParseResult<{
+  occupation: string | null;
+  vehicleRelatedDamage: boolean | null;
+  annualLimit: number | null;
+  territorialScope: string | null;
+  deductible: string | null;
+} | null> => {
+  const fieldName = "koopOdzamDetail";
+  if (value == null) return { ok: true, value: null };
+  const allowedKeys = ["occupation", "vehicleRelatedDamage", "annualLimit", "territorialScope", "deductible"];
+  if (!isPlainObject(value) || Object.keys(value).some((key) => !allowedKeys.includes(key))) {
+    return { ok: false, error: `Pole ${fieldName} obsahuje neplatné údaje.` };
+  }
+  const text = (candidate: unknown): ParseResult<string | null> => {
+    if (candidate == null) return { ok: true, value: null };
+    if (typeof candidate !== "string" || candidate.length > 120 || /[\u0000-\u001f\u007f]/.test(candidate)) {
+      return { ok: false, error: `Pole ${fieldName} obsahuje neplatný text.` };
+    }
+    return { ok: true, value: candidate.trim() || null };
+  };
+  const occupation = text(value.occupation);
+  if (!occupation.ok) return occupation;
+  const territorialScope = text(value.territorialScope);
+  if (!territorialScope.ok) return territorialScope;
+  const deductible = text(value.deductible);
+  if (!deductible.ok) return deductible;
+  const vehicleRelatedDamage = value.vehicleRelatedDamage == null
+    ? null
+    : typeof value.vehicleRelatedDamage === "boolean"
+      ? value.vehicleRelatedDamage
+      : undefined;
+  const annualLimit = value.annualLimit == null
+    ? null
+    : typeof value.annualLimit === "number" && Number.isFinite(value.annualLimit) && value.annualLimit >= 0 && value.annualLimit <= 1_000_000_000
+      ? value.annualLimit
+      : undefined;
+  if (vehicleRelatedDamage === undefined || annualLimit === undefined) {
+    return { ok: false, error: `Pole ${fieldName} obsahuje neplatné hodnoty.` };
+  }
+  const normalizedDetail = {
+    occupation: occupation.value,
+    vehicleRelatedDamage,
+    annualLimit,
+    territorialScope: territorialScope.value,
+    deductible: deductible.value,
+  };
+  if (Object.values(normalizedDetail).every((item) => item === null)) {
+    return { ok: true, value: null };
+  }
+  return {
+    ok: true,
+    value: normalizedDetail,
+  };
 };
 
 export const normalizeCreateEntryPayload = ({
@@ -1219,6 +1303,16 @@ export const normalizeCreateEntryPayload = ({
     DOMEX_DETAIL_ALLOWED_KEYS
   );
   if (!domexDetailParsed.ok) return domexDetailParsed;
+  const koopMajetekDetailParsed = sanitizeKoopMajetekDetail(raw.koopMajetekDetail);
+  if (!koopMajetekDetailParsed.ok) return koopMajetekDetailParsed;
+  if (koopMajetekDetailParsed.value && productParsed.value !== "koopmajetekobcan") {
+    return { ok: false, error: "Údaje koopMajetekDetail lze uložit pouze k produktu Kooperativa majetek a odpovědnost občanů." };
+  }
+  const koopOdzamDetailParsed = sanitizeKoopOdzamDetail(raw.koopOdzamDetail);
+  if (!koopOdzamDetailParsed.ok) return koopOdzamDetailParsed;
+  if (koopOdzamDetailParsed.value && productParsed.value !== "koopodzam") {
+    return { ok: false, error: "Údaje koopOdzamDetail lze uložit pouze k produktu Kooperativa odpovědnost zaměstnance." };
+  }
   const neuronDetailProductValidation = validateDomexNeuronDetailProduct(productParsed.value, domexDetailParsed.value);
   if (!neuronDetailProductValidation.ok) return neuronDetailProductValidation;
   const maxdomovDetailParsed = sanitizeDetailObject(
@@ -1701,6 +1795,8 @@ export const normalizeCreateEntryPayload = ({
         productParsed.value === "domex" || productParsed.value === "domexneuron"
           ? domexDetailParsed.value
           : null,
+      koopMajetekDetail: productParsed.value === "koopmajetekobcan" ? koopMajetekDetailParsed.value : null,
+      koopOdzamDetail: productParsed.value === "koopodzam" ? koopOdzamDetailParsed.value : null,
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
       paid: paidParsed.value === true,
