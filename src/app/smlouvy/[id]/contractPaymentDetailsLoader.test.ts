@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 
-const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn() }));
 vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parseDomex }));
 vi.mock("@/app/lib/parseKoopMajetekObcanPdf", () => ({ parseKoopMajetekObcanPdf: mocks.parseKoop }));
 vi.mock("@/app/lib/parseKoopOdzamPdf", () => ({ parseKoopOdzamPdf: mocks.parseKoopOdzam }));
+vi.mock("@/app/lib/parseNeonPdf", () => ({ parseNeonPdf: mocks.parseNeon }));
 
 const payment = { amount: 1250, accountNumber: "19-2000145399/0800", variableSymbol: "0012345678", dueDate: "2026-11-05" };
 function options() {
@@ -16,6 +17,7 @@ beforeEach(() => {
   mocks.parseDomex.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
   mocks.parseKoop.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment, insuredItems: ["Pojištěná domácnost"] });
   mocks.parseKoopOdzam.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
+  mocks.parseNeon.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 891, accountNumber: "700135002/0800", variableSymbol: "0012345678" } });
 });
 
 describe("payment details from authorized PDF", () => {
@@ -39,6 +41,18 @@ describe("payment details from authorized PDF", () => {
     expect(mocks.parseKoopOdzam).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
     expect(mocks.parseDomex).not.toHaveBeenCalled();
     expect(mocks.parseKoop).not.toHaveBeenCalled();
+  });
+
+  it("uses the NEON parser for payment details and supports the missing due date", async () => {
+    const input = { ...options(), product: "neon" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 891,
+      accountNumber: "700135002/0800",
+      variableSymbol: "0012345678",
+      dueDate: null,
+    });
+    expect(mocks.parseNeon).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+    expect(mocks.parseDomex).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -65,6 +65,50 @@ describe("parseNeonPdf", () => {
     });
   });
 
+  it("parses NEON payment details and does not append the following QR instruction number to the premium", async () => {
+    pdfState.pages = [[
+      "ŽIVOTNÍ POJIŠTĚNÍ NEON",
+      "Česká podnikatelská pojišťovna",
+      "Číslo pojistné smlouvy: 1234567890",
+      "PLACENÍ POJISTNÉHO",
+      "Číslo účtu",
+      "700135002/0800",
+      "Variabilní symbol",
+      "1234567890",
+      "Měsíční pojistné včetně slev a přirážek celkem v Kč",
+      "891 3) Načtením QR kódu proveďte platbu či zadejte",
+    ]];
+
+    await expect(parseNeonPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "1234567890",
+      amount: 891,
+      frequency: "monthly",
+      paymentDetails: {
+        amount: 891,
+        accountNumber: "700135002/0800",
+        variableSymbol: "1234567890",
+        dueDate: null,
+      },
+    });
+  });
+
+  it("does not accept NEON payment details when the printed variable symbol belongs to another contract", async () => {
+    pdfState.pages = [[
+      "Číslo pojistné smlouvy: 1234567890",
+      "PLACENÍ POJISTNÉHO",
+      "Číslo účtu 700135002/0800",
+      "Variabilní symbol 9999999999",
+      "Měsíční pojistné včetně slev a přirážek celkem v Kč 891",
+    ]];
+
+    const result = await parseNeonPdf(makePdfFile());
+    expect(result).toMatchObject({
+      contractNumber: "1234567890",
+      amount: 891,
+    });
+    expect(result.paymentDetails).toBeUndefined();
+  });
+
   it("parses endorsement refresh values from NEON change request text", async () => {
     pdfState.pages = [
       [

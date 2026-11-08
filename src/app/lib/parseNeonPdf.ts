@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseNeonPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type NeonRiskFields = Partial<{
   version: string;
@@ -71,6 +72,7 @@ export type NeonPdfResult = {
   amount?: number | null;
   durationYears?: number | null;
   frequency?: PaymentFrequency | null;
+  paymentDetails?: ContractPaymentDetails | null;
   riskFields?: NeonRiskFields;
   risks?: { title: string; variant?: string | null; amount?: number | null }[];
 };
@@ -97,6 +99,68 @@ const parseAmount = (val: string | null | undefined): number | null => {
   const cleaned = val.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num) : null;
+};
+
+const parsePremiumFragment = (value: string | null | undefined): number | null => {
+  if (!value) return null;
+  const normalized = value.replace(/\u00a0/g, " ").trim();
+  const match = normalized.match(/^((?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{1,2})?)(?:\s*(?:k[čc]|czk))?/i);
+  if (!match?.[1]) return null;
+  const remainder = normalized.slice(match[0].length).trim();
+  if (remainder && !/^\d+\)/.test(remainder)) return null;
+  const amount = Number(match[1].replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : null;
+};
+
+const findPremiumAfterLabel = (
+  lines: string[],
+  asciiLines: string[],
+  label: RegExp,
+  maxLookahead = 4,
+): number | null => {
+  for (let index = 0; index < asciiLines.length; index += 1) {
+    const match = label.exec(asciiLines[index] ?? "");
+    if (!match) continue;
+    const inline = parsePremiumFragment((asciiLines[index] ?? "").slice(match.index + match[0].length));
+    if (inline != null) return inline;
+    for (let offset = 1; offset <= maxLookahead && index + offset < lines.length; offset += 1) {
+      const amount = parsePremiumFragment(lines[index + offset]);
+      if (amount != null) return amount;
+      if (/^(?:placeni pojistneho|qr platba|pojistne plneni|prohlaseni pojistnika)\b/i.test(asciiLines[index + offset] ?? "")) break;
+    }
+  }
+  return null;
+};
+
+const parseNeonPaymentDetails = (
+  pages: string[][],
+  contractNumber: string | null | undefined,
+): ContractPaymentDetails | null => {
+  let found: ContractPaymentDetails | null = null;
+  for (const pageLines of pages) {
+    const asciiPageLines = pageLines.map(line => stripDiacritics(line).toLowerCase().trim());
+    const sectionStart = asciiPageLines.findIndex(line => /^placeni\s+pojistneho\b/.test(line));
+    if (sectionStart < 0) continue;
+
+    const sectionLines = pageLines.slice(sectionStart, sectionStart + 40);
+    const sectionText = sectionLines.map(line => stripDiacritics(line).toLowerCase()).join(" ").replace(/\s+/g, " ");
+    const accountNumber = sectionText.match(/cislo\s+uctu\s*:?\s*((?:\d{1,6}-)?\d{2,10}\s*\/\s*\d{4})\b/)?.[1];
+    const explicitVariableSymbol = sectionText.match(/variabilni\s+symbol\s*:?\s*(\d{1,10})\b/)?.[1];
+    const variableSymbol = explicitVariableSymbol ?? contractNumber ?? undefined;
+    if (explicitVariableSymbol && contractNumber && explicitVariableSymbol !== contractNumber) return null;
+
+    const sectionAsciiLines = sectionLines.map(line => stripDiacritics(line).toLowerCase().trim());
+    const amount = findPremiumAfterLabel(
+      sectionLines,
+      sectionAsciiLines,
+      /mesicni\s+pojistne\s+vcetne\s+slev\s+a\s+prirazek\s+celkem\s+v\s+kc\b/i,
+    );
+    const paymentDetails = normalizeContractPaymentDetails({ amount, accountNumber, variableSymbol });
+    if (!paymentDetails) continue;
+    if (found && JSON.stringify(found) !== JSON.stringify(paymentDetails)) return null;
+    found = paymentDetails;
+  }
+  return found;
 };
 
 const pickContractNumberFromText = (value: string | null | undefined): string | null => {
@@ -940,6 +1004,12 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     result.contractNumber = contractCandidate;
   }
 
+  const paymentDetails = parseNeonPaymentDetails(
+    pagesText.map(pageText => pageText.split(/\n+/).map(line => line.trim()).filter(Boolean)),
+    result.contractNumber,
+  );
+  if (paymentDetails) result.paymentDetails = paymentDetails;
+
   // Jméno a příjmení (pojistník)
   const nameMatch =
     fullText.match(/Jméno\s+a\s+příjmení[, ]+titul\s*([^\n]+)/i)?.[1]?.trim() ??
@@ -995,13 +1065,15 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   }
 
   // Měsíční pojistné včetně slev a přirážek
-  const amountMatch =
-    fullText.match(/Měsíční\s+pojistné\s+včetně\s+slev\s+a\s+přirážek\s+celkem\s+v\s+Kč\s*([0-9\s.,]+)/i)?.[1] ??
-    asciiText.match(/mesicni pojistne vcetne slev a prirazek celkem v kc\s*([0-9\s.,]+)/i)?.[1];
+  const monthlyPremium = findPremiumAfterLabel(
+    lines,
+    asciiLines,
+    /mesicni\s+pojistne\s+vcetne\s+slev\s+a\s+prirazek\s+celkem\s+v\s+kc\b/i,
+  );
   const endorsementAmount = isNeonEndorsement
     ? pickAmountAfterLabel(lines, asciiLines, /celkove\s+mesicni\s+pojistne:?/i, 8)
     : null;
-  const amount = endorsementAmount ?? parseAmount(amountMatch);
+  const amount = endorsementAmount ?? monthlyPremium;
   if (amount != null) {
     result.amount = amount;
   }

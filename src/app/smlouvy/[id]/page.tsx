@@ -5181,14 +5181,14 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam") && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon") && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
       (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
     if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
     const details = await loadContractPaymentDetailsFromPdf({
-      product: prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : "domexneuron",
+      product: prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
       contractNumber: contract?.contractNumber ?? "",
       fileName: paymentSourcePdf.fileName,
       downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),

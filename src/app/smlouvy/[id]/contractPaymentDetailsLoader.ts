@@ -2,7 +2,7 @@ import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "@/
 import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 
 type Options = {
-  product: "domexneuron" | "koopmajetekobcan" | "koopodzam";
+  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon";
   contractNumber: string;
   fileName: string;
   downloadPdf: (signal: AbortSignal) => Promise<Blob>;
@@ -38,6 +38,9 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     } else if (product === "koopmajetekobcan") {
       const parser = await import("@/app/lib/parseKoopMajetekObcanPdf");
       parsePdf = parser.parseKoopMajetekObcanPdf;
+    } else if (product === "neon") {
+      const parser = await import("@/app/lib/parseNeonPdf");
+      parsePdf = parser.parseNeonPdf;
     } else {
       const parser = await import("@/app/lib/parseKoopOdzamPdf");
       parsePdf = parser.parseKoopOdzamPdf;
