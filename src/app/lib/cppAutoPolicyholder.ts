@@ -17,11 +17,11 @@ export type CppAutoPolicyholder = {
 type Span = { start: number; end: number; left: number; right: number; y: number };
 type Row = { text: string; folded: string; spans: Span[]; ambiguousName?: boolean };
 type Role = { start: number; end: number; policyholder: boolean; box: Span | null; ambiguousName: boolean };
-type FieldKind = "first" | "last" | "full" | "company" | "birthNumber" | "companyId" | "other";
+type FieldKind = "first" | "last" | "full" | "company" | "birthNumber" | "companyId" | "titleBefore" | "titleAfter" | "other";
 type Label = { kind: FieldKind; start: number; end: number; box: Span | null };
 type Scope = Row[];
 type Values = { seen: boolean; invalid: boolean; values: Set<string> };
-type Candidate = { name: string | null; id: string | null; hasNameLabel: boolean; badId: boolean };
+type Candidate = { name: string | null; nameIdentity: string | null; id: string | null; hasNameLabel: boolean; badId: boolean };
 
 const MISSING_SECTION = "V PDF nebyla nalezena jednoznačná sekce pojistníka.";
 const MISSING_NAME = "Jméno pojistníka není úplné nebo jednoznačně čitelné; zkontrolujte jej ručně.";
@@ -31,7 +31,7 @@ const INVALID_ID = "Identifikační číslo pojistníka není jednoznačně čit
 const fold = (text: string): string => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const clean = (text: string): string => text.normalize("NFC").replace(/\s+/g, " ").trim();
 const rolePattern = () => /\b(pojistnik|pojistena osoba|pojisteny|provozovatel|vlastnik|pojistovaci zprostredkovatel|zprostredkovatel|pojistovaci poradce|poradce|obchodni zastupce|makler|jednajici osoba|kontaktni osoba|opravnena osoba|zastupce|udaje o vozidle|vozidlo|predmet pojisteni|podpisy)\b/g;
-const fieldPattern = () => /\b(jmeno\s+a\s+prijmeni|jmeno|prijmeni|nazev(?:\s+(?:firmy|spolecnosti))?|obchodni firma|rodne cislo|r\.?\s*c\.?|ico?|dic|titul pred|titul za|platce dph|datum narozeni|statni prislusnost|adresa|bydliste|telefon|mobil|e-mail|email|psc|obec|ulice|cislo popisne|cislo orientacni)\b\s*[:：]?/g;
+const fieldPattern = () => /\b(jmeno\s+a\s+prijmeni|jmeno|prijmeni|nazev(?:\s+(?:firmy|spolecnosti))?|obchodni firma|rodne cislo|r\.?\s*c\.?|ico?|dic|titul pred|titul za|tital za|platce dph|datum narozeni|statni prislusnost|adresa|bydliste|telefon|mobil|e-mail|email|psc|obec|ulice|cislo popisne|cislo orientacni)\b\s*[:：]?/g;
 
 function prepareRow(line: CppAutoPolicyholderLine): Row {
   const items = line.items.filter((item) => item.str.trim());
@@ -83,7 +83,15 @@ function rolesIn(row: Row): Role[] {
       (raw === raw.toUpperCase() || match[0] !== "pojistnik");
     const compactTail = fold(row.text.slice(start + match[0].length)).replace(/^[\s:：|;-]+/, "");
     const compact = /^(?:jmeno|prijmeni|nazev|obchodni firma|titul pred|rodne cislo|ico?)\b/.test(compactTail);
-    if (!wholeRow && !standaloneItem && !(compact && (start === 0 || raw === raw.toUpperCase()))) return [];
+    // CPP Auto labels the next block “Provozovatel/Držitel vozidla”. Treat that
+    // complete phrase as a section heading even when PDF.js keeps it in one
+    // title-case text item; otherwise the operator's repeated identity fields
+    // are merged into the policyholder's box.
+    const headingPrefix = row.folded.slice(0, start).trim();
+    const vehicleOperatorTail = compactTail.replace(/^\/\s*/, "");
+    const vehicleOperatorHeading = match[0] === "provozovatel" &&
+      /^(?:[a-z]|\d{1,2})?\.?$/.test(headingPrefix) && /^(?:drzitel\s+)?vozidla\s*[:：.]?$/.test(vehicleOperatorTail);
+    if (!wholeRow && !standaloneItem && !(compact && (start === 0 || raw === raw.toUpperCase())) && !vehicleOperatorHeading) return [];
     const box = bounds(row, start, start + match[0].length);
     const preceding = labelsIn(row).filter((label) => label.end <= start).at(-1);
     const nameField = preceding && ["first", "last", "full", "company"].includes(preceding.kind);
@@ -180,6 +188,8 @@ function labelsIn(row: Row): Label[] {
     else if (label.startsWith("nazev") || label === "obchodni firma") kind = "company";
     else if (label === "rodne cislo" || /^r\.?\s*c\.?$/.test(label)) kind = "birthNumber";
     else if (/^ico?$/.test(label)) kind = "companyId";
+    else if (label === "titul pred") kind = "titleBefore";
+    else if (label === "titul za" || label === "tital za") kind = "titleAfter";
     return [{ kind, start: match.index, end: match.index + match[0].length, box: bounds(row, match.index, match.index + match[0].length) }];
   });
 }
@@ -209,6 +219,30 @@ function fieldValue(rows: Scope, rowIndex: number, labels: Label[], labelIndex: 
 const titleStart = /^(?:(?:ing|mgr|bc|bca|judr|mudr|mvdr|rndr|phdr|pharmdr|paeddr|thdr|dr|doc|prof)\.?\s+)+/i;
 const titleEnd = /(?:,?\s+(?:ph\.?d|dis|mba|bba|msc|csc|drsc)\.?)+$/i;
 const placeholder = (value: string): boolean => /^(?:neuveden[oaey]?|nevyplnen[oaey]?|neznam[oaey]?|nezjisteno|neni uvedeno|n\/a|null|none|ano|ne|-+)$/.test(fold(value));
+
+const prefixTitleLabels = new Map([
+  ["ing", "Ing."], ["arch", "arch."], ["mgr", "Mgr."], ["art", "art."],
+  ["bc", "Bc."], ["bca", "BcA."], ["judr", "JUDr."], ["mudr", "MUDr."],
+  ["mvdr", "MVDr."], ["rndr", "RNDr."], ["phdr", "PhDr."], ["pharmdr", "PharmDr."],
+  ["paeddr", "PaedDr."], ["thdr", "ThDr."], ["dr", "Dr."], ["doc", "doc."],
+  ["prof", "prof."], ["dipl", "dipl."],
+]);
+const suffixTitleLabels = new Map([
+  ["phd", "Ph.D."], ["dis", "DiS."], ["mba", "MBA"], ["bba", "BBA"],
+  ["msc", "MSc."], ["csc", "CSc."], ["drsc", "DrSc."], ["thd", "Th.D."],
+  ["llm", "LL.M."], ["mph", "MPH"],
+]);
+
+function canonicalizeTitle(value: string, position: "before" | "after"): string | null {
+  const tokens = clean(value).replace(/[,;]/g, " ").split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 4) return null;
+  const labels = position === "before" ? prefixTitleLabels : suffixTitleLabels;
+  const canonical = tokens.map((token) =>
+    labels.get(fold(token).replace(/[^a-z0-9]/g, ""))
+  );
+  return canonical.every((token): token is string => Boolean(token)) ? canonical.join(" ") : null;
+}
+
 function personPart(value: string): string | null {
   let name = clean(value);
   for (let index = 0; index < 3; index++) name = name.replace(titleStart, "").replace(titleEnd, "").trim();
@@ -217,6 +251,8 @@ function personPart(value: string): string | null {
 }
 
 function readField(kind: FieldKind, value: string): string | null {
+  if (kind === "titleBefore") return canonicalizeTitle(value, "before");
+  if (kind === "titleAfter") return canonicalizeTitle(value, "after");
   if (kind === "first" || kind === "last" || kind === "full") {
     const name = personPart(value);
     return kind !== "full" || (name && name.split(/\s+/).length >= 2) ? name : null;
@@ -244,6 +280,8 @@ function candidateFrom(rows: Scope): Candidate {
     company: { seen: false, invalid: false, values: new Set() },
     birthNumber: { seen: false, invalid: false, values: new Set() },
     companyId: { seen: false, invalid: false, values: new Set() },
+    titleBefore: { seen: false, invalid: false, values: new Set() },
+    titleAfter: { seen: false, invalid: false, values: new Set() },
   };
   rows.forEach((row, rowIndex) => {
     const labels = labelsIn(row);
@@ -269,9 +307,17 @@ function candidateFrom(rows: Scope): Candidate {
     if ([fields.first, fields.last, fields.full].some((field) => field.invalid || field.values.size > 1)) name = null;
   }
   if (rows.some((row) => row.ambiguousName)) name = null;
+  const nameIdentity = name;
+  if (name && !fields.company.seen) {
+    const titleBefore = unique(fields.titleBefore);
+    const titleAfter = unique(fields.titleAfter);
+    if (titleBefore) name = `${titleBefore} ${name}`;
+    if (titleAfter) name = `${name}, ${titleAfter}`;
+  }
   const idField = fields.company.seen ? fields.companyId : fields.birthNumber.seen ? fields.birthNumber : fields.companyId;
   return {
     name,
+    nameIdentity,
     id: unique(idField),
     hasNameLabel: fields.company.seen || fields.first.seen || fields.last.seen || fields.full.seen,
     badId: idField.seen && (idField.invalid || idField.values.size !== 1),
@@ -287,7 +333,11 @@ export function resolveCppAutoPolicyholder(pages: readonly CppAutoPolicyholderPa
   const names = new Map<string, string>();
   const ids = new Set<string>();
   for (const candidate of relevant) {
-    if (candidate.name) names.set(fold(candidate.name), candidate.name);
+    if (candidate.name && candidate.nameIdentity) {
+      const identity = fold(candidate.nameIdentity);
+      const existing = names.get(identity);
+      if (!existing || candidate.name.length > existing.length) names.set(identity, candidate.name);
+    }
     if (candidate.id) ids.add(candidate.id);
   }
   const nameConflict = names.size > 1 || relevant.some((candidate) => candidate.hasNameLabel && !candidate.name);

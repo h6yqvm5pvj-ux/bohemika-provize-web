@@ -40,6 +40,18 @@ describe("resolveCppAutoPolicyholder", () => {
     expect(resolveCppAutoPolicyholder([page]).clientName).toBe("Adam Novotný");
   });
 
+  it("stops at the CPP Auto ‘Provozovatel/Držitel vozidla’ heading before repeated identity fields", () => {
+    const result = resolveCppAutoPolicyholder([[
+      row(600, ["POJISTNÍK", 45]),
+      nameRow(580, "Pavel", "Palouš"),
+      row(560, ["Rodné číslo:", 45, 45], ["900101/1234", 118]),
+      row(540, ["C. Provozovatel/Držitel vozidla", 45, 182]),
+      nameRow(520, "Karel", "Provozní"),
+      row(500, ["Rodné číslo:", 45, 45], ["800101/4321", 118]),
+    ]]);
+    expect(result).toEqual({ clientName: "Pavel Palouš", personalId: "900101/1234", warnings: [] });
+  });
+
   it.each(["PROVOZOVATEL", "VLASTNÍK", "POJIŠTĚNÝ", "ZPROSTŘEDKOVATEL", "JEDNAJÍCÍ OSOBA", "KONTAKTNÍ OSOBA", "ZÁSTUPCE", "ÚDAJE O VOZIDLE"])("does not borrow missing identity from %s", (role) => {
     const result = resolveCppAutoPolicyholder([[
       row(600, ["POJISTNÍK", 45]),

@@ -89,6 +89,42 @@ describe("parseCppAutoPdf", () => {
     });
   });
 
+  it("combines the policyholder name with verified academic titles before and after it", async () => {
+    pdfState.pages = [[
+      { str: "POJISTNÍK", x: 45, y: 586, width: 42 },
+      { str: "Titul před:", x: 45, y: 571, width: 35 },
+      { str: "Bc.", x: 84, y: 571, width: 18 },
+      { str: "Jméno:", x: 147, y: 571, width: 26 },
+      { str: "Pavel", x: 175, y: 571, width: 25 },
+      { str: "Příjmení:", x: 274, y: 571, width: 32 },
+      { str: "Palouš", x: 308, y: 571, width: 30 },
+      { str: "Titul za:", x: 370, y: 571, width: 30 },
+      { str: "Ph.D.", x: 405, y: 571, width: 25 },
+    ]];
+
+    await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
+      clientName: "Bc. Pavel Palouš, Ph.D.",
+    });
+  });
+
+  it("reads a title placed below its label and canonicalizes it", async () => {
+    pdfState.pages = [[
+      { str: "POJISTNÍK", x: 45, y: 586, width: 42 },
+      { str: "Titul před:", x: 45, y: 571, width: 35 },
+      { str: "Jméno:", x: 147, y: 571, width: 26 },
+      { str: "Příjmení:", x: 274, y: 571, width: 32 },
+      { str: "Tital za:", x: 370, y: 571, width: 30 },
+      { str: "ing", x: 45, y: 555, width: 18 },
+      { str: "Pavel", x: 147, y: 555, width: 25 },
+      { str: "Palouš", x: 274, y: 555, width: 30 },
+      { str: "MBA", x: 370, y: 555, width: 24 },
+    ]];
+
+    await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
+      clientName: "Ing. Pavel Palouš, MBA",
+    });
+  });
+
   it("reads the identifier only from the policyholder section", () => {
     expect(
       extractCppAutoPolicyholderPersonalId([
