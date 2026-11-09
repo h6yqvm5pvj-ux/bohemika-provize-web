@@ -5200,22 +5200,24 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon" || prod === "cppAuto") && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon" || prod === "cppAuto" || prod === "allianzAuto" || prod === "flexi" || prod === "pillowAuto") && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
       (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
     if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
     const details = await loadContractPaymentDetailsFromPdf({
-      product: prod === "cppAuto" ? "cppAuto" : prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
+      product: prod === "pillowAuto" ? "pillowAuto" : prod === "flexi" ? "flexi" : prod === "allianzAuto" ? "allianzAuto" : prod === "cppAuto" ? "cppAuto" : prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
       contractNumber: contract?.contractNumber ?? "",
       fileName: paymentSourcePdf.fileName,
       downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),
       signal,
     });
     if (!viewerIsCurrent() || signal.aborted) throw new DOMException("Načítání bylo zrušeno.", "AbortError");
-    return details;
-  }, [adminImpersonation?.email, canReadPaymentDetails, contract?.contractNumber, downloadContractPdfBlob, paymentSourcePdf, prod, user]);
+    const validFrequencies: PaymentFrequency[] = ["monthly", "quarterly", "semiannual", "annual"];
+    const contractFrequency = validFrequencies.includes(freq as PaymentFrequency) ? freq as PaymentFrequency : undefined;
+    return { ...details, ...(contractFrequency ? { frequency: contractFrequency } : {}) };
+  }, [adminImpersonation?.email, canReadPaymentDetails, contract?.contractNumber, downloadContractPdfBlob, freq, paymentSourcePdf, prod, user]);
 
   const copyContractActionValue = useCallback(
     (value: string | null | undefined, label: string) => {
@@ -6973,7 +6975,9 @@ export default function ContractDetailPage() {
 
       {canReadPaymentDetails && paymentDetailsRequestKey === paymentDetailsContextKey && (
         <ContractPaymentDetailsDialog key={paymentDetailsContextKey} open
-          onClose={() => setPaymentDetailsRequestKey(null)} loadPaymentDetails={loadPaymentDetails} />
+          onClose={() => setPaymentDetailsRequestKey(null)} loadPaymentDetails={loadPaymentDetails}
+          contractNumber={contract?.contractNumber ?? ""} productName={fullProductLabel}
+          advisorName={user?.displayName?.trim() || nameFromEmail(normalizedEffectiveUserEmail)} />
       )}
       {showHistoryModal && contract && ownerEmail && entryId && (
         <ContractHistoryDialog ownerEmail={ownerEmail} entryId={entryId} contractNumber={contract.contractNumber ?? ""}

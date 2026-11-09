@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parsePillowAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type PillowAutoPdfResult = {
   contractNumber?: string | null;
@@ -8,6 +9,7 @@ export type PillowAutoPdfResult = {
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
+  paymentDetails?: ContractPaymentDetails | null;
   frequency?: PaymentFrequency | null;
   carMake?: string | null;
   carPlate?: string | null;
@@ -66,6 +68,30 @@ const parseAmount = (val: string | null | undefined): number | null => {
   const cleaned = candidate.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num) : null;
+};
+
+const parsePillowAutoPaymentDetails = (
+  lines: string[],
+): ContractPaymentDetails | null => {
+  const asciiLines = lines.map(line => stripDiacritics(line).toLowerCase());
+  const paymentStart = asciiLines.findIndex(line => /\bzpusob prvni platby\b/.test(line));
+  if (paymentStart < 0) return null;
+  const end = Math.min(lines.length, paymentStart + 36);
+  const section = stripDiacritics(lines.slice(paymentStart, end).join(" ")).toLowerCase().replace(/\s+/g, " ");
+  const method = /zpusob prvni platby\s*:?\s*bankovnim prevodem\b/.test(section);
+  const amountMatch = /\b(?:mesicni|ctvrtletni|pololetni|rocni)\s+platba\s*:?\s*((?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{1,2})?)\s*k[cc]\b/.exec(section);
+  const accountMatch = /cislo uctu\s*:?\s*((?:\d{1,6}-)?\d{2,10}\/\d{4})\b/.exec(section);
+  const variableSymbolMatch = /variabilni symbol\s*:?\s*(\d{1,10})\b/.exec(section);
+  const dueDateMatch = /splatnost prvni platby\s*:?\s*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})\b/.exec(section);
+  const variableSymbol = variableSymbolMatch?.[1];
+  if (!method || !amountMatch?.[1] || !accountMatch?.[1] || !variableSymbol || !dueDateMatch?.[1]) return null;
+  const [, day, month, year] = dueDateMatch[1].match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/) ?? [];
+  if (!day || !month || !year) return null;
+  const due = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (due.getUTCFullYear() !== Number(year) || due.getUTCMonth() !== Number(month) - 1 || due.getUTCDate() !== Number(day)) return null;
+  const amount = Number(amountMatch[1].replace(/\s/g, "").replace(",", "."));
+  const dueDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return normalizeContractPaymentDetails({ amount, accountNumber: accountMatch[1], variableSymbol, dueDate });
 };
 
 const normalizeContractNumber = (value: string | null | undefined): string | null => {
@@ -397,6 +423,8 @@ export async function parsePillowAutoPdf(file: File, options: PdfReadOptions = {
   if (normalizedPolicy) contractCandidates.push(normalizedPolicy);
 
   result.contractNumber = pickBestContractNumber(contractCandidates);
+  const paymentDetails = parsePillowAutoPaymentDetails(lines);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   // Počátek pojištění
   const startRaw =

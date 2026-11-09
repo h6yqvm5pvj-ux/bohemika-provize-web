@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
-import { CalendarDays, FileText, LoaderCircle, QrCode, WalletCards, X } from "lucide-react";
+import { CalendarDays, FileText, LoaderCircle, QrCode, Share2, WalletCards, X } from "lucide-react";
 import {
   buildContractPaymentQrPayload,
   normalizeContractPaymentDetails,
@@ -15,6 +15,9 @@ type Props = {
   open: boolean;
   onClose: () => void;
   loadPaymentDetails: (signal: AbortSignal) => Promise<ContractPdfDetails>;
+  contractNumber: string;
+  productName: string;
+  advisorName: string;
 };
 
 type PaymentState = {
@@ -27,12 +30,13 @@ type PaymentState = {
 const amountFormatter = new Intl.NumberFormat("cs-CZ", {
   style: "currency", currency: "CZK", minimumFractionDigits: 0, maximumFractionDigits: 2,
 });
+const frequencyLabels = { monthly: "Měsíčně", quarterly: "Čtvrtletně", semiannual: "Pololetně", annual: "Ročně" } as const;
 const formatDate = (value: string) => {
   const [year, month, day] = value.split("-");
   return `${Number(day)}. ${Number(month)}. ${year}`;
 };
 
-function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "open">) {
+function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails, contractNumber, productName, advisorName }: Omit<Props, "open">) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -40,6 +44,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
   const abortRef = useRef<AbortController | null>(null);
   const [state, setState] = useState<PaymentState | null>(null);
   const [retry, setRetry] = useState(0);
+  const [shareStatus, setShareStatus] = useState("");
   // Hide the previous document's values immediately when its loader changes.
   const current = state?.source === loadPaymentDetails ? state : null;
 
@@ -53,7 +58,12 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
         const loaded = await loadPaymentDetails(controller.signal);
         const normalized = normalizeContractPaymentDetails(loaded);
         if (!normalized) throw new Error("Invalid payment details");
-        details = { ...normalized, ...(loaded.insuredItems?.length ? { insuredItems: loaded.insuredItems } : {}), ...(loaded.paymentNote ? { paymentNote: loaded.paymentNote } : {}) };
+        details = {
+          ...normalized,
+          ...(loaded.frequency ? { frequency: loaded.frequency } : {}),
+          ...(loaded.insuredItems?.length ? { insuredItems: loaded.insuredItems } : {}),
+          ...(loaded.paymentNote ? { paymentNote: loaded.paymentNote } : {}),
+        };
       } catch (error) {
         if (isCurrent()) setState({ source: loadPaymentDetails, error: true, message: contractPaymentDetailsErrorMessage(error) });
         return;
@@ -107,6 +117,43 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
     setState(null);
     setRetry(value => value + 1);
   };
+  const sharePaymentDetails = async () => {
+    if (!current || current.error) return;
+    const details = current.details;
+    const lines = [
+      `Zdravím, zasílám platební údaje ke smlouvě č. ${contractNumber}${productName ? ` (${productName})` : ""}.`,
+      "",
+      `Částka k úhradě: ${amountFormatter.format(details.amount)}`,
+      `Číslo účtu: ${details.accountNumber}`,
+      `Variabilní symbol: ${details.variableSymbol}`,
+      ...(details.dueDate ? [`Datum splatnosti: ${formatDate(details.dueDate)}`] : []),
+      ...(details.frequency ? [`Frekvence platby: ${frequencyLabels[details.frequency]}`] : []),
+      ...(details.paymentNote ? [details.paymentNote] : []),
+      "",
+      "S pozdravem",
+      ...(advisorName ? [advisorName] : []),
+    ];
+    const text = lines.join("\n");
+    try {
+      if (typeof navigator.share === "function") {
+        const qrFile = current.qrDataUrl ? qrDataUrlToFile(current.qrDataUrl, contractNumber) : null;
+        const files = qrFile ? [qrFile] : [];
+        const supportsQrFile = files.length > 0 && typeof navigator.canShare === "function" && navigator.canShare({ files });
+        await navigator.share({ title: "Platební údaje", text, ...(supportsQrFile ? { files } : {}) });
+        setShareStatus(supportsQrFile
+          ? "Platební údaje včetně QR kódu byly předány ke sdílení."
+          : "Platební údaje byly předány ke sdílení. QR obrázek tento prohlížeč neumí přiložit.");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Platební údaje byly zkopírovány. Můžeš je vložit do zprávy.");
+      } else {
+        setShareStatus("Sdílení ani kopírování není v tomto prohlížeči dostupné.");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setShareStatus("Platební údaje se nepodařilo sdílet.");
+    }
+  };
 
   return (
     <dialog ref={dialogRef} aria-labelledby={titleId} aria-describedby={descriptionId} aria-modal="true"
@@ -139,6 +186,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
               <div className={styles.detailColumn}>
                 <dl className={styles.details}>
                   <div className={styles.amount}><dt>Částka k úhradě</dt><dd>{amountFormatter.format(current.details.amount)}</dd></div>
+                  {current.details.frequency && <div className={styles.detail}><dt>Frekvence platby</dt><dd>{frequencyLabels[current.details.frequency]}</dd></div>}
                   <div className={styles.detail}><dt>Číslo účtu</dt><dd>{current.details.accountNumber}</dd></div>
                   <div className={styles.detail}><dt>Variabilní symbol</dt><dd>{current.details.variableSymbol}</dd></div>
                   {current.details.dueDate && <div className={styles.dueDate}><dt><CalendarDays size={14} aria-hidden="true" />Datum splatnosti</dt><dd>{formatDate(current.details.dueDate)}</dd></div>}
@@ -160,9 +208,28 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
               </section>
             </div>}
       </div>
-      <footer className={styles.footer}><span className={styles.footerNote}><FileText size={14} aria-hidden="true" />Platební údaje ze smlouvy</span><button type="button" onClick={close} className={styles.done}>Zavřít</button></footer>
+      <footer className={styles.footer}>
+        <span className={styles.footerNote}><FileText size={14} aria-hidden="true" />Platební údaje ze smlouvy</span>
+        <span className={styles.footerActions}>
+          {current && !current.error && <button type="button" disabled={!current.qrDataUrl && !current.qrFailed} onClick={() => void sharePaymentDetails()} className={styles.share}><Share2 size={15} aria-hidden="true" />Sdílet</button>}
+          <button type="button" onClick={close} className={styles.done}>Zavřít</button>
+        </span>
+        <span className={styles.shareStatus} role="status" aria-live="polite">{shareStatus}</span>
+      </footer>
     </dialog>
   );
+}
+
+function qrDataUrlToFile(dataUrl: string, contractNumber: string): File | null {
+  const match = dataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match?.[1]) return null;
+  try {
+    const binary = atob(match[1]);
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    return new File([bytes], `qr-platba-${contractNumber.replace(/[^\d]/g, "") || "smlouva"}.png`, { type: "image/png" });
+  } catch {
+    return null;
+  }
 }
 
 export function ContractPaymentDetailsDialog({ open, ...props }: Props) {

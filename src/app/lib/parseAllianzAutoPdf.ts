@@ -2,6 +2,7 @@ import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 import { formatClientDisplayName } from "./clientNamePresentation";
 // src/app/lib/parseAllianzAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type AllianzAutoPdfResult = {
   isRefresh?: boolean | null;
@@ -13,6 +14,7 @@ export type AllianzAutoPdfResult = {
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
+  paymentDetails?: ContractPaymentDetails | null;
   frequency?: PaymentFrequency | null;
   carMake?: string | null;
   carPlate?: string | null;
@@ -180,6 +182,27 @@ const parseAmount = (val: string | null | undefined): number | null => {
   const cleaned = candidate.replace(/\s+/g, "").replace(",", ".").trim();
   const num = Number.parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num) : null;
+};
+
+const parseAllianzAutoPaymentDetails = (
+  lines: string[],
+  contractNumber: string | null | undefined,
+): ContractPaymentDetails | null => {
+  if (!contractNumber || !/^\d{6,10}$/.test(contractNumber)) return null;
+  const asciiLines = lines.map(line => stripDiacritics(line).toLowerCase());
+  const sectionStart = asciiLines.findIndex(line => /\bplatba\s+bankovnim\s+prevodem\b/.test(line));
+  if (sectionStart < 0) return null;
+  const cardPaymentStart = asciiLines.findIndex((line, index) => index > sectionStart &&
+    /^odkaz\s+pro\s+platbu\s+platebni\s+kartou\b/.test(line.trim()));
+  const section = lines.slice(sectionStart, cardPaymentStart >= 0 ? cardPaymentStart : undefined).join(" ").replace(/\s+/g, " ");
+  const asciiSection = stripDiacritics(section).toLowerCase();
+  const premiumMatch = /vase\s+pojistne\s*:\s*((?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{1,2})?)\s*k[cc]/i.exec(asciiSection);
+  const accountMatch = /cislo\s+uctu\s*\*?\s*:\s*((?:\d{1,6}-)?\d{2,10}\/\d{4})/i.exec(asciiSection);
+  const variableSymbolMatch = /variabilni\s+symbol\s*:\s*(\d{1,10})/i.exec(asciiSection);
+  const variableSymbol = variableSymbolMatch?.[1];
+  if (!premiumMatch?.[1] || !accountMatch?.[1] || variableSymbol !== contractNumber) return null;
+  const amount = Number(premiumMatch[1].replace(/\s/g, "").replace(",", "."));
+  return normalizeContractPaymentDetails({ amount, accountNumber: accountMatch[1], variableSymbol, dueDate: null });
 };
 
 const mapFrequency = (value: string | null | undefined): PaymentFrequency | null => {
@@ -617,6 +640,8 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
   if (bestContract) {
     result.contractNumber = bestContract;
   }
+  const paymentDetails = parseAllianzAutoPaymentDetails(lines, result.contractNumber);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   const policyholder = extractAllianzAutoPolicyholderData(lines);
   if (policyholder.clientName) result.clientName = policyholder.clientName;

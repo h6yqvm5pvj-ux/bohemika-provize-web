@@ -64,6 +64,47 @@ describe("parseAllianzAutoPdf", () => {
     });
   });
 
+  it("extracts bank transfer payment details from the Allianz payment section only", async () => {
+    setLines(
+      "Nabídka pojistitele na uzavření pojistné smlouvy č. 810480926",
+      "Pojistník",
+      "Pojištěné vozidlo",
+      "Pojistná rizika",
+      "Pojistné podmínky",
+      "Platba bankovním převodem:",
+      "Vaše pojistné: 1 671 Kč",
+      "Číslo účtu *: 20001-0038138021/0100",
+      "Variabilní symbol: 810480926",
+      "Zaplatit kartou",
+      "Vaše pojistné: 9 999 Kč",
+      "Číslo účtu *: 1111111111/0100",
+      "Variabilní symbol: 1111111111",
+    );
+
+    await expect(parseAllianzAutoPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "810480926",
+      paymentDetails: {
+        amount: 1671,
+        accountNumber: "20001-0038138021/0100",
+        variableSymbol: "810480926",
+        dueDate: null,
+      },
+    });
+  });
+
+  it("does not accept Allianz payment details when the variable symbol differs from the contract", async () => {
+    setLines(
+      "Nabídka pojistitele na uzavření pojistné smlouvy č. 810480926",
+      "Platba bankovním převodem:",
+      "Vaše pojistné: 1 671 Kč",
+      "Číslo účtu *: 20001-0038138021/0100",
+      "Variabilní symbol: 999999999",
+    );
+
+    const parsed = await parseAllianzAutoPdf(makePdfFile());
+    expect(parsed).not.toHaveProperty("paymentDetails");
+  });
+
   it("načte osobní údaje pouze ze sekce Pojistník (vy)", () => {
     expect(
       extractAllianzAutoPolicyholderData([

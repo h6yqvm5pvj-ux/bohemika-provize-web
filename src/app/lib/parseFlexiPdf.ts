@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseFlexiPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type FlexiPdfResult = {
   contractNumber?: string | null;
@@ -9,6 +10,7 @@ export type FlexiPdfResult = {
   contractSignedDate?: string | null;
   durationYears?: number | null;
   amount?: number | null;
+  paymentDetails?: ContractPaymentDetails | null;
   frequency?: PaymentFrequency | null;
   isRefresh?: boolean;
   refreshOriginalContractNumber?: string | null;
@@ -39,6 +41,33 @@ const parseYearFromIso = (isoDate: string | null | undefined): number | null => 
   if (!isoDate) return null;
   const year = Number.parseInt(isoDate.slice(0, 4), 10);
   return Number.isFinite(year) ? year : null;
+};
+
+const parseFlexiPaymentDetails = (
+  fullText: string,
+  contractNumber: string | null | undefined,
+): ContractPaymentDetails | null => {
+  if (!contractNumber || !/^\d{6,10}$/.test(contractNumber)) return null;
+  const lines = fullText.split(/\n+/).map(line => line.trim()).filter(Boolean);
+  const asciiLines = lines.map(line => line.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase());
+  const sectionStart = asciiLines.findIndex(line => /^kolik nam za pojisteni zaplatite\b/.test(line));
+  if (sectionStart < 0) return null;
+  const sectionEnd = asciiLines.findIndex((line, index) => index > sectionStart &&
+    /^(?:na jak dlouho pojisteni sjednavame|obmyslene osoby|co nam jako pojistnik potvrzujete)\b/.test(line));
+  const section = asciiLines.slice(sectionStart, sectionEnd < 0 ? undefined : sectionEnd).join(" ").replace(/\s+/g, " ");
+  const amountMatch = /castka k uhrade\s*:?\s*((?:\d{1,3}(?:\s\d{3})+|\d+)(?:[,.]\d{1,2})?)\s*k[cc]\b/.exec(section);
+  const accountMatch = /cislo uctu\s*:?\s*((?:\d{1,6}-)?\d{2,10}\/\d{4})\b/.exec(section);
+  const variableSymbolMatch = /variabilni symbol\s*:?\s*(\d{1,10})\b/.exec(section);
+  const dueDateMatch = /datum splatnosti\s*:?\s*(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})\b/.exec(section);
+  const variableSymbol = variableSymbolMatch?.[1];
+  if (!amountMatch?.[1] || !accountMatch?.[1] || !dueDateMatch?.[1] || variableSymbol !== contractNumber) return null;
+  const [, day, month, year] = dueDateMatch[1].match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/) ?? [];
+  if (!day || !month || !year) return null;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day)) return null;
+  const amount = Number(amountMatch[1].replace(/\s/g, "").replace(",", "."));
+  const dueDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return normalizeContractPaymentDetails({ amount, accountNumber: accountMatch[1], variableSymbol, dueDate });
 };
 
 const stripTitles = (name: string): string => {
@@ -91,6 +120,8 @@ export async function parseFlexiPdf(file: File, options: PdfReadOptions = {}): P
     const digits = contractMatch.replace(/\D+/g, "");
     if (digits) result.contractNumber = digits;
   }
+  const paymentDetails = parseFlexiPaymentDetails(fullText, result.contractNumber);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   // Renovace: číslo nahrazované smlouvy je jiné než číslo nové smlouvy v záhlaví.
   const renovationMatch = ascii.match(

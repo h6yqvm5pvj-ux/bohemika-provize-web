@@ -3,6 +3,7 @@ export type ContractPaymentDetails = {
   accountNumber: string;
   variableSymbol: string;
   dueDate?: string | null;
+  frequency?: "monthly" | "quarterly" | "semiannual" | "annual";
 };
 
 const MAX_PAYMENT_AMOUNT = 9_999_999.99;

@@ -29,7 +29,7 @@ describe("contract payment details dialog", () => {
   const close = vi.fn();
   const load = vi.fn<Props["loadPaymentDetails"]>();
   const render = async (overrides: Partial<Props> = {}) => act(async () => {
-    root.render(<ContractPaymentDetailsDialog open onClose={close} loadPaymentDetails={load} {...overrides} />);
+    root.render(<ContractPaymentDetailsDialog open contractNumber="0012345678" productName="Pillow Auto" advisorName="Jana Poradenská" onClose={close} loadPaymentDetails={load} {...overrides} />);
   });
 
   beforeEach(() => {
@@ -80,9 +80,10 @@ describe("contract payment details dialog", () => {
   });
 
   it("shows the ČPP Auto first year premium note returned by the PDF loader", async () => {
-    load.mockResolvedValue({ ...payment, paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění." });
+    load.mockResolvedValue({ ...payment, frequency: "annual", paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění." });
     await render();
     expect(container.textContent).toContain("Částka k úhradě je platná pouze pro 1. rok pojištění.");
+    expect(container.textContent).toContain("Frekvence platbyRočně");
   });
 
   it("shows insured items parsed from the Kooperativa policy", async () => {
@@ -91,6 +92,54 @@ describe("contract payment details dialog", () => {
     expect(container.querySelector('[aria-label="Co je pojištěno"]')?.textContent)
       .toContain("Trvale obývaná domácnost");
     expect(container.textContent).toContain("Odpovědnost v běžném občanském životě");
+  });
+
+  it("opens native sharing with the payment summary", async () => {
+    const shareDescriptor = Object.getOwnPropertyDescriptor(navigator, "share");
+    const canShareDescriptor = Object.getOwnPropertyDescriptor(navigator, "canShare");
+    const share = vi.fn().mockResolvedValue(undefined);
+    const canShare = vi.fn().mockReturnValue(true);
+    Object.defineProperty(navigator, "share", { configurable: true, value: share });
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: canShare });
+    try {
+      await render();
+      const button = Array.from(container.querySelectorAll("button")).find(item => item.textContent?.includes("Sdílet"))!;
+      await act(async () => button.click());
+      expect(share).toHaveBeenCalledTimes(1);
+      expect(share.mock.calls[0][0]).toMatchObject({
+        title: "Platební údaje",
+        text: expect.stringContaining("Zdravím, zasílám platební údaje ke smlouvě č. 0012345678 (Pillow Auto)."),
+        files: [expect.objectContaining({ name: "qr-platba-0012345678.png", type: "image/png" })],
+      });
+      expect(share.mock.calls[0][0].text).toContain("Variabilní symbol: 0001234567");
+      expect(share.mock.calls[0][0].text).toContain("S pozdravem\nJana Poradenská");
+      expect(container.textContent).toContain("včetně QR kódu");
+    } finally {
+      if (shareDescriptor) Object.defineProperty(navigator, "share", shareDescriptor);
+      else Reflect.deleteProperty(navigator, "share");
+      if (canShareDescriptor) Object.defineProperty(navigator, "canShare", canShareDescriptor);
+      else Reflect.deleteProperty(navigator, "canShare");
+    }
+  });
+
+  it("copies a payment summary when native sharing is unavailable", async () => {
+    const shareDescriptor = Object.getOwnPropertyDescriptor(navigator, "share");
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    try {
+      await render();
+      const button = Array.from(container.querySelectorAll("button")).find(item => item.textContent?.includes("Sdílet"))!;
+      await act(async () => button.click());
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("Číslo účtu: 19-2000145399/0800"));
+      expect(container.textContent).toContain("Můžeš je vložit do zprávy.");
+    } finally {
+      if (shareDescriptor) Object.defineProperty(navigator, "share", shareDescriptor);
+      else Reflect.deleteProperty(navigator, "share");
+      if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
   });
 
   it("shows a loading state and never inserts values from an invalid payment block", async () => {

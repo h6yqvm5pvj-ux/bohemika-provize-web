@@ -57,8 +57,13 @@
 .retry { margin-top: 12px; padding: 8px 13px; border: 1px solid #eac8d2; border-radius: 9px; background: #fff; color: #a24760; font-size: inherit; font-weight: 650; }
 .retry:hover { background: #fcecf1; }
 .qrError { margin: 0; padding: 16px; color: #92713b; font-size: 12px; line-height: 1.6; text-align: center; }
-.footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 28px; border-top: 1px solid #efeaf3; background: #fdfcfe; }
+.footer { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 28px; border-top: 1px solid #efeaf3; background: #fdfcfe; }
 .footerNote { display: flex; align-items: center; gap: 7px; color: #796d82; font-size: 11px; }
+.footerActions { display: flex; align-items: center; gap: 9px; }
+.share { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 16px; border: 1px solid #e4d8ed; border-radius: 11px; background: #fff; color: #704895; font-size: 13px; font-weight: 650; transition: background 150ms, border-color 150ms; }
+.share:hover { border-color: #cbb4dd; background: #f8f3fb; }
+.shareStatus { position: absolute; right: 28px; bottom: calc(100% + 5px); max-width: min(440px, calc(100% - 56px)); padding: 6px 10px; border-radius: 8px; background: #292338; color: #fff; font-size: 11px; line-height: 1.4; }
+.shareStatus:empty { display: none; }
 .done { padding: 10px 24px; border: 1px solid #7950a6; border-radius: 11px; background: #7950a6; color: #fff; font-size: 13px; font-weight: 650; box-shadow: 0 2px 4px #653b8912; transition: background 150ms; }
 .done:hover { background: #68418f; }
 @keyframes payment-spin { to { transform: rotate(360deg); } }
@@ -81,6 +86,9 @@
   .qrHint { max-width: 230px; }
   .footer { padding: 13px 20px; }
   .footerNote { max-width: 170px; font-size: 10px; }
+  .footerActions { gap: 7px; }
+  .share { padding: 9px 12px; }
+  .shareStatus { right: 20px; max-width: calc(100% - 40px); }
   .done { padding: 9px 20px; }
 }
 

@@ -1,8 +1,10 @@
 import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "@/app/lib/contractPaymentDetails";
 import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 
+import type { PaymentFrequency } from "@/app/types/domain";
+
 type Options = {
-  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon" | "cppAuto";
+  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon" | "cppAuto" | "allianzAuto" | "flexi" | "pillowAuto";
   contractNumber: string;
   fileName: string;
   downloadPdf: (signal: AbortSignal) => Promise<Blob>;
@@ -28,7 +30,7 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     throw new ContractPaymentDetailsError("pdfDownload");
   }
   ensureActive(signal);
-  type PaymentPdfResult = { contractNumber?: string | null; paymentDetails?: unknown; insuredItems?: unknown };
+  type PaymentPdfResult = { contractNumber?: string | null; paymentDetails?: unknown; insuredItems?: unknown; frequency?: unknown };
   type PaymentPdfParser = (file: File, options: { signal: AbortSignal; allowOcr: true }) => Promise<PaymentPdfResult>;
   let parsePdf: PaymentPdfParser;
   try {
@@ -44,6 +46,15 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     } else if (product === "cppAuto") {
       const parser = await import("@/app/lib/parseCppAutoPdf");
       parsePdf = parser.parseCppAutoPdf;
+    } else if (product === "allianzAuto") {
+      const parser = await import("@/app/lib/parseAllianzAutoPdf");
+      parsePdf = parser.parseAllianzAutoPdf;
+    } else if (product === "flexi") {
+      const parser = await import("@/app/lib/parseFlexiPdf");
+      parsePdf = parser.parseFlexiPdf;
+    } else if (product === "pillowAuto") {
+      const parser = await import("@/app/lib/parsePillowAutoPdf");
+      parsePdf = parser.parsePillowAutoPdf;
     } else {
       const parser = await import("@/app/lib/parseKoopOdzamPdf");
       parsePdf = parser.parseKoopOdzamPdf;
@@ -64,7 +75,11 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
   if (parsed.contractNumber?.replace(/\s/g, "") !== expectedNumber) throw new ContractPaymentDetailsError("contractMismatch");
   const details = normalizeContractPaymentDetails(parsed.paymentDetails);
   if (!details) throw new ContractPaymentDetailsError("paymentMissing");
-  if (details.variableSymbol !== expectedNumber) throw new ContractPaymentDetailsError("contractMismatch");
+  const validFrequencies: PaymentFrequency[] = ["monthly", "quarterly", "semiannual", "annual"];
+  const frequency = validFrequencies.includes(parsed.frequency as PaymentFrequency) ? parsed.frequency as PaymentFrequency : undefined;
+  if (product !== "pillowAuto" && details.variableSymbol !== expectedNumber) {
+    throw new ContractPaymentDetailsError("contractMismatch");
+  }
   const insuredItems = Array.isArray(parsed.insuredItems)
     ? parsed.insuredItems.slice(0, 12).flatMap(value => {
       if (typeof value !== "string") return [];
@@ -76,7 +91,8 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     : [];
   return {
     ...details,
+    ...(frequency ? { frequency } : {}),
     ...(insuredItems.length ? { insuredItems } : {}),
-    ...(product === "cppAuto" ? { paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!" } : {}),
+    ...(product === "cppAuto" || product === "allianzAuto" || product === "pillowAuto" ? { paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!" } : {}),
   };
 }

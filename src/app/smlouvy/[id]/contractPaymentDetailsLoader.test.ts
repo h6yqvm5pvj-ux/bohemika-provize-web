@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 
-const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn(), parseCppAuto: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn(), parseCppAuto: vi.fn(), parseAllianzAuto: vi.fn(), parseFlexi: vi.fn(), parsePillowAuto: vi.fn() }));
 vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parseDomex }));
 vi.mock("@/app/lib/parseKoopMajetekObcanPdf", () => ({ parseKoopMajetekObcanPdf: mocks.parseKoop }));
 vi.mock("@/app/lib/parseKoopOdzamPdf", () => ({ parseKoopOdzamPdf: mocks.parseKoopOdzam }));
 vi.mock("@/app/lib/parseNeonPdf", () => ({ parseNeonPdf: mocks.parseNeon }));
 vi.mock("@/app/lib/parseCppAutoPdf", () => ({ parseCppAutoPdf: mocks.parseCppAuto }));
+vi.mock("@/app/lib/parseAllianzAutoPdf", () => ({ parseAllianzAutoPdf: mocks.parseAllianzAuto }));
+vi.mock("@/app/lib/parseFlexiPdf", () => ({ parseFlexiPdf: mocks.parseFlexi }));
+vi.mock("@/app/lib/parsePillowAutoPdf", () => ({ parsePillowAutoPdf: mocks.parsePillowAuto }));
 
 const payment = { amount: 1250, accountNumber: "19-2000145399/0800", variableSymbol: "0012345678", dueDate: "2026-11-05" };
 function options() {
@@ -20,6 +23,9 @@ beforeEach(() => {
   mocks.parseKoopOdzam.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
   mocks.parseNeon.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 891, accountNumber: "700135002/0800", variableSymbol: "0012345678" } });
   mocks.parseCppAuto.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { ...payment, variableSymbol: "0012345678" } });
+  mocks.parseAllianzAuto.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 1671, accountNumber: "20001-0038138021/0100", variableSymbol: "0012345678", dueDate: null } });
+  mocks.parseFlexi.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 702, accountNumber: "2226222/0800", variableSymbol: "0012345678", dueDate: "2026-08-20" } });
+  mocks.parsePillowAuto.mockResolvedValue({ contractNumber: "0012345678", frequency: "monthly", paymentDetails: { amount: 653, accountNumber: "501401304/2010", variableSymbol: "100086377", dueDate: "2026-09-30" } });
 });
 
 describe("payment details from authorized PDF", () => {
@@ -64,6 +70,42 @@ describe("payment details from authorized PDF", () => {
       paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
     });
     expect(mocks.parseCppAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the Allianz Auto parser and returns the first year premium note", async () => {
+    const input = { ...options(), product: "allianzAuto" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toMatchObject({
+      amount: 1671,
+      accountNumber: "20001-0038138021/0100",
+      variableSymbol: "0012345678",
+      dueDate: null,
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parseAllianzAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the FLEXI parser and returns its due date and QR payment fields", async () => {
+    const input = { ...options(), product: "flexi" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 702,
+      accountNumber: "2226222/0800",
+      variableSymbol: "0012345678",
+      dueDate: "2026-08-20",
+    });
+    expect(mocks.parseFlexi).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the Pillow Auto first payment, accepts its distinct variable symbol, and returns the first year note", async () => {
+    const input = { ...options(), product: "pillowAuto" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 653,
+      accountNumber: "501401304/2010",
+      variableSymbol: "100086377",
+      dueDate: "2026-09-30",
+      frequency: "monthly",
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parsePillowAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
   });
 
   it.each([

@@ -39,6 +39,56 @@ describe("FLEXI renovation PDF", () => {
     });
   });
 
+  it("extracts payment details only from the amount due section and matches the contract number", async () => {
+    pdfState.pages = [[
+      "Číslo pojistné smlouvy", "1425518739", "Kolik nám za pojištění zaplatíte",
+      "Částka k úhradě", "702 Kč", "Číslo účtu", "2226222/0800", "Variabilní symbol",
+      "1425518739", "Datum splatnosti", "20. 8. 2026", "Na jak dlouho pojištění sjednáváme",
+      "Částka k úhradě 999 Kč", "Číslo účtu 1111111111/0100", "Variabilní symbol 1111111111",
+    ]];
+
+    await expect(parse()).resolves.toMatchObject({
+      contractNumber: "1425518739",
+      paymentDetails: {
+        amount: 702,
+        accountNumber: "2226222/0800",
+        variableSymbol: "1425518739",
+        dueDate: "2026-08-20",
+      },
+    });
+  });
+
+  it("uses the annual amount due instead of multiplying the monthly premium itself", async () => {
+    pdfState.pages = [[
+      "Číslo pojistné smlouvy", "1425544889", "Kolik nám za pojištění zaplatíte",
+      "Celkové měsíční pojistné", "236 Kč", "Pojistné za pojistné období po slevě", "2 832 Kč",
+      "Způsob platby", "trvalý příkaz", "Částka k úhradě", "2 832 Kč", "Číslo účtu",
+      "2226222/0800", "Variabilní symbol", "1425544889", "Datum splatnosti", "1. 11. 2026",
+      "Na jak dlouho pojištění sjednáváme",
+    ]];
+
+    await expect(parse()).resolves.toMatchObject({
+      contractNumber: "1425544889",
+      paymentDetails: {
+        amount: 2832,
+        accountNumber: "2226222/0800",
+        variableSymbol: "1425544889",
+        dueDate: "2026-11-01",
+      },
+    });
+  });
+
+  it("does not return FLEXI payment details when the bank transfer symbol differs from the contract", async () => {
+    pdfState.pages = [[
+      "Číslo pojistné smlouvy", "1425518739", "Kolik nám za pojištění zaplatíte",
+      "Částka k úhradě", "702 Kč", "Číslo účtu", "2226222/0800", "Variabilní symbol",
+      "9999999999", "Datum splatnosti", "20. 8. 2026",
+    ]];
+
+    const result = await parse();
+    expect(result).not.toHaveProperty("paymentDetails");
+  });
+
   it.each([
     "Tato\nsmlouva nahrazuje původní\npojistnou smlouvu č.\n480 000 0002.",
     "TATO SMLOUVA NAHRAZUJE PUVODNI POJISTNOU SMLOUVU C 4800000002.",
