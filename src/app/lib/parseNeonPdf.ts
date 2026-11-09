@@ -305,7 +305,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   const asciiLines = lines.map((l) => stripDiacritics(l).toLowerCase().trim());
   const asciiText = stripDiacritics(fullText).toLowerCase();
   const paymentSectionIndex = asciiLines.findIndex(line => /^placeni\s+pojistneho\b/.test(line));
-  const policyCoverageAsciiLines = paymentSectionIndex >= 0 ? asciiLines.slice(0, paymentSectionIndex) : asciiLines;
+  const linesBeforePayment = paymentSectionIndex >= 0 ? asciiLines.slice(0, paymentSectionIndex) : asciiLines;
+  const discountsSectionIndex = linesBeforePayment.findIndex(line => /^slevy\s+z\s+celkove\b/.test(line));
+  const policyCoverageAsciiLines = discountsSectionIndex >= 0
+    ? linesBeforePayment.slice(0, discountsSectionIndex)
+    : linesBeforePayment;
   const hasPolicyCoverageTable = paymentSectionIndex >= 0 && policyCoverageAsciiLines.some(line =>
     /^(?:zakladni pojisteni|volitelne pripojisteni|pripojisteni|urazove pripojisteni|dalsi pripojisteni|ostatni pripojisteni)\b/.test(line)
   );
@@ -335,32 +339,6 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     return value;
   };
 
-  const findAmountAfter = (labelRegex: RegExp, maxLookahead = 6): number | null => {
-    for (let idx = 0; idx < asciiLines.length; idx += 1) {
-      if (!labelRegex.test(asciiLines[idx])) continue;
-
-      for (let i = idx + 1; i <= Math.min(asciiLines.length - 1, idx + maxLookahead); i++) {
-        const m = asciiLines[i].match(/([\d\s]+)(k[cč])/);
-        if (m?.[1]) {
-          const val = parseAmount(m[1]);
-          if (val != null) return val;
-        }
-
-        const standalone = parseStandaloneAmountLine(asciiLines[i]);
-        if (standalone != null) return standalone;
-      }
-    }
-
-    // fallback: v celém textu najdi číslo v dosahu 100 znaků po labelu
-    const m2 = asciiText.match(new RegExp(`${labelRegex.source}[^\\d]{0,100}([\\d\\s]+)k[cč]`, "i"));
-    if (m2?.[1]) {
-      const val = parseAmount(m2[1]);
-      if (val != null) return val;
-    }
-
-    return null;
-  };
-
   const findLiabilityLimitAfter = (labelRegex: RegExp): number | null => {
     const parseAmountsFromLine = (line: string) =>
       Array.from(line.matchAll(/([\d\s]+)\s*k[cč]/g))
@@ -371,23 +349,24 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       /^(slevy z celkove|placeni pojistneho|bankovni spojeni|pojistne plneni|pripojisteni pro pripad|pojisteni pro pripad|ostatni pripojisteni)$/;
     const nextLiabilityRegex = /^pripojisteni odpovednosti /;
 
-    for (let idx = 0; idx < asciiLines.length; idx += 1) {
-      const titleWindow = asciiLines
-        .slice(idx, Math.min(asciiLines.length, idx + 3))
+    for (let idx = 0; idx < policyCoverageAsciiLines.length; idx += 1) {
+      const titleWindow = policyCoverageAsciiLines
+        .slice(idx, Math.min(policyCoverageAsciiLines.length, idx + 3))
         .join(" ")
         .replace(/\s+/g, " ");
       if (!labelRegex.test(titleWindow)) continue;
 
-      let end = Math.min(asciiLines.length, idx + 14);
+      let end = Math.min(policyCoverageAsciiLines.length, idx + 14);
       for (let nextIdx = idx + 1; nextIdx < end; nextIdx += 1) {
-        const nextLine = asciiLines[nextIdx] ?? "";
+        const nextLine = policyCoverageAsciiLines[nextIdx] ?? "";
         if (blockEndRegex.test(nextLine) || nextLiabilityRegex.test(nextLine)) {
           end = nextIdx;
           break;
         }
       }
+      end = Math.min(end, getCoverageRowEnd(idx, end));
 
-      const window = asciiLines.slice(idx, end);
+      const window = policyCoverageAsciiLines.slice(idx, end);
       for (let lineIdx = 0; lineIdx < window.length; lineIdx += 1) {
         if (!/limit\s+plneni/.test(window[lineIdx])) continue;
 
@@ -422,11 +401,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     }> = [];
     const seen = new Set<string>();
 
-    const blockStart = asciiLines.findIndex((line) => /urazove pripojisteni/.test(line));
+    const blockStart = policyCoverageAsciiLines.findIndex((line) => /urazove pripojisteni/.test(line));
     const scanStart = blockStart >= 0 ? blockStart : 0;
     const blockEnd =
       blockStart >= 0
-        ? asciiLines.findIndex(
+        ? policyCoverageAsciiLines.findIndex(
             (line, index) =>
               index > blockStart &&
               /pripojisteni pro pripad pracovni neschopnosti|pripojisteni pro pripad hospitalizace|pojisteni pro pripad hospitalizace|pripojisteni pro pripad zavaznych|pojisteni pro pripad zavaznych/.test(
@@ -434,10 +413,10 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
               )
           )
         : -1;
-    const scanEnd = blockEnd > scanStart ? blockEnd : asciiLines.length;
+    const scanEnd = blockEnd > scanStart ? blockEnd : policyCoverageAsciiLines.length;
 
     for (let idx = scanStart; idx < scanEnd; idx += 1) {
-      if (!/trvale nasledky urazu/.test(asciiLines[idx])) continue;
+      if (!/trvale nasledky urazu/.test(policyCoverageAsciiLines[idx])) continue;
 
       let amount: number | null = null;
       let fulfillmentFrom: string | null = null;
@@ -445,8 +424,9 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       const currencyHits: number[] = [];
       const standaloneHits: number[] = [];
 
-      for (let i = idx + 1; i <= Math.min(scanEnd - 1, idx + 10); i += 1) {
-        const line = asciiLines[i].replace(/\s+/g, " ").trim();
+      const entryEnd = getCoverageRowEnd(idx, Math.min(scanEnd, idx + 11));
+      for (let i = idx + 1; i < entryEnd; i += 1) {
+        const line = policyCoverageAsciiLines[i].replace(/\s+/g, " ").trim();
         if (!progression) {
           if (/bez progrese/.test(line)) progression = "bez_progrese";
           else if (/petinasobna progrese|5\s*x\s*progrese|5x\s*progrese/.test(line)) {
@@ -563,17 +543,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       const entries: Array<{ illness: boolean; injury: boolean; amount: number | null }> = [];
 
       for (let idx = startIndex; idx < endIndex; idx += 1) {
-        if (!isHospitalLine(asciiLines[idx])) continue;
+        if (!isHospitalLine(policyCoverageAsciiLines[idx])) continue;
 
-        let entryEnd = Math.min(endIndex, idx + 12);
-        for (let nextIdx = idx + 1; nextIdx < entryEnd; nextIdx += 1) {
-          if (isHospitalLine(asciiLines[nextIdx])) {
-            entryEnd = nextIdx;
-            break;
-          }
-        }
+        const entryEnd = getCoverageRowEnd(idx, Math.min(endIndex, idx + 13));
 
-        const window = asciiLines.slice(idx, entryEnd);
+        const window = policyCoverageAsciiLines.slice(idx, entryEnd);
         const text = window.join(" ").replace(/\s+/g, " ").trim();
         const illness = /nemoc/.test(text);
         const injury = /uraz/.test(text);
@@ -596,17 +570,17 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       return entries;
     };
 
-    const blockStarts = asciiLines
+    const blockStarts = policyCoverageAsciiLines
       .map((line, index) => ({ line, index }))
       .filter(({ line }) => blockStartRegex.test(line));
 
     for (const { index: blockStart } of blockStarts) {
-      const blockEnd = asciiLines.findIndex(
+      const blockEnd = policyCoverageAsciiLines.findIndex(
         (line, index) => index > blockStart && blockEndRegex.test(line)
       );
       const entries = collectFromBlock(
         blockStart,
-        blockEnd > blockStart ? blockEnd : Math.min(asciiLines.length, blockStart + 80)
+        blockEnd > blockStart ? blockEnd : Math.min(policyCoverageAsciiLines.length, blockStart + 80)
       );
       if (entries.some((entry) => entry.amount != null)) {
         return entries;
@@ -617,13 +591,10 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   };
 
   const findCriticalIllnessVariant = (): string | null => {
-    for (let idx = 0; idx < asciiLines.length; idx += 1) {
-      if (!/zavazna onemocneni/.test(asciiLines[idx])) continue;
+    for (const risk of risks) {
+      if (!/zavazna onemocneni/.test(normalize(risk.title))) continue;
 
-      const text = asciiLines
-        .slice(idx, Math.min(asciiLines.length, idx + 10))
-        .join(" ")
-        .replace(/\s+/g, " ");
+      const text = normalize(`${risk.title} ${risk.variant ?? ""}`).replace(/\s+/g, " ");
 
       if (/maxi/.test(text) && /in situ/.test(text)) return "maxi_in_situ";
       if (/rozsiren/.test(text) && /in situ/.test(text)) return "rozsirena_in_situ";
@@ -641,10 +612,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     const isAccidentDailyLine = (line: string) =>
       /denni odskodne za dobu leceni urazu/.test(line);
 
-    for (let idx = 0; idx < asciiLines.length; idx += 1) {
-      if (!isAccidentDailyLine(asciiLines[idx])) continue;
+    for (let idx = 0; idx < policyCoverageAsciiLines.length; idx += 1) {
+      if (!isAccidentDailyLine(policyCoverageAsciiLines[idx])) continue;
 
-      const window = asciiLines.slice(idx, Math.min(asciiLines.length, idx + 10));
+      const rowEnd = getCoverageRowEnd(idx, Math.min(policyCoverageAsciiLines.length, idx + 11));
+      const window = policyCoverageAsciiLines.slice(idx, rowEnd);
       const text = window.join(" ").replace(/\s+/g, " ").trim();
       const startMatch = text.match(/plneni\s+od\s*(\d{1,3})\.\s*dne/);
       const rawStart = startMatch?.[1] ?? null;
@@ -689,13 +661,13 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       amount: number | null;
     }> = [];
     const isWorkLine = (line: string) => /denni odskodne za pracovni neschopnost/.test(line);
-    const blockStart = asciiLines.findIndex((line) =>
+    const blockStart = policyCoverageAsciiLines.findIndex((line) =>
       /pripojisteni pro pripad pracovni neschopnosti/.test(line)
     );
     const scanStart = blockStart >= 0 ? blockStart : 0;
     const blockEnd =
       blockStart >= 0
-        ? asciiLines.findIndex(
+        ? policyCoverageAsciiLines.findIndex(
             (line, index) =>
               index > blockStart &&
               /ostatni pripojisteni|dalsi pripojisteni|pripojisteni pro pripad hospitalizace|pojisteni pro pripad hospitalizace|zprosteni od placeni/.test(
@@ -703,20 +675,14 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
               )
           )
         : -1;
-    const scanEnd = blockEnd > scanStart ? blockEnd : asciiLines.length;
+    const scanEnd = blockEnd > scanStart ? blockEnd : policyCoverageAsciiLines.length;
 
     for (let idx = scanStart; idx < scanEnd; idx += 1) {
-      if (!isWorkLine(asciiLines[idx])) continue;
+      if (!isWorkLine(policyCoverageAsciiLines[idx])) continue;
 
-      let entryEnd = Math.min(scanEnd, idx + 10);
-      for (let nextIdx = idx + 1; nextIdx < entryEnd; nextIdx += 1) {
-        if (isWorkLine(asciiLines[nextIdx])) {
-          entryEnd = nextIdx;
-          break;
-        }
-      }
+      const entryEnd = getCoverageRowEnd(idx, Math.min(scanEnd, idx + 11));
 
-      const window = asciiLines.slice(idx, entryEnd);
+      const window = policyCoverageAsciiLines.slice(idx, entryEnd);
       const text = window.join(" ").replace(/\s+/g, " ").trim();
       const illness = /nemoc/.test(text);
       const injury = /uraz/.test(text);
@@ -768,19 +734,19 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     const waiverStartRegex =
       /^(?:zprosteni\s+od\s+placeni(?:\s+pojistneho)?|pripojisteni\s+zprosteni)/;
 
-    for (let idx = 0; idx < asciiLines.length; idx += 1) {
-      if (!tableStartRegex.test(asciiLines[idx])) continue;
+    for (let idx = 0; idx < policyCoverageAsciiLines.length; idx += 1) {
+      if (!tableStartRegex.test(policyCoverageAsciiLines[idx])) continue;
 
-      let end = Math.min(asciiLines.length, idx + 140);
+      let end = Math.min(policyCoverageAsciiLines.length, idx + 140);
       for (let nextIdx = idx + 1; nextIdx < end; nextIdx += 1) {
-        if (tableEndRegex.test(asciiLines[nextIdx])) {
+        if (tableEndRegex.test(policyCoverageAsciiLines[nextIdx])) {
           end = nextIdx;
           break;
         }
       }
 
       for (let lineIdx = idx + 1; lineIdx < end; lineIdx += 1) {
-        const text = asciiLines
+        const text = policyCoverageAsciiLines
           .slice(lineIdx, Math.min(end, lineIdx + 5))
           .join(" ")
           .replace(/\s+/g, " ")
@@ -816,7 +782,12 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   const hasLetters = (txt: string) => /[a-z]/i.test(txt);
   const normalize = (txt: string) => stripDiacritics(txt).toLowerCase();
   const allowedRiskTitles = [
+    "smrt s konstantni pojistnou castkou",
     "zakladni pojisteni pro pripad smrti s konstantni pojistnou castkou",
+    "zakladni pojisteni pro pripad smrti s linearne klesajici pojistnou castkou",
+    "zakladni pojisteni pro pripad smrti s klesajici pojistnou castkou dle uroku",
+    "smrt nebo terminalni",
+    "invalidita s vyplatou duchodu",
     "invalidita iii. stupne s konstantni pc",
     "invalidita ii. stupne s konstantni pc",
     "invalidita i. stupne s konstantni pc",
@@ -847,6 +818,49 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     "pripojisteni odpovednosti zamestnance pri vykonu povolani",
   ];
 
+  const isAllowedRiskTitle = (text: string) =>
+    allowedRiskTitles.some((candidate) => normalize(text).includes(candidate));
+  const isCoverageSectionHeader = (text: string) =>
+    /^(?:zakladni pojisteni|volitelne pripojisteni|urazove pripojisteni|dalsi pripojisteni|ostatni pripojisteni)\s*$/.test(
+      normalize(text)
+    ) || /^(?:slevy z celkove|placeni pojistneho)\b/.test(normalize(text));
+  const getCoverageRowEnd = (startIndex: number, maxEnd = policyCoverageAsciiLines.length) => {
+    const boundedEnd = Math.min(maxEnd, policyCoverageAsciiLines.length);
+    for (let index = startIndex + 1; index < boundedEnd; index += 1) {
+      const line = policyCoverageAsciiLines[index] ?? "";
+      if (isAllowedRiskTitle(line) || isCoverageSectionHeader(line)) return index;
+    }
+    return boundedEnd;
+  };
+  const findAmountAfter = (labelRegex: RegExp, maxLookahead = 6): number | null => {
+    for (let idx = 0; idx < policyCoverageAsciiLines.length; idx += 1) {
+      const rowTitleWindow = policyCoverageAsciiLines
+        .slice(idx, Math.min(policyCoverageAsciiLines.length, idx + 3))
+        .join(" ");
+      if (!labelRegex.test(rowTitleWindow)) continue;
+      if (!policyCoverageAsciiLines.slice(idx, idx + 3).some(isAllowedRiskTitle)) continue;
+
+      const rowEnd = getCoverageRowEnd(idx, Math.min(policyCoverageAsciiLines.length, idx + maxLookahead + 1));
+      for (let lineIndex = idx + 1; lineIndex < rowEnd; lineIndex += 1) {
+        const currencyMatch = policyCoverageAsciiLines[lineIndex].match(/([\d\s]+)(k[cč])/);
+        if (currencyMatch?.[1]) {
+          const amount = parseAmount(currencyMatch[1]);
+          if (amount != null) return amount;
+        }
+
+        const standalone = parseStandaloneAmountLine(policyCoverageAsciiLines[lineIndex]);
+        if (standalone != null) return standalone;
+      }
+    }
+
+    return null;
+  };
+  const findRiskRowAmount = (labelRegex: RegExp): number | null => {
+    const matchingRow = risks.find((risk) => labelRegex.test(normalize(risk.title)));
+    if (matchingRow?.amount != null) return matchingRow.amount;
+    return findAmountAfter(labelRegex);
+  };
+
   let i = 0;
   while (i < policyCoverageAsciiLines.length) {
     const line = policyCoverageAsciiLines[i];
@@ -869,11 +883,12 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       i++;
       continue;
     }
+    const rowEnd = getCoverageRowEnd(i);
     const variantParts: string[] = [];
     let cursor = i + 1;
 
     // posbírej variantu, ale zastav se na číslech/datel/částkách
-    while (cursor < policyCoverageAsciiLines.length && cursor <= i + 6) {
+    while (cursor < rowEnd && cursor <= i + 6) {
       const next = policyCoverageAsciiLines[cursor];
       if (!next) {
         cursor++;
@@ -887,7 +902,7 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
 
     // hledej pojistnou částku – první z více částek v řádku tabulky; jedinou částku bereme jen pokud je rozumně velká
     const currencyHits: number[] = [];
-    for (let k = cursor; k < policyCoverageAsciiLines.length && k <= i + 10; k++) {
+    for (let k = cursor; k < rowEnd && k <= i + 10; k++) {
       const txt = policyCoverageAsciiLines[k];
       if (isHeader(txt)) break;
       if (isCurrency(txt)) {
@@ -1088,30 +1103,30 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
 
   // ---------- Rizika ----------
   // Smrt
-  const deathConst = findAmountAfter(/smrt s konstantni/i);
+  const deathConst = findRiskRowAmount(/smrt s konstantni/i);
   if (deathConst != null) {
     riskFields.deathAmount = String(deathConst);
     riskFields.deathType = "konstantni";
   }
-  const deathLinear = findAmountAfter(/klesajici pojistna castka line/i);
+  const deathLinear = findRiskRowAmount(/klesajici pojistna castka line/i);
   if (deathLinear != null) {
     riskFields.death2Amount = String(deathLinear);
     riskFields.death2Type = "klesajici";
   }
-  const deathInterest = findAmountAfter(/klesajici pojistna castka dle urok/i);
+  const deathInterest = findRiskRowAmount(/klesajici pojistna castka dle urok/i);
   if (deathInterest != null) {
     riskFields.death2Amount = String(deathInterest);
     riskFields.death2Type = "klesajici_urok";
   }
-  const deathTerminal = findAmountAfter(/smrt nebo terminalni/i);
+  const deathTerminal = findRiskRowAmount(/smrt nebo terminalni/i);
   if (deathTerminal != null) {
     riskFields.deathTerminalAmount = String(deathTerminal);
   }
 
   // Invalidity – konstantní
-  const invConst3 = findAmountAfter(/invalidita iii.*konstantni/i);
-  const invConst2 = findAmountAfter(/invalidita ii.*konstantni/i);
-  const invConst1 = findAmountAfter(/invalidita i.*konstantni/i);
+  const invConst3 = findRiskRowAmount(/invalidita iii.*konstantni/i);
+  const invConst2 = findRiskRowAmount(/invalidita ii.*konstantni/i);
+  const invConst1 = findRiskRowAmount(/invalidita i.*konstantni/i);
   if (invConst1 != null || invConst2 != null || invConst3 != null) {
     riskFields.invalidityAType = "konstantni";
     if (invConst1 != null) riskFields.invalidityA1 = String(invConst1);
@@ -1120,9 +1135,9 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   }
 
   // Invalidity – lineárně klesající
-  const invLin3 = findAmountAfter(/invalidita iii.*linear/i);
-  const invLin2 = findAmountAfter(/invalidita ii.*linear/i);
-  const invLin1 = findAmountAfter(/invalidita i.*linear/i);
+  const invLin3 = findRiskRowAmount(/invalidita iii.*linear/i);
+  const invLin2 = findRiskRowAmount(/invalidita ii.*linear/i);
+  const invLin1 = findRiskRowAmount(/invalidita i.*linear/i);
   if (invLin1 != null || invLin2 != null || invLin3 != null) {
     riskFields.invalidityAType = "klesajici";
     if (invLin1 != null) riskFields.invalidityA1 = String(invLin1);
@@ -1131,9 +1146,9 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   }
 
   // Invalidity – dle úroku
-  const invInt3 = findAmountAfter(/invalidita iii.*dle uroku/i);
-  const invInt2 = findAmountAfter(/invalidita ii.*dle uroku/i);
-  const invInt1 = findAmountAfter(/invalidita i.*dle uroku/i);
+  const invInt3 = findRiskRowAmount(/invalidita iii.*dle uroku/i);
+  const invInt2 = findRiskRowAmount(/invalidita ii.*dle uroku/i);
+  const invInt1 = findRiskRowAmount(/invalidita i.*dle uroku/i);
   if (invInt1 != null || invInt2 != null || invInt3 != null) {
     riskFields.invalidityBType = "klesajici_urok";
     if (invInt1 != null) riskFields.invalidityB1 = String(invInt1);
@@ -1142,7 +1157,7 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   }
 
   // Invalidita s výplatou důchodu
-  const invPension = findAmountAfter(/invalidity s vyplatou duchodu/i);
+  const invPension = findRiskRowAmount(/invalidity s vyplatou duchodu/i);
   if (invPension != null) {
     riskFields.invalidityPension = true;
   }
@@ -1152,9 +1167,9 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   if (criticalVariant) {
     riskFields.criticalVariant = criticalVariant;
   }
-  const criticalConst = findAmountAfter(/zavazna onemocneni.*konstantni/i);
-  const criticalLinear = findAmountAfter(/zavazna onemocneni.*linear/i);
-  const criticalInterest = findAmountAfter(/zavazna onemocneni.*dle uroku/i);
+  const criticalConst = findRiskRowAmount(/zavazna onemocneni.*konstantni/i);
+  const criticalLinear = findRiskRowAmount(/zavazna onemocneni.*linear/i);
+  const criticalInterest = findRiskRowAmount(/zavazna onemocneni.*dle uroku/i);
   if (criticalConst != null) {
     riskFields.criticalType = "konstantni";
     riskFields.criticalAmount = String(criticalConst);
@@ -1166,15 +1181,15 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     riskFields.criticalAmount = String(criticalInterest);
   }
 
-  const childSurgery = findAmountAfter(/operace ditete/i);
+  const childSurgery = findRiskRowAmount(/operace ditete/i);
   if (childSurgery != null) riskFields.childSurgeryAmount = String(childSurgery);
-  const vaccination = findAmountAfter(/nasledky ockovani/i);
+  const vaccination = findRiskRowAmount(/nasledky ockovani/i);
   if (vaccination != null) riskFields.vaccinationCompAmount = String(vaccination);
-  const diabetes = findAmountAfter(/cukrovka/i);
+  const diabetes = findRiskRowAmount(/cukrovka/i);
   if (diabetes != null) riskFields.diabetesAmount = String(diabetes);
 
   // Úrazová část
-  const deathAcc = findAmountAfter(DEATH_ACCIDENT_LABEL_REGEX);
+  const deathAcc = findRiskRowAmount(DEATH_ACCIDENT_LABEL_REGEX);
   if (deathAcc != null) riskFields.deathAccidentAmount = String(deathAcc);
 
   const injuryPermanentEntries = findInjuryPermanentEntries();
@@ -1191,7 +1206,7 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     }
     if (secondEntry?.progression) riskFields.injuryPermanent2Progression = secondEntry.progression;
   } else {
-    const injuryPermanent = findAmountAfter(/trvale nasledky urazu/i);
+    const injuryPermanent = findRiskRowAmount(/trvale nasledky urazu/i);
     if (injuryPermanent != null) riskFields.injuryPermanentAmount = String(injuryPermanent);
   }
 
@@ -1207,7 +1222,7 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
       riskFields.accidentDailyBenefit = String(accidentDailyEntry.amount);
     }
   } else {
-    const accidentDaily = findAmountAfter(/denni odskodne za dobu leceni urazu/i);
+    const accidentDaily = findRiskRowAmount(/denni odskodne za dobu leceni urazu/i);
     if (accidentDaily != null) riskFields.accidentDailyBenefit = String(accidentDaily);
   }
 
@@ -1271,16 +1286,16 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   riskFields.waiverUnemployment = waiverCoverage.unemployment;
 
   // Péče a další připojištění
-  const careDependency = findAmountAfter(/zavislost na peci/i);
+  const careDependency = findRiskRowAmount(/zavislost na peci/i);
   if (careDependency != null) riskFields.careDependencyAmount = String(careDependency);
-  const specialAid = findAmountAfter(/prispevek na porizeni zvlastni pomucky/i);
+  const specialAid = findRiskRowAmount(/prispevek na porizeni zvlastni pomucky/i);
   if (specialAid != null) {
     riskFields.specialAidAmount = String(specialAid);
-  } else if (asciiLines.some((l) => /prispevek na porizeni zvlastni pomucky/i.test(l))) {
+  } else if (policyCoverageAsciiLines.some((l) => /prispevek na porizeni zvlastni pomucky/i.test(l))) {
     // pokud částka není uvedena, nastav default 100000
     riskFields.specialAidAmount = "100000";
   }
-  const caregiving = findAmountAfter(/celodenni osetrovani/i);
+  const caregiving = findRiskRowAmount(/celodenni osetrovani/i);
   if (caregiving != null) riskFields.caregivingAmount = String(caregiving);
 
   // Asistence a cestovní
@@ -1294,11 +1309,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
   // Odpovědnost
   const liabilityCitizen =
     findLiabilityLimitAfter(/pripojisteni\s+odpovednosti\s+obcana|odpovednosti\s+obcana\s+v\s+beznem/i) ??
-    findAmountAfter(/odpovednost[i]?\s+obcana/i);
+    findRiskRowAmount(/odpovednost[i]?\s+obcana/i);
   if (liabilityCitizen != null) riskFields.liabilityCitizenLimit = String(liabilityCitizen);
   const liabilityEmployee =
     findLiabilityLimitAfter(/pripojisteni\s+odpovednosti\s+zamestnance|odpovednosti\s+zamestnance\s+pri\s+vykonu/i) ??
-    findAmountAfter(/odpovednost[i]?\s+zamestnance/i);
+    findRiskRowAmount(/odpovednost[i]?\s+zamestnance/i);
   if (liabilityEmployee != null) riskFields.liabilityEmployeeLimit = String(liabilityEmployee);
 
   if (detectedVersion) {

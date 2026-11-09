@@ -103,6 +103,76 @@ describe("parseNeonPdf", () => {
     expect(parsed.risks?.some(risk => risk.title.includes("cestovni pripojisteni"))).toBe(false);
   });
 
+  it("keeps each NEON coverage amount and variant attached to its own row", async () => {
+    pdfState.pages = [[
+      "ZÁKLADNÍ POJIŠTĚNÍ",
+      "Základní pojištění pro případ smrti s konstantní pojistnou částkou",
+      "Varianta STANDARD",
+      "1 000 000 Kč",
+      "2 000 Kč",
+      "Závažná onemocnění a poranění s konstantní PČ",
+      "Základní varianta",
+      "150 000 Kč",
+      "1 500 Kč",
+      "Zdravotní a sociální asistence",
+      "MAXI IN SITU",
+      "SLEVY Z CELKOVÉ VÝŠE POJISTNÉHO",
+      "PLACENÍ POJISTNÉHO",
+      "Základní pojištění pro případ smrti s konstantní pojistnou částkou",
+      "Varianta MAXI",
+      "9 000 000 Kč",
+      "Závažná onemocnění a poranění s konstantní PČ",
+      "Varianta MAXI IN SITU",
+      "8 000 000 Kč",
+    ]];
+
+    const parsed = await parseNeonPdf(makePdfFile());
+
+    expect(parsed.risks).toEqual([
+      {
+        title: "zakladni pojisteni pro pripad smrti s konstantni pojistnou castkou",
+        variant: "varianta standard",
+        amount: 1_000_000,
+      },
+      {
+        title: "zavazna onemocneni a poraneni s konstantni pc",
+        variant: "zakladni varianta",
+        amount: 150_000,
+      },
+      {
+        title: "zdravotni a socialni asistence",
+        variant: "maxi in situ",
+        amount: null,
+      },
+    ]);
+    expect(parsed.riskFields).toMatchObject({
+      deathAmount: "1000000",
+      criticalAmount: "150000",
+      criticalVariant: "zakladni",
+    });
+  });
+
+  it("does not fill a missing active risk amount from a repeated row in later terms", async () => {
+    pdfState.pages = [[
+      "ZÁKLADNÍ POJIŠTĚNÍ",
+      "Základní pojištění pro případ smrti s konstantní pojistnou částkou",
+      "Varianta STANDARD",
+      "SLEVY Z CELKOVÉ VÝŠE POJISTNÉHO",
+      "PLACENÍ POJISTNÉHO",
+      "Základní pojištění pro případ smrti s konstantní pojistnou částkou",
+      "Varianta MAXI",
+      "9 000 000 Kč",
+    ]];
+
+    const parsed = await parseNeonPdf(makePdfFile());
+
+    expect(parsed.riskFields?.deathAmount).toBeUndefined();
+    expect(parsed.risks?.[0]).toMatchObject({
+      variant: "varianta standard",
+      amount: null,
+    });
+  });
+
   it("parses NEON payment details and does not append the following QR instruction number to the premium", async () => {
     pdfState.pages = [[
       "ŽIVOTNÍ POJIŠTĚNÍ NEON",
