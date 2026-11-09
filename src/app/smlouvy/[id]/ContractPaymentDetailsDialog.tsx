@@ -53,7 +53,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
         const loaded = await loadPaymentDetails(controller.signal);
         const normalized = normalizeContractPaymentDetails(loaded);
         if (!normalized) throw new Error("Invalid payment details");
-        details = { ...normalized, ...(loaded.insuredItems?.length ? { insuredItems: loaded.insuredItems } : {}) };
+        details = { ...normalized, ...(loaded.insuredItems?.length ? { insuredItems: loaded.insuredItems } : {}), ...(loaded.paymentNote ? { paymentNote: loaded.paymentNote } : {}) };
       } catch (error) {
         if (isCurrent()) setState({ source: loadPaymentDetails, error: true, message: contractPaymentDetailsErrorMessage(error) });
         return;
@@ -147,6 +147,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails }: Omit<Props, "
                   <h3>Co je pojištěno</h3>
                   <ul>{current.details.insuredItems.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
                 </section> : null}
+                {current.details.paymentNote && <p className={styles.paymentNote}>{current.details.paymentNote}</p>}
               </div>
               <section className={styles.qrPanel} aria-label="QR platba">
                 <h3><QrCode size={14} aria-hidden="true" />QR platba</h3>

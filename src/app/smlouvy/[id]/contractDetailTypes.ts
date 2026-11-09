@@ -330,6 +330,7 @@ export type ContractDoc = {
   carAddonEso?: boolean | null;
   carAddonNaturalRisks?: boolean | null;
   carAddonKlika?: boolean | null;
+  carAddonKlikaLimit?: number | null;
   carAddonGlass?: boolean | null;
   carAddonGlassLimit?: number | null;
   carAddonAnimalCollision?: boolean | null;
@@ -349,6 +350,7 @@ export type ContractDoc = {
   carAddonGapLimit?: number | null;
   carAddonSmartGap?: boolean | null;
   carAddonServisPro?: boolean | null;
+  carExtraBenefitProfi?: boolean | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;

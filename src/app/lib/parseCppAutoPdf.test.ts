@@ -89,6 +89,21 @@ describe("parseCppAutoPdf", () => {
     });
   });
 
+  it("extracts payment instructions only when their variable symbol matches the contract", async () => {
+    pdfState.pages = [textPage(
+      "Číslo návrhu pojistné smlouvy", "3277221490", "Pojistné za pojistné období - částka k úhradě:",
+      "1 508", "Kč", "ODKAZ PRO PLATBU PLATEBNÍ KARTOU", "ČÁSTKA K ÚHRADĚ", "999 Kč",
+      "ÚDAJE PRO PLATBU BANKOVNÍM PŘEVODEM", "ČÁSTKA K ÚHRADĚ", ":", "1 508", "Kč",
+      "ČÍSLO ÚČTU", ":", "700135002/0800", "VARIABILNÍ SYMBOL", ":", "3277221490",
+      "DATUM SPLATNOSTI", ":", "12.11.2026 21:00", "ODKAZ PRO PLATBU PLATEBNÍ KARTOU",
+      "ČÁSTKA K ÚHRADĚ", "999 Kč", "ČÍSLO ÚČTU", "700135002/0800", "VARIABILNÍ SYMBOL", "3277221490",
+    )];
+    await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "3277221490",
+      paymentDetails: { amount: 1508, accountNumber: "700135002/0800", variableSymbol: "3277221490", dueDate: "2026-11-12" },
+    });
+  });
+
   it("combines the policyholder name with verified academic titles before and after it", async () => {
     pdfState.pages = [[
       { str: "POJISTNÍK", x: 45, y: 586, width: 42 },
@@ -122,6 +137,25 @@ describe("parseCppAutoPdf", () => {
 
     await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
       clientName: "Ing. Pavel Palouš, MBA",
+    });
+  });
+
+  it("reads Klika and Servis PRO coverages with the Klika limit and Extra Benefit answer", async () => {
+    pdfState.pages = [[
+      { str: "POJIŠTĚNÍ KLIKA", x: 45, y: 600, width: 90 },
+      { str: "Limit plnění", x: 45, y: 580, width: 48 },
+      { str: "10 000 Kč", x: 120, y: 580, width: 45 },
+      { str: "POJIŠTĚNÍ SERVIS PRO", x: 45, y: 540, width: 110 },
+      { str: "Sjednávám", x: 45, y: 500, width: 45 },
+      { str: "Extrabenefit PROFI:", x: 95, y: 500, width: 90 },
+      { str: "NE", x: 190, y: 500, width: 15 },
+    ]];
+
+    await expect(parseCppAutoPdf(makePdfFile())).resolves.toMatchObject({
+      carAddonKlika: true,
+      carAddonKlikaLimit: 10_000,
+      carAddonServisPro: true,
+      carExtraBenefitProfi: false,
     });
   });
 

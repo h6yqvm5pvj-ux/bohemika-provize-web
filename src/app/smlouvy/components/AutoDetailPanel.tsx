@@ -15,6 +15,7 @@ import {
   PackageOpen,
   PanelTop,
   PawPrint,
+  Percent,
   Route,
   Scale,
   Shield,
@@ -47,6 +48,7 @@ export type AutoFields = {
   carAddonEso: boolean;
   carAddonNaturalRisks: boolean;
   carAddonKlika: boolean;
+  carAddonKlikaLimit: string;
   carAddonGlass: boolean;
   carAddonGlassLimit: string;
   carAddonAnimalCollision: boolean;
@@ -66,6 +68,7 @@ export type AutoFields = {
   carAddonGapLimit: string;
   carAddonSmartGap: boolean;
   carAddonServisPro: boolean;
+  carExtraBenefitProfi: boolean | null;
   carAddonReplacementCar: boolean;
   carAddonLuggage: boolean;
   carAddonTransportedGoods: boolean;
@@ -114,6 +117,7 @@ export type AutoDetail = {
   carAddonEso?: boolean | null;
   carAddonNaturalRisks?: boolean | null;
   carAddonKlika?: boolean | null;
+  carAddonKlikaLimit?: number | null;
   carAddonGlass?: boolean | null;
   carAddonGlassLimit?: number | null;
   carAddonAnimalCollision?: boolean | null;
@@ -133,6 +137,7 @@ export type AutoDetail = {
   carAddonGapLimit?: number | null;
   carAddonSmartGap?: boolean | null;
   carAddonServisPro?: boolean | null;
+  carExtraBenefitProfi?: boolean | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;
@@ -201,6 +206,7 @@ type Props = {
 };
 
 type AutoAddonLimitField =
+  | "carAddonKlikaLimit"
   | "carAddonGlassLimit"
   | "carAddonAnimalCollisionLimit"
   | "carAddonAnimalDamageLimit"
@@ -426,6 +432,10 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const addonLimitConfig: Partial<
     Record<string, { field: AutoAddonLimitField; amount: number | null }>
   > = {
+    carAddonKlika: {
+      field: "carAddonKlikaLimit",
+      amount: numericLimit(contract?.carAddonKlikaLimit),
+    },
     carAddonGlass: {
       field: "carAddonGlassLimit",
       amount: numericLimit(contract?.carAddonGlassLimit),
@@ -906,6 +916,42 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
         </div>
       )}
 
+      {(prod === "cppAuto" && (editMode || contract?.carExtraBenefitProfi != null)) && (
+        <div className="space-y-3 rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_7px_20px_rgba(15,23,42,0.05)]">
+          <SectionTitle icon={Percent} label="EXTRA BENEFIT PROFI" tone="emerald" />
+          {editMode ? (
+            <label className="flex min-h-[56px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600">
+                <Percent size={16} strokeWidth={2.1} aria-hidden="true" />
+              </span>
+              <span className="flex-1 font-bold text-slate-900">Sjednáno</span>
+              <select
+                aria-label="Extra Benefit PROFI sjednáno"
+                value={fields.carExtraBenefitProfi == null ? "" : String(fields.carExtraBenefitProfi)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onChange("carExtraBenefitProfi", value === "" ? "" : value === "true");
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+              >
+                <option value="">Neznámé</option>
+                <option value="true">Ano</option>
+                <option value="false">Ne</option>
+              </select>
+            </label>
+          ) : (
+            <div className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600">
+                <Percent size={16} strokeWidth={2.1} aria-hidden="true" />
+              </span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black uppercase tracking-wide text-slate-700">
+                {contract?.carExtraBenefitProfi ? "Ano" : "Ne"}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3 rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_7px_20px_rgba(15,23,42,0.05)]">
         <div className="flex items-center justify-between gap-3">
           <SectionTitle icon={Wrench} label="Připojištění" tone="violet" />
@@ -1025,7 +1071,8 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
                   limitConfig.amount != null &&
                   !(prod === "slaviaauto" && item.key === "carAddonAnimalDamage")
               );
-              const showInlineLimit = item.key === "carAddonGlass" && limitConfig;
+              const showInlineLimit =
+                (item.key === "carAddonGlass" || item.key === "carAddonKlika") && limitConfig;
 
               if (showInlineLimit) {
                 return (
@@ -1092,6 +1139,7 @@ export function AutoDetailPanel({ prod, editMode, fields, contract, onChange }: 
             })}
         </div>
       </div>
+
       </div>
     </div>
   );

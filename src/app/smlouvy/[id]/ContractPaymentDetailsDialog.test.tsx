@@ -79,6 +79,12 @@ describe("contract payment details dialog", () => {
     expect(container.querySelector("a")).toBeNull();
   });
 
+  it("shows the ČPP Auto first year premium note returned by the PDF loader", async () => {
+    load.mockResolvedValue({ ...payment, paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění." });
+    await render();
+    expect(container.textContent).toContain("Částka k úhradě je platná pouze pro 1. rok pojištění.");
+  });
+
   it("shows insured items parsed from the Kooperativa policy", async () => {
     load.mockResolvedValue({ ...payment, insuredItems: ["Trvale obývaná domácnost", "Odpovědnost v běžném občanském životě"] });
     await render();

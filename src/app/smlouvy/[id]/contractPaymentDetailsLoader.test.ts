@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 
-const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn(), parseCppAuto: vi.fn() }));
 vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parseDomex }));
 vi.mock("@/app/lib/parseKoopMajetekObcanPdf", () => ({ parseKoopMajetekObcanPdf: mocks.parseKoop }));
 vi.mock("@/app/lib/parseKoopOdzamPdf", () => ({ parseKoopOdzamPdf: mocks.parseKoopOdzam }));
 vi.mock("@/app/lib/parseNeonPdf", () => ({ parseNeonPdf: mocks.parseNeon }));
+vi.mock("@/app/lib/parseCppAutoPdf", () => ({ parseCppAutoPdf: mocks.parseCppAuto }));
 
 const payment = { amount: 1250, accountNumber: "19-2000145399/0800", variableSymbol: "0012345678", dueDate: "2026-11-05" };
 function options() {
@@ -18,6 +19,7 @@ beforeEach(() => {
   mocks.parseKoop.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment, insuredItems: ["Pojištěná domácnost"] });
   mocks.parseKoopOdzam.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: payment });
   mocks.parseNeon.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 891, accountNumber: "700135002/0800", variableSymbol: "0012345678" } });
+  mocks.parseCppAuto.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { ...payment, variableSymbol: "0012345678" } });
 });
 
 describe("payment details from authorized PDF", () => {
@@ -53,6 +55,15 @@ describe("payment details from authorized PDF", () => {
     });
     expect(mocks.parseNeon).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
     expect(mocks.parseDomex).not.toHaveBeenCalled();
+  });
+
+  it("uses the ČPP Auto parser and returns the first year premium note", async () => {
+    const input = { ...options(), product: "cppAuto" as const };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toMatchObject({
+      ...payment,
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parseCppAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
   });
 
   it.each([

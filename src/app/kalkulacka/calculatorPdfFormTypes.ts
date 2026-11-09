@@ -33,6 +33,7 @@ export type CalculatorPdfFormValues = {
   autoCarAddonNaturalRisks: boolean;
   autoCarAddonGlass: boolean;
   autoCarAddonGlassLimit: number | null;
+  autoCarAddonKlikaLimit: number | null;
   autoCarAddonAnimalCollision: boolean;
   autoCarAddonAnimalCollisionLimit: number | null;
   autoCarAddonAnimalDamage: boolean;
@@ -74,6 +75,7 @@ export type CalculatorPdfFormValues = {
   domexAssistancePlus: boolean;
   neonPdfDetailFields: NeonPdfDetailEditorFields;
   autoCarAddonKlika: boolean;
+  autoCarExtraBenefitProfi: boolean | null;
   autoCarAddonTheftLimit: number | null;
   autoCarAddonNaturalLimit: number | null;
   autoCarAddonOwnDamage: boolean;

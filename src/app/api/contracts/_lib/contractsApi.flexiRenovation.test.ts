@@ -252,12 +252,14 @@ describe("saving ČPP Auto replacements from the statement queue", () => {
     expect(records).toEqual(before);
   });
 
-  it("refuses to replace an original already linked to another contract", async () => {
+  it("saves an unlinked replacement when the original already has a successor", async () => {
     Object.assign(records.get(originalPath)!, { productKey: "cppAuto", refreshReplacedByEntryId: "another-replacement" });
-    const before = new Map(records);
-    const { response } = await save(cppReplacement);
-    expect(response.status).toBe(409);
-    expect(records).toEqual(before);
+    const originalBefore = { ...records.get(originalPath)! };
+    const { response, body, saved } = await save(cppReplacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(saved).toMatchObject({ productKey: "cppAuto", isRefresh: true, refreshOriginalContractNumber: "OLD123" });
+    expect(records.get(originalPath)).toEqual(originalBefore);
   });
 
   it.each([

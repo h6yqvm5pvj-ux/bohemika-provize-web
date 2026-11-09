@@ -2098,6 +2098,7 @@ export default function ContractDetailPage() {
   const [editCarAddonEso, setEditCarAddonEso] = useState(false);
   const [editCarAddonNaturalRisks, setEditCarAddonNaturalRisks] = useState(false);
   const [editCarAddonKlika, setEditCarAddonKlika] = useState(false);
+  const [editCarAddonKlikaLimit, setEditCarAddonKlikaLimit] = useState("");
   const [editCarAddonGlass, setEditCarAddonGlass] = useState(false);
   const [editCarAddonGlassLimit, setEditCarAddonGlassLimit] = useState("");
   const [editCarAddonAnimalCollision, setEditCarAddonAnimalCollision] = useState(false);
@@ -2117,6 +2118,7 @@ export default function ContractDetailPage() {
   const [editCarAddonGapLimit, setEditCarAddonGapLimit] = useState("");
   const [editCarAddonSmartGap, setEditCarAddonSmartGap] = useState(false);
   const [editCarAddonServisPro, setEditCarAddonServisPro] = useState(false);
+  const [editCarExtraBenefitProfi, setEditCarExtraBenefitProfi] = useState<boolean | null>(null);
   const [editCarAddonReplacementCar, setEditCarAddonReplacementCar] = useState(false);
   const [editCarAddonLuggage, setEditCarAddonLuggage] = useState(false);
   const [editCarAddonTransportedGoods, setEditCarAddonTransportedGoods] = useState(false);
@@ -2275,6 +2277,7 @@ export default function ContractDetailPage() {
     carAddonEso: editCarAddonEso,
     carAddonNaturalRisks: editCarAddonNaturalRisks,
     carAddonKlika: editCarAddonKlika,
+    carAddonKlikaLimit: editCarAddonKlikaLimit,
     carAddonGlass: editCarAddonGlass,
     carAddonGlassLimit: editCarAddonGlassLimit,
     carAddonAnimalCollision: editCarAddonAnimalCollision,
@@ -2294,6 +2297,7 @@ export default function ContractDetailPage() {
     carAddonGapLimit: editCarAddonGapLimit,
     carAddonSmartGap: editCarAddonSmartGap,
     carAddonServisPro: editCarAddonServisPro,
+    carExtraBenefitProfi: editCarExtraBenefitProfi,
     carAddonReplacementCar: editCarAddonReplacementCar,
     carAddonLuggage: editCarAddonLuggage,
     carAddonTransportedGoods: editCarAddonTransportedGoods,
@@ -2500,6 +2504,10 @@ export default function ContractDetailPage() {
           break;
         case "carAddonKlika":
           setEditCarAddonKlika(Boolean(value));
+          if (!Boolean(value)) setEditCarAddonKlikaLimit("");
+          break;
+        case "carAddonKlikaLimit":
+          setEditCarAddonKlikaLimit(String(value));
           break;
         case "carAddonGlass":
           setEditCarAddonGlass(Boolean(value));
@@ -2557,6 +2565,9 @@ export default function ContractDetailPage() {
           break;
         case "carAddonServisPro":
           setEditCarAddonServisPro(Boolean(value));
+          break;
+        case "carExtraBenefitProfi":
+          setEditCarExtraBenefitProfi(value === "" ? null : Boolean(value));
           break;
         case "carAddonReplacementCar":
           setEditCarAddonReplacementCar(Boolean(value));
@@ -3028,6 +3039,11 @@ export default function ContractDetailPage() {
     setEditCarAddonEso(!!contract.carAddonEso);
     setEditCarAddonNaturalRisks(!!contract.carAddonNaturalRisks);
     setEditCarAddonKlika(!!contract.carAddonKlika);
+    setEditCarAddonKlikaLimit(
+      contract.carAddonKlikaLimit != null && Number.isFinite(contract.carAddonKlikaLimit)
+        ? String(contract.carAddonKlikaLimit)
+        : ""
+    );
     setEditCarAddonGlass(!!contract.carAddonGlass);
     setEditCarAddonGlassLimit(
       contract.carAddonGlassLimit != null && Number.isFinite(contract.carAddonGlassLimit)
@@ -3078,6 +3094,7 @@ export default function ContractDetailPage() {
     );
     setEditCarAddonSmartGap(!!contract.carAddonSmartGap);
     setEditCarAddonServisPro(!!contract.carAddonServisPro);
+    setEditCarExtraBenefitProfi(contract.carExtraBenefitProfi ?? null);
     setEditCarAddonReplacementCar(!!contract.carAddonReplacementCar);
     setEditCarAddonLuggage(!!contract.carAddonLuggage);
     setEditCarAddonTransportedGoods(!!contract.carAddonTransportedGoods);
@@ -3807,6 +3824,7 @@ export default function ContractDetailPage() {
           editCarAddonGlassLimit,
           editCarAddonKeyLossTheft,
           editCarAddonKlika,
+          editCarAddonKlikaLimit,
           editCarAddonLegalAdvice,
           editCarAddonLuggage,
           editCarAddonNatural,
@@ -3819,6 +3837,7 @@ export default function ContractDetailPage() {
           editCarAddonPothole,
           editCarAddonReplacementCar,
           editCarAddonServisPro,
+          editCarExtraBenefitProfi,
           editCarAddonSmartGap,
           editCarAddonTheft,
           editCarAddonTheftLimit,
@@ -5181,14 +5200,14 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon") && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon" || prod === "cppAuto") && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
       (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
     if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
     const details = await loadContractPaymentDetailsFromPdf({
-      product: prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
+      product: prod === "cppAuto" ? "cppAuto" : prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
       contractNumber: contract?.contractNumber ?? "",
       fileName: paymentSourcePdf.fileName,
       downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),

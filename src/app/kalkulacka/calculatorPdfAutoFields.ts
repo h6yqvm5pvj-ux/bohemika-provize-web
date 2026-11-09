@@ -140,6 +140,27 @@ export function mapAutoPdfFormValues(importProduct: Product, parsed: ParsedContr
     values.autoCarAddonNaturalRisks = addon;
     if (addon) applied += 1;
   }
+  if ("carAddonKlika" in parsed) {
+    const addon = parsed.carAddonKlika === true;
+    values.autoCarAddonKlika = addon;
+    if (addon) applied += 1;
+  }
+  if ("carAddonKlikaLimit" in parsed) {
+    const limit = typeof parsed.carAddonKlikaLimit === "number" && Number.isFinite(parsed.carAddonKlikaLimit)
+      ? Math.round(parsed.carAddonKlikaLimit)
+      : null;
+    values.autoCarAddonKlikaLimit = limit;
+    if (limit != null) {
+      values.autoCarAddonKlika = true;
+      applied += 1;
+    }
+  }
+  if (importProduct === "cppAuto" && "carExtraBenefitProfi" in parsed) {
+    values.autoCarExtraBenefitProfi = typeof parsed.carExtraBenefitProfi === "boolean"
+      ? parsed.carExtraBenefitProfi
+      : null;
+    if (values.autoCarExtraBenefitProfi != null) applied += 1;
+  }
   if ("carAddonGlass" in parsed) {
     const addon = parsed.carAddonGlass === true;
     values.autoCarAddonGlass = addon;

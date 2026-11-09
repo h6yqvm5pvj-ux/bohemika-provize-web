@@ -333,6 +333,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonEso",
   "carAddonNaturalRisks",
   "carAddonKlika",
+  "carAddonKlikaLimit",
   "carAddonGlass",
   "carAddonGlassLimit",
   "carAddonAnimalCollision",
@@ -352,6 +353,7 @@ const UPDATE_FIELDS_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonGapLimit",
   "carAddonSmartGap",
   "carAddonServisPro",
+  "carExtraBenefitProfi",
   "carAddonReplacementCar",
   "carAddonLuggage",
   "carAddonTransportedGoods",
@@ -400,6 +402,7 @@ const UPDATE_FIELDS_OPTIONAL_NUMBER_FIELDS = new Set<string>([
   "carHullSumInsured",
   "carHullDeductible",
   "carAddonGlassLimit",
+  "carAddonKlikaLimit",
   "carAddonAnimalCollisionLimit",
   "carAddonAnimalDamageLimit",
   "carAddonTheftLimit",
@@ -418,6 +421,7 @@ const UPDATE_FIELDS_OPTIONAL_BOOLEAN_FIELDS = new Set<string>([
   "carAddonEso",
   "carAddonNaturalRisks",
   "carAddonKlika",
+  "carExtraBenefitProfi",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -5246,6 +5250,8 @@ export async function handleContractsCreate(req: NextRequest) {
       normalizedEntry.payload.entryType === "contract" &&
       normalizedEntry.payload.isRefresh === true &&
       canSaveUnlinkedOriginalReplacement(normalizedEntry.payload.productKey);
+    const allowSaveWhenOriginalHasSuccessor =
+      allowUnlinkedOriginalReplacement && normalizedEntry.payload.productKey === "cppAuto";
 
     if (
       normalizedEntry.payload.entryType === "contract" &&
@@ -5328,15 +5334,23 @@ export async function handleContractsCreate(req: NextRequest) {
               existingReplacementEntryId &&
               existingReplacementEntryId !== (idempotentEntryRef?.id ?? "")
             ) {
-              return NextResponse.json(
-                { ok: false, error: "Původní smlouva už má navazující Refresh/Náhradu." },
-                { status: 409 }
-              );
+              if (allowSaveWhenOriginalHasSuccessor) {
+                // Keep the existing successor link intact and save this replacement independently.
+                refreshOriginalLink = null;
+                refreshOriginalForSync = null;
+              } else {
+                return NextResponse.json(
+                  { ok: false, error: "Původní smlouva už má navazující Refresh/Náhradu." },
+                  { status: 409 }
+                );
+              }
             }
-            refreshOriginalForSync = {
-              ownerEmail: targetOwnerEmail,
-              entryId: refreshOriginalEntryId,
-            };
+            if (refreshOriginalLink) {
+              refreshOriginalForSync = {
+                ownerEmail: targetOwnerEmail,
+                entryId: refreshOriginalEntryId,
+              };
+            }
             if (normalizedEntry.payload.productKey === "neon") {
               const originalItem = toContractResponseItem(
                 refreshOriginalSnap.id,
@@ -5750,6 +5764,7 @@ export async function handleContractsCreate(req: NextRequest) {
             })
           : [];
 
+      let refreshOriginalLinkSkipped = false;
       if (trustedPayload.entryType === "contract") {
         const contractNumberNormalized = normalizeContractNumber(
           trustedPayload.contractNumber
@@ -5778,6 +5793,7 @@ export async function handleContractsCreate(req: NextRequest) {
         };
 
         await trackCashflowWrite(() => db.runTransaction(async (tx) => {
+          refreshOriginalLinkSkipped = false;
           await assertContractNoteNamespaceAvailable(createdRef, ref => tx.get(ref));
           const claimSnap = await tx.get(claimRef);
           let refreshOriginalSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> | null = null;
@@ -5859,11 +5875,16 @@ export async function handleContractsCreate(req: NextRequest) {
                 ? originalData.refreshReplacedByEntryId.trim()
                 : "";
             if (existingReplacementEntryId && existingReplacementEntryId !== createdRef.id) {
-              const linkedErr = new Error(
-                "Původní smlouva už má navazující Refresh/Náhradu."
-              ) as Error & { statusCode?: number };
-              linkedErr.statusCode = 409;
-              throw linkedErr;
+              if (allowSaveWhenOriginalHasSuccessor) {
+                // A concurrent save claimed the original after preflight; preserve its link.
+                refreshOriginalLinkSkipped = true;
+              } else {
+                const linkedErr = new Error(
+                  "Původní smlouva už má navazující Refresh/Náhradu."
+                ) as Error & { statusCode?: number };
+                linkedErr.statusCode = 409;
+                throw linkedErr;
+              }
             }
           }
 
@@ -5890,7 +5911,7 @@ export async function handleContractsCreate(req: NextRequest) {
             tx.delete(contractRef);
           }
 
-          if (refreshOriginalRef && refreshOriginalSnap?.exists) {
+          if (refreshOriginalRef && refreshOriginalSnap?.exists && !refreshOriginalLinkSkipped) {
             const refreshOriginalData = (refreshOriginalSnap.data() ?? {}) as ContractDoc;
             const originalAlreadyStorno =
               contractLifecycleStatus(refreshOriginalData) === "storno";
@@ -5959,7 +5980,7 @@ export async function handleContractsCreate(req: NextRequest) {
         );
       }
 
-      if (refreshOriginalForSync) {
+      if (refreshOriginalForSync && !refreshOriginalLinkSkipped) {
         try {
           const refreshOriginalSnap = await db
             .collection("users")
@@ -6025,7 +6046,7 @@ export async function handleContractsCreate(req: NextRequest) {
       const response = NextResponse.json({
         ok: true,
         entryId: createdRef.id,
-        refreshOriginalEntryId: refreshOriginalForSync?.entryId ?? null,
+        refreshOriginalEntryId: refreshOriginalLinkSkipped ? null : refreshOriginalForSync?.entryId ?? null,
       });
       return withRateLimit(response);
     } catch (createErr: any) {

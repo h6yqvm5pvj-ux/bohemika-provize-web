@@ -73,6 +73,10 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["carAssistancePlan", "carAssistancePlan"],
   ["carAddonEso", "carAddonEso"],
   ["carAddonNaturalRisks", "carAddonNaturalRisks"],
+  ["carAddonKlika", "carAddonKlika"],
+  ["carAddonKlikaLimit", "carAddonKlikaLimit"],
+  ["carAddonServisPro", "carAddonServisPro"],
+  ["carExtraBenefitProfi", "carExtraBenefitProfi"],
   ["carAddonGlass", "carAddonGlass"],
   ["carAddonAnimalCollision", "carAddonAnimalCollision"],
   ["carAddonAnimalDamage", "carAddonAnimalDamage"],
@@ -97,6 +101,7 @@ const NUMBER_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
   "carLiabilityLimit",
   "carHullSumInsured",
   "carHullDeductible",
+  "carAddonKlikaLimit",
   "carAddonAnimalDamageLimit",
 ]);
 
@@ -108,6 +113,8 @@ const BOOLEAN_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
   "carHullRiskAnimalCollision",
   "carAddonEso",
   "carAddonNaturalRisks",
+  "carAddonKlika",
+  "carAddonServisPro",
   "carAddonGlass",
   "carAddonAnimalCollision",
   "carAddonAnimalDamage",
@@ -304,6 +311,7 @@ const parsedPdfValueForContractField = (
       : null;
   }
   if (field === "automaticRenewal" || field === "premiumIndexationEnabled") return typeof rawValue === "boolean" ? rawValue : null;
+  if (field === "carExtraBenefitProfi") return typeof rawValue === "boolean" ? rawValue : null;
 
   if (NUMBER_CONTRACT_UPDATE_FIELDS.has(field)) {
     const value =
@@ -406,6 +414,11 @@ export const mergeEmptyContractFields = (
   let appliedCount = 0;
 
   for (const [parsedKey, contractField] of PDF_CONTRACT_FIELD_MAP) {
+    if (
+      (contractField === "carAddonKlika" || contractField === "carAddonKlikaLimit" ||
+        contractField === "carAddonServisPro" || contractField === "carExtraBenefitProfi") &&
+      currentContract.productKey !== "cppAuto"
+    ) continue;
     if (contractField === "pensionTargetAge" && currentContract.productKey !== "conseqzenit") continue;
     if ((contractField === "automaticRenewal" || contractField === "premiumIndexationEnabled" || contractField === "policyTermEndDate") && currentContract.productKey !== "domexneuron") continue;
     const renewal = currentContract.automaticRenewal ?? parsed.automaticRenewal;

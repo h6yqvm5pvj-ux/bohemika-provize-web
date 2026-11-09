@@ -2,14 +2,14 @@ import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "@/
 import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 
 type Options = {
-  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon";
+  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon" | "cppAuto";
   contractNumber: string;
   fileName: string;
   downloadPdf: (signal: AbortSignal) => Promise<Blob>;
   signal: AbortSignal;
 };
 
-export type ContractPdfDetails = ContractPaymentDetails & { insuredItems?: string[] };
+export type ContractPdfDetails = ContractPaymentDetails & { insuredItems?: string[]; paymentNote?: string };
 
 const ensureActive = (signal: AbortSignal) => {
   if (signal.aborted) throw new DOMException("Načítání bylo zrušeno.", "AbortError");
@@ -41,6 +41,9 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     } else if (product === "neon") {
       const parser = await import("@/app/lib/parseNeonPdf");
       parsePdf = parser.parseNeonPdf;
+    } else if (product === "cppAuto") {
+      const parser = await import("@/app/lib/parseCppAutoPdf");
+      parsePdf = parser.parseCppAutoPdf;
     } else {
       const parser = await import("@/app/lib/parseKoopOdzamPdf");
       parsePdf = parser.parseKoopOdzamPdf;
@@ -71,5 +74,9 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
         : [];
     })
     : [];
-  return { ...details, ...(insuredItems.length ? { insuredItems } : {}) };
+  return {
+    ...details,
+    ...(insuredItems.length ? { insuredItems } : {}),
+    ...(product === "cppAuto" ? { paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!" } : {}),
+  };
 }

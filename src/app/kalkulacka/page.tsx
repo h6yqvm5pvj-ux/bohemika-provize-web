@@ -532,6 +532,8 @@ export default function CalculatorPage() {
   const [autoCarAddonEso, setAutoCarAddonEso] = useState(false);
   const [autoCarAddonNaturalRisks, setAutoCarAddonNaturalRisks] = useState(false);
   const [autoCarAddonKlika, setAutoCarAddonKlika] = useState(false);
+  const [autoCarAddonKlikaLimit, setAutoCarAddonKlikaLimit] = useState<number | null>(null);
+  const [autoCarExtraBenefitProfi, setAutoCarExtraBenefitProfi] = useState<boolean | null>(null);
   const [autoCarAddonGlass, setAutoCarAddonGlass] = useState(false);
   const [autoCarAddonGlassLimit, setAutoCarAddonGlassLimit] = useState<number | null>(null);
   const [autoCarAddonAnimalCollision, setAutoCarAddonAnimalCollision] = useState(false);
@@ -660,6 +662,8 @@ export default function CalculatorPage() {
     domexAssistancePlus: setDomexAssistancePlus,
     neonPdfDetailFields: setNeonPdfDetailFields,
     autoCarAddonKlika: setAutoCarAddonKlika,
+    autoCarAddonKlikaLimit: setAutoCarAddonKlikaLimit,
+    autoCarExtraBenefitProfi: setAutoCarExtraBenefitProfi,
     autoCarAddonTheftLimit: setAutoCarAddonTheftLimit,
     autoCarAddonNaturalLimit: setAutoCarAddonNaturalLimit,
     autoCarAddonOwnDamage: setAutoCarAddonOwnDamage,
@@ -3530,6 +3534,12 @@ export default function CalculatorPage() {
             carAddonKlika: isAutoImportProduct
               ? parsedPdfBooleanValue(parsed, "carAddonKlika")
               : null,
+            carAddonKlikaLimit: isAutoImportProduct
+              ? parsedPdfRoundedNumberValue(parsed, "carAddonKlikaLimit")
+              : null,
+            carExtraBenefitProfi: importProduct === "cppAuto" && typeof parsed.carExtraBenefitProfi === "boolean"
+              ? parsed.carExtraBenefitProfi
+              : null,
             carAddonGlass: isAutoImportProduct ? carAddonGlass : null,
             carAddonGlassLimit: isAutoImportProduct ? glassLimit : null,
             carAddonAnimalCollision: isAutoImportProduct
@@ -5152,6 +5162,10 @@ export default function CalculatorPage() {
             carAddonEso: isAutoProduct(product) ? autoCarAddonEso : null,
             carAddonNaturalRisks: isAutoProduct(product) ? autoCarAddonNaturalRisks : null,
             carAddonKlika: isAutoProduct(product) ? autoCarAddonKlika : null,
+            carAddonKlikaLimit: isAutoProduct(product) && autoCarAddonKlika
+              ? autoCarAddonKlikaLimit
+              : null,
+            carExtraBenefitProfi: product === "cppAuto" ? autoCarExtraBenefitProfi : null,
             carAddonGlass: isAutoProduct(product) ? autoCarAddonGlass : null,
             carAddonGlassLimit: isAutoProduct(product)
               ? autoCarAddonGlass
@@ -5787,6 +5801,10 @@ export default function CalculatorPage() {
           autoCarAddonGlassLimit != null && Number.isFinite(autoCarAddonGlassLimit)
             ? String(autoCarAddonGlassLimit)
             : "",
+        carAddonKlikaLimit:
+          autoCarAddonKlikaLimit != null && Number.isFinite(autoCarAddonKlikaLimit)
+            ? String(autoCarAddonKlikaLimit)
+            : "",
         carAddonAnimalCollisionLimit:
           autoCarAddonAnimalCollisionLimit != null &&
           Number.isFinite(autoCarAddonAnimalCollisionLimit)
@@ -5956,6 +5974,9 @@ export default function CalculatorPage() {
       case "carAddonGlassLimit":
         setAutoNumberField(value, setAutoCarAddonGlassLimit);
         return;
+      case "carAddonKlikaLimit":
+        setAutoNumberField(value, setAutoCarAddonKlikaLimit);
+        return;
       case "carAddonAnimalCollisionLimit":
         setAutoNumberField(value, setAutoCarAddonAnimalCollisionLimit);
         return;
@@ -6004,6 +6025,7 @@ export default function CalculatorPage() {
         return;
       case "carAddonKlika":
         setAutoCarAddonKlika(value);
+        if (!value) setAutoCarAddonKlikaLimit(null);
         return;
       case "carAddonGlass":
         setAutoCarAddonGlass(value);
@@ -6188,7 +6210,14 @@ export default function CalculatorPage() {
     }
     addAddon("ESO", autoCarAddonEso);
     addAddon("Pojištění přírodních rizik", autoCarAddonNaturalRisks);
-    addAddon("Pojištění KLIKA", autoCarAddonKlika);
+    addAddon("Pojištění KLIKA", autoCarAddonKlika, autoCarAddonKlikaLimit);
+    if (product === "cppAuto" && autoCarExtraBenefitProfi != null) {
+      items.push({
+        section: "extraBenefit",
+        label: "Extra Benefit PROFI",
+        value: autoCarExtraBenefitProfi ? "Ano" : "Ne",
+      });
+    }
     addAddon("Skla", autoCarAddonGlass, autoCarAddonGlassLimit);
     addAddon(
       "Střet se zvěří",

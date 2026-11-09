@@ -29,6 +29,34 @@ describe("PDF reimport detailu smlouvy", () => {
     expect(mergeEmptyContractFields({ ...contract, premiumIndexationEnabled: null, productKey: "domex" }, { premiumIndexationEnabled: true })).toEqual({ updates: {}, appliedCount: 0 });
   });
 
+  it("imports CPP Auto KLIKA and Servis PRO and preserves an explicit Extra Benefit NE", () => {
+    const contract = { id: "cpp-auto", productKey: "cppAuto" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, {
+      carAddonKlika: true,
+      carAddonKlikaLimit: 10_000,
+      carAddonServisPro: true,
+      carExtraBenefitProfi: false,
+    })).toEqual({
+      updates: {
+        carAddonKlika: true,
+        carAddonKlikaLimit: 10_000,
+        carAddonServisPro: true,
+        carExtraBenefitProfi: false,
+      },
+      appliedCount: 4,
+    });
+  });
+
+  it("does not import CPP Auto coverages into another product", () => {
+    const contract = { id: "neon", productKey: "neon" } as ContractDoc;
+    expect(mergeEmptyContractFields(contract, {
+      carAddonKlika: true,
+      carAddonKlikaLimit: 10_000,
+      carAddonServisPro: true,
+      carExtraBenefitProfi: false,
+    })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
   it("imports explicit false renewal and preserves a renewable term independently", () => {
     const contract = { id: "neuron", productKey: "domexneuron" } as ContractDoc;
     expect(mergeEmptyContractFields(contract, { automaticRenewal: false, policyEndDate: "2027-11-04", policyTermEndDate: "2027-11-04" })).toEqual({

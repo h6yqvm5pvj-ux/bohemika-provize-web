@@ -99,6 +99,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonEso",
   "carAddonNaturalRisks",
   "carAddonKlika",
+  "carAddonKlikaLimit",
   "carAddonGlass",
   "carAddonGlassLimit",
   "carAddonAnimalCollision",
@@ -116,6 +117,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "carAddonGapLimit",
   "carAddonSmartGap",
   "carAddonServisPro",
+  "carExtraBenefitProfi",
   "carAddonReplacementCar",
   "carAddonLuggage",
   "carAddonTransportedGoods",
@@ -768,6 +770,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   carAddonEso: boolean | null;
   carAddonNaturalRisks: boolean | null;
   carAddonKlika: boolean | null;
+  carAddonKlikaLimit: number | null;
   carAddonGlass: boolean | null;
   carAddonGlassLimit: number | null;
   carAddonAnimalCollision: boolean | null;
@@ -785,6 +788,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
   carAddonGapLimit: number | null;
   carAddonSmartGap: boolean | null;
   carAddonServisPro: boolean | null;
+  carExtraBenefitProfi: boolean | null;
   carAddonReplacementCar: boolean | null;
   carAddonLuggage: boolean | null;
   carAddonTransportedGoods: boolean | null;
@@ -1168,6 +1172,16 @@ export const normalizeCreateEntryPayload = ({
   if (!carAddonNaturalRisksParsed.ok) return carAddonNaturalRisksParsed;
   const carAddonKlikaParsed = parseOptionalBoolean(raw.carAddonKlika, "carAddonKlika");
   if (!carAddonKlikaParsed.ok) return carAddonKlikaParsed;
+  const carAddonKlikaLimitParsed = parseOptionalFiniteNumber(
+    raw.carAddonKlikaLimit,
+    "carAddonKlikaLimit"
+  );
+  if (!carAddonKlikaLimitParsed.ok) return carAddonKlikaLimitParsed;
+  const carExtraBenefitProfiParsed = parseOptionalBoolean(
+    raw.carExtraBenefitProfi,
+    "carExtraBenefitProfi"
+  );
+  if (!carExtraBenefitProfiParsed.ok) return carExtraBenefitProfiParsed;
   const carAddonGlassParsed = parseOptionalBoolean(raw.carAddonGlass, "carAddonGlass");
   if (!carAddonGlassParsed.ok) return carAddonGlassParsed;
   const carAddonGlassLimitParsed = parseOptionalFiniteNumber(
@@ -1754,6 +1768,7 @@ export const normalizeCreateEntryPayload = ({
       carAddonEso: carAddonEsoParsed.value,
       carAddonNaturalRisks: carAddonNaturalRisksParsed.value,
       carAddonKlika: carAddonKlikaParsed.value,
+      carAddonKlikaLimit: carAddonKlikaParsed.value ? carAddonKlikaLimitParsed.value : null,
       carAddonGlass: carAddonGlassParsed.value,
       carAddonGlassLimit: carAddonGlassParsed.value ? carAddonGlassLimitParsed.value : null,
       carAddonAnimalCollision: carAddonAnimalCollisionParsed.value,
@@ -1781,6 +1796,8 @@ export const normalizeCreateEntryPayload = ({
       carAddonGapLimit: carAddonGapParsed.value ? carAddonGapLimitParsed.value : null,
       carAddonSmartGap: carAddonSmartGapParsed.value,
       carAddonServisPro: carAddonServisProParsed.value,
+      carExtraBenefitProfi:
+        productParsed.value === "cppAuto" ? carExtraBenefitProfiParsed.value : null,
       carAddonReplacementCar: carAddonReplacementCarParsed.value,
       carAddonLuggage: carAddonLuggageParsed.value,
       carAddonTransportedGoods: carAddonTransportedGoodsParsed.value,

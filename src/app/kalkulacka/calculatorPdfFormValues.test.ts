@@ -207,6 +207,32 @@ describe("PDF coverage details", () => {
     expect(mapSinglePdfFormValues("allianzAuto", { carLiabilityLimit: 200000000 }).values).not.toHaveProperty("autoCarAddonSmartGap");
   });
 
+  it("maps the ČPP KLIKA limit and explicit Extra Benefit answer, then clears both for the next PDF", () => {
+    const parsed = { carAddonKlika: true, carAddonKlikaLimit: 10_000, carExtraBenefitProfi: false };
+    expect(mapSinglePdfFormValues("cppAuto", parsed).values).toMatchObject({
+      autoCarAddonKlika: true,
+      autoCarAddonKlikaLimit: 10_000,
+      autoCarExtraBenefitProfi: false,
+    });
+    expect(mapReviewPdfFormValues("cppAuto", parsed)).toMatchObject({
+      autoCarAddonKlika: true,
+      autoCarAddonKlikaLimit: 10_000,
+      autoCarExtraBenefitProfi: false,
+    });
+    expect(pdfImportResetValues("cppAuto")).toMatchObject({
+      autoCarAddonKlika: false,
+      autoCarAddonKlikaLimit: null,
+      autoCarExtraBenefitProfi: null,
+    });
+    expect(mapReviewPdfFormValues("cppAuto", {})).toMatchObject({
+      autoCarAddonKlika: false,
+      autoCarAddonKlikaLimit: null,
+      autoCarExtraBenefitProfi: null,
+    });
+    expect(mapReviewPdfFormValues("allianzAuto", parsed).autoCarExtraBenefitProfi).toBeNull();
+    expect(mapReviewPdfFormValues("cppAuto", { carAddonKlikaLimit: 10_000 }).autoCarAddonKlika).toBe(true);
+  });
+
   it("maps only known NEON risks and creates independent detail objects", () => {
     const riskFields = Object.freeze({ deathAmount: 1000000, waiverInvalidity: "true", travelInsurance: true, admin: true });
     const first = mapSinglePdfFormValues("neon", { riskFields });

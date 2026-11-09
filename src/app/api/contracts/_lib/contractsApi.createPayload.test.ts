@@ -284,6 +284,32 @@ describe("contracts create payload parsing", () => {
     });
   });
 
+  it("persists ČPP KLIKA limit and the explicit Extra Benefit PROFI answer", () => {
+    const payload = normalizedPayload(baseEntry({
+      productKey: "cppAuto",
+      frequencyRaw: "annual",
+      neonDetail: null,
+      carAddonKlika: true,
+      carAddonKlikaLimit: 10_000,
+      carAddonServisPro: true,
+      carExtraBenefitProfi: false,
+    }));
+
+    expect(payload).toMatchObject({
+      carAddonKlika: true,
+      carAddonKlikaLimit: 10_000,
+      carAddonServisPro: true,
+      carExtraBenefitProfi: false,
+    });
+    expect(normalizedPayload(baseEntry({
+      productKey: "cppAuto",
+      frequencyRaw: "annual",
+      neonDetail: null,
+      carAddonKlika: false,
+      carAddonKlikaLimit: 10_000,
+    })).carAddonKlikaLimit).toBeNull();
+  });
+
   it("rejects DOMEX NEURON before 1 September 2026", () => {
     const result = normalizeCreateEntryPayload({
       raw: baseEntry({

@@ -22,6 +22,7 @@ export type ContractDetailsForm = {
   editCarAddonGlassLimit: string;
   editCarAddonKeyLossTheft: boolean;
   editCarAddonKlika: boolean;
+  editCarAddonKlikaLimit: string;
   editCarAddonLegalAdvice: boolean;
   editCarAddonLuggage: boolean;
   editCarAddonNatural: boolean;
@@ -34,6 +35,7 @@ export type ContractDetailsForm = {
   editCarAddonPothole: boolean;
   editCarAddonReplacementCar: boolean;
   editCarAddonServisPro: boolean;
+  editCarExtraBenefitProfi: boolean | null;
   editCarAddonSmartGap: boolean;
   editCarAddonTheft: boolean;
   editCarAddonTheftLimit: string;
@@ -283,6 +285,9 @@ export const buildContractDetailsSavePlan = ({
               carAddonEso: !!form.editCarAddonEso,
               carAddonNaturalRisks: !!form.editCarAddonNaturalRisks,
               carAddonKlika: !!form.editCarAddonKlika,
+              carAddonKlikaLimit: form.editCarAddonKlika
+                ? toNumberOrNull(form.editCarAddonKlikaLimit)
+                : null,
               carAddonGlass: !!form.editCarAddonGlass,
               carAddonGlassLimit: form.editCarAddonGlass ? toNumberOrNull(form.editCarAddonGlassLimit) : null,
               carAddonAnimalCollision: !!form.editCarAddonAnimalCollision,
@@ -312,6 +317,7 @@ export const buildContractDetailsSavePlan = ({
               carAddonGapLimit: form.editCarAddonGap ? toNumberOrNull(form.editCarAddonGapLimit) : null,
               carAddonSmartGap: !!form.editCarAddonSmartGap,
               carAddonServisPro: !!form.editCarAddonServisPro,
+              carExtraBenefitProfi: form.editCarExtraBenefitProfi,
               carAddonReplacementCar: !!form.editCarAddonReplacementCar,
               carAddonLuggage: !!form.editCarAddonLuggage,
               carAddonTransportedGoods: !!form.editCarAddonTransportedGoods,
@@ -342,6 +348,7 @@ export const buildContractDetailsSavePlan = ({
               carAddonEso: null,
               carAddonNaturalRisks: null,
               carAddonKlika: null,
+              carAddonKlikaLimit: null,
               carAddonGlass: null,
               carAddonGlassLimit: null,
               carAddonAnimalCollision: null,
@@ -361,6 +368,7 @@ export const buildContractDetailsSavePlan = ({
               carAddonGapLimit: null,
               carAddonSmartGap: null,
               carAddonServisPro: null,
+              carExtraBenefitProfi: null,
               carAddonReplacementCar: null,
               carAddonLuggage: null,
               carAddonTransportedGoods: null,

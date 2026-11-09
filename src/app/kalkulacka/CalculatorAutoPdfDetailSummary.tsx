@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   LifeBuoy,
   Pencil,
+  Percent,
   ShieldCheck,
   TriangleAlert,
   Wrench,
@@ -32,6 +33,7 @@ export type AutoPdfDetailSummarySection =
   | "liability"
   | "hull"
   | "assistance"
+  | "extraBenefit"
   | "addons";
 
 export type AutoPdfHullSumPrompt = {
@@ -59,6 +61,7 @@ const SECTION_CONFIG: Array<{
   { key: "liability", title: "Povinné ručení", icon: ShieldCheck },
   { key: "hull", title: "Havarijní pojištění", icon: Banknote },
   { key: "assistance", title: "Asistence", icon: LifeBuoy },
+  { key: "extraBenefit", title: "EXTRA BENEFIT PROFI", icon: Percent },
   { key: "addons", title: "Připojištění", icon: Wrench },
 ];
 
@@ -211,9 +214,9 @@ export function CalculatorAutoPdfDetailSummary({
                     .filter((item) => !isPillItem(item))
                     .map((item, index) => (
                       <div key={`${item.label}-${item.value}-${index}`} className="min-w-0">
-                        <dt className="mb-1 block text-[10px] font-bold uppercase leading-tight text-slate-500">
+                        {section.key !== "extraBenefit" && <dt className="mb-1 block text-[10px] font-bold uppercase leading-tight text-slate-500">
                           {item.label}
-                        </dt>
+                        </dt>}
                         <dd className="flex min-h-9 items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white px-2.5 py-2 text-sm font-semibold leading-snug text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,0.025)]">
                           <span className="min-w-0 break-words">{item.value}</span>
                           {item.sideValue && (

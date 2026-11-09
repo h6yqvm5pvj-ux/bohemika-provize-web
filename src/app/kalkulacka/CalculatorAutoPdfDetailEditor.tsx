@@ -23,6 +23,7 @@ export type AutoPdfEditorTextField =
   | "carHullSumInsured"
   | "carHullDeductible"
   | "carAssistancePlan"
+  | "carAddonKlikaLimit"
   | "carAddonGlassLimit"
   | "carAddonAnimalCollisionLimit"
   | "carAddonAnimalDamageLimit"
@@ -137,6 +138,7 @@ const ADDON_LABELS: Record<AutoPdfEditorBooleanField, string> = {
 };
 
 const ADDON_LIMIT_FIELDS: Partial<Record<AutoPdfEditorBooleanField, AutoPdfEditorTextField>> = {
+  carAddonKlika: "carAddonKlikaLimit",
   carAddonGlass: "carAddonGlassLimit",
   carAddonAnimalCollision: "carAddonAnimalCollisionLimit",
   carAddonAnimalDamage: "carAddonAnimalDamageLimit",

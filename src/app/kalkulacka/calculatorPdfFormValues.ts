@@ -34,6 +34,8 @@ export function createEmptyAutoPdfFormValues(): Partial<CalculatorPdfFormValues>
     autoCarAddonEso: false,
     autoCarAddonNaturalRisks: false,
     autoCarAddonKlika: false,
+    autoCarAddonKlikaLimit: null,
+    autoCarExtraBenefitProfi: null,
     autoCarAddonGlass: false,
     autoCarAddonGlassLimit: null,
     autoCarAddonAnimalCollision: false,
@@ -268,6 +270,11 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.autoCarAddonEso = parsedPdfBooleanValue(parsed, "carAddonEso");
   values.autoCarAddonNaturalRisks = parsedPdfBooleanValue(parsed, "carAddonNaturalRisks");
   values.autoCarAddonKlika = parsedPdfBooleanValue(parsed, "carAddonKlika");
+  values.autoCarAddonKlikaLimit = parsedPdfRoundedNumberValue(parsed, "carAddonKlikaLimit");
+  if (values.autoCarAddonKlikaLimit != null) values.autoCarAddonKlika = true;
+  values.autoCarExtraBenefitProfi = reviewProduct === "cppAuto" && typeof parsed.carExtraBenefitProfi === "boolean"
+    ? parsed.carExtraBenefitProfi
+    : null;
   values.autoCarAddonGlass = parsedPdfBooleanOrNumberValue(parsed, "carAddonGlass", "carAddonGlassLimit");
   values.autoCarAddonGlassLimit = glassLimit;
   values.autoCarAddonAnimalCollision = parsedPdfBooleanOrNumberValue(parsed, "carAddonAnimalCollision", "carAddonAnimalCollisionLimit");

@@ -5,6 +5,7 @@ import { extractClientEmailFromPdfLines } from "./extractClientEmailFromPdf";
 import { resolveCppAutoContractIdentity, type CppAutoContractIdentityLine, type CppAutoContractIdentityPage } from "./cppAutoContractIdentity";
 import { extractCppAutoPolicyholderLines, resolveCppAutoPolicyholder } from "./cppAutoPolicyholder";
 import { resolveCppAutoDates } from "./cppAutoDates";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type CppAutoPdfResult = {
   isRefresh?: boolean | null;
@@ -16,6 +17,7 @@ export type CppAutoPdfResult = {
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
+  paymentDetails?: ContractPaymentDetails | null;
   frequency?: PaymentFrequency | null;
   pdfImportWarnings?: string[];
   carMake?: string | null;
@@ -36,6 +38,10 @@ export type CppAutoPdfResult = {
   carAddonNaturalRisks?: boolean | null;
   carAddonGlass?: boolean | null;
   carAddonGlassLimit?: number | null;
+  carAddonKlika?: boolean | null;
+  carAddonKlikaLimit?: number | null;
+  carAddonServisPro?: boolean | null;
+  carExtraBenefitProfi?: boolean | null;
   carAddonAnimalCollision?: boolean | null;
   carAddonAnimalCollisionLimit?: number | null;
 };
@@ -52,6 +58,72 @@ const WORD_GAP_THRESHOLD = 1.5;
 
 const stripDiacritics = (text: string) =>
   text.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+
+const parseCppAutoPaymentDetails = (pages: string[][], contractNumber: string | null | undefined): ContractPaymentDetails | null => {
+  if (!contractNumber || !/^\d{6,10}$/.test(contractNumber)) return null;
+  const normalize = (value: string) => stripDiacritics(value).toLowerCase().replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  const labels = /^(castka k uhrade|cislo uctu|variabilni symbol|datum splatnosti)\s*:?\s*(.*)$/;
+  let found: ContractPaymentDetails | null = null;
+  for (const page of pages) {
+    const lines = page.map(normalize);
+    const sectionStart = lines.findIndex(line => /^udaje pro platbu bankovnim prevodem\b/.test(line));
+    if (sectionStart < 0) continue;
+    const cardPaymentStart = lines.findIndex((line, index) => index > sectionStart &&
+      /^odkaz pro platbu platebni kartou\b/.test(line));
+    const sectionEnd = cardPaymentStart >= 0 ? cardPaymentStart : lines.length;
+    for (let index = sectionStart + 1; index < sectionEnd; index++) {
+      if (!/^castka k uhrade\b/.test(lines[index])) continue;
+      const values = new Map<string, string>();
+      let incompleteBlock = false;
+      for (let offset = 0; offset < 24 && index + offset < sectionEnd; offset++) {
+        if (/^[:：,;–—-]*$/.test(lines[index + offset])) continue;
+        const match = lines[index + offset].match(labels);
+        if (!match) break;
+        const [, label, inline] = match;
+        if (offset > 0 && label === "castka k uhrade") break;
+        let value = inline.trim();
+        if (!value) {
+          let valueOffset = offset + 1;
+          while (valueOffset < 24 && /^[:：,;–—-]*$/.test(lines[index + valueOffset] ?? "")) valueOffset++;
+          const next = lines[index + valueOffset];
+          if (!next || labels.test(next)) {
+            incompleteBlock = true;
+            break;
+          }
+          value = next;
+          offset = valueOffset;
+          if (label === "castka k uhrade" && /^(?:kc|czk)$/.test(lines[index + offset + 1] ?? "")) offset++;
+        }
+        if (values.has(label)) {
+          incompleteBlock = true;
+          break;
+        }
+        values.set(label, value);
+      }
+      if (incompleteBlock) continue;
+      // Some ČPP PDFs split the currency into its own text item or omit it in a duplicate summary block.
+      const amountText = values.get("castka k uhrade")?.match(/^([\d ]+(?:[,.]\d{1,2})?)\s*(?:kc|czk)?$/)?.[1];
+      const amount = amountText ? Number(amountText.replace(/\s/g, "").replace(",", ".")) : NaN;
+      const variableSymbol = values.get("variabilni symbol");
+      if (variableSymbol !== contractNumber) continue;
+      const rawDate = values.get("datum splatnosti");
+      let dueDate: string | null = null;
+      if (rawDate) {
+        const date = rawDate.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})(?:\s+\d{1,2}:\d{2})?$/);
+        if (!date) continue;
+        const [, d, m, y] = date;
+        const parsed = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+        if (parsed.getUTCFullYear() !== Number(y) || parsed.getUTCMonth() !== Number(m) - 1 || parsed.getUTCDate() !== Number(d)) continue;
+        dueDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+      }
+      const candidate = normalizeContractPaymentDetails({ amount, accountNumber: values.get("cislo uctu"), variableSymbol, dueDate });
+      if (!candidate) continue;
+      if (found && JSON.stringify(found) !== JSON.stringify(candidate)) return null;
+      found = candidate;
+    }
+  }
+  return found;
+};
 
 const parseAmount = (val: string | null | undefined): number | null => {
   if (!val) return null;
@@ -292,6 +364,43 @@ const readSectionValue = (
   return null;
 };
 
+const firstAmountInText = (value: string): number | null => {
+  const normalized = value.replace(/\u00A0/g, " ");
+  const match = /(?:^|[^\d])(\d[\d ]*(?:[.,]\d+)?)(?=\s*(?:kč)?(?:$|[^\p{L}]))/iu.exec(normalized);
+  return match?.[1] ? parseAmount(match[1].trim()) : null;
+};
+
+const readAmountAfterLabelInSection = (
+  lines: string[],
+  asciiLines: string[],
+  sectionStart: number,
+  label: RegExp,
+  maxLookahead = 4,
+  sectionWindow = 12,
+): number | null => {
+  const sectionEnd = Math.min(lines.length - 1, sectionStart + sectionWindow);
+  for (let index = sectionStart; index <= sectionEnd; index += 1) {
+    const normalizedLine = asciiLines[index] ?? "";
+    label.lastIndex = 0;
+    const match = label.exec(normalizedLine);
+    if (!match) continue;
+
+    const inline = firstAmountInText((lines[index] ?? "").slice(match.index + match[0].length));
+    if (inline != null) return inline;
+
+    for (let step = 1; step <= maxLookahead && index + step <= sectionEnd; step += 1) {
+      const nextIndex = index + step;
+      const nextAscii = asciiLines[nextIndex] ?? "";
+      if (/\bpojisteni\s+(?:skel|prirodnich\s+rizik|servis\s+pro|eso|klika)\b/i.test(nextAscii)) break;
+      const next = lines[nextIndex]?.trim() ?? "";
+      if (!next || looksLikeStandaloneLabelLine(next)) continue;
+      const amount = firstAmountInText(next);
+      if (amount != null) return amount;
+    }
+  }
+  return null;
+};
+
 const normalizeHullDeductibleText = (value: string | null | undefined): string | null => {
   if (!value) return null;
   const cleaned = value
@@ -355,6 +464,8 @@ export async function parseCppAutoPdf(file: File, options: PdfReadOptions = {}):
     result.refreshOriginalContractNumber = identity.replacementOriginalContractNumber;
   }
   if (identity.contractNumber) result.contractNumber = identity.contractNumber;
+  const paymentDetails = parseCppAutoPaymentDetails(pagesText.map(page => page.split(/\n+/).filter(Boolean)), result.contractNumber);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   const policyholder = resolveCppAutoPolicyholder(layoutPages);
   if (policyholder.clientName) result.clientName = policyholder.clientName;
@@ -492,6 +603,29 @@ export async function parseCppAutoPdf(file: File, options: PdfReadOptions = {}):
   }
 
   result.carAddonEso = /pojisteni\s+eso/i.test(ascii);
+
+  const klikaSectionStarts = findLabelIndexes(asciiLines, /\bpojisteni\s+klika\b/i);
+  result.carAddonKlika = klikaSectionStarts.length > 0;
+  for (const sectionStart of klikaSectionStarts) {
+    const klikaLimit = readAmountAfterLabelInSection(
+      lines,
+      asciiLines,
+      sectionStart,
+      /\blimit(?:\s+plneni)?\b/i,
+      4,
+      12,
+    );
+    if (klikaLimit != null && klikaLimit > 0) {
+      result.carAddonKlikaLimit = klikaLimit;
+      break;
+    }
+  }
+
+  result.carAddonServisPro = /\bpojisteni\s+servis\s+pro\b/i.test(ascii);
+  const extraBenefitProfi = /\bsjednavam\s+extra\s*benefit\s+profi\b\s*[:：-]?\s*(ano|ne)\b/i.exec(ascii);
+  if (extraBenefitProfi?.[1]) {
+    result.carExtraBenefitProfi = extraBenefitProfi[1] === "ano";
+  }
 
   const naturalRisksSectionStarts = findLabelIndexes(
     asciiLines,
