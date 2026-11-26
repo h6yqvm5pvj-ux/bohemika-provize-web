@@ -1,4 +1,6 @@
+import { matchesVehicleRegistration, vehicleRegistrationForMatch } from "@/app/lib/vehicleOverlap";
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
+import { contractPdfNumberBindingStatus } from "@/lib/server/contractPdfStorage";
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 import { CAREER_POSITIONS } from "@/app/lib/careerPositions";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
@@ -13,16 +15,18 @@ import { toDate } from "@/app/lib/formatters";
 import {
   normalizeContractSearchText as normalizeSearchValue,
   compactContractSearchNumber as normalizeContractNumberForSearch,
-  matchesContractSearch, prepareContractSearch, type PreparedContractSearch,
+  exactContractNumberFromSearch, matchesContractSearch, prepareContractSearch, type PreparedContractSearch,
 } from "@/app/lib/contractSearch";
 export { normalizeSearchValue, normalizeContractNumberForSearch };
 import {
   AUTO_PRODUCTS,
   PENSION_PRODUCTS,
+  INVESTMENT_PRODUCTS,
   INSTITUTION_CATALOG,
   LIFE_PRODUCTS,
   LIABILITY_PRODUCTS,
   PROPERTY_PRODUCTS,
+  PRODUCT_ORDER,
   TRAVEL_PRODUCTS,
   productInstitutionId,
   type ProductInstitutionId,
@@ -61,6 +65,7 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   ContractListProductCategory,
   Product[]
 > = {
+  investments: INVESTMENT_PRODUCTS,
   pension: PENSION_PRODUCTS,
   life: LIFE_PRODUCTS,
   auto: AUTO_PRODUCTS,
@@ -70,6 +75,7 @@ const CONTRACT_LIST_PRODUCT_CATEGORY_MAP: Record<
   foreigners: CONTRACT_LIST_FOREIGNER_PRODUCTS,
 };
 const CONTRACT_LIST_PRODUCT_CATEGORY_SET = new Set<ContractListProductCategory>([
+  "investments",
   "pension",
   "life",
   "auto",
@@ -207,7 +213,8 @@ const parseCsvSet = <T extends string>(
 };
 
 export const parseContractListFilters = (
-  search: URLSearchParams
+  search: URLSearchParams,
+  { searchVehiclePlate = false } = {}
 ): ContractListFilters => {
   const rawSignedFrom = (search.get("signedFrom") ?? "").trim();
   let signedFrom: Date | null = null;
@@ -226,12 +233,17 @@ export const parseContractListFilters = (
     }
   }
 
+  const query = (search.get("q") ?? "").trim().slice(0, 120);
   return {
-    query: (search.get("q") ?? "").trim().slice(0, 120),
+    query,
+    vehiclePlate: searchVehiclePlate ? vehicleRegistrationForMatch(query) : null,
     mode: search.get("mode") === "anniversary" ? "anniversary" : "latest",
     unpaidOnly:
       search.get("unpaidOnly") === "1" ||
       search.get("unpaidOnly") === "true",
+    withoutPdfOnly:
+      search.get("withoutPdfOnly") === "1" ||
+      search.get("withoutPdfOnly") === "true",
     refreshOnly:
       search.get("refreshOnly") === "1" ||
       search.get("refreshOnly") === "true",
@@ -270,6 +282,7 @@ export const hasContractListClientFilters = (
   normalizeSearchValue(filters.query).length > 0 ||
   filters.mode === "anniversary" ||
   filters.unpaidOnly ||
+  filters.withoutPdfOnly ||
   filters.refreshOnly ||
   filters.activeOnly ||
   filters.stornoOnly ||
@@ -422,6 +435,14 @@ export function productMatchesListInstitution(
   return institution != null && institutions.has(institution);
 }
 
+export function contractProductKeysForFilters(filters: ContractListFilters): Product[] | null {
+  if (filters.categories.size === 0 && filters.institutions.size === 0) return null;
+  return PRODUCT_ORDER.filter(product =>
+    productMatchesListCategory(product, filters.categories) &&
+    productMatchesListInstitution(product, filters.institutions)
+  );
+}
+
 function nextAnniversaryDate(start: Date, now: Date): Date {
   const candidate = new Date(
     now.getFullYear(),
@@ -457,6 +478,8 @@ export function contractMatchesListSearch(
   query: string,
   prepared = prepareContractSearch(query),
 ): boolean {
+  const exactNumber = exactContractNumberFromSearch(query);
+  if (exactNumber) return contract.contractNumber === exactNumber;
   return matchesContractSearch(contract, prepared);
 }
 
@@ -468,20 +491,29 @@ export function contractMatchesRefreshFilter(contract: ContractDoc): boolean {
   return Boolean(contract.refreshCommissionBase);
 }
 
+export function contractHasPdfAttachment(contract: ContractDoc): boolean {
+  const attachment = contract.contractPdfAttachment;
+  return attachment?.contentType === "application/pdf" &&
+    contractPdfNumberBindingStatus(attachment, contract.contractNumber) !== "mismatch" &&
+    (attachment.hasFile === true || Boolean(attachment.storagePath?.trim()));
+}
+
 export function contractMatchesListFilters(
   contract: ContractDoc,
   filters: ContractListFilters,
   ownerEmail?: string | null,
   search: PreparedContractSearch = prepareContractSearch(filters.query),
+  familyHasPdfAttachment?: boolean,
 ): boolean {
   if (isRetiredProduct(contract.productKey)) return false;
+  if (!contractMatchesListSearch(contract, filters.query, search) &&
+    !matchesVehicleRegistration(contract, filters.vehiclePlate)) return false;
   const product = contract.productKey as Product | undefined;
   if (filters.signedFrom) {
     const signed = contractSortDate(contract);
     if (!signed || signed < filters.signedFrom) return false;
   }
 
-  if (!contractMatchesListSearch(contract, filters.query, search)) return false;
   if (filters.positions.size > 0 && (!contract.position || !filters.positions.has(contract.position))) return false;
 
   if (filters.refreshOnly && !contractMatchesRefreshFilter(contract)) {
@@ -495,7 +527,9 @@ export function contractMatchesListFilters(
     return false;
   }
 
-  const lifecycleStatus = contractLifecycleStatus(contract);
+  const needsLifecycleStatus = filters.activeOnly || filters.stornoOnly || filters.maturedOnly ||
+    filters.unpaidOnly || filters.mode === "anniversary";
+  const lifecycleStatus = needsLifecycleStatus ? contractLifecycleStatus(contract) : null;
   if (filters.activeOnly) {
     if (lifecycleStatus !== "active") return false;
   } else if (filters.stornoOnly || filters.maturedOnly) {
@@ -516,6 +550,8 @@ export function contractMatchesListFilters(
   if (filters.unpaidOnly) {
     if (contract.paid === true || lifecycleStatus !== "active") return false;
   }
+
+  if (filters.withoutPdfOnly && (familyHasPdfAttachment ?? contractHasPdfAttachment(contract))) return false;
 
   if (
     !contractMatchesCommissionAuditFilter(contract, {

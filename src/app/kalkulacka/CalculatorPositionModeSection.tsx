@@ -14,7 +14,7 @@ type CalculatorPositionModeSectionProps = {
   positionDisabled?: boolean;
   canChooseMode: boolean;
   mode: CommissionMode;
-  isNeonHistoricalBySignedDate: boolean;
+  isNeonHistorical: boolean;
   onPositionChange: (value: Position) => void;
   onModeChange: (value: CommissionMode) => void;
 };
@@ -27,7 +27,7 @@ export function CalculatorPositionModeSection({
   positionDisabled = false,
   canChooseMode,
   mode,
-  isNeonHistoricalBySignedDate,
+  isNeonHistorical,
   onPositionChange,
   onModeChange,
 }: CalculatorPositionModeSectionProps) {
@@ -116,7 +116,7 @@ export function CalculatorPositionModeSection({
           </div>
         )}
 
-        {product === "neon" && isNeonHistoricalBySignedDate && (
+        {product === "neon" && isNeonHistorical && (
           <div className="space-y-1.5">
             <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Režim provize

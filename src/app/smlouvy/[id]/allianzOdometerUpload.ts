@@ -26,6 +26,6 @@ export function resolveAllianzOdometerIdentity(
   return {
     kind: "birthDate",
     label: "Datum narození",
-    value: birthDate,
+    value: birthDate.replace(/\./g, ""),
   };
 }

@@ -42,6 +42,7 @@ vi.mock("@/components/navigation/useIntranetUnreadCount", () => ({ useIntranetUn
 vi.mock("@/components/navigation/AppNavigation", () => ({ AppNavigation: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/components/subscription/SubscriptionGate", () => ({ SubscriptionGate: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/components/search/GlobalSearchCommand", () => ({ GlobalSearchCommand: () => null }));
+vi.mock("@/components/LifeCommissionReminderDialog", () => ({ LifeCommissionReminderDialog: () => null }));
 vi.mock("@/components/MobilePullToRefresh", () => ({ MobilePullToRefresh: () => null }));
 vi.mock("@/components/Preloader", () => ({
   default: ({ loading, onComplete }: { loading: boolean; onComplete: () => void }) => (

@@ -27,11 +27,11 @@ describe("global contact search account boundaries", () => {
   const open = async () => {
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Globální vyhledávání"]')!.click());
   };
-  const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(80); }); };
-  const query = async () => {
+  const tick = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(210); }); };
+  const query = async (value = "support") => {
     const input = container.querySelector<HTMLInputElement>("input")!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "support");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await tick();
@@ -113,5 +113,32 @@ describe("global contact search account boundaries", () => {
     await tick();
     expect(directoryCalls()).toHaveLength(2);
     expect(container.textContent).not.toContain(privateA.person);
+  });
+
+  it("shows completed sources immediately and aborts outdated requests while preserving the shared contact load", async () => {
+    let finishOld!: (payload: unknown) => void;
+    mocks.api.mockImplementation(async (_user: User, path: string, init?: RequestInit) => {
+      if (path === "/api/user/search" && init?.body === "old query") {
+        return new Promise(resolve => { finishOld = resolve; });
+      }
+      if (path === "/api/contracts/list") {
+        return { contracts: [{ id: "entry", contractNumber: "TEST-123", clientName: "Synthetic Client" }] };
+      }
+      return { users: [], posts: [], contacts: [] };
+    });
+    await render(userA); await open(); await query("old query");
+    expect(container.textContent).toContain("Smlouva TEST-123");
+    expect(container.textContent).toContain("Prohledávám zdroje");
+    const [, path, init] = mocks.api.mock.calls.find(([, path]) => path === "/api/user/search")!;
+    expect(path).not.toContain("old query");
+    expect(init).toMatchObject({ method: "POST", body: "old query" });
+    await query("new query");
+    expect(init.signal.aborted).toBe(true);
+    expect(directoryCalls()).toHaveLength(1);
+    await act(async () => finishOld({ users: [{ email: "old@example.test", name: "Obsolete Result" }] }));
+    expect(container.textContent).not.toContain("Obsolete Result");
+    const contract = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("TEST-123"))!;
+    await act(async () => contract.click());
+    expect(mocks.push).toHaveBeenCalledWith("/smlouvy");
   });
 });

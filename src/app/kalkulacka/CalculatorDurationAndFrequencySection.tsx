@@ -2,6 +2,8 @@
 
 import { CircleHelp, PencilLine, RotateCcw, SlidersHorizontal } from "lucide-react";
 import styles from "./calculatorForm.module.css";
+import { isRecordOnlyProduct } from "@/app/lib/productCatalog";
+import { CalculatorNeonInvestHelp } from "./CalculatorNeonInvestHelp";
 
 import {
   type MaxCizinKomplexVariant,
@@ -79,6 +81,7 @@ export function CalculatorDurationAndFrequencySection({
   onFrequencyChange,
   onAmountTextChange,
 }: CalculatorDurationAndFrequencySectionProps) {
+  if (isRecordOnlyProduct(product)) return null;
   const showDurationYears = shouldShowDuration(product);
   const showMaxCizinVariant = product === "maxcizinkomplex";
   const showDurationMonths = shouldShowDurationMonths(product);
@@ -174,10 +177,13 @@ export function CalculatorDurationAndFrequencySection({
 
   const content = (
     <>
-      <h2 className={styles.sectionHeading}>
-        <span className={styles.sectionIcon}><SlidersHorizontal size={18} strokeWidth={1.7} aria-hidden="true" /></span>
-        Parametry smlouvy
-      </h2>
+      <div className={`${styles.detailsHeader} flex-wrap`}>
+        <h2 className={styles.sectionHeading}>
+          <span className={styles.sectionIcon}><SlidersHorizontal size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+          Parametry smlouvy
+        </h2>
+        {product === "neon" && <CalculatorNeonInvestHelp />}
+      </div>
       <div className="space-y-3">
         {hasContractParameterFields && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -70,7 +70,9 @@ import {
   PILLOW_MAJETEK_COEFFICIENT_VALID_FROM,
 } from "./productFormulas/pillowMajetek";
 import {
+  calculateKoopFit,
   calculateKoopMajetekObcan,
+  koopFitSubsequentCoefficient,
   koopMajetekObcanImmediateCoefficient,
   koopMajetekObcanSubsequentCoefficient,
 } from "./productFormulas/koopmajetekobcan";
@@ -221,6 +223,7 @@ export {
   isDomexHistoricalPeriod,
   calculateCppHafan,
   calculatePillowMajetek,
+  calculateKoopFit,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
   calculateKoopPmop,
@@ -520,7 +523,9 @@ export function getCoefficientSummary(
         },
         {
           label: "Následná provize (z platby)",
-          value: koopMajetekObcanSubsequentCoefficient(position),
+          value: product === "koopfit"
+            ? koopFitSubsequentCoefficient(position)
+            : koopMajetekObcanSubsequentCoefficient(position, contractSignedDateIso),
         },
       ];
     }
@@ -528,11 +533,11 @@ export function getCoefficientSummary(
       return [
         {
           label: "Okamžitá provize (z platby)",
-          value: koopOdzamImmediateCoefficient(position),
+          value: koopOdzamImmediateCoefficient(position, contractSignedDateIso),
         },
         {
           label: "Následná provize (z platby)",
-          value: koopOdzamSubsequentCoefficient(position),
+          value: koopOdzamSubsequentCoefficient(position, contractSignedDateIso),
         },
       ];
     }

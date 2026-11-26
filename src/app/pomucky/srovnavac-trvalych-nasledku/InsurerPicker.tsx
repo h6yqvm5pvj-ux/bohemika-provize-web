@@ -3,7 +3,10 @@ import { Check, ChevronDown, Minus, Plus, Search, X } from "lucide-react";
 import { useState } from "react";
 import styles from "./comparison.module.css";
 
-type Group = { insurerName: string; options: { value: string; productName: string; badges: string[] }[] };
+type Group = {
+  insurerName: string;
+  options: { value: string; productName: string; badges: string[]; isLatestEdition?: boolean }[];
+};
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs").trim();
 
 export function InsurerPicker({ groups, selected, expanded, onToggleOption, onToggleGroup, onToggleExpanded, getLogo, compact = false, searchQuery, layout }: {
@@ -34,7 +37,25 @@ export function InsurerPicker({ groups, selected, expanded, onToggleOption, onTo
               : <ChevronDown size={17} aria-hidden="true" style={{transform:open ? "rotate(180deg)" : undefined}} />}
           </button>
         </div>
-        {open && <div className={styles.productOptions}>{group.visibleOptions.map(option => <button type="button" key={option.value} onClick={() => onToggleOption(option.value)} aria-pressed={selected.includes(option.value)}><span className={styles.checkbox} data-checked={selected.includes(option.value)}>{selected.includes(option.value) && <Check size={13} />}</span><span><strong>{option.productName}</strong><small>{option.badges.join(" · ")}</small></span></button>)}</div>}
+        {open && (
+          <div className={styles.productOptions}>
+            {group.visibleOptions.map(option => {
+              const checked = selected.includes(option.value);
+              return (
+                <button type="button" key={option.value} onClick={() => onToggleOption(option.value)} aria-pressed={checked}>
+                  <span className={styles.checkbox} data-checked={checked}>{checked && <Check size={13} />}</span>
+                  <span>
+                    <strong>{option.productName}</strong>
+                    <small>
+                      {option.badges.join(" · ")}
+                      {option.isLatestEdition && <> <span className={styles.latestEdition} title="Nejnovější ročník produktu ve srovnávači">Aktuální</span></>}
+                    </small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </section>;
     })}</div>
     {visible.length === 0 && <p className={styles.empty}>Žádná pojišťovna ani produkt neodpovídá hledání.</p>}

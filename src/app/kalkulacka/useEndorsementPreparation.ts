@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from "react";
 import type { User } from "firebase/auth";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { withDefaultAdminImpersonationHeader } from "@/app/lib/adminImpersonation";
 import { LIFE_PRODUCTS } from "@/app/lib/productCatalog";
 import type {
   CommissionMode,
@@ -11,7 +12,7 @@ import type {
   Product,
 } from "@/app/types/domain";
 
-import type { ContractsFindApiResponse } from "./calculatorApi";
+import { findContractByNumber, type ContractsFindApiResponse } from "./calculatorApi";
 import {
   normalizeEmailValue,
   normalizedDurationMonths,
@@ -30,9 +31,12 @@ import {
 } from "./endorsementCalculation";
 
 export type PrepareEndorsementOptions = {
+  signal?: AbortSignal;
   productOverride?: Product;
   contractNumberOverride?: string | null;
   contractSignedDateOverride?: string | null;
+  policyStartDateOverride?: string | null;
+  frequencyOverride?: PaymentFrequency;
   newPremiumAmountOverride?: number | null;
   source?: "manual" | "pdf";
 };
@@ -61,6 +65,9 @@ type UseEndorsementPreparationParams = {
   setEndorsementDraftModalOpen: Dispatch<SetStateAction<boolean>>;
   setDurationYears: Dispatch<SetStateAction<number | null>>;
   setDurationMonths: Dispatch<SetStateAction<number | null>>;
+  setClientName: Dispatch<SetStateAction<string>>;
+  useLiveNeonClientName?: boolean;
+  impersonatedUserEmail?: string;
   setValidationError: Dispatch<SetStateAction<string | null>>;
   setSaveMessage: Dispatch<SetStateAction<string | null>>;
   setMissingFields: Dispatch<SetStateAction<string[]>>;
@@ -91,12 +98,16 @@ export const useEndorsementPreparation = ({
   setEndorsementDraftModalOpen,
   setDurationYears,
   setDurationMonths,
+  setClientName,
+  useLiveNeonClientName = false,
+  impersonatedUserEmail,
   setValidationError,
   setSaveMessage,
   setMissingFields,
 }: UseEndorsementPreparationParams) =>
   useCallback(
     async (options: PrepareEndorsementOptions = {}): Promise<boolean> => {
+      if (options.signal?.aborted) return false;
       if (!user) {
         setValidationError("Nejdřív se prosím přihlas.");
         return false;
@@ -129,7 +140,7 @@ export const useEndorsementPreparation = ({
       const signedDateIso = (
         options.contractSignedDateOverride ?? contractSignedDate
       ).trim();
-      const endorsementPolicyStartDateIso = policyStartDate.trim();
+      const endorsementPolicyStartDateIso = (options.policyStartDateOverride ?? policyStartDate).trim();
       const newPremiumAmount =
         options.newPremiumAmountOverride == null
           ? parseNumber(amountText)
@@ -161,19 +172,20 @@ export const useEndorsementPreparation = ({
       if (!positionForEndorsement) return false;
 
       try {
-        const params = new URLSearchParams({
-          scope: isSavingForSubordinate ? "team" : "my",
-          q: trimmedContractNumber,
-        });
-        const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
-          user,
-          `/api/contracts/find?${params.toString()}`,
-          { method: "GET" }
-        );
+        const scope = isSavingForSubordinate ? "team" : "my";
+        const useLiveClientName = targetProduct === "neon" && options.source !== "pdf" && useLiveNeonClientName;
+        const payload = useLiveClientName
+          ? await findContractByNumber({ user, scope, contractNumber: trimmedContractNumber, signal: options.signal,
+            headers: withDefaultAdminImpersonationHeader(undefined, impersonatedUserEmail ?? "") })
+          : await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(user,
+            `/api/contracts/find?${new URLSearchParams({ scope, q: trimmedContractNumber })}`, { signal: options.signal });
+        if (options.signal?.aborted) return false;
         const contracts = (Array.isArray(payload?.contracts) ? payload.contracts : []).filter(
           (entry) =>
             (normalizeEmailValue(entry.userEmail) ||
-              normalizeEmailValue(entry.adviserEmail)) === targetOwnerEmail
+              normalizeEmailValue(entry.adviserEmail)) === targetOwnerEmail &&
+            typeof entry.contractNumber === "string" &&
+            entry.contractNumber.replace(/\s+/g, "") === trimmedContractNumber.replace(/\s+/g, "")
         );
 
         if (contracts.length === 0) {
@@ -205,7 +217,7 @@ export const useEndorsementPreparation = ({
           durationYears,
           durationMonths,
           durationManualOverride: endorsementDurationManualOverride,
-          frequency,
+          frequency: options.frequencyOverride ?? frequency,
           maxCizinKomplexVariant,
         });
 
@@ -227,12 +239,17 @@ export const useEndorsementPreparation = ({
         }
 
         setEndorsementDraft(prepared.draft);
+        const original = contracts.find(entry => entry.id === latestEntry.id && entry.productKey === targetProduct);
+        if (original?.clientName?.trim() && !useLiveClientName) {
+          setClientName(original.clientName.trim());
+        }
         setValidationError(null);
         setSaveMessage("Změna je připravená. Uloží se až po kliknutí na Uložit jako sepsáno.");
-        setEndorsementDraftModalOpen(targetProduct !== "neon");
+        setEndorsementDraftModalOpen(targetProduct !== "neon" && targetProduct !== "flexi");
         return true;
-      } catch (error) {
-        console.error("Chyba při přípravě dodatku", error);
+      } catch {
+        if (options.signal?.aborted) return false;
+        console.error("Chyba při přípravě dodatku.");
         setValidationError("Nepodařilo se připravit změnu smlouvy. Zkus to prosím znovu.");
         return false;
       }
@@ -247,6 +264,7 @@ export const useEndorsementPreparation = ({
       endorsementDurationManualOverride,
       frequency,
       hasSelectedProduct,
+      impersonatedUserEmail,
       isSavingForSubordinate,
       maxCizinKomplexVariant,
       mode,
@@ -254,6 +272,7 @@ export const useEndorsementPreparation = ({
       product,
       resolveEndorsementPositionForSignedDate,
       setDurationMonths,
+      setClientName,
       setDurationYears,
       setEndorsementDraft,
       setEndorsementDraftModalOpen,
@@ -263,6 +282,7 @@ export const useEndorsementPreparation = ({
       setSaveMessage,
       setValidationError,
       tipsterModeEnabled,
+      useLiveNeonClientName,
       user,
     ]
   );

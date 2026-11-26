@@ -1,16 +1,17 @@
+import { statementImportFixture } from "./statementImport.fixture";
 import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  guard: vi.fn(), collection: vi.fn(), doc: vi.fn(), batch: vi.fn(), history: vi.fn(),
+  guard: vi.fn(), transaction: vi.fn(), collection: vi.fn(), doc: vi.fn(), batch: vi.fn(), history: vi.fn(),
 }));
 vi.mock("@/app/api/contracts/_lib/contractsApi", async () => ({
   requireContractsEntryGuard: mocks.guard,
   hasContractAccess: (await import("@/app/api/contracts/_lib/contractsApi.access")).hasContractAccess,
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
-  adminDb: { collection: mocks.collection, doc: mocks.doc, batch: mocks.batch },
+  adminDb: { runTransaction: mocks.transaction, collection: mocks.collection, doc: mocks.doc, batch: mocks.batch },
 }));
 vi.mock("@/lib/server/cashflowMutationTracking", () => ({
   withCashflowMutation: (_reason: string, work: () => Promise<unknown>) => work(),
@@ -64,6 +65,7 @@ function document(path: string) {
 function collection(path: string, filters: [string, unknown][] = []) {
   return {
     doc: (id: string) => document(`${path}/${id}`),
+    select: () => collection(path, filters),
     where: (field: string, op: string, value: unknown) => {
       expect(op).toBe("==");
       return collection(path, [...filters, [field, value]]);
@@ -82,9 +84,17 @@ async function process(body: Record<string, unknown>) {
   expect(result.processingResult).toMatchObject({ contractsMatched: 1, errors: [], notFoundContracts: [] });
   return result;
 }
-const upload = (month: number, annual: number, rows = row(annual)) => process({
-  header: header(month), html: `<div id="provize"><table>${rows}</table></div>`,
-});
+const upload = (month: number, annual: number, rows = row(annual)) => process(
+  statementImportFixture(`<div id="provize"><table>${rows}</table></div>`, header(month)),
+);
+
+async function replayArchivedMonth(month: number, annual: number) {
+  const statementId = `archived-month-${month}`;
+  records.set(`usersPrivate/${owner}/commissionStatements/${statementId}`, {
+    ...header(month), html: `<div id="provize"><table>${row(annual)}</table></div>`, processedAtMs: 1,
+  });
+  return process({ action: "reprocess-saved-statement", statementId });
+}
 
 beforeEach(() => {
   vi.resetAllMocks(); records.clear(); contractPatches.length = 0;
@@ -93,6 +103,11 @@ beforeEach(() => {
     withRateLimit: (response: Response) => response,
   });
   mocks.collection.mockImplementation(collection);
+  mocks.transaction.mockImplementation(async work => work({
+    get: (ref: { get: () => Promise<unknown> }) => ref.get(),
+    set: (ref: { path: string }, data: Record<string, unknown>) => write(ref.path, data),
+    delete: (ref: { path: string }) => records.delete(ref.path),
+  }));
   mocks.doc.mockImplementation(document);
   mocks.history.mockImplementation((_batch, _ref, _before, patch) => patch);
   mocks.batch.mockImplementation(() => {
@@ -130,10 +145,10 @@ describe("NEON REFRESH statement chronology", () => {
 
   it.each([
     [1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1],
-  ])("keeps March's risk base and all payouts when uploaded in order %i, %i, %i", async (...months) => {
+  ])("keeps March's risk base and all payouts when archived months are reconciled in order %i, %i, %i", async (...months) => {
     let marchId: string | undefined;
     for (const month of months) {
-      const result = await upload(month, month === 2 ? 6000 : 12000);
+      const result = await replayArchivedMonth(month, month === 2 ? 6000 : 12000);
       if (month === 3) marchId = result.item.id;
     }
     expect(contract()).toMatchObject({
@@ -176,7 +191,7 @@ describe("NEON REFRESH statement chronology", () => {
     expect(contract().refreshStatementResolvedStatementId).toBe(march.item.id);
     expect(contract().refreshStatementResolvedStatementChronologyMs).toBe(Date.UTC(2026, 2, 1));
     expect(contract().commissionPayouts).toEqual(payouts);
-    await upload(2, 6000);
+    await replayArchivedMonth(2, 6000);
     expect(contract().calculationInputAmount).toBe(1000);
   });
 
@@ -230,17 +245,54 @@ describe("NEON REFRESH statement chronology", () => {
 
   it("confirms B0301 risk independently of a larger investment base", async () => {
     await upload(3, 12000, row(60000, "A201") + row(12000, "B0301"));
-    await upload(2, 6000);
+    await replayArchivedMonth(2, 6000);
     expect(contract()).toMatchObject({ calculationInputAmount: 1000,
       refreshStatementResolvedStatementChronologyMs: Date.UTC(2026, 2, 1),
     });
     expect(contract().commissionPayouts).toHaveLength(3);
   });
 
+  it("records the full policy base on a matching care payout and retains the confirmed risk calculation", async () => {
+    const original = structuredClone(contract());
+    const careFor = (annual: number) => calculation(annual).items.find(item => item.code === "B201-B206")!.amount;
+    const fullCare = Math.round(careFor(24_000) * 100) / 100;
+    const riskCare = Math.round(careFor(12_000) * 100) / 100;
+    const saved = await upload(3, 24_000, row(24_000, "B201", fullCare) + row(12_000, "B202", riskCare) + row(23_000, "B203", riskCare));
+    expect(contract().commissionPayouts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "B201", statementBaseAmount: 24_000, systemBaseAmount: 24_000, expectedAmount: fullCare, status: "paid" }),
+      expect.objectContaining({ code: "B202", systemBaseAmount: 12_000, expectedAmount: riskCare }),
+      expect.objectContaining({ code: "B203", statementBaseAmount: 23_000, systemBaseAmount: 12_000, expectedAmount: riskCare }),
+    ]));
+    expect(contract()).toMatchObject({ calculationInputAmount: 1000, refreshCommissionBase: original.refreshCommissionBase,
+      items: original.items, refreshStatementResolvedStatementNumber: original.refreshStatementResolvedStatementNumber });
+    const staleCare = contract().commissionPayouts!.find(payout => payout.code === "B201")!;
+    Object.assign(staleCare, { systemBaseAmount: 12_000, expectedAmount: riskCare, difference: fullCare - riskCare });
+    await process({ action: "reprocess-saved-statement", statementId: saved.item.id });
+    expect(contract().commissionPayouts!.find(payout => payout.code === "B201")).toMatchObject({
+      amount: fullCare, systemBaseAmount: 24_000, expectedAmount: fullCare, difference: 0,
+    });
+  });
+
+  it("uses the stored care base for every B201–B206 comparison even after a risk recalculation", async () => {
+    contract().neonRefreshCareAnnualPremium = 24_000;
+    const payments = calculateNeon(1500, "poradce7", 20, "standard", "2023-01-01", "historical", 24_000);
+    const care = Math.round(payments.items.find(item => item.code === "B201-B206")!.amount * 100) / 100;
+    await upload(3, 18_000, row(18_000) + row(24_000, "B201", care) + row(18_000, "B206", care / 2));
+    expect(contract()).toMatchObject({
+      neonRefreshCareAnnualPremium: 24_000,
+      refreshCommissionBase: { calculationAnnualPremium: 18_000 },
+      items: payments.items, total: payments.total,
+    });
+    expect(contract().commissionPayouts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "B201", systemBaseAmount: 24_000, expectedAmount: care, status: "paid" }),
+      expect.objectContaining({ code: "B206", statementBaseAmount: 18_000, systemBaseAmount: 24_000, expectedAmount: care, status: "difference" }),
+    ]));
+  });
+
   it.each(["A201", "B101"])("does not advance risk chronology from %s alone", async code => {
     await upload(3, 60000, row(60000, code));
     expect(contract().refreshStatementResolvedStatementChronologyMs).toBe(Date.UTC(2026, 0, 1));
-    await upload(2, 6000);
+    await replayArchivedMonth(2, 6000);
     expect(contract().calculationInputAmount).toBe(500);
   });
 

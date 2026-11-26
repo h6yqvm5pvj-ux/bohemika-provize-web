@@ -44,7 +44,8 @@ export function StatementImportSteps({ active = -1, saving = false }: { active?:
   );
 }
 
-export function StatementImportPanel({ onChooseFiles, onDropFiles }: {
+export function StatementImportPanel({ onChooseFiles, onDropFiles, recommendation }: {
+  recommendation?: string | null;
   onChooseFiles: () => void;
   onDropFiles: (files: File[]) => void;
 }) {
@@ -73,7 +74,7 @@ export function StatementImportPanel({ onChooseFiles, onDropFiles }: {
             <span className={styles.chooseButton}>Vybrat soubor<ArrowUpRight size={17} aria-hidden="true" /></span>
             <span className={styles.fileHint}><FileCode2 size={14} aria-hidden="true" />HTML / HTM<span>·</span>I více souborů najednou</span>
           </button>
-          <p className={styles.importNote}><Check size={15} aria-hidden="true" />Nejdřív kontrola. Zápis potvrdíš až potom.</p>
+          <p className={styles.importNote}><Check size={15} aria-hidden="true" />{recommendation ?? "Výpisy můžeš vybrat v libovolném pořadí. Zpracují se od nejstaršího."}</p>
         </div>
       </div>
       <StatementImportSteps />

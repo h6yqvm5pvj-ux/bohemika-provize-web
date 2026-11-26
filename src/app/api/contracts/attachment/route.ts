@@ -1,3 +1,4 @@
+import { validateAutoAmendmentPdf as validateAmendmentPdf } from "@/lib/server/autoAmendmentPdf";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { fillClientCardEmailFromUploadedPdf, type ClientCardEmailImportStatus } from "@/lib/server/clientCardEmailImport";
@@ -12,9 +13,12 @@ import { adminRoleAtLeast } from "@/lib/adminAccess";
 import {
   buildContractPdfStoredFileName,
   contractPdfContentDisposition,
+  contractPdfNumberBindingStatus,
+  contractPdfNumberFingerprint,
   createContractPdfAttachmentReadStream,
   isStorageNotFoundError,
   normalizeStoredContractPdfAttachment,
+  strengthenExistingContractPdfBinding,
   toPublicContractPdfAttachment,
   uploadContractPdfAttachment,
   type StoredContractPdfAttachment,
@@ -41,6 +45,7 @@ const PUBLIC_PDF_VALIDATION_ERRORS = new Set([
   "Příloha musí být PDF soubor.",
   "Příloha musí mít příponu .pdf.",
   "Soubor nevypadá jako platné PDF.",
+  "Číslo smlouvy chybí nebo není platné.",
 ]);
 
 const normalizeEmail = (value: unknown): string =>
@@ -51,6 +56,23 @@ const normalizeEntryId = (value: unknown): string =>
 
 const jsonError = (error: string, status: number) =>
   NextResponse.json({ ok: false, error } satisfies ErrorResponse, { status });
+
+const pdfUploadFailureCode = (error: unknown): string => {
+  if (!error || typeof error !== "object") return "PDF_STORAGE_WRITE_FAILED";
+  const row = error as { code?: unknown; name?: unknown };
+  const code = String(row.code ?? "").toLowerCase();
+  if (row.name === "MailboxEncryptionConfigurationError") return "PDF_ENCRYPTION_CONFIG";
+  if (["7", "403", "permission-denied", "storage/unauthorized"].includes(code)) {
+    return "PDF_STORAGE_PERMISSION_DENIED";
+  }
+  if (["5", "404", "not-found", "storage/bucket-not-found"].includes(code)) {
+    return "PDF_STORAGE_NOT_FOUND";
+  }
+  if (["14", "429", "500", "502", "503", "unavailable", "storage/retry-limit-exceeded"].includes(code)) {
+    return "PDF_STORAGE_UNAVAILABLE";
+  }
+  return "PDF_STORAGE_WRITE_FAILED";
+};
 
 async function loadContractForAttachment({
   ownerEmail,
@@ -134,7 +156,15 @@ export async function POST(req: NextRequest) {
   }
 
   const fileRaw = form.get("file");
-  if (!(fileRaw instanceof File)) {
+  const bindExistingRaw = form.get("bindExisting");
+  if (form.getAll("bindExisting").length > 1 || (bindExistingRaw != null && bindExistingRaw !== "1")) {
+    return withRateLimit(jsonError("Neplatný režim ověření PDF.", 400));
+  }
+  const bindExisting = bindExistingRaw === "1";
+  if (bindExisting && fileRaw != null) {
+    return withRateLimit(jsonError("Pro ověření existujícího PDF soubor znovu neposílej.", 400));
+  }
+  if (!bindExisting && !(fileRaw instanceof File)) {
     return withRateLimit(jsonError("Vyber PDF soubor smlouvy.", 400));
   }
   const onlyIfMissingRaw = form.get("onlyIfMissing");
@@ -142,6 +172,9 @@ export async function POST(req: NextRequest) {
     return withRateLimit(jsonError("Neplatný režim nahrání PDF.", 400));
   }
   const onlyIfMissing = onlyIfMissingRaw === "1";
+  if (bindExisting && onlyIfMissingRaw != null) {
+    return withRateLimit(jsonError("Neplatná kombinace režimů PDF.", 400));
+  }
 
   const ownerEmail = normalizeEmail(form.get("ownerEmail"));
   const entryId = normalizeEntryId(form.get("entryId"));
@@ -165,28 +198,102 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // A first-attachment action must never silently replace an existing file,
-  // including an attachment whose metadata requires repair. The snapshot's
-  // lastUpdateTime precondition also protects this check during the upload.
-  if (onlyIfMissing && loaded.contract.contractPdfAttachment != null) {
+  const contractNumberFingerprint = contractPdfNumberFingerprint(loaded.contract.contractNumber);
+  if (!contractNumberFingerprint) {
+    return withRateLimit(jsonError("Před ověřením nebo nahráním PDF doplň platné číslo smlouvy.", 409));
+  }
+
+  // The explicit upload control may fill a missing PDF or strengthen an older
+  // unbound one. A verified, usable attachment is never silently replaced.
+  const existingAttachment = normalizeStoredContractPdfAttachment(loaded.contract.contractPdfAttachment);
+  const existingBindingStatus = existingAttachment
+    ? contractPdfNumberBindingStatus(existingAttachment, loaded.contract.contractNumber)
+    : "unverified";
+  if (onlyIfMissing && loaded.contract.contractPdfAttachment != null &&
+    !["mismatch", "legacy"].includes(existingBindingStatus)) {
     return withRateLimit(jsonError("Smlouva už má uloženou PDF přílohu. Obnov detail smlouvy.", 409));
   }
 
-  const previousAttachment = normalizeStoredContractPdfAttachment(
-    (loaded.contract as { contractPdfAttachment?: unknown }).contractPdfAttachment
-  );
+  const previousAttachment = existingAttachment;
+
+  if (bindExisting) {
+    if (!previousAttachment) return withRateLimit(jsonError("Smlouva nemá ověřitelnou PDF přílohu.", 404));
+    let strengthened: StoredContractPdfAttachment;
+    try {
+      strengthened = await strengthenExistingContractPdfBinding({
+        attachment: previousAttachment,
+        contractNumber: loaded.contract.contractNumber!,
+      });
+    } catch (error) {
+      return withRateLimit(jsonError(
+        isStorageNotFoundError(error)
+          ? "Uložený PDF soubor nebyl nalezen."
+          : "PDF se nepodařilo ověřit. Obnov detail a zkus to znovu.",
+        isStorageNotFoundError(error) ? 404 : 409,
+      ));
+    }
+    if (existingBindingStatus === "verified") {
+      return withRateLimit(NextResponse.json({
+        ok: true,
+        attachment: toPublicContractPdfAttachment(strengthened, loaded.contract.contractNumber),
+      }));
+    }
+    if (!loaded.entrySnap.updateTime) return withRateLimit(jsonError("Smlouva se mezitím změnila. Obnov detail.", 409));
+
+    const batch = loaded.entryRef.firestore.batch();
+    const patch = withContractHistory(batch, loaded.entryRef, loaded.contract, {
+      contractPdfAttachment: strengthened,
+      contractPdfAttachmentUpdatedAt: FieldValue.serverTimestamp(),
+    }, {
+      actorEmail: ctx.actorEmail,
+      kind: "attachment",
+      title: "Zpevněna vazba PDF",
+      changes: [{ label: "Vazba PDF", before: "neověřená", after: "číslo smlouvy" }],
+    });
+    batch.update(loaded.entryRef, patch, {
+      lastUpdateTime: loaded.entrySnap.updateTime,
+    });
+    try {
+      await trackCashflowWrite(() => batch.commit());
+    } catch {
+      try {
+        const current = await loadContractForAttachment({
+          ownerEmail, entryId, viewerEmail: ctx.email, teamEmails: ctx.contractAccessEmails,
+        });
+        const saved = current.ok ? normalizeStoredContractPdfAttachment(current.contract.contractPdfAttachment) : null;
+        if (saved && saved.bucketName === strengthened.bucketName && saved.storagePath === strengthened.storagePath &&
+          saved.sha256 === strengthened.sha256 &&
+          contractPdfNumberBindingStatus(saved, current.ok ? current.contract.contractNumber : null) === "verified") {
+          strengthened = saved;
+        } else {
+          return withRateLimit(jsonError("Výsledek ověření PDF se nepodařilo potvrdit. Obnov detail.", 503));
+        }
+      } catch {
+        return withRateLimit(jsonError("Výsledek ověření PDF se nepodařilo potvrdit. Obnov detail.", 503));
+      }
+    }
+    return withRateLimit(NextResponse.json({
+      ok: true,
+      attachment: toPublicContractPdfAttachment(strengthened, loaded.contract.contractNumber),
+    }));
+  }
+
+  if (loaded.contract.autoPremiumAmendment === true || (loaded.contract.productKey === "neon" && loaded.contract.entryType === "endorsement")) {
+    try { await validateAmendmentPdf(fileRaw as File); }
+    catch { return withRateLimit(jsonError("PDF nelze bezpečně přijmout. Použij platné PDF bez skriptů a vložených souborů, nejvýše 100 stran a 12 MB.", 400)); }
+  }
 
   let uploaded: StoredContractPdfAttachment | null = null;
   try {
     uploaded = await uploadContractPdfAttachment({
-      file: fileRaw,
+      file: fileRaw as File,
       ownerEmail,
       entryId,
+      contractNumber: loaded.contract.contractNumber!,
       uploaderEmail: ctx.email,
       storedFileName: buildContractPdfStoredFileName({
         entryType: loaded.contract.entryType,
-        contractNumber: loaded.contract.contractNumber,
-        entryId,
+        contractNumberFingerprint,
       }),
     });
 
@@ -210,7 +317,8 @@ export async function POST(req: NextRequest) {
           });
           const saved = current.ok ? normalizeStoredContractPdfAttachment(current.contract.contractPdfAttachment) : null;
           if (saved && saved.bucketName === prepared.bucketName && saved.storagePath === prepared.storagePath &&
-            saved.sha256 === prepared.sha256) {
+            saved.sha256 === prepared.sha256 && saved.contractNumberFingerprint === contractNumberFingerprint &&
+            contractPdfNumberBindingStatus(saved, current.ok ? current.contract.contractNumber : null) === "verified") {
             uploaded = saved;
             return;
           }
@@ -231,7 +339,16 @@ export async function POST(req: NextRequest) {
     }
     const message = error instanceof Error && PUBLIC_PDF_VALIDATION_ERRORS.has(error.message)
       ? error.message : "PDF se nepodařilo uložit. Zkus nahrání znovu.";
-    return withRateLimit(jsonError(message, 400));
+    if (message !== "PDF se nepodařilo uložit. Zkus nahrání znovu.") {
+      return withRateLimit(jsonError(message, 400));
+    }
+    const failureCode = pdfUploadFailureCode(error);
+    // Keep provider messages, object paths, and customer data out of logs.
+    console.error("Contract PDF upload failed.", { failureCode });
+    return withRateLimit(jsonError(
+      `PDF se nepodařilo uložit. Kód chyby: ${failureCode}. Zkus nahrání znovu.`,
+      503,
+    ));
   }
 
   if (!uploaded) return withRateLimit(jsonError("Uložení PDF se nepodařilo potvrdit. Obnov detail smlouvy.", 503));
@@ -251,7 +368,8 @@ export async function POST(req: NextRequest) {
   }
 
   let clientCardCompanyId: ClientCardCompanyIdImportStatus | "unavailable" | undefined;
-  if (["cppPPRbez", "cppPPRs"].includes(loaded.contract.productKey ?? "") && ctx.email === ownerEmail && !ctx.isImpersonating) {
+  if (["cppPPRbez", "cppPPRs"].includes(loaded.contract.productKey ?? "") && !loaded.contract.autoPremiumAmendment &&
+    ctx.email === ownerEmail && !ctx.isImpersonating) {
     try {
       clientCardCompanyId = await fillClientCardCompanyIdFromUploadedPdf(loaded.entryRef.firestore, { email: ctx.email, uid: ctx.uid }, entryId, uploaded.sha256);
     } catch {
@@ -262,7 +380,7 @@ export async function POST(req: NextRequest) {
   return withRateLimit(
     NextResponse.json({
       ok: true,
-      attachment: toPublicContractPdfAttachment(uploaded),
+      attachment: toPublicContractPdfAttachment(uploaded, loaded.contract.contractNumber),
       clientCardEmail,
       ...(clientCardCompanyId ? { clientCardCompanyId } : {}),
     })
@@ -294,6 +412,9 @@ export async function GET(req: NextRequest) {
   );
   if (!attachment) {
     return withRateLimit(jsonError("Smlouva nemá uloženou PDF přílohu.", 404));
+  }
+  if (contractPdfNumberBindingStatus(attachment, loaded.contract.contractNumber) === "mismatch") {
+    return withRateLimit(jsonError("PDF neodpovídá aktuálnímu číslu smlouvy. Nahraj správný soubor.", 409));
   }
 
   let download: Awaited<ReturnType<typeof createContractPdfAttachmentReadStream>>;

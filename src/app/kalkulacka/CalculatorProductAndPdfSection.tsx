@@ -12,6 +12,7 @@ type CalculatorProductAndPdfSectionProps = {
   productOpen: boolean;
   productSelected?: boolean;
   large?: boolean;
+  coefficientControl?: ReactNode;
   currentProductLabel: string;
   productLogoSrc?: string | null;
   productInstitutionId?: string | null;
@@ -41,6 +42,7 @@ export function CalculatorProductAndPdfSection({
   productOpen,
   productSelected = true,
   large = false,
+  coefficientControl,
   currentProductLabel,
   productLogoSrc,
   productLogoImageClass,
@@ -217,6 +219,9 @@ export function CalculatorProductAndPdfSection({
           <span>Změnit</span><ChevronDown size={16} strokeWidth={1.8} aria-hidden="true" />
         </span>
       </button>
+      {coefficientControl && (
+        <div className={`${styles.coefficientSelection} ${styles.fields}`}>{coefficientControl}</div>
+      )}
       {canImportFromPdf && (
         <div className={styles.pdfSection}>
           <div

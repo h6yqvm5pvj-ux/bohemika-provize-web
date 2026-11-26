@@ -9,7 +9,7 @@ const handlers = vi.hoisted(() => ({
   profile: vi.fn(), contracts: vi.fn(), tips: vi.fn(), subscriptions: vi.fn(), statements: vi.fn(),
   extraPayouts: vi.fn(),
 }));
-vi.mock("./cashflowExtraPayouts", () => ({ loadPrivateCashflowExtraPayouts: handlers.extraPayouts }));
+vi.mock("./cashflowExtraPayouts", () => ({ loadPrivateCashflowSettings: async (email: string) => ({ extraPayouts: await handlers.extraPayouts(email), officeContributionEnabled: true }) }));
 vi.mock("@/app/api/user/profile/route", () => ({ GET: handlers.profile }));
 vi.mock("@/app/api/contracts/_lib/contractsApi", () => ({ handleContractsList: handlers.contracts }));
 vi.mock("@/app/api/tip-payouts/list/route", () => ({ GET: handlers.tips }));

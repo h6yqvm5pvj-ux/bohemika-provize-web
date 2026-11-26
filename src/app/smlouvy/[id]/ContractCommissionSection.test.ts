@@ -216,7 +216,7 @@ describe("contract commission payout display helpers", () => {
 
     const state = payoutStatusForCodes(payouts, ["A101"], 1384.94);
 
-    expect(state.status).toBe("partial");
+    expect(state.status).toBe("difference");
     expect(
       payoutDifferenceAmountFromRecords({
         expectedAmount: 1384.94,
@@ -224,6 +224,28 @@ describe("contract commission payout display helpers", () => {
         records: state.records,
       })
     ).toBe(-384.94);
+  });
+
+  it("compares a recorded commission against the amount calculated from its statement premium base", () => {
+    const payout: ContractCommissionPayout = {
+      code: "B101", amount: 183.71, expectedAmount: 183.71, difference: 0,
+      status: "paid",
+    };
+
+    expect(payoutStatusForCodes([payout], ["B101"], 329.29, "cppAuto")).toMatchObject({
+      status: "paid", paidAmount: 183.71,
+    });
+  });
+
+  it("shows a statement-base mismatch as a difference instead of partial payment", () => {
+    const payout: ContractCommissionPayout = {
+      code: "B104", amount: 367.42, expectedAmount: 183.71, difference: 183.71,
+      differenceReason: "commission_amount_mismatch", status: "difference",
+    };
+
+    expect(payoutStatusForCodes([payout], ["B104"], 329.29, "cppAuto")).toMatchObject({
+      status: "difference", paidAmount: 367.42,
+    });
   });
 
   it("counts a corrected payout from the replacement after the original is fully deducted", () => {

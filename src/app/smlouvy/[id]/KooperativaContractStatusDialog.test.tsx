@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KooperativaContractStatusDialog } from "./KooperativaContractStatusDialog";
+import { ContractPortalIdentityDialog } from "./ContractPortalIdentityDialog";
 
 const url = "https://insure.koop.cz/GolemWEB/B2C/www/mobily/m_smlv_login.xhtml";
 const identity = { kind: "birthDate" as const, label: "Datum narození" as const, value: "14.07.1995" };
@@ -12,7 +13,7 @@ const onClose = vi.fn();
 const onCopy = vi.fn();
 const defaultProps = { contractNumber: " TEST-0001 ", identity, loading: false, error: null, onClose, onCopy };
 
-async function render(props = {}) {
+async function render(props: Partial<ComponentProps<typeof KooperativaContractStatusDialog>> = {}) {
   await act(async () => root.render(<KooperativaContractStatusDialog {...defaultProps} {...props} />));
 }
 
@@ -30,6 +31,25 @@ afterEach(async () => {
 });
 
 describe("Kooperativa contract status dialog", () => {
+  it.each(["Kooperativa Auto", "Allianz Auto", "Slavia Auto"])("offers storno beside the portal link for %s when enabled", async brand => {
+    const onOpenStorno = vi.fn();
+    const mount = (enabled: boolean) => {
+      if (brand === "Kooperativa Auto") return render({ onOpenStorno: enabled ? onOpenStorno : undefined });
+      return act(async () => root.render(<ContractPortalIdentityDialog {...defaultProps}
+        brand={brand} title="Ověření smlouvy" description="Ověření na portálu" url="https://example.test/"
+        openLabel={`Otevřít ${brand}`} logoSrc="/icons/allianz.png" onOpenStorno={enabled ? onOpenStorno : undefined} />));
+    };
+    const stornoButton = () => [...container.querySelectorAll("button")].find(button => button.textContent?.trim() === "Storno smlouvy");
+    await mount(false);
+    expect(stornoButton()).toBeUndefined();
+    await mount(true);
+    const button = stornoButton()!;
+    expect(button.nextElementSibling?.tagName).toBe("A");
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    await act(async () => button.click());
+    expect(onOpenStorno).toHaveBeenCalledOnce();
+  });
+
   it("opens a labelled dialog and copies the contract number and formatted date only", async () => {
     await render();
     const dialog = container.querySelector("dialog")!;

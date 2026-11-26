@@ -23,7 +23,11 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  neonCorrection?: import("@/app/lib/neonCorrection").NeonCorrection | null;
+  commissionPayoutCodeAdjustment?: import("@/app/lib/commissionPayoutCodeAdjustment").CommissionPayoutCodeAdjustment | null;
+  isDip?: boolean | null;
   confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
+  hasContractPdfAttachment?: boolean;
   contractHistoryId?: string;
   contractHistoryStartedAtMs?: number;
   contractNotesPath?: string;
@@ -39,15 +43,19 @@ export type ContractDoc = {
     sha256?: string | null;
     uploadedAtMs?: number | null;
     uploadedBy?: string | null;
+    contractNumberFingerprint?: string | null;
+    contractNumberBindingStatus?: "verified" | "legacy" | "mismatch" | "unverified";
   } | null;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   lifecycleStatus?: "active" | "storno" | "dozita" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
+  neonRefreshCareAnnualPremium?: number | null;
   flexiRenovation?: FlexiRenovationInput | null;
   refreshOriginalContractNumber?: string | null;
   refreshOriginalMissingInSystem?: boolean | null;
+  refreshOriginalLinked?: boolean | null;
   requiresStatementRefresh?: boolean | null;
   commissionCalculationStatus?: string | null;
   commissionBaseSource?: string | null;
@@ -58,6 +66,7 @@ export type ContractDoc = {
   refreshStatementResolvedStatementDate?: string | null;
   refreshStatementResolvedStatementChronologyMs?: number | null;
   refreshCommissionBase?: {
+    originalOutsideOwner?: boolean;
     guaranteeStatus?: FlexiRenovationGuaranteeStatus;
     originalCommissionRatio?: number;
     provisional?: boolean;
@@ -131,9 +140,15 @@ export type ContractDoc = {
   position?: Position | null;
   commissionMode?: CommissionMode | string | null;
   inputAmount?: number;
+  /** Server-confirmed original premium; never inferred from statement rows. */
+  signedAnnualPremiumOverride?: number | null;
   calculationInputAmount?: number | null;
   effectiveInputAmount?: number | null;
   previousInputAmount?: number | null;
+  autoPremiumAmendment?: boolean;
+  autoPremiumAnnual?: number;
+  autoPremiumPreviousAnnual?: number;
+  previousFrequency?: PaymentFrequency | null;
   newInputAmount?: number | null;
   premiumDelta?: number | null;
   premiumIncreaseAmount?: number | null;
@@ -147,6 +162,7 @@ export type ContractDoc = {
   createdFromCommissionStatementChronologyMs?: number | null;
   createdFromCommissionStatementId?: string | null;
   frequencyRaw?: PaymentFrequency | null;
+  paymentFrequencyChanges?: import("@/app/lib/autoPaymentFrequency").PaymentFrequencyChange[] | null;
   durationYears?: number | null;
   durationMonths?: number | null;
   maxCizinKomplexVariant?: MaxCizinKomplexVariant | null;
@@ -163,6 +179,11 @@ export type ContractDoc = {
     amount?: number | null;
     expectedAmount?: number | null;
     difference?: number | null;
+    statementBaseAmount?: number | null;
+    sourceValidFrom?: string | null;
+    sourceSignedAt?: string | null;
+    sourceBaseAmount?: number | null;
+    systemBaseAmount?: number | null;
     differenceReason?:
       | "career_mismatch"
       | "premium_base_mismatch"
@@ -198,9 +219,12 @@ export type ContractDoc = {
   } | null;
   premiumStatementBaseResolutions?: import("@/app/lib/autoPremiumBasis").PremiumBaseResolution[] | null;
   premiumStatementHistory?: {
+    resolvedCommissionCode?: string;
+    commissionCodeCorrectionNote?: string;
     key?: string | null;
     premiumKind?: "auto_change" | "life_increase" | string | null;
     changeReason?: "indexation";
+    premiumDerivedFromCommission?: boolean;
     statementId?: string | null;
     statementNumber?: string | null;
     statementPeriod?: string | null;
@@ -500,7 +524,9 @@ export type TipPayoutDoc = {
 export type ContractResponseItem = ContractDoc & {
   id: string;
   adviserEmail: string | null;
+  stornoEstimateIssue?: import("@/app/lib/commissionStornoAudit").StornoEstimateIssue;
   adviserName?: string | null;
+  payoutPositionOverride?: "poradce10" | null;
   effectivePosition?: Position | null;
   timelinePosition?: Position | null;
   ownerCurrentPosition?: Position | null;
@@ -612,9 +638,11 @@ export type ContractListResponseShape =
   | "home"
   | "clientNames"
   | "clientDirectory"
+  | "search"
   | "contractList"
   | "cashflow";
 export type ContractListProductCategory =
+  | "investments"
   | "pension"
   | "life"
   | "auto"
@@ -626,8 +654,10 @@ export type ContractListProductCategory =
 
 export type ContractListFilters = {
   query: string;
+  vehiclePlate?: string | null;
   mode: ContractListFilterMode;
   unpaidOnly: boolean;
+  withoutPdfOnly: boolean;
   refreshOnly: boolean;
   activeOnly: boolean;
   stornoOnly: boolean;

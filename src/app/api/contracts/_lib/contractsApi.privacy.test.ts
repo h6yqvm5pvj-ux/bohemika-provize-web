@@ -58,11 +58,320 @@ beforeEach(() => {
 });
 
 describe("contract response privacy at the API boundary", () => {
+  it("requires the same record permissions for the private POST detail link", async () => {
+    entry("root");
+    const { POST } = await import("../detail/route");
+    const read = (entryId: string) => POST(new NextRequest("https://example.test/api/contracts/detail", {
+      method: "POST", body: new URLSearchParams({ ownerEmail: owner, entryId }),
+    }));
+    expect((await read("../root")).status).toBe(400);
+    asUser(former);
+    const denied = await read("root");
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).not.toHaveProperty("contract");
+    asUser(manager);
+    const response = await read("root");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toMatchObject({ contract: { id: "root" } });
+  });
+  it("repairs separate equal increase receipts from their authorized archived rows in the timeline", async () => {
+    const { extractCommissionPayoutRowsFromStoredHtml, statementPayoutKey } = await import("@/app/api/commission-statements/statementPayoutRows");
+    const payout = (statementId: string, day: string, payoutMonthKey: string) => {
+      const cells = [1, "123456789", "01.01.2024", day, "Synthetic client", "R", "CPP_N_LIFE", "NV101", 1200, "", "", "7", 100, 0];
+      const html = `<div id="provize"><table><tr>${cells.map(cell => `<td>${cell}</td>`).join("")}</tr></table></div>`;
+      store.records.set(`usersPrivate/${owner}/commissionStatements/${statementId}`, { html });
+      const row = extractCommissionPayoutRowsFromStoredHtml(html)[0];
+      return { statementId, key: statementPayoutKey(statementId, row), writtenBy: owner, code: "NV101", amount: 100,
+        status: "paid", payoutMonthKey };
+    };
+    const receipts = [payout("statement-september", "31.08.2025", "2025-9"), payout("statement-january", "30.11.2025", "2026-1")];
+    entry("root", { contractNumber: "123456789", policyStartDate: "2024-01-01", commissionPayouts: receipts });
+    entry("first", { contractNumber: "123456789", policyStartDate: "2025-08-31", premiumDelta: 100,
+      parentContractEntryId: "root", commissionPayouts: receipts });
+    entry("second", { contractNumber: "123456789", policyStartDate: "2025-11-30", premiumDelta: 100, parentContractEntryId: "first" });
+    const { handleContractsGet } = await import("./contractsApi");
+    const read = () => handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=second`), "detail");
+    const doc = vi.spyOn(mocks.db!, "doc");
+    const response = await read();
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.timeline.map((item: { id: string; commissionPayouts: unknown[] }) => [item.id, item.commissionPayouts])).toEqual([
+      ["root", []], ["first", [expect.objectContaining({ ...receipts[0], sourceValidFrom: "31.08.2025" })]],
+      ["second", [expect.objectContaining({ ...receipts[1], sourceValidFrom: "30.11.2025" })]],
+    ]);
+    expect(payload.contract.commissionPayouts).toHaveLength(1);
+    expect(JSON.stringify(payload)).not.toContain("Synthetic client");
+
+    doc.mockClear();
+    asUser(former);
+    expect((await read()).status).toBe(403);
+    expect(doc.mock.calls.some(([path]) => path.includes("/commissionStatements/"))).toBe(false);
+    doc.mockRestore();
+  });
+
+  it.each(["cppAuto", "domex"] as const)("returns automatically corrected %s codes with original provenance only to an authorized viewer", async productKey => {
+    entry("root", { productKey, frequencyRaw: "annual", policyStartDate: "2020-06-08",
+      premiumStatementHistory: [
+        { commissionCode: "A101", premiumKind: "auto_initial", anniversaryDate: "2020-06-08", newAnnualPremium: 3000, writtenBy: owner, payoutMonthKey: "2020-7" },
+        { commissionCode: "A102", premiumKind: "auto_initial", anniversaryDate: "2020-06-08", newAnnualPremium: 3200, writtenBy: owner, payoutMonthKey: "2021-6" },
+      ],
+      commissionPayouts: [{ key: "source", code: "A102", amount: 100, payoutMonthKey: "2021-6", writtenBy: owner }],
+    });
+    const { handleContractsGet, handleContractsList } = await import("./contractsApi");
+    asUser(owner);
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(200);
+    const detail = await response.json();
+    expect(detail.contract.commissionPayouts[0]).toMatchObject({ code: "B101", statementCode: "A102", amount: 100 });
+    expect(detail.contract).not.toHaveProperty("commissionPayoutCodeAdjustment");
+    expect(detail.contract.premiumStatementHistory[1]).toMatchObject({ commissionCode: "A102", resolvedCommissionCode: "B101", premiumKind: "auto_change", anniversaryDate: "2021-06-08", previousAnnualPremium: 3000, differenceAnnual: 200 });
+    const list = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=cashflow&limit=5"));
+    expect(list.status).toBe(200);
+    expect((await list.json()).contracts[0].commissionPayouts[0]).toMatchObject({ code: "B101", statementCode: "A102" });
+    asUser(former);
+    expect((await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail")).status).toBe(403);
+  });
+
+  it.each([
+    ["jindrich.hajek@bohemika.eu", "poradce10"],
+    ["jindra.hajek@bohemika.eu", undefined],
+  ] as const)("projects the payout exception for the verified detail viewer %s", async (account, expected) => {
+    const path = `users/${account}/entries/flexi`;
+    store.records.set(`users/${account}`, { userId: account, accountType: "advisor", position: "poradce10", managerEmail: manager });
+    store.records.set(path, sealPrivateRecord(path, {
+      contractNumber: "12345", productKey: "flexi", userEmail: account, position: "poradce8",
+      inputAmount: 786, contractSignedDate: "2025-08-01", policyStartDate: "2025-08-01",
+    }));
+    const { handleContractsGet } = await import("./contractsApi");
+    const read = () => handleContractsGet(new NextRequest(
+      `https://example.test/api/contracts/detail?ownerEmail=${account}&entryId=flexi`
+    ), "detail");
+    asUser(account);
+    const own = await read();
+    expect(own.status).toBe(200);
+    const payload = await own.json();
+    expect(payload.contract.position).toBe("poradce8");
+    expect(payload.contract.payoutPositionOverride).toBe(expected);
+    expect(payload.timeline[0].payoutPositionOverride).toBe(expected);
+
+    asUser(former);
+    const foreign = await read();
+    expect(foreign.status).toBe(403);
+    expect(await foreign.json()).not.toHaveProperty("contract");
+  });
+
+  it.each(["owner", "manager"])("returns only validated cashflow portal links to an authorized %s", async actor => {
+    entry("root", { maxxContractDetailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456",
+      cppExtranetEntityTypeId: "43", cppExtranetEntityId: "123456" });
+    asUser(actor === "owner" ? owner : manager);
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=${actor === "owner" ? "my" : "team"}&shape=cashflow&limit=5`));
+    expect(response.status).toBe(200);
+    const contract = (await response.json()).contracts[0];
+    expect(contract).toMatchObject({
+      maxxContractDetailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456",
+      extranetContractDetailUrl: "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx?type=detail&p_EntityTypeID=43&p_EntityID=123456",
+    });
+    expect(contract).not.toHaveProperty("cppExtranetEntityId");
+    expect(contract).not.toHaveProperty("cppExtranetEntityTypeId");
+  });
+
+  it.each(["cashflow", "contractList"])("includes the stored auto commission table in the %s projection for the owner", async shape => {
+    entry("root", { productKey: "kooperativaAuto", frequencyRaw: "semiannual", position: "poradce8",
+      originalPosition: "poradce7", commissionCoefficientSetOverride: "historical",
+      paymentFrequencyChanges: [{ effectiveDate: "2026-02-01", frequency: "annual", annualPremium: 22000, baseAnnualPremium: 24000 }],
+    });
+    const { handleContractsList } = await import("./contractsApi");
+    const list = (scope: "my" | "team") => handleContractsList(new NextRequest(
+      `https://example.test/api/contracts/list?scope=${scope}&shape=${shape}&limit=5`
+    ));
+    const response = await list("my");
+    expect(response.status).toBe(200);
+    expect((await response.json()).contracts[0]).toMatchObject({
+      originalPosition: "poradce7", commissionCoefficientSetOverride: "historical",
+    });
+    asUser(former);
+    expect(JSON.stringify(await (await list("team")).json())).not.toContain("commissionCoefficientSetOverride");
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("does not expose another owner's portal links to %s or trust a client admin flag", async actor => {
+    entry("root", { maxxContractDetailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456",
+      cppExtranetEntityTypeId: "43", cppExtranetEntityId: "123456" });
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else {
+      asUser(actor === "tipster" ? tip : former);
+      if (actor === "tipster") store.records.get(`users/${tip}`)!.accountType = "tipster";
+    }
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest(`https://example.test/api/contracts/list?scope=team&shape=cashflow&limit=5&ownerEmail=${owner}&role=admin`));
+    expect([200, 401, 403]).toContain(response.status);
+    const body = JSON.stringify(await response.json());
+    expect(body).not.toContain("detail.aspx?sml=123456");
+    expect(body).not.toContain("p_EntityID=123456");
+  });
+
+  it("omits unsafe external destinations from the cashflow projection", async () => {
+    entry("root", { maxxContractDetailUrl: "javascript:alert(1)", cppExtranetEntityTypeId: "43", cppExtranetEntityId: "1&next=evil" });
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=cashflow&limit=5"));
+    expect(response.status).toBe(200);
+    const contract = (await response.json()).contracts[0];
+    expect(contract).not.toHaveProperty("maxxContractDetailUrl");
+    expect(contract).not.toHaveProperty("extranetContractDetailUrl");
+  });
+
+  it("preserves DIP in list and detail responses for an authorized investment contract", async () => {
+    entry("root", { productKey: "investikaEfektika", isDip: true, rootContractEntryId: null, inputAmount: 0, items: [], total: 0 });
+    const { handleContractsGet, handleContractsList } = await import("./contractsApi");
+    const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).contract).toMatchObject({ productKey: "investikaEfektika", isDip: true });
+    const list = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=contractList&limit=5"));
+    expect(list.status).toBe(200);
+    expect((await list.json()).contracts[0]).toMatchObject({ productKey: "investikaEfektika", isDip: true, productCategory: "investments" });
+  });
+
+  it.each(["unauthenticated", "unrelated", "tipster"])("denies access to an investment contract for %s", async actor => {
+    entry("root", { productKey: "investikaEfektika", isDip: true, rootContractEntryId: null });
+    if (actor === "unauthenticated") mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    else if (actor === "unrelated") asUser(former);
+    else { asUser(tip); store.records.get(`users/${tip}`)!.accountType = "tipster"; }
+    const { handleContractsGet } = await import("./contractsApi");
+    const response = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect(response.status).toBe(actor === "unauthenticated" ? 401 : 403);
+    expect(JSON.stringify(await response.json())).not.toContain("investikaEfektika");
+  });
   const renewalRequest = (updates: Record<string, unknown>) => new NextRequest("https://example.test/api/contracts", {
     method: "PATCH", body: JSON.stringify({ action: "updateFields", ownerEmail: owner, entryId: "root", updates }),
   });
   const neuron = () => entry("root", { productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     automaticRenewal: true, policyEndDate: null, policyTermEndDate: new Date("2027-11-04") });
+
+  it("returns only PDF-presence status on contract list responses", async () => {
+    entry("root", { contractPdfAttachment: {
+      kind: "contractPdf", bucketName: "private-bucket", storagePath: "private/path.pdf",
+      originalName: "contract.pdf", contentType: "application/pdf", sizeBytes: 10,
+      sha256: "a".repeat(64), uploadedAtMs: 1, uploadedBy: owner,
+    } });
+    const { handleContractsList } = await import("./contractsApi");
+    const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=contractList&limit=5"));
+    const body = await response.json();
+    expect(body.contracts[0]).toMatchObject({ hasContractPdfAttachment: true });
+    expect(body.contracts[0]).not.toHaveProperty("contractPdfAttachment");
+    expect(JSON.stringify(body)).not.toContain("private/path.pdf");
+    expect(JSON.stringify(body)).not.toContain("private-bucket");
+  });
+
+  it("checks replacement originals across owners but returns only an existence boolean", async () => {
+    const foreignOwner = "other-adviser@example.test";
+    const foreignPath = `users/${foreignOwner}/entries/foreign-original`;
+    store.records.set(foreignPath, sealPrivateRecord(foreignPath, {
+      userEmail: foreignOwner,
+      clientName: "Private synthetic client",
+      contractNumber: "0034516611",
+      productKey: "domexneuron",
+      entryType: "contract",
+    }));
+    mocks.find.mockResolvedValue([store.db.doc(foreignPath)]);
+
+    const { handleOriginalContractExists } = await import("./contractsApi");
+    const response = await handleOriginalContractExists(new NextRequest("https://example.test/api/contracts/original-exists", {
+      method: "POST",
+      body: JSON.stringify({ contractNumber: "0034516611" }),
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, exists: true });
+  });
+
+  it("rejects malformed replacement-original lookup input", async () => {
+    const { handleOriginalContractExists } = await import("./contractsApi");
+    const response = await handleOriginalContractExists(new NextRequest("https://example.test/api/contracts/original-exists", {
+      method: "POST",
+      body: JSON.stringify({ contractNumber: "   " }),
+      headers: { "Content-Type": "application/json" },
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false });
+  });
+
+  const originalLookup = async (body: unknown) => {
+    const { handleOriginalContractExists } = await import("./contractsApi");
+    return handleOriginalContractExists(new NextRequest("https://example.test/api/contracts/original-exists", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }));
+  };
+
+  it.each([
+    ["domex", "domexneuron", true], ["kooperativaAuto", "kooperativaAuto", true],
+    ["allianzAuto", "kooperativaAuto", false],
+  ])("checks foreign product compatibility without disclosing contract data: %s to %s", async (originalProduct, productKey, matchesProduct) => {
+    const path = "users/foreign@example.test/entries/private-original";
+    store.records.set(path, sealPrivateRecord(path, {
+      productKey: originalProduct, contractNumber: "OLD123", entryType: "contract",
+      clientName: "Private synthetic client", inputAmount: 1000, userEmail: "foreign@example.test",
+    }));
+    mocks.find.mockResolvedValue([store.db.doc(path)]);
+    const response = await originalLookup({ contractNumber: "OLD123", productKey });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ok: true, exists: true, matchesProduct });
+    expect(mocks.guard).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      namespace: "api:contracts:original-exists", limit: 30,
+    }));
+  });
+
+  it.each(["123", "123456", "0012345"])("requires an exact original number rather than a partial or loose match: %s", async contractNumber => {
+    entry("root", { contractNumber: "12345", productKey: "kooperativaAuto" });
+    const response = await originalLookup({ contractNumber, productKey: "kooperativaAuto" });
+    expect(await response.json()).toEqual({ ok: true, exists: false, matchesProduct: false });
+  });
+
+  it.each([401, 403, 429])("keeps guard denial %s ahead of global lookup", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await originalLookup({ contractNumber: "OLD123", productKey: "kooperativaAuto" })).status).toBe(status);
+    expect(mocks.find).not.toHaveBeenCalled();
+  });
+
+  it("denies a tipster account access to replacement lookup", async () => {
+    store.records.get(`users/${owner}`)!.accountType = "tipster";
+    expect((await originalLookup({ contractNumber: "OLD123", productKey: "kooperativaAuto" })).status).toBe(403);
+    expect(mocks.find).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { contractNumber: {} }, { contractNumber: "OLD<script>" }, { contractNumber: "x".repeat(101) },
+    { contractNumber: "OLD123", productKey: "unsupported" }, { contractNumber: "OLD123", productKey: {} },
+  ])("rejects manipulated replacement lookup input before reading contracts: %j", async body => {
+    expect((await originalLookup(body)).status).toBe(400);
+    expect(mocks.find).not.toHaveBeenCalled();
+  });
+
+  it("keeps lookup failures generic", async () => {
+    mocks.find.mockRejectedValue(new Error("private/internal/path and synthetic-secret"));
+    const response = await originalLookup({ contractNumber: "OLD123", productKey: "kooperativaAuto" });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ ok: false, error: "Nepodařilo se ověřit původní smlouvu." });
+  });
+
+  it("exposes only the new policy's calculated base when NEON used a foreign original", async () => {
+    const ownBase = {
+      newMonthlyPremium: 1_500, newAnnualPremium: 18_000,
+      calculationMonthlyPremium: 750, calculationAnnualPremium: 9_000, refreshPolicyStartDateIso: "2026-02-01",
+    };
+    entry("root", { isRefresh: true, refreshCommissionBase: {
+      ...ownBase, originalOutsideOwner: true, productKey: "neon", method: "cpp_neon_5y_storno",
+      originalMonthlyPremium: 1234.56, originalAnnualPremium: 14814.72,
+      originalStornoStartDateIso: "2023-01-01", stornoBaseMonthlyPremium: 1200,
+    } });
+    const { handleContractsGet, handleContractsList } = await import("./contractsApi");
+    const detail = await handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=root`), "detail");
+    expect((await detail.json()).contract.refreshCommissionBase).toEqual(ownBase);
+    const cashflow = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=cashflow&limit=5"));
+    expect((await cashflow.json()).contracts[0].refreshCommissionBase).toEqual(ownBase);
+  });
 
   it("roundtrips all Neuron objects and states, keeps addresses out of slim responses and encrypts audit changes", async () => {
     neuron();
@@ -594,4 +903,17 @@ describe("contract response privacy at the API boundary", () => {
     expect(body.hasMore).toBe(false);
     if (viewer === owner) expect(body.nextCursor).toBeNull();
   });
+});
+
+
+it("carries original and dated auto frequencies through the authorized cashflow projection", async () => {
+  entry("root", { productKey: "kooperativaAuto", frequencyRaw: "quarterly", policyStartDate: "2023-09-01",
+    paymentFrequencyChanges: [{ effectiveDate: "2024-09-01", frequency: "annual", internalAudit: "do-not-expose" }] });
+  const { handleContractsList } = await import("./contractsApi");
+  const response = await handleContractsList(new NextRequest("https://example.test/api/contracts/list?scope=my&shape=cashflow&limit=5"));
+  expect(response.status).toBe(200);
+  const contract = (await response.json()).contracts[0];
+  expect(contract.frequencyRaw).toBe("quarterly");
+  expect(contract.paymentFrequencyChanges).toEqual([{ effectiveDate: "2024-09-01", frequency: "annual" }]);
+  expect(JSON.stringify(contract)).not.toContain("do-not-expose");
 });

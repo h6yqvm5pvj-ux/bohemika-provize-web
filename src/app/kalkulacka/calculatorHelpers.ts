@@ -551,6 +551,11 @@ export function normalizedDurationMonths(
 
 export function allowedFrequencies(product: Product): PaymentFrequency[] {
   switch (product) {
+    case "investikaRealitniFond":
+    case "investikaEfektika":
+    case "investikaMonetika":
+    case "conseqInvest":
+      return ["annual"];
     case "conseqzenit":
       return ["monthly"];
     case "neon":
@@ -589,6 +594,7 @@ export function allowedFrequencies(product: Product): PaymentFrequency[] {
     case "cppPPRs":
       return ["quarterly", "semiannual", "annual"];
     case "cppcestovko":
+    case "cppAutoVozikZdarma":
     case "axacestovko":
     case "koopcestovko":
     case "maxcizinkomplex":

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { PremiumBasePeriod, PremiumBaseSource, resolveAutoPremiumBasis } from "@/app/lib/autoPremiumBasis";
+import { isAnnualAutoPayoutProduct } from "@/app/lib/productCatalog";
 import { formatMoney } from "./contractDetailHelpers";
 
 export type PremiumBaseReviewItem = { source: PremiumBaseSource; basis: ReturnType<typeof resolveAutoPremiumBasis> };
@@ -17,6 +18,7 @@ export function PremiumBaseReview({ items, onResolve, onOpenStatement }: {
   const [error, setError] = useState<string | null>(null);
   if (!items.length) return null;
   const pending = items.some(item => item.basis.status !== "resolved");
+  const hasAutomaticResolution = items.some(item => item.basis.status === "resolved" && item.basis.resolvedBy === "product-rule");
   const save = async (item: PremiumBaseReviewItem, period: PremiumBasePeriod) => {
     if (!onResolve || saving || item.basis.status === "invalid") return;
     setSaving(item.basis.key); setError(null);
@@ -25,8 +27,12 @@ export function PremiumBaseReview({ items, onResolve, onOpenStatement }: {
     finally { setSaving(null); }
   };
   return <details open={pending} className="m-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-    <summary className="cursor-pointer text-sm font-bold text-amber-950">{pending ? "Ověř období základny ve výpisu" : "Potvrzené základny z výpisů"}</summary>
-    <p className="mt-2 text-xs leading-5 text-slate-600">Výpis může uvádět částku za jednu platbu i za celý rok. Potvrď období podle smlouvy nebo podkladu pojišťovny; samotná výše provize ho neurčuje.</p>
+    <summary className="cursor-pointer text-sm font-bold text-amber-950">{pending ? "Ověř období základny ve výpisu" : hasAutomaticResolution ? "Základny určené automaticky" : "Potvrzené základny z výpisů"}</summary>
+    <p className="mt-2 text-xs leading-5 text-slate-600">{pending
+      ? "U produktů s provizí podle frekvence se částka bere jako jedna platba. Allianz Auto a Pillow mají vždy roční základ. Zkontroluj případnou výjimku podle podkladu pojišťovny."
+      : hasAutomaticResolution
+        ? "U produktů s provizí podle frekvence se základna určuje jako částka jedné platby. Allianz Auto a Pillow mají vždy roční základ, protože vyplácejí provizi za celý rok. Jednotku lze u ostatních produktů upravit podle podkladu pojišťovny."
+        : "Základna byla potvrzena podle smlouvy nebo podkladu pojišťovny."}</p>
     {items.map(item => <div key={item.basis.status === "invalid" ? `${item.source.statementId}:${item.source.rowId}:${item.source.commissionCode}` : item.basis.key} className="mt-3 rounded-xl border border-amber-100 bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
         <span>{item.source.statementPeriod || item.source.statementNumber} · {item.source.commissionCode}</span>
@@ -35,8 +41,9 @@ export function PremiumBaseReview({ items, onResolve, onOpenStatement }: {
       <p className="mt-1 text-sm font-bold text-slate-900">Základna ve výpisu: {formatMoney(item.source.basePremium)}</p>
       {item.basis.status === "invalid" ? <p className="mt-2 text-xs text-amber-900">Nejdřív doplň frekvenci placení smlouvy.</p> : <>
         {item.basis.status === "ambiguous" && <p className="mt-1 text-xs text-amber-900">Bez potvrzení se tato základna nezapočítá jako změna pojistného.</p>}
+        {item.basis.status === "resolved" && item.basis.resolvedBy === "product-rule" && <p className="mt-1 text-xs text-emerald-800">Období určeno automaticky podle produktu a frekvence placení.</p>}
         <div className="mt-3 flex flex-wrap gap-2">
-          {(["payment", "annual"] as const).map(period => {
+          {(isAnnualAutoPayoutProduct(item.source.productKey) ? ["annual"] as const : ["payment", "annual"] as const).map(period => {
             const basis = item.basis;
             const selected = basis.status === "resolved" && basis.period === period;
             const annual = basis.status !== "invalid" ? (period === "annual" ? basis.annualIfAnnual : basis.annualIfPayment) : null;

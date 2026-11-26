@@ -1,6 +1,10 @@
 import { TipDialog } from "@/app/tipy/TipDialog";
+import { matchesContractSearch, prepareContractSearch } from "@/app/lib/contractSearch";
+import { useRef, useState } from "react";
 import tipsterStyles from "../tipsterRewards.module.css";
-import { FileText, Loader2, X } from "lucide-react";
+import styles from "../monthModal.module.css";
+import toolbarStyles from "../cashflowToolbar.module.css";
+import { FileText, Loader2, Search, X } from "lucide-react";
 
 import {
   calculateNetCashflow,
@@ -12,8 +16,9 @@ import {
 import type { CashflowCommissionStatementSummary, CashflowItem, MonthGroup } from "../types";
 import { CashflowMonthSections } from "./CashflowMonthSections";
 import { CashflowCommissionCard } from "./CashflowCommissionCard";
-import { isCashflowCancellation, type CashflowDisplayGroup } from "../commissionPresentation";
-import { formatCashflowGroupCount, paidSubscriptionAmount } from "../cashflowLabels";
+import { cashflowItemDisplayStatus, isCashflowCancellation, isShiftedCashflowPayout, type CashflowDisplayGroup } from "../commissionPresentation";
+import { formatCashflowAmount, formatCashflowGroupCount, paidSubscriptionAmount } from "../cashflowLabels";
+import { CashflowMonthFilterPicker, type CashflowMonthFilter } from "./CashflowMonthFilterPicker";
 
 type CashflowMonthModalProps = {
   month: MonthGroup | null;
@@ -115,8 +120,29 @@ export function CashflowMonthModal({
     </div>;
   }
 
-  const sortedItems = sortCashflowItemsForDisplay(month.items);
-  const displayGroups = buildCashflowDisplayGroups(sortedItems);
+  return <CashflowMonthDetail key={month.key} month={month} statements={statements}
+    statementLoadingId={statementLoadingId} onClose={onClose}
+    onOpenStatement={onOpenStatement} tipsterMode={tipsterMode} />;
+}
+
+function CashflowMonthDetail({
+  month, statements = [], statementLoadingId = null, onClose, onOpenStatement, tipsterMode = false,
+}: Omit<CashflowMonthModalProps, "month"> & { month: MonthGroup }) {
+  const [filter, setFilter] = useState<CashflowMonthFilter>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const search = prepareContractSearch(searchInput);
+  const hasSearch = search.text.length > 0;
+  const filteredItems = month.items.filter(item =>
+    (filter === "all" || cashflowItemDisplayStatus(item) === filter) &&
+    matchesContractSearch(item, search)
+  );
+  const sortedItems = sortCashflowItemsForDisplay(filteredItems).sort((a, b) =>
+    Number(isShiftedCashflowPayout(a)) - Number(isShiftedCashflowPayout(b))
+  );
+  const displayGroups = buildCashflowDisplayGroups(sortedItems).sort((a, b) =>
+    Number(a.items.some(isShiftedCashflowPayout)) - Number(b.items.some(isShiftedCashflowPayout))
+  );
   const tipOnlyMonth =
     tipsterMode ||
     (month.items.length > 0 && month.items.every((item) => item.isTipPayout === true));
@@ -126,7 +152,7 @@ export function CashflowMonthModal({
   const isPaidMonth = month.totalSource === "paid";
   const subscriptionReceipts = paidSubscriptionAmount(month);
   const extraPayoutReceipts = month.extraPayoutTotal ?? month.items.reduce(
-    (sum, item) => sum + (item.isExtraPayout && item.payoutStatus === "paid" ? item.amount : 0), 0
+    (sum, item) => sum + (item.isExtraPayout && !item.isOfficeContribution && item.payoutStatus === "paid" ? item.amount : 0), 0
   );
   const hasAdditionalReceipts = subscriptionReceipts !== 0 || extraPayoutReceipts !== 0;
   const otherPaidCommissions = month.statementPayoutTotal == null
@@ -168,43 +194,70 @@ export function CashflowMonthModal({
         onClick={onClose}
       >
       <div
-        className="relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-[#fbfdff] p-2 text-slate-900 shadow-[0_34px_82px_rgba(2,6,23,0.36)] sm:max-h-[95vh] sm:w-[min(1520px,96vw)] sm:rounded-[28px] sm:p-4"
+        className="relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white p-2 text-slate-900 shadow-[0_34px_82px_rgba(2,6,23,0.36)] sm:max-h-[95vh] sm:w-[min(1520px,96vw)] sm:rounded-[28px] sm:p-4"
         onClick={(event) => event.stopPropagation()}
       >
-        <span
-          className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-[linear-gradient(90deg,#ca85ff_0%,#aa57f5_46%,#8f44e8_100%)]"
-          aria-hidden="true"
-        />
-        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(244,239,252,0.96)_0%,rgba(250,248,255,0.98)_44%,rgba(252,251,255,1)_100%)]" />
-        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(146deg,rgba(197,105,255,0.08)_0%,rgba(197,105,255,0)_38%,rgba(166,86,246,0.06)_100%)]" />
-        <span className="pointer-events-none absolute -top-20 left-28 h-[21rem] w-px rotate-[35deg] bg-[#9a5dcb]/10" />
-        <span className="pointer-events-none absolute -right-16 top-10 hidden h-40 w-40 rounded-full bg-[#ae62ff]/12 blur-3xl sm:block" />
-
         <button
           type="button"
           onClick={onClose}
-          className="ui-focus absolute right-3 top-3 z-[2] inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900 sm:h-12 sm:w-12"
+          className={`ui-focus ${styles.closeButton}`}
           aria-label="Zavřít přehled měsíce"
         >
           <X className="h-4 w-4 sm:h-5 sm:w-5" />
         </button>
 
         <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-2 sm:gap-3">
-          <div className="px-1 pt-1 pr-10 sm:pr-14">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0">
-                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:text-[11px] sm:tracking-[0.2em]">
-                  Přehled měsíce
-                </p>
-                <h3 className="text-[1.45rem] font-bold leading-tight text-slate-900 sm:text-[2.45rem]">
-                  {month.label}
-                </h3>
-                <p className="text-xs text-slate-600 sm:text-sm">{itemCountLabel}</p>
+          <div className={styles.header}>
+            <div className={styles.headerLayout}>
+              <div className={styles.identity}>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 sm:text-[11px] sm:tracking-[0.2em]">
+                      Přehled měsíce
+                    </p>
+                    <h3 className="text-[1.45rem] font-bold leading-tight text-slate-900 sm:text-[2rem]">
+                      {month.label}
+                    </h3>
+                    <p aria-live="polite" className="text-xs text-slate-600 sm:text-sm">{itemCountLabel}</p>
+                  </div>
+                  <div className="flex min-w-0 max-w-sm flex-[1_1_22rem] items-center gap-2">
+                    <div className="shrink-0">
+                      <CashflowMonthFilterPicker value={filter} onChange={setFilter} />
+                    </div>
+                    <div className={toolbarStyles.search}>
+                      <Search className={toolbarStyles.searchIcon} size={16} aria-hidden="true" />
+                      <input
+                        ref={searchRef}
+                        type="search"
+                        aria-label="Hledat podle čísla smlouvy nebo jména klienta"
+                        placeholder="Číslo smlouvy / klient"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={searchInput}
+                        onChange={(event) => setSearchInput(event.target.value)}
+                      />
+                      {searchInput && (
+                        <button
+                          type="button"
+                          className={toolbarStyles.clearSearch}
+                          aria-label="Vymazat hledání"
+                          onClick={() => {
+                            setSearchInput("");
+                            searchRef.current?.focus();
+                          }}
+                        >
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {(filter !== "all" || hasSearch) && <p className="mt-1 text-xs text-slate-500">Souhrn částek je za celý měsíc.</p>}
               </div>
 
-              <div className="flex flex-col items-stretch gap-3 xl:items-end">
+              <div className={styles.summary}>
                 {statements.length > 0 && onOpenStatement && (
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className={styles.statements}>
                     {statements.map((statement, index) => {
                       const isLoading = statementLoadingId === statement.id;
                       const label =
@@ -231,98 +284,86 @@ export function CashflowMonthModal({
                   </div>
                 )}
 
-                <div className="block">
-                  <div className="grid grid-cols-3 gap-1.5 sm:gap-3 md:grid-cols-3">
-                    {isPaidMonth ? (
-                      <>
-                        <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
-                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
-                            {hasAdditionalReceipts ? "Přijato celkem" : "Vyplaceno"}
-                          </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
-                            {formatMoney(month.total)}
-                          </div>
-                          {hasAdditionalReceipts && <div className="mt-2 space-y-0.5 text-[9px] text-emerald-700 sm:text-xs">
-                            {month.statementPayoutTotal != null && <p>Výpis: {formatMoney(month.statementPayoutTotal)}</p>}
-                            {otherPaidCommissions !== 0 && <p>Vyplacené provize: {formatMoney(otherPaidCommissions)}</p>}
-                            {subscriptionReceipts !== 0 && <p>Předplatné: {formatMoney(subscriptionReceipts)}</p>}
-                            {extraPayoutReceipts !== 0 && <p>Mimořádné odměny: {formatMoney(extraPayoutReceipts)}</p>}
-                          </div>}
+                <div className={styles.metrics}>
+                  {isPaidMonth ? (
+                    <>
+                      <div className={`${styles.metric} ${styles.green}`}>
+                        <div className={styles.metricLabel}>
+                          {hasAdditionalReceipts ? "Přijato celkem" : "Vyplaceno"}
                         </div>
+                        <div className={styles.metricAmount}>
+                          {formatMoney(month.total)}
+                        </div>
+                        {hasAdditionalReceipts && <div className={styles.receipts}>
+                          {month.statementPayoutTotal != null && <p>Výpis: {formatMoney(month.statementPayoutTotal)}</p>}
+                          {otherPaidCommissions !== 0 && <p>Vyplacené provize: {formatMoney(otherPaidCommissions)}</p>}
+                          {subscriptionReceipts !== 0 && <p>Předplatné: {formatMoney(subscriptionReceipts)}</p>}
+                          {extraPayoutReceipts !== 0 && <p>Mimořádné odměny: {formatMoney(extraPayoutReceipts)}</p>}
+                        </div>}
+                      </div>
 
-                        <div className="min-w-0 rounded-[13px] border border-[#d7c3ed] bg-[#f4ecff] px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
-                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#71558f] sm:text-[10px] sm:tracking-[0.16em]">
-                            Předpoklad systému
-                          </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028] sm:text-[1.7rem]">
-                            {formatMoney(predictedTotal)}
-                          </div>
+                      <div className={`${styles.metric} ${styles.purple}`}>
+                        <div className={styles.metricLabel}>
+                          Předpoklad systému
                         </div>
+                        <div className={styles.metricAmount}>
+                          {formatCashflowAmount(predictedTotal, month.hasUnknownAmounts)}
+                        </div>
+                      </div>
 
-                        <div
-                          className={`min-w-0 rounded-[13px] border px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right ${
-                            payoutDifference >= 0
-                              ? "border-emerald-300 bg-emerald-50"
-                              : "border-rose-200 bg-rose-50"
-                          }`}
-                        >
-                          <div
-                            className={`text-[8px] font-semibold uppercase tracking-[0.1em] sm:text-[10px] sm:tracking-[0.16em] ${
-                              payoutDifference >= 0 ? "text-emerald-700" : "text-rose-700"
-                            }`}
-                          >
-                            Rozdíl
-                          </div>
-                          <div
-                            className={`mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] sm:text-[1.7rem] ${
-                              payoutDifference >= 0 ? "text-emerald-700" : "text-rose-700"
-                            }`}
-                          >
-                            {payoutDifference >= 0 ? "+ " : "- "}
-                            {formatMoney(Math.abs(payoutDifference))}
-                          </div>
+                      <div
+                        className={`${styles.metric} ${payoutDifference >= 0 ? styles.green : styles.red}`}
+                      >
+                        <div className={styles.metricLabel}>
+                          Rozdíl
                         </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="min-w-0 rounded-[13px] border border-[#d7c3ed] bg-[#f4ecff] px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
-                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-[#71558f] sm:text-[10px] sm:tracking-[0.16em]">
-                            {grossTotalLabel}
-                          </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-[#1a1028] sm:text-[1.7rem]">
-                            {formatMoney(month.total)}
-                          </div>
+                        <div className={styles.metricAmount}>
+                          {month.hasUnknownAmounts ? "???" :
+                            `${payoutDifference >= 0 ? "+ " : "- "}${formatMoney(Math.abs(payoutDifference))}`}
                         </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className={`${styles.metric} ${styles.purple}`}>
+                        <div className={styles.metricLabel}>
+                          {grossTotalLabel}
+                        </div>
+                        <div className={styles.metricAmount}>
+                          {formatCashflowAmount(month.total, month.hasUnknownAmounts)}
+                        </div>
+                      </div>
 
-                        <div className="min-w-0 rounded-[13px] border border-rose-200 bg-rose-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
-                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-rose-700 sm:text-[10px] sm:tracking-[0.16em]">
-                            STORNO fond ({stornoPercent} %)
-                          </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-rose-700 sm:text-[1.7rem]">
-                            - {formatMoney(stornoFund)}
-                          </div>
+                      <div className={`${styles.metric} ${styles.red}`}>
+                        <div className={styles.metricLabel}>
+                          STORNO fond ({stornoPercent} %)
                         </div>
+                        <div className={styles.metricAmount}>
+                          {(!month.hasUnknownAmounts || stornoFund !== 0) && "- "}{formatCashflowAmount(stornoFund, month.hasUnknownAmounts)}
+                        </div>
+                      </div>
 
-                        <div className="min-w-0 rounded-[13px] border border-emerald-300 bg-emerald-50 px-2 py-2 text-left sm:min-w-[175px] sm:rounded-[16px] sm:px-4 sm:py-2.5 sm:text-right">
-                          <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-emerald-700 sm:text-[10px] sm:tracking-[0.16em]">
-                            Čisté cashflow
-                          </div>
-                          <div className="mt-1 whitespace-nowrap font-mono text-[0.98rem] font-bold leading-none tracking-[-0.02em] text-emerald-700 sm:text-[1.7rem]">
-                            {formatMoney(netTotal)}
-                          </div>
+                      <div className={`${styles.metric} ${styles.green}`}>
+                        <div className={styles.metricLabel}>
+                          Čisté cashflow
                         </div>
-                      </>
-                    )}
-                  </div>
+                        <div className={styles.metricAmount}>
+                          {formatCashflowAmount(netTotal, month.hasUnknownAmounts)}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[16px] border border-slate-200 bg-[#f7f8fd] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] sm:rounded-[22px] sm:p-3">
-            <CashflowMonthSections groups={displayGroups} monthKey={month.key}>
+          <div className={styles.list}>
+            {displayGroups.length === 0 ? <p role="status" className="px-4 py-10 text-center text-sm text-slate-500">
+              {hasSearch ? "Hledání v tomto měsíci nenašlo žádné položky." : "Pro vybraný filtr nejsou v tomto měsíci žádné položky."}
+            </p> : <CashflowMonthSections groups={displayGroups} monthKey={month.key} expandSections={hasSearch}>
               {(group) => <CashflowCommissionCard group={group} />}
-            </CashflowMonthSections>
+            </CashflowMonthSections>}
           </div>
         </div>
       </div>

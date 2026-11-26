@@ -1,5 +1,7 @@
 "use client";
 
+import { MISSING_STORNO_ESTIMATE_MODE } from "@/app/lib/commissionStornoAudit";
+
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import type { Position } from "@/app/types/domain";
@@ -73,7 +75,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
   const allVisibleSelected = visibleAdvisers.length > 0 && selectedVisible === visibleAdvisers.length;
   const chips: { key: string; label: string; remove: () => void }[] = [];
   if (draft.filterMode === "anniversary") chips.push({ key: "anniversary", label: "Výročí do 90 dnů", remove: () => change({ filterMode: "latest" }) });
-  for (const [key, label] of [["showActiveOnly", "Aktivní"], ["showStornoOnly", "Stornované"], ["showMaturedOnly", "Dožité"], ["showUnpaidOnly", "Nezaplacené"], ["showRefreshOnly", "Refresh / náhrada"], ["showCommissionEndedOnly", "Provizně ukončené smlouvy"]] as const) {
+  for (const [key, label] of [["showActiveOnly", "Aktivní"], ["showStornoOnly", "Stornované"], ["showMaturedOnly", "Dožité"], ["showUnpaidOnly", "Nezaplacené"], ["showWithoutPdfOnly", "Bez PDF přílohy"], ["showRefreshOnly", "Refresh / náhrada"], ["showCommissionEndedOnly", "Provizně ukončené smlouvy"]] as const) {
     if (draft[key]) chips.push({ key, label, remove: () => change({ [key]: false }) });
   }
   for (const item of CATEGORY_DEFS) if (draft.selectedCategories.includes(item.id)) chips.push({ key: `category-${item.id}`, label: item.label, remove: () => change({ selectedCategories: draft.selectedCategories.filter(key => key !== item.id) }) });
@@ -132,6 +134,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
               <h3>Další podmínky</h3>
               <div className={styles.choices}>
                 <Choice checked={draft.showUnpaidOnly} onChange={() => setDraft(toggleUnpaidFilter)}>Nezaplacené</Choice>
+                <Choice checked={draft.showWithoutPdfOnly} onChange={() => change({ showWithoutPdfOnly: !draft.showWithoutPdfOnly })} description="Zobrazí smlouvy bez přiloženého PDF souboru.">Bez PDF přílohy</Choice>
                 <Choice checked={draft.showCommissionEndedOnly} onChange={() => change({ showCommissionEndedOnly: !draft.showCommissionEndedOnly })} description="Historické ČPP DOMEX po skončení období následných provizí.">Provizně ukončené smlouvy</Choice>
                 <Choice checked={draft.showRefreshOnly} onChange={() => change({ showRefreshOnly: !draft.showRefreshOnly })}>Refresh / náhrada</Choice>
               </div>
@@ -163,7 +166,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
             {COMMISSION_AUDIT_MODE_DEFS.map(item => <Choice radio key={item.id} name={`${id}-commission`} checked={draft.commissionAuditMode === item.id} onChange={() => setDraft(current => setCommissionFilterMode(current, item.id))} description={item.description}><item.icon size={16} aria-hidden="true" />{item.label}</Choice>)}
           </div>
           <label className={styles.codeLabel} htmlFor={`${id}-code`}>Kód provize</label>
-          <select id={`${id}-code`} className={styles.select} disabled={draft.commissionAuditMode === "off"} value={draft.commissionAuditCodeFilter} onChange={event => change({ commissionAuditCodeFilter: event.target.value as ContractFilterSelection["commissionAuditCodeFilter"] })}>
+          <select id={`${id}-code`} className={styles.select} disabled={draft.commissionAuditMode === "off" || draft.commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE} value={draft.commissionAuditCodeFilter} onChange={event => change({ commissionAuditCodeFilter: event.target.value as ContractFilterSelection["commissionAuditCodeFilter"] })}>
             {COMMISSION_AUDIT_CODE_DEFS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
           {draft.commissionAuditMode === "off" && <p className={styles.hint}>Nejdřív vyber druh kontroly provizí.</p>}

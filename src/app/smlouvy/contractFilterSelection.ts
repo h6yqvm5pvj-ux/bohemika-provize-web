@@ -1,4 +1,5 @@
 import type { ContractsListFilters, CommissionAuditFilterMode } from "./contractsPageTypes";
+import { MISSING_STORNO_ESTIMATE_MODE } from "@/app/lib/commissionStornoAudit";
 
 export type ContractFilterSelection = Omit<ContractsListFilters, "query">;
 export type ContractStatusFilter = "showActiveOnly" | "showStornoOnly" | "showMaturedOnly";
@@ -6,6 +7,7 @@ export type ContractStatusFilter = "showActiveOnly" | "showStornoOnly" | "showMa
 export const emptyContractFilterSelection = (): ContractFilterSelection => ({
   filterMode: "latest",
   showUnpaidOnly: false,
+  showWithoutPdfOnly: false,
   showRefreshOnly: false,
   showActiveOnly: false,
   showStornoOnly: false,
@@ -21,7 +23,7 @@ export const emptyContractFilterSelection = (): ContractFilterSelection => ({
 
 export function contractFilterCount(value: ContractFilterSelection): number {
   return Number(value.filterMode === "anniversary") +
-    Number(value.showUnpaidOnly) + Number(value.showRefreshOnly) +
+    Number(value.showUnpaidOnly) + Number(value.showWithoutPdfOnly) + Number(value.showRefreshOnly) +
     Number(value.showActiveOnly) + Number(value.showStornoOnly) + Number(value.showMaturedOnly) + Number(value.showCommissionEndedOnly) +
     (value.commissionAuditMode === "off" ? 0 : 1 + Number(value.commissionAuditCodeFilter !== "all")) +
     value.selectedCategories.length + value.selectedInstitutions.length + value.selectedPositions.length + value.selectedSubordinates.length;
@@ -49,6 +51,10 @@ export function toggleUnpaidFilter(value: ContractFilterSelection): ContractFilt
 }
 
 export function setCommissionFilterMode(value: ContractFilterSelection, mode: CommissionAuditFilterMode): ContractFilterSelection {
+  if (mode === MISSING_STORNO_ESTIMATE_MODE) {
+    return { ...value, commissionAuditMode: mode, commissionAuditCodeFilter: "all",
+      filterMode: "latest", showActiveOnly: false, showUnpaidOnly: false, showMaturedOnly: false };
+  }
   return { ...value, commissionAuditMode: mode, commissionAuditCodeFilter: mode === "off" ? "all" : value.commissionAuditCodeFilter };
 }
 

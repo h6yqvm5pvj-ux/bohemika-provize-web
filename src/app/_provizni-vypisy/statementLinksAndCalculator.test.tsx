@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BohemkaContractDetailLink, firstContractDetailUrl, StatementCalculatorPrefillButton } from "./statementLinksAndCalculator";
 import { BohemkaContractDetailModal } from "./StatementEmbeddedModals";
-import { BohemkaContractDetailModalContext, StatementCalculatorPrefillContext, statementCalculatorPrefill } from "./statementPresentation";
+import { BohemkaContractDetailModalContext, StatementCalculatorPrefillContext, statementCalculatorPrefill, statementContractPrefillProduct } from "./statementPresentation";
 import { resolveStatementProduct } from "./statementParsing";
+import { statementProductMatchesSystemProduct } from "./statementSystemContracts";
 import type { BohemkaContractDetailModalPayload } from "./statementTypes";
 
 function StatementDetail({ compact }: { compact: boolean }) {
@@ -63,6 +64,32 @@ describe("contract detail opened from a commission statement", () => {
     await act(async () => dialog.querySelector("button")!.click());
     expect(container.querySelector("iframe")).toBeNull();
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it("offers one prefilled contract for Realitní fond and EFEKTIKA with the same statement number", async () => {
+    const product = statementContractPrefillProduct(["EFEKTIKA", "INVESTIKA"].map(code => resolveStatementProduct(code)));
+    expect(product?.productKey).toBe("investikaRealitniFond");
+    expect(statementProductMatchesSystemProduct("investikaEfektika", product?.productKey)).toBe(true);
+    expect(statementProductMatchesSystemProduct("conseqInvest", product?.productKey)).toBe(false);
+    expect(statementContractPrefillProduct(["INVESTIKA", "CON_INV2_C"].map(code => resolveStatementProduct(code)))).toBeNull();
+
+    const openCalculator = vi.fn();
+    const prefill = statementCalculatorPrefill({
+      product: product!, contractNumber: "1800000001", clientName: "Testovací Jana",
+      signedAt: "01.09.2026", validFrom: "02.09.2026", statementBase: 0,
+    });
+    await act(async () => root.render(
+      <StatementCalculatorPrefillContext.Provider value={openCalculator}>
+        <StatementCalculatorPrefillButton prefill={prefill} />
+      </StatementCalculatorPrefillContext.Provider>
+    ));
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    const button = container.querySelector("button")!;
+    expect(button.textContent).toContain("Přidat smlouvu");
+    await act(async () => button.click());
+    expect(openCalculator).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      product: "investikaRealitniFond", contractNumber: "1800000001", clientName: "Jana Testovací",
+    }));
   });
 
   it.each([

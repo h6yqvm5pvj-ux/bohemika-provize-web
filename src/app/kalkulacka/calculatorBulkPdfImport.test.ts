@@ -67,6 +67,8 @@ describe("parsed PDF values", () => {
 
 describe("bulk PDF import eligibility and details", () => {
   it("allows mixing supported bulk products but excludes products without a parser", () => {
+    expect(isBulkImportProductAllowedForSelection("cppAutoVozikZdarma", "cppAuto")).toBe(true);
+    expect(isBulkImportProductAllowedForSelection("cppAuto", "cppAutoVozikZdarma")).toBe(true);
     expect(isBulkImportProductAllowedForSelection("cppAuto", "domex")).toBe(true);
     expect(isBulkImportProductAllowedForSelection("domex", "cppAuto")).toBe(true);
     expect(isBulkImportProductAllowedForSelection("maximaMaxEfekt", "cppAuto")).toBe(false);

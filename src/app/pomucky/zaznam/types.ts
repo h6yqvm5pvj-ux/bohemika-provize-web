@@ -8,6 +8,8 @@ export type RecordInsuranceType =
   | "business"
   | "travel";
 
+export type RecordLiabilityKind = "citizen" | "employee";
+
 export interface RecordInsuranceTypeConfig {
   id: RecordInsuranceType;
   shortTitle: string;
@@ -37,7 +39,7 @@ export const RECORD_INSURANCE_TYPES: RecordInsuranceTypeConfig[] = [
   {
     id: "liability",
     shortTitle: "Odpovědnost",
-    title: "Odpovědnost občanů",
+    title: "Odpovědnost",
     subtitle: "Občanská i zaměstnanecká.",
   },
   {

@@ -15,12 +15,14 @@ import { computeTotalWithMultipliers, formatDate, formatMoney, frequencyText, na
 import { contractTimelineEntryAnchor } from "./contractTimelineDetails";
 import type { ContractDoc } from "./contractDetailTypes";
 import styles from "./contractTimeline.module.css";
+import { uniqueFamilyCommissionReceipts } from "@/app/lib/commissionReceipts";
 
 type Props = {
   entries: ContractDoc[];
   ownerEmail: string | null;
   viewerEmail: string | null;
   selectedEntryId?: string | null;
+  commissionOverviewEntryIds?: ReadonlySet<string>;
   loading?: boolean;
   error?: string | null;
   onOpenStatement?: (statementId: string) => void;
@@ -37,6 +39,14 @@ type Props = {
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const modeLabel = (mode: unknown) => mode === "accelerated" ? "Zrychlený" : mode === "standard" ? "Běžný" : "—";
 const commissionMode = (mode: unknown): CommissionMode | null => mode === "standard" || mode === "accelerated" ? mode : null;
+const receiptsForViewer = (entry: ContractDoc, ownerEmail: string | null, viewerEmail: string | null) => {
+  const viewer = normalizeEmail(viewerEmail);
+  const owner = normalizeEmail(entry.userEmail ?? ownerEmail);
+  return (entry.commissionPayouts ?? []).filter(row => row.writtenBy
+    ? normalizeEmail(row.writtenBy) === viewer : Boolean(viewer && viewer === owner));
+};
+const receiptTotal = (rows: NonNullable<ContractDoc["commissionPayouts"]>) =>
+  rows.reduce((sum, row) => sum + (finite(row.amount) ?? 0), 0);
 
 function displayItems(entry: ContractDoc, source: CommissionResultItemDTO[] | null | undefined) {
   let items = stripTotalRows(source ?? []);
@@ -65,8 +75,8 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
   const viewer = normalizeEmail(props.viewerEmail);
   const own = Boolean(owner && viewer && owner === viewer);
   const endorsement = entry.entryType === "endorsement";
-  const previous = finite(entry.previousInputAmount);
-  const premium = finite(endorsement
+  const previous = finite(entry.autoPremiumAmendment ? entry.autoPremiumPreviousAnnual : entry.previousInputAmount);
+  const premium = finite(entry.autoPremiumAmendment ? entry.autoPremiumAnnual : endorsement
     ? entry.newInputAmount ?? entry.effectiveInputAmount ?? entry.inputAmount
     : entry.inputAmount ?? entry.effectiveInputAmount);
   const delta = endorsement ? finite(entry.premiumDelta) ?? (premium !== null && previous !== null ? premium - previous : null) : null;
@@ -82,10 +92,7 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
     totalDisplay: computeLegacyFrequencyOverrideTotal({ productKey: entry.productKey ?? null,
       frequencyRaw: entry.frequencyRaw ?? null, items: managerItems, fallbackTotal: manager.total }),
   }] : [];
-  const payouts = (entry.commissionPayouts ?? []).filter(row => {
-    const writer = normalizeEmail(row.writtenBy);
-    return writer ? writer === viewer : own;
-  });
+  const payouts = receiptsForViewer(entry, props.ownerEmail, props.viewerEmail);
   const hasFile = entry.contractPdfAttachment?.hasFile && entry.contractPdfAttachment.contentType === "application/pdf";
 
   return (
@@ -98,6 +105,7 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
         </span>
         <span className={styles.summaryAmount}>
           {premium !== null && <span>{formatMoney(premium)}</span>}
+          <span className="text-xs font-medium text-slate-600">Vyplaceno {formatMoney(receiptTotal(payouts))}</span>
           {delta !== null && <span className={delta < 0 ? styles.decrease : styles.increase}>
             {delta > 0 ? "+" : delta < 0 ? "−" : ""}{formatMoney(Math.abs(delta))}
           </span>}
@@ -111,28 +119,30 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
           <div><dt>Sjednáno</dt><dd>{formatDate(entry.contractSignedDate ?? entry.createdAt)}</dd></div>
           <div><dt>Účinnost od</dt><dd>{formatDate(entry.policyStartDate)}</dd></div>
           {entry.policyEndDate && <div><dt>Konec pojištění</dt><dd>{formatDate(entry.policyEndDate)}</dd></div>}
+          {entry.autoPremiumAmendment && <div><dt>Původní frekvence</dt><dd>{frequencyText(entry.previousFrequency)}</dd></div>}
           <div><dt>Frekvence placení</dt><dd>{frequencyText(entry.frequencyRaw)}</dd></div>
           <div><dt>Pozice při sjednání</dt><dd>{positionLabel(entry.position ?? null)}</dd></div>
           <div><dt>Provizní režim</dt><dd>{modeLabel(entry.commissionMode)}</dd></div>
-          {endorsement && <div><dt>Původní pojistné</dt><dd>{previous !== null ? formatMoney(previous) : "—"}</dd></div>}
-          <div><dt>{endorsement ? "Nové pojistné" : "Pojistné při sjednání"}</dt><dd>{premium !== null ? formatMoney(premium) : "—"}</dd></div>
+          {endorsement && <div><dt>{entry.autoPremiumAmendment ? "Původní roční pojistné" : "Původní pojistné"}</dt><dd>{previous !== null ? formatMoney(previous) : "—"}</dd></div>}
+          <div><dt>{entry.autoPremiumAmendment ? "Nové roční pojistné" : endorsement ? "Nové pojistné" : "Pojistné při sjednání"}</dt><dd>{premium !== null ? formatMoney(premium) : "—"}</dd></div>
           {delta !== null && <div><dt>Změna pojistného</dt><dd>{delta > 0 ? "+" : delta < 0 ? "−" : ""}{formatMoney(Math.abs(delta))}</dd></div>}
           {entry.durationYears != null && <div><dt>Doba trvání</dt><dd>{entry.durationYears} let</dd></div>}
         </dl>
         {hasFile && props.onOpenPdf && <button type="button" className={styles.pdf} onClick={() => props.onOpenPdf?.(entry.id)}>
           <FileText size={15} aria-hidden="true" /> Zobrazit PDF {endorsement ? "dodatku" : "smlouvy"}
         </button>}
-        {(props.onEditEntry || (hasFile && props.onRefreshPdf)) && <div className="flex flex-wrap gap-2">
-          {props.onEditEntry && <button type="button" className={`${styles.pdf} disabled:cursor-not-allowed disabled:opacity-50`}
+        {((props.onEditEntry && !entry.autoPremiumAmendment) || (hasFile && props.onRefreshPdf && !entry.autoPremiumAmendment)) && <div className="flex flex-wrap gap-2">
+          {props.onEditEntry && !entry.autoPremiumAmendment && <button type="button" className={`${styles.pdf} disabled:cursor-not-allowed disabled:opacity-50`}
             disabled={props.editingDisabled} onClick={() => props.onEditEntry?.(entry.id)}>
             <PencilLine size={15} aria-hidden="true" /> Upravit {endorsement ? "dodatek" : "smlouvu"}
           </button>}
-          {hasFile && props.onRefreshPdf && <button type="button" className={`${styles.pdf} disabled:cursor-not-allowed disabled:opacity-50`}
+          {hasFile && props.onRefreshPdf && !entry.autoPremiumAmendment && <button type="button" className={`${styles.pdf} disabled:cursor-not-allowed disabled:opacity-50`}
             disabled={props.pdfRefreshDisabled} onClick={() => props.onRefreshPdf?.(entry.id)}>
             <FileText size={15} aria-hidden="true" /> Doplnit údaje z PDF
           </button>}
         </div>}
-        {expanded && <>
+        {expanded && (props.commissionOverviewEntryIds?.has(entry.id)
+          ? <a className={styles.pdf} href="#contract-commissions">Přejít na výpočet provizí</a> : <>
         <ContractCommissionSection
           product={entry.productKey} isOwnContract={own}
           isPaymentBasedProduct={paymentBased}
@@ -154,7 +164,7 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
         <ContractCommissionHistory product={entry.productKey} policyStartDate={entry.policyStartDate}
           payouts={payouts} viewerEmail={viewer} contractOwnerEmail={owner}
           onOpenStatement={props.onOpenStatement} statementPreviewLoadingId={props.statementPreviewLoadingId} />
-        </>}
+        </>)}
         {isInheritedContract(entry) && <p className={styles.explanation}>Převzatá smlouva · provize podle nároku na správu.</p>}
       </div>
     </details>
@@ -162,6 +172,8 @@ function TimelineEntry({ entry, label, ...props }: Props & { entry: ContractDoc;
 }
 
 export function ContractTimelineSection(props: Props) {
+  const entries = uniqueFamilyCommissionReceipts(props.entries);
+  const paidTotal = entries.reduce((sum, entry) => sum + receiptTotal(receiptsForViewer(entry, props.ownerEmail, props.viewerEmail)), 0);
   useEffect(() => {
     const revealEntry = (hash = window.location.hash.slice(1)) => {
       for (const entry of props.entries) {
@@ -189,12 +201,18 @@ export function ContractTimelineSection(props: Props) {
   return (
     <section className={styles.section}>
       <ContractSectionHeading icon={<CalendarDays size={17} aria-hidden="true" />}>Smlouva a dodatky</ContractSectionHeading>
-      <p className={styles.explanation}>Původní smlouvu i jednotlivé změny rozbalíš přímo tady, včetně jejich provizí a výplat.</p>
+      <p className={styles.explanation}>{props.commissionOverviewEntryIds?.size
+        ? "Původní smlouvu a změny pojistného najdeš tady. Výpočet a výplaty jsou ve společném přehledu provizí."
+        : "Původní smlouvu i jednotlivé změny rozbalíš přímo tady, včetně jejich provizí a výplat."}</p>
+      {!props.loading && !props.error && !props.commissionOverviewEntryIds?.size && <p className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-slate-800">
+        Skutečně vyplaceno za smlouvu a dodatky: <strong>{formatMoney(paidTotal)}</strong>
+        <span className="mt-1 block text-xs text-slate-600">Před odpočtem stornofondu, včetně případných storen. Každý řádek výpisu se započítává jednou.</span>
+      </p>}
       {props.loading && <p className={styles.explanation}>Načítám historii změn…</p>}
       {props.error && <p className={styles.explanation} role="alert">{props.error}</p>}
-      {!props.loading && !props.error && props.entries.map(entry => {
+      {!props.loading && !props.error && entries.map(entry => {
         const label = entry.entryType === "endorsement" ? `Dodatek ${++endorsementIndex}` : "Původní smlouva";
-        return <TimelineEntry key={entry.id} {...props} entry={entry} label={label} />;
+        return <TimelineEntry key={entry.id} {...props} entries={entries} entry={entry} label={label} />;
       })}
     </section>
   );

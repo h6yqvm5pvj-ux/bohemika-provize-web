@@ -1,5 +1,6 @@
 import { isPrivateValue, openPrivateValue, sealPrivateValue } from "./privateEncryption";
 import { businessEncryptionRequired } from "./businessDataEncryption";
+import { LIFE_COMMISSION_REMINDER_TYPE } from "@/app/lib/lifeCommissionReminder";
 
 /** Query/authorization fields stay readable. Content is authenticated to its
  * exact record and field; callers must authorize before opening a record. */
@@ -17,7 +18,7 @@ export function privateRecordFields(path: string, data: Record<string, unknown>)
 }
 
 export const isPrivateSystemMessage = (type: unknown) =>
-  ["contract_note_reminder", "production_plan_share", "production_export_share", "online_card_meeting_request"].includes(String(type));
+  ["contract_note_reminder", "production_plan_share", "production_export_share", "online_card_meeting_request", LIFE_COMMISSION_REMINDER_TYPE].includes(String(type));
 
 export function privateRecordContext(path: string, data: Record<string, unknown>, field: string): string {
   if (/^anniversaryReviews\/[^/]+$/.test(path) && typeof data.privateReviewPath === "string" && /^anniversaryReviews\/[^/]+$/.test(data.privateReviewPath)) {

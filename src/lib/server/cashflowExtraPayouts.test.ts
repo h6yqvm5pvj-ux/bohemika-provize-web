@@ -7,7 +7,7 @@ vi.mock("./firebaseAdmin", () => ({
   adminDb: { getAll: mocks.getAll, collection: (name: string) => ({ doc: (id: string) => mocks.doc(name, id) }) },
 }));
 
-import { loadPrivateCashflowExtraPayouts, readCashflowExtraPayouts } from "./cashflowExtraPayouts";
+import { loadPrivateCashflowExtraPayouts, loadPrivateCashflowSettings, readCashflowExtraPayouts } from "./cashflowExtraPayouts";
 
 const email = "advisor@example.test";
 const payout = { id: "receipt-1", title: "Mimořádná odměna", amountCzk: 1200, payoutMonthKey: "2026-02", status: "paid" };
@@ -33,7 +33,7 @@ describe("private paid cashflow rewards", () => {
     mocks.getAll.mockResolvedValue([{ data: () => ({ cashflowExtraPayouts: sealed }) }]);
     expect(await loadPrivateCashflowExtraPayouts(email)).toEqual([payout]);
     expect(mocks.doc).toHaveBeenCalledExactlyOnceWith("usersPrivate", email);
-    expect(mocks.getAll).toHaveBeenCalledExactlyOnceWith({ path: `usersPrivate/${email}` }, { fieldMask: ["cashflowExtraPayouts"] });
+    expect(mocks.getAll).toHaveBeenCalledExactlyOnceWith({ path: `usersPrivate/${email}` }, { fieldMask: ["cashflowExtraPayouts", "cashflowOfficeContributionEnabled"] });
   });
 
   it.each(["", "ADVISOR@example.test", " advisor@example.test ", "other/entries/private"])("rejects invalid verified document identity %j before reading", async invalid => {
@@ -46,4 +46,11 @@ describe("private paid cashflow rewards", () => {
     await expect(loadPrivateCashflowExtraPayouts(email)).rejects.toThrow();
     expect(() => readCashflowExtraPayouts({ privateEncryption: 2 }, email)).toThrow();
   });
+});
+
+
+it("loads only the server-verified private office preference and defaults it off", async () => {
+  expect(await loadPrivateCashflowSettings(email)).toEqual({ extraPayouts: [], officeContributionEnabled: false });
+  mocks.getAll.mockResolvedValue([{ data: () => ({ cashflowOfficeContributionEnabled: true }) }]);
+  expect(await loadPrivateCashflowSettings(email)).toEqual({ extraPayouts: [], officeContributionEnabled: true });
 });

@@ -21,6 +21,11 @@ describe("commission entitlement periods", () => {
     expect(commissionPeriodForCode({ productKey: "flexi", policyStartDate: "2020-01-01" }, "B101")).toBe("2026-01-01");
     expect(commissionPeriodForCode({ productKey: "maximaMaxEfekt", policyStartDate: "2020-01-01" }, "B101")).toBe("2025-01-01");
   });
+  it("maps the MAXIMA foreign nationals A501 to the policy start", () => {
+    const entry = { productKey: "maxcizinkomplex" as const, policyStartDate: "2026-06-01" };
+    expect(commissionPeriodForCode(entry, "A501")).toBe("2026-06-01");
+    expect(commissionPeriodForCode({ ...entry, productKey: "cppcestovko" }, "A501")).toBeNull();
+  });
   it("resolves payment-based initial and subsequent installments", () => {
     const entry = { productKey: "cppAuto" as const, frequencyRaw: "semiannual", policyStartDate: "2020-01-31" };
     expect(commissionPeriodForCode(entry, "A102")).toBe("2020-07-31");

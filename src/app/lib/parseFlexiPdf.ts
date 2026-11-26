@@ -2,8 +2,10 @@ import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseFlexiPdf.ts
 import { type PaymentFrequency } from "../types/domain";
 import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
+import { parseFlexiChangeDocument } from "./parseFlexiChangePdf";
 
 export type FlexiPdfResult = {
+  isEndorsement?: boolean;
   contractNumber?: string | null;
   clientName?: string | null;
   policyStartDate?: string | null;
@@ -95,6 +97,8 @@ const stripTitles = (name: string): string => {
 
 export async function parseFlexiPdf(file: File, options: PdfReadOptions = {}): Promise<FlexiPdfResult> {
   const doc = await readPdfText(file, options);
+  const change = parseFlexiChangeDocument(doc);
+  if (change) return change;
   const pagesText: string[] = [];
 
   for (let i = 1; i <= doc.pages.length; i++) {
@@ -124,13 +128,17 @@ export async function parseFlexiPdf(file: File, options: PdfReadOptions = {}): P
   if (paymentDetails) result.paymentDetails = paymentDetails;
 
   // Renovace: číslo nahrazované smlouvy je jiné než číslo nové smlouvy v záhlaví.
-  const renovationMatch = ascii.match(
-    /tato\s+smlouva\s+nahrazuje\s+puvodni\s+pojistnou\s+smlouvu\s+c\b\.?\s*:?\s*(\d(?:\s*\d){5,13}\b)?/
-  );
-  if (renovationMatch) {
+  const renovationMatches = [...ascii.matchAll(
+    /\b(?:tato\s+smlouva\s+nahrazuje\s+puvodni\s+pojistnou\s+smlouvu|renovace\s+puvodni\s+pojistne\s+smlouvy)\s+c\b\s*\.?\s*:?\s*(\d(?:\s*\d){5,13}\b)?/g
+  )];
+  if (renovationMatches.length > 0) {
     result.isRefresh = true;
-    if (renovationMatch[1]) {
-      result.refreshOriginalContractNumber = renovationMatch[1].replace(/\s+/g, "");
+    const originalNumbers = new Set(renovationMatches.flatMap(([, number]) =>
+      number ? [number.replace(/\s+/g, "")] : []
+    ));
+    const [originalNumber] = originalNumbers;
+    if (originalNumbers.size === 1 && originalNumber !== result.contractNumber) {
+      result.refreshOriginalContractNumber = originalNumber;
     }
   }
 

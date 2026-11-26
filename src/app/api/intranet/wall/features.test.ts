@@ -49,7 +49,15 @@ const mocks = vi.hoisted(() => {
   const db = {
     collection: (name: string) => new Query(name),
     getAll: async (...refs: (Ref | { fieldMask: string[] })[]) => Promise.all(refs.filter((ref): ref is Ref => ref instanceof Ref).map(ref => ref.get())),
-    runTransaction: async (run: (tx: any)=>unknown) => run({ get: (ref: Ref)=>ref.get(), set:(ref:Ref,data:any,options:any)=>ref.set(data,options), update:(ref:Ref,data:any)=>ref.update(data) }),
+    batch: () => {
+      const writes: (() => Promise<void>)[] = [];
+      return {
+        set: (ref: Ref, data: Record<string, unknown>) => writes.push(() => ref.set(data)),
+        update: (ref: Ref, data: Record<string, unknown>) => writes.push(() => ref.update(data)),
+        commit: () => Promise.all(writes.map(write => write())),
+      };
+    },
+    runTransaction: async (run: (tx: any)=>unknown) => run({ getAll: (...refs: Ref[]) => Promise.all(refs.map(ref => ref.get())), get: (ref: Ref)=>ref.get(), set:(ref:Ref,data:any,options:any)=>ref.set(data,options), update:(ref:Ref,data:any)=>ref.update(data) }),
   };
   return { store, db, writes, projections, reads, mailbox, guard: vi.fn(), push: vi.fn(), writeMailbox: vi.fn() };
 });
@@ -87,6 +95,36 @@ beforeEach(()=>{
   mocks.writeMailbox.mockImplementation(async ({recipientEmail,entryId})=>{const key=`${recipientEmail}:${entryId}`;if(mocks.mailbox.has(key))return{written:false};mocks.mailbox.add(key);return{written:true};});
 });
 
+describe("global intranet search", () => {
+  const search = (body: string) => new NextRequest("https://example.test/api/intranet/wall?search=1", { method: "POST", body });
+
+  it("returns only matching summaries without reading comments or writing posts", async () => {
+    post("match");
+    post("other", { text: "Different content" });
+    mocks.store.set(commentPath("answer", "match"), { text: "Synthetic comment" });
+    const response = await createPost(search("studijni material"));
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ok: true, posts: [
+      { id: "match", title: "Příspěvek match", section: "pomoc", sectionLabel: expect.any(String), author: { name: "Jana Novotná" } },
+    ] });
+    expect(mocks.reads).toEqual(["intranetWallPosts"]);
+    expect(mocks.writes).toEqual([]);
+  });
+
+  it.each([401, 403])("checks %s before reading the search body", async status => {
+    mocks.guard.mockResolvedValueOnce({ ok: false, response: new Response(null, { status }) });
+    const request = search("private query");
+    expect((await createPost(request)).status).toBe(status);
+    expect(request.bodyUsed).toBe(false);
+    expect(mocks.reads).toEqual([]);
+  });
+
+  it("rejects oversized input before reading Firestore", async () => {
+    expect((await createPost(search("x".repeat(550)))).status).toBe(400);
+    expect(mocks.reads).toEqual([]);
+  });
+});
+
 describe('počet nepřečtených příspěvků v navigaci', () => {
   const count = async () => (await unreadCount(request('/unread-count'))).json();
 
@@ -94,9 +132,43 @@ describe('počet nepřečtených příspěvků v navigaci', () => {
     for (let i = 0; i < 307; i++) post(`post${i}`, { createdAt: 1000 + i, section: i % 2 ? 'auto' : 'zivot' });
     for (let i = 0; i < 5; i++) mocks.store.set(statePath(`post${i}`), { readAtMs: 123 });
     expect(await count()).toEqual({ ok: true, unreadCount: 302 });
+    expect(await count()).toEqual({ ok: true, unreadCount: 302 });
     expect(mocks.projections).toEqual([['createdAt', 'section', 'title', 'text']]);
     expect(mocks.reads).toEqual(['intranetWallPosts', 'intranetWallPosts']);
-    expect(mocks.writes).toEqual([]);
+    expect(mocks.writes).toEqual([`intranetUnreadCounts/wall/viewers/${viewer}`]);
+  });
+
+  it('keeps the cached count on save/follow and on repeated read actions', async () => {
+    post();
+    await count();
+    await state({ field: 'saved', value: true });
+    await state({ field: 'following', value: true });
+    expect((await count()).unreadCount).toBe(1);
+    expect(mocks.reads).toEqual(['intranetWallPosts']);
+    await state({ field: 'read', value: true });
+    expect((await count()).unreadCount).toBe(0);
+    await state({ field: 'read', value: true });
+    expect((await count()).unreadCount).toBe(0);
+    expect(mocks.reads).toEqual(['intranetWallPosts', 'intranetWallPosts']);
+  });
+
+  it('retries a cold scan when the viewer reads the post during its calculation', async () => {
+    post();
+    const original = mocks.db.getAll;
+    let changed = false;
+    vi.spyOn(mocks.db, 'getAll').mockImplementation(async (...refs) => {
+      const result = await original(...refs);
+      if (!changed && refs.some(ref => 'path' in ref && ref.path === statePath())) {
+        changed = true;
+        // Snapshot the old state before committing the concurrent mutation.
+        result[0] = { ...result[0], data: () => undefined };
+        await state({ field: 'read', value: true });
+      }
+      return result;
+    });
+    expect((await count()).unreadCount).toBe(0);
+    expect((await count()).unreadCount).toBe(0);
+    expect(mocks.reads).toEqual(['intranetWallPosts', 'intranetWallPosts']);
   });
 
   it('používá stav právě zobrazeného účtu a reaguje na přečtení i vrácení', async () => {
@@ -153,6 +225,17 @@ describe('výstražný odznak Důležité', () => {
     method: 'PATCH', body: body instanceof FormData ? body : JSON.stringify(body),
     ...(body instanceof FormData ? {} : { headers: { 'Content-Type': 'application/json' } }),
   }), { params: Promise.resolve({ postId: 'post' }) });
+
+  it('invalidates existing viewer counts on creation and repair of a legacy invisible post', async () => {
+    post('post', { text: '' });
+    const count = async () => (await (await unreadCount(request('/unread-count'))).json()).unreadCount;
+    expect(await count()).toBe(0);
+    asUser(owner);
+    expect((await createPost(new NextRequest('https://example.test/api/intranet/wall', { method: 'POST', body: form() }))).status).toBe(200);
+    asUser(); expect(await count()).toBe(1);
+    asUser(owner); expect((await edit(form())).status).toBe(200);
+    asUser(); expect(await count()).toBe(2);
+  });
 
   it.each(['1', '0', undefined])('uloží označení při vytvoření (%s) a vrací ho v nástěnce', async important => {
     asUser(owner);

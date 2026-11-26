@@ -1,4 +1,7 @@
 import { ReceiptText } from "lucide-react";
+import { isFlexiIncreaseWithoutBase } from "@/app/lib/lifeStatementMatching";
+import type { Position } from "@/app/types/domain";
+import { StatementPositionCells } from "./StatementPositionCells";
 import styles from "./statementContractDetail.module.css";
 
 import {
@@ -15,11 +18,13 @@ import type {
 
 export function LifeSplitCommissionTable({
   rows,
+  systemPosition,
   b36Payments,
   b36HalfLabel,
   pairedB36PaymentIndexes,
 }: {
   rows: CommissionRow[];
+  systemPosition?: Position | null;
   b36Payments: OtherPayment[];
   b36HalfLabel: string;
   pairedB36PaymentIndexes: Set<number>;
@@ -36,27 +41,31 @@ export function LifeSplitCommissionTable({
             <th scope="col">Význam</th>
             <th scope="col">Roční základna</th>
             <th scope="col">Měsíční základna</th>
+            <th scope="col">Pozice Bohemka</th>
+            <th scope="col">Pozice výpis</th>
             <th scope="col">Procento</th>
             <th scope="col">Provize</th>
             <th scope="col">Rez. fond</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.id}-${row.type}-${row.commission}`}>
-              <td>{row.type}</td>
-              <td>{row.lifeSplitLabel}</td>
-              <td>{formatMoney(row.base)}</td>
-              <td>{formatMoney(row.base / 12)}</td>
-              <td>{row.percent || "—"}</td>
-              <td>
-                {formatMoney(row.commission)}
-              </td>
-              <td>
-                {formatMoney(row.reserveFund)}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const missingBase = isFlexiIncreaseWithoutBase(resolveStatementProduct(row.product).productKey, {
+              commissionCode: row.type, baseAmount: row.base,
+            });
+            return (
+              <tr key={`${row.id}-${row.type}-${row.commission}`}>
+                <td>{row.type}</td>
+                <td>{row.lifeSplitLabel}</td>
+                <td>{missingBase ? "—" : formatMoney(row.base)}</td>
+                <td>{missingBase ? "—" : formatMoney(row.base / 12)}</td>
+                <StatementPositionCells systemPosition={systemPosition} career={row.career} />
+                <td>{row.percent || "—"}</td>
+                <td>{formatMoney(row.commission)}</td>
+                <td>{formatMoney(row.reserveFund)}</td>
+              </tr>
+            );
+          })}
           {b36Payments.map((payment, index) => {
             const isOffsetPair = pairedB36PaymentIndexes.has(index);
             return (
@@ -69,6 +78,7 @@ export function LifeSplitCommissionTable({
                 </td>
                 <td>—</td>
                 <td>—</td>
+                <StatementPositionCells systemPosition={systemPosition} />
                 <td>—</td>
                 <td>
                   {formatMoney(payment.amount)}
@@ -86,11 +96,13 @@ export function LifeSplitCommissionTable({
 
 export function OtherProductCommissionTable({
   rows,
+  systemPosition,
   b36Payments,
   pairedB36PaymentIndexes,
   generalCommissionKindClass,
 }: {
-  rows: CommissionRow[];
+  rows: Pick<CommissionRow, "id" | "product" | "type" | "base" | "career" | "percent" | "commission" | "reserveFund">[];
+  systemPosition?: Position | null;
   b36Payments: OtherPayment[];
   pairedB36PaymentIndexes: Set<number>;
   generalCommissionKindClass: (kind: GeneralCommissionKind) => string;
@@ -112,6 +124,8 @@ export function OtherProductCommissionTable({
             <th scope="col">Význam</th>
             <th scope="col">{showMonthlyBase ? "Roční základna" : "Základna"}</th>
             {showMonthlyBase && <th scope="col">Měsíční základna</th>}
+            <th scope="col">Pozice Bohemka</th>
+            <th scope="col">Pozice výpis</th>
             <th scope="col">Procento</th>
             <th scope="col">Provize</th>
             <th scope="col">Rez. fond</th>
@@ -146,6 +160,7 @@ export function OtherProductCommissionTable({
                   )}
                 </td>
                 {showMonthlyBase && <td>{formatMoney(row.base / 12)}</td>}
+                <StatementPositionCells systemPosition={systemPosition} career={row.career} />
                 <td>{row.percent || "—"}</td>
                 <td>
                   {formatMoney(row.commission)}
@@ -177,6 +192,7 @@ export function OtherProductCommissionTable({
                 </td>
                 {showMonthlyBase && <td>—</td>}
                 <td>—</td>
+                <StatementPositionCells systemPosition={systemPosition} />
                 <td>—</td>
                 <td>
                   {formatMoney(payment.amount)}

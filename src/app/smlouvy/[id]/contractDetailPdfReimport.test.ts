@@ -11,6 +11,60 @@ import {
 } from "./contractDetailPdfReimport";
 
 describe("PDF reimport detailu smlouvy", () => {
+  it("fills the animal damage limit while preserving existing limits and an explicit non-insurance decision", () => {
+    const contract = { id: "koop-auto", productKey: "kooperativaAuto", carAddonAnimalDamage: true } as ContractDoc;
+    const parsed = { carAddonAnimalDamage: true, carAddonAnimalDamageLimit: 100000 };
+    expect(mergeEmptyContractFields(contract, parsed)).toEqual({ updates: { carAddonAnimalDamageLimit: 100000 }, appliedCount: 1 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonAnimalDamageLimit: 200000 }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonAnimalDamageLimit: 0 }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonAnimalDamage: false }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields(contract, { ...parsed, carAddonAnimalDamage: false })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
+  it.each([undefined, null, "", " ", -1, 1_000_000_001, Number.NaN, Number.POSITIVE_INFINITY, true, {}, "unknown"])(
+    "does not import a malformed animal damage limit (%j)", carAddonAnimalDamageLimit => {
+      const contract = { id: "koop-auto", productKey: "kooperativaAuto", carAddonAnimalDamage: true } as ContractDoc;
+      expect(mergeEmptyContractFields(contract, { carAddonAnimalDamageLimit })).toEqual({ updates: {}, appliedCount: 0 });
+    },
+  );
+
+  it("fills the missing Kooperativa glass limit and preserves existing values and explicit non-insurance", () => {
+    const contract = { id: "koop-auto", productKey: "kooperativaAuto", carAddonGlass: true } as ContractDoc;
+    const parsed = { carAddonGlass: true, carAddonGlassLimit: 15000 };
+    expect(mergeEmptyContractFields(contract, parsed)).toEqual({ updates: { carAddonGlassLimit: 15000 }, appliedCount: 1 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonGlassLimit: 20000 }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonGlassLimit: 0 }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields({ ...contract, carAddonGlass: false }, parsed)).toEqual({ updates: {}, appliedCount: 0 });
+    expect(mergeEmptyContractFields(contract, { ...parsed, carAddonGlass: false })).toEqual({ updates: {}, appliedCount: 0 });
+  });
+
+  it.each([undefined, null, "", " ", -1, 1_000_000_001, Number.NaN, Number.POSITIVE_INFINITY, true, {}, "unknown"])(
+    "does not import a malformed glass limit (%j)", carAddonGlassLimit => {
+      const contract = { id: "koop-auto", productKey: "kooperativaAuto", carAddonGlass: true } as ContractDoc;
+      expect(mergeEmptyContractFields(contract, { carAddonGlassLimit })).toEqual({ updates: {}, appliedCount: 0 });
+    },
+  );
+
+  it("does not fill an original FLEXI policy with dates from a change request", () => {
+    const contract = { id: "original", productKey: "flexi", entryType: "contract" } as ContractDoc;
+    const parsed = { isEndorsement: true, policyStartDate: "2026-12-01", contractSignedDate: "2026-11-12" };
+    expect(() => mergeEmptyContractFields(contract, parsed)).toThrow("přípravu dodatku");
+    expect(mergeEmptyContractFields({ ...contract, entryType: "endorsement" }, parsed).updates).toMatchObject({
+      policyStartDate: "2026-12-01", contractSignedDate: "2026-11-12",
+    });
+  });
+  it("fills free-trailer identity, dates and vehicle details without importing financial fields", () => {
+    const contract = { id: "free-trailer", productKey: "cppAutoVozikZdarma", inputAmount: 0 } as ContractDoc;
+    const fields = { clientName: "Ing. Jana Testovací, Ph.D.", contractNumber: "3999000001",
+      contractSignedDate: "2026-11-12", policyStartDate: "2026-12-16", carMake: "TEST TRAILERS Model 12",
+      carVin: "TESTABCDEFG123456", carOrv: "AAA000111", carPlate: "TEST123", carLiabilityLimit: 50_000_000 };
+    const { updates, appliedCount } = mergeEmptyContractFields(contract, { ...fields, amount: 9999, frequency: "monthly" });
+    expect(updates).toMatchObject(fields);
+    expect(appliedCount).toBe(9);
+    expect(updates).not.toHaveProperty("inputAmount");
+    expect(updates).not.toHaveProperty("frequencyRaw");
+    expect(mergeEmptyContractFields({ ...contract, ...fields } as ContractDoc, { ...fields, carPlate: "OTHER123" }).updates).toEqual({});
+  });
   it.each([true, false])("fills unknown Neuron indexation from an explicit answer (%s)", (premiumIndexationEnabled) => {
     const contract = { id: "neuron", productKey: "domexneuron", premiumIndexationEnabled: null } as ContractDoc;
     expect(mergeEmptyContractFields(contract, { premiumIndexationEnabled })).toEqual({

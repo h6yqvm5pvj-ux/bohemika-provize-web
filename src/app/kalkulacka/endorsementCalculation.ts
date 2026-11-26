@@ -155,7 +155,7 @@ export const buildEndorsementSourceEntries = (
     .sort(compareSourceEntriesByRecency);
 
 export const resolveRemainingEndorsementDurationYears = (
-  source: EndorsementSourceEntry | null,
+  source: Pick<EndorsementSourceEntry, "policyStartDate" | "policyEndDate" | "contractSignedDate" | "durationYears"> | null,
   targetProduct: Product,
   endorsementPolicyStartDateIso: string
 ): number | null => {

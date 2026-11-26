@@ -4,6 +4,7 @@ import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import { confirmedPremiumHistoryPatch } from "@/app/api/commission-statements/premiumHistory";
 import type { StoredAutoPremiumStatementRow } from "@/app/api/commission-statements/premiumHistoryStatements";
 import { premiumBaseSourceKey, resolveAutoPremiumBasis, type PremiumBaseResolution } from "@/app/lib/autoPremiumBasis";
+import { isKooperativaAutoRenewalPayout } from "@/app/lib/kooperativaCPayoutMeaning";
 import { withContractHistory } from "./contractHistory";
 import { trackCashflowWrite } from "./cashflowMutationTracking";
 
@@ -51,6 +52,9 @@ export async function savePremiumBaseResolution(db: Firestore, options: {
       throw new PremiumBaseResolutionError("Řádek výpisu se změnil nebo jej nelze jednoznačně určit.", 409);
     }
     const row = rows[0];
+    if (isKooperativaAutoRenewalPayout(contract.productKey, row.commissionCode)) {
+      throw new PremiumBaseResolutionError("Výroční pojistné Kooperativy se odvozuje z vyplacené provize.");
+    }
     const source = { contractNumber: row.contractNumber, rowId: row.rowId, productCode: row.productCode,
       commissionCode: row.commissionCode, source: row.source, basePremium: row.basePremium, validFrom: row.validFrom, signedAt: row.signedAt,
       statementId: statement.id, statementNumber: data.statementNumber ?? null,

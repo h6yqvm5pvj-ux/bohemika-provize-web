@@ -156,4 +156,56 @@ describe("explanations in the PDF report", () => {
     expect(html.match(/class="pdf-explanation-title"/g)).toHaveLength(3);
     expect(html.match(/class="pdf-summary/g)).toHaveLength(4); // table and key on each of two overview pages
   });
+
+  const sharedRows = [
+    row(cpp),
+    { ...row(generali), insurerName: "Generali", productName: "Bel Mondo 20", badges: ["2026", "10× progrese"] },
+    { ...row(generali), insurerName: "Generali", productName: "Můj Život 2", badges: ["2024", "10× progrese"] },
+    { ...row(cpp), insurerName: "MetLife", productName: "OneGuard" },
+  ];
+
+  it.each([2, 3, 4])("shows all %i variants on one graph when they belong to at most three insurers", (count) => {
+    const html = buildClientReport({ ...options, rows: sharedRows.slice(0, count), appendix: "graphs" });
+    expect(html.match(/class="pdf-chart"><svg/g)).toHaveLength(1);
+    const graph = html.match(/aria-label="Společný graf průběhu pojistného plnění">([\s\S]*?)<\/svg>/)?.[1];
+    expect(graph?.match(/stroke-width="3" stroke-linejoin="round"/g)).toHaveLength(count);
+    expect(html.match(/<ul class="pdf-curve-legend">([\s\S]*?)<\/ul>/)?.[1].match(/<li>/g)).toHaveLength(count);
+    expect(html).toContain("Generali Bel Mondo 20</strong><small>2026 · 10× progrese");
+  });
+
+  it("keeps individual graphs for a single scenario or four distinct insurers", () => {
+    const singleScenario = buildClientReport({ ...options, scenarios: scenarios.slice(0, 1), rows: sharedRows.slice(0, 2), appendix: "graphs" });
+    const fourInsurers = sharedRows.map((product, index) => ({ ...product, insurerName: `Pojišťovna ${index}` }));
+    const fullComparison = buildClientReport({ ...options, rows: fourInsurers, appendix: "graphs" });
+    expect(singleScenario.match(/class="pdf-chart"><svg/g)).toHaveLength(2);
+    expect(fullComparison.match(/class="pdf-chart"><svg/g)).toHaveLength(4);
+    expect(fullComparison).not.toContain('class="pdf-curve-legend"');
+  });
+
+  it("shares a guide for equal scenarios and keeps the optional tables", () => {
+    const rows = sharedRows.slice(0, 2).map(product => ({
+      ...product,
+      payouts: [product.payouts[0], product.payouts[1], product.payouts[0]],
+      table: { title: `Tabulka ${product.productName}`, columns: ["TN", "Plnění"], rows: [{ cells: ["50 %", "145 %"] }] },
+    }));
+    const html = buildClientReport({ ...options, scenarios: [scenarios[0], scenarios[1], scenarios[0]], rows, appendix: "graphs-tables" });
+    expect(html).toContain(">1/3</text>");
+    expect(html.match(/class="pdf-chart"><svg/g)).toHaveLength(1);
+    expect(html.match(/class="pdf-progression"><thead>/g)).toHaveLength(2);
+  });
+
+  it("places the escaped advisor card above the footer of a small shared graph", () => {
+    const advisorCard = {
+      fullName: "Testovací <poradce>", title: "Finanční poradce", phone: "+420 123 456 789", email: "kontakt@example.test",
+      url: "https://bohemka.app/vizitka/testovaci-poradce", qr: { size: 29, runs: [{ x: 4, y: 4, width: 7 }] },
+    };
+    const html = buildClientReport({ ...options, rows: sharedRows.slice(0, 2), appendix: "graphs", advisorCard });
+    expect(html.match(/class="pdf-advisor-card"/g)).toHaveLength(1);
+    expect(html).toContain("Testovací &lt;poradce&gt;");
+    expect(html).toContain('href="https://bohemka.app/vizitka/testovaci-poradce"');
+    expect(html).toContain('aria-label="QR kód vizitky"');
+    expect(html).toMatch(/<\/ul><\/div><aside class="pdf-advisor-card"[\s\S]*?<\/aside><footer class="pdf-footer"/);
+    const withoutGraphs = buildClientReport({ ...options, advisorCard });
+    expect(withoutGraphs).toMatch(/<strong>Vizitka poradce<\/strong>[\s\S]*?<aside class="pdf-advisor-card"/);
+  });
 });

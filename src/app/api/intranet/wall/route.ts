@@ -1,3 +1,4 @@
+import { invalidateWallUnreadCount } from "@/lib/server/intranetUnreadCount";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldPath, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -26,6 +27,7 @@ import {
   sanitizeStoredIntranetWallSources,
 } from "@/app/intranet/wallSources";
 import { loadIntranetAuthorProfiles } from "@/lib/server/intranetAuthorProfiles";
+import { readSearchQuery } from "@/lib/server/readSearchQuery";
 import { isWallId, matchesWallView, normalizeWallPersonalState, type WallPersonalState, type WallView } from "@/app/intranet/wallPersonal";
 
 export const runtime = "nodejs";
@@ -952,7 +954,7 @@ async function hydrateWallAuthorAvatars(posts: WallPost[]): Promise<WallPost[]> 
   }));
 }
 
-export async function GET(req: NextRequest) {
+async function readWall(req: NextRequest, searchOnly = false) {
   const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:get",
     limit: GET_RATE_LIMIT,
@@ -972,7 +974,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const sectionParam = req.nextUrl.searchParams.get("section");
+  const searchFromBody = searchOnly ? await readSearchQuery(req) : null;
+  if (searchOnly && searchFromBody === null) {
+    return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatný dotaz." }, {
+      status: 400, headers: { "Cache-Control": "private, no-store" },
+    }), ctx);
+  }
+  const sectionParam = searchOnly ? null : req.nextUrl.searchParams.get("section");
   const section = sectionParam ? parseSection(sectionParam) : null;
   if (sectionParam && !section) {
     return withRateLimitHeaders(
@@ -984,19 +992,19 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const viewParam = req.nextUrl.searchParams.get("view") ?? "all";
-  const requestedPostId = req.nextUrl.searchParams.get("postId");
-  const cursorId = req.nextUrl.searchParams.get("cursorId");
+  const viewParam = searchOnly ? "all" : req.nextUrl.searchParams.get("view") ?? "all";
+  const requestedPostId = searchOnly ? null : req.nextUrl.searchParams.get("postId");
+  const cursorId = searchOnly ? null : req.nextUrl.searchParams.get("cursorId");
   if (!["all", "saved", "unread", "following"].includes(viewParam) ||
       (requestedPostId !== null && !isWallId(requestedPostId)) || (cursorId !== null && !isWallId(cursorId))) {
     return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatný filtr příspěvků." }, { status: 400 }), ctx);
   }
   const view = viewParam as WallView;
-  const searchQuery = normalizeText(req.nextUrl.searchParams.get("q")).slice(0, 120);
+  const searchQuery = searchFromBody ?? normalizeText(req.nextUrl.searchParams.get("q")).slice(0, 120);
   const normalizedSearchQuery = normalizeSearchText(searchQuery);
 
   const limitRaw = Number(req.nextUrl.searchParams.get("limit"));
-  const limit =
+  const limit = searchOnly ? 6 :
     Number.isFinite(limitRaw) && limitRaw > 0
       ? Math.min(Math.max(1, Math.floor(limitRaw)), POSTS_MAX_LIMIT)
       : POSTS_DEFAULT_LIMIT;
@@ -1024,10 +1032,11 @@ export async function GET(req: NextRequest) {
       const baseQuery = () => db.collection(POSTS_COLLECTION)
         .orderBy("createdAt", "desc").orderBy(FieldPath.documentId(), "desc").limit(batchLimit);
       let query: FirebaseFirestore.Query = baseQuery();
-      if (cursorMs) query = cursorId
+      if (!searchOnly && cursorMs) query = cursorId
         ? query.startAfter(Timestamp.fromMillis(cursorMs), cursorId)
         : query.startAfter(Timestamp.fromMillis(cursorMs));
       while (matchingDocs.length <= limit) {
+        if (searchOnly && req.signal.aborted) return new NextResponse(null, { status: 204 });
         const postsSnap = await query.get();
         if (postsSnap.empty) break;
         const candidates = postsSnap.docs.filter(doc => {
@@ -1038,9 +1047,9 @@ export async function GET(req: NextRequest) {
             [raw.title, raw.text, raw.createdByName, raw.createdByEmail, sanitizeStoredIntranetWallSources(raw.sources).join(" ")]
               .some(value => normalizeSearchText(value).includes(normalizedSearchQuery)));
         });
-        await loadStates(candidates);
+        if (!searchOnly) await loadStates(candidates);
         for (const doc of candidates) {
-          if (matchesWallView(personalStates.get(doc.id)!, view)) matchingDocs.push(doc);
+          if (searchOnly || matchesWallView(personalStates.get(doc.id)!, view)) matchingDocs.push(doc);
           if (matchingDocs.length > limit) break;
         }
         if (matchingDocs.length > limit || postsSnap.size < batchLimit) break;
@@ -1048,6 +1057,24 @@ export async function GET(req: NextRequest) {
       }
     }
     const docsToReturn = matchingDocs.slice(0, limit);
+    if (searchOnly) {
+      const posts = docsToReturn.map(doc => {
+        const raw = doc.data()!;
+        const section = parseSection(raw.section)!;
+        return {
+          pinned: raw.pinned === true,
+          post: {
+            id: doc.id, title: normalizeText(raw.title), section,
+            sectionLabel: INTRANET_SECTION_LABEL_BY_KEY.get(section) ?? section,
+            author: { name: parseAuthor(raw).name },
+          },
+        };
+      }).sort((a, b) => Number(b.pinned) - Number(a.pinned))
+        .map(({ post }) => post);
+      return withRateLimitHeaders(NextResponse.json({ ok: true, posts }, {
+        headers: { "Cache-Control": "private, no-store" },
+      }), ctx);
+    }
     const lastDoc = docsToReturn[docsToReturn.length - 1];
     const nextCursorMs = matchingDocs.length > limit ? toMillis(lastDoc?.data()?.createdAt) : null;
     const nextCursorId = nextCursorMs !== null ? lastDoc.id : null;
@@ -1088,7 +1115,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export function GET(req: NextRequest) {
+  return readWall(req);
+}
+
 export async function POST(req: NextRequest) {
+  if (req.nextUrl.searchParams.get("search") === "1") return readWall(req, true);
   const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:intranet-wall:post",
     limit: POST_RATE_LIMIT,
@@ -1317,7 +1349,10 @@ export async function POST(req: NextRequest) {
       postData.poll = poll;
       postData.pollVotes = [];
     }
-    await postRef.set(postData);
+    const batch = adminDb.batch();
+    batch.set(postRef, postData);
+    invalidateWallUnreadCount(adminDb, batch);
+    await batch.commit();
 
     try {
       await sendIntranetPostPushNotification({

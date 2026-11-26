@@ -23,10 +23,35 @@ describe("REFRESH base evidence",()=>{
     expect(warning).toContain("Rozdíl základny u konkrétní provize");
   });
 
-  it("shows pending evidence even when the provisional amount happens to match the statement",()=>{
-    const review=neonRefreshBaseReview({...contract,requiresStatementRefresh:true},[row("A101",12000)]);
-    expect(review).toMatchObject({status:"waiting",statementRiskAnnual:12000});
+  it("shows pending evidence when the provisional amount differs from the statement",()=>{
+    const review=neonRefreshBaseReview({...contract,requiresStatementRefresh:true},[row("A101",12500)]);
+    expect(review).toMatchObject({status:"waiting",statementRiskAnnual:12500,needsConfirmation:true});
     expect(renderToStaticMarkup(createElement(NeonRefreshBaseNotice,{review}))).toContain("Potvrzení se uloží při zpracování výpisu");
+  });
+
+  it.each([
+    {...contract,refreshOriginalContractNumber:"12345"},
+    {...contract,requiresStatementRefresh:true,refreshCommissionBase:null},
+  ])("hides the confirmation notice when the annual risk bases match",system=>{
+    const review=neonRefreshBaseReview(system,[row("B0301",12000),row("A201",60000)]);
+    expect(review).toMatchObject({annual:12000,statementRiskAnnual:12000,needsConfirmation:false});
+    expect(renderToStaticMarkup(createElement(NeonRefreshBaseNotice,{review,onConfirm:()=>{}}))).toBe("");
+  });
+
+  it.each([10420, 10409, 10433])("hides the recalculation notice for a statement base of %d with a calculated base of 10421", statementBase => {
+    const review = neonRefreshBaseReview({
+      ...contract, refreshOriginalContractNumber: "12345",
+      refreshCommissionBase: { calculationAnnualPremium: 10421 },
+    }, [row("A101", statementBase)]);
+    expect(review).toMatchObject({ status: "calculated", needsConfirmation: false });
+    expect(renderToStaticMarkup(createElement(NeonRefreshBaseNotice, { review, onConfirm: () => {} }))).toBe("");
+  });
+
+  it("offers recalculation when the risk base differs by more than the annual tolerance",()=>{
+    const review=neonRefreshBaseReview({...contract,refreshOriginalContractNumber:"12345"},[row("A101",12012.01)]);
+    expect(review).toMatchObject({status:"calculated",needsConfirmation:true});
+    expect(renderToStaticMarkup(createElement(NeonRefreshBaseNotice,{review,onConfirm:()=>{}})))
+      .toContain("Použít základnu z výpisu a přepočítat");
   });
 
   it.each(["A201","B101"])("does not offer confirmation from %s",code=>{

@@ -18,11 +18,21 @@ export function readCashflowExtraPayouts(value: unknown, email: string): Cashflo
 
 /** The caller supplies a server-verified account, not an email from request input. */
 export async function loadPrivateCashflowExtraPayouts(email: string): Promise<CashflowExtraPayout[]> {
+  return (await loadPrivateCashflowSettings(email)).extraPayouts;
+}
+
+export async function loadPrivateCashflowSettings(email: string): Promise<{
+  extraPayouts: CashflowExtraPayout[];
+  officeContributionEnabled: boolean;
+}> {
   privatePayoutContext(email);
   const { adminDb } = await import("./firebaseAdmin");
   if (!adminDb) throw new Error("Cashflow payouts are unavailable.");
   const [snapshot] = await adminDb.getAll(adminDb.collection("usersPrivate").doc(email), {
-    fieldMask: ["cashflowExtraPayouts"],
+    fieldMask: ["cashflowExtraPayouts", "cashflowOfficeContributionEnabled"],
   });
-  return readCashflowExtraPayouts(snapshot.data()?.cashflowExtraPayouts, email);
+  return {
+    extraPayouts: readCashflowExtraPayouts(snapshot.data()?.cashflowExtraPayouts, email),
+    officeContributionEnabled: snapshot.data()?.cashflowOfficeContributionEnabled === true,
+  };
 }

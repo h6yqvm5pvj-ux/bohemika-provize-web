@@ -2,16 +2,22 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { ExternalLink, Grip, Minus, Move, X } from "lucide-react";
+import {
+  publishStatementCalculatorDraft,
+  STATEMENT_CALCULATOR_HANDOFF_PARAM,
+  type StatementCalculatorHandoff,
+} from "@/app/lib/statementCalculatorHandoff";
 import type { StatementCalculatorPrefill } from "./statementPresentation";
 import type { BohemkaContractDetailModalPayload } from "./statementTypes";
 
-const statementCalculatorPrefillHref = (prefill: StatementCalculatorPrefill): string => {
+const statementCalculatorPrefillParams = (prefill: StatementCalculatorPrefill): URLSearchParams => {
   const params = new URLSearchParams();
   params.set("prefill", "commission-statement");
   params.set("product", prefill.product);
@@ -31,7 +37,7 @@ const statementCalculatorPrefillHref = (prefill: StatementCalculatorPrefill): st
     params.set("sourceStatementChronologyMs", String(prefill.statementChronologyMs));
   }
   if (prefill.cppA101QueueEligible) params.set("cppA101QueueEligible", "1");
-  return `/kalkulacka?${params.toString()}`;
+  return params;
 };
 
 
@@ -105,7 +111,7 @@ export function BohemkaContractDetailModal({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="mx-auto flex h-full max-h-[92vh] max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
+      <div className="mx-auto flex h-full max-h-[92vh] w-full max-w-[104rem] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.35)]">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <div className="truncate text-base font-black text-slate-950">{detail.title}</div>
@@ -132,12 +138,15 @@ export function BohemkaContractDetailModal({
 
 export function StatementCalculatorIframePanel({
   prefill,
+  handoff,
   onClose,
 }: {
   prefill: StatementCalculatorPrefill;
+  handoff: StatementCalculatorHandoff;
   onClose: () => void;
 }) {
-  const href = useMemo(() => statementCalculatorPrefillHref(prefill), [prefill]);
+  const params = useMemo(() => statementCalculatorPrefillParams(prefill), [prefill]);
+  const href = `/kalkulacka?prefill=commission-statement&${STATEMENT_CALCULATOR_HANDOFF_PARAM}=${handoff.id}`;
   const [minimized, setMinimized] = useState(false);
   const [size, setSize] = useState(defaultStatementCalculatorPanelSize);
   const [position, setPosition] = useState(() =>
@@ -157,6 +166,10 @@ export function StatementCalculatorIframePanel({
     originWidth: number;
     originHeight: number;
   } | null>(null);
+
+  useLayoutEffect(() => {
+    return publishStatementCalculatorDraft(handoff, params);
+  }, [handoff, params]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -315,6 +328,7 @@ export function StatementCalculatorIframePanel({
             </div>
           </div>
           <iframe
+            data-statement-calculator="true"
             title={`Přidat smlouvu ${prefill.contractNumber || prefill.productLabel}`}
             src={href}
             className="min-h-0 flex-1 border-0"

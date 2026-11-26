@@ -1,6 +1,7 @@
 import { CASHFLOW_PRODUCTS_BY_FILTER } from "./helpers";
 import { isCashflowCancellation } from "./commissionPresentation";
 import type { CashflowItem, ProductFilter } from "./types";
+import { isRecordOnlyProduct } from "@/app/lib/productCatalog";
 
 export const MONTH_SECTION_LABELS = {
   life: "Životní pojištění",
@@ -13,6 +14,7 @@ export const MONTH_SECTION_LABELS = {
   tip: "TIP provize",
   subscription: "Předplatné",
   extra: "Mimořádné odměny",
+  office: "Ostatní platby",
   other: "Ostatní",
   cancelled: "Stornované",
 } as const;
@@ -37,6 +39,7 @@ type MonthSection<T extends CashflowSectionGroup> = {
 
 function sectionForItem(item: CashflowItem): MonthSectionId {
   const product = item.productKey;
+  if (item.isOfficeContribution) return "office";
   if (item.isExtraPayout) return "extra";
   if (isCashflowCancellation(item)) return "cancelled";
   if (item.isSubscriptionPayment || product === "subscription") return "subscription";
@@ -53,6 +56,8 @@ function sectionForItem(item: CashflowItem): MonthSectionId {
 export function buildCashflowMonthSections<T extends CashflowSectionGroup>(groups: T[]): MonthSection<T>[] {
   const sections = new Map<MonthSectionId, MonthSection<T>>();
   for (const group of groups) {
+    const product = group.leadItem.productKey;
+    if (product !== "unknown" && product !== "subscription" && isRecordOnlyProduct(product)) continue;
     const id = sectionForItem(group.leadItem);
     const section = sections.get(id) ?? {
       id, label: MONTH_SECTION_LABELS[id], groups: [], itemCount: 0, total: 0,

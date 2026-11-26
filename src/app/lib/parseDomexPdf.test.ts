@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseDomexNeuronPdf, parseDomexPdf } from "./parseDomexPdf";
+import { DOMEX_NEURON_PARSER_VERSION } from "./domexNeuronSchema";
 
 const pdfState = vi.hoisted(() => ({
   lines: [] as string[],
@@ -61,7 +62,7 @@ describe("parseDomexPdf", () => {
     pdfState.lines = [];
     pdfState.needsOcr = true;
     const result = await parseDomexNeuronPdf(makePdfFile());
-    expect(result.domexNeuron).toEqual({ parserVersion: 2, objects: [], sections: {
+    expect(result.domexNeuron).toEqual({ parserVersion: DOMEX_NEURON_PARSER_VERSION, objects: [], sections: {
       property: "unreadable", household: "unreadable", liability: "unreadable", assistance: "unreadable",
     }, liabilityFields: { sumInsured: "unreadable", deductible: "unreadable" } });
     expect((await parseDomexPdf(makePdfFile())).domexNeuron).toBeUndefined();

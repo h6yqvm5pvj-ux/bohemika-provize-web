@@ -29,7 +29,7 @@ function harness() {
     setProduct: vi.fn(), setHasSelectedProduct: vi.fn(), setProductPickerSectionForProduct: vi.fn(),
     setClientSuggestionsOpen: vi.fn(), setRefreshOriginalOpen: vi.fn(),
     setRefreshOriginalContractNumber: vi.fn(), setRefreshOriginalMissingInSystem: vi.fn(),
-    setRefreshOriginalPdfLookupNumber: vi.fn(), setRefreshOriginalLookup: vi.fn(),
+    setRefreshOriginalPdfLookupNumber: vi.fn(), setRefreshOriginalLookup: vi.fn(), setRenovationWithoutBase: vi.fn(),
     setEndorsementWorkflowActive: vi.fn(),
   };
   const input = document.createElement("input");
@@ -50,6 +50,22 @@ function harness() {
 }
 
 describe("single PDF import workflow", () => {
+  it.each(["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"] as const)("attaches a PDF for %s while preserving manually entered fields", async product => {
+    const { options, ui, values } = harness();
+    options.product = product;
+    options.hasSelectedProduct = true;
+    const pdf = file();
+    const before = { ...values };
+    await importSingleContractPdf(pdf, options);
+    expect(ui.setImportedContractPdfFile).toHaveBeenLastCalledWith(pdf);
+    expect(ui.setPdfImporting).toHaveBeenLastCalledWith(false);
+    expect(ui.setPdfImportError).toHaveBeenLastCalledWith(null);
+    expect(mocks.detect).not.toHaveBeenCalled();
+    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(values.clientName).toBe(before.clientName);
+    expect(values.contractNumber).toBe(before.contractNumber);
+    expect(ui.setProduct).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.detect.mockReset().mockResolvedValue({ product: "cppAuto", confidence: "high" });
@@ -100,6 +116,24 @@ describe("single PDF import workflow", () => {
     expect(ui.setProduct).toHaveBeenCalledExactlyOnceWith("domex");
     expect(ui.setProductPickerSectionForProduct).toHaveBeenCalledExactlyOnceWith("domex");
     expect(values.domexAddress).toBe("Testovací 1");
+  });
+
+  it("imports a free trailer without premium or frequency warnings and clears the previous vehicle", async () => {
+    const { options, ui, values } = harness();
+    const pdf = file();
+    mocks.detect.mockResolvedValue({ product: "cppAutoVozikZdarma", confidence: "high" });
+    mocks.parse.mockResolvedValue({ contractNumber: "3999000001", clientName: "Ing. Jana Testovací, Ph.D.",
+      contractSignedDate: "2026-11-12", policyStartDate: "2026-12-16", carMake: "TEST TRAILERS Model 12",
+      carVin: "TESTABCDEFG123456", carOrv: "AAA000111", carPlate: "TEST123", carLiabilityLimit: 50_000_000 });
+    await importSingleContractPdf(pdf, options);
+    expect(ui.setProduct).toHaveBeenCalledWith("cppAutoVozikZdarma");
+    expect(ui.setPdfImportError).toHaveBeenLastCalledWith(null);
+    expect(ui.setImportedContractPdfFile).toHaveBeenLastCalledWith(pdf);
+    expect(values).toMatchObject({ clientName: "Ing. Jana Testovací, Ph.D.", contractNumber: "3999000001", amountText: "", frequency: "annual",
+      autoCarMake: "TEST TRAILERS Model 12", autoCarVin: "TESTABCDEFG123456", autoCarOrv: "AAA000111", autoCarPlate: "TEST123", autoCarLiabilityLimit: 50_000_000 });
+    mocks.parse.mockResolvedValue({ clientName: null, contractNumber: null, policyStartDate: null, contractSignedDate: null });
+    await importSingleContractPdf(file(), options);
+    expect(values).toMatchObject({ clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "", autoCarMake: "", autoCarVin: "", autoCarOrv: "", autoCarPlate: "", autoCarLiabilityLimit: null });
   });
 
   it("imports distinct Neuron locations and clears previous scoped details before the next PDF", async () => {
@@ -417,10 +451,10 @@ describe("single PDF import workflow", () => {
     expect(vi.mocked(options.notifyPdfParserFailure).mock.calls[0][3]).toBe(true);
   });
 
-  it.each([false, true])("prepares a NEON amendment only in the applicable mode (inherited: %s)", async (inherited) => {
+  it.each([["neon", false], ["neon", true], ["flexi", false], ["flexi", true]] as const)("prepares a %s amendment only in the applicable mode (inherited: %s)", async (product, inherited) => {
     const { options, ui } = harness();
     options.isInheritedContractMode = inherited;
-    mocks.detect.mockResolvedValue({ product: "neon", confidence: "high" });
+    mocks.detect.mockResolvedValue({ product, confidence: "high" });
     mocks.parse.mockResolvedValue({ ...parsed, isEndorsement: true });
     await importSingleContractPdf(file(), options);
     if (inherited) {
@@ -428,7 +462,9 @@ describe("single PDF import workflow", () => {
       expect(ui.setEndorsementWorkflowActive).not.toHaveBeenCalled();
     } else {
       expect(options.handlePrepareEndorsement).toHaveBeenCalledExactlyOnceWith({
-        productOverride: "neon", contractNumberOverride: "1234567890", contractSignedDateOverride: "2026-10-01",
+        signal: expect.any(AbortSignal),
+        productOverride: product, contractNumberOverride: "1234567890", contractSignedDateOverride: "2026-10-01",
+        policyStartDateOverride: "2026-11-01", frequencyOverride: "quarterly",
         newPremiumAmountOverride: 704, source: "pdf",
       });
       expect(ui.setEndorsementWorkflowActive).toHaveBeenCalledWith(true);
@@ -458,6 +494,22 @@ describe("single PDF import workflow", () => {
     expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
     expect(values).toMatchObject({ contractNumber: "0090000088", contractSignedDate: "2026-11-02" });
     expect(options.handlePrepareEndorsement).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("imports a Kooperativa Auto replacement in the applicable mode (inherited: %s)", async inherited => {
+    const { options, ui, values } = harness();
+    options.isInheritedContractMode = inherited;
+    mocks.detect.mockResolvedValue({ product: "kooperativaAuto", confidence: "high" });
+    mocks.parse.mockResolvedValue({ ...parsed, contractNumber: "6490000088", isRefresh: true, refreshOriginalContractNumber: "6480000077" });
+    await importSingleContractPdf(file(), options);
+    expect(values.contractNumber).toBe("6490000088");
+    if (inherited) {
+      expect(ui.setRefreshOriginalOpen).not.toHaveBeenCalled();
+    } else {
+      expect(ui.setRefreshOriginalOpen).toHaveBeenLastCalledWith(true);
+      expect(ui.setRefreshOriginalContractNumber).toHaveBeenLastCalledWith("6480000077");
+      expect(ui.setRefreshOriginalMissingInSystem).toHaveBeenLastCalledWith(false);
+    }
   });
 
   it("opens a Kooperativa employee-liability replacement and fills its original number", async () => {

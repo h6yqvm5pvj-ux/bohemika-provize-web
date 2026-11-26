@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { contractPaymentDetailsErrorMessage } from "./contractPaymentDetailsErrors";
 
-const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn(), parseCppAuto: vi.fn(), parseAllianzAuto: vi.fn(), parseFlexi: vi.fn(), parsePillowAuto: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parseDomex: vi.fn(), parseKoop: vi.fn(), parseKoopOdzam: vi.fn(), parseNeon: vi.fn(), parseCppAuto: vi.fn(), parseAllianzAuto: vi.fn(), parseFlexi: vi.fn(), parsePillowAuto: vi.fn(), parseCsobAuto: vi.fn(), parseUniqaAuto: vi.fn(), parseSlaviaAuto: vi.fn() }));
 vi.mock("@/app/lib/parseDomexPdf", () => ({ parseDomexPdf: mocks.parseDomex }));
 vi.mock("@/app/lib/parseKoopMajetekObcanPdf", () => ({ parseKoopMajetekObcanPdf: mocks.parseKoop }));
 vi.mock("@/app/lib/parseKoopOdzamPdf", () => ({ parseKoopOdzamPdf: mocks.parseKoopOdzam }));
@@ -11,6 +11,9 @@ vi.mock("@/app/lib/parseCppAutoPdf", () => ({ parseCppAutoPdf: mocks.parseCppAut
 vi.mock("@/app/lib/parseAllianzAutoPdf", () => ({ parseAllianzAutoPdf: mocks.parseAllianzAuto }));
 vi.mock("@/app/lib/parseFlexiPdf", () => ({ parseFlexiPdf: mocks.parseFlexi }));
 vi.mock("@/app/lib/parsePillowAutoPdf", () => ({ parsePillowAutoPdf: mocks.parsePillowAuto }));
+vi.mock("@/app/lib/parseCsobAutoPdf", () => ({ parseCsobAutoPdf: mocks.parseCsobAuto }));
+vi.mock("@/app/lib/parseUniqaAutoPdf", () => ({ parseUniqaAutoPdf: mocks.parseUniqaAuto }));
+vi.mock("@/app/lib/parseSlaviaAutoPdf", () => ({ parseSlaviaAutoPdf: mocks.parseSlaviaAuto }));
 
 const payment = { amount: 1250, accountNumber: "19-2000145399/0800", variableSymbol: "0012345678", dueDate: "2026-11-05" };
 function options() {
@@ -26,6 +29,9 @@ beforeEach(() => {
   mocks.parseAllianzAuto.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 1671, accountNumber: "20001-0038138021/0100", variableSymbol: "0012345678", dueDate: null } });
   mocks.parseFlexi.mockResolvedValue({ contractNumber: "0012345678", paymentDetails: { amount: 702, accountNumber: "2226222/0800", variableSymbol: "0012345678", dueDate: "2026-08-20" } });
   mocks.parsePillowAuto.mockResolvedValue({ contractNumber: "0012345678", frequency: "monthly", paymentDetails: { amount: 653, accountNumber: "501401304/2010", variableSymbol: "100086377", dueDate: "2026-09-30" } });
+  mocks.parseCsobAuto.mockResolvedValue({ contractNumber: "6207127218", frequency: "annual", paymentDetails: { amount: 25886, accountNumber: "187078376/0300", variableSymbol: "6207127218" } });
+  mocks.parseUniqaAuto.mockResolvedValue({ contractNumber: "5521579499", frequency: "semiannual", paymentDetails: { amount: 2888, accountNumber: "1071001005/5500", variableSymbol: "5521579499", installmentDueDates: "17.8.|17.2." } });
+  mocks.parseSlaviaAuto.mockResolvedValue({ contractNumber: "3700857975", frequency: "annual", paymentDetails: { amount: 2814, accountNumber: "000019-6017530267/0100", variableSymbol: "3700857975" } });
 });
 
 describe("payment details from authorized PDF", () => {
@@ -106,6 +112,46 @@ describe("payment details from authorized PDF", () => {
       paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
     });
     expect(mocks.parsePillowAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the ČSOB Auto parser and returns the annual transfer details", async () => {
+    const input = { ...options(), product: "csobAuto" as const, contractNumber: "6207127218" };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 25886,
+      accountNumber: "187078376/0300",
+      variableSymbol: "6207127218",
+      dueDate: null,
+      frequency: "annual",
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parseCsobAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the UNIQA Auto parser, preserves installment dates, and returns the first year note", async () => {
+    const input = { ...options(), product: "uniqaAuto" as const, contractNumber: "5521579499" };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 2888,
+      accountNumber: "1071001005/5500",
+      variableSymbol: "5521579499",
+      dueDate: null,
+      installmentDueDates: "17.8.|17.2.",
+      frequency: "semiannual",
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parseUniqaAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
+  });
+
+  it("uses the Slavia Auto parser and returns its frequency and first year note", async () => {
+    const input = { ...options(), product: "slaviaauto" as const, contractNumber: "3700857975" };
+    await expect(loadContractPaymentDetailsFromPdf(input)).resolves.toEqual({
+      amount: 2814,
+      accountNumber: "000019-6017530267/0100",
+      variableSymbol: "3700857975",
+      dueDate: null,
+      frequency: "annual",
+      paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!",
+    });
+    expect(mocks.parseSlaviaAuto).toHaveBeenCalledExactlyOnceWith(expect.any(File), { signal: input.signal, allowOcr: true });
   });
 
   it.each([

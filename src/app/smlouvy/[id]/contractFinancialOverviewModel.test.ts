@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildContractFinancialOverview } from "./contractFinancialOverviewModel";
+import { buildContractFinancialOverview, buildContractPaidCommissionTotal, buildContractStornoComparison } from "./contractFinancialOverviewModel";
 import type { ContractDoc } from "./contractDetailTypes";
 
 const owner = "owner@example.test";
@@ -22,6 +22,37 @@ const decrease: ContractDoc = {
 const calculate = (contract = root, timeline = [contract, decrease], viewerEmail: string | null = owner, date = asOf) =>
   buildContractFinancialOverview({ contract, timeline, ownerEmail: owner, viewerEmail, asOf: date });
 
+describe("storno comparison for anniversary terminations", () => {
+  const contract: ContractDoc = {
+    id: "home", productKey: "cppbytex", frequencyRaw: "annual", policyStartDate: "2024-02-29",
+    commissionPayouts: [{ code: "A101", amount: 400, statementDate: "2024-03-31", writtenBy: owner }],
+  };
+  const compare = (policy: ContractDoc, stornoDate = "2025-02-28") =>
+    buildContractStornoComparison({ contract: policy, timeline: [], ownerEmail: owner, viewerEmail: owner }, stornoDate);
+
+  it("hides a zero-refund property policy at its anniversary, including a clamped leap-day anniversary", () => {
+    expect(compare(contract)).toBeNull();
+    expect(compare(contract, "2025-03-01")).toMatchObject([{ code: "A101", estimated: 0 }]);
+  });
+
+  it("keeps positive estimates and actual deductions visible at a non-life anniversary", () => {
+    const receipt = { code: "AP101", amount: -50, statementDate: "2025-03-31", writtenBy: owner };
+    expect(compare({ ...contract, commissionPayouts: [...contract.commissionPayouts!, receipt] }))
+      .toMatchObject([{ code: "A101", estimated: 0, deducted: 5_000 }]);
+    expect(compare({ ...contract, productKey: "allianzmujdomov" }))
+      .toMatchObject([{ code: "A101", estimated: 16_000 }]);
+  });
+
+  it("keeps the existing availability messages for life policies and unknown estimates", () => {
+    expect(compare({ ...contract, productKey: "neon", policyStartDate: "2020-02-29",
+      items: [{ code: "A101", title: "Okamžitá provize", amount: 400 }] }))
+      .toMatchObject([{ code: "A101", estimated: 0 }]);
+    expect(compare({ ...contract, commissionPayouts: [{ ...contract.commissionPayouts![0], code: "A999" }] }))
+      .toMatchObject([{ code: "A999", estimated: null }]);
+    expect(compare({ ...contract, commissionPayouts: [] })).toEqual([]);
+  });
+});
+
 describe("contract financial overview", () => {
   it("aggregates the amended family through the existing period-aware cashflow plan", () => {
     const model = calculate();
@@ -32,14 +63,14 @@ describe("contract financial overview", () => {
     expect(root.items?.[0].amount).toBe(1000);
   });
 
-  it("keeps actual receipts separate and forecasts only the reduced partial balance", () => {
+  it("excludes a paid code from the forecast even when the receipts are below the expectation", () => {
     const partiallyPaid: ContractDoc = { ...root, commissionPayouts: [
       { key: "part-1", code: "B3601", amount: 300, status: "difference", payoutMonthKey: "2026-03", writtenBy: owner },
       { key: "part-2", code: "B3601", amount: 100, status: "difference", payoutMonthKey: "2026-04", writtenBy: owner },
     ] };
     const model = calculate(partiallyPaid);
-    expect(model).toMatchObject({ paidAmount: 400, payoutCount: 2, expectedAmount: 425 });
-    expect(model.nextPayout?.amount).toBe(425);
+    expect(model).toMatchObject({ paidAmount: 400, payoutCount: 2, expectedAmount: 75 });
+    expect(model.nextPayout?.amount).toBe(75);
   });
 
   it("automatically replaces the exact Kooperativa B periods with older C receipts in the family forecast", () => {
@@ -53,7 +84,7 @@ describe("contract financial overview", () => {
       ] };
     const model = calculate(inherited, [inherited], owner, new Date("2026-11-01T11:00:00Z"));
     expect(model).toMatchObject({ paidAmount: 2031.11, payoutCount: 2, expectedAmount: 0,
-      nextPayout: { amount: 742.54, count: 1 } });
+      nextPayout: { amount: 965.98, count: 1 } });
     expect(model.nextPayout?.date.toISOString().slice(0, 10)).toBe("2028-06-24");
     expect(inherited.commissionPayouts?.map(payout => payout.code)).toEqual(["C102", "C103"]);
   });
@@ -151,6 +182,25 @@ describe("contract financial overview", () => {
     expect(calculate(receipts, [receipts])).toMatchObject({ paidAmount: 375, payoutCount: 4, expectedAmount: null });
   });
 
+  it("nets a reversed payout with its replacement in the whole-contract total without counting a corrected copy twice", () => {
+    const wrong = { key: "wrong", code: "B101", amount: 498.85, status: "paid", statementId: "synthetic-1", writtenBy: owner };
+    const base: ContractDoc = { ...root, commissionPayouts: [wrong,
+      { key: "acquisition", code: "A101", amount: 200.23, status: "paid", writtenBy: owner },
+      { key: "pending", code: "B102", amount: 1000, status: "pending", writtenBy: owner },
+      { key: "team", code: "B101", amount: 50, status: "paid", writtenBy: manager },
+    ] };
+    const amendment: ContractDoc = { ...decrease, commissionPayouts: [
+      { ...wrong, code: "B103", statementCode: "B101" },
+      { key: "reversal", code: "B101", amount: 498.85, status: "storno", writtenBy: owner },
+      { key: "replacement", code: "B103", amount: 514.86, status: "paid", writtenBy: owner },
+    ] };
+    const input = { contract: base, timeline: [base, amendment], ownerEmail: owner, viewerEmail: owner };
+    expect(buildContractPaidCommissionTotal(input)).toBe(715.09);
+    expect(buildContractPaidCommissionTotal({ ...input, viewerEmail: manager })).toBe(50);
+    expect(buildContractPaidCommissionTotal({ ...input, viewerEmail: "other@example.test" })).toBeNull();
+    expect(buildContractPaidCommissionTotal({ ...input, contract: amendment, timeline: [amendment] })).toBeNull();
+  });
+
   it("deduplicates explicit receipt identities without combining distinct instalments or keyless receipts", () => {
     const paid = { key: "same", statementId: "s-1", code: "A101", amount: 100, status: "paid", writtenBy: owner };
     const base: ContractDoc = { ...root, items: [], commissionPayouts: [paid,
@@ -237,7 +287,7 @@ describe("contract financial overview", () => {
     expect(model.periodUntil).toBe("2025-02-28");
   });
 
-  it("aggregates a separate positive increase tranche and later reductions exactly once", () => {
+  it("forecasts one NEON recurring payment after an increase and a later reduction", () => {
     const increase: ContractDoc = { ...decrease, id: "increase", parentContractEntryId: "decrease", policyStartDate: "2025-04-01",
       previousInputAmount: 1500, newInputAmount: 1800, premiumDelta: 300, changeType: "increase",
       items: [{ title: "Následná provize (2.–5. rok)", code: "B101-B104", amount: 40 }] };
@@ -245,8 +295,9 @@ describe("contract financial overview", () => {
       previousInputAmount: 1800, newInputAmount: 900, premiumDelta: -900 };
     const model = calculate(root, [root, decrease, increase, later]);
     expect(model.entriesCount).toBe(4);
-    expect(model.expectedAmount).toBe(432.5);
-    expect(model.nextPayout?.amount).toBe(412.5);
+    // Both open components use the remaining 900 out of the original 2,000.
+    expect(model.expectedAmount).toBe(495);
+    expect(model.nextPayout).toMatchObject({ amount: 495, count: 2 });
   });
 
   it("does not change future expectations before a future amendment becomes effective", () => {

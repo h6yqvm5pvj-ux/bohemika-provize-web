@@ -7,6 +7,9 @@ import {
   isFirstYearAutoACommissionPayout,
   isNeonInvestmentLifeA201Payout,
 } from "@/app/lib/commissionPayoutRules";
+import { isAutoProduct, isInvestmentProduct, isLifeProduct } from "@/app/lib/productCatalog";
+import { lifeIncreaseItemCode, lifeIncreaseCommissionLabel } from "@/app/lib/lifePremiumIncrease";
+import { isAutoSubsequentCommissionCode } from "@/app/lib/productFormulas/autoCommission";
 import type { Product } from "@/app/types/domain";
 import { HelpDialog } from "@/components/HelpDialog";
 import { formatMoney, nameFromEmail } from "./contractDetailHelpers";
@@ -22,7 +25,7 @@ type ContractCommissionHistoryProps = {
   payouts?: ContractCommissionPayout[] | null;
   viewerEmail?: string | null;
   contractOwnerEmail?: string | null;
-  onOpenStatement?: (statementId: string) => void;
+  onOpenStatement?: (statementId: string, commissionCodes?: string[]) => void;
   statementPreviewLoadingId?: string | null;
   onRebuildFromStatements?: () => void;
   rebuildingFromStatements?: boolean;
@@ -194,7 +197,7 @@ const isPremiumBaseMismatchPayout = (
   String(payout.differenceReason ?? "").toLowerCase() ===
     "premium_base_mismatch" || /jinou základnu pojistného/i.test(detail);
 
-const payoutAlertMessage = (
+export const payoutAlertMessage = (
   payout: ContractCommissionPayout,
   product: Product | null | undefined
 ): PayoutAlertMessage | null => {
@@ -219,6 +222,26 @@ const payoutAlertMessage = (
     systemDetail: null,
     statementDetail: null,
   };
+
+  const paidAmount = finitePayoutNumber(payout.amount);
+  const expectedAmount = finitePayoutNumber(payout.expectedAmount);
+  if (
+    status === "difference" &&
+    reason === "commission_amount_mismatch" &&
+    product &&
+    isAutoProduct(product) &&
+    isAutoSubsequentCommissionCode(payout.code) &&
+    paidAmount != null &&
+    expectedAmount != null &&
+    paidAmount > expectedAmount
+  ) {
+    return {
+      title: "Vyšší následná provize než očekává výpočet",
+      body: "Částka může zahrnovat také dříve nevyplacenou následnou provizi. Ověřte, zda v předchozích kódech nechybí výplata.",
+      tone: "warning",
+      comparison,
+    };
+  }
 
   if (status === "storno") {
     const stornoAmount = finitePayoutNumber(payout.amount);
@@ -422,14 +445,16 @@ export function ContractCommissionHistory({
   const [showSettledCorrections, setShowSettledCorrections] = useState(false);
   const [selectedDifference, setSelectedDifference] =
     useState<SelectedDifference | null>(null);
+  const investment = isInvestmentProduct(product);
   const allRows = [...(payouts ?? [])].sort(
     (a, b) =>
       payoutSortValue(a) - payoutSortValue(b) ||
       String(a.statementNumber ?? "").localeCompare(String(b.statementNumber ?? ""), "cs") ||
       String(a.code ?? a.title ?? "").localeCompare(String(b.code ?? b.title ?? ""), "cs")
   );
-  const { activePayouts, settledCorrections } =
-    partitionSettledCommissionPayouts(allRows);
+  const { activePayouts, settledCorrections } = investment
+    ? { activePayouts: allRows, settledCorrections: [] }
+    : partitionSettledCommissionPayouts(allRows);
   const rows = [...activePayouts].sort(
     (a, b) =>
       payoutSortValue(a) - payoutSortValue(b) ||
@@ -463,13 +488,18 @@ export function ContractCommissionHistory({
           {canRebuildFromStatements && onRebuildFromStatements && (
             <button
               type="button"
-              onClick={onRebuildFromStatements}
+              onClick={() => {
+                if (investment) setIsExpanded(true);
+                onRebuildFromStatements();
+              }}
               disabled={rebuildingFromStatements}
               className={styles.rebuildButton}
-              title="Znovu složit provize a historii pojistného této smlouvy z uložených výpisů"
+              title={investment ? "Spárovat vyplacené provize ze všech uložených výpisů" : "Znovu složit provize a historii pojistného této smlouvy z uložených výpisů"}
             >
               <RefreshCw size={14} strokeWidth={1.8} aria-hidden="true" className={rebuildingFromStatements ? styles.spinner : undefined} />
-              <span>{rebuildingFromStatements ? "Přepočítávám" : "Přepočítat z výpisů"}</span>
+              <span>{investment
+                ? rebuildingFromStatements ? "Páruji provize" : "Spárovat provize"
+                : rebuildingFromStatements ? "Přepočítávám" : "Přepočítat z výpisů"}</span>
             </button>
           )}
         </div>
@@ -537,14 +567,19 @@ export function ContractCommissionHistory({
                         <tbody>
                           {group.rows.map((payout, index) => {
                             const isExpectedInvestmentLifeA201 = isNeonInvestmentLifeA201Payout({ product, commissionCode: payout.code });
-                            const displayStatus = isExpectedInvestmentLifeA201 && normalizeStatus(payout.status) !== "storno" ? "paid" : payout.status;
+                            const displayStatus = (investment || isExpectedInvestmentLifeA201) && normalizeStatus(payout.status) !== "storno" ? "paid" : payout.status;
                             const isDifference = normalizeStatus(displayStatus) === "difference";
                             const statementId = String(payout.statementId ?? "").trim();
                             const canOpenStatement = Boolean(statementId && onOpenStatement);
                             const isPreviewLoading = statementPreviewLoadingId === statementId;
                             const itemLabel = payoutItemLabel(payout);
+                            const investmentFund = investment && payout.title?.includes(" · ")
+                              ? payout.title.split(" · ", 1)[0] : null;
                             const meaning = describeKooperativaCPayout({ product, policyStartDate, payout, payouts: payouts ?? [] });
-                            const alertMessage = isExpectedInvestmentLifeA201 ? null : payoutAlertMessage(payout, product);
+                            const increaseComponent = isLifeProduct(product) ? lifeIncreaseItemCode(payout.code) : null;
+                            const deferredIncreaseLabel = increaseComponent === "B3601" || increaseComponent === "B4801"
+                              ? lifeIncreaseCommissionLabel(payout.code) : null;
+                            const alertMessage = investment || isExpectedInvestmentLifeA201 ? null : payoutAlertMessage(payout, product);
                             const rowKey = payout.key ?? `${payout.statementId ?? "statement"}-${payout.code ?? payout.title ?? index}`;
                             return (
                               <Fragment key={rowKey}>
@@ -559,8 +594,11 @@ export function ContractCommissionHistory({
                                     </div>
                                   </td>
                                   <td className={styles.itemCell}>
-                                    <span className={styles.itemCode}>{itemLabel}</span>
+                                    <span className={styles.itemCode}>{payout.statementCode ? `${payout.statementCode} → ${itemLabel}` : itemLabel}</span>
+                                    {investmentFund && <span className={styles.itemMeaning}>{investmentFund}</span>}
+                                    {payout.commissionCodeCorrectionNote && <span className={styles.itemMeaning}>{payout.commissionCodeCorrectionNote}</span>}
                                     {meaning && <span className={styles.itemMeaning} title={meaning.explanation}>{meaning.label}</span>}
+                                    {deferredIncreaseLabel && <span className={styles.itemMeaning}>{deferredIncreaseLabel}</span>}
                                   </td>
                                   <td className={styles.amountCell} data-negative={(payout.amount ?? 0) < 0}>{formatMoney(payout.amount ?? 0)}</td>
                                   <td className={styles.statusCell}>
@@ -584,7 +622,7 @@ export function ContractCommissionHistory({
                                     {canOpenStatement ? (
                                       <button
                                         type="button"
-                                        onClick={() => onOpenStatement?.(statementId)}
+                                        onClick={() => onOpenStatement?.(statementId, payout.statementCode ? [payout.statementCode] : payout.code ? [payout.code] : [])}
                                         disabled={isPreviewLoading}
                                         className={styles.previewButton}
                                         title="Zobrazit provizní výpis"
@@ -663,7 +701,7 @@ export function ContractCommissionHistory({
                                     {canOpenStatement && (
                                       <button
                                         type="button"
-                                        onClick={() => onOpenStatement?.(item.statementId)}
+                                        onClick={() => onOpenStatement?.(item.statementId, item.payout.statementCode ? [item.payout.statementCode] : item.payout.code ? [item.payout.code] : [])}
                                         disabled={isPreviewLoading}
                                         className={styles.previewButton}
                                         title={`Zobrazit výpis: ${item.label.toLowerCase()}`}

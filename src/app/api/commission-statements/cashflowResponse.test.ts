@@ -149,9 +149,23 @@ describe("cashflow statement response", () => {
     expect(detail.autoPremiumRows).toHaveLength(1);
   });
 
-  it("rejects unauthenticated requests before reading any statements", async () => {
-    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
-    expect((await GET(request("shape=cashflow"))).status).toBe(401);
+  it("returns separate increase row identities and policy dates without statement client fields", async () => {
+    const contract = "123456789";
+    const row = (id: number, date: string) => [id, contract, "01.01.2024", date, "Synthetic client", "R", "CPP_N_LIFE", "NV101", 1200, "", "", "7", 100, 0];
+    const rows = [row(1, "31.08.2025"), row(2, "30.11.2025")];
+    mocks.records.get("statement_000001")!.html = `<div id="provize"><table>${rows.map(cells => `<tr>${cells.map(cell => `<td>${cell}</td>`).join("")}</tr>`).join("")}</table></div>`;
+    const { items: [statement] } = await read("shape=cashflow");
+    expect(statement.lifeIncreaseRows).toEqual(["31.08.2025", "30.11.2025"].map(validFrom => ({
+      key: expect.stringMatching(/^[a-f0-9]{32}$/), contractNumber: contract, productKey: "neon", source: "own",
+      code: "NV101", amount: 100, validFrom, signedAt: "01.01.2024", baseAmount: 1200,
+    })));
+    expect(new Set(statement.lifeIncreaseRows.map((row: { key: string }) => row.key)).size).toBe(2);
+    expect(JSON.stringify(statement)).not.toContain("Synthetic client");
+  });
+
+  it.each([401, 403])("rejects denied requests (%i) before reading any statements", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await GET(request("shape=cashflow"))).status).toBe(status);
     expect(mocks.reads).not.toHaveBeenCalled();
   });
 
@@ -171,6 +185,31 @@ describe("cashflow statement response", () => {
     const cells = [1, "123456", "16.02.2023", "17.02.2023", "Testovací klient", "Z", productCode, "C102", 7175, "", "", "7", 500, 0];
     mocks.records.get("statement_000001")!.html = `<div id="provize"><table><tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr></table></div>`;
     expect((await read("shape=cashflow")).items[0].paidCommissionKeys).toEqual(expected);
+  });
+
+  it("returns only the matching fields of a paid exact auto installment in the viewer's own statement", async () => {
+    const rows = [
+      ["B105", "CPP_ACPIV", "573,41"],
+      ["APZ103", "CPP_ACPIV", "280,00"],
+      ["B106", "CPP_ACPIV", "-570,00"],
+      ["B105", "CPP_NEON", "200,00"],
+      ["B101-B104", "CPP_ACPIV", "400,00"],
+    ].map(([code, product, amount], index) => {
+      const cells = [index + 1, "123456", "16.03.2023", "01.10.2026", "Testovací klient", "Z", product, code, 7175, "", "", "7", amount, 0];
+      return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
+    });
+    const statement = mocks.records.get("statement_000001")!;
+    statement.html = `<div id="provize"><table>${rows.join("")}</table></div>`;
+    statement.statementDateMs = Date.UTC(2026, 10, 24);
+
+    const compact = (await read("shape=cashflow&email=other%40example.test")).items[0];
+    expect(compact.paidAutoInstallments).toEqual([
+      { contractNumber: "123456", productKey: "cppAuto", source: "own", code: "B105", amount: 573.41, sourceBaseAmount: 7175 },
+      { contractNumber: "123456", productKey: "cppAuto", source: "own", code: "APZ103", amount: 280, sourceBaseAmount: 7175 },
+    ]);
+    expect(statementMonthKey(compact)).toBe("2026-11");
+    expect(JSON.stringify(compact)).not.toContain("Testovací klient");
+    expect(mocks.reads).toHaveBeenLastCalledWith("usersPrivate/advisor@example.test/commissionStatements", expect.any(Array));
   });
 
   it("preserves B36 half aliases and excludes storno in ordinary other-payment rows", async () => {
@@ -220,5 +259,17 @@ describe("cashflow statement response", () => {
     const response = await GET(request("id=statement_000001"));
     expect(response.status).toBe(status);
     expect(await response.json()).toMatchObject({ ok: false, error: expect.any(String) });
+  });
+});
+
+
+describe("cashflow office contribution projection", () => {
+  it("includes the allowance from legacy stored HTML without exposing the payment description", async () => {
+    mocks.records.get("statement_000001")!.html = '<div id="ostatni_platby"><table><tr><td>Mimořádná provize za produkci 200 bodů</td><td>10 000,00 Kč</td></tr></table></div>';
+    const result = (await read("shape=cashflow")).items[0];
+    expect(result.officeContributionTotal).toBe(10000);
+    expect(result.payoutTotal).toBe(2050);
+    expect(result).not.toHaveProperty("html");
+    expect(JSON.stringify(result)).not.toContain("200 bodů");
   });
 });

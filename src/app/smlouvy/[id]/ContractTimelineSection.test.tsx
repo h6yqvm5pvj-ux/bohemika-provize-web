@@ -67,6 +67,19 @@ describe("inline contract family", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("links NEON history to the shared commission section without repeating a calculation", async () => {
+    const onEditEntry = vi.fn();
+    await act(async () => root.render(<ContractTimelineSection entries={[original, amendment]}
+      ownerEmail={owner} viewerEmail={owner} selectedEntryId={amendment.id}
+      commissionOverviewEntryIds={new Set([original.id, amendment.id])}
+      onEditEntry={onEditEntry} onOpenNeonImmediateBreakdown={() => {}} />));
+    const panel = container.querySelector("#contract-entry-change")!;
+    expect(panel.querySelector('a[href="#contract-commissions"]')).not.toBeNull();
+    expect(panel.textContent).toContain("Nové pojistné");
+    expect(panel.textContent).not.toContain("Výpočet provizí");
+    expect([...panel.querySelectorAll("button")].some(button => button.textContent?.includes("Upravit dodatek"))).toBe(true);
+  });
+
   it("opens amendment provenance inline, including a repeated click after closing the same target", async () => {
     await mount();
     await toggle("root", true);
@@ -161,5 +174,21 @@ describe("inline contract family", () => {
     await mount([original, withPdf]);
     expect(container.querySelectorAll("button")).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("family payout overview", () => {
+  it("shows one actual family total while keeping equally sized receipts from different sources separate", async () => {
+    const first = { key: "first", code: "NV101", amount: 100, statementId: "source-one", writtenBy: owner };
+    const second = { ...first, key: "second", statementId: "source-two" };
+    const base = { ...original, contractNumber: "SYNTHETIC", commissionPayouts: [first, second] };
+    const one = { ...amendment, contractNumber: "SYNTHETIC", commissionPayouts: [first] };
+    const two = { ...one, id: "change-two", commissionPayouts: [second] };
+    await mount([base, one, two]);
+    expect(container.textContent).toContain("Skutečně vyplaceno za smlouvu a dodatky: 200,00 Kč");
+    expect(container.querySelector("#contract-entry-root summary")?.textContent).toContain("Vyplaceno 0,00 Kč");
+    expect(container.querySelector("#contract-entry-change summary")?.textContent).toContain("Vyplaceno 100,00 Kč");
+    await mount([base, one, two], null, "other@example.test");
+    expect(container.textContent).toContain("Skutečně vyplaceno za smlouvu a dodatky: 0,00 Kč");
   });
 });

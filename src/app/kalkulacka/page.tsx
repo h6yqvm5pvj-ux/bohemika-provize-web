@@ -1,5 +1,7 @@
 // src/app/kalkulacka/page.tsx
 "use client";
+import { AutoContractChangeDialog } from "@/app/smlouvy/[id]/AutoContractChangeDialog";
+
 
 import { deliverPdfParserReport } from "./pdfParserReportDelivery";
 import { openPreviewWindow } from "@/lib/openPreviewWindow";
@@ -8,7 +10,7 @@ import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 import { useDomexNeuronConfirmation } from "./useDomexNeuronConfirmation";
 
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleHelp, ShieldCheck, Users } from "lucide-react";
 import type { KoopMajetekCoverage } from "../lib/parseKoopMajetekObcanPdf";
@@ -27,8 +29,13 @@ import {
 
 import { productCoefficientValidityError } from "../lib/productFormulas";
 import { calculateCommission } from "../lib/calculateCommission";
-import { calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
-import { canQueueStatementProduct, statementBatchQueueReplacementError, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
+import { FLEXI_RENOVATION_MISSING_BASE_LABEL, calculateFlexiRenovationBase, type FlexiRenovationGuaranteeStatus } from "../lib/flexiRenovation";
+import { canQueueStatementProduct, STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, type StatementBatchQueueAddMessage } from "@/app/lib/statementBatchQueue";
+import {
+  receiveStatementCalculatorDraft,
+  STATEMENT_CALCULATOR_HANDOFF_PARAM,
+  statementCalculatorDraftAccount,
+} from "@/app/lib/statementCalculatorHandoff";
 import {
   calculateNeonDecreaseStornoBase,
   calculateNeonRefreshCommissionBase,
@@ -37,6 +44,9 @@ import {
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_OPTIONS,
+  isRecordOnlyProduct,
+  isInvestmentProduct,
+  supportsDip,
   productInstitutionId as productInstitutionIdFromCatalog,
 } from "@/app/lib/productCatalog";
 import { tipContractGrossBaseForProduct } from "@/app/lib/tipContractCommission";
@@ -55,6 +65,7 @@ import { AppLayout } from "@/components/AppLayout";
 import {
   ADMIN_IMPERSONATION_EVENT,
   readAdminImpersonationState,
+  withDefaultAdminImpersonationHeader,
   resolveUserProfilePatchRequest,
   type AdminImpersonationState,
 } from "@/app/lib/adminImpersonation";
@@ -110,7 +121,6 @@ import {
   type EndorsementDraft,
   toNonNegativeNumber,
 } from "./calculatorHelpers";
-import { matchesOriginalContractReplacementProduct } from "../lib/originalContractReplacement";
 import { calculatorReplacementCommissionMetadata, calculatorReplacementPayload } from "./calculatorReplacementPayload";
 import {
   buildEndorsementSourceEntries,
@@ -124,6 +134,11 @@ import {
 } from "./endorsementCalculation";
 import { useEndorsementPreparation } from "./useEndorsementPreparation";
 import { useContractSave, type ContractSaveStage } from "./useContractSave";
+import { useVehicleOverlapWarning } from "./useVehicleOverlapWarning";
+import { useVehicleOverlapPreview } from "./useVehicleOverlapPreview";
+import { VehicleOverlapCheckError, VehicleOverlapDialog, VehicleOverlapPreviewSummary } from "./VehicleOverlapDialog";
+import { hasVehicleIdentifierForMatch, isVehicleOverlapProduct, vehicleRegistrationForMatch, vehicleVinForMatch,
+  type VehicleOverlapCheck, type VehicleOverlapDraft } from "@/app/lib/vehicleOverlap";
 import { PDF_PRODUCT_DETECTION_TIMEOUT_MS, PDF_DATA_IMPORT_TIMEOUT_MS, withPdfImportTimeout } from "./pdfImportOperation";
 import { importSingleContractPdf, type StatementContractPdfPrefill } from "./calculatorSinglePdfImport";
 import { useContractReview } from "./useContractReview";
@@ -137,7 +152,7 @@ import {
 } from "./calculatorPdfFormValues";
 import { parsedDomexAssistanceValue } from "./calculatorPdfPropertyFields";
 import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
-import { useCalculatorCoefficients } from "./useCalculatorCoefficients";
+import { calculatorCoefficientOptionsForProduct, useCalculatorCoefficients } from "./useCalculatorCoefficients";
 import { useCalculatorProductPicker } from "./useCalculatorProductPicker";
 
 import { CalculatorBulkPdfImportPanel } from "./CalculatorBulkPdfImportPanel";
@@ -211,17 +226,19 @@ import {
 } from "./tipContractSettings";
 import {
   buildPdfParserReport,
+  hasAutomatedPdfImport,
   detectProductFromPdfLazy,
   parseContractPdfByProduct,
   resolveDetectedPdfProduct,
   type ParsedContractPdf,
 } from "./calculatorPdfImport";
 import {
+  findContractByNumber,
   getContractsMutationError,
   requestBlobWithAuth,
   requestContractsMutationWithAuth,
   requestManagerSnapshotWithAuth,
-  resolveRefreshOriginalContractInfo,
+  lookupReplacementOriginal,
   uploadContractPdfAttachmentWithAuth,
   type ContractNumberLiveCheckState,
   type ContractsFindApiResponse,
@@ -300,6 +317,7 @@ const notifyStatementParentContractEvent = ({
   product,
   ownerEmail,
   entryId,
+  vehicleOverlapCheck,
 }: {
   type:
     | typeof STATEMENT_CONTRACT_SAVED_MESSAGE_TYPE
@@ -309,6 +327,7 @@ const notifyStatementParentContractEvent = ({
   product: Product;
   ownerEmail: string;
   entryId: string;
+  vehicleOverlapCheck?: VehicleOverlapCheck | null;
 }) => {
   if (typeof window === "undefined" || window.parent === window) return;
   const params = new URLSearchParams(window.location.search);
@@ -322,6 +341,7 @@ const notifyStatementParentContractEvent = ({
       product,
       ownerEmail,
       entryId,
+      vehicleOverlapCheck,
       savedAtMs: Date.now(),
     },
     window.location.origin
@@ -356,6 +376,8 @@ const notifyStatementParentCppA101QueueAdd = ({
   pdfFile,
   isRefresh,
   refreshOriginalContractNumber,
+  refreshOriginalMissingInSystem,
+  contractEntry,
 }: Omit<StatementBatchQueueAddMessage, "type">) => {
   if (typeof window === "undefined" || window.parent === window) return;
   const params = new URLSearchParams(window.location.search);
@@ -376,6 +398,8 @@ const notifyStatementParentCppA101QueueAdd = ({
       pdfFile,
       isRefresh,
       refreshOriginalContractNumber,
+      refreshOriginalMissingInSystem,
+      contractEntry,
     },
     window.location.origin
   );
@@ -446,6 +470,8 @@ export default function CalculatorPage() {
   const [user, setUser] = useState<User | null>(null);
 
   const [product, setProduct] = useState<Product>("neon");
+  const [coefficientSelection, setCoefficientSelection] =
+    useState<{ product: Product; view: NeonCoefficientView } | null>(null);
   const [hasSelectedProduct, setHasSelectedProduct] = useState(false);
   const [position, setPosition] = useState<Position>("manazer7");
   const [mode, setMode] = useState<CommissionMode>("accelerated");
@@ -493,20 +519,23 @@ export default function CalculatorPage() {
   const foundTipContractLookupEmail =
     tipContractLookupState.status === "found" ? tipContractLookupState.email : null;
 
-  const [clientName, setClientName] = useState<string>("");
+  const [enteredClientName, setClientName] = useState<string>("");
+  const [neonOriginalClient, setNeonOriginalClient] = useState<{ lookupKey: string; name: string } | null>(null);
   const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
   const [statementClientNamePrefillActive, setStatementClientNamePrefillActive] =
     useState(false);
   const [contractSignedDate, setContractSignedDate] = useState<string>("");
-  const [policyStartDate, setPolicyStartDate] = useState<string>("");
+  const [enteredPolicyStartDate, setPolicyStartDate] = useState<string>("");
+  const policyStartDate = isInvestmentProduct(product) ? contractSignedDate : enteredPolicyStartDate;
   const [policyEndDate, setPolicyEndDate] = useState<string>("");
   const [policyTermEndDate, setPolicyTermEndDate] = useState("");
   const [automaticRenewal, setAutomaticRenewal] = useState<boolean | null>(null);
   const [premiumIndexationEnabled, setPremiumIndexationEnabled] = useState<boolean | null>(null);
   const { confirmDomexNeuron, domexNeuronConfirmation } = useDomexNeuronConfirmation();
   const [pensionTargetAge, setPensionTargetAge] = useState<number | null>(null);
+  const [isDip, setIsDip] = useState(false);
   const [enteredStornoDate, setStornoDate] = useState<string>("");
-  const stornoDate = product === "conseqzenit" ? "" : enteredStornoDate;
+  const stornoDate = product === "conseqzenit" || isInvestmentProduct(product) ? "" : enteredStornoDate;
   const [contractNumber, setContractNumber] = useState<string>("");
   const [autoCarMake, setAutoCarMake] = useState<string>("");
   const [autoCarPlate, setAutoCarPlate] = useState<string>("");
@@ -593,6 +622,7 @@ export default function CalculatorPage() {
   const [refreshOriginalOpen, setRefreshOriginalOpen] = useState(false);
   const [renovationOriginalPremiumText, setRenovationOriginalPremiumText] = useState("");
   const [renovationIncreaseText, setRenovationIncreaseText] = useState("");
+  const [renovationWithoutBase, setRenovationWithoutBase] = useState(false);
   const [renovationGuaranteeStatus, setRenovationGuaranteeStatus] = useState<FlexiRenovationGuaranteeStatus>("unknown");
   const pdfFormSetters = useMemo<CalculatorPdfFormSetters>(() => ({
     autoCarMake: setAutoCarMake,
@@ -692,14 +722,16 @@ export default function CalculatorPage() {
   }), []);
 
   const flexiRenovationActive = product === "flexi" && refreshOriginalOpen;
+  const flexiWithoutBase = flexiRenovationActive && renovationWithoutBase &&
+    calculatorViewMode === "addContract" && !tipsterModeEnabled && !tipContractConfig;
   const flexiRenovationBase = useMemo(() => {
-    if (!flexiRenovationActive || !renovationOriginalPremiumText.trim() || !renovationIncreaseText.trim()) return null;
+    if (!flexiRenovationActive || flexiWithoutBase || !renovationOriginalPremiumText.trim() || !renovationIncreaseText.trim()) return null;
     return calculateFlexiRenovationBase({
       originalMonthlyPremium: Number(renovationOriginalPremiumText),
       premiumIncreaseMonthly: Number(renovationIncreaseText),
       guaranteeStatus: renovationGuaranteeStatus,
     });
-  }, [flexiRenovationActive, renovationOriginalPremiumText, renovationIncreaseText, renovationGuaranteeStatus]);
+  }, [flexiRenovationActive, flexiWithoutBase, renovationOriginalPremiumText, renovationIncreaseText, renovationGuaranteeStatus]);
   const amountText = flexiRenovationActive
     ? flexiRenovationBase ? String(flexiRenovationBase.newMonthlyPremium) : regularAmountText
     : regularAmountText;
@@ -728,6 +760,7 @@ export default function CalculatorPage() {
   }, [user?.uid]);
   const statementPrefillAppliedRef = useRef(false);
   const statementContractPrefillRef = useRef<StatementContractPdfPrefill | null>(null);
+  const [statementDraft, setStatementDraft] = useState<URLSearchParams | null>(null);
   const [statementEmbedMode, setStatementEmbedMode] = useState(false);
   const [statementEmbedParentAvailable, setStatementEmbedParentAvailable] = useState(false);
   const [statementCppA101QueueEligible, setStatementCppA101QueueEligible] = useState(false);
@@ -765,9 +798,11 @@ export default function CalculatorPage() {
   } = useCalculatorProductPicker({
     product: hasSelectedProduct ? product : null,
     onProductSelect: (nextProduct) => {
+      if (nextProduct !== product) setCoefficientSelection(null);
       if (nextProduct !== product && (product === "flexi" || nextProduct === "flexi")) {
         setRefreshOriginalOpen(false);
         setRefreshOriginalContractNumber("");
+        setRenovationWithoutBase(false);
         setRenovationOriginalPremiumText("");
         setRenovationIncreaseText("");
         setRenovationGuaranteeStatus("unknown");
@@ -781,10 +816,12 @@ export default function CalculatorPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const params = new URLSearchParams(window.location.search);
-    const isStatementPrefill = params.get("prefill") === "commission-statement";
+    const locationParams = new URLSearchParams(window.location.search);
+    const isStatementPrefill = locationParams.get("prefill") === "commission-statement";
     setStatementEmbedMode(isStatementPrefill);
     setStatementEmbedParentAvailable(isStatementPrefill && window.parent !== window);
+    if (isStatementPrefill && locationParams.has(STATEMENT_CALCULATOR_HANDOFF_PARAM) && !statementDraft) return;
+    const params = statementDraft ?? locationParams;
     setStatementCppA101QueueEligible(
       isStatementPrefill && params.get("cppA101QueueEligible") === "1"
     );
@@ -866,7 +903,21 @@ export default function CalculatorPage() {
     if (contractNumberParam) setContractNumber(contractNumberParam);
     if (isIsoDay(contractSignedDateParam)) setContractSignedDate(contractSignedDateParam);
     if (isIsoDay(policyStartDateParam)) setPolicyStartDate(policyStartDateParam);
-  }, [setProductPickerSectionForProduct, setProductSearchText]);
+  }, [setProductPickerSectionForProduct, setProductSearchText, statementDraft]);
+
+  useEffect(() => {
+    if (!user?.uid || statementPrefillAppliedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const handoffId = params.get(STATEMENT_CALCULATOR_HANDOFF_PARAM);
+    if (!handoffId || params.get("prefill") !== "commission-statement") return;
+    return receiveStatementCalculatorDraft({
+      id: handoffId,
+      getAccount: () => statementCalculatorDraftAccount(auth.currentUser?.uid),
+    }, (draft) => {
+      if (draft) setStatementDraft(draft);
+      else setValidationError("Údaje z výpisu se nepodařilo načíst. Otevři formulář z výpisu znovu.");
+    });
+  }, [user?.uid]);
 
   const [items, setItems] = useState<CommissionResultItemDTO[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -887,6 +938,7 @@ export default function CalculatorPage() {
     entries: { id: string; ownerEmail: string; path: string; contractNumber: string | null }[];
   } | null>(null);
   const [endorsementDraft, setEndorsementDraft] = useState<EndorsementDraft | null>(null);
+  const [autoChangeOpen, setAutoChangeOpen] = useState(false);
   const [endorsementDraftModalOpen, setEndorsementDraftModalOpen] = useState(false);
   const [endorsementWorkflowActive, setEndorsementWorkflowActive] = useState(false);
   const [endorsementDurationManualOverride, setEndorsementDurationManualOverride] =
@@ -915,6 +967,7 @@ export default function CalculatorPage() {
 
   const normalizedUserEmail = normalizeEmailValue(user?.email);
   const impersonatedUserEmail = normalizeEmailValue(adminImpersonation?.email);
+  const vehicleOverlap = useVehicleOverlapWarning(user, impersonatedUserEmail);
   const activeSaveBaseEmail = impersonatedUserEmail || normalizedUserEmail;
   const activeProfileEmail = activeSaveBaseEmail;
   const canOverrideOwnerOnSave =
@@ -1081,6 +1134,9 @@ export default function CalculatorPage() {
     if (refreshOriginalLookup.status === "checking") {
       return "Po dohledání původní smlouvy přepočítám Refresh základnu pro provizi.";
     }
+    if (refreshOriginalLookup.status === "foundOutsideSelectedOwner") {
+      return "Refresh základnu vypočítá server při uložení podle dohledané původní smlouvy.";
+    }
     if (refreshOriginalLookup.status === "found" && !refreshOriginalLookup.original) {
       return "Původní smlouva je nalezená, ale chybí u ní pojistné nebo datum pro výpočet Refresh základny.";
     }
@@ -1136,6 +1192,13 @@ export default function CalculatorPage() {
   ]);
   const originalReplacementWorkflowActive =
     supportsOriginalContractReplacement(product) && refreshOriginalOpen;
+  const neonLookupNumber = contractNumber.replace(/\s+/g, "");
+  const neonClientLookupKey = user && effectiveSaveOwnerEmail && hasSelectedProduct && product === "neon" &&
+    calculatorViewMode === "addContract" && !originalReplacementWorkflowActive && !tipsterModeEnabled &&
+    !pdfImporting && !pdfClientNameLoaded && !statementClientNamePrefillActive && neonLookupNumber.length >= 3
+    ? JSON.stringify([user.uid, impersonatedUserEmail, effectiveSaveOwnerEmail, neonLookupNumber])
+    : null;
+  const clientName = enteredClientName || (neonOriginalClient?.lookupKey === neonClientLookupKey ? neonOriginalClient.name : "");
   useEffect(() => {
     if (!originalReplacementWorkflowActive) return;
     setEndorsementDraft(null);
@@ -1197,18 +1260,7 @@ export default function CalculatorPage() {
   const isLifeProduct = useMemo(() => LIFE_PRODUCTS.includes(product), [product]);
   const {
     contractSignedDateForNeon,
-    isNeonHistoricalBySignedDate,
-    isCppAutoHistoricalBySignedDate,
-    isAllianzAutoHistoricalBySignedDate,
-    isCsobAutoHistoricalBySignedDate,
-    isUniqaAutoHistoricalBySignedDate,
-    isUniqaAutoEarlyHistoricalBySignedDate,
-    isUniqaFlotilaHistoricalBySignedDate,
-    isPillowAutoHistoricalBySignedDate,
-    isKooperativaAutoHistoricalBySignedDate,
-    isMaxEfekt5BySignedDate,
-    isDomexEarlyHistoricalBySignedDate,
-    isDomexHistoricalBySignedDate,
+    coefficientViewBySignedDate,
     isMaxEfekt5InCoefModal,
     isMaxEfekt7InCoefModal,
     isDomexHistoricalInCoefModal,
@@ -1226,6 +1278,7 @@ export default function CalculatorPage() {
     coefList,
     coefExplanation,
     autoTermsPreviewUrl,
+    secureTermsDocumentId,
     showAutoTermsPreview,
     neonPeriod,
     neonTermsPreviewUrl,
@@ -1236,6 +1289,14 @@ export default function CalculatorPage() {
     maxCizinKomplexVariant, neonCoefficientView,
     documentPosition: timelineMatchedPosition?.position ?? position,
   });
+  const coefficientOptions = useMemo(() => calculatorCoefficientOptionsForProduct(product), [product]);
+  const selectedCoefficientOption = calculatorViewMode === "commissionOnly" && coefficientSelection?.product === product
+    ? coefficientOptions.find((option) => option.value === coefficientSelection.view)
+    : undefined;
+  const activeCoefficientView = selectedCoefficientOption?.value ?? coefficientViewBySignedDate;
+  // Use the selected period's date only as an input to the commission simulation.
+  const coefficientDateForCalculation = selectedCoefficientOption?.date ?? contractSignedDateForNeon;
+  const isNeonHistoricalForCalculation = product === "neon" && activeCoefficientView === "historical";
   const canImportFromPdf = useMemo(
     () => !tipsterModeEnabled,
     [tipsterModeEnabled]
@@ -1986,6 +2047,7 @@ export default function CalculatorPage() {
   useEffect(() => {
     const trimmedContractNumber = contractNumber.trim();
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user?.email);
+    setNeonOriginalClient((current) => current?.lookupKey === neonClientLookupKey ? current : null);
     if (!user || !trimmedContractNumber || trimmedContractNumber.length < 3 || !targetOwnerEmail) {
       setContractNumberLiveCheck({ status: "idle" });
       setEndorsementPreviewSource(null);
@@ -1993,21 +2055,20 @@ export default function CalculatorPage() {
     }
 
     const checkMode = endorsementWorkflowActive ? "endorsement" : "newContract";
-    let canceled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setContractNumberLiveCheck({ status: "checking" });
       try {
-        const params = new URLSearchParams({
-          scope: isSavingForSubordinate ? "team" : "my",
-          q: trimmedContractNumber,
+        const scope = isSavingForSubordinate ? "team" : "my";
+        const payload = await findContractByNumber({
+          user, scope, contractNumber: neonClientLookupKey ? neonLookupNumber : trimmedContractNumber,
+          signal: controller.signal,
+          headers: neonClientLookupKey ? withDefaultAdminImpersonationHeader(undefined, impersonatedUserEmail) : undefined,
         });
-        const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
-          user,
-          `/api/contracts/find?${params.toString()}`
-        );
-        if (canceled) return;
+        if (controller.signal.aborted) return;
 
-        if (payload.ok === false) {
+        if (!payload || payload.ok === false) {
+          setNeonOriginalClient(null);
           setEndorsementPreviewSource(null);
           setContractNumberLiveCheck({ status: "error" });
           return;
@@ -2016,6 +2077,13 @@ export default function CalculatorPage() {
         const ownerContracts = (Array.isArray(payload.contracts) ? payload.contracts : []).filter(
           (entry) => contractOwnerEmail(entry) === targetOwnerEmail
         );
+        if (neonClientLookupKey) {
+          const originals = ownerContracts.filter((entry) => entry.id && entry.productKey === "neon" &&
+            (entry.entryType == null || entry.entryType === "contract") &&
+            entry.contractNumber?.replace(/\s+/g, "") === neonLookupNumber);
+          const name = originals.length === 1 && typeof originals[0].clientName === "string" ? originals[0].clientName.trim() : "";
+          setNeonOriginalClient(name ? { lookupKey: neonClientLookupKey, name } : null);
+        }
 
         if (checkMode === "endorsement") {
           const sourceContracts = buildEndorsementSourceEntries(ownerContracts, product);
@@ -2051,29 +2119,66 @@ export default function CalculatorPage() {
         }
         setEndorsementPreviewSource(null);
         setContractNumberLiveCheck({ status: "ok" });
-      } catch (err) {
-        console.warn("Live kontrola duplicitního čísla smlouvy selhala", err);
-        if (!canceled) {
-          setEndorsementPreviewSource(null);
-          setContractNumberLiveCheck({ status: "error" });
-        }
+      } catch {
+        if (controller.signal.aborted) return;
+        console.warn("Live kontrola duplicitního čísla smlouvy selhala.");
+        setNeonOriginalClient(null);
+        setEndorsementPreviewSource(null);
+        setContractNumberLiveCheck({ status: "error" });
       }
     }, 350);
 
     return () => {
-      canceled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [
     contractNumber,
     effectiveSaveOwnerEmail,
     endorsementWorkflowActive,
+    impersonatedUserEmail,
     isSavingForSubordinate,
+    neonClientLookupKey,
+    neonLookupNumber,
     originalReplacementWorkflowActive,
     product,
     user,
   ]);
 
+  const applyFlexiPdfOriginalLookup = useEffectEvent((lookup: RefreshOriginalLookupState, number: string) => {
+    if (product !== "flexi" || number !== refreshOriginalPdfLookupNumber ||
+        number !== refreshOriginalContractNumber.trim() || calculatorViewMode !== "addContract" ||
+        !refreshOriginalOpen || renovationWithoutBase) return;
+
+    const originalMonthlyPremium = lookup.original?.premiumAmount;
+    const newMonthlyPremium = parseNumber(regularAmountText);
+    const base = originalMonthlyPremium == null || newMonthlyPremium < originalMonthlyPremium
+      ? null
+      : calculateFlexiRenovationBase({
+          originalMonthlyPremium,
+          premiumIncreaseMonthly: roundToCents(newMonthlyPremium - originalMonthlyPremium),
+          guaranteeStatus: renovationGuaranteeStatus,
+        });
+
+    if (base) {
+      setRenovationOriginalPremiumText(String(base.originalMonthlyPremium));
+      setRenovationIncreaseText(String(base.premiumIncreaseMonthly));
+      setPdfImportStatus("Renovace FLEXI načtena. Doplněno původní pojistné a navýšení. Ověř stav ručení.");
+      return;
+    }
+
+    setRenovationOriginalPremiumText("");
+    setRenovationIncreaseText("");
+    setRenovationWithoutBase(true);
+    setRefreshOriginalPdfLookupNumber(null);
+    const reason = lookup.status === "notFound" ? "Původní smlouva nebyla nalezena."
+      : lookup.status === "error" ? "Původní smlouvu se nepodařilo ověřit."
+      : "Pro výpočet chybí použitelné údaje o pojistném.";
+    setPdfImportStatus(`Renovace FLEXI načtena. ${reason}`);
+  });
+
+  const flexiRenovationLookupStartDate = product === "flexi" ? policyStartDate : undefined;
+  const flexiRenovationImportedPdf = product === "flexi" ? importedContractPdfFile : null;
   useEffect(() => {
     const trimmedOriginalNumber = refreshOriginalContractNumber.trim();
     const targetOwnerEmail = effectiveSaveOwnerEmail || normalizeEmailValue(user?.email);
@@ -2081,6 +2186,7 @@ export default function CalculatorPage() {
       !user ||
       !supportsOriginalContractReplacement(product) ||
       !refreshOriginalOpen ||
+      flexiWithoutBase ||
       refreshOriginalMissingInSystem ||
       !trimmedOriginalNumber ||
       trimmedOriginalNumber.length < 3 ||
@@ -2097,6 +2203,7 @@ export default function CalculatorPage() {
 
     let cancelled = false;
     let progressInterval: number | null = null;
+    const controller = new AbortController();
 
     const timer = window.setTimeout(async () => {
       setRefreshOriginalLookup({
@@ -2114,76 +2221,27 @@ export default function CalculatorPage() {
       }, 160);
 
       try {
-        const params = new URLSearchParams({
+        const lookup = await lookupReplacementOriginal({
+          user, product, contractNumber: trimmedOriginalNumber, ownerEmail: targetOwnerEmail,
           scope: isSavingForSubordinate ? "team" : "my",
-          q: trimmedOriginalNumber,
+          signal: controller.signal,
+          flexiRenovationStartDate: flexiRenovationLookupStartDate,
         });
-        const payload = await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
-          user,
-          `/api/contracts/find?${params.toString()}`
-        );
-        if (cancelled) return;
-
-        if (payload.ok === false) {
-          setRefreshOriginalLookup({
-            status: "error",
-            progress: 100,
-            adviserName: null,
-            original: null,
-          });
-          return;
-        }
-
-        const matchingContracts = (Array.isArray(payload.contracts) ? payload.contracts : []).filter(
-          (item) => {
-            const ownerEmail =
-              normalizeEmailValue(item.userEmail) || normalizeEmailValue(item.adviserEmail);
-            return ownerEmail === targetOwnerEmail;
-          }
-        );
-
-        if (matchingContracts.length === 0) {
-          setRefreshOriginalLookup({
-            status: "notFound",
-            progress: 100,
-            adviserName: null,
-            original: null,
-          });
-          return;
-        }
-
-        const productMatch =
-          matchingContracts.find((item) => matchesOriginalContractReplacementProduct(item.productKey, product)) ?? matchingContracts[0];
-        const adviserName =
-          typeof productMatch.adviserName === "string" && productMatch.adviserName.trim()
-            ? productMatch.adviserName.trim()
-            : null;
-
-        if (!matchesOriginalContractReplacementProduct(productMatch.productKey, product)) {
-          setRefreshOriginalLookup({
-            status: "wrongProduct",
-            progress: 100,
-            adviserName,
-            original: null,
-          });
-          return;
-        }
-
-        setRefreshOriginalLookup({
-          status: "found",
-          progress: 100,
-          adviserName,
-          original: resolveRefreshOriginalContractInfo(productMatch),
-        });
-      } catch (err) {
-        console.warn("Ověření původní refresh smlouvy selhalo", err);
         if (!cancelled) {
-          setRefreshOriginalLookup({
+          setRefreshOriginalLookup(lookup);
+          if (product === "flexi") applyFlexiPdfOriginalLookup(lookup, trimmedOriginalNumber);
+        }
+      } catch {
+        if (!cancelled) {
+          console.warn("Ověření původní smlouvy selhalo.");
+          const lookup: RefreshOriginalLookupState = {
             status: "error",
             progress: 100,
             adviserName: null,
             original: null,
-          });
+          };
+          setRefreshOriginalLookup(lookup);
+          if (product === "flexi") applyFlexiPdfOriginalLookup(lookup, trimmedOriginalNumber);
         }
       } finally {
         if (progressInterval != null) {
@@ -2194,6 +2252,7 @@ export default function CalculatorPage() {
 
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
       if (progressInterval != null) {
         window.clearInterval(progressInterval);
@@ -2204,6 +2263,9 @@ export default function CalculatorPage() {
     product,
     refreshOriginalOpen,
     refreshOriginalMissingInSystem,
+    flexiWithoutBase,
+    flexiRenovationLookupStartDate,
+    flexiRenovationImportedPdf,
     refreshOriginalContractNumber,
     effectiveSaveOwnerEmail,
     isSavingForSubordinate,
@@ -2237,6 +2299,7 @@ export default function CalculatorPage() {
 
     if (
       refreshOriginalLookup.status === "found" ||
+      refreshOriginalLookup.status === "foundOutsideSelectedOwner" ||
       refreshOriginalLookup.status === "wrongProduct" ||
       refreshOriginalLookup.status === "error"
     ) {
@@ -2617,6 +2680,7 @@ export default function CalculatorPage() {
         setProductPickerSectionForProduct,
         setClientSuggestionsOpen,
         setRefreshOriginalOpen,
+        setRenovationWithoutBase,
         setRefreshOriginalContractNumber,
         setRefreshOriginalMissingInSystem,
         setRefreshOriginalPdfLookupNumber,
@@ -2707,12 +2771,12 @@ export default function CalculatorPage() {
 
     applyCalculatorPdfFormValues(mapReviewPdfFormValues(reviewProduct, parsed), pdfFormSetters);
 
+    const flexiRenovation = reviewProduct === "flexi" && draft.isReplacement;
     setRefreshOriginalOpen(draft.isReplacement);
-    setRefreshOriginalContractNumber(
-      draft.isReplacement ? draft.replacementNumber : ""
-    );
+    setRefreshOriginalContractNumber(draft.isReplacement ? draft.replacementNumber : "");
     setRefreshOriginalMissingInSystem(false);
-    setRefreshOriginalPdfLookupNumber(null);
+    setRenovationWithoutBase(flexiRenovation && !draft.replacementNumber);
+    setRefreshOriginalPdfLookupNumber(flexiRenovation ? draft.replacementNumber || null : null);
     setRefreshOriginalLookup({
       status: "idle",
       progress: 0,
@@ -2815,6 +2879,7 @@ export default function CalculatorPage() {
     setValidationError(null);
 
     const batchContractNumbers = new Set<string>();
+    const savedVehicleIds: string[] = [];
     let savedCount = 0;
     let reviewCount = 0;
     let skippedCount = 0;
@@ -2945,6 +3010,11 @@ export default function CalculatorPage() {
             continue;
           }
 
+          if (parsed.isEndorsement === true) {
+            finishRow(index, { status: "skipped", message: "Žádost o změnu nahraj samostatně, aby se připravila jako dodatek k původní smlouvě." }, "skipped");
+            continue;
+          }
+
           notifyPdfParserFailure(file, importProduct, parsed, batchOcrActive, batchController.signal,
             () => !batchController.signal.aborted);
 
@@ -2953,8 +3023,9 @@ export default function CalculatorPage() {
             "refreshOriginalContractNumber"
           );
           const isReplacementPdf = parsed.isRefresh === true || Boolean(replacementNumber);
+          const isFlexiRenovationPdf = importProduct === "flexi" && isReplacementPdf;
           let replacementOriginalMissingInSystem = false;
-          if (isReplacementPdf && !replacementNumber) {
+          if (isReplacementPdf && !isFlexiRenovationPdf && !replacementNumber) {
             finishRow(
               index,
               {
@@ -3008,8 +3079,8 @@ export default function CalculatorPage() {
           if (!clientNameFromPdf) missing.push("klienta");
           if (!signedDateIso) missing.push("datum sjednání");
           if (!policyStartDateIso) missing.push("datum počátku");
-          if (parsedAmount == null || parsedAmount <= 0) missing.push("pojistné");
-          if (!parsedFrequency) missing.push("frekvenci");
+          if (!isRecordOnlyProduct(importProduct) && (parsedAmount == null || parsedAmount <= 0)) missing.push("pojistné");
+          if (!isRecordOnlyProduct(importProduct) && !parsedFrequency) missing.push("frekvenci");
           if (importProduct === "domexneuron" && parsed.automaticRenewal === false && !policyEndDateIso) missing.push("datum konce");
 
           if (missing.length > 0) {
@@ -3024,9 +3095,9 @@ export default function CalculatorPage() {
             continue;
           }
 
-          const frequencyForSave = parsedFrequency;
-          const amountForSave = parsedAmount;
-          if (!frequencyForSave || amountForSave == null || amountForSave <= 0) {
+          const frequencyForSave = isRecordOnlyProduct(importProduct) ? "annual" : parsedFrequency;
+          const amountForSave = isRecordOnlyProduct(importProduct) ? 0 : parsedAmount;
+          if (!frequencyForSave || amountForSave == null || (!isRecordOnlyProduct(importProduct) && amountForSave <= 0)) {
             finishRow(
               index,
               {
@@ -3063,8 +3134,8 @@ export default function CalculatorPage() {
             productDetected,
             detectionConfidence,
           });
-          if (importProduct === "flexi" && isReplacementPdf) {
-            rowWarnings.push("Pro renovaci FLEXI doplň pojistné z původní smlouvy; navýšení se dopočítá automaticky.");
+          if (isFlexiRenovationPdf) {
+            rowWarnings.push("Renovaci FLEXI otevři ke kontrole pojistného a ručení.");
           }
           if (dateErrors.length > 0) {
             finishRow(
@@ -3183,35 +3254,17 @@ export default function CalculatorPage() {
             }
           }
 
-          if (isReplacementPdf && replacementNumber) {
+          if (isReplacementPdf && replacementNumber && !isFlexiRenovationPdf) {
             try {
-              const originalFindParams = new URLSearchParams({
-                scope: isSavingForSubordinate ? "team" : "my",
-                q: replacementNumber,
+              const originalCheck = await fetchAuthedJsonOrThrow<{
+                ok: true;
+                exists: boolean;
+              }>(user, "/api/contracts/original-exists", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contractNumber: replacementNumber, productKey: importProduct }),
               });
-              const originalFindPayload =
-                await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(
-                  user,
-                  `/api/contracts/find?${originalFindParams.toString()}`,
-                  { method: "GET" }
-                );
-              const normalizedReplacementNumber =
-                normalizeSearchTextValue(replacementNumber);
-              const originalFound = (Array.isArray(originalFindPayload.contracts)
-                ? originalFindPayload.contracts
-                : []
-              ).some((entry) => {
-                if (contractOwnerEmail(entry) !== targetOwnerEmail) return false;
-                const entryContractNumber =
-                  typeof entry.contractNumber === "string"
-                    ? entry.contractNumber
-                    : "";
-                return (
-                  normalizeSearchTextValue(entryContractNumber) ===
-                  normalizedReplacementNumber
-                );
-              });
-              if (!originalFound) {
+              if (!originalCheck.exists) {
                 replacementOriginalMissingInSystem = true;
               }
             } catch (originalLookupErr) {
@@ -3654,6 +3707,10 @@ export default function CalculatorPage() {
           if (!createdEntryId) {
             throw new Error("Server potvrdil uložení bez ID smlouvy.");
           }
+          const checksVehicle = isVehicleOverlapProduct(importProduct) && hasVehicleIdentifierForMatch(contractEntryPayload);
+          if (checksVehicle) {
+            savedVehicleIds.push(createdEntryId);
+          }
 
           let rowStatus: AutoBulkImportRowStatus = "success";
           const savedLabel = replacementOriginalMissingInSystem
@@ -3688,11 +3745,10 @@ export default function CalculatorPage() {
             ownerEmail: targetOwnerEmail,
             entryId: createdEntryId,
           });
-          setSaveSuccessFlash({
-            contractNumber: contractNumberFromPdf,
-            clientName: clientNameFromPdf,
-          });
-          setContractSaveCelebrationKey((prev) => prev + 1);
+          if (!checksVehicle) {
+            setSaveSuccessFlash({ contractNumber: contractNumberFromPdf, clientName: clientNameFromPdf });
+            setContractSaveCelebrationKey((prev) => prev + 1);
+          }
           finishRow(
             index,
             {
@@ -3721,10 +3777,14 @@ export default function CalculatorPage() {
         }
       }
     } finally {
-      setAutoBulkImporting(false);
       if (savedCount > 0) {
         invalidateContractsCaches();
       }
+      if (savedVehicleIds.length > 0) {
+        setAutoBulkImportStatus("Smlouvy jsou uložené. Dokončuji kontrolu SPZ a VIN…");
+        await vehicleOverlap.check(targetOwnerEmail, savedVehicleIds);
+      }
+      setAutoBulkImporting(false);
       setAutoBulkImportStatus(
         `Hotovo: uloženo ${savedCount}, ke kontrole ${reviewCount}, přeskočeno ${skippedCount}, chyby ${failedCount}.`
       );
@@ -3744,6 +3804,7 @@ export default function CalculatorPage() {
 
     if (
       !hasSelectedProduct ||
+      (flexiRenovationActive && !flexiRenovationBase) ||
       val <= 0 ||
       !positionForCalc ||
       (product === "maximaMaxEfekt" && durationYears == null)
@@ -3758,13 +3819,14 @@ export default function CalculatorPage() {
       productKey: product,
       position: positionForCalc,
       commissionMode: calculationMode,
-      contractSignedDateIso: contractSignedDateForNeon,
+      contractSignedDateIso: coefficientDateForCalculation,
       inputAmount:
         flexiRenovationActive
           ? flexiRenovationBase?.calculationMonthlyPremium ?? 0
           : product === "neon"
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? val
           : val,
+      neonRefreshCareAnnualPremium: product === "neon" && refreshOriginalOpen ? val * 12 : null,
       frequencyRaw: frequency,
       durationYears,
       durationMonths,
@@ -3806,12 +3868,13 @@ export default function CalculatorPage() {
     neonRefreshCommissionBase,
     flexiRenovationActive,
     flexiRenovationBase,
-    contractSignedDateForNeon,
+    coefficientDateForCalculation,
     maxCizinKomplexVariant,
   ]);
 
   useEffect(() => {
     if (product !== "flexi") {
+      setRenovationWithoutBase(false);
       setRenovationOriginalPremiumText("");
       setRenovationIncreaseText("");
       setRenovationGuaranteeStatus("unknown");
@@ -3839,6 +3902,15 @@ export default function CalculatorPage() {
       setPolicyTermEndDate("");
     }
     if (product !== "conseqzenit") setPensionTargetAge(null);
+    setIsDip(false);
+    if (isRecordOnlyProduct(product)) {
+      setAmountText("");
+      setTipContractConfig(null);
+      setEndorsementDraft(null);
+      setEndorsementWorkflowActive(false);
+      setEndorsementPreviewSource(null);
+      setEndorsementDraftModalOpen(false);
+    }
   }, [product]);
 
   useEffect(() => {
@@ -3849,6 +3921,7 @@ export default function CalculatorPage() {
     statementContractPrefillRef.current = null;
     setStatementPremiumSource(null);
     setAmountText("");
+    setRenovationWithoutBase(false);
     setRenovationOriginalPremiumText("");
     setRenovationIncreaseText("");
     setRenovationGuaranteeStatus("unknown");
@@ -3873,6 +3946,7 @@ export default function CalculatorPage() {
     setStornoDate("");
     setPensionTargetAge(null);
     setContractNumber("");
+    setIsDip(false);
     setContractNumberLiveCheck({ status: "idle" });
 
     setAutoCarMake("");
@@ -4218,12 +4292,27 @@ export default function CalculatorPage() {
     setEndorsementDraftModalOpen,
     setDurationYears,
     setDurationMonths,
+    setClientName,
+    useLiveNeonClientName: Boolean(neonClientLookupKey),
+    impersonatedUserEmail,
     setValidationError,
     setSaveMessage,
     setMissingFields,
   });
 
   const saveContractEntry = useContractSave();
+  const shouldPreviewVehicle = calculatorViewMode !== "commissionOnly" && hasSelectedProduct &&
+    !pdfImporting && !autoBulkImporting && !tipsterModeEnabled && !endorsementDraft && !endorsementWorkflowActive && !stornoDate.trim();
+  const vehicleDraft = useMemo<VehicleOverlapDraft | null>(() => {
+    if (!shouldPreviewVehicle || !effectiveSaveOwnerEmail || !isVehicleOverlapProduct(product)) return null;
+    const plate = vehicleRegistrationForMatch(autoCarPlate) ?? "";
+    const vin = vehicleVinForMatch(autoCarVin) ?? "";
+    if (!plate && !vin) return null;
+    return { ownerEmail: effectiveSaveOwnerEmail, productKey: product, plate, vin,
+      contractNumber: contractNumber.trim(), policyStart: policyStartDate.trim(), policyEnd: policyEndDate.trim() };
+  }, [shouldPreviewVehicle, effectiveSaveOwnerEmail, product, autoCarPlate, autoCarVin, contractNumber, policyStartDate, policyEndDate]);
+  const vehiclePreview = useVehicleOverlapPreview(user, impersonatedUserEmail, vehicleDraft);
+  const vehiclePreviewSummary = vehiclePreview.preview && <VehicleOverlapPreviewSummary preview={vehiclePreview.preview} />;
 
   const reviewContractBeforeSave = () => {
     const reviewYears = endorsementDraft ? endorsementDraft.durationYears : durationYears;
@@ -4235,11 +4324,16 @@ export default function CalculatorPage() {
       { label: "Produkt", value: productLabel(product) },
       { label: "Číslo smlouvy", value: contractNumber.trim() },
       { label: "Typ záznamu", value: isInheritedContractMode ? "Převzatá smlouva" : endorsementDraft ? "Dodatek" : originalReplacementWorkflowActive ? originalReplacementLabel(product) : "Nová smlouva" },
-      { label: amountLabel, value: formatMoneyResult(parseNumber(amountText)) },
-      { label: "Frekvence plateb", value: frequencyLabel(frequency) },
+      ...(isRecordOnlyProduct(product)
+        ? [{ label: "Evidence", value: product === "cppAutoVozikZdarma" ? "Produkt zdarma, bez pojistného a bez provize" : "Bez výpočtu provize" }]
+        : [
+            { label: amountLabel, value: formatMoneyResult(parseNumber(amountText)) },
+            { label: "Frekvence plateb", value: frequencyLabel(frequency) },
+          ]),
       { label: "Datum sjednání", value: formatIsoDay(contractSignedDate.trim()) },
-      { label: "Počátek", value: formatIsoDay(policyStartDate.trim()) },
+      ...(!isInvestmentProduct(product) ? [{ label: "Počátek", value: formatIsoDay(policyStartDate.trim()) }] : []),
     ];
+    if (supportsDip(product)) rows.push({ label: "DIP", value: isDip ? "ANO" : "NE" });
     if (policyEndDate.trim() && !(product === "domexneuron" && automaticRenewal === true)) rows.push({ label: "Konec smlouvy", value: formatIsoDay(policyEndDate.trim()) });
     if (product === "domexneuron") {
       rows.push({ label: "Prolongace smlouvy", value: automaticRenewal === null ? "Neurčeno" : automaticRenewal ? "ANO" : "NE" });
@@ -4250,6 +4344,9 @@ export default function CalculatorPage() {
     if (shouldShowDurationMonths(product)) rows.push({ label: "Doba trvání v měsících", value: String(normalizedDurationMonths(product, reviewMonths)) });
     if (originalReplacementWorkflowActive) {
       rows.push({ label: "Původní smlouva", value: refreshOriginalMissingInSystem ? "Není v systému" : refreshOriginalContractNumber.trim() });
+    }
+    if (flexiWithoutBase) {
+      rows.push({ label: "Provize", value: FLEXI_RENOVATION_MISSING_BASE_LABEL });
     }
     if (flexiRenovationBase) {
       rows.push(
@@ -4521,77 +4618,9 @@ export default function CalculatorPage() {
     }
   };
 
-  const handleAddCppA101ToStatementQueue = () => {
-    if (
-      !canQueueStatementProduct(product, originalReplacementWorkflowActive) ||
-      !statementEmbedMode ||
-      !statementEmbedParentAvailable ||
-      !statementCppA101QueueEligible
-    ) {
-      return;
-    }
-
-    const value = parseNumber(amountText);
-    const missing: string[] = [];
-    if (value <= 0) missing.push("částku");
-    if (!clientName.trim()) missing.push("jméno klienta");
-    if (!contractNumber.trim()) missing.push("číslo smlouvy");
-    if (!contractSignedDate.trim()) missing.push("datum sjednání");
-    if (!policyStartDate.trim()) missing.push("datum počátku");
-    if (missing.length > 0) {
-      const message = `Doplň: ${missing.join(", ")}.`;
-      setSaveMessage(message);
-      setValidationError(message);
-      setMissingFields(missing);
-      return;
-    }
-    if (contractDateErrors.length > 0) {
-      const message = `Zkontroluj datumy: ${contractDateErrors
-        .map((issue) => issue.message)
-        .join(" ")}`;
-      setSaveMessage(message);
-      setValidationError(message);
-      return;
-    }
-
-    const replacement = {
-      isRefresh: originalReplacementWorkflowActive,
-      refreshOriginalContractNumber: originalReplacementWorkflowActive ? refreshOriginalContractNumber.trim() : null,
-    };
-    const replacementError = statementBatchQueueReplacementError({ product, contractNumber, ...replacement });
-    if (replacementError) {
-      setSaveMessage(replacementError);
-      setValidationError(replacementError);
-      return;
-    }
-
-    const trimmedStornoDate = stornoDate.trim();
-    if (trimmedStornoDate && !parseIsoDayAsLocalDate(trimmedStornoDate)) {
-      const message = "Datum storna má neplatný formát.";
-      setSaveMessage(message);
-      setValidationError(message);
-      return;
-    }
-
-    notifyStatementParentCppA101QueueAdd({
-      product,
-      contractNumber: contractNumber.trim(),
-      clientName: clientName.trim(),
-      contractSignedDate: contractSignedDate.trim(),
-      policyStartDate: policyStartDate.trim(),
-      policyEndDate: product === "cppcestovko" ? policyEndDate.trim() : undefined,
-      amountText: amountText.trim(),
-      frequency,
-      stornoDate: trimmedStornoDate,
-      pdfFile: importedContractPdfFile,
-      ...replacement,
-    });
-    setMissingFields([]);
-    setValidationError(null);
-    setSaveMessage("Smlouva byla přidána do fronty. Na výpisu ji pak nahraješ hromadně.");
-  };
-
-  const handleSaveContract = async (skipDuplicateCheck = false) => {
+  const handleSaveContract = async (skipDuplicateCheck = false, addToStatementQueue = false) => {
+    if (addToStatementQueue && (!statementEmbedMode || !statementEmbedParentAvailable ||
+      !statementCppA101QueueEligible || !canQueueStatementProduct(product, originalReplacementWorkflowActive))) return;
     if (endorsementDraft) {
       await handleSaveEndorsement();
       return;
@@ -4624,9 +4653,9 @@ export default function CalculatorPage() {
       return;
     }
 
-    const value = parseNumber(amountText);
+    const value = isRecordOnlyProduct(product) ? 0 : parseNumber(amountText);
     const missing: string[] = [];
-    if (value <= 0) missing.push("částku");
+    if (!isRecordOnlyProduct(product) && value <= 0) missing.push("částku");
     if (!clientName.trim()) missing.push("jméno klienta");
     if (!contractNumber.trim()) missing.push("číslo smlouvy");
     if (!contractSignedDate.trim()) missing.push("datum sjednání");
@@ -4647,7 +4676,7 @@ export default function CalculatorPage() {
     const trimmedContractNumber = contractNumber.trim();
     const trimmedClientName = clientName.trim();
     const signedDateIsoDay = contractSignedDate.trim();
-    if (flexiRenovationActive && !flexiRenovationBase) {
+    if (flexiRenovationActive && !flexiWithoutBase && !flexiRenovationBase) {
       const msg = "Pro renovaci zadej kladné původní měsíční pojistné a nezáporné navýšení (může být 0).";
       setSaveMessage(msg);
       setValidationError(msg);
@@ -4664,13 +4693,14 @@ export default function CalculatorPage() {
     const trimmedRefreshOriginalContractNumber = refreshOriginalContractNumber.trim();
     if (
       shouldReplaceOriginalContract &&
+      !flexiWithoutBase &&
       !isRefreshWithoutOriginalInSystem &&
       !trimmedRefreshOriginalContractNumber
     ) {
       missing.push("číslo původní smlouvy");
     }
 
-    if (missing.length > 0 || (items.length === 0 && !isInheritedContractMode) || unsupported) {
+    if (missing.length > 0 || (items.length === 0 && !flexiWithoutBase && !isInheritedContractMode && !isRecordOnlyProduct(product)) || unsupported) {
       const msg =
         items.length === 0 && missing.length === 0
           ? "Doplň částku a produkt, aby šlo uložit."
@@ -4703,7 +4733,7 @@ export default function CalculatorPage() {
     }
     if (!validateTimelineBeforeSave()) return;
 
-    if (!skipDuplicateCheck && !(await reviewContractBeforeSave())) return;
+    if (!addToStatementQueue && !skipDuplicateCheck && !(await reviewContractBeforeSave())) return;
 
     const neonNumberOrNull = (valueText: string) => {
       const trimmed = valueText.trim();
@@ -4798,7 +4828,7 @@ export default function CalculatorPage() {
     setLastSavedContractRef(null);
 
     // kontrola duplicitního čísla smlouvy
-    if (!skipDuplicateCheck) {
+    if (!addToStatementQueue && !skipDuplicateCheck) {
       try {
         if (trimmedContractNumber) {
           const findParams = new URLSearchParams({
@@ -4971,7 +5001,7 @@ export default function CalculatorPage() {
       }
 
       const calculationInputAmount =
-        flexiRenovationBase
+        flexiWithoutBase ? null : flexiRenovationBase
           ? flexiRenovationBase.calculationMonthlyPremium
           : shouldReplaceOriginalContract && product === "neon" && !isRefreshWithoutOriginalInSystem
           ? neonRefreshCommissionBase?.calculationMonthlyPremium ?? value
@@ -4994,13 +5024,14 @@ export default function CalculatorPage() {
             inputAmount: value,
             calculationInputAmount,
             effectiveInputAmount: value,
-            frequencyRaw: frequency,
+            frequencyRaw: isRecordOnlyProduct(product) ? "annual" : frequency,
             clientName: clientName || null,
             contractSignedDate: contractSignedDate.trim(),
             policyStartDate: policyStartDate.trim(),
             policyEndDate: policyEndDate.trim() || null,
             ...(product === "domexneuron" ? { automaticRenewal, premiumIndexationEnabled, policyTermEndDate: policyTermEndDate.trim() || null } : {}),
             pensionTargetAge: product === "conseqzenit" ? pensionTargetAge : null,
+            isDip: supportsDip(product) && isDip,
             status: trimmedStornoDate ? "storno" : "active",
             stornoDate: trimmedStornoDate || null,
             durationYears: shouldShowDuration(product) ? durationYears : null,
@@ -5016,48 +5047,20 @@ export default function CalculatorPage() {
             tipContractSourceTipProductLabel: tipContractConfig?.sourceTipProductLabel ?? null,
             tipContractSourceTipClientName: tipContractConfig?.sourceTipClientName ?? null,
             tipContractSourceTipCreatedAtMs: tipContractConfig?.sourceTipCreatedAtMs ?? null,
-            carMake:
-              product === "cppAuto" ||
-              isSlaviaAutoDetailProduct(product) ||
-              isKooperativaAutoDetailProduct(product) ||
-              isUniqaAutoDetailProduct(product) ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
+            carMake: isAutoProduct(product)
                 ? autoCarMake.trim() || null
                 : null,
-            carPlate:
-              product === "cppAuto" ||
-              isSlaviaAutoDetailProduct(product) ||
-              isKooperativaAutoDetailProduct(product) ||
-              isUniqaAutoDetailProduct(product) ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
+            carPlate: isAutoProduct(product)
                 ? autoCarPlate.trim() || null
                 : null,
-            carVin:
-              product === "cppAuto" ||
-              isSlaviaAutoDetailProduct(product) ||
-              isKooperativaAutoDetailProduct(product) ||
-              isUniqaAutoDetailProduct(product) ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
+            carVin: isAutoProduct(product)
                 ? autoCarVin.trim() || null
                 : null,
             carTp:
               isSlaviaAutoDetailProduct(product) || isUniqaAutoDetailProduct(product)
                 ? autoCarTp.trim() || null
                 : null,
-            carOrv:
-              product === "cppAuto" ||
-              isSlaviaAutoDetailProduct(product) ||
-              isKooperativaAutoDetailProduct(product) ||
-              isUniqaAutoDetailProduct(product) ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
+            carOrv: isAutoProduct(product)
                 ? autoCarOrv.trim() || null
                 : null,
             carAnnualMileage:
@@ -5066,14 +5069,7 @@ export default function CalculatorPage() {
                 : null,
             carAllianzScope:
               product === "allianzAuto" ? autoCarAllianzScope.trim() || null : null,
-            carLiabilityLimit:
-              product === "cppAuto" ||
-              isSlaviaAutoDetailProduct(product) ||
-              isKooperativaAutoDetailProduct(product) ||
-              isUniqaAutoDetailProduct(product) ||
-              product === "allianzAuto" ||
-              product === "csobAuto" ||
-              product === "pillowAuto"
+            carLiabilityLimit: isAutoProduct(product)
                 ? autoCarLiabilityLimit
                 : null,
             carSlaviaDetail:
@@ -5291,6 +5287,7 @@ export default function CalculatorPage() {
                 : null,
             paid: autoPaidByPolicyStartDate,
             ...replacementPayload,
+            ...(flexiWithoutBase ? { flexiRenovationWithoutBase: true } : {}),
             flexiRenovation: flexiRenovationBase ? {
               originalMonthlyPremium: flexiRenovationBase.originalMonthlyPremium,
               premiumIncreaseMonthly: flexiRenovationBase.premiumIncreaseMonthly,
@@ -5307,6 +5304,26 @@ export default function CalculatorPage() {
             createdFromCommissionStatementId: statementPremiumSource?.statementId ?? null,
       };
 
+      if (addToStatementQueue) {
+        notifyStatementParentCppA101QueueAdd({
+          product,
+          contractNumber: trimmedContractNumber,
+          clientName: trimmedClientName,
+          contractSignedDate: contractSignedDate.trim(),
+          policyStartDate: policyStartDate.trim(),
+          policyEndDate: policyEndDate.trim(),
+          amountText: isRecordOnlyProduct(product) ? "0" : amountText.trim(),
+          frequency: isRecordOnlyProduct(product) ? "annual" : frequency,
+          stornoDate: trimmedStornoDate,
+          pdfFile: importedContractPdfFile,
+          contractEntry: contractEntryPayload,
+          ...replacementPayload,
+        });
+        setSaveMessage("Smlouva byla přidána do fronty. Na výpisu ji pak nahraješ hromadně.");
+        return;
+      }
+
+      const vehicleLookup = vehiclePreview.startForSave();
       const saved = await saveContractEntry({
         user,
         ownerEmail: targetOwnerEmail,
@@ -5321,7 +5338,7 @@ export default function CalculatorPage() {
       }
 
       const createdEntryId = saved.entryId;
-      const linkedRefreshOriginalEntryId = saved.linkedRefreshOriginalEntryId;
+      const linkedRefreshOriginal = saved.linkedRefreshOriginal;
       const ownerEmail = targetOwnerEmail;
       setLastSavedContractRef({
         ownerEmail,
@@ -5348,10 +5365,19 @@ export default function CalculatorPage() {
         setPdfImportError(`PDF se nepodařilo přiložit: ${saved.pdfAttachment.message}`);
       }
 
-      const linkedRefreshOriginal = Boolean(linkedRefreshOriginalEntryId);
+      if (vehicleLookup && !vehicleLookup.outcome) setSavingStage("checkingVehicle");
+      const vehicleOverlapCheck = vehicleLookup ? await vehicleLookup.promise : null;
+      const vehicleNeedsAttention = vehicleOverlapCheck &&
+        (vehicleOverlapCheck.status === "failed" || vehicleOverlapCheck.result.matches.length > 0);
+      if (vehicleOverlapCheck && (!statementEmbedMode || !statementEmbedParentAvailable || pdfAttachmentFailed)) {
+        vehicleOverlap.present(vehicleOverlapCheck);
+      }
+
       const replacementStornoDescription =
         originalReplacementStornoDescription(product);
-      const savedMessage = isRefreshWithoutOriginalInSystem
+      const savedMessage = flexiWithoutBase
+        ? "Renovace FLEXI byla uložena. Provizi lze ověřit po doplnění podkladů."
+        : isRefreshWithoutOriginalInSystem
         ? product === "domexneuron"
           ? "Smlouva byla uložena jako Náhrada bez propojení s původní smlouvou. Číslo původní smlouvy zůstává informativní a automatické storno se neprovedlo."
           : "Smlouva byla uložena jako REFRESH bez původní smlouvy v systému. Výpočet provize je orientační a musí se sladit podle provizního výpisu."
@@ -5363,12 +5389,13 @@ export default function CalculatorPage() {
       const renovationEstimateMessage = flexiRenovationBase?.provisional
         ? " Provize renovace je orientační; podmínky ručení a případnou kompenzaci ověř podle provizního výpisu."
         : "";
-      setSaveMessage(`${savedMessage}${renovationEstimateMessage}${pdfAttachmentMessage}`);
-      setSaveSuccessFlash({
-        contractNumber: contractNumber.trim() || null,
-        clientName: clientName.trim() || null,
-      });
-      setContractSaveCelebrationKey((prev) => prev + 1);
+      const vehicleCheckMessage = vehicleOverlapCheck?.status === "failed" ? " Kontrolu shody SPZ a VIN se nepodařilo dokončit."
+        : vehicleOverlapCheck?.status === "checked" && !vehicleNeedsAttention ? " U aktivních smluv nebyla nalezena shoda SPZ ani VIN." : "";
+      setSaveMessage(`${savedMessage}${renovationEstimateMessage}${pdfAttachmentMessage}${vehicleCheckMessage}`);
+      if (!vehicleNeedsAttention) {
+        setSaveSuccessFlash({ contractNumber: contractNumber.trim() || null, clientName: clientName.trim() || null });
+        setContractSaveCelebrationKey((prev) => prev + 1);
+      }
       if (!pdfAttachmentFailed) {
         notifyStatementParentContractSaveCompleted({
           contractNumber: trimmedContractNumber,
@@ -5376,6 +5403,7 @@ export default function CalculatorPage() {
           product,
           ownerEmail,
           entryId: createdEntryId,
+          vehicleOverlapCheck,
         });
       }
       resetContractFormAfterSave();
@@ -5438,86 +5466,8 @@ export default function CalculatorPage() {
   }, [saveSuccessFlash]);
 
   useEffect(() => {
-    if (!showCoefModal) return;
-    if (product === "neon") {
-      setNeonCoefficientView(isNeonHistoricalBySignedDate ? "historical" : "current");
-      return;
-    }
-    if (product === "cppAuto") {
-      setNeonCoefficientView(
-        isCppAutoHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "allianzAuto") {
-      setNeonCoefficientView(
-        isAllianzAutoHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "csobAuto") {
-      setNeonCoefficientView(
-        isCsobAutoHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "uniqaAuto") {
-      setNeonCoefficientView(
-        isUniqaAutoEarlyHistoricalBySignedDate
-          ? "olderHistorical"
-          : isUniqaAutoHistoricalBySignedDate
-          ? "historical"
-          : "current"
-      );
-      return;
-    }
-    if (product === "uniqaflotila") {
-      setNeonCoefficientView(
-        isUniqaFlotilaHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "pillowAuto") {
-      setNeonCoefficientView(
-        isPillowAutoHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "kooperativaAuto") {
-      setNeonCoefficientView(
-        isKooperativaAutoHistoricalBySignedDate ? "historical" : "current"
-      );
-      return;
-    }
-    if (product === "maximaMaxEfekt") {
-      setNeonCoefficientView(isMaxEfekt5BySignedDate ? "historical" : "current");
-      return;
-    }
-    if (product === "domex") {
-      setNeonCoefficientView(
-        isDomexEarlyHistoricalBySignedDate
-          ? "olderHistorical"
-          : isDomexHistoricalBySignedDate
-            ? "historical"
-            : "current"
-      );
-    }
-  }, [
-    showCoefModal,
-    product,
-    isNeonHistoricalBySignedDate,
-    isCppAutoHistoricalBySignedDate,
-    isAllianzAutoHistoricalBySignedDate,
-    isCsobAutoHistoricalBySignedDate,
-    isUniqaAutoEarlyHistoricalBySignedDate,
-    isUniqaAutoHistoricalBySignedDate,
-    isUniqaFlotilaHistoricalBySignedDate,
-    isPillowAutoHistoricalBySignedDate,
-    isKooperativaAutoHistoricalBySignedDate,
-    isMaxEfekt5BySignedDate,
-    isDomexEarlyHistoricalBySignedDate,
-    isDomexHistoricalBySignedDate,
-  ]);
+    if (showCoefModal) setNeonCoefficientView(activeCoefficientView);
+  }, [showCoefModal, product, activeCoefficientView]);
 
   useEffect(() => {
     return () => {
@@ -5682,7 +5632,7 @@ export default function CalculatorPage() {
     autoCarHullSumInsured != null || autoHullSumInsuredText !== "";
   const autoHullSumResolved =
     autoHullSumStoredResolved || autoHullSumInsuredDraftValue != null;
-  const autoHullSumNeedsInput = autoHullHasInsurance && !autoHullSumResolved;
+  const autoHullSumNeedsInput = !isRecordOnlyProduct(product) && autoHullHasInsurance && !autoHullSumResolved;
   const autoHullCanUseUsualPrice = product === "allianzAuto" || product === "pillowAuto";
   const autoHullUsualPriceSelected =
     autoHullSumInsuredText.toLowerCase() === AUTO_HULL_USUAL_PRICE_TEXT.toLowerCase();
@@ -5746,7 +5696,7 @@ export default function CalculatorPage() {
   ) => {
     setter(parsePositiveRounded(value));
   };
-  const autoPdfEditorVisibleAddons: AutoPdfEditorBooleanField[] = isAutoProduct(product)
+  const autoPdfEditorVisibleAddons: AutoPdfEditorBooleanField[] = isAutoProduct(product) && !isRecordOnlyProduct(product)
     ? [
         "carAddonEso",
         "carAddonNaturalRisks",
@@ -6776,9 +6726,7 @@ export default function CalculatorPage() {
     return items;
   })();
   const durationHelp = durationTooltip(product);
-  const canChooseMode =
-    isLifeProduct &&
-    !(product === "neon" && isNeonHistoricalBySignedDate);
+  const canChooseMode = isLifeProduct && !isNeonHistoricalForCalculation;
   const positionLockedToTimeline = !canChoosePositionManually;
   const allowedPositionOptions = canChoosePositionManually
     ? POSITION_ORDER
@@ -6823,6 +6771,8 @@ export default function CalculatorPage() {
       commissionMode: usedMode,
       contractSignedDateIso: signedDateForCalculation,
       inputAmount,
+      neonRefreshCareAnnualPremium: targetProduct === "neon" && amountOverride == null &&
+        refreshOriginalOpen ? val * 12 : null,
       frequencyRaw: frequency,
       durationYears: years,
       durationMonths,
@@ -7002,9 +6952,26 @@ export default function CalculatorPage() {
   const renderProductAndPdfSection = (large = false) => (
       <CalculatorProductAndPdfSection
         canImportFromPdf={canImportFromPdf && isAddContractMode}
+        pdfAttachmentOnly={hasSelectedProduct && !hasAutomatedPdfImport(product)}
         productOpen={productOpen}
         productSelected={hasSelectedProduct}
         large={large}
+        coefficientControl={isCommissionOnlyMode && hasSelectedProduct && coefficientOptions.length > 1 && (
+          <label className="block space-y-1">
+            <span className="block">Sada koeficientů</span>
+            <select
+              className="border border-violet-200"
+              value={selectedCoefficientOption?.value ?? ""}
+              onChange={(event) => {
+                const option = coefficientOptions.find(({ value }) => value === event.target.value);
+                setCoefficientSelection(option ? { product, view: option.value } : null);
+              }}
+            >
+              <option value="">Automaticky · {coefficientOptions.find(({ value }) => value === coefficientViewBySignedDate)?.label}</option>
+              {coefficientOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        )}
         currentProductLabel={
           hasSelectedProduct ? currentProduct.label : "Klikni pro výběr produktu"
         }
@@ -7037,13 +7004,16 @@ export default function CalculatorPage() {
           handlePdfFiles(files);
         }}
         pdfAdditionalContent={
-          <CalculatorBulkPdfImportPanel
-            visible={showAutoBulkImport}
-            status={autoBulkImportStatus}
-            rows={autoBulkImportRows}
-            busy={autoBulkImporting || saving || pdfImporting}
-            onReview={loadAutoBulkReviewDraft}
-          />
+          <>
+            {vehiclePreviewSummary}
+            <CalculatorBulkPdfImportPanel
+              visible={showAutoBulkImport}
+              status={autoBulkImportStatus}
+              rows={autoBulkImportRows}
+              busy={autoBulkImporting || saving || pdfImporting}
+              onReview={loadAutoBulkReviewDraft}
+            />
+          </>
         }
         onDragEnter={handlePdfDragEnter}
         onDragOver={handlePdfDragOver}
@@ -7055,15 +7025,19 @@ export default function CalculatorPage() {
     return (
     <AppLayout active="calc" embedded={statementEmbedMode}>
       {domexNeuronConfirmation}
-      {contractReview && <CalculatorContractReviewModal review={contractReview} onResolve={resolveReview} />}
+      {contractReview && <CalculatorContractReviewModal review={contractReview} vehicleOverlap={vehiclePreviewSummary} onResolve={resolveReview} />}
       <ContractSaveSuccessOverlay
         visible={Boolean(saveSuccessFlash)}
         celebrationKey={contractSaveCelebrationKey}
       />
+      {vehicleOverlap.notice?.result && user && <VehicleOverlapDialog result={vehicleOverlap.notice.result}
+        uid={user.uid} impersonatedEmail={impersonatedUserEmail} onClose={vehicleOverlap.dismiss} />}
+      {vehicleOverlap.notice?.failed && <VehicleOverlapCheckError onClose={vehicleOverlap.dismiss} />}
       {saving ? (
         <CalculatorSaveLoader
           stage={savingStage}
           hasPdfAttachment={savingIncludesPdfAttachment}
+          checksVehicle={Boolean(vehicleDraft)}
           clientName={clientName}
           contractNumber={contractNumber}
           isEndorsement={Boolean(endorsementDraft)}
@@ -7083,7 +7057,7 @@ export default function CalculatorPage() {
         onCancel={() => setDuplicateModal(null)}
         onConfirm={handleConfirmDuplicateModal}
       />)}
-      {endorsementDraftModalOpen && product !== "neon" && (<EndorsementDraftModal
+      {endorsementDraftModalOpen && product !== "neon" && product !== "flexi" && (<EndorsementDraftModal
         draft={endorsementDraft}
         onCancel={() => {
           setEndorsementDraft(null);
@@ -7313,7 +7287,7 @@ export default function CalculatorPage() {
             {/* Produkt + PDF import */}
             {renderProductAndPdfSection(false)}
 
-            <section className={`${formStyles.card} ${formStyles.parametersCard}`}>
+            {!isRecordOnlyProduct(product) && <section className={`${formStyles.card} ${formStyles.parametersCard}`}>
               {/* Doba trvání + platba */}
               <CalculatorDurationAndFrequencySection
                 embedded
@@ -7332,7 +7306,7 @@ export default function CalculatorPage() {
                 frequency={frequency}
                 allowedFrequencies={allowed}
                 amountText={amountText}
-                amountReadOnly={flexiRenovationActive}
+                amountReadOnly={flexiRenovationActive && !flexiWithoutBase}
                 onToggleDurationHelp={() => setDurationHelpOpen((prev) => !prev)}
                 onDurationYearsChange={(value) => {
                   if (endorsementPreviewContextActive && endorsementPreviewSource) {
@@ -7374,13 +7348,26 @@ export default function CalculatorPage() {
                 refreshOriginalInfoText={flexiRenovationBase
                   ? `Základ pro výpočet provize: ${formatMoney(flexiRenovationBase.calculationMonthlyPremium)} měsíčně. Nové pojistné: ${formatMoney(flexiRenovationBase.newMonthlyPremium)} měsíčně.`
                   : neonRefreshInfoText}
+                renovationWithoutBase={flexiWithoutBase}
+                onRenovationWithoutBaseChange={tipContractConfig ? undefined : (enabled) => {
+                  if (enabled) setAmountText(amountText);
+                  setRenovationWithoutBase(enabled);
+                  setRefreshOriginalPdfLookupNumber(null);
+                  setSaveMessage(null);
+                }}
                 renovationOriginalPremiumText={renovationOriginalPremiumText}
                 renovationIncreaseText={renovationIncreaseText}
                 renovationGuaranteeStatus={renovationGuaranteeStatus}
-                onRenovationOriginalPremiumChange={setRenovationOriginalPremiumText}
-                onRenovationIncreaseChange={setRenovationIncreaseText}
+                onRenovationOriginalPremiumChange={(value) => {
+                  setRefreshOriginalPdfLookupNumber(null);
+                  setRenovationOriginalPremiumText(value);
+                }}
+                onRenovationIncreaseChange={(value) => {
+                  setRefreshOriginalPdfLookupNumber(null);
+                  setRenovationIncreaseText(value);
+                }}
                 onRenovationGuaranteeStatusChange={setRenovationGuaranteeStatus}
-                inlineEndorsementDraft={product === "neon" ? endorsementDraft : null}
+                inlineEndorsementDraft={product === "neon" || product === "flexi" ? endorsementDraft : null}
                 onAmountTextChange={setAmountText}
                 onRefreshOriginalContractNumberChange={(value) => {
                   setRefreshOriginalContractNumber(value);
@@ -7411,13 +7398,15 @@ export default function CalculatorPage() {
                     setSaveMessage(null);
                   } else {
                     if (flexiRenovationActive && flexiRenovationBase) setAmountText(amountText);
+                    setRenovationWithoutBase(false);
                     setRefreshOriginalMissingInSystem(false);
                     setRefreshOriginalPdfLookupNumber(null);
                   }
                   setRefreshOriginalOpen(nextRefreshOpen);
                 }}
                 onPrepareEndorsement={() => {
-                  void handlePrepareEndorsement();
+                  if (isAutoProduct(product)) setAutoChangeOpen(true);
+                  else void handlePrepareEndorsement();
                 }}
                 onCancelEndorsement={() => {
                   setEndorsementDraft(null);
@@ -7429,10 +7418,19 @@ export default function CalculatorPage() {
                 }}
                 onSwitchToManualEntry={() => setCalculatorViewMode("addContract")}
               />
-            </section>
+            </section>}
+
+            {autoChangeOpen && user && effectiveSaveOwnerEmail && <AutoContractChangeDialog
+              key={`${effectiveSaveOwnerEmail}-${product}-${user.uid}-${impersonatedUserEmail ?? ""}`} ownerEmail={effectiveSaveOwnerEmail} product={product} contractNumber={contractNumber}
+              request={async (url, init) => {
+                if (auth.currentUser?.uid !== user.uid || normalizeEmailValue(readAdminImpersonationState()?.email) !== impersonatedUserEmail) throw new Error("Přihlášený účet se změnil. Otevři změnu znovu.");
+                return fetchAuthedJsonOrThrow(user, url, { ...init, headers: withDefaultAdminImpersonationHeader(init?.headers, impersonatedUserEmail ?? "") });
+              }} onClientLoaded={setClientName}
+              onClose={() => setAutoChangeOpen(false)} onSaved={async () => { setAutoChangeOpen(false); setSaveMessage("Dodatek je uložený. Následné provize se počítají podle účinnosti změny."); }} />}
 
             <CalculatorContractDetailsSection
               isVisible={!tipsterModeEnabled && isAddContractMode}
+              dip={supportsDip(product) ? { enabled: isDip, onChange: setIsDip } : undefined}
               missingFields={missingFields}
               clientName={clientName}
               clientNameSource={pdfClientNameLoaded ? "pdf" : statementClientNamePrefillActive ? "statement" : null}
@@ -7454,6 +7452,7 @@ export default function CalculatorPage() {
               }
               policyStartDate={policyStartDate}
               pensionProduct={product === "conseqzenit"}
+              investmentProduct={isInvestmentProduct(product)}
               contractDateErrorText={contractDateErrorText}
               contractDateWarningText={contractDateWarningText}
               showPolicyEndDateField={showPolicyEndDateField}
@@ -7471,6 +7470,7 @@ export default function CalculatorPage() {
               }}
               stornoDate={stornoDate}
               onClientNameChange={(value) => {
+                setNeonOriginalClient(null);
                 setClientName(value);
                 setPdfClientNameLoaded(false);
                 setStatementClientNamePrefillActive(false);
@@ -7479,6 +7479,7 @@ export default function CalculatorPage() {
               onClientNameFocus={() => setClientSuggestionsOpen(true)}
               onClientNameBlur={() => setClientSuggestionsOpen(false)}
               onSelectClientSuggestion={(name) => {
+                setNeonOriginalClient(null);
                 setClientName(name);
                 setPdfClientNameLoaded(false);
                 setStatementClientNamePrefillActive(false);
@@ -7498,14 +7499,14 @@ export default function CalculatorPage() {
             />
 
             <CalculatorPositionModeSection
-              isVisible={!tipsterModeEnabled && !isInheritedContractMode}
+              isVisible={!tipsterModeEnabled && !isInheritedContractMode && !isRecordOnlyProduct(product)}
               product={product}
               position={position}
               allowedPositions={allowedPositionOptions}
               positionDisabled={positionLockedToTimeline}
               canChooseMode={canChooseMode}
               mode={mode}
-              isNeonHistoricalBySignedDate={isNeonHistoricalBySignedDate}
+              isNeonHistorical={isNeonHistoricalForCalculation}
               onPositionChange={canChoosePositionManually ? setPosition : () => {}}
               onModeChange={setMode}
             />
@@ -7623,7 +7624,8 @@ export default function CalculatorPage() {
             }
             unsupported={unsupported}
             supportedLabel={SUPPORTED_LABEL}
-            items={displayedCommissionItems}
+            commissionBaseUnknown={flexiWithoutBase}
+            items={flexiWithoutBase ? [] : displayedCommissionItems}
             tipsterImmediateCommission={displayedTipsterImmediateCommission}
             product={product}
             position={isInheritedContractMode ? inheritedOriginalPosition || position : position}
@@ -7651,12 +7653,12 @@ export default function CalculatorPage() {
               !contractReview &&
               !pdfImporting &&
               !autoBulkImporting &&
-              parseNumber(amountText) > 0 &&
+              (isRecordOnlyProduct(product) || parseNumber(amountText) > 0) &&
               !autoHullSumNeedsInput &&
               (isInheritedContractMode
                 ? Boolean(inheritedOriginalPosition) && isIsoDay(inheritedEffectiveDate) && !unsupported
                 : !effectivePositionTimelineLoading && effectivePositionTimeline.length > 0 &&
-                  (endorsementPreviewContextActive ? Boolean(endorsementDraft) : items.length > 0))
+                  (flexiWithoutBase || isRecordOnlyProduct(product) || (endorsementPreviewContextActive ? Boolean(endorsementDraft) : items.length > 0)))
             }
             saveButtonLabel={
               isInheritedContractMode ? "Uložit převzatou smlouvu" : endorsementDraft
@@ -7670,7 +7672,7 @@ export default function CalculatorPage() {
             showAddToQueue={
               !isInheritedContractMode && statementEmbedMode &&
               statementEmbedParentAvailable &&
-              statementCppA101QueueEligible &&
+              !flexiWithoutBase && statementCppA101QueueEligible &&
               isAddContractMode &&
               canQueueStatementProduct(product, originalReplacementWorkflowActive) &&
               !tipsterModeEnabled &&
@@ -7679,14 +7681,17 @@ export default function CalculatorPage() {
               !endorsementDuplicateCandidateActive
             }
             canAddToQueue={!saving && !pdfImporting && !autoBulkImporting}
-            onOpenCoefModal={() => setShowCoefModal(true)}
+            onOpenCoefModal={() => {
+              setNeonCoefficientView(activeCoefficientView);
+              setShowCoefModal(true);
+            }}
             onToggleTipsterPercentPanel={() => setTipsterPercentPanelOpen((prev) => !prev)}
             onTipsterPercentDraft={setTipsterPercentDraft}
             onPersistTipsterPercent={persistTipsterPercent}
             onSaveContract={() => {
               void handleSaveContract();
             }}
-            onAddToQueue={handleAddCppA101ToStatementQueue}
+            onAddToQueue={() => { void handleSaveContract(false, true); }}
           />
         </div>
         )}
@@ -7728,6 +7733,7 @@ export default function CalculatorPage() {
         }
         showAutoTermsPreview={showAutoTermsPreview}
         autoTermsPreviewUrl={autoTermsPreviewUrl}
+        secureTermsDocumentId={secureTermsDocumentId}
         showNeonTermsPreview={showNeonTermsPreview}
         neonTermsPreviewUrl={neonTermsPreviewUrl}
         neonPreviewBlobUrl={neonPreviewBlobUrl}

@@ -76,7 +76,7 @@ export async function freshCalculation(db, source, asOf, options, runtime) {
     const documents = await source.orderBy("__name__").get();
     return pilotInputFromDocuments(documents.docs.map(doc => doc.data()));
   });
-  const calculation = await timed(() => runtime.computeCashflow(read.value.snapshot, { ...options, asOf }));
+  const calculation = await timed(() => runtime.computeCashflow(read.value.snapshot, { ...options, asOf, statements: read.value.statements }));
   const view = await timed(() => runtime.buildCashflowView(calculation.value, read.value.statements, options, asOf));
   const totalMs = performance.now() - started;
   const result = { items: calculation.value, months: view.value };

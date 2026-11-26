@@ -3,6 +3,7 @@ import type { FlexiRenovationGuaranteeStatus } from "@/app/lib/flexiRenovation";
 
 import { RefreshCcw, Repeat2, Tag } from "lucide-react";
 import styles from "./calculatorForm.module.css";
+import { isAutoProduct, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 
 import { type PaymentFrequency, type Product } from "../types/domain";
 import { formatMoney } from "@/app/lib/formatters";
@@ -14,7 +15,7 @@ import {
 } from "@/app/lib/originalContractReplacement";
 import { placeholderForAmount, type EndorsementDraft } from "./calculatorHelpers";
 
-type RefreshOriginalLookupStatus = "idle" | "checking" | "found" | "notFound" | "wrongProduct" | "error";
+type RefreshOriginalLookupStatus = "idle" | "checking" | "found" | "foundOutsideSelectedOwner" | "notFound" | "wrongProduct" | "error";
 
 type CalculatorAmountAndActionsSectionProps = {
   embedded?: boolean;
@@ -35,6 +36,8 @@ type CalculatorAmountAndActionsSectionProps = {
   refreshOriginalLookupProgress: number;
   refreshOriginalLookupAdviserName: string | null;
   refreshOriginalInfoText?: string | null;
+  renovationWithoutBase?: boolean;
+  onRenovationWithoutBaseChange?: (enabled: boolean) => void;
   renovationOriginalPremiumText?: string;
   renovationIncreaseText?: string;
   renovationGuaranteeStatus?: FlexiRenovationGuaranteeStatus;
@@ -71,6 +74,8 @@ export function CalculatorAmountAndActionsSection({
   refreshOriginalLookupProgress,
   refreshOriginalLookupAdviserName,
   refreshOriginalInfoText,
+  renovationWithoutBase = false,
+  onRenovationWithoutBaseChange,
   renovationOriginalPremiumText = "",
   renovationIncreaseText = "",
   renovationGuaranteeStatus = "unknown",
@@ -87,8 +92,10 @@ export function CalculatorAmountAndActionsSection({
   onCancelEndorsement,
   onSwitchToManualEntry,
 }: CalculatorAmountAndActionsSectionProps) {
+  if (isRecordOnlyProduct(product)) return null;
+  const showAutoChange = isAutoProduct(product) && (showContractActions || showManualEntryOption);
   const showContractActionButtons = !tipsterModeEnabled &&
-    (showContractActions || (product === "flexi" && showManualEntryOption));
+    (showContractActions || showAutoChange || (product === "flexi" && showManualEntryOption));
   const showManualEntryButton = !tipsterModeEnabled && showManualEntryOption;
   const showHeading = showAmountInput;
   const tipContractActionButtonClass = styles.actionButton;
@@ -140,6 +147,7 @@ export function CalculatorAmountAndActionsSection({
               {showContractActions && <button
                 type="button"
                 onClick={onOpenTipContractModal}
+                disabled={renovationWithoutBase}
                 aria-pressed={hasTipContractConfig}
                 className={hasTipContractConfig ? activeTipContractActionButtonClass : tipContractActionButtonClass}
               >
@@ -173,7 +181,7 @@ export function CalculatorAmountAndActionsSection({
                   {originalReplacementButtonLabel}
                 </button>
               )}
-              {showContractActions && isLifeProduct && !refreshOriginalOpen && (
+              {((showContractActions && isLifeProduct) || showAutoChange) && !refreshOriginalOpen && (
                 <button
                   type="button"
                   onClick={onPrepareEndorsement}
@@ -281,57 +289,70 @@ export function CalculatorAmountAndActionsSection({
               <div className="mt-3 space-y-1.5">
                 {product === "flexi" && (
                   <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="space-y-1 text-xs font-semibold text-slate-700">
-                        <span>Pojistné z původní smlouvy (Kč / měsíc)</span>
-                        <input type="number" min="0.01" step="0.01" value={renovationOriginalPremiumText}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            onRenovationOriginalPremiumChange?.(value);
-                            const newPremium = Number(amountText);
-                            if (!Number.isFinite(newPremium) || newPremium <= 0) return;
-                            // Keep the known new premium even while the original input is cleared or invalid.
-                            onAmountTextChange(amountText);
-                            const originalPremium = Number(value);
-                            onRenovationIncreaseChange?.(
-                              value.trim() && Number.isFinite(originalPremium) && originalPremium > 0
-                                ? String(Math.round((newPremium - originalPremium) * 100) / 100)
-                                : ""
-                            );
-                          }}
-                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
+                    {showContractActions && onRenovationWithoutBaseChange && (
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={renovationWithoutBase}
+                          onChange={(event) => onRenovationWithoutBaseChange(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300"
                         />
+                        Chybí podklady pro výpočet provize
                       </label>
-                      <label className="space-y-1 text-xs font-semibold text-slate-700">
-                        <span>Navýšení pojistného (Kč / měsíc)</span>
-                        <input type="number" min="0" step="0.01" value={renovationIncreaseText}
-                          onChange={(event) => onRenovationIncreaseChange?.(event.target.value)}
-                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
-                        />
+                    )}
+                    {!renovationWithoutBase && <>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="space-y-1 text-xs font-semibold text-slate-700">
+                          <span>Pojistné z původní smlouvy (Kč / měsíc)</span>
+                          <input type="number" min="0.01" step="0.01" value={renovationOriginalPremiumText}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              onRenovationOriginalPremiumChange?.(value);
+                              const newPremium = Number(amountText);
+                              if (!Number.isFinite(newPremium) || newPremium <= 0) return;
+                              // Keep the known new premium even while the original input is cleared or invalid.
+                              onAmountTextChange(amountText);
+                              const originalPremium = Number(value);
+                              onRenovationIncreaseChange?.(
+                                value.trim() && Number.isFinite(originalPremium) && originalPremium > 0
+                                  ? String(Math.round((newPremium - originalPremium) * 100) / 100)
+                                  : ""
+                              );
+                            }}
+                            className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
+                          />
+                        </label>
+                        <label className="space-y-1 text-xs font-semibold text-slate-700">
+                          <span>Navýšení pojistného (Kč / měsíc)</span>
+                          <input type="number" min="0" step="0.01" value={renovationIncreaseText}
+                            onChange={(event) => onRenovationIncreaseChange?.(event.target.value)}
+                            className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900"
+                          />
+                        </label>
+                      </div>
+                      <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                        <span>Ručení za provizi původní smlouvy</span>
+                        <select value={renovationGuaranteeStatus}
+                          onChange={(event) => onRenovationGuaranteeStatusChange?.(event.target.value as FlexiRenovationGuaranteeStatus)}
+                          className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900">
+                          <option value="unknown">Neověřeno – orientačně s 50 %</option>
+                          <option value="outside">Po ručení – 50 % z původního pojistného</option>
+                          <option value="inside">V ručení – navýšení bez kompenzace</option>
+                        </select>
                       </label>
-                    </div>
-                    <label className="block space-y-1 text-xs font-semibold text-slate-700">
-                      <span>Ručení za provizi původní smlouvy</span>
-                      <select value={renovationGuaranteeStatus}
-                        onChange={(event) => onRenovationGuaranteeStatusChange?.(event.target.value as FlexiRenovationGuaranteeStatus)}
-                        className="h-10 w-full rounded-xl border border-violet-200 bg-white px-3 text-sm text-slate-900">
-                        <option value="unknown">Neověřeno – orientačně s 50 %</option>
-                        <option value="outside">Po ručení – 50 % z původního pojistného</option>
-                        <option value="inside">V ručení – navýšení bez kompenzace</option>
-                      </select>
-                    </label>
-                    <p className="text-xs text-slate-700">
-                      {renovationGuaranteeStatus === "inside"
-                        ? "Zde se počítá provize z navýšení. Případná kompenzační provize za původní smlouvu není zahrnuta."
-                        : "Provize se počítá ze základu: 50 % původního pojistného + celé navýšení."}
-                      {" "}Použijí se běžné sazby a termíny výplaty FLEXI.
-                    </p>
-                    {renovationGuaranteeStatus === "unknown" && (
-                      <p className="text-xs font-semibold text-amber-800">Orientační výpočet: nárok na 50% provizi z původního pojistného ověř podle aktuálních provizních podmínek.</p>
-                    )}
-                    {renovationGuaranteeStatus === "inside" && (
-                      <p className="text-xs font-semibold text-amber-800">Orientační výpočet: kompenzaci případného storna původní provize je potřeba ověřit podle provizního výpisu.</p>
-                    )}
+                      <p className="text-xs text-slate-700">
+                        {renovationGuaranteeStatus === "inside"
+                          ? "Zde se počítá provize z navýšení. Případná kompenzační provize za původní smlouvu není zahrnuta."
+                          : "Provize se počítá ze základu: 50 % původního pojistného + celé navýšení."}
+                        {" "}Použijí se běžné sazby a termíny výplaty FLEXI.
+                      </p>
+                      {renovationGuaranteeStatus === "unknown" && (
+                        <p className="text-xs font-semibold text-amber-800">Orientační výpočet: nárok na 50% provizi z původního pojistného ověř podle aktuálních provizních podmínek.</p>
+                      )}
+                      {renovationGuaranteeStatus === "inside" && (
+                        <p className="text-xs font-semibold text-amber-800">Orientační výpočet: kompenzaci případného storna původní provize je potřeba ověřit podle provizního výpisu.</p>
+                      )}
+                    </>}
                   </div>
                 )}
                 {(product === "neon" || product === "domexneuron") && (
@@ -365,7 +386,7 @@ export function CalculatorAmountAndActionsSection({
                 {showContractActions && (!refreshOriginalMissingInSystem || product === "domexneuron") && (
                   <>
                     <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                      Číslo původní smlouvy
+                      {renovationWithoutBase ? "Číslo původní smlouvy (nepovinné)" : "Číslo původní smlouvy"}
                     </label>
                     <input
                       type="text"
@@ -381,15 +402,17 @@ export function CalculatorAmountAndActionsSection({
                       }`}
                     />
                     <p className="text-[11px] text-slate-600">
-                      {product === "domexneuron" && refreshOriginalMissingInSystem
+                      {renovationWithoutBase
+                        ? "Automatické storno se neprovede."
+                        : product === "domexneuron" && refreshOriginalMissingInSystem
                         ? "Číslo původní smlouvy (nepovinné, pouze pro informaci). Automatické storno je vypnuté."
                         : canSaveUnlinkedOriginal
-                        ? `Pokud se původní smlouva najde u stejného vlastníka ${product === "domex" || product === "domexneuron" ? "jako DOMEX nebo DOMEX Neuron" : "a produktu"}, při uložení se stornuje ${replacementStornoDescription}.`
+                        ? `Pokud se původní smlouva najde ${product === "domex" || product === "domexneuron" ? "jako DOMEX nebo DOMEX Neuron" : "se stejným produktem"}, server ji při uložení stornuje ${replacementStornoDescription}, i když ji sjednal jiný poradce.`
                         : `Při uložení se původní smlouva stornuje ${replacementStornoDescription}.`}
                     </p>
                   </>
                 )}
-                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "checking" && (
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "checking" && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
                       <span>Ověřuji smlouvu v Bohemka.App</span>
@@ -409,9 +432,14 @@ export function CalculatorAmountAndActionsSection({
                     </div>
                   </div>
                 )}
-                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "found" && (
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "found" && (
                   <p className="text-[11px] font-semibold text-emerald-700">
                     Smlouva nalezena. Sjednatel: {refreshOriginalLookupAdviserName || "jméno není vyplněné"}.
+                  </p>
+                )}
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "foundOutsideSelectedOwner" && (
+                  <p className="text-[11px] font-semibold text-emerald-700">
+                    Původní smlouva nalezena. Server ji při uložení náhrady automaticky propojí a stornuje {replacementStornoDescription}.
                   </p>
                 )}
                 {!refreshOriginalMissingInSystem && refreshOriginalInfoText && (
@@ -419,14 +447,14 @@ export function CalculatorAmountAndActionsSection({
                     {refreshOriginalInfoText}
                   </p>
                 )}
-                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "wrongProduct" && (
                   <p className="text-[11px] font-semibold text-amber-700">
                     {canSaveUnlinkedOriginal
                       ? `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}. ${replacementSaveLabel} lze uložit bez automatického storna původní smlouvy.`
                       : `Smlouva je evidována, ale není vedena jako ${replacementProductLabel}.`}
                   </p>
                 )}
-                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "notFound" && (
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "notFound" && (
                   <p
                     className={`text-[11px] font-semibold ${
                       canSaveUnlinkedOriginal ? "text-amber-700" : "text-rose-700"
@@ -437,7 +465,7 @@ export function CalculatorAmountAndActionsSection({
                       : "Smlouva s tímto číslem není evidována v systému Bohemka.App."}
                   </p>
                 )}
-                {!refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "error" && (
+                {!renovationWithoutBase && !refreshOriginalMissingInSystem && refreshOriginalLookupStatus === "error" && (
                   <p className="text-[11px] font-semibold text-amber-700">
                     Ověření smlouvy se nepodařilo. Zkus to prosím znovu.
                   </p>

@@ -1029,7 +1029,8 @@ export function calculateNeon(
   years: number | null | undefined = null,
   mode: CommissionMode = "accelerated",
   contractSignedDateIso?: string | null,
-  coefficientSetOverride?: NeonCoefficientSet | null
+  coefficientSetOverride?: NeonCoefficientSet | null,
+  refreshCareAnnualPremium?: number | null
 ): CommissionResultDTO {
   const effectiveMode = usesHistoricalNeonCoefficientSet(
     contractSignedDateIso,
@@ -1054,7 +1055,10 @@ export function calculateNeon(
   const po3 = annual * y * k.po3;
   const po4 = annual * y * k.po4;
   const nasl25 = annual * k.n2to5;
-  const nasl510 = annual * k.n5to10;
+  const careAnnual = typeof refreshCareAnnualPremium === "number" &&
+    Number.isFinite(refreshCareAnnualPremium) && refreshCareAnnualPremium > 0
+    ? refreshCareAnnualPremium : annual;
+  const nasl510 = careAnnual * k.n5to10;
 
   const total = okamzita + po3 + po4 + nasl25 * 4 + nasl510 * 6;
 

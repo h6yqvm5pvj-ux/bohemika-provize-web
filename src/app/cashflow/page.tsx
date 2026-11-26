@@ -20,6 +20,7 @@ import {
 } from "@/app/lib/useAdminImpersonation";
 import {
   applyStatementMissingPayoutShifts,
+  applyStatementAutoPayouts,
   applyStatementPayoutTotalsToMonths,
   applyIntelligentCashflowPrediction,
   CASHFLOW_FORECAST_YEARS,
@@ -56,6 +57,7 @@ import { IntelligentPredictionModal } from "./components/IntelligentPredictionMo
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import { includeCurrentYear } from "./yearChart";
 import { isShiftedCashflowPayout } from "./commissionPresentation";
+import { applyOfficeContributionStatements } from "./officeContribution";
 import introStyles from "./cashflowIntro.module.css";
 import { systemSansFont } from "@/lib/fonts";
 
@@ -373,6 +375,7 @@ export default function CashflowPage() {
     verificationInput,
   } = useCashflowData({
     userEmail: dataEmail,
+    statements: commissionStatements,
     scopeFilter,
     productFilter,
     tipsterMode: isTipsterMode,
@@ -425,14 +428,23 @@ export default function CashflowPage() {
     productFilter === "all";
   const reconcilePayouts = useStatementPayoutTotals || (!isTipsterMode && shiftedOnly);
 
+  const cashflowWithOfficePayments = useMemo(() => applyOfficeContributionStatements(
+    cashflowItems, commissionStatements, { scopeFilter, productFilter, tipsterMode: isTipsterMode }, new Date(),
+  ), [cashflowItems, commissionStatements, scopeFilter, productFilter, isTipsterMode]);
+
+  const cashflowWithAutoPayouts = useMemo(
+    () => isTipsterMode ? cashflowWithOfficePayments : applyStatementAutoPayouts(cashflowWithOfficePayments, commissionStatements),
+    [cashflowWithOfficePayments, commissionStatements, isTipsterMode]
+  );
+
   // Výpisy musí posouvat nevyplacené položky ještě před filtrem minulosti,
   // jinak by starší nevyplacená provize zmizela místo přesunu dopředu.
   const cashflowItemsForReconciliation = useMemo(
     () =>
       reconcilePayouts || contractNumberSearchActive
-        ? cashflowItems
-        : filterPastItems(cashflowItems, showPastYears),
-    [cashflowItems, contractNumberSearchActive, showPastYears, reconcilePayouts]
+        ? cashflowWithAutoPayouts
+        : filterPastItems(cashflowWithAutoPayouts, showPastYears),
+    [cashflowWithAutoPayouts, contractNumberSearchActive, showPastYears, reconcilePayouts]
   );
 
   const filteredCashflowItems = useMemo(

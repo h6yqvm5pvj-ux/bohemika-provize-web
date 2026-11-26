@@ -2,6 +2,15 @@
   "indexes": [
     {
       "collectionGroup": "mailbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "read", "order": "ASCENDING" },
+        { "fieldPath": "inboxArchived", "order": "ASCENDING" },
+        { "fieldPath": "inboxSnoozeMs", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mailbox",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "type", "order": "ASCENDING" },

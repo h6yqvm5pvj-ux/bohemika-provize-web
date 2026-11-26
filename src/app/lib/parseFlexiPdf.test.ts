@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseFlexiPdf } from "./parseFlexiPdf";
 
-const pdfState = vi.hoisted(() => ({ pages: [] as string[][] }));
+type Item = string | { str: string; transform: number[]; width?: number };
+const pdfState = vi.hoisted(() => ({ pages: [] as Item[][] }));
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   GlobalWorkerOptions: {},
@@ -10,7 +11,7 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
       get numPages() { return pdfState.pages.length; },
       getPage: vi.fn(async (pageNumber: number) => ({
         getTextContent: vi.fn(async () => ({
-          items: pdfState.pages[pageNumber - 1].map((str) => ({ str })),
+          items: pdfState.pages[pageNumber - 1].map(item => typeof item === "string" ? { str: item } : item),
         })),
       })),
     }),
@@ -37,6 +38,22 @@ describe("FLEXI renovation PDF", () => {
       contractNumber: "1400000001", amount: 704, frequency: "monthly",
       isRefresh: true, refreshOriginalContractNumber: "4800000002",
     });
+  });
+
+  it("reads the Renovace heading on both pages and keeps the new policy number", async () => {
+    pdfState.pages[0].push("Renovace původní pojistné smlouvy č.", "142 000 0002");
+    pdfState.pages.push(["Renovace", "původní pojistné smlouvy", "č.", "1420000002"]);
+    await expect(parse()).resolves.toMatchObject({
+      contractNumber: "1400000001", isRefresh: true, refreshOriginalContractNumber: "1420000002",
+    });
+  });
+
+  it("leaves the original number unresolved when the renovation references disagree", async () => {
+    pdfState.pages[0].push("Renovace původní pojistné smlouvy č. 1420000002");
+    pdfState.pages.push(["Tato smlouva nahrazuje původní pojistnou smlouvu č. 1420000003"]);
+    const result = await parse();
+    expect(result.isRefresh).toBe(true);
+    expect(result.refreshOriginalContractNumber).toBeUndefined();
   });
 
   it("extracts payment details only from the amount due section and matches the contract number", async () => {
@@ -113,5 +130,75 @@ describe("FLEXI renovation PDF", () => {
     expect(result.isRefresh).not.toBe(true);
     expect(result.refreshOriginalContractNumber).toBeUndefined();
     expect(result.contractNumber).toBe("1400000001");
+  });
+});
+
+describe("FLEXI change request PDF", () => {
+  const request = () => [
+    "FLEXI", "Žádost o změnu v pojistné smlouvě",
+    "Číslo pojistné smlouvy: 1400000088", "Pojistník", "Jméno: Jana", "Příjmení: Testovací",
+    "Požadované datum účinnosti", "1. 12. 2026", "Změna běžného pojistného za pojistné období",
+    "Staré měsíční pojistné: 1 000 Kč", "Nové měsíční pojistné:", "1 400 Kč",
+    "Pojištěná osoba", "Jméno: Petr", "Příjmení: Jiný", "Datum sepsání žádosti", "12. 11. 2026",
+  ];
+  beforeEach(() => { pdfState.pages = [request()]; });
+
+  it("reads only request fields, including the policyholder rather than the insured", async () => {
+    pdfState.pages.push(["Pojistná smlouva uzavřena dne 1. 1. 2020", "Počátek pojištění 1. 2. 2020", "Částka k úhradě 999 Kč"]);
+    await expect(parse()).resolves.toEqual({ isEndorsement: true, contractNumber: "1400000088",
+      clientName: "Jana Testovací", policyStartDate: "2026-12-01", contractSignedDate: "2026-11-12",
+      amount: 1400, frequency: "monthly" });
+  });
+
+  it("uses visual columns when values precede their labels in PDF text order", async () => {
+    const cell = (str: string, x: number, y: number) => ({ str, transform: [1, 0, 0, 1, x, y], width: 50 });
+    pdfState.pages = [["FLEXI", "Žádost o změnu v pojistné smlouvě", "Číslo pojistné smlouvy: 1400000088",
+      "Pojistník", cell("Jana", 153, 688), cell("Jméno:", 153, 698),
+      cell("Testovací", 244, 688), cell("Příjmení:", 244, 698),
+      cell("Požadované datum účinnosti", 30, 528), cell("1. 12. 2026", 510, 528),
+      "Změna běžného pojistného za pojistné období", cell("1 000 Kč", 439, 500), cell("Staré měsíční pojistné:", 439, 509),
+      cell("1 400 Kč", 505, 500), cell("Nové měsíční pojistné:", 505, 509),
+    ], [cell("Datum sepsání žádosti", 28, 790), cell("12. 11. 2026", 297, 790)]];
+    await expect(parse()).resolves.toMatchObject({ clientName: "Jana Testovací", amount: 1400,
+      policyStartDate: "2026-12-01", contractSignedDate: "2026-11-12" });
+  });
+
+  it("normalizes accents, case, newlines and nonbreaking spaces", async () => {
+    pdfState.pages = [request().map(line => line.normalize("NFD").replace(/\p{Diacritic}/gu, "").toUpperCase()
+      .replace(/ /g, "\u00a0\n"))];
+    await expect(parse()).resolves.toMatchObject({ isEndorsement: true, contractNumber: "1400000088",
+      amount: 1400, policyStartDate: "2026-12-01" });
+  });
+
+  it.each(["Požadované datum účinnosti", "Nové měsíční pojistné:", "Změna běžného pojistného za pojistné období"])("does not use unrelated contract data when %s is absent", async label => {
+    pdfState.pages = [request().filter(line => line !== label),
+      ["Počátek pojištění 1. 2. 2020", "Částka k úhradě 999 Kč"]];
+    const result = await parse();
+    expect(label.startsWith("Požadované") ? result.policyStartDate : result.amount).toBeNull();
+  });
+
+  it("never borrows a name from the insured when the policyholder block is missing", async () => {
+    pdfState.pages = [request().filter(line => !["Pojistník", "Jméno: Jana", "Příjmení: Testovací"].includes(line))];
+    expect((await parse()).clientName).toBeNull();
+  });
+
+  it("rejects ambiguous policyholders", async () => {
+    pdfState.pages.push(["Pojistník", "Jméno: Marie", "Příjmení: Jiná", "Pojištěná osoba"]);
+    expect((await parse()).clientName).toBeNull();
+  });
+
+  it.each(["31. 2. 2026", "1. 13. 2026", "0. 12. 2026"])("rejects an impossible effective date: %s", async date => {
+    pdfState.pages = [request().map(line => line === "1. 12. 2026" ? date : line)];
+    expect((await parse()).policyStartDate).toBeNull();
+  });
+
+  it.each(["-1 400 Kč", "1 400<script>", "0 Kč"])("rejects a malformed new premium: %s", async amount => {
+    pdfState.pages = [request().map(line => line === "1 400 Kč" ? amount : line)];
+    expect((await parse()).amount).toBeNull();
+  });
+
+  it("does not mistake a partial FLEXI marker for the product", async () => {
+    pdfState.pages = [request().map(line => line === "FLEXI" ? "FLEXIBILNÍ" : line)];
+    expect((await parse()).isEndorsement).not.toBe(true);
   });
 });

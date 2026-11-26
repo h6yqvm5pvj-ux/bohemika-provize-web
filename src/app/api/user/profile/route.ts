@@ -115,6 +115,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "fullName",
   "profileAvatar",
   "commissionMode",
+  "cashflowOfficeContributionEnabled",
   "agencyNumber",
   "ico",
   "phoneNumber",
@@ -473,7 +474,7 @@ const sanitizeOnlineCardPhotos = (value: unknown): string[] | null => {
   return photos;
 };
 
-function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPayload | null {
+function sanitizeOnlineCard(value: unknown, ownerEmail: string, { defaultContactEmail = false } = {}): OnlineCardPayload | null {
   if (!isPlainObject(value)) return null;
 
   const normalizedOwnerEmail = normalizeEmail(ownerEmail);
@@ -497,6 +498,7 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
     fullName == null ||
     title == null ||
     phone == null ||
+    emailRaw == null ||
     websiteRaw == null ||
     bio == null ||
     location == null ||
@@ -506,10 +508,9 @@ function sanitizeOnlineCard(value: unknown, ownerEmail: string): OnlineCardPaylo
     return null;
   }
 
-  const email = emailRaw ? normalizeEmail(emailRaw) : normalizedOwnerEmail;
+  const email = emailRaw ? normalizeEmail(emailRaw) : defaultContactEmail ? normalizedOwnerEmail : "";
   if (emailRaw && !email) return null;
   if (email && !SIMPLE_EMAIL_RE.test(email)) return null;
-  if (normalizedOwnerEmail && email && email !== normalizedOwnerEmail) return null;
 
   const website = normalizeOnlineCardWebsite(websiteRaw);
   if (website == null) return null;
@@ -880,6 +881,13 @@ function buildPatchFromBody(
     }
   }
 
+  if (Object.hasOwn(body, "cashflowOfficeContributionEnabled")) {
+    if (typeof body.cashflowOfficeContributionEnabled !== "boolean") {
+      return { error: "Příspěvek na kancelář musí být zapnutý nebo vypnutý." };
+    }
+    patch.cashflowOfficeContributionEnabled = body.cashflowOfficeContributionEnabled;
+  }
+
   if (body.lastActivePing != null) {
     if (body.lastActivePing !== true) {
       return { error: "lastActivePing musí být true." };
@@ -1058,7 +1066,7 @@ function buildPatchFromBody(
   }
 
   if (body.onlineCard != null) {
-    const value = sanitizeOnlineCard(body.onlineCard, ownerEmail);
+    const value = sanitizeOnlineCard(body.onlineCard, ownerEmail, { defaultContactEmail: true });
     if (!value) return { error: "Pole onlineCard má neplatný formát." };
     patch.onlineCard = value;
   }
@@ -1115,7 +1123,9 @@ export async function GET(req: NextRequest) {
     // can contribute paid rewards, and its envelope/audit fields stay server-side.
     delete profileRaw.cashflowExtraPayouts;
     delete profileRaw.cashflowExtraPayoutsUpdatedAtMs;
+    delete profileRaw.cashflowOfficeContributionEnabled;
     const profile = serializeProfilePayload(profileRaw);
+    if (privateData?.cashflowOfficeContributionEnabled === true) profile.cashflowOfficeContributionEnabled = true;
     const extraPayouts = readCashflowExtraPayouts(privateData?.cashflowExtraPayouts, email);
     if (extraPayouts.length > 0) profile.cashflowExtraPayouts = extraPayouts;
     const sanitizedTimeline = sanitizePositionTimeline(profile.positionTimeline);
@@ -1284,7 +1294,20 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    await trackCashflowWrite(() => adminDb!.collection("users").doc(email).set(patch, { merge: true }));
+    if (Object.hasOwn(patch, "cashflowOfficeContributionEnabled")) {
+      const privatePatch = { cashflowOfficeContributionEnabled: patch.cashflowOfficeContributionEnabled };
+      delete patch.cashflowOfficeContributionEnabled;
+      if (Object.keys(patch).length > 0) {
+        const batch = adminDb.batch();
+        batch.set(adminDb.collection("users").doc(email), patch, { merge: true });
+        batch.set(adminDb.collection("usersPrivate").doc(email), privatePatch, { merge: true });
+        await trackCashflowWrite(() => batch.commit());
+      } else {
+        await trackCashflowWrite(() => adminDb!.collection("usersPrivate").doc(email).set(privatePatch, { merge: true }));
+      }
+    } else {
+      await trackCashflowWrite(() => adminDb!.collection("users").doc(email).set(patch, { merge: true }));
+    }
 
     const res = NextResponse.json({ ok: true, email } satisfies ApiPatchSuccess);
     applyRateLimitHeaders(res.headers, rateLimit);

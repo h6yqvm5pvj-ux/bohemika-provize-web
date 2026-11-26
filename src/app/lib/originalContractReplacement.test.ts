@@ -24,7 +24,7 @@ describe("original contract replacement capabilities", () => {
     expect(supportsOriginalContractReplacement(null)).toBe(false);
   });
 
-  it.each(["flexi", "domex", "domexneuron", "koopmajetekobcan", "koopodzam", "cppAuto", "allianzAuto"] as const)(
+  it.each(["flexi", "domex", "domexneuron", "koopmajetekobcan", "koopfit", "koopodzam", "cppAuto", "kooperativaAuto", "allianzAuto"] as const)(
     "umožní uložit produkt %s i bez nalezené původní smlouvy",
     (product) => {
       expect(canSaveUnlinkedOriginalReplacement(product)).toBe(true);
@@ -32,7 +32,7 @@ describe("original contract replacement capabilities", () => {
     },
   );
 
-  it.each(["cppAuto", "allianzAuto"] as const)(
+  it.each(["cppAuto", "kooperativaAuto", "allianzAuto"] as const)(
     "stornuje původní smlouvu produktu %s den před počátkem nové",
     (product) => {
       expect(usesPreviousDayReplacementStorno(product)).toBe(true);
@@ -63,11 +63,23 @@ describe("original contract replacement capabilities", () => {
     );
   });
 
+  it.each(["koopmajetekobcan", "koopfit"] as const)(
+    "stornuje původní smlouvu produktu %s ke dni počátku nové",
+    (product) => {
+      expect(originalReplacementLabel(product)).toBe("Náhrada");
+      expect(originalReplacementStornoDescription(product)).toBe("ke dni počátku nové smlouvy");
+    },
+  );
+
   it.each([
     ["domex", "domexneuron"],
     ["domexneuron", "domex"],
     ["domexneuron", "domexneuron"],
     ["cppAuto", "cppAuto"],
+    ["kooperativaAuto", "kooperativaAuto"],
+    ["allianzAuto", "allianzAuto"],
+    ["koopmajetekobcan", "koopmajetekobcan"],
+    ["koopfit", "koopfit"],
     ["koopodzam", "koopodzam"],
   ] as const)("povolí náhradu produktu %s produktem %s", (originalProduct, newProduct) => {
     expect(matchesOriginalContractReplacementProduct(originalProduct, newProduct)).toBe(true);
@@ -76,6 +88,10 @@ describe("original contract replacement capabilities", () => {
   it.each([
     ["neon", "domexneuron"],
     ["domexneuron", "cppAuto"],
+    ["allianzAuto", "kooperativaAuto"],
+    ["kooperativaAuto", "allianzAuto"],
+    ["koopmajetekobcan", "koopfit"],
+    ["koopfit", "koopmajetekobcan"],
     ["maximaMaxEfekt", "maximaMaxEfekt"],
     [null, "domexneuron"],
     [null, null],

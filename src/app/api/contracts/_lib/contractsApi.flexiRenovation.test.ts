@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FLEXI_RENOVATION_MISSING_BASE } from "@/app/lib/flexiRenovation";
 import { calculateFlexi } from "@/app/lib/productFormulas/flexi";
 import { calculateDomexNeuron } from "@/app/lib/productFormulas/domexNeuron";
+import { calculateCommission } from "@/app/lib/calculateCommission";
+import { ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS } from "@/app/lib/originalContractReplacement";
 import { buildIdempotentEntryId } from "./contractsApi.identity";
 import { contractNoteLocationRef } from "@/lib/server/contractNoteLocation";
 
@@ -44,7 +47,7 @@ function reference(path: string) {
 }
 function snapshot(path: string) {
   const value = records.get(path);
-  return { id: path.split("/").at(-1)!, exists: value != null, ref: reference(path), data: () => value };
+  return { id: path.split("/").at(-1)!, exists: value != null, updateTime: {}, ref: reference(path), data: () => value };
 }
 function collection(path: string, filters: Array<[string, unknown]> = []) {
   return {
@@ -65,6 +68,7 @@ function batch() {
     get: async (ref: { path: string }) => snapshot(ref.path),
     create: (ref: { path: string }, data: Data) => pending.push(() => records.set(ref.path, data)),
     set: (ref: { path: string }, data: Data, options?: { merge?: boolean }) => pending.push(() => records.set(ref.path, { ...(options?.merge ? records.get(ref.path) : {}), ...data })),
+    update: (ref: { path: string }, data: Data) => pending.push(() => records.set(ref.path, { ...records.get(ref.path), ...data })),
     delete: (ref: { path: string }) => pending.push(() => records.delete(ref.path)),
     commit: async () => { pending.forEach(write => write()); },
   };
@@ -115,6 +119,87 @@ async function save(patch: Data = {}, retryKey?: string) {
   const body = await response.json();
   return { response, body, saved: records.get(`users/${owner}/entries/${body.entryId}`) };
 }
+
+describe("FLEXI renovation awaiting a base", () => {
+  const withoutBase = { flexiRenovationWithoutBase: true, flexiRenovation: null, calculationInputAmount: null };
+
+  async function resolve(entryId: string, details: Data = { originalMonthlyPremium: 1000, guaranteeStatus: "outside" }) {
+    const { handleContractsUpdateFields } = await import("./contractsApi");
+    return handleContractsUpdateFields(new NextRequest("https://example.test/api/contracts/update-fields", {
+      method: "PATCH", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ownerEmail: owner, entryId, updates: { resolveFlexiRenovation: details } }),
+    }));
+  }
+
+  it.each([null, "OLD123"])("saves the new premium without calculating or cancelling the original (%s)", async refreshOriginalContractNumber => {
+    const { response, saved } = await save({ ...withoutBase, refreshOriginalContractNumber });
+    expect(response.status).toBe(200);
+    expect(saved).toMatchObject({
+      inputAmount: 1500, effectiveInputAmount: 1500, isRefresh: true, refreshOriginalContractNumber,
+      calculationInputAmount: null, refreshCommissionBase: null, items: [], managerOverrides: [],
+      commissionCalculationStatus: FLEXI_RENOVATION_MISSING_BASE,
+    });
+    expect(mocks.find).not.toHaveBeenCalledWith("OLD123");
+    expect(records.get(originalPath)).toMatchObject({ status: "active" });
+  });
+
+  it.each([
+    { flexiRenovationWithoutBase: "true" }, { isRefresh: false }, { productKey: "neon" },
+    { calculationInputAmount: 1500 }, { effectiveInputAmount: 1000 }, { inputAmount: 0 },
+    { tipContractTipsterPercent: 50 }, { refreshOriginalContractNumber: "NEW123" },
+  ])("rejects manipulated create fields %j", async overrides => {
+    const { response } = await save({ ...withoutBase, ...overrides });
+    expect(response.status).toBe(400);
+  });
+
+  it("computes the base and commissions from saved contract data and preserves the receipts", async () => {
+    const { body } = await save(withoutBase);
+    const path = `users/${owner}/entries/${body.entryId}`;
+    const commissionPayouts = [{ code: "A101", amount: 2345, status: "paid" }];
+    records.set(path, { ...records.get(path), commissionPayouts });
+    expect((await resolve(body.entryId)).status).toBe(200);
+    expect(records.get(path)).toMatchObject({
+      inputAmount: 1500, calculationInputAmount: 1000, refreshOriginalMissingInSystem: true,
+      refreshCommissionBase: { originalMonthlyPremium: 1000, premiumIncreaseMonthly: 500, guaranteeStatus: "outside" },
+      commissionCalculationStatus: "calculated_flexi_renovation",
+      items: expect.arrayContaining([expect.objectContaining({ code: "A101", amount: expect.any(Number) })]),
+      managerOverrides: expect.arrayContaining([expect.objectContaining({ email: manager })]),
+      commissionPayouts,
+    });
+    expect(records.get(originalPath)?.status).toBe("active");
+    expect((await resolve(body.entryId)).status).toBe(409);
+  });
+
+  it("rejects missing authentication, restricted roles and a different contract owner", async () => {
+    const { body } = await save(withoutBase);
+    const ctx = { email: owner, uid: owner, decoded: { email: owner }, actorEmail: owner, actorUid: owner, isImpersonating: false, impersonation: null };
+    mocks.guard.mockResolvedValueOnce({ ok: false, response: new Response(null, { status: 401 }) });
+    expect((await resolve(body.entryId)).status).toBe(401);
+    const tipster = "tipster@example.test";
+    records.set(`users/${tipster}`, { email: tipster, accountType: "tipster" });
+    records.set(`usersPrivate/${tipster}`, { subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" });
+    mocks.guard.mockResolvedValueOnce({ ok: true, ctx: { ...ctx, uid: tipster, email: tipster,
+      decoded: { email: tipster }, actorEmail: tipster, actorUid: tipster } });
+    expect((await resolve(body.entryId)).status).toBe(403);
+    const foreign = "outsider@example.test";
+    records.set(`users/${foreign}`, { email: foreign, accountType: "advisor" });
+    records.set(`usersPrivate/${foreign}`, { subscriptionStatus: "active", subscriptionPaidUntil: "2099-01-01" });
+    mocks.guard.mockResolvedValueOnce({ ok: true, ctx: { ...ctx, uid: foreign, email: foreign,
+      decoded: { email: foreign }, actorEmail: foreign, actorUid: foreign } });
+    expect((await resolve(body.entryId)).status).toBe(403);
+    expect(records.get(`users/${owner}/entries/${body.entryId}`)?.commissionCalculationStatus).toBe(FLEXI_RENOVATION_MISSING_BASE);
+  });
+
+  it.each([
+    { originalMonthlyPremium: 1700, guaranteeStatus: "inside" },
+    { originalMonthlyPremium: "1000", guaranteeStatus: "outside" },
+    { originalMonthlyPremium: 1000, guaranteeStatus: "unknown" },
+    { originalMonthlyPremium: 1000, guaranteeStatus: "outside", position: "manazer4" },
+  ])("rejects unverified or forged resolution details %j", async details => {
+    const { body } = await save(withoutBase);
+    expect((await resolve(body.entryId, details)).status).toBe(400);
+  });
+});
 
 describe("saving FLEXI renovation", () => {
   it.each([owner, "foreign@example.test"])("keeps duplicate metadata private for owner %s", async duplicateOwner => {
@@ -219,12 +304,10 @@ describe("saving ČPP Auto replacements from the statement queue", () => {
     });
   });
 
-  it.each(["missing", "foreignOwner", "wrongProduct"])("does not cancel an original that is %s", async situation => {
+  it.each(["missing", "wrongProduct"])("does not cancel an original that is %s", async situation => {
     const foreignPath = "users/another@example.test/entries/original";
     records.set(foreignPath, { productKey: "cppAuto", contractNumber: "OLD123", status: "active" });
     if (situation === "missing") records.delete(originalPath);
-    if (situation === "foreignOwner") mocks.find.mockImplementation(async (number: string) => number === "OLD123"
-      ? { entryPath: foreignPath, entryId: "original" } : null);
     const beforeOriginal = records.has(originalPath) ? { ...records.get(originalPath)! } : undefined;
     const beforeForeign = { ...records.get(foreignPath)! };
     const { response, body, saved } = await save(cppReplacement);
@@ -236,7 +319,7 @@ describe("saving ČPP Auto replacements from the statement queue", () => {
   });
 
   it("rejects an unauthenticated save without writing data", async () => {
-    mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status: 401 }) });
+    mocks.guard.mockResolvedValue({ ok: false, response: Response.json({ ok: false, error: "Unauthorized" }, { status: 401 }) });
     const before = new Map(records);
     const { handleContractsCreate } = await import("./contractsApi");
     const response = await handleContractsCreate(new NextRequest("https://example.test/api/contracts", { method: "POST" }));
@@ -275,6 +358,97 @@ describe("saving ČPP Auto replacements from the statement queue", () => {
   });
 });
 
+describe.each([
+  ["kooperativaAuto", "2026-01-31"],
+  ["allianzAuto", "2026-01-31"],
+  ["koopmajetekobcan", "2026-02-01"],
+  ["koopfit", "2026-02-01"],
+] as const)("saving %s replacements", (productKey, stornoDate) => {
+  const replacement = {
+    productKey, frequencyRaw: "annual", durationYears: null, flexiRenovation: null,
+    inputAmount: 12_000, effectiveInputAmount: 12_000,
+  };
+
+  beforeEach(() => {
+    records.get(originalPath)!.productKey = productKey;
+  });
+
+  it("links an owned original, cancels it at the correct date and calculates commission on the server", async () => {
+    const expected = calculateCommission({
+      productKey, position: "poradce1", commissionMode: "standard", contractSignedDateIso: "2026-01-10",
+      inputAmount: 12_000, frequencyRaw: "annual", durationYears: null, durationMonths: null, maxCizinKomplexVariant: null,
+    });
+    if (!expected) throw new Error(`Commission calculation is unavailable for ${productKey}`);
+    const { response, body, saved } = await save(replacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: "original" });
+    expect(saved).toMatchObject({
+      productKey, isRefresh: true, refreshOriginalContractNumber: "OLD123",
+      inputAmount: 12_000, calculationInputAmount: 12_000, position: "poradce1", total: expected.total,
+    });
+    expect(records.get(originalPath)).toMatchObject({
+      status: "storno", stornoDate: new Date(stornoDate), refreshReplacedByEntryId: body.entryId,
+      refreshReplacedByOwnerEmail: owner,
+    });
+  });
+
+  it.each(["missing", "wrongProduct"])("preserves an original that is %s and saves without linking", async situation => {
+    const foreignOwner = "foreign@example.test";
+    const foreignPath = `users/${foreignOwner}/entries/original`;
+    records.set(foreignPath, { productKey, contractNumber: "OLD123", status: "active" });
+    if (situation === "missing") records.delete(originalPath);
+    if (situation === "wrongProduct") records.get(originalPath)!.productKey = "neon";
+    const beforeOriginal = records.has(originalPath) ? { ...records.get(originalPath)! } : undefined;
+    const beforeForeign = { ...records.get(foreignPath)! };
+    const { response, body, saved } = await save(replacement);
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalEntryId: null });
+    expect(JSON.stringify(body)).not.toContain(foreignOwner);
+    expect(saved).toMatchObject({ productKey, isRefresh: true, refreshOriginalContractNumber: "OLD123" });
+    expect(records.get(originalPath)).toEqual(beforeOriginal);
+    expect(records.get(foreignPath)).toEqual(beforeForeign);
+  });
+
+  it("rejects an unauthenticated replacement without writing data", async () => {
+    mocks.guard.mockResolvedValue({ ok: false, response: Response.json({ ok: false }, { status: 401 }) });
+    const before = new Map(records);
+    const { response } = await save(replacement);
+    expect(response.status).toBe(401);
+    expect(records).toEqual(before);
+  });
+
+  it("rejects a tipster replacement even if the client claims an advisor role", async () => {
+    records.get(`users/${owner}`)!.accountType = "tipster";
+    const before = new Map(records);
+    const { response } = await save({ ...replacement, accountType: "advisor", role: "admin" });
+    expect(response.status).toBe(403);
+    expect(records).toEqual(before);
+  });
+
+  it.each([
+    [{ ownerEmail: "foreign@example.test" }, 403],
+    [{ refreshOriginalContractNumber: "NEW123" }, 400],
+    [{ refreshOriginalContractNumber: "" }, 400],
+    [{ refreshOriginalContractNumber: {} }, 400],
+    [{ isRefresh: "true" }, 400],
+    [{ position: "manazer10", total: 999_999 }, 400],
+  ] as const)("rejects unauthorized or manipulated replacements: %j", async (patch, status) => {
+    const before = new Map(records);
+    const { response } = await save({ ...replacement, ...patch });
+    expect(response.status).toBe(status);
+    expect(records).toEqual(before);
+  });
+
+  it("preserves an original that already has a successor", async () => {
+    records.get(originalPath)!.refreshReplacedByEntryId = "existing-replacement";
+    const before = new Map(records);
+    const { response } = await save(replacement);
+    expect(response.status).toBe(409);
+    expect(records).toEqual(before);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("saving DOMEX Neuron replacements", () => {
   const neuronReplacement = {
     productKey: "domexneuron", frequencyRaw: "annual", durationYears: null, flexiRenovation: null,
@@ -296,12 +470,10 @@ describe("saving DOMEX Neuron replacements", () => {
     });
   });
 
-  it.each(["missing", "foreignOwner", "wrongProduct"])("saves the replacement without changing an original that is %s", async situation => {
+  it.each(["missing", "wrongProduct"])("saves the replacement without changing an original that is %s", async situation => {
     const foreignPath = "users/foreign@example.test/entries/original";
     records.set(foreignPath, { productKey: "domex", contractNumber: "OLD123", status: "active" });
     if (situation === "missing") records.delete(originalPath);
-    if (situation === "foreignOwner") mocks.find.mockImplementation(async (number: string) => number === "OLD123"
-      ? { entryPath: foreignPath, entryId: "original", ownerEmail: "foreign@example.test" } : null);
     const beforeOriginal = records.has(originalPath) ? { ...records.get(originalPath)! } : undefined;
     const beforeForeign = { ...records.get(foreignPath)! };
     const { response, body, saved } = await save(neuronReplacement);
@@ -372,5 +544,127 @@ describe("saving DOMEX Neuron replacements", () => {
     const { response } = await save({ ...neuronReplacement, ...patch });
     expect(response.status).toBe(status);
     expect(records).toEqual(before);
+  });
+});
+
+describe.each(ORIGINAL_CONTRACT_REPLACEMENT_PRODUCTS)("cross-owner %s replacement", productKey => {
+  it.each([manager, "unrelated@example.test"])("cancels the original owned by %s without transferring or exposing it", async originalOwner => {
+    const foreignPath = `users/${originalOwner}/entries/foreign-original`;
+    const original = {
+      productKey, entryType: "contract", contractNumber: "OLD123", userEmail: originalOwner,
+      status: "active", inputAmount: 1_000, effectiveInputAmount: 1_000,
+      contractSignedDate: "2023-12-01", policyStartDate: "2024-01-01",
+      allowedEmails: [originalOwner], clientName: "Private synthetic client", note: "Private synthetic note",
+    };
+    records.delete(originalPath);
+    records.set(foreignPath, original);
+    mocks.find.mockImplementation(async (number: string) => number === "OLD123"
+      // Path is authoritative even if stale index metadata claims another owner.
+      ? { entryPath: foreignPath, entryId: "stale-index-id", ownerEmail: owner } : null);
+    const life = productKey === "neon" || productKey === "flexi";
+    const patch = {
+      productKey, frequencyRaw: life ? "monthly" : "annual", durationYears: life ? 30 : null,
+      contractSignedDate: "2026-11-04", policyStartDate: "2026-12-01",
+      inputAmount: life ? 1_500 : 12_000, effectiveInputAmount: life ? 1_500 : 12_000,
+      flexiRenovation: productKey === "flexi"
+        ? { originalMonthlyPremium: 1_000, premiumIncreaseMonthly: 500, guaranteeStatus: "unknown" } : null,
+    };
+    const { response, body, saved } = await save(patch, "cross-owner-replacement");
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, refreshOriginalLinked: true, refreshOriginalEntryId: null });
+    expect(JSON.stringify(body)).not.toMatch(/foreign-original|Private synthetic|unrelated@example|manager@example/);
+    expect(saved).toMatchObject({ productKey, isRefresh: true, refreshOriginalLinked: true, userEmail: owner });
+    expect(records.get(foreignPath)).toMatchObject({
+      ...original, status: "storno",
+      stornoDate: new Date(["cppAuto", "allianzAuto", "kooperativaAuto"].includes(productKey) ? "2026-11-30" : "2026-12-01"),
+      refreshReplacedByEntryId: body.entryId, refreshReplacedByOwnerEmail: owner,
+    });
+    expect(saved?.allowedEmails).not.toContain(originalOwner === manager ? "unrelated@example.test" : originalOwner);
+
+    const replay = await save(patch, "cross-owner-replacement");
+    expect(replay.body).toMatchObject({ ok: true, entryId: body.entryId, idempotentReplay: true, refreshOriginalLinked: true });
+  });
+});
+
+describe("cross-owner replacement transaction boundaries", () => {
+  const foreignPath = "users/foreign@example.test/entries/foreign-original";
+  const patch = { productKey: "kooperativaAuto", frequencyRaw: "annual", flexiRenovation: null, durationYears: null };
+  beforeEach(() => {
+    records.set(foreignPath, { productKey: "kooperativaAuto", entryType: "contract", contractNumber: "OLD123", status: "active" });
+    mocks.find.mockImplementation(async (number: string) => number === "OLD123"
+      ? { entryPath: foreignPath, ownerEmail: "foreign@example.test", entryId: "foreign-original" } : null);
+  });
+
+  it.each([
+    { productKey: "allianzAuto" }, { contractNumber: "OTHER123" }, { entryType: "endorsement" },
+    { refreshReplacedByEntryId: "another-replacement" },
+  ])("rechecks the original inside the transaction before writing: %j", async concurrentChange => {
+    const runTransaction = mocks.transaction.getMockImplementation()!;
+    mocks.transaction.mockImplementationOnce(async run => {
+      Object.assign(records.get(foreignPath)!, concurrentChange);
+      return runTransaction(run);
+    });
+    const { response } = await save(patch);
+    expect([400, 409]).toContain(response.status);
+    expect(records.get(foreignPath)).toMatchObject({ status: "active", ...concurrentChange });
+    expect([...records.keys()].filter(path => path.startsWith(`users/${owner}/entries/new-`))).toHaveLength(0);
+  });
+
+  it("keeps ordinary contract creation outside the cross-owner exception", async () => {
+    const original = { ...records.get(foreignPath)! };
+    expect((await save({ ...patch, isRefresh: false, refreshOriginalContractNumber: null })).response.status).toBe(200);
+    expect(records.get(foreignPath)).toEqual(original);
+  });
+
+  it("does not grant ordinary read or mutation access to the original", async () => {
+    expect((await save(patch)).response.status).toBe(200);
+    const { handleContractsGet, handleContractsPatch } = await import("./contractsApi");
+    const detail = await handleContractsGet(new NextRequest("https://example.test/api/contracts/detail?ownerEmail=foreign@example.test&entryId=foreign-original"), "detail");
+    expect(detail.status).toBe(403);
+    const before = { ...records.get(foreignPath)! };
+    const update = await handleContractsPatch(new NextRequest("https://example.test/api/contracts", {
+      method: "PATCH", body: JSON.stringify({ action: "updateFields", ownerEmail: "foreign@example.test", entryId: "foreign-original", updates: { status: "active" } }),
+    }));
+    expect(update.status).toBe(403);
+    expect(records.get(foreignPath)).toEqual(before);
+  });
+});
+
+describe("saving the free ČPP trailer contract", () => {
+  const freeEntry = {
+    productKey: "cppAutoVozikZdarma", inputAmount: undefined, effectiveInputAmount: undefined,
+    frequencyRaw: undefined, calculationInputAmount: null, durationYears: null,
+    isRefresh: false, refreshOriginalContractNumber: null, flexiRenovation: null,
+  };
+  it("persists an ordinary portfolio entry without premium, commission or manager overrides", async () => {
+    const { response, saved } = await save(freeEntry);
+    expect(response.status).toBe(200);
+    expect(saved).toMatchObject({ productKey: freeEntry.productKey, inputAmount: 0, effectiveInputAmount: 0,
+      calculationInputAmount: 0, items: [], total: 0, result: { items: [], total: 0 }, paid: true });
+    expect((saved?.managerOverrides as Array<{ items: unknown[]; total: number }>).every(row => row.items.length === 0 && row.total === 0)).toBe(true);
+  });
+  it("requires authentication", async () => {
+    mocks.guard.mockResolvedValue({ ok: false, response: Response.json({ ok: false, error: "Unauthorized" }, { status: 401 }) });
+    const before = new Map(records);
+    expect((await save(freeEntry)).response.status).toBe(401);
+    expect(records).toEqual(before);
+  });
+  it("rejects a tipster without contract creation permissions", async () => {
+    records.set(`users/${owner}`, { ...records.get(`users/${owner}`), accountType: "tipster" });
+    const before = new Map(records);
+    expect((await save(freeEntry)).response.status).toBe(403);
+    expect(records).toEqual(before);
+  });
+  it("rejects saving into another user's portfolio", async () => {
+    const before = new Map(records);
+    expect((await save({ ...freeEntry, ownerEmail: "foreign@example.test" })).response.status).toBe(403);
+    expect(records).toEqual(before);
+  });
+  it.each([{ inputAmount: 100 }, { position: "manazer10" }, { total: 9999 }, { items: [{ amount: 1000 }] }])("rejects financial and privilege manipulation without writes: %j", patch => {
+    const before = new Map(records);
+    return save({ ...freeEntry, ...patch }).then(({ response }) => {
+      expect(response.status).toBe(400);
+      expect(records).toEqual(before);
+    });
   });
 });

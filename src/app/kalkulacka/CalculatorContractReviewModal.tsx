@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Check, ClipboardCheck, Pencil, X } from "lucide-react";
 import type { ContractReview } from "./contractReview";
 
-export function CalculatorContractReviewModal({ review, onResolve }: {
+export function CalculatorContractReviewModal({ review, vehicleOverlap, onResolve }: {
   review: ContractReview;
+  vehicleOverlap?: ReactNode;
   onResolve: (confirmed: boolean) => void;
 }) {
   const titleId = useId();
@@ -49,6 +50,7 @@ export function CalculatorContractReviewModal({ review, onResolve }: {
             className="rounded-full p-2 text-slate-500 hover:bg-white focus-visible:outline-2 focus-visible:outline-violet-600"><X size={18} aria-hidden="true" /></button>
         </div>
         <div className="overflow-y-auto px-5 py-4">
+          {vehicleOverlap && <div className="mb-4">{vehicleOverlap}</div>}
           {review.warnings.length > 0 && (
             <div role="note" aria-label="Údaje ke kontrole" className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
               <p className="flex items-center gap-2 text-sm font-bold"><AlertTriangle size={18} aria-hidden="true" />Ještě prosím zkontroluj</p>

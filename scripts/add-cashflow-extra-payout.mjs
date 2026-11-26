@@ -73,7 +73,7 @@ async function main() {
       const snapshot = { email, myPosition: null, myCommissionMode: null, hasAnyTeam: false,
         ownEntries: [], teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
         extraPayouts: normalizeCashflowExtraPayouts(rows) };
-      return buildCashflowView(computeCashflow(snapshot, { ...calculationOptions, asOf }), statements, calculationOptions, asOf)
+      return buildCashflowView(computeCashflow(snapshot, { ...calculationOptions, asOf, statements }), statements, calculationOptions, asOf)
         .find(month => month.key === monthKey)?.total ?? 0;
     };
     const baselineTotal = calculateMonth(before);

@@ -11,17 +11,25 @@ export type ConfirmLifePremiumChange = {
 };
 export const StatementLifePremiumChangeContext = createContext<((input: ConfirmLifePremiumChange) => Promise<LifeStatementPremiumChange>) | null>(null);
 
-export function StatementLifePremiumChange({ contract, annualIncrease, productCode, source }: {
-  contract: MatchedSystemContract; annualIncrease: number; productCode: string; source?: StatementCalculatorPrefillSource;
+export function StatementLifePremiumChange({ contract, annualIncrease, matchedByCommission, productCode, source }: {
+  contract: MatchedSystemContract | null; annualIncrease: number | null; matchedByCommission?: boolean;
+  productCode: string; source?: StatementCalculatorPrefillSource;
 }) {
   const confirm = useContext(StatementLifePremiumChangeContext);
   const [open, setOpen] = useState(false);
-  const [previous, setPrevious] = useState(String(contract.newInputAmount ?? contract.effectiveInputAmount ?? contract.inputAmount ?? ""));
+  const [previous, setPrevious] = useState(String(contract?.newInputAmount ?? contract?.effectiveInputAmount ?? contract?.inputAmount ?? ""));
   const [next, setNext] = useState("");
   const [date, setDate] = useState("");
   const [verified, setVerified] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  if (matchedByCommission) return <p className="mt-3 text-sm text-emerald-800">
+    Výpis neuvádí základnu. Vyplacené částky souhlasí s provizemi z dodatku.
+  </p>;
+  if (annualIncrease == null) return <p className="mt-3 text-sm text-amber-900">
+    Výpis neuvádí základnu a provizi za navýšení se nepodařilo jednoznačně přiřadit k dodatku.
+  </p>;
+  if (!contract) return null;
   const change = confirmedLifeStatementChange(contract.confirmedLifePremiumChanges, { ...source, productCode, annualIncrease });
   const endorsement = matchesLifePremiumIncrease(contract, annualIncrease);
   if (endorsement) return <p className="mt-3 text-sm text-emerald-800">Provize za navýšení je přiřazená k odpovídajícímu dodatku.</p>;

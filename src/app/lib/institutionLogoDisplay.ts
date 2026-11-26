@@ -13,6 +13,7 @@ export type InstitutionLogoKey =
 export type InstitutionLogoSize = "card" | "compact" | "chip";
 
 const LOGO_KEY_BY_PATH: Record<string, InstitutionLogoKey> = {
+  "/icons/logo-investika-inverzni.svg": "investika",
   "/icons/cpp.png": "cpp",
   "/icons/koop-v2.png": "kooperativa",
   "/icons/maxima.png": "maxima",
@@ -39,6 +40,7 @@ export function institutionLogoKeyFromInsurerName(
   insurer?: string | null
 ): InstitutionLogoKey {
   const normalized = (insurer ?? "").toLowerCase();
+  if (normalized.includes("investika")) return "investika";
   if (normalized.includes("čpp") || normalized.includes("cpp")) return "cpp";
   if (normalized.includes("kooperativa")) return "kooperativa";
   if (normalized.includes("maxima")) return "maxima";
@@ -95,6 +97,8 @@ export function institutionLogoImageClass(
 ): string {
   const key = logoKey ?? "unknown";
   switch (key) {
+    case "investika":
+      return "object-contain object-center brightness-0";
     case "cpp":
     case "kooperativa":
       return "object-contain object-center scale-[1.22]";

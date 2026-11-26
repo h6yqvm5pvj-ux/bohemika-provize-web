@@ -4,7 +4,7 @@ import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 import type { PaymentFrequency } from "@/app/types/domain";
 
 type Options = {
-  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon" | "cppAuto" | "allianzAuto" | "flexi" | "pillowAuto";
+  product: "domexneuron" | "koopmajetekobcan" | "koopodzam" | "neon" | "cppAuto" | "allianzAuto" | "flexi" | "pillowAuto" | "csobAuto" | "uniqaAuto" | "slaviaauto";
   contractNumber: string;
   fileName: string;
   downloadPdf: (signal: AbortSignal) => Promise<Blob>;
@@ -55,6 +55,15 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     } else if (product === "pillowAuto") {
       const parser = await import("@/app/lib/parsePillowAutoPdf");
       parsePdf = parser.parsePillowAutoPdf;
+    } else if (product === "csobAuto") {
+      const parser = await import("@/app/lib/parseCsobAutoPdf");
+      parsePdf = parser.parseCsobAutoPdf;
+    } else if (product === "uniqaAuto") {
+      const parser = await import("@/app/lib/parseUniqaAutoPdf");
+      parsePdf = parser.parseUniqaAutoPdf;
+    } else if (product === "slaviaauto") {
+      const parser = await import("@/app/lib/parseSlaviaAutoPdf");
+      parsePdf = parser.parseSlaviaAutoPdf;
     } else {
       const parser = await import("@/app/lib/parseKoopOdzamPdf");
       parsePdf = parser.parseKoopOdzamPdf;
@@ -93,6 +102,6 @@ export async function loadContractPaymentDetailsFromPdf({ product, contractNumbe
     ...details,
     ...(frequency ? { frequency } : {}),
     ...(insuredItems.length ? { insuredItems } : {}),
-    ...(product === "cppAuto" || product === "allianzAuto" || product === "pillowAuto" ? { paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!" } : {}),
+    ...(product === "cppAuto" || product === "allianzAuto" || product === "pillowAuto" || product === "csobAuto" || product === "uniqaAuto" || product === "slaviaauto" ? { paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění. Pojistné se po 1. výročí může lišit dle navýšení / ponížení pojistného pojišťovnou!" } : {}),
   };
 }

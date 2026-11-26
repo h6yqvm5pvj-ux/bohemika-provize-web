@@ -1,6 +1,8 @@
 "use client";
 
 import { Loader2, RotateCcw, X } from "lucide-react";
+import { CommissionStornoComparison } from "@/app/components/CommissionStornoComparison";
+import { buildCommissionStornoComparison } from "@/app/lib/commissionStornoComparison";
 
 import {
   ContractDetailLink,
@@ -19,6 +21,7 @@ import type {
 export function StornoStatementActionModal({
   target,
   dateInput,
+  viewerEmail,
   saving,
   error,
   onDateChange,
@@ -27,6 +30,7 @@ export function StornoStatementActionModal({
 }: {
   target: StornoStatementActionTarget;
   dateInput: string;
+  viewerEmail?: string | null;
   saving: boolean;
   error: string | null;
   onDateChange: (value: string) => void;
@@ -34,6 +38,9 @@ export function StornoStatementActionModal({
   onConfirm: () => void;
 }) {
   const extranetUrl = firstSjednatelExtranetUrl([], target.contract);
+  const comparison = viewerEmail && dateInput && target.contract.entryType !== "endorsement" ? buildCommissionStornoComparison({
+    entries: [target.contract], ownerEmail: target.contract.adviserEmail, viewerEmail, stornoDate: dateInput,
+  }) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -48,7 +55,7 @@ export function StornoStatementActionModal({
         role="dialog"
         aria-modal="true"
         aria-label="Potvrdit ukončení smlouvy"
-        className="relative z-10 w-full max-w-lg rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40"
+        className="relative z-10 max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 shadow-2xl shadow-slate-300/40"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -99,6 +106,7 @@ export function StornoStatementActionModal({
           />
         </label>
 
+        {comparison && <div className="mt-3"><CommissionStornoComparison rows={comparison} preview /></div>}
         {error && (
           <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900">
             {error}

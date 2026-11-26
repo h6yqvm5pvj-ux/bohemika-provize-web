@@ -8,10 +8,12 @@ import { estimateCashflowShadowLifeReviewItems, estimateCashflowShadowScheduleIt
 
 // Record completeness makes a new domain product require a schedule test.
 const products: Record<Product, true> = {
+  conseqInvest: true,
+  investikaRealitniFond: true, investikaEfektika: true, investikaMonetika: true,
   conseqzenit: true, neon: true, flexi: true, maximaMaxEfekt: true, maxcizinkomplex: true,
   pillowInjury: true, zamex: true, cppbytex: true, domex: true, domexneuron: true, cpphafan: true,
   pillowmajetek: true, koopmajetekobcan: true, koopfit: true, koopodzam: true, kooppmop: true,
-  maxdomov: true, cppsimplex: true, cppAuto: true, slaviaauto: true, slaviaflotila: true,
+  maxdomov: true, cppsimplex: true, cppAuto: true, cppAutoVozikZdarma: true, slaviaauto: true, slaviaflotila: true,
   allianzAuto: true, allianzmujdomov: true, csobAuto: true, uniqaAuto: true, uniqaflotila: true,
   pillowAuto: true, kooperativaAuto: true, koopflotila: true, koopcestovko: true,
   cppcestovko: true, axacestovko: true, cppPPRs: true, cppPPRbez: true,

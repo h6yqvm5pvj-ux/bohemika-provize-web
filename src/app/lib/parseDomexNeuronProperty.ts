@@ -255,6 +255,70 @@ function assistanceReading(adjacent: Line[]): Reading<DomexNeuronAssistance> {
   return missing();
 }
 
+type AssistanceRow = { kind: DomexNeuronObjectKind; place: string | null; reading: Reading<DomexNeuronAssistance> };
+
+/** Read the selected-range column, not the later comparison of both plans.
+ * Addresses and choices may wrap above and below the centered subject label. */
+function assistanceTableRows(section: Section): AssistanceRow[] | null {
+  const columns = (line: Line) => {
+    const subject = line.items.find(item => /^predmet\s+pojisteni$/.test(normalize(item.str)));
+    const place = line.items.find(item => /^misto\s+pojisteni$/.test(normalize(item.str)));
+    const choice = line.items.find(item => /^sjednany\s+rozsah\s+asistencnich\s+sluzeb$/.test(normalize(item.str)));
+    if (!subject || !place || !choice) return null;
+    const centers = [subject, place, choice].map(item => item.x + item.width / 2);
+    if (!(centers[0] < centers[1] && centers[1] < centers[2])) return null;
+    return { placeStart: (centers[0] + centers[1]) / 2, choiceStart: (centers[1] + centers[2]) / 2 };
+  };
+  let activeColumns: ReturnType<typeof columns> = null;
+  let tableEnded = false;
+  let positioned = false;
+  const rows: AssistanceRow[] = [];
+  for (const page of new Set(section.lines.map(line => line.page))) {
+    const lines = section.lines.filter(line => line.page === page);
+    const headerIndex = lines.findIndex(line => columns(line) != null);
+    if (headerIndex >= 0) {
+      activeColumns = columns(lines[headerIndex]);
+      tableEnded = false;
+      positioned = true;
+    }
+    if (!activeColumns || tableEnded) continue;
+    const { placeStart, choiceStart } = activeColumns;
+    const start = headerIndex + 1;
+    const explanationIndex = lines.findIndex((line, index) => index >= start &&
+      (/^rozsah\s+asistencnich\s+sluzeb\b/.test(line.normalized) ||
+        line.items.filter(item => /^domaci\s+asistence(?:\s+plus)?$/.test(normalize(item.str))).length > 1));
+    const table = lines.slice(start, explanationIndex < 0 ? undefined : explanationIndex);
+    if (explanationIndex >= 0) tableEnded = true;
+    const items = table.flatMap(line => line.items);
+    const subjects = items.filter(item => item.x + item.width / 2 < placeStart &&
+      /^(?:hlavni\s+stavba|domacnost)\b/.test(normalize(item.str))).sort((a, b) => b.y - a.y);
+    for (let index = 0; index < subjects.length; index++) {
+      const subject = subjects[index];
+      const previous = subjects[index - 1];
+      const next = subjects[index + 1];
+      const headerY = headerIndex >= 0 ? Math.min(...lines[headerIndex].items.map(item => item.y)) : null;
+      const halfHeight = previous ? (previous.y - subject.y) / 2
+        : next ? (subject.y - next.y) / 2 : headerY != null ? Math.max(12, (headerY - subject.y) / 2) : 24;
+      const top = previous ? (previous.y + subject.y) / 2 : headerY ?? subject.y + halfHeight;
+      const bottom = next ? (next.y + subject.y) / 2 : subject.y - halfHeight;
+      const cell = (left: number, right: number) => items.filter(item => {
+        const center = item.x + item.width / 2;
+        return center >= left && center < right && item.y < top && item.y > bottom;
+      }).sort((a, b) => Math.abs(a.y - b.y) > 2 ? b.y - a.y : a.x - b.x)
+        .map(item => item.str).join(" ").replace(/\s+/g, " ").trim();
+      const rawPlace = cell(placeStart, choiceStart);
+      const choice = normalize(cell(choiceStart, Number.POSITIVE_INFINITY));
+      const match = /^domaci\s+asistence(?:\s+(plus))?$/.exec(choice);
+      const reading: Reading<DomexNeuronAssistance> = !choice ? missing()
+        : notInsured(choice) ? { value: null, status: "not_insured" }
+        : match ? { value: match[1] ? "plus" : "basic", status: "found" } : unreadable();
+      rows.push({ kind: /^hlavni\s+stavba\b/.test(normalize(subject.str)) ? "property" : "household",
+        place: isAddressValue(rawPlace) ? safeText(rawPlace) : null, reading });
+    }
+  }
+  return positioned ? rows : null;
+}
+
 function assignAssistance(sections: Section[], objects: DomexNeuronObject[]): DomexExtractionStatus {
   if (!sections.length) return "not_found";
   if (sections.every(section => explicitlyUninsured(section.lines, "assistance"))) {
@@ -264,7 +328,24 @@ function assignAssistance(sections: Section[], objects: DomexNeuronObject[]): Do
   const answers = new Map<string, Reading<DomexNeuronAssistance>[]>();
   const ambiguous = new Set<string>();
   let readable = false;
+  const assignRow = ({ kind, place, reading }: AssistanceRow) => {
+    if (reading.status === "not_found") return;
+    const candidates = objects.filter(object => object.kind === kind);
+    const matching = place ? candidates.filter(object => object.address && addressKey(object.address) === addressKey(place)) : [];
+    if (matching.length !== 1) {
+      for (const object of matching.length ? matching : candidates) ambiguous.add(object.id);
+      return;
+    }
+    readable = true;
+    const list = answers.get(matching[0].id) ?? [];
+    list.push(reading); answers.set(matching[0].id, list);
+  };
   for (const section of sections) {
+    const tableRows = assistanceTableRows(section);
+    if (tableRows != null) {
+      tableRows.forEach(assignRow);
+      continue;
+    }
     const lines = section.lines;
     for (let index = 0; index < lines.length; index++) {
       const kind = /^hlavni\s+stavba\b/.test(lines[index].normalized) ? "property"
@@ -275,18 +356,7 @@ function assignAssistance(sections: Section[], objects: DomexNeuronObject[]): Do
         if (next.page !== lines[index].page || /^(?:hlavni\s+stavba|domacnost)\b/.test(next.normalized)) break;
         adjacent.push(next);
       }
-      const reading = assistanceReading(adjacent);
-      if (reading.status === "not_found") continue;
-      const candidates = objects.filter(object => object.kind === kind);
-      const place = assistanceAddress(lines, index, adjacent);
-      const matching = place ? candidates.filter(object => object.address && addressKey(object.address) === addressKey(place)) : [];
-      if (matching.length !== 1) {
-        for (const object of matching.length ? matching : candidates) ambiguous.add(object.id);
-        continue;
-      }
-      readable = true;
-      const list = answers.get(matching[0].id) ?? [];
-      list.push(reading); answers.set(matching[0].id, list);
+      assignRow({ kind, place: assistanceAddress(lines, index, adjacent), reading: assistanceReading(adjacent) });
     }
   }
   for (const object of objects) {

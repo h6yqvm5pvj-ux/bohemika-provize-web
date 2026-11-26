@@ -16,6 +16,15 @@
 .card { position: relative; padding: 22px; }
 .sectionHeading { display: flex; align-items: center; gap: 10px; margin: 0 0 19px; color: #4c335c; font-size: 15px; font-weight: 650; line-height: 1.4; letter-spacing: -.02em; }
 .sectionIcon { display: inline-grid; flex-shrink: 0; width: 32px; height: 32px; place-items: center; border: 1px solid #e9def3; border-radius: 10px; background: #f7f1fc; color: #a079bf; }
+.detailsHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 19px; }
+.detailsHeader .sectionHeading { margin: 0; }
+.dipSwitch { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8px; min-height: 32px; padding: 4px 0 4px 8px; border: 0; border-radius: 6px; background: transparent; color: #806c8e; font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: color 160ms; }
+.dipSwitch:hover, .dipSwitch[aria-checked="true"] { color: #8756ac; }
+.dipSwitch:focus-visible { outline: 2px solid #8756ac; outline-offset: 3px; }
+.dipTrack { display: inline-flex; align-items: center; width: 30px; height: 18px; padding: 2px; border-radius: 999px; background: #d9d0e0; transition: background 160ms; }
+.dipThumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #48286126; transition: transform 160ms; }
+.dipSwitch[aria-checked="true"] .dipTrack { background: #986ac0; }
+.dipSwitch[aria-checked="true"] .dipThumb { transform: translateX(12px); }
 .subheading { margin: 15px 0 9px; color: #8f779f; font-size: 11px; font-weight: 600; }
 .eyebrow { display: block; margin: 0; color: #876797; font-size: 9px; line-height: 1.5; font-weight: 650; text-transform: uppercase; letter-spacing: .1em; }
 .fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -55,6 +64,8 @@
 .productInfo { min-width: 0; flex: 1; }
 .productName { display: block; margin-top: 5px; color: #4e335f; font-size: 15px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
 .changeProduct { display: inline-flex; flex-shrink: 0; align-items: center; gap: 8px; color: #8d65a6; font-size: 10px; font-weight: 550; }
+.coefficientSelection { margin: 0 22px 18px; padding-top: 12px; border-top: 1px solid #eee6f3; }
+.coefficientSelection > label { max-width: 380px; }
 .pdfSection { padding: 0 16px 16px; }
 .pdfDropzone { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed #ddcaed; border-radius: 12px; background: #fcf9ff; transition: background 160ms, border-color 160ms; }
 .pdfDropzone[data-dragging="true"] { border-color: #9d70c3; background: #eee1fb; }
@@ -65,6 +76,19 @@
 .pdfDropzone .secondaryButton { flex-shrink: 0; font-size: 10px; }
 .importStatus, .importError { margin: 10px 4px 0; font-size: 11px; line-height: 1.7; color: #886598; }
 .importError { color: #aa3d59; }
+.vehicleCheck { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 11px 12px; border: 1px solid #e9e2ef; border-radius: 12px; background: #fcf9ff; font-family: var(--font-inter, system-ui, sans-serif); }
+.vehicleCheckBody { flex: 1; min-width: 0; padding-top: 5px; }
+.vehicleCheckTitle { margin: 0; color: #4c335c; font-size: 12px; font-weight: 650; line-height: 1.6; }
+.vehicleCheck[data-failed="true"] .vehicleCheckTitle { color: #aa3d59; }
+.vehicleCheckMatches { margin: 6px 0 0; padding: 0; list-style: none; }
+.vehicleCheckMatches li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px 10px; padding-top: 7px; border-top: 1px solid #e9def3; }
+.vehicleCheckMatches li + li { margin-top: 7px; }
+.vehicleCheckPolicy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; min-width: 0; margin: 0; overflow-wrap: anywhere; color: #6d537b; font-size: 11px; line-height: 1.55; }
+.vehicleCheckPolicy strong { color: #4c335c; font-size: 12px; font-weight: 650; }
+.vehicleCheckPolicy span { font-variant-numeric: tabular-nums; }
+.vehicleCheckBadge { padding: 3px 7px; border: 1px solid #e9def3; border-radius: 7px; background: #f7f1fc; color: #6d4a82; font-size: 10px; font-weight: 600; line-height: 1.4; }
+.vehicleCheckBadge[data-mismatch="true"] { color: #943553; }
+.vehicleCheckMore { margin: 8px 0 0; color: #6d537b; font-size: 11px; }
 .batchFeedback { margin-top: 14px; padding-top: 4px; border-top: 1px solid #eee3f5; }
 .importProgress { display: block; height: 3px; margin-top: 10px; overflow: hidden; background: #eee2f8; border-radius: 3px; }
 .importProgress > span { display: block; width: 35%; height: 100%; background: #aa7bce; animation: importSlide 1.5s ease-in-out infinite; }
@@ -147,6 +171,7 @@
   .productName { font-size: 14px; }
   .productLogo { width: 54px; height: 43px; }
   .changeProduct > span { display: none; }
+  .coefficientSelection { margin-inline: 14px; }
   .pdfSection { padding: 0 12px 12px; }
   .pdfDropzone { flex-wrap: wrap; gap: 9px; padding: 11px; }
   .pdfDropzone .secondaryButton { margin-left: auto; }

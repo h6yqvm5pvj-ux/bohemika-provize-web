@@ -1,5 +1,7 @@
+import { applyOfficeContributionStatements } from "./officeContribution";
 import {
   applyIntelligentCashflowPrediction,
+  applyStatementAutoPayouts,
   applyStatementMissingPayoutShifts,
   applyStatementPayoutTotalsToMonths,
   filterItemsByContractNumber,
@@ -51,9 +53,11 @@ export function buildCashflowView(
       b.statementDate ?? b.fileName, "cs",
     ));
   }
+  const withOfficePayments = applyOfficeContributionStatements(items, statements, options, asOf);
+  const withAutoPayouts = options.tipsterMode ? withOfficePayments : applyStatementAutoPayouts(withOfficePayments, statements);
   const beforeSearch = reconcileStatements || searching
-    ? items
-    : filterPastItems(items, options.showPastYears, asOf);
+    ? withAutoPayouts
+    : filterPastItems(withAutoPayouts, options.showPastYears, asOf);
   const filtered = filterItemsByContractNumber(beforeSearch, options.contractNumberQuery);
   const reconciled = applyStatementMissingPayoutShifts({
     cashflowItems: filtered, statementsByMonthKey: statementsByMonth, enabled: reconcileStatements,

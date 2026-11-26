@@ -616,3 +616,11 @@ describe("cashflow shadow independent inputs", () => {
     expect(handlers.contracts).toHaveBeenCalledOnce();
   });
 });
+
+
+it("uses the authorized profile's strict opt-in for the office contribution", async () => {
+  handlers.profile.mockImplementation(() => json(profile("viewer@example.test", { cashflowOfficeContributionEnabled: true })));
+  expect((await loadCashflowShadowInputs(request())).snapshot.officeContributionEnabled).toBe(true);
+  handlers.profile.mockImplementation(() => json(profile("viewer@example.test", { cashflowOfficeContributionEnabled: "true" })));
+  expect((await loadCashflowShadowInputs(request())).snapshot).not.toHaveProperty("officeContributionEnabled");
+});

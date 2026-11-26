@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyIntelligentCashflowPrediction,
+  applyStatementAutoPayouts,
   applyStatementMissingPayoutShifts,
   applyStatementPayoutTotalsToMonths,
   groupItemsByMonth,
@@ -14,6 +15,7 @@ import {
   productLabel,
   statementPayoutTotal,
 } from "./helpers";
+import { buildCashflowView, type CashflowViewOptions } from "./buildCashflowView";
 import type { CashflowCommissionStatementSummary, CashflowItem } from "./types";
 
 const commissionStatement = (
@@ -70,6 +72,23 @@ describe("cashflow calendar period", () => {
 });
 
 describe("cashflow commission statements", () => {
+  it("keeps an unknown scheduled FLEXI amount open until an actual contract receipt is available", () => {
+    const pending: CashflowItem = {
+      id: "flexi-b0301", date: new Date(2026, 7, 25), amount: 0, amountUnknown: true,
+      productKey: "flexi", ownerEmail: "owner@example.test", entryId: "renovation",
+      contractNumber: "11111111", commissionCode: "B0301", payoutStatus: "predicted",
+    };
+    const items = applyStatementMissingPayoutShifts({
+      cashflowItems: [pending], enabled: true,
+      statementsByMonthKey: { "2026-8": [commissionStatement({
+        paidContractNumbers: ["11111111"], paidCommissionKeys: ["11111111:B0301"],
+      })] },
+    });
+    expect(items).toEqual([expect.objectContaining({
+      amountUnknown: true, date: new Date(2026, 8, 25), originalDate: pending.date, payoutStatus: "shifted",
+    })]);
+  });
+
   it("keeps a partial payout balance pending when the statement already contains the paid portion", () => {
     const balance: CashflowItem = {
       id: "balance", date: new Date(2025, 2, 25), amount: 75, productKey: "neon",
@@ -86,6 +105,22 @@ describe("cashflow commission statements", () => {
     expect(result).toEqual([expect.objectContaining({
       amount: 75, date: new Date(2025, 3, 25), originalDate: balance.date, payoutStatus: "shifted",
     })]);
+  });
+
+  it.each(["B101", "B102", null])("reconciles a NEON recurring line only with its matching statement code (%s)", code => {
+    const forecast: CashflowItem = {
+      id: "neon-follow-up", date: new Date(2026, 7, 25), amount: 35, productKey: "neon",
+      ownerEmail: "adviser@example.test", entryId: "root", contractNumber: "11111111",
+      policyStartDate: new Date(2024, 6, 1), commissionPeriodStart: "2026-07-01", commissionCode: "B101-B104",
+      commissionCodeAliases: ["B101", "B102", "B103", "B104"],
+    };
+    const result = applyStatementMissingPayoutShifts({
+      cashflowItems: [forecast], enabled: true,
+      statementsByMonthKey: { "2026-8": [commissionStatement({
+        paidContractNumbers: ["11111111"], paidCommissionKeys: code ? [`11111111:${code}`] : [],
+      })] },
+    });
+    expect(result[0].payoutStatus).toBe(code === "B102" ? "paid" : "shifted");
   });
 
   it("counts a re-uploaded statement only once", () => {
@@ -116,6 +151,62 @@ describe("cashflow commission statements", () => {
 
     expect(dedupeCashflowCommissionStatements(statements)).toHaveLength(2);
     expect(statementPayoutTotal(statements)).toBe(4694);
+  });
+});
+
+describe("exact auto installments in cashflow statements", () => {
+  const first: CashflowItem = {
+    id: "b105", date: new Date(2026, 3, 25), amount: 570, productKey: "cppAuto",
+    ownerEmail: "advisor@example.test", entryId: "policy", contractNumber: "123-456",
+    source: "own", commissionCode: "B105", commissionPeriodStart: "2026-03-01",
+  };
+  const next: CashflowItem = {
+    ...first, id: "b106", date: new Date(2026, 9, 25), commissionCode: "B106", commissionPeriodStart: "2026-09-01",
+  };
+  const receipt = { contractNumber: "123456", productKey: "cppAuto", source: "own", code: "B105", amount: 573.41 } as const;
+  const statement = commissionStatement({
+    payoutMonthKey: "2026-11", paidContractNumbers: ["123456"], paidCommissionKeys: ["123456:B105"],
+    paidAutoInstallments: [receipt],
+  });
+  const options: CashflowViewOptions = { scopeFilter: "combined", productFilter: "all", tipsterMode: false,
+    showPastYears: false, intelligentPredictionEnabled: false, contractNumberQuery: "" };
+  const asOf = new Date(2026, 10, 23);
+
+  it("settles a late B105 across missing statements and keeps B106 pending in normal and filtered views", () => {
+    const october = commissionStatement({ id: "october", payoutMonthKey: "2026-10" });
+    const items = [first, next];
+    const statements = [october, statement];
+    const months = buildCashflowView(items, statements, options, asOf);
+    expect(months.flatMap(month => month.items)).toEqual([
+      expect.objectContaining({ commissionCode: "B105", date: new Date(2026, 10, 25), originalDate: first.date,
+        payoutStatus: "paid", amount: 573.41, predictedAmount: 570, commissionPeriodStart: first.commissionPeriodStart }),
+      expect.objectContaining({ commissionCode: "B106", date: new Date(2026, 11, 25), payoutStatus: "shifted" }),
+    ]);
+    const searched = buildCashflowView(items, statements, { ...options, scopeFilter: "own", productFilter: "auto", contractNumberQuery: "123456" }, asOf);
+    expect(searched.flatMap(month => month.items).find(item => item.commissionCode === "B105")).toMatchObject({
+      payoutStatus: "paid", amount: 573.41,
+    });
+    const shifted = buildCashflowView(items, statements, { ...options, shiftedOnly: true }, asOf);
+    expect(shifted.flatMap(month => month.items).map(item => item.commissionCode)).toEqual(["B106"]);
+  });
+
+  it("does not reuse a linked receipt or settle a competing schedule or partial balance", () => {
+    const paid: CashflowItem = { ...first, id: "linked", date: new Date(2026, 10, 25), payoutStatus: "paid", amount: 573.41 };
+    for (const items of [[first, paid], [first, { ...first, id: "duplicate", entryId: "other" }],
+      [{ ...first, isPartialPayoutBalance: true }]]) {
+      expect(applyStatementAutoPayouts(items, [statement])).toBe(items);
+    }
+    const items = [first];
+    expect(applyStatementAutoPayouts(items, [statement, { ...statement, id: "another" }])).toBe(items);
+  });
+
+  it("requires the same product and recipient scope, even in the legacy monthly reconciliation", () => {
+    const own = { ...first, date: new Date(2026, 10, 25) };
+    const manager: CashflowItem = { ...own, source: "manager", id: "manager" };
+    const otherProduct: CashflowItem = { ...own, productKey: "kooperativaAuto", id: "other-product" };
+    const items = buildCashflowView([own, manager, otherProduct], [statement], options, asOf).flatMap(month => month.items);
+    expect(items.filter(item => item.payoutStatus === "paid").map(item => item.id)).toEqual([own.id]);
+    expect(items.filter(item => item.payoutStatus === "shifted")).toHaveLength(2);
   });
 });
 

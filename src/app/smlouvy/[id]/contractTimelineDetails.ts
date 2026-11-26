@@ -2,6 +2,16 @@ import type { ContractDoc } from "./contractDetailTypes";
 
 const email = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
 
+export function neonCommissionFamily(root: ContractDoc | null, timeline: ContractDoc[], ownerEmail: string | null | undefined): ContractDoc[] {
+  const owner = email(ownerEmail);
+  if (!root || root.productKey !== "neon" || root.entryType === "endorsement" ||
+    !owner || (root.userEmail && email(root.userEmail) !== owner)) return [];
+  const amendments = timeline.filter(entry => entry.productKey === "neon" && entry.entryType === "endorsement" &&
+    entry.rootContractEntryId === root.id && (!entry.userEmail || email(entry.userEmail) === owner) &&
+    (!root.contractNumber || !entry.contractNumber || root.contractNumber.trim() === entry.contractNumber.trim()));
+  return amendments.length ? [root, ...amendments].map(entry => ({ ...entry, userEmail: entry.userEmail ?? owner })) : [];
+}
+
 /** Only select a root already present in the backend-authorized family response. */
 export function unifiedContractDetail(
   selected: ContractDoc,

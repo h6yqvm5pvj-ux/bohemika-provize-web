@@ -134,3 +134,11 @@ describe("contracts API validation", () => {
     });
   });
 });
+
+it("keeps recorded auto amendments immutable through the generic update endpoint", () => {
+  const amendment: ContractDoc = { ...baseContract, productKey: "cppAuto", entryType: "endorsement", autoPremiumAmendment: true };
+  for (const patch of [{ inputAmount: 1 }, { frequencyRaw: "monthly" }, { policyStartDate: "2027-01-01" }]) {
+    expect(validateContractCoreInvariants(amendment, patch)).toMatchObject({ ok: false });
+  }
+  expect(validateContractCoreInvariants(amendment, { clientName: "Test Klient" })).toEqual({ ok: true });
+});

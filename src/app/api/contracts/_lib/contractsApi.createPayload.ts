@@ -1,5 +1,5 @@
 import { POSITION_ORDER } from "@/app/kalkulacka/calculatorHelpers";
-import { calculateFlexiRenovationBase, type FlexiRenovationInput, type FlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { FLEXI_RENOVATION_MISSING_BASE, calculateFlexiRenovationBase, type FlexiRenovationInput, type FlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import type { InheritedContractFields } from "@/app/lib/inheritedContracts";
 import { normalizeTransferEffectiveDate } from "./contractsApi.transfer";
 import { toDate } from "@/app/lib/formatters";
@@ -8,6 +8,9 @@ import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
 import type { DomexNeuronData } from "@/app/lib/domexNeuronSchema";
 import {
   isAutoProduct,
+  isRecordOnlyProduct,
+  isInvestmentProduct,
+  supportsDip,
   type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
 import {
@@ -64,6 +67,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "automaticRenewal",
   "premiumIndexationEnabled",
   "pensionTargetAge",
+  "isDip",
   "status",
   "stornoDate",
   "durationYears",
@@ -135,6 +139,7 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
   "paid",
   "isRefresh",
   "flexiRenovation",
+  "flexiRenovationWithoutBase",
   "refreshOriginalContractNumber",
   "refreshOriginalMissingInSystem",
   "requiresStatementRefresh",
@@ -165,6 +170,10 @@ const CREATE_ENTRY_ALLOWED_TOP_LEVEL_FIELDS = new Set<string>([
 
 const SUPPORTED_ENTRY_TYPES = new Set(["contract", "endorsement"] as const);
 export const SUPPORTED_PRODUCTS = new Set<Product>([
+  "conseqInvest",
+  "investikaRealitniFond",
+  "investikaEfektika",
+  "investikaMonetika",
   "conseqzenit",
   "neon",
   "flexi",
@@ -184,6 +193,7 @@ export const SUPPORTED_PRODUCTS = new Set<Product>([
   "maxdomov",
   "cppsimplex",
   "cppAuto",
+  "cppAutoVozikZdarma",
   "slaviaauto",
   "slaviaflotila",
   "allianzAuto",
@@ -679,6 +689,7 @@ export type RefreshCommissionBasePayload = FlexiRenovationBase & {
 } | {
   productKey: Product;
   method: "cpp_neon_5y_storno";
+  originalOutsideOwner?: boolean;
   calculationMethod: "storno_60_60" | "motivational_48_percent";
   originalContractNumber: string | null;
   originalStornoStartDateIso: string | null;
@@ -705,6 +716,7 @@ export type RefreshCommissionBasePayload = FlexiRenovationBase & {
 };
 
 export type NormalizedCreateEntryPayload = InheritedContractFields & {
+  isDip: boolean;
   productKey: Product;
   entryType: "contract" | "endorsement";
   position: Position;
@@ -836,6 +848,7 @@ export type NormalizedCreateEntryPayload = InheritedContractFields & {
     resolvedBy: string;
   } | null;
   refreshCommissionBase: RefreshCommissionBasePayload | null;
+  neonRefreshCareAnnualPremium?: number;
   rootContractEntryId: string | null;
   parentContractEntryId: string | null;
   parentContractEntryPath: string | null;
@@ -981,9 +994,22 @@ export const normalizeCreateEntryPayload = ({
   if (!entryTypeParsed.ok) return entryTypeParsed;
   const productParsed = parseProductKey(raw.productKey);
   if (!productParsed.ok) return productParsed;
+  const recordOnly = isRecordOnlyProduct(productParsed.value);
+  if (recordOnly) {
+    if (entryTypeParsed.value !== "contract" || raw.isRefresh === true ||
+      raw.tipContractTipsterEmail != null || raw.tipContractTipsterPercent != null) {
+      return { ok: false, error: "Evidenční produkt slouží pouze k evidenci smlouvy bez náhrady, dodatku a tipařské odměny." };
+    }
+    for (const field of ["inputAmount", "effectiveInputAmount", "calculationInputAmount",
+      "previousInputAmount", "newInputAmount", "premiumDelta", "premiumIncreaseAmount", "premiumDecreaseAmount"]) {
+      if (raw[field] != null && raw[field] !== 0) {
+        return { ok: false, error: "U evidenčního produktu nelze zadat pojistné ani základ pro provizi." };
+      }
+    }
+  }
   const commissionModeParsed = parseOptionalCommissionMode(raw.commissionMode, "commissionMode");
   if (!commissionModeParsed.ok) return commissionModeParsed;
-  const freqParsed = parseFrequencyField(raw.frequencyRaw);
+  const freqParsed = parseFrequencyField(raw.frequencyRaw ?? (recordOnly ? "annual" : undefined));
   if (!freqParsed.ok) return freqParsed;
   const paidParsed = parseOptionalBoolean(raw.paid, "paid");
   if (!paidParsed.ok) return paidParsed;
@@ -1341,7 +1367,10 @@ export const normalizeCreateEntryPayload = ({
   if (inherited && transferEffectiveDate && transferEffectiveDate < toIsoDay(signedDateParsed.value)) {
     return { ok: false, error: "Datum převzetí nesmí být před původním sjednáním smlouvy." };
   }
-  const policyStartParsed = parseRequiredDateField(raw.policyStartDate, "policyStartDate");
+  const policyStartParsed = parseRequiredDateField(
+    isInvestmentProduct(productParsed.value) ? raw.contractSignedDate : raw.policyStartDate,
+    "policyStartDate"
+  );
   if (!policyStartParsed.ok) return policyStartParsed;
   const policyEndParsed = parseOptionalDateField(raw.policyEndDate, "policyEndDate");
   if (!policyEndParsed.ok) return policyEndParsed;
@@ -1368,6 +1397,11 @@ export const normalizeCreateEntryPayload = ({
   if (!renewalValidation.ok) return renewalValidation;
   const pensionTargetAgeParsed = parseOptionalInteger(raw.pensionTargetAge, "pensionTargetAge", { min: 1, max: 120 });
   if (!pensionTargetAgeParsed.ok) return pensionTargetAgeParsed;
+  const dipParsed = parseOptionalBoolean(raw.isDip, "isDip");
+  if (!dipParsed.ok) return dipParsed;
+  if (dipParsed.value === true && !supportsDip(productParsed.value)) {
+    return { ok: false, error: "DIP lze zapnout pouze pro iNVESTiKA - Realitní fond a iNVESTiKA - EFEKTIKA." };
+  }
   const statusParsed = parseOptionalContractStatus(raw.status, "status");
   if (!statusParsed.ok) return statusParsed;
   const stornoDateParsed = parseOptionalDateField(raw.stornoDate, "stornoDate");
@@ -1469,7 +1503,19 @@ export const normalizeCreateEntryPayload = ({
   const isRefresh = isRefreshParsed.value === true;
   let flexiRenovation: FlexiRenovationInput | null = null;
   const isFlexiRenovation = productParsed.value === "flexi" && isRefresh;
-  if (isFlexiRenovation || raw.flexiRenovation != null) {
+  const withoutBaseParsed = parseOptionalBoolean(raw.flexiRenovationWithoutBase, "flexiRenovationWithoutBase");
+  if (!withoutBaseParsed.ok) return withoutBaseParsed;
+  const flexiWithoutBase = withoutBaseParsed.value === true;
+  if (flexiWithoutBase && (
+    !isFlexiRenovation || entryTypeParsed.value !== "contract" || raw.flexiRenovation != null ||
+    raw.calculationInputAmount != null || raw.tipContractTipsterEmail != null ||
+    raw.tipContractTipsterPercent != null || requiresStatementRefreshParsed.value === true ||
+    inputAmountParsed.value == null || inputAmountParsed.value <= 0 ||
+    (effectiveInputAmountParsed.value != null && effectiveInputAmountParsed.value !== inputAmountParsed.value)
+  )) {
+    return { ok: false, error: "Renovace FLEXI bez základny vyžaduje nové pojistné a uložení bez výpočtu provize." };
+  }
+  if ((isFlexiRenovation && !flexiWithoutBase) || raw.flexiRenovation != null) {
     if (!isFlexiRenovation || entryTypeParsed.value !== "contract") {
       return { ok: false, error: "Údaje renovace jsou povolené jen pro novou smlouvu FLEXI s renovací." };
     }
@@ -1494,9 +1540,9 @@ export const normalizeCreateEntryPayload = ({
       guaranteeStatus: base.guaranteeStatus,
     };
   }
-  const refreshOriginalMissingInSystem = refreshOriginalMissingParsed.value === true;
-  const requiresOriginalStatementRefresh = refreshOriginalMissingInSystem && productParsed.value !== "domexneuron";
-  const refreshOriginalContractNumber = refreshOriginalMissingInSystem && productParsed.value !== "domexneuron"
+  const refreshOriginalMissingInSystem = flexiWithoutBase || refreshOriginalMissingParsed.value === true;
+  const requiresOriginalStatementRefresh = refreshOriginalMissingInSystem && !flexiWithoutBase && productParsed.value !== "domexneuron";
+  const refreshOriginalContractNumber = refreshOriginalMissingInSystem && !flexiWithoutBase && productParsed.value !== "domexneuron"
     ? null
     : refreshOriginalParsed.value;
   const supportsOriginalReplacement = supportsOriginalContractReplacement(
@@ -1690,10 +1736,10 @@ export const normalizeCreateEntryPayload = ({
       productKey: productParsed.value,
       entryType: entryTypeParsed.value,
       position: "poradce1",
-      commissionMode: commissionModeParsed.value,
+      commissionMode: recordOnly ? null : commissionModeParsed.value,
       inputAmount: inputAmountParsed.value ?? 0,
       effectiveInputAmount: effectiveInputAmountParsed.value ?? inputAmountParsed.value ?? 0,
-      frequencyRaw: freqParsed.value,
+      frequencyRaw: recordOnly ? "annual" : freqParsed.value,
       items: [],
       total: 0,
       result: {
@@ -1711,6 +1757,7 @@ export const normalizeCreateEntryPayload = ({
         premiumIndexationEnabled: premiumIndexationParsed.value,
       } : {}),
       pensionTargetAge: productParsed.value === "conseqzenit" ? pensionTargetAgeParsed.value : null,
+      isDip: supportsDip(productParsed.value) && dipParsed.value === true,
       status: lifecycleStatus,
       stornoDate: stornoDateParsed.value,
       durationYears: durationYearsParsed.value,
@@ -1816,7 +1863,7 @@ export const normalizeCreateEntryPayload = ({
       koopOdzamDetail: productParsed.value === "koopodzam" ? koopOdzamDetailParsed.value : null,
       maxdomovDetail:
         productParsed.value === "maxdomov" ? maxdomovDetailParsed.value : null,
-      paid: paidParsed.value === true,
+      paid: recordOnly || paidParsed.value === true,
       productCategory: null,
       institutionId: null,
       lifecycleStatus: lifecycleStatus === "storno" ? "storno" : "active",
@@ -1832,14 +1879,18 @@ export const normalizeCreateEntryPayload = ({
       refreshOriginalContractNumber,
       refreshOriginalMissingInSystem: refreshOriginalMissingInSystem || null,
       requiresStatementRefresh: requiresOriginalStatementRefresh || null,
-      commissionCalculationStatus: requiresOriginalStatementRefresh
-        ? commissionCalculationStatusParsed.value || "provisional_refresh_missing_original"
-        : null,
+      commissionCalculationStatus: flexiWithoutBase
+        ? FLEXI_RENOVATION_MISSING_BASE
+        : requiresOriginalStatementRefresh
+          ? commissionCalculationStatusParsed.value === FLEXI_RENOVATION_MISSING_BASE
+            ? "provisional_refresh_missing_original"
+            : commissionCalculationStatusParsed.value || "provisional_refresh_missing_original"
+          : null,
       commissionBaseSource: requiresOriginalStatementRefresh
         ? commissionBaseSourceParsed.value || "calculator_provisional"
         : null,
       initialCommissionBase:
-        entryTypeParsed.value === "contract" && isAutoProduct(productParsed.value)
+        entryTypeParsed.value === "contract" && isAutoProduct(productParsed.value) && !recordOnly
           ? {
               paymentPremium: inputAmountParsed.value ?? 0,
               annualPremium:

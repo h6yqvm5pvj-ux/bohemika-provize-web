@@ -26,6 +26,12 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("short meeting inquiries", () => {
+  it("delivers enquiries to the account owner when the public contact is another address", async () => {
+    expect((await POST(request({ ...body(), travel: undefined, ownerEmail: "attacker@example.test" }))).status).toBe(200);
+    expect(openPrivateRecord("onlineCardMeetingRequests/inquiry-123", mocks.set.mock.calls[0][0])).toMatchObject({ ownerEmail: "owner@example.test" });
+    expect(mocks.mailbox).toHaveBeenCalledWith(expect.objectContaining({ recipientEmails: ["owner@example.test"] }));
+  });
+
   it.each(["phone", "email"])("accepts only the preferred %s with no topic or message", async method => {
     const payload = { ...body(), travel: undefined, preferredContact: method, phone: method === "phone" ? "+420 777 000 111" : "", email: method === "email" ? "Client@Example.test" : "" };
     expect((await POST(request(payload))).status).toBe(200);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { businessLookupToken } from "@/lib/server/businessDataEncryption";
 
 import type { ContractDoc, ContractListFilters } from "./contractsApi.types";
 import {
@@ -25,6 +26,8 @@ import {
 
 const emptyFilters = (): ContractListFilters =>
   parseContractListFilters(new URLSearchParams());
+
+afterEach(() => vi.unstubAllEnvs());
 
 const contract = (overrides: Partial<ContractDoc> = {}): ContractDoc => ({
   id: "contract-1",
@@ -132,6 +135,36 @@ describe("contracts API list filters", () => {
     expect(hasContractListFilters(emptyFilters())).toBe(false);
     expect(hasContractListClientFilters(onlySigned)).toBe(false);
     expect(hasContractListFilters(onlySigned)).toBe(true);
+  });
+
+  it("parses and applies the no-PDF filter using only valid PDF attachments", () => {
+    const filters = parseContractListFilters(new URLSearchParams({ withoutPdfOnly: "1" }));
+    expect(filters.withoutPdfOnly).toBe(true);
+    expect(hasContractListClientFilters(filters)).toBe(true);
+    expect(contractMatchesListFilters(contract(), filters)).toBe(true);
+    expect(contractMatchesListFilters(contract({ contractPdfAttachment: {
+      kind: "contractPdf", storagePath: "private/file.pdf", contentType: "application/pdf",
+    } }), filters)).toBe(false);
+    expect(contractMatchesListFilters(contract({ contractPdfAttachment: {
+      kind: "contractPdf", storagePath: "private/file.txt", contentType: "text/plain",
+    } }), filters)).toBe(true);
+    expect(parseContractListFilters(new URLSearchParams({ withoutPdfOnly: "true" })).withoutPdfOnly).toBe(true);
+    expect(parseContractListFilters(new URLSearchParams({ withoutPdfOnly: "false" })).withoutPdfOnly).toBe(false);
+  });
+
+  it("treats a PDF bound to a different policy number as missing", () => {
+    vi.stubEnv("BUSINESS_DATA_INDEX_KEY", Buffer.alloc(32, 83).toString("base64"));
+    const fingerprint = businessLookupToken("contract-pdf-number-binding", "ab12/34");
+    const attachment = {
+      kind: "contractPdf", bucketName: "synthetic.firebasestorage.app",
+      storagePath: `contract-pdfs/owner/contract-${fingerprint}/entry/file.pdf`,
+      originalName: "policy.pdf", contentType: "application/pdf", sizeBytes: 64,
+      sha256: "a".repeat(64), uploadedAtMs: 1, uploadedBy: "owner@example.test",
+      contractNumberFingerprint: fingerprint,
+    };
+    const filters = parseContractListFilters(new URLSearchParams({ withoutPdfOnly: "1" }));
+    expect(contractMatchesListFilters(contract({ contractPdfAttachment: attachment }), filters)).toBe(false);
+    expect(contractMatchesListFilters(contract({ contractNumber: "DIFFERENT", contractPdfAttachment: attachment }), filters)).toBe(true);
   });
 
   it("matches search by Czech client name and compact contract number", () => {

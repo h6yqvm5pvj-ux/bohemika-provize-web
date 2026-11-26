@@ -2,8 +2,9 @@
 
 import { useEffect, useId, useRef } from "react";
 import Image from "next/image";
-import { ArrowUpRight, CircleAlert, Copy, LoaderCircle, X } from "lucide-react";
+import { CircleAlert, Copy, LoaderCircle, X } from "lucide-react";
 import { KOOPERATIVA_CONTRACT_STATUS_URL, type KooperativaStatusIdentity } from "@/app/lib/kooperativaContractStatus";
+import { ContractPortalActions } from "./ContractPortalIdentityDialog";
 import styles from "./kooperativaContractStatus.module.css";
 
 type Props = {
@@ -12,10 +13,11 @@ type Props = {
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  onOpenStorno?: () => void;
   onCopy: (value: string, label: string) => void | Promise<void>;
 };
 
-export function KooperativaContractStatusDialog({ contractNumber, identity, loading, error, onClose, onCopy }: Props) {
+export function KooperativaContractStatusDialog({ contractNumber, identity, loading, error, onClose, onCopy, onOpenStorno }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -102,9 +104,7 @@ export function KooperativaContractStatusDialog({ contractNumber, identity, load
 
       <footer className={styles.footer}>
         <p>Ověření proběhne na portálu Kooperativy.</p>
-        <a className={styles.openPortal} href={KOOPERATIVA_CONTRACT_STATUS_URL} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-          Otevřít Kooperativu <ArrowUpRight size={19} strokeWidth={1.9} aria-hidden="true" />
-        </a>
+        <ContractPortalActions url={KOOPERATIVA_CONTRACT_STATUS_URL} openLabel="Otevřít Kooperativu" onOpenStorno={onOpenStorno} />
       </footer>
     </dialog>
   );

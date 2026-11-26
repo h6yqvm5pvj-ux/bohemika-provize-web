@@ -47,6 +47,7 @@ describe("saveContractEntry", () => {
       ok: true,
       entryId: "saved-entry",
       linkedRefreshOriginalEntryId: "original-entry",
+      linkedRefreshOriginal: true,
       pdfAttachment: { status: "not-requested" },
     });
   });
@@ -69,7 +70,18 @@ describe("saveContractEntry", () => {
       ok: true,
       entryId: "saved-entry",
       linkedRefreshOriginalEntryId: "original-entry",
+      linkedRefreshOriginal: true,
       pdfAttachment: { status: "failed", message: "Storage nedostupné" },
+    });
+  });
+
+  it("confirms a linked foreign original using only a boolean", async () => {
+    mocks.requestContractsMutationWithAuth.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      data: { entryId: "saved-entry", refreshOriginalEntryId: null, refreshOriginalLinked: true },
+    });
+    expect(await saveContractEntry(input())).toMatchObject({
+      ok: true, linkedRefreshOriginal: true, linkedRefreshOriginalEntryId: null,
     });
   });
 

@@ -23,7 +23,7 @@ export function expectedPayoutFromStatements(
 /** Exactly the home's existing calculation, evaluated once after both sources
  * arrive. History remains necessary for older instalments and statement shifts. */
 export function computeExpectedPayout({ snapshot, statements, asOf }: CashflowDataset): ExpectedPayout {
-  const cashflowItems = computeCashflow(snapshot, { scopeFilter: "combined", productFilter: "all", asOf });
+  const cashflowItems = computeCashflow(snapshot, { scopeFilter: "combined", productFilter: "all", asOf, statements });
   const statementsByMonthKey: Record<string, CashflowCommissionStatementSummary[]> = {};
   for (const statement of statements) {
     const key = statementMonthKey(statement);

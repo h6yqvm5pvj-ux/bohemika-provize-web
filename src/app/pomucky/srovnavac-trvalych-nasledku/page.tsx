@@ -5,10 +5,14 @@ import { SCENARIO_FIT_SCRIPT } from "@/lib/previewScripts";
 
 import Image from "next/image";
 import Link from "next/link";
+import { onAuthStateChanged } from "firebase/auth";
 import {
+  memo,
   type KeyboardEvent,
   type PointerEvent,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -31,8 +35,12 @@ import { InsurerPicker } from "./InsurerPicker";
 import { buildClientReport, type PdfAppendix } from "./clientReport";
 import { ParameterField } from "./ParameterField";
 import { PdfPersonalization } from "./PdfPersonalization";
+import { loadPdfAdvisorCard, loadPdfAdvisorDetails, PdfAdvisorCardError, type PdfAdvisorCard, type PdfAdvisorDetails, type PdfAdvisorDraft } from "./pdfAdvisorCard";
 import { PROGRESSION_LABELS } from "./progressionOptions";
+import { getCardFilterOptions, getInsurerFilterGroups, INJURY_PRODUCT_CARDS, splitInsurerAndProduct } from "./productCatalog";
 
+import { auth } from "@/app/firebase-auth";
+import { ADMIN_IMPERSONATION_EVENT } from "@/app/lib/adminImpersonation";
 import { AppLayout } from "@/components/AppLayout";
 import { formatMoney } from "@/app/lib/formatters";
 import {
@@ -83,7 +91,8 @@ async function waitForPdfAssets(source: HTMLElement) {
   );
 }
 
-async function savePdfExport(exportHtml: string, filename: string) {
+async function savePdfExport(exportHtml: string, filename: string, assertSession: () => void) {
+  assertSession();
   const host = document.createElement("div");
   host.setAttribute("aria-hidden", "true");
   host.style.cssText = "position:fixed;left:-100000px;top:0;width:794px;pointer-events:none;";
@@ -98,12 +107,25 @@ async function savePdfExport(exportHtml: string, filename: string) {
     const { html2canvas } = await getPdfRenderer();
     const { jsPDF } = await getPdfRenderer();
     const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait", compress: true });
+    const width = pdf.internal.pageSize.getWidth();
+    const height = pdf.internal.pageSize.getHeight();
     const pages = Array.from(source.querySelectorAll<HTMLElement>(".pdf-page"));
     for (const [index, page] of pages.entries()) {
+      assertSession();
       const canvas = await html2canvas(page, { backgroundColor: "#ffffff", scale: 2, useCORS: true, logging: false, windowWidth: 794, scrollX: 0, scrollY: 0 });
       if (index > 0) pdf.addPage();
-      pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight());
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, width, height);
+      const link = page.querySelector<HTMLAnchorElement>(".pdf-advisor-link[href]");
+      if (link) {
+        const pageRect = page.getBoundingClientRect();
+        const linkRect = link.getBoundingClientRect();
+        const scaleX = width / pageRect.width;
+        const scaleY = height / pageRect.height;
+        pdf.link((linkRect.left - pageRect.left) * scaleX, (linkRect.top - pageRect.top) * scaleY,
+          linkRect.width * scaleX, linkRect.height * scaleY, { url: link.href });
+      }
     }
+    assertSession();
     pdf.save(filename);
   } finally {
     host.remove();
@@ -115,15 +137,11 @@ type ComparisonCard = {
   insurer: string;
   badges: string[];
   payout: number;
-  info: string;
   infoSections?: InfoSection[];
-  tablePreview?: InfoTablePreview;
+  buildTablePreview?: () => InfoTablePreview;
   diagnosisExamples?: DiagnosisExample[];
   filterYears?: string[];
-  curve: PayoutCurvePoint[];
 };
-
-type ComparisonCardBase = Omit<ComparisonCard, "curve">;
 
 type InfoSection = {
   title: string;
@@ -148,28 +166,14 @@ type PayoutCurvePoint = {
   payoutPercent: number;
 };
 
+type Scenario = { label: string; percent: number };
+type ScenarioPreview = { html: string; hasAdvisorCard: boolean; assertSession: () => void };
+
 type DiagnosisExample = {
   percent: number;
   title: string;
   note: string;
 };
-
-type InsurerFilterOption = {
-  value: string;
-  productName: string;
-  badges: string[];
-};
-
-type InsurerFilterGroup = {
-  insurerName: string;
-  options: InsurerFilterOption[];
-};
-
-const INSURER_FILTER_GROUP_PRIORITY = new Map([
-  ["ČPP", 0],
-  ["Kooperativa", 1],
-  ["Allianz", 2],
-]);
 
 const parseNumber = (val: string): number => {
   const num = Number(val.replace(",", ".").replace(/\s+/g, ""));
@@ -184,11 +188,12 @@ const parsePercentInput = (raw: string): number => {
   return clampPercent(parsed);
 };
 
-const formatPercent = (value: number): string =>
-  `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} %`;
+const percentFormatter = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 1 });
+const tablePercentFormatter = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 3 });
 
-const formatTablePercent = (value: number): string =>
-  `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 3 })} %`;
+const formatPercent = (value: number): string => `${percentFormatter.format(value)} %`;
+
+const formatTablePercent = (value: number): string => `${tablePercentFormatter.format(value)} %`;
 
 const roundedPercentIndex = (value: number): number =>
   Math.min(100, Math.max(0, Math.round(value)));
@@ -676,7 +681,7 @@ function PayoutCurveChart({
   );
 }
 
-function EditorialResultRow({
+const EditorialResultRow = memo(function EditorialResultRow({
   card,
   position,
   compact,
@@ -718,7 +723,50 @@ function EditorialResultRow({
       </button>
     </article>
   );
-}
+});
+
+const ScenarioPayoutTable = memo(function ScenarioPayoutTable({
+  cards,
+  scenarios,
+  payouts,
+}: {
+  cards: ComparisonCard[];
+  scenarios: Scenario[];
+  payouts: Map<string, number>[];
+}) {
+  const maxima = payouts.map((scenario) =>
+    Math.max(0, ...cards.map((card) => scenario.get(card.key) ?? 0))
+  );
+
+  return (
+    <div className={styles.scenarioTable}>
+      <table>
+        <thead>
+          <tr>
+            <th>Pojišťovna / produkt</th>
+            {scenarios.map(({ label, percent }, index) => (
+              <th key={label}>Scénář {index + 1} · {formatPercent(percent)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cards.map((card) => {
+            const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+            return (
+              <tr key={card.key}>
+                <td>{insurerName}<small>{productName} · {card.badges.join(" · ")}</small></td>
+                {scenarios.map(({ label }, index) => {
+                  const payout = payouts[index].get(card.key) ?? 0;
+                  return <td key={label} data-best={payout > 0 && payout === maxima[index]}>{formatMoney(payout)}</td>;
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+});
 
 const percentValueRows = (
   table: number[],
@@ -864,81 +912,9 @@ const getInsurerLogoPath = (insurer: string): string | null => {
   return null;
 };
 
-const splitInsurerAndProduct = (value: string): { insurerName: string; productName: string } => {
-  const insurerPrefixes = [
-    "ČPP",
-    "UNIQA",
-    "Kooperativa",
-    "MetLife",
-    "ČSOB",
-    "KB",
-    "Generali",
-    "NN",
-    "Maxima",
-    "Allianz",
-    "AXA",
-    "Slavia",
-    "Simplea",
-    "Pillow",
-    "YOU PLUS",
-  ];
-
-  const lower = value.toLowerCase();
-  const matched = insurerPrefixes.find((prefix) => lower.startsWith(prefix.toLowerCase()));
-  if (!matched) {
-    return { insurerName: value, productName: value };
-  }
-
-  const productName = value.slice(matched.length).trim();
-  return {
-    insurerName: matched,
-    productName: productName || value,
-  };
-};
-
-const splitProductYearBadge = (value: string): { productName: string; yearBadge: string | null } => {
-  const match = value.match(/^(.*\S)\s+(\d{4}(?:[-–]\d{4})?|\d{1,2}\/\d{4})$/);
-  if (!match) return { productName: value, yearBadge: null };
-
-  return {
-    productName: match[1],
-    yearBadge: match[2].replace("-", "–"),
-  };
-};
-
-const isYearBadge = (value: string): boolean =>
-  /^\d{4}(?:[-–](?:\d{4}|\d{1,2}\.\d{1,2}\.\d{4}))?$/.test(value) ||
-  /^\d{1,2}\/\d{4}$/.test(value) ||
-  /^\d{1,2}\.\d{1,2}\.\d{4}(?:[-–](?:\d{4}|\d{1,2}\.\d{1,2}\.\d{4}))?$/.test(value);
-
-const normalizeYearBadge = (value: string): string => value.replaceAll("-", "–");
-
 const getCardProgressionBadges = (
   card: Pick<ComparisonCard, "badges">
 ): string[] => card.badges.filter((badge) => badge.toLowerCase().includes("progrese"));
-
-const getCardFilterYearBadges = (card: Pick<ComparisonCard, "badges" | "filterYears">): string[] => {
-  const years = card.filterYears?.length
-    ? card.filterYears
-    : card.badges.filter(isYearBadge);
-
-  return Array.from(new Set(years.map(normalizeYearBadge)));
-};
-
-const getCardFilterOptions = (
-  card: Pick<ComparisonCard, "insurer" | "badges" | "filterYears">
-): Array<{ value: string; badges: string[] }> => {
-  const yearBadges = getCardFilterYearBadges(card);
-
-  if (yearBadges.length === 0) {
-    return [{ value: `${card.insurer}::without-year`, badges: [] }];
-  }
-
-  return yearBadges.map((yearBadge) => ({
-    value: `${card.insurer}::${yearBadge}`,
-    badges: [yearBadge],
-  }));
-};
 
 const getMultiplierForRange = (percent: number): number => {
   if (percent <= 10) return 1;
@@ -1670,6 +1646,20 @@ const GENERALI_MUJ_ZIVOT_TABLE: number[] = [
   1000, // 100 %
 ];
 
+const GENERALI_MUJ_ZIVOT_2026_TABLE: number[] = [
+  0,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 12, 13, 14, 15, 17, 19, 21, 23, 25,
+  27, 29, 31, 33, 35, 37, 39, 41, 43, 45,
+  47, 49, 51, 53, 55, 58, 61, 64, 67, 70,
+  73, 76, 79, 82, 85, 88, 91, 94, 97, 100,
+  103, 106, 109, 112, 115, 124, 133, 142, 151, 160,
+  169, 178, 187, 196, 205, 220, 235, 250, 265, 280,
+  295, 310, 325, 340, 355, 375, 395, 415, 435, 455,
+  475, 495, 515, 535, 555, 580, 605, 630, 655, 680,
+  705, 730, 755, 780, 805, 844, 883, 922, 961, 1000,
+];
+
 const NN_ORANGE_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
@@ -2062,7 +2052,8 @@ const YOU_PLUS_4U_2020_INFO_SECTIONS: InfoSection[] = [
   },
 ];
 
-const GENERALI_BEL_MONDO_20_2023_2024_TABLE: number[] = [
+// The 2023–2024 and 2026 Bel Mondo 20 variants use the same 10× table.
+const GENERALI_BEL_MONDO_20_10X_TABLE: number[] = [
   0, // 0 %
   1, // 1 %
   2, // 2 %
@@ -2167,7 +2158,7 @@ const GENERALI_BEL_MONDO_20_2023_2024_TABLE: number[] = [
 ];
 
 const GENERALI_ALLEGRO_20_2023_2024_TABLE =
-  GENERALI_BEL_MONDO_20_2023_2024_TABLE;
+  GENERALI_BEL_MONDO_20_10X_TABLE;
 
 const GENERALI_BEL_MONDO_20_2020_2022_TABLE: number[] = [
   0,
@@ -2436,6 +2427,9 @@ const getGeneraliMujZivotPercent = (percent: number): number => {
   return GENERALI_MUJ_ZIVOT_TABLE[idx] ?? 0;
 };
 
+const getGeneraliMujZivot2026Percent = (percent: number): number =>
+  GENERALI_MUJ_ZIVOT_2026_TABLE[roundedPercentIndex(percent)] ?? 0;
+
 const getNnOrangePercent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
   return NN_ORANGE_TABLE[idx] ?? 0;
@@ -2471,10 +2465,8 @@ const getYouPlus4u2020Percent = (percent: number): number => {
   return YOU_PLUS_4U_2020_TABLE[idx] ?? 0;
 };
 
-const getGeneraliBelMondo20232024Percent = (percent: number): number => {
-  const idx = Math.min(100, Math.max(0, Math.round(percent)));
-  return GENERALI_BEL_MONDO_20_2023_2024_TABLE[idx] ?? 0;
-};
+const getGeneraliBelMondo10xPercent = (percent: number): number =>
+  GENERALI_BEL_MONDO_20_10X_TABLE[roundedPercentIndex(percent)] ?? 0;
 
 const getGeneraliBelMondo20202022Percent = (percent: number): number => {
   const idx = Math.min(100, Math.max(0, Math.round(percent)));
@@ -3130,8 +3122,10 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "csob-nas-zivot": getCsobNasZivotPercent,
   "kb-elan-2025-10": getKbElan202510Percent,
   "csob-forte": (percent) => getCsobForteMultiplier(percent) * percent,
+  "generali-muj-zivot-2026": getGeneraliMujZivot2026Percent,
   "generali-muj-zivot": getGeneraliMujZivotPercent,
-  "generali-bel-mondo-20-2023-2024": getGeneraliBelMondo20232024Percent,
+  "generali-bel-mondo-20-2026": getGeneraliBelMondo10xPercent,
+  "generali-bel-mondo-20-2023-2024": getGeneraliBelMondo10xPercent,
   "generali-bel-mondo-20-2020-2022": getGeneraliBelMondo20202022Percent,
   "generali-allegro-20-2023-2024": getGeneraliAllegro20232024Percent,
   "generali-allegro-20-2020-2022": getGeneraliAllegro20202022Percent,
@@ -3151,11 +3145,18 @@ const PAYOUT_PERCENT_BY_CARD_KEY: Record<string, (percent: number) => number> = 
   "pillow-uraz-nemoc": (percent) => getPillowMultiplier(percent) * percent,
 };
 
+const getCardPayoutCurve = (key: string): PayoutCurvePoint[] =>
+  buildPayoutCurve(PAYOUT_PERCENT_BY_CARD_KEY[key] ?? (() => 0));
+
 export default function SrovnavacTrvalychNasledkuPage() {
   const pageRef = useRef<HTMLDivElement>(null);
   const [pdfAppendix, setPdfAppendix] = useState<PdfAppendix>("graphs");
   const [pdfClientName, setPdfClientName] = useState("");
   const [pdfAdvisorName, setPdfAdvisorName] = useState("");
+  const [advisorDraft, setAdvisorDraft] = useState<(PdfAdvisorDraft & { details: PdfAdvisorDetails }) | null>(null);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorError, setAdvisorError] = useState<string | null>(null);
+  const assertDraftSession = advisorDraft?.assertSession;
   const [sumInsuredInput, setSumInsuredInput] = useState("500000");
   const [rangePercentInput, setRangePercentInput] = useState("50");
   const [compactList, setCompactList] = useState(false);
@@ -3189,7 +3190,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
     return limited;
   })();
 
-  const buildCardsForPercent = (percent: number): ComparisonCard[] => {
+  const buildCardsForPercent = useCallback((percent: number): ComparisonCard[] => {
     const normalizedPercent = clampPercent(percent);
 
     const multiplier = getMultiplierForRange(normalizedPercent);
@@ -3271,6 +3272,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const csobForteMultiplier = getCsobForteMultiplier(normalizedPercent);
     const payoutCsobForte =
       sumInsuredValue * csobForteMultiplier * (normalizedPercent / 100);
+    const generaliMujZivot2026Percent = getGeneraliMujZivot2026Percent(normalizedPercent);
+    const payoutGeneraliMujZivot2026 = sumInsuredValue * (generaliMujZivot2026Percent / 100);
     const generaliMujZivotPercent = getGeneraliMujZivotPercent(normalizedPercent);
     const payoutGeneraliMujZivot = sumInsuredValue * (generaliMujZivotPercent / 100);
     const nnOrangePercent = getNnOrangePercent(normalizedPercent);
@@ -3290,10 +3293,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
       sumInsuredValue * (youPlus4u2025T3kPercent / 100);
     const youPlus4u2020Percent = getYouPlus4u2020Percent(normalizedPercent);
     const payoutYouPlus4u2020 = sumInsuredValue * (youPlus4u2020Percent / 100);
-    const generaliBelMondo20232024Percent =
-      getGeneraliBelMondo20232024Percent(normalizedPercent);
-    const payoutGeneraliBelMondo20232024 =
-      sumInsuredValue * (generaliBelMondo20232024Percent / 100);
+    const generaliBelMondo10xPercent = getGeneraliBelMondo10xPercent(normalizedPercent);
+    const payoutGeneraliBelMondo10x =
+      sumInsuredValue * (generaliBelMondo10xPercent / 100);
     const generaliBelMondo20202022Percent =
       getGeneraliBelMondo20202022Percent(normalizedPercent);
     const payoutGeneraliBelMondo20202022 =
@@ -3326,239 +3328,167 @@ export default function SrovnavacTrvalychNasledkuPage() {
     const payoutPillow =
       sumInsuredValue * pillowMultiplier * (normalizedPercent / 100);
 
-    const cardsWithoutCurves: ComparisonCardBase[] = [
+    return [
       {
-        key: "cpp-10x",
-        insurer: "ČPP Životní pojištění NEON 2023–2026",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-10x"],
         payout: payout,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildCppNeon10xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCppNeon10xTablePreview(normalizedPercent),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
-        key: "cpp-5x",
-        insurer: "ČPP Životní pojištění NEON 2023–2026",
-        badges: [PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-5x"],
         payout: payout5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildGeneric5xMultiplierTablePreview(
+        buildTablePreview: () => buildGeneric5xMultiplierTablePreview(
           "Tabulka ČPP Životní pojištění NEON 2023–2026 5×",
           normalizedPercent
         ),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
-        key: "cpp-neon-top-2022-06",
-        insurer: "ČPP Životní pojištění NEON",
-        badges: ["2019–01.06.2022", PROGRESSION_LABELS["top5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-neon-top-2022-06"],
         payout: payout5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildGeneric5xMultiplierTablePreview(
+        buildTablePreview: () => buildGeneric5xMultiplierTablePreview(
           "Tabulka ČPP Životní pojištění NEON 2019–01.06.2022 TOP progrese 5×",
           normalizedPercent
         ),
         diagnosisExamples: CPP_NEON_DIAGNOSIS_EXAMPLES,
       },
       {
-        key: "cpp-evoluce-top-5x",
-        insurer: "ČPP Evoluce",
-        badges: ["16.07.2015–2016", PROGRESSION_LABELS["top5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-evoluce-top-5x"],
         payout: payout5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCppEvoluceTop5xTablePreview(normalizedPercent),
       },
       {
-        key: "cpp-evoluce-plus-2020-top-5x",
-        insurer: "ČPP Evoluce PLUS",
-        badges: ["2016–2020", PROGRESSION_LABELS["top5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-evoluce-plus-2020-top-5x"],
         payout: payout5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplier5x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildCppEvoluceTop5xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCppEvoluceTop5xTablePreview(normalizedPercent),
       },
       {
-        key: "cpp-evoluce-5x",
-        insurer: "ČPP Evoluce",
-        badges: ["16.07.2015–2016", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-evoluce-5x"],
         payout: payoutCppEvoluce5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
-        tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCppEvoluce5xTablePreview(normalizedPercent),
       },
       {
-        key: "cpp-evoluce-2015-5x",
-        insurer: "ČPP Evoluce",
-        badges: ["01.01.2014–01.01.2015", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["cpp-evoluce-2015-5x"],
         payout: payoutCppEvoluce5x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${cppEvoluce5xPayoutPercent}%.`,
-        tablePreview: buildCppEvoluce5xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCppEvoluce5xTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-domino",
-        insurer: "UNIQA Domino",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-domino"],
         payout: payoutUniqa,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${multiplierUniqa} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildUniqaDominoTablePreview(normalizedPercent),
+        buildTablePreview: () => buildUniqaDominoTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-logika-2019",
-        insurer: "UNIQA Logika 2019",
-        badges: [PROGRESSION_LABELS["4x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-logika-2019"],
         payout: payoutUniqaLogika2019,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildUniqaLogika20194xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildUniqaLogika20194xTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-logika-2019-6x",
-        insurer: "UNIQA Logika 2019",
-        badges: [PROGRESSION_LABELS["6x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-logika-2019-6x"],
         payout: payoutUniqaLogika20196x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier6x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildUniqaLogika20196xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildUniqaLogika20196xTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-logika-2019-10x",
-        insurer: "UNIQA Logika 2019",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-logika-2019-10x"],
         payout: payoutUniqaLogika201910x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2019Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildUniqaLogika201910xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildUniqaLogika201910xTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-logika-2020-10x",
-        insurer: "UNIQA Logika 2020",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-logika-2020-10x"],
         payout: payoutUniqaLogika202010x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaLogika2020Multiplier10x} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildUniqaLogika202010xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildUniqaLogika202010xTablePreview(normalizedPercent),
       },
       {
-        key: "uniqa-activelife-2019-324-324u",
-        insurer: "UNIQA ActiveLife 2019",
-        badges: ["Tarify 324/324U", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-activelife-2019-324-324u"],
         payout: payoutUniqaActiveLife2019324,
-        info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019324Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka ActiveLife 2019 tarify 324/324U",
           UNIQA_ACTIVELIFE_2019_324_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "uniqa-activelife-2019-325-325u",
-        insurer: "UNIQA ActiveLife 2019",
-        badges: ["Tarify 325/325U", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-activelife-2019-325-325u"],
         payout: payoutUniqaActiveLife2019325,
-        info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${uniqaActiveLife2019325Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka ActiveLife 2019 tarify 325/325U",
           UNIQA_ACTIVELIFE_2019_325_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "uniqa-symfonie-2021-324-324u",
-        insurer: "UNIQA Symfonie 2021",
-        badges: ["Tarify 324 a 324U", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-symfonie-2021-324-324u"],
         payout: payoutUniqaSymfonie2021,
-        info: `Tarify 324 a 324U: ${formatMoney(sumInsuredValue)} × ${uniqaSymfonie2021Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka UNIQA Symfonie 2021 – tarify 324 a 324U",
           UNIQA_SYMFONIE_2021_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "axa-active-life-2016-2021-324-324u",
-        insurer: "AXA Active Life 2016-2021",
-        badges: ["Tarify 324/324U", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["axa-active-life-2016-2021-324-324u"],
         payout: payoutAxaActiveLife324324u,
-        info: `Tarify 324/324U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife324324uPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka AXA Active Life 2016-2021 tarify 324/324U",
           AXA_ACTIVE_LIFE_2016_2021_324_324U_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "axa-active-life-2016-2021-325-325u",
-        insurer: "AXA Active Life 2016-2021",
-        badges: ["Tarify 325/325U", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["axa-active-life-2016-2021-325-325u"],
         payout: payoutAxaActiveLife325325u,
-        info: `Tarify 325/325U: ${formatMoney(sumInsuredValue)} × ${axaActiveLife325325uPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka AXA Active Life 2016-2021 tarify 325/325U",
           AXA_ACTIVE_LIFE_2016_2021_325_325U_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "uniqa-zivot-radost",
-        insurer: "UNIQA Život & radost 2026",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["uniqa-zivot-radost"],
         payout: payoutUniqaZivot,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${uniqaZivotPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka UNIQA Život & radost 2026",
           UNIQA_ZIVOT_RADOST_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "koop-flexi",
-        insurer: "Kooperativa Životní pojištění FLEXI 2026",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["koop-flexi"],
         payout: payoutKooperativaFlexi,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexiPercent}%.`,
-        tablePreview: buildHalfStepValueTablePreview(
+        buildTablePreview: () => buildHalfStepValueTablePreview(
           "Tabulka Kooperativa Životní pojištění FLEXI 2026 10×",
           KOOP_FLEXI_TN10,
           normalizedPercent
         ),
       },
       {
-        key: "koop-flexi-4x",
-        insurer: "Kooperativa Životní pojištění FLEXI 2026",
-        badges: [PROGRESSION_LABELS["4x"]],
+        ...INJURY_PRODUCT_CARDS["koop-flexi-4x"],
         payout: payoutKooperativaFlexi4,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaFlexi4Percent}%.`,
-        tablePreview: buildKooperativaFlexi4xTablePreview(normalizedPercent),
+        buildTablePreview: () => buildKooperativaFlexi4xTablePreview(normalizedPercent),
       },
       {
-        key: "koop-na-prani-tn4",
-        insurer: "Kooperativa NA PŘÁNÍ",
-        badges: [PROGRESSION_LABELS["4x"]],
+        ...INJURY_PRODUCT_CARDS["koop-na-prani-tn4"],
         payout: payoutKooperativaNaPraniTn4,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn4Percent}% (TN4).`,
-        tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
+        buildTablePreview: () => buildKooperativaNaPraniTablePreview(normalizedPercent),
       },
       {
-        key: "koop-na-prani-tn8",
-        insurer: "Kooperativa NA PŘÁNÍ",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["koop-na-prani-tn8"],
         payout: payoutKooperativaNaPraniTn8,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kooperativaNaPraniTn8Percent}% (TN8).`,
-        tablePreview: buildKooperativaNaPraniTablePreview(normalizedPercent),
+        buildTablePreview: () => buildKooperativaNaPraniTablePreview(normalizedPercent),
       },
       {
-        key: "metlife-oneguard",
-        insurer: "MetLife OneGuard",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["metlife-oneguard"],
         payout: payoutMetlifeOneGuard,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeOneGuardPercent}%.`,
-        tablePreview: buildMetlifeCoefficientTablePreview(
+        buildTablePreview: () => buildMetlifeCoefficientTablePreview(
           "Tabulka MetLife OneGuard",
           normalizedPercent,
           getMetlifeOneGuardPercent
         ),
       },
       {
-        key: "metlife-garde5",
-        insurer: "MetLife Garde 5.0",
-        badges: ["2018", PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["metlife-garde5"],
         payout: payoutMetlifeGarde5,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde5Percent}%.`,
-        tablePreview: buildMetlifeCoefficientTablePreview(
+        buildTablePreview: () => buildMetlifeCoefficientTablePreview(
           "Tabulka MetLife Garde 5.0 2018",
           normalizedPercent,
           getMetlifeGarde5Percent,
@@ -3566,290 +3496,231 @@ export default function SrovnavacTrvalychNasledkuPage() {
         ),
       },
       {
-        key: "metlife-garde6",
-        insurer: "MetLife Garde 6.0",
-        badges: ["2021–2024", PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["metlife-garde6"],
         payout: payoutMetlifeGarde6,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${metlifeGarde6Percent}%.`,
-        tablePreview: buildMetlifeCoefficientTablePreview(
+        buildTablePreview: () => buildMetlifeCoefficientTablePreview(
           "Tabulka MetLife Garde 6.0",
           normalizedPercent,
           getMetlifeGarde6Percent
         ),
       },
       {
-        key: "csob-nas-zivot",
-        insurer: "ČSOB Náš Život",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["csob-nas-zivot"],
         payout: payoutCsobNasZivot,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobNasZivotPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka ČSOB Náš Život",
           CSOB_NAS_ZIVOT_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "csob-forte",
-        insurer: "ČSOB Forte 2016-2019",
-        badges: [PROGRESSION_LABELS["6x"]],
+        ...INJURY_PRODUCT_CARDS["csob-forte"],
         payout: payoutCsobForte,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${csobForteMultiplier} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildCsobForteTablePreview(normalizedPercent),
+        buildTablePreview: () => buildCsobForteTablePreview(normalizedPercent),
       },
       {
-        key: "kb-elan-2025-10",
-        insurer: "KB Elán",
-        badges: ["15.10.2025", PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["kb-elan-2025-10"],
         payout: payoutKbElan202510,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${kbElan202510Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka KB Elán od 15.10.2025 – 8× progrese",
           KB_ELAN_2025_10_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-muj-zivot",
-        insurer: "Generali Můj Život 2 2024",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["generali-muj-zivot-2026"],
+        payout: payoutGeneraliMujZivot2026,
+        buildTablePreview: () => buildPercentValueTablePreview(
+          "Tabulka Generali Můj Život 2 2026",
+          GENERALI_MUJ_ZIVOT_2026_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        ...INJURY_PRODUCT_CARDS["generali-muj-zivot"],
         payout: payoutGeneraliMujZivot,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliMujZivotPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka Generali Můj Život 2 2024",
           GENERALI_MUJ_ZIVOT_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-bel-mondo-20-2023-2024",
-        insurer: "Generali Bel Mondo 20 2023-2024",
-        badges: [PROGRESSION_LABELS["10x"]],
-        payout: payoutGeneraliBelMondo20232024,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20232024Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
-          "Tabulka Generali Bel Mondo 20 2023-2024",
-          GENERALI_BEL_MONDO_20_2023_2024_TABLE,
+        ...INJURY_PRODUCT_CARDS["generali-bel-mondo-20-2026"],
+        payout: payoutGeneraliBelMondo10x,
+        buildTablePreview: () => buildPercentValueTablePreview(
+          "Tabulka Generali Bel Mondo 20 2026",
+          GENERALI_BEL_MONDO_20_10X_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-bel-mondo-20-2020-2022",
-        insurer: "Generali Bel Mondo 20 2020-2022",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["generali-bel-mondo-20-2023-2024"],
+        payout: payoutGeneraliBelMondo10x,
+        buildTablePreview: () => buildPercentValueTablePreview(
+          "Tabulka Generali Bel Mondo 20 2023-2024",
+          GENERALI_BEL_MONDO_20_10X_TABLE,
+          normalizedPercent
+        ),
+      },
+      {
+        ...INJURY_PRODUCT_CARDS["generali-bel-mondo-20-2020-2022"],
         payout: payoutGeneraliBelMondo20202022,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliBelMondo20202022Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka Generali Bel Mondo 20 2020-2022",
           GENERALI_BEL_MONDO_20_2020_2022_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-allegro-20-2023-2024",
-        insurer: "Generali Allegro 20 2023-2024",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["generali-allegro-20-2023-2024"],
         payout: payoutGeneraliAllegro20232024,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20232024Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka Generali Allegro 20 2023-2024",
           GENERALI_ALLEGRO_20_2023_2024_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "generali-allegro-20-2020-2022",
-        insurer: "Generali Allegro 20 2020-2022",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["generali-allegro-20-2020-2022"],
         payout: payoutGeneraliAllegro20202022,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${generaliAllegro20202022Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka Generali Allegro 20 2020-2022",
           GENERALI_ALLEGRO_20_2020_2022_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "nn-orange",
-        insurer: "NN Orange RISK",
-        badges: ["2023–18.03.2025", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["nn-orange"],
         payout: payoutNnOrange,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka progresivního plnění pro připojištění trvalých následků úrazu (TN01-P1R, TN10-P1R) a připojištění trvalých následků úrazu dítěte (JT01-P1R, JT10-P1R)",
           NN_ORANGE_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "nn-orange-2025-09",
-        insurer: "NN Orange RISK",
-        badges: ["02.09.2025–2026", PROGRESSION_LABELS["5x"]],
+        ...INJURY_PRODUCT_CARDS["nn-orange-2025-09"],
         payout: payoutNnOrange,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrangePercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka progresivního plnění pro připojištění trvalých následků úrazu (TN01-P1R, TN10-P1R) a připojištění trvalých následků úrazu dítěte (JT01-P1R, JT10-P1R)",
           NN_ORANGE_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "nn-orange-10x",
-        insurer: "NN Orange RISK",
-        badges: ["02.09.2025–2026", PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["nn-orange-10x"],
         payout: payoutNnOrange10x,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10xPercent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka progresivního plnění pro připojištění trvalých následků úrazu „PREMIUM“ (TNX1-P1R, JTX1-P1R)",
           NN_ORANGE_10X_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "nn-orange-10x-2025-03",
-        insurer: "NN Orange RISK",
-        badges: ["2023–18.03.2025", PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["nn-orange-10x-2025-03"],
         payout: payoutNnOrange10x202503,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnOrange10x202503Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka progresivního plnění NN Orange RISK 2023–18.03.2025 - 10× progrese",
           NN_ORANGE_10X_2025_03_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "nn-zivot-2019-06",
-        insurer: "NN Život 6/2019",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["nn-zivot-2019-06"],
         payout: payoutNnZivot201906,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${nnZivot201906Percent}%.`,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka NN Život 6/2019",
           NN_ZIVOT_2019_06_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "you-plus-4u-2025",
-        insurer: "YOU PLUS 4U 2021-2025",
-        badges: [PROGRESSION_LABELS["8.5x"]],
+        ...INJURY_PRODUCT_CARDS["you-plus-4u-2025"],
         payout: payoutYouPlus4u2025,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025Percent}%.`,
         infoSections: YOU_PLUS_4U_2025_T2K_INFO_SECTIONS,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka YOU PLUS 4U 2021-2025 T2K",
           YOU_PLUS_4U_2025_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "you-plus-4u-2025-t3k",
-        insurer: "YOU PLUS 4U 2021-2025",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["you-plus-4u-2025-t3k"],
         payout: payoutYouPlus4u2025T3k,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2025T3kPercent}%.`,
         infoSections: YOU_PLUS_4U_2025_T3K_INFO_SECTIONS,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka YOU PLUS 4U 2021-2025 T3K",
           YOU_PLUS_4U_2025_T3K_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "you-plus-4u-2020",
-        insurer: "YOU PLUS 4U 2020",
-        badges: [PROGRESSION_LABELS["6x"]],
+        ...INJURY_PRODUCT_CARDS["you-plus-4u-2020"],
         payout: payoutYouPlus4u2020,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${youPlus4u2020Percent}%.`,
         infoSections: YOU_PLUS_4U_2020_INFO_SECTIONS,
-        tablePreview: buildPercentValueTablePreview(
+        buildTablePreview: () => buildPercentValueTablePreview(
           "Tabulka YOU PLUS 4U 2020",
           YOU_PLUS_4U_2020_TABLE,
           normalizedPercent
         ),
       },
       {
-        key: "maxima-maxefekt",
-        insurer: "Maxima MAXEFEKT 6.0",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["maxima-maxefekt"],
         payout: payoutMaximaMaxefekt,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${maximaMaxefektMultiplier} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildMaximaMaxefektTablePreview(normalizedPercent),
+        buildTablePreview: () => buildMaximaMaxefektTablePreview(normalizedPercent),
       },
       {
-        key: "allianz-zivot",
-        insurer: "Allianz Život",
-        badges: ["27.05.2022–28.11.2025", PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["allianz-zivot"],
         payout: payoutAllianzZivot,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivotPercent}%.`,
-        tablePreview: buildAnchorValueTablePreview(
+        buildTablePreview: () => buildAnchorValueTablePreview(
           "Tabulka Allianz Život (TNU6, TNU7, TNU8, TNU9), (VTU4, VTU5)",
           ALLIANZ_ZIVOT_ANCHORS,
           normalizedPercent
         ),
       },
       {
-        key: "allianz-zivot-2021-06",
-        insurer: "Allianz Život",
-        badges: ["01.01.2017–18.06.2021", PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["allianz-zivot-2021-06"],
         payout: payoutAllianzZivot202106,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzZivot202106Percent}%.`,
-        tablePreview: buildAnchorValueTablePreview(
+        buildTablePreview: () => buildAnchorValueTablePreview(
           "Tabulka Allianz Život (TNU6, TNU7, TNU8, TNU9, TNU1-S, TNU2-S)",
           ALLIANZ_ZIVOT_2021_06_ANCHORS,
           normalizedPercent
         ),
       },
       {
-        key: "allianz-partners-2026",
-        insurer: "Allianz Partners 2025–2026",
-        badges: [PROGRESSION_LABELS["8x"]],
+        ...INJURY_PRODUCT_CARDS["allianz-partners-2026"],
         payout: payoutAllianzPartners2026,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${allianzPartners2026Percent}%.`,
         infoSections: ALLIANZ_PARTNERS_2026_INFO_SECTIONS,
-        tablePreview: buildAllianzPartners2026TablePreview(normalizedPercent),
+        buildTablePreview: () => buildAllianzPartners2026TablePreview(normalizedPercent),
       },
       {
-        key: "simplea-2",
-        insurer: "Simplea 2.0",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["simplea-2"],
         payout: payoutSimplea,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${simpleaMultiplier} × ${formatPercent(normalizedPercent)}.`,
-        tablePreview: buildSimpleaTablePreview(normalizedPercent),
+        buildTablePreview: () => buildSimpleaTablePreview(normalizedPercent),
       },
       {
-        key: "pillow-uraz-nemoc",
-        insurer: "Pillow Úraz Nemoc",
-        badges: [PROGRESSION_LABELS["10x"]],
+        ...INJURY_PRODUCT_CARDS["pillow-uraz-nemoc"],
         payout: payoutPillow,
-        info: `Výpočet: ${formatMoney(sumInsuredValue)} × ${formatPercent(normalizedPercent)} × ${pillowMultiplier}.`,
-        tablePreview: buildAnchorMultiplierTablePreview(
+        buildTablePreview: () => buildAnchorMultiplierTablePreview(
           "Tabulka Pillow Úraz Nemoc",
           PILLOW_ANCHORS,
           normalizedPercent
         ),
       },
     ];
-
-    return cardsWithoutCurves.map((card) => {
-      const { productName, yearBadge } = splitProductYearBadge(card.insurer);
-
-      return {
-        ...card,
-        insurer: productName,
-        badges:
-          yearBadge && !card.badges.includes(yearBadge)
-            ? [yearBadge, ...card.badges]
-            : card.badges,
-        curve: buildPayoutCurve(PAYOUT_PERCENT_BY_CARD_KEY[card.key] ?? (() => 0)),
-      };
-    });
-  };
+  }, [sumInsuredValue]);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
+  const toggleInfo = useCallback((key: string) => {
+    setInfoOpen((current) => current === key ? null : key);
+  }, []);
   const [scenarioModalOpen, setScenarioModalOpen] = useState(false);
-  const [scenarioStep, setScenarioStep] = useState<0 | 1>(0);
+  const [scenarioPreview, setScenarioPreview] = useState<ScenarioPreview | null>(null);
+  const [scenarioPreparing, setScenarioPreparing] = useState(false);
+  const scenarioPreviewRequest = useRef<AbortController | null>(null);
+  const scenarioStep = scenarioPreview ? 1 : 0;
   const [scenarioAInput, setScenarioAInput] = useState("25");
   const [scenarioBInput, setScenarioBInput] = useState("50");
   const [scenarioCInput, setScenarioCInput] = useState("75");
@@ -3858,41 +3729,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
   const [scenarioExportError, setScenarioExportError] = useState<string | null>(null);
   const infoTableScrollRef = useRef<HTMLDivElement | null>(null);
   const [expandedFilterInsurers, setExpandedFilterInsurers] = useState<string[]>([]);
-  const cards = buildCardsForPercent(rangePercentValue);
+  const cards = useMemo(() => buildCardsForPercent(rangePercentValue), [buildCardsForPercent, rangePercentValue]);
   const filterableCards =
     presetCardKeys.length > 0
       ? cards.filter((card) => presetCardKeys.includes(card.key))
       : cards;
 
-  const insurerFilterGroups = filterableCards
-    .reduce<InsurerFilterGroup[]>((groups, card) => {
-      const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
-      let group = groups.find((item) => item.insurerName === insurerName);
-
-      if (!group) {
-        group = { insurerName, options: [] };
-        groups.push(group);
-      }
-
-      for (const filterOption of getCardFilterOptions(card)) {
-        let option = group.options.find((item) => item.value === filterOption.value);
-        if (!option) {
-          option = { value: filterOption.value, productName, badges: [] };
-          group.options.push(option);
-        }
-
-        for (const badge of filterOption.badges) {
-          if (!option.badges.includes(badge)) option.badges.push(badge);
-        }
-      }
-
-      return groups;
-    }, [])
-    .sort(
-      (first, second) =>
-        (INSURER_FILTER_GROUP_PRIORITY.get(first.insurerName) ?? Number.MAX_SAFE_INTEGER) -
-        (INSURER_FILTER_GROUP_PRIORITY.get(second.insurerName) ?? Number.MAX_SAFE_INTEGER)
-    );
+  const insurerFilterGroups = getInsurerFilterGroups(cards, filterableCards);
   const allFilterOptionValues = insurerFilterGroups.flatMap((group) =>
     group.options.map((option) => option.value)
   );
@@ -3964,10 +3807,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
     );
   };
 
-  const applyCardFilters = (sourceCards: ComparisonCard[]): ComparisonCard[] =>
-    sourceCards.filter((card) => {
-      const matchesPreset =
-        presetCardKeys.length === 0 || presetCardKeys.includes(card.key);
+  const sortedCards = useMemo(() =>
+    cards.filter((card) => {
+      const matchesPreset = presetCardKeys.length === 0 || presetCardKeys.includes(card.key);
       const matchesProgression =
         selectedProgressions.length === 0 ||
         getCardProgressionBadges(card).some((badge) =>
@@ -3980,25 +3822,44 @@ export default function SrovnavacTrvalychNasledkuPage() {
         );
 
       return matchesPreset && matchesProgression && matchesInsurer;
-    });
+    }).sort((a, b) => b.payout - a.payout),
+    [cards, presetCardKeys, selectedInsurers, selectedProgressions]
+  );
 
-  const scenarioValues = [
+  const scenarioValues = useMemo<Scenario[]>(() => [
     { label: "Nižší rozsah", percent: parsePercentInput(scenarioAInput) },
     { label: "Střední rozsah", percent: parsePercentInput(scenarioBInput) },
     { label: "Vysoký rozsah", percent: parsePercentInput(scenarioCInput) },
-  ];
+  ], [scenarioAInput, scenarioBInput, scenarioCInput]);
 
-  const buildScenarioPdfExportHtml = (generatedAt: string, exportScenarios = scenarioValues): string => {
-    const scenarioCards = exportScenarios.map(scenario => new Map(applyCardFilters(buildCardsForPercent(scenario.percent)).map(card => [card.key, card])));
-    const orderedCards = [...applyCardFilters(cards)].sort((a,b) => b.payout - a.payout);
+  const getScenarioPayouts = useCallback((scenarios: Scenario[]) => scenarios.map(({ percent }) => {
+    const scenarioCards = percent === rangePercentValue ? cards : buildCardsForPercent(percent);
+    return new Map(scenarioCards.map((card) => [card.key, card.payout]));
+  }), [buildCardsForPercent, cards, rangePercentValue]);
+
+  const scenarioPayouts = useMemo(() =>
+    scenarioModalOpen && scenarioStep === 0 ? getScenarioPayouts(scenarioValues) : [],
+    [scenarioModalOpen, scenarioStep, getScenarioPayouts, scenarioValues]
+  );
+
+  const buildScenarioPdfExportHtml = (generatedAt: string, advisorCard: PdfAdvisorCard | null, exportScenarios = scenarioValues): string => {
+    const payouts = getScenarioPayouts(exportScenarios);
     return buildClientReport({
       generatedAt, sumInsured: sumInsuredValue, scenarios: exportScenarios, appendix: pdfAppendix,
-      clientName: pdfClientName, advisorName: pdfAdvisorName,
-      rows: orderedCards.map(card => ({
-        key: card.key, ...splitInsurerAndProduct(card.insurer), badges: card.badges, curve: card.curve, table: card.tablePreview,
-        logo: getInsurerLogoPath(splitInsurerAndProduct(card.insurer).insurerName),
-        payouts: scenarioCards.map(scenario => scenario.get(card.key)?.payout ?? 0),
-      })),
+      clientName: pdfClientName, advisorName: pdfAdvisorName, advisorCard,
+      rows: sortedCards.map((card) => {
+        const { insurerName, productName } = splitInsurerAndProduct(card.insurer);
+        return {
+          key: card.key,
+          insurerName,
+          productName,
+          badges: card.badges,
+          curve: getCardPayoutCurve(card.key),
+          table: pdfAppendix === "graphs-tables" ? card.buildTablePreview?.() : undefined,
+          logo: getInsurerLogoPath(insurerName),
+          payouts: payouts.map((scenario) => scenario.get(card.key) ?? 0),
+        };
+      }),
     });
   };
 
@@ -4027,15 +3888,99 @@ export default function SrovnavacTrvalychNasledkuPage() {
   };
 
   const openScenarioExportModal = () => {
-    setScenarioStep(0);
+    setScenarioPreview(null);
     setScenarioExportError(null);
     setScenarioModalOpen(true);
   };
 
-  const goToScenarioPreview = () => {
-    if (!validateScenarioExportInputs()) return;
+  const editAdvisorCard = async () => {
+    if (advisorLoading) return;
+    setAdvisorError(null);
+    setAdvisorLoading(true);
+    try {
+      const { details, assertSession } = await loadPdfAdvisorDetails();
+      assertSession();
+      setAdvisorDraft({ details, overrides: {}, assertSession });
+    } catch (error) {
+      setAdvisorError(error instanceof PdfAdvisorCardError ? error.message : "Údaje vizitky se nepodařilo načíst.");
+    } finally {
+      setAdvisorLoading(false);
+    }
+  };
+
+  const personalizationProps = {
+    clientName: pdfClientName,
+    advisorName: pdfAdvisorName,
+    onClientNameChange: setPdfClientName,
+    onAdvisorNameChange: setPdfAdvisorName,
+    advisorDetails: advisorDraft ? { ...advisorDraft.details, ...advisorDraft.overrides } : undefined,
+    advisorLoading,
+    advisorError,
+    onEditAdvisor: () => void editAdvisorCard(),
+    onChangeAdvisorField: (field: keyof PdfAdvisorDetails, value: string) => setAdvisorDraft(previous => {
+      if (!previous) return null;
+      const overrides = { ...previous.overrides, [field]: value };
+      if (value === previous.details[field]) delete overrides[field];
+      return { ...previous, overrides };
+    }),
+  };
+
+  const closeScenarioExportModal = useCallback(() => {
+    scenarioPreviewRequest.current?.abort();
+    scenarioPreviewRequest.current = null;
+    setScenarioPreparing(false);
+    setScenarioPreview(null);
+    setScenarioModalOpen(false);
+  }, []);
+
+  useEffect(() => () => scenarioPreviewRequest.current?.abort(), []);
+
+  useEffect(() => {
+    if (!scenarioPreview && !assertDraftSession) return;
+    const checkSession = () => {
+      try {
+        assertDraftSession?.();
+      } catch {
+        setAdvisorDraft(null);
+      }
+      try {
+        scenarioPreview?.assertSession();
+      } catch {
+        closeScenarioExportModal();
+      }
+    };
+    const unsubscribe = onAuthStateChanged(auth, checkSession);
+    window.addEventListener(ADMIN_IMPERSONATION_EVENT, checkSession);
+    window.addEventListener("storage", checkSession);
+    return () => {
+      unsubscribe();
+      window.removeEventListener(ADMIN_IMPERSONATION_EVENT, checkSession);
+      window.removeEventListener("storage", checkSession);
+    };
+  }, [assertDraftSession, closeScenarioExportModal, scenarioPreview]);
+
+  const goToScenarioPreview = async () => {
+    if (scenarioPreviewRequest.current || !validateScenarioExportInputs()) return;
+    const request = new AbortController();
+    scenarioPreviewRequest.current = request;
     setScenarioExportError(null);
-    setScenarioStep(1);
+    setScenarioPreparing(true);
+    try {
+      const { advisor, assertSession } = await loadPdfAdvisorCard(advisorDraft);
+      if (request.signal.aborted) return;
+      const html = buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"), advisor);
+      assertSession();
+      setScenarioPreview({ html, hasAdvisorCard: Boolean(advisor), assertSession });
+    } catch (error) {
+      if (!request.signal.aborted) {
+        setScenarioExportError(error instanceof PdfAdvisorCardError ? error.message : "Náhled PDF se nepodařilo připravit.");
+      }
+    } finally {
+      if (scenarioPreviewRequest.current === request) {
+        scenarioPreviewRequest.current = null;
+        setScenarioPreparing(false);
+      }
+    }
   };
 
   const handleExportCurrentPdf = async () => {
@@ -4047,72 +3992,56 @@ export default function SrovnavacTrvalychNasledkuPage() {
     setScenarioExportError(null);
     setCurrentExporting(true);
     try {
+      const { advisor, assertSession } = await loadPdfAdvisorCard(advisorDraft);
       const fileStamp = new Date().toISOString().slice(0, 10);
       await savePdfExport(
-        buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"), [{ label: "Aktuální výpočet", percent: rangePercentValue }]),
-        `srovnani_trvalych_nasledku_${fileStamp}.pdf`
+        buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"), advisor, [{ label: "Aktuální výpočet", percent: rangePercentValue }]),
+        `srovnani_trvalych_nasledku_${fileStamp}.pdf`,
+        assertSession
       );
     } catch (error) {
-      console.error("Nepodařilo se vygenerovat PDF srovnání trvalých následků", error);
-      const detail =
-        error instanceof Error && error.message ? ` (${error.message})` : "";
-      setScenarioExportError(`Generování PDF selhalo${detail}. Zkus to prosím znovu.`);
+      setScenarioExportError(error instanceof PdfAdvisorCardError ? error.message : "PDF se nepodařilo vytvořit. Zkus to znovu.");
     } finally {
       setCurrentExporting(false);
     }
   };
 
   const handleExportThreeScenarioPdf = async () => {
-    if (!validateScenarioExportInputs()) return;
+    if (!scenarioPreview || scenarioExporting) return;
 
     setScenarioExportError(null);
     setScenarioExporting(true);
     try {
-      const generatedAt = new Date().toLocaleDateString("cs-CZ");
       const fileStamp = new Date().toISOString().slice(0, 10);
-      const exportHtml = buildScenarioPdfExportHtml(generatedAt);
-
-      await savePdfExport(exportHtml, `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`);
+      await savePdfExport(scenarioPreview.html, `srovnani_trvalych_nasledku_scenare_${fileStamp}.pdf`, scenarioPreview.assertSession);
     } catch (error) {
-      console.error("Nepodařilo se vygenerovat 3 scénáře PDF", error);
-      const detail =
-        error instanceof Error && error.message ? ` (${error.message})` : "";
-      setScenarioExportError(`Generování PDF se třemi scénáři selhalo${detail}. Zkus to prosím znovu.`);
+      setScenarioExportError(error instanceof PdfAdvisorCardError ? error.message : "PDF se nepodařilo vytvořit. Zkus to znovu.");
     } finally {
       setScenarioExporting(false);
     }
   };
 
-  const visibleCards = applyCardFilters(cards);
-
-  const sortedCards = [...visibleCards].sort((a, b) => b.payout - a.payout);
-  const scenarioCardSets = scenarioModalOpen && scenarioStep === 0
-    ? scenarioValues.map(scenario => new Map(applyCardFilters(buildCardsForPercent(scenario.percent)).map(card => [card.key,card]))) : [];
-  const scenarioMaxima = scenarioCardSets.map(set => Math.max(0, ...Array.from(set.values()).map(card => card.payout)));
   const selectedInfoCard = cards.find((card) => card.key === infoOpen) ?? null;
   const selectedInfoCardParts = selectedInfoCard
     ? splitInsurerAndProduct(selectedInfoCard.insurer)
     : null;
-  const selectedInfoActiveRow =
-    selectedInfoCard?.tablePreview?.rows.find((row) => row.active) ?? null;
-  const selectedInfoChartMaxPayoutPercent = selectedInfoCard
-    ? Math.max(
-        100,
-        ...selectedInfoCard.curve.map((point) => point.payoutPercent)
-      )
-    : 100;
+  const buildInfoTable = selectedInfoCard?.buildTablePreview;
+  const selectedInfoTable = useMemo(() => buildInfoTable?.(), [buildInfoTable]);
+  const selectedInfoActiveRow = selectedInfoTable?.rows.find((row) => row.active) ?? null;
+  const selectedInfoCurve = useMemo(() => infoOpen ? getCardPayoutCurve(infoOpen) : null, [infoOpen]);
 
   useEffect(() => {
-    if (!infoOpen || !selectedInfoCard?.tablePreview) return;
+    if (!selectedInfoTable) return;
 
-    window.requestAnimationFrame(() => {
+    const frame = window.requestAnimationFrame(() => {
       const activeRow = infoTableScrollRef.current?.querySelector<HTMLElement>(
         "[data-active-row='true']"
       );
       const container = infoTableScrollRef.current;
       if (activeRow && container) container.scrollTop += activeRow.getBoundingClientRect().top - container.getBoundingClientRect().top - container.clientHeight / 2 + activeRow.clientHeight / 2;
     });
-  }, [infoOpen, rangePercentValue, selectedInfoCard?.tablePreview]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedInfoTable]);
 
   useEffect(() => {
     const validFilterValues = new Set(filterValueSignature.split("|").filter(Boolean));
@@ -4156,11 +4085,11 @@ export default function SrovnavacTrvalychNasledkuPage() {
       if (event.key !== "Escape") return;
       setFiltersOpen(false);
       setInfoOpen(null);
-      setScenarioModalOpen(false);
+      closeScenarioExportModal();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); };
-  }, [filtersOpen, infoOpen, scenarioModalOpen]);
+  }, [closeScenarioExportModal, filtersOpen, infoOpen, scenarioModalOpen]);
 
 
   const activeFilterCount =
@@ -4169,8 +4098,8 @@ export default function SrovnavacTrvalychNasledkuPage() {
     (selectedInsurers.length > 0 ? 1 : 0);
 
   const scenarioStepperSteps = ["Scénáře", "Náhled PDF"];
-  const scenarioPreviewSrcDoc = scenarioModalOpen && scenarioStep === 1
-    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${buildScenarioPdfExportHtml(new Date().toLocaleDateString("cs-CZ"))}</div></div><script>${SCENARIO_FIT_SCRIPT}</script></body></html>` : "";
+  const scenarioPreviewSrcDoc = scenarioPreview
+    ? `<!doctype html><html lang="cs"><head><meta charset="utf-8"/><style>html,body{margin:0;background:#f3eef8;}body{padding:12px;}.preview-scale{width:794px;transform-origin:top left;}.preview-holder{margin:auto;}.pdf-page{margin-bottom:16px;}</style></head><body><div class="preview-holder"><div class="preview-scale">${scenarioPreview.html}</div></div><script>${SCENARIO_FIT_SCRIPT}</script></body></html>` : "";
 
 
   return (
@@ -4203,7 +4132,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 <button
                   type="button"
                   onClick={() => void handleExportCurrentPdf()}
-                  disabled={currentExporting || scenarioExporting}
+                  disabled={currentExporting || scenarioExporting || advisorLoading}
                   className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-violet-100/75 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
                   aria-label="Export PDF"
                   title="Export PDF"
@@ -4319,7 +4248,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
         {scenarioModalOpen && (
           <div
             className="tn-overlay fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm"
-            onClick={() => setScenarioModalOpen(false)}
+            onClick={closeScenarioExportModal}
           >
             <section
               role="dialog" aria-modal="true" aria-label="Export 3 scénářů"
@@ -4334,7 +4263,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
               />
               <button
                 type="button"
-                onClick={() => setScenarioModalOpen(false)}
+                onClick={closeScenarioExportModal}
                 className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-100 bg-white text-[#775d84] transition hover:border-fuchsia-200 hover:bg-fuchsia-50"
                 aria-label="Zavřít export scénářů"
               >
@@ -4414,17 +4343,20 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
               <div className="mt-4">
                 {scenarioStep === 0 ? (
-                  <div>
+                  <fieldset disabled={scenarioPreparing} className="m-0 min-w-0 border-0 p-0">
                     <p className={styles.scenarioNote}>Pojistná částka <strong>{formatMoney(sumInsuredValue)}</strong> je pro všechny tři scénáře stejná. Uprav rozsah následků a porovnej částky v tabulce.</p>
-                    <PdfPersonalization clientName={pdfClientName} advisorName={pdfAdvisorName} onClientNameChange={setPdfClientName} onAdvisorNameChange={setPdfAdvisorName} />
-                    <label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Graf každého produktu</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Přehled a vysvětlení</option></select></label><div className={styles.scenarioInputs}>
+                    <PdfPersonalization {...personalizationProps} />
+                    <label className={styles.pdfOptions}>Příloha PDF<select value={pdfAppendix} onChange={event => setPdfAppendix(event.target.value as PdfAppendix)}><option value="graphs">Grafické srovnání plnění</option><option value="graphs-tables">Grafy a úplné tabulky</option><option value="none">Přehled a vysvětlení</option></select></label><div className={styles.scenarioInputs}>
                       {[{label: "Scénář 1", value: scenarioAInput, onChange: setScenarioAInput}, {label: "Scénář 2", value: scenarioBInput, onChange: setScenarioBInput}, {label: "Scénář 3", value: scenarioCInput, onChange: setScenarioCInput}].map(item => <div className={styles.scenarioInput} key={item.label}><ParameterField label={item.label} value={item.value} onChange={item.onChange} min={0} max={100} step={1} unit="%" presets={[10,50,100]} /></div>)}
                     </div>
                     <p className={styles.scenarioNote}>Zeleně je zvýrazněné nejvyšší plnění v každém scénáři. PDF zachová vybrané produkty i jejich pořadí.</p>
-                    <div className={styles.scenarioTable}><table><thead><tr><th>Pojišťovna / produkt</th>{scenarioValues.map((scenario,index)=><th key={index}>Scénář {index+1} · {formatPercent(scenario.percent)}</th>)}</tr></thead><tbody>{sortedCards.map(card=><tr key={card.key}><td>{splitInsurerAndProduct(card.insurer).insurerName}<small>{splitInsurerAndProduct(card.insurer).productName} · {card.badges.join(" · ")}</small></td>{scenarioCardSets.map((set,index)=>{const payout=set.get(card.key)?.payout ?? 0;return <td key={index} data-best={payout > 0 && payout === scenarioMaxima[index]}>{formatMoney(payout)}</td>;})}</tr>)}</tbody></table></div>
-                  </div>
+                    <ScenarioPayoutTable cards={sortedCards} scenarios={scenarioValues} payouts={scenarioPayouts} />
+                  </fieldset>
                 ) : (
                   <div className="space-y-3">
+                    {!scenarioPreview?.hasAdvisorCard && (
+                      <p className={styles.scenarioNote}>Vizitku s QR kódem můžeš doplnit v části Údaje do PDF a vizitka.</p>
+                    )}
                     <div className="overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-[0_22px_56px_rgba(76,29,149,0.14)]">
                       <iframe
                         title="Náhled klientského PDF výstupu"
@@ -4454,7 +4386,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       type="button"
                       onClick={() => {
                         setScenarioExportError(null);
-                        setScenarioStep(0);
+                        setScenarioPreview(null);
                       }}
                       className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-semibold text-[#775d84] transition hover:border-violet-300 hover:bg-violet-50"
                     >
@@ -4466,11 +4398,12 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   {scenarioStep === 0 ? (
                     <button
                       type="button"
-                      onClick={goToScenarioPreview}
+                      onClick={() => void goToScenarioPreview()}
+                      disabled={scenarioPreparing || advisorLoading}
                       className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/35 bg-[#79558f] px-5 py-2.5 text-sm font-semibold text-zinc-50 shadow-[0_12px_30px_rgba(76,29,149,0.25)] transition hover:-translate-y-0.5 hover:brightness-110"
                     >
-                      Náhled PDF
-                      <ChevronRight className="h-4 w-4" />
+                      {scenarioPreparing ? "Připravuji náhled…" : "Náhled PDF"}
+                      {scenarioPreparing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                     </button>
                   ) : null}
                 </div>
@@ -4655,7 +4588,7 @@ export default function SrovnavacTrvalychNasledkuPage() {
             </p>
           ) : null}
 
-          <PdfPersonalization clientName={pdfClientName} advisorName={pdfAdvisorName} onClientNameChange={setPdfClientName} onAdvisorNameChange={setPdfAdvisorName} />
+          <PdfPersonalization {...personalizationProps} />
 
           <div className={styles.resultList}>
             {sortedCards.length === 0 ? (
@@ -4671,14 +4604,14 @@ export default function SrovnavacTrvalychNasledkuPage() {
                   featured={index === 0}
                   compact={compactList}
                   isInfoOpen={infoOpen === card.key}
-                  onToggleInfo={(key) => setInfoOpen(infoOpen === key ? null : key)}
+                  onToggleInfo={toggleInfo}
                 />
               ))
             )}
           </div>
         </section>
 
-        {selectedInfoCard && selectedInfoCardParts ? (
+        {selectedInfoCard && selectedInfoCardParts && selectedInfoCurve ? (
           <div
             className="tn-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-6"
             onClick={() => setInfoOpen(null)}
@@ -4733,17 +4666,17 @@ export default function SrovnavacTrvalychNasledkuPage() {
                 </div>
               </div>
 
-              <div className={styles.detailBody} data-with-table={Boolean(selectedInfoCard.tablePreview)}>
-                {selectedInfoCard.tablePreview ? (
+              <div className={styles.detailBody} data-with-table={Boolean(selectedInfoTable)}>
+                {selectedInfoTable ? (
                   <aside className={styles.detailTablePanel} aria-label="Tabulka plnění">
                     <div className={styles.detailTableHeading}>
                       <span className={styles.eyebrow}>Tabulka plnění</span>
-                      <h4>{selectedInfoCard.tablePreview.title}</h4>
+                      <h4>{selectedInfoTable.title}</h4>
                       {selectedInfoActiveRow ? (
                         <div className={styles.detailActiveRow}>
                           <p>Aktuální řádek · {formatPercent(rangePercentValue)} TN</p>
                           <dl>
-                            {selectedInfoCard.tablePreview.columns.map((column, index) => (
+                            {selectedInfoTable.columns.map((column, index) => (
                               <div key={column}>
                                 <dt>{column}</dt>
                                 <dd>{selectedInfoActiveRow.cells[index]}</dd>
@@ -4757,13 +4690,13 @@ export default function SrovnavacTrvalychNasledkuPage() {
                       <table className={styles.detailTable}>
                         <thead>
                           <tr>
-                            {selectedInfoCard.tablePreview.columns.map((column) => (
+                            {selectedInfoTable.columns.map((column) => (
                               <th key={column} scope="col">{column}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedInfoCard.tablePreview.rows.map((row, rowIndex) => (
+                          {selectedInfoTable.rows.map((row, rowIndex) => (
                             <tr key={`${row.cells.join("|")}-${rowIndex}`} data-active-row={row.active ? "true" : undefined}>
                               {row.cells.map((cell, cellIndex) => (
                                 <td key={`${cell}-${cellIndex}`}>{cell}</td>
@@ -4778,9 +4711,9 @@ export default function SrovnavacTrvalychNasledkuPage() {
 
                 <div className={styles.detailContent}>
                   <PayoutCurveChart
-                    points={selectedInfoCard.curve}
+                    points={selectedInfoCurve}
                     currentPercent={rangePercentValue}
-                    maxPayoutPercent={selectedInfoChartMaxPayoutPercent}
+                    maxPayoutPercent={Math.max(100, ...selectedInfoCurve.map((point) => point.payoutPercent))}
                     sumInsured={sumInsuredValue}
                     diagnosisExamples={selectedInfoCard.diagnosisExamples}
                   />

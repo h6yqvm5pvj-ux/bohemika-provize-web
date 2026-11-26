@@ -1,5 +1,6 @@
 import { TZDateMini } from "@date-fns/tz/date/mini";
 import { generateCashflow } from "@/app/cashflow/generator";
+import { applyAutoCommissionForecasts } from "@/app/cashflow/autoCommissionForecast";
 import { CASHFLOW_FORECAST_YEARS } from "@/app/cashflow/helpers";
 import type { EntryDoc } from "@/app/cashflow/types";
 import type { Product } from "@/app/types/domain";
@@ -7,7 +8,9 @@ import { calendarDate, withDateCalendar, type CalendarDateFactory } from "@/app/
 import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import { commissionPeriodAfterMonths } from "@/app/lib/commissionPeriodForCode";
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
+import { calculateContractStornoRows, connectedContractFamily } from "@/app/lib/commissionStornoAudit";
 import { toDate } from "@/app/lib/formatters";
+import { productCategory } from "@/app/lib/productCatalog";
 import type { ContractCommissionPayout, ContractDoc } from "./contractDetailTypes";
 
 export type ContractFinancialOverviewModel = {
@@ -29,6 +32,7 @@ type Input = {
   viewerEmail: string | null;
   asOf: Date;
 };
+type PaidInput = Omit<Input, "asOf">;
 
 const text = (value: unknown): string => typeof value === "string" ? value.trim() : "";
 const email = (value: unknown) => text(value).toLowerCase();
@@ -37,45 +41,6 @@ const commissionCode = (value: unknown, product?: Product) => {
   const code = baseCommissionCodeForPayoutComparison(value, product);
   return code === "B301" ? "B0301" : code;
 };
-
-/** Own and manager snapshots are already authorized by the detail endpoint.
- * Restrict the summary further to the displayed, explicitly linked family. */
-function familyEntries({ contract, timeline, ownerEmail }: Input): ContractDoc[] {
-  const owner = email(ownerEmail);
-  if (!owner || !contract.id || (contract.userEmail && email(contract.userEmail) !== owner)) return [];
-  const rootId = contract.entryType === "endorsement" ? text(contract.rootContractEntryId) : contract.id;
-  const entries = new Map<string, ContractDoc>();
-  for (const entry of timeline) {
-    if (!entry.id || entry.productKey !== contract.productKey ||
-      (entry.userEmail && email(entry.userEmail) !== owner)) continue;
-    if (text(contract.contractNumber) && text(entry.contractNumber) &&
-      text(contract.contractNumber).replace(/\s+/g, "") !== text(entry.contractNumber).replace(/\s+/g, "")) continue;
-    if (entry.entryType === "endorsement"
-      ? entry.rootContractEntryId !== rootId || !entry.parentContractEntryId || entry.parentContractEntryId === entry.id
-      : entry.id !== rootId) continue;
-    // Duplicate IDs cannot contribute commission or payment twice. The main
-    // snapshot below is authoritative after a successful edit.
-    if (!entries.has(entry.id)) entries.set(entry.id, entry);
-  }
-  entries.set(contract.id, contract);
-  const reachable = new Set(entries.has(rootId) ? [rootId] : [contract.id]);
-  const children = new Map<string, string[]>();
-  for (const entry of entries.values()) {
-    if (entry.entryType !== "endorsement" || !entry.parentContractEntryId) continue;
-    const siblings = children.get(entry.parentContractEntryId) ?? [];
-    siblings.push(entry.id);
-    children.set(entry.parentContractEntryId, siblings);
-  }
-  const queue = [...reachable];
-  for (let index = 0; index < queue.length; index++) {
-    for (const id of children.get(queue[index]) ?? []) {
-      if (reachable.has(id)) continue;
-      reachable.add(id);
-      queue.push(id);
-    }
-  }
-  return [...entries.values()].filter(entry => reachable.has(entry.id));
-}
 
 /** Attach the policy calendar to generated dates without changing global Date
  * or depending on the browser/server host timezone. */
@@ -109,8 +74,43 @@ function payoutIdentity(payout: ContractCommissionPayout): string | null {
   if (!key) return null;
   // Only an explicit source key permits deduplication. Similar amounts, dates
   // or titles are not evidence that two insurance instalments are one receipt.
-  return JSON.stringify([key, text(payout.code).toUpperCase(), payout.statementId ?? payout.statementNumber ?? null,
+  return JSON.stringify([key, text(payout.statementCode ?? payout.code).toUpperCase(), payout.statementId ?? payout.statementNumber ?? null,
     payout.statementPeriod ?? null, payout.payoutMonthKey ?? null, email(payout.writtenBy)]);
+}
+
+const netRecordedAmount = (payouts: ContractCommissionPayout[]): number =>
+  payouts.reduce((sum, payout) => sum + Math.round((actualPayoutAmount(payout) ?? 0) * 100), 0) / 100;
+
+export function buildContractPaidCommissionTotal(input: PaidInput): number | null {
+  const owner = email(input.ownerEmail);
+  const viewer = email(input.viewerEmail);
+  const family = connectedContractFamily(input);
+  if (!viewer || !family.length) return null;
+  if (input.contract.entryType === "endorsement" && !family.some(entry =>
+    entry.id === input.contract.rootContractEntryId && entry.entryType !== "endorsement")) return null;
+  const payouts = recordedPayouts(family, owner, viewer);
+  const isRecipient = viewer === owner || payouts.length > 0 || family.some(entry =>
+    entry.managerOverrides?.some(override => email(override.email) === viewer));
+  return isRecipient ? netRecordedAmount(payouts) : null;
+}
+
+export function buildContractStornoComparison(input: PaidInput, stornoDate: unknown) {
+  const { contract, ownerEmail, viewerEmail } = input;
+  const family = connectedContractFamily(input);
+  const policy = contract.entryType === "endorsement" ? family.find(entry => entry.id === contract.rootContractEntryId) : contract;
+  if (!policy) return [];
+  const rows = calculateContractStornoRows(family, ownerEmail, viewerEmail, stornoDate);
+  const category = productCategory(policy.productKey);
+  if ((category === "auto" || category === "property" || category === "travel") && rows.length > 0 &&
+    rows.every(row => row.estimated === 0 && row.deducted === null)) {
+    const start = endorsementCommissionDay(policy.policyStartDate);
+    const effective = endorsementCommissionDay(stornoDate);
+    if (start && effective) {
+      const years = Number(effective.slice(0, 4)) - Number(start.slice(0, 4));
+      if (years > 0 && commissionPeriodAfterMonths(start, years * 12) === effective) return null;
+    }
+  }
+  return rows;
 }
 
 function recordedPayouts(entries: ContractDoc[], owner: string, viewer: string): ContractCommissionPayout[] {
@@ -148,7 +148,7 @@ export function buildContractFinancialOverview(input: Input): ContractFinancialO
     expectedAmount: null, nextPayout: null, periodFrom, periodUntil, entriesCount: 0 };
   const owner = email(input.ownerEmail);
   const viewer = email(input.viewerEmail);
-  const family = familyEntries(input);
+  const family = connectedContractFamily(input);
   if (!viewer || !owner || !family.length || !periodFrom || !periodUntil) return empty;
   const own = owner === viewer;
   const payouts = recordedPayouts(family, owner, viewer);
@@ -170,7 +170,7 @@ export function buildContractFinancialOverview(input: Input): ContractFinancialO
   const hasBasis = forecastEntries.some(hasForecastBasis);
   const model: ContractFinancialOverviewModel = { ...empty, entriesCount: family.length,
     recipient: own ? "own" : forecastEntries.length || payouts.length ? "manager" : "unavailable",
-    paidAmount: cents(payouts.reduce((sum, payout) => sum + (actualPayoutAmount(payout) ?? 0), 0)),
+    paidAmount: netRecordedAmount(payouts),
     payoutCount: payouts.length };
   if (contract.entryType === "endorsement" && !family.some(entry => entry.id === contract.rootContractEntryId &&
     entry.entryType !== "endorsement")) return model;
@@ -186,7 +186,8 @@ export function buildContractFinancialOverview(input: Input): ContractFinancialO
   if (!hasBasis || incomplete) return model;
   const calendar = pragueCalendar(asOf);
   const day = calendarDate(calendar, calendar.getFullYear(), calendar.getMonth(), calendar.getDate());
-  const forecast = generateCashflow(forecastEntries.filter(hasForecastBasis), CASHFLOW_FORECAST_YEARS, viewer, day, timeline)
+  const forecast = applyAutoCommissionForecasts(
+    generateCashflow(forecastEntries.filter(hasForecastBasis), CASHFLOW_FORECAST_YEARS, viewer, day, timeline), forecastEntries, viewer)
     .filter(item => {
       const date = endorsementCommissionDay(item.date);
       return item.payoutStatus !== "paid" && !item.isStatementOnly && date && date >= periodFrom &&

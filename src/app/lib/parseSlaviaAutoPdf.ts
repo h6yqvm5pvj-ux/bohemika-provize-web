@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseSlaviaAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type SlaviaAutoCoverageDetail = {
   liabilityVariant?: string | null;
@@ -23,10 +24,13 @@ export type SlaviaAutoCoverageDetail = {
 export type SlaviaAutoPdfResult = {
   contractNumber?: string | null;
   clientName?: string | null;
+  personalId?: string | null;
+  personalIdType?: "birthNumber" | "companyId" | null;
   policyStartDate?: string | null;
   contractSignedDate?: string | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
+  paymentDetails?: ContractPaymentDetails | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;
@@ -341,6 +345,57 @@ const readSectionValue = (
   return readNearestValueByLabel(section.lines, section.asciiLines, label, maxLookahead);
 };
 
+const extractPolicyholderIdentity = (
+  lines: string[],
+  asciiLines: string[],
+): { personalId: string; personalIdType: "birthNumber" | "companyId" } | null => {
+  const start = asciiLines.findIndex(line => /^pojistnik\b/.test(line));
+  if (start < 0) return null;
+  let end = Math.min(lines.length, start + 24);
+  for (let index = start + 1; index < end; index += 1) {
+    if (/^(?:pojisteny|pojis(t|ten)ena|provozovatel|vlastnik|ridic)\b/.test(asciiLines[index] ?? "")) {
+      end = index;
+      break;
+    }
+  }
+  const sectionLines = lines.slice(start, end);
+  const sectionAscii = asciiLines.slice(start, end);
+  const valueAfter = (label: RegExp, valuePattern: RegExp): string | null => {
+    for (let index = 0; index < sectionLines.length; index += 1) {
+      if (!label.test(sectionAscii[index] ?? "")) continue;
+      for (let offset = 0; offset <= 3 && index + offset < sectionLines.length; offset += 1) {
+        const value = valuePattern.exec(sectionLines[index + offset] ?? "")?.[1];
+        if (value) return value;
+        if (offset > 0 && /^(?:rodne cislo|ico|ic|jmeno|adresa|datum narozeni)\b/.test(sectionAscii[index + offset] ?? "")) break;
+      }
+    }
+    return null;
+  };
+  const birthNumberRaw = valueAfter(/rodne\s+cislo/, /(\d{6}\s*\/?\s*\d{3,4})/);
+  const birthNumber = birthNumberRaw?.replace(/\s+/g, "");
+  if (birthNumber) return { personalId: birthNumber, personalIdType: "birthNumber" };
+  const companyId = valueAfter(/\b(?:ico|ic)\b/, /(\d{8})/);
+  return companyId ? { personalId: companyId, personalIdType: "companyId" } : null;
+};
+
+const extractSlaviaPaymentDetails = (
+  lines: string[],
+  asciiLines: string[],
+  contractNumber: string | null,
+  frequency: PaymentFrequency | null,
+): ContractPaymentDetails | null => {
+  const sectionStart = asciiLines.findIndex(line => /^platebni instrukce\b/.test(line));
+  if (sectionStart < 0 || !contractNumber) return null;
+  const sectionLines = lines.slice(sectionStart, sectionStart + 35);
+  const sectionAscii = asciiLines.slice(sectionStart, sectionStart + 35);
+  const amount = parseAmount(readNearestValueByLabel(sectionLines, sectionAscii, /vyse\s+splatky/, 4));
+  const accountRaw = readNearestValueByLabel(sectionLines, sectionAscii, /cislo\s+uctu/, 4);
+  const variableSymbol = readNearestValueByLabel(sectionLines, sectionAscii, /variabilni\s+symbol/, 4)?.match(/\d{1,10}/)?.[0] ?? null;
+  const accountNumber = accountRaw?.match(/(?:\d{1,6}-)?\d{2,10}\/\d{4}/)?.[0] ?? null;
+  if (amount == null || !accountNumber || !variableSymbol || variableSymbol !== contractNumber) return null;
+  return normalizeContractPaymentDetails({ amount, accountNumber, variableSymbol, dueDate: null, ...(frequency ? { frequency } : {}) });
+};
+
 export async function parseSlaviaAutoPdf(file: File, options: PdfReadOptions = {}): Promise<SlaviaAutoPdfResult> {
   const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
@@ -364,6 +419,12 @@ export async function parseSlaviaAutoPdf(file: File, options: PdfReadOptions = {
   const asciiText = stripDiacritics(fullText).toLowerCase().replace(/\s+/g, " ").trim();
 
   const result: SlaviaAutoPdfResult = {};
+
+  const policyholderIdentity = extractPolicyholderIdentity(lines, asciiLines);
+  if (policyholderIdentity) {
+    result.personalId = policyholderIdentity.personalId;
+    result.personalIdType = policyholderIdentity.personalIdType;
+  }
 
   const contractCandidates: string[] = [];
   const primaryContractNumber = readContractNumberByPrimaryLabel(lines, asciiLines);
@@ -446,6 +507,8 @@ export async function parseSlaviaAutoPdf(file: File, options: PdfReadOptions = {
       asciiText.match(/\b(mesicni|mesicne|ctvrtletni|ctvrtletne|pololetni|pololetne|rocni|rocne)\b/i)?.[1]
     );
   result.frequency = frequencyByCount ?? frequencyByText ?? null;
+  const paymentDetails = extractSlaviaPaymentDetails(lines, asciiLines, result.contractNumber ?? null, result.frequency ?? null);
+  if (paymentDetails) result.paymentDetails = paymentDetails;
 
   result.carMake = normalizeVehicleMakeModel(
     readNearestValueByLabel(lines, asciiLines, /tovarni\s+znacka\s+a\s+model/i, 4)

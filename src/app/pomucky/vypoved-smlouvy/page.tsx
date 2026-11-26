@@ -51,6 +51,7 @@ import {
   getMissingUniversalTerminationFields,
   getTerminationReasonsForSelection,
   getUniversalLetterForSelection,
+  isTerminationInsuranceTypeSupported,
   type InsuranceType,
   type TerminationReason,
   type UniversalTerminationLetterFieldKey,
@@ -1836,10 +1837,9 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
     insurer,
     contractPrefill?.sourceProduct,
   );
-  const availableInsuranceTypes =
-    insurer === "Direct"
-      ? INSURANCE_TYPES.filter((item) => item.id === "nonLife")
-      : INSURANCE_TYPES;
+  const availableInsuranceTypes = INSURANCE_TYPES.filter((item) =>
+    isTerminationInsuranceTypeSupported(insurer, item.id),
+  );
   const requiresReasonStep = availableReasons.length > 0;
 
   useEffect(() => {
@@ -2042,7 +2042,7 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
       return false;
     }
 
-    if (currentStep === "type" && !insuranceType) {
+    if (currentStep === "type" && !availableInsuranceTypes.some((item) => item.id === insuranceType)) {
       setFormError("Vyber typ pojištění.");
       return false;
     }
@@ -2216,6 +2216,9 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
               setDocumentViewMode("official"); setCompleted(true); setFormError(null);
               return;
             }
+            if (insuranceType && !isTerminationInsuranceTypeSupported(nextInsurer, insuranceType)) {
+              setInsuranceType(null);
+            }
             if (reason && !getTerminationReasonsForSelection(insuranceType, nextInsurer, contractPrefill?.sourceProduct).some(item => item.id === reason)) setReason(null);
             setCompleted(false); setFormError(null);
           }}
@@ -2226,6 +2229,33 @@ function ContractTerminationPageContent({ context }: { context: ContractTerminat
           }}
           onReasonChange={(nextReason) => { setReason(nextReason); setCompleted(false); setFormError(null); }}
         />}
+
+        {showNnLifeDocument ? (
+          <section
+            aria-labelledby="nn-termination-upload"
+            className={`${styles.documentCard} mb-5 flex flex-wrap items-center justify-between gap-4 print:hidden`}
+          >
+            <div className="max-w-2xl">
+              <h2 id="nn-termination-upload" className="text-sm font-bold">
+                Odeslání přes ePodatelnu NN
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-slate-700">
+                Vyplň číslo smlouvy, jméno a příjmení klienta, datum narození,
+                e-mail a telefon. Přilož připravenou výpověď. Klientovi přijde
+                SMS kód. Zadej ho do formuláře a dokonči odeslání.
+              </p>
+            </div>
+            <a
+              href="https://epodatelna.nn.cz/life/contract-cancellation"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.primaryButton}
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+              Odeslat
+            </a>
+          </section>
+        ) : null}
 
         {activeGeneratedLetterConfig ? (
           <div

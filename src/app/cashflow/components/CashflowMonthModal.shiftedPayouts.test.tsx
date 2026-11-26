@@ -45,6 +45,7 @@ describe("month detail shifted payouts", () => {
     expect(summary(container)).toContain("Přesunuto o 1–3 měsíce");
     expect(text(row(container, "Provize A101")?.textContent)).toContain("Přesunuto o 1 měsíc");
     expect(text(row(container, "Provize B0301")?.textContent)).toContain("Přesunuto o 3 měsíce");
+    expect(text(row(container, "Provize B0301")?.textContent)).toContain("Původní odhad říjen 2026 · Nový odhad leden 2027");
   });
 
   it("keeps paid payouts paid alongside an exact delay for the pending payout", () => {
@@ -55,6 +56,7 @@ describe("month detail shifted payouts", () => {
 
     expect(summary(container)).toContain("Různé stavy");
     expect(text(row(container, "Provize A101")?.textContent)).toContain("Vyplaceno");
+    expect(text(row(container, "Provize A101")?.textContent)).toContain("Původní odhad říjen 2026 · Měsíc výplaty leden 2027");
     expect(text(row(container, "Provize A101")?.textContent)).not.toContain("Přesunuto");
     expect(text(row(container, "Provize B0301")?.textContent)).toContain("Přesunuto o 2 měsíce");
   });

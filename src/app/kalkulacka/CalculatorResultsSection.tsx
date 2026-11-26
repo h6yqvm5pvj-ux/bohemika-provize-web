@@ -21,8 +21,9 @@ import {
   type Position,
   type Product,
 } from "../types/domain";
+import { FLEXI_RENOVATION_MISSING_BASE_LABEL } from "@/app/lib/flexiRenovation";
 import { formatMoney } from "@/app/lib/formatters";
-import { isAutoProduct, isLifeProduct } from "@/app/lib/productCatalog";
+import { isAutoProduct, isLifeProduct, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 import { cleanResultTitle, resultIconForTitle } from "./calculatorHelpers";
 import {
   buildNeonImmediateBreakdown,
@@ -38,6 +39,7 @@ type TipContractConfigSummary = {
 type CalculatorResultsSectionProps = {
   topTools?: ReactNode;
   inheritedContract?: boolean;
+  commissionBaseUnknown?: boolean;
   inheritedCalculationReady?: boolean;
   tipsterModeEnabled: boolean;
   showSaveActions?: boolean;
@@ -196,6 +198,7 @@ function AnimatedMoneyValue({
 export function CalculatorResultsSection({
   topTools,
   inheritedContract = false,
+  commissionBaseUnknown = false,
   inheritedCalculationReady = false,
   tipsterModeEnabled,
   showSaveActions = true,
@@ -253,9 +256,9 @@ export function CalculatorResultsSection({
         <div className={styles.resultsHeader}>
           <h2 className={styles.resultsTitle}>
             <span className={styles.sectionIcon}><BarChart3 size={19} strokeWidth={1.7} aria-hidden="true" /></span>
-            {inheritedContract ? "Následné provize" : "Výsledky"}
+            {isRecordOnlyProduct(product) ? "Evidence smlouvy" : inheritedContract ? "Následné provize" : "Výsledky"}
           </h2>
-          <div className={styles.resultsTools}>
+          {!commissionBaseUnknown && !isRecordOnlyProduct(product) && <div className={styles.resultsTools}>
             <button
               type="button"
               onClick={onOpenCoefModal}
@@ -277,7 +280,7 @@ export function CalculatorResultsSection({
                 %
               </button>
             )}
-          </div>
+          </div>}
         </div>
 
         {tipsterModeEnabled && tipsterPercentPanelOpen && (
@@ -388,7 +391,13 @@ export function CalculatorResultsSection({
             Výše následných provizí podle původní pozice. Termíny a zbývající nárok od převzetí uvidíš po uložení v cashflow.
           </p>
         )}
-        {!unsupported && items.length === 0 && (
+        {isRecordOnlyProduct(product) && <p className="text-sm text-slate-700">Smlouvu uložíš do evidence bez pojistného a bez provize.</p>}
+        {commissionBaseUnknown && (
+          <p className="relative rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+            {FLEXI_RENOVATION_MISSING_BASE_LABEL}. Skutečné výplaty uvidíš po zpracování provizního výpisu.
+          </p>
+        )}
+        {!commissionBaseUnknown && !isRecordOnlyProduct(product) && !unsupported && items.length === 0 && (
           <div className={styles.emptyResults}>
             <div className={styles.emptyScene} aria-hidden="true">
               <span className={styles.emptyGlow} />

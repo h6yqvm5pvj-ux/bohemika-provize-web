@@ -4,9 +4,16 @@ import {
   type CommissionResultItemDTO,
   type PaymentFrequency,
 } from "../../types/domain";
-import { commissionInstallmentCodeRange } from "./shared";
+import { commissionInstallmentCodeRange, normalizeIsoDay, periodsPerYear } from "./shared";
 
 // ---------- Kooperativa majetek + odpovědnost občanů ----------
+
+export const KOOP_MAJETEK_OBCAN_CURRENT_VALID_FROM = "2026-09-01";
+
+export function isKoopMajetekObcanHistoricalPeriod(contractSignedDateIso?: string | null): boolean {
+  const signedDate = normalizeIsoDay(contractSignedDateIso);
+  return signedDate !== null && signedDate < KOOP_MAJETEK_OBCAN_CURRENT_VALID_FROM;
+}
 
 export function koopMajetekObcanImmediateCoefficient(position: Position): number {
   switch (position) {
@@ -49,7 +56,7 @@ export function koopMajetekObcanImmediateCoefficient(position: Position): number
   }
 }
 
-export function koopMajetekObcanSubsequentCoefficient(position: Position): number {
+function originalKoopPropertySubsequentCoefficient(position: Position): number {
   switch (position) {
     // Poradci 1–10
     case "poradce1":
@@ -90,22 +97,48 @@ export function koopMajetekObcanSubsequentCoefficient(position: Position): numbe
   }
 }
 
+export const koopFitSubsequentCoefficient = originalKoopPropertySubsequentCoefficient;
+
+export function koopMajetekObcanSubsequentCoefficient(
+  position: Position,
+  contractSignedDateIso?: string | null
+): number {
+  if (position === "poradce9" && !isKoopMajetekObcanHistoricalPeriod(contractSignedDateIso)) {
+    return 0.0622;
+  }
+  return originalKoopPropertySubsequentCoefficient(position);
+}
+
 export function calculateKoopMajetekObcan(
+  amount: number,
+  frequency: PaymentFrequency,
+  position: Position,
+  contractSignedDateIso?: string | null
+): CommissionResultDTO {
+  return calculateKoopPropertyCommission(
+    amount,
+    frequency,
+    position,
+    koopMajetekObcanSubsequentCoefficient(position, contractSignedDateIso)
+  );
+}
+
+export function calculateKoopFit(
   amount: number,
   frequency: PaymentFrequency,
   position: Position
 ): CommissionResultDTO {
-  const coefImmediate = koopMajetekObcanImmediateCoefficient(position);
-  const coefSubsequent = koopMajetekObcanSubsequentCoefficient(position);
+  return calculateKoopPropertyCommission(amount, frequency, position, koopFitSubsequentCoefficient(position));
+}
 
-  const multiplier =
-    frequency === "monthly"
-      ? 12
-      : frequency === "quarterly"
-      ? 4
-      : frequency === "semiannual"
-      ? 2
-      : 1;
+function calculateKoopPropertyCommission(
+  amount: number,
+  frequency: PaymentFrequency,
+  position: Position,
+  coefSubsequent: number
+): CommissionResultDTO {
+  const coefImmediate = koopMajetekObcanImmediateCoefficient(position);
+  const multiplier = periodsPerYear(frequency);
 
   const immediateByPayment = amount * coefImmediate;
   const subsequentByPayment = amount * coefSubsequent;

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const parserCases = [
   ["conseqzenit", "parseConseqZenitPdf"],
   ["cppAuto", "parseCppAutoPdf"],
+  ["cppAutoVozikZdarma", "parseCppAutoVozikZdarmaPdf"],
   ["slaviaauto", "parseSlaviaAutoPdf"],
   ["allianzAuto", "parseAllianzAutoPdf"],
   ["csobAuto", "parseCsobAutoPdf"],

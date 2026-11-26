@@ -9,11 +9,22 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => {
   const collection = (path: string) => ({
-    doc: (id: string) => ({ collection: (name: string) => collection(`${path}/${id}/${name}`) }),
+    doc: (id: string) => ({
+      collection: (name: string) => collection(`${path}/${id}/${name}`),
+      get: async () => {
+        mocks.reads.push({ path: `${path}/${id}`, unread: false });
+        return { id, ref: { path: `${path}/${id}` }, data: () => mocks.records.get(id) };
+      },
+    }),
     ...query(path),
   });
   function query(path: string, unread = false, fields?: string[], limit = 180, pinned = false, cursor?: [number, string]) {
     return {
+      count: () => ({ get: async () => {
+        mocks.reads.push({ path, unread, fields: ["count"] });
+        if (unread) await mocks.unreadGate;
+        return { data: () => ({ count: [...mocks.records.values()].filter(data => data.read === false).length }), readTime: now };
+      } }),
       where: (key: string, _operator: string, value: unknown) => query(path, key === "read" && value === false, fields, limit, key === "pinnedAtMs", cursor),
       select: (...selected: string[]) => query(path, unread, selected, limit, pinned, cursor),
       orderBy: () => query(path, unread, fields, limit, pinned, cursor),
@@ -36,7 +47,12 @@ vi.mock("@/lib/server/firebaseAdmin", () => {
       },
     };
   }
-  return { adminDb: { collection } };
+  return { adminDb: {
+    collection,
+    // These fixtures predate the two visibility fields. The emulator covers the indexed path.
+    runTransaction: async (work: (tx: unknown) => unknown) => work({ get: async () => ({ data: () => ({ count: 0 }) }) }),
+    batch: () => ({ update: () => {}, commit: async () => {} }),
+  } };
 });
 vi.mock("@/lib/server/apiEntryGuard", () => ({
   requireAdvisorAuthedRateLimited: mocks.guard,
@@ -46,6 +62,7 @@ vi.mock("@/lib/server/userProfileAvatars", () => ({ loadProfileAvatarsByEmail: v
 
 import { GET } from "./route";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
+import { lifeCommissionReminderId } from "@/lib/server/lifeCommissionReminderId";
 
 const now = Date.UTC(2026, 8, 11, 12);
 const request = (query = "") => new NextRequest(`https://example.test/api/mailbox?${query}`);
@@ -55,11 +72,29 @@ beforeEach(() => {
   mocks.records.clear();
   mocks.reads.length = 0;
   mocks.unreadGate = null;
-  mocks.guard.mockResolvedValue({ ok: true, ctx: { email: "advisor@example.test" } });
+  mocks.guard.mockResolvedValue({ ok: true, ctx: { email: "advisor@example.test", uid: "synthetic-advisor" } });
 });
 afterEach(() => vi.restoreAllMocks());
 
 describe("mailbox loading", () => {
+  it("opens an individual commission reminder from only the authenticated mailbox", async () => {
+    const id = lifeCommissionReminderId("synthetic-advisor", "2026-12");
+    const otherId = lifeCommissionReminderId("other-advisor", "2026-12");
+    const query = `messageId=${id}&ownerEmail=other%40example.test`;
+    const message = { type: "life_commission_reminder", title: "Provize", read: false, createdAtMs: now };
+    mocks.records.set(otherId, { ...message, recipientEmail: "advisor@example.test" });
+    expect((await GET(request(`messageId=${otherId}`))).status).toBe(404);
+    expect(mocks.reads).toHaveLength(0);
+    mocks.records.set(id, { ...message, recipientEmail: "other@example.test" });
+    expect((await GET(request(query))).status).toBe(404);
+    expect(mocks.reads[0].path).toBe(`usersPrivate/advisor@example.test/mailbox/${id}`);
+    mocks.records.set(id, { ...message, recipientEmail: "advisor@example.test" });
+    const response = await GET(request(query));
+    expect(response.status).toBe(200);
+    expect((await response.json()).items).toMatchObject([{ id, title: "Provize", read: false }]);
+    expect((await (await GET(request("limit=80"))).json()).items.map((item: { id: string }) => item.id)).toEqual([id]);
+    expect((await GET(request("messageId=../invalid"))).status).toBe(400);
+  });
   it("counts unread items using only state fields, retaining archive and snooze fallbacks", async () => {
     const rows = [
       { read: false },
@@ -76,9 +111,9 @@ describe("mailbox loading", () => {
     rows.forEach((data, index) => mocks.records.set(String(index), { ...data, body: "large unused body".repeat(1000) }));
     const response = await GET(request("countOnly=1"));
     expect(await response.json()).toEqual({ ok: true, unreadCount: 3 });
-    expect(mocks.reads).toEqual([{
+    expect(mocks.reads).toEqual([{ path: "usersPrivate/advisor@example.test/mailbox", unread: true, fields: ["count"] }, {
       path: "usersPrivate/advisor@example.test/mailbox", unread: true,
-      fields: ["archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil"],
+      fields: ["archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil", "inboxArchived", "inboxSnoozeMs"],
     }]);
   });
 
@@ -137,13 +172,13 @@ describe("mailbox loading", () => {
     mocks.records.set("unread", { read: false });
     const response = await GET(request(`conversationId=${conversationId}&limit=2${suffix}`));
     expect(await response.json()).toMatchObject({ ok: true, unreadCount: 1, items: [] });
-    expect(mocks.reads.filter(read => read.unread)).toHaveLength(1);
+    expect(mocks.reads.filter(read => read.unread && read.fields?.[0] !== "count")).toHaveLength(1);
   });
 
   it.each(["includeUnreadCount=0", "countOnly=1&includeUnreadCount=0"])("retains unread count outside history requests (%s)", async query => {
     mocks.records.set("unread", { read: false });
     expect(await (await GET(request(query))).json()).toMatchObject({ ok: true, unreadCount: 1 });
-    expect(mocks.reads.filter(read => read.unread)).toHaveLength(1);
+    expect(mocks.reads.filter(read => read.unread && read.fields?.[0] !== "count")).toHaveLength(1);
   });
 
   it("loads history while the unread query is pending for a caller that requires both", async () => {
@@ -165,6 +200,12 @@ describe("mailbox loading", () => {
   it("rejects unauthenticated reads before accessing mailbox data", async () => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
     expect((await GET(request())).status).toBe(401);
+    expect(mocks.reads).toEqual([]);
+  });
+
+  it.each([401, 403, 429])("honors the guard before counting on a forged mailbox request (%i)", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    expect((await GET(request("countOnly=1&ownerEmail=foreign%40example.test&role=admin"))).status).toBe(status);
     expect(mocks.reads).toEqual([]);
   });
 

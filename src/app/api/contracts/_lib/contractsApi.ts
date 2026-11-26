@@ -1,3 +1,9 @@
+import { leaderboardWindow, loadTeamLeaderboard } from "@/lib/server/homeTeamLeaderboard";
+import { projectConfirmedPremiumHistory } from "@/app/lib/commissionPremiumCodeAdjustment";
+import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { commissionPayoutPositionForOwner } from "@/lib/server/commissionPayoutPositionPolicy";
+import { projectContractLifeReceipts } from "./contractsApi.lifeReceipts";
+import { contractPortalLinks } from "@/app/lib/contractPortalLinks";
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { createDomexNeuronPremiumTimeline } from "@/app/lib/domexNeuronPremiumHistory";
 import { markHallOwnerDirty } from "@/lib/server/hallOfFameProjection";
@@ -7,9 +13,19 @@ import { clientContractLinkRef } from "@/lib/server/clientContractIndex";
 import { heldCareerPositions } from "@/app/lib/careerPositions";
 import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { readFilteredContractPage } from "./contractsApi.filteredPage";
+import { isContractOwnerEmail, readContractFormBody } from "./contractRequestForm";
+import { exactContractNumberFromSearch } from "@/app/lib/contractSearch";
 import { orderedCashflowReads } from "./contractsApi.cashflowReads";
 import { authorizeContractNoteLocation, assertContractNoteNamespaceAvailable } from "@/lib/server/contractNoteLocation";
 import { isSafeContractNoteId } from "../notes/contractNotes";
+import {
+  buildNeonEndorsementPayload,
+  NeonEndorsementError,
+  neonEndorsementReplayMatches,
+  parseNeonEndorsementRequest,
+  resolveNeonEndorsementSource,
+} from "./contractsApi.neonEndorsement";
+import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import { projectTipMatchData, projectTipMatchResponse } from "./contractsApi.tipProjection";
 import { filterStatementDerivedContractDataForViewer, type StatementDataViewer } from "./contractsApi.statementVisibility";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
@@ -17,10 +33,10 @@ import { withContractHistory } from "@/lib/server/contractHistory";
 import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { isInheritedContract, inheritedCommissionResult, withInheritedCommissionItems } from "@/app/lib/inheritedContracts";
 // src/app/api/contracts/route.ts
-import { NextResponse, type NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 
-import { adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
+import { adminAuth, adminDb, adminMessaging } from "@/lib/server/firebaseAdmin";
 import { writeMailboxEntries } from "@/lib/server/mailbox";
 import { collectPushTokens } from "@/lib/server/pushTokens";
 import {
@@ -52,6 +68,7 @@ import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import {
   canSaveUnlinkedOriginalReplacement,
   matchesOriginalContractReplacementProduct,
+  supportsOriginalContractReplacement,
   usesPreviousDayReplacementStorno,
 } from "@/app/lib/originalContractReplacement";
 import {
@@ -59,6 +76,7 @@ import {
   totalWithMultipliers,
 } from "@/app/lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "@/app/lib/managerOverrideTotals";
+import type { NeonCorrection } from "@/app/lib/neonCorrection";
 import {
   applyTipContractAdjustmentToCommissionItems,
   normalizeTipContractTitle,
@@ -94,7 +112,9 @@ import type {
   UserTreeResult,
 } from "./contractsApi.types";
 import { calculateCommission } from "@/app/lib/calculateCommission";
-import { calculateFlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { matchesVehicleRegistration } from "@/app/lib/vehicleOverlap";
+import { isInvestmentProduct, isRecordOnlyProduct } from "@/app/lib/productCatalog";
+import { calculateFlexiRenovationBase, hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { normalizeCommissionCoefficientSet } from "@/app/lib/productFormulas/coefficientSets";
 import {
   calculateNeonDecreaseStornoBase,
@@ -277,7 +297,7 @@ const LIFE_TIMELINE_PRODUCTS = new Set<Product>([
   "pillowInjury",
 ]);
 const INSURANCE_TIMELINE_PRODUCTS = new Set<Product>(
-  PRODUCT_ORDER.filter(product => product !== "conseqzenit")
+  PRODUCT_ORDER.filter(product => product !== "conseqzenit" && !isRecordOnlyProduct(product))
 );
 const UPDATE_DATE_FIELDS = new Set<string>([
   "createdAt",
@@ -678,6 +698,28 @@ const contractTransferResponseFields = (
   };
 };
 
+const publicRefreshCommissionBase = (base: ContractDoc["refreshCommissionBase"]): ContractDoc["refreshCommissionBase"] => {
+  if (!base?.originalOutsideOwner) return base;
+  // The new policy's result is visible; foreign source premiums and dates stay internal.
+  return {
+    newMonthlyPremium: base.newMonthlyPremium,
+    newAnnualPremium: base.newAnnualPremium,
+    calculationMonthlyPremium: base.calculationMonthlyPremium,
+    calculationAnnualPremium: base.calculationAnnualPremium,
+    refreshPolicyStartDateIso: base.refreshPolicyStartDateIso,
+  };
+};
+
+const withOwnPayoutPosition = (contract: ContractResponseItem, viewerEmail: string): ContractResponseItem => {
+  const position = normalizeEmail(viewerEmail) === normalizeEmail(contract.adviserEmail)
+    ? commissionPayoutPositionForOwner(contract.adviserEmail, contract) : null;
+  if (position) return { ...contract, payoutPositionOverride: position };
+  if (!Object.hasOwn(contract, "payoutPositionOverride")) return contract;
+  const sanitized = { ...contract };
+  delete sanitized.payoutPositionOverride;
+  return sanitized;
+};
+
 const toContractResponseItem = (
   docId: string,
   ownerEmail: string,
@@ -699,13 +741,19 @@ const toContractResponseItem = (
     ? storedOriginalPosition
     : resolveContractTimelinePosition(ownerContext, signedDateIso);
   const publicData = { ...data };
+  if (Array.isArray(data.commissionPayouts)) publicData.commissionPayouts = projectConfirmedCommissionCodes(data, data.commissionPayouts);
+  if (Array.isArray(data.premiumStatementHistory)) publicData.premiumStatementHistory = projectConfirmedPremiumHistory(data, data.premiumStatementHistory, data.commissionPayouts ?? []);
+  delete publicData.commissionPayoutCodeAdjustment;
+  if (data.refreshCommissionBase) publicData.refreshCommissionBase = publicRefreshCommissionBase(data.refreshCommissionBase);
+  delete (publicData as ContractResponseItem).payoutPositionOverride;
   delete publicData.clientSearchKeys;
   delete publicData.contractNumberSearchKeys;
   return {
     ...publicData,
     clientName: normalizeOptionalClientDisplayName(data.clientName),
     contractPdfAttachment: toPublicContractPdfAttachment(
-      (data as { contractPdfAttachment?: unknown }).contractPdfAttachment
+      (data as { contractPdfAttachment?: unknown }).contractPdfAttachment,
+      data.contractNumber,
     ),
     contractSignedDate: toMillis(data.contractSignedDate),
     createdAt: toMillis(data.createdAt),
@@ -729,6 +777,7 @@ const toContractListResponseItem = ({
   ownerEmail,
   data,
   shape,
+  vehiclePlate,
   adviserName,
   ownerContext,
 }: {
@@ -736,9 +785,20 @@ const toContractListResponseItem = ({
   ownerEmail: string;
   data: ContractDoc;
   shape: ContractListResponseShape;
+  vehiclePlate?: string | null;
   adviserName?: string | null;
   ownerContext?: ContractOwnerPositionContext | null;
 }): ContractResponseItem => {
+  if (shape === "search") {
+    return {
+      id: docId,
+      adviserEmail: ownerEmail,
+      clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
+      contractNumber: data.contractNumber ?? null,
+      contractSignedDate: toMillis(data.contractSignedDate),
+      createdAt: toMillis(data.createdAt),
+    };
+  }
   data = withInheritedCommissionItems(data);
   const normalizedAdviserName = normalizeOptionalDisplayName(adviserName) ?? null;
   const signedDate = toDate(data.contractSignedDate);
@@ -753,6 +813,9 @@ const toContractListResponseItem = ({
   const timelinePosition = isTransferred
     ? storedOriginalPosition
     : resolveContractTimelinePosition(ownerContext, signedDateIso);
+  const autoPremiumCoefficientSet = data.paymentFrequencyChanges?.some(change => change.annualPremium != null)
+    ? normalizeCommissionCoefficientSet(data.commissionCoefficientSetOverride)
+    : null;
   if (shape === "clientNames") {
     const normalizedOwner = normalizeEmail(ownerEmail);
     return {
@@ -780,6 +843,7 @@ const toContractListResponseItem = ({
       originalAdviserName: normalizeOptionalDisplayName(data.originalAdviserName) ?? null,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
       entryType: data.entryType ?? null,
+      ...(data.autoPremiumAmendment ? { autoPremiumAmendment: true, autoPremiumAnnual: data.autoPremiumAnnual, autoPremiumPreviousAnnual: data.autoPremiumPreviousAnnual, previousFrequency: data.previousFrequency } : {}),
       clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       clientEmail: data.clientEmail ?? null,
       clientPhone: data.clientPhone ?? null,
@@ -812,6 +876,7 @@ const toContractListResponseItem = ({
       productKey: data.productKey,
       inputAmount: data.inputAmount,
       frequencyRaw: data.frequencyRaw ?? null,
+      ...(data.paymentFrequencyChanges?.length ? { paymentFrequencyChanges: data.paymentFrequencyChanges.map(change => ({ effectiveDate: change.effectiveDate, frequency: change.frequency, ...(change.annualPremium != null ? { annualPremium: change.annualPremium, baseAnnualPremium: change.baseAnnualPremium } : {}), ...(change.endorsementId ? { endorsementId: change.endorsementId } : {}) })) } : {}),
       items: Array.isArray(data.items) ? data.items : [],
       managerOverrides: Array.isArray(data.managerOverrides)
         ? data.managerOverrides
@@ -841,6 +906,7 @@ const toContractListResponseItem = ({
         }
       : null;
     const indexFields = contractListIndexFieldsForContract(data);
+    const publicContractPdfAttachment = toPublicContractPdfAttachment(data.contractPdfAttachment, data.contractNumber);
 
     return {
       id: docId,
@@ -852,12 +918,17 @@ const toContractListResponseItem = ({
       timelinePosition,
       ownerCurrentPosition: ownerContext?.position ?? null,
       paid: data.paid ?? null,
+      isDip: data.isDip === true,
+      hasContractPdfAttachment: Boolean(
+        publicContractPdfAttachment && publicContractPdfAttachment.contractNumberBindingStatus !== "mismatch"
+      ),
       status: data.status ?? null,
       stornoDate: toMillis((data as any).stornoDate),
       isRefresh: data.isRefresh ?? null,
       refreshOriginalContractNumber: data.refreshOriginalContractNumber ?? null,
       refreshCommissionBase: slimRefreshCommissionBase,
       entryType: data.entryType ?? null,
+      ...(data.autoPremiumAmendment ? { autoPremiumAmendment: true, autoPremiumAnnual: data.autoPremiumAnnual, autoPremiumPreviousAnnual: data.autoPremiumPreviousAnnual, previousFrequency: data.previousFrequency } : {}),
       rootContractEntryId: data.rootContractEntryId ?? null,
       parentContractEntryId: data.parentContractEntryId ?? null,
       productKey: data.productKey,
@@ -875,20 +946,23 @@ const toContractListResponseItem = ({
           : indexFields.lifecycleStatus,
       position: data.position ?? null,
       commissionMode: data.commissionMode ?? null,
+      ...(autoPremiumCoefficientSet ? { commissionCoefficientSetOverride: autoPremiumCoefficientSet } : {}),
       inputAmount: data.inputAmount,
       calculationInputAmount: data.calculationInputAmount ?? null,
+      ...(data.neonCorrection ? { neonCorrection: data.neonCorrection } : {}),
       effectiveInputAmount: data.effectiveInputAmount ?? null,
       previousInputAmount: data.previousInputAmount ?? null,
       newInputAmount: data.newInputAmount ?? null,
       premiumDelta: data.premiumDelta ?? null,
       frequencyRaw: data.frequencyRaw ?? null,
+      ...(data.paymentFrequencyChanges?.length ? { paymentFrequencyChanges: data.paymentFrequencyChanges.map(change => ({ effectiveDate: change.effectiveDate, frequency: change.frequency, ...(change.annualPremium != null ? { annualPremium: change.annualPremium, baseAnnualPremium: change.baseAnnualPremium } : {}), ...(change.endorsementId ? { endorsementId: change.endorsementId } : {}) })) } : {}),
       durationYears: data.durationYears ?? null,
       durationMonths: data.durationMonths ?? null,
       maxCizinKomplexVariant: data.maxCizinKomplexVariant ?? null,
       items,
       total,
       commissionPayouts: Array.isArray(data.commissionPayouts)
-        ? data.commissionPayouts
+        ? projectConfirmedCommissionCodes(data, data.commissionPayouts)
         : [],
       managerEmailSnapshot: data.managerEmailSnapshot ?? null,
       managerPositionSnapshot: data.managerPositionSnapshot ?? null,
@@ -905,6 +979,7 @@ const toContractListResponseItem = ({
         : [],
       clientName: normalizeOptionalClientDisplayName(data.clientName) ?? null,
       contractNumber: data.contractNumber ?? null,
+      ...(matchesVehicleRegistration(data, vehiclePlate) ? { carPlate: vehiclePlate } : {}),
       contractSignedDate: toMillis(data.contractSignedDate),
       policyStartDate: toMillis((data as any).policyStartDate),
       policyEndDate: toMillis((data as any).policyEndDate),
@@ -916,17 +991,26 @@ const toContractListResponseItem = ({
     const normalizedOwner = normalizeEmail(ownerEmail);
     return {
       id: docId,
+      ...contractPortalLinks(data),
       adviserEmail: normalizedOwner,
       adviserName: normalizedAdviserName,
       userEmail: normalizeEmail(data.userEmail) || normalizedOwner,
       ...contractTransferResponseFields(data, normalizedOwner, normalizedAdviserName),
+      ...(commissionPayoutPositionForOwner(normalizedOwner, data) ? {
+        commissionCoefficientSetOverride: data.commissionCoefficientSetOverride ?? null,
+        neonCoefficientSetOverride: data.neonCoefficientSetOverride ?? null,
+        maxCizinKomplexVariant: data.maxCizinKomplexVariant ?? null,
+      } : {}),
+      ...(autoPremiumCoefficientSet ? { commissionCoefficientSetOverride: autoPremiumCoefficientSet } : {}),
       effectivePosition: timelinePosition ?? storedPosition ?? null,
       timelinePosition,
       status: data.status ?? null,
       stornoDate: toMillis((data as any).stornoDate),
       productKey: data.productKey,
       frequencyRaw: data.frequencyRaw ?? null,
+      ...(data.paymentFrequencyChanges?.length ? { paymentFrequencyChanges: data.paymentFrequencyChanges.map(change => ({ effectiveDate: change.effectiveDate, frequency: change.frequency, ...(change.annualPremium != null ? { annualPremium: change.annualPremium, baseAnnualPremium: change.baseAnnualPremium } : {}), ...(change.endorsementId ? { endorsementId: change.endorsementId } : {}) })) } : {}),
       entryType: data.entryType ?? null,
+      ...(data.autoPremiumAmendment ? { autoPremiumAmendment: true, autoPremiumAnnual: data.autoPremiumAnnual, autoPremiumPreviousAnnual: data.autoPremiumPreviousAnnual, previousFrequency: data.previousFrequency } : {}),
       rootContractEntryId: data.rootContractEntryId ?? null,
       parentContractEntryId: data.parentContractEntryId ?? null,
       inputAmount:
@@ -938,6 +1022,7 @@ const toContractListResponseItem = ({
         Number.isFinite(data.calculationInputAmount)
           ? data.calculationInputAmount
           : undefined,
+      ...(data.neonCorrection ? { neonCorrection: data.neonCorrection } : {}),
       effectiveInputAmount:
         typeof data.effectiveInputAmount === "number" &&
         Number.isFinite(data.effectiveInputAmount)
@@ -956,7 +1041,10 @@ const toContractListResponseItem = ({
         typeof data.premiumDelta === "number" && Number.isFinite(data.premiumDelta)
           ? data.premiumDelta
           : undefined,
-      refreshCommissionBase: data.refreshCommissionBase ?? null,
+      refreshCommissionBase: publicRefreshCommissionBase(data.refreshCommissionBase) ?? null,
+      ...(data.isRefresh === true ? { isRefresh: true } : {}),
+      ...(data.requiresStatementRefresh === true ? { requiresStatementRefresh: true } : {}),
+      ...(hasPendingFlexiRenovationBase(data) ? { commissionCalculationStatus: data.commissionCalculationStatus } : {}),
       ...(data.productKey === "domexneuron" ? {
         premiumIndexationHistory: createDomexNeuronPremiumTimeline(data).changes,
       } : {}),
@@ -2422,6 +2510,7 @@ const computeManagerOverridesForChain = ({
   contractSignedDateIso,
   commissionCoefficientSetOverride,
   neonCoefficientSetOverride,
+  neonRefreshCareAnnualPremium,
   inputAmount,
   frequencyRaw,
   durationYears,
@@ -2435,6 +2524,7 @@ const computeManagerOverridesForChain = ({
   contractSignedDateIso: string | null;
   commissionCoefficientSetOverride?: CommissionCoefficientSet | null;
   neonCoefficientSetOverride?: NeonCoefficientSet | null;
+  neonRefreshCareAnnualPremium?: number | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -2465,6 +2555,7 @@ const computeManagerOverridesForChain = ({
       contractSignedDateIso,
       commissionCoefficientSetOverride,
       neonCoefficientSetOverride,
+      neonRefreshCareAnnualPremium,
       inputAmount,
       frequencyRaw,
       durationYears,
@@ -2479,6 +2570,7 @@ const computeManagerOverridesForChain = ({
           contractSignedDateIso,
           commissionCoefficientSetOverride,
           neonCoefficientSetOverride,
+          neonRefreshCareAnnualPremium,
           inputAmount,
           frequencyRaw,
           durationYears,
@@ -2573,6 +2665,57 @@ const computeManagerOverridesForChain = ({
 
   return overrides;
 };
+
+export function buildNeonCorrectionPatch(contract: ContractDoc, monthlyPremium: number, calculationAnnualBase: number, correction: NeonCorrection) {
+  const position = normalizePositionValue(contract.position);
+  if (!position) return null;
+  const commissionMode = normalizeCommissionModeValue(contract.commissionMode) ?? "standard";
+  const neonCoefficientSetOverride: NeonCoefficientSet | null =
+    contract.neonCoefficientSetOverride === "historical" || contract.neonCoefficientSetOverride === "current"
+      ? contract.neonCoefficientSetOverride : null;
+  const commissionInput = {
+    productKey: "neon" as const,
+    contractSignedDateIso: endorsementCommissionDay(contract.contractSignedDate),
+    commissionCoefficientSetOverride: normalizeCommissionCoefficientSet(contract.commissionCoefficientSetOverride),
+    neonCoefficientSetOverride,
+    inputAmount: calculationAnnualBase / 12,
+    frequencyRaw: "monthly" as const,
+    durationYears: contract.durationYears ?? null,
+    durationMonths: null,
+    maxCizinKomplexVariant: null,
+  };
+  const calculated = calculateCommission({ ...commissionInput, position, commissionMode });
+  if (!calculated) return null;
+  const inherited = isInheritedContract(contract);
+  const tip = inherited || contract.tipContractTipsterPercent == null ? null : applyTipContractAdjustmentToCommissionItems({
+    product: "neon", items: calculated.items, tipsterPercent: contract.tipContractTipsterPercent,
+  });
+  const result = tip ? { items: tip.items, total: roundToCents(Math.max(0, calculated.total - tip.tipsterAmount)) }
+    : inherited ? inheritedCommissionResult(calculated) : calculated;
+  return {
+    inputAmount: monthlyPremium,
+    effectiveInputAmount: monthlyPremium,
+    calculationInputAmount: commissionInput.inputAmount,
+    neonCorrection: correction,
+    ...result,
+    result,
+    ...(tip ? {
+      tipContractImmediateFirstYearGross: tip.grossBase,
+      tipContractImmediateFirstYearNet: tip.netBase,
+      tipContractTipsterAmountFirstYear: tip.tipsterAmount,
+    } : {}),
+    managerOverrides: inherited ? [] : computeManagerOverridesForChain({
+      ...commissionInput,
+      adviserPosition: position,
+      adviserMode: commissionMode,
+      managerChain: (contract.managerChain ?? []).map(manager => ({
+        email: manager.email ?? null,
+        position: normalizePositionValue(manager.position),
+        commissionMode: normalizeCommissionModeValue(manager.commissionMode),
+      })),
+    }),
+  };
+}
 
 const collectAllowedEmailsForCreate = ({
   ownerEmail,
@@ -2927,6 +3070,7 @@ const idempotentReplayResponse = (
     ok: true,
     entryId: snap.id,
     idempotentReplay: true,
+    refreshOriginalLinked: existing.refreshOriginalLinked === true,
   });
 };
 
@@ -3274,6 +3418,7 @@ async function fetchContractsForOwners(
   hasMore: boolean;
   nextCursor: number | null;
   nextCursorToken: string | null;
+  totalCount?: number;
 }> {
   // Fetch one extra record to detect if more pages exist (so the UI can show the load-more button)
   const filtersActive = filters ? hasContractListFilters(filters) : false;
@@ -3358,19 +3503,29 @@ async function fetchContractsForOwners(
 
   // Complete filtering for combinations, including matches beyond indexed query limits.
   if (filters && (hasContractListClientFilters({ ...filters, query: "" }) ||
+    exactContractNumberFromSearch(filters.query) ||
     (owners.length > 1 && filters.query.trim().length > 0))) {
-    const matches = await readFilteredContractPage({ db, owners, filters, cursor, pageSize, viewer });
-    const list = matches.slice(0, pageSize).map(({ doc, ownerEmail }) => toContractListResponseItem({
-      docId: doc.id, ownerEmail, data: doc.data() as ContractDoc, shape: responseShape,
-      adviserName: ownerNames?.get(ownerEmail) ?? null,
-      ownerContext: ownerContexts?.get(ownerEmail) ?? null,
-    }));
+    const { matches, totalCount } = await readFilteredContractPage({
+      db, owners, filters, cursor, pageSize, viewer, hydrate: responseShape !== "search",
+    });
+    const list = matches.slice(0, pageSize).map(({ doc, ownerEmail, stornoEstimateIssue }) => {
+      const data = doc.data() as ContractDoc;
+      const response = toContractListResponseItem({
+        docId: doc.id, ownerEmail, data: stornoEstimateIssue ? { ...data, commissionPayouts: [] } : data, shape: responseShape,
+        vehiclePlate: filters?.vehiclePlate,
+        adviserName: ownerNames?.get(ownerEmail) ?? null,
+        ownerContext: ownerContexts?.get(ownerEmail) ?? null,
+      });
+      return stornoEstimateIssue ? { ...response, stornoEstimateIssue } : response;
+    });
     const last = list.at(-1);
-    const date = last ? contractSortDate(last) : null;
+    const ts = totalCount !== undefined ? matches[list.length - 1]?.ts ?? null
+      : last ? contractSortDate(last)?.getTime() ?? null : null;
     return {
       list, hasMore: matches.length > pageSize,
-      nextCursor: date?.getTime() ?? null,
-      nextCursorToken: date && last ? encodeCursorToken(date.getTime(), responseCursorKey(last)) : null,
+      nextCursor: ts,
+      nextCursorToken: ts !== null && last ? encodeCursorToken(ts, responseCursorKey(last)) : null,
+      ...(totalCount !== undefined ? { totalCount } : {}),
     };
   }
 
@@ -3401,6 +3556,8 @@ async function fetchContractsForOwners(
     };
 
     const pushOwnerDoc = (docId: string, data: ContractDoc) => {
+      const key = `${ownerEmail}___${docId}`;
+      if (seen.has(key)) return;
       data = filterStatementDerivedContractDataForViewer({ contract: data, ownerEmail, ...viewer });
       if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
       if (
@@ -3410,8 +3567,6 @@ async function fetchContractsForOwners(
       ) {
         return;
       }
-      const key = `${ownerEmail}___${docId}`;
-      if (seen.has(key)) return;
       seen.add(key);
       collected.push(
         toContractListResponseItem({
@@ -3419,6 +3574,7 @@ async function fetchContractsForOwners(
           ownerEmail,
           data,
           shape: responseShape,
+          vehiclePlate: filters?.vehiclePlate,
           adviserName: ownerNames?.get(ownerEmail) ?? null,
           ownerContext: ownerContexts?.get(ownerEmail) ?? null,
         })
@@ -3489,7 +3645,7 @@ async function fetchContractsForOwners(
     if (filters) {
       try {
         const pageDocs = await readProjectedContractSearchPage({
-          db, ownerEmail, filters, cursor, pageSize,
+          db, ownerEmail, filters, cursor, pageSize, hydrate: responseShape !== "search",
         });
         if (pageDocs !== null) {
           pageDocs.forEach(doc => pushOwnerDoc(doc.id, doc.data() as ContractDoc));
@@ -3513,6 +3669,8 @@ async function fetchContractsForOwners(
   }
 
   const pushCollected = (docId: string, ownerEmail: string, data: ContractDoc) => {
+    const key = `${ownerEmail}___${docId}`;
+    if (seen.has(key)) return;
     data = filterStatementDerivedContractDataForViewer({ contract: data, ownerEmail, ...viewer });
     if (!shouldIncludeByCursor(data, docId, ownerEmail)) return;
     if (
@@ -3522,8 +3680,6 @@ async function fetchContractsForOwners(
     ) {
       return;
     }
-    const key = `${ownerEmail}___${docId}`;
-    if (seen.has(key)) return;
     seen.add(key);
     collected.push(
       toContractListResponseItem({
@@ -3531,6 +3687,7 @@ async function fetchContractsForOwners(
         ownerEmail,
         data,
         shape: responseShape,
+        vehiclePlate: filters?.vehiclePlate,
         adviserName: ownerNames?.get(ownerEmail) ?? null,
         ownerContext: ownerContexts?.get(ownerEmail) ?? null,
       })
@@ -4083,11 +4240,21 @@ const contractTransferAccessForContext = ({
   };
 };
 
+async function readContractListBody(req: NextRequest): Promise<URLSearchParams | 400 | 413 | 415> {
+  const params = await readContractFormBody(req, 32 * 1024);
+  if (typeof params === "number") return params;
+  const scope = params.get("scope");
+  if ((scope !== "my" && scope !== "team") || (params.get("q")?.length ?? 0) > 120) return 400;
+  return params;
+}
+
 export async function handleContractsGet(
   req: NextRequest,
   mode: ContractsGetMode = "auto",
   options: ContractsListOptions = {}
 ) {
+  const listPost = mode === "list" && req.method === "POST";
+  const detailPost = mode === "detail" && req.method === "POST";
   const trusted = options.authorizedContext;
   const binding = trusted ? authorizedContractsRequests.get(trusted) : undefined;
   const canReuse = mode === "list" && trusted && binding && !binding.signal.aborted &&
@@ -4096,21 +4263,35 @@ export async function handleContractsGet(
   if (trusted && !canReuse) {
     return NextResponse.json({ ok: false, error: "Ověřený kontext smluv není platný pro tento požadavek." }, { status: 403 });
   }
+  const leaderboardRequested = !listPost && req.nextUrl.searchParams.has("leaderboardMonths");
   const guard = canReuse ? trusted : await requireContractsEntryGuard(req, {
-    namespace: "api:contracts:get",
-    limit: CONTRACTS_GET_RATE_LIMIT,
+    namespace: leaderboardRequested ? "api:contracts:home-leaderboard" : "api:contracts:get",
+    limit: leaderboardRequested ? 12 : CONTRACTS_GET_RATE_LIMIT,
     windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
-  }, { ...options, freshCashflowContext: options.freshCashflowContext || req.nextUrl.searchParams.get("homeSummary") === "1" });
+  }, { ...options, freshCashflowContext: options.freshCashflowContext || leaderboardRequested || (!listPost && req.nextUrl.searchParams.get("homeSummary") === "1") });
   if (!guard.ok) return guard.response;
   const { ctx, withRateLimit } = guard;
+  const search = listPost ? await readContractListBody(req)
+    : detailPost ? await readContractFormBody(req, 4096) : req.nextUrl.searchParams;
+  if (typeof search === "number") {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný požadavek na smlouvy." }, {
+      status: search, headers: { "Cache-Control": "private, no-store" },
+    }));
+  }
   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
   const usersByEmail = new Map(users.map((item) => [item.email, item]));
   const { canTransferContracts, transferTargets } =
     contractTransferAccessForContext(ctx);
 
-  const search = req.nextUrl.searchParams;
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
   const detailEntryId = (search.get("entryId") ?? "").trim();
+  if (detailPost && (!isContractOwnerEmail(detailOwnerEmail) || !isSafeContractNoteId(detailEntryId) ||
+    search.getAll("ownerEmail").length !== 1 || search.getAll("entryId").length !== 1 ||
+    [...search.keys()].some(key => !["ownerEmail", "entryId", "includeTimeline"].includes(key)))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný požadavek na detail smlouvy." }, {
+      status: 400, headers: { "Cache-Control": "private, no-store" },
+    }));
+  }
   const detailRequested =
     mode === "detail" ||
     (mode === "auto" && Boolean(detailOwnerEmail && detailEntryId));
@@ -4156,7 +4337,7 @@ export async function handleContractsGet(
       );
     }
 
-    const contract = filterStatementDerivedContractDataForViewer({
+    let contract = filterStatementDerivedContractDataForViewer({
       contract: toContractResponseItem(
         detailSnap.id,
         detailOwnerEmail,
@@ -4283,6 +4464,10 @@ export async function handleContractsGet(
       }
     }
 
+    timeline = await projectContractLifeReceipts(timeline, {
+      viewerEmail: email, teamEmails, canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
+    });
+    contract = timeline.find(entry => entry.id === contract.id) ?? contract;
     const ownerNode = usersByEmail.get(detailOwnerEmail) ?? null;
     const ownerPosition = ownerNode?.position ?? null;
     let managerEmail = normalizeEmail(ownerNode?.managerEmail ?? null);
@@ -4318,8 +4503,8 @@ export async function handleContractsGet(
       canManageContract,
       canTransferContracts,
       transferTargets,
-      contract,
-      timeline,
+      contract: withOwnPayoutPosition(contract, email),
+      timeline: timeline.map(entry => withOwnPayoutPosition(entry, email)),
       ownerMeta: {
         position: ownerPosition,
         managerEmail: managerEmail || null,
@@ -4328,13 +4513,15 @@ export async function handleContractsGet(
       },
     };
 
-    return withRateLimit(NextResponse.json(response));
+    return withRateLimit(NextResponse.json(response, { headers: { "Cache-Control": "private, no-store" } }));
   }
 
   const scopeParam = resolveContractListScope(search.get("scope"));
-  const includeTeam = search.get("includeTeam") === "1" || search.get("includeTeam") === "true";
-  const shapeParam = search.get("shape");
+  const includeTeam = !listPost && (search.get("includeTeam") === "1" || search.get("includeTeam") === "true");
+  const searchOnly = listPost && search.get("shape") === "search";
+  const shapeParam = listPost && !searchOnly ? "contractList" : search.get("shape");
   const responseShape: ContractListResponseShape =
+    searchOnly ? "search" :
     shapeParam === "clientDirectory"
       ? "clientDirectory"
       : shapeParam === "clientNames"
@@ -4350,19 +4537,27 @@ export async function handleContractsGet(
     users.map((item) => [item.email, normalizeOptionalDisplayName(item.name) ?? null] as const)
   );
   const cursor = parseCursor(search);
-  const listFilters = parseContractListFilters(search);
+  const listFilters = parseContractListFilters(
+    searchOnly ? new URLSearchParams({ q: search.get("q") ?? "" }) : search,
+    { searchVehiclePlate: listPost && !searchOnly },
+  );
+  if (searchOnly && (scopeParam !== "my" || listFilters.query.length < 2)) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný dotaz." }, {
+      status: 400, headers: { "Cache-Control": "private, no-store" },
+    }));
+  }
   const limitParam = Number(search.get("limit"));
   const pageSizeMax = responseShape === "cashflow" ? CASHFLOW_PAGE_SIZE_MAX : PAGE_SIZE_MAX;
-  const pageSize =
+  const pageSize = searchOnly ? 6 :
     Number.isFinite(limitParam) && limitParam > 0
-      ? Math.min(Math.max(1, limitParam), pageSizeMax)
+      ? Math.min(Math.max(1, Math.floor(limitParam)), pageSizeMax)
       : PAGE_SIZE_DEFAULT;
 
   if (scopeParam === "team" && teamEmails.length === 0) {
-    return NextResponse.json(
+    return withRateLimit(NextResponse.json(
       { ok: false, error: "Nemáš práva pro zobrazení týmových smluv." } satisfies ErrorResponse,
       { status: 403 }
-    );
+    ));
   }
 
   const selectedSubordinates = selectedSubordinateEmailsFromParam(
@@ -4374,7 +4569,21 @@ export async function handleContractsGet(
     teamEmails,
     selectedSubordinates,
   });
-  if (search.get("homeSummary") === "1") {
+  if (search.has("leaderboardMonths")) {
+    const window = leaderboardWindow(search.get("leaderboardMonths"), search.get("timeZone"));
+    const allowed = ["leaderboardMonths", "timeZone", "scope", "shape", "homeRefresh"];
+    if (listPost || mode !== "list" || scopeParam !== "team" || responseShape !== "home" || !window ||
+        [...search.keys()].some(key => !allowed.includes(key) || search.getAll(key).length !== 1)) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný požadavek na žebříček." }, { status: 400 }));
+    }
+    try {
+      const leaderboard = await loadTeamLeaderboard(adminDb!, owners, ownerNamesByEmail, window, search.get("homeRefresh") === "1");
+      return withRateLimit(NextResponse.json({ ok: true, leaderboard }, { headers: { "Cache-Control": "private, no-store" } }));
+    } catch {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Žebříček se nepodařilo načíst." }, { status: 503 }));
+    }
+  }
+  if (!listPost && search.get("homeSummary") === "1") {
     const window = parseProductionWindow(search);
     if (responseShape !== "home" || !window || cursor || hasContractListClientFilters(listFilters)) {
       return withRateLimit(NextResponse.json({ ok: false, error: "Neplatné období souhrnu produkce." }, { status: 400 }));
@@ -4484,6 +4693,12 @@ export async function handleContractsGet(
   }
 
   const { list, hasMore, nextCursor, nextCursorToken } = primaryRes;
+  if (searchOnly) {
+    const contracts = list.map(({ id, clientName, contractNumber }) => ({ id, clientName, contractNumber }));
+    return withRateLimit(NextResponse.json({ ok: true, contracts }, {
+      headers: { "Cache-Control": "private, no-store" },
+    }));
+  }
   const totalCount = await totalCountPromise;
   return measureCashflowContractPhase(options.onCashflowTiming, "response", () => {
     const filterStatementData = (contract: ContractResponseItem) =>
@@ -4493,7 +4708,10 @@ export async function handleContractsGet(
         teamEmails,
         canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
       });
-    const visibleContracts = list.map(filterStatementData);
+    const visibleContracts = list.map(contract => {
+      const visible = filterStatementData(contract);
+      return responseShape === "cashflow" ? withOwnPayoutPosition(visible, email) : visible;
+    });
     const teamContracts = teamRes?.list.map(filterStatementData);
     const teamHasMore = teamRes?.hasMore;
     const teamNextCursor = teamRes?.nextCursor;
@@ -4507,14 +4725,14 @@ export async function handleContractsGet(
       commissionMode: ctx.commissionMode,
       hasTeam: teamEmails.length > 0,
       teamEmails,
-      teamAdvisers: responseShape === "clientDirectory"
-        ? teamEmails.filter((teamEmail) => usersByEmail.get(teamEmail)?.accountType !== "tipster")
+      teamAdvisers: listPost || responseShape === "clientDirectory"
+        ? teamEmails.filter((teamEmail) => listPost || usersByEmail.get(teamEmail)?.accountType !== "tipster")
           .map((teamEmail) => ({ email: teamEmail, name: ownerNamesByEmail.get(teamEmail) ?? null }))
         : undefined,
       canTransferContracts,
       transferTargets,
       contracts: visibleContracts,
-      totalCount,
+      totalCount: primaryRes.totalCount ?? totalCount,
       hasMore,
       nextCursor,
       nextCursorToken,
@@ -4524,7 +4742,7 @@ export async function handleContractsGet(
       teamNextCursorToken,
     };
 
-    return withRateLimit(NextResponse.json(response));
+    return withRateLimit(NextResponse.json(response, { headers: { "Cache-Control": "private, no-store" } }));
   });
 }
 
@@ -4664,7 +4882,7 @@ const resolveContractsFindContracts = async ({
         teamEmails: context.teamEmails,
         canViewAllStatementDerivedRecords: context.canViewAllStatementDerivedRecords,
       });
-      const item = tipOnly ? projectTipMatchResponse(visibleItem) : visibleItem;
+      const item = tipOnly ? projectTipMatchResponse(visibleItem) : withOwnPayoutPosition(visibleItem, context.email);
       if (item.productKey && LIFE_TIMELINE_PRODUCTS.has(item.productKey as Product)) {
         item.lifePremiumChanges = await loadLifePremiumChangesForFindMatch({
           ownerEmail: ownerFromPath,
@@ -4766,6 +4984,70 @@ export async function handleContractsFind(req: NextRequest) {
     contracts,
   };
   return withRateLimit(NextResponse.json(response));
+}
+
+export async function handleOriginalContractExists(req: NextRequest) {
+  const guard = await requireContractsEntryGuard(req, {
+    namespace: "api:contracts:original-exists",
+    limit: 30,
+    windowMs: CONTRACTS_GET_RATE_LIMIT_WINDOW_MS,
+  });
+  if (!guard.ok) return guard.response;
+  const { withRateLimit } = guard;
+
+  if (guard.ctx.accountType === "tipster") {
+    return withRateLimit(tipsterContractsMutationResponse());
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Neplatný požadavek." }, { status: 400 });
+  }
+  const contractNumber = isPlainObject(body) && typeof body.contractNumber === "string"
+    ? body.contractNumber.trim()
+    : "";
+  if (!contractNumber || contractNumber.length > 100) {
+    return NextResponse.json({ ok: false, error: "Neplatné číslo smlouvy." }, { status: 400 });
+  }
+
+  const normalizedNumber = normalizeContractNumber(contractNumber);
+  if (!normalizedNumber || !isValidContractNumber(normalizedNumber)) {
+    return NextResponse.json({ ok: false, error: "Neplatné číslo smlouvy." }, { status: 400 });
+  }
+
+  const productKey = isPlainObject(body) ? body.productKey : undefined;
+  if (productKey !== undefined && (typeof productKey !== "string" || !supportsOriginalContractReplacement(productKey as Product))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Nepodporovaný produkt náhrady." }, { status: 400 }));
+  }
+
+  try {
+    const refs = await resolveEntryRefsByContractNumber(contractNumber);
+    let exists = false;
+    let matchesProduct = false;
+    for (const ref of refs) {
+      const snap = await ref.get();
+      if (!snap.exists) continue;
+      const contract = snap.data() as ContractDoc;
+      if (isRetiredProduct(contract.productKey)) continue;
+      if (normalizeContractEntryType(contract.entryType ?? "contract") !== "contract") continue;
+      if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedNumber) continue;
+      exists = true;
+      if (productKey === undefined || matchesOriginalContractReplacementProduct(contract.productKey, productKey as Product)) {
+        matchesProduct = true;
+        break;
+      }
+    }
+    return withRateLimit(NextResponse.json({
+      ok: true, exists, ...(productKey === undefined ? {} : { matchesProduct }),
+    }, { headers: { "Cache-Control": "private, no-store" } }));
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Nepodařilo se ověřit původní smlouvu." },
+      { status: 500 }
+    );
+  }
 }
 
 const normalizeContractsFindBulkItem = (
@@ -5037,22 +5319,98 @@ export async function handleContractsPrecheck(req: NextRequest) {
   });
 }
 
-export async function handleContractsCreate(req: NextRequest) {
-  return withCashflowMutation("contracts:handleContractsCreate", async () => {
-  let withRateLimit: ((response: NextResponse) => NextResponse) | null = null;
-  try {
-    const guard = await requireContractsEntryGuard(req, {
+export async function handleContractsCreate(req: NextRequest, intent: "create" | "neon-endorsement" = "create") {
+  return withCashflowMutation("contracts:handleContractsCreate", () =>
+    createContractWithContext(req, intent, () => requireContractsEntryGuard(req, {
       namespace: "api:contracts:create",
       limit: CONTRACTS_CREATE_RATE_LIMIT,
       windowMs: CONTRACTS_CREATE_RATE_LIMIT_WINDOW_MS,
-    });
+    }))
+  );
+}
+
+/** Maintenance-only entry point. The caller runs with the server's Firebase credentials. */
+export async function authorizeInvestmentArchiveMaintenance(ownerEmail: string, actorEmail: string) {
+  if (!adminAuth) throw new Error("Firebase Admin není dostupný.");
+  const [owner, actor] = await Promise.all([
+    adminAuth.getUserByEmail(ownerEmail),
+    adminAuth.getUserByEmail(actorEmail),
+  ]);
+  if (actor.disabled || owner.disabled || normalizeEmail(owner.email) !== ownerEmail ||
+      normalizeEmail(actor.email) !== actorEmail ||
+      !adminRoleAtLeast(resolveAdminRoleFromClaims(actorEmail, actor.customClaims), "admin")) {
+    throw new Error("Účet nemá oprávnění k hromadnému importu.");
+  }
+  const context = await getAuthContext({ email: ownerEmail, uid: owner.uid, rawTokenEmail: ownerEmail, claims: {} }, {
+    requireKnownUser: true,
+  });
+  const profile = await loadCallerProfile({ uid: owner.uid, tokenEmail: ownerEmail });
+  if ("error" in context || context.accountType === "tipster" || !profile) {
+    throw new Error("Účet není dostupný pro evidenci investičních smluv.");
+  }
+  const guard: AuthorizedContractsContext = {
+    ok: true,
+    ctx: { ...context, actorEmail, actorUid: actor.uid, isImpersonating: false, impersonation: null },
+    withRateLimit: response => response,
+  };
+  return {
+    canCreateOnDate: (date: string) => Boolean(resolveTimelinePositionForSignedDate(profile, date)),
+    create: async (entry: {
+      contractNumber: string;
+      clientName: string;
+      contractSignedDate: string;
+      productKey: Product;
+      statementId: string;
+      statementChronologyMs: number | null;
+      payouts: NonNullable<ContractDoc["commissionPayouts"]>;
+      nowMs: number;
+    }) => {
+      if (!isInvestmentProduct(entry.productKey)) throw new Error("Očekávám investiční produkt.");
+      const req = new NextRequest("http://localhost/api/contracts", {
+        method: "POST",
+        headers: { [CONTRACTS_CREATE_IDEMPOTENCY_HEADER]: `investment-archive:${entry.contractNumber}` },
+        body: JSON.stringify({ entry: {
+          contractNumber: entry.contractNumber,
+          clientName: entry.clientName,
+          contractSignedDate: entry.contractSignedDate,
+          policyStartDate: entry.contractSignedDate,
+          productKey: entry.productKey,
+          frequencyRaw: "annual",
+          entryType: "contract",
+          status: "active",
+          inputAmount: 0,
+          commissionMode: profile.commissionMode ?? "standard",
+          createdFromCommissionStatement: true,
+          createdFromCommissionStatementAtMs: entry.nowMs,
+          createdFromCommissionStatementChronologyMs: entry.statementChronologyMs,
+          createdFromCommissionStatementId: entry.statementId,
+        } }),
+      });
+      return withCashflowMutation("contracts:importInvestmentArchive", () =>
+        createContractWithContext(req, "create", async () => guard, {
+          commissionPayouts: entry.payouts, commissionStatementProcessedAtMs: entry.nowMs,
+        })
+      );
+    },
+  };
+}
+
+async function createContractWithContext(
+  req: NextRequest,
+  intent: "create" | "neon-endorsement",
+  authorize: () => Promise<ContractsEntryGuardResult>,
+  archive?: { commissionPayouts: NonNullable<ContractDoc["commissionPayouts"]>; commissionStatementProcessedAtMs: number },
+) {
+  let withRateLimit: ((response: NextResponse) => NextResponse) | null = null;
+  try {
+    const guard = await authorize();
     if (!guard.ok) return guard.response;
     withRateLimit = guard.withRateLimit;
     const ctx = guard.ctx;
     if (ctx.accountType === "tipster") {
       return withRateLimit(tipsterContractsMutationResponse());
     }
-    const { email, uid, teamEmails, contractAccessEmails } = ctx;
+    const { email, uid, teamEmails } = ctx;
 
     let body: unknown;
     try {
@@ -5064,7 +5422,8 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
-    const entryRaw =
+    const neonInput = intent === "neon-endorsement" ? parseNeonEndorsementRequest(body) : null;
+    let entryRaw =
       isPlainObject(body) && isPlainObject(body.entry)
         ? body.entry
         : body;
@@ -5108,6 +5467,55 @@ export async function handleContractsCreate(req: NextRequest) {
       }
     }
 
+    if (!adminDb) {
+      return NextResponse.json(
+        { ok: false, error: "Server není správně nakonfigurován." },
+        { status: 500 }
+      );
+    }
+    const db = adminDb;
+    const ownerEntriesRef = db.collection("users").doc(targetOwnerEmail).collection("entries");
+    const idempotencyKey = neonInput
+      ? `neon-endorsement:${JSON.stringify(neonInput)}`
+      : parseIdempotencyKeyFromRequest(req);
+    const idempotentEntryRef = idempotencyKey
+      ? ownerEntriesRef.doc(buildIdempotentEntryId(targetOwnerEmail, idempotencyKey))
+      : null;
+    let neonSource: {
+      root: FirebaseFirestore.DocumentSnapshot;
+      parent: FirebaseFirestore.DocumentSnapshot;
+      familyQuery: FirebaseFirestore.Query;
+    } | null = null;
+    const neonReplayResponse = (snapshot: FirebaseFirestore.DocumentSnapshot) =>
+      neonInput && neonEndorsementReplayMatches(snapshot.data() as ContractDoc, targetOwnerEmail, neonInput)
+        ? NextResponse.json({ ok: true, entryId: snapshot.id, idempotentReplay: true })
+        : NextResponse.json({ ok: false, error: "Opakovaný požadavek neodpovídá uloženému dodatku." }, { status: 409 });
+
+    if (neonInput) {
+      const root = await ownerEntriesRef.doc(neonInput.entryId).get();
+      if (!root.exists) throw new NeonEndorsementError(404, "Smlouva nebyla nalezena.");
+      const data = root.data() as ContractDoc;
+      if ((data.userEmail && normalizeEmail(data.userEmail) !== targetOwnerEmail) || !hasContractAccess({
+        viewerEmail: email, teamEmails: ctx.contractAccessEmails, ownerEmail: targetOwnerEmail, contract: data,
+      })) throw new NeonEndorsementError(403, "Nemáš oprávnění upravit tuto smlouvu.");
+      if (data.productKey !== "neon" || normalizeContractEntryType(data.entryType ?? "contract") !== "contract" ||
+        (data.rootContractEntryId && data.rootContractEntryId !== root.id)) {
+        throw new NeonEndorsementError(400, "Dodatek lze přidat k původní smlouvě ČPP Neon.");
+      }
+      const replay = await idempotentEntryRef!.get();
+      if (replay.exists) return withRateLimit(neonReplayResponse(replay));
+
+      const familyQuery = ownerEntriesRef.where("rootContractEntryId", "==", root.id);
+      const family = (await familyQuery.get()).docs;
+      const concurrentReplay = family.find(snapshot => snapshot.id === idempotentEntryRef!.id);
+      if (concurrentReplay) return withRateLimit(neonReplayResponse(concurrentReplay));
+      const source = resolveNeonEndorsementSource({ id: root.id, data },
+        family.map(snapshot => ({ id: snapshot.id, data: snapshot.data() as ContractDoc })), targetOwnerEmail);
+      const parent = family.find(snapshot => snapshot.id === source.id) ?? root;
+      entryRaw = buildNeonEndorsementPayload(neonInput, { id: root.id, data }, source, parent.ref.path);
+      neonSource = { root, parent, familyQuery };
+    }
+
     let trustedProfile: UserProfileSnapshot | null = null;
     if (isOwnerOverride) {
       trustedProfile = await loadUserProfileByEmail(targetOwnerEmail);
@@ -5149,22 +5557,6 @@ export async function handleContractsCreate(req: NextRequest) {
         { status: 400 }
       );
     }
-
-    if (!adminDb) {
-      return NextResponse.json(
-        { ok: false, error: "Server není správně nakonfigurován." },
-        { status: 500 }
-      );
-    }
-    const db = adminDb;
-    const ownerEntriesRef = db.collection("users").doc(targetOwnerEmail).collection("entries");
-    const idempotencyKey = parseIdempotencyKeyFromRequest(req);
-    const idempotentEntryId = idempotencyKey
-      ? buildIdempotentEntryId(targetOwnerEmail, idempotencyKey)
-      : null;
-    const idempotentEntryRef = idempotentEntryId
-      ? ownerEntriesRef.doc(idempotentEntryId)
-      : null;
 
     const signedDateIso = toIsoDay(normalizedEntry.payload.contractSignedDate);
     const inherited = isInheritedContract(normalizedEntry.payload);
@@ -5222,6 +5614,7 @@ export async function handleContractsCreate(req: NextRequest) {
       );
     }
 
+    const flexiWithoutBase = hasPendingFlexiRenovationBase(normalizedEntry.payload);
     let refreshOriginalLink: ExistingContractByNumber | null = null;
     let refreshOriginalForSync: { ownerEmail: string; entryId: string } | null = null;
     let refreshCommissionBase: RefreshCommissionBasePayload | null = null;
@@ -5243,7 +5636,7 @@ export async function handleContractsCreate(req: NextRequest) {
 
     const refreshWithoutOriginalInSystem =
       normalizedEntry.payload.entryType === "contract" &&
-      (normalizedEntry.payload.productKey === "neon" || normalizedEntry.payload.productKey === "domexneuron") &&
+      (flexiWithoutBase || normalizedEntry.payload.productKey === "neon" || normalizedEntry.payload.productKey === "domexneuron") &&
       normalizedEntry.payload.isRefresh === true &&
       normalizedEntry.payload.refreshOriginalMissingInSystem === true;
     const allowUnlinkedOriginalReplacement =
@@ -5272,19 +5665,20 @@ export async function handleContractsCreate(req: NextRequest) {
       const originalContractNumber =
         normalizedEntry.payload.refreshOriginalContractNumber ?? "";
       refreshOriginalLink = await findExistingContractByNumber(originalContractNumber);
-      const ownerEntryPrefix = `users/${targetOwnerEmail}/entries/`;
-      if (!refreshOriginalLink || !refreshOriginalLink.entryPath.startsWith(ownerEntryPrefix)) {
+      // This exact-number replacement workflow is the only cross-owner mutation
+      // exception. Derive its scope from the server-resolved document path.
+      const originalPathParts = refreshOriginalLink?.entryPath.split("/") ?? [];
+      const originalOwnerEmail = normalizeEmail(originalPathParts[1]);
+      if (!refreshOriginalLink || originalPathParts.length !== 4 || originalPathParts[0] !== "users" ||
+        originalPathParts[2] !== "entries" || !EMAIL_RE.test(originalOwnerEmail) || !originalPathParts[3]) {
         const response = skipUnlinkedOriginalIfAllowed(
-          "Původní smlouva pro Refresh/Náhradu nebyla nalezena u vlastníka nové smlouvy."
+          "Původní smlouva pro Refresh/Náhradu nebyla nalezena."
         );
         if (response) return response;
       }
 
       if (refreshOriginalLink) {
-        const refreshOriginalEntryId =
-          refreshOriginalLink.entryId ??
-          refreshOriginalLink.entryPath.split("/").pop()?.trim() ??
-          "";
+        const refreshOriginalEntryId = originalPathParts[3];
         if (!refreshOriginalEntryId) {
           const response = skipUnlinkedOriginalIfAllowed(
             "Původní smlouva pro Refresh/Náhradu nemá platné entryId."
@@ -5347,25 +5741,24 @@ export async function handleContractsCreate(req: NextRequest) {
             }
             if (refreshOriginalLink) {
               refreshOriginalForSync = {
-                ownerEmail: targetOwnerEmail,
+                ownerEmail: originalOwnerEmail,
                 entryId: refreshOriginalEntryId,
               };
             }
             if (normalizedEntry.payload.productKey === "neon") {
               const originalItem = toContractResponseItem(
                 refreshOriginalSnap.id,
-                targetOwnerEmail,
+                originalOwnerEmail,
                 originalData,
-                trustedProfile.name,
-                trustedProfile
+                null,
               );
               const originalPremiumInfo = await resolveRefreshOriginalPremiumInfo({
-                ownerEmail: targetOwnerEmail,
+                ownerEmail: originalOwnerEmail,
                 contract: originalItem,
-                canReadEntry: (contract) => hasContractAccess({
-                  viewerEmail: email, teamEmails: contractAccessEmails,
-                  ownerEmail: targetOwnerEmail, contract,
-                }),
+                // Premium history is scoped to the verified original and used
+                // internally for this replacement's commission calculation.
+                canReadEntry: (contract) => contract.productKey === "neon" &&
+                  normalizeContractNumber(contract.contractNumber) === normalizeContractNumber(originalContractNumber),
               });
               const refreshBase = originalPremiumInfo
                 ? calculateNeonRefreshCommissionBase({
@@ -5392,6 +5785,7 @@ export async function handleContractsCreate(req: NextRequest) {
               refreshCommissionBase = {
                 productKey: "neon",
                 method: "cpp_neon_5y_storno",
+                originalOutsideOwner: originalOwnerEmail !== targetOwnerEmail,
                 calculationMethod: refreshBase.calculationMethod,
                 originalContractNumber: originalContractNumber || null,
                 originalStornoStartDateIso: originalPremiumInfo?.stornoStartDateIso ?? null,
@@ -5483,9 +5877,8 @@ export async function handleContractsCreate(req: NextRequest) {
       const newMonthlyPremium =
         nonNegativePremiumAmount(normalizedEntry.payload.newInputAmount) ??
         nonNegativePremiumAmount(normalizedEntry.payload.effectiveInputAmount);
-      const originalStornoStartDateIso =
-        isoDayFromUnknown(parentData.policyStartDate) ??
-        isoDayFromUnknown(parentData.contractSignedDate);
+      const getStornoDay = neonInput ? endorsementCommissionDay : isoDayFromUnknown;
+      const originalStornoStartDateIso = getStornoDay(parentData.policyStartDate) ?? getStornoDay(parentData.contractSignedDate);
       const endorsementPolicyStartDateIso = toIsoDay(normalizedEntry.payload.policyStartDate);
       const decreaseBase = calculateNeonDecreaseStornoBase({
         previousMonthlyPremium,
@@ -5520,13 +5913,18 @@ export async function handleContractsCreate(req: NextRequest) {
       commissionInputAmount = decreaseBase.calculationMonthlyPremium;
     }
 
-    const trustedResult = calculateCommission({
+    const neonRefreshCareAnnualPremium = normalizedEntry.payload.productKey === "neon" &&
+      normalizedEntry.payload.entryType === "contract" && normalizedEntry.payload.isRefresh === true
+      ? roundToCents((refreshCommissionBase?.newMonthlyPremium ?? normalizedEntry.payload.inputAmount) * 12)
+      : null;
+    const trustedResult = flexiWithoutBase ? { items: [], total: 0 } : calculateCommission({
       productKey: normalizedEntry.payload.productKey,
       position: trustedPosition,
       commissionMode: effectiveTrustedMode,
       contractSignedDateIso: signedDateIso,
       commissionCoefficientSetOverride: null,
       neonCoefficientSetOverride: null,
+      neonRefreshCareAnnualPremium,
       inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
@@ -5541,7 +5939,8 @@ export async function handleContractsCreate(req: NextRequest) {
     }
     if (
       normalizedEntry.payload.entryType === "contract" &&
-      trustedResult.items.length === 0
+      !isRecordOnlyProduct(normalizedEntry.payload.productKey) &&
+      !flexiWithoutBase && trustedResult.items.length === 0
     ) {
       return NextResponse.json(
         { ok: false, error: "Smlouva musí obsahovat alespoň jednu položku provize." },
@@ -5624,7 +6023,7 @@ export async function handleContractsCreate(req: NextRequest) {
       tipContractTipsterAmountFirstYear = tipAdjusted.tipsterAmount;
     }
 
-    let trustedManagerOverrides = inherited ? [] : computeManagerOverridesForChain({
+    let trustedManagerOverrides = inherited || flexiWithoutBase ? [] : computeManagerOverridesForChain({
       managerChain: trustedManagerChain,
       adviserPosition: trustedPosition,
       adviserMode: effectiveTrustedMode,
@@ -5632,6 +6031,7 @@ export async function handleContractsCreate(req: NextRequest) {
       contractSignedDateIso: signedDateIso,
       commissionCoefficientSetOverride: null,
       neonCoefficientSetOverride: null,
+      neonRefreshCareAnnualPremium,
       inputAmount: commissionInputAmount,
       frequencyRaw: normalizedEntry.payload.frequencyRaw,
       durationYears: normalizedEntry.payload.durationYears,
@@ -5671,8 +6071,9 @@ export async function handleContractsCreate(req: NextRequest) {
       ...normalizedEntry.payload,
       ...trustedListIndexFields,
       ...contractSearchIndexFieldsForContract(normalizedEntry.payload),
-      calculationInputAmount: commissionInputAmount,
+      calculationInputAmount: flexiWithoutBase ? null : commissionInputAmount,
       refreshCommissionBase,
+      ...(neonRefreshCareAnnualPremium != null && neonRefreshCareAnnualPremium > 0 ? { neonRefreshCareAnnualPremium } : {}),
       ...(normalizedEntry.payload.flexiRenovation ? {
         refreshOriginalMissingInSystem: !refreshOriginalLink,
         requiresStatementRefresh: false,
@@ -5717,6 +6118,7 @@ export async function handleContractsCreate(req: NextRequest) {
       newInputAmount: trustedPayload.newInputAmount,
     });
     const contractActivityPushRecipients =
+      !archive &&
       ENABLE_CONTRACT_CREATE_PUSH &&
       !inherited &&
       contractActivityNotificationKind &&
@@ -5729,7 +6131,7 @@ export async function handleContractsCreate(req: NextRequest) {
           })
         : [];
 
-    if (idempotentEntryRef) {
+    if (idempotentEntryRef && !neonInput) {
       const existingIdempotentSnap = await idempotentEntryRef.get();
       if (existingIdempotentSnap.exists) {
         await authorizeContractNoteLocation(idempotentEntryRef, existingIdempotentSnap.data() ?? {});
@@ -5754,6 +6156,11 @@ export async function handleContractsCreate(req: NextRequest) {
 
     try {
       const createdRef = idempotentEntryRef ?? ownerEntriesRef.doc();
+      const neonRootId = trustedPayload.entryType === "endorsement" && trustedPayload.productKey === "neon"
+        ? trustedPayload.rootContractEntryId : null;
+      if (neonRootId && !isSafeContractNoteId(neonRootId)) {
+        throw new NeonEndorsementError(400, "Dodatek nemá platnou vazbu na původní smlouvu.");
+      }
 
       const duplicateGuardRefs =
         trustedPayload.entryType === "contract"
@@ -5894,7 +6301,11 @@ export async function handleContractsCreate(req: NextRequest) {
             tx.create(claimRef, claimPayload);
           }
 
-          tx.create(createdRef, withContractHistory(tx, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
+          tx.create(createdRef, withContractHistory(tx, createdRef, {}, {
+            ...trustedPayload,
+            ...archive,
+            refreshOriginalLinked: Boolean(refreshOriginalRef && !refreshOriginalLinkSkipped),
+          }, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
 
           const contractRefPayload = contractRefFromData({
             ownerEmail: targetOwnerEmail,
@@ -5934,7 +6345,7 @@ export async function handleContractsCreate(req: NextRequest) {
                   stornoDate: replacementStornoDate,
                 }),
                 paid: refreshOriginalData.paid === true,
-                userEmail: normalizeEmail(refreshOriginalData.userEmail) || targetOwnerEmail,
+                userEmail: refreshOriginalForSync!.ownerEmail,
                 refreshReplacedByEntryId: createdRef.id,
                 refreshReplacedByOwnerEmail: targetOwnerEmail,
                 refreshReplacedBySignedDate: trustedPayload.contractSignedDate,
@@ -5944,9 +6355,47 @@ export async function handleContractsCreate(req: NextRequest) {
           }
         }));
       } else {
-        await trackCashflowWrite(() => db.runTransaction(async (batch) => {
+        const neonRootRef = neonRootId ? ownerEntriesRef.doc(neonRootId) : null;
+        const replay = await trackCashflowWrite(() => db.runTransaction(async (batch) => {
+          if (neonSource) {
+            const existing = await batch.get(createdRef);
+            if (existing.exists) return existing;
+          }
+          if (neonRootRef) {
+            const root = await batch.get(neonRootRef);
+            const data = root.data() as ContractDoc | undefined;
+            if (!data || data.productKey !== "neon" || normalizeContractEntryType(data.entryType ?? "contract") !== "contract" ||
+              (data.userEmail && normalizeEmail(data.userEmail) !== targetOwnerEmail) ||
+              normalizeContractNumber(data.contractNumber) !== normalizeContractNumber(trustedPayload.contractNumber)) {
+              throw new NeonEndorsementError(409, "Původní smlouva Neon se mezitím změnila nebo chybí.");
+            }
+            if (neonSource && (!root.updateTime || !neonSource.root.updateTime?.isEqual(root.updateTime))) {
+              throw new NeonEndorsementError(409, "Smlouva se mezitím změnila. Obnov detail a zkus to znovu.");
+            }
+            const familyQuery = neonSource?.familyQuery ?? ownerEntriesRef.where("rootContractEntryId", "==", root.id);
+            const family = (await batch.get(familyQuery)).docs;
+            const latest = resolveNeonEndorsementSource({ id: root.id, data },
+              family.map(snapshot => ({ id: snapshot.id, data: snapshot.data() as ContractDoc })), targetOwnerEmail);
+            const latestSnapshot = latest.id === root.id ? root : family.find(snapshot => snapshot.id === latest.id);
+            const previousDay = endorsementCommissionDay(latest.data.policyStartDate);
+            const effectiveDay = endorsementCommissionDay(trustedPayload.policyStartDate);
+            if (previousDay && effectiveDay && effectiveDay < previousDay) {
+              throw new NeonEndorsementError(400, "Změna musí navazovat na počátek smlouvy a poslední uložený dodatek.");
+            }
+            if (latest.id !== trustedPayload.parentContractEntryId || (trustedPayload.parentContractEntryPath &&
+              trustedPayload.parentContractEntryPath !== latestSnapshot?.ref.path) ||
+              (neonSource && (!latestSnapshot?.updateTime || !neonSource.parent.updateTime?.isEqual(latestSnapshot.updateTime)))) {
+              throw new NeonEndorsementError(409, "Historie dodatků se mezitím změnila. Načti smlouvu a zkus to znovu.");
+            }
+          }
           await assertContractNoteNamespaceAvailable(createdRef, ref => batch.get(ref));
-          batch.create(createdRef, withContractHistory(batch, createdRef, {}, trustedPayload, { actorEmail, kind: "created", title: "Smlouva vložena do aplikace" }));
+          if (neonRootRef) {
+            // Serialize changes from contract detail and the calculator on the same root document.
+            batch.update(neonRootRef, { neonEndorsementRevision: FieldValue.increment(1) });
+          }
+          batch.create(createdRef, withContractHistory(batch, createdRef, {}, trustedPayload, {
+            actorEmail, kind: "created", title: neonSource ? "Dodatek Neon vložen do aplikace" : "Smlouva vložena do aplikace",
+          }));
           applyContractRefToBatch({
             batch,
             ownerEmail: targetOwnerEmail,
@@ -5954,16 +6403,19 @@ export async function handleContractsCreate(req: NextRequest) {
             contractNumber: trustedPayload.contractNumber,
             productKey: trustedPayload.productKey,
           });
+          return null;
         }));
+        if (replay) return withRateLimit(neonReplayResponse(replay));
       }
 
       try {
-        await markTeamOverviewOwnersDirty([targetOwnerEmail]);
+        await markTeamOverviewOwnersDirty([
+          targetOwnerEmail,
+          ...(refreshOriginalForSync && !refreshOriginalLinkSkipped ? [refreshOriginalForSync.ownerEmail] : []),
+        ]);
       } catch (markErr) {
-        console.warn(
-          "POST /api/contracts create: team-overview invalidace selhala:",
-          markErr
-        );
+        if (neonInput) console.warn("Neon endorsement: team overview invalidation failed.");
+        else console.warn("POST /api/contracts create: team-overview invalidace selhala:", markErr);
       }
 
       try {
@@ -5974,10 +6426,8 @@ export async function handleContractsCreate(req: NextRequest) {
         });
       } catch (tipSyncErr) {
         markCashflowMutationIncomplete();
-        console.warn(
-          "POST /api/contracts create: TIP payout sync selhal:",
-          tipSyncErr
-        );
+        if (neonInput) console.warn("Neon endorsement: tip payout synchronization failed.");
+        else console.warn("POST /api/contracts create: TIP payout sync selhal:", tipSyncErr);
       }
 
       if (refreshOriginalForSync && !refreshOriginalLinkSkipped) {
@@ -6011,10 +6461,8 @@ export async function handleContractsCreate(req: NextRequest) {
           entryData: trustedPayload,
         });
       } catch (tipLinkErr) {
-        console.warn(
-          "POST /api/contracts create: napojení smlouvy na TIP selhalo:",
-          tipLinkErr
-        );
+        if (neonInput) console.warn("Neon endorsement: tip link failed.");
+        else console.warn("POST /api/contracts create: napojení smlouvy na TIP selhalo:", tipLinkErr);
       }
 
       if (contractActivityPushRecipients.length > 0) {
@@ -6036,29 +6484,35 @@ export async function handleContractsCreate(req: NextRequest) {
             newInputAmount: trustedPayload.newInputAmount,
           });
         } catch (pushErr) {
-          console.warn(
-            "POST /api/contracts create: push notifikace o aktivitě smlouvy selhala:",
-            pushErr
-          );
+          if (neonInput) console.warn("Neon endorsement: notification failed.");
+          else console.warn("POST /api/contracts create: push notifikace o aktivitě smlouvy selhala:", pushErr);
         }
       }
 
-      const response = NextResponse.json({
+      const response = neonInput ? NextResponse.json({ ok: true, entryId: createdRef.id }) : NextResponse.json({
         ok: true,
         entryId: createdRef.id,
-        refreshOriginalEntryId: refreshOriginalLinkSkipped ? null : refreshOriginalForSync?.entryId ?? null,
+        refreshOriginalLinked: Boolean(refreshOriginalForSync && !refreshOriginalLinkSkipped),
+        refreshOriginalEntryId: !refreshOriginalLinkSkipped && refreshOriginalForSync?.ownerEmail === targetOwnerEmail
+          ? refreshOriginalForSync.entryId : null,
       });
       return withRateLimit(response);
     } catch (createErr: any) {
+      if (neonInput && createErr instanceof NeonEndorsementError) throw createErr;
       if (idempotentEntryRef && isFirestoreAlreadyExists(createErr)) {
         try {
           const replaySnap = await idempotentEntryRef.get();
           if (replaySnap.exists) {
-            return withRateLimit(idempotentReplayResponse(replaySnap, trustedPayload));
+            return withRateLimit(neonInput ? neonReplayResponse(replaySnap) : idempotentReplayResponse(replaySnap, trustedPayload));
           }
         } catch (replayErr) {
-          console.warn("POST /api/contracts create: idempotent replay read selhal:", replayErr);
+          if (neonInput) console.warn("Neon endorsement: retry lookup failed.");
+          else console.warn("POST /api/contracts create: idempotent replay read selhal:", replayErr);
         }
+      }
+      if (neonInput) {
+        if (createErr?.statusCode === 409) throw new NeonEndorsementError(409, "Smlouva se mezitím změnila. Obnov detail a zkus to znovu.");
+        throw createErr;
       }
 
       const message =
@@ -6075,13 +6529,20 @@ export async function handleContractsCreate(req: NextRequest) {
           { status: statusCode }
         );
       }
-      console.error("POST /api/contracts create selhal:", createErr);
+      if (!archive) console.error("POST /api/contracts create selhal:", createErr);
       return NextResponse.json(
         { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
         { status: 500 }
       );
     }
   } catch (unexpectedErr: any) {
+    if (intent === "neon-endorsement") {
+      const known = unexpectedErr instanceof NeonEndorsementError;
+      if (!known) console.error("POST /api/contracts/neon-endorsement failed.");
+      const response = NextResponse.json({ ok: false, error: known ? unexpectedErr.message : "Dodatek Neon se nepodařilo uložit." },
+        { status: known ? unexpectedErr.statusCode : 500 });
+      return withRateLimit ? withRateLimit(response) : response;
+    }
     if (unexpectedErr?.statusCode === 409) {
       const response = NextResponse.json({ ok: false, error: unexpectedErr.message }, { status: 409 });
       return withRateLimit ? withRateLimit(response) : response;
@@ -6090,14 +6551,13 @@ export async function handleContractsCreate(req: NextRequest) {
       typeof unexpectedErr?.message === "string" && unexpectedErr.message.trim()
         ? unexpectedErr.message.trim()
         : "Neznámá neočekávaná chyba při ukládání smlouvy.";
-    console.error("POST /api/contracts create neočekávaně selhal:", unexpectedErr);
+    if (!archive) console.error("POST /api/contracts create neočekávaně selhal:", unexpectedErr);
     const response = NextResponse.json(
       { ok: false, error: `Uložení smlouvy selhalo: ${message}` },
       { status: 500 }
     );
     return withRateLimit ? withRateLimit(response) : response;
   }
-  });
 }
 
 type ResolvedTransferEntry = {
@@ -7630,7 +8090,21 @@ export async function handleContractsPatch(
       );
     }
 
-    const normalizedUpdates = normalizePatchUpdates(updatesRaw);
+    const { resolveFlexiRenovation, ...fieldUpdates } = updatesRaw;
+    const shouldResolveFlexi = hasOwn(updatesRaw, "resolveFlexiRenovation");
+    const resolution = isPlainObject(resolveFlexiRenovation) ? resolveFlexiRenovation : {};
+    const { originalMonthlyPremium, guaranteeStatus } = resolution;
+    const flexiResolution = Object.keys(resolution).length === 2 &&
+      typeof originalMonthlyPremium === "number" && Number.isFinite(originalMonthlyPremium) &&
+      originalMonthlyPremium > 0 && (guaranteeStatus === "inside" || guaranteeStatus === "outside")
+      ? { originalMonthlyPremium, guaranteeStatus } as const : null;
+    if (shouldResolveFlexi && (!flexiResolution || entryIds.length !== 1 || Object.keys(fieldUpdates).length > 0)) {
+      return withRateLimit(NextResponse.json({
+        ok: false, error: "Doplň ověřené původní měsíční pojistné a stav ručení u jedné renovace FLEXI.",
+      }, { status: 400 }));
+    }
+
+    const normalizedUpdates = normalizePatchUpdates(fieldUpdates);
     if (!normalizedUpdates.ok) {
       return NextResponse.json(
         { ok: false, error: normalizedUpdates.error },
@@ -7639,7 +8113,7 @@ export async function handleContractsPatch(
     }
 
     const payload = normalizedUpdates.payload;
-    if (Object.keys(payload).length === 0) {
+    if (!shouldResolveFlexi && Object.keys(payload).length === 0) {
       return NextResponse.json(
         { ok: false, error: "Updates neobsahují žádná pole." },
         { status: 400 }
@@ -7703,6 +8177,73 @@ export async function handleContractsPatch(
       }
     }
 
+    if (flexiResolution) {
+      const { originalMonthlyPremium, guaranteeStatus } = flexiResolution;
+      const contract = (entrySnaps[0]?.data() ?? {}) as ContractDoc;
+      if (!hasPendingFlexiRenovationBase(contract) || contract.isRefresh !== true ||
+          normalizeContractEntryType(contract.entryType ?? "contract") !== "contract") {
+        return withRateLimit(NextResponse.json({
+          ok: false, error: "Smlouva nečeká na doplnění základny renovace FLEXI.",
+        }, { status: 409 }));
+      }
+      const newMonthlyPremium = contract.inputAmount;
+      const base = calculateFlexiRenovationBase({
+        originalMonthlyPremium,
+        premiumIncreaseMonthly: roundToCents((newMonthlyPremium ?? Number.NaN) - originalMonthlyPremium),
+        guaranteeStatus,
+      });
+      const position = normalizePositionValue(contract.position);
+      const commissionMode = normalizeCommissionModeValue(contract.commissionMode) ?? "standard";
+      const contractSignedDateIso = isoDayFromUnknown(contract.contractSignedDate);
+      if (!base || !position || !contractSignedDateIso || newMonthlyPremium == null ||
+          Math.abs(base.newMonthlyPremium - newMonthlyPremium) > 0.005) {
+        return withRateLimit(NextResponse.json({
+          ok: false, error: "Původní pojistné musí být kladné a nejvýše ve výši nového pojistného. Zkontroluj také datum sjednání a pozici smlouvy.",
+        }, { status: 400 }));
+      }
+      const commissionInput = {
+        productKey: "flexi" as const,
+        contractSignedDateIso,
+        inputAmount: base.calculationMonthlyPremium,
+        frequencyRaw: contract.frequencyRaw ?? "monthly",
+        durationYears: contract.durationYears ?? null,
+        durationMonths: null,
+        maxCizinKomplexVariant: null,
+      };
+      const result = calculateCommission({ ...commissionInput, position, commissionMode });
+      if (!result) {
+        return withRateLimit(NextResponse.json({ ok: false, error: "Provizi FLEXI se nepodařilo vypočítat." }, { status: 400 }));
+      }
+      Object.assign(payload, {
+        flexiRenovation: {
+          originalMonthlyPremium: base.originalMonthlyPremium,
+          premiumIncreaseMonthly: base.premiumIncreaseMonthly,
+          guaranteeStatus,
+        },
+        refreshCommissionBase: {
+          ...base,
+          originalContractNumber: contract.refreshOriginalContractNumber ?? null,
+          refreshPolicyStartDateIso: isoDayFromUnknown(contract.policyStartDate),
+        },
+        calculationInputAmount: base.calculationMonthlyPremium,
+        commissionCalculationStatus: base.provisional ? "provisional_flexi_renovation" : "calculated_flexi_renovation",
+        commissionBaseSource: "calculator_flexi_renovation",
+        items: result.items,
+        total: result.total,
+        result,
+        managerOverrides: computeManagerOverridesForChain({
+          ...commissionInput,
+          adviserPosition: position,
+          adviserMode: commissionMode,
+          managerChain: (contract.managerChain ?? []).map(manager => ({
+            email: manager.email ?? null,
+            position: normalizePositionValue(manager.position),
+            commissionMode: normalizeCommissionModeValue(manager.commissionMode),
+          })),
+        }),
+      });
+    }
+
     for (let i = 0; i < entrySnaps.length; i += 1) {
       const snap = entrySnaps[i];
       const currentData = (snap.data() ?? {}) as ContractDoc;
@@ -7747,7 +8288,10 @@ export async function handleContractsPatch(
         })
       );
 
-      batch.update(ref, withContractHistory(batch, ref, currentData, updatePayload, { actorEmail: ctx.actorEmail }), { lastUpdateTime: entrySnaps[idx]!.updateTime! });
+      batch.update(ref, withContractHistory(batch, ref, currentData, updatePayload, {
+        actorEmail: ctx.actorEmail,
+        ...(shouldResolveFlexi ? { title: "Doplnění podkladů renovace FLEXI" } : {}),
+      }), { lastUpdateTime: entrySnaps[idx]!.updateTime! });
       const hasContractNumberUpdate = Object.prototype.hasOwnProperty.call(
         payload,
         "contractNumber"

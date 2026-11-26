@@ -93,7 +93,7 @@ describe("automatic Kooperativa C payout settlement", () => {
     expect(items.some(item => item.commissionCode === "B102")).toBe(true);
   });
 
-  it("retains a partial C receipt and forecasts only the balance after a premium decrease", () => {
+  it("closes B102 when the corresponding C102 payment is below the revised expectation", () => {
     const entry = fixture(); entry.inputAmount = 2000;
     entry.commissionPayouts![0].amount = 100;
     const decrease: EntryDoc = { id: "decrease", userEmail: viewer, productKey: "kooperativaAuto",
@@ -101,13 +101,10 @@ describe("automatic Kooperativa C payout settlement", () => {
       policyStartDate: "2025-02-12", previousInputAmount: 2000, newInputAmount: 1000, premiumDelta: -1000, items: [] };
     const items = generateCashflow([entry, decrease], 10, viewer, asOf);
     expect(items.find(item => item.commissionPayoutKey === "c102"))
-      .toMatchObject({ amount: 100, commissionCode: "C102", matchedPlannedCode: "B102", payoutStatus: "paid" });
-    expect(items.filter(item => item.commissionCode === "B102")).toEqual([expect.objectContaining({
-      amount: 50, payoutStatus: "predicted", isPartialPayoutBalance: true,
-      commissionPayoutKey: null, matchedPlannedCode: null,
-    })]);
+      .toMatchObject({ amount: 100, predictedAmount: 150, commissionCode: "C102", matchedPlannedCode: "B102", payoutStatus: "paid" });
+    expect(items.some(item => item.commissionCode === "B102")).toBe(false);
     expect(items.find(item => item.commissionCode === "B103")?.amount).toBe(150);
-    expect(items.filter(item => item.commissionPeriodStart === "2025-02-12").reduce((sum, item) => sum + item.amount, 0)).toBe(150);
+    expect(items.filter(item => item.commissionPeriodStart === "2025-02-12").reduce((sum, item) => sum + item.amount, 0)).toBe(100);
   });
 
   it("leaves other insurers' C codes outside the Kooperativa rule", () => {

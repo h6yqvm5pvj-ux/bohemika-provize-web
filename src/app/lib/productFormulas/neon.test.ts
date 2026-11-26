@@ -11,6 +11,16 @@ import {
 } from "./neon";
 
 describe("NEON commission formulas", () => {
+  it("uses full annual premium only for NEON Refresh care and its six payments in the total", () => {
+    const risk = calculateNeon(300, "poradce6", 20, "standard", "2021-10-12");
+    const refresh = calculateNeon(300, "poradce6", 20, "standard", "2021-10-12", null, 7200);
+    const care = (result: typeof risk) => result.items.find(item => item.code === "B201-B206")!.amount;
+    const otherItems = (result: typeof risk) => result.items.filter(item => item.code !== "B201-B206" && item.code !== "TOTAL");
+    expect(care(refresh)).toBeCloseTo(199.58, 2);
+    expect(otherItems(refresh)).toEqual(otherItems(risk));
+    expect(refresh.total - risk.total).toBeCloseTo((care(refresh) - care(risk)) * 6);
+  });
+
   it("keeps the historical coefficient boundary at 2024-07-01", () => {
     expect(isNeonHistoricalPeriod("2019-10-01")).toBe(true);
     expect(isNeonHistoricalPeriod("2024-06-30")).toBe(true);

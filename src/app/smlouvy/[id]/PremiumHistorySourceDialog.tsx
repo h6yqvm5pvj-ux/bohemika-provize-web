@@ -74,7 +74,7 @@ export function PremiumHistorySourceDialog({ source, sourceLabel, contractNumber
       <div className={styles.dialogHeading}>
         <span className={styles.documentIcon}><FileText size={23} strokeWidth={1.6} aria-hidden="true" /></span>
         <div>
-          <h3 id={titleId}>Zdroj změny pojistného</h3>
+          <h3 id={titleId}>Zdroj pojistného</h3>
           <p>{sourceLabel}</p>
         </div>
         <button type="button" className={styles.closeButton} aria-label="Zavřít zdroj" onClick={onClose}>

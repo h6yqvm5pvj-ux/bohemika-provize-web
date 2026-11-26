@@ -24,6 +24,7 @@ import {
 import { isSubscriptionCashflowOwner } from "./subscriptionCashflow";
 import { normalizeCashflowExtraPayouts, type CashflowExtraPayout } from "./extraPayouts";
 import type {
+  CashflowCommissionStatementSummary,
   CashflowItem,
   EntryDoc,
   ProductFilter,
@@ -32,6 +33,7 @@ import type {
 
 type UseCashflowDataParams = {
   userEmail: string | null | undefined;
+  statements?: readonly CashflowCommissionStatementSummary[];
   scopeFilter: ScopeFilter;
   productFilter: ProductFilter;
   tipsterMode?: boolean;
@@ -196,7 +198,7 @@ async function fetchContractsSnapshot(
     return response;
   };
 
-  const requestExtraPayouts = async (): Promise<CashflowExtraPayout[]> => {
+  const requestCashflowSettings = async (): Promise<{ extraPayouts: CashflowExtraPayout[]; officeContributionEnabled: boolean }> => {
     const path = "/api/user/profile";
     let res = await requestWithToken(path, bearerToken);
     if (res.status === 401) {
@@ -216,9 +218,11 @@ async function fetchContractsSnapshot(
       !payload.profile || typeof payload.profile !== "object" || Array.isArray(payload.profile)) {
       throw new Error("Nepodařilo se ověřit vlastníka mimořádných odměn.");
     }
-    return normalizeCashflowExtraPayouts(
-      (payload.profile as Record<string, unknown>).cashflowExtraPayouts
-    );
+    const profile = payload.profile as Record<string, unknown>;
+    return {
+      extraPayouts: normalizeCashflowExtraPayouts(profile.cashflowExtraPayouts),
+      officeContributionEnabled: profile.cashflowOfficeContributionEnabled === true,
+    };
   };
 
   const requestContracts = async (
@@ -533,7 +537,8 @@ async function fetchContractsSnapshot(
   });
   // A missing paid reward would make the financial total incorrect. Keep this
   // source mandatory, with the same account/cancellation guards as the portfolio.
-  const extraPayoutsPromise = mode === "tipster" ? Promise.resolve([]) : requestExtraPayouts();
+  const extraPayoutsPromise = mode === "tipster"
+    ? Promise.resolve({ extraPayouts: [], officeContributionEnabled: false }) : requestCashflowSettings();
   const subscriptionPaymentsPromise = collectSubscriptionPayments().catch((subscriptionErr) => {
     ensureActive();
     console.warn(
@@ -638,7 +643,7 @@ async function fetchContractsSnapshot(
   });
   const tipPayouts = await tipPayoutsPromise;
   const subscriptionPayments = await subscriptionPaymentsPromise;
-  const extraPayouts = await extraPayoutsPromise;
+  const { extraPayouts, officeContributionEnabled } = await extraPayoutsPromise;
   ensureActive();
   onProgress({
     percent: 96,
@@ -658,6 +663,7 @@ async function fetchContractsSnapshot(
     tipPayouts,
     subscriptionPayments,
     ...(extraPayouts.length > 0 ? { extraPayouts } : {}),
+    ...(officeContributionEnabled ? { officeContributionEnabled: true } : {}),
   };
 }
 
@@ -741,6 +747,7 @@ function getContractsSnapshot(
 
 export function useCashflowData({
   userEmail,
+  statements,
   scopeFilter,
   productFilter,
   tipsterMode = false,
@@ -886,7 +893,7 @@ export function useCashflowData({
     }
 
     const asOf = new Date();
-    const items = computeCashflow(snapshot, { scopeFilter, productFilter, tipsterMode, asOf });
+    const items = computeCashflow(snapshot, { scopeFilter, productFilter, tipsterMode, asOf, statements });
     if (process.env.NODE_ENV !== "production") {
       console.info("[cashflow-debug]", {
         email: snapshot.email,
@@ -904,7 +911,7 @@ export function useCashflowData({
       });
     }
     return { cashflowItems: items, verificationInput: { snapshot, asOf } };
-  }, [calculationDeferred, enabled, productFilter, scopeFilter, snapshot, snapshotMatchesCurrentUser, tipsterMode]);
+  }, [calculationDeferred, enabled, productFilter, scopeFilter, snapshot, snapshotMatchesCurrentUser, statements, tipsterMode]);
 
   return {
     loading: loading || Boolean(enabled && currentEmail && snapshotRequestKey !== requestKey),

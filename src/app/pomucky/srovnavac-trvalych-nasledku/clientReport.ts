@@ -1,6 +1,8 @@
 import { clientComparisonHeading, explainClientVariant, getClientScenarioExample } from "./clientExplanation";
 import { renderScenarioComparison } from "./clientReportArtwork";
+import { escapeReportHtml as escape, renderAdvisorCard, renderReportHeader as header } from "./clientReportComponents";
 import { clientReportStyles } from "./clientReportStyles";
+import type { PdfAdvisorCard } from "./pdfAdvisorCard";
 
 export type PdfAppendix = "graphs" | "graphs-tables" | "none";
 type ReportRow = {
@@ -17,26 +19,24 @@ type ReportOptions = {
   generatedAt: string;
   clientName?: string;
   advisorName?: string;
+  advisorCard?: PdfAdvisorCard | null;
   sumInsured: number;
   scenarios: { label: string; percent: number }[];
   rows: ReportRow[];
   appendix: PdfAppendix;
 };
-type ReportPage = { content: string; section: string; note: string; className?: string };
-const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+type ReportPage = { content: string; section: string; note: string; className?: string; advisorCard?: string };
 const number = (value: number) => value.toLocaleString("cs-CZ", { maximumFractionDigits: 2 });
 const equationNumber = (value: number) => value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
 const money = (value: number) => `${value.toLocaleString("cs-CZ", { maximumFractionDigits: 0 })} Kč`;
 const colors = ["#6438e6", "#007f98", "#435375"];
 const color = (index: number) => colors[index % colors.length];
+const curveColors = ["#6438e6", "#a84f34", "#007f98", "#476381", "#427249", "#8f4d7c", "#896716"];
+const curveDashes = ["", "11 5", "3 5", "12 4 3 4"];
 const scenarioLabel = (index: number, count: number) => count > 1 ? `Scénář ${index + 1}` : "Modelový úraz";
 const quantityLabel = (count: number, one: string, few: string, many: string) => count === 1 ? one : count >= 2 && count <= 4 ? few : many;
 const modelNote = "Modelové srovnání při stejné pojistné částce. Skutečné plnění závisí na sjednané variantě, oceňovací tabulce a podmínkách konkrétní smlouvy.";
 
-const header = (date: string, section: string) => `<header class="pdf-brand">
-  <div class="pdf-brand-identity"><img src="/icons/bohemika_logo.png" alt="" /><div><strong>bohemika.</strong><span>FINANČNÍ PORADENSTVÍ</span></div></div>
-  <div class="pdf-document"><strong>${escape(section)}</strong><small>${escape(date)}</small></div>
-</header>`;
 const badges = (row: ReportRow) => row.badges.map(badge => `<span>${escape(badge)}</span>`).join("");
 const productHeading = (row: ReportRow, index: number) => `<div class="pdf-product-heading">
   ${row.logo ? `<div class="pdf-product-logo"><img src="${escape(row.logo)}" alt="${escape(row.insurerName)}" /></div>` : ""}
@@ -65,21 +65,64 @@ function clientExplanationCard(row: ReportRow, scenarios: ReportOptions["scenari
     ${example ? `<div class="pdf-example"><div class="pdf-example-calculation"><span>VÁŠ SCÉNÁŘ / ${escape(equationNumber(example.assessment))} % NÁSLEDKŮ</span><p class="pdf-equation">${escape(equation)}</p><small>${escape(number(example.payoutPercent))} % pojistné částky${Math.abs(example.effectiveMultiplier - 2) < 0.000001 ? " · dvojnásobek plnění bez progrese" : Math.abs(example.effectiveMultiplier - 1) < 0.000001 ? " · bez navýšení progresí" : ""}</small></div><strong>${escape(money(example.payout))}</strong></div>` : ""}</div>
   </article>`;
 }
-function renderCurve(row: ReportRow, scenarios: ReportOptions["scenarios"], sumInsured: number) {
-  const max = Math.max(100, Math.ceil(Math.max(0, ...row.curve.map(point => point.payoutPercent)) / 100) * 100);
+const payoutPercent = (payout: number, sumInsured: number) => sumInsured > 0 ? payout / sumInsured * 100 : 0;
+
+function renderCurves(rows: ReportRow[], scenarios: ReportOptions["scenarios"], sumInsured: number) {
+  const shared = rows.length > 1;
+  const maxPayout = Math.max(0, ...rows.map(row => Math.max(0, ...row.curve.map(point => point.payoutPercent))));
+  const max = Math.max(100, Math.ceil(maxPayout / 100) * 100);
   const x = (percent: number) => 62 + percent * 6;
   const y = (percent: number) => 290 - percent / max * 230;
-  const points = row.curve.map(point => ({ x: x(point.percent), y: y(point.payoutPercent) }));
-  const path = points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
-  const area = points.length ? `${path} L${points[points.length - 1].x},290 L${points[0].x},290 Z` : "";
+  const series = rows.map((row, index) => {
+    const points = row.curve.map(point => ({ x: x(point.percent), y: y(point.payoutPercent) }));
+    const path = points.map((point, i) => `${i ? "L" : "M"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+    const area = !shared && points.length ? `<path d="${path} L${points[points.length - 1].x},290 L${points[0].x},290 Z" fill="#f0ebff"/>` : "";
+    const stroke = curveColors[index % curveColors.length];
+    const dash = curveDashes[index % curveDashes.length];
+    const style = `stroke="${stroke}"${dash ? ` stroke-dasharray="${dash}"` : ""}`;
+    return { area, path, stroke, style };
+  });
   const grid = Array.from({ length: 5 }, (_, index) => {
     const value = max * index / 4;
     return `<line x1="62" x2="662" y1="${y(value)}" y2="${y(value)}" stroke="#e3e7ef" stroke-dasharray="3 5"/><text x="50" y="${y(value) + 4}" text-anchor="end" fill="#657085" font-size="10">${escape(number(value))} %</text>`;
   }).join("");
   const labels = [0, 25, 50, 75, 100].map(value => `<text x="${x(value)}" y="313" text-anchor="middle" fill="#657085" font-size="10">${value} %</text>`).join("");
+  const paths = series.map(({ area, path, style }) => `${area}<path d="${path}" fill="none" ${style} stroke-width="3" stroke-linejoin="round"/>`).join("");
+
+  if (shared) {
+    const scenarioGroups = new Map<number, number[]>();
+    scenarios.forEach(({ percent }, index) => {
+      const indices = scenarioGroups.get(percent);
+      if (indices) indices.push(index);
+      else scenarioGroups.set(percent, [index]);
+    });
+    const groups = Array.from(scenarioGroups).sort(([a], [b]) => a - b);
+    // Space out guide labels when scenario percentages are close, keeping the guides at their exact positions.
+    const labelPositions: number[] = [];
+    for (const [percent] of groups) {
+      labelPositions.push(Math.max(x(percent), (labelPositions.at(-1) ?? 0) + 30));
+    }
+    for (let index = labelPositions.length - 1; index >= 0; index--) {
+      labelPositions[index] = Math.min(labelPositions[index], (labelPositions[index + 1] ?? x(100) + 30) - 30);
+    }
+    const guides = groups.map(([percent, indices], index) => {
+      const position = x(percent);
+      return `<path d="M${labelPositions[index]},48 L${position},60 V290" fill="none" stroke="#8993a6" stroke-dasharray="4 4"/><text x="${labelPositions[index]}" y="44" text-anchor="middle" fill="#435375" font-size="10" font-weight="700">${indices.map(i => i + 1).join("/")}</text>`;
+    }).join("");
+    const markers = groups.map(([percent, indices]) => rows.map((row, index) => {
+      const actual = payoutPercent(row.payouts[indices[0]], sumInsured);
+      return `<circle cx="${x(percent)}" cy="${y(actual)}" r="3" fill="${series[index].stroke}" stroke="white" stroke-width="1"/>`;
+    }).join("")).join("");
+    const legend = rows.map((row, index) => `<li><svg viewBox="0 0 28 10" width="28" height="10" aria-hidden="true"><path d="M1 5 H27" ${series[index].style} stroke-width="3"/></svg><div><strong>${escape(`${String(index + 1).padStart(2, "0")} · ${row.insurerName} ${row.productName}`)}</strong>${row.badges.length ? `<small>${escape(row.badges.join(" · "))}</small>` : ""}</div></li>`).join("");
+    return `<div class="pdf-chart"><svg viewBox="0 0 710 350" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Společný graf průběhu pojistného plnění">
+      <text x="62" y="24" fill="#526077" font-size="11">Plnění ze sjednané pojistné částky</text>${grid}${guides}${paths}${markers}
+      ${labels}<text x="362" y="342" text-anchor="middle" fill="#526077" font-size="11">Rozsah trvalých následků</text>
+    </svg></div><ul class="pdf-curve-legend">${legend}</ul>`;
+  }
+
   const markerGroups = new Map<string, { percent: number; actual: number; indices: number[] }>();
   scenarios.forEach((scenario, index) => {
-    const actual = sumInsured > 0 ? row.payouts[index] / sumInsured * 100 : 0;
+    const actual = payoutPercent(rows[0].payouts[index], sumInsured);
     const key = `${scenario.percent}:${actual}`;
     const group = markerGroups.get(key);
     if (group) group.indices.push(index);
@@ -88,13 +131,13 @@ function renderCurve(row: ReportRow, scenarios: ReportOptions["scenarios"], sumI
   const markers = Array.from(markerGroups.values()).map(({ percent, actual, indices }) => `<line x1="${x(percent)}" x2="${x(percent)}" y1="${y(actual)}" y2="290" stroke="${color(indices[0])}" stroke-dasharray="4 5"/><circle cx="${x(percent)}" cy="${y(actual)}" r="10" fill="${color(indices[0])}" stroke="white" stroke-width="3"/><text x="${x(percent)}" y="${y(actual) + 3}" text-anchor="middle" font-size="${indices.length > 1 ? 6 : 8}" font-weight="bold" fill="white">${indices.map(index => index + 1).join("/")}</text>`).join("");
   return `<div class="pdf-chart"><svg viewBox="0 0 710 350" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Průběh pojistného plnění">
     <text x="62" y="24" fill="#526077" font-size="11">Plnění ze sjednané pojistné částky</text>${grid}
-    <path d="${area}" fill="#f0ebff"/><path d="${path}" fill="none" stroke="#6438e6" stroke-width="3" stroke-linejoin="round"/>
+    ${paths}
     ${labels}${markers}<text x="362" y="342" text-anchor="middle" fill="#526077" font-size="11">Rozsah trvalých následků</text>
   </svg></div>`;
 }
 
 /** All report pages share the same HTML in the preview, download and print. */
-export function buildClientReport({ generatedAt, clientName, advisorName, sumInsured, scenarios, rows, appendix }: ReportOptions): string {
+export function buildClientReport({ generatedAt, clientName, advisorName, advisorCard, sumInsured, scenarios, rows, appendix }: ReportOptions): string {
   const pages: ReportPage[] = [];
   const people = [{ label: "Připraveno pro", name: clientName }, { label: "Váš poradce", name: advisorName }]
     .map(person => ({ ...person, name: person.name?.replace(/\s+/g, " ").trim() })).filter(person => person.name);
@@ -151,13 +194,23 @@ export function buildClientReport({ generatedAt, clientName, advisorName, sumIns
     offset += batch.length;
   }
 
-  if (appendix !== "none") rows.forEach((row, index) => {
-    const maxPayoutPercent = Math.max(0, ...row.curve.map(point => point.payoutPercent));
-    const scenarioCards = scenarios.map((scenario, scenarioIndex) => `<div class="pdf-scenario-card" style="border-top-color:${color(scenarioIndex)}"><small style="color:${color(scenarioIndex)}">${scenarioLabel(scenarioIndex, scenarios.length).toLocaleUpperCase("cs-CZ")}</small><h3>${escape(number(scenario.percent))} % následků</h3><strong>${escape(money(row.payouts[scenarioIndex]))}</strong><p>${escape(number(sumInsured > 0 ? row.payouts[scenarioIndex] / sumInsured * 100 : 0))} % pojistné částky</p></div>`).join("");
+  const hasSharedCurve = appendix !== "none" && scenarios.length === 3 && rows.length > 1 && insurerCount <= 3;
+  if (hasSharedCurve) {
     pages.push({
-      section: `${row.insurerName} · Průběh plnění`, note: modelNote,
-      content: `${header(generatedAt, "Detail pojistného plnění")}${productHeading(row, index)}<div class="pdf-detail-metrics"><div><small>POJISTNÁ ČÁSTKA</small><strong>${escape(money(sumInsured))}</strong></div><div><small>MAXIMÁLNÍ PLNĚNÍ</small><strong>${escape(number(maxPayoutPercent))} % pojistné částky</strong></div></div><h2 class="pdf-section-title">Jak roste pojistné plnění</h2><p class="pdf-intro">Čísla v grafu označují zadané scénáře. Procento plnění už zahrnuje progresi této varianty.</p>${renderCurve(row, scenarios, sumInsured)}<div class="pdf-scenario-cards">${scenarioCards}</div><div class="pdf-formula"><strong>Jak se částka počítá</strong><p>Pojistná částka × procento plnění ÷ 100. Procento plnění zahrnuje progresi dané varianty.</p></div>`,
+      section: "Srovnání průběhu plnění", note: modelNote,
+      content: `${header(generatedAt, "Průběh pojistného plnění")}<h1 class="pdf-section-title">Srovnání průběhu plnění</h1><p class="pdf-intro">Čísla u svislých čar označují zadané scénáře.</p>${renderCurves(rows, scenarios, sumInsured)}`,
     });
+  }
+
+  if (appendix !== "none") rows.forEach((row, index) => {
+    if (!hasSharedCurve) {
+      const maxPayoutPercent = Math.max(0, ...row.curve.map(point => point.payoutPercent));
+      const scenarioCards = scenarios.map((scenario, scenarioIndex) => `<div class="pdf-scenario-card" style="border-top-color:${color(scenarioIndex)}"><small style="color:${color(scenarioIndex)}">${scenarioLabel(scenarioIndex, scenarios.length).toLocaleUpperCase("cs-CZ")}</small><h3>${escape(number(scenario.percent))} % následků</h3><strong>${escape(money(row.payouts[scenarioIndex]))}</strong><p>${escape(number(payoutPercent(row.payouts[scenarioIndex], sumInsured)))} % pojistné částky</p></div>`).join("");
+      pages.push({
+        section: `${row.insurerName} · Průběh plnění`, note: modelNote,
+        content: `${header(generatedAt, "Detail pojistného plnění")}${productHeading(row, index)}<div class="pdf-detail-metrics"><div><small>POJISTNÁ ČÁSTKA</small><strong>${escape(money(sumInsured))}</strong></div><div><small>MAXIMÁLNÍ PLNĚNÍ</small><strong>${escape(number(maxPayoutPercent))} % pojistné částky</strong></div></div><h2 class="pdf-section-title">Jak roste pojistné plnění</h2><p class="pdf-intro">Čísla v grafu označují zadané scénáře. Procento plnění už zahrnuje progresi této varianty.</p>${renderCurves([row], scenarios, sumInsured)}<div class="pdf-scenario-cards">${scenarioCards}</div><div class="pdf-formula"><strong>Jak se částka počítá</strong><p>Pojistná částka × procento plnění ÷ 100. Procento plnění zahrnuje progresi dané varianty.</p></div>`,
+      });
+    }
     if (appendix !== "graphs-tables" || !row.table) return;
     const table = row.table;
     const dense = table.columns.length <= 3 && table.rows.every(item => item.cells.every(cell => cell.length <= 20));
@@ -173,5 +226,14 @@ export function buildClientReport({ generatedAt, clientName, advisorName, sumIns
       });
     }
   });
-  return `<div class="pdf-root"><style>${clientReportStyles}</style>${pages.map((page, index) => `<section class="pdf-page${page.className ? ` ${page.className}` : ""}"><div class="pdf-content">${page.content}</div><footer class="pdf-footer"><p>${escape(page.note)}</p><div><span><strong>Bohemika a.s.</strong> · ${escape(page.section)}</span><span>${String(index + 1).padStart(2, "0")} / ${String(pages.length).padStart(2, "0")}</span></div></footer></section>`).join("")}</div>`;
+  if (advisorCard) {
+    const contact = renderAdvisorCard(advisorCard);
+    // The shared graph leaves room below its legend for small comparisons.
+    if (hasSharedCurve && appendix === "graphs" && rows.length <= 6) {
+      pages[pages.length - 1].advisorCard = contact;
+    } else {
+      pages.push({ section: "Vizitka poradce", note: modelNote, content: `${header(generatedAt, "Vizitka poradce")}${contact}` });
+    }
+  }
+  return `<div class="pdf-root"><style>${clientReportStyles}</style>${pages.map((page, index) => `<section class="pdf-page${page.className ? ` ${page.className}` : ""}"><div class="pdf-content">${page.content}</div>${page.advisorCard ?? ""}<footer class="pdf-footer"><p>${escape(page.note)}</p><div><span><strong>Bohemika a.s.</strong> · ${escape(page.section)}</span><span>${String(index + 1).padStart(2, "0")} / ${String(pages.length).padStart(2, "0")}</span></div></footer></section>`).join("")}</div>`;
 }

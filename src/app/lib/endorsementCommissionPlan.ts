@@ -7,6 +7,7 @@ export type EndorsementCommissionPlanEntry = {
   adviserEmail?: string | null;
   productKey?: string | null;
   entryType?: string | null;
+  autoPremiumAmendment?: boolean;
   rootContractEntryId?: string | null;
   parentContractEntryId?: string | null;
   policyStartDate?: unknown;
@@ -17,6 +18,10 @@ export type EndorsementCommissionPlanEntry = {
   newInputAmount?: number | null;
   premiumDelta?: number | null;
   changeType?: string | null;
+  isRefresh?: boolean | null;
+  refreshCommissionBase?: unknown;
+  requiresStatementRefresh?: boolean | null;
+  neonCorrection?: unknown;
 };
 
 export type EndorsementCommissionAdjustment = {
@@ -36,6 +41,7 @@ type PlanNode = {
   kind: "contract" | "increase" | "decrease" | "same" | "invalid";
   previous: number | null;
   premium: number | null;
+  usesFullNeonRecurringPremium: boolean;
 };
 
 const PRODUCTS = new Set<string>(PRODUCT_ORDER.filter(product => product !== "conseqzenit"));
@@ -74,6 +80,7 @@ export function endorsementCommissionDay(value: unknown): string | null {
 }
 
 function normalize(entry: EndorsementCommissionPlanEntry): PlanNode | null {
+  if (entry.autoPremiumAmendment) return null;
   if (entry.entryType != null && entry.entryType !== "contract" && entry.entryType !== "endorsement") return null;
   if (entry.entryType != null && entry.entryType !== "contract" && entry.entryType !== "endorsement") return null;
   const id = text(entry.originalEntryId) || text(entry.id);
@@ -97,13 +104,17 @@ function normalize(entry: EndorsementCommissionPlanEntry): PlanNode | null {
         !Number.isFinite(entry.premiumDelta) || previous === null || premium === null ||
         Math.abs(entry.premiumDelta - (premium - previous)) > 0.01))) kind = "invalid";
   }
-  return { id, owner, product, root, parent, start: endorsementCommissionDay(entry.policyStartDate), kind, previous, premium };
+  const calculationPremium = money(entry.calculationInputAmount);
+  const usesFullNeonRecurringPremium = !endorsement && product === "neon" && premium != null && premium > 0 &&
+    (calculationPremium == null || calculationPremium === 0 || Math.abs(premium - calculationPremium) <= 0.01) &&
+    !entry.isRefresh && !entry.refreshCommissionBase && !entry.requiresStatementRefresh && !entry.neonCorrection;
+  return { id, owner, product, root, parent, start: endorsementCommissionDay(entry.policyStartDate), kind, previous, premium, usesFullNeonRecurringPremium };
 }
 
 /**
  * A read-only projection: stored calculations and statement payouts remain unchanged.
- * Premium increases are separate positive commission tranches. A later decrease scales
- * every earlier tranche proportionally, retaining its original rates and schedule.
+ * A decrease scales earlier acquisition tranches proportionally. For recurring
+ * NEON commissions, the original contract can use the full amended premium.
  * Callers decide which unpaid amounts to project and supply the entitlement period.
  */
 export function createEndorsementCommissionPlan(entries: readonly EndorsementCommissionPlanEntry[]) {
@@ -118,7 +129,10 @@ export function createEndorsementCommissionPlan(entries: readonly EndorsementCom
     else nodes.set(key, node);
   }
   const children = new Map<string, PlanNode[]>();
+  const familySizes = new Map<string, number>();
   for (const node of nodes.values()) {
+    const family = nodeKey(node.owner, node.product, node.root);
+    familySizes.set(family, (familySizes.get(family) ?? 0) + 1);
     if (!node.parent) continue;
     const key = nodeKey(node.owner, node.product, node.parent);
     const siblings = children.get(key) ?? [];
@@ -152,13 +166,61 @@ export function createEndorsementCommissionPlan(entries: readonly EndorsementCom
   const resolve = (entry: EndorsementCommissionPlanEntry) => {
     const node = normalize(entry);
     if (!node) return null;
-    const chain = chains.get(nodeKey(node.owner, node.product, node.root));
+    const key = nodeKey(node.owner, node.product, node.root);
+    const chain = chains.get(key);
     if (!chain) return null;
     const index = chain.findIndex(candidate => candidate.id === node.id);
-    return index < 0 ? null : { chain, index };
+    return index < 0 ? null : { chain, index, complete: chain.length === familySizes.get(key) };
   };
 
   return {
+    neonOpenCommissionAdjustments(
+      entry: EndorsementCommissionPlanEntry,
+      amount: number,
+      through: string,
+      wasSettledBefore: (day: string) => boolean,
+    ): EndorsementCommissionAdjustment[] {
+      const resolved = resolve(entry);
+      if (!resolved?.complete || resolved.index !== 0 || !resolved.chain[0].usesFullNeonRecurringPremium ||
+        !Number.isFinite(amount) || amount <= 0) return [];
+      const [root, ...changes] = resolved.chain;
+      const adjustments: EndorsementCommissionAdjustment[] = [];
+      for (const change of changes) {
+        if (change.start! > through) break;
+        if (change.kind !== "increase" && change.kind !== "decrease") continue;
+        if (wasSettledBefore(change.start!)) continue;
+        const scaled = amount * (change.premium! / root.premium!) * 100;
+        if (!Number.isFinite(scaled)) return [];
+        const expectedAmount = Math.round(scaled) / 100;
+        if (change.kind === "decrease" && adjustments.length === 0) continue;
+        adjustments.push({
+          amount: expectedAmount,
+          originalAmount: amount,
+          effectiveDate: change.start!,
+          endorsementEntryId: change.id,
+        });
+      }
+      return adjustments;
+    },
+    neonRecurringPremium(entry: EndorsementCommissionPlanEntry, asOf: unknown) {
+      const day = endorsementCommissionDay(asOf);
+      const resolved = day ? resolve(entry) : null;
+      if (!day || !resolved?.complete || resolved.index !== 0 || !resolved.chain[0].usesFullNeonRecurringPremium) return null;
+      const applicable = resolved.chain.slice(1).filter(node => node.start! <= day);
+      const latest = applicable.at(-1);
+      if (!latest || !applicable.some(node => node.kind === "increase")) return null;
+      return {
+        originalMonthlyPremium: resolved.chain[0].premium!,
+        monthlyPremium: latest.premium!,
+        effectiveDate: latest.start!,
+        endorsementEntryId: latest.id,
+      };
+    },
+    neonRecurringRootId(entry: EndorsementCommissionPlanEntry): string | null {
+      const resolved = resolve(entry);
+      return resolved?.complete && resolved.index > 0 && resolved.chain[0].usesFullNeonRecurringPremium &&
+        resolved.chain[resolved.index].kind === "increase" ? resolved.chain[0].id : null;
+    },
     adjust(entry: EndorsementCommissionPlanEntry, amount: number, commissionPeriod: unknown): EndorsementCommissionAdjustment | null {
       if (!Number.isFinite(amount) || amount <= 0) return null;
       const period = endorsementCommissionDay(commissionPeriod);

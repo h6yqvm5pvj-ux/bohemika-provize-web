@@ -9,8 +9,8 @@ beforeEach(() => { sessionStorage.clear(); clearPrivateMemory(); });
 describe("saved contract position filters", () => {
   it("restores multiple positions together with other filters and scroll position", () => {
     writeContractsViewState(email, { ...emptyContractFilterSelection(), showTeam: false, searchText: "Novák", scrollY: 640,
-      showCommissionEndedOnly: true, selectedPositions: ["poradce2", "manazer4"], selectedInstitutions: ["cpp"] });
-    expect(readContractsViewState(email)).toMatchObject({ showCommissionEndedOnly: true, selectedPositions: ["poradce2", "manazer4"], selectedInstitutions: ["cpp"], scrollY: 640 });
+      showCommissionEndedOnly: true, showWithoutPdfOnly: true, selectedPositions: ["poradce2", "manazer4"], selectedInstitutions: ["cpp"] });
+    expect(readContractsViewState(email)).toMatchObject({ showCommissionEndedOnly: true, showWithoutPdfOnly: true, selectedPositions: ["poradce2", "manazer4"], selectedInstitutions: ["cpp"], scrollY: 640 });
     expect(readContractsViewState("other@example.test")).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTO_PRODUCTS, LIFE_PRODUCTS, PRODUCT_ORDER } from "@/app/lib/productCatalog";
+import { AUTO_PRODUCTS, LIFE_PRODUCTS, PRODUCT_ORDER, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 import { calculateCommission } from "@/app/lib/calculateCommission";
 import {
   TIP_OFFER_PRODUCTS,
@@ -24,6 +24,7 @@ describe("TIP offer calculation", () => {
     ] as const;
     PRODUCT_ORDER.filter(
       (product) =>
+        !isRecordOnlyProduct(product) &&
         !AUTO_PRODUCTS.includes(product) &&
         !LIFE_PRODUCTS.includes(product) &&
         !averagedTravelProducts.includes(
@@ -34,12 +35,13 @@ describe("TIP offer calculation", () => {
     expect(TIP_OFFER_PRODUCTS.filter((item) => item.id === "life")).toHaveLength(1);
     expect(TIP_OFFER_PRODUCTS.filter((item) => item.id === "travel")).toHaveLength(1);
     expect(TIP_OFFER_PRODUCTS).toHaveLength(
-      PRODUCT_ORDER.length -
+      PRODUCT_ORDER.filter(product => !isRecordOnlyProduct(product) || AUTO_PRODUCTS.includes(product)).length -
         AUTO_PRODUCTS.length -
         LIFE_PRODUCTS.length -
         averagedTravelProducts.length +
         3
     );
+    expect(TIP_OFFER_PRODUCTS.every(item => !isRecordOnlyProduct(item.calculatorProduct))).toBe(true);
   });
 
   it("uses only the exact A101 component", () => {

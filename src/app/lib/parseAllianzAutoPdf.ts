@@ -1,4 +1,4 @@
-import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
+import { readPdfText, type PdfReadOptions, type PdfTextPage } from "./pdfDocumentText";
 import { formatClientDisplayName } from "./clientNamePresentation";
 // src/app/lib/parseAllianzAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
@@ -53,25 +53,19 @@ type PositionedTextItem = {
 
 const LINE_Y_TOLERANCE = 2;
 const WORD_GAP_THRESHOLD = 1.5;
+const COLUMN_GAP_THRESHOLD = 24;
+const COLUMN_ALIGNMENT_TOLERANCE = 10;
+const POLICYHOLDER_SECTION_ROWS = 22;
+const POLICYHOLDER_HEADING = /^pojistnik\s*\(vy\)\s*:?$/i;
 
-async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
-  const content = { items: page.items };
-  const rawItems = (content?.items ?? []) as Array<{
-    str?: unknown;
-    transform?: number[];
-    width?: number;
-  }>;
-
-  const items: PositionedTextItem[] = rawItems
-    .map((item) => {
-      const str = typeof item?.str === "string" ? item.str : "";
-      return {
-        str: str.trim(),
-        x: item?.transform?.[4] ?? 0,
-        y: item?.transform?.[5] ?? 0,
-        width: item?.width ?? 0,
-      };
-    })
+function extractLayoutFromPage(page: PdfTextPage) {
+  const items: PositionedTextItem[] = page.items
+    .map((item) => ({
+      str: item.str.trim(),
+      x: item.transform[4],
+      y: item.transform[5],
+      width: item.width,
+    }))
     .filter((item) => item.str.length > 0)
     .sort((a, b) => {
       if (Math.abs(a.y - b.y) > LINE_Y_TOLERANCE) return b.y - a.y;
@@ -89,27 +83,21 @@ async function extractLayoutLinesFromPage(page: any): Promise<string[]> {
   });
   rows.sort((a, b) => b.y - a.y);
 
-  return rows
-    .map((row) => {
-      row.items.sort((a, b) => a.x - b.x);
-      let line = "";
-      let prevEndX = 0;
-      let hasPrev = false;
-      row.items.forEach((item) => {
-        if (!hasPrev) {
-          line += item.str;
-          prevEndX = item.x + item.width;
-          hasPrev = true;
-          return;
-        }
-        const gap = item.x - prevEndX;
-        if (gap > WORD_GAP_THRESHOLD) line += " ";
-        line += item.str;
-        prevEndX = item.x + item.width;
-      });
-      return line.replace(/\s+/g, " ").trim();
-    })
-    .filter(Boolean);
+  return rows.map((row) => {
+    const cells: { x: number; text: string }[] = [];
+    let previousEnd = -Infinity;
+    for (const item of row.items.sort((a, b) => a.x - b.x)) {
+      const gap = item.x - previousEnd;
+      const cell = cells[cells.length - 1];
+      if (!cell || gap > COLUMN_GAP_THRESHOLD) {
+        cells.push({ x: item.x, text: item.str });
+      } else {
+        cell.text += (gap > WORD_GAP_THRESHOLD ? " " : "") + item.str;
+      }
+      previousEnd = item.x + item.width;
+    }
+    return cells;
+  });
 }
 
 const extractInlineValueAfterColon = (value: string): string | null => {
@@ -303,6 +291,7 @@ const normalizePolicyholderEmail = (
 
 export const extractAllianzAutoPolicyholderData = (
   lines: readonly string[],
+  layout?: readonly { x: number; text: string }[][],
 ): AllianzAutoPolicyholderData => {
   const emptyResult: AllianzAutoPolicyholderData = {
     clientName: null,
@@ -315,7 +304,7 @@ export const extractAllianzAutoPolicyholderData = (
   );
   if (policyholderIndex < 0) return emptyResult;
 
-  const maxEndIndex = Math.min(lines.length, policyholderIndex + 22);
+  const maxEndIndex = Math.min(lines.length, policyholderIndex + POLICYHOLDER_SECTION_ROWS);
   const nextSectionOffset = asciiLines
     .slice(policyholderIndex + 1, maxEndIndex)
     .findIndex((line) =>
@@ -327,21 +316,18 @@ export const extractAllianzAutoPolicyholderData = (
     nextSectionOffset >= 0
       ? policyholderIndex + 1 + nextSectionOffset
       : maxEndIndex;
-  const sectionLines = lines.slice(policyholderIndex, sectionEnd);
-  const sectionText = sectionLines.join(" ");
-
-  let clientName: string | null = null;
-  for (const candidateLine of sectionLines.slice(1, 4)) {
-    const tailName =
-      candidateLine.match(
-        /(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){1,3})\s*$/u,
-      )?.[1] ?? null;
-    const normalizedName = normalizeClientName(tailName);
-    if (normalizedName) {
-      clientName = normalizedName;
-      break;
-    }
+  let sectionLines = lines.slice(policyholderIndex, sectionEnd);
+  const headingCells = layout?.[policyholderIndex];
+  const column = headingCells?.findIndex(cell => POLICYHOLDER_HEADING.test(stripDiacritics(cell.text.trim()))) ?? -1;
+  if (layout && headingCells && column >= 0) {
+    // The insurer and policyholder can appear side by side, including their IČO and email.
+    const left = headingCells[column].x - COLUMN_ALIGNMENT_TOLERANCE;
+    const right = (headingCells[column + 1]?.x ?? Infinity) - COLUMN_ALIGNMENT_TOLERANCE;
+    sectionLines = layout.slice(policyholderIndex, sectionEnd).map(row =>
+      row.filter(cell => cell.x >= left && cell.x < right).map(cell => cell.text).join(" ").trim(),
+    ).filter(Boolean);
   }
+  const sectionText = sectionLines.join(" ");
 
   const birthNumber = sectionText.match(
     /rodn[eé]\s+[čc][ií]slo\s*:\s*(\d{6}\s*\/?\s*\d{3,4})/i,
@@ -350,9 +336,30 @@ export const extractAllianzAutoPolicyholderData = (
     /(?:I[ČC](?:O)?|identifika[čc]n[ií]\s+[čc][ií]slo)\s*:\s*((?:\d[\u00a0 \t]*){8})(?!\d)/i,
   )?.[1];
 
+  const isCompany = !birthNumber && Boolean(companyId);
+  let clientName: string | null = null;
+  if (isCompany && POLICYHOLDER_HEADING.test(stripDiacritics(sectionLines[0] ?? "").trim())) {
+    const name = sectionLines[1]?.trim();
+    if (name && /\p{L}/u.test(name) && !/[:@：]/.test(name) && !/^e-mail\b/i.test(name) && !looksLikeStandaloneLabelLine(name)) {
+      clientName = name.replace(/\s+/g, " ");
+    }
+  } else {
+    for (const candidateLine of sectionLines.slice(1, 4)) {
+      const tailName =
+        candidateLine.match(
+          /(\p{Lu}[\p{L}'’-]+(?:\s+\p{Lu}[\p{L}'’-]+){1,3})\s*$/u,
+        )?.[1] ?? null;
+      const normalizedName = normalizeClientName(tailName);
+      if (normalizedName) {
+        clientName = normalizedName;
+        break;
+      }
+    }
+  }
+
   return {
     clientName: clientName && clientName === clientName.toLocaleUpperCase("cs-CZ")
-      ? formatClientDisplayName(clientName, { isCompany: !birthNumber && Boolean(companyId) })
+      ? formatClientDisplayName(clientName, { isCompany })
       : clientName,
     personalId: normalizePolicyholderPersonalId(birthNumber ?? companyId),
     clientEmail: normalizePolicyholderEmail(sectionText),
@@ -582,12 +589,8 @@ const isVehicleNoiseLine = (line: string): boolean => {
 
 export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = {}): Promise<AllianzAutoPdfResult> {
   const doc = await readPdfText(file, options);
-  const lines: string[] = [];
-  for (let i = 1; i <= doc.pages.length; i++) {
-    const page = doc.pages[i - 1];
-    const pageLines = await extractLayoutLinesFromPage(page);
-    lines.push(...pageLines);
-  }
+  const layout = doc.pages.flatMap(extractLayoutFromPage);
+  const lines = layout.map(cells => cells.map(cell => cell.text).join(" ").replace(/\s+/g, " ").trim());
 
   const fullText = lines.join("\n");
   const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
@@ -643,7 +646,7 @@ export async function parseAllianzAutoPdf(file: File, options: PdfReadOptions = 
   const paymentDetails = parseAllianzAutoPaymentDetails(lines, result.contractNumber);
   if (paymentDetails) result.paymentDetails = paymentDetails;
 
-  const policyholder = extractAllianzAutoPolicyholderData(lines);
+  const policyholder = extractAllianzAutoPolicyholderData(lines, layout);
   if (policyholder.clientName) result.clientName = policyholder.clientName;
   if (policyholder.personalId) result.personalId = policyholder.personalId;
   if (policyholder.clientEmail) result.clientEmail = policyholder.clientEmail;

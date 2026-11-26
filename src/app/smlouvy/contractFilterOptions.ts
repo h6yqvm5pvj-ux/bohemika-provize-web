@@ -1,4 +1,5 @@
 import { AlertCircle, Clock, CircleDollarSign, BriefcaseBusiness, WalletCards, type LucideIcon } from "lucide-react";
+import { MISSING_STORNO_ESTIMATE_MODE } from "@/app/lib/commissionStornoAudit";
 import type { CommissionAuditFilterMode, CommissionAuditFilterCode } from "./contractsPageTypes";
 export const COMMISSION_AUDIT_MODE_DEFS: {
   id: Exclude<CommissionAuditFilterMode, "off">;
@@ -7,6 +8,13 @@ export const COMMISSION_AUDIT_MODE_DEFS: {
   icon: LucideIcon;
   tone: string;
 }[] = [
+  {
+    id: MISSING_STORNO_ESTIMATE_MODE,
+    label: "Storno bez odhadu",
+    description: "Stornované smlouvy s chybějícím odhadem vratky pro přihlášený účet.",
+    icon: AlertCircle,
+    tone: "border-amber-200 bg-amber-50 text-amber-700",
+  },
   {
     id: "overdue",
     label: "Nevyplacené",

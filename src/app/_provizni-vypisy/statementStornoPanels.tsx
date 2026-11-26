@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, CalendarX, CheckCircle2, ChevronDown } from "lucide-react";
 
 import { StatementSection } from "./StatementSection";
@@ -10,6 +10,7 @@ import detailStyles from "./statementContractDetail.module.css";
 import workspaceStyles from "./statementWorkspace.module.css";
 
 import { toDate } from "@/app/lib/formatters";
+import { CommissionStornoComparison } from "@/app/components/CommissionStornoComparison";
 import {
   BohemkaContractDetailLink,
   ContractDetailLink,
@@ -25,8 +26,10 @@ import {
   resolveStatementProduct,
 } from "./statementParsing";
 import {
+  compareStatementStorno,
   fullAutoStornoInferenceForGroup,
   groupStornoItemsByContract,
+  indexStornoStatementPayments,
   statementReportsContractTermination,
 } from "./statementStorno";
 import {
@@ -208,6 +211,7 @@ export function StornoContractsSectionPanel({
   const [expanded, setExpanded] = useState(false);
   const [pairedExpanded, setPairedExpanded] = useState(false);
   const [unpairedExpanded, setUnpairedExpanded] = useState(false);
+  const payments = useMemo(() => indexStornoStatementPayments(statement.commissionRows), [statement.commissionRows]);
   const otherPaymentStornos = statement.otherPayments.filter((payment) => payment.isStorno);
   const combinedStornoGroups = groupStornoItemsByContract(
     statement.stornoRows,
@@ -333,6 +337,7 @@ export function StornoContractsSectionPanel({
                       && statementReportsContractTermination(group.rows, statement.contractStatusRules)) ? 1 : 0,
                     unpaired: !systemContract,
                     render: () => <StornoContractGroupCard
+                      payments={payments}
                       statement={statement}
                       statementId={statementId}
                       group={group}
@@ -357,6 +362,7 @@ export function StornoContractsSectionPanel({
 }
 
 function StornoContractGroupCard({
+  payments,
   statement,
   statementId,
   group,
@@ -369,6 +375,7 @@ function StornoContractGroupCard({
   onRequestSystemStorno,
   presentation,
 }: {
+  payments: ReadonlyMap<string, ReadonlySet<string>>;
   statement: ParsedStatement;
   statementId?: string | null;
   group: ReturnType<typeof groupStornoItemsByContract>[number];
@@ -382,6 +389,9 @@ function StornoContractGroupCard({
   presentation: SystemMatchPresentation;
 }) {
   const row = group.rows[0] ?? null;
+  const comparison = systemContract ? compareStatementStorno({
+    contract: systemContract, group, header: statement.header, statementId, currentUserEmail, payments,
+  }) : [];
   const terminationReported = statementReportsContractTermination(group.rows, statement.contractStatusRules);
   const stornoInference = fullAutoStornoInferenceForGroup({
     statement,
@@ -485,6 +495,7 @@ function StornoContractGroupCard({
           : "Storno provize",
         tone: systemContract && terminationReported && !systemContractIsStorno(systemContract) ? "warn" : "info",
       }}
+      summaryBadge={systemContract ? <StornoSystemStatusBadge contract={systemContract} /> : undefined}
       badges={systemContract ? <StornoSystemStatusBadge contract={systemContract} /> : <span className={detailStyles.badge} data-tone="info">Bez propojení</span>}
       marking={markedItem && <MarkedDiscrepancyToggle item={markedItem} markingControls={markingControls} />}
     >
@@ -571,6 +582,7 @@ function StornoContractGroupCard({
             </div>
           )}
 
+          {comparison.length > 0 && <CommissionStornoComparison rows={comparison} />}
           <SystemMatchPanel
             match={match}
             expectedProductKey={row ? resolveStatementProduct(row.product).productKey : null}

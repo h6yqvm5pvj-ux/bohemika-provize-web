@@ -30,6 +30,8 @@
 .input::placeholder { color: #796b87; font-weight: 400; opacity: 1; }
 .clear { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px; height: 26px; padding: 0; border: 0; border-radius: 8px; color: #93849e; background: transparent; cursor: pointer; }
 .clear:hover { background: #eee7f6; color: #694487; }
+.exactSearch { flex-shrink: 0; padding: 5px 8px; border: 1px solid #e5ddec; border-radius: 8px; background: #fff; color: #64546f; font: inherit; font-size: 12px; cursor: pointer; }
+.exactSearch[aria-pressed="true"] { border-color: #c6addb; background: #eee7f6; color: #694487; }
 .controls { min-width: 0; flex-shrink: 0; }
 .controlRow { display: flex; align-items: center; gap: 14px; }
 .scopeSlot:empty { display: none; }
@@ -51,7 +53,7 @@
 .bulk:hover { border-color: #543466; color: #fff; background: linear-gradient(135deg, #6c4787, #482d58); box-shadow: 0 4px 12px #59367126; }
 .bulk[aria-pressed="true"] { border-color: #d4c1e3; color: #714b8c; background: #f2eaf8; box-shadow: none; }
 .bulk[aria-pressed="true"] svg { color: #8964a6; }
-.clear:focus-visible, .scopeButton:focus-visible, .button:focus-visible { outline: 2px solid #9c77bc; outline-offset: 3px; }
+.clear:focus-visible, .exactSearch:focus-visible, .scopeButton:focus-visible, .button:focus-visible { outline: 2px solid #9c77bc; outline-offset: 3px; }
 .selectionActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 12px 3px 2px; border-top: 1px solid #eee8f4; }
 
 @media (min-width: 1024px) { .toolbar { top: 8px; } }

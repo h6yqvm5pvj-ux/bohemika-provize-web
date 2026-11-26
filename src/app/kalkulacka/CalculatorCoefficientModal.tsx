@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Download, Sigma, X, FileText, Loader2 } from "lucide-react";
 
+import { useSecureDocumentBlob } from "../lib/secureDocuments";
 import styles from "./CalculatorCoefficientModal.module.css";
 
 import type { CommissionMode, Product } from "../types/domain";
@@ -39,12 +40,11 @@ type PdfPageLike = {
 type PdfDocumentLike = {
   numPages: number;
   getPage: (pageNumber: number) => Promise<PdfPageLike>;
-  destroy: () => Promise<void>;
 };
 
 type PdfLoadingTaskLike = {
   promise: Promise<unknown>;
-  destroy: () => void;
+  destroy: () => Promise<void>;
 };
 
 type PdfPreviewPage = {
@@ -79,6 +79,7 @@ type CalculatorCoefficientModalProps = {
   showAutoTermsValidityNote: boolean;
   showAutoTermsPreview: boolean;
   autoTermsPreviewUrl: string | null;
+  secureTermsDocumentId: string | null;
   showNeonTermsPreview: boolean;
   neonTermsPreviewUrl: string | null;
   neonPreviewBlobUrl: string | null;
@@ -95,7 +96,7 @@ const formatCoefficientNumber = (value: number | null | undefined): string => {
   return value.toLocaleString("cs-CZ", { maximumFractionDigits: 6 });
 };
 
-function PdfTermsPreview({ url, title }: { url: string; title: string }) {
+function PdfTermsPreview({ source, title }: { source: string | Blob; title: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pages, setPages] = useState<PdfPreviewPage[]>([]);
@@ -111,11 +112,6 @@ function PdfTermsPreview({ url, title }: { url: string; title: string }) {
     setPages([]);
     canvasRefs.current = [];
 
-    if (pdfDocumentRef.current) {
-      void pdfDocumentRef.current.destroy();
-      pdfDocumentRef.current = null;
-    }
-
     const loadPdf = async () => {
       try {
         const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -123,16 +119,15 @@ function PdfTermsPreview({ url, title }: { url: string; title: string }) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
         }
 
-        loadingTask = pdfjsLib.getDocument({
-          url,
-          isEvalSupported: false,
-        }) as PdfLoadingTaskLike;
+        const input = typeof source === "string"
+          ? { url: source }
+          : { data: new Uint8Array(await source.arrayBuffer()) };
+        if (cancelled) return;
+
+        loadingTask = pdfjsLib.getDocument({ ...input, isEvalSupported: false }) as PdfLoadingTaskLike;
         const pdf = (await loadingTask.promise) as PdfDocumentLike;
 
-        if (cancelled) {
-          void pdf.destroy();
-          return;
-        }
+        if (cancelled) return;
 
         pdfDocumentRef.current = pdf;
         const nextPages: PdfPreviewPage[] = [];
@@ -165,13 +160,10 @@ function PdfTermsPreview({ url, title }: { url: string; title: string }) {
 
     return () => {
       cancelled = true;
-      loadingTask?.destroy();
-      if (pdfDocumentRef.current) {
-        void pdfDocumentRef.current.destroy();
-        pdfDocumentRef.current = null;
-      }
+      pdfDocumentRef.current = null;
+      void loadingTask?.destroy().catch(() => {});
     };
-  }, [url]);
+  }, [source]);
 
   useEffect(() => {
     if (pages.length === 0) return;
@@ -190,6 +182,7 @@ function PdfTermsPreview({ url, title }: { url: string; title: string }) {
         if (!canvas || !context) continue;
 
         const page = await pdf.getPage(pageInfo.pageNumber);
+        if (cancelled) return;
         const viewport = page.getViewport({ scale: 1.65 });
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
 
@@ -208,7 +201,9 @@ function PdfTermsPreview({ url, title }: { url: string; title: string }) {
       }
     };
 
-    void renderPages();
+    void renderPages().catch(() => {
+      if (!cancelled) setError("PDF náhled se nepodařilo vykreslit.");
+    });
 
     return () => {
       cancelled = true;
@@ -278,6 +273,7 @@ export function CalculatorCoefficientModal({
   showAutoTermsValidityNote,
   showAutoTermsPreview,
   autoTermsPreviewUrl,
+  secureTermsDocumentId,
   showNeonTermsPreview,
   neonTermsPreviewUrl,
   neonPreviewBlobUrl,
@@ -309,6 +305,7 @@ export function CalculatorCoefficientModal({
     window.addEventListener("keydown", handleKey);
     return () => { document.body.style.overflow = overflow; window.removeEventListener("keydown", handleKey); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, [isOpen]);
+  const secureTerms = useSecureDocumentBlob(isOpen ? secureTermsDocumentId : null);
   if (!isOpen) return null;
 
   const hasCoefficientViewToggle =
@@ -321,7 +318,9 @@ export function CalculatorCoefficientModal({
     product === "uniqaAuto" ||
     product === "uniqaflotila" ||
     product === "pillowAuto" ||
-    product === "kooperativaAuto";
+    product === "kooperativaAuto" ||
+    product === "koopodzam" ||
+    product === "koopmajetekobcan";
   const productPeriodText =
     product === "conseqzenit"
       ? "CONSEQ Zenit DPS – platnost od 01.08.2024"
@@ -371,6 +370,14 @@ export function CalculatorCoefficientModal({
       ? "ČPP DOMEX NEURON – koeficienty platné od 01.09.2026"
       : product === "cpphafan"
       ? "ČPP HAFAN – koeficienty platné od 01.01.2017"
+      : product === "koopodzam"
+      ? coefficientView === "historical"
+        ? "Kooperativa ODZAM – koeficienty platné do 31.08.2026"
+        : "Kooperativa ODZAM NEURON – koeficienty platné od 01.09.2026"
+      : product === "koopmajetekobcan"
+      ? coefficientView === "historical"
+        ? "Kooperativa majetek a odpovědnost občanů – koeficienty platné do 31.08.2026"
+        : "Kooperativa OBCAN NEURON – koeficienty platné od 01.09.2026"
       : product === "kooppmop"
       ? "Kooperativa PMOP – koeficienty platné od 01.08.2021"
       : product === "cppcestovko"
@@ -428,9 +435,10 @@ export function CalculatorCoefficientModal({
       : product === "domexneuron"
       ? "aktuální podmínky"
       : (mode === "accelerated" ? "Zrychlený režim" : "Běžný režim");
-  const autoTermsPreviewIsPdf = /\.pdf(?:[?#]|$)/i.test(
-    autoTermsPreviewUrl ?? ""
-  );
+  const termsPreviewLink = secureTermsDocumentId ? secureTerms.url : autoTermsPreviewUrl;
+  const termsPdfSource = secureTermsDocumentId
+    ? secureTerms.blob
+    : /\.pdf(?:[?#]|$)/i.test(autoTermsPreviewUrl ?? "") ? autoTermsPreviewUrl : null;
 
   return (
     <div className={styles.overlay}>
@@ -606,28 +614,39 @@ export function CalculatorCoefficientModal({
                 ))}
               </div>
             )}
-            {showAutoTermsPreview && autoTermsPreviewUrl && (
+            {showAutoTermsPreview && (
               <div className={styles.document}>
                 <div className={styles.documentHeader}>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                     Provizní podmínky {productLabel || "Auto"} (náhled)
                   </p>
-                  <a
-                    href={autoTermsPreviewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                  >
-                    Otevřít v nové kartě
-                  </a>
+                  {termsPreviewLink && (
+                    <a
+                      href={termsPreviewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                    >
+                      Otevřít v nové kartě
+                    </a>
+                  )}
                 </div>
+                {product === "koopmajetekobcan" && secureTermsDocumentId && (
+                  <p className={styles.notice}>
+                    Pro pozici 1P kalkulačka používá následnou sazbu 0,0277. V PDF je uvedeno 0,2770.
+                  </p>
+                )}
                 <div className={styles.autoPreview}>
-                  {autoTermsPreviewIsPdf ? (
+                  {termsPdfSource ? (
                     <PdfTermsPreview
-                      url={autoTermsPreviewUrl}
+                      source={termsPdfSource}
                       title={`Provizní podmínky ${productLabel || "Auto"}`}
                     />
-                  ) : (
+                  ) : secureTermsDocumentId ? (
+                    <p role={secureTerms.error ? "alert" : "status"} className="p-4 text-sm text-slate-600">
+                      {secureTerms.error ?? "Načítám provizní podmínky…"}
+                    </p>
+                  ) : autoTermsPreviewUrl && (
                     <Image
                       src={autoTermsPreviewUrl}
                       alt={`Provizní podmínky ${productLabel || "Auto"}`}

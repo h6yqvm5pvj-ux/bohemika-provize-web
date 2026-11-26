@@ -414,10 +414,10 @@ export function LifeInsuranceContent({ advisorSlug, theme, locale, presentationE
                 <div className={`relative min-h-[265px] overflow-hidden rounded-[26px] border p-5 pb-32 sm:min-h-[310px] sm:p-6 border-[var(--life-line)] bg-[var(--life-soft)]`}>
                   <div className={`pointer-events-none absolute inset-5 rounded-[18px] border border-[var(--life-line)]`} />
                   <Image
-                    src="/images/zivotni-pojisteni-kafe.png"
+                    src="/images/zivotni-pojisteni-kafe.webp"
                     alt=""
-                    width={6000}
-                    height={5300}
+                    width={1600}
+                    height={1413}
                     aria-hidden="true"
                     sizes="(max-width: 639px) 200px, 526px"
                     className="pointer-events-none absolute -bottom-8 -right-8 z-[1] h-44 w-auto select-none object-contain drop-shadow-[0_24px_28px_rgba(16,7,12,0.34)] sm:-bottom-8 sm:-right-28 sm:h-[29rem]"

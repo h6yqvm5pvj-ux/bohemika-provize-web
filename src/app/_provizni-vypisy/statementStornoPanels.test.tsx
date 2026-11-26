@@ -53,11 +53,25 @@ describe("commission reversals and manual contract termination", () => {
   async function openReversal(statusCode = "A001", systemContract = contract) {
     await act(async () => root.render(<StornoContractsSectionPanel statement={statement(statusCode)}
       matchesByContractNumber={{ "my:123456": { status: "matched", contracts: [systemContract] } }}
-      presentation={presentation} onRequestSystemStorno={onRequest} />));
+      currentUserEmail={systemContract.adviserEmail} presentation={presentation} onRequestSystemStorno={onRequest} />));
     await act(async () => button("Storna provizí").click());
     await act(async () => button("Spárované").click());
     await act(async () => container.querySelector<HTMLButtonElement>("article button")!.click());
   }
+
+  it.each([
+    [contract, "Smlouva: aktivní"],
+    [{ ...contract, status: "storno", stornoDate: "2026-05-15" }, "Smlouva ukončená"],
+  ] as const)("shows the system contract status badge while the storno row is collapsed", async (systemContract, expectedBadge) => {
+    await act(async () => root.render(<StornoContractsSectionPanel statement={statement()}
+      matchesByContractNumber={{ "my:123456": { status: "matched", contracts: [systemContract] } }}
+      presentation={presentation} />));
+    await act(async () => button("Storna provizí").click());
+    await act(async () => button("Spárované").click());
+
+    expect(container.textContent).toContain("Storno provize");
+    expect(container.textContent).toContain(expectedBadge);
+  });
 
   it.each(["A001", "UNKNOWN", ""])("keeps even a full reversal with status %s neutral and leaves termination to the adviser", async statusCode => {
     const before = structuredClone(contract);
@@ -91,6 +105,18 @@ describe("commission reversals and manual contract termination", () => {
     expect(button("Zadat ukončení smlouvy ručně")).toBeUndefined();
     expect(container.textContent).not.toContain("k ověření ukončení smlouvy");
     expect(onRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [80, /Storno je o 20,00\sKč vyšší/],
+    [100, /Storno sedí/],
+  ] as const)("compares a payout of %i with the current statement in the paired storno detail", async (amount, expected) => {
+    await openReversal("S001", { ...contract, status: "storno", stornoDate: "2026-05-15",
+      commissionPayouts: [{ code: "A101", amount, statementDate: "2026-05-08", writtenBy: contract.adviserEmail }],
+    });
+    const comparison = container.querySelector('section[aria-label="Odhad a srážky storna"]');
+    expect(comparison?.querySelector('[scope="row"]')?.textContent).toBe("A101");
+    expect(comparison?.textContent).toMatch(expected);
   });
 
   it("treats manager and other payment reversals without a contract status as financial information", async () => {

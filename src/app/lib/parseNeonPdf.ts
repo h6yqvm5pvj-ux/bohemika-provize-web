@@ -282,7 +282,36 @@ const pickMostFrequentContractNumber = (
 
 const DEATH_ACCIDENT_LABEL_REGEX = /(?:zakladni\s+pojisteni\s+pro\s+pripad\s+)?smrt(?:i)?\s+urazem/i;
 
-export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Promise<NeonPdfResult> {
+function readNeonEndorsementFields(asciiText: string, lines: string[]): NeonPdfResult {
+  // PDF text items can split a label or a date across several lines. Match the
+  // value right after its label so the original policy dates are never used.
+  const readAfterLabel = (label: RegExp, value: RegExp) =>
+    asciiText.match(new RegExp(`(?:^|\\n)(?:${label.source})\\s*:?\\s*(${value.source})`))?.[1];
+  const readDate = (label: RegExp) =>
+    toDateInput(readAfterLabel(label, /\d{1,2}\s*\.\s*\d{1,2}\s*\.\s*\d{4}\b/)?.replace(/\s+/g, ""));
+  const readNumber = (label: RegExp) =>
+    readAfterLabel(label, /\d(?:[^\S\n]*\d){9}(?![^\S\n]*\d)/)?.replace(/\s+/g, "");
+  const readPremium = (label: RegExp) => parsePremiumFragment(readAfterLabel(label,
+    /(?:\d{1,3}(?:[^\S\n]\d{3})+|\d+)(?:[,.]\d{1,2})?(?=[^\S\n]*(?:kc\b|czk\b|\n|$))/));
+  const refreshNumber = readNumber(/nahrada\s+pojistne\s+smlouvy\s+c\.?/);
+  const isRefresh = /nahrada\s*[-–—]\s*refresh\b/.test(asciiText) || Boolean(refreshNumber);
+  const contractNumber = readNumber(/cislo\s+(?:pojistne\s+)?smlouvy|pojistna\s+smlouva\s+c\.?/)
+    ?? pickNeonContractNumberFromBarcode(asciiText)
+    ?? lines.slice(0, 4).find(line => /^\d(?:[^\S\n]*\d){9}$/.test(line))?.replace(/\s+/g, "");
+  return {
+    isEndorsement: true,
+    isRefresh,
+    contractNumber,
+    policyStartDate: readDate(/modelovano\s+s\s+ucinnosti\s+zmeny\s+od|(?:datum\s+)?(?:ucinnosti|ucinnost|pocatek)\s+zmeny(?:\s+od)?/) ??
+      readDate(/datum\s+ucinnosti(?:\s+od)?/),
+    contractSignedDate: readDate(/datum\s+(?:uzavreni|sjednani|podpisu)\s+(?:zmeny|dodatku|zadanky)/) ?? readDate(/datum\s+(?:uzavreni|sjednani)/),
+    amount: readPremium(/(?:nove\s+mesicni\s+pojistne|mesicni\s+pojistne\s+po\s+zmene)(?:\s+v\s+kc)?/) ??
+      readPremium(/celkove\s+mesicni\s+pojistne(?:\s+v\s+kc)?/),
+    frequency: "monthly",
+  };
+}
+
+export async function parseNeonPdf(file: File, options: PdfReadOptions & { endorsementOnly?: boolean } = {}): Promise<NeonPdfResult> {
   const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
 
@@ -317,6 +346,11 @@ export async function parseNeonPdf(file: File, options: PdfReadOptions = {}): Pr
     /zadanka\s+o\s+zmenu/i.test(asciiText) &&
     /\bneon\b/i.test(asciiText) &&
     /ceska\s+podnikatelska\s+pojistovna/i.test(asciiText);
+  if (options.endorsementOnly) {
+    const isChangeRequest = /(?:zadanka|zadost)\s+o\s+zmenu\b/.test(asciiText) && /\bneon\b/.test(asciiText) &&
+      /ceska\s+podnikatelska\s+pojistovna|\bcpp\b/.test(asciiText);
+    return isChangeRequest ? readNeonEndorsementFields(asciiLines.join("\n"), lines) : {};
+  }
   const detectedVersion = /\b(?:rizikove\s+pojisteni\s+)?neon\s+risk\b/.test(asciiText)
     ? "neon_risk"
     : null;

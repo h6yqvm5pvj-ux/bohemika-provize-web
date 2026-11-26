@@ -1,8 +1,15 @@
 import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode } from "./statementParsing";
-import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow } from "./statementTypes";
+import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow, MatchedSystemContract } from "./statementTypes";
+import { normalizeStatementProductMapCode } from "./statementProductMap";
 import { baseCommissionCodeForPayoutComparison, isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
+import { cppKomplexRenewalTerms } from "@/app/lib/commissionPeriodForCode";
 import { autoSubsequentCoefficientForProduct, isAutoSubsequentCommissionCode } from "@/app/lib/productFormulas/autoCommission";
 import type { Position, Product } from "@/app/types/domain";
+
+export function cppKomplexStatementRenewal(contract: MatchedSystemContract | null, row: Pick<CommissionRow, "product" | "type">) {
+  return contract && normalizeStatementProductMapCode(row.product) === "CPP_PPR"
+    ? cppKomplexRenewalTerms(contract, row.type) : null;
+}
 
 /** Use the same per-payment base and product-specific code aliases as payout import. */
 export const autoSubsequentExpectedAmountForRow = (
@@ -32,9 +39,10 @@ export const isHigherStatementCommission = (comparison: { status: CommissionAmou
 
 export const isAmountComparisonExplainedByAutoPremiumChange = (
   comparison: CommissionAmountComparison,
-  premiumChange: { annualDifference: number } | null
+  premiumChange: { annualDifference: number; source?: string } | null
 ): boolean => Boolean(
   premiumChange &&
+  premiumChange.source !== "commission_amount" &&
   // A row-base calculation already accounts for the premium change.
   !comparison.usesStatementPremiumBase &&
   comparison.status === "diff" &&

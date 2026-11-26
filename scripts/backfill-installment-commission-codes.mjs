@@ -22,7 +22,7 @@ const { calculateCppPPRs } = jiti("../src/app/lib/productFormulas/cppPPRs.ts");
 const { calculateCppSimplex } = jiti("../src/app/lib/productFormulas/cppsimplex.ts");
 const { calculateDomex } = jiti("../src/app/lib/productFormulas/domex.ts");
 const { calculateKoopCestovko } = jiti("../src/app/lib/productFormulas/koopcestovko.ts");
-const { calculateKoopMajetekObcan } = jiti("../src/app/lib/productFormulas/koopmajetekobcan.ts");
+const { calculateKoopFit, calculateKoopMajetekObcan } = jiti("../src/app/lib/productFormulas/koopmajetekobcan.ts");
 const { calculateKoopOdzam } = jiti("../src/app/lib/productFormulas/koopodzam.ts");
 const { calculateKoopPmop } = jiti("../src/app/lib/productFormulas/kooppmop.ts");
 const { calculateMaxEfekt } = jiti("../src/app/lib/productFormulas/maximaMaxEfekt.ts");
@@ -424,15 +424,20 @@ const calculateStoredResult = ({
     case "cpphafan": {
       return separatedPaymentResult(calculateCppHafan(amount, frequency, position), frequency);
     }
-    case "koopmajetekobcan":
     case "koopfit": {
+      return separatedPaymentResult(calculateKoopFit(amount, frequency, position), frequency);
+    }
+    case "koopmajetekobcan": {
       return separatedPaymentResult(
-        calculateKoopMajetekObcan(amount, frequency, position),
+        calculateKoopMajetekObcan(amount, frequency, position, contractSignedDateIso),
         frequency
       );
     }
     case "koopodzam": {
-      return separatedPaymentResult(calculateKoopOdzam(amount, frequency, position), frequency);
+      return separatedPaymentResult(
+        calculateKoopOdzam(amount, frequency, position, contractSignedDateIso),
+        frequency
+      );
     }
     case "kooppmop": {
       return separatedPaymentResult(calculateKoopPmop(amount, frequency, position), frequency);

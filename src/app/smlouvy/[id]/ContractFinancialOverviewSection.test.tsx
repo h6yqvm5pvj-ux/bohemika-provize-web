@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ContractFinancialOverview } from "./ContractFinancialOverviewSection";
+import { ContractFinancialOverview, ContractPaidCommissionSummary } from "./ContractFinancialOverviewSection";
 import type { ContractFinancialOverviewModel } from "./contractFinancialOverviewModel";
 
 const model: ContractFinancialOverviewModel = {
@@ -17,6 +17,15 @@ function render(overview = model) {
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+it("shows the net recorded contract amount and distinguishes unavailable from zero", () => {
+  const summary = (amount: number | null) => renderToStaticMarkup(<ContractPaidCommissionSummary amount={amount} />);
+  expect(summary(715.09)).toContain("Ze smlouvy celkem vyplaceno");
+  expect(summary(715.09)).toContain("715,09");
+  expect(summary(0)).toContain("0,00");
+  expect(summary(null)).toContain("Výplaty nejsou k dispozici.");
+  expect(summary(-20)).toContain('data-negative="true"');
+});
 
 describe("whole-contract financial overview", () => {
   it("separates recorded receipts from expected money and shows the precise forecast period", () => {

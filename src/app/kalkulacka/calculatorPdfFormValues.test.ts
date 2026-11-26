@@ -11,6 +11,11 @@ import type { CalculatorPdfFormSetters } from "./calculatorPdfFormTypes";
 import { domexNeuronDataFixture } from "../../../tests/helpers/domexNeuronFixture";
 
 describe("single PDF form mapping", () => {
+  it("clears missing fields from a FLEXI change request instead of reusing the previous PDF", () => {
+    expect(mapSinglePdfFormValues("flexi", { isEndorsement: true }).values).toMatchObject({
+      clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "", amountText: "",
+    });
+  });
   it("shows Kooperativa insured items after single and batch PDF import and clears stale items", () => {
     const parsed = { insuredCoverages: [{ name: "Domácnost", variant: "KOMFORT", deductible: 500, sumInsured: 500_000 }] };
     expect(mapSinglePdfFormValues("koopmajetekobcan", parsed).values.koopInsuredCoverages).toEqual(parsed.insuredCoverages);

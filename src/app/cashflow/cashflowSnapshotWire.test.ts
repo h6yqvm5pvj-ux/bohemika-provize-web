@@ -17,6 +17,8 @@ import {
 const date = new Date("2026-09-12T10:11:12.345Z");
 const fixture = (): CashflowItem => ({
   id: "all-fields", date, amount: -123.456789, productKey: "neon",
+  maxxContractDetailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456",
+  extranetContractDetailUrl: "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx?type=detail&p_EntityTypeID=43&p_EntityID=123456",
   note: "Poznámka s diakritikou", frequency: "monthly", source: "manager",
   contractNumber: "123", clientName: "Testovací klient", inputAmount: 1_234.56,
   currentMonthlyPremium: 1_230, lifeStornoBaseMonthlyPremium: null,
@@ -54,6 +56,19 @@ function wire(): CashflowSnapshotWire {
 }
 
 describe("cashflow snapshot wire format", () => {
+  it("roundtrips a scheduled unknown commission and keeps it out of numeric month totals", () => {
+    const unknown: CashflowItem = {
+      id: "pending-flexi", date, amount: 0, productKey: "flexi", ownerEmail: "owner@example.test",
+      entryId: "flexi", commissionCode: "B0301", payoutStatus: "predicted", amountUnknown: true,
+    };
+    const items = [unknown, { ...unknown, id: "known", amount: 150, amountUnknown: false }];
+    const months = groupItemsByMonth(items);
+    expect(months[0]).toMatchObject({ hasUnknownAmounts: true, total: 150, predictedTotal: 150 });
+    const result = parseCashflowSnapshot(JSON.parse(JSON.stringify(serializeCashflowSnapshot({ items, months }))));
+    expect(result?.months[0].hasUnknownAmounts).toBe(true);
+    expect(result?.items[0]).toMatchObject({ amountUnknown: true, commissionCode: "B0301" });
+  });
+
   it("retains every field, exact decimals, duplicate items, dates, and order through JSON", () => {
     const items = [fixture(), { ...fixture(), amount: 0, note: undefined }];
     const result = { items, months: groupItemsByMonth(items) };

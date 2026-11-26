@@ -1,16 +1,28 @@
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { createCommissionCodeProjection } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { commissionPayoutPositionForOwner } from "@/lib/server/commissionPayoutPositionPolicy";
+import { officeContributionFromStatementHtml } from "./officeContribution";
+import { isFlexiIncreaseWithoutBase, matchFlexiIncreaseByCommission, matchingFlexiIncreaseCommission, matchLifeStatementEntry, type LifeStatementEntry } from "@/app/lib/lifeStatementMatching";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { savePremiumBaseResolution, PremiumBaseResolutionError } from "@/lib/server/premiumBaseResolution";
 import { saveLifeStatementPremiumChange } from "@/lib/server/lifeStatementPremiumChange";
 import { isLifeIncreaseCode, matchesLifePremiumIncrease, lifeIncreaseExpectedAmount } from "@/app/lib/lifePremiumIncrease";
 import { createEndorsementCommissionPlan, type EndorsementCommissionPlanEntry } from "@/app/lib/endorsementCommissionPlan";
-import { commissionPeriodForCode } from "@/app/lib/commissionPeriodForCode";
+import { commissionPeriodForCode, cppKomplexRenewalTerms } from "@/app/lib/commissionPeriodForCode";
+import { expectedCppPPRsRenewalAmount } from "@/app/lib/productFormulas/cppPPRs";
+import { matchesNeonRecurringStatementBase, matchingNeonRecurringStatementPremium, neonRecurringStatementPeriod } from "@/app/lib/neonRecurringStatementBase";
+import { neonRefreshCareBackfillBase } from "@/app/lib/neonRefreshCareBackfill";
+import { neonCorrectionPayoutAmount } from "@/app/lib/neonCorrection";
 import { resolveDomexNeuronIndexation } from "@/app/lib/domexNeuronIndexation";
 import { domexNeuronPremiumAtDate } from "@/app/lib/domexNeuronPremiumHistory";
+import { isKooperativaAutoRenewalPayout } from "@/app/lib/kooperativaCPayoutMeaning";
 import { generateCashflow } from "@/app/cashflow/generator";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { cashflowCalendarDate } from "@/lib/server/cashflowCalendar";
 import { createHash } from "node:crypto";
+import { readStatementDates, statementOrderDate } from "@/app/lib/statementProcessingOrder";
+import { readStatementOrder, StatementOrderError, withStatementOrder } from "./processingOrder";
 
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -26,6 +38,7 @@ import {
   hasContractAccess,
   requireContractsEntryGuard,
 } from "@/app/api/contracts/_lib/contractsApi";
+import { payoutExceptionStatementMonth, payoutPositionException, payoutPositionExceptionItems } from "@/app/lib/payoutPositionException";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import {
   baseCommissionCodeForPayoutComparison,
@@ -36,15 +49,26 @@ import {
   isNeonInvestmentLifeA201Payout,
   isNeonRefreshStatementProductCode,
   isNeonStatementProductCode,
+  neonRefreshCarePayoutBase,
   neonRefreshRiskAnnualPremiumBase,
 } from "@/app/lib/commissionPayoutRules";
+import { isAutoAcquisitionInstallmentStatementCode, isExactAutoSubsequentStatementCode } from "@/app/lib/commissionStatementPayoutEvidence";
 import { totalWithMultipliers } from "@/app/lib/commissionTotals";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
+  investmentInstitutionId,
   isAutoProduct,
+  isFrequencyAutoPayoutProduct,
   isLifeProduct,
   isPropertyProduct,
+  isRecordOnlyProduct,
+  type ProductInstitutionId,
 } from "@/app/lib/productCatalog";
+import {
+  INVESTMENT_PAYOUT_PROGRESS_TYPE,
+  type InvestmentPayoutMatchEvent,
+  type InvestmentPayoutMatchResult,
+} from "@/app/lib/investmentPayoutMatching";
 import {
   calculateAllianzAuto,
   calculateCppAuto,
@@ -94,16 +118,28 @@ import {
 } from "./premiumHistoryStatements";
 import { statementChronologyCanOverwrite } from "./statementChronologyGuards";
 import { commissionStatementIdentityKey } from "./statementIdentity";
+import { mergeInvestmentStatementPayouts, type InvestmentStatementPayouts } from "./investmentStatementPayouts";
+import {
+  compactHash, extractCommissionPayoutRowsFromStoredHtml, investmentInstitutionFromStatementCode,
+  lifeIncreaseReceiptEvidence, lifeProductKeyFromStatementCode, statementPayoutKey,
+  normalizeCommissionCodeKey, normalizeContractNumber, normalizeExternalHref, normalizeProductCode, normalizeText,
+  parseMoneyOrNull, payoutRowCanReplaceDeduction, type CommissionStatementPayoutRow,
+} from "./statementPayoutRows";
+import {
+  dedupeStatementSnapshots, parseCzechDate, parsePeriodRange, resolvePayoutMonthKey,
+  savedStatementMetadataFromDoc, statementChronologyMsFromParts,
+  toMillis, type SavedStatementReprocessItem,
+} from "./savedStatementArchive";
 import {
   MAX_STATEMENT_HTML_LENGTH,
   readStatementHtml,
   StatementHtmlError,
   StatementMatchingBudget,
-  statementLinkHref,
   statementSectionHtml,
   statementSummaryHtml,
   statementTableCells,
   statementTableRows,
+  statementHtmlText as stripHtmlText,
 } from "./statementHtml";
 import {
   mergeRebuiltStatementRecords,
@@ -133,7 +169,7 @@ const statementProcessingErrorResponse = (error: unknown): NextResponse | null =
   if (error instanceof StatementHtmlError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
   }
-  if (error instanceof StatementRebuildCapacityError) {
+  if (error instanceof StatementRebuildCapacityError || error instanceof StatementOrderError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
   }
   const code = (error as { code?: unknown } | null)?.code;
@@ -164,37 +200,11 @@ type StatementSummaryPayload = {
   stornoTotal?: unknown;
 };
 
-type FirestoreTimestamp = {
-  seconds: number;
-  nanoseconds: number;
-  toDate?: () => Date;
-};
-
 type AutoPremiumStatementRow = StoredAutoPremiumStatementRow;
 
-type CommissionStatementPayoutStatus = "paid" | "storno";
-type CommissionStatementPayoutRowLayout =
-  | "commission"
-  | "own_storno"
-  | "own_deduction";
-
-type CommissionStatementPayoutRow = {
-  rowKey: string;
-  rowId: string;
-  detailUrl: string | null;
-  contractNumber: string;
-  client: string | null;
-  productCode: string;
-  commissionCode: string;
-  baseAmount: number | null;
-  commission: number;
-  reserveFund: number | null;
-  career: string | null;
-  signedAt: string | null;
-  validFrom: string | null;
-  source: "own" | "manager";
-  status: CommissionStatementPayoutStatus;
-};
+const isOwnFlexiIncreasePayoutWithoutBase = (row: CommissionStatementPayoutRow): boolean =>
+  row.source === "own" && row.status === "paid" &&
+  isFlexiIncreaseWithoutBase(lifeProductKeyFromStatementCode(row.productCode), row);
 
 type StatementPayoutCorrectionInfo = {
   detail: string;
@@ -207,6 +217,9 @@ type ContractCommissionPayoutDifferenceReason =
   | "storno";
 
 type ContractCommissionPayoutRecord = {
+  sourceValidFrom?: string | null;
+  sourceSignedAt?: string | null;
+  sourceBaseAmount?: number | null;
   key: string;
   code: string | null;
   title: string | null;
@@ -245,6 +258,7 @@ type ContractCommissionStornoSummaryRecord = {
 
 type ContractPremiumStatementHistoryEntry = {
   changeReason?: "indexation";
+  premiumDerivedFromCommission?: boolean;
   key: string;
   premiumKind: AutoPremiumStatementRow["premiumKind"];
   statementId: string;
@@ -311,6 +325,7 @@ const AUTO_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
 const PROPERTY_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
   CPP_DOMX: "domex",
   "CPP_DOMX+2": "domex",
+  "CPP_DOMX+N": "domexneuron",
   "CPP_DOMEX+": "domex",
   CPP_BYTEX: "cppbytex",
   "CPP_BYTEX+": "cppbytex",
@@ -324,17 +339,6 @@ const PROPERTY_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
   KOO_PMOP: "kooppmop",
   MAX_DOM3: "maxdomov",
   MAX_DOM4: "maxdomov",
-};
-
-const LIFE_STATEMENT_PRODUCT_KEYS: Record<string, Product> = {
-  CPP_N_LIFE: "neon",
-  CPP_N_RISK: "neon",
-  CPP_NEON: "neon",
-  CPP_NEONRF: "neon",
-  CPP_NRF_LF: "neon",
-  CPP_NRF_IN: "neon",
-  KOOP_FLEXI: "flexi",
-  BHMK_PILLOW_UR_NM: "pillowInjury",
 };
 
 const POSITION_VALUES: Position[] = [
@@ -358,13 +362,6 @@ const POSITION_VALUES: Position[] = [
 ];
 const POSITION_SET = new Set<string>(POSITION_VALUES);
 
-const normalizeText = (value: unknown, maxLength = 220): string | null => {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  if (!normalized) return null;
-  return normalized.slice(0, maxLength);
-};
-
 const normalizeEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
@@ -379,15 +376,6 @@ const normalizeNullableNumber = (value: unknown): number | null => {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
 };
 
-const stripHtmlText = (value: string): string => {
-  // Do not retry a failing tag match at every '<' in an unclosed text suffix.
-  const lastEnd = value.lastIndexOf(">");
-  return (value.slice(0, lastEnd + 1).replace(/<[^>]*>/g, " ") + value.slice(lastEnd + 1))
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-};
 
 const normalizeStatementLabel = (value: string): string =>
   stripHtmlText(value)
@@ -396,42 +384,6 @@ const normalizeStatementLabel = (value: string): string =>
     .toLowerCase()
     .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
     .trim();
-
-const parseMoneyOrNull = (value: string): number | null => {
-  const normalized = stripHtmlText(value)
-    .replace(/Kč/gi, "")
-    .replace(/[−–]/g, "-")
-    .replace(/\s/g, "")
-    .replace(",", ".")
-    .trim();
-  if (!/\d/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : null;
-};
-
-const decodeHtmlAttribute = (value: string): string =>
-  value
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'")
-    .replace(/&nbsp;/gi, " ")
-    .trim();
-
-const normalizeExternalHref = (href: string | null | undefined): string | null => {
-  const normalized = decodeHtmlAttribute(String(href ?? ""));
-  if (!normalized || normalized.toLowerCase().startsWith("javascript:")) return null;
-
-  try {
-    return new URL(normalized, "https://sjednatel.bohemiaservis.cz/").toString();
-  } catch {
-    return normalized;
-  }
-};
-
-const firstCellHrefFromRowHtml = (rowHtml: string): string | null => {
-  const firstCell = statementTableCells(rowHtml)[0] ?? "";
-  return normalizeExternalHref(statementLinkHref(firstCell));
-};
 
 const normalizeSjednatelExtranetParam = (
   value: string | number | null | undefined
@@ -479,24 +431,11 @@ const extractPayoutTotalFromStoredHtml = (html: string | null): number | null =>
   return null;
 };
 
-const normalizeContractNumber = (value: string | null | undefined): string | null => {
-  const normalized = String(value ?? "").replace(/\D+/g, "").trim();
-  if (normalized.length > 64) throw new StatementHtmlError();
-  return normalized.length >= 6 ? normalized : null;
-};
-
 const normalizeContractNumberLoose = (value: string | null | undefined): string =>
   String(value ?? "")
     .replace(/\D+/g, "")
     .replace(/^0+/, "")
     .trim();
-
-const normalizeProductCode = (value: string | null | undefined): string =>
-  stripHtmlText(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, "");
 
 const autoProductKeyFromStatementCode = (value: string | null | undefined): Product | null => {
   const code = normalizeProductCode(value);
@@ -516,15 +455,6 @@ const nonLifePremiumProductKeyFromStatementCode = (
   );
 };
 
-const lifeProductKeyFromStatementCode = (value: string | null | undefined): Product | null => {
-  const code = normalizeProductCode(value);
-  if (LIFE_STATEMENT_PRODUCT_KEYS[code]) return LIFE_STATEMENT_PRODUCT_KEYS[code];
-  if (/NEON|N_LIFE|N_RISK/.test(code)) return "neon";
-  if (/FLEXI/.test(code)) return "flexi";
-  if (/PILLOW.*(?:UR|NM)/.test(code)) return "pillowInjury";
-  return null;
-};
-
 const isLifePremiumIncreaseCommissionCode = (
   value: string | null | undefined
 ): boolean => {
@@ -533,316 +463,6 @@ const isLifePremiumIncreaseCommissionCode = (
 };
 
 const extractStatementSectionHtml = statementSectionHtml;
-
-const compactHash = (value: string, length = 24): string =>
-  createHash("sha256").update(value).digest("hex").slice(0, length);
-
-const parseCommissionPayoutRow = (
-  cells: string[],
-  source: CommissionStatementPayoutRow["source"],
-  layout: CommissionStatementPayoutRowLayout = "commission",
-  detailUrl: string | null = null
-): CommissionStatementPayoutRow | null => {
-  const isManagerRow = source === "manager";
-  const isOwnDeductionRow = layout === "own_deduction";
-  const minimumCells = isManagerRow || isOwnDeductionRow ? 13 : 14;
-  if (cells.length < minimumCells || !/^\d+$/.test(cells[0] ?? "")) return null;
-
-  const rowId = cells[0] ?? "";
-  const contractNumber = normalizeContractNumber(cells[1]);
-  const commissionIndex = isManagerRow ? 11 : isOwnDeductionRow ? 11 : 12;
-  const commission = parseMoneyOrNull(cells[commissionIndex] ?? "");
-  if (!contractNumber || commission == null || Math.abs(commission) < 0.005) return null;
-
-  const productIndex =
-    layout === "own_storno" || isOwnDeductionRow ? 5 : isManagerRow ? 5 : 6;
-  const commissionCodeIndex =
-    layout === "own_storno" || isOwnDeductionRow ? 6 : isManagerRow ? 6 : 7;
-  const baseIndex = isManagerRow ? 7 : isOwnDeductionRow ? 7 : 8;
-  const reserveFundIndex = isManagerRow ? 12 : isOwnDeductionRow ? 12 : 13;
-  const careerIndex = isManagerRow ? 10 : isOwnDeductionRow ? 10 : 11;
-  const clientIndex = isOwnDeductionRow ? 3 : layout === "own_storno" ? 3 : isManagerRow ? 3 : 4;
-  const productCode = normalizeProductCode(cells[productIndex]);
-  const commissionCode = stripHtmlText(cells[commissionCodeIndex] ?? "").toUpperCase();
-  const baseAmount = parseMoneyOrNull(cells[baseIndex] ?? "");
-  const reserveFund = parseMoneyOrNull(cells[reserveFundIndex] ?? "");
-  const career = normalizeText(cells[careerIndex], 24);
-  const status: CommissionStatementPayoutStatus =
-    layout !== "commission" || commission < 0 ? "storno" : "paid";
-  const rowKey = compactHash(
-    [
-      source,
-      layout,
-      rowId,
-      contractNumber,
-      productCode,
-      commissionCode,
-      baseAmount ?? "",
-      commission,
-      status,
-    ].join(":")
-  );
-
-  return {
-    rowKey,
-    rowId,
-    detailUrl,
-    contractNumber,
-    client: normalizeText(cells[clientIndex], 180),
-    productCode,
-    commissionCode,
-    baseAmount,
-    commission: Math.round(commission * 100) / 100,
-    reserveFund,
-    career,
-    signedAt: normalizeText(cells[2], 32),
-    validFrom:
-      isManagerRow || layout !== "commission" ? null : normalizeText(cells[3], 32),
-    source,
-    status,
-  };
-};
-
-const extractRowsFromStatementSection = (
-  sectionHtml: string,
-  source: CommissionStatementPayoutRow["source"],
-  layout: CommissionStatementPayoutRowLayout = "commission"
-): CommissionStatementPayoutRow[] => {
-  const rowMatches = statementTableRows(sectionHtml);
-  const rows: CommissionStatementPayoutRow[] = [];
-
-  for (const rowHtml of rowMatches) {
-    const cells = statementTableCells(rowHtml).map(stripHtmlText);
-    const row = parseCommissionPayoutRow(
-      cells,
-      source,
-      layout,
-      firstCellHrefFromRowHtml(rowHtml)
-    );
-    if (row) rows.push(row);
-  }
-
-  return rows;
-};
-
-const extractB36HalfPayoutRowsFromOtherPayments = (
-  html: string | null
-): CommissionStatementPayoutRow[] => {
-  if (!html) return [];
-  const otherPaymentsHtml = extractStatementSectionHtml(html, "ostatni_platby");
-  const rowMatches = statementTableRows(otherPaymentsHtml);
-  const rows: CommissionStatementPayoutRow[] = [];
-  const seenRows = new Set<string>();
-
-  const addRow = ({
-    contractNumber,
-    commissionCode,
-    amount,
-    rowId,
-  }: {
-    contractNumber: string | null;
-    commissionCode: string;
-    amount: number | null;
-    rowId: string;
-  }) => {
-    if (!contractNumber || amount == null || amount <= MONEY_MATCH_TOLERANCE) {
-      return;
-    }
-
-    const seenKey = `${contractNumber}:${commissionCode}:${amount.toFixed(2)}`;
-    if (seenRows.has(seenKey)) {
-      return;
-    }
-    seenRows.add(seenKey);
-
-    const rowKey = compactHash(
-      [
-        "own",
-        "other_payment_b36_half",
-        rowId,
-        contractNumber,
-        commissionCode,
-        amount,
-      ].join(":")
-    );
-
-    rows.push({
-      rowKey,
-      rowId,
-      detailUrl: null,
-      contractNumber,
-      client: null,
-      productCode: "",
-      commissionCode,
-      baseAmount: null,
-      commission: Math.round(amount * 100) / 100,
-      reserveFund: null,
-      career: null,
-      signedAt: null,
-      validFrom: null,
-      source: "own",
-      status: "paid",
-    });
-  };
-
-  rowMatches.forEach((rowHtml, index) => {
-    const cells = statementTableCells(rowHtml).map(stripHtmlText);
-    if (cells.length < 2) return;
-
-    const description = normalizeText(cells[0]);
-    if (!description || /^Popis$/i.test(description) || /^Počet položek:/i.test(description)) {
-      return;
-    }
-
-    if (!/\b50\s*%/i.test(description) || !/\bB(?:36|3601)\b/i.test(description)) {
-      return;
-    }
-
-    const commissionCode = /\bB3601\b/i.test(description) ? "B3601_HALF" : "B36_HALF";
-    addRow({
-      contractNumber: normalizeContractNumber(
-        description.match(/smlouvy\s+(\d{6,})/i)?.[1] ?? null
-      ),
-      commissionCode,
-      amount: parseMoneyOrNull(cells[1]),
-      rowId: `ostatni-b36-${index + 1}`,
-    });
-  });
-
-  if (rows.length === 0) {
-    const sectionText = normalizeText(otherPaymentsHtml) ?? "";
-    const textMatches = sectionText.matchAll(
-      /smlouvy\s+(\d{6,})\s+50\s*%\s*(?:provize\s*)?B(3601|36)\b(?:\s*\([^)]*\))?(?:\s+\d{1,2}\.\d{1,2}\.\d{4})?\s+(-?\s*\d{1,3}(?:\s\d{3})*,\d{2})/giu
-    );
-    let textIndex = 0;
-    for (const match of textMatches) {
-      textIndex += 1;
-      addRow({
-        contractNumber: normalizeContractNumber(match[1] ?? null),
-        commissionCode: match[2]?.toUpperCase() === "3601" ? "B3601_HALF" : "B36_HALF",
-        amount: parseMoneyOrNull(match[3] ?? ""),
-        rowId: `ostatni-b36-text-${textIndex}`,
-      });
-    }
-  }
-
-  return rows;
-};
-
-const moneyAmountsMatch = (left: number | null | undefined, right: number | null | undefined): boolean => {
-  const leftNumber = Number(left);
-  const rightNumber = Number(right);
-  return (
-    Number.isFinite(leftNumber) &&
-    Number.isFinite(rightNumber) &&
-    Math.abs(leftNumber - rightNumber) <= MONEY_MATCH_TOLERANCE
-  );
-};
-
-const deductionOffsetsPayoutRow = (
-  row: CommissionStatementPayoutRow,
-  deduction: CommissionStatementPayoutRow
-): boolean =>
-  row.status === "paid" &&
-  row.commission > 0 &&
-  deduction.status === "storno" &&
-  deduction.commission < 0 &&
-  row.source === deduction.source &&
-  row.contractNumber === deduction.contractNumber &&
-  normalizeProductCode(row.productCode) === normalizeProductCode(deduction.productCode) &&
-  normalizeCommissionCodeKey(row.commissionCode) ===
-    normalizeCommissionCodeKey(deduction.commissionCode) &&
-  normalizeText(row.career, 24) === normalizeText(deduction.career, 24) &&
-  moneyAmountsMatch(row.baseAmount, deduction.baseAmount) &&
-  moneyAmountsMatch(row.commission, Math.abs(deduction.commission)) &&
-  moneyAmountsMatch(row.reserveFund, Math.abs(deduction.reserveFund ?? 0));
-
-const payoutRowCanReplaceDeduction = (
-  row: CommissionStatementPayoutRow,
-  deduction: CommissionStatementPayoutRow
-): boolean =>
-  row.status === "paid" &&
-  row.commission > 0 &&
-  deduction.status === "storno" &&
-  deduction.commission < 0 &&
-  row.source === deduction.source &&
-  row.contractNumber === deduction.contractNumber &&
-  normalizeProductCode(row.productCode) === normalizeProductCode(deduction.productCode) &&
-  normalizeCommissionCodeKey(row.commissionCode) ===
-    normalizeCommissionCodeKey(deduction.commissionCode) &&
-  moneyAmountsMatch(row.baseAmount, deduction.baseAmount) &&
-  !deductionOffsetsPayoutRow(row, deduction);
-
-const splitPayoutRowsOffsetByDeductions = (
-  payoutRows: CommissionStatementPayoutRow[],
-  deductionRows: CommissionStatementPayoutRow[]
-): {
-  payoutRows: CommissionStatementPayoutRow[];
-  deductionRows: CommissionStatementPayoutRow[];
-} => {
-  if (deductionRows.length === 0) {
-    return { payoutRows, deductionRows: [] };
-  }
-
-  const usedDeductionIndexes = new Set<number>();
-  const filteredPayoutRows = payoutRows.filter((row) => {
-    const matchIndex = deductionRows.findIndex(
-      (deduction, index) =>
-        !usedDeductionIndexes.has(index) && deductionOffsetsPayoutRow(row, deduction)
-    );
-    if (matchIndex < 0) return true;
-
-    usedDeductionIndexes.add(matchIndex);
-    return false;
-  });
-
-  return {
-    payoutRows: filteredPayoutRows,
-    deductionRows: deductionRows.filter((_, index) => !usedDeductionIndexes.has(index)),
-  };
-};
-
-const extractCommissionPayoutRowsFromStoredHtml = (
-  html: string | null
-): CommissionStatementPayoutRow[] => {
-  if (!html) return [];
-
-  const ownCommissionHtml = extractStatementSectionHtml(html, "provize");
-  const ownMainHtml = ownCommissionHtml.replace(/<b>\s*STORNA\s*<\/b>[\s\S]*$/i, "");
-  const ownStornoHtml = ownCommissionHtml.match(/<b>\s*STORNA\s*<\/b>[\s\S]*$/i)?.[0] ?? "";
-  const ownStornoSectionHtml = extractStatementSectionHtml(html, "storna");
-  const ownDeductionSectionHtml = extractStatementSectionHtml(html, "odecty");
-  const managerCommissionHtml = extractStatementSectionHtml(html, "manazer");
-  const ownRows = splitPayoutRowsOffsetByDeductions(
-    extractRowsFromStatementSection(ownMainHtml, "own"),
-    extractRowsFromStatementSection(ownDeductionSectionHtml, "own", "own_deduction")
-  );
-  const allManagerRows = extractRowsFromStatementSection(managerCommissionHtml, "manager");
-  const managerRows = splitPayoutRowsOffsetByDeductions(
-    allManagerRows.filter((row) => row.status === "paid"),
-    allManagerRows.filter((row) => row.status === "storno")
-  );
-  const rows = [
-    ...ownRows.payoutRows,
-    ...extractB36HalfPayoutRowsFromOtherPayments(html),
-    ...ownRows.deductionRows,
-    ...extractRowsFromStatementSection(ownStornoHtml, "own", "own_storno"),
-    ...extractRowsFromStatementSection(ownStornoSectionHtml, "own", "own_storno"),
-    ...managerRows.payoutRows,
-    ...managerRows.deductionRows,
-  ];
-
-  const uniqueRows = new Map<string, CommissionStatementPayoutRow>();
-  for (const row of rows) {
-    if (!uniqueRows.has(row.rowKey)) uniqueRows.set(row.rowKey, row);
-  }
-
-  return [...uniqueRows.values()].sort((a, b) => {
-    const contractCompare = a.contractNumber.localeCompare(b.contractNumber, "cs");
-    if (contractCompare !== 0) return contractCompare;
-    return a.rowKey.localeCompare(b.rowKey, "cs");
-  });
-};
 
 const commissionCodeAliases = (value: string | null | undefined): string[] => {
   const code = stripHtmlText(value ?? "").toUpperCase().replace(/\s+/g, "");
@@ -918,12 +538,15 @@ const paidCommissionKey = (contractNumber: string, code: string): string | null 
 const isPositiveSettledPayoutRow = (row: CommissionStatementPayoutRow): boolean =>
   row.status === "paid" && row.commission > 0;
 
-const extractPaidCommissionKeysFromStoredHtml = (html: string | null): string[] => {
+const extractPaidCommissionKeysFromStoredHtml = (
+  html: string | null,
+  payoutRows = extractCommissionPayoutRowsFromStoredHtml(html)
+): string[] => {
   if (!html) return [];
   const keys = new Set<string>();
   const budget = new StatementMatchingBudget();
 
-  for (const row of extractCommissionPayoutRowsFromStoredHtml(html)) {
+  for (const row of payoutRows) {
     if (!isPositiveSettledPayoutRow(row)) continue;
     const comparableCode = baseCommissionCodeForStatementComparison(row.commissionCode, autoProductKeyFromStatementCode(row.productCode));
     const aliases = [...new Set([...commissionCodeAliases(row.commissionCode), ...commissionCodeAliases(comparableCode)])];
@@ -1093,11 +716,14 @@ const extractLifePremiumIncreaseRowsFromStoredHtml = (
   });
 };
 
-const extractPaidContractNumbersFromStoredHtml = (html: string | null): string[] => {
+const extractPaidContractNumbersFromStoredHtml = (
+  html: string | null,
+  payoutRows: CommissionStatementPayoutRow[]
+): string[] => {
   if (!html) return [];
   const contractNumbers = new Set<string>();
 
-  for (const row of extractCommissionPayoutRowsFromStoredHtml(html)) {
+  for (const row of payoutRows) {
     if (!isPositiveSettledPayoutRow(row)) continue;
     const contractNumber = normalizeContractNumber(row.contractNumber);
     if (contractNumber) contractNumbers.add(contractNumber);
@@ -1125,59 +751,6 @@ const parseLimit = (value: string | null): number => {
   return Math.min(MAX_LIST_LIMIT, Math.max(1, Math.floor(parsed)));
 };
 
-const toMillis = (value: unknown): number | null => {
-  if (!value) return null;
-  if (value instanceof Date) {
-    const ms = value.getTime();
-    return Number.isFinite(ms) ? ms : null;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? Math.round(value) : null;
-  }
-  if (typeof value === "string") {
-    const parsed = new Date(value).getTime();
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  if (typeof value === "object") {
-    const ts = value as FirestoreTimestamp;
-    if (typeof ts.toDate === "function") {
-      const ms = ts.toDate().getTime();
-      return Number.isFinite(ms) ? ms : null;
-    }
-    if (
-      typeof ts.seconds === "number" &&
-      Number.isFinite(ts.seconds) &&
-      typeof ts.nanoseconds === "number" &&
-      Number.isFinite(ts.nanoseconds)
-    ) {
-      return ts.seconds * 1000 + Math.floor(ts.nanoseconds / 1_000_000);
-    }
-  }
-  return null;
-};
-
-const parseCzechDate = (value: string | null | undefined): number | null => {
-  const match = value?.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  return Date.UTC(year, month - 1, day);
-};
-
-const parsePeriodRange = (period: string | null) => {
-  const match = period?.match(
-    /(\d{1,2}\.\d{1,2}\.\d{4})\s*-\s*(\d{1,2}\.\d{1,2}\.\d{4})/
-  );
-  if (!match) return { periodStartMs: null, periodEndMs: null };
-  return {
-    periodStartMs: parseCzechDate(match[1]),
-    periodEndMs: parseCzechDate(match[2]),
-  };
-};
-
 const parseMonthKey = (yearParam: string | null, monthParam: string | null): string | null => {
   const year = Number(yearParam);
   const month = Number(monthParam);
@@ -1185,32 +758,6 @@ const parseMonthKey = (yearParam: string | null, monthParam: string | null): str
   if (year < 2000 || year > 2100 || month < 1 || month > 12) return null;
   return `${year}-${month}`;
 };
-
-const monthKeyFromMs = (ms: number | null): string | null => {
-  if (ms == null) return null;
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}`;
-};
-
-const nextMonthKeyFromMs = (ms: number | null): string | null => {
-  if (ms == null) return null;
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return null;
-  const nextMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-  return `${nextMonth.getUTCFullYear()}-${nextMonth.getUTCMonth() + 1}`;
-};
-
-const resolvePayoutMonthKey = ({
-  statementDateMs,
-  periodEndMs,
-  periodStartMs,
-}: {
-  statementDateMs: number | null;
-  periodEndMs: number | null;
-  periodStartMs: number | null;
-}): string | null =>
-  monthKeyFromMs(statementDateMs) ?? nextMonthKeyFromMs(periodEndMs) ?? monthKeyFromMs(periodStartMs);
 
 const safeStatementId = (value: string | null): string | null => {
   const id = normalizeText(value, 80);
@@ -1318,59 +865,6 @@ const resolveEntryRefsByContractNumber = async (
 const statementCollection = (email: string) =>
   adminDb!.collection("usersPrivate").doc(email).collection("commissionStatements");
 
-const statementSnapshotIdentity = (
-  docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-): string => {
-  const data = docSnap.data() ?? {};
-  return commissionStatementIdentityKey({
-    statementId: docSnap.id,
-    statementNumber: data.statementNumber,
-    statementPeriod: data.period,
-    statementDate: data.statementDate,
-    advisorNumber: data.advisorNumber,
-  });
-};
-
-const statementSnapshotRecency = (
-  docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-): number =>
-  toMillis(docSnap.data()?.updatedAtMs) ??
-  toMillis(docSnap.data()?.processedAtMs) ??
-  toMillis(docSnap.data()?.createdAtMs) ??
-  0;
-
-const dedupeStatementSnapshots = (
-  docs: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[]
-): FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>[] => {
-  const byIdentity = new Map<
-    string,
-    FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-  >();
-  const order: string[] = [];
-
-  for (const docSnap of docs) {
-    const identity = statementSnapshotIdentity(docSnap);
-    const current = byIdentity.get(identity);
-    if (!current) {
-      byIdentity.set(identity, docSnap);
-      order.push(identity);
-      continue;
-    }
-    if (statementSnapshotRecency(docSnap) > statementSnapshotRecency(current)) {
-      byIdentity.set(identity, docSnap);
-    }
-  }
-
-  return order
-    .map((identity) => byIdentity.get(identity))
-    .filter(
-      (
-        docSnap
-      ): docSnap is FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData> =>
-        Boolean(docSnap)
-    );
-};
-
 const findExistingStatementByBusinessIdentity = async ({
   email,
   statementIdentity,
@@ -1432,8 +926,10 @@ const serializeStatementDoc = (
     resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
   const payoutTotal =
     normalizeNullableNumber(data.payoutTotal) ?? extractPayoutTotalFromStoredHtml(html);
-  const paidContractNumbers = extractPaidContractNumbersFromStoredHtml(html);
-  const paidCommissionKeys = extractPaidCommissionKeysFromStoredHtml(html);
+  const officeContributionTotal = officeContributionFromStatementHtml(html);
+  const payoutRows = extractCommissionPayoutRowsFromStoredHtml(html);
+  const paidContractNumbers = extractPaidContractNumbersFromStoredHtml(html, payoutRows);
+  const paidCommissionKeys = extractPaidCommissionKeysFromStoredHtml(html, payoutRows);
   const summary = {
     id: docSnap.id,
     fileName: normalizeText(data.fileName) ?? "Provizní výpis",
@@ -1450,13 +946,31 @@ const serializeStatementDoc = (
     commissionTotal: normalizeNumber(data.commissionTotal),
     payoutTotal,
     otherPaymentsTotal: normalizeNumber(data.otherPaymentsTotal),
+    ...(officeContributionTotal > 0 ? { officeContributionTotal } : {}),
     managerCommissionTotal: normalizeNumber(data.managerCommissionTotal),
     createdAtMs: toMillis(data.createdAtMs),
     updatedAtMs: toMillis(data.updatedAtMs),
   };
-  // Cashflow still needs paid-contract/code matching from legacy HTML, but not
-  // premium-history rows or the potentially large processing report.
-  if (shape === "cashflow") return summary;
+  // Keep just the fields needed to match receipts and recover legacy bases.
+  if (shape === "cashflow") {
+    const paidAutoInstallments = payoutRows.flatMap(row => {
+      if (!isPositiveSettledPayoutRow(row)) return [];
+      const productKey = autoProductKeyFromStatementCode(row.productCode);
+      if (!productKey) return [];
+      const code = row.commissionCode.replace(/\s+/g, "");
+      const comparableCode = baseCommissionCodeForPayoutComparison(code, productKey);
+      const sourceBaseAmount = isFrequencyAutoPayoutProduct(productKey) && row.baseAmount != null && row.baseAmount > 0
+        ? row.baseAmount : null;
+      const supportsReceiptEvidence = sourceBaseAmount != null &&
+        (isExactAutoSubsequentStatementCode(comparableCode) || isAutoAcquisitionInstallmentStatementCode(comparableCode));
+      if (!isExactAutoSubsequentStatementCode(code) && !supportsReceiptEvidence) return [];
+      return [{ contractNumber: row.contractNumber, productKey, source: row.source, code, amount: row.commission,
+        ...(sourceBaseAmount != null ? { sourceBaseAmount } : {}) }];
+    });
+    const lifeIncreaseRows = lifeIncreaseReceiptEvidence(docSnap.id, payoutRows);
+    return { ...summary, ...(paidAutoInstallments.length ? { paidAutoInstallments } : {}),
+      ...(lifeIncreaseRows.length ? { lifeIncreaseRows } : {}) };
+  }
 
   return {
     ...summary,
@@ -1610,12 +1124,6 @@ const normalizeCommissionTitle = (value: unknown): string =>
     .toLowerCase()
     .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
     .trim();
-
-const normalizeCommissionCodeKey = (value: unknown): string =>
-  String(value ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
 
 const baseCommissionCodeForStatementComparison = (value: unknown, product?: Product | null): string =>
   baseCommissionCodeForPayoutComparison(value, product);
@@ -1805,79 +1313,13 @@ const resetContractStatementDerivedFields = async ({
   return summary;
 };
 
-const statementChronologyMsFromParts = ({
-  statementDate,
-  statementDateMs,
-  statementPeriod,
-  periodEndMs,
-  periodStartMs,
-}: {
-  statementDate?: string | null;
-  statementDateMs?: number | null;
-  statementPeriod?: string | null;
-  periodEndMs?: number | null;
-  periodStartMs?: number | null;
-}): number | null => {
-  if (statementDateMs != null) return statementDateMs;
-  const parsedStatementDate = parseCzechDate(statementDate);
-  if (parsedStatementDate != null) return parsedStatementDate;
-  if (periodEndMs != null) return periodEndMs;
-  const parsedPeriod = parsePeriodRange(statementPeriod ?? null);
-  return parsedPeriod.periodEndMs ?? periodStartMs ?? parsedPeriod.periodStartMs ?? null;
-};
-
-type SavedStatementReprocessItem = {
-  id: string;
-  ref: FirebaseFirestore.DocumentReference<FirebaseFirestore.DocumentData>;
-  html: string;
-  statementNumber: string | null;
-  statementPeriod: string | null;
-  statementDate: string | null;
-  periodEndMs: number | null;
-  statementChronologyMs: number | null;
-  payoutMonthKey: string | null;
-};
-
 const savedStatementReprocessItemFromDoc = (
   docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ): SavedStatementReprocessItem | null => {
-  const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-  const html = readStatementHtml(data.html);
+  const html = readStatementHtml(docSnap.data()?.html);
   if (!html) return null;
   extractPaidCommissionKeysFromStoredHtml(html);
-
-  const statementDate = normalizeText(data.statementDate, 32);
-  const statementDateMs = toMillis(data.statementDateMs) ?? parseCzechDate(statementDate);
-  const statementPeriod = normalizeText(data.period, 80);
-  const storedPeriodStartMs = toMillis(data.periodStartMs);
-  const storedPeriodEndMs = toMillis(data.periodEndMs);
-  const parsedPeriod = parsePeriodRange(statementPeriod);
-  const periodStartMs = storedPeriodStartMs ?? parsedPeriod.periodStartMs;
-  const periodEndMs = storedPeriodEndMs ?? parsedPeriod.periodEndMs;
-  const statementChronologyMs =
-    toMillis(data.statementChronologyMs) ??
-    statementChronologyMsFromParts({
-      statementDate,
-      statementDateMs,
-      statementPeriod,
-      periodEndMs,
-      periodStartMs,
-    });
-  const payoutMonthKey =
-    normalizeText(data.payoutMonthKey, 16) ??
-    resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
-
-  return {
-    id: docSnap.id,
-    ref: docSnap.ref,
-    html,
-    statementNumber: normalizeText(data.statementNumber, 64),
-    statementPeriod,
-    statementDate,
-    periodEndMs,
-    statementChronologyMs,
-    payoutMonthKey,
-  };
+  return { ...savedStatementMetadataFromDoc(docSnap), html };
 };
 
 const refreshStatementResolvedChronologyMs = (contract: ContractDoc): number | null =>
@@ -1938,6 +1380,9 @@ const payoutRecordNeedsRefresh = (
   existing: ContractCommissionPayoutRecord,
   incoming: ContractCommissionPayoutRecord
 ): boolean =>
+  existing.sourceValidFrom !== incoming.sourceValidFrom ||
+  existing.sourceSignedAt !== incoming.sourceSignedAt ||
+  existing.sourceBaseAmount !== incoming.sourceBaseAmount ||
   existing.status !== incoming.status ||
   existing.expectedAmount !== incoming.expectedAmount ||
   existing.difference !== incoming.difference ||
@@ -2169,13 +1614,6 @@ const amountFromCommissionItems = (
   return null;
 };
 
-const amountFromContractItems = (
-  contract: ContractDoc,
-  rowCode: string,
-  predicate: (title: string) => boolean
-): number | null =>
-  amountFromCommissionItems(Array.isArray(contract.items) ? contract.items : [], rowCode, predicate);
-
 const managerOverrideForViewer = (
   contract: ContractDoc,
   viewerEmail: string | null | undefined
@@ -2263,11 +1701,31 @@ const expectedAutoSubsequentPayoutAmountForRow = (
   return coefficient == null ? null : Math.round(rowBase * coefficient * 100) / 100;
 };
 
+const isAutoSubsequentCommissionPayout = (
+  contract: ContractDoc,
+  row: CommissionStatementPayoutRow
+): boolean => {
+  const code = normalizeCommissionCodeKey(row.commissionCode);
+  return Boolean(
+    row.source === "own" &&
+    contract.productKey &&
+    isAutoProduct(contract.productKey) &&
+    autoProductKeyFromStatementCode(row.productCode) === contract.productKey &&
+    /^B(?:C)?\d+/.test(code) &&
+    isAutoSubsequentCommissionCode(code)
+  );
+};
+
+const isKooperativaRenewalRow = (row: Pick<CommissionStatementPayoutRow, "productCode" | "commissionCode">) =>
+  isKooperativaAutoRenewalPayout(autoProductKeyFromStatementCode(row.productCode), row.commissionCode);
+
 const baseExpectedPayoutAmountForRow = (
   contract: ContractDoc,
   row: CommissionStatementPayoutRow,
   viewerEmail: string | null | undefined
 ): number | null => {
+  if (hasPendingFlexiRenovationBase(contract)) return null;
+  if (contract.productKey === "kooperativaAuto" && isKooperativaRenewalRow(row)) return null;
   // A201 in ČPP Životní pojištění NEON is the investment-life component. It intentionally
   // uses a different premium base than A101, so it must not be compared with
   // the regular immediate commission calculated for the contract.
@@ -2289,14 +1747,13 @@ const baseExpectedPayoutAmountForRow = (
         ? contract.items
         : [];
   if (isLifeIncreaseCode(code)) {
+    if (isOwnFlexiIncreasePayoutWithoutBase(row)) return matchingFlexiIncreaseCommission(contract, row);
     return matchesLifePremiumIncrease(contract, row.baseAmount ?? 0)
       ? lifeIncreaseExpectedAmount(sourceItems, [code]) : null;
   }
   if (row.source === "manager" && sourceItems.length === 0) return null;
   const amountFromItems = (predicate: (title: string) => boolean) =>
-    row.source === "manager"
-      ? amountFromCommissionItems(sourceItems, comparableCode, predicate)
-      : amountFromContractItems(contract, comparableCode, predicate);
+    amountFromCommissionItems(sourceItems, comparableCode, predicate);
 
   const autoSubsequentExpected = expectedAutoSubsequentPayoutAmountForRow(contract, row);
   if (autoSubsequentExpected != null) return autoSubsequentExpected;
@@ -2366,8 +1823,24 @@ type StatementEndorsementContext = {
   entry: EndorsementCommissionPlanEntry;
   plan: ReturnType<typeof createEndorsementCommissionPlan>;
   asOfMs: number;
+  statementPeriodEnd: number | null;
   hasDecrease?: boolean;
   scheduledPeriods?: Map<string, Set<string>>;
+};
+
+const neonRecurringPremiumForRow = (
+  entry: EndorsementCommissionPlanEntry,
+  row: CommissionStatementPayoutRow,
+  statementEnd: number | null,
+  plan: StatementEndorsementContext["plan"],
+) => {
+  if (entry.productKey !== "neon" || row.status === "storno" || row.commission <= 0 ||
+    !isNeonStatementProductCode(row.productCode)) return null;
+  const period = neonRecurringStatementPeriod(entry.policyStartDate, row.commissionCode, statementEnd);
+  return period ? matchingNeonRecurringStatementPremium(period, row.baseAmount, day => {
+    const change = plan.neonRecurringPremium(entry, day);
+    return change ? { ...change, annualPremium: change.monthlyPremium * 12 } : null;
+  }) : null;
 };
 
 const hasProvenStatementCommissionPeriod = (
@@ -2409,10 +1882,22 @@ const projectStatementCommissionAmount = (
   context?: StatementEndorsementContext
 ): number | null => {
   if (amount == null || !context || row.status === "storno" || isLifeIncreaseCode(row.commissionCode)) return amount;
+  const premium = neonRecurringPremiumForRow(context.entry, row, context.statementPeriodEnd, context.plan);
+  if (premium) return Math.round(amount * (premium.monthlyPremium / premium.originalMonthlyPremium) * 100) / 100;
   context.hasDecrease ??= context.plan.adjust(context.entry, 100, "9999-12-31") != null;
   if (!context.hasDecrease) return amount;
-  const period = commissionPeriodForCode(contract, row.commissionCode);
+  const statementPeriod = contract.productKey === "neon" && !contract.isRefresh && !contract.refreshCommissionBase
+    ? neonRecurringStatementPeriod(contract.policyStartDate, row.commissionCode, context.statementPeriodEnd) : null;
+  let period = commissionPeriodForCode(contract, row.commissionCode);
   if (!period || (!isLifeProduct(contract.productKey) && !hasProvenStatementCommissionPeriod(contract, row, period, context))) return null;
+  if (statementPeriod) {
+    const originalAnnual = lifeRiskAnnualPremiumBase(contract, context.statementPeriodEnd);
+    const reduction = statementPeriod && originalAnnual != null
+      ? context.plan.adjust(context.entry, originalAnnual, statementPeriod.cutoff) : null;
+    if (statementPeriod && reduction && matchesNeonRecurringStatementBase(row.baseAmount, reduction.amount)) {
+      period = statementPeriod.cutoff;
+    }
+  }
   return context.plan.adjust(context.entry, amount, period)?.amount ?? amount;
 };
 
@@ -2422,11 +1907,25 @@ const expectedPayoutAmountForRow = (
   viewerEmail: string | null | undefined,
   context?: StatementEndorsementContext
 ): number | null => {
+  const code = baseCommissionCodeForStatementComparison(row.commissionCode, contract.productKey);
+  if (contract.productKey === "cppPPRs" && normalizeProductCode(row.productCode) === "CPP_PPR" && contract.paymentFrequencyChanges?.length &&
+      /^B(?:C)?\d+$/.test(code)) {
+    const renewal = cppKomplexRenewalTerms(contract, code);
+    if (!renewal) return null;
+    const items = row.source === "manager" ? managerOverrideItemsForViewer(contract, viewerEmail) : contract.items ?? [];
+    return expectedCppPPRsRenewalAmount(items, renewal.multiplier);
+  }
   const amount = baseExpectedPayoutAmountForRow(contract, row, viewerEmail);
+  const careBase = neonRefreshCarePayoutBase(contract, row);
+  if (amount != null && careBase && !contract.neonRefreshCareAnnualPremium) {
+    return Math.round(amount * careBase.multiplier * 100) / 100;
+  }
   // Auto subsequent commissions already use the actual premium base in this
   // statement row. Applying the decrease again would reduce them twice.
   if (expectedAutoSubsequentPayoutAmountForRow(contract, row) != null) return amount;
-  return projectStatementCommissionAmount(contract, row, amount, context);
+  const periodAmount = amount == null || row.status === "storno" ? amount
+    : neonCorrectionPayoutAmount(contract, amount, context?.statementPeriodEnd);
+  return projectStatementCommissionAmount(contract, row, periodAmount, context);
 };
 
 const normalizePositionValue = (value: unknown): Position | null =>
@@ -2529,6 +2028,7 @@ const isNeonRefreshMissingOriginalInSystem = (contract: ContractDoc): boolean =>
 type NeonRefreshStatementBaseUpdate = {
   statementAnnualPremiumBase: number;
   statementMonthlyPremiumBase: number;
+  neonRefreshCareAnnualPremium: number | null;
   coefficientSet: CommissionCoefficientSet;
   items: CommissionResultItemDTO[];
   total: number;
@@ -2547,15 +2047,17 @@ const buildNeonRefreshStatementBaseUpdate = ({
   coefficientSetOverride,
   allowStatementMarkedRefresh = false,
   confirmExistingRefresh = false,
+  resolveCarePremium = false,
 }: {
   contract: ContractDoc;
   payoutRows: CommissionStatementPayoutRow[];
   coefficientSetOverride: CommissionCoefficientSet | null;
   allowStatementMarkedRefresh?: boolean;
   confirmExistingRefresh?: boolean;
+  resolveCarePremium?: boolean;
 }): NeonRefreshStatementBaseUpdate | null => {
   const productKey = contract.productKey;
-  if (productKey !== "neon") return null;
+  if (productKey !== "neon" || contract.neonCorrection) return null;
 
   const hasRefreshStatementRows = payoutRows.some((row) =>
     isNeonRefreshStatementProductCode(row.productCode)
@@ -2590,9 +2092,14 @@ const buildNeonRefreshStatementBaseUpdate = ({
     typeof contract.durationYears === "number" && Number.isFinite(contract.durationYears)
       ? contract.durationYears
       : null;
+  const neonRefreshCareAnnualPremium = contract.neonRefreshCareAnnualPremium ??
+    (resolveCarePremium ? neonRefreshCareBackfillBase(contract, null, payoutRows.map(row => ({
+      code: row.commissionCode, productCode: row.productCode, annual: row.baseAmount, amount: row.commission,
+    }))) : null);
   const result = calculateResultForCoefficientSet({
     productKey,
     amount: statementMonthlyPremiumBase,
+    neonRefreshCareAnnualPremium,
     frequencyRaw,
     position,
     commissionMode,
@@ -2611,11 +2118,12 @@ const buildNeonRefreshStatementBaseUpdate = ({
   return {
     statementAnnualPremiumBase,
     statementMonthlyPremiumBase,
+    neonRefreshCareAnnualPremium,
     coefficientSet,
     items: comparableResult.items,
     total: comparableResult.total,
     managerOverrides: recomputeManagerOverridesForCoefficientSet({
-      contract,
+      contract: { ...contract, isRefresh: true, neonRefreshCareAnnualPremium },
       adviserPosition: position,
       adviserMode: commissionMode,
       signedDateIso,
@@ -2739,6 +2247,7 @@ const buildCommissionDiffItems = (
 const calculateResultForCoefficientSet = ({
   productKey,
   amount,
+  neonRefreshCareAnnualPremium,
   frequencyRaw,
   position,
   commissionMode,
@@ -2748,6 +2257,7 @@ const calculateResultForCoefficientSet = ({
 }: {
   productKey: Product;
   amount: number;
+  neonRefreshCareAnnualPremium?: number | null;
   frequencyRaw: PaymentFrequency;
   position: Position;
   commissionMode: CommissionMode;
@@ -2771,7 +2281,8 @@ const calculateResultForCoefficientSet = ({
         years,
         commissionMode,
         signedDateIso,
-        coefficientSet
+        coefficientSet,
+        neonRefreshCareAnnualPremium
       );
     }
     case "cppAuto":
@@ -2826,6 +2337,7 @@ const recomputeManagerOverridesForCoefficientSet = ({
   const productKey = contract.productKey;
   if (!productKey) return [];
   const managerChain = Array.isArray(contract.managerChain) ? contract.managerChain : [];
+  const neonRefreshCareAnnualPremium = contract.isRefresh ? contract.neonRefreshCareAnnualPremium : null;
   const overrides: NonNullable<ContractDoc["managerOverrides"]> = [];
   let childPositionForBaseline: Position | null = adviserPosition;
 
@@ -2836,6 +2348,7 @@ const recomputeManagerOverridesForCoefficientSet = ({
     const managerResult = calculateResultForCoefficientSet({
       productKey,
       amount: premium,
+      neonRefreshCareAnnualPremium,
       frequencyRaw,
       position: managerPosition,
       commissionMode: managerMode,
@@ -2847,6 +2360,7 @@ const recomputeManagerOverridesForCoefficientSet = ({
       ? calculateResultForCoefficientSet({
           productKey,
           amount: premium,
+          neonRefreshCareAnnualPremium,
           frequencyRaw,
           position: childPositionForBaseline,
           commissionMode: managerMode,
@@ -2920,6 +2434,9 @@ const buildAutoInitialCommissionBaseUpdate = ({
 }): AutoInitialCommissionBaseUpdate | null => {
   const productKey = contract.productKey;
   if (!productKey || !isAutoProduct(productKey)) return null;
+  // A manually confirmed original premium must survive statement reimports.
+  if (typeof contract.signedAnnualPremiumOverride === "number" &&
+    Number.isFinite(contract.signedAnnualPremiumOverride) && contract.signedAnnualPremiumOverride > 0) return null;
   if (!autoContractWasCreatedFromCommissionStatement(contract)) return null;
 
   const initialEntry = earliestOwnAutoInitialHistoryEntry(premiumHistory);
@@ -3092,6 +2609,7 @@ const statementRowIsCoefficientCandidate = (
     ? autoProductKeyFromStatementCode(row.productCode)
     : lifeProductKeyFromStatementCode(row.productCode);
   if (rowProductKey !== productKey) return false;
+  if (isKooperativaRenewalRow(row)) return false;
   if (finiteMoneyOrNull(row.baseAmount) == null) return false;
 
   const code = baseCommissionCodeForStatementComparison(row.commissionCode, productKey);
@@ -3113,7 +2631,8 @@ const rowCalculationPremiumForCoefficientSet = (
 
 const contractCalculationPremiumForCoefficientSet = (
   contract: ContractDoc
-): number | null => contractCurrentPremium(contract);
+): number | null => contract.neonCorrection && typeof contract.calculationInputAmount === "number" &&
+  Number.isFinite(contract.calculationInputAmount) ? contract.calculationInputAmount : contractCurrentPremium(contract);
 
 const detectCoefficientSetOverrideFromPayoutRows = (
   contract: ContractDoc,
@@ -3186,6 +2705,7 @@ const detectCoefficientSetOverrideFromPayoutRows = (
   const result = calculateResultForCoefficientSet({
     productKey,
     amount: contractPremium,
+    neonRefreshCareAnnualPremium: contract.isRefresh ? contract.neonRefreshCareAnnualPremium : null,
     frequencyRaw,
     position,
     commissionMode: mode,
@@ -3353,13 +2873,15 @@ const payoutRecordDetail = ({
     row.source === "manager"
       ? normalizePositionValue(managerOverrideForViewer(contract, viewerEmail)?.position)
       : normalizePositionValue(contract.position);
-  const referenceLabel = row.source === "manager" ? "meziprovize" : "smlouva";
+  const referenceLabel = row.source === "manager" ? "meziprovize" : "pozice pro výplatu";
   const parts: string[] = [];
 
   if (status === "storno") {
     parts.push(
       `${code}: odúčtování ve výpisu, částka ${formatMoneyDetail(-Math.abs(signedAmount))}.`
     );
+  } else if (contract.productKey === "kooperativaAuto" && isKooperativaRenewalRow(row)) {
+    parts.push(`${code}: vyplaceno ${formatMoneyDetail(signedAmount)} podle výpisu.`);
   } else {
     parts.push(
       `${code}: vyplaceno ${formatMoneyDetail(Math.abs(signedAmount))}, systém ${formatMoneyDetail(expectedAmount)}, rozdíl ${formatSignedMoneyDetail(difference)}.`
@@ -3433,6 +2955,8 @@ const filterDuplicateStatementPayoutRowsForContract = (
   rows: CommissionStatementPayoutRow[],
   contract: ContractDoc,
   viewerEmail: string,
+  payoutMonth: string | null,
+  ownerEmail: string,
   endorsementContext?: StatementEndorsementContext
 ): CommissionStatementPayoutRow[] => {
   const groupedRows = new Map<string, CommissionStatementPayoutRow[]>();
@@ -3453,7 +2977,7 @@ const filterDuplicateStatementPayoutRowsForContract = (
     })) && new Set(group.map(row => finiteMoneyOrNull(row.baseAmount))).size > 1) continue;
 
     const matchingRows = group.filter((row) => {
-      const expectedAmount = expectedPayoutAmountForRow(contract, row, viewerEmail, endorsementContext);
+      const expectedAmount = expectedPayoutAmountForRow(contractForPayoutPosition(contract, row, payoutMonth, ownerEmail), row, viewerEmail, endorsementContext);
       if (expectedAmount == null) return false;
       const difference = Math.round((row.commission - expectedAmount) * 100) / 100;
       return Math.abs(difference) <= payoutDifferenceToleranceForRow(row);
@@ -3473,9 +2997,24 @@ const filterDuplicateStatementPayoutRowsForContract = (
   });
 };
 
+const contractForPayoutPosition = (
+  contract: ContractDoc,
+  row: CommissionStatementPayoutRow,
+  payoutMonth: string | null,
+  ownerEmail: string
+): ContractDoc => {
+  if (row.source !== "own" || row.status === "storno") return contract;
+  const position = payoutPositionException({ ...contract, payoutPositionOverride: commissionPayoutPositionForOwner(ownerEmail, contract) }, payoutMonth);
+  if (!position) return contract;
+  const items = payoutPositionExceptionItems(contract, { keepUnmatched: false });
+  return { ...contract, position, items: items ?? [] };
+};
+
 const payoutRecordFromStatementRow = ({
-  row,
-  contract,
+  row: sourceRow,
+  resolvedCommissionCode,
+  contract: originalContract,
+  ownerEmail,
   statementId,
   statementNumber,
   statementPeriod,
@@ -3489,7 +3028,9 @@ const payoutRecordFromStatementRow = ({
   indexationEvidenceUnambiguous = true,
 }: {
   row: CommissionStatementPayoutRow;
+  resolvedCommissionCode?: string | null;
   contract: ContractDoc;
+  ownerEmail: string;
   statementId: string;
   statementNumber: string | null;
   statementPeriod: string | null;
@@ -3502,6 +3043,10 @@ const payoutRecordFromStatementRow = ({
   endorsementContext?: StatementEndorsementContext;
   indexationEvidenceUnambiguous?: boolean;
 }): ContractCommissionPayoutRecord => {
+  const row = resolvedCommissionCode && resolvedCommissionCode !== sourceRow.commissionCode
+    ? { ...sourceRow, commissionCode: resolvedCommissionCode } : sourceRow;
+  const monthForException = payoutExceptionStatementMonth(statementPeriod, payoutMonthKey);
+  const contract = contractForPayoutPosition(originalContract, row, monthForException, ownerEmail);
   const indexation = resolveDomexNeuronIndexation({
     contract, row: { ...row, basePremium: row.baseAmount },
     coefficient: indexationEvidenceUnambiguous ? domexNeuronIndexationCoefficient(contract, row, writtenBy) : null,
@@ -3529,7 +3074,12 @@ const payoutRecordFromStatementRow = ({
     viewerEmail: writtenBy,
     endorsementContext,
   });
-  if (!indexation.applicable && differenceReason === "commission_amount_mismatch" && isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance })) {
+  if (
+    !indexation.applicable &&
+    differenceReason === "commission_amount_mismatch" &&
+    isHigherCommissionPayout({ amount: signedAmount, expectedAmount, tolerance }) &&
+    !isAutoSubsequentCommissionPayout(contract, row)
+  ) {
     status = "paid";
     differenceReason = null;
   }
@@ -3541,14 +3091,19 @@ const payoutRecordFromStatementRow = ({
     product: contract.productKey,
     commissionCode: row.commissionCode,
   });
-  const statementBaseAmount = canComparePremiumBase || lifeSubsequent
+  const correctedNeonPayout = contract.productKey === "neon" && contract.neonCorrection && expectedAmount != null &&
+    !isLifeIncreaseCode(row.commissionCode);
+  const compareLifeBase = lifeSubsequent || correctedNeonPayout;
+  const statementBaseAmount = canComparePremiumBase || compareLifeBase
     ? finiteMoneyOrNull(row.baseAmount)
     : null;
-  const originalSystemCalculationBase = lifeSubsequent
-    ? lifeRiskAnnualPremiumBase(contract)
+  const originalSystemCalculationBase = compareLifeBase
+    ? lifeRiskAnnualPremiumBase(contract, endorsementContext?.statementPeriodEnd)
     : canComparePremiumBase ? contractCalculationPremiumForCoefficientSet(contract) : null;
-  const systemCalculationBase = projectStatementCommissionAmount(contract, row,
-    originalSystemCalculationBase, endorsementContext);
+  const careBase = neonRefreshCarePayoutBase(contract, row);
+  const systemCalculationBase = careBase && !contract.neonRefreshCareAnnualPremium
+    ? careBase.annual
+    : projectStatementCommissionAmount(contract, row, careBase?.annual ?? originalSystemCalculationBase, endorsementContext);
   const systemBaseAmount =
     systemCalculationBase == null
       ? null
@@ -3566,9 +3121,12 @@ const payoutRecordFromStatementRow = ({
   });
 
   return {
-    key: compactHash(`${statementId}:${row.rowKey}:${row.contractNumber}:${row.commissionCode}`, 32),
-    code: row.commissionCode || null,
-    title: [row.productCode, row.commissionCode].filter(Boolean).join(" · ") || null,
+    key: statementPayoutKey(statementId, sourceRow),
+    code: sourceRow.commissionCode || null,
+    sourceValidFrom: row.validFrom,
+    sourceSignedAt: row.signedAt,
+    sourceBaseAmount: row.baseAmount,
+    title: [sourceRow.productCode, sourceRow.commissionCode].filter(Boolean).join(" · ") || null,
     amount: status === "storno" ? -absAmount : absAmount,
     expectedAmount,
     difference,
@@ -3583,7 +3141,7 @@ const payoutRecordFromStatementRow = ({
     statementPeriod,
     statementDate,
     statementChronologyMs,
-    payoutMonthKey,
+    payoutMonthKey: contract !== originalContract ? monthForException : payoutMonthKey,
     writtenAtMs: nowMs,
     writtenBy,
   };
@@ -3599,7 +3157,7 @@ type AccessibleContractResolution =
       ownerEmail: string;
       entryId: string;
       contract: ContractDoc;
-      endorsementEntries?: EndorsementCommissionPlanEntry[];
+      endorsementEntries?: StatementEndorsementEntry[];
     }
   | { status: "not_found" | "ambiguous" | "skipped"; contractNumber: string };
 
@@ -3628,7 +3186,31 @@ const accessibleContractFamilyRootId = (match: AccessibleContractMatch): string 
 const accessibleContractFamilyKey = (match: AccessibleContractMatch): string =>
   `${normalizeEmail(match.ownerEmail)}::${accessibleContractFamilyRootId(match)}`;
 
-const endorsementPlanEntryForMatch = (match: AccessibleContractMatch): EndorsementCommissionPlanEntry => ({
+type StatementEndorsementEntry = EndorsementCommissionPlanEntry & LifeStatementEntry & {
+  flexiPayoutPositionEntry?: Parameters<typeof payoutPositionExceptionItems>[0];
+};
+
+const flexiPayoutPositionEntryForMatch = ({ contract, ownerEmail }: AccessibleContractMatch): StatementEndorsementEntry["flexiPayoutPositionEntry"] => {
+  if (contract.productKey !== "flexi") return undefined;
+  const payoutPositionOverride = commissionPayoutPositionForOwner(ownerEmail, contract);
+  if (!payoutPositionOverride) return undefined;
+  return {
+    payoutPositionOverride, productKey: contract.productKey, position: contract.position,
+    originalPosition: contract.originalPosition, commissionMode: contract.commissionMode,
+    contractSignedDate: contract.contractSignedDate, calculationInputAmount: contract.calculationInputAmount,
+    inputAmount: contract.inputAmount, items: contract.items, durationYears: contract.durationYears,
+  };
+};
+
+const lifeStatementEntriesForPayoutMonth = <T extends StatementEndorsementEntry>(entries: T[], payoutMonth: string | null): T[] =>
+  entries.map(entry => {
+    const positionEntry = entry.flexiPayoutPositionEntry;
+    return positionEntry && payoutPositionException(positionEntry, payoutMonth)
+      ? { ...entry, items: payoutPositionExceptionItems(positionEntry, { keepUnmatched: false }) }
+      : entry;
+  });
+
+const endorsementPlanEntryForMatch = (match: AccessibleContractMatch): StatementEndorsementEntry => ({
   id: match.entryId,
   // The authorized document path supplies ownership, never a stored/client email.
   userEmail: match.ownerEmail,
@@ -3637,16 +3219,24 @@ const endorsementPlanEntryForMatch = (match: AccessibleContractMatch): Endorseme
   rootContractEntryId: match.contract.rootContractEntryId,
   parentContractEntryId: match.contract.parentContractEntryId,
   policyStartDate: match.contract.policyStartDate,
+  contractSignedDate: match.contract.contractSignedDate,
+  items: match.contract.items,
+  flexiPayoutPositionEntry: flexiPayoutPositionEntryForMatch(match),
   inputAmount: match.contract.inputAmount,
   calculationInputAmount: match.contract.calculationInputAmount,
   effectiveInputAmount: match.contract.effectiveInputAmount,
   previousInputAmount: match.contract.previousInputAmount,
   newInputAmount: match.contract.newInputAmount,
   premiumDelta: match.contract.premiumDelta,
+  premiumIncreaseAmount: match.contract.premiumIncreaseAmount,
   changeType: match.contract.changeType,
+  isRefresh: match.contract.isRefresh,
+  refreshCommissionBase: match.contract.refreshCommissionBase,
+  requiresStatementRefresh: match.contract.requiresStatementRefresh,
+  neonCorrection: match.contract.neonCorrection,
 });
 
-type EndorsementEntriesCache = Map<string, Promise<EndorsementCommissionPlanEntry[]>>;
+type EndorsementEntriesCache = Map<string, Promise<StatementEndorsementEntry[]>>;
 
 /** Forced one-contract replays also need the original, independently authorized family. */
 const loadStatementEndorsementEntries = (
@@ -3655,7 +3245,7 @@ const loadStatementEndorsementEntries = (
   teamEmails: string[],
   canManageContractsAsAdmin: boolean,
   cache: EndorsementEntriesCache
-): Promise<EndorsementCommissionPlanEntry[]> => {
+): Promise<StatementEndorsementEntry[]> => {
   if (match.endorsementEntries) return Promise.resolve(match.endorsementEntries);
   const key = JSON.stringify([match.ownerEmail, match.contract.productKey, accessibleContractFamilyRootId(match)]);
   const previous = cache.get(key);
@@ -3719,21 +3309,6 @@ const contractResolutionAnnualPremium = (contract: ContractDoc): number | null =
   return monthlyPremium != null && monthlyPremium > 0
     ? Math.round(monthlyPremium * 12 * 100) / 100
     : null;
-};
-
-const contractResolutionAnnualPremiumDelta = (contract: ContractDoc): number | null => {
-  const candidates = [
-    finiteMoneyOrNull(contract.premiumDelta),
-    finiteMoneyOrNull(contract.premiumIncreaseAmount),
-  ];
-
-  for (const value of candidates) {
-    if (value != null && Math.abs(value) > 0) {
-      return Math.round(value * 12 * 100) / 100;
-    }
-  }
-
-  return null;
 };
 
 const annualPremiumMatches = (
@@ -3859,28 +3434,25 @@ const selectAccessibleContractFromSingleFamily = ({
   matches,
   payoutRows,
   premiumRows,
+  periodEndMs,
 }: {
   matches: AccessibleContractMatch[];
   payoutRows: CommissionStatementPayoutRow[];
   premiumRows: AutoPremiumStatementRow[];
+  periodEndMs: number | null;
 }): AccessibleContractMatch | null => {
   const timeline = sortAccessibleContractTimeline(matches);
   const originalMatches = timeline.filter((match) => !contractIsEndorsementEntry(match.contract));
-  const endorsementMatches = timeline.filter((match) => contractIsEndorsementEntry(match.contract));
 
-  const lifeIncreaseAnnualBase = premiumRows
-    .filter((row) => row.premiumKind === "life_increase")
-    .map((row) => row.basePremium)
-    .find((base) => base > 0);
-  if (lifeIncreaseAnnualBase != null && lifeIncreaseAnnualBase > 0) {
-    const matchingEndorsement = endorsementMatches.find((match) =>
-      annualPremiumMatches(
-        Math.abs(contractResolutionAnnualPremiumDelta(match.contract) ?? 0),
-        lifeIncreaseAnnualBase
-      )
-    );
-    return matchingEndorsement ?? endorsementMatches[endorsementMatches.length - 1] ?? originalMatches[0] ?? timeline[0] ?? null;
+  if (payoutRows.length === 1 && lifeProductKeyFromStatementCode(payoutRows[0].productCode)) {
+    const selected = matchLifeStatementPayout(timeline.filter(match =>
+      match.contract.productKey === lifeProductKeyFromStatementCode(payoutRows[0].productCode)).map(match => ({
+      ...endorsementPlanEntryForMatch(match), match,
+    })), payoutRows[0], periodEndMs);
+    return selected?.match ?? null;
   }
+  // Mixed rows must be partitioned before selecting a single target.
+  if (premiumRows.some(row => row.premiumKind === "life_increase")) return null;
 
   const initialLifeAnnualBase = payoutRows
     .filter((row) => {
@@ -3899,51 +3471,97 @@ const selectAccessibleContractFromSingleFamily = ({
   return originalMatches[0] ?? timeline[0] ?? null;
 };
 
+function matchLifeStatementPayout<T extends StatementEndorsementEntry>(
+  entries: T[],
+  row: CommissionStatementPayoutRow,
+  periodEndMs: number | null,
+  plan?: StatementEndorsementContext["plan"],
+): T | null {
+  const selected = matchLifeStatementEntry(entries, row);
+  if (!selected || selected.productKey !== "neon" || selected.entryType !== "endorsement") return selected;
+  const root = entries.find(entry => entry.id === selected.rootContractEntryId && entry.entryType !== "endorsement");
+  return root && neonRecurringPremiumForRow(root, row, periodEndMs, plan ?? createEndorsementCommissionPlan(entries))
+    ? root : selected;
+}
+
 const resolveAccessibleContract = async ({
   contractNumber,
   viewerEmail,
   teamEmails,
   payoutRows = [],
   premiumRows = [],
+  payoutMonth = null,
+  periodEndMs = null,
+  canManageContractsAsAdmin = false,
+  matchesCache,
+  investmentInstitution,
 }: {
   contractNumber: string;
   viewerEmail: string;
   teamEmails: string[];
   payoutRows?: CommissionStatementPayoutRow[];
   premiumRows?: AutoPremiumStatementRow[];
+  payoutMonth?: string | null;
+  periodEndMs?: number | null;
+  canManageContractsAsAdmin?: boolean;
+  matchesCache?: Map<string, Promise<AccessibleContractMatch[]>>;
+  investmentInstitution?: ProductInstitutionId;
 }): Promise<AccessibleContractResolution> => {
   const normalizedContractNumber = normalizeContractNumber(contractNumber);
   if (!normalizedContractNumber) return { status: "skipped", contractNumber };
 
-  const allowedOwners = new Set([viewerEmail, ...teamEmails].map(normalizeEmail).filter(Boolean));
-  const refs = await resolveEntryRefsByContractNumber(normalizedContractNumber);
-  const matches: AccessibleContractMatch[] = [];
+  const cacheKey = JSON.stringify([normalizedContractNumber, viewerEmail, teamEmails, canManageContractsAsAdmin]);
+  let pending = matchesCache?.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      const allowedOwners = new Set([viewerEmail, ...teamEmails].map(normalizeEmail).filter(Boolean));
+      const refs = await resolveEntryRefsByContractNumber(normalizedContractNumber);
+      const matches: AccessibleContractMatch[] = [];
 
-  for (const ref of refs) {
-    const ownerEmail = normalizeEmail(ref.path.split("/")[1] ?? "");
-    if (!ownerEmail || !allowedOwners.has(ownerEmail)) continue;
+      for (const ref of refs) {
+        const ownerEmail = normalizeEmail(ref.path.split("/")[1] ?? "");
+        if (!ownerEmail || (!canManageContractsAsAdmin && !allowedOwners.has(ownerEmail))) continue;
 
-    const snap = await ref.get();
-    if (!snap.exists) continue;
-    const contract = (snap.data() ?? {}) as ContractDoc;
-    if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
-      continue;
-    }
-    if (!hasContractAccess({ viewerEmail, teamEmails, ownerEmail, contract })) continue;
+        const snap = await ref.get();
+        if (!snap.exists) continue;
+        const contract = (snap.data() ?? {}) as ContractDoc;
+        if (normalizeContractNumber(contract.contractNumber ?? null) !== normalizedContractNumber) {
+          continue;
+        }
+        if (!canManageContractsAsAdmin && !hasContractAccess({ viewerEmail, teamEmails, ownerEmail, contract })) continue;
 
-    matches.push({
-      status: "matched",
-      updateTime: snap.updateTime!,
-      ref,
-      ownerEmail,
-      entryId: ref.id,
-      contract,
-    });
+        matches.push({
+          status: "matched",
+          updateTime: snap.updateTime!,
+          ref,
+          ownerEmail,
+          entryId: ref.id,
+          contract,
+        });
+      }
+
+      return dedupeEquivalentAccessibleMatches(matches);
+    })();
+    matchesCache?.set(cacheKey, pending);
   }
-
-  const uniqueMatches = dedupeEquivalentAccessibleMatches(matches);
+  const uniqueMatches = await pending;
+  if (investmentInstitution) {
+    const ownMatches = uniqueMatches.filter(match =>
+      match.ownerEmail === viewerEmail && investmentInstitutionId(match.contract.productKey) === investmentInstitution);
+    if (ownMatches.length === 1) return ownMatches[0];
+    return { status: ownMatches.length ? "ambiguous" : "not_found", contractNumber: normalizedContractNumber };
+  }
   if (uniqueMatches.length === 0) {
     return { status: "not_found", contractNumber: normalizedContractNumber };
+  }
+  if (payoutRows.length > 0 && payoutRows.every(isOwnFlexiIncreasePayoutWithoutBase)) {
+    const family = uniqueMatches.filter(match => match.contract.productKey === "flexi");
+    const entries = family.map(match => ({ ...endorsementPlanEntryForMatch(match), match }));
+    const selected = accessibleMatchesRepresentSingleFamily(family)
+      ? matchFlexiIncreaseByCommission(lifeStatementEntriesForPayoutMonth(entries, payoutMonth), payoutRows)?.match : null;
+    return selected
+      ? { ...selected, endorsementEntries: family.map(endorsementPlanEntryForMatch) }
+      : { status: "ambiguous", contractNumber: normalizedContractNumber };
   }
   if (uniqueMatches.length > 1) {
     const technicalDuplicateMatch = selectPreferredTechnicalDuplicateMatch(uniqueMatches);
@@ -3956,12 +3574,79 @@ const resolveAccessibleContract = async ({
       matches: uniqueMatches,
       payoutRows,
       premiumRows,
+      periodEndMs,
     });
     return selectedMatch
       ? { ...selectedMatch, endorsementEntries: uniqueMatches.map(endorsementPlanEntryForMatch) }
       : { status: "ambiguous", contractNumber: normalizedContractNumber };
   }
   return { ...uniqueMatches[0], endorsementEntries: uniqueMatches.map(endorsementPlanEntryForMatch) };
+};
+
+const addStatementExternalLinksOnly = async ({
+  html,
+  viewerEmail,
+  teamEmails,
+  canManageContractsAsAdmin,
+}: {
+  html: string;
+  viewerEmail: string;
+  teamEmails: string[];
+  canManageContractsAsAdmin: boolean;
+}) => {
+  const payoutRows = extractCommissionPayoutRowsFromStoredHtml(html);
+  const premiumRows = [
+    ...extractAutoPremiumRowsFromStoredHtml(html),
+    ...extractLifePremiumIncreaseRowsFromStoredHtml(html),
+  ];
+  const rowsByContract = new Map<string, StatementRowWithExternalLink[]>();
+  for (const row of [...payoutRows, ...premiumRows]) {
+    const contractNumber = normalizeContractNumber(row.contractNumber);
+    if (!contractNumber || !row.detailUrl) continue;
+    const rows = rowsByContract.get(contractNumber) ?? [];
+    rows.push({ detailUrl: row.detailUrl, productCode: row.productCode });
+    rowsByContract.set(contractNumber, rows);
+  }
+
+  let matchedContracts = 0;
+  let updatedContracts = 0;
+  let skippedContracts = 0;
+  let batch = adminDb!.batch();
+  let operations = 0;
+  for (const [contractNumber, linkRows] of rowsByContract) {
+    const contractPayoutRows = payoutRows.filter(
+      (row) => normalizeContractNumber(row.contractNumber) === contractNumber
+    );
+    const contractPremiumRows = premiumRows.filter(
+      (row) => normalizeContractNumber(row.contractNumber) === contractNumber
+    );
+    const resolution = await resolveAccessibleContract({
+      contractNumber,
+      viewerEmail,
+      teamEmails,
+      canManageContractsAsAdmin,
+      payoutRows: contractPayoutRows,
+      premiumRows: contractPremiumRows,
+    });
+    if (resolution.status !== "matched") {
+      skippedContracts += 1;
+      continue;
+    }
+    matchedContracts += 1;
+    const patch = statementExternalLinkPatch(linkRows, resolution.contract);
+    if (Object.keys(patch).length === 0) continue;
+    // These are the only fields written by this action.
+    batch.set(resolution.ref, patch, { merge: true });
+    operations += 1;
+    updatedContracts += 1;
+    if (operations >= 400) {
+      await trackCashflowWrite(() => batch.commit());
+      batch = adminDb!.batch();
+      operations = 0;
+    }
+  }
+  if (operations > 0) await trackCashflowWrite(() => batch.commit());
+  return { matchedContracts, updatedContracts, skippedContracts };
 };
 
 const processingPrivateCollection = (email: string, collection: string) =>
@@ -3996,6 +3681,36 @@ const createProcessingBatchWriter = () => {
 };
 
 type ProcessingBatchWriter = ReturnType<typeof createProcessingBatchWriter>;
+
+const writeInvestmentPayouts = async ({
+  match, statements, viewer, actor, nowMs, writer, result,
+}: {
+  match: AccessibleContractMatch;
+  statements: InvestmentStatementPayouts[];
+  viewer: string;
+  actor: string;
+  nowMs: number;
+  writer: ProcessingBatchWriter;
+  result: ProcessingResult;
+}) => {
+  const merged = mergeInvestmentStatementPayouts({
+    existing: match.contract.commissionPayouts, statements, viewer, nowMs,
+  });
+  result.contractsMatched += 1;
+  result.payoutRecordsExisting += merged.unchanged;
+  if (merged.added || merged.updated) {
+    await writer.updateContract(match, {
+      commissionPayouts: merged.merged,
+      commissionStatementProcessedAtMs: nowMs,
+      updatedAt: new Date(nowMs),
+    }, actor);
+    result.payoutRecordsAdded += merged.added;
+    result.payoutRecordsUpdated += merged.updated;
+    result.contractsUpdated += 1;
+    result.contractsWithPayoutChanges += 1;
+  }
+};
+
 type StatementReplayContext = {
   original: AccessibleContractMatch;
   contract: ContractDoc;
@@ -4089,6 +3804,7 @@ const processStatementWrites = async ({
   ctxEmail,
   actorEmail,
   teamEmails,
+  advisorNumber = null,
   statementNumber,
   statementPeriod,
   statementDate,
@@ -4111,6 +3827,7 @@ const processStatementWrites = async ({
   ctxEmail: string;
   actorEmail: string;
   teamEmails: string[];
+  advisorNumber?: string | null;
   statementNumber: string | null;
   statementPeriod: string | null;
   statementDate: string | null;
@@ -4195,13 +3912,61 @@ const processStatementWrites = async ({
     return items.filter((item): item is SavedStatementReprocessItem => item != null && item.statementChronologyMs != null);
   };
   const touchedContractPaths = new Set<string>();
+  const payoutMonth = payoutExceptionStatementMonth(statementPeriod, payoutMonthKey);
 
+  const matchesCache = new Map<string, Promise<AccessibleContractMatch[]>>();
+  const work: { contractNumber: string; contractPayoutRows: CommissionStatementPayoutRow[];
+    contractPremiumRows: AutoPremiumStatementRow[]; resolution?: AccessibleContractResolution;
+    investmentInstitution?: ProductInstitutionId }[] = [];
   for (const contractNumber of allContractNumbers) {
-    const contractPayoutRows = payoutRowsByContract.get(contractNumber) ?? [];
-    const contractPremiumRows = premiumRowsByContract.get(contractNumber) ?? [];
+    const investments = new Map<ProductInstitutionId, CommissionStatementPayoutRow[]>();
+    const rows = (payoutRowsByContract.get(contractNumber) ?? []).filter(row => {
+      const institution = investmentInstitutionFromStatementCode(row.productCode);
+      if (!institution) return true;
+      if (!forcedContractRef && !replayContext && row.source === "own") {
+        const group = investments.get(institution) ?? [];
+        group.push(row);
+        investments.set(institution, group);
+      }
+      return false;
+    });
+    for (const [investmentInstitution, investmentRows] of investments) {
+      work.push({ contractNumber, contractPayoutRows: investmentRows, contractPremiumRows: [], investmentInstitution });
+    }
+    const premiums = premiumRowsByContract.get(contractNumber) ?? [];
+    if (!rows.length && !premiums.length) continue;
+    if (replayContext || forcedContractRef || !rows.some(row => lifeProductKeyFromStatementCode(row.productCode))) {
+      work.push({ contractNumber, contractPayoutRows: rows, contractPremiumRows: premiums });
+      continue;
+    }
+    const groups = new Map<string, typeof work[number]>();
+    const flexiIncreasePayouts = rows.filter(isOwnFlexiIncreasePayoutWithoutBase);
+    const flexiIncreaseResolution = flexiIncreasePayouts.length > 0
+      ? await resolveAccessibleContract({ contractNumber, viewerEmail: ctxEmail, teamEmails,
+        payoutRows: flexiIncreasePayouts, payoutMonth, canManageContractsAsAdmin, matchesCache }) : null;
+    for (const row of rows) {
+      const rowPremiums = premiums.filter(premium => premium.rowId === row.rowId &&
+        premium.source === row.source && premium.commissionCode === row.commissionCode);
+      const resolution = flexiIncreaseResolution && isOwnFlexiIncreasePayoutWithoutBase(row)
+        ? flexiIncreaseResolution
+        : await resolveAccessibleContract({ contractNumber, viewerEmail: ctxEmail, teamEmails,
+          payoutRows: [row], premiumRows: rowPremiums, periodEndMs, canManageContractsAsAdmin, matchesCache });
+      const key = resolution.status === "matched" ? resolution.ref.path : resolution.status;
+      const group = groups.get(key) ?? { contractNumber, contractPayoutRows: [], contractPremiumRows: [], resolution };
+      group.contractPayoutRows.push(row);
+      group.contractPremiumRows.push(...rowPremiums);
+      groups.set(key, group);
+    }
+    work.push(...groups.values());
+  }
+  for (const task of work) {
+    const { contractNumber } = task;
+    let { contractPayoutRows, contractPremiumRows } = task;
     let resolution: AccessibleContractResolution;
     try {
-      if (replayContext) {
+      if (task.resolution) {
+        resolution = task.resolution;
+      } else if (replayContext) {
         resolution = { ...replayContext.original, contract: replayContext.contract };
       } else if (
         forcedContractRef &&
@@ -4246,15 +4011,19 @@ const processStatementWrites = async ({
           teamEmails,
           payoutRows: contractPayoutRows,
           premiumRows: contractPremiumRows,
+          investmentInstitution: task.investmentInstitution,
+          matchesCache,
         });
       }
-      if (resolution.status === "matched" && !resolution.endorsementEntries) {
+      if (resolution.status === "matched" && !resolution.endorsementEntries && !task.investmentInstitution) {
         resolution = { ...resolution, endorsementEntries: await loadStatementEndorsementEntries(
           resolution, ctxEmail, teamEmails, canManageContractsAsAdmin, endorsementEntriesCache) };
       }
     } catch (error) {
       markCashflowMutationIncomplete();
-      result.errors.push(`Smlouva ${contractNumber}: nepodařilo se dohledat (${String(error)})`);
+      result.errors.push(`Smlouva ${contractNumber}: nepodařilo se dohledat${
+        task.investmentInstitution ? "." : ` (${String(error)})`
+      }`);
       continue;
     }
 
@@ -4271,11 +4040,24 @@ const processStatementWrites = async ({
       continue;
     }
     if (resolution.status !== "matched") continue;
+    if (task.investmentInstitution) {
+      await writeInvestmentPayouts({
+        match: resolution, viewer: ctxEmail, actor: actorEmail, nowMs, writer: batchWriter, result,
+        statements: [{ id: docId, advisorNumber, statementNumber, statementPeriod, statementDate,
+          statementChronologyMs, payoutMonthKey, rows: contractPayoutRows }],
+      });
+      touchedContractPaths.add(resolution.ref.path);
+      continue;
+    }
+    if (isRecordOnlyProduct(resolution.contract.productKey)) {
+      result.skippedContracts.push(contractNumber);
+      continue;
+    }
 
     if (!replayContext && !forcedContractRef && statementChronologyMs != null &&
         hasNewerOwnStatement(resolution.contract, ctxEmail, statementChronologyMs)) {
       const candidates = await loadSavedStatements(resolution.contract);
-      candidates.push({ id: docId, ref: docRef, html, statementNumber, statementPeriod, statementDate,
+      candidates.push({ id: docId, ref: docRef, html, advisorNumber, statementNumber, statementPeriod, statementDate,
         periodEndMs, statementChronologyMs, payoutMonthKey });
       const statements: SavedStatementReprocessItem[] = [];
       for (const item of candidates.sort(compareSavedStatements)) {
@@ -4286,10 +4068,17 @@ const processStatementWrites = async ({
         if (!payoutRows.length && !premiumRows.length) continue;
         // A shared policy number can also identify an amendment. Respect the
         // normal product/family selection for EACH historical source.
-        const match = item.id === docId ? resolution : await resolveAccessibleContract({
-          contractNumber, viewerEmail: ctxEmail, teamEmails, payoutRows, premiumRows,
-        });
-        if (match.status === "matched" && match.ref.path === resolution.ref.path) statements.push(item);
+        const flexiIncreasePayouts = payoutRows.filter(isOwnFlexiIncreasePayoutWithoutBase);
+        const payoutGroups = payoutRows.filter(row => !isOwnFlexiIncreasePayoutWithoutBase(row)).map(row => [row]);
+        if (flexiIncreasePayouts.length) payoutGroups.push(flexiIncreasePayouts);
+        const rowMatches = await Promise.all(payoutGroups.map(rows => resolveAccessibleContract({
+          contractNumber, viewerEmail: ctxEmail, teamEmails, payoutRows: rows,
+          premiumRows: premiumRows.filter(premium => rows.some(row => premium.rowId === row.rowId && premium.commissionCode === row.commissionCode)),
+          payoutMonth: payoutExceptionStatementMonth(item.statementPeriod, item.payoutMonthKey),
+          periodEndMs: item.periodEndMs, canManageContractsAsAdmin, matchesCache,
+        })));
+        if (item.id === docId || rowMatches.some(match => match.status === "matched" &&
+          match.ref.path === resolution.ref.path)) statements.push(item);
       }
       if (statements.some(item => item.statementChronologyMs! > statementChronologyMs)) {
         const { patch } = prepareContractStatementReset({ contract: resolution.contract, ctxEmail, nowMs,
@@ -4299,6 +4088,7 @@ const processStatementWrites = async ({
         for (const statement of statements) {
           const partial = await processStatementWrites({
             docId: statement.id, docRef: statement.ref, html: statement.html, ctxEmail, actorEmail, teamEmails,
+            advisorNumber: statement.advisorNumber,
             statementNumber: statement.statementNumber, statementPeriod: statement.statementPeriod,
             statementDate: statement.statementDate, periodEndMs: statement.periodEndMs,
             statementChronologyMs: statement.statementChronologyMs, payoutMonthKey: statement.payoutMonthKey,
@@ -4340,12 +4130,29 @@ const processStatementWrites = async ({
       }
     }
 
+    const family = resolution.endorsementEntries ?? [];
+    const endorsementPlan = createEndorsementCommissionPlan(family);
+    if ((forcedContractRef || replayContext) && isLifeProduct(resolution.contract.productKey)) {
+      const flexiIncreasePayouts = contractPayoutRows.filter(isOwnFlexiIncreasePayoutWithoutBase);
+      const flexiEndorsement = flexiIncreasePayouts.length > 0
+        ? matchFlexiIncreaseByCommission(lifeStatementEntriesForPayoutMonth(family, payoutMonth), flexiIncreasePayouts) : null;
+      contractPayoutRows = contractPayoutRows.filter(row =>
+        isOwnFlexiIncreasePayoutWithoutBase(row)
+          ? flexiEndorsement?.id === resolution.entryId
+          : family.length <= 1 || matchLifeStatementPayout(family, row, periodEndMs, endorsementPlan)?.id === resolution.entryId);
+      if (family.length > 1) {
+        contractPremiumRows = contractPremiumRows.filter(row =>
+          matchLifeStatementEntry(family, { ...row, baseAmount: row.basePremium })?.id === resolution.entryId);
+      }
+      if (!contractPayoutRows.length && !contractPremiumRows.length) continue;
+    }
     result.contractsMatched += 1;
     const contract = resolution.contract;
     const endorsementContext: StatementEndorsementContext = {
       entry: endorsementPlanEntryForMatch(resolution),
-      plan: createEndorsementCommissionPlan(resolution.endorsementEntries ?? []),
+      plan: endorsementPlan,
       asOfMs: nowMs,
+      statementPeriodEnd: periodEndMs,
     };
     const externalLinkPatch = statementExternalLinkPatch(
       [...contractPayoutRows, ...contractPremiumRows],
@@ -4417,6 +4224,15 @@ const processStatementWrites = async ({
         contract.refreshStatementResolvedStatementPeriod !== statementPeriod ||
         contract.refreshStatementResolvedStatementDate !== statementDate ||
         contract.refreshStatementResolvedStatementChronologyMs !== statementChronologyMs);
+    const codeEvidenceForRow = (row: CommissionStatementPayoutRow) => ({
+      code: row.commissionCode, payoutMonthKey, writtenBy: ctxEmail,
+      amount: row.status === "storno" ? -Math.abs(row.commission) : row.commission, status: row.status,
+      sourceBaseAmount: row.baseAmount, statementDate, statementPeriod,
+    });
+    const projectCommissionCode = createCommissionCodeProjection(contract, [
+      ...contractPayoutArray(contract).filter(payout => payout.statementId !== docId || payout.writtenBy !== ctxEmail),
+      ...contractPayoutRows.map(codeEvidenceForRow),
+    ]);
     const existingPremiumHistory = contractPremiumHistoryArray(contract);
     const existingPremiumKeys = new Set(existingPremiumHistory.map((entry) => entry.key));
     const canApplyPremiumToCurrentContract = canApplyPremiumStatementToCurrentContractRecord(
@@ -4424,11 +4240,16 @@ const processStatementWrites = async ({
       statementChronologyMs
     );
     const indexationRowCounts = new Map<string, number>();
+    const renewalRowCounts = new Map<string, number>();
     for (const row of contractPayoutRows) {
       const key = `${row.source}:${normalizeCommissionCodeKey(row.commissionCode)}`;
       indexationRowCounts.set(key, (indexationRowCounts.get(key) ?? 0) + 1);
+      if (contract.productKey === "kooperativaAuto" && row.source === "own" && isKooperativaRenewalRow(row)) {
+        const code = baseCommissionCodeForPayoutComparison(row.commissionCode, contract.productKey);
+        renewalRowCounts.set(code, (renewalRowCounts.get(code) ?? 0) + 1);
+      }
     }
-    const hasUnambiguousIndexation = (row: Pick<CommissionStatementPayoutRow, "source" | "commissionCode">) =>
+    const hasUnambiguousPremiumPayout = (row: Pick<CommissionStatementPayoutRow, "source" | "commissionCode">) =>
       indexationRowCounts.get(`${row.source}:${normalizeCommissionCodeKey(row.commissionCode)}`) === 1;
     const orderedHistory = contract.productKey === "domexneuron" || contract.productKey === "kooperativaAuto";
     const premiumHistoryContract: ContractDoc = { ...contract, premiumStatementHistory: [...existingPremiumHistory] };
@@ -4440,6 +4261,15 @@ const processStatementWrites = async ({
     const detectedPremiumHistoryEntries = orderedPremiumRows
       .map((row) => {
         const payoutRow = contractPayoutRows.find(payout => payout.rowId === row.rowId && payout.source === row.source && payout.commissionCode === row.commissionCode);
+        let kooperativaRenewalPosition: Position | null = null;
+        if (payoutRow && contract.productKey === "kooperativaAuto" && isKooperativaRenewalRow(payoutRow) &&
+          payoutRow.source === "own" && isPositiveSettledPayoutRow(payoutRow) &&
+          renewalRowCounts.get(baseCommissionCodeForPayoutComparison(payoutRow.commissionCode, contract.productKey)) === 1) {
+          const payoutContract = contractForPayoutPosition(contract, payoutRow, payoutExceptionStatementMonth(statementPeriod, payoutMonthKey), resolution.ownerEmail);
+          const position = normalizePositionValue(payoutContract.position);
+          const career = statementCareerPositionFromValue(payoutRow.career);
+          if (!career || career.position === position) kooperativaRenewalPosition = position;
+        }
         const entry = premiumHistoryEntryFromStatementRowRecord({
           row,
           contract: orderedHistory ? premiumHistoryContract : contract,
@@ -4453,7 +4283,10 @@ const processStatementWrites = async ({
           nowMs,
           writtenBy: ctxEmail,
           allowCurrentPremiumFallback: canApplyPremiumToCurrentContract,
-          indexationCoefficient: !hasUnambiguousIndexation(row) ? null
+          projectCommissionCode,
+          kooperativaRenewalPosition,
+          allowCombinedAutoBase: hasUnambiguousPremiumPayout(row),
+          indexationCoefficient: !hasUnambiguousPremiumPayout(row) ? null
             : payoutRow ? domexNeuronIndexationCoefficient(contract, payoutRow, ctxEmail) : undefined,
         });
         if (entry && orderedHistory) premiumHistoryContract.premiumStatementHistory!.push(entry);
@@ -4567,6 +4400,8 @@ const processStatementWrites = async ({
       contractPayoutRows,
       contract,
       ctxEmail,
+      payoutExceptionStatementMonth(statementPeriod, payoutMonthKey),
+      resolution.ownerEmail,
       endorsementContext
     );
     result.duplicatePayoutRowsSkipped +=
@@ -4580,6 +4415,8 @@ const processStatementWrites = async ({
       payoutRecordFromStatementRow({
         row,
         contract: contractForPayoutExpectations,
+        resolvedCommissionCode: projectCommissionCode(codeEvidenceForRow(row)).code,
+        ownerEmail: resolution.ownerEmail,
         statementId: docId,
         statementNumber,
         statementPeriod,
@@ -4590,7 +4427,7 @@ const processStatementWrites = async ({
         writtenBy: ctxEmail,
         correctionInfo: payoutCorrectionInfoByRowKey.get(row.rowKey) ?? null,
         endorsementContext,
-        indexationEvidenceUnambiguous: hasUnambiguousIndexation(row),
+        indexationEvidenceUnambiguous: hasUnambiguousPremiumPayout(row),
       })
     );
     const payoutMerge = mergeRebuiltStatementRecords({
@@ -5044,6 +4881,7 @@ const handleManualNeonRefreshFromStatement = async ({
     contract,
     payoutRows,
     coefficientSetOverride: coefficientSetOverride?.coefficientSet ?? null,
+    resolveCarePremium: true,
     allowStatementMarkedRefresh: true,
     confirmExistingRefresh,
   });
@@ -5096,6 +4934,8 @@ const handleManualNeonRefreshFromStatement = async ({
   };
   const contractPatch: Record<string, unknown> = {
     isRefresh: true,
+    ...(refreshUpdate.neonRefreshCareAnnualPremium != null
+      ? { neonRefreshCareAnnualPremium: refreshUpdate.neonRefreshCareAnnualPremium } : {}),
     ...(!confirmExistingRefresh ? {
       refreshOriginalContractNumber: null,
       refreshOriginalMissingInSystem: true,
@@ -5257,13 +5097,14 @@ const handleSavedStatementReprocess = async ({
     resolvePayoutMonthKey({ statementDateMs, periodEndMs, periodStartMs });
   const nowMs = Date.now();
 
-  const processingResult = await processStatementWrites({
+  const reprocess = () => processStatementWrites({
     docId: statementId,
     docRef,
     html,
     ctxEmail,
     actorEmail,
     teamEmails,
+    advisorNumber: normalizeText(data.advisorNumber, 64),
     statementNumber: normalizeText(data.statementNumber, 64),
     statementPeriod,
     statementDate,
@@ -5274,6 +5115,9 @@ const handleSavedStatementReprocess = async ({
     onlyContractNumber,
     onlyContractNumbers,
   });
+  const processingResult = toMillis(data.processedAtMs) !== null
+    ? await reprocess()
+    : await withStatementOrder(adminDb!, ctxEmail, statementId, statementOrderDate({ period: statementPeriod, statementDate }) ?? periodEndMs ?? statementDateMs, reprocess);
 
   return withRateLimit(
     NextResponse.json({
@@ -5284,6 +5128,90 @@ const handleSavedStatementReprocess = async ({
   );
 };
 
+async function* matchArchivedInvestmentPayouts({
+  match, contractNumber, institution, viewer, actor,
+}: {
+  match: AccessibleContractMatch;
+  contractNumber: string;
+  institution: ProductInstitutionId;
+  viewer: string;
+  actor: string;
+}): AsyncGenerator<InvestmentPayoutMatchEvent, InvestmentPayoutMatchResult | undefined> {
+  const snapshots = await statementCollection(viewer).get();
+  const archive = dedupeStatementSnapshots(snapshots.docs).map(doc => {
+    const statement = savedStatementMetadataFromDoc(doc);
+    return { doc, statement, monthMs: statement.periodEndMs ?? statement.statementChronologyMs };
+  }).sort((a, b) => (a.monthMs ?? Infinity) - (b.monthMs ?? Infinity) ||
+    a.statement.id.localeCompare(b.statement.id));
+  const total = archive.length;
+  yield { type: "progress", phase: "scanning", scanned: 0, total, monthMs: null };
+
+  const statements: InvestmentStatementPayouts[] = [];
+  for (const [index, { doc, statement, monthMs }] of archive.entries()) {
+    const html = readStatementHtml(doc.data()?.html);
+    const rows = extractCommissionPayoutRowsFromStoredHtml(html).filter(row =>
+      row.source === "own" && row.contractNumber === contractNumber &&
+      investmentInstitutionFromStatementCode(row.productCode) === institution);
+    if (rows.length) statements.push({ ...statement, rows });
+    yield { type: "progress", phase: "scanning", scanned: index + 1, total, monthMs };
+  }
+
+  const processingResult = emptyProcessingResult();
+  if (statements.length) {
+    yield { type: "progress", phase: "saving", scanned: total, total, monthMs: null };
+    processingResult.payoutRows = statements.reduce((count, statement) => count + statement.rows.length, 0);
+    const batchWriter = createProcessingBatchWriter();
+    await writeInvestmentPayouts({ match, statements, viewer, actor, nowMs: Date.now(), writer: batchWriter, result: processingResult });
+    await batchWriter.commit();
+  }
+  return { ok: true, matchedStatements: statements.length, processedStatements: statements.length, processingResult };
+}
+
+const investmentPayoutMatchResponse = (
+  matching: ReturnType<typeof matchArchivedInvestmentPayouts>
+): NextResponse => {
+  const encoder = new TextEncoder();
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let event: InvestmentPayoutMatchEvent;
+      let done = true;
+      try {
+        const next = await matching.next();
+        done = Boolean(next.done);
+        if (next.done) {
+          if (!next.value) {
+            controller.close();
+            return;
+          }
+          event = { type: "result", result: next.value };
+        } else {
+          event = next.value;
+        }
+      } catch (error) {
+        const response = statementProcessingErrorResponse(error);
+        const knownError = response ? (await response.json()).error : null;
+        const conflict = error && typeof error === "object" && "code" in error && [5, 9, 10].includes(Number(error.code));
+        event = { type: "error", message: knownError ?? (conflict
+          ? "Smlouva se mezitím změnila. Obnov detail a spusť párování znovu."
+          : "Provize z výpisů se nepodařilo spárovat.") };
+      }
+      if (cancelled) return;
+      controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      if (done) controller.close();
+      else await new Promise<void>(resolve => setImmediate(resolve));
+    },
+    async cancel() {
+      cancelled = true;
+      await matching.return(undefined);
+    },
+  });
+  return new NextResponse(stream, { headers: {
+    "Content-Type": INVESTMENT_PAYOUT_PROGRESS_TYPE,
+    "X-Accel-Buffering": "no",
+  } });
+};
+
 const handleContractStatementRebuild = async ({
   body,
   ctxEmail,
@@ -5291,6 +5219,7 @@ const handleContractStatementRebuild = async ({
   teamEmails,
   canManageContractsAsAdmin,
   withRateLimit,
+  streamProgress,
 }: {
   body: Record<string, unknown>;
   ctxEmail: string;
@@ -5298,18 +5227,24 @@ const handleContractStatementRebuild = async ({
   teamEmails: string[];
   canManageContractsAsAdmin: boolean;
   withRateLimit: (response: NextResponse) => NextResponse;
+  streamProgress: boolean;
 }): Promise<NextResponse> => {
   const ownerEmail = normalizeEmail(body.ownerEmail);
   const entryId = safeEntryId(normalizeText(body.entryId, 180));
-  const contractNumber = normalizeContractNumber(normalizeText(body.contractNumber, 80));
+  const rawContractNumber = normalizeText(body.contractNumber, 80);
+  const contractNumber = normalizeContractNumber(rawContractNumber);
 
-  if (!ownerEmail || !entryId || !contractNumber) {
+  if (ownerEmail.length > 254 || !/^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(ownerEmail) || !entryId || !contractNumber) {
     return withRateLimit(
       NextResponse.json(
         { ok: false, error: "Chybí smlouva pro přepočet z výpisů." },
         { status: 400 }
       )
     );
+  }
+
+  if (streamProgress && ownerEmail !== ctxEmail) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Nemáš oprávnění párovat provize ke smlouvě." }, { status: 403 }));
   }
 
   const entryRef = adminDb!.doc(entryRefPath(ownerEmail, entryId));
@@ -5321,18 +5256,11 @@ const handleContractStatementRebuild = async ({
   }
 
   const contract = (entrySnap.data() ?? {}) as ContractDoc;
-  const storedContractNumber = normalizeContractNumber(contract.contractNumber ?? null);
-  if (storedContractNumber !== contractNumber) {
-    return withRateLimit(
-      NextResponse.json(
-        { ok: false, error: "Číslo smlouvy neodpovídá uloženému záznamu." },
-        { status: 400 }
-      )
-    );
-  }
+  const investmentInstitution = investmentInstitutionId(contract.productKey);
   if (
-    !canManageContractsAsAdmin &&
-    !hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract })
+    (investmentInstitution && ownerEmail !== ctxEmail) ||
+    (!canManageContractsAsAdmin &&
+      !hasContractAccess({ viewerEmail: ctxEmail, teamEmails, ownerEmail, contract }))
   ) {
     return withRateLimit(
       NextResponse.json(
@@ -5341,7 +5269,41 @@ const handleContractStatementRebuild = async ({
       )
     );
   }
+  const storedContractNumber = normalizeContractNumber(contract.contractNumber ?? null);
+  if (storedContractNumber !== contractNumber ||
+      (investmentInstitution && !/^[\d\s./-]+$/.test(rawContractNumber ?? ""))) {
+    return withRateLimit(
+      NextResponse.json(
+        { ok: false, error: "Číslo smlouvy neodpovídá uloženému záznamu." },
+        { status: 400 }
+      )
+    );
+  }
 
+  if (investmentInstitution) {
+    const entries = adminDb!.collection("users").doc(ctxEmail).collection("entries");
+    const numberVariants = new Set([contract.contractNumber ?? contractNumber, contractNumber]);
+    const siblings = await Promise.all([...numberVariants].map(number => entries.where("contractNumber", "==", number).get()));
+    if (siblings.some(snapshot => snapshot.docs.some(doc => doc.id !== entryId &&
+      investmentInstitutionId((doc.data() as ContractDoc).productKey) === investmentInstitution))) {
+      return withRateLimit(NextResponse.json({
+        ok: false, error: "U stejného čísla je evidováno více investičních smluv téže instituce. Párování vyžaduje jednoznačnou smlouvu.",
+      }, { status: 409 }));
+    }
+
+    const matching = matchArchivedInvestmentPayouts({
+      match: { status: "matched", ref: entryRef, updateTime: entrySnap.updateTime!, ownerEmail, entryId, contract },
+      contractNumber, institution: investmentInstitution, viewer: ctxEmail, actor: actorEmail,
+    });
+    if (streamProgress) {
+      const response = withRateLimit(investmentPayoutMatchResponse(matching));
+      response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate, no-transform");
+      return response;
+    }
+    let next = await matching.next();
+    while (!next.done) next = await matching.next();
+    return withRateLimit(NextResponse.json(next.value));
+  }
   const statementsSnap = await statementCollection(ctxEmail).get();
   const statementItems = dedupeStatementSnapshots(statementsSnap.docs)
     .map(savedStatementReprocessItemFromDoc)
@@ -5414,6 +5376,7 @@ const handleContractStatementRebuild = async ({
       ctxEmail,
       actorEmail,
       teamEmails,
+      advisorNumber: statement.advisorNumber,
       statementNumber: statement.statementNumber,
       statementPeriod: statement.statementPeriod,
       statementDate: statement.statementDate,
@@ -5501,6 +5464,19 @@ const listPremiumHistoryStatementsForContract = async ({
 };
 
 export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get("shape") === "processing-order") {
+    const guard = await requireContractsEntryGuard(req, {
+      namespace: "api:commission-statements:order", limit: STATEMENTS_RATE_LIMIT, windowMs: STATEMENTS_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!guard.ok) return guard.response;
+    try {
+      if (!adminDb) throw new Error();
+      const order = await readStatementOrder(adminDb, guard.ctx.email);
+      return guard.withRateLimit(NextResponse.json(order, { headers: { "Cache-Control": "private, no-store" } }));
+    } catch {
+      return guard.withRateLimit(NextResponse.json({ error: "Pořadí výpisů se nepodařilo načíst." }, { status: 503 }));
+    }
+  }
   const guard = await requireAuthedRateLimited(req, {
     namespace: "api:commission-statements:get",
     limit: STATEMENTS_RATE_LIMIT,
@@ -5678,6 +5654,39 @@ export async function POST(req: NextRequest) {
   }
 
   const action = normalizeText(body.action, 80);
+  if (action === "add-external-links-only") {
+    if (ctx.accountType === "tipster") {
+      return withRateLimit(NextResponse.json(
+        { ok: false, error: "Nemáš oprávnění doplňovat odkazy ke smlouvám." }, { status: 403 }
+      ));
+    }
+    const html = normalizeText(body.html, MAX_HTML_LENGTH + 1);
+    if (!html) {
+      return withRateLimit(NextResponse.json({ ok: false, error: "Chybí HTML obsah výpisu." }, { status: 400 }));
+    }
+    if (html.length > MAX_HTML_LENGTH) {
+      return withRateLimit(NextResponse.json(
+        { ok: false, error: "HTML výpis je příliš velký." }, { status: 413 }
+      ));
+    }
+    try {
+      const result = await addStatementExternalLinksOnly({
+        html,
+        viewerEmail: ctx.email,
+        teamEmails: ctx.teamEmails,
+        canManageContractsAsAdmin:
+          ctx.canManageContractsAsAdmin || adminRoleAtLeast(ctx.impersonation?.actorRole, "admin"),
+      });
+      return withRateLimit(NextResponse.json({ ok: true, ...result }));
+    } catch (error) {
+      const inputError = statementProcessingErrorResponse(error);
+      if (inputError) return withRateLimit(inputError);
+      console.error("Commission statement external link update failed.");
+      return withRateLimit(NextResponse.json(
+        { ok: false, error: "Odkazy se nepodařilo ke smlouvám přidat." }, { status: 500 }
+      ));
+    }
+  }
   if (action === "confirm-life-premium-change") {
     if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json({ ok: false, error: "Nemáš oprávnění upravovat pojistné." }, { status: 403 }));
     try {
@@ -5765,6 +5774,9 @@ export async function POST(req: NextRequest) {
     }
   }
   if (action === "rebuild-contract-from-statements") {
+    if (ctx.accountType === "tipster") return withRateLimit(NextResponse.json(
+      { ok: false, error: "Nemáš oprávnění párovat provize ke smlouvě." }, { status: 403 }
+    ));
     try {
       return await handleContractStatementRebuild({
         body,
@@ -5777,6 +5789,7 @@ export async function POST(req: NextRequest) {
           ctx.canManageContractsAsAdmin ||
           adminRoleAtLeast(ctx.impersonation?.actorRole, "admin"),
         withRateLimit,
+        streamProgress: req.headers.get("accept") === INVESTMENT_PAYOUT_PROGRESS_TYPE,
       });
     } catch (error) {
       const inputError = statementProcessingErrorResponse(error);
@@ -5786,7 +5799,7 @@ export async function POST(req: NextRequest) {
           { ok: false, error: "Smlouva se mezitím změnila. Obnov ji a spusť přepočet znovu." }, { status: 409 }
         ));
       }
-      console.error("Commission statements contract rebuild failed:", error);
+      console.error("Commission statements contract rebuild failed.");
       return withRateLimit(
         NextResponse.json(
           { ok: false, error: "Smlouvu se nepodařilo přepočítat z výpisů." },
@@ -5812,14 +5825,12 @@ export async function POST(req: NextRequest) {
   }
 
   const fileName = normalizeText(body.fileName, 180) ?? "Provizní výpis.html";
-  const header = (body.header && typeof body.header === "object"
-    ? body.header
-    : {}) as StatementHeaderPayload;
   const summary = (body.summary && typeof body.summary === "object"
     ? body.summary
     : {}) as StatementSummaryPayload;
-  const period = normalizeText(header.period, 80);
-  const statementDate = normalizeText(header.statementDate, 32);
+  // Use the uploaded document as the source of the date used for ordering.
+  const { period, statementDate } = readStatementDates(stripHtmlText(html), html);
+  const header = (body.header && typeof body.header === "object" ? body.header : {}) as StatementHeaderPayload;
   const statementNumber = normalizeText(header.statementNumber, 64);
   const advisorNumber = normalizeText(header.advisorNumber, 64);
   const { periodStartMs, periodEndMs } = parsePeriodRange(period);
@@ -5887,21 +5898,24 @@ export async function POST(req: NextRequest) {
       updatedAtMs: nowMs,
     };
 
-    await trackCashflowWrite(() => docRef.set(payload, { merge: true }));
-    const processingResult = await processStatementWrites({
-      docId,
-      docRef,
-      html,
-      ctxEmail: ctx.email,
-      actorEmail: ctx.actorEmail,
-      teamEmails: ctx.teamEmails,
-      statementNumber: payload.statementNumber,
-      statementPeriod: period,
-      statementDate,
-      periodEndMs,
-      statementChronologyMs,
-      payoutMonthKey,
-      nowMs,
+    const processingResult = await withStatementOrder(adminDb, ctx.email, docId, statementOrderDate({ period, statementDate }), async () => {
+      await trackCashflowWrite(() => docRef.set(payload, { merge: true }));
+      return processStatementWrites({
+        docId,
+        docRef,
+        html,
+        ctxEmail: ctx.email,
+        actorEmail: ctx.actorEmail,
+        teamEmails: ctx.teamEmails,
+        advisorNumber,
+        statementNumber: payload.statementNumber,
+        statementPeriod: period,
+        statementDate,
+        periodEndMs,
+        statementChronologyMs,
+        payoutMonthKey,
+        nowMs,
+      });
     });
 
     return withRateLimit(

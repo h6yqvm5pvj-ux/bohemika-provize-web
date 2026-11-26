@@ -1,5 +1,7 @@
+import { newMailboxVisibility } from "@/lib/server/mailboxUnreadCount";
 import { FieldValue } from "firebase-admin/firestore";
 
+import { LIFE_COMMISSION_REMINDER_TYPE, parseLifeCommissionReminderContracts, type LifeCommissionReminderContract } from "@/app/lib/lifeCommissionReminder";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { sealPrivateRecord } from "./privateRecords";
 
@@ -84,6 +86,7 @@ export type MailboxWriteInput = {
 export type MailboxWriteOnceInput = Omit<MailboxWriteInput, "recipientEmails"> & {
   recipientEmail: string;
   entryId: string;
+  lifeCommissionContracts?: LifeCommissionReminderContract[];
 };
 
 export async function writeMailboxEntries({
@@ -125,6 +128,7 @@ export async function writeMailboxEntries({
       title: cleanTitle,
       body: cleanBody,
       deepLink: cleanDeepLink,
+      ...newMailboxVisibility,
       read: initialRead,
       readAtMs: initialRead ? nowMs : null,
       readAt: initialRead ? FieldValue.serverTimestamp() : null,
@@ -146,6 +150,7 @@ export async function writeMailboxEntryOnce({
   body,
   deepLink,
   metadata,
+  lifeCommissionContracts,
   createdAtMs,
   read,
 }: MailboxWriteOnceInput): Promise<{ written: boolean }> {
@@ -167,7 +172,10 @@ export async function writeMailboxEntryOnce({
   const cleanTitle = clampText(title, TITLE_MAX_LEN, "Bohemka.App");
   const cleanBody = clampText(body, BODY_MAX_LEN, "Máš novou notifikaci.");
   const cleanDeepLink = normalizeDeepLink(deepLink ?? "/nastaveni");
-  const cleanMetadata = sanitizeMetadata(metadata);
+  const safeMetadata = sanitizeMetadata(metadata);
+  const cleanMetadata = cleanType === LIFE_COMMISSION_REMINDER_TYPE
+    ? { ...safeMetadata, lifeCommissionContracts: parseLifeCommissionReminderContracts(lifeCommissionContracts) }
+    : safeMetadata;
   const nowMs = Number.isFinite(createdAtMs) ? Number(createdAtMs) : Date.now();
   const initialRead = read === true;
   const docRef = db
@@ -186,6 +194,7 @@ export async function writeMailboxEntryOnce({
       title: cleanTitle,
       body: cleanBody,
       deepLink: cleanDeepLink,
+      ...newMailboxVisibility,
       read: initialRead,
       readAtMs: initialRead ? nowMs : null,
       readAt: initialRead ? FieldValue.serverTimestamp() : null,

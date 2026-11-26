@@ -1,9 +1,13 @@
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { generateCashflow } from "@/app/cashflow/generator";
+import { applyAutoCommissionForecasts } from "@/app/cashflow/autoCommissionForecast";
+import { isAutoProduct } from "./productCatalog";
+import { installmentCommissionScheduleFromCode } from "./productFormulas/autoCommission";
 import type { EntryDoc } from "@/app/cashflow/types";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { baseCommissionCodeForPayoutComparison, isNeonInvestmentLifeA201Payout } from "@/app/lib/commissionPayoutRules";
 import { toDate } from "@/app/lib/formatters";
+import { MISSING_STORNO_ESTIMATE_MODE } from "./commissionStornoAudit";
 import type {
   CommissionResultItemDTO,
   PaymentFrequency,
@@ -17,6 +21,7 @@ export type CommissionAuditMode =
   | "overdue"
   | "upcoming"
   | "difference"
+  | typeof MISSING_STORNO_ESTIMATE_MODE
   | "career_mismatch";
 
 export type CommissionAuditCodeFilter =
@@ -63,6 +68,7 @@ export type CommissionAuditContract = {
   position?: Position | null;
   inputAmount?: number | null;
   frequencyRaw?: PaymentFrequency | null;
+  paymentFrequencyChanges?: EntryDoc["paymentFrequencyChanges"];
   total?: number | null;
   items?: CommissionResultItemDTO[] | null;
   result?: {
@@ -108,6 +114,7 @@ const COMMISSION_AUDIT_MODES = new Set<CommissionAuditMode>([
   "overdue",
   "upcoming",
   "difference",
+  MISSING_STORNO_ESTIMATE_MODE,
   "career_mismatch",
 ]);
 
@@ -616,7 +623,7 @@ export function commissionAuditSummaryForContract(
   overdueStart.setDate(overdueStart.getDate() - overdueDays);
   const items: CommissionAuditItem[] = [];
 
-  if (mode === "off" || isRetiredProduct(contract.productKey)) {
+  if (mode === "off" || mode === MISSING_STORNO_ESTIMATE_MODE || isRetiredProduct(contract.productKey)) {
     return emptyCommissionAuditSummary();
   }
 
@@ -625,7 +632,11 @@ export function commissionAuditSummaryForContract(
   }
 
   const entry = auditEntryForContract(contract, viewerEmail);
-  const generated = generateCashflow([entry], 10, entry.userEmail ?? viewerEmail);
+  const recipient = entry.userEmail ?? viewerEmail;
+  const generated = applyAutoCommissionForecasts(generateCashflow([entry], 10, recipient, now), [entry], recipient);
+  const combinedAcquisitionKeys = new Set(generated.flatMap(item =>
+    item.installmentCoverageNote && item.commissionPayoutKey && /^A1\d{2}$/.test(item.commissionCode ?? "")
+      ? [item.commissionPayoutKey] : []));
 
   for (const item of generated) {
     if (item.isStatementOnly || item.isTipPayout) continue;
@@ -686,6 +697,13 @@ export function commissionAuditSummaryForContract(
       .trim()
       .toLowerCase();
     const isCareerMismatch = isCareerMismatchPayout(contract, payout);
+    const writer = payoutWrittenByKey(payout);
+    if (!isCareerMismatch && payout.key && combinedAcquisitionKeys.has(payout.key) &&
+      (!writer || writer === normalizePayoutText(recipient))) continue;
+    // Anniversary premiums may change. A historical renewal estimate cannot
+    // establish an amount discrepancy; keep career and reversal diagnostics.
+    if (!isCareerMismatch && differenceReason !== "storno" && isAutoProduct(contract.productKey) &&
+      installmentCommissionScheduleFromCode(baseCommissionCodeForPayoutComparison(payout.code, contract.productKey), "annual")?.phase === "subsequent") continue;
     if (status !== "difference" && !isCareerMismatch) continue;
     if (isCareerMismatch && !unresolvedCareerMismatchKeys.has(indexedKey)) {
       continue;

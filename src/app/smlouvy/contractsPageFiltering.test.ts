@@ -94,6 +94,21 @@ describe("contract filter results in the page and API", () => {
     expect(matching(values)).toContain("missing");
   });
 
+  it("filters contracts without a PDF attachment in the page and API", () => {
+    const withoutPdf = contract("without-pdf", { hasContractPdfAttachment: false });
+    const withPdf = contract("with-pdf", { hasContractPdfAttachment: true });
+    const unknown = contract("unknown-pdf-state");
+    expect(matching([withoutPdf, withPdf, unknown], { showWithoutPdfOnly: true })).toEqual(["without-pdf", "unknown-pdf-state"]);
+
+    const server = parseContractListFilters(new URLSearchParams({ withoutPdfOnly: "1" }));
+    const serverValues = [
+      withoutPdf as ApiContract,
+      { ...withPdf, contractPdfAttachment: { contentType: "application/pdf", storagePath: "private/file.pdf" } } as ApiContract,
+      unknown as ApiContract,
+    ];
+    expect(serverValues.filter(item => contractMatchesListFilters(item, server)).map(item => item.id)).toEqual(["without-pdf", "unknown-pdf-state"]);
+  });
+
   it.each(cases)("%s", (_name, selection, query, expected) => {
     expect(matching(items, selection)).toEqual(expected);
     const parsed = parseContractListFilters(new URLSearchParams(query));

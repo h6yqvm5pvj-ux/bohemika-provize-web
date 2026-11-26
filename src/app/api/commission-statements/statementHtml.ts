@@ -138,3 +138,13 @@ export class StatementMatchingBudget {
     this.remaining -= combinations;
   }
 }
+
+export const statementHtmlText = (value: string): string => {
+  // Do not retry a failing tag match at every '<' in an unclosed text suffix.
+  const lastEnd = value.lastIndexOf(">");
+  return (value.slice(0, lastEnd + 1).replace(/<[^>]*>/g, " ") + value.slice(lastEnd + 1))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+};

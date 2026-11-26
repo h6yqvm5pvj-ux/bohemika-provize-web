@@ -1,7 +1,17 @@
+import { formatMoney } from "@/app/lib/formatters";
 import type { CashflowSectionGroup } from "./monthSections";
 import type { CashflowItem, MonthGroup } from "./types";
 
 type MonthTotals = Pick<MonthGroup, "total" | "totalSource" | "statementPayoutTotal" | "extraPayoutTotal"> & { items?: CashflowItem[] };
+
+export function formatCashflowAmount(amount: number, hasUnknownAmount = false): string {
+  if (!hasUnknownAmount) return formatMoney(amount);
+  return amount === 0 ? "???" : `${formatMoney(amount)} + ???`;
+}
+
+export function formatCashflowMonthAmount(month: Pick<MonthGroup, "total" | "totalSource" | "hasUnknownAmounts">): string {
+  return formatCashflowAmount(month.total, month.totalSource !== "paid" && month.hasUnknownAmounts);
+}
 
 /** The overview omits items, so derive the receipt supplement from its totals. */
 export function paidSubscriptionAmount(month: MonthTotals): number {

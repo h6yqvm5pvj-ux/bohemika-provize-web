@@ -28,6 +28,7 @@ const LABELS: Record<string, string> = {
   policyTermEndDate: "Konec pojistného období", automaticRenewal: "Prolongace smlouvy",
   premiumIndexationEnabled: "Valorizace pojistného",
   paid: "Zaplaceno", inputAmount: "Částka / pojistné", effectiveInputAmount: "Aktuální částka / pojistné",
+  neonRefreshCareAnnualPremium: "Roční pečovatelská základna NEON Refresh",
   frequencyRaw: "Frekvence platby", durationYears: "Doba trvání (roky)", durationMonths: "Doba trvání (měsíce)",
   pensionTargetAge: "Cílový věk spoření", note: "Poznámka", isRefresh: "Refresh",
   maxCizinKomplexVariant: "Varianta pojištění", maxxContractDetailUrl: "Odkaz na smlouvu",

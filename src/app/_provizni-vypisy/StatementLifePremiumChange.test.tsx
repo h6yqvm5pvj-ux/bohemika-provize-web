@@ -14,6 +14,13 @@ const change: LifeStatementPremiumChange = { key: "change", statementId: "source
 afterEach(() => vi.unstubAllGlobals());
 
 describe("manual confirmation of a premium change", () => {
+  it("reports an amount-based match without asking for a manual confirmation", () => {
+    const markup = renderToStaticMarkup(<StatementLifePremiumChange contract={contract} annualIncrease={null}
+      matchedByCommission productCode="KOOP_FLEXI" source={{ statementId: "source" }} />);
+    expect(markup).toContain("Vyplacené částky souhlasí s provizemi z dodatku");
+    expect(markup).not.toContain("potvrzení");
+  });
+
   it("offers neutral history confirmation without assuming a cause or creating an endorsement", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");

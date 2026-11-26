@@ -117,10 +117,10 @@ describe("FLEXI renovation form", () => {
     expect(container.textContent).not.toContain("Smlouva z TIPU");
   });
 
-  it("shows the Náhrada button for Kooperativa property contracts", async () => {
+  it.each(["kooperativaAuto", "allianzAuto", "koopmajetekobcan", "koopfit"] as const)("opens Náhrada for %s contracts", async product => {
     const onToggleRefreshOriginal = vi.fn();
     await act(async () => root.render(<CalculatorAmountAndActionsSection {...defaults}
-      product="koopmajetekobcan" showContractActions onToggleRefreshOriginal={onToggleRefreshOriginal} />));
+      product={product} isLifeProduct={false} showContractActions onToggleRefreshOriginal={onToggleRefreshOriginal} />));
     const replacementButton = Array.from(container.querySelectorAll("button"))
       .find(button => button.textContent?.trim() === "Náhrada");
     expect(replacementButton).toBeDefined();
@@ -128,7 +128,21 @@ describe("FLEXI renovation form", () => {
     expect(onToggleRefreshOriginal).toHaveBeenCalledOnce();
 
     await act(async () => root.render(<CalculatorAmountAndActionsSection {...defaults}
-      product="koopmajetekobcan" showContractActions refreshOriginalOpen />));
+      product={product} isLifeProduct={false} showContractActions refreshOriginalOpen />));
     expect(container.textContent).toContain("Číslo původní smlouvy");
+    expect(container.textContent).toContain("Náhrada zapnutá");
+    expect(container.textContent).toContain(product === "kooperativaAuto" || product === "allianzAuto"
+      ? "jeden den před datem počátku nové smlouvy" : "ke dni počátku nové smlouvy");
+    expect(container.textContent).toContain("lze uložit bez automatického storna");
+  });
+
+  it("confirms a foreign original and describes automatic cancellation without exposing its details", async () => {
+    await act(async () => root.render(<CalculatorAmountAndActionsSection {...defaults}
+      product="kooperativaAuto" isLifeProduct={false} refreshOriginalOpen
+      refreshOriginalLookupStatus="foundOutsideSelectedOwner" />));
+    expect(container.textContent).toContain("Původní smlouva nalezena.");
+    expect(container.textContent).toContain("Server ji při uložení náhrady automaticky propojí a stornuje");
+    expect(container.textContent).not.toContain("Automatické storno původní smlouvy nebude možné");
+    expect(container.textContent).not.toContain("Sjednatel:");
   });
 });

@@ -3,6 +3,8 @@ import type { RefreshOriginalLookupState } from "./calculatorApi";
 import type { CalculatorPdfFormSetters, CalculatorPdfFormValues } from "./calculatorPdfFormTypes";
 import type { PrepareEndorsementOptions } from "./useEndorsementPreparation";
 import { productLabel, supportsOriginalContractReplacement } from "./calculatorHelpers";
+import { productCategory } from "@/app/lib/productCatalog";
+import { parsedPdfFrequencyValue } from "./calculatorBulkPdfImport";
 import {
   buildPdfImportIssueMessage, detectProductFromPdfLazy, failedPdfImportMessage,
   hasAutomatedPdfImport, manualPdfImportMessage, parseContractPdfByProduct,
@@ -46,6 +48,7 @@ type SinglePdfImportOptions = {
     setProductPickerSectionForProduct: (value: Product) => void;
     setClientSuggestionsOpen: (value: boolean) => void;
     setRefreshOriginalOpen: (value: boolean) => void;
+    setRenovationWithoutBase: (value: boolean) => void;
     setRefreshOriginalContractNumber: (value: string) => void;
     setRefreshOriginalMissingInSystem: (value: boolean) => void;
     setRefreshOriginalPdfLookupNumber: (value: string | null) => void;
@@ -90,6 +93,7 @@ export async function importSingleContractPdf(file: File | null, options: Single
     setProductPickerSectionForProduct,
     setClientSuggestionsOpen,
     setRefreshOriginalOpen,
+    setRenovationWithoutBase,
     setRefreshOriginalContractNumber,
     setRefreshOriginalMissingInSystem,
     setRefreshOriginalPdfLookupNumber,
@@ -126,6 +130,12 @@ export async function importSingleContractPdf(file: File | null, options: Single
     "PDF je připravené k přiložení. Zkouším z něj načíst data…"
   );
   setImportedContractPdfFile(file);
+  if (hasSelectedProduct && productCategory(product) === "investments") {
+    setPdfImportStatus(manualPdfImportMessage(product));
+    setPdfImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    return;
+  }
   setStatementClientNamePrefillActive(false);
   setPdfClientNameLoaded(false);
   let importProduct: Product | null = hasSelectedProduct ? product : null;
@@ -314,7 +324,7 @@ export async function importSingleContractPdf(file: File | null, options: Single
     applyCalculatorPdfFormValues(mapped.values, pdfFormSetters);
     let applied = mapped.applied;
     const parsedIsEndorsement =
-      importProduct === "neon" &&
+      (importProduct === "neon" || importProduct === "flexi") &&
       "isEndorsement" in parsed &&
       parsed.isEndorsement === true;
     let endorsementPreparedFromPdf = false;
@@ -323,6 +333,7 @@ export async function importSingleContractPdf(file: File | null, options: Single
       setClientSuggestionsOpen(true);
     }
 
+    if (importProduct === "flexi") setRenovationWithoutBase(false);
     if (parsedIsEndorsement || importProduct === "flexi" || importProduct === "domexneuron" || importProduct === "koopodzam") {
       setRefreshOriginalOpen(false);
       setRefreshOriginalContractNumber("");
@@ -346,10 +357,13 @@ export async function importSingleContractPdf(file: File | null, options: Single
         setRefreshOriginalOpen(true);
         setRefreshOriginalMissingInSystem(false);
         setRefreshOriginalPdfLookupNumber(null);
+        if (importProduct === "flexi" && !parsedRefreshOriginalContractNumber) {
+          setRenovationWithoutBase(true);
+        }
         if (parsedRefreshOriginalContractNumber) {
           setRefreshOriginalContractNumber(parsedRefreshOriginalContractNumber);
           setRefreshOriginalPdfLookupNumber(
-            importProduct === "neon" && parsedIsRefresh
+            ((importProduct === "neon" && parsedIsRefresh) || importProduct === "flexi")
               ? parsedRefreshOriginalContractNumber
               : null
           );
@@ -370,12 +384,16 @@ export async function importSingleContractPdf(file: File | null, options: Single
           ? parsed.amount
           : null;
       endorsementPreparedFromPdf = await handlePrepareEndorsement({
+        signal: importController.signal,
         productOverride: importProduct,
         contractNumberOverride: parsedContractNumber,
         contractSignedDateOverride: parsedSignedDate,
+        policyStartDateOverride: typeof parsed.policyStartDate === "string" ? parsed.policyStartDate.trim() : "",
+        frequencyOverride: parsedPdfFrequencyValue(parsed) ?? undefined,
         newPremiumAmountOverride: parsedAmount ?? 0,
         source: "pdf",
       });
+      if (!isCurrentPdfImport()) return;
     }
 
     if (applied === 0 && importProduct !== "maxcizinkomplex") {

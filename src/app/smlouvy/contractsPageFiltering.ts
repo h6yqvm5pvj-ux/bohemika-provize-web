@@ -1,11 +1,13 @@
+import { matchesVehicleRegistration, vehicleRegistrationForMatch } from "@/app/lib/vehicleOverlap";
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 import type { Product } from "@/app/types/domain";
 import { commissionAuditSummaryForContract, isCommissionAuditFilterActive } from "@/app/lib/commissionAudit";
+import { MISSING_STORNO_ESTIMATE_MODE } from "@/app/lib/commissionStornoAudit";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { getAnniversaryStartDate, isAnniversarySoon, shouldTrackAnniversary } from "@/app/lib/contractAnniversary";
 import { productMatchesFilters } from "./contractsPageFilters";
 import { normalizeEmail, normalizeSearchValue, normalizeContractNumberForSearch } from "./contractsPageStorage";
-import { matchesContractClientName, prepareContractSearch } from "@/app/lib/contractSearch";
+import { exactContractNumberFromSearch, matchesContractClientName, prepareContractSearch } from "@/app/lib/contractSearch";
 import type { ContractDoc, DisplayedContract, ContractsListFilters } from "./contractsPageTypes";
 const isContractStorno = (c: ContractDoc) => contractLifecycleStatus(c) === "storno";
 const isContractDozita = (c: ContractDoc) => contractLifecycleStatus(c) === "dozita";
@@ -51,7 +53,9 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
   const commissionAuditActive = isCommissionAuditFilterActive({mode: commissionAuditMode});
   const search = prepareContractSearch(searchText);
   const q = search.text;
+  const exactNumber = exactContractNumberFromSearch(searchText);
   const qContract = search.number;
+  const plate = vehicleRegistrationForMatch(searchText);
   const anniversaryOnly = filterMode === "anniversary";
   let base = selectedPositions.size === 0 ? displayedContracts
     : displayedContracts.filter(contract => contract.position != null && selectedPositions.has(contract.position));
@@ -62,7 +66,9 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
     );
   }
 
-  if (q) {
+  if (exactNumber) {
+    base = base.filter(contract => contract.contractNumber === exactNumber);
+  } else if (q) {
     base = base.filter((c) => {
       const clientTokens =
         c.searchClientTokens && c.searchClientTokens.length > 0
@@ -77,6 +83,7 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
           ? c.searchContractCompactTokens
           : [normalizeContractNumberForSearch(c.contractNumber)];
       return (
+        matchesVehicleRegistration(c, plate) ||
         clientTokens.some((value) => matchesContractClientName(value, search)) ||
         contractTokens.some((value) => value.includes(q)) ||
         (qContract.length > 0 &&
@@ -89,6 +96,10 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
     base = base.filter(
       (c) => c.paid !== true && !isContractStorno(c) && !isContractDozita(c)
     );
+  }
+
+  if (filters.showWithoutPdfOnly) {
+    base = base.filter((contract) => contract.hasContractPdfAttachment !== true);
   }
 
   if (showRefreshOnly) {
@@ -114,7 +125,9 @@ export function filterDisplayedContracts(displayedContracts: DisplayedContract[]
     base = base.filter(c => isContractCommissionEnded(c, now));
   }
 
-  if (commissionAuditActive) {
+  if (commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE) {
+    base = base.filter(contract => Boolean(contract.stornoEstimateIssue));
+  } else if (commissionAuditActive) {
     const now = new Date();
     base = base.filter(
       (c) =>

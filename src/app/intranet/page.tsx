@@ -1104,6 +1104,7 @@ export default function IntranetPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [loadingOlderPosts, setLoadingOlderPosts] = useState(false);
   const [postsError, setPostsError] = useState<string | null>(null);
+  const [deletePostError, setDeletePostError] = useState<string | null>(null);
   const [olderPostsError, setOlderPostsError] = useState<string | null>(null);
   const [postsHasMore, setPostsHasMore] = useState(false);
   const [postsCursorMs, setPostsCursorMs] = useState<number | null>(null);
@@ -1424,6 +1425,7 @@ export default function IntranetPage() {
       setLoadingPosts(true);
       setLoadingOlderPosts(false);
       setPostsError(null);
+      setDeletePostError(null);
       setOlderPostsError(null);
       setPostsHasMore(false);
       setPostsCursorMs(null);
@@ -1505,6 +1507,7 @@ export default function IntranetPage() {
 
   useEffect(() => {
     setReaderPost(null);
+    setDeletePostError(null);
     setPersonalErrors({});
     setPersonalBusy({});
   }, [effectiveEmail]);
@@ -1943,8 +1946,9 @@ export default function IntranetPage() {
     const confirmed = window.confirm("Opravdu chceš smazat tento příspěvek?");
     if (!confirmed) return;
 
+    const account = effectiveEmail;
     setDeletingPostId(postId);
-    setPostsError(null);
+    setDeletePostError(null);
     try {
       const payload = await fetchAuthedJsonOrThrow<WallDeleteResponse>(
         user,
@@ -1954,10 +1958,15 @@ export default function IntranetPage() {
       if (!payload?.ok) {
         throw new Error(payload?.error || "Smazání se nepodařilo.");
       }
-      notifyIntranetUnreadChanged(effectiveEmail);
-      await loadPosts(user, selectedSection);
+      notifyIntranetUnreadChanged(account);
+      if (account !== accountRef.current) return;
+      setPosts(previous => previous.filter(post => post.id !== postId));
+      setReaderPost(previous => previous?.id === postId ? null : previous);
+      if (feedKey === feedKeyRef.current) await loadPosts(user, selectedSection);
     } catch (error) {
-      setPostsError(error instanceof Error ? error.message : "Nepodařilo se smazat příspěvek.");
+      if (account === accountRef.current) {
+        setDeletePostError(error instanceof Error ? error.message : "Nepodařilo se smazat příspěvek.");
+      }
     } finally {
       setDeletingPostId(null);
     }
@@ -2426,6 +2435,11 @@ export default function IntranetPage() {
           </div>
 
           <section className={styles.wallFeed} aria-label="Příspěvky intranetu">
+            {deletePostError && (
+              <div role="alert" className="mb-3 rounded-3xl border border-red-300/80 bg-red-50/90 px-4 py-4 text-sm text-red-700">
+                {deletePostError}
+              </div>
+            )}
             {loadingPosts ? (
               <div className={styles.postList}>
                 {Array.from({ length: 4 }).map((_, idx) => (

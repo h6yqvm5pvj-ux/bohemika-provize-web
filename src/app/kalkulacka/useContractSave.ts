@@ -21,6 +21,7 @@ export type ContractEntrySaveResult =
       ok: true;
       entryId: string;
       linkedRefreshOriginalEntryId: string | null;
+      linkedRefreshOriginal: boolean;
       pdfAttachment: PdfAttachmentState;
     };
 
@@ -36,7 +37,7 @@ const invalidateContractsCache = () => {
   }
 };
 
-export type ContractSaveStage = "preparing" | "saving" | "attachment";
+export type ContractSaveStage = "preparing" | "saving" | "attachment" | "checkingVehicle";
 
 export type SaveContractEntryInput = {
   user: User;
@@ -114,6 +115,7 @@ export const saveContractEntry = async ({
     ok: true,
     entryId,
     linkedRefreshOriginalEntryId,
+    linkedRefreshOriginal: data?.refreshOriginalLinked === true || Boolean(linkedRefreshOriginalEntryId),
     pdfAttachment,
   };
 };

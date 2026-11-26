@@ -15,7 +15,80 @@ const household = (address = "Ukázková 34, 602 00 Brno", type = "Rekreační",
   `Varianta pojištění: ${coverage}`, "Požár; Výbuch", `Pojistná částka ${amount} Kč`, "Spoluúčast: 500 Kč",
 ];
 
+const assistanceTable = (rows: { kind: "property" | "household"; address: string[]; choice: string[] }[]): DomexPropertyLayoutLine[] => {
+  const items = [
+    { str: "Předmět pojištění", x: 65, y: 760, width: 80 },
+    { str: "Místo pojištění", x: 230, y: 760, width: 65 },
+    { str: "Sjednaný rozsah asistenčních služeb", x: 370, y: 760, width: 165 },
+    ...rows.flatMap((row, index) => {
+      const y = 710 - index * 60;
+      return [
+        { str: row.kind === "property" ? "HLAVNÍ STAVBA" : "DOMÁCNOST", x: 75, y, width: 70 },
+        ...row.address.map((str, line) => ({ str, x: 190, y: y + 11 - line * 11, width: 140 })),
+        ...row.choice.map((str, line) => ({ str, x: 410, y: y + 11 - line * 11, width: 100 })),
+      ];
+    }),
+  ];
+  return [...new Set(items.map(item => item.y))].sort((a, b) => b - a).map(y => {
+    const row = items.filter(item => item.y === y).sort((a, b) => a.x - b.x);
+    return { text: row.map(item => item.str).join(" "), items: row };
+  });
+};
+
 describe("DOMEX Neuron versioned objects and extraction states", () => {
+  it("reads every assistance table column, including wrapped addresses and choices in a different object order", () => {
+    const result = parseDomexNeuronProperty([
+      page(...building(), ...building("Další 56, 301 00 Plzeň"), ...household(), ...household("Jiná 78, 779 00 Olomouc")),
+      [...page("ASISTENČNÍ SLUŽBY"), ...assistanceTable([
+        { kind: "household", address: ["Jiná 78,", "779 00", "Olomouc"], choice: ["Domácí", "asistence", "plus"] },
+        { kind: "property", address: ["Další 56,", "301 00", "Plzeň"], choice: ["Domácí", "asistence"] },
+        { kind: "household", address: ["Ukázková 34,", "602 00", "Brno"], choice: ["Domácí asistence"] },
+        { kind: "property", address: ["Testovací 12,", "110 00", "Praha"], choice: ["Domácí asistence", "plus"] },
+      ])],
+    ])!;
+    expect(result.domexNeuron.objects.map(object => [object.kind, object.assistance, object.fields.assistance])).toEqual([
+      ["property", "plus", "found"], ["property", "basic", "found"],
+      ["household", "basic", "found"], ["household", "plus", "found"],
+    ]);
+    expect(normalizeDomexNeuronData(result.domexNeuron)).toEqual(result.domexNeuron);
+  });
+
+  it.each([true, false])("reads all assistance rows across pages with a repeated header: %s", repeatHeader => {
+    const first = assistanceTable([{ kind: "household", address: ["Jiná 78,", "779 00", "Olomouc"], choice: ["Domácí asistence", "plus"] }]);
+    const second = assistanceTable([{ kind: "household", address: ["Ukázková 34,", "602 00", "Brno"], choice: ["Domácí asistence"] }]);
+    const result = parseDomexNeuronProperty([
+      page(...household(), ...household("Jiná 78, 779 00 Olomouc")),
+      [...page("ASISTENČNÍ SLUŽBY"), ...first], repeatHeader ? second : second.slice(1),
+    ])!;
+    expect(result.domexNeuron.objects.map(object => object.assistance)).toEqual(["basic", "plus"]);
+  });
+
+  it("does not use a comparison of both plans as a missing selected range", () => {
+    const comparison = { text: "Rozsah poskytování asistenčních služeb Domácí asistence Domácí asistence plus", items: [
+      { str: "Rozsah poskytování asistenčních služeb", x: 30, y: 690, width: 180 },
+      { str: "Domácí asistence", x: 350, y: 690, width: 80 },
+      { str: "Domácí asistence plus", x: 460, y: 690, width: 100 },
+    ] };
+    const result = parseDomexNeuronProperty([page(...household()), [...page("ASISTENČNÍ SLUŽBY"),
+      ...assistanceTable([{ kind: "household", address: ["Ukázková 34,", "602 00", "Brno"], choice: [] }]), comparison]])!;
+    expect(result.domexNeuron.objects[0]).toMatchObject({ assistance: null, fields: { assistance: "not_found" } });
+  });
+
+  it.each(["missing", "duplicate", "different"])("does not guess a positioned table row with a %s address", address => {
+    const place = address === "missing" ? [] : address === "different" ? ["Cizí 99,", "110 00", "Praha"] : ["Testovací 12,", "110 00", "Praha"];
+    const result = parseDomexNeuronProperty([
+      page(...building(), ...(address === "duplicate" ? building() : [])),
+      [...page("ASISTENČNÍ SLUŽBY"), ...assistanceTable([{ kind: "property", address: place, choice: ["Domácí asistence", "plus"] }])],
+    ])!;
+    expect(result.domexNeuron.objects.every(object => object.assistance === null && object.fields.assistance === "unreadable")).toBe(true);
+  });
+
+  it("keeps an unknown selected range unreadable instead of accepting a partial plan name", () => {
+    const result = parseDomexNeuronProperty([page(...building()), [...page("ASISTENČNÍ SLUŽBY"),
+      ...assistanceTable([{ kind: "property", address: ["Testovací 12,", "110 00", "Praha"], choice: ["Domácí asistence", "neznámá"] }])]])!;
+    expect(result.domexNeuron.objects[0]).toMatchObject({ assistance: null, fields: { assistance: "unreadable" } });
+  });
+
   it("keeps multiple insured objects and matches assistance by address rather than row order", () => {
     const parsed = parseDomexNeuronProperty([page(...building(), ...building("Další 56, 301 00 Plzeň", "Bytová jednotka", "OPTI", "3 100 000"),
       ...household(), ...household("Jiná 78, 779 00 Olomouc", "Trvalá", "NOP", "420 000"), "ASISTENČNÍ SLUŽBY",

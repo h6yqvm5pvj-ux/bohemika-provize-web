@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, ArrowRight, ArrowRightLeft, CalendarDays, Check, ChevronRight, FileText, Info, LoaderCircle, RotateCcw, Search, Settings2, Trash2, UserRound, X } from "lucide-react";
+import { CommissionStornoComparison } from "@/app/components/CommissionStornoComparison";
+import type { CommissionStornoRow } from "@/app/lib/commissionStornoComparison";
 import { nameFromEmail } from "./contractDetailHelpers";
 import styles from "./contractManagement.module.css";
 
@@ -18,11 +20,13 @@ type Props = {
   clientName: string;
   productLabel: string;
   canSetStorno: boolean;
+  startWithStorno?: boolean;
   canDelete: boolean;
   canRequestTransfer: boolean;
   isStorno: boolean;
   initialStornoDate: string;
   minimumStornoDate?: string | null;
+  getStornoComparison?: (date: string) => CommissionStornoRow[] | null;
   today: string;
   transferTargets: TransferTarget[];
   busy: boolean;
@@ -39,7 +43,7 @@ const dateLabel = (value: string) => {
 const targetLabel = (target: TransferTarget) => target.name?.trim() || nameFromEmail(target.email) || target.email;
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").trim();
 
-export function ContractManagementDialog({ contractNumber, clientName, productLabel, canSetStorno, canDelete, canRequestTransfer, isStorno, initialStornoDate, minimumStornoDate, today, transferTargets, busy, error, onClearError, onConfirm, onClose }: Props) {
+export function ContractManagementDialog({ contractNumber, clientName, productLabel, canSetStorno, startWithStorno = false, canDelete, canRequestTransfer, isStorno, initialStornoDate, minimumStornoDate, getStornoComparison, today, transferTargets, busy, error, onClearError, onConfirm, onClose }: Props) {
   const id = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -47,8 +51,10 @@ export function ContractManagementDialog({ contractNumber, clientName, productLa
   const dateRef = useRef<HTMLInputElement>(null);
   const submissionRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState(0);
-  const [action, setAction] = useState<ActionKind | null>(null);
+  const directStorno = startWithStorno && canSetStorno;
+  const firstStep = directStorno ? 1 : 0;
+  const [step, setStep] = useState(firstStep);
+  const [action, setAction] = useState<ActionKind | null>(directStorno ? "storno" : null);
   const [stornoMode, setStornoMode] = useState<"set" | "restore">("set");
   const [stornoDate, setStornoDate] = useState(initialStornoDate || today);
   const [targetEmail, setTargetEmail] = useState("");
@@ -61,6 +67,8 @@ export function ContractManagementDialog({ contractNumber, clientName, productLa
   const selectedTarget = transferTargets.find(target => target.email === targetEmail);
   const matchingTargets = transferTargets.filter(target => normalizeSearch(`${targetLabel(target)} ${target.email}`).includes(normalizeSearch(targetQuery)));
   const canContinue = action === "storno" ? canSetStorno : action === "delete" ? canDelete : action === "transfer" ? canRequestTransfer : false;
+  const stornoComparison = action === "storno" && stornoMode === "set" && stornoDate &&
+    (!minimumStornoDate || stornoDate >= minimumStornoDate) ? getStornoComparison?.(stornoDate) : undefined;
   const clearError = () => { setLocalError(null); onClearError(); };
   const close = () => { if (!locked && !submissionRef.current) onClose(); };
 
@@ -157,19 +165,22 @@ export function ContractManagementDialog({ contractNumber, clientName, productLa
         <button type="button" className={styles.close} aria-label="Zavřít správu smlouvy" disabled={locked} onClick={close}><X size={19} aria-hidden="true" /></button>
       </header>
       <nav aria-label="Kroky správy smlouvy" className={styles.stepper}>
-        <ol>{steps.map((label, index) => (
-          <li key={label} data-current={index === step} data-complete={index < step}>
-            <button type="button" disabled={index >= step || locked} aria-current={index === step ? "step" : undefined} onClick={() => goBack(index)}>
-              <span className={styles.stepNumber}>{index < step ? <Check size={13} aria-hidden="true" /> : index + 1}</span>
-              <span>{label}</span>
-            </button>
-          </li>
-        ))}</ol>
+        <ol>{steps.slice(firstStep).map((label, index) => {
+          const stepIndex = firstStep + index;
+          return (
+            <li key={label} data-current={stepIndex === step} data-complete={stepIndex < step}>
+              <button type="button" disabled={stepIndex >= step || locked} aria-current={stepIndex === step ? "step" : undefined} onClick={() => goBack(stepIndex)}>
+                <span className={styles.stepNumber}>{stepIndex < step ? <Check size={13} aria-hidden="true" /> : index + 1}</span>
+                <span>{label}</span>
+              </button>
+            </li>
+          );
+        })}</ol>
       </nav>
       <form className={styles.form} noValidate onSubmit={event => { event.preventDefault(); void proceed(); }}>
         <div className={styles.content} ref={contentRef}>
           <div className={styles.stepHeading}>
-            <p>Krok {step + 1} z {steps.length}</p>
+            <p>Krok {step - firstStep + 1} z {steps.length - firstStep}</p>
             <h3 ref={headingRef} tabIndex={-1}>{step === 0 ? "Co chcete se smlouvou udělat?" : isLastStep ? "Zkontrolujte a potvrďte" : action === "transfer" ? "Komu smlouvu převést?" : isStorno ? "Jak upravit storno?" : "Kdy smlouva končí?"}</h3>
             <span>{step === 0 ? "Vyberte akci, kterou chcete pokračovat." : isLastStep ? "Ještě jednou si ověřte údaje před dokončením." : action === "transfer" ? "Zvolte nového správce a datum účinnosti." : "Datum storna si ověřte v MAXXu nebo Extranetu."}</span>
           </div>
@@ -232,11 +243,12 @@ export function ContractManagementDialog({ contractNumber, clientName, productLa
             </div>
           </>}
 
+          {stornoComparison && <CommissionStornoComparison rows={stornoComparison} preview />}
           {step === 0 && <p className={styles.contractContext}><UserRound size={13} aria-hidden="true" />{clientName || "Klient není uvedený"}<span>·</span><FileText size={13} aria-hidden="true" />{productLabel}</p>}
           {(localError || error) && <p className={styles.error} role="alert">{localError || error}</p>}
         </div>
         <footer className={styles.footer}>
-          <button type="button" className={styles.back} disabled={locked} onClick={() => step > 0 ? goBack(step - 1) : close()}>{step > 0 && <ArrowLeft size={15} aria-hidden="true" />}{step > 0 ? "Zpět" : "Zrušit"}</button>
+          <button type="button" className={styles.back} disabled={locked} onClick={() => step > firstStep ? goBack(step - 1) : close()}>{step > firstStep && <ArrowLeft size={15} aria-hidden="true" />}{step > firstStep ? "Zpět" : "Zrušit"}</button>
           <button type="submit" className={styles.primary} data-danger={isLastStep && action === "delete"} disabled={!canContinue || locked} aria-busy={locked}>
             {locked ? <><LoaderCircle size={16} className={styles.spinner} aria-hidden="true" />{action === "delete" ? "Mažu…" : action === "transfer" ? "Odesílám…" : "Ukládám…"}</> : isLastStep ? submitLabel : <>Pokračovat<ArrowRight size={15} aria-hidden="true" /></>}
           </button>

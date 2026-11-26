@@ -20,6 +20,16 @@ const baseInput = (
 });
 
 describe("calculateCommission", () => {
+  it.each(["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"] as const)("never calculates a commission for %s", productKey => {
+    for (const position of [null, "poradce5", "manazer10"] as const) {
+      expect(calculateCommission(baseInput({ productKey, position, inputAmount: 999_999 })))
+        .toEqual({ items: [], total: 0 });
+    }
+  });
+  it.each([null, "poradce5", "manazer10"] as const)("never generates commissions for the free trailer product at position %s", position => {
+    expect(calculateCommission(baseInput({ productKey: "cppAutoVozikZdarma", position, inputAmount: 999_999 })))
+      .toEqual({ items: [], total: 0 });
+  });
   it("uses the NEON formula with the supplied position, mode, duration and date", () => {
     const input = baseInput({
       commissionMode: "accelerated",
@@ -84,6 +94,93 @@ describe("calculateCommission", () => {
     expect(result?.items[0]?.amount).toBeCloseTo(312.4, 6);
     expect(result?.items[1]?.amount).toBeCloseTo(78.1, 6);
     expect(result?.total).toBeCloseTo(624.8, 6);
+  });
+
+  it.each([
+    ["poradce1", 0.03240, 0.02493],
+    ["poradce2", 0.03530, 0.02785],
+    ["poradce3", 0.03820, 0.03024],
+    ["poradce4", 0.04100, 0.03775],
+    ["poradce5", 0.04390, 0.04244],
+    ["poradce6", 0.04680, 0.04536],
+    ["poradce7", 0.05830, 0.05067],
+    ["poradce8", 0.06120, 0.05369],
+    ["poradce9", 0.06410, 0.05597],
+    ["poradce10", 0.06700, 0.05756],
+    ["manazer4", 0.05830, 0.04536],
+    ["manazer5", 0.06120, 0.05067],
+    ["manazer6", 0.06410, 0.05560],
+    ["manazer7", 0.06700, 0.06048],
+    ["manazer8", 0.06980, 0.06579],
+    ["manazer9", 0.07270, 0.07029],
+    ["manazer10", 0.07560, 0.07560],
+  ] as const)("calculates both KOOP ODZAM commissions for %s before and from September 2026", (position, historical, current) => {
+    for (const [contractSignedDateIso, coefficient] of [
+      ["2026-08-31", historical],
+      ["2026-09-01", current],
+      ["2026-11-24", current],
+      [null, current],
+    ] as const) {
+      const result = calculateCommission(baseInput({
+        productKey: "koopodzam",
+        position,
+        contractSignedDateIso,
+        inputAmount: 500,
+        frequencyRaw: "quarterly",
+        durationYears: null,
+      }));
+
+      expect(result?.items).toMatchObject([
+        { code: "A101-A104" },
+        { code: "B101-B104", excludeFromTotal: true },
+      ]);
+      expect(result?.items[0].amount).toBeCloseTo(500 * coefficient, 8);
+      expect(result?.items[1].amount).toBeCloseTo(500 * coefficient, 8);
+      expect(result?.total).toBeCloseTo(2_000 * coefficient, 8);
+    }
+  });
+
+  it.each([
+    ["poradce1", 0.1108, 0.0277, 0.0277],
+    ["poradce2", 0.1238, 0.0309, 0.0309],
+    ["poradce3", 0.1344, 0.0336, 0.0336],
+    ["poradce4", 0.1678, 0.0419, 0.0419],
+    ["poradce5", 0.1886, 0.0472, 0.0472],
+    ["poradce6", 0.2016, 0.0504, 0.0504],
+    ["poradce7", 0.2252, 0.0563, 0.0563],
+    ["poradce8", 0.2386, 0.0597, 0.0597],
+    ["poradce9", 0.2488, 0.0662, 0.0622],
+    ["poradce10", 0.2558, 0.0640, 0.0640],
+    ["manazer4", 0.2016, 0.0504, 0.0504],
+    ["manazer5", 0.2252, 0.0563, 0.0563],
+    ["manazer6", 0.2471, 0.0618, 0.0618],
+    ["manazer7", 0.2688, 0.0672, 0.0672],
+    ["manazer8", 0.2924, 0.0731, 0.0731],
+    ["manazer9", 0.3124, 0.0781, 0.0781],
+    ["manazer10", 0.3360, 0.0840, 0.0840],
+  ] as const)("selects the correct OBCAN and FIT commissions for %s", (position, acquisition, historical, current) => {
+    for (const [productKey, contractSignedDateIso, subsequent] of [
+      ["koopmajetekobcan", "2026-08-31", historical],
+      ["koopmajetekobcan", "2026-09-01", current],
+      ["koopmajetekobcan", null, current],
+      ["koopfit", "2026-09-01", historical],
+    ] as const) {
+      const result = calculateCommission(baseInput({
+        productKey,
+        position,
+        contractSignedDateIso,
+        inputAmount: 1_000,
+        frequencyRaw: "quarterly",
+        durationYears: null,
+      }));
+      expect(result?.items).toMatchObject([
+        { code: "A101-A104" },
+        { code: "B101-B104", excludeFromTotal: true },
+      ]);
+      expect(result?.items[0].amount).toBeCloseTo(1_000 * acquisition, 8);
+      expect(result?.items[1].amount).toBeCloseTo(1_000 * subsequent, 8);
+      expect(result?.total).toBeCloseTo(4_000 * acquisition, 8);
+    }
   });
 
   it("matches anonymized amounts that were actually paid in commission statements", () => {

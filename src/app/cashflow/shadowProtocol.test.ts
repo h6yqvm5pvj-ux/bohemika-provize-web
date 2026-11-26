@@ -39,7 +39,9 @@ describe("cashflow shadow protocol", () => {
     expect(parseCashflowShadowRequest({ ...valid(), options: { ...valid().options, ...options } })).toBeNull();
   });
   it.each([
-    { version: "old" }, { version: "cashflow-shadow-v2" }, { version: "cashflow-shadow-v3" }, { asOfMs: NaN }, { asOfMs: 0 }, { asOfMs: 1e16 },
+    { version: "old" }, { version: "cashflow-shadow-v2" }, { version: "cashflow-shadow-v3" },
+    { version: "cashflow-shadow-v4" }, { version: "cashflow-shadow-v5" },
+    { asOfMs: NaN }, { asOfMs: 0 }, { asOfMs: 1e16 },
     { inputHash: "bad" }, { timeZone: "" }, { monthsHash: "B".repeat(64) },
   ])("rejects invalid comparison metadata %j", (override) => {
     expect(parseCashflowShadowRequest({ ...valid(), ...override })).toBeNull();

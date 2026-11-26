@@ -79,6 +79,7 @@ import {
 import type { Position, CommissionMode } from "../types/domain";
 import SplitTitle from "../pomucky/plan-produkce/SplitTitle";
 import { AccountSecurityPanel } from "./components/AccountSecurityPanel";
+import { CashflowSettingsPanel } from "./components/CashflowSettingsPanel";
 import { CareerTimelinePanel } from "./components/CareerTimelinePanel";
 import { NotificationsSettingsPanel } from "./components/NotificationsSettingsPanel";
 import { OnlineCardAnalyticsPanel } from "./components/OnlineCardAnalyticsPanel";
@@ -814,6 +815,7 @@ export default function SettingsPage() {
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [testPushStatus, setTestPushStatus] = useState<string | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [officeContributionEnabled, setOfficeContributionEnabled] = useState(false);
   const [onlineCardDraft, setOnlineCardDraft] =
     useState<OnlineCardDraft>(EMPTY_ONLINE_CARD_DRAFT);
   const [onlineCardSaving, setOnlineCardSaving] = useState(false);
@@ -1199,6 +1201,7 @@ export default function SettingsPage() {
 
       setLoadingMeta(true);
       setSavedProfileDraft(null);
+      setOfficeContributionEnabled(false);
 
       try {
         const payload = await fetchAuthedJsonOrThrow<{
@@ -1225,6 +1228,7 @@ export default function SettingsPage() {
 
         if (payload?.hasProfile) {
           const data = payload.profile ?? {};
+          setOfficeContributionEnabled(data.cashflowOfficeContributionEnabled === true);
           const profileFullName =
             typeof data.fullName === "string" && data.fullName.trim()
               ? data.fullName.trim()
@@ -2094,15 +2098,6 @@ export default function SettingsPage() {
       setOnlineCardStatus({
         type: "error",
         message: "Nejde ověřit přihlášený e-mail. Přihlas se prosím znovu.",
-      });
-      return;
-    }
-
-    if (email && email !== ownerEmail) {
-      setOnlineCardStatus({
-        type: "error",
-        message:
-          "Vizitka patří jinému e-mailu. Obnov stránku a zkontroluj, že nejsi v admin přepnutí.",
       });
       return;
     }
@@ -3898,6 +3893,22 @@ export default function SettingsPage() {
                   onRemoveRow={removePositionTimelineRow}
                   onImport={importPositionTimeline}
                   onSave={savePositionTimeline}
+                />
+              )}
+
+              {activeTab === "cashflow" && !timelineGateActive && (
+                <CashflowSettingsPanel
+                  key={impersonatedEmail || user.uid}
+                  initialEnabled={officeContributionEnabled}
+                  onSave={async enabled => {
+                    const result = await saveUserFields({ cashflowOfficeContributionEnabled: enabled });
+                    if (result.ok && normalizeEmail(readAdminImpersonationState()?.email) === impersonatedEmail &&
+                      normalizeEmail(auth.currentUser?.email) === normalizeEmail(user.email)) {
+                      setOfficeContributionEnabled(enabled);
+                      try { localStorage.setItem("contracts_last_updated", String(Date.now())); } catch { /* Storage may be unavailable. */ }
+                    }
+                    return result;
+                  }}
                 />
               )}
 

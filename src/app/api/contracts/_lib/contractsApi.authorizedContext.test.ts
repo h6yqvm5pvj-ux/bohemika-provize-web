@@ -38,7 +38,7 @@ beforeEach(() => {
     if (name === "usersPrivate") return { doc: () => ({ get: mocks.subscription }) };
     throw new Error(`Unexpected collection ${name}`);
   });
-  mocks.filtered.mockResolvedValue([]);
+  mocks.filtered.mockResolvedValue({ matches: [] });
 });
 
 describe("request-scoped contracts authorization", () => {

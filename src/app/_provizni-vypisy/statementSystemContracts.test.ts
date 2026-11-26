@@ -169,5 +169,8 @@ describe("system contract matching helpers", () => {
     expect(statementProductMatchesSystemProduct("domex", "domexneuron")).toBe(true);
     expect(statementProductMatchesSystemProduct("domexneuron", "domex")).toBe(true);
     expect(statementProductMatchesSystemProduct("cppAuto", "domexneuron")).toBe(false);
+    expect(statementProductMatchesSystemProduct("cppPPRbez", "cppPPRs")).toBe(true);
+    expect(statementProductMatchesSystemProduct("cppPPRs", "cppPPRbez")).toBe(true);
+    expect(statementProductMatchesSystemProduct("cppPPRbez", "cppsimplex")).toBe(false);
   });
 });

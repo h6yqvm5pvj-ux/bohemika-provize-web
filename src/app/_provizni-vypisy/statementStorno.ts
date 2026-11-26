@@ -1,5 +1,7 @@
 import { isAutoProduct } from "@/app/lib/productCatalog";
 import { toDate } from "@/app/lib/formatters";
+import { buildCommissionStornoComparison, commissionStornoCode } from "@/app/lib/commissionStornoComparison";
+import { commissionStatementDay } from "@/app/lib/commissionReceipts";
 
 import { statementDiscrepancyKey } from "./statementDiscrepancies";
 import {
@@ -19,6 +21,7 @@ import { detectFullAutoCommissionStorno } from "./stornoInference";
 import type {
   ContractMatchState,
   ContractStatusRule,
+  CommissionRow,
   MatchedSystemContract,
   OtherPayment,
   ParsedStatement,
@@ -50,6 +53,52 @@ export const stornoSystemUncertainty = (match: ContractMatchState | null, termin
   const contract = matchedSystemContract(match);
   return isUnpairedContractMatch(match) || Boolean(terminationReported && contract && !systemContractIsStorno(contract));
 };
+
+export function indexStornoStatementPayments(rows: readonly CommissionRow[]) {
+  const payments = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (row.commission <= 0) continue;
+    const product = resolveStatementProduct(row.product).productKey;
+    const number = normalizeContractNumberForMatch(row.contractNumber);
+    if (!product || !number) continue;
+    const key = JSON.stringify([number, product]);
+    const codes = payments.get(key) ?? new Set<string>();
+    codes.add(commissionStornoCode(row.type, product));
+    payments.set(key, codes);
+  }
+  return payments;
+}
+
+export function compareStatementStorno({
+  contract, group, header, statementId, currentUserEmail, payments,
+}: {
+  contract: MatchedSystemContract;
+  group: StornoContractGroup;
+  header: StatementHeader;
+  statementId?: string | null;
+  currentUserEmail?: string | null;
+  payments: ReadonlyMap<string, ReadonlySet<string>>;
+}) {
+  if (!systemContractIsStorno(contract) || contract.entryType === "endorsement" || !contract.productKey) return [];
+  const day = commissionStatementDay({ statementPeriod: header.period, statementDate: header.statementDate });
+  const number = normalizeContractNumberForMatch(group.contractNumber);
+  const systemNumber = normalizeContractNumberForMatch(contract.contractNumber);
+  if (!day || !number || (systemNumber && systemNumber !== number)) return [];
+  const product = contract.productKey;
+  const relevantRows = group.rows.filter(row => row.commission < 0 && resolveStatementProduct(row.product).productKey === product);
+  if (!relevantRows.length) return [];
+  const corrections = payments.get(JSON.stringify([number, product]));
+  const rows = relevantRows.map(row => {
+    const code = commissionStornoCode(row.type, product);
+    return { code, amount: row.commission, correction: corrections?.has(code) };
+  });
+  const codes = new Set(rows.filter(row => !row.correction).map(row => row.code));
+  if (!codes.size) return [];
+  return buildCommissionStornoComparison({
+    entries: [contract], ownerEmail: contract.adviserEmail, viewerEmail: currentUserEmail, stornoDate: contract.stornoDate,
+    statement: { id: statementId, number: header.statementNumber, period: header.period, day, rows },
+  }).filter(row => codes.has(row.code));
+}
 
 export const fullAutoStornoInferenceForGroup = ({
   statement,

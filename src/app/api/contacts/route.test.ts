@@ -243,6 +243,15 @@ describe("contact directory reads and legacy assignment", () => {
       expect(spy).toHaveBeenCalledExactlyOnceWith("CONTACT_DIRECTORY_READ_FAILED");
     } finally { spy.mockRestore(); }
   });
+  it("loads a saved Comfort Commodity contact without exposing specialist-only contacts", async () => {
+    const comfort = { ...contact("synthetic-comfort"), institutionKey: "comfort-commodity" };
+    store([comfort, contact("specialist-secret", { type: "specialists" })]);
+    forUser("ordinary-reader");
+    const result = await GET(getRequest());
+    expect(result.status).toBe(200);
+    expect((await result.json()).contacts).toEqual([comfort]);
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
 });
 
 describe("contact directory writes and concurrency", () => {

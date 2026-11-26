@@ -53,6 +53,7 @@ import { useUserProfileAccess } from "@/components/profile/useUserProfileAccess"
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
 import { SubscriptionGate } from "@/components/subscription/SubscriptionGate";
 import { MobilePullToRefresh } from "@/components/MobilePullToRefresh";
+import { LifeCommissionReminderDialog } from "@/components/LifeCommissionReminderDialog";
 import Preloader from "@/components/Preloader";
 import { consumeLoginTransition } from "@/lib/loginTransition";
 
@@ -652,6 +653,10 @@ export function AppLayout({
   return (
     <main className="app-shell-root relative min-h-[100dvh] text-slate-900">
       {loginPreloader}
+      {user && authReady && !embedded && !loadingProfile && !isTipsterAccount && !impersonation &&
+        !loginPreloader && !accountSetup.showWizard && !timelineSetupGateActive && !effectiveShowPaywall ? (
+          <LifeCommissionReminderDialog key={user.uid} user={user} pathname={pathname} />
+        ) : null}
       <MobilePullToRefresh />
       <div
         className="fixed inset-0 -z-10 transition-colors duration-200"
@@ -799,28 +804,28 @@ export function AppLayout({
             ) : null}
 
             {impersonation && isAdminRequestsUser && !embedded ? (
-              <div className="fixed left-1/2 top-4 z-50 w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-sky-200 bg-white/95 px-4 py-3 text-sm text-slate-900 shadow-[0_16px_34px_rgba(15,23,42,0.2)] backdrop-blur">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-sky-700">
-                      <UserRound className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="font-semibold">Zobrazuješ jako {impersonationLabel}</div>
-                      <div className="truncate text-xs text-slate-500">
-                        Skutečně přihlášený účet: {user?.email ?? ""}
-                      </div>
+              <div className="fixed right-3 top-[4.25rem] z-50 flex w-[calc(100%-1.5rem)] max-w-sm items-center gap-2.5 rounded-2xl border border-violet-200 bg-white/95 px-2.5 py-2 text-slate-900 shadow-lg shadow-violet-950/10 backdrop-blur sm:right-5 lg:top-4">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                  <UserRound className="size-4" strokeWidth={2.2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-700">Zobrazuješ jako</div>
+                  <div className="truncate text-sm font-bold leading-snug" title={impersonationLabel}>{impersonationLabel}</div>
+                  {user?.email && (
+                    <div className="truncate text-[11px] text-slate-600" title={`Přihlášený účet: ${user.email}`}>
+                      Přihlášený účet: {user.email}
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleStopImpersonation}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-slate-300 bg-slate-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                    Vrátit se zpět
-                  </button>
+                  )}
                 </div>
+                <button
+                  type="button"
+                  onClick={handleStopImpersonation}
+                  className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-violet-950 px-2.5 text-xs font-semibold text-white transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+                  aria-label="Zpět na vlastní účet"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
+                  Zpět
+                </button>
               </div>
             ) : null}
 

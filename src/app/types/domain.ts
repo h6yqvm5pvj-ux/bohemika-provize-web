@@ -1,6 +1,10 @@
 // src/types/domain.ts
 
 export type Product =
+  | "conseqInvest"
+  | "investikaRealitniFond"
+  | "investikaEfektika"
+  | "investikaMonetika"
   | "conseqzenit"
   | "neon"
   | "flexi"
@@ -20,6 +24,7 @@ export type Product =
   | "maxdomov"
   | "cppsimplex"
   | "cppAuto"
+  | "cppAutoVozikZdarma"
   | "slaviaauto"
   | "slaviaflotila"
   | "allianzAuto"

@@ -43,7 +43,7 @@ describe("commission filters using real cashflow and payout calculations", () =>
     ["all", ["A101", "B301", "B36", "B48", "B101", "B201"], []],
   ] as [CommissionAuditFilterCode, string[], string[]][])("recognizes %s code aliases and rejects other groups", (filter, accepted, rejected) => {
     for (const code of [...accepted, ...rejected]) {
-      const item = base(code, { items: [], commissionPayouts: [{ key: code, code, amount: 80, expectedAmount: 100, difference: -20, status: "difference" }] });
+      const item = base(code, { productKey: "neon", items: [], commissionPayouts: [{ key: code, code, amount: 80, expectedAmount: 100, difference: -20, status: "difference" }] });
       expect(matches(item, "difference", filter), code).toBe(accepted.includes(code));
     }
   });

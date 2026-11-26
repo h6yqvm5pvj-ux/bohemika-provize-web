@@ -10,6 +10,7 @@ import type {
   CommissionAuditMode,
 } from "@/app/lib/commissionAudit";
 import type { ProductInstitutionId } from "@/app/lib/productCatalog";
+import type { StornoEstimateIssue } from "@/app/lib/commissionStornoAudit";
 
 export type FirestoreTimestamp = {
   seconds: number;
@@ -17,7 +18,10 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  isDip?: boolean | null;
   id: string;
+  stornoEstimateIssue?: StornoEstimateIssue;
+  hasContractPdfAttachment?: boolean;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | null;
@@ -67,6 +71,7 @@ export type ContractDoc = {
   clientPhone?: string | null;
   clientAddress?: string | null;
   contractNumber?: string | null;
+  carPlate?: string | null;
 
   createdAt?: FirestoreTimestamp | Date | string | null;
   contractSignedDate?: FirestoreTimestamp | Date | string | null;
@@ -102,15 +107,6 @@ export type ContractDoc = {
   }[] | null;
 };
 
-export type AppUser = {
-  id: string;
-  email: string | null;
-  fullName?: string | null;
-  name?: string | null;
-  position: Position | null;
-  managerEmail?: string | null;
-};
-
 export type DisplayedContract = ContractDoc & {
   adviserEmail?: string | null;
   groupedEndorsementCount?: number;
@@ -126,6 +122,7 @@ export type FilterMode = "latest" | "anniversary";
 export type CommissionAuditFilterMode = CommissionAuditMode;
 export type CommissionAuditFilterCode = CommissionAuditCodeFilter;
 export type ProductCategory =
+  | "investments"
   | "pension"
   | "life"
   | "auto"
@@ -140,13 +137,10 @@ export type ContractsCache = {
   userEmail: string;
   position: Position | null;
   myContracts: ContractDoc[];
-  teamContracts: (ContractDoc & { adviserEmail: string | null })[];
   savedAt: number;
   myHasMore?: boolean;
-  teamHasMore?: boolean;
   myCursorDate?: string | number | null;
-  teamCursorDate?: string | number | null;
-  teamEmails?: string[];
+  teamAdvisers?: { email: string; name: string | null }[];
 };
 
 export type ContractsApiResponse = {
@@ -154,7 +148,7 @@ export type ContractsApiResponse = {
   ok: boolean;
   error?: string;
   position?: Position | null;
-  teamEmails?: string[];
+  teamAdvisers?: { email: string; name: string | null }[];
   canTransferContracts?: boolean;
   transferTargets?: {
     email: string;
@@ -162,19 +156,17 @@ export type ContractsApiResponse = {
     position: Position | null;
   }[];
   contracts?: (ContractDoc & { adviserEmail: string | null })[];
+  totalCount?: number | null;
   hasMore?: boolean;
   nextCursorToken?: string | null;
   nextCursor?: number | null;
-  teamContracts?: (ContractDoc & { adviserEmail: string | null })[];
-  teamHasMore?: boolean;
-  teamNextCursorToken?: string | null;
-  teamNextCursor?: number | null;
 };
 
 export type ContractsListFilters = {
   query: string;
   filterMode: FilterMode;
   showUnpaidOnly: boolean;
+  showWithoutPdfOnly: boolean;
   showRefreshOnly: boolean;
   showActiveOnly: boolean;
   showStornoOnly: boolean;
@@ -194,6 +186,7 @@ export type ContractsViewState = {
   filterMode: FilterMode;
   searchText: string;
   showUnpaidOnly: boolean;
+  showWithoutPdfOnly: boolean;
   showRefreshOnly: boolean;
   showActiveOnly: boolean;
   showStornoOnly: boolean;

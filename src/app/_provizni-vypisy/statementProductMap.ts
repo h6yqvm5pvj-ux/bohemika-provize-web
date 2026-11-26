@@ -89,6 +89,7 @@ export const inferStatementProductCategory = (
   rawCode: string
 ): StatementProductCategory => {
   if (/^(?:INVESTIKA|EFEKTIKA|CON_|COLOS_)/.test(rawCode)) return "investment";
+  if (rawCode === "CPP_N_INVS") return "life";
   if (/FLEXI|NEON|N_LIFE|N_RISK|PRANI|PILLOW.*(?:UR|NM)/.test(rawCode)) {
     return "life";
   }
@@ -105,7 +106,8 @@ const statementCategoryForProductKey = (
 ): StatementProductCategory | null => {
   if (!productKey) return null;
   if (productKey === "maxcizinkomplex") return "foreigners";
-  return PRODUCT_CATALOG[productKey]?.category ?? null;
+  const category = PRODUCT_CATALOG[productKey]?.category;
+  return category === "investments" ? "investment" : category ?? null;
 };
 
 const normalizeProductKey = (value: unknown): Product | null => {
@@ -243,6 +245,12 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
     isLifeSplit: true,
   }),
   defaultEntry({
+    code: "CPP_N_INVS",
+    productKey: "neon",
+    baseRule: "annual",
+    isLifeSplit: true,
+  }),
+  defaultEntry({
     code: "KOOP_FLEXI",
     productKey: "flexi",
     baseRule: "annual",
@@ -259,6 +267,7 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   }),
   defaultEntry({ code: "CPP_DOMX", productKey: "domex" }),
   defaultEntry({ code: "CPP_DOMX+2", productKey: "domex" }),
+  defaultEntry({ code: "CPP_DOMX+N", productKey: "domexneuron" }),
   defaultEntry({
     code: "CPP_DOMEX+",
     productKey: "domex",
@@ -412,24 +421,28 @@ export const DEFAULT_STATEMENT_PRODUCT_MAP_ENTRIES: StatementProductMapEntry[] =
   }),
   defaultEntry({
     code: "INVESTIKA",
+    productKey: "investikaRealitniFond",
     label: "Investika",
     category: "investment",
     isInvestmentSection: true,
   }),
   defaultEntry({
     code: "EFEKTIKA",
+    productKey: "investikaEfektika",
     label: "Efektika",
     category: "investment",
     isInvestmentSection: true,
   }),
   defaultEntry({
     code: "MONETIKA",
+    productKey: "investikaMonetika",
     label: "Monetika",
     category: "investment",
     isInvestmentSection: true,
   }),
   defaultEntry({
     code: "CON_INV2_C",
+    productKey: "conseqInvest",
     label: "Conseq investice",
     category: "investment",
     isInvestmentSection: true,

@@ -1,6 +1,12 @@
+import { applyAutoCommissionForecasts } from "./autoCommissionForecast";
+import { officeContributionForecast } from "./officeContribution";
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { calendarDate } from "@/app/lib/calendarDates";
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
+import { isFrequencyAutoPayoutProduct } from "@/app/lib/productCatalog";
+import { enrichCommissionStatementPayouts, indexCommissionStatementPayouts } from "@/app/lib/commissionStatementPayoutEvidence";
+import { indexLifeIncreaseReceiptEvidence } from "@/app/lib/commissionReceipts";
 import { normalizeCashflowExtraPayouts, type CashflowExtraPayout } from "./extraPayouts";
 
 import {
@@ -11,7 +17,7 @@ import {
 } from "../types/domain";
 import { totalWithMultipliers } from "../lib/commissionTotals";
 import { computeLegacyFrequencyOverrideTotal } from "../lib/managerOverrideTotals";
-import { generateCashflow } from "./generator";
+import { cashflowCommissionPayoutsForViewer, generateCashflow } from "./generator";
 import {
   CASHFLOW_FORECAST_YEARS,
   matchesProductFilter,
@@ -29,6 +35,7 @@ import {
   type CashflowSubscriptionPlan,
 } from "./subscriptionCashflow";
 import type {
+  CashflowCommissionStatementSummary,
   CashflowItem,
   EntryDoc,
   ProductFilter,
@@ -72,6 +79,7 @@ export type CashflowSnapshot = {
   tipPayouts: TipPayoutApiItem[];
   subscriptionPayments: SubscriptionPaymentApiItem[];
   extraPayouts?: CashflowExtraPayout[];
+  officeContributionEnabled?: boolean;
 };
 
 export type CashflowComputationOptions = {
@@ -79,6 +87,7 @@ export type CashflowComputationOptions = {
   productFilter: ProductFilter;
   tipsterMode?: boolean;
   asOf?: Date;
+  statements?: readonly CashflowCommissionStatementSummary[];
 };
 
 const SUBSCRIPTION_FORECAST_YEARS = 10;
@@ -179,7 +188,7 @@ const normalizeSubscriptionPaymentForCashflow = (
 /** Shared by the browser and server; the supplied snapshot is never mutated. */
 export function computeCashflow(
   snapshot: CashflowSnapshot,
-  { scopeFilter, productFilter, tipsterMode = false, asOf = new Date() }: CashflowComputationOptions
+  { scopeFilter, productFilter, tipsterMode = false, asOf = new Date(), statements }: CashflowComputationOptions
 ): CashflowItem[] {
   const email = snapshot.email;
   const entryWasTransferred = (entry: EntryDoc): boolean => {
@@ -255,6 +264,18 @@ export function computeCashflow(
   const overrides: EntryDoc[] = [];
   if (teamRaw.length > 0) {
     for (const entry of teamRaw) {
+      if (hasPendingFlexiRenovationBase(entry)) {
+        if (normalizeEmail(entry.userEmail) === email) continue;
+        const received: EntryDoc = {
+          ...entry,
+          source: "manager",
+          originalEntryId: entry.id,
+          id: `${entry.id}-override`,
+          items: [],
+        };
+        if (cashflowCommissionPayoutsForViewer(received, email)?.length) overrides.push(received);
+        continue;
+      }
       const storedOverride =
         (entry.managerOverrides as EntryDoc["managerOverrides"])?.find(
           (override) => (override.email ?? "").toLowerCase() === email
@@ -314,13 +335,41 @@ export function computeCashflow(
     });
   }
 
-  const generatedCashflow = generateCashflow(
+  const lifeReceiptEvidence = statements?.length
+    ? indexLifeIncreaseReceiptEvidence(statements.flatMap(statement => statement.lifeIncreaseRows?.length
+        ? [{ id: statement.id, writer: email, rows: statement.lifeIncreaseRows }] : [])) : undefined;
+  if (statements?.length) {
+    const statementIds = new Set<string>();
+    for (const entry of entriesForCashflow) {
+      if (!entry.frequencyRaw || entry.frequencyRaw === "annual" || !isFrequencyAutoPayoutProduct(entry.productKey)) continue;
+      for (const payout of entry.commissionPayouts ?? []) {
+        if (payout.statementId && normalizeEmail(payout.writtenBy) === email) statementIds.add(payout.statementId);
+      }
+    }
+    if (statementIds.size) {
+      const evidence = indexCommissionStatementPayouts(statements, statement =>
+        statementIds.has(statement.id) ? statement.paidAutoInstallments : undefined);
+      entriesForCashflow = entriesForCashflow.map(entry => {
+        const payouts = entry.commissionPayouts;
+        if (!entry.frequencyRaw || entry.frequencyRaw === "annual" || !entry.productKey || !isFrequencyAutoPayoutProduct(entry.productKey) ||
+            !payouts?.length) return entry;
+        const enriched = enrichCommissionStatementPayouts(payouts, evidence, {
+          contractNumber: entry.contractNumber, productKey: entry.productKey,
+          source: entry.source === "manager" ? "manager" : "own", viewerEmail: email,
+        });
+        return enriched === payouts ? entry : { ...entry, commissionPayouts: enriched };
+      });
+    }
+  }
+
+  const generatedCashflow = applyAutoCommissionForecasts(generateCashflow(
     entriesForCashflow,
     CASHFLOW_FORECAST_YEARS,
     email,
     asOf,
-    allEntries
-  );
+    allEntries,
+    lifeReceiptEvidence,
+  ), entriesForCashflow, email, { keepCoveredForStatementMatching: true });
   const includeTipPayouts =
     tipsterMode ||
     productFilter === "tip" ||
@@ -526,7 +575,9 @@ export function computeCashflow(
       };
     })
     : [];
-  const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems, ...extraPayoutItems].sort(
+  const officeItems = snapshot.officeContributionEnabled === true && !tipsterMode && scopeFilter !== "team" && productFilter === "all"
+    ? officeContributionForecast(email, asOf) : [];
+  const cashflow = [...generatedCashflow, ...tipCashflowItems, ...subscriptionCashflowItems, ...extraPayoutItems, ...officeItems].sort(
     (a, b) => a.date.getTime() - b.date.getTime()
   );
   return cashflow;

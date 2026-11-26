@@ -6,13 +6,14 @@ import { formatMoney } from "./statementParsing";
 import styles from "./statementContractDetail.module.css";
 
 export function StatementContractHeader({
-  client, contractNumber, products, badges, commission, reserve,
+  client, contractNumber, products, badges, summaryBadge, commission, reserve,
   expanded, onToggle, verified = false, contentId, reviewSummary,
 }: {
   client: string;
   contractNumber: string;
   products: ReactNode;
   badges: ReactNode;
+  summaryBadge?: ReactNode;
   commission: number;
   reserve?: number;
   expanded: boolean;
@@ -45,11 +46,14 @@ export function StatementContractHeader({
         {!expanded && verified
           ? <span className={styles.badge} data-tone="ok"><CheckCircle2 size={13} aria-hidden="true" />Vše sedí</span>
           : !expanded && reviewSummary
-            ? <span className={styles.badge} data-tone={reviewSummary.tone}>
-                {reviewSummary.trend === "increase" && <TrendingUp size={13} aria-hidden="true" />}
-                {reviewSummary.trend === "decrease" && <TrendingDown size={13} aria-hidden="true" />}
-                {reviewSummary.label}
-              </span>
+            ? <>
+                <span className={styles.badge} data-tone={reviewSummary.tone}>
+                  {reviewSummary.trend === "increase" && <TrendingUp size={13} aria-hidden="true" />}
+                  {reviewSummary.trend === "decrease" && <TrendingDown size={13} aria-hidden="true" />}
+                  {reviewSummary.label}
+                </span>
+                {summaryBadge}
+              </>
             : badges}
       </span>
     </button>

@@ -8,16 +8,26 @@ import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
 
 import { isContractCommissionEnded } from "@/app/lib/contractCommissionEnd";
 
-import { buildInteractiveStatementHtml } from "@/lib/statementPreview";
+import { CommissionStatementPreviewModal, type ContractStatementPreview } from "./CommissionStatementPreviewModal";
 
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
+import { uniqueFamilyCommissionReceipts } from "@/app/lib/commissionReceipts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { isContractDetailHandoffId, readContractDetailHandoff } from "@/app/lib/contractDetailHandoff";
+import { AutoContractChangeDialog } from "./AutoContractChangeDialog";
+import { NeonEndorsementDialog } from "./NeonEndorsementDialog";
+import { NeonCorrectionDialog } from "./NeonCorrectionDialog";
+import { canSetNeonCorrection } from "@/app/lib/neonCorrection";
+import { contractPaymentFrequencies, paymentFrequencyAtDate } from "@/app/lib/autoPaymentFrequency";
+import { FLEXI_RENOVATION_MISSING_BASE_LABEL, hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { FlexiRenovationBaseReview } from "./FlexiRenovationBaseReview";
 import { ContractHistoryDialog } from "./ContractHistoryDialog";
 import { ContractPaymentDetailsDialog } from "./ContractPaymentDetailsDialog";
 import { loadContractPaymentDetailsFromPdf } from "./contractPaymentDetailsLoader";
 import { ContractPaymentDetailsError } from "./contractPaymentDetailsErrors";
 import { KooperativaContractStatusDialog } from "./KooperativaContractStatusDialog";
+import { ContractPortalIdentityDialog } from "./ContractPortalIdentityDialog";
 import { useKooperativaContractStatus } from "./useKooperativaContractStatus";
 import { ContractPdfUploadButton, type ContractPdfUploadAttachment, type ContractPdfUploadResponse } from "./ContractPdfUploadButton";
 import { ContractSectionToggle } from "./ContractSectionToggle";
@@ -25,8 +35,13 @@ import { ContractManagementDialog } from "./ContractManagementDialog";
 import { ContractDetailLoader } from "./ContractDetailLoader";
 import { ContractTimelineSection } from "./ContractTimelineSection";
 import { ContractDetailNavigation } from "./ContractDetailNavigation";
+import { ContractPaidCommissionSummary } from "./ContractFinancialOverviewSection";
+import { CommissionStornoComparison } from "@/app/components/CommissionStornoComparison";
+import { InvestmentPayoutMatchingDialog, investmentStatementMonth, type InvestmentPayoutMatchingView } from "./InvestmentPayoutMatchingDialog";
+import { INVESTMENT_PAYOUT_PROGRESS_TYPE, readInvestmentPayoutMatch } from "@/app/lib/investmentPayoutMatching";
+import { buildContractPaidCommissionTotal, buildContractStornoComparison } from "./contractFinancialOverviewModel";
 import navigationStyles from "./contractDetailNavigation.module.css";
-import { contractEditSource, unifiedContractDetail, updateContractTimelineEntry } from "./contractTimelineDetails";
+import { contractEditSource, neonCommissionFamily, unifiedContractDetail, updateContractTimelineEntry } from "./contractTimelineDetails";
 import {
   appendedContractNotesView, contractNoteEntryId, contractNoteMutationTarget, contractNotesReadTarget, contractNoteViewKey, linkedContractNoteKey,
   removedContractNoteView, savedContractNoteView, sortedContractNotes, type ContractNotesViewState,
@@ -71,7 +86,9 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
+  isInvestmentProduct,
   isLifeProduct,
+  isRecordOnlyProduct,
   productInstitutionId,
   productInstitutionLabel,
   productInstitutionLogo,
@@ -170,12 +187,15 @@ import {
   ContractCommissionSection,
   type MeziprovisionCard,
 } from "./ContractCommissionSection";
+import { projectContractCommissionPayouts } from "./contractCommissionInstallments";
+import { projectConfirmedPremiumHistory } from "@/app/lib/commissionPremiumCodeAdjustment";
 import { ContractCommissionHistory } from "./ContractCommissionHistory";
 import { ContractLifePremiumChanges } from "./ContractLifePremiumChanges";
 import { currentConfirmedLifePremium } from "@/app/lib/lifePremiumIncrease";
 import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import {
   ContractAutoPremiumHistory,
+  initialAnnualPremiumFromStatementRows,
   initialAnnualPremiumFromStatementHistory,
   resolveAutoSignedAnnualPremiumValue,
 } from "./ContractAutoPremiumHistory";
@@ -202,6 +222,7 @@ import {
 import { CLIENT_CARDS_ENABLED } from "@/app/_klienti/clientFeature";
 import { clientCardHrefForName } from "@/app/_klienti/clientAccess";
 import { isSlaviaAutoSupportedForSignedDate } from "@/app/lib/productFormulas/slaviaAuto";
+import { formatSlaviaVerificationIdentity } from "@/app/lib/slaviaContractVerification";
 import type { ContractNoteDto } from "@/app/api/contracts/notes/contractNotes";
 
 const CPP_EXTRANET_REDIRECT_URL =
@@ -210,7 +231,9 @@ const ALLIANZ_AUTO_PAYMENT_CHECK_URL =
   "https://www.allianz.cz/cs_CZ/apps/zaplacenost-pojistky.html";
 const ALLIANZ_AUTO_ODOMETER_UPLOAD_URL =
   "https://www.allianz.cz/cs_CZ/apps/kilometry-nahrani.html";
-type AllianzPortalAction = "odometerUpload" | "paymentCheck";
+const SLAVIA_CONTRACT_VERIFICATION_URL =
+  "https://www.slavia-pojistovna.cz/over-ps/";
+type AllianzPortalAction = "odometerUpload" | "paymentCheck" | "slaviaVerification";
 const ALLIANZ_PORTAL_ACTION_CONFIG: Record<
   AllianzPortalAction,
   { title: string; openLabel: string; url: string }
@@ -225,9 +248,12 @@ const ALLIANZ_PORTAL_ACTION_CONFIG: Record<
     openLabel: "Otevřít ověření zaplacenosti",
     url: ALLIANZ_AUTO_PAYMENT_CHECK_URL,
   },
+  slaviaVerification: {
+    title: "Ověř smlouvu",
+    openLabel: "Otevřít ověření smlouvy",
+    url: SLAVIA_CONTRACT_VERIFICATION_URL,
+  },
 };
-const SLAVIA_CONTRACT_VERIFICATION_URL =
-  "https://www.slavia-pojistovna.cz/over-ps/";
 const UNIQA_ONLINE_TERMINATION_URL =
   "https://ivos.uniqa.cz/prod/ChangeCps?findType=Storno";
 const SHOW_CONTRACT_PDF_PREVIEW_BUTTON = true;
@@ -372,71 +398,6 @@ type ContractPdfOption = {
   isCurrent: boolean;
 };
 
-const statementDisplayTitle = (statement: ContractCommissionStatementDetail): string => {
-  if (statement.statementNumber) return `Provizní výpis ${statement.statementNumber}`;
-  return statement.fileName || "Provizní výpis";
-};
-
-
-function CommissionStatementPreviewModal({
-  statement,
-  onClose,
-}: {
-  statement: ContractCommissionStatementDetail | null;
-  onClose: () => void;
-}) {
-  if (!statement) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#08030f]/78 px-4 py-6 backdrop-blur-[7px]"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[95vh] w-[min(980px,96vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100 text-slate-950 shadow-[0_38px_92px_rgba(2,6,23,0.38)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-              <FileText className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
-              Provizní výpis
-            </div>
-            <h3 className="mt-2 truncate text-2xl font-bold tracking-tight text-slate-950">
-              {statementDisplayTitle(statement)}
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              {statement.period ?? "Období nezjištěno"}
-              {statement.statementDate ? ` · vystaveno ${statement.statementDate}` : ""}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="ui-focus inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-slate-400 hover:text-slate-900"
-            aria-label="Zavřít náhled provizního výpisu"
-          >
-            <X className="h-5 w-5" strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-100 px-3 py-4 sm:px-5">
-          <iframe
-            title={statementDisplayTitle(statement)}
-            srcDoc={buildInteractiveStatementHtml(statement.html)}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            className="mx-auto block h-[min(76vh,940px)] w-[840px] max-w-full rounded-xl border border-slate-300 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
 export default function ContractDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -456,11 +417,19 @@ export default function ContractDetailPage() {
         ? "?embedded=1"
         : "";
 
-  // slug: email___entryId
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [adminImpersonation, setAdminImpersonation] =
+    useState<AdminImpersonationState | null>(() =>
+      typeof window === "undefined" ? null : readAdminImpersonationState()
+    );
+  const handoffId = typeof rawId === "string" && isContractDetailHandoffId(rawId) ? rawId : null;
   let ownerEmail: string | null = null;
   let requestedEntryId: string | null = null;
-
-  if (typeof rawId === "string") {
+  if (handoffId) {
+    const target = user ? readContractDetailHandoff(handoffId, user.uid, normalizeEmail(adminImpersonation?.email) ?? "") : null;
+    ownerEmail = target?.ownerEmail ?? null;
+    requestedEntryId = target?.entryId ?? null;
+  } else if (typeof rawId === "string") {
     const decoded = decodeURIComponent(rawId);
     const parts = decoded.split("___");
     if (parts.length === 2) {
@@ -469,11 +438,8 @@ export default function ContractDetailPage() {
     }
   }
 
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [adminImpersonation, setAdminImpersonation] =
-    useState<AdminImpersonationState | null>(() =>
-      typeof window === "undefined" ? null : readAdminImpersonationState()
-    );
+  const [frequencyDialogOpen, setFrequencyDialogOpen] = useState<string | null>(null);
+  const [neonCorrectionDialogOpen, setNeonCorrectionDialogOpen] = useState<string | null>(null);
   const [managerPosition, setManagerPosition] = useState<Position | null>(
     null
   );
@@ -497,10 +463,11 @@ export default function ContractDetailPage() {
   const [commissionStatementsLoading, setCommissionStatementsLoading] = useState(false);
   const [commissionStatementsError, setCommissionStatementsError] = useState<string | null>(null);
   const [statementPreview, setStatementPreview] =
-    useState<ContractCommissionStatementDetail | null>(null);
+    useState<ContractStatementPreview | null>(null);
   const [statementPreviewLoadingId, setStatementPreviewLoadingId] =
     useState<string | null>(null);
   const [rebuildingFromStatements, setRebuildingFromStatements] = useState(false);
+  const [investmentMatching, setInvestmentMatching] = useState<InvestmentPayoutMatchingView | null>(null);
 
   const [overrideItems, setOverrideItems] = useState<
     CommissionResultItemDTO[] | null
@@ -516,7 +483,6 @@ export default function ContractDetailPage() {
   const [childOverrideEmail, setChildOverrideEmail] = useState<string | null>(null);
   const [childOverrideName, setChildOverrideName] = useState<string | null>(null);
   const [childOverridePosition, setChildOverridePosition] = useState<Position | null>(null);
-  const [showProductPanel, setShowProductPanel] = useState(false);
 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -558,7 +524,7 @@ export default function ContractDetailPage() {
   const [stornoError, setStornoError] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [paymentDetailsRequestKey, setPaymentDetailsRequestKey] = useState<string | null>(null);
-  const [showManagementModal, setShowManagementModal] = useState(false);
+  const [managementRequest, setManagementRequest] = useState<{ key: string; action: "choose" | "storno" } | null>(null);
   const [showTerminationReasonModal, setShowTerminationReasonModal] =
     useState(false);
   const [showUniqaTerminationModal, setShowUniqaTerminationModal] =
@@ -606,7 +572,9 @@ export default function ContractDetailPage() {
   const [serverCanManageContract, setServerCanManageContract] = useState(false);
   const isNeonImmediateBreakdownOpen = neonImmediateBreakdown != null;
   const isStatementPreviewOpen = statementPreview != null;
-  const showAllianzPortalModal = allianzPortalAction != null;
+  const showAllianzPortalModal = allianzPortalAction === "odometerUpload";
+  const showContractPortalIdentityDialog =
+    allianzPortalAction === "paymentCheck" || allianzPortalAction === "slaviaVerification";
   const allianzPortalConfig = allianzPortalAction
     ? ALLIANZ_PORTAL_ACTION_CONFIG[allianzPortalAction]
     : null;
@@ -635,7 +603,6 @@ export default function ContractDetailPage() {
         setShowContractPdfModal(false);
         setShowContractPdfOptions(false);
         setShowContractActionsMenu(false);
-        setShowProductPanel(false);
         setSelectedContractPdf(null);
         setNeonImmediateBreakdown(null);
         setStatementPreview(null);
@@ -648,7 +615,6 @@ export default function ContractDetailPage() {
       showContractPdfModal ||
       showContractPdfOptions ||
       showContractActionsMenu ||
-      showProductPanel ||
       isNeonImmediateBreakdownOpen ||
       isStatementPreviewOpen
     ) {
@@ -664,7 +630,6 @@ export default function ContractDetailPage() {
     showContractPdfModal,
     showContractPdfOptions,
     showContractActionsMenu,
-    showProductPanel,
     isNeonImmediateBreakdownOpen,
     isStatementPreviewOpen,
     closeAllianzPortalModal,
@@ -708,7 +673,7 @@ export default function ContractDetailPage() {
   }, []);
 
   const requestContractsApi = useCallback(
-    async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    async <T,>(path: string, init?: RequestInit, readResponse?: (response: Response) => Promise<T>): Promise<T> => {
       if (!user) {
         const err = new Error("Nejsi přihlášený.") as ContractsApiError;
         err.status = 401;
@@ -716,7 +681,10 @@ export default function ContractDetailPage() {
       }
 
       const doRequest = async (token: string) => {
-        const headers = new Headers(init?.headers ?? {});
+        const detailViewer = path === "/api/contracts/detail" ? adminImpersonation?.email : null;
+        const headers = detailViewer
+          ? withDefaultAdminImpersonationHeader(init?.headers, detailViewer)
+          : new Headers(init?.headers ?? {});
         headers.set("Authorization", `Bearer ${token}`);
         return fetch(path, {
           ...(init ?? {}),
@@ -732,6 +700,7 @@ export default function ContractDetailPage() {
         res = await doRequest(token);
       }
 
+      if (res.ok && readResponse) return readResponse(res);
       const payload = (await res.json().catch(() => ({}))) as ContractsApiResponseBase;
       if (!res.ok || payload?.ok === false) {
         const err = new Error(
@@ -743,8 +712,20 @@ export default function ContractDetailPage() {
 
       return payload as T;
     },
-    [user]
+    [adminImpersonation?.email, user]
   );
+
+  const readContractDetail = useCallback((body: URLSearchParams) =>
+    requestContractsApi<ContractDetailApiResponse>("/api/contracts/detail", { method: "POST", body }),
+  [requestContractsApi]);
+
+  const requestContractChange = useCallback(async (url: string, init?: RequestInit) => {
+    const impersonationEmail = adminImpersonation?.email ?? "";
+    if (auth.currentUser?.uid !== user?.uid || (readAdminImpersonationState()?.email ?? "") !== impersonationEmail) {
+      throw new Error("Přihlášený účet se změnil. Obnov detail smlouvy.");
+    }
+    return requestContractsApi(url, { ...init, headers: withDefaultAdminImpersonationHeader(init?.headers, impersonationEmail) });
+  }, [adminImpersonation?.email, requestContractsApi, user?.uid]);
 
   useEffect(() => {
     if (!user || !ownerEmail || !entryId || !notesReady) {
@@ -835,8 +816,9 @@ export default function ContractDetailPage() {
     let cancelled = false;
 
     const load = async () => {
+      if (handoffId && !user) return;
       if (!ownerEmail || !requestedEntryId) {
-        setError("Neplatný odkaz na smlouvu.");
+        setError(handoffId ? "Odkaz z upozornění na SPZ už není k dispozici. Smlouvu najdeš v seznamu smluv." : "Neplatný odkaz na smlouvu.");
         setLoading(false);
         setTimelineLoading(false);
         return;
@@ -854,9 +836,7 @@ export default function ContractDetailPage() {
           ownerEmail,
           entryId: requestedEntryId,
         });
-        const payload = await requestContractsApi<ContractDetailApiResponse>(
-          `/api/contracts/detail?${params.toString()}`
-        );
+        const payload = await readContractDetail(params);
         if (cancelled) return;
 
         if (!payload.contract) {
@@ -947,14 +927,17 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [adminImpersonation?.email, requestedEntryId, detailRequestKey, ownerEmail, requestContractsApi, user]);
+  }, [handoffId, requestedEntryId, detailRequestKey, ownerEmail, readContractDetail, user]);
+
+  const hasCorrectedPremiumStatementCodes = contract?.productKey !== "domexneuron" &&
+    Boolean(contract?.commissionPayouts?.some(payout => payout.statementCode));
 
   useEffect(() => {
     const contractNumber = contract?.contractNumber?.trim() ?? "";
     const shouldLoadStatements =
       Boolean(user) &&
       Boolean(contractNumber) &&
-      isAutoProduct(contract?.productKey ?? null);
+      (isAutoProduct(contract?.productKey ?? null) || hasCorrectedPremiumStatementCodes);
 
     if (!shouldLoadStatements || !user) {
       setCommissionStatements([]);
@@ -1025,10 +1008,10 @@ export default function ContractDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [adminImpersonation?.email, contract?.contractNumber, contract?.productKey, user]);
+  }, [adminImpersonation?.email, contract?.contractNumber, contract?.productKey, hasCorrectedPremiumStatementCodes, user]);
 
   const handleOpenCommissionStatementPreview = useCallback(
-    async (statementId: string) => {
+    async (statementId: string, commissionCodes: string[] = []) => {
       const normalizedStatementId = statementId.trim();
       if (!user || !normalizedStatementId) return;
 
@@ -1057,7 +1040,7 @@ export default function ContractDetailPage() {
           throw new Error(payload?.error || "Provizní výpis se nepodařilo otevřít.");
         }
 
-        setStatementPreview(payload.item);
+        setStatementPreview({ ...payload.item, contractNumber: contract?.contractNumber ?? "", commissionCodes });
       } catch (statementError) {
         console.warn(
           "Detail smlouvy: náhled provizního výpisu se nepodařilo otevřít.",
@@ -1073,7 +1056,7 @@ export default function ContractDetailPage() {
         setStatementPreviewLoadingId(null);
       }
     },
-    [adminImpersonation?.email, pushToast, user]
+    [adminImpersonation?.email, contract?.contractNumber, pushToast, user]
   );
 
   const isEndorsement = contract?.entryType === "endorsement";
@@ -1344,7 +1327,10 @@ export default function ContractDetailPage() {
     (premiumEntry?.frequencyRaw as PaymentFrequency | null | undefined) ??
     (contract?.frequencyRaw as PaymentFrequency | null | undefined) ??
     null;
+  const frequencyHistoryContract = premiumEntry?.paymentFrequencyChanges?.length ? premiumEntry : contract ?? premiumEntry;
+  const currentPaymentFrequency = frequencyHistoryContract ? paymentFrequencyAtDate(frequencyHistoryContract, todayForPremium) : freq;
   const prod = contract?.productKey as Product | undefined;
+  const isInvestmentContract = isInvestmentProduct(prod);
   const institutionLogo = productInstitutionLogo(prod);
   const institutionLabel = productInstitutionLabel(prod);
   const fullProductLabel = productLabel(prod);
@@ -1363,7 +1349,9 @@ export default function ContractDetailPage() {
   const cppExtranetDetailUrl = buildCppExtranetDetailUrl(contract);
   const contractPdfAttachment = contract?.contractPdfAttachment ?? null;
   const hasContractPdfAttachment = Boolean(
-    contractPdfAttachment?.hasFile && contractPdfAttachment?.contentType === "application/pdf"
+    contractPdfAttachment?.hasFile &&
+    contractPdfAttachment?.contentType === "application/pdf" &&
+    contractPdfAttachment.contractNumberBindingStatus !== "mismatch"
   );
   const contractPdfFileName =
     typeof contractPdfAttachment?.originalName === "string" &&
@@ -1387,7 +1375,8 @@ export default function ContractDetailPage() {
         !sourceEntryId ||
         seenEntryIds.has(sourceEntryId) ||
         !attachment?.hasFile ||
-        attachment.contentType !== "application/pdf"
+        attachment.contentType !== "application/pdf" ||
+        attachment.contractNumberBindingStatus === "mismatch"
       ) {
         return;
       }
@@ -1602,11 +1591,21 @@ export default function ContractDetailPage() {
     Number.isFinite(signedPremiumAmount) && signedPremiumAmount > 0
       ? Math.round(signedPremiumAmount * paymentsPerYear(signedPremiumFrequency) * 100) / 100
       : null;
-  const historyInitialAnnualPremium = initialAnnualPremiumFromStatementHistory(
-    contract?.premiumStatementHistory,
-    signedPremiumFrequency,
-    prod
-  );
+  const historyInitialAnnualPremium =
+    initialAnnualPremiumFromStatementRows({
+      contractNumber: contract?.contractNumber ?? "",
+      product: prod,
+      frequency: signedPremiumFrequency,
+      statements: commissionStatements,
+      commissionPayouts: contract?.commissionPayouts ?? [],
+      baseResolutions: contract?.premiumStatementBaseResolutions,
+      viewerEmail: normalizeEmail(adminImpersonation?.email ?? user?.email ?? null) ?? undefined,
+    }) ??
+    initialAnnualPremiumFromStatementHistory(
+      contract?.premiumStatementHistory,
+      signedPremiumFrequency,
+      prod
+    );
   const statementInitialAnnualPremiumRaw = Number(
     historyInitialAnnualPremium ?? contract?.initialCommissionBase?.annualPremium
   );
@@ -1619,6 +1618,7 @@ export default function ContractDetailPage() {
     statementInitialAnnualPremium != null;
   const resolvedSignedAnnualPremium = resolveAutoSignedAnnualPremiumValue({
     signedAnnualPremium,
+    signedAnnualPremiumOverride: signedPremiumEntry?.signedAnnualPremiumOverride,
     statementInitialAnnualPremium,
     firstKnownPreviousAnnualPremium: null,
     systemAnnualPremium: premium * paymentsPerYear(freq),
@@ -1638,7 +1638,8 @@ export default function ContractDetailPage() {
   const contractSignedDateIso = toDateInputValue(
     contract?.contractSignedDate ?? contract?.createdAt
   );
-  const commissionWarning =
+  const flexiBasePending = hasPendingFlexiRenovationBase(contract);
+  const commissionWarning = flexiBasePending ? FLEXI_RENOVATION_MISSING_BASE_LABEL :
     prod === "slaviaauto" &&
     contractSignedDateIso &&
     !isSlaviaAutoSupportedForSignedDate(contractSignedDateIso)
@@ -1727,9 +1728,7 @@ export default function ContractDetailPage() {
       ownerEmail,
       entryId,
     });
-    const payload = await requestContractsApi<ContractDetailApiResponse>(
-      `/api/contracts/detail?${params.toString()}`
-    );
+    const payload = await readContractDetail(params);
     if (!payload.contract) {
       throw new Error("Smlouva nebyla nalezena.");
     }
@@ -1769,7 +1768,24 @@ export default function ContractDetailPage() {
     setManagerPosition((payload.position as Position | null | undefined) ?? null);
 
     return mainContract;
-  }, [entryId, ownerEmail, requestContractsApi]);
+  }, [entryId, ownerEmail, readContractDetail]);
+
+  const handleResolveFlexiRenovation = async (originalMonthlyPremium: number, guaranteeStatus: "inside" | "outside") => {
+    if (!canManageContract || !ownerEmail || !entryId) throw new Error("Nemáš oprávnění upravovat smlouvu.");
+    await requestContractsApi<ContractsApiResponseBase>("/api/contracts/update-fields", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerEmail, entryId, updates: {
+        resolveFlexiRenovation: { originalMonthlyPremium, guaranteeStatus },
+      } }),
+    });
+    await refreshContractDetail();
+    try {
+      sessionStorage.removeItem("contracts_cache_v3");
+      localStorage.setItem("contracts_last_updated", String(Date.now()));
+      window.dispatchEvent(new Event("contracts:updated"));
+    } catch { /* Cache invalidation is best effort. */ }
+  };
 
   const handleResolvePremiumBase = useCallback(async (
     source: import("@/app/lib/autoPremiumBasis").PremiumBaseSource,
@@ -1793,11 +1809,15 @@ export default function ContractDetailPage() {
 
   const handleRebuildContractFromStatements = useCallback(async () => {
     const contractNumber = String(contract?.contractNumber ?? "").trim();
-    if (!canManageContract || !ownerEmail || !entryId || !contractNumber) return;
+    const investment = isInvestmentProduct(contract?.productKey);
+    if (!canManageContract || (investment && !isOwnContract) || !ownerEmail || !entryId || !contractNumber) return;
 
     setRebuildingFromStatements(true);
+    if (investment) setInvestmentMatching({ phase: "loading", scanned: 0, total: 0, months: [] });
 
     try {
+      const headers = new Headers({ "Content-Type": "application/json" });
+      if (investment) headers.set("Accept", INVESTMENT_PAYOUT_PROGRESS_TYPE);
       const payload = await requestContractsApi<
         ContractsApiResponseBase & {
           matchedStatements?: number;
@@ -1814,16 +1834,25 @@ export default function ContractDetailPage() {
         }
       >("/api/commission-statements", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: adminImpersonation?.email
+          ? withDefaultAdminImpersonationHeader(headers, adminImpersonation.email)
+          : headers,
         body: JSON.stringify({
           action: "rebuild-contract-from-statements",
           ownerEmail,
           entryId,
           contractNumber,
         }),
-      });
+      }, investment ? response => readInvestmentPayoutMatch(response, progress => {
+        const month = progress.phase === "scanning" && progress.scanned > 0
+          ? investmentStatementMonth(progress.monthMs) : null;
+        setInvestmentMatching(view => view && ({
+          phase: progress.phase,
+          scanned: progress.scanned,
+          total: progress.total,
+          months: month && view.months.at(-1) !== month ? [...view.months, month] : view.months,
+        }));
+      }) : undefined);
 
       await refreshContractDetail();
 
@@ -1846,7 +1875,12 @@ export default function ContractDetailPage() {
         Number(result.premiumHistoryBackfills ?? 0);
       const errorCount = Array.isArray(result.errors) ? result.errors.length : 0;
 
-      if (matchedStatements === 0) {
+      if (investment) {
+        const message = matchedStatements === 0 ? "V uložených výpisech nejsou pro tuto smlouvu žádné provize."
+          : changedCount === 0 ? `Provize z ${matchedStatements} výpisů už jsou spárované.`
+            : `Spárováno z ${matchedStatements} výpisů. Platby najdeš v historii provizí u smlouvy.`;
+        setInvestmentMatching(view => view && ({ ...view, phase: "complete", message }));
+      } else if (matchedStatements === 0) {
         pushToast("Pro tuto smlouvu jsem v uložených výpisech nenašel žádný řádek.", "success");
       } else if (errorCount > 0) {
         pushToast(
@@ -1862,19 +1896,22 @@ export default function ContractDetailPage() {
         );
       }
     } catch (rebuildError) {
-      console.error("Přepočet smlouvy z výpisů selhal:", rebuildError);
-      pushToast(
-        rebuildError instanceof Error
-          ? rebuildError.message
-          : "Smlouvu se nepodařilo přepočítat z výpisů.",
-        "error"
-      );
+      if (investment) {
+        const message = rebuildError instanceof Error ? rebuildError.message : "Provize se nepodařilo spárovat.";
+        setInvestmentMatching(view => view && ({ ...view, phase: "error", message }));
+      } else {
+        console.error("Přepočet smlouvy z výpisů selhal:", rebuildError);
+        pushToast(rebuildError instanceof Error ? rebuildError.message : "Smlouvu se nepodařilo přepočítat z výpisů.", "error");
+      }
     } finally {
       setRebuildingFromStatements(false);
     }
   }, [
     canManageContract,
+    isOwnContract,
+    adminImpersonation?.email,
     contract?.contractNumber,
+    contract?.productKey,
     entryId,
     ownerEmail,
     pushToast,
@@ -1902,9 +1939,7 @@ export default function ContractDetailPage() {
           entryId: refreshReplacementEntryId,
           includeTimeline: "0",
         });
-        await requestContractsApi<ContractDetailApiResponse>(
-          `/api/contracts/detail?${params.toString()}`
-        );
+        await readContractDetail(params);
         if (!cancelled) setCanOpenRefreshReplacement(true);
       } catch (refreshAccessErr) {
         const status = (refreshAccessErr as ContractsApiError).status;
@@ -1925,7 +1960,7 @@ export default function ContractDetailPage() {
   }, [
     hasRefreshReplacement,
     normalizedEffectiveUserEmail,
-    requestContractsApi,
+    readContractDetail,
     refreshReplacementOwnerEmail,
     refreshReplacementEntryId,
   ]);
@@ -2066,6 +2101,7 @@ export default function ContractDetailPage() {
   const [editModeRequested, setEditMode] = useState(false);
   const [editSourceSelection, setEditSourceSelection] = useState<{ requestKey: string; entryId: string } | null>(null);
   const editMode = editModeRequested && editSourceSelection?.requestKey === detailRequestKey;
+  const canAddPaymentChange = canManageContract && !editMode && contract?.entryType !== "endorsement" && contractPaymentFrequencies(prod).length > 1;
   const editSourceEntryId = editSourceSelection?.requestKey === detailRequestKey ? editSourceSelection.entryId : entryId;
   const editContract = contractEditSource(contract, contractTimeline, editSourceEntryId, ownerEmail);
   const [editClientName, setEditClientName] = useState("");
@@ -4631,6 +4667,32 @@ export default function ContractDetailPage() {
     childOverrideLabel;
 
   const normalizedViewerEmail = normalizedEffectiveUserEmail;
+  const projectedCommissionPayouts = useMemo(() =>
+    projectContractCommissionPayouts(contract, commissionStatements, normalizedViewerEmail, ownerEmail),
+  [contract, commissionStatements, normalizedViewerEmail, ownerEmail]);
+  const neonCommissionEntries = useMemo(() => neonCommissionFamily(contract, contractTimeline, ownerEmail),
+    [contract, contractTimeline, ownerEmail]);
+  const commissionOverviewEntryIds = useMemo(() => new Set(neonCommissionEntries.map(entry => entry.id)), [neonCommissionEntries]);
+  const commissionHistoryPayouts = useMemo(() => neonCommissionEntries.length
+    ? uniqueFamilyCommissionReceipts(neonCommissionEntries).flatMap(entry => (entry.commissionPayouts ?? []).filter(payout => {
+      if (entry.entryType !== "endorsement") return true;
+      const viewer = normalizeEmail(normalizedViewerEmail);
+      const writer = normalizeEmail(payout.writtenBy);
+      return Boolean(viewer && (writer ? writer === viewer : viewer === normalizeEmail(ownerEmail)));
+    }))
+    : projectedCommissionPayouts, [neonCommissionEntries, normalizedViewerEmail, ownerEmail, projectedCommissionPayouts]);
+  const projectedPremiumHistory = useMemo(() => contract?.frequencyRaw === "semiannual"
+    ? projectConfirmedPremiumHistory(contract, contract.premiumStatementHistory ?? [], projectedCommissionPayouts)
+    : contract?.premiumStatementHistory ?? [], [contract, projectedCommissionPayouts]);
+  const paidCommissionTotal = useMemo(() => contract ? buildContractPaidCommissionTotal({
+    contract, timeline: contractTimeline, ownerEmail, viewerEmail: normalizedViewerEmail,
+  }) : null, [contract, contractTimeline, ownerEmail, normalizedViewerEmail]);
+  const getStornoComparison = useCallback((date: unknown) => contract ? buildContractStornoComparison({
+    contract: { ...contract, commissionPayouts: projectedCommissionPayouts },
+    timeline: contractTimeline, ownerEmail, viewerEmail: normalizedViewerEmail,
+  }, date) : [], [contract, contractTimeline, ownerEmail, normalizedViewerEmail, projectedCommissionPayouts]);
+  const stornoComparison = useMemo(() => isStornoContract && !isRecordOnlyProduct(contract?.productKey)
+    ? getStornoComparison(contract?.stornoDate) : null, [contract, getStornoComparison, isStornoContract]);
   const otherManagerOverrideCards = (() => {
     if (!contract || !isManagerViewingSubordinate) return [];
 
@@ -4724,6 +4786,20 @@ export default function ContractDetailPage() {
     eligibleTransferTargets.length > 0;
   const canOpenContractManagement =
     canSetStorno || canDelete || canRequestTransfer;
+
+  const managementKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email]);
+  const managementAction = managementRequest?.key === managementKey ? managementRequest.action : null;
+  const managementReady = Boolean(user && ownerEmail && entryId && contract && canViewContract &&
+    !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const openContractManagement = (action: "choose" | "storno", closePortal?: () => void) => {
+    if (!managementReady || !canOpenContractManagement || (action === "storno" && !canSetStorno)) return;
+    closePortal?.();
+    setShowContractActionsMenu(false);
+    setDeleteError(null);
+    setStornoError(null);
+    setTransferError(null);
+    setManagementRequest({ key: managementKey, action });
+  };
 
   const adviserSum = adviserItems.reduce(
     (sum, it) => sum + (it.excludeFromTotal ? 0 : it.amount ?? 0),
@@ -5047,7 +5123,7 @@ export default function ContractDetailPage() {
       setUnauthorized(true);
       setContract(null);
       setError("Nemáš oprávnění tuto smlouvu zobrazit.");
-      setShowManagementModal(false);
+      setManagementRequest(null);
       router.replace(backToContractsHref);
     }
   }, [loading, user, contract, canViewContract, unauthorized, router, backToContractsHref]);
@@ -5086,13 +5162,14 @@ export default function ContractDetailPage() {
     (
       item: CommissionResultItemDTO,
       position: Position | null | undefined,
-      commissionMode: CommissionMode | null | undefined
+      commissionMode: CommissionMode | null | undefined,
+      source?: ContractDoc,
     ) => {
       const breakdown = buildNeonImmediateBreakdown(
         item.amount ?? 0,
         position,
         commissionMode,
-        contractSignedDateIsoForBreakdown
+        source ? toDateInputValue(source.contractSignedDate ?? source.createdAt) : contractSignedDateIsoForBreakdown
       );
       if (!breakdown) {
         pushToast("Rozpad okamžité provize pro tuto pozici zatím není dostupný.", "error");
@@ -5104,7 +5181,7 @@ export default function ContractDetailPage() {
   );
 
   const handleAllianzPortalActionClick = useCallback((action: AllianzPortalAction) => {
-    if (prod !== "allianzAuto") return;
+    if (action === "slaviaVerification" ? prod !== "slaviaauto" : prod !== "allianzAuto") return;
 
     const requestId = allianzPortalRequestRef.current + 1;
     allianzPortalRequestRef.current = requestId;
@@ -5127,28 +5204,45 @@ export default function ContractDetailPage() {
 
     void (async () => {
       try {
-        const [pdfBlob, { parseAllianzAutoPdf }] = await Promise.all([
-          downloadContractPdfBlob(sourcePdf),
-          import("@/app/lib/parseAllianzAutoPdf"),
-        ]);
-        const parsed = await parseAllianzAutoPdf(
-          new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" })
-        );
+        const pdfBlob = await downloadContractPdfBlob(sourcePdf);
+        const pdfFile = new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" });
+        let identity: AllianzOdometerIdentity | null;
+        if (action === "slaviaVerification") {
+          const { parseSlaviaAutoPdf } = await import("@/app/lib/parseSlaviaAutoPdf");
+          const parsed = await parseSlaviaAutoPdf(pdfFile);
+          const formatted = formatSlaviaVerificationIdentity(
+            parsed.personalId && parsed.personalIdType
+              ? { personalId: parsed.personalId, personalIdType: parsed.personalIdType }
+              : null
+          );
+          identity = formatted ? {
+            kind: formatted.label === "IČO" ? "companyId" : "birthDate",
+            label: formatted.label,
+            value: formatted.value,
+          } : null;
+        } else {
+          const { parseAllianzAutoPdf } = await import("@/app/lib/parseAllianzAutoPdf");
+          const parsed = await parseAllianzAutoPdf(pdfFile);
+          identity = resolveAllianzOdometerIdentity(parsed.personalId);
+        }
         if (allianzPortalRequestRef.current !== requestId) return;
-
-        const identity = resolveAllianzOdometerIdentity(parsed.personalId);
         if (!identity) {
           setAllianzPortalError(
-            "Rodné číslo ani IČO pojistníka se v PDF nepodařilo najít nebo převést."
+            action === "slaviaVerification"
+              ? "V sekci Pojistník se nepodařilo najít platné rodné číslo ani IČO."
+              : "Rodné číslo ani IČO pojistníka se v PDF nepodařilo najít nebo převést."
           );
           return;
         }
         setAllianzPortalIdentity(identity);
-      } catch (error) {
+      } catch {
         if (allianzPortalRequestRef.current !== requestId) return;
-        console.warn("Údaje pro portál Allianz se nepodařilo načíst", error);
+        // PDF parser errors may contain extracted contract data; keep logs free of that payload.
+        console.warn("Identifikační údaje pro pojišťovací portál se nepodařilo načíst.");
         setAllianzPortalError(
-          "PDF smlouvy se nepodařilo načíst. Potřebný údaj zadejte na portálu Allianz ručně."
+          action === "slaviaVerification"
+            ? "PDF smlouvy se nepodařilo načíst. Potřebné údaje zadejte na portálu Slavie ručně."
+            : "PDF smlouvy se nepodařilo načíst. Potřebný údaj zadejte na portálu Allianz ručně."
         );
       } finally {
         if (allianzPortalRequestRef.current === requestId) {
@@ -5159,14 +5253,21 @@ export default function ContractDetailPage() {
   }, [contractPdfOptions, downloadContractPdfBlob, prod]);
 
   const kooperativaSourcePdf = contractPdfOptions.find(option => option.isCurrent) ?? contractPdfOptions[0] ?? null;
+  const pdfBindingNeedsRepair = contractPdfAttachment?.contractNumberBindingStatus === "legacy" ||
+    contractPdfAttachment?.contractNumberBindingStatus === "mismatch";
   const canAddContractPdf = Boolean(user && ownerEmail && entryId && contract && canManageContract &&
-    !hasContractPdfAttachment && !editMode && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+    (!hasContractPdfAttachment || pdfBindingNeedsRepair) && !editMode && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const canAddNeonEndorsement = Boolean(user && isOwnContract && contract?.productKey === "neon" &&
+    contract.entryType !== "endorsement" && !editMode && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const canEditNeonCorrection = Boolean(user && canManageContract && canSetNeonCorrection(contract) &&
+    !editMode && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
+  const neonCorrectionDialogKey = `${detailRequestKey}|${user?.uid}|${adminImpersonation?.email ?? ""}`;
   const requestContractPdfUpload = useCallback((form: FormData, signal: AbortSignal) =>
     requestContractsApi<ContractPdfUploadResponse>("/api/contracts/attachment", {
       method: "POST", body: form, signal,
       headers: adminImpersonation?.email ? withDefaultAdminImpersonationHeader(undefined, adminImpersonation.email) : undefined,
     }), [adminImpersonation?.email, requestContractsApi]);
-  const handleContractPdfUploaded = useCallback((attachment: ContractPdfUploadAttachment) => {
+  const handleContractPdfUploaded = useCallback((attachment: ContractPdfUploadAttachment, action: "uploaded" | "bound" = "uploaded") => {
     if (!entryId || !ownerEmail) return;
     setContract(current => current?.id === entryId && normalizeEmail(current.userEmail) === normalizeEmail(ownerEmail)
       ? { ...current, contractPdfAttachment: attachment } : current);
@@ -5178,7 +5279,7 @@ export default function ContractDetailPage() {
       localStorage.setItem("contracts_last_updated", String(Date.now()));
       window.dispatchEvent(new Event("contracts:updated"));
     } catch { /* The attachment is already saved; browser cache invalidation is optional. */ }
-    pushToast("PDF smlouvy je nahrané.", "success");
+    pushToast(action === "bound" ? "Vazba PDF byla zpevněna." : "PDF smlouvy je nahrané.", "success");
   }, [entryId, ownerEmail, pushToast]);
   const kooperativaSourceAttachment = (contractTimeline.find(source => source.id === kooperativaSourcePdf?.entryId) ?? contract)?.contractPdfAttachment;
   const kooperativaStatus = useKooperativaContractStatus({
@@ -5200,14 +5301,14 @@ export default function ContractDetailPage() {
   const paymentSourcePdf = useMemo(() => contractPdfOptions.find(option => option.isCurrent) ?? null, [contractPdfOptions]);
   const paymentDetailsContextKey = JSON.stringify([detailRequestKey, entryId, user?.uid, adminImpersonation?.email,
     contract?.contractNumber, paymentSourcePdf?.entryId, contractPdfAttachment?.sha256, contractPdfAttachment?.uploadedAtMs]);
-  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon" || prod === "cppAuto" || prod === "allianzAuto" || prod === "flexi" || prod === "pillowAuto") && paymentSourcePdf && user &&
+  const canReadPaymentDetails = Boolean((prod === "domexneuron" || prod === "koopmajetekobcan" || prod === "koopodzam" || prod === "neon" || prod === "cppAuto" || prod === "allianzAuto" || prod === "flexi" || prod === "pillowAuto" || prod === "csobAuto" || prod === "uniqaAuto" || prod === "slaviaauto") && paymentSourcePdf && user &&
     canViewContract && !loading && !unauthorized && loadedDetailRequest === detailRequestKey);
   const loadPaymentDetails = useCallback(async (signal: AbortSignal) => {
     const viewerIsCurrent = () => Boolean(user && auth.currentUser?.uid === user.uid &&
       (readAdminImpersonationState()?.email ?? "") === (adminImpersonation?.email ?? ""));
     if (!canReadPaymentDetails || !paymentSourcePdf || !viewerIsCurrent()) throw new ContractPaymentDetailsError("session");
     const details = await loadContractPaymentDetailsFromPdf({
-      product: prod === "pillowAuto" ? "pillowAuto" : prod === "flexi" ? "flexi" : prod === "allianzAuto" ? "allianzAuto" : prod === "cppAuto" ? "cppAuto" : prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
+      product: prod === "slaviaauto" ? "slaviaauto" : prod === "uniqaAuto" ? "uniqaAuto" : prod === "csobAuto" ? "csobAuto" : prod === "pillowAuto" ? "pillowAuto" : prod === "flexi" ? "flexi" : prod === "allianzAuto" ? "allianzAuto" : prod === "cppAuto" ? "cppAuto" : prod === "koopmajetekobcan" ? "koopmajetekobcan" : prod === "koopodzam" ? "koopodzam" : prod === "neon" ? "neon" : "domexneuron",
       contractNumber: contract?.contractNumber ?? "",
       fileName: paymentSourcePdf.fileName,
       downloadPdf: downloadSignal => downloadContractPdfBlob(paymentSourcePdf, downloadSignal),
@@ -5349,7 +5450,9 @@ export default function ContractDetailPage() {
     </div>
   );
 
-  if (isEmbedded && loading) {
+  const detailLoading = loading || (!error && loadedDetailRequest !== detailRequestKey);
+
+  if (isEmbedded && detailLoading) {
     return (
       <>
         <Toasts items={toasts} onDismiss={dismissToast} />
@@ -5375,7 +5478,31 @@ export default function ContractDetailPage() {
           <div className="min-w-0">
             <div className={shellCardClass}>
             {/* HEADER */}
-            <header className={detailStyles.header}>
+            <header className={detailStyles.header} aria-busy={detailLoading}>
+              {detailLoading ? (
+                <>
+                  <div className={detailStyles.headerMeta}>
+                    {!isEmbedded && (
+                      <Link href={backToContractsHref} className={detailStyles.headerBack}
+                        aria-label="Zpět na smlouvy" title="Zpět na smlouvy">
+                        <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" />
+                        <span>Zpět</span>
+                      </Link>
+                    )}
+                    <span aria-hidden="true" className="h-4 w-40 rounded-full bg-white/15 motion-safe:animate-pulse" />
+                  </div>
+                  <div className={detailStyles.headerIdentity} role="status" aria-live="polite">
+                    <h1 className={detailStyles.headerName}>
+                      <span className="inline-flex items-center gap-3">
+                        <Spinner className="h-6 w-6 shrink-0 !border-white/30 !border-t-white motion-reduce:animate-none" />
+                        Načítám smlouvu…
+                      </span>
+                    </h1>
+                    <span aria-hidden="true" className="mt-3 block h-3 w-48 max-w-full rounded-full bg-white/15 motion-safe:animate-pulse" />
+                  </div>
+                </>
+              ) : (
+              <>
               <div className={detailStyles.headerMain}>
                 <div className={detailStyles.headerMeta}>
                   {!isEmbedded && (
@@ -5429,7 +5556,7 @@ export default function ContractDetailPage() {
                     </span>
                     <span>{contractLifecycleBadgeText}</span>
                   </span>
-                  {canManageContract && (
+                  {canManageContract && !isRecordOnlyProduct(prod) && (
                     <button
                       type="button"
                       onClick={handleTogglePaid}
@@ -5460,10 +5587,11 @@ export default function ContractDetailPage() {
                     ) : contract?.clientName?.trim() || "Klient není uvedený"}
                   </h1>
                   <p className={detailStyles.headerProduct}>{headerProductLabel}</p>
+                  {contract?.isDip === true && <span className="inline-flex w-fit rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">DIP</span>}
                 </div>
 
                 <div className={detailStyles.headerActions} data-editing={editMode}
-                  data-has-actions={Boolean(canAddContractPdf || (SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment) || cppExtranetDetailUrl || maxxContractDetailUrl || prod === "kooperativaAuto" || (canManageContract && editMode))}>
+                  data-has-actions={Boolean(canAddContractPdf || (SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment) || cppExtranetDetailUrl || maxxContractDetailUrl || prod === "kooperativaAuto" || prod === "allianzAuto" || prod === "slaviaauto" || (canManageContract && editMode))}>
                   <div className={detailStyles.headerDocumentActions}>
 
                   {canAddContractPdf && ownerEmail && entryId && (
@@ -5472,9 +5600,30 @@ export default function ContractDetailPage() {
                       ownerEmail={ownerEmail}
                       entryId={entryId}
                       className={`${actionStyles.button} ${detailStyles.headerPrimary}`}
+                      buttonLabel={pdfBindingNeedsRepair ? "Zpevnit vazbu PDF" : undefined}
+                      bindExisting={pdfBindingNeedsRepair}
                       requestUpload={requestContractPdfUpload}
                       onUploaded={handleContractPdfUploaded}
                     />
+                  )}
+
+                  {contractPdfAttachment?.contractNumberBindingStatus === "legacy" && (
+                    <span
+                      role="status"
+                      title="Tato starší příloha nebyla při nahrání ověřena proti číslu smlouvy."
+                      className="max-w-48 text-xs font-semibold leading-snug text-amber-700"
+                    >
+                      Starší PDF bez ověřené vazby
+                    </span>
+                  )}
+
+                  {contractPdfAttachment?.contractNumberBindingStatus === "mismatch" && (
+                    <span
+                      role="alert"
+                      className="max-w-56 text-xs font-semibold leading-snug text-rose-700"
+                    >
+                      Stávající vazba PDF nesedí na aktuální číslo smlouvy. Zpevni ji znovu.
+                    </span>
                   )}
 
                   {SHOW_CONTRACT_PDF_PREVIEW_BUTTON && hasAnyContractPdfAttachment && (
@@ -5565,6 +5714,28 @@ export default function ContractDetailPage() {
                   </div>
 
                   <div className={detailStyles.headerPortalActions}>
+                  {prod === "allianzAuto" && (
+                    <button type="button" onClick={() => {
+                      setShowContractPdfOptions(false);
+                      setShowContractActionsMenu(false);
+                      handleAllianzPortalActionClick("paymentCheck");
+                    }} aria-haspopup="dialog"
+                      className={`${actionStyles.button} ${detailStyles.headerPortal}`}>
+                      <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Ověřit zaplacení</span>
+                    </button>
+                  )}
+                  {prod === "slaviaauto" && (
+                    <button type="button" onClick={() => {
+                      setShowContractPdfOptions(false);
+                      setShowContractActionsMenu(false);
+                      handleAllianzPortalActionClick("slaviaVerification");
+                    }} aria-haspopup="dialog"
+                      className={`${actionStyles.button} ${detailStyles.headerPortal}`}>
+                      <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+                      <span>Ověř smlouvu</span>
+                    </button>
+                  )}
                   {prod === "kooperativaAuto" && (
                     <button type="button" onClick={handleKooperativaStatusCheckClick}
                       aria-haspopup="dialog"
@@ -5660,12 +5831,14 @@ export default function ContractDetailPage() {
                       alt={institutionLabel || "Logo instituce"}
                       fill
                       sizes="(max-width: 639px) 86px, 112px"
-                      className={detailStyles.headerLogoImage}
+                      className={`${detailStyles.headerLogoImage} ${productInstitutionId(prod) === "investika" ? "brightness-0" : ""}`}
                     />
                   </div>
                 )}
                 {!institutionLogo && <span>{institutionLabel || "Smlouva"}</span>}
               </div>
+              </>
+              )}
             </header>
 
             <div className={detailStyles.body}>
@@ -5680,7 +5853,7 @@ export default function ContractDetailPage() {
               </div>
             )}
 
-            {loading ? (
+            {detailLoading ? (
               renderLoadingSkeleton()
             ) : error ? (
               <div className={statusErrorClass}>
@@ -5743,6 +5916,23 @@ export default function ContractDetailPage() {
                       </button>
                     )}
 
+                    {(canAddNeonEndorsement || canAddPaymentChange) && (
+                      <button type="button" className={detailStyles.action} onClick={() => { setShowContractActionsMenu(false); setFrequencyDialogOpen(detailRequestKey); }}>
+                        <span className={detailStyles.actionIcon}><CalendarDays size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+                        <span className="min-w-0"><span className={detailStyles.actionTitle}>Změna na smlouvě</span><span className={detailStyles.actionDescription}>{prod === "neon" ? "Pojistné, termíny a PDF dodatku" : "Pojistné, frekvence a PDF dodatku"}</span></span>
+                      </button>
+                    )}
+
+                    {canEditNeonCorrection && (
+                      <button type="button" className={detailStyles.action} onClick={() => {
+                        setShowContractActionsMenu(false);
+                        setNeonCorrectionDialogOpen(neonCorrectionDialogKey);
+                      }}>
+                        <span className={detailStyles.actionIcon}><PencilLine size={18} strokeWidth={2.2} aria-hidden="true" /></span>
+                        <span className={detailStyles.actionTitle}>{contract.neonCorrection ? "Upravit ČPP korekci" : "Přidat ČPP korekci"}</span>
+                      </button>
+                    )}
+
                     <button type="button" data-contract-menu onClick={() => { setShowContractActionsMenu(false); setShowHistoryModal(true); }}
                       className={detailStyles.action}>
                       <span className={detailStyles.actionIcon}><History size={18} strokeWidth={2.2} aria-hidden="true" /></span>
@@ -5753,13 +5943,7 @@ export default function ContractDetailPage() {
                       <button
                         type="button"
                         data-contract-management
-                        onClick={() => {
-                          setShowContractActionsMenu(false);
-                          setDeleteError(null);
-                          setStornoError(null);
-                          setTransferError(null);
-                          setShowManagementModal(true);
-                        }}
+                        onClick={() => openContractManagement("choose")}
                         className={detailStyles.action}
                       >
                         <span className={detailStyles.actionIcon}>
@@ -5804,12 +5988,9 @@ export default function ContractDetailPage() {
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowContractActionsMenu(false);
-                        setShowProductPanel(true);
-                      }}
+                    <a
+                      href="#contract-details"
+                      onClick={() => setShowContractActionsMenu(false)}
                       className={detailStyles.action}
                     >
                       <span className={detailStyles.actionIcon}>
@@ -5817,13 +5998,13 @@ export default function ContractDetailPage() {
                       </span>
                       <span className="min-w-0">
                         <span className={detailStyles.actionTitle}>
-                          Detail produktu
+                          Detail smlouvy
                         </span>
                         <span className={detailStyles.actionDescription}>
                           Uložené parametry pojištění
                         </span>
                       </span>
-                    </button>
+                    </a>
 
                     {prod === "allianzAuto" && (
                       <>
@@ -5844,26 +6025,6 @@ export default function ContractDetailPage() {
                             </span>
                             <span className={detailStyles.actionDescription}>
                               Otevřít službu Allianz
-                            </span>
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowContractActionsMenu(false);
-                            handleAllianzPortalActionClick("paymentCheck");
-                          }}
-                          className={detailStyles.action}
-                        >
-                          <span className={detailStyles.actionIcon}>
-                            <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className={detailStyles.actionTitle}>
-                              Ověřit zaplacení
-                            </span>
-                            <span className={detailStyles.actionDescription}>
-                              Kontrola platby u Allianz
                             </span>
                           </span>
                         </button>
@@ -5891,28 +6052,6 @@ export default function ContractDetailPage() {
                           </span>
                         </span>
                       </button>
-                    )}
-
-                    {prod === "slaviaauto" && (
-                      <a
-                        href={SLAVIA_CONTRACT_VERIFICATION_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowContractActionsMenu(false)}
-                        className={detailStyles.action}
-                      >
-                        <span className={detailStyles.actionIcon}>
-                          <ExternalLink size={18} strokeWidth={2.2} aria-hidden="true" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className={detailStyles.actionTitle}>
-                            Ověřit smlouvu
-                          </span>
-                          <span className={detailStyles.actionDescription}>
-                            Kontrola smlouvy u Slavie
-                          </span>
-                        </span>
-                      </a>
                     )}
 
                     <button
@@ -6025,7 +6164,7 @@ export default function ContractDetailPage() {
                           {positionLabel(contract.position)}
                         </dd>
                       </div>
-                      <div className={contractOverviewRowClass}>
+                      {!isInvestmentContract && <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           {contract.productKey === "conseqzenit" ? "Výše příspěvku klienta" : isEndorsement
                             ? "Nové pojistné"
@@ -6034,14 +6173,22 @@ export default function ContractDetailPage() {
                               : "Pojistné"}
                         </dt>
                         <dd className={contractOverviewValueClass}>
-                          {formatMoney(displayedPremium)}
+                          {prod === "cppAutoVozikZdarma" ? "Zdarma" : formatMoney(displayedPremium)}
                         </dd>
-                      </div>
+                      </div>}
                       {isEndorsement && (
                         <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>Základ pro provizi dodatku</dt>
                           <dd className={contractOverviewValueClass}>
                             {formatMoney(contract.inputAmount ?? 0)}
+                          </dd>
+                        </div>
+                      )}
+                      {contract.neonCorrection && (
+                        <div className={contractOverviewRowClass}>
+                          <dt className={keyValueLabelClass}>ČPP korekce</dt>
+                          <dd className={contractOverviewValueClass}>{formatMoney(contract.neonCorrection.annualAmount)} / rok
+                            <small className="block">Plná základna od ledna 2022</small>
                           </dd>
                         </div>
                       )}
@@ -6058,12 +6205,14 @@ export default function ContractDetailPage() {
                           </dd>
                         </div>
                       )}
+                      {!isRecordOnlyProduct(prod) && <>
                       <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           Frekvence platby
                         </dt>
                         <dd className={contractOverviewValueClass}>
-                          {frequencyText(freq)}
+                          {frequencyText(currentPaymentFrequency)}
+                          {contract.paymentFrequencyChanges?.length ? <span className="block text-xs font-normal text-slate-500">Při sjednání: {frequencyText(contract.frequencyRaw ?? null)}</span> : null}
                         </dd>
                       </div>
                       <div className={contractOverviewRowClass}>
@@ -6074,6 +6223,7 @@ export default function ContractDetailPage() {
                             : "—"}
                         </dd>
                       </div>
+                      </>}
                       <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>Stav smlouvy</dt>
                         <dd
@@ -6096,12 +6246,22 @@ export default function ContractDetailPage() {
                             : "Aktivní"}
                         </dd>
                       </div>
+                      {flexiBasePending && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm">
+                          <dt className={keyValueLabelClass}>Renovace FLEXI</dt>
+                          <dd className="mt-2 space-y-1 text-slate-700">
+                            {refreshOriginalContractNumber && <p>Číslo původní smlouvy {refreshOriginalContractNumber}</p>}
+                            <FlexiRenovationBaseReview key={detailRequestKey}
+                              onResolve={canManageContract ? handleResolveFlexiRenovation : undefined} />
+                          </dd>
+                        </div>
+                      )}
                       {contract?.productKey === "flexi" && isRefreshContract && refreshCommissionBase?.method === "koop_flexi_renovation" && (
                         <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-3 py-3 text-sm">
                           <dt className={keyValueLabelClass}>Renovace FLEXI</dt>
                           <dd className="mt-2 space-y-1 text-slate-700">
                             <p>Původní č. smlouvy: {refreshOriginalContractNumber || "—"}</p>
-                            {refreshOriginalMissingInSystem && <p>Původní smlouva nebyla nalezena, automatické storno se neprovedlo.</p>}
+                            {refreshOriginalMissingInSystem && <p>Původní smlouva není propojená. Automatické storno se neprovedlo.</p>}
                             <p>Pojistné z původní smlouvy: {formatMoney(Number(refreshCommissionBase.originalMonthlyPremium))} / měsíc</p>
                             <p>Navýšení pojistného: {formatMoney(Number(refreshCommissionBase.premiumIncreaseMonthly))} / měsíc</p>
                             <p>Ručení původní smlouvy: {refreshCommissionBase.guaranteeStatus === "outside" ? "Po ručení" : refreshCommissionBase.guaranteeStatus === "inside" ? "V ručení" : "Neověřeno"}</p>
@@ -6154,7 +6314,7 @@ export default function ContractDetailPage() {
                             <div className="mt-3 rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm text-slate-700">
                               <div className="flex items-center justify-between gap-3">
                                 <span className="font-semibold text-sky-950">
-                                  Základna pro provizi
+                                  {contract?.productKey === "neon" ? "Riziková základna" : "Základna pro provizi"}
                                 </span>
                                 <span className="font-mono font-bold text-slate-950">
                                   {formatMoney(refreshCalculationAnnualPremium)} ročně
@@ -6163,7 +6323,7 @@ export default function ContractDetailPage() {
                               <div className="mt-1 text-right text-xs text-slate-500">
                                 měsíčně {formatMoney(refreshCalculationMonthlyPremium)}
                               </div>
-                              {refreshCommissionBase && (
+                              {refreshCommissionBase && Number.isFinite(refreshOriginalAnnualPremium) && (
                                 <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                                   <div>
                                     Nové pojistné:{" "}
@@ -6222,6 +6382,15 @@ export default function ContractDetailPage() {
                               </p>
                             </div>
                           )}
+                          {contract?.productKey === "neon" && typeof contract.neonRefreshCareAnnualPremium === "number" &&
+                            contract.neonRefreshCareAnnualPremium > 0 && (
+                            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-white/80 px-3 py-2 text-sm">
+                              <span className="font-semibold text-sky-950">Pečovatelská základna (5.–10. rok)</span>
+                              <span className="font-mono font-bold text-slate-950">
+                                {formatMoney(contract.neonRefreshCareAnnualPremium)} ročně
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
                       {(contract?.refreshReplacedBySignedDate || hasRefreshReplacement) && (
@@ -6278,7 +6447,7 @@ export default function ContractDetailPage() {
                           )}
                         </dd>
                       </div>
-                      <div className={contractOverviewRowClass}>
+                      {!isInvestmentContract && <div className={contractOverviewRowClass}>
                         <dt className={keyValueLabelClass}>
                           Počátek smlouvy
                         </dt>
@@ -6294,8 +6463,8 @@ export default function ContractDetailPage() {
                             formatDate(contract.policyStartDate)
                           )}
                         </dd>
-                      </div>
-                      {!(contract.productKey === "domexneuron" && (editMode ? editAutomaticRenewal : contract.automaticRenewal) === true) && (
+                      </div>}
+                      {!isInvestmentContract && !(contract.productKey === "domexneuron" && (editMode ? editAutomaticRenewal : contract.automaticRenewal) === true) && (
                         <div className={contractOverviewRowClass}>
                           <dt className={keyValueLabelClass}>{contract.productKey === "domexneuron" ? "Konec pojistného období" : contract.productKey === "conseqzenit" ? "Datum konce" : "Pojištění do"}</dt>
                           <dd className={contractOverviewValueClass}>
@@ -6493,6 +6662,7 @@ export default function ContractDetailPage() {
                 ownerEmail={ownerEmail}
                 viewerEmail={normalizedViewerEmail}
                 selectedEntryId={requestedEntryId}
+                commissionOverviewEntryIds={commissionOverviewEntryIds}
                 loading={timelineLoading}
                 error={timelineError}
                 onEditEntry={canManageContract ? beginEditSource : undefined}
@@ -6518,19 +6688,24 @@ export default function ContractDetailPage() {
 
             <div className={detailStyles.sections}>
               <div id="contract-commissions" className={navigationStyles.anchorTarget}>
-              {showTimelineSection && <p className={navigationStyles.sourceHint}>Rozpis původní smlouvy. Provize jednotlivých dodatků najdeš v historii změn.</p>}
-              <ContractCommissionSection
+              <ContractPaidCommissionSummary amount={paidCommissionTotal} />
+              {stornoComparison && <CommissionStornoComparison rows={stornoComparison} />}
+              {showTimelineSection && !commissionOverviewEntryIds.size && <p className={navigationStyles.sourceHint}>Rozpis původní smlouvy. Provize jednotlivých dodatků najdeš v historii změn.</p>}
+              {prod === "cppAutoVozikZdarma" && (
+                <p className="text-sm text-slate-700">Produkt je zdarma a slouží pouze k evidenci smlouvy. Provize se nepočítá.</p>
+              )}
+              {!isRecordOnlyProduct(prod) && <ContractCommissionSection
                 product={prod}
                 isOwnContract={isOwnContract}
                 isPaymentBasedProduct={isPaymentBasedProduct}
-                hideAnnualAutoTotals={contractIsInherited || hideSeparatedPeriodTotals}
+                hideAnnualAutoTotals={flexiBasePending || contractIsInherited || hideSeparatedPeriodTotals}
                 showAnyMeziprovision={showAnyMeziprovision}
                 meziprovisionCards={meziprovisionCards}
                 expandedMeziprovisionKeys={expandedMeziprovisionKeys}
                 onToggleMeziprovisionCard={toggleMeziprovisionCard}
                 adviserItems={adviserItems}
                 commissionWarning={commissionWarning}
-                commissionPayouts={contract?.commissionPayouts ?? []}
+                commissionPayouts={projectedCommissionPayouts}
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                 contractDurationYears={contract?.durationYears ?? null}
@@ -6538,6 +6713,7 @@ export default function ContractDetailPage() {
                 policyStartDate={contract?.policyStartDate}
                 commissionEntry={contract}
                 commissionTimeline={contractTimeline}
+                consolidateNeonAmendments={commissionOverviewEntryIds.size > 0}
                 onOpenStatement={handleOpenCommissionStatementPreview}
                 statementPreviewLoadingId={statementPreviewLoadingId}
                 adviserBreakdownPosition={adviserBreakdownPosition}
@@ -6548,10 +6724,12 @@ export default function ContractDetailPage() {
                 showAdvisorDetails={showAdvisorDetails}
                 onToggleAdvisorDetails={() => setShowAdvisorDetails((v) => !v)}
                 onOpenNeonImmediateBreakdown={handleOpenNeonImmediateBreakdown}
-              />
+              />}
               </div>
 
+              {!isRecordOnlyProduct(prod) && (
               <ContractAutoPremiumHistory
+                commissionPayouts={projectedCommissionPayouts}
                 premiumIndexationEnabled={contract?.premiumIndexationEnabled}
                 premiumIndexationHistory={contract?.premiumIndexationHistory}
                 viewerEmail={normalizedViewerEmail ?? undefined}
@@ -6562,21 +6740,22 @@ export default function ContractDetailPage() {
                 contractNumber={contract?.contractNumber ?? null}
                 policyStartDate={contract?.policyStartDate ?? null}
                 signedAnnualPremium={signedAnnualPremium}
+                signedAnnualPremiumOverride={signedPremiumEntry?.signedAnnualPremiumOverride}
                 statementInitialAnnualPremium={statementInitialAnnualPremium}
                 preferStatementInitialPremium={preferStatementInitialPremium}
                 systemAnnualPremium={displayedPremium * paymentsPerYear(freq)}
                 paymentFrequency={freq}
                 contractPaymentFrequency={freq}
                 statements={commissionStatements}
-                storedHistory={contract?.premiumStatementHistory ?? []}
+                storedHistory={projectedPremiumHistory}
                 loading={commissionStatementsLoading}
                 error={commissionStatementsError}
-              />
+              />)}
 
-              <ContractCommissionHistory
+              {(!isRecordOnlyProduct(prod) || isInvestmentContract) && <ContractCommissionHistory
                 product={contract?.productKey ?? null}
                 policyStartDate={contract?.policyStartDate}
-                payouts={contract?.commissionPayouts ?? []}
+                payouts={commissionHistoryPayouts}
                 viewerEmail={normalizedViewerEmail}
                 contractOwnerEmail={contract?.userEmail ?? ownerEmail ?? null}
                 onOpenStatement={handleOpenCommissionStatementPreview}
@@ -6584,11 +6763,14 @@ export default function ContractDetailPage() {
                 onRebuildFromStatements={handleRebuildContractFromStatements}
                 rebuildingFromStatements={rebuildingFromStatements}
                 canRebuildFromStatements={Boolean(
-                  canManageContract && contract?.contractNumber
+                  canManageContract && contract?.contractNumber && (!isInvestmentContract || isOwnContract)
                 )}
-              />
+              />}
+              {investmentMatching && <InvestmentPayoutMatchingDialog view={investmentMatching} onClose={() => setInvestmentMatching(null)} />}
 
-              <ContractLifePremiumChanges changes={confirmedLifeChanges} onOpenStatement={handleOpenCommissionStatementPreview} />
+              {!isRecordOnlyProduct(prod) && (
+                <ContractLifePremiumChanges changes={confirmedLifeChanges} onOpenStatement={handleOpenCommissionStatementPreview} />
+              )}
 
               {/* POZNÁMKY A PŘIPOMÍNKY */}
               <section id="contract-notes" className={`${noteStyles.panel} ${navigationStyles.anchorTarget}`} aria-label="Poznámky a připomínky">
@@ -6772,6 +6954,37 @@ export default function ContractDetailPage() {
                     )}
                   </div>
               </section>
+
+              <section
+                id="contract-details"
+                aria-labelledby="contract-details-title"
+                className={navigationStyles.anchorTarget}
+              >
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="contract-details-title" className="flex items-center gap-2.5 font-mono text-sm font-black uppercase tracking-[0.14em] text-slate-950">
+                    <Package size={17} strokeWidth={2.2} className="text-violet-700" aria-hidden="true" />
+                    Detail smlouvy
+                  </h2>
+                  {canManageContract && !editMode && hasContractPdfAttachment && (
+                    <button
+                      type="button"
+                      onClick={() => { void handleRefreshDetailsFromPdf(entryId); }}
+                      disabled={refreshingPdfDetails}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-60"
+                    >
+                      {refreshingPdfDetails ? (
+                        <Spinner className="h-3.5 w-3.5 border-2 border-slate-300 border-t-violet-700" />
+                      ) : (
+                        <FileText size={15} strokeWidth={2.1} aria-hidden="true" />
+                      )}
+                      <span>
+                        {refreshingPdfDetails ? "Načítám…" : "Načíst z PDF"}
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">{renderProductPanelContent()}</div>
+              </section>
             </div>
 
               </div>
@@ -6789,81 +7002,6 @@ export default function ContractDetailPage() {
         statement={statementPreview}
         onClose={() => setStatementPreview(null)}
       />
-
-      {showProductPanel && (
-        <section
-          aria-labelledby="product-detail-view-title"
-          className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-slate-50"
-        >
-          <div className="relative shrink-0 overflow-hidden border-b border-slate-200 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.06)]">
-            <div
-              className={`mx-auto flex w-full items-center gap-3 px-3 py-3.5 sm:px-4 ${
-                isAutoProduct(prod) ? "max-w-[1180px]" : "max-w-[660px]"
-              }`}
-            >
-              <div
-                className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-700 via-fuchsia-500 to-violet-300"
-                aria-hidden="true"
-              />
-              <button
-                type="button"
-                onClick={() => setShowProductPanel(false)}
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                aria-label="Zpět na detail smlouvy"
-              >
-                <ArrowLeft size={17} strokeWidth={2.3} aria-hidden="true" />
-                <span className="hidden sm:inline">Zpět</span>
-              </button>
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 text-violet-700 shadow-sm">
-                  <Package size={21} strokeWidth={2.2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">
-                    Parametry pojištění
-                  </span>
-                  <h2
-                    id="product-detail-view-title"
-                    className="truncate text-xl font-black tracking-tight text-slate-950"
-                  >
-                    Detail produktu
-                  </h2>
-                  <p className="truncate text-xs font-semibold text-slate-500">
-                    {productLabel(prod)}
-                  </p>
-                </div>
-              </div>
-              {canManageContract && !editMode && hasContractPdfAttachment && (
-                <button
-                  type="button"
-                  onClick={() => { void handleRefreshDetailsFromPdf(entryId); }}
-                  disabled={refreshingPdfDetails}
-                  className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-60"
-                >
-                  {refreshingPdfDetails ? (
-                    <Spinner className="h-3.5 w-3.5 border-2 border-slate-300 border-t-violet-700" />
-                  ) : (
-                    <FileText size={15} strokeWidth={2.1} aria-hidden="true" />
-                  )}
-                  <span className="hidden sm:inline">
-                    {refreshingPdfDetails ? "Načítám…" : "Načíst z PDF"}
-                  </span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(124,58,237,0.07),transparent_28rem)]">
-            <div
-              className={`mx-auto w-full px-3 py-4 sm:px-4 sm:py-5 ${
-                isAutoProduct(prod) ? "max-w-[1180px]" : "max-w-[660px]"
-              }`}
-            >
-              <div className="space-y-3">{renderProductPanelContent()}</div>
-            </div>
-          </div>
-        </section>
-      )}
 
       {neonImmediateBreakdown && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
@@ -6973,6 +7111,46 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {neonCorrectionDialogOpen === neonCorrectionDialogKey && canEditNeonCorrection && ownerEmail && entryId && contract && (
+        <NeonCorrectionDialog key={neonCorrectionDialogKey} contract={contract}
+          onClose={() => setNeonCorrectionDialogOpen(null)}
+          onSave={async (monthlyPremium, annualCorrection) => {
+            await requestContractChange("/api/contracts/neon-correction", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ownerEmail, entryId, monthlyPremium, annualCorrection,
+                previousMonthlyPremium: contract.inputAmount ?? null,
+                previousAnnualCorrection: contract.neonCorrection?.annualAmount ?? null }),
+            });
+            await refreshContractDetail();
+            setNeonCorrectionDialogOpen(null);
+            try {
+              sessionStorage.removeItem("contracts_cache_v3");
+              localStorage.setItem("contracts_last_updated", String(Date.now()));
+              window.dispatchEvent(new Event("contracts:updated"));
+            } catch { /* Cache invalidation is best effort. */ }
+            pushToast("ČPP korekce byla uložena.", "success");
+          }} />
+      )}
+
+      {frequencyDialogOpen === detailRequestKey && canAddNeonEndorsement && ownerEmail && entryId && contract && (
+        <NeonEndorsementDialog key={`${detailRequestKey}|${user?.uid}|${adminImpersonation?.email ?? ""}`}
+          contractNumber={contract.contractNumber} entryId={entryId} ownerEmail={ownerEmail} request={requestContractChange}
+          onClose={() => setFrequencyDialogOpen(null)} onSaved={async () => {
+            await refreshContractDetail();
+            setFrequencyDialogOpen(null);
+            pushToast("Dodatek Neon byl uložen.", "success");
+          }} />
+      )}
+
+      {frequencyDialogOpen === detailRequestKey && canAddPaymentChange && ownerEmail && entryId && contract && (
+        <AutoContractChangeDialog key={`${ownerEmail}-${entryId}-${adminImpersonation?.email ?? ""}`}
+          contract={contract} entryId={entryId} ownerEmail={ownerEmail}
+          request={requestContractChange}
+          onClose={() => setFrequencyDialogOpen(null)} onSaved={async () => {
+            await refreshContractDetail(); setFrequencyDialogOpen(null);
+          }} />
+      )}
+
       {canReadPaymentDetails && paymentDetailsRequestKey === paymentDetailsContextKey && (
         <ContractPaymentDetailsDialog key={paymentDetailsContextKey} open
           onClose={() => setPaymentDetailsRequestKey(null)} loadPaymentDetails={loadPaymentDetails}
@@ -7048,23 +7226,25 @@ export default function ContractDetailPage() {
         />
       )}
 
-      {canOpenContractManagement && showManagementModal && (
+      {managementReady && canOpenContractManagement && managementAction && (
         <ContractManagementDialog
           contractNumber={contract?.contractNumber?.trim() || ""}
           clientName={contract?.clientName?.trim() || ""}
           productLabel={productLabel(prod)}
           canSetStorno={canSetStorno}
+          startWithStorno={managementAction === "storno"}
           canDelete={canDelete}
           canRequestTransfer={canRequestTransfer}
           isStorno={isStornoContract}
           initialStornoDate={toDateInputValue(contract?.stornoDate ?? null) || localIsoDay()}
           minimumStornoDate={stornoMinimumDateInput}
+          getStornoComparison={!isRecordOnlyProduct(prod) ? getStornoComparison : undefined}
           today={localIsoDay()}
           transferTargets={eligibleTransferTargets}
           busy={deleting || updatingStorno || submittingTransfer}
           error={deleteError || stornoError || transferError}
           onClearError={() => { setDeleteError(null); setStornoError(null); setTransferError(null); }}
-          onClose={() => setShowManagementModal(false)}
+          onClose={() => setManagementRequest(null)}
           onConfirm={action => {
             switch (action.kind) {
               case "storno": return handleSetStorno(action.date);
@@ -7426,11 +7606,7 @@ export default function ContractDetailPage() {
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
-                  {allianzPortalAction === "odometerUpload" ? (
-                    <Gauge size={14} strokeWidth={2.2} aria-hidden="true" />
-                  ) : (
-                    <ExternalLink size={14} strokeWidth={2.2} aria-hidden="true" />
-                  )}
+                  <Gauge size={14} strokeWidth={2.2} aria-hidden="true" />
                   Allianz Auto
                 </div>
                 <h3
@@ -7554,6 +7730,27 @@ export default function ContractDetailPage() {
         </div>
       )}
 
+      {showContractPortalIdentityDialog && allianzPortalAction && (
+        <ContractPortalIdentityDialog
+          brand={allianzPortalAction === "slaviaVerification" ? "Slavia Auto" : "Allianz Auto"}
+          title={allianzPortalAction === "slaviaVerification" ? "Ověř smlouvu" : "Ověření zaplacenosti"}
+          description={allianzPortalAction === "slaviaVerification"
+            ? "Zkopíruj údaje pojistníka a pokračuj na portál Slavia pojišťovny."
+            : "Zkopíruj údaje pojistníka a pokračuj na portál Allianz."
+          }
+          openLabel={allianzPortalAction === "slaviaVerification" ? "Otevřít Slavia pojišťovnu" : "Otevřít Allianz"}
+          logoSrc={allianzPortalAction === "slaviaVerification" ? "/icons/slavialogo.png" : "/icons/allianz.png"}
+          url={ALLIANZ_PORTAL_ACTION_CONFIG[allianzPortalAction].url}
+          contractNumber={contract?.contractNumber?.trim() ?? ""}
+          identity={allianzPortalIdentity}
+          loading={allianzPortalLoading}
+          error={allianzPortalError}
+          onClose={closeAllianzPortalModal}
+          onOpenStorno={managementReady && canSetStorno ? () => openContractManagement("storno", closeAllianzPortalModal) : undefined}
+          onCopy={copyContractActionValue}
+        />
+      )}
+
       {kooperativaStatus.isOpen && (
         <KooperativaContractStatusDialog
           contractNumber={contract?.contractNumber?.trim() ?? ""}
@@ -7561,6 +7758,7 @@ export default function ContractDetailPage() {
           loading={kooperativaStatus.loading}
           error={kooperativaStatus.error}
           onClose={kooperativaStatus.close}
+          onOpenStorno={managementReady && canSetStorno ? () => openContractManagement("storno", kooperativaStatus.close) : undefined}
           onCopy={copyContractActionValue}
         />
       )}

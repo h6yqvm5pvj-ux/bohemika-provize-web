@@ -1,4 +1,4 @@
-export const DOMEX_NEURON_PARSER_VERSION = 2;
+export const DOMEX_NEURON_PARSER_VERSION = 3;
 export const DOMEX_NEURON_MAX_OBJECTS = 50;
 export const DOMEX_EXTRACTION_STATUSES = ["found", "not_insured", "not_found", "unreadable"] as const;
 export const DOMEX_NEURON_OBJECT_FIELDS = ["type", "address", "coverage", "sumInsured", "deductible", "assistance"] as const;

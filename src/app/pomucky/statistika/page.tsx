@@ -34,6 +34,7 @@ import {
   calculatePillowMajetek,
   calculateFlexi,
   calculateSlaviaFlotila,
+  calculateKoopFit,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
   calculateKoopPmop,
@@ -189,7 +190,8 @@ function toInputValue(v: any): string {
 function calculateCommission(
   contract: ContractEntry,
   position: Position,
-  mode: CommissionMode
+  mode: CommissionMode,
+  activityDateIso: string
 ): number {
   const premium = parseNumberSafe(contract.premium);
   if (!Number.isFinite(premium) || premium <= 0) return 0;
@@ -215,10 +217,11 @@ function calculateCommission(
     case "pillowmajetek":
       return immediateCommission(calculatePillowMajetek(premium, "annual", pos));
     case "koopmajetekobcan":
+      return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos, activityDateIso));
     case "koopfit":
-      return immediateCommission(calculateKoopMajetekObcan(premium, "annual", pos));
+      return immediateCommission(calculateKoopFit(premium, "annual", pos));
     case "koopodzam":
-      return immediateCommission(calculateKoopOdzam(premium, "annual", pos));
+      return immediateCommission(calculateKoopOdzam(premium, "annual", pos, activityDateIso));
     case "kooppmop":
       return immediateCommission(calculateKoopPmop(premium, "annual", pos));
     case "maxdomov":
@@ -270,6 +273,10 @@ function monthMeta() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const label = now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
   return { year, month, daysInMonth, label };
+}
+
+function statisticsDayIso(year: number, month: number, dayIndex: number): string {
+  return new Date(Date.UTC(year, month, dayIndex + 1)).toISOString().slice(0, 10);
 }
 
 function makeId() {
@@ -372,15 +379,15 @@ function StatistikaPageInner() {
 
   useEffect(() => {
     setDays((prev) =>
-      prev.map((day) => ({
+      prev.map((day, dayIndex) => ({
         ...day,
         contracts: day.contracts.map((c) => ({
           ...c,
-          commission: calculateCommission(c, positionForCalc, modeForCalc),
+          commission: calculateCommission(c, positionForCalc, modeForCalc, statisticsDayIso(year, month, dayIndex)),
         })),
       }))
     );
-  }, [positionForCalc, modeForCalc]);
+  }, [positionForCalc, modeForCalc, year, month]);
 
   useEffect(() => {
     if (!ownerEmail || !currentUser) return;
@@ -419,7 +426,8 @@ function StatistikaPageInner() {
                   commission: 0,
                 },
                 positionForCalc,
-                modeForCalc
+                modeForCalc,
+                statisticsDayIso(year, month, row.dayIndex)
               ),
             };
           });
@@ -519,7 +527,7 @@ function StatistikaPageInner() {
       const updatedContracts = day.contracts.map((c) => {
         if (c.id !== contractId) return c;
         const updated: ContractEntry = { ...c, ...updates };
-        const commission = calculateCommission(updated, positionForCalc, modeForCalc);
+        const commission = calculateCommission(updated, positionForCalc, modeForCalc, statisticsDayIso(year, month, dayIdx));
         return { ...updated, commission };
       });
 

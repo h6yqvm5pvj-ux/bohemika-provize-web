@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeWorkerFixture, WORKER_FILTER_CASES } from "../../../../../scripts/cashflow-worker/fixtures";
-import { runReference } from "../../../../../scripts/cashflow-worker/reference";
+import { runReference, runReferenceView } from "../../../../../scripts/cashflow-worker/reference";
+import { computeCashflow } from "@/app/cashflow/computeCashflow";
+import { isAutoProduct } from "@/app/lib/productCatalog";
+import type { CashflowItem } from "@/app/cashflow/types";
 import { CASHFLOW_SERVER_PILOT_VERSION } from "@/app/cashflow/cashflowServerProtocol";
 import { cashflowCanonicalJson, hashCashflowValue } from "@/app/cashflow/shadowProtocol";
 import { parseCashflowSnapshot } from "@/app/cashflow/cashflowSnapshotWire";
@@ -21,6 +24,16 @@ import { POST } from "./route";
 const asOf = new Date(2026, 9, 8, 12);
 const email = "advisor@example.test";
 const options = WORKER_FILTER_CASES[0].options;
+function referenceForRules(...[snapshot, statements, selected, current]: Parameters<typeof runReference>) {
+  // Preserve the complete frozen calculation outside the changed auto rule.
+  // Auto forecasts use the separately tested receipt-based calculation while
+  // monthly composition remains the independent frozen page implementation.
+  if (![...snapshot.ownEntries, ...snapshot.teamEntriesRaw].some(entry => isAutoProduct(entry.productKey))) {
+    return runReference(snapshot, statements, selected, current);
+  }
+  const items = computeCashflow(snapshot, { ...selected, asOf: current });
+  return { items, months: runReferenceView(items, statements, selected, current) };
+}
 let fixture = makeWorkerFixture(12, asOf);
 const inputs = () => ({ ...fixture, effectiveEmail: email, tipsterMode: false });
 const body = async (selected: CashflowViewOptions = options, monthKey?: string) => ({
@@ -49,6 +62,35 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("read-only server cashflow pilot", () => {
+  it("keeps confirmed installments exact and varies only the next renewal in the real endpoint payload", async () => {
+    fixture.statements = [];
+    fixture.snapshot = { ...fixture.snapshot, email, teamEntriesRaw: [], tipPayouts: [], subscriptionPayments: [],
+      ownEntries: [{ id: "synthetic-auto", userEmail: email, productKey: "cppAuto", frequencyRaw: "quarterly",
+        policyStartDate: "2024-06-12", contractSignedDate: "2024-06-12",
+        items: [{ title: "Okamžitá provize", code: "A101", amount: 435.46 }, { title: "Následná provize", code: "B101", amount: 435.46 }],
+        commissionPayouts: [
+          { code: "B105", amount: 365.01, status: "paid", payoutMonthKey: "2026-8", writtenBy: email },
+          { code: "B106", amount: 365.01, status: "paid", payoutMonthKey: "2026-10", writtenBy: email },
+        ] }],
+    };
+    const response = await POST(request(await body()));
+    expect(response.status).toBe(200);
+    const overview = await response.json();
+    const items: CashflowItem[] = [];
+    for (const month of overview.overview.months) {
+      const detailResponse = await POST(request(await body(options, month.key)));
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      items.push(...parseCashflowSnapshot(detail.payload)!.months[0].items);
+    }
+    for (const code of ["B107", "B108"]) expect(items.find(item => item.commissionCode === code)).toMatchObject({
+      amount: 365.01, autoCommissionForecastMinimum: 365.01, autoCommissionForecastMaximum: 365.01, autoCommissionConfirmedPolicyYear: true,
+    });
+    for (const code of ["B109", "B110", "B111", "B112"]) expect(items.find(item => item.commissionCode === code)).toMatchObject({
+      amount: 365.01, autoCommissionForecastMinimum: 335.81, autoCommissionForecastMaximum: 394.21, autoCommissionConfirmedPolicyYear: false,
+    });
+    expect(items.some(item => item.commissionCode === "B113")).toBe(false);
+  });
   it("wires trusted source timing into headers while preserving the complete response and hashes", async () => {
     const selected = await body();
     const original = await (await POST(request(selected))).json();
@@ -70,8 +112,8 @@ describe("read-only server cashflow pilot", () => {
     expect(response.headers.get("Server-Timing")).toContain("cashflow_inputs_own_contracts_entries;dur=7.00");
     expect(response.headers.get("Server-Timing")).not.toMatch(/advisor@example|synthetic-token|contract-/);
   });
-  it.each(WORKER_FILTER_CASES)("matches the independent original calculation and every month/item for $id", async ({ options }) => {
-    const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
+  it.each(WORKER_FILTER_CASES)("matches current commission rules and independent monthly composition for $id", async ({ options }) => {
+    const reference = referenceForRules(fixture.snapshot, fixture.statements, options, asOf);
     const before = cashflowCanonicalJson(fixture);
     const response = await POST(request(await body(options)));
     expect(response.status).toBe(200);
@@ -162,7 +204,7 @@ describe("read-only server cashflow pilot", () => {
       const stale = await POST(request(await body(selected)));
       expect(stale.status).toBe(409);
       expect((await stale.json()).reason).toBe("stale_context");
-      const reference = runReference(source.snapshot, source.statements, selected, now);
+      const reference = referenceForRules(source.snapshot, source.statements, selected, now);
       const actual = await client.view(selected);
       expect(actual.months).toEqual(reference.months.map(({ items, ...month }) => ({ ...month, itemCountLabel: formatCashflowItemCount(items) })));
       await vi.waitFor(() => expect(measure).toHaveBeenCalledTimes(2));
@@ -242,7 +284,7 @@ describe("read-only server cashflow pilot", () => {
   it.each(WORKER_FILTER_CASES.map(filter => ({ ...filter, count: filter.id === "prediction" ? 200 : 300 })))(
     "preserves all month fields for a newly admitted $count-contract portfolio and $id", async ({ options, count }) => {
     fixture = makeWorkerFixture(count, asOf);
-    const reference = runReference(fixture.snapshot, fixture.statements, options, asOf);
+    const reference = referenceForRules(fixture.snapshot, fixture.statements, options, asOf);
     const response = await POST(request(await body(options)));
     expect(response.status).toBe(200);
     const actual = await response.json();
@@ -263,7 +305,7 @@ describe("read-only server cashflow pilot", () => {
     }));
     const disabled = await POST(request(await body({ ...options, intelligentPredictionEnabled: false })));
     expect(disabled.status).toBe(200);
-    const original = runReference(fixture.snapshot, fixture.statements, options, asOf);
+    const original = referenceForRules(fixture.snapshot, fixture.statements, options, asOf);
     expect((await disabled.json()).monthsHash).toBe(await hashCashflowValue(original.months));
     const enabled = await POST(request(await body({ ...options, intelligentPredictionEnabled: true })));
     expect(enabled.status).toBe(503);
@@ -283,7 +325,7 @@ describe("read-only server cashflow pilot", () => {
         items: [{ title: "Okamžitá provize", amount: 2 }], total: 2 }],
     }));
     const selected: CashflowViewOptions = { ...options, scopeFilter: "team", intelligentPredictionEnabled: true };
-    const reference = runReference(fixture.snapshot, fixture.statements, selected, asOf);
+    const reference = referenceForRules(fixture.snapshot, fixture.statements, selected, asOf);
     const response = await POST(request(await body(selected)));
     expect(response.status).toBe(200);
     const actual = await response.json();
@@ -316,7 +358,7 @@ describe("read-only server cashflow pilot", () => {
     }));
     const selected = { ...options, scopeFilter: "team" as const, intelligentPredictionEnabled: true };
     const before = cashflowCanonicalJson(fixture);
-    const reference = runReference(fixture.snapshot, fixture.statements, selected, asOf);
+    const reference = referenceForRules(fixture.snapshot, fixture.statements, selected, asOf);
     const occupied = reference.months.find(month => month.items.length > 0)!;
     const response = await POST(request(await body(selected, kind === "month" ? occupied.key : undefined)));
     expect(response.status).toBe(200);
@@ -399,9 +441,9 @@ describe("read-only server cashflow pilot", () => {
     expect(mocks.load).not.toHaveBeenCalled();
   });
   it.each([new Date(2026, 2, 29, 12), new Date(2026, 9, 25, 12), new Date(2028, 1, 29, 12)])(
-    "matches the independent original at DST/leap-year boundaries %s", async current => {
+    "matches current rules and independent composition at DST/leap-year boundaries %s", async current => {
       vi.setSystemTime(current);
-      const reference = runReference(fixture.snapshot, fixture.statements, options, current);
+      const reference = referenceForRules(fixture.snapshot, fixture.statements, options, current);
       const response = await POST(request({ ...await body(), asOfMs: current.getTime() }));
       expect(response.status).toBe(200);
       expect((await response.json()).monthsHash).toBe(await hashCashflowValue(reference.months));

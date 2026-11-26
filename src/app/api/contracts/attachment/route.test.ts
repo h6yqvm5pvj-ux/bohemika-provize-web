@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), normalize: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), normalize: vi.fn(), bindingStatus: vi.fn(), numberFingerprint: vi.fn(), strengthen: vi.fn(), download: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn(), validateAmendment: vi.fn() }));
 const db = vi.hoisted(() => ({
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({ adminDb: db }));
+vi.mock("@/lib/server/autoAmendmentPdf", () => ({ validateAutoAmendmentPdf: mocks.validateAmendment }));
 vi.mock("@/lib/server/clientCardEmailImport", () => ({ fillClientCardEmailFromUploadedPdf: mocks.fill }));
 vi.mock("@/lib/server/clientCardCompanyIdImport", () => ({ fillClientCardCompanyIdFromUploadedPdf: mocks.fillCompanyId }));
 vi.mock("@/lib/server/contractHistory", () => ({ withContractHistory: (_writer: unknown, _ref: unknown, _before: unknown, patch: unknown) => patch }));
@@ -14,14 +15,19 @@ vi.mock("@/lib/server/cashflowMutationTracking", () => ({ withCashflowMutation: 
 vi.mock("../_lib/contractsApi", () => ({ requireContractsEntryGuard: mocks.guard, hasContractAccess: mocks.access, CONTRACT_CREATE_OWNER_OVERRIDE_ACTOR_EMAIL: "override@example.test" }));
 vi.mock("@/lib/server/contractPdfStorage", () => ({
   normalizeStoredContractPdfAttachment: mocks.normalize,
+  contractPdfNumberBindingStatus: mocks.bindingStatus,
+  contractPdfNumberFingerprint: mocks.numberFingerprint,
+  strengthenExistingContractPdfBinding: mocks.strengthen,
+  createContractPdfAttachmentReadStream: mocks.download,
   uploadContractPdfAttachment: mocks.upload,
   deleteContractPdfAttachment: mocks.remove,
   buildContractPdfStoredFileName: () => "stored.pdf",
-  toPublicContractPdfAttachment: () => ({ hasFile: true }),
+  toPublicContractPdfAttachment: () => ({ hasFile: true, contractNumberBindingStatus: "verified" }),
 }));
 import { GET, POST } from "./route";
 
 const owner = "owner@example.test";
+const fingerprint = "a".repeat(64);
 const ctx = { email: owner, uid: "owner-uid", accountType: "advisor", actorEmail: owner, contractAccessEmails: [], isImpersonating: false };
 const request = (entryId = "entry", onlyIfMissing?: string | File) => {
   const form = new FormData();
@@ -30,17 +36,41 @@ const request = (entryId = "entry", onlyIfMissing?: string | File) => {
   if (onlyIfMissing !== undefined) form.set("onlyIfMissing", onlyIfMissing);
   return new NextRequest("http://localhost/api/contracts/attachment", { method: "POST", body: form });
 };
+const bindRequest = (withFile = false) => {
+  const form = new FormData();
+  if (withFile) form.set("file", new File(["%PDF-fixture"], "contract.pdf", { type: "application/pdf" }));
+  form.set("ownerEmail", owner); form.set("entryId", "entry"); form.set("bindExisting", "1");
+  return new NextRequest("http://localhost/api/contracts/attachment", { method: "POST", body: form });
+};
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.guard.mockResolvedValue({ ok: true, ctx, withRateLimit: (response: NextResponse) => response });
   mocks.access.mockReturnValue(true);
   mocks.normalize.mockReturnValue(null);
-  mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto" }), updateTime: "version" });
-  mocks.upload.mockResolvedValue({ sha256: "verified-hash", storagePath: "file.pdf", originalName: "file.pdf" });
+  mocks.numberFingerprint.mockReturnValue(fingerprint);
+  mocks.bindingStatus.mockImplementation((attachment) => attachment?.contractNumberFingerprint ? "mismatch" : attachment ? "legacy" : "unverified");
+  mocks.strengthen.mockImplementation(async ({ attachment }) => ({ ...attachment, contractNumberFingerprint: fingerprint, contractNumberBindingVersion: 1 }));
+  mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractNumber: "POLICY-123" }), updateTime: "version" });
+  mocks.upload.mockResolvedValue({ sha256: "verified-hash", storagePath: `contract-pdfs/owner/contract-${fingerprint}/entry/file.pdf`, originalName: "file.pdf", contractNumberFingerprint: fingerprint });
   mocks.commit.mockResolvedValue(undefined); mocks.fill.mockResolvedValue("saved");
 });
 
 describe("attachment contract boundary", () => {
+  it.each([
+    { productKey: "neon" },
+    { productKey: "cppPPRs", autoPremiumAmendment: true },
+  ])("validates a $productKey endorsement PDF before writing it to storage", async product => {
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ ...product, entryType: "endorsement", contractNumber: "9400001234" }), updateTime: "version" });
+    mocks.validateAmendment.mockRejectedValueOnce(new Error("Unsafe PDF"));
+    expect((await POST(request("amendment", "1"))).status).toBe(400);
+    expect(mocks.upload).not.toHaveBeenCalled();
+
+    mocks.validateAmendment.mockResolvedValueOnce(undefined);
+    expect((await POST(request("amendment", "1"))).status).toBe(200);
+    expect(mocks.upload).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ entryId: "amendment", ownerEmail: owner }));
+    expect(mocks.fillCompanyId).not.toHaveBeenCalled();
+  });
+
   it.each([401, 403])("denies payment PDF reads when the entry guard returns %s", async status => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ error: "Přístup zamítnut." }, { status }) });
     const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
@@ -54,6 +84,16 @@ describe("attachment contract boundary", () => {
     const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
     expect(response.status).toBe(403);
     expect(mocks.normalize).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the stored PDF binding does not match the current policy number", async () => {
+    const stale = { storagePath: "contract-pdfs/owner/contract-old/entry/file.pdf", contractNumberFingerprint: "b".repeat(64) };
+    mocks.normalize.mockReturnValue(stale);
+    mocks.bindingStatus.mockReturnValue("mismatch");
+    const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("neodpovídá") });
+    expect(mocks.download).not.toHaveBeenCalled();
   });
 
   it.each(["old-id/contractNotes/note-id", "../entries/other", "x".repeat(161)])(
@@ -85,18 +125,92 @@ describe("attachment contract boundary", () => {
     expect(mocks.get).not.toHaveBeenCalled();
     expect(mocks.upload).not.toHaveBeenCalled();
   });
+
+  it("requires owner authorization before strengthening an existing PDF binding", async () => {
+    mocks.access.mockReturnValue(false);
+    expect((await POST(bindRequest())).status).toBe(403);
+    expect(mocks.strengthen).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a binding-only request that also sends a file", async () => {
+    expect((await POST(bindRequest(true))).status).toBe(400);
+    expect(mocks.get).not.toHaveBeenCalled();
+    expect(mocks.strengthen).not.toHaveBeenCalled();
+  });
 });
 
 describe("first PDF attachment from contract detail", () => {
+  it("strengthens a verified legacy PDF in place without uploading or deleting its object", async () => {
+    const previous = { storagePath: "contract-pdfs/owner/entry/old.pdf", originalName: "old.pdf", sha256: "old-hash" };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ contractNumber: "POLICY-123", contractPdfAttachment: previous }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(previous);
+    mocks.bindingStatus.mockReturnValue("legacy");
+    const response = await POST(bindRequest());
+    expect(response.status).toBe(200);
+    expect(mocks.strengthen).toHaveBeenCalledWith({ attachment: previous, contractNumber: "POLICY-123" });
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      contractPdfAttachment: expect.objectContaining({ contractNumberBindingVersion: 1 }),
+    }), { lastUpdateTime: "version" });
+  });
+
   it("allows the owner to attach a missing PDF and protects the source version", async () => {
     const response = await POST(request("entry", "1"));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, attachment: { hasFile: true } });
     expect(mocks.upload).toHaveBeenCalledOnce();
+    expect(mocks.upload).toHaveBeenCalledWith(expect.objectContaining({ contractNumber: "POLICY-123" }));
     expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      contractPdfAttachment: expect.objectContaining({ storagePath: "file.pdf" }),
+      contractPdfAttachment: expect.objectContaining({
+        storagePath: expect.stringContaining(`contract-${fingerprint}`),
+        contractNumberFingerprint: fingerprint,
+      }),
     }), { lastUpdateTime: "version" });
     expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it("requires a contract number before creating a bound PDF attachment", async () => {
+    mocks.numberFingerprint.mockReturnValue(null);
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringContaining("číslo smlouvy") });
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("allows replacing only an attachment bound to a different contract number", async () => {
+    const previous = { storagePath: "old.pdf", contractNumberFingerprint: "b".repeat(64) };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ contractNumber: "POLICY-123", contractPdfAttachment: previous }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(previous);
+    mocks.bindingStatus.mockReturnValue("mismatch");
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(200);
+    expect(mocks.upload).toHaveBeenCalledOnce();
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it("allows explicit reupload to strengthen a legacy attachment without deleting its old object", async () => {
+    const previous = { storagePath: "legacy.pdf", originalName: "legacy.pdf" };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ contractNumber: "POLICY-123", contractPdfAttachment: previous }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(previous);
+    mocks.bindingStatus.mockReturnValue("legacy");
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(200);
+    expect(mocks.upload).toHaveBeenCalledOnce();
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it("does not replace an attachment already verified against this contract number", async () => {
+    const current = { storagePath: `contract-pdfs/owner/contract-${fingerprint}/entry/file.pdf`, contractNumberFingerprint: fingerprint };
+    mocks.get.mockResolvedValue({ exists: true, data: () => ({ contractNumber: "POLICY-123", contractPdfAttachment: current }), updateTime: "version" });
+    mocks.normalize.mockReturnValue(current);
+    mocks.bindingStatus.mockReturnValue("verified");
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(409);
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it.each([{ storagePath: "existing.pdf" }, {}, "legacy-invalid-metadata"])(
@@ -164,11 +278,26 @@ describe("first PDF attachment from contract detail", () => {
     expect(mocks.remove).not.toHaveBeenCalled();
   });
 
-  it("does not expose unexpected storage errors in the response or cleanup logs", async () => {
+  it("reports a safe diagnostic code without exposing unexpected storage errors", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.upload.mockRejectedValue(new Error("private customer name /bucket/secret-storage-path"));
     const response = await POST(request("entry", "1"));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ ok: false, error: "PDF se nepodařilo uložit. Zkus nahrání znovu." });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ ok: false, error: "PDF se nepodařilo uložit. Kód chyby: PDF_STORAGE_WRITE_FAILED. Zkus nahrání znovu." });
+    expect(log).toHaveBeenCalledWith("Contract PDF upload failed.", { failureCode: "PDF_STORAGE_WRITE_FAILED" });
+    expect(JSON.stringify(log.mock.calls)).not.toContain("private customer name");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("secret-storage-path");
+    log.mockRestore();
+  });
+
+  it("classifies storage permission failures without returning the provider message", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.upload.mockRejectedValue(Object.assign(new Error("Sensitive provider detail"), { code: 7 }));
+    const response = await POST(request("entry", "1"));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ ok: false, error: "PDF se nepodařilo uložit. Kód chyby: PDF_STORAGE_PERMISSION_DENIED. Zkus nahrání znovu." });
+    expect(JSON.stringify(log.mock.calls)).not.toContain("Sensitive provider detail");
+    log.mockRestore();
   });
 
   it.each([
@@ -212,7 +341,7 @@ describe("contract PDF private contact import", () => {
     mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey }), updateTime: "version" });
     mocks.fill.mockRejectedValue(new Error("private PDF details"));
     const response = await POST(request());
-    expect(await response.json()).toEqual({ ok: true, attachment: { hasFile: true }, clientCardEmail: "unavailable" });
+    expect(await response.json()).toMatchObject({ ok: true, attachment: { hasFile: true, contractNumberBindingStatus: "verified" }, clientCardEmail: "unavailable" });
     expect(mocks.remove).not.toHaveBeenCalled();
   });
   it.each(["cppAuto", "domexneuron"].flatMap(productKey => [

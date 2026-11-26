@@ -16,6 +16,7 @@ const BACKFILL_PAGE_SIZE = 150;
 const fields = [
   "entryType", "clientName", "clientEmail", "clientPhone", "clientAddress",
   "contractNumber", "productKey", "status", "acquisitionType", "userEmail",
+  "isDip",
   "originalAdviserEmail", "originalAdviserName", "durationYears", "durationMonths",
 ] as const;
 const dates = ["stornoDate", "contractSignedDate", "createdAt", "policyStartDate", "policyEndDate"] as const;

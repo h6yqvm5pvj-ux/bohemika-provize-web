@@ -3,6 +3,8 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const scripts = [
+  "correct-commission-code-sequence.mjs",
+  "import-investment-statements.mjs",
   "add-cashflow-extra-payout.mjs",
   "backfill-manager-chain-timeline.ts",
   "fix-neon-immediate-split-items.mjs",
@@ -24,7 +26,9 @@ const scripts = [
   "set-online-card-slug.mjs",
   "backfill-contract-refs-team-overview.mjs",
   "backfill-neon-policy-end-dates.mjs",
+  "backfill-neon-refresh-care.mjs",
   "backfill-contract-list-index-fields.mjs",
+  "strengthen-contract-pdf-bindings.mjs",
 ];
 
 const namedCall = (node: ts.Node, name: string): node is ts.CallExpression =>
@@ -81,7 +85,7 @@ describe("cashflow maintenance script coverage", () => {
             if (!ts.isArrowFunction(callback) || !namedCall(tracking, "trackCashflowScriptWrite")) {
               errors.push(`untracked ${method} on line ${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`);
             } else {
-              const expectedDatabase = ["add-cashflow-extra-payout.mjs", "backfill-neon-policy-end-dates.mjs", "backfill-contract-list-index-fields.mjs"].includes(script) ? "adminDb" : "db";
+              const expectedDatabase = ["add-cashflow-extra-payout.mjs", "backfill-neon-policy-end-dates.mjs", "backfill-neon-refresh-care.mjs", "backfill-contract-list-index-fields.mjs", "strengthen-contract-pdf-bindings.mjs"].includes(script) ? "adminDb" : "db";
               if (tracking.arguments[1]?.getText(source) !== expectedDatabase) errors.push("write must track its own database");
             }
           }

@@ -13,6 +13,11 @@ export type ContractCommissionPayoutStatus =
   | "storno";
 
 export type ContractCommissionPayout = {
+  statementCode?: string | null;
+  commissionCodeCorrectionNote?: string;
+  basePremiumPeriod?: "annual";
+  installmentCoverageNote?: string;
+  installmentSourceCode?: string | null;
   key?: string | null;
   code?: string | null;
   title?: string | null;
@@ -20,6 +25,9 @@ export type ContractCommissionPayout = {
   expectedAmount?: number | null;
   difference?: number | null;
   statementBaseAmount?: number | null;
+  sourceValidFrom?: string | null;
+  sourceSignedAt?: string | null;
+  sourceBaseAmount?: number | null;
   systemBaseAmount?: number | null;
   differenceReason?:
     | "career_mismatch"
@@ -56,12 +64,16 @@ export type ContractCommissionStornoSummary = {
 };
 
 export type ContractAutoPremiumStatementHistoryEntry = {
+  resolvedCommissionCode?: string;
+  commissionCodeCorrectionNote?: string;
   basePremiumResolutionKey?: string;
   sourceBasePremium?: number;
+  combinedInstallmentCode?: string;
   paymentFrequencyAtImport?: string | null;
   key?: string | null;
   premiumKind?: "auto_change" | "life_increase" | string | null;
   changeReason?: "indexation";
+  premiumDerivedFromCommission?: boolean;
   statementId?: string | null;
   statementNumber?: string | null;
   statementPeriod?: string | null;
@@ -122,6 +134,8 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  neonCorrection?: import("@/app/lib/neonCorrection").NeonCorrection | null;
+  isDip?: boolean | null;
   confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
   id: string;
   contractPdfAttachment?: {
@@ -133,12 +147,14 @@ export type ContractDoc = {
     sha256?: string | null;
     uploadedAtMs?: number | null;
     uploadedBy?: string | null;
+    contractNumberBindingStatus?: "verified" | "legacy" | "mismatch" | "unverified";
   } | null;
   note?: string | null;
   paid?: boolean | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: FirestoreTimestamp | Date | string | number | null;
   isRefresh?: boolean | null;
+  neonRefreshCareAnnualPremium?: number | null;
   refreshOriginalContractNumber?: string | null;
   refreshOriginalMissingInSystem?: boolean | null;
   requiresStatementRefresh?: boolean | null;
@@ -204,10 +220,18 @@ export type ContractDoc = {
   }[];
 
   productKey?: Product;
+  payoutPositionOverride?: "poradce10" | null;
   position?: Position;
   inputAmount?: number;
+  signedAnnualPremiumOverride?: number | null;
   calculationInputAmount?: number | null;
+  commissionCoefficientSetOverride?: string | null;
+  neonCoefficientSetOverride?: string | null;
   previousInputAmount?: number | null;
+  autoPremiumAmendment?: boolean;
+  autoPremiumAnnual?: number;
+  autoPremiumPreviousAnnual?: number;
+  previousFrequency?: PaymentFrequency | null;
   newInputAmount?: number | null;
   effectiveInputAmount?: number | null;
   premiumDelta?: number | null;
@@ -215,6 +239,7 @@ export type ContractDoc = {
   premiumDecreaseAmount?: number | null;
   changeType?: "increase" | "decrease" | "same" | string | null;
   frequencyRaw?: PaymentFrequency | null;
+  paymentFrequencyChanges?: import("@/app/lib/autoPaymentFrequency").PaymentFrequencyChange[] | null;
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: ContractCommissionPayout[] | null;

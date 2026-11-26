@@ -86,6 +86,20 @@ describe("projected legacy contract search", () => {
     expect(Buffer.byteLength(JSON.stringify(entries))).toBeGreaterThan(6_000_000);
   });
 
+  it("finds a whole registration on an older motor contract without search keys", async () => {
+    const { db, state } = database([
+      entry("auto", { productKey: "cppAuto", carPlate: "1AB 2345" }),
+      entry("similar", { productKey: "cppAuto", carPlate: "11AB2345" }),
+      entry("other-product", { productKey: "neon", carPlate: "1AB2345" }),
+    ]);
+    for (const q of ["1AB 2345", "1ab2345", "1ab-2345"]) {
+      const filters = parseContractListFilters(new URLSearchParams({ q }), { searchVehiclePlate: true });
+      const page = await readProjectedContractSearchPage({ db, ownerEmail, filters, cursor: null, pageSize: 10 });
+      expect(page?.map(doc => doc.id)).toEqual(["auto"]);
+      expect(state.projectedFields).toContain("carPlate");
+    }
+  });
+
   it("finds legacy compact contract numbers and Czech substrings without any stored search keys", async () => {
     const { db } = database([
       entry("name", { clientName: "Žaneta Nováková" }),

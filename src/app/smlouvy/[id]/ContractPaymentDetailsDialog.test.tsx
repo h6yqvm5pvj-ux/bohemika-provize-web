@@ -66,7 +66,7 @@ describe("contract payment details dialog", () => {
     expect(dialog.open).toBe(true);
     expect(container.querySelector("h2")?.id).toBe(dialog.getAttribute("aria-labelledby"));
     expect(container.querySelector("h2")?.textContent).toBe("Platební údaje");
-    expect(container.textContent).toContain("Platební údaje a pojištěná rizika uvedená ve smlouvě.");
+    expect(container.textContent).toContain("Údaje pro platbu a QR kód podle smlouvy.");
     expect(container.textContent?.replace(/\s/g, " ")).toContain("1 234,5 Kč");
     expect(container.textContent).toContain(payment.accountNumber);
     expect(container.textContent).toContain("0001234567");
@@ -83,7 +83,7 @@ describe("contract payment details dialog", () => {
     load.mockResolvedValue({ ...payment, frequency: "annual", paymentNote: "Částka k úhradě je platná pouze pro 1. rok pojištění." });
     await render();
     expect(container.textContent).toContain("Částka k úhradě je platná pouze pro 1. rok pojištění.");
-    expect(container.textContent).toContain("Frekvence platbyRočně");
+    expect(container.textContent).toContain("FrekvenceRočně");
   });
 
   it("shows insured items parsed from the Kooperativa policy", async () => {
@@ -92,6 +92,13 @@ describe("contract payment details dialog", () => {
     expect(container.querySelector('[aria-label="Co je pojištěno"]')?.textContent)
       .toContain("Trvale obývaná domácnost");
     expect(container.textContent).toContain("Odpovědnost v běžném občanském životě");
+  });
+
+  it("shows recurring installment due dates", async () => {
+    load.mockResolvedValue({ ...payment, installmentDueDates: "17.8.|17.2." });
+    await render();
+    expect(container.textContent).toContain("Další splátky");
+    expect(container.textContent).toContain("17.8.|17.2.");
   });
 
   it("opens native sharing with the payment summary", async () => {

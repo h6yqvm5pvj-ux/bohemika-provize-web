@@ -1,8 +1,10 @@
+import { mailboxUnreadCount } from "@/lib/server/mailboxUnreadCount";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { privateEncryptionRequired } from "@/lib/server/privateEncryption";
 import { openPrivateRecord } from "@/lib/server/privateRecords";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isLifeCommissionReminderMessageId, LIFE_COMMISSION_REMINDER_TYPE } from "@/app/lib/lifeCommissionReminder";
 import {
   requireAdvisorAuthedRateLimited,
   withRateLimitHeaders,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/server/mailboxAttachmentStorage";
 import { decryptMailboxJson } from "@/lib/server/mailboxEncryption";
 import { mailboxConversationId } from "@/lib/server/mailboxConversation";
+import { isLifeCommissionReminderIdForAccount } from "@/lib/server/lifeCommissionReminderId";
 import { loadProfileAvatarsByEmail } from "@/lib/server/userProfileAvatars";
 
 export const runtime = "nodejs";
@@ -166,7 +169,7 @@ const normalizeAttachmentUrls = (
 };
 
 const parseMailboxDoc = (
-  docSnap: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+  docSnap: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>
 ) => {
   const data = openPrivateRecord(docSnap.ref.path, docSnap.data() ?? {});
   const createdAtMs =
@@ -634,27 +637,7 @@ const cleanupDeletedMailboxAttachments = async (
   };
 };
 
-const getUnreadCount = async (email: string): Promise<number> => {
-  const nowMs = Date.now();
-  const unreadSnap = await getMailboxCollection(email)
-    .where("read", "==", false)
-    .select("archivedAtMs", "archivedAt", "snoozedUntilMs", "snoozedUntil")
-    .get();
-  return unreadSnap.docs.filter((docSnap) => {
-    const data = (docSnap.data() ?? {}) as Record<string, unknown>;
-    const archivedAtMs =
-      (typeof data.archivedAtMs === "number" && Number.isFinite(data.archivedAtMs)
-        ? Math.round(data.archivedAtMs)
-        : null) ?? toMillis(data.archivedAt);
-    if (archivedAtMs) return false;
-
-    const snoozedUntilMs =
-      (typeof data.snoozedUntilMs === "number" && Number.isFinite(data.snoozedUntilMs)
-        ? Math.round(data.snoozedUntilMs)
-        : null) ?? toMillis(data.snoozedUntil);
-    return !snoozedUntilMs || snoozedUntilMs <= nowMs;
-  }).length;
-};
+const getUnreadCount = (email: string) => mailboxUnreadCount(adminDb!, getMailboxCollection(email), toMillis);
 
 export async function GET(req: NextRequest) {
   const guard = await requireAdvisorAuthedRateLimited(req, {
@@ -677,6 +660,22 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const messageId = req.nextUrl.searchParams.get("messageId");
+    if (messageId !== null) {
+      if (!isLifeCommissionReminderMessageId(messageId) || req.nextUrl.searchParams.getAll("messageId").length !== 1) {
+        return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatná zpráva." }, { status: 400 }), ctx);
+      }
+      if (!isLifeCommissionReminderIdForAccount(messageId, ctx.uid)) {
+        return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Zpráva nebyla nalezena." }, { status: 404 }), ctx);
+      }
+      const doc = await getMailboxCollection(ctx.email).doc(messageId).get();
+      const data = doc.data();
+      if (data?.type !== LIFE_COMMISSION_REMINDER_TYPE || normalizeMailboxEmail(data.recipientEmail) !== ctx.email) {
+        return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Zpráva nebyla nalezena." }, { status: 404 }), ctx);
+      }
+      return withRateLimitHeaders(NextResponse.json({ ok: true, items: [parseMailboxDoc(doc)] }), ctx);
+    }
+
     const countOnly = req.nextUrl.searchParams.get("countOnly") === "1";
     const conversationId = parseConversationId(
       req.nextUrl.searchParams.get("conversationId")
@@ -730,7 +729,12 @@ export async function GET(req: NextRequest) {
         .limit(limit)
         .get()
         .then(itemsSnap => hydrateMailboxAvatars(
-          itemsSnap.docs.map((docSnap) => parseMailboxDoc(docSnap))
+          itemsSnap.docs.filter(doc => {
+            const data = doc.data();
+            return data.type !== LIFE_COMMISSION_REMINDER_TYPE || (
+              normalizeMailboxEmail(data.recipientEmail) === ctx.email && isLifeCommissionReminderIdForAccount(doc.id, ctx.uid)
+            );
+          }).map(doc => parseMailboxDoc(doc))
         )),
     ]);
 
@@ -867,6 +871,8 @@ export async function PATCH(req: NextRequest) {
           ref,
           archive
             ? {
+                inboxArchived: true,
+                inboxSnoozeMs: 0,
                 archivedAtMs: nowMs,
                 archivedAt: FieldValue.serverTimestamp(),
                 snoozedUntilMs: FieldValue.delete(),
@@ -878,6 +884,7 @@ export async function PATCH(req: NextRequest) {
                 snoozeReminderClaimId: FieldValue.delete(),
               }
             : {
+                inboxArchived: false,
                 archivedAtMs: FieldValue.delete(),
                 archivedAt: FieldValue.delete(),
               },
@@ -894,6 +901,7 @@ export async function PATCH(req: NextRequest) {
           ref,
           clearSnooze
             ? {
+                inboxSnoozeMs: 0,
                 snoozedUntilMs: FieldValue.delete(),
                 snoozedUntil: FieldValue.delete(),
                 snoozedAtMs: FieldValue.delete(),
@@ -903,6 +911,7 @@ export async function PATCH(req: NextRequest) {
                 snoozeReminderClaimId: FieldValue.delete(),
               }
             : {
+                inboxSnoozeMs: snoozeUntilMs,
                 snoozedUntilMs: snoozeUntilMs,
                 snoozedUntil: new Date(snoozeUntilMs!),
                 snoozedAtMs: nowMs,

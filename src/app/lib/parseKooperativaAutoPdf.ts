@@ -7,6 +7,8 @@ export { birthDateFromCzechBirthNumber, normalizeCzechBirthNumber } from "./czec
 
 export type KooperativaAutoPdfResult = {
   contractNumber?: string | null;
+  isRefresh?: boolean | null;
+  refreshOriginalContractNumber?: string | null;
   clientName?: string | null;
   birthNumber?: string | null;
   policyholderBirthDate?: string | null;
@@ -29,8 +31,10 @@ export type KooperativaAutoPdfResult = {
   carHullRiskVandalism?: boolean | null;
   carAssistancePlan?: string | null;
   carAddonGlass?: boolean | null;
+  carAddonGlassLimit?: number | null;
   carAddonNatural?: boolean | null;
   carAddonAnimalDamage?: boolean | null;
+  carAddonAnimalDamageLimit?: number | null;
   carAddonReplacementCar?: boolean | null;
   carAddonLuggage?: boolean | null;
   carAddonTransportedGoods?: boolean | null;
@@ -90,6 +94,56 @@ type PositionedTextItem = {
   y: number;
   lineIndex: number;
 };
+
+/** Only the requested limit row inside its own coverage can supply the amount. */
+function coverageLimit(
+  lines: string[], asciiLines: string[], items: PositionedTextItem[],
+  heading: RegExp, limitLabel: RegExp,
+): number | null {
+  const amount = (text: string): number | null => {
+    const value = stripDiacritics(text).toLowerCase().replace(/\s+/g, " ").trim();
+    const match = value.match(/^((?:\d{1,3}(?:[. ]\d{3})+|\d+))([.,]\d{1,2})?\s*(?:kc|czk)$/);
+    if (!match) return null;
+    const parsed = Number(match[1].replace(/[. ]/g, "") + (match[2]?.replace(",", ".") ?? ""));
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1_000_000_000 ? parsed : null;
+  };
+  const values = new Set<number>();
+  for (const start of findLabelIndexes(asciiLines, heading)) {
+    let end = Math.min(lines.length, start + 24);
+    for (let index = start + 1; index < end; index++) {
+      if (/^(?:pojisteni\b|havarijni\s+pojisteni\b|zivelni\s+pojisteni\b|asistencni\s+program\b|spoluucast\b|souhrn\b|celkove\s+pojistne\b)/.test(asciiLines[index])) {
+        end = index;
+        break;
+      }
+    }
+    for (let index = start + 1; index < end; index++) {
+      const match = asciiLines[index].match(limitLabel);
+      if (!match) continue;
+      const inline = match[1].trim();
+      if (inline) {
+        const parsed = amount(inline);
+        if (parsed == null) return null;
+        values.add(parsed);
+        break;
+      }
+      const label = items.find(item => item.lineIndex === index);
+      const rowValues = label ? items.filter(item => item.lineIndex > start && item.lineIndex < end &&
+        item.page === label.page && item.x > label.x && Math.abs(item.y - label.y) <= 3)
+        .map(item => amount(item.text)).filter((value): value is number => value != null) : [];
+      if (rowValues.length) {
+        rowValues.forEach(value => values.add(value));
+        break;
+      }
+      // Do not skip over a deductible or another label to find a number.
+      const next = index + 1 < end ? lines[index + 1] : "";
+      const unit = index + 2 < end ? lines[index + 2] : "";
+      const parsed = amount(next) ?? (/^[\d.,\s]+$/.test(next) ? amount(`${next} ${unit}`) : null);
+      if (parsed != null) values.add(parsed);
+      break;
+    }
+  }
+  return values.size === 1 ? [...values][0] : null;
+}
 
 const policyholderHeading = (line: string): boolean =>
   /^(?:b\s*[.)\-–—:]?\s+)?pojistnik(?:\s*\/\s*pojisteny)?(?:\s*\([^)]*\))?\s*:?$/i.test(line);
@@ -599,6 +653,24 @@ export async function parseKooperativaAutoPdf(
   }
   result.contractNumber = pickBestContractNumber(contractCandidates);
 
+  const replacementClauses = [...asciiText.matchAll(
+    /\bnahrada\s+pojistne\s+smlouvy\s*:?\s*dnem\s+pocatku\s+teto\s+pojistne\s+smlouvy\s+se\s+v\s+plnem\s+rozsahu\s+rusi\s+pojistna\s+smlouva\s+c\./g
+  )];
+  if (replacementClauses.length > 0) {
+    result.isRefresh = true;
+    // Only the number immediately following the cancellation clause belongs to
+    // the original policy. Leave missing/conflicting values for manual review.
+    const originalNumbers = new Set(replacementClauses.map(clause => {
+      const tail = asciiText.slice(clause.index + clause[0].length);
+      const number = tail.match(/^\s*(\S+)/)?.[1]?.replace(/[.,;]+$/, "");
+      return number && /^\d{6,14}$/.test(number) ? number : null;
+    }));
+    const [originalNumber] = originalNumbers;
+    if (originalNumbers.size === 1 && originalNumber && originalNumber !== result.contractNumber) {
+      result.refreshOriginalContractNumber = originalNumber;
+    }
+  }
+
   Object.assign(result, policyholderIdentity(lines, asciiLines, positionedTextItems));
 
   const fullName =
@@ -779,10 +851,18 @@ export async function parseKooperativaAutoPdf(
   }
 
   result.carAddonGlass = /pojisteni\s+skel/i.test(asciiText);
+  const glassLimit = coverageLimit(lines, asciiLines, positionedTextItems,
+    /^pojisteni\s+skel\s*:?$/,
+    /^limit\s+pojistneho\s+plneni\s+na\s+pojistnou\s+udalost\s*:?\s*(.*)$/);
+  if (glassLimit != null) result.carAddonGlassLimit = glassLimit;
   result.carAddonNatural = /zivelni\s+pojisteni/i.test(asciiText);
   result.carAddonAnimalDamage = /pojisteni\s+poskozeni\s+vozidla\s+zviretem/i.test(
     asciiText
   );
+  const animalDamageLimit = coverageLimit(lines, asciiLines, positionedTextItems,
+    /^pojisteni\s+poskozeni\s+vozidla\s+zviretem\s*:?$/,
+    /^rocni\s+limit\s+pojistneho\s+plneni\s*:?\s*(.*)$/);
+  if (animalDamageLimit != null) result.carAddonAnimalDamageLimit = animalDamageLimit;
   result.carAddonLuggage = /pojisteni\s+zavazadel(?:,|\s)\s*nosicu\s+a\s+boxu/i.test(
     asciiText
   );

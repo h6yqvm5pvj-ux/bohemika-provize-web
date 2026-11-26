@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { runContractNoteReminders } from "@/lib/server/contractNoteReminders";
 import { runClientNoteReminders } from "@/lib/server/clientNoteReminders";
+import { runLifeCommissionReminders } from "@/lib/server/lifeCommissionReminders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,13 +31,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized cron request." }, { status: 401 });
   }
   try {
-    const [contracts, clients] = await Promise.allSettled([
+    const [contracts, clients, lifeCommissions] = await Promise.allSettled([
       runContractNoteReminders(req), runClientNoteReminders(),
+      process.env.CRON_SECRET?.trim() ? runLifeCommissionReminders() : Promise.resolve(null),
     ]);
-    if (contracts.status === "rejected" || clients.status === "rejected") {
+    if (contracts.status === "rejected" || clients.status === "rejected" || lifeCommissions.status === "rejected") {
       return NextResponse.json({ ok: false, error: "Některé připomínky se nepodařilo zpracovat." }, { status: 500 });
     }
-    return NextResponse.json({ ...contracts.value, clientNotes: clients.value });
+    const failed = (lifeCommissions.value?.failed ?? 0) > 0;
+    return NextResponse.json({ ...contracts.value, ok: !failed, clientNotes: clients.value,
+      ...(lifeCommissions.value ? { lifeCommissions: lifeCommissions.value } : {}),
+    }, { status: failed ? 500 : 200 });
   } catch (error) {
     console.error("Contract note reminders cron failed:", error);
     return NextResponse.json(

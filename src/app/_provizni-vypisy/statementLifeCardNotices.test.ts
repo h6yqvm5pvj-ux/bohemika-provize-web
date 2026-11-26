@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { lifePremiumBaseNoticeKind } from "./statementLifeCardNotices";
+import { LifeCommissionBaseDifferenceNotice, LifePremiumBaseNotice, lifePremiumBaseNoticeKind } from "./statementLifeCardNotices";
 
 describe("lifePremiumBaseNoticeKind", () => {
   it("does not show a premium-base notice without a mismatch", () => {
@@ -56,5 +58,29 @@ describe("lifePremiumBaseNoticeKind", () => {
         hasEndorsement: false,
       })
     ).toBeNull();
+  });
+});
+
+describe("life premium-base warning copy", () => {
+  const message = "Roční základna pojistného sice nesedí, ale provize je správná!";
+  const mismatch = { statementAnnualPremium: 7200, systemAnnualPremium: 8400, systemMonthlyPremium: 700, difference: -1200 };
+  const annualWarning = (commissionsMatch: boolean) => renderToStaticMarkup(createElement(LifePremiumBaseNotice, {
+    kind: "mismatch", mismatch, monthlyDifference: -100, endorsement: null, commissionsMatch,
+  }));
+  const refreshWarning = (commissionsMatch: boolean) => renderToStaticMarkup(createElement(LifeCommissionBaseDifferenceNotice, {
+    differences: [{ label: "Základna B201", statementAnnualPremiumBase: 7200, systemAnnualPremiumBase: 8400 }], commissionsMatch,
+  }));
+
+  it.each([annualWarning, refreshWarning])("shows a short orange message when the amounts match", renderWarning => {
+    const html = renderWarning(true);
+    expect(html).toContain("bg-amber-50");
+    expect(html).toContain(message);
+    expect(html).not.toContain("Kč ročně");
+  });
+
+  it.each([annualWarning, refreshWarning])("retains the detailed warning when a commission has no verified match", renderWarning => {
+    const html = renderWarning(false);
+    expect(html).not.toContain(message);
+    expect(html).toContain("Kč ročně");
   });
 });

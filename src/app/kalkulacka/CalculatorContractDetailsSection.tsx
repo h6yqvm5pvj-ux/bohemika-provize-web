@@ -16,6 +16,8 @@ type ContractNumberLiveCheckStatus =
   | "error";
 
 type CalculatorContractDetailsSectionProps = {
+  dip?: { enabled: boolean; onChange: (enabled: boolean) => void };
+  investmentProduct?: boolean;
   pensionProduct?: boolean;
   isVisible: boolean;
   missingFields: string[];
@@ -54,6 +56,8 @@ type CalculatorContractDetailsSectionProps = {
 };
 
 export function CalculatorContractDetailsSection({
+  dip,
+  investmentProduct = false,
   pensionProduct = false,
   isVisible,
   missingFields,
@@ -113,10 +117,20 @@ export function CalculatorContractDetailsSection({
 
   return (
     <section className={`${styles.card} ${styles.fields}`}>
-      <h2 className={styles.sectionHeading}>
-        <span className={styles.sectionIcon}><FileText size={18} strokeWidth={1.7} aria-hidden="true" /></span>
-        Detaily smlouvy
-      </h2>
+      <div className={styles.detailsHeader}>
+        <h2 className={styles.sectionHeading}>
+          <span className={styles.sectionIcon}><FileText size={18} strokeWidth={1.7} aria-hidden="true" /></span>
+          Detaily smlouvy
+        </h2>
+        {dip && (
+          <button type="button" role="switch" aria-checked={dip.enabled} aria-label="DIP"
+            title="Dlouhodobý investiční produkt" className={styles.dipSwitch}
+            onClick={() => dip.onChange(!dip.enabled)}>
+            <span>DIP</span>
+            <span className={styles.dipTrack} aria-hidden="true"><span className={styles.dipThumb} /></span>
+          </button>
+        )}
+      </div>
       <div className={styles.fieldGrid}>
         <div className="space-y-1">
           <label htmlFor={clientInputId} className="block text-sm font-semibold text-slate-800">Jméno a příjmení klienta</label>
@@ -266,7 +280,7 @@ export function CalculatorContractDetailsSection({
           )}
         </div>
 
-        <div className="space-y-1">
+        {!investmentProduct && <div className="space-y-1">
           <label className="block text-sm font-semibold text-slate-800">Datum počátku smlouvy</label>
           <input
             type="date"
@@ -281,7 +295,7 @@ export function CalculatorContractDetailsSection({
           {!contractDateErrorText && contractDateWarningText && (
             <p className="text-[11px] text-amber-700">{contractDateWarningText}</p>
           )}
-        </div>
+        </div>}
         {showAutomaticRenewal && (
           <fieldset className="space-y-1" aria-label="Prolongace smlouvy">
             <legend className="text-sm font-semibold text-slate-800">Prolongace smlouvy</legend>
@@ -325,7 +339,7 @@ export function CalculatorContractDetailsSection({
           </div>
         )}
 
-        {!pensionProduct && contractNumberLiveCheckMode !== "endorsement" && (
+        {!pensionProduct && !investmentProduct && contractNumberLiveCheckMode !== "endorsement" && (
           <div className="space-y-1">
             <label className="block text-sm font-semibold text-slate-800">Datum storna (volitelné)</label>
             <input

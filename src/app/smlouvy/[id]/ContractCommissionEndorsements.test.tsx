@@ -88,6 +88,155 @@ describe("contract commission premium decreases", () => {
     expect(container.textContent).toMatch(/Celkem280,00 Kč/);
   });
 
+  it("shows one calculation with combined recurring NEON payments and separate amendment acquisition", async () => {
+    const care = { title: "Pečovatelská provize (5.–10. rok)", code: "B201-B206", amount: 299.38 };
+    const rootEntry: ContractDoc = { ...original, inputAmount: 900, effectiveInputAmount: 900, policyStartDate: "2020-10-01" };
+    const increase: ContractDoc = {
+      ...decrease, id: "increase", changeType: "increase", policyStartDate: "2020-12-01",
+      previousInputAmount: 900, newInputAmount: 951, premiumDelta: 51, effectiveInputAmount: 951,
+      items: [
+        { title: "Provize A101", code: "A101", amount: 51 },
+        { title: "Provize po 4 letech", code: "B4801", amount: 100 },
+        { ...care, amount: 16.96 },
+      ],
+      commissionPayouts: [{ code: "NV101", amount: 51, expectedAmount: 51, status: "paid", writtenBy: owner, statementNumber: "12" }],
+    };
+    await act(async () => root.render(<ContractCommissionSection {...base} consolidateNeonAmendments
+      commissionEntry={rootEntry} policyStartDate={rootEntry.policyStartDate}
+      commissionTimeline={[rootEntry, increase, { ...increase, id: "foreign", userEmail: "other@example.test",
+        items: [{ title: "Provize A101", code: "A101", amount: 98767 }] }]}
+      adviserItems={[{ title: "Provize A101", code: "A101", amount: 300 }, care]}
+      adviserTotalDisplay={2096.28}
+      commissionPayouts={[
+        { code: "A101", amount: 300, status: "paid", writtenBy: owner, statementDate: "2020-11-25" },
+        { code: "B202", expectedAmount: 316.34, amount: 316.34, status: "paid", writtenBy: owner },
+      ]} />));
+    const summaries = [...container.querySelectorAll("summary")].map(item => item.textContent);
+    expect(container.textContent?.match(/Výpočet provizí/g)).toHaveLength(1);
+    expect(summaries.filter(text => text?.includes("Pečovatelská provize"))).toHaveLength(1);
+    expect(container.textContent).toContain("316,34 Kč");
+    expect(container.textContent).toContain("Očekávaná provize celkem2.349,04 Kč");
+    expect(container.querySelector('details a[href="#contract-entry-increase"]')?.textContent).toContain("Dodatek od");
+    expect(container.textContent).toContain("Vyplaceno 51,00 Kč");
+    expect(container.textContent?.match(/Složka provize/g)).toHaveLength(1);
+    expect(container.querySelector('[class*="rows"]')?.lastElementChild?.textContent).toContain("Provize po 4 letech");
+    expect(container.querySelector('a[href="#contract-entry-foreign"]')).toBeNull();
+  });
+
+  it.each([false, true])("reprices open NEON components after an increase (B0301 already paid: %s)", async (earlyB0301) => {
+    const contract: ContractDoc = { ...original, inputAmount: 600, effectiveInputAmount: 600 };
+    const increase: ContractDoc = {
+      ...decrease, id: "increase", policyStartDate: "2025-03-18",
+      previousInputAmount: 600, newInputAmount: 2450, effectiveInputAmount: 2450, premiumDelta: 1850, changeType: "increase",
+      items: [
+        { title: "Provize A101", code: "A101", amount: 7570.64 },
+        { title: "Provize B0301", code: "B0301", amount: 1924.74 },
+        { ...deferred, amount: 4698.63 },
+      ],
+      commissionPayouts: [
+        { code: "NB3601", amount: 4422.24, writtenBy: owner, statementPeriod: "01.03.2028 - 31.03.2028" },
+      ],
+    };
+    const adviserItems = [
+      { title: "Provize A101", code: "A101", amount: 2455.34 },
+      { title: "Provize B0301", code: "B0301", amount: 624.24 },
+      { ...deferred, amount: 1523.88 },
+      { title: "Provize po 4 letech", code: "B4801", amount: 274.18 },
+      { title: "Následná provize (2.–5. rok)", code: "B101-B104", amount: 31.82 },
+    ];
+    const payouts: ComponentProps<typeof ContractCommissionSection>["commissionPayouts"] = [
+      { code: "A101", amount: 2454.85, expectedAmount: 2455.34, statementPeriod: "01.02.2025 - 28.02.2025" },
+      { code: "NV101", amount: 7123.69, statementPeriod: "01.03.2025 - 31.03.2025" },
+      earlyB0301
+        ? { code: "B0301", amount: 624.24, statementPeriod: "01.02.2025 - 28.02.2025" }
+        : { code: "B0301", amount: 2398.56, expectedAmount: 624.24, difference: 1774.32, status: "difference",
+          differenceReason: "premium_base_mismatch", statementPeriod: "01.04.2025 - 30.04.2025" },
+      { code: "NB0301", amount: 1811.39, statementId: "top-up-statement", statementNumber: "TEST",
+        sourceBaseAmount: 22200, systemBaseAmount: 29400, career: "Poradce 5",
+        statementPeriod: "01.04.2025 - 30.04.2025" },
+      { code: "B3601", amount: 5856.48, expectedAmount: 1523.88, statementPeriod: "01.02.2028 - 29.02.2028" },
+      { code: "B101", amount: 31.85, expectedAmount: 31.82, statementPeriod: "01.06.2026 - 30.06.2026" },
+    ].map(payout => ({ ...payout, writtenBy: owner }));
+    const before = structuredClone(payouts);
+    const onOpenStatement = vi.fn();
+    await act(async () => root.render(<ContractCommissionSection {...base} consolidateNeonAmendments
+      commissionEntry={contract} commissionTimeline={[contract, increase]} adviserItems={adviserItems}
+      adviserTotalDisplay={5004.92} commissionPayouts={payouts} onOpenStatement={onOpenStatement} />));
+
+    const immediate = container.querySelector("details")!;
+    const [baseA101, increaseA101, baseB0301, increaseB0301] = Array.from(immediate.querySelector("div")!.children);
+    expect(immediate.querySelector("summary")?.textContent).toContain("Očekáváno celkem12.574,96 Kč");
+    expect(baseA101.textContent).toContain("Provize A101");
+    expect(baseA101.textContent).toContain("Očekáváno 2.455,34 Kč");
+    expect(baseA101.getAttribute("data-tone")).toBe("matched");
+    expect(baseA101.querySelector("summary")?.textContent).toContain("Vyplaceno dle očekávání");
+    expect(increaseA101.querySelector("summary")?.textContent).toContain("Doplatek za navýšení A101");
+    expect(increaseA101.textContent).toContain("Kód ve výpisu NV101");
+    expect(increaseA101.getAttribute("data-tone")).toBe("difference");
+    expect(increaseA101.querySelector('a[href="#contract-entry-increase"]')?.textContent).toBe("Dodatek od 18. 3. 2025");
+    expect(increaseA101.textContent).toContain("Očekáváno 7.570,64 Kč");
+    expect(increaseA101.textContent).toContain("Vyplaceno 7.123,69 Kč");
+    expect(increaseA101.textContent).toContain("Vyplaceno méně o 446,95 Kč");
+    expect(increaseA101.textContent).not.toContain("Částečně 7.123,69 Kč");
+    expect(increaseA101.textContent).not.toContain("Rozdíl -446,95 Kč");
+    expect(baseB0301.textContent).toContain("Provize B0301");
+    if (earlyB0301) {
+      expect(baseB0301.textContent).toContain("Očekáváno 624,24 Kč");
+      expect(increaseB0301.textContent).toContain("Očekáváno 1.924,74 Kč");
+    } else {
+      expect(baseB0301.textContent).toContain("Očekáváno 2.548,98 Kč");
+      expect(baseB0301.textContent).toContain("Vyplaceno méně o 150,42 Kč");
+      expect(increaseB0301.textContent).toContain("NB0301");
+      expect(increaseB0301.textContent).toContain("Vyplaceno 1.811,39 Kč");
+      expect(increaseB0301.querySelector("summary")?.textContent).toContain("Samostatně očekáváno 0,00 Kč");
+      expect(increaseB0301.querySelector("summary")?.textContent).toContain("Doplatek za navýšení B0301");
+      expect(increaseB0301.getAttribute("data-tone")).toBe("difference");
+      await act(async () => increaseB0301.querySelector("summary")?.click());
+      expect(increaseB0301.hasAttribute("open")).toBe(true);
+      await act(async () => increaseB0301.querySelector("button")?.click());
+      expect(onOpenStatement).toHaveBeenCalledWith("top-up-statement", ["NB0301"]);
+      expect(increaseB0301.textContent).toContain("Část provize B0301 za navýšení pojistného činí 1.924,74 Kč");
+      expect(container.textContent).not.toContain("+1.774,32 Kč");
+    }
+    const deferredRow = immediate.nextElementSibling;
+    expect(deferredRow?.textContent).toContain("Očekáváno 6.222,51 Kč");
+    expect(deferredRow?.nextElementSibling?.textContent).toContain("NB3601");
+    expect(deferredRow?.nextElementSibling?.textContent).toContain("Vyplaceno 4.422,24 Kč");
+    expect(container.textContent).toContain("1.119,57 Kč");
+    expect(container.textContent).toContain("Očekáváno 129,93 Kč");
+    const subsequentSummary = [...container.querySelectorAll("summary")].find(summary => summary.textContent?.includes("Následná provize"));
+    expect(subsequentSummary?.textContent).toContain("Zapsané výplaty 1/4");
+    expect(subsequentSummary?.textContent).toContain("Očekáváno celkem519,72 Kč");
+    expect(container.textContent).toContain("Očekávaná provize celkem20.436,76 Kč");
+    expect(deferredRow?.nextElementSibling?.querySelector("summary")?.textContent).toContain("Samostatně očekáváno 0,00 Kč");
+    expect(container.textContent?.match(/Složka provize/g)).toHaveLength(1);
+    expect(payouts).toEqual(before);
+
+    if (!earlyB0301) {
+      const openSummary = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Zobrazit souhrn"));
+      await act(async () => openSummary?.click());
+      const dialog = container.querySelector("dialog")!;
+      expect(dialog.open).toBe(true);
+      const overview = dialog.querySelector('section[aria-label="Porovnání plánu s výplatami"]');
+      expect(overview?.textContent).toMatch(/Očekáváno18.927,40 KčVyplaceno24.099,06 Kč/);
+      expect(overview?.textContent).toContain("+5.171,66 Kč");
+      expect(dialog.textContent).not.toContain("B4801");
+      expect(dialog.textContent).toContain("Doplatek za navýšení A101NV101");
+      const summary = [...dialog.querySelectorAll("summary")].find(row => row.textContent?.includes("B0301 · NB0301"))!;
+      expect(summary.textContent).toContain("Vyplaceno4.209,95 Kč");
+      await act(async () => summary.click());
+      expect(summary.parentElement?.hasAttribute("open")).toBe(true);
+      expect(summary.parentElement?.textContent).toContain("22.200,00 Kč");
+      expect(summary.parentElement?.textContent).toContain("Poradce 5");
+      const source = [...summary.parentElement!.querySelectorAll("button")].find(button => button.textContent?.includes("Výpis TEST"));
+      onOpenStatement.mockClear();
+      await act(async () => source?.click());
+      expect(onOpenStatement).toHaveBeenCalledWith("top-up-statement", ["NB0301"]);
+      expect(container.querySelector("dialog")).toBeNull();
+    }
+    expect(payouts).toEqual(before);
+  });
+
   it("scopes paid status and revised amounts separately for advisers and managers", async () => {
     await act(async () => root.render(<ContractCommissionSection {...base} isOwnContract={false}
       viewerEmail={manager} showAnyMeziprovision expandedMeziprovisionKeys={["manager"]}
@@ -127,13 +276,13 @@ describe("contract commission premium decreases", () => {
       commissionTimeline={[contract, amendment]} adviserTotalDisplay={800} paymentBasedAdviserTotals={{ immediate: 800, subsequent: 0 }}
       adviserItems={[{ title: "💸 Okamžitá (získatelská) provize (z platby)", amount: 400, code: "A101-A102" }]}
       commissionPayouts={[{ code: "A101", amount: 400, writtenBy: owner }]} />));
-    expect(container.querySelector("summary")?.textContent).toContain("Vyplaceno 1/2 · první rok 600,00 Kč");
+    expect(container.querySelector("summary")?.textContent).toContain("Zapsané výplaty 1/2 · první rok 600,00 Kč");
     expect(container.querySelectorAll("[data-premium-adjustment]")).toHaveLength(1);
     expect(container.textContent).toContain("200,00 Kč – 400,00 Kč");
     expect(container.textContent).toContain("Celkem v 1. roce600,00 Kč");
   });
 
-  it("builds period-specific expectations for generic recurring insurance commissions", async () => {
+  it("does not present an auto premium change as a precise future payout without prior paid history", async () => {
     const contract: ContractDoc = { ...original, productKey: "cppAuto", policyStartDate: "2026-01-01", frequencyRaw: "quarterly" };
     const amendment: ContractDoc = { ...decrease, productKey: "cppAuto", policyStartDate: "2027-07-01",
       newInputAmount: 500, effectiveInputAmount: 500, premiumDelta: -500 };
@@ -141,11 +290,155 @@ describe("contract commission premium decreases", () => {
       policyStartDate={contract.policyStartDate} paymentFrequency="quarterly" commissionEntry={contract}
       commissionTimeline={[contract, amendment]} adviserTotalDisplay={400} paymentBasedAdviserTotals={{ immediate: 0, subsequent: 400 }}
       adviserItems={[{ title: "🔁 Následná provize", amount: 100, code: "B101", excludeFromTotal: true }]} />));
-    expect(container.querySelector("details")).not.toBeNull();
-    expect(container.querySelectorAll("[data-premium-adjustment]").length).toBeGreaterThan(0);
-    expect(container.textContent).toContain("50,00 Kč – 100,00 Kč");
-    expect(container.textContent).toContain("1. 7. 2027");
-    expect(container.textContent).toContain("Celkem následně ročně200,00 Kč – 300,00 Kč");
+    expect(container.querySelector("details > summary")?.textContent).toContain("Odhad na další pojistný rok368,00–432,00 Kč");
+    expect(container.querySelectorAll("[data-premium-adjustment]")).toHaveLength(0);
+    expect(container.textContent).toContain("Odhad 92,00–108,00 Kč");
+    expect(container.textContent).toContain("V aktuálním pojistném roce bez následných provizí");
+    expect(container.textContent).not.toContain("Čeká na zápis329,29 Kč");
+  });
+
+  it.each([false, true])("shows next year's semiannual installments (current year fully paid: %s)", async (fullyPaid) => {
+    vi.setSystemTime(new Date("2026-11-25T12:00:00Z"));
+    const contract: ContractDoc = {
+      ...original, id: "cpp-auto-forecast", productKey: "cppAuto", inputAmount: 6_098,
+      frequencyRaw: "semiannual", position: "poradce6", contractSignedDate: "2022-03-14",
+      policyStartDate: "2022-03-14", durationYears: 10,
+    };
+    const subsequent: ComponentProps<typeof ContractCommissionSection>["adviserItems"][number] = {
+      title: "🔁 Následná provize", amount: 329.29, code: "B101",
+    };
+    await act(async () => root.render(<ContractCommissionSection {...base}
+      product="cppAuto" isPaymentBasedProduct paymentFrequency="semiannual"
+      policyStartDate={contract.policyStartDate} contractDurationYears={10}
+      commissionEntry={contract} commissionTimeline={[contract]}
+      adviserItems={[subsequent]} adviserTotalDisplay={658.58}
+      paymentBasedAdviserTotals={{ immediate: 658.58, subsequent: 658.58 }}
+      commissionPayouts={(fullyPaid ? ["B107", "B108"] : ["B107"]).map(code => ({
+        code, amount: 214.16, expectedAmount: 214.16, difference: 0, status: "paid", writtenBy: owner,
+      }))} />));
+
+    const details = container.querySelector("details")!;
+    const summary = details.querySelector("summary")!;
+    expect(details.open).toBe(false);
+    expect(summary.textContent).toContain(`Aktuální pojistný rok · Vyplaceno ${fullyPaid ? 2 : 1}/2`);
+    expect(summary.textContent).toContain(fullyPaid ? "Odhad na další pojistný rok394,06–462,58 Kč" : "214,16 Kč");
+    await act(async () => summary.click());
+    const rows = Array.from(container.querySelectorAll('[class*="breakdownRow"]'));
+    const rowFor = (code: string) => rows.find(row => row.textContent?.includes(code));
+    const secondPolicyYear = container.querySelector('[data-commission-policy-year="2"]');
+    const thirdPolicyYear = container.querySelector('[data-commission-policy-year="3"]');
+
+    expect(secondPolicyYear).toBeNull();
+    expect(thirdPolicyYear).toBeNull();
+    expect(rowFor("B107")?.textContent).toContain("Vyplaceno 214,16 Kč");
+    expect(rowFor("B108")?.textContent).toContain(fullyPaid ? "Vyplaceno 214,16 Kč" : "Očekáváno 214,16 Kč");
+    expect(rowFor("B108")?.textContent).not.toContain("±8 %");
+    const nextYear = container.querySelector('[data-commission-policy-year="6"]');
+    expect(nextYear?.textContent).toContain("0/2 vyplaceno");
+    expect(rowFor("B109")?.textContent).toContain("14. 3. 2027");
+    expect(rowFor("B110")?.textContent).toContain("14. 9. 2027");
+    for (const code of ["B109", "B110"]) {
+      expect(rowFor(code)?.textContent).toContain("Odhad 197,03–231,29 Kč");
+      expect(rowFor(code)?.textContent).toContain("Čeká na zápis");
+    }
+    expect(rowFor("B111")).toBeUndefined();
+    expect(container.querySelector('[data-commission-policy-year="7"]')).toBeNull();
+    expect(rows).toHaveLength(4);
+    const remaining = fullyPaid ? "0,00 Kč" : "214,16 Kč";
+    expect(container.textContent).toContain(`Zbývá v aktuálním pojistném roce${remaining}`);
+  });
+
+  it("shows the next annual installment without an amount when the last receipt is too old for an estimate", async () => {
+    const contract: ContractDoc = {
+      ...original, id: "annual-auto-window", productKey: "cppAuto", inputAmount: 10_000,
+      frequencyRaw: "annual", position: "poradce6", contractSignedDate: "2022-06-29",
+      policyStartDate: "2022-06-29", durationYears: 15,
+    };
+    const renderAt = async (day: string) => {
+      vi.setSystemTime(new Date(`${day}T12:00:00Z`));
+      await act(async () => root.render(<ContractCommissionSection {...base} key={day}
+        product="cppAuto" isPaymentBasedProduct paymentFrequency="annual"
+        policyStartDate={contract.policyStartDate} contractDurationYears={15}
+        commissionEntry={contract} commissionTimeline={[contract]}
+        adviserItems={[{ title: "🔁 Následná provize", amount: 1_080, code: "B101" }]}
+        commissionPayouts={[{ code: "B104", amount: 1_572.91, expectedAmount: 1_572.91,
+          difference: 0, status: "paid", writtenBy: owner }]} />));
+      await act(async () => container.querySelector<HTMLElement>("details > summary")!.click());
+    };
+    const rowFor = (code: string) => Array.from(container.querySelectorAll('[class*="breakdownRow"]'))
+      .find(row => row.textContent?.includes(code));
+
+    await renderAt("2026-11-16");
+    expect(rowFor("B104")?.textContent).toContain("Vyplaceno");
+    expect(rowFor("B105")?.textContent).toContain("Odhad");
+    expect(container.querySelector("summary")?.textContent).toContain("Odhad na další pojistný rok");
+    expect(rowFor("B106")).toBeUndefined();
+    expect(container.querySelector('[data-commission-policy-year="7"]')).toBeNull();
+
+    await renderAt("2027-07-01");
+    expect(rowFor("B104")?.textContent).toContain("Vyplaceno");
+    expect(rowFor("B105")?.textContent).toContain("Čeká na zápis");
+    expect(rowFor("B106")?.textContent).toContain("Čeká na zápis");
+    expect(rowFor("B106")?.textContent).toContain("— Kč");
+    expect(rowFor("B107")).toBeUndefined();
+  });
+
+  it.each([
+    { frequency: "annual" as const, secondYear: ["B101"], thirdYear: ["B102"] },
+    { frequency: "quarterly" as const, secondYear: ["B101", "B102", "B103", "B104"], thirdYear: ["B105", "B106", "B107", "B108"] },
+  ])("groups auto subsequent codes by annual period for $frequency payment", async ({ frequency, secondYear, thirdYear }) => {
+    vi.setSystemTime(new Date("2024-10-31T12:00:00Z"));
+    const contract: ContractDoc = {
+      ...original, id: `cpp-auto-${frequency}`, productKey: "cppAuto", inputAmount: 6_098,
+      frequencyRaw: frequency, position: "poradce6", contractSignedDate: "2022-03-14",
+      policyStartDate: "2022-03-14", durationYears: 4,
+    };
+    await act(async () => root.render(<ContractCommissionSection {...base}
+      product="cppAuto" isPaymentBasedProduct paymentFrequency={frequency}
+      policyStartDate={contract.policyStartDate} contractDurationYears={4}
+      commissionEntry={contract} commissionTimeline={[contract]}
+      adviserItems={[{ title: "🔁 Následná provize", amount: 329.29, code: "B101" }]}
+      adviserTotalDisplay={658.58} paymentBasedAdviserTotals={{ immediate: 0, subsequent: 658.58 }}
+      commissionPayouts={secondYear.map(code => ({ code, amount: 329.29, status: "paid", writtenBy: owner }))} />));
+
+    const details = container.querySelector("details")!;
+    await act(async () => details.querySelector("summary")!.click());
+    const codesForYear = (year: number) => {
+      const group = container.querySelector(`[data-commission-policy-year="${year}"]`);
+      return group?.textContent ?? "";
+    };
+
+    for (const code of secondYear) expect(codesForYear(2)).toContain(code);
+    for (const code of thirdYear) expect(codesForYear(3)).toContain(code);
+    expect(codesForYear(2)).not.toContain(thirdYear[0]);
+  });
+
+  it.each([
+    { amount: 183.71, expectedAmount: 183.71, difference: 0, status: "paid", expectedStatus: "Vyplaceno" },
+    { amount: 367.42, expectedAmount: 183.71, difference: 183.71, status: "difference", expectedStatus: "Vyplaceno" },
+  ])("shows received auto renewals without comparing them with a fixed expected amount: %j", async payout => {
+    const contract: ContractDoc = {
+      ...original, id: "cpp-auto", productKey: "cppAuto", inputAmount: 3049,
+      frequencyRaw: "semiannual", position: "poradce6", contractSignedDate: "2022-03-14",
+      policyStartDate: "2022-03-14", durationYears: 6,
+    };
+    const subsequent: ComponentProps<typeof ContractCommissionSection>["adviserItems"][number] = {
+      title: "🔁 Následná provize", amount: 329.29, code: "B101", excludeFromTotal: true,
+    };
+    await act(async () => root.render(<ContractCommissionSection {...base}
+      product="cppAuto" isPaymentBasedProduct paymentFrequency="semiannual"
+      policyStartDate={contract.policyStartDate} commissionEntry={contract} commissionTimeline={[contract]}
+      adviserItems={[subsequent]} adviserTotalDisplay={329.29}
+      paymentBasedAdviserTotals={{ immediate: 0, subsequent: 329.29 }}
+      commissionPayouts={[{ ...payout, code: "B101", differenceReason: payout.status === "difference" ? "commission_amount_mismatch" : null, writtenBy: owner }]} />));
+
+    const installment = Array.from(container.querySelectorAll('[class*="breakdownRow"]'))
+      .find(row => row.textContent?.includes("B101"));
+    expect(installment?.textContent).toContain(new Intl.NumberFormat("cs-CZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(payout.amount).replace(/\u00a0/g, " ").trim());
+    expect(installment?.textContent).toContain(payout.expectedStatus);
+    expect(installment?.textContent).not.toContain("Očekáváno");
+    expect(installment?.textContent).not.toContain("Rozdíl");
+    expect(installment?.textContent).not.toContain("Částečně");
   });
 
   it("uses an ambiguous recurring code's exact period instead of marking later years paid too", async () => {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  compareStatementStorno,
   groupStornoItemsByContract,
   groupStornoRowsByContract,
+  indexStornoStatementPayments,
   stornoSystemUncertainty,
   statementReportsContractTermination,
   fullAutoStornoInferenceForGroup,
@@ -12,6 +14,7 @@ import type {
   StornoCommissionRow,
   ContractStatusRule,
   ParsedStatement,
+  MatchedSystemContract,
 } from "./statementTypes";
 
 const stornoRow = (overrides: Partial<StornoCommissionRow> = {}): StornoCommissionRow => ({
@@ -107,6 +110,39 @@ describe("storno helpers", () => {
     const match = { status: "matched" as const, contracts: [{ id: "active", adviserEmail: "adviser@example.test", status: "active" }] };
     expect(stornoSystemUncertainty(match)).toBe(false);
     expect(stornoSystemUncertainty(match, true)).toBe(true);
+  });
+
+  it("compares the current and saved deductions by code without counting an imported statement twice", () => {
+    const owner = "adviser@example.test";
+    const group = groupStornoItemsByContract([
+      stornoRow({ id: "1", product: "CPP_ACPIII", type: "AP101", commission: -600 }),
+      stornoRow({ id: "2", product: "CPP_ACPIII", type: "A102", commission: -50 }),
+      stornoRow({ id: "3", product: "KOO_AUTO", type: "A101", commission: -900 }),
+    ], [])[0];
+    const statement: ParsedStatement = { fileName: "synthetic.html", header: {
+      advisorNumber: null, statementNumber: "test", statementDate: "31.07.2026", period: "07/2026",
+    }, commissionRows: [], deductionRows: [], stornoRows: group.rows, otherPayments: [], contractStatusRules: statusRules,
+    managerCommissions: [], lifeSplitContracts: [], otherProductContracts: [], unmatchedB36Payments: [], parseWarnings: [], payoutTotal: null };
+    const contract: MatchedSystemContract = { id: "auto", adviserEmail: owner, status: "storno", productKey: "cppAuto",
+      policyStartDate: "2026-05-01", stornoDate: "2026-06-15", commissionPayouts: [
+        { code: "A101", amount: 1_000, writtenBy: owner, statementDate: "31.05.2026" },
+        { code: "A102", amount: 50, writtenBy: owner, statementDate: "31.05.2026" },
+        { code: "A101", amount: -400, writtenBy: owner, statementDate: "30.06.2026" },
+      ] };
+    const input = { group, header: statement.header, contract, statementId: "current", currentUserEmail: owner,
+      payments: indexStornoStatementPayments(statement.commissionRows) };
+    const expected = [
+      { code: "A101", paid: 100_000, estimated: 100_000, deducted: 100_000, difference: 0 },
+      { code: "A102", paid: 5_000, estimated: 5_000, deducted: 5_000, difference: 0 },
+    ];
+    expect(compareStatementStorno(input)).toEqual(expected);
+    const imported = { ...contract, commissionPayouts: [...contract.commissionPayouts!,
+      { code: "A101", amount: -600, writtenBy: owner, statementDate: "31.07.2026", statementId: "current" },
+    ] };
+    expect(compareStatementStorno({ ...input, contract: imported })).toEqual(expected);
+    expect(compareStatementStorno({ ...input, currentUserEmail: "unrelated@example.test" })).toEqual([]);
+    expect(compareStatementStorno({ ...input, contract: { ...contract, status: "active" } })).toEqual([]);
+    expect(compareStatementStorno({ ...input, contract: { ...contract, contractNumber: "987654" } })).toEqual([]);
   });
 
   it.each(["A001", "UNKNOWN"])("does not suggest terminating a contract after a full commission reversal with status %s", statusCode => {

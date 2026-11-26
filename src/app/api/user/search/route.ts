@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { normalizeProfileAvatar } from "@/lib/profileAvatar";
+import { readSearchQuery } from "@/lib/server/readSearchQuery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -175,7 +176,7 @@ const scoreRow = (row: UserDirectoryRow, queryRaw: string, queryNormalized: stri
   return score;
 };
 
-export async function GET(req: NextRequest) {
+async function searchUsers(req: NextRequest, fromBody: boolean) {
   const guard = await requireAdvisorAuthedRateLimited(req, {
     namespace: "api:user-search:get",
     limit: USER_SEARCH_RATE_LIMIT,
@@ -183,6 +184,7 @@ export async function GET(req: NextRequest) {
   });
   if (!guard.ok) return guard.response;
   const { ctx } = guard;
+  const responseInit = { headers: { "Cache-Control": "private, no-store" } };
 
   if (!adminDb) {
     return withRateLimitHeaders(
@@ -194,7 +196,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const queryRaw = normalizeEmail(req.nextUrl.searchParams.get("q"));
+  const suppliedQuery = fromBody ? await readSearchQuery(req) : req.nextUrl.searchParams.get("q");
+  if (fromBody && suppliedQuery === null) {
+    return withRateLimitHeaders(NextResponse.json({ ok: false, error: "Neplatný dotaz." }, { ...responseInit, status: 400 }), ctx);
+  }
+  const queryRaw = normalizeEmail(suppliedQuery);
   if (queryRaw.length < USER_SEARCH_MIN_QUERY_LEN) {
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, users: [] } satisfies UserSearchSuccess),
@@ -204,7 +210,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const queryNormalized = normalizeSearch(queryRaw);
-    const includeSelf = req.nextUrl.searchParams.get("includeSelf") === "1";
+    const includeSelf = !fromBody && req.nextUrl.searchParams.get("includeSelf") === "1";
     const rows = await loadUserDirectoryRows();
     const filtered = rows
       .filter((row) => includeSelf || row.email !== ctx.email)
@@ -227,7 +233,10 @@ export async function GET(req: NextRequest) {
       }));
 
     return withRateLimitHeaders(
-      NextResponse.json({ ok: true, users: filtered } satisfies UserSearchSuccess),
+      NextResponse.json({
+        ok: true,
+        users: fromBody ? filtered.map(({ email, name }) => ({ email, name })) : filtered,
+      }, responseInit),
       ctx
     );
   } catch (error) {
@@ -240,4 +249,12 @@ export async function GET(req: NextRequest) {
       ctx
     );
   }
+}
+
+export function GET(req: NextRequest) {
+  return searchUsers(req, false);
+}
+
+export function POST(req: NextRequest) {
+  return searchUsers(req, true);
 }

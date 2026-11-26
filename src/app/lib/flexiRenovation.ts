@@ -1,5 +1,16 @@
 export type FlexiRenovationGuaranteeStatus = "unknown" | "outside" | "inside";
 
+export const FLEXI_RENOVATION_MISSING_BASE = "pending_flexi_renovation_base";
+export const FLEXI_RENOVATION_MISSING_BASE_LABEL = "Provizi nelze ověřit – chybí základna";
+
+export function hasPendingFlexiRenovationBase(contract: {
+  productKey?: string | null;
+  commissionCalculationStatus?: string | null;
+} | null | undefined): boolean {
+  return contract?.productKey === "flexi" &&
+    contract.commissionCalculationStatus === FLEXI_RENOVATION_MISSING_BASE;
+}
+
 export type FlexiRenovationInput = {
   originalMonthlyPremium: number;
   premiumIncreaseMonthly: number;

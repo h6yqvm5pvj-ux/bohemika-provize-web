@@ -1,3 +1,4 @@
+import { DOMEX_NEURON_PARSER_VERSION } from "@/app/lib/domexNeuronSchema";
 import { describe, expect, it } from "vitest";
 import type { ContractDoc } from "@/app/api/contracts/_lib/contractsApi.types";
 import type { DomexPdfResult } from "@/app/lib/parseDomexPdf";
@@ -29,7 +30,7 @@ describe("additive DOMEX Neuron PDF backfill plan", () => {
     if (first.status === "rejected") return;
     const detail = first.patch.domexDetail as NonNullable<ContractDoc["domexDetail"]>;
     expect(detail.neuron?.objects).toHaveLength(3);
-    expect(detail.neuron?.parserVersion).toBe(2);
+    expect(detail.neuron?.parserVersion).toBe(DOMEX_NEURON_PARSER_VERSION);
     expect(first.changedKeys).toContain("domexDetail.neuron");
     const second = planDomexNeuronPdfBackfill({ ...current(), ...first.patch } as ContractDoc, pdf);
     expect(second).toMatchObject({ status: "unchanged", patch: {}, changedKeys: [] });
@@ -44,7 +45,7 @@ describe("additive DOMEX Neuron PDF backfill plan", () => {
     if (first.status === "rejected") return;
     const detail = first.patch.domexDetail as NonNullable<ContractDoc["domexDetail"]>;
     expect(detail.neuron?.objects[0].sumInsured).toBe(7_000_000);
-    expect(detail.neuron?.parserVersion).toBe(2);
+    expect(detail.neuron?.parserVersion).toBe(DOMEX_NEURON_PARSER_VERSION);
     expect(first.conflictKeys).toContain("domexDetail.neuron.objects.0.sumInsured");
     expect(Object.keys(first.patch)).not.toContain("inputAmount");
     expect(Object.keys(first.patch)).not.toContain("items");

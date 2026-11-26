@@ -19,13 +19,13 @@ export function markHallOwnerDirty(writer: Writer, db: Firestore, email: string)
 
 // The revision also fences home production and the team's active portfolio.
 // Commission and lifecycle edits invalidate their aggregates in the same write.
-const SOURCE_FIELDS = ["userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides", "status", "policyStartDate", "policyEndDate", "durationYears", "durationMonths"];
+const SOURCE_FIELDS = ["contractPdfAttachment", "contractNumber", "entryType", "rootContractEntryId", "userEmail", "productKey", "inputAmount", "frequencyRaw", "contractSignedDate", "createdAt", "acquisitionType", "items", "managerOverrides", "status", "policyStartDate", "policyEndDate", "durationYears", "durationMonths"];
 export function invalidateHallContractChange(writer: Writer, ref: DocumentReference, before: Record<string, unknown>, patch: Record<string, unknown>): void {
   if (!SOURCE_FIELDS.some((field) => Object.hasOwn(patch, field) && JSON.stringify(before[field]) !== JSON.stringify(patch[field]))) return;
   const pathOwner = ref.parent.parent?.id ?? "";
   const beforeOwner = typeof before.userEmail === "string" ? before.userEmail : pathOwner;
   const afterOwner = typeof patch.userEmail === "string" ? patch.userEmail : beforeOwner;
-  for (const email of new Set([beforeOwner, afterOwner].map((value) => value.trim().toLowerCase()))) {
+  for (const email of new Set([pathOwner, beforeOwner, afterOwner].map((value) => value.trim().toLowerCase()))) {
     markHallOwnerDirty(writer, ref.firestore, email);
   }
 }

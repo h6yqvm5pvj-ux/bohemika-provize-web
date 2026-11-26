@@ -82,7 +82,10 @@ const resolveCandidates = (
 };
 
 /** Read only explicitly labelled dates; never cross a page or another field to find a value. */
-export function resolveCppAutoDates(pages: readonly (readonly string[])[]): CppAutoDates {
+export function resolveCppAutoDates(
+  pages: readonly (readonly string[])[],
+  { allowSignedDateFallback = true }: { allowSignedDateFallback?: boolean } = {},
+): CppAutoDates {
   const candidates: DateCandidate[] = [];
   for (const page of pages) {
     // Whitespace inside the exact label may span visual rows, as in the legacy
@@ -100,7 +103,7 @@ export function resolveCppAutoDates(pages: readonly (readonly string[])[]): CppA
   const warnings: string[] = [];
   const policyStartDate = resolveCandidates(candidates, "start", warnings);
   // A present primary label blocks every fallback even when its value is invalid or missing.
-  const signedField = candidates.some((candidate) => candidate.field === "prepared") ? "prepared"
+  const signedField = !allowSignedDateFallback || candidates.some((candidate) => candidate.field === "prepared") ? "prepared"
     : candidates.some((candidate) => candidate.field === "presented") ? "presented" : "print";
   const contractSignedDate = resolveCandidates(candidates, signedField, warnings);
   return { policyStartDate, contractSignedDate, warnings };

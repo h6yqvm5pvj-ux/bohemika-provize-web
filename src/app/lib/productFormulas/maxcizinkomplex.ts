@@ -52,6 +52,8 @@ const MAX_CIZIN_KOMPLEX_COEFFICIENTS: Record<
 export const MAX_CIZIN_KOMPLEX_DEFAULT_VARIANT: MaxCizinKomplexVariant =
   "exclusiveStandard";
 
+export const MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE = "A501";
+
 export function maxCizinKomplexCoefficient(
   position: Position,
   variant: MaxCizinKomplexVariant = MAX_CIZIN_KOMPLEX_DEFAULT_VARIANT
@@ -77,7 +79,7 @@ export function calculateMaxCizinKomplex(
     {
       title: "💸 Okamžitá provize",
       amount: provize,
-      code: "A501",
+      code: MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE,
       note: `Varianta ${maxCizinKomplexVariantLabel(variant)}`,
     },
   ];

@@ -11,6 +11,11 @@ administration; Functions do not receive billing webhooks.
   verified email, enrolled TOTP, proof of MFA in the token, matching internal
   profile UID, and valid revocation state. Passkey custom tokens use the same
   `app_totp_enrolled` and `app_auth_generation` claims as the web application.
+- AI, cadastral and vehicle lookups, and team messages check the caller's
+  advisor role before consuming quota. The check covers both public and private
+  profile role fields. For older accounts with neither field, it also checks
+  profiles matching the verified UID or email before applying the legacy
+  advisor default. Both account types may send a test push to their own device.
 - Authentication and Firestore failures deny access. Rates are shared through
   the existing `_rateLimits` collection and `expiresAt` TTL field.
 - Team messages derive authority from the authenticated manager and validate

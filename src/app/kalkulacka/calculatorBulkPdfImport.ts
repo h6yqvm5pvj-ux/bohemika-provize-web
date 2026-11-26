@@ -1,7 +1,7 @@
 import type { PaymentFrequency, Product } from "../types/domain";
 import type { SlaviaAutoCoverageDetail } from "@/app/lib/parseSlaviaAutoPdf";
 import { isIsoDay, productLabel } from "./calculatorHelpers";
-import { BULK_PDF_PRODUCTS, type ParsedContractPdf } from "./calculatorPdfImport";
+import { BULK_PDF_PRODUCTS, pdfImportWarningsForProduct, type ParsedContractPdf } from "./calculatorPdfImport";
 
 export type AutoBulkImportRowStatus =
   | "queued"
@@ -135,9 +135,7 @@ export const buildAutoBulkImportWarnings = ({
   productDetected: boolean;
   detectionConfidence: "high" | "medium" | null;
 }): string[] => {
-  const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
-    ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
-    : [];
+  const warnings = pdfImportWarningsForProduct(product, parsed);
   if (!productDetected) {
     warnings.push(
       `produkt se nepodařilo rozpoznat, použil se vybraný produkt ${productLabel(product)}`

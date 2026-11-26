@@ -22,6 +22,10 @@ export function privateFirestore() {
       get parent() { return node(path.slice(0, path.lastIndexOf("/"))); },
       collection: name => node(`${path}/${name}`), doc: (id = `synthetic-auto-${++sequence}`) => node(`${path}/${id}`),
       where: (f, op, value) => node(path, [...filters, [f, op, value]], max, group),
+      count: () => ({ get: async () => {
+        const snapshot = await ref.get() as { size: number };
+        return { data: () => ({ count: snapshot.size }), readTime: new Date() };
+      } }),
       orderBy: () => ref, select: () => ref, limit: n => node(path, filters, n, group),
       get: async () => {
         if (!group && path.split("/").length % 2 === 0) return snapshot(path);
@@ -61,6 +65,7 @@ type TestNode = {
   path: string; id: string; firestore: unknown; parent: TestNode;
   collection: (name: string) => TestNode; doc: (id?: string) => TestNode;
   where: (field: string, op: string, value: unknown) => TestNode;
+  count: () => { get: () => Promise<unknown> };
   orderBy: () => TestNode; select: () => TestNode; limit: (n: number) => TestNode;
   get: () => Promise<unknown>; set: (data: Data, opts?: { merge?: boolean }) => Promise<void>; update: (data: Data) => Promise<void>; delete: () => Promise<void>;
 };

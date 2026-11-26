@@ -146,6 +146,13 @@ export const CONTACT_INSTITUTIONS: ContactInstitution[] = [
     accentClass:
       "bg-[radial-gradient(circle_at_92%_8%,rgba(14,116,144,0.15),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(15,118,110,0.08),transparent_42%)]",
   },
+  {
+    key: "comfort-commodity",
+    label: "Comfort Commodity",
+    logoPath: "/icons/cclogo1.png",
+    accentClass:
+      "bg-[radial-gradient(circle_at_92%_8%,rgba(180,140,50,0.16),transparent_45%),radial-gradient(circle_at_8%_92%,rgba(234,179,8,0.09),transparent_42%)]",
+  },
 ];
 
 export const CONTACT_INSTITUTION_BY_KEY = new Map(

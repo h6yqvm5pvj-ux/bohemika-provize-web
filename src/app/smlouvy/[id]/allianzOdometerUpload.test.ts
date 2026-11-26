@@ -7,14 +7,14 @@ describe("resolveAllianzOdometerIdentity", () => {
     expect(resolveAllianzOdometerIdentity("900101/1234")).toEqual({
       kind: "birthDate",
       label: "Datum narození",
-      value: "01.01.1990",
+      value: "01011990",
     });
   });
 
   it("zohlední ženský měsíc v rodném čísle", () => {
     expect(resolveAllianzOdometerIdentity("905101/1234")).toMatchObject({
       kind: "birthDate",
-      value: "01.01.1990",
+      value: "01011990",
     });
   });
 

@@ -6,7 +6,7 @@ import { ToolSceneDrawing } from "./ToolSceneDrawing";
 type PreservedScene = "house" | "radar" | "documents";
 
 const PRESERVED_SCENES: Partial<Record<ToolHubToolKey, PreservedScene>> = {
-  zaznam: "documents", katastr: "house", "radar-vyroci": "radar", tvorba: "documents",
+  zaznam: "documents", katastr: "house", "radar-vyroci": "radar", tvorba: "documents", "dokumenty-pro-klienta": "documents",
 };
 
 function Paper({ x = 43, y = 25 }: { x?: number; y?: number }) {

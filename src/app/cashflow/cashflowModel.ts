@@ -1,3 +1,4 @@
+import { applyOfficeContributionStatements } from "./officeContribution";
 import { computeCashflow, type CashflowSnapshot } from "./computeCashflow";
 import type { CashflowViewOptions } from "./buildCashflowView";
 import { formatCashflowItemCount } from "./cashflowLabels";
@@ -6,6 +7,7 @@ import { hashCashflowValue } from "./shadowProtocol";
 import { calendarDate } from "@/app/lib/calendarDates";
 import {
   applyIntelligentCashflowPrediction,
+  applyStatementAutoPayouts,
   applyStatementMissingPayoutShifts,
   applyStatementPayoutTotalsToMonths,
   filterItemsByContractNumber,
@@ -55,11 +57,17 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
 
   const itemsForScope = memo((
     snapshot: CashflowSnapshot,
+    statements: CashflowCommissionStatementSummary[],
     scopeFilter: CashflowViewOptions["scopeFilter"],
     productFilter: CashflowViewOptions["productFilter"],
     tipsterMode: boolean,
     asOf: Date,
-  ) => computeCashflow(snapshot, { scopeFilter, productFilter, tipsterMode, asOf }));
+  ) => computeCashflow(snapshot, { scopeFilter, productFilter, tipsterMode, asOf, statements }));
+
+  const officePayments = memo((items: CashflowItem[], statements: CashflowCommissionStatementSummary[], scopeFilter: CashflowViewOptions["scopeFilter"], productFilter: CashflowViewOptions["productFilter"], tipsterMode: boolean, asOf: Date) =>
+    applyOfficeContributionStatements(items, statements, { scopeFilter, productFilter, tipsterMode }, asOf));
+  const autoPayouts = memo((items: CashflowItem[], statements: CashflowCommissionStatementSummary[], tipsterMode: boolean) =>
+    tipsterMode ? items : applyStatementAutoPayouts(items, statements));
 
   const groupStatements = memo((statements: CashflowCommissionStatementSummary[]) => {
     const map: StatementsByMonth = {};
@@ -126,9 +134,9 @@ export function createCashflowModel(initialDataset: CashflowDataset): CashflowMo
       const shiftedOnly = options.shiftedOnly === true;
       const useStatementTotals = !shiftedOnly && !tipsterMode && !searching && scopeFilter === "combined" && productFilter === "all";
       const reconcileStatements = useStatementTotals || (!tipsterMode && shiftedOnly);
-      const items = itemsForScope(snapshot, scopeFilter, productFilter, tipsterMode, asOf);
+      const items = officePayments(itemsForScope(snapshot, statements, scopeFilter, productFilter, tipsterMode, asOf), statements, scopeFilter, productFilter, tipsterMode, asOf);
       const byMonth = groupStatements(statements);
-      const beforeSearch = beforeReconciliation(items, searching, showPastYears, reconcileStatements, asOf);
+      const beforeSearch = beforeReconciliation(autoPayouts(items, statements, tipsterMode), searching, showPastYears, reconcileStatements, asOf);
       const filtered = searchItems(beforeSearch, contractNumberQuery);
       const includedStatements = periodStatements(searching, showPastYears, byMonth, asOf);
       const reconciled = reconcile(filtered, byMonth, reconcileStatements);

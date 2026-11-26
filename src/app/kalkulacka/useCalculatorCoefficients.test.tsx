@@ -129,6 +129,49 @@ describe("calculator coefficient selection", () => {
     expect(result.coefExplanation).toContain("po dobu aktivní smlouvy");
   });
 
+  it("switches KOOP ODZAM coefficients and the associated PDF without changing the signed date", async () => {
+    const product = "koopodzam";
+    const contractSignedDate = "2026-08-31";
+    await render({ product, contractSignedDate, neonCoefficientView: "historical" });
+    expect(result.isKoopOdzamHistoricalBySignedDate).toBe(true);
+    expect(result.coefList.map(item => item.value)).toEqual([
+      expect.closeTo(0.03240, 8),
+      expect.closeTo(0.03240, 8),
+    ]);
+    expect(result.autoTermsPreviewUrl).toBe("/provize/koopodzam.pdf");
+    expect(result.secureTermsDocumentId).toBeNull();
+    expect(result.showAutoTermsPreview).toBe(true);
+
+    await render({ product, contractSignedDate, neonCoefficientView: "current" });
+    expect(result.isKoopOdzamHistoricalBySignedDate).toBe(true);
+    expect(result.coefList.map(item => item.value)).toEqual([0.02493, 0.02493]);
+    expect(result.autoTermsPreviewUrl).toBeNull();
+    expect(result.secureTermsDocumentId).toBe("koop-odzam-neuron-2026-09");
+    expect(result.showAutoTermsPreview).toBe(true);
+
+    await render({ product, contractSignedDate: "2026-09-01" });
+    expect(result.isKoopOdzamHistoricalBySignedDate).toBe(false);
+  });
+
+  it("shows the OBCAN NEURON document only with the current coefficient table", async () => {
+    const position = "poradce9";
+    const product = "koopmajetekobcan";
+    await render({ product, position, contractSignedDate: "2026-08-31", neonCoefficientView: "historical" });
+    expect(result.isKoopMajetekObcanHistoricalBySignedDate).toBe(true);
+    expect(result.coefList.map(item => item.value)).toEqual([0.2488, 0.0662]);
+    expect(result.secureTermsDocumentId).toBeNull();
+
+    await render({ product, position, contractSignedDate: "2026-09-01" });
+    expect(result.isKoopMajetekObcanHistoricalBySignedDate).toBe(false);
+    expect(result.coefList.map(item => item.value)).toEqual([0.2488, 0.0622]);
+    expect(result.secureTermsDocumentId).toBe("koop-obcan-neuron-2026-09");
+    expect(result.showAutoTermsPreview).toBe(true);
+
+    await render({ product: "koopfit", position, contractSignedDate: "2026-09-01" });
+    expect(result.coefList.map(item => item.value)).toEqual([0.2488, 0.0662]);
+    expect(result.secureTermsDocumentId).toBeNull();
+  });
+
   it("updates coefficients when the commission position changes", async () => {
     await render();
     expect(result.coefList.map(item => item.value)).toEqual([0.08, 0.08]);

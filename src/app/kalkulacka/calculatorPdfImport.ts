@@ -1,6 +1,6 @@
 import type { PaymentFrequency, Product } from "../types/domain";
 
-import { productLabel as productLabelFromCatalog } from "@/app/lib/productCatalog";
+import { isRecordOnlyProduct, productLabel as productLabelFromCatalog } from "@/app/lib/productCatalog";
 import { readPdfText, type PdfReadOptions } from "@/app/lib/pdfDocumentText";
 
 import { allowedFrequencies } from "./calculatorHelpers";
@@ -48,10 +48,13 @@ export function missingPdfImportFields({ product, parsed }: {
   product: Product; parsed: ParsedContractPdf;
 }): PdfParserMissingField[] {
   const missing: PdfParserMissingField[] = [];
-  for (const key of ["clientName", "contractNumber", "contractSignedDate", "policyStartDate", "frequency"] as const) {
+  for (const key of ["clientName", "contractNumber", "contractSignedDate", "policyStartDate"] as const) {
     if (!parsedTextValue(parsed, key)) missing.push(key);
   }
-  if (parsedNumberValue(parsed, "amount") == null) missing.push("amount");
+  if (!isRecordOnlyProduct(product)) {
+    if (!parsedTextValue(parsed, "frequency")) missing.push("frequency");
+    if (parsedNumberValue(parsed, "amount") == null) missing.push("amount");
+  }
   if (product === "conseqzenit" && !parsed.policyEndDate) missing.push("policyEndDate");
   return missing;
 }
@@ -64,6 +67,17 @@ export function buildPdfParserReport({ product, parsed, ocrAttempted }: {
     parsed.pdfNeedsOcr === true || parsed.pdfNativeTextReadable !== true || parsed.isEndorsement === true) return null;
   const missingFields = missingPdfImportFields({ product, parsed }).sort();
   return missingFields.length ? { product, missingFields, extraction: "native", parserVersion: PDF_PARSER_REPORT_VERSION } : null;
+}
+
+const DOMEX_UNCONFIRMED_RENEWAL_WARNING =
+  "Prolongace: ověř ANO / NE a datum konce pojištění podle PDF.";
+
+export function pdfImportWarningsForProduct(product: Product, parsed: ParsedContractPdf): string[] {
+  const warnings: unknown = parsed.pdfImportWarnings;
+  return Array.isArray(warnings)
+    ? warnings.filter((warning): warning is string => typeof warning === "string" &&
+      (product !== "domex" || warning.trim() !== DOMEX_UNCONFIRMED_RENEWAL_WARNING))
+    : [];
 }
 
 export function buildPdfImportIssueMessage({
@@ -96,9 +110,7 @@ export function buildPdfImportIssueMessage({
     ? "datum konce (datum narození klienta a cílový věk strategie spoření)"
     : requiredFieldMessages[key]);
 
-  const warnings: string[] = Array.isArray(parsed.pdfImportWarnings)
-    ? parsed.pdfImportWarnings.filter((warning): warning is string => typeof warning === "string")
-    : [];
+  const warnings = pdfImportWarningsForProduct(product, parsed);
   if (clientName && clientName.split(/\s+/).filter(Boolean).length < 2) {
     warnings.push("Klient: jméno vypadá neúplně");
   }
@@ -113,10 +125,10 @@ export function buildPdfImportIssueMessage({
   if (policyStartDateInvalid) {
     warnings.push("Počátek: datum má nezvyklý formát");
   }
-  if (parsedFrequency && !frequencyAllowed) {
+  if (!isRecordOnlyProduct(product) && parsedFrequency && !frequencyAllowed) {
     warnings.push("Frekvence: není pro vybraný produkt povolená");
   }
-  if (amount != null && amount <= 0) {
+  if (!isRecordOnlyProduct(product) && amount != null && amount <= 0) {
     warnings.push("Částka: není kladná");
   }
 
@@ -162,6 +174,10 @@ async function parseProduct(
   options: PdfParserOptions = {}
 ): Promise<ParsedContractPdf | null> {
   switch (product) {
+    case "cppAutoVozikZdarma": {
+      const { parseCppAutoVozikZdarmaPdf } = await import("../lib/parseCppAutoVozikZdarmaPdf");
+      return parseCppAutoVozikZdarmaPdf(file, options);
+    }
     case "cppPPRbez":
     case "cppPPRs": {
       const { parseCppKomplexPdf } = await import("../lib/parseCppKomplexPdf");

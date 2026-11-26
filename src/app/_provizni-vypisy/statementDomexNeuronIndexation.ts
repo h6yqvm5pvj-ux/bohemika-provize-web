@@ -1,6 +1,7 @@
 import { isDomexNeuronStatementProduct, resolveDomexNeuronIndexation, type DomexNeuronIndexationResult } from "@/app/lib/domexNeuronIndexation";
 import { createDomexNeuronPremiumTimeline } from "@/app/lib/domexNeuronPremiumHistory";
 import { commissionPeriodForCode } from "@/app/lib/commissionPeriodForCode";
+import { annualFirstRenewalCommissionCode } from "@/app/lib/commissionPayoutCodeAdjustment";
 import { domexNeuronSubsequentCoefficient } from "@/app/lib/productFormulas/domexNeuron";
 import { installmentPaymentsPerYear } from "@/app/lib/productFormulas/autoCommission";
 import type { CommissionResultItemDTO } from "@/app/types/domain";
@@ -20,6 +21,11 @@ type Options = {
 };
 type StatementIndexationResult = DomexNeuronIndexationResult & { historicalExpectedCommission?: number };
 const money = (value: number) => Math.round(value * 100) / 100;
+
+export function domexNeuronStatementCommissionCode(row: Pick<CommissionRow, "type" | "product">, contract?: MatchedSystemContract | null): string {
+  if (contract?.productKey !== "domexneuron" || !isDomexNeuronStatementProduct({ productCode: row.product })) return row.type;
+  return annualFirstRenewalCommissionCode(contract, row.type) ?? row.type;
+}
 
 /** A stored per-payment B item is independent evidence of the agreed rate.
  * Never derive a coefficient from the amount currently being reviewed. */
@@ -44,7 +50,8 @@ export function statementDomexNeuronIndexation({ rows, contract, statementPeriod
     (source === "own" && position ? domexNeuronSubsequentCoefficient(position) : null);
   const reference = parsePeriodEndDate(statementPeriod) ?? parseLocalDate(row.validFrom);
   const referenceDay = reference ? toDateInputValue(reference) : null;
-  const period = commissionPeriodForCode(contract, row.type);
+  const commissionCode = domexNeuronStatementCommissionCode(row, contract);
+  const period = commissionPeriodForCode(contract, commissionCode);
   const historyDay = period && referenceDay ? period < referenceDay ? period : referenceDay : null;
   const timeline = createDomexNeuronPremiumTimeline(contract);
   const knownChange = historyDay && timeline.changes.some(change => change.effectiveDate <= historyDay);
@@ -54,7 +61,7 @@ export function statementDomexNeuronIndexation({ rows, contract, statementPeriod
     ? money(paymentPremium * coefficient) : undefined;
   const result = resolveDomexNeuronIndexation({
     contract: { ...contract, position },
-    row: { productCode: row.product, commissionCode: row.type, basePremium: row.base, commission: row.commission, source },
+    row: { productCode: row.product, commissionCode, basePremium: row.base, commission: row.commission, source },
     coefficient,
     previousAnnualPremium: paymentPremium ? money(paymentPremium * count) : undefined,
     referenceDate: referenceDay,

@@ -2,7 +2,7 @@ import { ArrowUpRight, CalendarDays, Check, ChevronDown, History } from "lucide-
 
 import { formatMoney } from "@/app/lib/formatters";
 import type { MonthGroup, YearGroup } from "../types";
-import { cashflowMonthSourceLabel, formatCashflowItemCount } from "../cashflowLabels";
+import { cashflowMonthSourceLabel, formatCashflowAmount, formatCashflowItemCount, formatCashflowMonthAmount } from "../cashflowLabels";
 import { buildYearMonthSlots } from "../yearChart";
 import { CashflowYearChart } from "./CashflowYearChart";
 import styles from "../yearOverview.module.css";
@@ -40,6 +40,7 @@ export function CashflowAccordion({
         const currentYear = yearGroup.year === now.getFullYear();
         const monthSlots = buildYearMonthSlots(yearGroup, now);
         const hasData = yearGroup.months.length > 0;
+        const hasUnknownAmounts = yearGroup.months.some(month => month.totalSource !== "paid" && month.hasUnknownAmounts);
         const contentId = `cashflow-year-${yearGroup.year}`;
 
         return (
@@ -64,9 +65,9 @@ export function CashflowAccordion({
               <span className={styles.yearPayout}>
                 <span className={styles.yearFigures}>
                   <span className={styles.yearTotalLabel}>Celkem za zobrazené měsíce</span>
-                  <span className={styles.yearTotal}>{hasData ? formatMoney(yearGroup.total) : "—"}</span>
+                  <span className={styles.yearTotal}>{hasData ? formatCashflowAmount(yearGroup.total, hasUnknownAmounts) : "—"}</span>
                   <span className={styles.yearAverage}>{hasData
-                    ? <>Průměr <strong>{formatMoney(average)}</strong> / měs. s daty</>
+                    ? <>{hasUnknownAmounts ? "Průměr známých částek " : "Průměr "}<strong>{formatMoney(average)}</strong> / měs. s daty</>
                     : "Bez dat v aktuálním výběru"}</span>
                 </span>
                 <span className={styles.yearChevron}><ChevronDown size={18} aria-hidden="true" /></span>
@@ -93,7 +94,7 @@ export function CashflowAccordion({
                           data-calendar-month={monthIndex}
                           data-past-month={past || undefined}
                           className={`${styles.monthCard} ${past ? styles.pastMonthCard : ""} ${current ? styles.currentMonthCard : ""}`}
-                          aria-label={`${label}${past ? ", uplynulý měsíc" : ""}: ${month ? `${formatMoney(month.total)}. Otevřít detail měsíce.` : "bez dat v aktuálním výběru."}`}>
+                          aria-label={`${label}${past ? ", uplynulý měsíc" : ""}: ${month ? `${formatCashflowMonthAmount(month)}. Otevřít detail měsíce.` : "bez dat v aktuálním výběru."}`}>
                           <span className={styles.monthCardTop}>
                             <span className={styles.monthName}>{label.replace(/\s+\d{4}$/, "")}</span>
                             {month ? <span className={paid ? styles.paidBadge : styles.predictedBadge}>
@@ -101,7 +102,7 @@ export function CashflowAccordion({
                               {cashflowMonthSourceLabel(month)}
                             </span> : past && <span className={styles.pastBadge}><History size={11} aria-hidden="true" />Uplynulý</span>}
                           </span>
-                          <span className={`${styles.monthAmount} ${month && month.total < 0 ? styles.negativeAmount : ""}`}>{month ? formatMoney(month.total) : "—"}</span>
+                          <span className={`${styles.monthAmount} ${month && month.total < 0 ? styles.negativeAmount : ""}`}>{month ? formatCashflowMonthAmount(month) : "—"}</span>
                           <span className={styles.monthCardBottom}>
                             <span>{month ? monthItemLabels?.[month.key] ?? formatCashflowItemCount(month.items) : "Bez dat ve výběru"}
                               {past && month && <span> · Uplynulý</span>}

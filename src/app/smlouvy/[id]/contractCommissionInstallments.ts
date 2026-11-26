@@ -1,34 +1,77 @@
+import { autoFrequencyCommissionPeriods, autoFrequencyCommissionMultiplier, type PaymentFrequencyChange } from "@/app/lib/autoPaymentFrequency";
+import { commissionPeriodAfterMonths } from "@/app/lib/commissionPeriodForCode";
 import { isFrequencyAutoPayoutProduct } from "@/app/lib/productCatalog";
 import { isPerPaymentSeparatedPeriodProduct } from "@/app/lib/separatedPeriodCommissions";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
+import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { enrichCommissionStatementPayouts, indexCommissionStatementPayouts } from "@/app/lib/commissionStatementPayoutEvidence";
 import type { CommissionResultItemDTO, PaymentFrequency, Product } from "@/app/types/domain";
 import { cleanResultTitle, toDate } from "./contractDetailHelpers";
-import type { ContractCommissionPayout } from "./contractDetailTypes";
+import type { ContractCommissionPayout, ContractCommissionStatementSummary, ContractDoc } from "./contractDetailTypes";
+
+export function projectContractCommissionPayouts(
+  contract: ContractDoc | null,
+  statements: readonly ContractCommissionStatementSummary[],
+  viewerEmail?: string | null,
+  ownerEmail?: string | null,
+): ContractCommissionPayout[] {
+  const payouts = contract?.commissionPayouts ?? [];
+  if (!contract?.frequencyRaw || contract.frequencyRaw === "annual" ||
+      !contract.productKey || !isFrequencyAutoPayoutProduct(contract.productKey)) return payouts;
+  const viewer = viewerEmail?.trim().toLowerCase();
+  if (!viewer || !contract.contractNumber || !payouts.length) return projectConfirmedCommissionCodes(contract, payouts);
+  const productKey = contract.productKey;
+  const source = viewer === (contract.userEmail ?? ownerEmail)?.trim().toLowerCase() ? "own" : "manager";
+  const statementIds = new Set(payouts.map(payout => payout.statementId));
+  const evidence = indexCommissionStatementPayouts(statements, statement => {
+    if (!statementIds.has(statement.id)) return;
+    return statement.autoPremiumRows.flatMap(row => row.productKey === productKey && row.commission != null
+      ? [{ contractNumber: row.contractNumber, productKey, source: row.source, code: row.commissionCode,
+          amount: row.commission, sourceBaseAmount: row.basePremium }]
+      : []);
+  });
+  const enriched = enrichCommissionStatementPayouts(payouts, evidence, {
+    contractNumber: contract.contractNumber, productKey, source, viewerEmail: viewer,
+  });
+  return projectConfirmedCommissionCodes(contract, enriched);
+}
 
 export type AcquisitionCommissionInstallment = {
   code: string;
   codes: string[];
   label: string;
   period: string | null;
+  commissionPeriod?: string;
   amount: number;
 };
 
 export function acquisitionCommissionInstallments({
-  item, product, frequency, policyStartDate,
+  item, product, frequency, policyStartDate, paymentFrequencyChanges,
 }: {
   item: CommissionResultItemDTO;
   product?: Product;
   frequency?: PaymentFrequency | null;
   policyStartDate?: unknown;
+  paymentFrequencyChanges?: PaymentFrequencyChange[] | null;
 }): AcquisitionCommissionInstallment[] {
   // Premium frequency does not split products whose commission is paid annually
   // or upfront (including life insurance). Older items may only carry A101.
   if (!frequency || !(isPerPaymentSeparatedPeriodProduct(product) || isFrequencyAutoPayoutProduct(product))) return [];
   const count = periodsPerYear(frequency);
-  if (count <= 1) return [];
+  if (count <= 1 && !paymentFrequencyChanges?.length) return [];
   const title = cleanResultTitle(item.title).toLowerCase().replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ");
   if (!/^(?:okamžitá|získatelská) provize\b/.test(title) || title.includes("za rok")) return [];
+
+  if (paymentFrequencyChanges?.length) {
+    const end = commissionPeriodAfterMonths(policyStartDate, 12);
+    const schedule = end ? autoFrequencyCommissionPeriods({ productKey: product, frequencyRaw: frequency, policyStartDate, paymentFrequencyChanges }, end) : [];
+    if (schedule.length > 0) return schedule.filter(period => period.code.startsWith("A")).map((period, index) => ({
+      commissionPeriod: period.period, code: period.code, codes: [period.code, `A${Number(period.code.slice(1)) - 100}`, `AC${period.code.slice(1)}`, `AC${Number(period.code.slice(1)) - 100}`], label: `${index + 1}. splátka`,
+      period: new Date(`${period.period}T00:00:00Z`).toLocaleDateString("cs-CZ", { month: "long", year: "numeric", timeZone: "UTC" }),
+      amount: Number.isFinite(item.amount) ? item.amount * (product === "cppPPRs" ? 1 : autoFrequencyCommissionMultiplier({ productKey: product, frequencyRaw: frequency, paymentFrequencyChanges }, period.period)) : 0,
+    }));
+  }
 
   const start = toDate(policyStartDate);
   const startParts = start && Number.isFinite(start.getTime())
@@ -48,6 +91,7 @@ export function acquisitionCommissionInstallments({
       codes: [code, `A${index + 1}`, ...(isFrequencyAutoPayoutProduct(product) ? [`AC${101 + index}`, `AC${index + 1}`] : [])],
       label: `${index + 1}. splátka`,
       period,
+      commissionPeriod: commissionPeriodAfterMonths(policyStartDate, index * (12 / count)) ?? undefined,
       amount: Number.isFinite(item.amount) ? item.amount : 0,
     };
   });
@@ -55,7 +99,7 @@ export function acquisitionCommissionInstallments({
 
 export function payoutsForAcquisitionInstallment(
   payouts: ContractCommissionPayout[],
-  installment: AcquisitionCommissionInstallment
+  installment: AcquisitionCommissionInstallment,
 ): ContractCommissionPayout[] {
   return payouts.filter((payout) => {
     // Prefer the statement code. A generic title, range, date or similar amount

@@ -12,6 +12,9 @@ type PayoutSource = {
 export const isKooperativaCPayout = (product: unknown, code: unknown): boolean =>
   product === "kooperativaAuto" && /^C1\d{2,}$/.test(String(code ?? "").trim().toUpperCase().replace(/\s+/g, ""));
 
+export const isKooperativaAutoRenewalPayout = (product: unknown, code: unknown): boolean =>
+  product === "kooperativaAuto" && /^B1\d{2,}$/.test(baseCommissionCodeForPayoutComparison(code, product));
+
 /** C1xx is the statement code of the corresponding B1xx subsequent commission.
  * Statement dates and amounts remain untouched, including separate corrections. */
 export function describeKooperativaCPayout({ product, payout, payouts = [] }: {

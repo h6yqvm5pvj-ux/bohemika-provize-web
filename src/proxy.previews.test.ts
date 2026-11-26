@@ -39,6 +39,16 @@ describe("preview security policy", () => {
     expect(policy).not.toContain(hash(trusted));
   });
 
+  it.each([
+    "/pomucky/dokumenty-pro-klienta",
+    "/pomucky/dokumenty-pro-klienta/pracovni-neschopnost",
+  ])("requires an active session for %s", async path => {
+    const result = await response(path);
+    expect(result.status).toBe(307);
+    expect(new URL(result.headers.get("location")!).searchParams.get("next")).toBe(path);
+    expect(result.headers.get("Content-Security-Policy")).not.toContain("'sha256-");
+  });
+
   it.each(["/login", "/cashflow-other", "/smlouvy", "/smlouvy/example/other", "/pomucky/srovnavac-trvalych-nasledku-other"])("does not allow preview scripts on %s", async path => {
     const policy = (await response(path)).headers.get("Content-Security-Policy")!;
     expect(policy).not.toContain("'sha256-");

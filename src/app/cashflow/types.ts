@@ -5,6 +5,8 @@ import type {
   Position,
   Product,
 } from "../types/domain";
+import type { CommissionStatementPayoutRow } from "@/app/lib/commissionStatementPayoutEvidence";
+import type { LifeIncreaseReceiptEvidence } from "@/app/lib/commissionReceipts";
 import type { CashflowSubscriptionPlan } from "./subscriptionCashflow";
 
 export type FirestoreTimestamp = {
@@ -13,16 +15,23 @@ export type FirestoreTimestamp = {
 };
 
 export type EntryDoc = {
+  commissionPayoutCodeAdjustment?: import("@/app/lib/commissionPayoutCodeAdjustment").CommissionPayoutCodeAdjustment | null;
   id: string;
+  maxxContractDetailUrl?: string | null;
+  extranetContractDetailUrl?: string | null;
   originalEntryId?: string | null;
   status?: "active" | "storno" | string | null;
   stornoDate?: unknown;
 
   productKey?: Product;
   frequencyRaw?: PaymentFrequency | null;
+  autoPremiumAmendment?: boolean;
+  paymentFrequencyChanges?: import("@/app/lib/autoPaymentFrequency").PaymentFrequencyChange[] | null;
   total?: number;
   items?: CommissionResultItemDTO[];
   commissionPayouts?: {
+    statementCode?: string | null;
+    commissionCodeCorrectionNote?: string;
     key?: string | null;
     code?: string | null;
     title?: string | null;
@@ -30,6 +39,9 @@ export type EntryDoc = {
     expectedAmount?: number | null;
     difference?: number | null;
     statementBaseAmount?: number | null;
+    sourceValidFrom?: string | null;
+    sourceSignedAt?: string | null;
+    sourceBaseAmount?: number | null;
     systemBaseAmount?: number | null;
     differenceReason?: string | null;
     career?: string | null;
@@ -54,6 +66,7 @@ export type EntryDoc = {
   servicingOwnerEmail?: string | null;
   commissionOwnerEmail?: string | null;
   contractSignedDate?: unknown;
+  payoutPositionOverride?: "poradce10" | null;
   position?: Position | null;
   effectivePosition?: Position | null;
   timelinePosition?: Position | null;
@@ -63,6 +76,12 @@ export type EntryDoc = {
   rootContractEntryId?: string | null;
   parentContractEntryId?: string | null;
   calculationInputAmount?: number | null;
+  neonCorrection?: import("../lib/neonCorrection").NeonCorrection | null;
+  isRefresh?: boolean | null;
+  requiresStatementRefresh?: boolean | null;
+  commissionCalculationStatus?: string | null;
+  commissionCoefficientSetOverride?: string | null;
+  neonCoefficientSetOverride?: string | null;
   effectiveInputAmount?: number | null;
   premiumIndexationHistory?: import("../lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   previousInputAmount?: number | null;
@@ -124,6 +143,8 @@ export type CashflowPredictionAdjustment = {
 
 export type CashflowItem = {
   id: string;
+  maxxContractDetailUrl?: string;
+  extranetContractDetailUrl?: string;
   date: Date;
   amount: number;
   productKey: CashflowProductKey;
@@ -158,6 +179,7 @@ export type CashflowItem = {
   tipSourceAdviserName?: string | null;
   isSubscriptionPayment?: boolean;
   isExtraPayout?: boolean;
+  isOfficeContribution?: boolean;
   subscriptionPlan?: CashflowSubscriptionPlan | null;
   subscriptionUserEmail?: string | null;
   subscriptionUserName?: string | null;
@@ -165,11 +187,23 @@ export type CashflowItem = {
   subscriptionPeriodUntil?: string | null;
   payoutStatus?: "predicted" | "paid" | "shifted";
   predictedAmount?: number | null;
+  /** Scheduled commission with an unknown amount. Its additive value is zero. */
+  amountUnknown?: boolean;
+  originalPositionAmount?: number;
+  repricedAmountIfShifted?: number;
+  autoCommissionForecastMinimum?: number;
+  autoCommissionForecastMaximum?: number;
+  autoCommissionConfirmedPolicyYear?: boolean;
+  autoCommissionFromSavedPremium?: boolean;
   premiumChangeOriginalAmount?: number | null;
   premiumChangeEffectiveDate?: string | null;
   premiumChangeEntryId?: string | null;
+  /** Legacy snapshots could contain an additional forecast for a paid code. */
   isPartialPayoutBalance?: boolean;
   isStatementOnly?: boolean;
+  commissionCodeCorrectionNote?: string;
+  installmentCoverageNote?: string;
+  coveredByCombinedPayout?: boolean;
   commissionPayoutKey?: string | null;
   commissionPeriodStart?: string | null;
   payoutPlanStatus?: "matched" | "unmatched" | "correction";
@@ -188,6 +222,7 @@ export type MonthGroup = {
   label: string;
   total: number;
   predictedTotal: number;
+  hasUnknownAmounts?: boolean;
   totalSource: "predicted" | "paid";
   statementPayoutTotal: number | null;
   extraPayoutTotal?: number;
@@ -207,9 +242,12 @@ export type CashflowCommissionStatementSummary = {
   payoutMonthKey: string | null;
   paidContractNumbers: string[];
   paidCommissionKeys: string[];
+  paidAutoInstallments?: CommissionStatementPayoutRow[];
+  lifeIncreaseRows?: LifeIncreaseReceiptEvidence[];
   commissionTotal: number;
   payoutTotal: number | null;
   otherPaymentsTotal: number;
+  officeContributionTotal?: number;
   managerCommissionTotal: number;
   createdAtMs: number | null;
   updatedAtMs: number | null;

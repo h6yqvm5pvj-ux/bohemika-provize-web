@@ -17,7 +17,7 @@ describe("auto premium history display helpers", () => {
       policyStartDate: "2026-10-12", signedAnnualPremium: 4800,
       systemAnnualPremium: 4800, paymentFrequency: "semiannual", statements: [],
     }));
-    expect(html).toContain("Změny pojistného");
+    expect(html).toContain("Historie pojistného");
     expect(html).toContain(value === true ? "Valorizace: ANO" : value === false ? "Valorizace: NE" : "Valorizace: neurčena");
     expect(html).not.toContain("Valorizace · 1. výročí");
     if (value === true) expect(html).toContain("posledního potvrzeného pojistného");
@@ -40,8 +40,53 @@ describe("auto premium history display helpers", () => {
       systemAnnualPremium: 5040, signedAnnualPremium: 4800, statements: [], paymentFrequency: "semiannual",
     }));
     expect(html).toContain("Valorizace · 1. výročí");
-    expect(html).toContain("Historie změn pojistného");
-    expect(html).toContain("Zdroj změny");
+    expect(html).toContain("Pojistné při jednotlivých výročích");
+    expect(html).toContain("Zdroj pojistného");
+  });
+
+  it("shows annual and per-payment premiums throughout a semiannual contract history", () => {
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "cppAuto",
+      contractNumber: "1234567890",
+      policyStartDate: "2022-03-14",
+      signedAnnualPremium: 6_098,
+      systemAnnualPremium: 3_402,
+      paymentFrequency: "semiannual",
+      statements: [],
+      storedHistory: [{
+        key: "change-2023", premiumKind: "auto_change", anniversaryNumber: 1,
+        anniversaryDate: "2023-03-14", previousPremium: 3_049, newPremium: 1_701,
+        difference: -1_348, previousAnnualPremium: 6_098, newAnnualPremium: 3_402,
+        differenceAnnual: -2_696, basePremiumPeriod: "payment", source: "own",
+        commissionCode: "B101", productCode: "CPP_1C_II",
+      }],
+    }));
+
+    expect(html).toContain("Při sjednání");
+    expect(html).toMatch(/3\.049,00 Kč \/ pololetní platba/);
+    expect(html).toMatch(/1\.701,00 Kč \/ pololetní platba/);
+    expect(html).toMatch(/-1\.348,00 Kč \/ pololetní platba/);
+    expect(html).toMatch(/6\.098,00 Kč ročně/);
+    expect(html).toMatch(/3\.402,00 Kč ročně/);
+    expect(html).toContain("-44,21 %");
+    expect(html).toContain('data-trend="decreased"');
+  });
+
+  it.each([
+    { previous: 13_362, current: 13_943, percent: "+4,35 %", trend: "increased" },
+    { previous: 12_000, current: 10_800, percent: "-10,00 %", trend: "decreased" },
+  ])("shows $percent against the preceding premium and omits duplicate annual-payment differences", ({ previous, current, percent, trend }) => {
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "cppAuto", contractNumber: "1234567890", policyStartDate: "2022-06-29",
+      signedAnnualPremium: 10_000, systemAnnualPremium: current, paymentFrequency: "annual", statements: [],
+      storedHistory: [{ key: "change", premiumKind: "auto_change", anniversaryNumber: 2,
+        anniversaryDate: "2024-06-29", previousAnnualPremium: previous, newAnnualPremium: current,
+        basePremiumPeriod: "annual", source: "own", commissionCode: "B102", productCode: "CPP_1C_II" }],
+    }));
+    expect(html).toContain(`Změna oproti předchozímu ročnímu pojistnému: ${percent}`);
+    expect(html).toContain(`data-trend="${trend}"`);
+    expect(html).toMatch(/[+-][\d.,]+ Kč ročně/);
+    expect(html).not.toMatch(/[+-][\d.,]+ Kč \/ roční platba/);
   });
 
   it("shows shared premium changes without another viewer's statement details", () => {
@@ -81,6 +126,32 @@ describe("auto premium history display helpers", () => {
         preferStatementInitialPremium: true,
       })
     ).toBe(7400);
+  });
+
+  it("keeps a manually confirmed original premium ahead of conflicting statement bases", () => {
+    expect(resolveAutoSignedAnnualPremiumValue({ signedAnnualPremium: 15552,
+      signedAnnualPremiumOverride: 15552, statementInitialAnnualPremium: 29244,
+      preferStatementInitialPremium: true })).toBe(15552);
+    const html = renderToStaticMarkup(createElement(ContractAutoPremiumHistory, {
+      product: "cppAuto", signedAnnualPremium: 15552, signedAnnualPremiumOverride: 15552,
+      statementInitialAnnualPremium: 29244, preferStatementInitialPremium: true,
+      systemAnnualPremium: 15552, paymentFrequency: "quarterly", statements: [],
+      storedHistory: [{ premiumKind: "auto_initial", newAnnualPremium: 29244,
+        newPremium: 7311, basePremiumPeriod: "payment", commissionCode: "A101" },
+        { premiumKind: "auto_change", anniversaryNumber: 2, anniversaryDate: "2026-06-12",
+          previousAnnualPremium: 15552, newAnnualPremium: 13036, previousPremium: 3888,
+          newPremium: 3259, basePremiumPeriod: "payment", commissionCode: "B105" }],
+    })).replace(/\u00a0/g, " ");
+    expect(html).toContain("15.552");
+    expect(html).toContain("3.888");
+    expect(html).toContain("13.036");
+    expect(html).toContain("2.516");
+    expect(html).not.toContain("29.244");
+  });
+
+  it.each([null, 0, -1, NaN, Infinity])("ignores an invalid original premium override: %s", value => {
+    expect(resolveAutoSignedAnnualPremiumValue({ signedAnnualPremiumOverride: value,
+      statementInitialAnnualPremium: 7400, preferStatementInitialPremium: true })).toBe(7400);
   });
 
   it("keeps the signed premium first for manually created auto contracts", () => {

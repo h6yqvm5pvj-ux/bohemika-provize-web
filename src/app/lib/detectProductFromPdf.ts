@@ -43,6 +43,24 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 
 const DETECTION_RULES: DetectionRule[] = [
   {
+    product: "flexi",
+    mustContain: [
+      { page: "any", text: normalizeText("FLEXI"), wholeWord: true },
+      { page: "any", text: normalizeText("Žádost o změnu v pojistné smlouvě") },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „FLEXI“ a „Žádost o změnu v pojistné smlouvě“ (změna smlouvy).",
+  },
+  {
+    product: "cppAutoVozikZdarma",
+    mustContain: [
+      { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },
+      { page: "any", text: normalizeText("VOZÍK ZDARMA"), wholeWord: true },
+    ],
+    confidence: "high",
+    reason: "V PDF jsou nalezeny texty „Česká podnikatelská pojišťovna“ a „VOZÍK ZDARMA“.",
+  },
+  {
     product: "cppPPRbez",
     mustContain: [
       { page: "any", text: normalizeText("Česká podnikatelská pojišťovna") },

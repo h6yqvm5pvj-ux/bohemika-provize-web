@@ -1,3 +1,5 @@
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { normalizePaymentFrequencyChanges } from "@/app/lib/autoPaymentFrequency";
 import type { CashflowComputationOptions, CashflowSnapshot } from "@/app/cashflow/computeCashflow";
 import type { EntryDoc } from "@/app/cashflow/types";
 import type { CashflowServerResourceLimit } from "@/app/cashflow/cashflowServerProtocol";
@@ -33,10 +35,17 @@ function boundedArray(value: unknown, limit: number): unknown[] | null {
 export function estimateCashflowShadowScheduleItems(entry: EntryDoc, months: number, parts: number): number {
   if (entry.productKey === "neon") return parts + 12;
   if (entry.productKey === "pillowInjury") return parts + 2;
-  if (entry.productKey === "flexi") return parts + 2 + Math.ceil(months / 12);
+  if (entry.productKey === "flexi") {
+    const immediateParts = hasPendingFlexiRenovationBase(entry) ? 3 : parts;
+    return immediateParts + 2 + Math.ceil(months / 12);
+  }
   if (entry.productKey === "maximaMaxEfekt") return 3 + Math.ceil(months / 12);
   if (ANNUAL_PRODUCTS.has(entry.productKey ?? "")) return 1 + Math.ceil(months / 12);
-  if (PAYMENT_PRODUCTS.has(entry.productKey ?? "")) return Math.ceil(months / monthsBetweenPayments(entry.frequencyRaw));
+  if (PAYMENT_PRODUCTS.has(entry.productKey ?? "")) {
+    const changes = normalizePaymentFrequencyChanges(entry.paymentFrequencyChanges);
+    const step = Math.min(monthsBetweenPayments(entry.frequencyRaw), ...changes.map(change => monthsBetweenPayments(change.frequency)));
+    return Math.ceil(months / step) + changes.length;
+  }
   return months * parts + 16;
 }
 
@@ -48,7 +57,7 @@ export function estimateCashflowShadowScheduleItems(entry: EntryDoc, months: num
  * Manager differences and shorter durations can only remove these items.
  */
 export function estimateCashflowShadowLifeReviewItems(entry: EntryDoc, scheduledItems: number): number {
-  if (!LIFE_PRODUCTS.has(entry.productKey ?? "")) return 0;
+  if (!LIFE_PRODUCTS.has(entry.productKey ?? "") || hasPendingFlexiRenovationBase(entry)) return 0;
   let itemsPerCandidate = 0;
   const maxIterations = Math.ceil(CASHFLOW_FORECAST_YEARS / 2);
   for (let review = 0; review < maxIterations; review++) {
@@ -97,6 +106,7 @@ export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Da
   const horizonMonth = (asOf.getFullYear() + 10) * 12 + asOf.getMonth();
   const maxDateYear = asOf.getFullYear() + 100;
   if (!Array.isArray(snapshot.tipPayouts) || !Array.isArray(snapshot.subscriptionPayments)) return "output_estimate";
+  if (snapshot.officeContributionEnabled !== undefined && typeof snapshot.officeContributionEnabled !== "boolean") return "entry_shape";
   const extraPayouts = snapshot.extraPayouts === undefined ? [] : snapshot.extraPayouts;
   if (!Array.isArray(extraPayouts) || extraPayouts.length > CASHFLOW_EXTRA_PAYOUTS_MAX ||
     normalizeCashflowExtraPayouts(extraPayouts).length !== extraPayouts.length) return "entry_shape";
@@ -108,7 +118,7 @@ export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Da
   const includeExtraPayouts = !selection || (!selection.tipsterMode && selection.scopeFilter !== "team" && selection.productFilter === "all");
   let estimatedOutputItems = (includeTips ? snapshot.tipPayouts.length : 0) +
     (includeSubscriptions ? snapshot.subscriptionPayments.length * 121 : 0) +
-    (includeExtraPayouts ? extraPayouts.length : 0);
+    (includeExtraPayouts ? extraPayouts.length + (snapshot.officeContributionEnabled === true ? 121 : 0) : 0);
   let payoutMatchWork = 0;
   let nestedRows = 0;
   if (estimatedOutputItems > MAX_ESTIMATED_OUTPUT_ITEMS) return "output_estimate";
@@ -126,6 +136,9 @@ export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Da
       typeof entry.durationMonths !== "number" || !Number.isFinite(entry.durationMonths) ||
       entry.durationMonths < 0 || entry.durationMonths > 1_200
     )) return "duration";
+
+    try { normalizePaymentFrequencyChanges(entry.paymentFrequencyChanges); }
+    catch { return "entry_shape"; }
 
     let earliestMonth = asOf.getFullYear() * 12 + asOf.getMonth();
     for (const field of ["policyStartDate", "contractSignedDate", "createdAt", "policyEndDate", "stornoDate", "transferEffectiveDate"] as const) {
@@ -168,9 +181,12 @@ export function cashflowShadowBudgetFailure(snapshot: CashflowSnapshot, asOf: Da
         (selection.productFilter === "all" || matchesProductFilter(entry.productKey, selection.productFilter));
       const ownPath = selected && selection.scopeFilter !== "team" &&
         typeof entry.userEmail === "string" && entry.userEmail.trim().toLowerCase() === snapshot.email;
-      const managerPath = selected && fromTeam && selection.scopeFilter !== "own" && overrides.some(override =>
-        typeof (override as { email?: unknown }).email === "string" &&
-        (override as { email: string }).email.toLowerCase() === snapshot.email);
+      const managerPath = selected && fromTeam && selection.scopeFilter !== "own" && (hasPendingFlexiRenovationBase(entry)
+        ? entry.userEmail?.trim().toLowerCase() !== snapshot.email &&
+          (entry.commissionPayouts ?? []).some(payout => payout.writtenBy?.trim().toLowerCase() === snapshot.email)
+        : overrides.some(override =>
+            typeof (override as { email?: unknown }).email === "string" &&
+            (override as { email: string }).email.toLowerCase() === snapshot.email));
       multiplicity = Number(ownPath) + Number(managerPath);
       extraReviews = includeLifeReviews ?
         Number(ownPath) * estimateCashflowShadowLifeReviewItems(entry, scheduledItems) +

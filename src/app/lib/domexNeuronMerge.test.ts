@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { domexNeuronDataFixture, domexNeuronObjectFixture } from "../../../tests/helpers/domexNeuronFixture";
 import { createDomexNeuronDataFromLegacy, mergeDomexNeuronPdfData, projectDomexNeuronLegacy } from "./domexNeuronMerge";
 import { normalizeDomexNeuronData } from "./domexNeuronValidation";
+import { DOMEX_NEURON_PARSER_VERSION } from "./domexNeuronSchema";
 
 describe("DOMEX Neuron object migration and PDF reimport", () => {
   it("does not invent insurance or a parser version from an empty or household-only legacy record", () => {
@@ -85,7 +86,7 @@ describe("DOMEX Neuron object migration and PDF reimport", () => {
     const saved = { ...pdf, parserVersion, objects: [pdf.objects[0]] };
     const first = mergeDomexNeuronPdfData(saved, pdf);
     expect(first.data.objects).toHaveLength(1);
-    expect(first.data.parserVersion).toBe(2);
+    expect(first.data.parserVersion).toBe(DOMEX_NEURON_PARSER_VERSION);
     expect(first.conflictKeys).toEqual(["objects.household", "objects.property"]);
     expect(mergeDomexNeuronPdfData(first.data, pdf)).toEqual({ data: first.data, appliedCount: 0,
       conflictKeys: ["objects.household", "objects.property"] });
@@ -120,6 +121,6 @@ describe("DOMEX Neuron object migration and PDF reimport", () => {
 
   it("does not downgrade a known newer parser marker", () => {
     const saved = domexNeuronDataFixture({ objects: [domexNeuronObjectFixture()] });
-    expect(mergeDomexNeuronPdfData(saved, { ...saved, parserVersion: 1 }).data.parserVersion).toBe(2);
+    expect(mergeDomexNeuronPdfData(saved, { ...saved, parserVersion: 1 }).data.parserVersion).toBe(DOMEX_NEURON_PARSER_VERSION);
   });
 });

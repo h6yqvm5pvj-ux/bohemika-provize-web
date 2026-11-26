@@ -1,6 +1,7 @@
 import type { User } from "firebase/auth";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { matchesOriginalContractReplacementProduct } from "@/app/lib/originalContractReplacement";
 import type {
   CommissionMode,
   CommissionResultItemDTO,
@@ -10,6 +11,7 @@ import type {
 
 import {
   POSITION_ORDER,
+  isIsoDay,
   type ManagerChainSnapshotEntry,
   isoDayFromUnknown,
 } from "./calculatorHelpers";
@@ -75,6 +77,24 @@ export type ContractsFindApiResponse = {
 
 type ContractsFindItem = NonNullable<ContractsFindApiResponse["contracts"]>[number];
 
+export async function findContractByNumber({ user, scope, contractNumber, signal, headers }: {
+  user: User;
+  scope: "my" | "team";
+  contractNumber: string;
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+}): Promise<ContractsFindApiResponse> {
+  const response = await fetchAuthedJsonOrThrow<{ results?: ContractsFindApiResponse[] }>(user, "/api/contracts/find", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ requests: [{ key: "original", scope, q: contractNumber }] }),
+    signal,
+  });
+  const result = response?.results?.[0];
+  if (!result || result.ok === false) throw new Error("Nepodařilo se dohledat smlouvu podle čísla.");
+  return result;
+}
+
 export type ContractsPrecheckApiResponse = {
   ok?: boolean;
   error?: string;
@@ -90,6 +110,7 @@ export type ContractsMutationResponse = {
   error?: string;
   entryId?: string;
   refreshOriginalEntryId?: string | null;
+  refreshOriginalLinked?: boolean;
   idempotentReplay?: boolean;
   [key: string]: unknown;
 };
@@ -150,6 +171,7 @@ type RefreshOriginalLookupStatus =
   | "idle"
   | "checking"
   | "found"
+  | "foundOutsideSelectedOwner"
   | "notFound"
   | "wrongProduct"
   | "error";
@@ -160,6 +182,57 @@ export type RefreshOriginalLookupState = {
   adviserName: string | null;
   original: RefreshOriginalContractInfo | null;
 };
+
+export async function lookupReplacementOriginal({
+  user, product, contractNumber, ownerEmail, scope, signal, flexiRenovationStartDate,
+}: {
+  user: User;
+  product: Product;
+  contractNumber: string;
+  ownerEmail: string;
+  scope: "my" | "team";
+  signal?: AbortSignal;
+  flexiRenovationStartDate?: string;
+}): Promise<RefreshOriginalLookupState> {
+  const globalMatch = await fetchAuthedJsonOrThrow<{
+    ok: boolean; exists: boolean; matchesProduct: boolean;
+  }>(user, "/api/contracts/original-exists", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contractNumber: contractNumber.trim(), productKey: product }), signal,
+  });
+  if (!globalMatch.ok) throw new Error("Nepodařilo se ověřit původní smlouvu.");
+  const result: RefreshOriginalLookupState = {
+    status: !globalMatch.exists ? "notFound" : !globalMatch.matchesProduct ? "wrongProduct" : "foundOutsideSelectedOwner",
+    progress: 100, adviserName: null, original: null,
+  };
+  if (!globalMatch.exists || !globalMatch.matchesProduct) return result;
+
+  // Ordinary lookup supplies optional preview data only where already allowed.
+  // Its scope or availability must never hide a confirmed global match.
+  try {
+    const params = { scope, q: contractNumber.trim() };
+    const payload = product === "flexi"
+      ? await findContractByNumber({ user, scope, contractNumber: params.q, signal })
+      : await fetchAuthedJsonOrThrow<ContractsFindApiResponse>(user, `/api/contracts/find?${new URLSearchParams(params)}`, { signal });
+    const normalizeNumber = (number: string) => number.replace(/\s+/g, "");
+    const matches = payload?.contracts?.filter(item =>
+      (item.userEmail || item.adviserEmail || "").trim().toLowerCase() === ownerEmail.trim().toLowerCase() &&
+      normalizeNumber(item.contractNumber || "") === normalizeNumber(contractNumber) &&
+      matchesOriginalContractReplacementProduct(item.productKey, product) &&
+      (product !== "flexi" || item.entryType !== "endorsement"));
+    const match = matches?.[0];
+    if (payload?.ok !== false && match) {
+      const original = product === "flexi" && matches?.length !== 1
+        ? null : resolveRefreshOriginalContractInfo(match, flexiRenovationStartDate);
+      return { status: "found", progress: 100,
+        adviserName: product === "flexi" && matches?.length !== 1 ? null : match.adviserName?.trim() || null,
+        original };
+    }
+  } catch {
+    if (signal?.aborted) throw new Error("Vyhledávání původní smlouvy bylo zrušeno.");
+  }
+  return result;
+}
 
 type ManagerSnapshotApiChainEntry = {
   email?: string | null;
@@ -184,14 +257,23 @@ const finitePositiveNumber = (value: unknown): number | null => {
 };
 
 export function resolveRefreshOriginalContractInfo(
-  contract: ContractsFindItem
+  contract: ContractsFindItem,
+  flexiRenovationStartDate?: string,
 ): RefreshOriginalContractInfo | null {
   const changes = Array.isArray(contract.lifePremiumChanges)
     ? contract.lifePremiumChanges
     : [];
-  const latestPremiumChange = [...changes]
-    .reverse()
-    .find((change) => finitePositiveNumber(change?.premiumAmount) != null);
+  const renovationStart = flexiRenovationStartDate && isIsoDay(flexiRenovationStartDate) ? flexiRenovationStartDate : null;
+  const originalStart = isoDayFromUnknown(contract.policyStartDate);
+  if (renovationStart && originalStart && originalStart > renovationStart) return null;
+
+  const latestPremiumChange = [...changes].reverse().find(change => {
+    if (finitePositiveNumber(change?.premiumAmount) == null) return false;
+    if (!renovationStart) return true;
+    const start = isoDayFromUnknown(change.policyStartDate);
+    return start != null && start <= renovationStart;
+  });
+  const latestPremium = finitePositiveNumber(latestPremiumChange?.premiumAmount);
   const refreshBasePremiumAmount =
     finitePositiveNumber(contract.refreshCommissionBase?.newMonthlyPremium) ??
     (finitePositiveNumber(contract.refreshCommissionBase?.newAnnualPremium) != null
@@ -202,12 +284,12 @@ export function resolveRefreshOriginalContractInfo(
     (finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium) != null
       ? finitePositiveNumber(contract.refreshCommissionBase?.calculationAnnualPremium)! / 12
       : null);
-  const premiumAmount =
-    refreshBasePremiumAmount ??
-    finitePositiveNumber(latestPremiumChange?.premiumAmount) ??
-    finitePositiveNumber(contract.newInputAmount) ??
-    finitePositiveNumber(contract.effectiveInputAmount) ??
-    finitePositiveNumber(contract.inputAmount);
+  const premiumAmount = renovationStart
+    ? latestPremium ?? refreshBasePremiumAmount ??
+      finitePositiveNumber(contract.inputAmount) ?? (changes.length === 0 ? finitePositiveNumber(contract.effectiveInputAmount) : null)
+    : refreshBasePremiumAmount ?? latestPremium ??
+      finitePositiveNumber(contract.newInputAmount) ?? finitePositiveNumber(contract.effectiveInputAmount) ??
+      finitePositiveNumber(contract.inputAmount);
   if (premiumAmount == null) return null;
   const stornoBasePremiumAmount =
     storedRefreshBasePremiumAmount ??

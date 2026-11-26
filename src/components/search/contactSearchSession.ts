@@ -4,6 +4,7 @@ type ContactSession = {
   uid: string;
   contacts: DirectoryContact[] | null;
   pending: Promise<DirectoryContact[]> | null;
+  controller: AbortController;
 };
 
 // A directory is authorized for one account and one open search session only.
@@ -13,14 +14,18 @@ export function createContactSearchSession() {
 
   return {
     invalidate() {
+      active?.controller.abort();
       active = null;
     },
-    async load(uid: string, fetchContacts: () => Promise<DirectoryContact[]>): Promise<DirectoryContact[]> {
-      if (!active || active.uid !== uid) active = { uid, contacts: null, pending: null };
+    async load(uid: string, fetchContacts: (signal: AbortSignal) => Promise<DirectoryContact[]>): Promise<DirectoryContact[]> {
+      if (!active || active.uid !== uid) {
+        active?.controller.abort();
+        active = { uid, contacts: null, pending: null, controller: new AbortController() };
+      }
       const session = active;
       if (session.contacts) return session.contacts;
       if (!session.pending) {
-        session.pending = fetchContacts().then((contacts) => {
+        session.pending = fetchContacts(session.controller.signal).then((contacts) => {
           if (active !== session) return [];
           session.contacts = contacts;
           return contacts;

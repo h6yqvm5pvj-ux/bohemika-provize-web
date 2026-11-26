@@ -13,7 +13,7 @@ it("links to the existing sections and opens notes without reloading the contrac
   try {
     await act(async () => root.render(<ContractDetailNavigation hasChanges onOpenNotes={openNotes} />));
     expect(Array.from(container.querySelectorAll("a")).map(link => link.getAttribute("href"))).toEqual([
-      "#contract-overview", "#contract-commissions", "#contract-changes", "#contract-notes",
+      "#contract-overview", "#contract-commissions", "#contract-changes", "#contract-notes", "#contract-details",
     ]);
     await act(async () => container.querySelector<HTMLAnchorElement>('a[href="#contract-notes"]')!.click());
     expect(openNotes).toHaveBeenCalledOnce();

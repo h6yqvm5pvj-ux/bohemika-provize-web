@@ -58,6 +58,16 @@ const DOCUMENTS: Record<string, DocumentMeta> = {
     fileName: "koopprijem.jpg",
     contentType: "image/jpeg",
   },
+  "koop-odzam-neuron-2026-09": {
+    fileName: "KOOP NEURON ODZAM 261102-04.pdf",
+    contentType: "application/pdf",
+    localPath: "provize/koop-odzam-neuron-2026-09.pdf",
+  },
+  "koop-obcan-neuron-2026-09": {
+    fileName: "KOOP NEURON OBCAN 261028-03.pdf",
+    contentType: "application/pdf",
+    localPath: "provize/koop-obcan-neuron-2026-09.pdf",
+  },
   "life-record-health-assessment-example": {
     fileName: "oceneni-zdravotniho-stavu.png",
     contentType: "image/png",

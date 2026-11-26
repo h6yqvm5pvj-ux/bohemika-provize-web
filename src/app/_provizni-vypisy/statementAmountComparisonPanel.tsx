@@ -1,7 +1,9 @@
+import { positionLabel } from "@/app/lib/formatters";
+import type { Position } from "@/app/types/domain";
+import { statementCareerPositionFromValue } from "./statementSystemContracts";
 import { ListChecks, TrendingDown, TrendingUp } from "lucide-react";
 
 import {
-  ANNUAL_PREMIUM_TOLERANCE,
   COMMISSION_AMOUNT_TOLERANCE,
   formatMoney,
   formatWholeMoney,
@@ -9,6 +11,7 @@ import {
 } from "./statementParsing";
 import styles from "./statementContractDetail.module.css";
 import { isHigherStatementCommission as isHigherCommission } from "./statementCommissionComparisons";
+import { statementPremiumBaseWithinTolerance } from "./statementContractReview";
 import type {
   CommissionAmountComparison,
 } from "./statementTypes";
@@ -27,6 +30,7 @@ type PremiumBaseComparison = {
   systemAnnualPremiumBase: number;
   difference: number;
   annualDifference: number;
+  annualTolerance?: number;
   canBeAnniversaryPremiumChange: boolean;
   firstAnniversaryDate: Date | null;
   anniversaryDate: Date | null;
@@ -73,11 +77,21 @@ const amountIssueCountLabel = (count: number): string => {
 export function AmountComparisonPanel({
   comparisons,
   baseComparisons = [],
+  positionComparison,
+  pendingPremiumIncrease = false,
 }: {
   comparisons: CommissionAmountComparison[];
   baseComparisons?: PremiumBaseComparison[];
+  positionComparison?: { systemPosition?: Position | null; rows: { career: string }[] };
+  pendingPremiumIncrease?: boolean;
 }) {
-  if (comparisons.length === 0 && baseComparisons.length === 0) return null;
+  if (comparisons.length === 0 && baseComparisons.length === 0 && !positionComparison) return null;
+
+  const systemPosition = positionComparison?.systemPosition;
+  const careers = positionComparison?.rows.map(row => statementCareerPositionFromValue(row.career)?.position) ?? [];
+  const statementPositions = [...new Set(careers.filter(position => position != null))];
+  const positionMismatch = Boolean(systemPosition && statementPositions.some(position => position !== systemPosition));
+  const positionVerified = Boolean(systemPosition && careers.length && careers.every(position => position === systemPosition));
 
   const baseDisplayLines = (
     comparison: PremiumBaseComparison,
@@ -134,39 +148,45 @@ export function AmountComparisonPanel({
   const baseChangeCount = baseComparisons.filter(
     (comparison) =>
       comparison.canBeAnniversaryPremiumChange &&
-      Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE
+      !statementPremiumBaseWithinTolerance(comparison)
   ).length;
   const baseMismatchCount = baseComparisons.filter(
     (comparison) =>
       !comparison.canBeAnniversaryPremiumChange &&
-      Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE
+      !statementPremiumBaseWithinTolerance(comparison)
   ).length;
   const panelTone =
-    issueCount > 0
+    issueCount > 0 || positionMismatch
       ? "rose"
       : baseMismatchCount > 0
         ? "amber"
         : baseChangeCount > 0
           ? "sky"
-          : "emerald";
+          : pendingPremiumIncrease || (positionComparison && !positionVerified) ? "amber" : "emerald";
   const badgeTone = panelTone === "rose" ? "error" : panelTone === "amber" ? "warn" : panelTone === "sky" ? "info" : "ok";
   const badgeLabel =
-    issueCount > 0
+    positionMismatch
+      ? "Nesoulad pozice"
+      : issueCount > 0
       ? amountIssueCountLabel(issueCount)
       : baseMismatchCount > 0
         ? "Rozdíl základny"
         : baseChangeCount > 0
           ? "Změna pojistného"
-          : higherCount > 0 ? "Vyšší provize" : "Vše sedí";
+          : pendingPremiumIncrease
+            ? "Provize za navýšení neověřena"
+            : positionComparison && !positionVerified
+              ? "Pozici nelze ověřit"
+              : higherCount > 0 ? "Vyšší provize" : "Vše sedí";
   const baseStatusLabel = (comparison: PremiumBaseComparison): string => {
-    if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
+    if (statementPremiumBaseWithinTolerance(comparison)) {
       return "Sedí";
     }
     if (!comparison.canBeAnniversaryPremiumChange) return "Nesedí";
     return comparison.annualDifference > 0 ? "Pojistné navýšeno" : "Pojistné poníženo";
   };
   const baseStatusTone = (comparison: PremiumBaseComparison): string => {
-    if (Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE) {
+    if (statementPremiumBaseWithinTolerance(comparison)) {
       return "ok";
     }
     if (!comparison.canBeAnniversaryPremiumChange) {
@@ -179,7 +199,7 @@ export function AmountComparisonPanel({
     <div className={styles.comparison} data-tone={panelTone}>
       <div className={styles.comparisonHeading}>
         <h5><ListChecks aria-hidden="true" />
-          {baseComparisons.length > 0 ? "Kontrola výpisu" : "Kontrola vyplacených částek"}
+          {baseComparisons.length > 0 || positionComparison ? "Kontrola výpisu" : "Kontrola vyplacených částek"}
         </h5>
         <div className={styles.badge} data-tone={badgeTone}>
           {badgeLabel}
@@ -187,7 +207,7 @@ export function AmountComparisonPanel({
       </div>
 
       <p className={styles.tableHint}>Další sloupce zobrazíš posunutím do strany →</p>
-      <div className={styles.tableScroll} role="region" aria-label="Porovnání částek" tabIndex={0}>
+      <div className={styles.tableScroll} role="region" aria-label={positionComparison ? "Porovnání částek a pozic" : "Porovnání částek"} tabIndex={0}>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -220,7 +240,7 @@ export function AmountComparisonPanel({
                   </td>
                   <td
                     className={styles.difference} data-tone={
-                      Math.abs(comparison.annualDifference) <= ANNUAL_PREMIUM_TOLERANCE
+                      statementPremiumBaseWithinTolerance(comparison)
                         ? "neutral"
                         : !comparison.canBeAnniversaryPremiumChange
                           ? "warn"
@@ -241,7 +261,7 @@ export function AmountComparisonPanel({
                       className={styles.badge} data-tone={baseStatusTone(comparison)}
                     >
                       {comparison.canBeAnniversaryPremiumChange &&
-                        Math.abs(comparison.annualDifference) > ANNUAL_PREMIUM_TOLERANCE &&
+                        !statementPremiumBaseWithinTolerance(comparison) &&
                         (comparison.annualDifference > 0 ? (
                           <TrendingUp className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
                         ) : (
@@ -253,6 +273,24 @@ export function AmountComparisonPanel({
                 </tr>
               );
             })}
+            {positionComparison && (
+              <tr>
+                <td>Provizní pozice</td>
+                <td>{positionLabel(systemPosition)}</td>
+                <td>
+                  {statementPositions.map(position => positionLabel(position)).join(", ") || "—"}
+                  {statementPositions.length > 0 && careers.some(position => !position) && (
+                    <div className={styles.secondary}>U některých položek pozice chybí nebo ji nelze rozpoznat</div>
+                  )}
+                </td>
+                <td>—</td>
+                <td>
+                  <span className={styles.badge} data-tone={positionMismatch ? "error" : positionVerified ? "ok" : "warn"}>
+                    {positionMismatch ? "Nesoulad pozice" : positionVerified ? "Sedí" : "Nelze ověřit"}
+                  </span>
+                </td>
+              </tr>
+            )}
             {comparisons.map((comparison) => (
               <tr key={comparison.key}>
                 <td>

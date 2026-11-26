@@ -48,6 +48,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
     title: "Auto",
     products: [
       "cppAuto",
+      "cppAutoVozikZdarma",
       "slaviaauto",
       "slaviaflotila",
       "allianzAuto",
@@ -77,8 +78,7 @@ export const PRODUCT_PICKER_COLUMNS: ProductPickerColumn[] = [
   {
     key: "investments",
     title: "Investice",
-    products: [],
-    emptyText: "Zatím bez produktů.",
+    products: ["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"],
   },
   {
     key: "pension",

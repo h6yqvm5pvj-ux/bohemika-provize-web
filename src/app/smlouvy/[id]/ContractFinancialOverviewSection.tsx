@@ -27,6 +27,21 @@ function paymentCount(count: number): string {
   return `${count} ${count === 1 ? "záznam z výpisu" : count < 5 ? "záznamy z výpisů" : "záznamů z výpisů"}`;
 }
 
+export function ContractPaidCommissionSummary({ amount }: { amount: number | null }) {
+  return (
+    <section className={styles.paidSummary} aria-labelledby="contract-paid-commission-label">
+      <span className={styles.paidIcon}><Banknote size={23} aria-hidden="true" /></span>
+      <div>
+        <h2 id="contract-paid-commission-label">Ze smlouvy celkem vyplaceno</h2>
+        <p>{amount === null ? "Výplaty nejsou k dispozici." : "Po započtení oprav a storen · před odpočtem stornofondu"}</p>
+      </div>
+      <strong className={styles.amount} data-negative={amount !== null && amount < 0}>
+        {amount === null ? "—" : formatMoney(amount)}
+      </strong>
+    </section>
+  );
+}
+
 export function ContractFinancialOverview({ overview }: { overview: ContractFinancialOverviewModel }) {
   const unavailable = overview.recipient === "unavailable";
   const forecastAvailable = !unavailable && overview.expectedAmount !== null;

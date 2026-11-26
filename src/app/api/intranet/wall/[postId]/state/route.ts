@@ -1,3 +1,4 @@
+import { invalidateWallUnreadCount } from "@/lib/server/intranetUnreadCount";
 import { NextResponse, type NextRequest } from "next/server";
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { requireAdvisorAuthedRateLimited, withRateLimitHeaders } from "@/lib/server/apiEntryGuard";
@@ -18,15 +19,19 @@ export async function POST(req: NextRequest, context: { params: Promise<{ postId
   const action = parseWallPersonalAction(await req.json().catch(() => null));
   if (!isWallId(postId) || !action) return respond({ ok: false, error: "Neplatná změna příspěvku." }, 400);
   const email = ctx.email.trim().toLowerCase();
-  const postRef = adminDb.collection("intranetWallPosts").doc(postId);
+  const db = adminDb;
+  const postRef = db.collection("intranetWallPosts").doc(postId);
   const stateRef = postRef.collection("viewerStates").doc(email);
   try {
-    const state = await adminDb.runTransaction(async tx => {
+    const state = await db.runTransaction(async tx => {
       const [post, existing] = await Promise.all([tx.get(postRef), tx.get(stateRef)]);
       if (!post.exists) throw new Error("POST_NOT_FOUND");
       const previous = normalizeWallPersonalState(existing.data(), String(post.data()?.createdByEmail ?? "").trim().toLowerCase() === email);
       const patch = wallPersonalPatch(previous, action, Date.now());
       tx.set(stateRef, { ...patch, email }, { merge: true });
+      if (action.field === "read" && previous.readAtMs !== patch.readAtMs) {
+        invalidateWallUnreadCount(db, tx, email);
+      }
       return { ...previous, ...patch };
     });
     return respond({ ok: true, postId, state });

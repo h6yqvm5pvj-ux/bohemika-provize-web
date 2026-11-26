@@ -1,4 +1,5 @@
 import { isNeonStatementProductCode, neonRefreshRiskAnnualPremiumBase } from "@/app/lib/commissionPayoutRules";
+import { statementPremiumBaseWithinTolerance } from "./statementContractReview";
 import type { CommissionRow, MatchedSystemContract } from "./statementTypes";
 
 export type RefreshBaseStatus = "confirmed" | "calculated" | "waiting";
@@ -23,16 +24,21 @@ export function neonRefreshBaseStatus(contract: MatchedSystemContract | null): R
 export function neonRefreshBaseReview(contract: MatchedSystemContract | null, rows: ReadonlyArray<CommissionRow>) {
   const status = neonRefreshBaseStatus(contract);
   if (!status || !contract) return null;
+  const annual = storedRiskAnnual(contract);
+  const statementRiskAnnual = neonRefreshRiskAnnualPremiumBase(rows
+    .filter(row => row.commission > 0 && isNeonStatementProductCode(row.product))
+    .map(row => ({commissionCode: row.type, baseAmount: row.base})));
+  const basesMatch = annual != null && statementRiskAnnual != null &&
+    statementPremiumBaseWithinTolerance({ annualDifference: statementRiskAnnual - annual });
   return {
     status,
+    needsConfirmation: status !== "confirmed" && !basesMatch,
     label: status === "confirmed" ? "Riziková základna potvrzena" :
       status === "calculated" ? "Základna z původní smlouvy" : "Čeká na potvrzení základny",
-    annual: storedRiskAnnual(contract),
+    annual,
     statementNumber: contract.refreshStatementResolvedStatementNumber ?? null,
     statementDate: contract.refreshStatementResolvedStatementDate ?? null,
-    statementRiskAnnual: neonRefreshRiskAnnualPremiumBase(rows
-      .filter(row => row.commission > 0 && isNeonStatementProductCode(row.product))
-      .map(row => ({commissionCode: row.type, baseAmount: row.base}))),
+    statementRiskAnnual,
   };
 }
 

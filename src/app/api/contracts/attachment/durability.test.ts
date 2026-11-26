@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { retryable } from 'google-gax/build/src/normalCalls/retries';
 import { markCashflowMutationIncomplete, withCashflowMutation } from '@/lib/server/cashflowMutationTracking';
+import { contractPdfNumberFingerprint } from '@/lib/server/contractPdfStorage';
 
 // Regression tests inject ambiguous commits without credentials or live data.
 const mocks = vi.hoisted(() => ({
@@ -33,20 +34,24 @@ vi.mock('@/lib/server/contractPdfStorage', async importOriginal => ({
 import { POST, GET } from '@/app/api/contracts/attachment/route';
 
 const owner = 'owner@example.test';
+const contractNumber = '1234567890';
 const attachment = (path: string) => ({
   kind: 'contractPdf', bucketName: 'synthetic-test.invalid', storagePath: path,
   originalName: path, contentType: 'application/pdf', sizeBytes: 32,
   sha256: 'a'.repeat(64), uploadedAtMs: 1, uploadedBy: owner,
+  contractNumberFingerprint: contractPdfNumberFingerprint(contractNumber)!,
+  contractNumberBindingVersion: 1,
 });
 const request = (firstOnly = false) => {
   const form = new FormData();
   form.set('file', new File(['%PDF-synthetic'], 'fixture.pdf', { type: 'application/pdf' }));
   form.set('ownerEmail', owner); form.set('entryId', 'synthetic-entry');
+  form.set('contractNumber', contractNumber);
   if (firstOnly) form.set('onlyIfMissing', '1');
   return new NextRequest('http://localhost/api/contracts/attachment', { method: 'POST', body: form });
 };
 const getRequest = () => new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=synthetic-entry`);
-let persisted: { productKey: string; contractPdfAttachment?: ReturnType<typeof attachment> };
+let persisted: { productKey: string; contractNumber: string; contractPdfAttachment?: ReturnType<typeof attachment> };
 let objects: Set<string>;
 let pending: typeof persisted;
 
@@ -54,7 +59,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv('CASHFLOW_CACHE_TRACK_WRITES', '1');
   mocks.beginMutation.mockResolvedValue({ id: 'synthetic-mutation' });
-  persisted = { productKey: 'synthetic-product' };
+  persisted = { productKey: 'synthetic-product', contractNumber };
   objects = new Set();
   mocks.guard.mockResolvedValue({ ok: true, ctx: { email: owner, uid: 'synthetic-user', accountType: 'advisor', actorEmail: owner, contractAccessEmails: [], isImpersonating: false }, withRateLimit: (response: NextResponse) => response });
   mocks.access.mockReturnValue(true);

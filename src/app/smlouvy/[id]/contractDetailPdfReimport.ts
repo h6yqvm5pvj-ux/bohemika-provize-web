@@ -18,6 +18,7 @@ type ContractUpdateField = keyof ContractDoc;
 export const PDF_REIMPORT_PARSERS: Partial<Record<Product, PdfReimportParser>> = {
   conseqzenit: async file => (await import("@/app/lib/parseConseqZenitPdf")).parseConseqZenitPdf(file),
   cppAuto: async file => (await import("@/app/lib/parseCppAutoPdf")).parseCppAutoPdf(file),
+  cppAutoVozikZdarma: async file => (await import("@/app/lib/parseCppAutoVozikZdarmaPdf")).parseCppAutoVozikZdarmaPdf(file),
   slaviaauto: async file => (await import("@/app/lib/parseSlaviaAutoPdf")).parseSlaviaAutoPdf(file),
   allianzAuto: async file => (await import("@/app/lib/parseAllianzAutoPdf")).parseAllianzAutoPdf(file),
   csobAuto: async file => (await import("@/app/lib/parseCsobAutoPdf")).parseCsobAutoPdf(file),
@@ -78,6 +79,7 @@ const PDF_CONTRACT_FIELD_MAP = [
   ["carAddonServisPro", "carAddonServisPro"],
   ["carExtraBenefitProfi", "carExtraBenefitProfi"],
   ["carAddonGlass", "carAddonGlass"],
+  ["carAddonGlassLimit", "carAddonGlassLimit"],
   ["carAddonAnimalCollision", "carAddonAnimalCollision"],
   ["carAddonAnimalDamage", "carAddonAnimalDamage"],
   ["carAddonAnimalDamageLimit", "carAddonAnimalDamageLimit"],
@@ -102,6 +104,7 @@ const NUMBER_CONTRACT_UPDATE_FIELDS = new Set<ContractUpdateField>([
   "carHullSumInsured",
   "carHullDeductible",
   "carAddonKlikaLimit",
+  "carAddonGlassLimit",
   "carAddonAnimalDamageLimit",
 ]);
 
@@ -320,6 +323,8 @@ const parsedPdfValueForContractField = (
         : typeof rawValue === "string"
           ? Number(rawValue.replace(/\s+/g, "").replace(",", "."))
           : Number.NaN;
+    if ((field === "carAddonGlassLimit" || field === "carAddonAnimalDamageLimit") &&
+      ((typeof rawValue === "string" && !rawValue.trim()) || value < 0 || value > 1_000_000_000)) return null;
     return Number.isFinite(value) ? Math.round(value) : null;
   }
 
@@ -410,6 +415,9 @@ export const mergeEmptyContractFields = (
   currentContract: ContractDoc,
   parsed: Record<string, unknown>
 ): { updates: Record<string, string | number | boolean | null>; appliedCount: number } => {
+  if (currentContract.productKey === "flexi" && parsed.isEndorsement === true && currentContract.entryType !== "endorsement") {
+    throw new Error("PDF obsahuje žádost o změnu FLEXI. Nahraj ji v Kalkulačce pro přípravu dodatku k původní smlouvě.");
+  }
   const updates: Record<string, string | number | boolean | null> = {};
   let appliedCount = 0;
 
@@ -420,6 +428,8 @@ export const mergeEmptyContractFields = (
       currentContract.productKey !== "cppAuto"
     ) continue;
     if (contractField === "pensionTargetAge" && currentContract.productKey !== "conseqzenit") continue;
+    if (contractField === "carAddonGlassLimit" && (currentContract.carAddonGlass === false || parsed.carAddonGlass === false)) continue;
+    if (contractField === "carAddonAnimalDamageLimit" && (currentContract.carAddonAnimalDamage === false || parsed.carAddonAnimalDamage === false)) continue;
     if ((contractField === "automaticRenewal" || contractField === "premiumIndexationEnabled" || contractField === "policyTermEndDate") && currentContract.productKey !== "domexneuron") continue;
     const renewal = currentContract.automaticRenewal ?? parsed.automaticRenewal;
     if (currentContract.productKey === "domexneuron" && contractField === "policyEndDate" && renewal === true) continue;

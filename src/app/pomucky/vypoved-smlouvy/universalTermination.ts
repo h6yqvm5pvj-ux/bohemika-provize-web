@@ -181,12 +181,23 @@ export function getUniversalTerminationReasons(
   return [];
 }
 
+export function isTerminationInsuranceTypeSupported(
+  insurer: string | null,
+  insuranceType: InsuranceType,
+): boolean {
+  const normalizedInsurer = insurer?.trim().toLocaleLowerCase("cs-CZ");
+  if (normalizedInsurer === "nn") return insuranceType === "life";
+  if (normalizedInsurer === "direct") return insuranceType === "nonLife";
+  return true;
+}
+
 export function getTerminationReasonsForSelection(
   insuranceType: InsuranceType | null,
   insurer: string | null,
   product?: Product | null,
 ): readonly TerminationReasonOption[] {
   if (!insuranceType || !insurer) return [];
+  if (!isTerminationInsuranceTypeSupported(insurer, insuranceType)) return [];
   if (isTravelTerminationProduct(product)) {
     return insuranceType === "nonLife" ? TRAVEL_TERMINATION_REASONS : [];
   }
@@ -265,9 +276,10 @@ export function getUniversalLetterForSelection({
     return null;
   }
 
-  const reasonIsAvailable = getUniversalTerminationReasons(insuranceType).some(
-    (item) => item.id === reason
-  );
+  const reasonIsAvailable = getTerminationReasonsForSelection(
+    insuranceType,
+    insurer,
+  ).some((item) => item.id === reason);
   if (!reasonIsAvailable) return null;
 
   return getUniversalLetterDefinition(reason);

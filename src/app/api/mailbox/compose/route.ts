@@ -1,3 +1,4 @@
+import { newMailboxVisibility } from "@/lib/server/mailboxUnreadCount";
 import { sealTip } from "@/lib/server/tipEncryption";
 import { createHash, randomUUID } from "crypto";
 import { FieldValue, type DocumentReference, type DocumentSnapshot } from "firebase-admin/firestore";
@@ -768,6 +769,7 @@ async function composeGroupMessage({
           body: "Nová šifrovaná zpráva.",
           encryptedContent,
           deepLink: "/posta",
+          ...newMailboxVisibility,
           read: senderCopy,
           readAtMs: senderCopy ? createdAtMs : null,
           readAt: senderCopy ? FieldValue.serverTimestamp() : null,
@@ -1352,6 +1354,7 @@ export async function POST(req: NextRequest) {
       body: "Nová šifrovaná zpráva.",
       ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: recipientDeepLink,
+      ...newMailboxVisibility,
       read: false,
       readAtMs: null,
       readAt: null,
@@ -1371,6 +1374,7 @@ export async function POST(req: NextRequest) {
       body: "Nová šifrovaná zpráva.",
       ...(encryptedContent ? { encryptedContent } : {}),
       deepLink: senderDeepLink,
+      ...newMailboxVisibility,
       read: true,
       readAtMs: createdAtMs,
       readAt: FieldValue.serverTimestamp(),

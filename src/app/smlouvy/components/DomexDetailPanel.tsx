@@ -1,3 +1,5 @@
+import { InsuranceDetailHeading } from "@/components/insurance/InsuranceDetailHeading";
+import detailStyles from "@/components/insurance/insuranceDetail.module.css";
 import React from "react";
 import Link from "next/link";
 import {
@@ -204,8 +206,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       />}
       {hasCanonicalNeuron && !canonicalNeuron && <p role="alert" className="text-sm text-amber-900 sm:col-span-2">Údaje objektů nelze bezpečně přečíst. Načtěte je znovu z PDF.</p>}
       {hasCanonicalNeuron && (domexDetail?.liabilityMobile === true || domexDetail?.liabilityTenant === true || domexDetail?.liabilityLandlord === true) &&
-        <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
-          <h3 className="text-xs font-semibold text-slate-600">Uložené doplňky odpovědnosti</h3>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
+          <InsuranceDetailHeading icon={Shield}>Uložené doplňky odpovědnosti</InsuranceDetailHeading>
           {([
             ["liabilityMobile", "Náhrada újmy mobilní elektronice"],
             ["liabilityTenant", "Odpovědnost nájemce na věci nemovité"],
@@ -222,11 +224,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       )}
       {showPropertyBlock && (
         <>
-          <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-            <House size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-            <span>Pojištění stavby</span>
-          </div>
+          <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+        <InsuranceDetailHeading icon={House}>Pojištění stavby</InsuranceDetailHeading>
           <div className="space-y-2 text-sm text-slate-900">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
               <span className="shrink-0 text-slate-600">{isNeuron ? "Místo pojištění" : "Adresa"}</span>
@@ -340,11 +339,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       )}
 
       {showOutbuildingBlock && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-          <HousePlus size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>Vedlejší stavby</span>
-        </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+        <InsuranceDetailHeading icon={HousePlus}>Vedlejší stavby</InsuranceDetailHeading>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -367,11 +363,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       )}
 
       {showHouseholdBlock && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-          <Sofa size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>Pojištění domácnosti</span>
-        </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
+        <InsuranceDetailHeading icon={Sofa}>Pojištění domácnosti</InsuranceDetailHeading>
         <div className="space-y-2 text-sm text-slate-900">
           {isNeuron && (
             <div className="flex justify-between gap-2">
@@ -469,11 +462,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       )}
 
       {showAssistance && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-          <LifeBuoy size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>{isNeuron ? "Asistenční služby" : "Asistence PLUS"}</span>
-        </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="violet">
+        <InsuranceDetailHeading icon={LifeBuoy}>{isNeuron ? "Asistenční služby" : "Asistence PLUS"}</InsuranceDetailHeading>
         {isNeuron ? (
           <dl className="space-y-2 text-sm text-slate-900">
             {([
@@ -511,11 +501,8 @@ export function DomexDetailPanel({ prod, premiumIndexationEnabled, editMode, fie
       )}
 
       {showLiabilityBlock && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-        <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-          <Shield size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-          <span>Pojištění odpovědnosti</span>
-        </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
+        <InsuranceDetailHeading icon={Shield}>Pojištění odpovědnosti</InsuranceDetailHeading>
         <div className="space-y-2 text-sm text-slate-900">
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">{isNeuron ? "Limit pojistného plnění" : "Pojistná částka"}</span>

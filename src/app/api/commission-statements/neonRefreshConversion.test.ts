@@ -76,10 +76,10 @@ describe("REFRESH directly from a statement preview", () => {
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.contract).toMatchObject({ isRefresh: true, requiresStatementRefresh: false,
-      calculationInputAmount: 563.08, commissionBaseSource: "commission_statement",
+      calculationInputAmount: 563.08, neonRefreshCareAnnualPremium: 24000, commissionBaseSource: "commission_statement",
       refreshStatementResolvedStatementId: null, refreshStatementResolvedStatementNumber: "123",
       refreshCommissionBase: { newMonthlyPremium: 2000, calculationAnnualPremium: 6757, calculationMonthlyPremium: 563.08 } });
-    const expected = calculateNeon(563.08, "poradce7", 20, "accelerated", "2023-04-13", "historical");
+    const expected = calculateNeon(563.08, "poradce7", 20, "accelerated", "2023-04-13", "historical", 24000);
     expect(payload.contract.items).toEqual(expected.items);
     expect(payload.contract.total).toBe(expected.total);
     expect(records.get(entryPath)).toMatchObject({ inputAmount: 2000, commissionPayouts: [{ id: "existing-payout", amount: 50 }] });
@@ -165,17 +165,20 @@ describe("confirming the base of an existing REFRESH", () => {
     });
   });
 
-  it("recalculates contract and manager commissions from the risk base and preserves actual premium and payouts", async () => {
+  it("uses the risk base and full care premium for adviser and manager commissions, preserving payouts", async () => {
     const response = await POST(confirm({ calculationInputAmount:9999 }));
     expect(response.status).toBe(200);
     const patch=(await response.json()).contract;
-    expect(patch).toMatchObject({ calculationInputAmount:653.33, requiresStatementRefresh:false,
+    expect(patch).toMatchObject({ calculationInputAmount:653.33, neonRefreshCareAnnualPremium:13200, requiresStatementRefresh:false,
       commissionBaseSource:"commission_statement", refreshStatementResolvedStatementNumber:"123",
       refreshCommissionBase:{calculationAnnualPremium:7840,calculationMonthlyPremium:653.33,newMonthlyPremium:1100} });
-    const expected=calculateNeon(653.33,"poradce7",20,"accelerated","2023-04-13","historical");
+    const expected=calculateNeon(653.33,"poradce7",20,"accelerated","2023-04-13","historical",13200);
     expect(patch.items).toEqual(expected.items);expect(patch.total).toBe(expected.total);
     expect(patch.result).toEqual({items:expected.items,total:expected.total});
     expect(patch.managerOverrides).toEqual([expect.objectContaining({email:"manager@example.test",total:expect.any(Number)})]);
+    const manager = calculateNeon(653.33,"manazer10",20,"standard","2023-04-13","historical",13200);
+    const careAmount = (items: typeof expected.items) => items.find(item => item.code === "B201-B206")!.amount;
+    expect(careAmount(patch.managerOverrides[0].items)).toBeCloseTo(careAmount(manager.items) - careAmount(expected.items), 2);
     expect(patch.managerOverrides[0].total).toBeGreaterThan(0);
     expect(records.get(entryPath)).toMatchObject({inputAmount:1100,isRefresh:true,
       commissionPayouts:[{id:"existing-payout",amount:50}]});

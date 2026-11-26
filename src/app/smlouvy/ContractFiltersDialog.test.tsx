@@ -79,12 +79,25 @@ describe("contract filter dialog", () => {
     await choice("Výročí do 90 dnů"); await choice("Nejnovější"); await submit(); expect(apply.mock.lastCall![0].filterMode).toBe("latest");
   });
 
+  it("offers and applies the no-PDF-attachment filter", async () => {
+    await mount();
+    await choice("Bez PDF přílohy", "Další podmínky");
+    await submit();
+    expect(apply.mock.lastCall![0]).toMatchObject({ showWithoutPdfOnly: true });
+    expect(container.querySelector('[aria-label="Odebrat filtr: Bez PDF přílohy"]')).not.toBeNull();
+  });
+
   it("submits every commission mode and code; switching off clears and disables the code", async () => {
     await mount(); await click(button("Provize"));
     const select = container.querySelector("select")!;
     expect(select.disabled).toBe(true);
     for (const mode of COMMISSION_AUDIT_MODE_DEFS) {
       await choice(mode.label);
+      if (mode.id === "missing_storno_estimate") {
+        expect(select.disabled).toBe(true);
+        await submit(); expect(apply.mock.lastCall![0]).toMatchObject({ commissionAuditMode: mode.id, commissionAuditCodeFilter: "all" });
+        continue;
+      }
       for (const code of COMMISSION_AUDIT_CODE_DEFS) {
         await act(async () => { select.value = code.id; select.dispatchEvent(new Event("change", { bubbles: true })); });
         await submit(); expect(apply.mock.lastCall![0]).toMatchObject({ commissionAuditMode: mode.id, commissionAuditCodeFilter: code.id });

@@ -9,9 +9,10 @@ import {
   storePrivateContractTerminationPrefill,
   type ContractTerminationContext,
 } from "@/app/lib/contractTerminationPrivacy";
-import type {
-  InsuranceType,
-  TerminationReason,
+import {
+  isTerminationInsuranceTypeSupported,
+  type InsuranceType,
+  type TerminationReason,
 } from "./universalTermination";
 
 export type TerminationPrefillInsurer =
@@ -150,7 +151,9 @@ export function normalizeContractTerminationPrefill(
       ? raw.insuranceType
       : null;
   const supportedInsuranceType =
-    insurer === "Direct" && insuranceType === "life" ? null : insuranceType;
+    insuranceType && isTerminationInsuranceTypeSupported(insurer, insuranceType)
+      ? insuranceType
+      : null;
   const reason = TERMINATION_REASONS.has(raw.reason as TerminationReason)
     ? (raw.reason as TerminationReason)
     : null;

@@ -32,6 +32,11 @@ const own = [entry("own-current", 8, 100), entry("own-previous", 7, 50),
   { ...entry("inherited", 8, 999), acquisitionType: "inherited" as const }];
 const team = [entry("team-current", 8, 200, "team@example.test"), entry("team-previous", 7, 75, "team@example.test")];
 const contracts = (items: EntryDoc[], hasTeam = true) => Response.json({ ok: true, contracts: items, hasTeam, hasMore: false });
+const leaderboardRow = (other: number) => ({
+  email: "team@example.test", name: "Poradce", life: 0, hasLife: false, other, hasOther: true,
+});
+const leaderboard = (other = 1000) => Response.json({ ok: true, leaderboard: [leaderboardRow(other)] });
+
 const tips = (payouts: unknown[] = [], extra: Record<string, unknown> = {}) => Response.json({ ok: true, payouts, hasMore: false, ...extra });
 const currentTips = () => tips([
   { id: "one", sourceToken: "same-contract", sourceContractSignedDate: day(8), payoutDate: day(9), amount: 30 },
@@ -122,17 +127,17 @@ describe("home summaries independent of TIP completion", () => {
     await render(); await settleSummaries();
     await act(async () => tipCalls()[0].job.resolve(currentTips()));
     await render({ ...props, teamHistoryMonths: 6 });
-    await act(async () => contractCalls("team")[1].job.resolve(contracts([entry("six-months", 4, 100)])));
+    await act(async () => contractCalls("team")[1].job.resolve(leaderboard(700)));
     expect(latest.historyUpdatedAt).toBe(Date.now());
     await render({ ...props, teamHistoryMonths: 12 });
     expect(latest.historyUpdatedAt).toBeNull();
-    expect(latest.teamEntries).toEqual([]);
+    expect(latest.rangeLeaderboard).toEqual([]);
     await act(async () => contractCalls("team")[2].job.resolve(Response.json({ ok: false }, { status: 503 })));
     expect(latest.historyError).toBeTruthy();
     expect(latest.summaryError).toBeNull();
     await render({ ...props, teamHistoryMonths: 6 });
     expect(latest.historyError).toBeNull();
-    expect(latest.teamEntries[0].id).toBe("six-months");
+    expect(latest.rangeLeaderboard).toEqual([leaderboardRow(700)]);
     expect(latest.historyUpdatedAt).toBe(Date.now());
   });
 
@@ -154,13 +159,11 @@ describe("home summaries independent of TIP completion", () => {
     });
     await act(async () => {
       tipCalls()[0].job.resolve(tips());
-      contractCalls("team")[1].job.resolve(contracts([
-        entry("insurance-history", 4, 50, "team@example.test"),
-        { ...retired, id: "retired-history" },
-      ]));
+      contractCalls("team")[1].job.resolve(leaderboard());
     });
     expect(latest.myEntries.some(item => item.id === "retired")).toBe(false);
-    expect(latest.teamEntries.map(item => item.id)).toEqual(["insurance-history"]);
+    expect(latest.teamEntries.some(item => item.id === "retired-team")).toBe(false);
+    expect(latest.rangeLeaderboard).toEqual([leaderboardRow(1000)]);
     expect(latest.myImmediateSum).toBe(100);
     expect(latest.teamImmediateSum).toBe(200);
   });
@@ -186,7 +189,7 @@ describe("home summaries independent of TIP completion", () => {
     expect(mocks.write).not.toHaveBeenCalled();
     await act(async () => contractCalls("my")[1].job.resolve(contracts([...own, entry("historic", 4, 25)])));
     expect(contractCalls("team")).toHaveLength(2);
-    await act(async () => contractCalls("team")[1].job.resolve(contracts(team)));
+    await act(async () => contractCalls("team")[1].job.resolve(leaderboard()));
     expect(latest.historyLoading).toBe(false);
     expect(latest.myEntries.some(item => item.id === "historic")).toBe(true);
     expect(latest.teamEntries).toHaveLength(2);
@@ -196,7 +199,7 @@ describe("home summaries independent of TIP completion", () => {
     expect(latest).toMatchObject({ tipSummaryLoading: false, tipSummaryError: null,
       myTipContractsCount: 2, myTipImmediateSum: 60, myTipImmediatePrevSum: 40 });
     expect(mocks.write).toHaveBeenCalledTimes(1);
-    expect(mocks.write.mock.calls[0][0]).toContain("v9-home-insurance-only|advisor-uid|advisor@example.test|");
+    expect(mocks.write.mock.calls[0][0]).toContain("v10-home-leaderboard|advisor-uid|advisor@example.test|");
     expect(mocks.write.mock.calls[0][1]).toMatchObject({ myImmediateSum: 100, teamImmediateSum: 200, myTipImmediateSum: 60 });
     const query = tipCalls()[0].url.searchParams;
     expect(Object.fromEntries(query)).toEqual({ limit: "100", shape: "home", payoutFrom: String(day(7, 1)),
@@ -220,9 +223,10 @@ describe("home summaries independent of TIP completion", () => {
     expect(calls).toHaveLength(3);
     await render({ ...props, teamHistoryMonths: 6 });
     const historic = contractCalls("team")[1];
-    expect(historic.url.searchParams.has("homeSummary")).toBe(false);
-    await act(async () => historic.job.resolve(contracts(team)));
-    expect(latest.teamEntries).toHaveLength(2);
+    expect(historic.url.searchParams.get("leaderboardMonths")).toBe("6");
+    await act(async () => historic.job.resolve(leaderboard()));
+    expect(latest.teamEntries).toEqual([]);
+    expect(latest.rangeLeaderboard).toEqual([leaderboardRow(1000)]);
     await render({ ...props, teamHistoryMonths: 0 });
     expect(contractCalls("team")).toHaveLength(2);
     expect(latest.monthlyLeaderboard?.[0].other).toBe(1000);
@@ -390,8 +394,8 @@ describe("home summaries independent of TIP completion", () => {
     await render({ ...props, teamHistoryMonths: 6 });
     const oldRange = contractCalls("team")[1];
     mocks.user.uid = "other-uid";
-    await act(async () => oldRange.job.resolve(contracts([entry("private-old-range", 4, 999)])));
-    expect(latest.teamEntries.some(item => item.id === "private-old-range")).toBe(false);
+    await act(async () => oldRange.job.resolve(leaderboard(999)));
+    expect(latest.rangeLeaderboard).toEqual([]);
     mocks.user.uid = "advisor-uid";
     await render({ ...props, teamHistoryMonths: 0 });
     await render({ ...props, teamHistoryMonths: 6 });

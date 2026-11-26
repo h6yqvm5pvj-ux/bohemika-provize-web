@@ -25,6 +25,7 @@ export type LifeSplitCommissionKind =
   | "unknown";
 
 export type GeneralCommissionKind =
+  | "investment"
   | "closing"
   | "tip"
   | "subsequent"
@@ -359,6 +360,7 @@ export type ManagerOverrideSummary = {
 
 export type PremiumStatementHistoryEntry = {
   changeReason?: "indexation";
+  source?: string | null;
   premiumKind?: string | null;
   statementPeriod?: string | null;
   anniversaryDate?: string | null;
@@ -398,6 +400,8 @@ export type ContractCommissionPayoutRecord = {
 };
 
 export type MatchedSystemContract = {
+  paymentFrequencyChanges?: import("@/app/lib/autoPaymentFrequency").PaymentFrequencyChange[] | null;
+  signedAnnualPremiumOverride?: number | null;
   premiumIndexationEnabled?: boolean | null;
   premiumIndexationHistory?: import("@/app/lib/domexNeuronPremiumHistory").DomexNeuronPremiumHistoryChange[] | null;
   confirmedLifePremiumChanges?: import("@/app/lib/lifePremiumIncrease").LifeStatementPremiumChange[] | null;
@@ -411,6 +415,7 @@ export type MatchedSystemContract = {
   clientName?: string | null;
   contractNumber?: string | null;
   position?: string | null;
+  payoutPositionOverride?: "poradce10" | null;
   effectivePosition?: string | null;
   timelinePosition?: string | null;
   commissionMode?: string | null;
@@ -433,6 +438,7 @@ export type MatchedSystemContract = {
   neonCoefficientSetOverrideAppliedAtMs?: number | null;
   neonCoefficientSetOverrideAppliedBy?: string | null;
   isRefresh?: boolean | null;
+  neonRefreshCareAnnualPremium?: number | null;
   refreshOriginalContractNumber?: string | null;
   refreshOriginalMissingInSystem?: boolean | null;
   requiresStatementRefresh?: boolean | null;
@@ -445,6 +451,7 @@ export type MatchedSystemContract = {
   refreshStatementResolvedStatementChronologyMs?: number | null;
   inputAmount?: number | null;
   calculationInputAmount?: number | null;
+  neonCorrection?: import("@/app/lib/neonCorrection").NeonCorrection | null;
   effectiveInputAmount?: number | null;
   previousInputAmount?: number | null;
   newInputAmount?: number | null;

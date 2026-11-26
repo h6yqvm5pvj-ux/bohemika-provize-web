@@ -26,6 +26,7 @@ import {
   calculateDomexNeuron,
   calculateFlexi,
   calculateKoopCestovko,
+  calculateKoopFit,
   calculateKoopFlotila,
   calculateKoopMajetekObcan,
   calculateKoopOdzam,
@@ -49,6 +50,7 @@ import {
   signedDateForCoefficientSetOverride,
 } from "@/app/lib/productFormulas/coefficientSets";
 import { normalizeNeonDurationYears } from "@/app/lib/productFormulas/neon";
+import { isRecordOnlyProduct } from "@/app/lib/productCatalog";
 
 export type CommissionCalculationInput = {
   productKey: Product;
@@ -57,6 +59,7 @@ export type CommissionCalculationInput = {
   contractSignedDateIso: string | null;
   commissionCoefficientSetOverride?: CommissionCoefficientSet | null;
   neonCoefficientSetOverride?: NeonCoefficientSet | null;
+  neonRefreshCareAnnualPremium?: number | null;
   inputAmount: number;
   frequencyRaw: PaymentFrequency;
   durationYears: number | null;
@@ -111,6 +114,11 @@ const normalizedDurationYears = (
 
 const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
   switch (product) {
+    case "investikaRealitniFond":
+    case "investikaEfektika":
+    case "investikaMonetika":
+    case "conseqInvest":
+      return ["annual"];
     case "conseqzenit":
       return ["monthly"];
     case "neon":
@@ -147,6 +155,7 @@ const allowedFrequenciesForProduct = (product: Product): PaymentFrequency[] => {
     case "cppPPRs":
       return ["quarterly", "semiannual", "annual"];
     case "cppcestovko":
+    case "cppAutoVozikZdarma":
     case "axacestovko":
     case "koopcestovko":
     case "maxcizinkomplex":
@@ -188,11 +197,13 @@ export function calculateCommission({
   contractSignedDateIso,
   commissionCoefficientSetOverride = null,
   neonCoefficientSetOverride = null,
+  neonRefreshCareAnnualPremium = null,
   inputAmount,
   frequencyRaw,
   durationYears,
   maxCizinKomplexVariant,
 }: CommissionCalculationInput): CommissionResultDTO | null {
+  if (isRecordOnlyProduct(productKey)) return { items: [], total: 0 };
   if (!position) return null;
 
   const safeAmount = Number.isFinite(inputAmount) ? Math.max(0, inputAmount) : 0;
@@ -232,7 +243,8 @@ export function calculateCommission({
         years,
         commissionMode,
         contractSignedDateIso,
-        normalizedNeonCoefficientSetOverride
+        normalizedNeonCoefficientSetOverride,
+        neonRefreshCareAnnualPremium
       );
     }
     case "flexi":
@@ -277,12 +289,14 @@ export function calculateCommission({
             : productKey === "cpphafan"
               ? calculateCppHafan(safeAmount, usedFrequency, position)
               : productKey === "koopodzam"
-                ? calculateKoopOdzam(safeAmount, usedFrequency, position)
+                ? calculateKoopOdzam(safeAmount, usedFrequency, position, coefficientSignedDateIso)
                 : productKey === "kooppmop"
                   ? calculateKoopPmop(safeAmount, usedFrequency, position)
                   : productKey === "zamex"
                     ? calculateZamex(safeAmount, usedFrequency, position)
-                    : calculateKoopMajetekObcan(safeAmount, usedFrequency, position);
+                    : productKey === "koopfit"
+                      ? calculateKoopFit(safeAmount, usedFrequency, position)
+                      : calculateKoopMajetekObcan(safeAmount, usedFrequency, position, coefficientSignedDateIso);
       const items = result.items.filter((item) =>
         (item.title ?? "").toLowerCase().includes("(z platby)")
       );

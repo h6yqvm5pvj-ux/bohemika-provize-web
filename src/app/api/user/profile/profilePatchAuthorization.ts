@@ -10,6 +10,7 @@ const IMPERSONATED_PROFILE_PATCH_KEYS = new Set([
   "fullName",
   "profileAvatar",
   "commissionMode",
+  "cashflowOfficeContributionEnabled",
   "agencyNumber",
   "ico",
   "phoneNumber",

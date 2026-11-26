@@ -506,6 +506,7 @@ export default function HomePage() {
     myEntries,
     teamEntries,
     monthlyLeaderboard,
+    rangeLeaderboard,
     hasTeam,
     myPremiums,
     teamPremiums,
@@ -1121,8 +1122,9 @@ export default function HomePage() {
 
   const leaderboardEntries: TeamLeaderboardEntry[] = useMemo(() => {
     if (!isManager || !hasTeam) return [];
-    if (lbRange === "month" && monthlyLeaderboard) {
-      return monthlyLeaderboard.filter(row => lbProductFilter === "life" ? row.hasLife : row.hasOther).map(row => ({
+    const rowsForPeriod = lbRange === "month" ? monthlyLeaderboard : rangeLeaderboard;
+    if (rowsForPeriod) {
+      return rowsForPeriod.filter(row => lbProductFilter === "life" ? row.hasLife : row.hasOther).map(row => ({
         email: row.email, name: cleanDisplayName(row.name) || nameFromEmail(row.email),
         totalPremium: lbProductFilter === "life" ? row.life : row.other,
       })).sort((a, b) => b.totalPremium - a.totalPremium);
@@ -1132,13 +1134,6 @@ export default function HomePage() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
-
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    sixMonthsAgo.setHours(0, 0, 0, 0);
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-    twelveMonthsAgo.setHours(0, 0, 0, 0);
 
     const lifeProducts: Product[] = [
       "neon",
@@ -1155,19 +1150,7 @@ export default function HomePage() {
       const signed = entrySignedDate(entry);
       if (!signed) continue;
 
-      // filtr rozsahu
-      if (lbRange === "month") {
-        if (
-          signed.getFullYear() !== currentYear ||
-          signed.getMonth() !== currentMonth
-        ) {
-          continue;
-        }
-      } else if (lbRange === "year") {
-        if (signed < twelveMonthsAgo) continue;
-      } else if (lbRange === "sixMonths") {
-        if (signed < sixMonthsAgo) continue;
-      }
+      if (signed.getFullYear() !== currentYear || signed.getMonth() !== currentMonth) continue;
 
       const pk = entry.productKey;
       const isLife =
@@ -1204,7 +1187,7 @@ export default function HomePage() {
       .sort((a, b) => b.totalPremium - a.totalPremium);
 
     return rows;
-  }, [isManager, hasTeam, teamEntries, monthlyLeaderboard, lbProductFilter, lbRange]);
+  }, [isManager, hasTeam, teamEntries, monthlyLeaderboard, rangeLeaderboard, lbProductFilter, lbRange]);
 
   const leaderboardLabel =
     lbProductFilter === "life"

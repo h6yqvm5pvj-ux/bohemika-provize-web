@@ -110,4 +110,45 @@ describe("parseSlaviaAutoPdf", () => {
       },
     });
   });
+
+  it("reads payment instructions, installment frequency and preserves the account prefix", async () => {
+    pdfState.pages = [[
+      "Návrh pojistné smlouvy č.:", "3700857975",
+      "Platební instrukce",
+      "Číslo účtu:", "000019-6017530267/0100",
+      "Variabilní symbol:", "3700857975",
+      "Výše splátky:", "2 814 Kč",
+      "Frekvence placení:", "1 x ročně",
+    ]];
+    await expect(parseSlaviaAutoPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "3700857975",
+      frequency: "annual",
+      amount: 2814,
+      paymentDetails: {
+        amount: 2814,
+        accountNumber: "000019-6017530267/0100",
+        variableSymbol: "3700857975",
+        dueDate: null,
+      },
+    });
+  });
+
+  it("extracts a birth number only from the policyholder section", async () => {
+    pdfState.pages = [[
+      "Pojistník:", "Rodné číslo:", "900101/1234", "Jméno a příjmení:", "Jana Testovací",
+      "Pojištěný řidič:", "Rodné číslo:", "850101/4321",
+    ]];
+    await expect(parseSlaviaAutoPdf(makePdfFile())).resolves.toMatchObject({
+      personalId: "900101/1234",
+      personalIdType: "birthNumber",
+    });
+  });
+
+  it("uses the policyholder company ID when no birth number is present", async () => {
+    pdfState.pages = [["Pojistník:", "IČO:", "01234567", "Pojištěný řidič:", "RČ:", "900101/1234"]];
+    await expect(parseSlaviaAutoPdf(makePdfFile())).resolves.toMatchObject({
+      personalId: "01234567",
+      personalIdType: "companyId",
+    });
+  });
 });

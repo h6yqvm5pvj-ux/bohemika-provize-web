@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { setContractSearchHandoff } from "@/app/lib/contractSearchHandoff";
+import { useAdminImpersonationState } from "@/app/lib/useAdminImpersonation";
 import {
   CONTACT_DIRECTORY_CHANGED_EVENT,
   OPEN_CONTACT_DIRECTORY_EVENT,
@@ -33,15 +35,12 @@ import { createContactSearchSession } from "./contactSearchSession";
 type ColleagueResult = {
   email: string;
   name: string;
-  managerEmail: string | null;
-  accountType: "advisor" | "tipster";
 };
 
 type ContractResult = {
   id: string;
   clientName: string | null;
   contractNumber: string | null;
-  productKey?: string | null;
 };
 
 type IntranetPostResult = {
@@ -65,12 +64,12 @@ type CachedSearchResults = {
 };
 
 type SearchResults = Omit<CachedSearchResults, "expiresAtMs"> & {
-  uid: string;
+  query: string;
   contacts: ContactSearchResult[];
 };
 
-const emptySearchResults = (uid: string): SearchResults => ({
-  uid, colleagues: [], contracts: [], posts: [], contacts: [],
+const emptySearchResults = (query = ""): SearchResults => ({
+  query, colleagues: [], contracts: [], posts: [], contacts: [],
 });
 
 type GlobalSearchCommandProps = {
@@ -80,9 +79,9 @@ type GlobalSearchCommandProps = {
   triggerClassName?: string;
 };
 
-const SEARCH_DEBOUNCE_MS = 70;
+const SEARCH_DEBOUNCE_MS = 200;
 const SEARCH_CACHE_TTL_MS = 60_000;
-const searchResultsCache = new Map<string, CachedSearchResults>();
+const SEARCH_CACHE_MAX_ENTRIES = 24;
 
 function SearchGroup({
   label,
@@ -141,8 +140,9 @@ function SearchResultButton({
 }
 
 export function GlobalSearchCommand(props: GlobalSearchCommandProps) {
-  // Remount the entire search state when accounts change, before any result renders.
-  return <AccountSearchCommand key={props.user.uid} {...props} />;
+  const impersonation = useAdminImpersonationState();
+  // Remount search before any result from the prior account or view can render.
+  return <AccountSearchCommand key={`${props.user.uid}:${impersonation?.email ?? ""}`} {...props} />;
 }
 
 function AccountSearchCommand({
@@ -153,18 +153,16 @@ function AccountSearchCommand({
 }: GlobalSearchCommandProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const progressResetTimerRef = useRef<number | null>(null);
+  const searchResultsCache = useRef(new Map<string, CachedSearchResults>());
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [activeQuery, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [searchProgress, setSearchProgress] = useState(0);
-  const [results, setResults] = useState<SearchResults>(() => emptySearchResults(user.uid));
+  const [results, setResults] = useState<SearchResults>(emptySearchResults);
   const [contactSession] = useState(createContactSearchSession);
   const [directoryVersion, setDirectoryVersion] = useState(0);
-  const belongsToCurrentUser = results.uid === user.uid;
-  const { colleagues, contracts, posts, contacts } = belongsToCurrentUser
-    ? results : emptySearchResults(user.uid);
-  const activeQuery = belongsToCurrentUser ? query : "";
+  const { colleagues, contracts, posts, contacts } = results.query === activeQuery
+    ? results : emptySearchResults();
 
   const normalizedQuery = normalizeGlobalSearch(activeQuery);
   const tools = useMemo(() => findToolSearchResults(activeQuery), [activeQuery]);
@@ -182,16 +180,18 @@ function AccountSearchCommand({
 
   const handleOpen = useCallback(() => {
     if (!open) {
-      contactSession.invalidate();
-      setResults(emptySearchResults(user.uid));
+      setResults(emptySearchResults());
     }
     const hasSearchQuery = normalizedQuery.length >= 2;
     setLoading(hasSearchQuery);
     setSearchProgress(hasSearchQuery ? 8 : 0);
     setOpen(true);
-  }, [contactSession, normalizedQuery, open, user.uid]);
+  }, [normalizedQuery, open]);
 
-  useEffect(() => () => contactSession.invalidate(), [contactSession]);
+  useEffect(() => {
+    if (!open) return;
+    return () => contactSession.invalidate();
+  }, [contactSession, open]);
 
   useEffect(() => {
     const invalidateContacts = () => {
@@ -202,15 +202,6 @@ function AccountSearchCommand({
     window.addEventListener(CONTACT_DIRECTORY_CHANGED_EVENT, invalidateContacts);
     return () => window.removeEventListener(CONTACT_DIRECTORY_CHANGED_EVENT, invalidateContacts);
   }, [contactSession]);
-
-  useEffect(
-    () => () => {
-      if (progressResetTimerRef.current !== null) {
-        window.clearTimeout(progressResetTimerRef.current);
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -246,68 +237,69 @@ function AccountSearchCommand({
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const cache = searchResultsCache.current;
+    let progressResetTimer: number | undefined;
     const timer = window.setTimeout(() => {
       void (async () => {
         setLoading(true);
         setSearchProgress(18);
-        const encodedQuery = encodeURIComponent(activeQuery.trim());
-        const cacheKey = `${user.uid}:${normalizedQuery}`;
-        const cacheEntry = searchResultsCache.get(cacheKey);
+        const query = activeQuery.trim();
+        const cacheEntry = cache.get(query);
         const cached = cacheEntry && cacheEntry.expiresAtMs > Date.now() ? cacheEntry : null;
+        let results = emptySearchResults(activeQuery);
 
         let completedSources = 0;
-        const reportSourceProgress = () => {
-          if (cancelled) return;
-          completedSources += 1;
+        const publish = <Key extends keyof Omit<SearchResults, "query">>(
+          key: Key, request: Promise<SearchResults[Key]>,
+        ) => request.then(rows => {
+          if (signal.aborted) return;
+          results = { ...results, [key]: rows };
+          setResults(results);
+        }).finally(() => {
+          if (signal.aborted) return;
+          completedSources++;
           setSearchProgress(Math.min(92, 18 + completedSources * 19));
-        };
-        const [usersResult, contractsResult, postsResult, contactsResult] = await Promise.allSettled([
-          (cached ? Promise.resolve({ ok: true, users: cached.colleagues }) : fetchAuthedJsonOrThrow<UserSearchResponse>(
-            user,
-            `/api/user/search?q=${encodedQuery}`
-          )).finally(reportSourceProgress),
-          (cached ? Promise.resolve({ ok: true, contracts: cached.contracts }) : fetchAuthedJsonOrThrow<ContractSearchResponse>(
-            user,
-            `/api/contracts?scope=my&shape=contractList&q=${encodedQuery}&limit=6`
-          )).finally(reportSourceProgress),
-          (cached ? Promise.resolve({ ok: true, posts: cached.posts }) : fetchAuthedJsonOrThrow<IntranetSearchResponse>(
-            user,
-            `/api/intranet/wall?q=${encodedQuery}&limit=6`
-          )).finally(reportSourceProgress),
-          contactSession.load(user.uid, async () => {
-            const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(user, "/api/contacts");
-            return Array.isArray(payload.contacts) ? payload.contacts : [];
-          }).finally(reportSourceProgress),
-        ]);
-        if (cancelled) return;
-        const nextColleagues = usersResult.status === "fulfilled" ? usersResult.value.users.slice(0, 5) : [];
-        const nextContracts =
-          contractsResult.status === "fulfilled" ? contractsResult.value.contracts.slice(0, 6) : []
-        const nextPosts = postsResult.status === "fulfilled" ? postsResult.value.posts.slice(0, 5) : [];
-        const nextContacts =
-          contactsResult.status === "fulfilled"
-            ? findContactSearchResults(contactsResult.value, activeQuery)
-            : [];
-        searchResultsCache.set(cacheKey, {
-          expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS,
-          colleagues: nextColleagues,
-          contracts: nextContracts,
-          posts: nextPosts,
         });
-        setResults({ uid: user.uid, colleagues: nextColleagues, contracts: nextContracts,
-          posts: nextPosts, contacts: nextContacts });
+        const textRequest: RequestInit = {
+          method: "POST", body: query, headers: { "Content-Type": "text/plain" }, signal,
+        };
+        const [usersResult, contractsResult, postsResult] = await Promise.allSettled([
+          publish("colleagues", cached ? Promise.resolve(cached.colleagues) :
+            fetchAuthedJsonOrThrow<UserSearchResponse>(user, "/api/user/search", textRequest)
+              .then(({ users }) => users.slice(0, 5))),
+          publish("contracts", cached ? Promise.resolve(cached.contracts) :
+            fetchAuthedJsonOrThrow<ContractSearchResponse>(user, "/api/contracts/list", {
+              method: "POST", signal,
+              body: new URLSearchParams({ scope: "my", shape: "search", q: query }),
+              headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+            }).then(({ contracts }) => contracts.slice(0, 6))),
+          publish("posts", cached ? Promise.resolve(cached.posts) :
+            fetchAuthedJsonOrThrow<IntranetSearchResponse>(user, "/api/intranet/wall?search=1", textRequest)
+              .then(({ posts }) => posts.slice(0, 5))),
+          publish("contacts", contactSession.load(user.uid, async directorySignal => {
+            const payload = await fetchAuthedJsonOrThrow<ContactDirectoryResponse>(user, "/api/contacts", { signal: directorySignal });
+            return Array.isArray(payload.contacts) ? payload.contacts : [];
+          }).then(contacts => findContactSearchResults(contacts, query))),
+        ]);
+        if (signal.aborted) return;
+        if (!cached && [usersResult, contractsResult, postsResult].every(result => result.status === "fulfilled")) {
+          const { colleagues, contracts, posts } = results;
+          cache.delete(query);
+          if (cache.size >= SEARCH_CACHE_MAX_ENTRIES) cache.delete(cache.keys().next().value!);
+          cache.set(query, { expiresAtMs: Date.now() + SEARCH_CACHE_TTL_MS, colleagues, contracts, posts });
+        }
         setSearchProgress(100);
         setLoading(false);
-        progressResetTimerRef.current = window.setTimeout(() => {
-          if (!cancelled) setSearchProgress(0);
-        }, 320);
+        progressResetTimer = window.setTimeout(() => setSearchProgress(0), 320);
       })();
     }, SEARCH_DEBOUNCE_MS);
 
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
+      window.clearTimeout(progressResetTimer);
     };
   }, [activeQuery, contactSession, directoryVersion, normalizedQuery, open, user]);
 
@@ -336,13 +328,14 @@ function AccountSearchCommand({
     router.push(`/?${search.toString()}`);
   };
 
+  const closeAndSearchContracts = (query: string) => {
+    setContractSearchHandoff(user.uid, query);
+    closeAndNavigate("/smlouvy");
+  };
+
   const handleQueryChange = (value: string) => {
     setQuery(value.slice(0, 120));
     const hasSearchQuery = normalizeGlobalSearch(value).length >= 2;
-    if (progressResetTimerRef.current !== null) {
-      window.clearTimeout(progressResetTimerRef.current);
-      progressResetTimerRef.current = null;
-    }
     setLoading(hasSearchQuery);
     setSearchProgress(hasSearchQuery ? 8 : 0);
   };
@@ -370,7 +363,7 @@ function AccountSearchCommand({
         ) : null}
       </button>
 
-      {open && belongsToCurrentUser ? (
+      {open ? (
         <div
           className={`fixed inset-x-0 bottom-0 top-0 z-[100] flex items-start justify-center px-3 pt-4 sm:px-6 sm:pt-6 ${
             dialogBelowDesktopHeader ? "lg:top-[68px]" : "lg:top-0"
@@ -449,7 +442,7 @@ function AccountSearchCommand({
                       title={client}
                       subtitle="Klient ve smlouvách"
                       tone="sky"
-                      onClick={() => closeAndNavigate(`/smlouvy?globalSearch=${encodeURIComponent(client)}`)}
+                      onClick={() => closeAndSearchContracts(client)}
                     />
                   ))}
                 </SearchGroup>
@@ -458,7 +451,7 @@ function AccountSearchCommand({
               {contracts.length ? (
                 <SearchGroup label="Smlouvy">
                   {contracts.map((contract) => {
-                    const searchValue = contract.contractNumber || contract.clientName || query.trim();
+                    const searchValue = contract.contractNumber ? `=${contract.contractNumber}` : contract.clientName || activeQuery.trim();
                     return (
                       <SearchResultButton
                         key={contract.id}
@@ -466,7 +459,7 @@ function AccountSearchCommand({
                         title={contract.contractNumber ? `Smlouva ${contract.contractNumber}` : "Smlouva"}
                         subtitle={contract.clientName || "Bez uvedeného klienta"}
                         tone="violet"
-                        onClick={() => closeAndNavigate(`/smlouvy?globalSearch=${encodeURIComponent(searchValue)}`)}
+                        onClick={() => closeAndSearchContracts(searchValue)}
                       />
                     );
                   })}

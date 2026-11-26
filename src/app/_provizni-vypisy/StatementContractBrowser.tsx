@@ -30,7 +30,7 @@ export const STATEMENT_REVIEW_FILTERS = [
 ] as const;
 
 const STATUS_ORDER: Record<StatementReviewStatus, number> = {
-  "commission-error": 0, issues: 1, increase: 2, decrease: 3, higher: 4, ok: 5, corrected: 6, review: 7, unpaired: 8,
+  "commission-error": 0, issues: 1, increase: 2, decrease: 3, higher: 4, ok: 5, "commission-ok": 5, corrected: 6, review: 7, unpaired: 8,
 };
 export function sortStatementBrowserItems<T extends StatementBrowserItem>(items: T[]): T[] {
   const status = (item: T) => item.review?.status ?? (item.unpaired ? "unpaired" : item.issueCount > 0 ? "issues" : "review");

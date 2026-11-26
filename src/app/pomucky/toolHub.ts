@@ -4,6 +4,7 @@ export const TOOL_HUB_TOOL_KEYS = [
   "argumenty",
   "kontakty",
   "dokumenty",
+  "dokumenty-pro-klienta",
   "zaznam",
   "vypoved-smlouvy",
   "jak-stiham-vypoved-smlouvy",

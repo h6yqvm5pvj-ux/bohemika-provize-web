@@ -25,6 +25,12 @@ import {
 import { createStatementProductMappingIndex } from "./statementProductMap";
 
 describe("commission statement parsing helpers", () => {
+  it.each(["INVESTIKA", "EFEKTIKA", "MONETIKA", "CON_INV2_C"])("treats %s payments as investment receipts", product => {
+    for (const code of ["BC180", "C101", "OTHER"]) {
+      expect(classifyGeneralCommissionCode(product, code)).toMatchObject({ kind: "investment" });
+    }
+  });
+
   it.each(["TU_JN", "TU_ZP", "TU_ZS"])("keeps retired statement product %s outside insurance classifications", product => {
     expect(resolveStatementProduct(product)).toMatchObject({ rawCode: product, productKey: null, category: "unknown" });
     for (const code of ["A1", "A2", "A3", "B1"]) {
@@ -237,6 +243,17 @@ describe("commission statement parsing helpers", () => {
       category: "life",
       usesAnnualPremiumBase: true,
     });
+  });
+
+  it("classifies CPP_N_INVS as life insurance", () => {
+    expect(resolveStatementProduct("CPP_N_INVS")).toMatchObject({
+      rawCode: "CPP_N_INVS",
+      productKey: "neon",
+      category: "life",
+      usesAnnualPremiumBase: true,
+    });
+    expect(isLifeSplitProductCode("CPP_N_INVS")).toBe(true);
+    expect(isInvestmentSectionProductCode("CPP_N_INVS")).toBe(false);
   });
 
   it("puts COLOS_NEMO statement rows into the investment section", () => {
@@ -488,5 +505,32 @@ describe("commission statement parsing helpers", () => {
     expect(classifyLifeSplitCommissionCode("NVZ1")).toMatchObject({
       kind: "increase",
     });
+  });
+});
+
+describe("deferred increase statement components", () => {
+  it.each([["NB3601", "B3601", 3], ["NB4801", "B4801", 4]] as const)("keeps %s separate from NB0301", (code, component, years) => {
+    expect(managerCommissionCodeForSystemItems(code)).toBe(component);
+    const aliases = commissionCodeAliasesForPayoutHistory(code);
+    expect(aliases).toContain(component);
+    expect(aliases).not.toContain("B0301");
+    expect(classifyLifeSplitCommissionCode(code)).toEqual({ kind: "increase", label: `Provize za navýšení po ${years} letech` });
+    expect(classifyGeneralCommissionCode("CPP_N_LIFE", code)).toEqual({ kind: "increase", label: `Provize za navýšení po ${years} letech` });
+    expect(expectedPremiumIncreaseAmountFromItems([
+      { code: "B0301", title: "Provize B0301", amount: 25 },
+      { code: component, title: `Provize po ${years} letech`, amount: 75 },
+    ], [{ type: code }])).toBe(75);
+  });
+  it("preserves unknown NB codes without mapping them to the card commission", () => {
+    expect(managerCommissionCodeForSystemItems("NB999")).toBe("NB999");
+    expect(commissionCodeAliasesForPayoutHistory("NB999")).not.toContain("B0301");
+    expect(expectedPremiumIncreaseAmountFromItems([
+      { code: "B0301", title: "Provize B0301", amount: 25 },
+    ], [{ type: "NB999" }])).toBeNull();
+  });
+  it("does not claim an expected zero when the corresponding deferred item is missing", () => {
+    expect(expectedPremiumIncreaseAmountFromItems([
+      { code: "B0301", title: "Provize B0301", amount: 25 },
+    ], [{ type: "NB3601" }])).toBeNull();
   });
 });

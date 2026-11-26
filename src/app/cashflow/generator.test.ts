@@ -1,9 +1,167 @@
 import { describe, expect, it } from "vitest";
 
+import { FLEXI_RENOVATION_MISSING_BASE } from "@/app/lib/flexiRenovation";
+import { calculateFlexi } from "@/app/lib/productFormulas/flexi";
 import { generateCashflow } from "./generator";
 import type { EntryDoc } from "./types";
 
 describe("generateCashflow", () => {
+  it("matches the A501 receipt without a duplicate forecast for an older MAXIMA foreign nationals policy", () => {
+    const owner = "advisor@example.test";
+    const entry: EntryDoc = {
+      id: "synthetic-foreigners", productKey: "maxcizinkomplex", userEmail: owner,
+      policyStartDate: "2026-06-01", contractSignedDate: "2026-05-30",
+      items: [{ title: "💸 Okamžitá provize", amount: 175.475 }],
+      commissionPayouts: [{ key: "receipt", code: "A501", amount: 175.48, status: "paid", writtenBy: owner, payoutMonthKey: "2026-07" }],
+    };
+    const rows = generateCashflow([entry], 2, owner, new Date(2026, 7, 1));
+    expect(rows).toEqual([expect.objectContaining({
+      commissionCode: "A501", commissionPayoutKey: "receipt", payoutStatus: "paid",
+      amount: 175.48, predictedAmount: 175.475,
+    })]);
+    expect(rows[0].isStatementOnly).toBeFalsy();
+  });
+
+  it("keeps the ČPP KOMPLEX acquisition schedule and reprices renewals from the amendment", () => {
+    const owner = "advisor@example.test";
+    const entry: EntryDoc = { id: "komplex-amendment", productKey: "cppPPRs", userEmail: owner,
+      policyStartDate: "2024-01-15", contractSignedDate: "2024-01-14", frequencyRaw: "annual", inputAmount: 10000,
+      items: [{ title: "Okamžitá provize (z platby)", code: "A101", amount: 800 },
+        { title: "Následná provize (z platby)", code: "B101", amount: 800 }],
+      commissionPayouts: [{ key: "acquisition", code: "A101", amount: 800, status: "paid", writtenBy: owner, payoutMonthKey: "2024-2" }],
+      paymentFrequencyChanges: [
+        { effectiveDate: "2024-06-01", frequency: "semiannual", annualPremium: 12000, baseAnnualPremium: 10000 },
+        { effectiveDate: "2026-01-15", frequency: "semiannual", annualPremium: 9000, baseAnnualPremium: 10000 },
+      ] };
+    const rows = generateCashflow([entry], 2, owner, new Date(2025, 0, 1));
+    expect(rows.filter(row => row.commissionCode?.startsWith("A"))).toEqual([expect.objectContaining({
+      commissionCode: "A101", amount: 800, payoutStatus: "paid", frequency: "annual", commissionPayoutKey: "acquisition",
+    })]);
+    expect(rows.slice(1, 5).map(row => [row.commissionCode, row.commissionPeriodStart, row.amount, row.frequency])).toEqual([
+      ["B101", "2025-01-15", 480, "semiannual"], ["B102", "2025-07-15", 480, "semiannual"],
+      ["B103", "2026-01-15", 360, "semiannual"], ["B104", "2026-07-15", 360, "semiannual"],
+    ]);
+  });
+
+  it.each(["standard", "accelerated"] as const)("keeps the normal FLEXI %s dates and codes with an unknown amount", commissionMode => {
+    const entry: EntryDoc = {
+      id: "flexi-renovation", productKey: "flexi", position: "poradce4", commissionMode,
+      contractSignedDate: "2026-10-29", policyStartDate: "2026-11-01", durationYears: 7, frequencyRaw: "monthly",
+      items: calculateFlexi(750, "poradce4", commissionMode, 7).items,
+    };
+    const calendar = new Date(2026, 10, 24);
+    const calculated = generateCashflow([entry], 10, undefined, calendar);
+    const pending = generateCashflow([{
+      ...entry, commissionCalculationStatus: FLEXI_RENOVATION_MISSING_BASE,
+    }], 10, undefined, calendar);
+    const schedule = (items: ReturnType<typeof generateCashflow>) => items.map(item =>
+      [item.commissionCode, item.date, item.commissionPeriodStart]);
+    expect(schedule(pending)).toEqual(schedule(calculated));
+    expect(pending.map(item => item.commissionCode)).toEqual([
+      "A101", "B0301", ...(commissionMode === "accelerated" ? ["B36_HALF"] : []), "B36", "B48", "B101", "B102",
+    ]);
+    expect(pending.every(item => item.amountUnknown && item.amount === 0 && item.predictedAmount === null)).toBe(true);
+    const short = { ...entry, durationYears: 2, commissionCalculationStatus: FLEXI_RENOVATION_MISSING_BASE };
+    expect(generateCashflow([short], 10, undefined, calendar).map(item => item.commissionCode))
+      .toEqual(["A101", "B0301", ...(commissionMode === "accelerated" ? ["B36_HALF"] : [])]);
+  });
+
+  it("preserves portal links on forecasts and statement-only receipts", () => {
+    const links = { maxxContractDetailUrl: "https://sjednatel.bohemiaservis.cz/detail.aspx?sml=123456",
+      extranetContractDetailUrl: "https://sjednatel.bohemiaservis.cz/redirect_extranet.aspx?type=detail&p_EntityTypeID=43&p_EntityID=123456" };
+    const entry: EntryDoc = { id: "portal-contract", productKey: "cppAuto", userEmail: "advisor@example.test",
+      policyStartDate: "2026-11-01", frequencyRaw: "annual", ...links,
+      items: [{ title: "Okamžitá provize", code: "A101", amount: 332 }],
+      commissionPayouts: [{ key: "cancelled", code: "A101", amount: -20, status: "storno", payoutMonthKey: "2026-11", writtenBy: "advisor@example.test" }],
+    };
+    const rows = generateCashflow([entry], 2, "advisor@example.test", new Date(2026, 10, 1));
+    expect(rows.some(row => row.isStatementOnly)).toBe(true);
+    expect(rows.some(row => !row.isStatementOnly)).toBe(true);
+    for (const row of rows) expect(row).toMatchObject(links);
+  });
+  it.each(["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"] as const)("excludes %s even if financial data is injected", productKey => {
+    const entry: EntryDoc = { id: "investment", productKey, userEmail: "advisor@example.test",
+      frequencyRaw: "annual", policyStartDate: "2026-11-01", inputAmount: 10_000,
+      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }],
+      commissionPayouts: [{ key: "unexpected", code: "A101", amount: 1000, status: "paid", payoutMonthKey: "2026-11", writtenBy: "advisor@example.test" }],
+    };
+    expect(generateCashflow([entry], 10, "advisor@example.test", new Date(2026, 10, 17))).toEqual([]);
+  });
+  it("excludes free trailer contracts even if financial data is present", () => {
+    const entry: EntryDoc = { id: "free-trailer", productKey: "cppAutoVozikZdarma", userEmail: "advisor@example.test",
+      frequencyRaw: "annual", policyStartDate: "2026-11-01", inputAmount: 10_000,
+      items: [{ title: "Okamžitá provize", code: "A101", amount: 1000 }],
+      commissionPayouts: [{ key: "unexpected", code: "A101", amount: 1000, status: "paid", payoutMonthKey: "2026-11", writtenBy: "advisor@example.test" }],
+    };
+    expect(generateCashflow([entry], 10, "advisor@example.test", new Date(2026, 10, 17))).toEqual([]);
+  });
+  describe("DOMEX commission installments", () => {
+    const fixture = (frequencyRaw: "annual" | "semiannual"): EntryDoc => ({
+      id: "domex-installments",
+      productKey: "domex",
+      frequencyRaw,
+      policyStartDate: new Date(2025, 6, 31),
+      contractSignedDate: new Date(2025, 6, 20),
+      items: [
+        { title: "💸 Okamžitá provize A101 (z platby)", code: "A101", amount: 100 },
+        { title: "🔁 Následná provize (z platby)", code: "B101-B102", amount: 50 },
+      ],
+    });
+
+    it.each([
+      ["annual", ["A101", "B101", "B102", "B103"], ["2025-07-31", "2026-07-31", "2027-07-31", "2028-07-31"]],
+      ["semiannual", ["A101", "A102", "B101", "B102"], ["2025-07-31", "2026-01-31", "2026-07-31", "2027-01-31"]],
+    ] as const)("switches %s installments at the first insured anniversary", (frequency, expectedCodes, expectedPeriods) => {
+      const rows = generateCashflow([fixture(frequency)], 4, undefined, new Date(2025, 6, 1));
+
+      expect(rows.slice(0, expectedCodes.length).map(row => row.commissionCode)).toEqual(expectedCodes);
+      expect(rows.slice(0, expectedPeriods.length).map(row => row.commissionPeriodStart)).toEqual(expectedPeriods);
+    });
+  });
+
+  it("keeps a monthly auto installment before the insured anniversary in the A sequence", () => {
+    const entry: EntryDoc = {
+      id: "auto-installments",
+      productKey: "cppAuto",
+      frequencyRaw: "monthly",
+      policyStartDate: new Date(2025, 6, 31),
+      contractSignedDate: new Date(2025, 6, 20),
+      items: [
+        { title: "🚗 Okamžitá provize", code: "A101", amount: 100 },
+        { title: "🔁 Následná provize", code: "B101", amount: 50 },
+      ],
+    };
+    const rows = generateCashflow([entry], 2, undefined, new Date(2025, 6, 1));
+
+    expect(rows.slice(0, 14).map(row => row.commissionCode)).toEqual([
+      ...Array.from({ length: 12 }, (_, index) => `A${String(101 + index)}`),
+      "B101", "B102",
+    ]);
+    expect(rows[11]?.commissionPeriodStart).toBe("2026-06-30");
+    expect(rows[12]?.commissionPeriodStart).toBe("2026-07-31");
+  });
+
+  it("switches annual property payments to the subsequent amount at the insured anniversary", () => {
+    const entry: EntryDoc = {
+      id: "maxdomov-installments",
+      productKey: "maxdomov",
+      frequencyRaw: "annual",
+      policyStartDate: new Date(2025, 6, 31),
+      contractSignedDate: new Date(2025, 6, 20),
+      items: [
+        { title: "💸 Okamžitá provize (z platby)", code: "A101", amount: 100 },
+        { title: "🔁 Následná provize (z platby)", code: "B101", amount: 50 },
+      ],
+    };
+    const rows = generateCashflow([entry], 3, undefined, new Date(2025, 6, 1));
+
+    expect(rows.slice(0, 3).map(row => [row.amount, row.commissionPeriodStart])).toEqual([
+      [100, "2025-07-31"],
+      [50, "2026-07-31"],
+      [50, "2027-07-31"],
+    ]);
+  });
+
   it.each(["comfortcc", " COMFORTCC "])("ignores retired cached product %s before generic and statement payout handling", productKey => {
     const entry: EntryDoc = {
       id: "retired-contract",
@@ -150,6 +308,23 @@ describe("generateCashflow", () => {
         commissionPayoutKey: "paid-life",
       });
     });
+  });
+
+  it("settles only one payment period when a product reuses a code across installments", () => {
+    const entry: EntryDoc = {
+      id: "reused-code", productKey: "maxdomov", frequencyRaw: "quarterly",
+      policyStartDate: "2025-01-01", contractSignedDate: "2025-01-01",
+      items: [{ title: "Okamžitá provize", amount: 100, code: "A101" }],
+      commissionPayouts: [{ code: "A101", amount: 17, payoutMonthKey: "2025-02" }],
+    };
+    const acquisition = generateCashflow([entry], 1, undefined, new Date(2025, 0, 1))
+      .filter(item => item.commissionCode === "A101");
+    expect(acquisition.filter(item => item.payoutStatus === "paid")).toEqual([
+      expect.objectContaining({ amount: 17, date: new Date(2025, 1, 25), commissionPeriodStart: "2025-01-01" }),
+    ]);
+    expect(acquisition.filter(item => item.payoutStatus !== "paid").map(item => item.commissionPeriodStart)).toEqual(
+      ["2025-04-01", "2025-07-01", "2025-10-01"],
+    );
   });
 
   it("keeps life anniversary commissions tied to the policy start", () => {

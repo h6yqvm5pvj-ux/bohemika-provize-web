@@ -28,6 +28,16 @@ describe("shared statement review for badges, sorting and filters", () => {
     expect(statementContractReview({ ...clean, comparisons: [{ status: "missing_expected" }] })).toMatchObject({ status: "commission-error", verified: false });
   });
 
+  it("labels a matching commission separately when a life base difference is informational", () => {
+    const baseOnly = { ...clean, baseMismatchIsInformational: true, baseComparisons: [{ annualDifference: -1200 }] };
+    expect(statementContractReview(baseOnly)).toMatchObject({ status: "commission-ok", verified: false,
+      summary: { label: "Provize sedí", tone: "ok" } });
+    expect(statementContractReview({ ...baseOnly, issueCount: 1 })).toMatchObject({ status: "issues" });
+    expect(statementContractReview({ ...baseOnly, hasWarnings: true })).toMatchObject({ status: "review" });
+    expect(statementContractReview({ ...baseOnly, comparisons: [{ status: "diff" }] })).toMatchObject({ status: "commission-error" });
+    expect(statementContractReview({ ...baseOnly, baseMismatchIsInformational: false })).toMatchObject({ status: "review" });
+  });
+
   it("accepts a higher payment as a positive result while retaining its actual difference", () => {
     const higher = { status: "diff" as const, expectedAmount: 100, statementAmount: 140 };
     expect(statementContractReview({ ...clean, comparisons: [higher] })).toMatchObject({ status: "higher", hasCommissionError: false,

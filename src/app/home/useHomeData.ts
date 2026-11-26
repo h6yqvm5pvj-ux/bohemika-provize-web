@@ -1,7 +1,8 @@
 import type { HomeProductionSummary, MonthlyLeaderboardRow } from "./productionSummary";
-import { isHomeProductionSummary } from "./productionSummary";
+import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { isHomeProductionSummary, isLeaderboardRows } from "./productionSummary";
 import { startHomeTiming } from "./homePerformance";
-import { useCalendarMonth } from "./useCalendarMonth";
+import { useCalendarDay } from "./useCalendarMonth";
 import { isInheritedContract } from "@/app/lib/inheritedContracts";
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -72,6 +73,7 @@ type HomeCachePayload = {
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
   monthlyLeaderboard: MonthlyLeaderboardRow[] | null;
+  rangeLeaderboard: MonthlyLeaderboardRow[];
   hasTeam: boolean;
   myPremiums: ProductionPremiums;
   teamPremiums: ProductionPremiums;
@@ -92,6 +94,7 @@ export type HomeDataState = {
   myEntries: EntryDoc[];
   teamEntries: EntryDoc[];
   monthlyLeaderboard: MonthlyLeaderboardRow[] | null;
+  rangeLeaderboard: MonthlyLeaderboardRow[];
   hasTeam: boolean;
   myPremiums: ProductionPremiums;
   teamPremiums: ProductionPremiums;
@@ -169,12 +172,12 @@ type UserProfileApiResponse = {
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 // Older summaries and history may include products that are no longer supported.
-const HOME_CACHE_VERSION = "v9-home-insurance-only";
+const HOME_CACHE_VERSION = "v10-home-leaderboard";
 const homeDataCache: Record<string, { ts: number; payload: HomeCachePayload }> = {};
 const TEAM_HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamHistoryRangeCache = new Map<
   string,
-  { ts: number; entries: EntryDoc[] }
+  { ts: number; rows: MonthlyLeaderboardRow[] }
 >();
 
 export const invalidateHomeCache = (email?: string | null) => {
@@ -212,107 +215,23 @@ const normalizeCursorToken = (
 const normalizeTeamHistoryMonths = (months: number): number =>
   Math.max(0, Math.min(12, Math.floor(months)));
 
-const teamHistoryRangeCacheKey = (email: string, months: number, uid: string): string => {
-  const now = new Date();
-  return `${email.toLowerCase()}|${HOME_CACHE_VERSION}|${uid}|${now.getFullYear()}-${now.getMonth()}|${normalizeTeamHistoryMonths(months)}`;
-};
+const teamHistoryRangeCacheKey = (email: string, months: number, uid: string, day: string) =>
+  `${email.toLowerCase()}|${HOME_CACHE_VERSION}|${uid}|${day}|${months}`;
 
-const fetchTeamHistoryRange = async (
-  email: string,
-  months: number,
-  signal: AbortSignal
-): Promise<EntryDoc[]> => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error("Nejsi přihlášený.");
-
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  const safeMonths = normalizeTeamHistoryMonths(months);
-  const rangeStart =
-    safeMonths > 0
-      ? new Date(currentYear, currentMonth - safeMonths, 1)
-      : new Date(currentYear, currentMonth - 1, 1);
-  const rangeEnd = new Date(currentYear, currentMonth + 1, 1);
-  const rangeStartMs = rangeStart.getTime();
-  let bearerToken = await currentUser.getIdToken();
-  const entries: EntryDoc[] = [];
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  let hasMore = true;
-  let pages = 0;
-
-  while (hasMore && pages < 60) {
-    if (signal.aborted) throw new DOMException("Home request cancelled", "AbortError");
-    const params = new URLSearchParams({
-      scope: "team",
-      shape: "home",
-      limit: "50",
-      signedFrom: String(rangeStartMs),
-    });
-    if (cursor) params.set("cursor", cursor);
-
-    const requestWithToken = async (token: string) =>
-      fetch(`/api/contracts/list?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-        signal,
-      });
-
-    let response = await requestWithToken(bearerToken);
-    if (response.status === 401) {
-      bearerToken = await currentUser.getIdToken(true);
-      response = await requestWithToken(bearerToken);
-    }
-
-    const payload = (await response.json()) as ContractsApiResponse;
-    if (!response.ok || payload.ok === false) {
-      const error = new Error(
-        payload.error || "Nepodařilo se načíst historii týmové produkce."
-      ) as Error & { status?: number };
-      error.status = response.status;
-      throw error;
-    }
-
-    pages += 1;
-    const chunk = payload.contracts ?? [];
-    if (chunk.length === 0) break;
-
-    let oldestTsOnPage: number | null = null;
-    chunk.forEach((item) => {
-      if (isRetiredProduct(item.productKey)) return;
-      const owner = (
-        item.adviserEmail ?? item.userEmail ?? email
-      ).toLowerCase();
-      const id = String(item.id ?? "").trim();
-      if (!owner || !id) return;
-
-      const key = `${owner}___${id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-
-      const mapped: EntryDoc = {
-        ...item,
-        id,
-        userEmail: owner,
-      };
-      const signed = entrySignedDate(mapped);
-      if (!signed || signed < rangeStart || signed >= rangeEnd) return;
-
-      entries.push(mapped);
-      const signedTs = signed.getTime();
-      if (oldestTsOnPage == null || signedTs < oldestTsOnPage) {
-        oldestTsOnPage = signedTs;
-      }
-    });
-
-    cursor = normalizeCursorToken(payload.nextCursorToken, payload.nextCursor);
-    hasMore = Boolean(payload.hasMore) && Boolean(cursor);
-    if (oldestTsOnPage != null && oldestTsOnPage < rangeStartMs) break;
-  }
-
-  return entries;
-};
+async function fetchTeamLeaderboard(months: number, signal: AbortSignal, force = false) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Nejsi přihlášený.");
+  const params = new URLSearchParams({
+    scope: "team", shape: "home", leaderboardMonths: String(months),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+  if (force) params.set("homeRefresh", "1");
+  const data = await fetchAuthedJsonOrThrow<{ ok: boolean; leaderboard: unknown }>(
+    user, `/api/contracts/list?${params}`, { signal }
+  );
+  if (!data?.ok || !isLeaderboardRows(data.leaderboard)) throw new Error("Neplatný souhrn žebříčku.");
+  return data.leaderboard;
+}
 
 export function useHomeData({
   email,
@@ -321,10 +240,13 @@ export function useHomeData({
   initialHasTeam = false,
   reloadKey = 0,
 }: UseHomeDataOptions): HomeDataState {
-  const calendarMonth = useCalendarMonth();
+  const calendarDay = useCalendarDay();
+  const calendarMonth = calendarDay.slice(0, calendarDay.lastIndexOf("-"));
+  const leaderboardDay = teamHistoryMonths ? calendarDay : "";
   const [userMeta, setUserMeta] = useState<UserMeta | null>(null);
   const [myEntries, setMyEntries] = useState<EntryDoc[]>([]);
   const [teamEntries, setTeamEntries] = useState<EntryDoc[]>([]);
+  const [rangeLeaderboard, setRangeLeaderboard] = useState<MonthlyLeaderboardRow[]>([]);
   const [monthlyLeaderboard, setMonthlyLeaderboard] = useState<MonthlyLeaderboardRow[] | null>(null);
   const [hasTeam, setHasTeam] = useState(false);
   const [myPremiums, setMyPremiums] = useState<ProductionPremiums>({ lifeMonthly: 0, otherAnnual: 0 });
@@ -365,6 +287,7 @@ export function useHomeData({
     setMyEntries([]);
     setTeamEntries([]);
     setMonthlyLeaderboard(null);
+    setRangeLeaderboard([]);
     setHasTeam(false);
     setMyPremiums({ lifeMonthly: 0, otherAnnual: 0 });
     setTeamPremiums({ lifeMonthly: 0, otherAnnual: 0 });
@@ -413,14 +336,13 @@ export function useHomeData({
         return;
       }
       const finishLeaderboard = startHomeTiming("leaderboard");
-      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths, uid);
+      const cacheKey = teamHistoryRangeCacheKey(email, safeMonths, uid, leaderboardDay);
       const cached = teamHistoryRangeCache.get(cacheKey);
 
-      setTeamEntries(cached?.entries ?? []);
+      setRangeLeaderboard(cached?.rows ?? []);
       setHistoryUpdatedAt(cached?.ts ?? null);
       if (cached && Date.now() - cached.ts < TEAM_HISTORY_CACHE_TTL_MS) {
         finishLeaderboard("success");
-        setTeamEntries(cached.entries);
         setHistoryLoading(false);
         return () => {
           rangeCancelled = true;
@@ -429,12 +351,12 @@ export function useHomeData({
       }
 
       setHistoryLoading(true);
-      void fetchTeamHistoryRange(email, safeMonths, rangeController.signal)
-        .then((entries) => {
+      void fetchTeamLeaderboard(safeMonths, rangeController.signal)
+        .then((rows) => {
           if (!rangeIsCurrent()) return;
           const updatedAt = Date.now();
-          teamHistoryRangeCache.set(cacheKey, { ts: updatedAt, entries });
-          setTeamEntries(entries);
+          teamHistoryRangeCache.set(cacheKey, { ts: updatedAt, rows });
+          setRangeLeaderboard(rows);
           setHistoryUpdatedAt(updatedAt);
           finishLeaderboard("success");
         })
@@ -443,9 +365,12 @@ export function useHomeData({
           finishLeaderboard("error");
           setHistoryError("Žebříček se nepodařilo načíst. Zkuste obnovit stránku.");
           if ((error as { status?: number } | null)?.status === 403) {
-            teamHistoryRangeCache.delete(cacheKey);
-            setHistoryUpdatedAt(null);
+            invalidateHomeCache(email);
+            setHasTeam(false);
             setTeamEntries([]);
+            setMonthlyLeaderboard(null);
+            setHistoryUpdatedAt(null);
+            setRangeLeaderboard([]);
           } else {
             console.error("Chyba při načítání historie týmové produkce:", error);
           }
@@ -463,6 +388,8 @@ export function useHomeData({
 
     setSummaryError(null);
     setHistoryError(null);
+    setRangeLeaderboard([]);
+    setHistoryUpdatedAt(null);
     setSummaryRefreshing(true);
     const finishProduction = startHomeTiming("production");
     const finishTip = startHomeTiming("productionTip");
@@ -485,6 +412,7 @@ export function useHomeData({
       setMyEntries(payload.myEntries);
       setTeamEntries(payload.teamEntries);
       setMonthlyLeaderboard(payload.monthlyLeaderboard ?? null);
+      setRangeLeaderboard(payload.rangeLeaderboard);
       setHasTeam(payload.hasTeam);
       setMyPremiums(payload.myPremiums);
       setTeamPremiums(payload.teamPremiums);
@@ -529,12 +457,8 @@ export function useHomeData({
           : monthStart;
         const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
         const loadTeamHistory = safeTeamHistoryMonths > 0;
-        const teamRangeStart = loadTeamHistory
-          ? new Date(currentYear, currentMonth - safeTeamHistoryMonths, 1)
-          : monthStart;
         const summaryRangeStartMs = previousMonthStart.getTime();
         const personalRangeStartMs = personalRangeStart.getTime();
-        const teamRangeStartMs = teamRangeStart.getTime();
 
         const requestContracts = async (
           scope: "my" | "team",
@@ -947,28 +871,19 @@ export function useHomeData({
             ? await collectScope("my", personalRangeStartMs)
             : ownSummaryResult;
 
-        let teamHistoryEntriesAll: EntryDoc[] = teamSummaryEntries;
-        if (hasTeamValue && loadTeamHistory && teamRangeStartMs < summaryRangeStartMs) {
+        let rangeRows: MonthlyLeaderboardRow[] = [];
+        if (hasTeamValue && loadTeamHistory) {
           try {
-            const teamHistoryResult = await collectScope("team", teamRangeStartMs);
-            teamHistoryEntriesAll = teamHistoryResult.entries;
-          } catch (teamErr) {
-            if ((teamErr as { status?: number } | null)?.status === 403) {
-              hasTeamValue = false;
-              teamHistoryEntriesAll = [];
-            } else {
-              throw teamErr;
-            }
+            rangeRows = await fetchTeamLeaderboard(safeTeamHistoryMonths, controller.signal, reloadKey > 0);
+          } catch (error) {
+            assertCurrent();
+            if ((error as { status?: number })?.status !== 403) throw error;
+            hasTeamValue = false;
+            teamSummaryEntries = [];
+            teamSummary = undefined;
+            invalidateHomeCache(email);
           }
         }
-
-        const filteredTeamEntries = loadTeamHistory
-          ? teamHistoryEntriesAll.filter((data) => {
-              const signed = entrySignedDate(data);
-              if (!signed) return false;
-              return signed >= teamRangeStart && signed < nextMonthStart;
-            })
-          : teamSummaryEntries;
 
         assertCurrent();
         const ownHistoryEntries = loadPersonalHistory ? ownHistoryResult.entries : [];
@@ -976,13 +891,15 @@ export function useHomeData({
         setHistoryUpdatedAt(historyFetchedAt);
         finishLeaderboard("success");
         setMyEntries(ownHistoryEntries);
-        setTeamEntries(filteredTeamEntries);
+        setTeamEntries(teamSummaryEntries);
+        setRangeLeaderboard(rangeRows);
         setHasTeam(hasTeamValue);
         setHistoryLoading(false);
-        teamHistoryRangeCache.set(
-          teamHistoryRangeCacheKey(email, safeTeamHistoryMonths, uid),
-          { ts: historyFetchedAt, entries: filteredTeamEntries }
-        );
+        if (hasTeamValue && loadTeamHistory) {
+          teamHistoryRangeCache.set(teamHistoryRangeCacheKey(email, safeTeamHistoryMonths, uid, leaderboardDay), {
+            ts: historyFetchedAt, rows: rangeRows,
+          });
+        }
         // History and regular production are usable while TIP is still loading.
         // Only the complete result may become the shared/persisted home cache.
         const tipSummary = await tipSummaryPromise;
@@ -998,7 +915,8 @@ export function useHomeData({
             monthlyGoal: monthlyGoal ?? null,
           },
           myEntries: ownHistoryEntries,
-          teamEntries: filteredTeamEntries,
+          teamEntries: teamSummaryEntries,
+          rangeLeaderboard: rangeRows,
           monthlyLeaderboard: teamSummary?.leaderboard ?? null,
           hasTeam: hasTeamValue,
           myPremiums: ownPremiums,
@@ -1029,7 +947,7 @@ export function useHomeData({
         const forceReload = reloadKey > 0;
 
         const safeTeamHistoryMonths = normalizeTeamHistoryMonths(teamHistoryMonths);
-        const cacheKey = `${HOME_CACHE_VERSION}|${uid}|${email}|${currentYear}-${currentMonth}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
+        const cacheKey = `${HOME_CACHE_VERSION}|${uid}|${email}|${currentYear}-${currentMonth}${safeTeamHistoryMonths ? `-${now.getDate()}` : ""}|${loadPersonalHistory ? "hist" : "nohist"}|team-${safeTeamHistoryMonths}`;
         const cached = homeDataCache[cacheKey];
         if (cached?.payload) {
           fallbackPayload = cached.payload;
@@ -1124,6 +1042,7 @@ export function useHomeData({
           setHistoryError("Žebříček se nepodařilo načíst. Zkuste obnovit stránku.");
           setHistoryUpdatedAt(null);
           setTeamEntries([]);
+          setRangeLeaderboard([]);
           setTipSummaryLoading(false);
           if (!tipSettled) setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
           return;
@@ -1136,6 +1055,7 @@ export function useHomeData({
           setSummaryUpdatedAt(null);
           setHistoryUpdatedAt(null);
           setTeamEntries([]);
+          setRangeLeaderboard([]);
           setMonthlyLeaderboard(null);
         }
         if (fallbackPayload && !accessDenied) {
@@ -1165,7 +1085,7 @@ export function useHomeData({
       cancelled = true;
       controller.abort();
     };
-  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths, calendarMonth]);
+  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths, calendarMonth, leaderboardDay]);
 
   return {
     userMeta,
@@ -1173,6 +1093,7 @@ export function useHomeData({
     myEntries,
     teamEntries,
     monthlyLeaderboard,
+    rangeLeaderboard,
     hasTeam,
     myPremiums,
     teamPremiums,

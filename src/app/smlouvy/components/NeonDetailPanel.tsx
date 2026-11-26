@@ -1,3 +1,5 @@
+import { InsuranceDetailHeading } from "@/components/insurance/InsuranceDetailHeading";
+import detailStyles from "@/components/insurance/insuranceDetail.module.css";
 import React, { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -273,17 +275,8 @@ const selectClass =
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-900";
 
-const SectionTitle = ({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) => (
-  <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-slate-500">
-    <Icon size={13} strokeWidth={2} className="text-slate-600" aria-hidden="true" />
-    <span>{label}</span>
-  </div>
+const SectionTitle = ({ icon, label }: { icon: LucideIcon; label: string }) => (
+  <InsuranceDetailHeading icon={icon}>{label}</InsuranceDetailHeading>
 );
 
 const sumTypeOptions = [
@@ -591,9 +584,9 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
   const hasTravel = editMode || contract?.travelInsurance || fields.travelInsurance;
 
   return (
-    <div className="space-y-3">
+    <div className={detailStyles.lifeGrid}>
       {editMode && (
-        <div className="rounded-2xl border border-slate-300 bg-slate-50 p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className="col-span-full rounded-2xl border border-violet-200 bg-violet-50 p-4 space-y-2">
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-sm font-semibold text-slate-900">
               Načíst rizika z PDF (ČPP Životní pojištění NEON)
@@ -622,7 +615,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+      <div className={`${detailStyles.card} space-y-3`} data-detail-tone="violet">
         <SectionTitle icon={FileBadge2} label="Verze" />
         <div className="text-sm text-slate-900">
           {editMode ? (
@@ -644,7 +637,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       </div>
 
       {hasDeath1 && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={HeartPulse} label="Rizika" />
           {hasDeath1 &&
             renderAmountRow({
@@ -696,7 +689,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || contract?.waiverInvalidity || fields.waiverInvalidity || contract?.waiverUnemployment || fields.waiverUnemployment) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
           <SectionTitle icon={Shield} label="Zproštění od placení" />
           <div className="space-y-1">
             {(editMode || contract?.waiverInvalidity || fields.waiverInvalidity) && (
@@ -720,7 +713,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInvalidityA) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={Accessibility} label="Invalidita" />
           <div className="space-y-2">
             {showInvalidityA3 &&
@@ -764,7 +757,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInvalidityB) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={Accessibility} label="Invalidita (2)" />
           {showInvalidityB3 &&
             renderAmountRow({
@@ -806,7 +799,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || contract?.invalidityPension || fields.invalidityPension) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={Wallet} label="Invalidita s výplatou důchodu" />
           <ToggleRow
             label="Invalidita s výplatou důchodu"
@@ -818,7 +811,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCritical) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={Stethoscope} label="Závažná onemocnění a poranění" />
           <div className="flex flex-col gap-1">
             <span className="text-slate-600">Varianta</span>
@@ -856,7 +849,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasChildSurgery) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={Baby} label="Operace dítěte s vrozenou vadou" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -880,7 +873,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasVaccination) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={Syringe} label="Závažné následky očkování" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -904,7 +897,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasDiabetes) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={Activity} label="Cukrovka a její komplikace" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -928,7 +921,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasDeathAccident) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
           <SectionTitle icon={TriangleAlert} label="Smrt úrazem" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -952,7 +945,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInjuryPermanent) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
           <SectionTitle icon={Bandage} label="Trvalé následky úrazu" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -1018,7 +1011,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasInjuryPermanent2) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
           <SectionTitle icon={Bandage} label="Trvalé následky úrazu (2)" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Pojistná částka</span>
@@ -1084,7 +1077,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasHospitalizationIllness) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={BedDouble} label="Hospitalizace (Nemoc)" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Denní částka</span>
@@ -1108,7 +1101,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasHospitalizationInjury) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={BedDouble} label="Hospitalizace (Úraz)" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Denní částka</span>
@@ -1132,7 +1125,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasAccidentDaily) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
           <SectionTitle icon={CalendarCheck2} label="Denní odškodné úrazem" />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="flex flex-col gap-1">
@@ -1203,7 +1196,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasWorkIncapacity) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="cyan">
           <SectionTitle icon={BriefcaseMedical} label="Pracovní neschopnost" />
           <div className="space-y-2 text-sm text-slate-900">
             <div className="flex flex-wrap gap-2">
@@ -1280,7 +1273,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasWorkIncapacity2) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="cyan">
           <SectionTitle icon={BriefcaseMedical} label="Pracovní neschopnost (2)" />
           <div className="space-y-2 text-sm text-slate-900">
             <div className="flex flex-wrap gap-2">
@@ -1357,7 +1350,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCareDependency) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
           <SectionTitle icon={HandHeart} label="Závislost na péči II.–IV. stupně" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Měsíční částka</span>
@@ -1381,7 +1374,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasSpecialAid) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="violet">
           <SectionTitle icon={Wrench} label="Příspěvek na pořízení zvláštní pomůcky" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Částka</span>
@@ -1405,7 +1398,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCaregiving) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
           <SectionTitle icon={HandHelping} label="Celodenní ošetřování pojištěného" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Denní částka</span>
@@ -1429,7 +1422,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasReproduction) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
           <SectionTitle icon={Sparkles} label="Náklady asistované reprodukce" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Částka</span>
@@ -1453,7 +1446,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasCppHelp) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="violet">
           <SectionTitle icon={LifeBuoy} label="ČPP Pomoc" />
           <ToggleRow
             label="ČPP Pomoc"
@@ -1465,7 +1458,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasLiabilityCitizen) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
           <SectionTitle icon={Shield} label="Odpovědnost občana" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Limit</span>
@@ -1489,7 +1482,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasLiabilityEmployee) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
           <SectionTitle icon={Shield} label="Odpovědnost zaměstnance" />
           <div className="flex justify-between gap-2">
             <span className="text-slate-600">Limit</span>
@@ -1513,7 +1506,7 @@ export function NeonDetailPanel({ prod, editMode, fields, contract, onChange }: 
       )}
 
       {(editMode || hasTravel) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
           <SectionTitle icon={Plane} label="Cestovní pojištění" />
           <ToggleRow
             label="Cestovní pojištění"

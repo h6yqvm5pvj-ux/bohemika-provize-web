@@ -42,6 +42,66 @@ const normalizedPayload = (raw: unknown = baseEntry()) => {
 };
 
 describe("contracts create payload parsing", () => {
+  it.each(["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"])("saves %s without premium or commissions", productKey => {
+    const payload = normalizedPayload(baseEntry({ productKey, inputAmount: undefined, frequencyRaw: undefined, policyStartDate: undefined, neonDetail: null }));
+    expect(payload).toMatchObject({ productKey, inputAmount: 0, effectiveInputAmount: 0,
+      frequencyRaw: "annual", items: [], total: 0, commissionMode: null, isDip: false });
+    expect(payload.policyStartDate).toEqual(payload.contractSignedDate);
+  });
+
+  it.each(["investikaRealitniFond", "investikaEfektika"])("persists a DIP flag for %s", productKey => {
+    expect(normalizedPayload(baseEntry({ productKey, inputAmount: 0, neonDetail: null, isDip: true })).isDip).toBe(true);
+  });
+
+  it.each(["investikaMonetika", "conseqInvest", "conseqzenit", "neon", "cppAutoVozikZdarma"])("rejects a DIP flag for unsupported %s", productKey => {
+    expect(normalizeCreateEntryPayload({ ownerEmail, ownerUid,
+      raw: baseEntry({ productKey, inputAmount: 0, neonDetail: null, isDip: true }),
+    }).ok).toBe(false);
+  });
+
+  it.each(["true", 1, [], {}, "<script>"])("rejects an invalid DIP flag (%j)", isDip => {
+    expect(normalizeCreateEntryPayload({ ownerEmail, ownerUid,
+      raw: baseEntry({ productKey: "investikaEfektika", inputAmount: 0, neonDetail: null, isDip }),
+    }).ok).toBe(false);
+  });
+
+  it.each(["investikaRealitniFond", "investikaEfektika", "investikaMonetika", "conseqInvest"])("rejects injected financial or replacement inputs for %s", productKey => {
+    for (const overrides of [{ inputAmount: 1000 }, { effectiveInputAmount: 1000 }, { entryType: "endorsement" },
+      { isRefresh: true }, { tipContractTipsterEmail: "tip@example.test", tipContractTipsterPercent: 10 }]) {
+      expect(normalizeCreateEntryPayload({ ownerEmail, ownerUid,
+        raw: baseEntry({ productKey, inputAmount: 0, neonDetail: null, ...overrides }),
+      }).ok).toBe(false);
+    }
+  });
+
+  it("accepts the free trailer product without a premium or payment frequency", () => {
+    const payload = normalizedPayload(baseEntry({ productKey: "cppAutoVozikZdarma", inputAmount: undefined, frequencyRaw: undefined, neonDetail: null }));
+    expect(payload).toMatchObject({ productKey: "cppAutoVozikZdarma", inputAmount: 0, effectiveInputAmount: 0,
+      frequencyRaw: "annual", items: [], total: 0, paid: true, initialCommissionBase: null });
+  });
+
+  it("persists the titled policyholder and parsed free-trailer vehicle fields without a premium", () => {
+    const payload = normalizedPayload(baseEntry({ productKey: "cppAutoVozikZdarma", inputAmount: undefined, frequencyRaw: undefined,
+      neonDetail: null, clientName: "Ing. Jana Testovací, Ph.D.", carMake: "TEST TRAILERS Model 12",
+      carVin: "TESTABCDEFG123456", carOrv: "AAA000111", carPlate: "TEST123", carLiabilityLimit: 50_000_000 }));
+    expect(payload).toMatchObject({ clientName: "Ing. Jana Testovací, Ph.D.", carMake: "TEST TRAILERS Model 12",
+      carVin: "TESTABCDEFG123456", carOrv: "AAA000111", carPlate: "TEST123", carLiabilityLimit: 50_000_000,
+      inputAmount: 0, effectiveInputAmount: 0, total: 0 });
+  });
+
+  it.each(["inputAmount", "effectiveInputAmount", "calculationInputAmount", "previousInputAmount", "newInputAmount", "premiumDelta", "premiumIncreaseAmount", "premiumDecreaseAmount"])("rejects manipulated %s on a free contract", field => {
+    for (const value of [1, -1, "0", {}, Number.NaN]) {
+      expect(normalizeCreateEntryPayload({ ownerEmail, ownerUid,
+        raw: baseEntry({ productKey: "cppAutoVozikZdarma", inputAmount: 0, neonDetail: null, [field]: value }),
+      }).ok).toBe(false);
+    }
+  });
+
+  it.each([{ entryType: "endorsement" }, { isRefresh: true }, { tipContractTipsterEmail: "tipster@example.test", tipContractTipsterPercent: 50 }])("rejects commission workflows on a free contract: %j", overrides => {
+    expect(normalizeCreateEntryPayload({ ownerEmail, ownerUid,
+      raw: baseEntry({ productKey: "cppAutoVozikZdarma", inputAmount: 0, neonDetail: null, ...overrides }),
+    }).ok).toBe(false);
+  });
   const neuronEntry = (overrides: Record<string, unknown> = {}) => baseEntry({
     productKey: "domexneuron", contractSignedDate: "2026-11-04", policyStartDate: "2026-11-05",
     frequencyRaw: "semiannual", policyTermEndDate: "2027-11-04", ...overrides,
@@ -585,6 +645,9 @@ describe("contracts create payload parsing", () => {
     ["domexneuron", "annual"],
     ["cppAuto", "annual"],
     ["allianzAuto", "annual"],
+    ["kooperativaAuto", "annual"],
+    ["koopmajetekobcan", "annual"],
+    ["koopfit", "annual"],
     ["koopodzam", "annual"],
   ] as const)(
     "povolí uložení Refresh/Náhrady pro produkt %s",
@@ -623,7 +686,7 @@ describe("contracts create payload parsing", () => {
     ).toEqual({
       ok: false,
       error:
-        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, Kooperativa majetek a odpovědnost občanů, Kooperativa odpovědnost zaměstnance, ČPP Auto a Allianz Auto.",
+        "Refresh/Náhrada je podporovaná jen pro produkty ČPP Životní pojištění NEON, Kooperativa FLEXI, DOMEX, DOMEX Neuron, Kooperativa majetek a odpovědnost občanů, Kooperativa Sportovní výbava FIT, Kooperativa odpovědnost zaměstnance, ČPP Auto, Kooperativa Auto a Allianz Auto.",
     });
 
     const allianzReplacementPayload = normalizedPayload(

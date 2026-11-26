@@ -53,7 +53,7 @@ function dateMs(value: unknown): number | null {
  * contract, selected under server authorization, determines its variant. */
 export function isDomexNeuronStatementProduct(row: Pick<DomexNeuronIndexationRow, "productCode" | "productKey">): boolean {
   const code = String(row.productCode ?? "").trim().toUpperCase().replace(/\s+/g, "");
-  return ["CPP_DOMX", "CPP_DOMX+2", "CPP_DOMEX+"].includes(code) || row.productKey === "domexneuron";
+  return ["CPP_DOMX", "CPP_DOMX+2", "CPP_DOMEX+", "CPP_DOMX+N"].includes(code) || row.productKey === "domexneuron";
 }
 
 /** Recognize only an observed anniversary increase. A commission base has no

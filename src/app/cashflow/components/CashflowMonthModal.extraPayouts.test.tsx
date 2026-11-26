@@ -88,3 +88,30 @@ describe("month detail extra paid rewards", () => {
     expect(paragraphs(container)).toContain(`Mimořádné odměny: ${money(75000)}`);
   });
 });
+
+
+describe("office contribution month detail", () => {
+  const allowance = { ...reward("office", 10000), isOfficeContribution: true, isStatementOnly: true,
+    commissionLabel: "Příspěvek na kancelář", predictedAmount: 0 };
+
+  it("shows a statement contribution under Other payments without calling it an additional receipt", () => {
+    const container = render([allowance], { total: 10000, predictedTotal: 0, statementPayoutTotal: 10000, extraPayoutTotal: undefined });
+    const card = section(container, "office").querySelector("[data-cashflow-card]")!;
+    expect(text(section(container, "office").querySelector("summary")?.textContent)).toContain("Ostatní platby");
+    expect(text(card.textContent)).toContain("Příspěvek na kancelář");
+    expect(text(card.textContent)).toContain("již zahrnutý v celkové výplatě");
+    expect(text(card.textContent)).not.toContain("Stornofond");
+    expect(paragraphs(container)).not.toContain(`Mimořádné odměny: ${money(10000)}`);
+    expect(text(container.textContent)).toContain(`Vyplaceno${money(10000)}`);
+  });
+
+  it("labels a forecast as an estimate instead of a paid reward", () => {
+    const container = render([{ ...allowance, payoutStatus: "predicted", isStatementOnly: undefined, predictedAmount: 10000 }], {
+      total: 10000, predictedTotal: 10000, totalSource: "predicted", statementPayoutTotal: null, extraPayoutTotal: undefined,
+    });
+    const card = section(container, "office").querySelector("[data-cashflow-card]")!;
+    expect(text(card.textContent)).toContain(`Předpoklad${money(10000)}`);
+    expect(text(card.textContent)).not.toContain("Vyplaceno");
+    expect(text(card.textContent)).toContain("podle nastavení");
+  });
+});

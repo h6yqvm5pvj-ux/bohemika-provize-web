@@ -11,6 +11,10 @@ describe("client product groups", () => {
   });
 
   it.each<[ClientContractItem["productKey"], ClientProductGroup]>([
+    ["investikaRealitniFond", "investment"],
+    ["investikaEfektika", "investment"],
+    ["investikaMonetika", "investment"],
+    ["conseqInvest", "investment"],
     ["cppAuto", "auto"],
     ["koopflotila", "auto"],
     ["domex", "propertyLiability"],

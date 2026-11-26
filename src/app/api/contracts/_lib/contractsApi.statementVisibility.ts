@@ -1,3 +1,5 @@
+import { projectConfirmedPremiumHistory } from "@/app/lib/commissionPremiumCodeAdjustment";
+import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
 import { canViewStatementDerivedRecord, normalizeAccessEmail as normalizeEmail } from "./contractsApi.access";
 import type { ContractDoc } from "./contractsApi.types";
 import { createDomexNeuronPremiumTimeline } from "@/app/lib/domexNeuronPremiumHistory";
@@ -44,8 +46,10 @@ export const filterStatementDerivedContractDataForViewer = <T extends ContractDo
     // jinak by cashflow mohlo tutéž provizi předpovědět novému správci podruhé.
     (transferred && normalizeEmail(record.writtenBy) === originalAdviserEmail);
 
+  const visibleContract = { ...contract };
+  delete visibleContract.commissionPayoutCodeAdjustment;
   return {
-    ...contract,
+    ...visibleContract,
     // Authorized viewers share policy premium facts, not another recipient's
     // private statement identity, commission amount or provider row metadata.
     ...(contract.productKey === "domexneuron" &&
@@ -56,13 +60,13 @@ export const filterStatementDerivedContractDataForViewer = <T extends ContractDo
       : [],
     // Starší záznamy bez autora schováváme také: nelze bezpečně určit, komu patří.
     commissionPayouts: Array.isArray(contract.commissionPayouts)
-      ? contract.commissionPayouts.filter(canViewRecord)
+      ? projectConfirmedCommissionCodes(contract, contract.commissionPayouts.filter(canViewRecord))
       : [],
     cashflowPayoutMatches: Array.isArray(contract.cashflowPayoutMatches)
       ? contract.cashflowPayoutMatches.filter(canViewRecord)
       : [],
     premiumStatementHistory: Array.isArray(contract.premiumStatementHistory)
-      ? contract.premiumStatementHistory.filter(canViewRecord)
+      ? projectConfirmedPremiumHistory(contract, contract.premiumStatementHistory.filter(canViewRecord), contract.commissionPayouts?.filter(canViewRecord) ?? [])
       : [],
     premiumStatementBaseResolutions: Array.isArray(contract.premiumStatementBaseResolutions)
       ? contract.premiumStatementBaseResolutions.filter(canViewRecord)

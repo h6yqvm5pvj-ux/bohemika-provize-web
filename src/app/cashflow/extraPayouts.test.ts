@@ -121,7 +121,7 @@ describe("administrator-recorded extra cashflow receipts", () => {
     const items = receiptItems();
     const months = buildCashflowView(items, [statement], options, asOf);
     const wire = serializeCashflowSnapshot({ items, months });
-    expect(CASHFLOW_SNAPSHOT_WIRE_VERSION).toBe("cashflow-snapshot-wire-v5");
+    expect(CASHFLOW_SNAPSHOT_WIRE_VERSION).toBe("cashflow-snapshot-wire-v14");
     expect(parseCashflowSnapshot(JSON.parse(JSON.stringify(wire)))).toEqual({ items, months });
   });
 

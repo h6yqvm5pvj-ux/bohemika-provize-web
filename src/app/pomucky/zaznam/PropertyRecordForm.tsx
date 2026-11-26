@@ -1,6 +1,7 @@
 "use client";
 
 import { AdditionalRequirementSection } from "./AdditionalRequirementSection";
+import { LiabilityLimitRecommendationSection } from "./LiabilityLimitRecommendationSection";
 import { RecordCopyFeedback, RecordNotice, RecordPhraseRow, RecordSection } from "./RecordTextParts";
 import { useRecordClipboard } from "./useRecordClipboard";
 import styles from "./forms.module.css";
@@ -58,6 +59,7 @@ export function PropertyRecordForm({ clientGender = "male" }: { clientGender?: C
           <RecordPhraseRow key={phrase} index={index + 1} text={phrase} copiedText={copiedText} onCopy={handleCopy} />
         ))}
       </RecordSection>
+      <LiabilityLimitRecommendationSection clientGender={clientGender} copiedText={copiedText} onCopy={handleCopy} />
       <RecordCopyFeedback copiedText={copiedText} copyError={copyError} />
     </div>
   );

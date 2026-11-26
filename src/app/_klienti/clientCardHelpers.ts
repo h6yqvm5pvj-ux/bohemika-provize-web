@@ -3,6 +3,7 @@ import { productLabel } from "@/app/lib/productCatalog";
 import type { Product } from "@/app/types/domain";
 
 export type ClientContractItem = {
+  isDip?: boolean | null;
   id: string;
   clientSlug?: string;
   entryType?: string | null;

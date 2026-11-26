@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import type { PaymentFrequency } from "@/app/types/domain";
-import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
+import { PRODUCT_CATALOG, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 import { isStatementBatchQueueProduct, statementBatchQueueReplacementError, type StatementBatchQueueProduct, type StatementBatchQueueReplacement } from "@/app/lib/statementBatchQueue";
 
 import type { StatementCalculatorPrefill } from "./statementPresentation";
@@ -45,6 +45,8 @@ export type CppAutoBatchQueueItem = {
   frequency: PaymentFrequency;
   stornoDate: string;
   isRefresh: boolean;
+  refreshOriginalMissingInSystem?: boolean;
+  contractEntry?: Record<string, unknown>;
   refreshOriginalContractNumber: string | null;
   pdfFile: File | null;
   status: CppAutoBatchQueueStatus;
@@ -109,6 +111,7 @@ export const cppAutoBatchQueueItemFromPrefill = (
     frequency: prefill.frequency,
     stornoDate: "",
     isRefresh: replacement.isRefresh === true,
+    refreshOriginalMissingInSystem: replacement.refreshOriginalMissingInSystem === true,
     refreshOriginalContractNumber: replacement.refreshOriginalContractNumber?.trim() || null,
     pdfFile: null,
     status: "ready",
@@ -120,9 +123,18 @@ export const statementBatchQueueContractEntry = (item: CppAutoBatchQueueItem): R
   const amount = cppAutoBatchQueueAmount(item.amountText);
   const sourceRecordedAtMs = item.queuedAtMs;
   return {
+    tipContractTipsterEmail: null,
+    tipContractTipsterPercent: null,
+    tipContractSourceTipId: null,
+    tipContractSourceTipTitle: null,
+    tipContractSourceTipProductLabel: null,
+    tipContractSourceTipClientName: null,
+    tipContractSourceTipCreatedAtMs: null,
+    paid: false,
+    ...item.contractEntry,
     productKey: item.product,
     entryType: "contract",
-    commissionMode: null,
+    commissionMode: item.contractEntry?.commissionMode ?? null,
     inputAmount: amount,
     effectiveInputAmount: amount,
     frequencyRaw: item.frequency,
@@ -132,24 +144,16 @@ export const statementBatchQueueContractEntry = (item: CppAutoBatchQueueItem): R
     policyEndDate: item.policyEndDate.trim() || null,
     status: item.stornoDate.trim() ? "storno" : "active",
     stornoDate: item.stornoDate.trim() || null,
-    durationYears: null,
-    durationMonths: null,
-    maxCizinKomplexVariant: null,
+    durationYears: item.contractEntry?.durationYears ?? null,
+    durationMonths: item.contractEntry?.durationMonths ?? null,
+    maxCizinKomplexVariant: item.contractEntry?.maxCizinKomplexVariant ?? null,
     contractNumber: item.contractNumber.trim(),
-    tipContractTipsterEmail: null,
-    tipContractTipsterPercent: null,
-    tipContractSourceTipId: null,
-    tipContractSourceTipTitle: null,
-    tipContractSourceTipProductLabel: null,
-    tipContractSourceTipClientName: null,
-    tipContractSourceTipCreatedAtMs: null,
-    paid: false,
     isRefresh: item.isRefresh,
     refreshOriginalContractNumber: item.isRefresh ? item.refreshOriginalContractNumber?.trim() || null : null,
-    refreshOriginalMissingInSystem: false,
-    requiresStatementRefresh: false,
-    commissionCalculationStatus: null,
-    commissionBaseSource: null,
+    refreshOriginalMissingInSystem: item.refreshOriginalMissingInSystem === true,
+    requiresStatementRefresh: item.contractEntry?.requiresStatementRefresh ?? false,
+    commissionCalculationStatus: item.contractEntry?.commissionCalculationStatus ?? null,
+    commissionBaseSource: item.contractEntry?.commissionBaseSource ?? null,
     premiumUpdatedFromStatementAtMs: sourceRecordedAtMs,
     premiumUpdatedFromStatementChronologyMs: item.statementChronologyMs,
     premiumUpdatedFromStatementId: item.statementId,
@@ -203,7 +207,7 @@ export const validateCppAutoBatchQueueItem = (item: CppAutoBatchQueueItem): stri
   }
 
   const amount = cppAutoBatchQueueAmount(item.amountText);
-  if (!Number.isFinite(amount) || amount <= 0) return "Pojistné musí být větší než nula.";
+  if (!Number.isFinite(amount) || (isRecordOnlyProduct(item.product) ? amount < 0 : amount <= 0)) return "Pojistné musí být větší než nula.";
   if (!allowedFrequencies(item.product).includes(item.frequency)) {
     return "Vyber podporovanou frekvenci platby pro tento produkt.";
   }
@@ -286,14 +290,14 @@ export function CppAutoBatchQueue({
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-800">
               <Upload className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
             </span>
-            <h2 className="text-base font-black text-slate-950">Fronta smluv · A101</h2>
+            <h2 className="text-base font-black text-slate-950">Fronta smluv z výpisu</h2>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
               {pendingCount} {pendingCount === 1 ? "smlouva" : "smluv"}
             </span>
           </div>
           <p className="mt-1 text-sm font-medium text-slate-600">
             {expanded
-              ? "Uprav údaje a nahraj připravené smlouvy."
+              ? "Zkontroluj údaje a nahraj připravené smlouvy."
               : "Rozbalit a zkontrolovat připravené smlouvy."}
           </p>
           </div>
@@ -350,6 +354,9 @@ export function CppAutoBatchQueue({
         {items.map((item) => {
           const status = statusPresentation(item);
           const disabled = queueItemDisabled(item, isRunning);
+          // Product-specific calculations were validated together in the calculator.
+          // Editing their inputs here would leave the saved calculation inconsistent.
+          const detailsDisabled = disabled || Boolean(item.contractEntry);
           const sourceLabel = [item.statementNumber, item.statementPeriod]
             .filter(Boolean)
             .join(" · ");
@@ -360,7 +367,7 @@ export function CppAutoBatchQueue({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-black text-slate-950">
-                      {PRODUCT_CATALOG[item.product].label} · {item.sourceProductCode || "A101"}
+                      {PRODUCT_CATALOG[item.product].label} · {item.sourceProductCode || "Výpis"}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${status.className}`}>
                       {item.status === "saving" && (
@@ -389,13 +396,14 @@ export function CppAutoBatchQueue({
                 </button>
               </div>
 
+              {item.contractEntry && <p className="mt-2 text-xs text-slate-500">Údaje byly zkontrolované v kalkulačce. Pro změnu smlouvu odeber a přidej znovu.</p>}
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {item.isRefresh && (
                   <label className="text-xs font-bold text-slate-600">
                     Číslo původní smlouvy
                     <input
                       value={item.refreshOriginalContractNumber ?? ""}
-                      disabled={disabled}
+                      disabled={detailsDisabled}
                       onChange={(event) => onUpdate(item.id, { refreshOriginalContractNumber: event.target.value })}
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                     />
@@ -405,7 +413,7 @@ export function CppAutoBatchQueue({
                   Číslo smlouvy
                   <input
                     value={item.contractNumber}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { contractNumber: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />
@@ -414,7 +422,7 @@ export function CppAutoBatchQueue({
                   Klient
                   <input
                     value={item.clientName}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { clientName: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />
@@ -424,7 +432,7 @@ export function CppAutoBatchQueue({
                   <input
                     type="date"
                     value={item.contractSignedDate}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { contractSignedDate: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />
@@ -434,7 +442,7 @@ export function CppAutoBatchQueue({
                   <input
                     type="date"
                     value={item.policyStartDate}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { policyStartDate: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />
@@ -444,7 +452,7 @@ export function CppAutoBatchQueue({
                   <input
                     inputMode="decimal"
                     value={item.amountText}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { amountText: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />
@@ -453,7 +461,7 @@ export function CppAutoBatchQueue({
                   Frekvence
                   <select
                     value={item.frequency}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { frequency: event.target.value as PaymentFrequency })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   >
@@ -464,13 +472,13 @@ export function CppAutoBatchQueue({
                     ))}
                   </select>
                 </label>
-                {item.product === "cppcestovko" && (
+                {(item.product === "cppcestovko" || Boolean(item.policyEndDate)) && (
                   <label className="text-xs font-bold text-slate-600">
                     Konec pojištění
                     <input
                       type="date"
                       value={item.policyEndDate}
-                      disabled={disabled}
+                      disabled={detailsDisabled}
                       onChange={(event) => onUpdate(item.id, { policyEndDate: event.target.value })}
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                     />
@@ -481,7 +489,7 @@ export function CppAutoBatchQueue({
                   <input
                     type="date"
                     value={item.stornoDate}
-                    disabled={disabled}
+                    disabled={detailsDisabled}
                     onChange={(event) => onUpdate(item.id, { stornoDate: event.target.value })}
                     className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-500"
                   />

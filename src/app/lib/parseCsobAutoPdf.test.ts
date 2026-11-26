@@ -76,4 +76,34 @@ describe("parseCsobAutoPdf", () => {
       clientName: "Mgr. Martin Tamáš",
     });
   });
+
+  it("reads bank transfer amount, account, variable symbol, and annual frequency", async () => {
+    pdfState.pages = [[
+      { str: "Číslo návrhu PS: 6207127218", x: 40, y: 800 },
+      { str: "Placení pojistného", x: 40, y: 785 },
+      { str: "Forma placení", x: 40, y: 770 },
+      { str: "Z účtu", x: 40, y: 755 },
+      { str: "Četnost placení", x: 40, y: 740 },
+      { str: "Roční", x: 40, y: 725 },
+      { str: "Pojistné", x: 40, y: 710 },
+      { str: "25 886 Kč", x: 40, y: 695 },
+      { str: "Číslo účtu příjemce", x: 40, y: 680 },
+      { str: "187078376/0300", x: 40, y: 665 },
+      { str: "Variabilní symbol", x: 40, y: 650 },
+      { str: "6207127218", x: 40, y: 635 },
+      { str: "Lhůta k přijetí", x: 40, y: 620 },
+    ]];
+
+    await expect(parseCsobAutoPdf(makePdfFile())).resolves.toMatchObject({
+      contractNumber: "6207127218",
+      amount: 25886,
+      frequency: "annual",
+      paymentDetails: {
+        amount: 25886,
+        accountNumber: "187078376/0300",
+        variableSymbol: "6207127218",
+        dueDate: null,
+      },
+    });
+  });
 });

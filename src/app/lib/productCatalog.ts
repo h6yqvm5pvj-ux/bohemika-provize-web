@@ -1,6 +1,7 @@
 import { type Product } from "@/app/types/domain";
 
 export type ProductInstitutionId =
+  | "investika"
   | "conseq"
   | "cpp"
   | "kooperativa"
@@ -14,6 +15,7 @@ export type ProductInstitutionId =
 ;
 
 export type ProductPrimaryCategory =
+  | "investments"
   | "pension"
   | "life"
   | "auto"
@@ -49,6 +51,7 @@ export type ProductMetadata = {
 };
 
 const INSTITUTIONS: Record<ProductInstitutionId, ProductInstitutionMeta> = {
+  investika: { id: "investika", label: "iNVESTiKA", logoPath: "/icons/logo-investika-inverzni.svg" },
   conseq: { id: "conseq", label: "CONSEQ", logoPath: "/icons/conseq.png" },
   cpp: { id: "cpp", label: "ČPP", logoPath: "/icons/cpp.png" },
   kooperativa: { id: "kooperativa", label: "Kooperativa", logoPath: "/icons/koop-v2.png" },
@@ -82,6 +85,7 @@ export const PRODUCT_ORDER: Product[] = [
   "allianzmujdomov",
   "cppsimplex",
   "cppAuto",
+  "cppAutoVozikZdarma",
   "slaviaauto",
   "slaviaflotila",
   "cppPPRs",
@@ -99,9 +103,37 @@ export const PRODUCT_ORDER: Product[] = [
   "maxcizinkomplex",
 
   "conseqzenit",
+  "investikaRealitniFond",
+  "investikaEfektika",
+  "investikaMonetika",
+  "conseqInvest",
 ];
 
 const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
+  conseqInvest: {
+    label: "CONSEQ Invest",
+    icon: "/icons/conseq.png",
+    institutionId: "conseq",
+    category: "investments",
+  },
+  investikaRealitniFond: {
+    label: "iNVESTiKA - Realitní fond",
+    icon: "/icons/logo-investika-inverzni.svg",
+    institutionId: "investika",
+    category: "investments",
+  },
+  investikaEfektika: {
+    label: "iNVESTiKA - EFEKTIKA",
+    icon: "/icons/logo-investika-inverzni.svg",
+    institutionId: "investika",
+    category: "investments",
+  },
+  investikaMonetika: {
+    label: "iNVESTiKA - MONETIKA",
+    icon: "/icons/logo-investika-inverzni.svg",
+    institutionId: "investika",
+    category: "investments",
+  },
   conseqzenit: {
     label: "CONSEQ Zenit DPS",
     icon: "/icons/conseq.png",
@@ -218,6 +250,12 @@ const PRODUCT_SEEDS: Record<Product, ProductSeed> = {
   },
   cppAuto: {
     label: "ČPP Auto",
+    icon: "/icons/icon_auto.webp",
+    institutionId: "cpp",
+    category: "auto",
+  },
+  cppAutoVozikZdarma: {
+    label: "ČPP Auto / Vozík ZDARMA",
     icon: "/icons/icon_auto.webp",
     institutionId: "cpp",
     category: "auto",
@@ -350,6 +388,7 @@ export const AUTO_PRODUCTS = byCategory("auto");
 export const PROPERTY_PRODUCTS = byCategory("property");
 export const TRAVEL_PRODUCTS = byCategory("travel");
 export const PENSION_PRODUCTS = byCategory("pension");
+export const INVESTMENT_PRODUCTS = byCategory("investments");
 export const LIABILITY_PRODUCTS = PRODUCT_ORDER.filter((product) =>
   PRODUCT_CATALOG[product].groups.includes("liability")
 );
@@ -420,12 +459,29 @@ export function isAutoProduct(product?: Product | null): boolean {
   return productCategory(product) === "auto";
 }
 
+export function isInvestmentProduct(product?: Product | null): boolean {
+  return productCategory(product) === "investments";
+}
+
+export function investmentInstitutionId(product?: Product | null): ProductInstitutionId | null {
+  return isInvestmentProduct(product) ? productInstitutionId(product) : null;
+}
+
+/** Portfolio records without commission calculation or insurance premiums. */
+export function isRecordOnlyProduct(product?: Product | null): product is "cppAutoVozikZdarma" | "investikaRealitniFond" | "investikaEfektika" | "investikaMonetika" | "conseqInvest" {
+  return product === "cppAutoVozikZdarma" || isInvestmentProduct(product);
+}
+
+export function supportsDip(product?: Product | null): boolean {
+  return product === "investikaRealitniFond" || product === "investikaEfektika";
+}
+
 export function isAnnualAutoPayoutProduct(product?: Product | null): boolean {
   return product === "allianzAuto" || product === "pillowAuto";
 }
 
 export function isFrequencyAutoPayoutProduct(product?: Product | null): boolean {
-  return isAutoProduct(product) && !isAnnualAutoPayoutProduct(product);
+  return isAutoProduct(product) && !isRecordOnlyProduct(product) && !isAnnualAutoPayoutProduct(product);
 }
 
 export function isPropertyProduct(product?: Product | null): boolean {

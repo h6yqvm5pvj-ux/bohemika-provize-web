@@ -1,6 +1,8 @@
 "use client";
 
-import { AlertTriangle, House, Plus, Shield, Sofa, Trash2 } from "lucide-react";
+import { AlertTriangle, House, LifeBuoy, Plus, Shield, Sofa, Trash2 } from "lucide-react";
+import { InsuranceDetailHeading } from "./InsuranceDetailHeading";
+import detailStyles from "./insuranceDetail.module.css";
 import {
   DOMEX_EXTRACTION_STATUSES, DOMEX_NEURON_MAX_OBJECTS, DOMEX_NEURON_OBJECT_FIELDS, DOMEX_NEURON_PARSER_VERSION,
   type DomexExtractionStatus, type DomexNeuronData, type DomexNeuronObject, type DomexNeuronObjectKind,
@@ -23,7 +25,6 @@ export const domexNeuronStatusLabel = (status: DomexExtractionStatus): string =>
 })[status];
 
 const inputClass = "w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200";
-const cardClass = "min-w-0 rounded-2xl border border-slate-300 bg-white p-3 shadow-[0_6px_16px_rgba(15,23,42,0.06)]";
 const labelClass = "block text-xs font-semibold text-slate-600";
 const numberValue = (raw: string) => {
   if (!raw.trim()) return null;
@@ -35,7 +36,7 @@ const FIELD_LABELS = { type: "Typ", address: "Místo pojištění", coverage: "V
 type ObjectField = typeof DOMEX_NEURON_OBJECT_FIELDS[number];
 
 export function DomexNeuronParserVersion({ version }: { version?: number | null }) {
-  return <p className="text-xs text-slate-500" data-parser-version={version ?? "unknown"}>
+  return <p className={detailStyles.parserVersion} data-parser-version={version ?? "unknown"}>
     {version == null ? "Verze parseru: neuvedena (ruční nebo starší údaje)."
       : `Verze parseru: ${version}.${version < DOMEX_NEURON_PARSER_VERSION ? " Starší zpracování PDF; údaje lze znovu načíst z PDF." : ""}`}
   </p>;
@@ -137,27 +138,26 @@ export function DomexNeuronObjectsPanel({ value, editMode = false, onChange, pre
         <span>Pojistné částky u uvedených staveb a domácností se mohou v čase navyšovat z důvodu schválené valorizace.</span>
       </p>}
     {(["property", "household"] as const).map(kind => {
+      if (!editable && value.sections[kind] === "not_found") return null;
       const title = kind === "property" ? "Pojištění staveb" : "Pojištění domácností";
       const Icon = kind === "property" ? House : Sofa;
       const objects = value.objects.filter(object => object.kind === kind);
-      return <section key={kind} className={`${cardClass} space-y-3`} aria-label={title}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Icon size={16} aria-hidden="true" />{title}</h3>
-          {!editable && <span className="text-xs text-slate-600">{domexNeuronStatusLabel(value.sections[kind])}</span>}
-        </div>
+      return <section key={kind} className={detailStyles.card} data-detail-tone={kind === "property" ? "sky" : "amber"} aria-label={title}>
+        <InsuranceDetailHeading icon={Icon} status={!editable ? domexNeuronStatusLabel(value.sections[kind]) : undefined}>{title}</InsuranceDetailHeading>
         {editable && <StatusSelect label={`Stav sekce: ${title.toLowerCase()}`} status={value.sections[kind]} onChange={status => changeSection(kind, status)} />}
         {objects.map((object, index) => <article key={object.id} data-object-id={object.id}
-          className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-2"><h4 className="text-sm font-semibold text-slate-900">
+          className={`${detailStyles.object} space-y-4`}>
+          <div className="flex items-center justify-between gap-2"><h4 className={detailStyles.objectHeading}>
+            <span className={detailStyles.objectNumber} aria-hidden="true">{index + 1}</span>
             {kind === "property" ? "Stavba" : "Domácnost"} {index + 1}
           </h4>{editable && <button type="button" onClick={() => removeObject(object)} aria-label={`Odebrat ${kind === "property" ? "stavbu" : "domácnost"} ${index + 1}`}
             className="flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs text-rose-700"><Trash2 size={13} aria-hidden="true" />Odebrat</button>}</div>
           {editable ? <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">{DOMEX_NEURON_OBJECT_FIELDS.map(field =>
             <ObjectFieldEditor key={field} object={object} field={field} onValueChange={next => changeField(object, field, next)}
               onStatusChange={status => changeFieldStatus(object, field, status)} />)}</div>
-            : <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">{DOMEX_NEURON_OBJECT_FIELDS.map(field =>
-              <div key={field} className="min-w-0"><dt className="text-xs text-slate-500">{FIELD_LABELS[field]}</dt>
-                <dd className="break-words text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{objectValue(object, field)}</dd></div>)}</dl>}
+            : <dl className={detailStyles.fields}>{DOMEX_NEURON_OBJECT_FIELDS.filter(field => object.fields[field] !== "not_found").map(field =>
+              <div key={field} className={detailStyles.field} data-highlight={field === "sumInsured" && object[field] != null}><dt>{FIELD_LABELS[field]}</dt>
+                <dd>{objectValue(object, field)}</dd></div>)}</dl>}
         </article>)}
         {editable && <button type="button" disabled={value.objects.length >= DOMEX_NEURON_MAX_OBJECTS} onClick={() => addObject(kind)}
           className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">
@@ -165,28 +165,31 @@ export function DomexNeuronObjectsPanel({ value, editMode = false, onChange, pre
         </button>}
       </section>;
     })}
-    <section className={`${cardClass} space-y-3`} aria-label="Pojištění odpovědnosti">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Shield size={16} aria-hidden="true" />Pojištění odpovědnosti</h3>
+    {(editable || value.sections.liability !== "not_found") && <section className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald" aria-label="Pojištění odpovědnosti">
+      <InsuranceDetailHeading icon={Shield} status={!editable ? domexNeuronStatusLabel(value.sections.liability) : undefined}>Pojištění odpovědnosti</InsuranceDetailHeading>
       {editable ? <StatusSelect label="Stav sekce: pojištění odpovědnosti" status={value.sections.liability} onChange={status => changeSection("liability", status)} />
-        : <p className="text-xs text-slate-600">{domexNeuronStatusLabel(value.sections.liability)}</p>}
-      {(["sumInsured", "deductible"] as const).map(field => <div key={field} className="space-y-2">
-        {editable && onLiabilityChange ? <>
-          <label className={`${labelClass} space-y-1`}><span>{field === "sumInsured" ? "Limit pojistného plnění" : "Spoluúčast"}</span>
-            <input className={inputClass} type="number" min="0" max="1000000000" step="0.01" value={liability?.[field] ?? ""}
-              onChange={event => { const next = numberValue(event.target.value); onLiabilityChange(field, next);
-                onChange?.({ ...value, sections: { ...value.sections, liability: "found" }, liabilityFields: { ...value.liabilityFields, [field]: next == null ? "not_found" : "found" } }); }} /></label>
-          <StatusSelect label={`Stav údaje: ${field === "sumInsured" ? "limit odpovědnosti" : "spoluúčast odpovědnosti"}`}
-            status={value.liabilityFields[field]} foundDisabled={liability?.[field] == null}
-            onChange={status => { if (status !== "found") onLiabilityChange(field, null);
-              onChange?.({ ...value, liabilityFields: { ...value.liabilityFields, [field]: status } }); }} />
-        </> : <dl><dt className="text-xs text-slate-500">{field === "sumInsured" ? "Limit pojistného plnění" : "Spoluúčast"}</dt>
-          <dd className="text-sm font-semibold text-slate-900">{liability?.[field] != null ? formatMoney(liability[field]) : domexNeuronStatusLabel(value.liabilityFields[field])}</dd></dl>}
-      </div>)}
-    </section>
-    <div className={cardClass}>
+        : null}
+      <div className={detailStyles.fields}>
+        {(["sumInsured", "deductible"] as const).filter(field => editable || value.liabilityFields[field] !== "not_found").map(field => <div key={field} className="space-y-2">
+          {editable && onLiabilityChange ? <>
+            <label className={`${labelClass} space-y-1`}><span>{field === "sumInsured" ? "Limit pojistného plnění" : "Spoluúčast"}</span>
+              <input className={inputClass} type="number" min="0" max="1000000000" step="0.01" value={liability?.[field] ?? ""}
+                onChange={event => { const next = numberValue(event.target.value); onLiabilityChange(field, next);
+                  onChange?.({ ...value, sections: { ...value.sections, liability: "found" }, liabilityFields: { ...value.liabilityFields, [field]: next == null ? "not_found" : "found" } }); }} /></label>
+            <StatusSelect label={`Stav údaje: ${field === "sumInsured" ? "limit odpovědnosti" : "spoluúčast odpovědnosti"}`}
+              status={value.liabilityFields[field]} foundDisabled={liability?.[field] == null}
+              onChange={status => { if (status !== "found") onLiabilityChange(field, null);
+                onChange?.({ ...value, liabilityFields: { ...value.liabilityFields, [field]: status } }); }} />
+          </> : <dl className={detailStyles.field} data-highlight={field === "sumInsured" && liability?.[field] != null}><dt>{field === "sumInsured" ? "Limit pojistného plnění" : "Spoluúčast"}</dt>
+            <dd>{liability?.[field] != null ? formatMoney(liability[field]) : domexNeuronStatusLabel(value.liabilityFields[field])}</dd></dl>}
+        </div>)}
+      </div>
+    </section>}
+    {(editable || value.sections.assistance !== "not_found") && <div className={detailStyles.card} data-detail-tone="violet">
+      <InsuranceDetailHeading icon={LifeBuoy} status={!editable ? domexNeuronStatusLabel(value.sections.assistance) : undefined}>Asistenční služby</InsuranceDetailHeading>
       {editable ? <StatusSelect label="Stav sekce: asistenční služby" status={value.sections.assistance} onChange={status => changeSection("assistance", status)} />
-        : <p className="text-xs text-slate-600">Asistenční služby: {domexNeuronStatusLabel(value.sections.assistance)}</p>}
-      <p className="mt-2 text-xs text-slate-500">Varianta asistence je uvedena samostatně u každé stavby a domácnosti.</p>
-    </div>
+        : null}
+      <p className={detailStyles.muted}>Varianta asistence je uvedena samostatně u každé stavby a domácnosti.</p>
+    </div>}
   </section>;
 }

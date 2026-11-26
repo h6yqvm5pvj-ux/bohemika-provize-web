@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   type RecordInsuranceType,
+  type RecordLiabilityKind,
   RECORD_INSURANCE_TYPES,
   type RecordInsuranceTypeConfig,
 } from "./types";
@@ -27,6 +28,7 @@ import { LifeRecordForm } from "./LifeRecordForm";
 import { CarRecordForm } from "./CarRecordForm";
 import { PropertyRecordForm } from "./PropertyRecordForm";
 import { LiabilityRecordForm } from "./LiabilityRecordForm";
+import { LiabilityTypeDialog } from "./LiabilityTypeDialog";
 import { TravelRecordForm } from "./TravelRecordForm";
 import { BusinessRecordForm } from "./BusinessRecordForm";
 import { MeetingRecordSession } from "./MeetingRecordSession";
@@ -52,6 +54,11 @@ function RecordOfMeeting({ owner }: { owner: MeetingRecordContext }) {
   const [selectedType, setSelectedType] =
     useState<RecordInsuranceType>("life");
   const selectedInsurance = RECORD_INSURANCE_TYPES.find((type) => type.id === selectedType)!;
+  const [liabilityKind, setLiabilityKind] = useState<RecordLiabilityKind>("citizen");
+  const [liabilityChooserOpen, setLiabilityChooserOpen] = useState(false);
+  const selectedTitle = selectedType === "liability"
+    ? liabilityKind === "citizen" ? "Odpovědnost občana v běžném životě" : "Odpovědnost zaměstnance"
+    : selectedInsurance.title;
   const [clientGender, setClientGender] = useState(() => readRecordClientGender(owner));
   const texts = getRecordClientWords(clientGender);
   const changeClientGender = (gender: ClientGender) => {
@@ -78,7 +85,9 @@ function RecordOfMeeting({ owner }: { owner: MeetingRecordContext }) {
             const active = t.id === selectedType;
             const Icon = INSURANCE_TYPE_ICONS[t.id];
             return (
-              <button key={t.id} type="button" onClick={() => setSelectedType(t.id)}
+              <button key={t.id} type="button" onClick={() => t.id === "liability" ? setLiabilityChooserOpen(true) : setSelectedType(t.id)}
+                aria-haspopup={t.id === "liability" ? "dialog" : undefined}
+                aria-expanded={t.id === "liability" ? liabilityChooserOpen : undefined}
                 aria-pressed={active} aria-controls="record-form" className={styles.type} data-sector={t.id}>
                 <span className={styles.typeIcon}><Icon size={21} strokeWidth={1.7} aria-hidden="true" /></span>
                 {active && <Check size={14} className={styles.selectedMark} aria-hidden="true" />}
@@ -89,16 +98,24 @@ function RecordOfMeeting({ owner }: { owner: MeetingRecordContext }) {
         </div>
 
         <div className={styles.workspace}>
-          <div className={styles.workspaceLabel}><span><FilePenLine size={15} aria-hidden="true" /> Podklady pro záznam</span><span aria-live="polite">{selectedInsurance.title}</span></div>
-          <section id="record-form" className={styles.form} aria-label={selectedInsurance.title}>
+          <div className={styles.workspaceLabel}><span><FilePenLine size={15} aria-hidden="true" /> Podklady pro záznam</span><span aria-live="polite">{selectedTitle}</span></div>
+          <section id="record-form" className={styles.form} aria-label={selectedTitle}>
             {selectedType === "life" && <LifeRecordForm owner={owner} clientGender={clientGender} />}
             {selectedType === "car" && <CarRecordForm owner={owner} clientGender={clientGender} />}
             {selectedType === "property" && <PropertyRecordForm clientGender={clientGender} />}
-            {selectedType === "liability" && <LiabilityRecordForm clientGender={clientGender} />}
+            {selectedType === "liability" && <LiabilityRecordForm key={liabilityKind} kind={liabilityKind} clientGender={clientGender} />}
             {selectedType === "business" && <BusinessRecordForm clientGender={clientGender} />}
             {selectedType === "travel" && <TravelRecordForm clientGender={clientGender} />}
           </section>
         </div>
+        {liabilityChooserOpen && <LiabilityTypeDialog
+          onClose={() => setLiabilityChooserOpen(false)}
+          onSelect={kind => {
+            setLiabilityKind(kind);
+            setSelectedType("liability");
+            setLiabilityChooserOpen(false);
+          }}
+        />}
       </div>
     </AppLayout>
   );

@@ -47,6 +47,43 @@ describe("contract management confirmation flow", () => {
     await submit(); await submit(); expect(confirm).toHaveBeenCalledExactlyOnceWith({ kind: "storno", date: "2026-10-01" });
   });
 
+  it("opens the storno shortcut at the date and requires confirmation before saving", async () => {
+    await mount({ startWithStorno: true });
+    expect(container.querySelector("nav")?.textContent).toBe("1Údaje2Potvrzení");
+    expect(container.querySelector<HTMLInputElement>('input[type="date"]')?.min).toBe(defaults.minimumStornoDate);
+    expect(confirm).not.toHaveBeenCalled();
+    await input("2026-10-01");
+    await submit();
+    expect(confirm).not.toHaveBeenCalled();
+    await click(button("Zpět"));
+    expect(container.querySelector<HTMLInputElement>('input[type="date"]')?.value).toBe("2026-10-01");
+    await submit();
+    await submit();
+    expect(confirm).toHaveBeenCalledExactlyOnceWith({ kind: "storno", date: "2026-10-01" });
+  });
+
+  it("respects missing storno permission when opening the shortcut", async () => {
+    await mount({ startWithStorno: true, canSetStorno: false });
+    expect(container.querySelector('input[type="date"]')).toBeNull();
+    expect(container.querySelector('input[value="storno"]')).toBeNull();
+    await submit();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("updates the code-specific refund estimate before confirmation", async () => {
+    const getStornoComparison = vi.fn((date: string) => [
+      { code: "A101", paid: 100_000, estimated: date === "2026-10-01" ? 50_000 : 100_000, deducted: null, difference: null },
+    ]);
+    await mount({ startWithStorno: true, getStornoComparison });
+    expect(container.querySelector("tbody")?.textContent).toContain("100");
+    await input("2026-10-01");
+    expect(getStornoComparison).toHaveBeenLastCalledWith("2026-10-01");
+    expect(container.querySelector("tbody")?.textContent).toMatch(/A101.*50\s*%/);
+    await submit();
+    expect(container.querySelector("tbody")?.textContent).toMatch(/A101.*50\s*%/);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it("requires a permitted recipient before a transfer can be reviewed or submitted", async () => {
     await mount(); await choose("transfer"); await submit(); await submit();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("Vyber nového správce"); expect(confirm).not.toHaveBeenCalled();

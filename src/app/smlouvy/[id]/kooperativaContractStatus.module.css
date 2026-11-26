@@ -37,10 +37,21 @@
 .note { margin: 12px 1px 0; color: #76837c; font-size: 12px; line-height: 1.5; }
 .footer { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 28px; border-top: 1px solid #e8eeea; background: #fafcfb; }
 .footer p { max-width: 160px; margin: 0; color: #7b8981; font-size: 12px; line-height: 1.55; }
+.footerActions { display: flex; flex-shrink: 0; justify-content: flex-end; gap: 8px; }
+.storno { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; gap: 8px; padding: 11px 14px; border: 1px solid #e7c5ce; border-radius: 11px; background: #fff; color: #8f3650; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+.storno:hover { border-color: #cf8fa2; background: #fff4f7; }
+.storno svg, .openPortal svg { flex-shrink: 0; }
 .openPortal { display: inline-flex; min-height: 46px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 12px; padding: 11px 16px; border: 1px solid #187447; border-radius: 11px; background: #187447; color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; transition: background .15s; }
 .openPortal:hover { background: #105c36; }
 .dialog button:focus-visible, .openPortal:focus-visible { outline: 3px solid #81b99b; outline-offset: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 570px) {
+  .footer { flex-direction: column; align-items: stretch; gap: 12px; }
+  .footer p { max-width: none; text-align: center; }
+  .footerActions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .footerActions > * { gap: 6px; padding-inline: 8px; text-align: center; }
+}
 
 @media (max-width: 460px) {
   .dialog { max-height: calc(100dvh - 24px); border-radius: 20px; }
@@ -52,8 +63,7 @@
   .field dd { font-size: 17px; }
   .copy { padding: 10px; }
   .copy span { display: none; }
-  .footer { flex-direction: column; align-items: stretch; gap: 12px; padding: 17px 20px 20px; }
-  .footer p { max-width: none; text-align: center; }
+  .footer { padding: 17px 20px 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

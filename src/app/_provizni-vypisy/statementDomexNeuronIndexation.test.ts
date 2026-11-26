@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildStatementCodeComparisons, isHigherStatementCommission } from "./statementCommissionComparisons";
 import { statementContractReview } from "./statementContractReview";
-import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementExpectation, statementDomexNeuronIndexation } from "./statementDomexNeuronIndexation";
+import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementCommissionCode, domexNeuronStatementExpectation, statementDomexNeuronIndexation } from "./statementDomexNeuronIndexation";
 import type { CommissionRow, MatchedSystemContract } from "./statementTypes";
 
 const system: MatchedSystemContract = {
@@ -24,13 +24,26 @@ const compare = (patch: Partial<typeof options> = {}) => {
 };
 
 describe("DOMEX Neuron statement indexation review", () => {
-  it("accepts an exactly proven anniversary increase and explains the actual new base", () => {
-    const expectation = domexNeuronStatementExpectation(options);
+  it.each(["CPP_DOMEX+", "CPP_DOMX+N"])("accepts an exactly proven anniversary increase for %s", product => {
+    const input = { ...options, rows: [{ ...row, product }] };
+    const expectation = domexNeuronStatementExpectation(input);
     expect(expectation).toMatchObject({ amount: 350.28, acceptHigherCommission: false,
       indexation: { status: "confirmed", annualPremium: 12_600 } });
     expect(expectation.detailLines?.[0]).toContain("Valorizace pojistného:");
-    expect(compare()[0]).toMatchObject({ status: "ok", expectedAmount: 350.28, statementAmount: 350.28 });
-    expect(domexNeuronStatementBaseIsConfirmed({ ...options, statementBase: row.base })).toBe(true);
+    expect(compare(input)[0]).toMatchObject({ status: "ok", expectedAmount: 350.28, statementAmount: 350.28 });
+    expect(domexNeuronStatementBaseIsConfirmed({ ...input, statementBase: row.base })).toBe(true);
+  });
+
+  it("checks annual A102 as the first renewal and keeps the original statement label", () => {
+    const renewal = { ...row, type: "A102", product: "CPP_DOMX+N" };
+    const input = { ...options, rows: [renewal] };
+    expect(domexNeuronStatementCommissionCode(renewal, system)).toBe("B101");
+    expect(compare(input)[0]).toMatchObject({ label: "A102", status: "ok", expectedAmount: 350.28 });
+    expect(domexNeuronStatementBaseIsConfirmed({ ...input, statementBase: renewal.base })).toBe(true);
+    expect(statementDomexNeuronIndexation({ ...input, statementPeriod: "01.10.2027 - 31.10.2027" }).status).toBe("unproven");
+    expect(statementDomexNeuronIndexation({ ...input, contract: { ...system, premiumIndexationEnabled: false } }).status).toBe("disabled");
+    expect(domexNeuronStatementCommissionCode(renewal, { ...system, frequencyRaw: "quarterly" })).toBe("A102");
+    expect(domexNeuronStatementCommissionCode(renewal, { ...system, productKey: "domex" })).toBe("A102");
   });
 
   it.each([false, null, undefined])("keeps a higher commission as an error without consent (%s)", premiumIndexationEnabled => {

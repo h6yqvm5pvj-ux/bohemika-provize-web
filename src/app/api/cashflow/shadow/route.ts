@@ -79,7 +79,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (inputHash !== body.inputHash) return skipped("different_inputs");
 
     const { items, months } = await timing.measure("compute", () => {
-      const items = computeCashflow(inputs.snapshot, { ...body.options, asOf });
+      const items = computeCashflow(inputs.snapshot, { ...body.options, asOf, statements: inputs.statements });
       return { items, months: buildCashflowView(items, inputs.statements, body.options, asOf) };
     });
     const [itemsHash, monthsHash] = await timing.measure("hash", () => Promise.all([hashCashflowValue(items), hashCashflowValue(months)]));

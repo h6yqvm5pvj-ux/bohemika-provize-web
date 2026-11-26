@@ -432,12 +432,15 @@ export async function calculateResultForPosition(
   switch (product) {
     case "neon": {
       const { calculateNeon } = await import("../../lib/productFormulas/neon");
+      const coefficientSet = c.commissionCoefficientSetOverride ?? c.neonCoefficientSetOverride;
       return calculateNeon(
         amount,
         position,
         neonYears,
         usedMode,
-        contractSignedDateIso
+        contractSignedDateIso,
+        c.isRefresh && (coefficientSet === "historical" || coefficientSet === "current") ? coefficientSet : null,
+        c.isRefresh ? c.neonRefreshCareAnnualPremium : null
       );
     }
     case "flexi": {
@@ -492,10 +495,12 @@ export async function calculateResultForPosition(
     }
     case "koopmajetekobcan":
     case "koopfit": {
-      const { calculateKoopMajetekObcan } = await import(
+      const { calculateKoopFit, calculateKoopMajetekObcan } = await import(
         "../../lib/productFormulas/koopmajetekobcan"
       );
-      return calculateKoopMajetekObcan(amount, freq, position);
+      return product === "koopfit"
+        ? calculateKoopFit(amount, freq, position)
+        : calculateKoopMajetekObcan(amount, freq, position, contractSignedDateIso);
     }
     case "cppbytex": {
       const { calculateCppBytex } = await import(
@@ -507,7 +512,7 @@ export async function calculateResultForPosition(
       const { calculateKoopOdzam } = await import(
         "../../lib/productFormulas/koopodzam"
       );
-      return calculateKoopOdzam(amount, freq, position);
+      return calculateKoopOdzam(amount, freq, position, contractSignedDateIso);
     }
     case "kooppmop": {
       const { calculateKoopPmop } = await import(

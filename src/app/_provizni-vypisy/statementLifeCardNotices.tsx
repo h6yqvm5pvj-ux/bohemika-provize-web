@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Info, Loader2, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import type { RefreshBaseReview } from "./statementRefreshBaseReview";
-import type { LifePremiumReductionReference } from "./statementLifePremiumReduction";
+import type { LifePremiumEndorsementReference } from "./statementLifePremiumReduction";
 
 import { coefficientSetLabel } from "@/app/lib/productFormulas/coefficientSets";
 import { formatSystemDate, formatWholeMoney } from "./statementParsing";
@@ -23,8 +24,9 @@ export function NeonRefreshBaseNotice({review, onConfirm, saving = false, error}
 }) {
   if (!review) return null;
   const confirmed = review.status === "confirmed";
+  if (!confirmed && !review.needsConfirmation) return null;
   const Icon = confirmed ? CheckCircle2 : Info;
-  const canConfirm = !confirmed && review.statementRiskAnnual != null && Boolean(onConfirm);
+  const canConfirm = review.needsConfirmation && review.statementRiskAnnual != null && Boolean(onConfirm);
   return <div aria-busy={saving} className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${confirmed ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
     <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
     <div>
@@ -60,10 +62,21 @@ export function NeonRefreshBaseNotice({review, onConfirm, saving = false, error}
   </div>;
 }
 
-export function LifeCommissionBaseDifferenceNotice({differences}: {differences: {label: string; statementAnnualPremiumBase: number; systemAnnualPremiumBase: number}[]}) {
-  if (differences.length === 0) return null;
+function LifeBaseWarning({ commissionsMatch, children }: { commissionsMatch: boolean; children: ReactNode }) {
   return <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    {commissionsMatch
+      ? <p className="font-semibold">Roční základna pojistného sice nesedí, ale provize je správná!</p>
+      : children}
+  </div>;
+}
+
+export function LifeCommissionBaseDifferenceNotice({ differences, commissionsMatch = false }: {
+  differences: { label: string; statementAnnualPremiumBase: number; systemAnnualPremiumBase: number }[];
+  commissionsMatch?: boolean;
+}) {
+  if (differences.length === 0) return null;
+  return <LifeBaseWarning commissionsMatch={commissionsMatch}>
     <div>
       <div className="font-bold">Rozdíl základny u konkrétní provize</div>
       {differences.map((difference,index) => <div key={index} className="mt-0.5 font-medium">
@@ -71,7 +84,7 @@ export function LifeCommissionBaseDifferenceNotice({differences}: {differences: 
       </div>)}
       <div className="mt-1">Tento rozdíl je potřeba ověřit u dané položky. Sám o sobě není důvodem ke změně rizikové základny celé smlouvy.</div>
     </div>
-  </div>;
+  </LifeBaseWarning>;
 }
 
 export type LifePremiumBaseMismatchNotice = {
@@ -147,16 +160,16 @@ export function LifeCoefficientOverrideNotice({
   );
 }
 
-export function LifePremiumReductionNotice({ reference }: { reference: LifePremiumReductionReference | null }) {
+export function LifePremiumEndorsementAppliedNotice({ reference }: { reference: LifePremiumEndorsementReference | null }) {
   if (!reference) return null;
   return (
     <div className="mt-3 flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
       <Info className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
       <div>
-        <div className="font-bold">Zohledněno snížení pojistného dodatkem</div>
+      <div className="font-bold">{reference.recurring ? "Použito pojistné z dodatku" : "Zohledněno snížení pojistného dodatkem"}</div>
         <div className="mt-0.5 font-medium text-sky-900">
-          Od {formatSystemDate(reference.change.policyStartDate)} je pojistné sníženo z {formatWholeMoney(reference.originalAnnualPremium / 12)} Kč na {formatWholeMoney(reference.annualPremium / 12)} Kč měsíčně.
-          {" "}Pro kontrolu odložené provize používáme {formatWholeMoney(reference.annualPremium)} Kč ročně a původní sazby a pozici.
+        Od {formatSystemDate(reference.change.policyStartDate)} je pojistné {formatWholeMoney(reference.annualPremium / 12)} Kč měsíčně. Původní pojistné bylo {formatWholeMoney(reference.originalAnnualPremium / 12)} Kč měsíčně.
+          {" "}Pro kontrolu provize používáme {formatWholeMoney(reference.annualPremium)} Kč ročně a původní sazby a pozici.
           {" "}Případný zbývající rozdíl základny nebo provize je potřeba ověřit samostatně.
         </div>
       </div>
@@ -169,11 +182,13 @@ export function LifePremiumBaseNotice({
   mismatch,
   monthlyDifference,
   endorsement,
+  commissionsMatch = false,
 }: {
   kind: LifePremiumBaseNoticeKind;
   mismatch: LifePremiumBaseMismatchNotice | null;
   monthlyDifference: number | null;
   endorsement: LifePremiumEndorsementNotice | null;
+  commissionsMatch?: boolean;
 }) {
   if (!kind || !mismatch) return null;
 
@@ -193,15 +208,14 @@ export function LifePremiumBaseNotice({
 
   if (kind === "mismatch") {
     return (
-      <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+      <LifeBaseWarning commissionsMatch={commissionsMatch}>
         <div>
           <div className="font-bold">Nesoulad ročního pojistného</div>
           <div className="mt-0.5 font-medium text-amber-900">
             Výpis počítá se základnou {formatWholeMoney(mismatch.statementAnnualPremium)} Kč ročně ({formatWholeMoney(mismatch.statementAnnualPremium / 12)} Kč měsíčně), ale systém eviduje {formatWholeMoney(mismatch.systemAnnualPremium)} Kč ročně ({formatWholeMoney(mismatch.systemMonthlyPremium)} Kč měsíčně). Rozdíl pojistného je {formatWholeMoney(mismatch.difference)} Kč ročně ({formatWholeMoney(monthlyDifference ?? 0)} Kč měsíčně).
           </div>
         </div>
-      </div>
+      </LifeBaseWarning>
     );
   }
 
@@ -221,39 +235,22 @@ export function LifePremiumBaseNotice({
 }
 
 export function LifeClientCardCommissionNotice({
-  hasMissingCommission,
   hasDeferredCommission,
 }: {
-  hasMissingCommission: boolean;
   hasDeferredCommission: boolean;
 }) {
-  if (!hasMissingCommission && !hasDeferredCommission) return null;
+  if (!hasDeferredCommission) return null;
 
   return (
-    <>
-      {hasMissingCommission && (
-      <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-        <div>
-          <div className="font-bold">Chybí provize B0301 (karta klienta)</div>
-          <div className="mt-0.5 font-medium text-amber-900">
-            Ve výpisu je A101, ale B0301 zde není. Pokud karta klienta nebyla zpracována do výplatního termínu, očekáváme B0301 obvykle po 3 měsících.
-          </div>
+    <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
+      <div>
+        <div className="font-bold">Doplacená B0301 po kartě klienta</div>
+        <div className="mt-0.5 font-medium text-emerald-900">
+          Ve výpisu je pouze B0301 bez A101. Beru ji jako pozdější doplacení provize po zpracování karty klienta; částka se pořád kontroluje proti Bohemka.App.
         </div>
       </div>
-      )}
-      {hasDeferredCommission && (
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} aria-hidden="true" />
-          <div>
-            <div className="font-bold">Doplacená B0301 po kartě klienta</div>
-            <div className="mt-0.5 font-medium text-emerald-900">
-              Ve výpisu je pouze B0301 bez A101. Beru ji jako pozdější doplacení provize po zpracování karty klienta; částka se pořád kontroluje proti Bohemka.App.
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 

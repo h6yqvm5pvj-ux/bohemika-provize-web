@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
+import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
+import type { Product } from "@/app/types/domain";
+import { allowedFrequencies } from "../kalkulacka/calculatorHelpers";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
+import { receiveStatementCalculatorDraft, STATEMENT_CALCULATOR_HANDOFF_PARAM } from "@/app/lib/statementCalculatorHandoff";
 import type { User } from "firebase/auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CppAutoBatchQueue, cppAutoBatchQueueItemFromPrefill, cppAutoBatchQueueItemKey,
@@ -20,6 +24,18 @@ const prefill = () => ({ ...statementCalculatorPrefill({
   signedAt: "01.09.2026", validFrom: "02.09.2026", statementBase: 12000,
   source: { statementId: "statement-0001", statementNumber: "123", statementPeriod: "září", statementChronologyMs: 123456 },
 })!, cppA101QueueEligible: true });
+
+async function readPanelDraft(root: Root, container: HTMLDivElement, source: NonNullable<ReturnType<typeof statementCalculatorPrefill>>) {
+  const handoff = { id: crypto.randomUUID(), getAccount: () => "test-adviser" };
+  await act(async () => root.render(<StatementCalculatorIframePanel handoff={handoff} prefill={source} onClose={() => {}} />));
+  const url = new URL(container.querySelector("iframe")!.getAttribute("src")!, "http://localhost");
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    prefill: "commission-statement", [STATEMENT_CALCULATOR_HANDOFF_PARAM]: handoff.id,
+  });
+  const draft = await new Promise<URLSearchParams | null>(resolve => receiveStatementCalculatorDraft(handoff, resolve));
+  if (!draft) throw new Error("The statement panel did not supply its draft");
+  return draft;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,7 +72,7 @@ describe("Kooperativa in the commission statement queue", () => {
     expect(item.product).toBe(product); expect(statementBatchQueueContractEntry(item).productKey).toBe(product);
   });
   it("rejects unsupported products and invalid message frequency", () => {
-    expect(() => cppAutoBatchQueueItemFromPrefill({ ...prefill(), product: "neon" })).toThrow();
+    expect(() => cppAutoBatchQueueItemFromPrefill({ ...prefill(), product: "unknown" as never })).toThrow();
     expect(isStatementBatchQueueAddMessage({ ...prefill(), type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, stornoDate: "", frequency: {} })).toBe(false);
   });
   it("keeps queue identities separate for contracts at different insurers", () => {
@@ -75,11 +91,10 @@ describe("Kooperativa in the commission statement queue", () => {
     const container = document.createElement("div"); // Detached to avoid iframe network requests.
     const root = createRoot(container);
     try {
-      await act(async () => root.render(<StatementCalculatorIframePanel prefill={prefill()} onClose={() => {}} />));
-      const url = new URL(container.querySelector("iframe")!.getAttribute("src")!, "http://localhost");
-      expect(url.searchParams.get("product")).toBe("kooperativaAuto");
-      expect(url.searchParams.get("cppA101QueueEligible")).toBe("1");
-      expect(url.searchParams.get("prefill")).toBe("commission-statement");
+      const draft = await readPanelDraft(root, container, prefill());
+      expect(draft.get("product")).toBe("kooperativaAuto");
+      expect(draft.get("cppA101QueueEligible")).toBe("1");
+      expect(draft.get("prefill")).toBe("commission-statement");
       const onRun = vi.fn();
       const items = [cppAutoBatchQueueItemFromPrefill(prefill()), cppAutoBatchQueueItemFromPrefill({ ...prefill(), product: "cppAuto" })];
       await act(async () => root.render(<CppAutoBatchQueue items={items} isRunning={false} onUpdate={() => {}}
@@ -98,16 +113,14 @@ describe.each([
   { product: "allianzAuto", productCode: "ALLMOJEAUT", label: "Allianz Auto", contractNumber: "4321123456", statementId: "statement-allianz", frequencies: ["monthly", "quarterly", "semiannual", "annual"] },
   { product: "pillowAuto", productCode: "PIL_AUTOZ", label: "Pillow Auto", contractNumber: "9012345678", statementId: "statement-pillow", frequencies: ["monthly", "quarterly", "semiannual", "annual"] },
   { product: "zamex", productCode: "CPP_ZAMEX", label: "ČPP ZAMEX", contractNumber: "0030000001", statementId: "statement-zamex", frequencies: ["quarterly", "semiannual", "annual"] },
+  { product: "domexneuron", productCode: "CPP_DOMX+N", label: "ČPP DOMEX NEURON", contractNumber: "0090000001", statementId: "statement-domex-neuron", frequencies: ["quarterly", "semiannual", "annual"] },
 ] as const)("$label in the commission statement queue", ({ product, productCode, label, contractNumber, statementId, frequencies }) => {
-  const productPrefill = () => ({
-    ...statementCalculatorPrefill({
-      product: resolveStatementProduct(productCode),
-      contractNumber, clientName: "Novák Jan",
-      signedAt: "01.09.2026", validFrom: "02.09.2026", statementBase: 12000,
-      source: { statementId, statementChronologyMs: 123456 },
-    })!,
-    cppA101QueueEligible: true,
-  });
+  const productPrefill = () => statementCalculatorPrefill({
+    product: resolveStatementProduct(productCode),
+    contractNumber, clientName: "Novák Jan",
+    signedAt: "01.09.2026", validFrom: "02.09.2026", statementBase: 12000,
+    source: { statementId, statementChronologyMs: 123456 },
+  })!;
 
   it.each(frequencies)(
     "preserves the product, %s payments and PDF through the queue and authenticated save",
@@ -152,10 +165,9 @@ describe.each([
     const container = document.createElement("div");
     const root = createRoot(container);
     try {
-      await act(async () => root.render(<StatementCalculatorIframePanel prefill={productPrefill()} onClose={() => {}} />));
-      const url = new URL(container.querySelector("iframe")!.getAttribute("src")!, "http://localhost");
-      expect(url.searchParams.get("product")).toBe(product);
-      expect(url.searchParams.get("cppA101QueueEligible")).toBe("1");
+      const draft = await readPanelDraft(root, container, productPrefill());
+      expect(draft.get("product")).toBe(product);
+      expect(draft.get("cppA101QueueEligible")).toBe("1");
       const onRun = vi.fn();
       await act(async () => root.render(<CppAutoBatchQueue
         items={[cppAutoBatchQueueItemFromPrefill(productPrefill()), cppAutoBatchQueueItemFromPrefill(prefill())]}
@@ -184,14 +196,14 @@ describe("ČPP Auto replacements in the commission statement queue", () => {
   })!;
   const replacement = { isRefresh: true, refreshOriginalContractNumber: " OLD123 " };
 
-  it("allows ČPP Auto with replacement enabled and keeps other replacement workflows excluded", () => {
+  it("allows all calculator products with and without replacement", () => {
     expect(canQueueStatementProduct("cppAuto", true)).toBe(true);
     expect(canQueueStatementProduct("cppAuto", false)).toBe(true);
     for (const product of ["domex", "allianzAuto", "kooperativaAuto", "uniqaAuto", "pillowAuto", "zamex"] as const) {
       expect(canQueueStatementProduct(product, false)).toBe(true);
-      expect(canQueueStatementProduct(product, true)).toBe(false);
+      expect(canQueueStatementProduct(product, true)).toBe(true);
     }
-    expect(canQueueStatementProduct("neon", true)).toBe(false);
+    expect(canQueueStatementProduct("neon", true)).toBe(true);
   });
 
   it("preserves replacement details through the iframe message, queue and authenticated save with PDF", async () => {
@@ -222,7 +234,6 @@ describe("ČPP Auto replacements in the commission statement queue", () => {
     { isRefresh: true, refreshOriginalContractNumber: "" },
     { isRefresh: true, refreshOriginalContractNumber: " new 123 " },
     { isRefresh: false, refreshOriginalContractNumber: "OLD123" },
-    { isRefresh: true, refreshOriginalContractNumber: "OLD123", product: "allianzAuto" as const },
   ])("rejects inconsistent replacement data in messages and before batch saving: %j", patch => {
     const source = { ...cppPrefill(), ...patch };
     expect(isStatementBatchQueueAddMessage({ ...source, type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, stornoDate: "" })).toBe(false);
@@ -275,7 +286,7 @@ describe("ČPP travel insurance in the commission statement queue", () => {
     const source = travelPrefill(productCode);
     expect(source).toMatchObject({ product: "cppcestovko", sourceProductCode: productCode, amountText: "1899.5", frequency: "annual" });
     expect(canQueueStatementProduct(source.product, false)).toBe(true);
-    expect(canQueueStatementProduct(source.product, true)).toBe(false);
+    expect(canQueueStatementProduct(source.product, true)).toBe(true);
     const file = new File(["synthetic PDF"], "travel.pdf", { type: "application/pdf" });
     const message = { ...source, type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, policyEndDate: "2026-09-12", stornoDate: "", pdfFile: file };
     expect(isStatementBatchQueueAddMessage(message)).toBe(true);
@@ -309,11 +320,11 @@ describe("ČPP travel insurance in the commission statement queue", () => {
     expect(validateCppAutoBatchQueueItem({ ...cppAutoBatchQueueItemFromPrefill(travelPrefill()), policyEndDate })).not.toBeNull();
   });
 
-  it("keeps older messages without an end date compatible and rejects malformed dates and replacements", () => {
+  it("keeps older messages compatible and rejects malformed dates", () => {
     const message = { ...travelPrefill(), type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, stornoDate: "" };
     expect(isStatementBatchQueueAddMessage(message)).toBe(true);
     expect(isStatementBatchQueueAddMessage({ ...message, policyEndDate: {} })).toBe(false);
-    expect(isStatementBatchQueueAddMessage({ ...message, isRefresh: true, refreshOriginalContractNumber: "OLD123" })).toBe(false);
+    expect(isStatementBatchQueueAddMessage({ ...message, isRefresh: true, refreshOriginalContractNumber: "OLD123" })).toBe(true);
     expect(statementBatchQueueContractEntry(cppAutoBatchQueueItemFromPrefill(travelPrefill())).policyEndDate).toBeNull();
   });
 
@@ -321,10 +332,9 @@ describe("ČPP travel insurance in the commission statement queue", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div"), root = createRoot(container);
     try {
-      await act(async () => root.render(<StatementCalculatorIframePanel prefill={travelPrefill(productCode)} onClose={() => {}} />));
-      const url = new URL(container.querySelector("iframe")!.getAttribute("src")!, "http://localhost");
-      expect(url.searchParams.get("product")).toBe("cppcestovko");
-      expect(url.searchParams.get("cppA101QueueEligible")).toBe("1");
+      const draft = await readPanelDraft(root, container, travelPrefill(productCode));
+      expect(draft.get("product")).toBe("cppcestovko");
+      expect(draft.get("cppA101QueueEligible")).toBe("1");
       const item = { ...cppAutoBatchQueueItemFromPrefill(travelPrefill(productCode)), policyEndDate: "2026-09-12" };
       const onUpdate = vi.fn(), onRun = vi.fn();
       await act(async () => root.render(<CppAutoBatchQueue items={[item, cppAutoBatchQueueItemFromPrefill(prefill())]}
@@ -384,10 +394,9 @@ describe("UNIQA Auto in the commission statement queue", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);
     const container=document.createElement("div"),root=createRoot(container);
     try{
-      await act(async()=>root.render(<StatementCalculatorIframePanel prefill={uniqaPrefill()} onClose={()=>{}}/>));
-      const url=new URL(container.querySelector("iframe")!.getAttribute("src")!,"http://localhost");
-      expect(url.searchParams.get("product")).toBe("uniqaAuto");
-      expect(url.searchParams.get("cppA101QueueEligible")).toBe("1");
+      const draft = await readPanelDraft(root, container, uniqaPrefill());
+      expect(draft.get("product")).toBe("uniqaAuto");
+      expect(draft.get("cppA101QueueEligible")).toBe("1");
       const onRun=vi.fn();
       await act(async()=>root.render(<CppAutoBatchQueue items={[cppAutoBatchQueueItemFromPrefill(uniqaPrefill()),cppAutoBatchQueueItemFromPrefill(prefill())]}
         isRunning={false} onUpdate={()=>{}} onRemove={()=>{}} onClearSaved={()=>{}} onRun={onRun}/>));
@@ -397,5 +406,47 @@ describe("UNIQA Auto in the commission statement queue", () => {
       await act(async()=>[...container.querySelectorAll("button")].find(b=>b.textContent?.includes("Nahrát frontu"))!.click());
       expect(onRun).toHaveBeenCalledOnce();
     }finally{await act(async()=>root.unmount());vi.unstubAllGlobals();}
+  });
+});
+
+
+describe("all calculator products in the statement queue", () => {
+  it.each(Object.keys(PRODUCT_CATALOG) as Product[])("preserves validated %s product settings", product => {
+    const frequency = allowedFrequencies(product)[0];
+    const source = { ...prefill(), product, frequency };
+    const contractEntry = {
+      productKey: product, entryType: "contract", commissionMode: "standard",
+      durationYears: 25, durationMonths: 12, maxCizinKomplexVariant: "premium",
+      calculationInputAmount: 123, pensionTargetAge: 65, isDip: true,
+      domexDetail: { address: "Testovací 1" }, neonDetail: { version: "test" },
+      flexiRenovation: { originalMonthlyPremium: 1000, premiumIncreaseMonthly: 200 },
+      paid: true,
+    };
+    const message = { ...source, type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, stornoDate: "", contractEntry };
+    expect(canQueueStatementProduct(product, false)).toBe(true);
+    expect(isStatementBatchQueueAddMessage(message)).toBe(true);
+    const item = { ...cppAutoBatchQueueItemFromPrefill(source), contractEntry };
+    expect(validateCppAutoBatchQueueItem(item)).toBeNull();
+    expect(statementBatchQueueContractEntry(item)).toMatchObject(contractEntry);
+  });
+
+  it("accepts zero amounts for record-only products and rejects unknown products and malformed prepared entries", () => {
+    const item = { ...cppAutoBatchQueueItemFromPrefill({ ...prefill(), product: "conseqInvest" }), amountText: "0", frequency: "annual" as const };
+    expect(validateCppAutoBatchQueueItem(item)).toBeNull();
+    expect(isStatementBatchQueueProduct("__proto__")).toBe(false);
+    expect(isStatementBatchQueueProduct("unknown")).toBe(false);
+    for (const contractEntry of [null, [], "invalid", { productKey: "neon", entryType: "contract" }, { productKey: item.product, entryType: "endorsement" }]) {
+      expect(isStatementBatchQueueAddMessage({ ...item, type: STATEMENT_BATCH_QUEUE_ADD_MESSAGE_TYPE, contractEntry })).toBe(false);
+    }
+  });
+
+  it("preserves a provisional NEON replacement without an original in the system", () => {
+    const source = { ...prefill(), product: "neon" as const, frequency: "monthly" as const };
+    const replacement = { isRefresh: true, refreshOriginalMissingInSystem: true };
+    const item = { ...cppAutoBatchQueueItemFromPrefill(source, replacement), contractEntry: {
+      requiresStatementRefresh: true, commissionCalculationStatus: "provisional_refresh_missing_original", commissionBaseSource: "calculator_provisional",
+    } };
+    expect(validateCppAutoBatchQueueItem(item)).toBeNull();
+    expect(statementBatchQueueContractEntry(item)).toMatchObject({ ...replacement, requiresStatementRefresh: true, commissionCalculationStatus: "provisional_refresh_missing_original" });
   });
 });

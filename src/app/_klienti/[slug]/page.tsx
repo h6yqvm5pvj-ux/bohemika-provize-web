@@ -719,6 +719,7 @@ function ContractCard({ contract }: { contract: ClientContractItem }) {
       <div className={styles.contractInfo}>
         <div className={styles.contractHeading}>
           <Link href={contractDetailHref(contract)} className={styles.contractTitle}>{title}</Link>
+          {contract.isDip === true && <span className={styles.status}>DIP</span>}
           <span className={styles.status} data-archived={status !== "Aktivní"}>{status}</span>
         </div>
         <span className={styles.contractNumber}>č. {contract.contractNumber?.trim() || "Neuvedeno"}</span>

@@ -19,13 +19,37 @@ export type OwnerProductionMonth = ProductionMonth & {
 };
 export type OwnerProductionSummary = { current: OwnerProductionMonth; previous: OwnerProductionMonth };
 
+export type LeaderboardTotals = OwnerProductionMonth["leaderboard"];
+
+export function isLeaderboardTotals(value: unknown): value is LeaderboardTotals {
+  const row = value as Partial<LeaderboardTotals> | null;
+  return !!row && Number.isFinite(row.life) && Number.isFinite(row.other)
+    && typeof row.hasLife === "boolean" && typeof row.hasOther === "boolean";
+}
+
+export function isLeaderboardRows(value: unknown): value is MonthlyLeaderboardRow[] {
+  return Array.isArray(value) && value.every(row => row && typeof row.email === "string" &&
+    (row.name === null || typeof row.name === "string") && isLeaderboardTotals(row));
+}
+
+export function addLeaderboardPremium(totals: LeaderboardTotals, entry: Pick<EntryDoc, "inputAmount" | "frequencyRaw" | "productKey">) {
+  const amount = entry.inputAmount;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount === 0) return;
+  if (["neon", "flexi", "maximaMaxEfekt", "pillowInjury"].includes(entry.productKey ?? "")) {
+    totals.life += amount;
+    totals.hasLife = true;
+  } else {
+    totals.other += normalizeToAnnual(amount, entry.frequencyRaw);
+    totals.hasOther = true;
+  }
+}
+
 export function isHomeProductionSummary(value: unknown): value is HomeProductionSummary {
   if (!value || typeof value !== "object") return false;
   const summary = value as HomeProductionSummary;
   return [summary.current, summary.previous].every(month => month && Number.isSafeInteger(month.count) && month.count >= 0
     && Number.isFinite(month.immediate) && month.premiums && Number.isFinite(month.premiums.lifeMonthly) && Number.isFinite(month.premiums.otherAnnual))
-    && Array.isArray(summary.leaderboard) && summary.leaderboard.every(row => row && typeof row.email === "string"
-      && (row.name === null || typeof row.name === "string") && Number.isFinite(row.life) && Number.isFinite(row.other) && typeof row.hasLife === "boolean" && typeof row.hasOther === "boolean");
+    && isLeaderboardRows(summary.leaderboard);
 }
 
 const emptyMonth = (): OwnerProductionMonth => ({
@@ -56,13 +80,7 @@ export function summarizeOwnerProduction(entries: readonly EntryDoc[], window: P
         : Number.isFinite(override.total) ? override.total! : 0;
       month.managers[email] = (month.managers[email] ?? 0) + amount;
     }
-    const amount = entry.inputAmount;
-    if (typeof amount === "number" && Number.isFinite(amount) && amount !== 0) {
-      // These are the existing leaderboard categories, distinct from premium cards.
-      const life = ["neon", "flexi", "maximaMaxEfekt", "pillowInjury"].includes(entry.productKey ?? "");
-      if (life) { month.leaderboard.life += amount; month.leaderboard.hasLife = true; }
-      else { month.leaderboard.other += normalizeToAnnual(amount, entry.frequencyRaw); month.leaderboard.hasOther = true; }
-    }
+    addLeaderboardPremium(month.leaderboard, entry);
   }
   current.premiums = summarizeProductionPremiums(activeEntries, new Date(window.split), new Date(window.to));
   previous.premiums = summarizeProductionPremiums(activeEntries, new Date(window.from), new Date(window.split));

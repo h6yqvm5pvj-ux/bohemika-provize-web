@@ -7,7 +7,7 @@ import {
 } from "react";
 import Image from "next/image";
 
-import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
+import { investmentInstitutionId, isInvestmentProduct, PRODUCT_CATALOG } from "@/app/lib/productCatalog";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import type { PaymentFrequency, Product } from "@/app/types/domain";
 import { allowedFrequencies as calculatorAllowedFrequencies } from "../kalkulacka/calculatorHelpers";
@@ -17,6 +17,7 @@ import {
   parseLocalDate,
   toDateInputValue,
 } from "./statementParsing";
+import { statementClientNameForCalculator } from "./statementClientName";
 import type {
   BohemkaContractDetailModalPayload,
   StatementProductMeta,
@@ -54,34 +55,21 @@ export type StatementCalculatorPrefillSource = {
 };
 
 export const StatementCalculatorPrefillContext =
-  createContext<Dispatch<SetStateAction<StatementCalculatorPrefill | null>> | null>(null);
+  createContext<((prefill: StatementCalculatorPrefill) => void) | null>(null);
+
+export function statementContractPrefillProduct(products: StatementProductMeta[]): StatementProductMeta | null {
+  if (products.length === 1) return products[0].productKey ? products[0] : null;
+  if (!products.every(product => investmentInstitutionId(product.productKey) === "investika")) return null;
+
+  return products.find(product => product.productKey === "investikaRealitniFond")
+    ?? products.find(product => product.productKey === "investikaEfektika")
+    ?? products[0]
+    ?? null;
+}
 
 const statementDateToIsoDay = (value: string | null | undefined): string => {
   const date = parseLocalDate(value);
   return date ? toDateInputValue(date) : "";
-};
-
-const statementClientNameForCalculator = (value: string | null | undefined): string => {
-  const name = normalizeText(value);
-  if (!name) return "";
-  if (
-    /\b(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.|firma|obec|město|mesto|úřad|urad)\b/i.test(
-      name
-    )
-  ) {
-    return name;
-  }
-
-  const commaParts = name
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (commaParts.length === 2) return `${commaParts[1]} ${commaParts[0]}`;
-
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length < 2 || parts.length > 4) return name;
-  const [surname, ...givenNames] = parts;
-  return [...givenNames, surname].join(" ");
 };
 
 const statementCalculatorAmountText = (value: number): string => {
@@ -101,6 +89,7 @@ const statementCalculatorAmountAndFrequency = (
       ? "monthly"
       : allowedFrequencies[0];
   if (!frequency) return null;
+  if (isInvestmentProduct(product.productKey)) return { amountText: "", frequency };
 
   const amount = product.usesAnnualPremiumBase
     ? statementBase / periodsPerYear(frequency)
@@ -139,6 +128,7 @@ export const statementCalculatorPrefill = ({
       : null;
 
   return {
+    cppA101QueueEligible: true,
     product: product.productKey,
     productLabel: PRODUCT_CATALOG[product.productKey].label,
     sourceProductCode: product.rawCode,
@@ -162,6 +152,11 @@ type StatementProductLogoMeta = {
 };
 
 const statementProductLogoMeta = (product: StatementProductMeta): StatementProductLogoMeta => {
+  const rawCode = normalizeProductCode(product.rawCode);
+  if (rawCode === "INVESTIKA" || rawCode === "EFEKTIKA" || rawCode === "MONETIKA") {
+    return { src: "/icons/invstk.png", alt: product.label };
+  }
+
   const catalogMeta = product.productKey ? PRODUCT_CATALOG[product.productKey] : null;
   if (catalogMeta?.institutionLogo) {
     return {
@@ -170,11 +165,7 @@ const statementProductLogoMeta = (product: StatementProductMeta): StatementProdu
     };
   }
 
-  const rawCode = normalizeProductCode(product.rawCode);
   if (rawCode.startsWith("CON_")) return { src: "/icons/conseq.png", alt: "Conseq" };
-  if (rawCode === "INVESTIKA" || rawCode === "EFEKTIKA" || rawCode === "MONETIKA") {
-    return { src: "/icons/invstk.png", alt: product.label };
-  }
   if (rawCode.startsWith("CPP")) return { src: "/icons/cpp.png", alt: "ČPP" };
   if (rawCode.startsWith("KOO")) return { src: "/icons/koop-v2.png", alt: "Kooperativa" };
   if (rawCode.startsWith("UNIQA")) return { src: "/icons/uniqa.png", alt: "UNIQA" };

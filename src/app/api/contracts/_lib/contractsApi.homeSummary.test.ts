@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  guard: vi.fn(), collection: vi.fn(), fullRead: vi.fn(), projected: vi.fn(), indexedRead: vi.fn(), production: vi.fn(),
+  guard: vi.fn(), collection: vi.fn(), fullRead: vi.fn(), projected: vi.fn(), indexedRead: vi.fn(), production: vi.fn(), leaderboard: vi.fn(), team: [] as string[],
 }));
 vi.mock("@/lib/server/firebaseAdmin", () => ({
   adminDb: { collection: mocks.collection }, adminAuth: null, adminMessaging: null, adminStorage: null,
@@ -17,6 +17,10 @@ vi.mock("@/lib/server/homeProduction", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/server/homeProduction")>(), loadHomeProductionOwners: mocks.production,
 }));
 
+vi.mock("@/lib/server/homeTeamLeaderboard", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/server/homeTeamLeaderboard")>(), loadTeamLeaderboard: mocks.leaderboard,
+}));
+
 const email = "owner@example.test";
 const ts = Date.parse("2026-09-10");
 const doc = (id: string) => ({ id, ref: { path: `users/${email}/entries/${id}` }, data: () => ({
@@ -27,6 +31,7 @@ const doc = (id: string) => ({ id, ref: { path: `users/${email}/entries/${id}` }
 beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
+  mocks.team.length = 0;
   mocks.guard.mockResolvedValue({ ok: true, ctx: {
     email, uid: "uid", decoded: { email }, isImpersonating: false,
     actorEmail: email, actorUid: "uid", impersonation: null,
@@ -40,7 +45,7 @@ beforeEach(() => {
     if (name === "users") return {
       select() { return this; },
       get: async () => {
-        const docs = [{ id: email, data: () => ({ email, position: "poradce3", commissionMode: "standard", accountType: "advisor" }) }];
+        const docs = [...mocks.team.map(id => ({ id, data: () => ({ email: id, managerEmail: email, position: "poradce3", accountType: "advisor" }) })), { id: email, data: () => ({ email, position: "poradce3", commissionMode: "standard", accountType: "advisor" }) }];
         return { docs, forEach: (visit: (doc: typeof docs[number]) => void) => docs.forEach(visit) };
       },
       doc: (owner: string) => {
@@ -100,5 +105,36 @@ describe("home monthly summary authorization", () => {
     const { handleContractsList } = await import("./contractsApi");
     expect((await handleContractsList(summaryRequest())).status).toBe(503);
     warning.mockRestore();
+  });
+});
+
+describe("historical team leaderboard", () => {
+  const request = (months = "6", extra = "") => new NextRequest(
+    `https://example.test/api/contracts/list?scope=team&shape=home&timeZone=Europe%2FPrague&leaderboardMonths=${months}${extra}`
+  );
+  it.each([401, 403, 429])("propagates guard status %i before reading the leaderboard", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status }) });
+    const { handleContractsList } = await import("./contractsApi");
+    expect((await handleContractsList(request())).status).toBe(status);
+    expect(mocks.leaderboard).not.toHaveBeenCalled();
+  });
+  it("requires current team access even for previously cached results", async () => {
+    const { handleContractsList } = await import("./contractsApi");
+    expect((await handleContractsList(request())).status).toBe(403);
+    expect(mocks.leaderboard).not.toHaveBeenCalled();
+  });
+  it("loads only current subordinates and rejects arbitrary ranges, owners and roles", async () => {
+    mocks.team.push("subordinate@example.test");
+    mocks.leaderboard.mockResolvedValue([]);
+    const { handleContractsList } = await import("./contractsApi");
+    for (const invalid of [request("24"), request("6", "&subordinates=foreign"), request("6", "&role=admin"), request("6", "&leaderboardMonths=12")]) {
+      expect((await handleContractsList(invalid)).status).toBe(400);
+    }
+    const response = await handleContractsList(request("12"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ ok: true, leaderboard: [] });
+    expect(mocks.leaderboard).toHaveBeenCalledTimes(1);
+    expect(mocks.leaderboard.mock.calls[0][1]).toEqual(["subordinate@example.test"]);
   });
 });

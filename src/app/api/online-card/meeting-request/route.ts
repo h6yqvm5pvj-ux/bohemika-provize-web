@@ -295,10 +295,9 @@ function parseCardOwner(
   if (!slug || slug.length < 3 || !SLUG_RE.test(slug)) return null;
   if (!ownerName) return null;
 
-  const cardEmail = normalizeEmail(card.email);
   const profileEmail = normalizeEmail(data.email);
   const docIdEmail = normalizeEmail(docId);
-  const ownerEmailCandidate = [cardEmail, profileEmail, docIdEmail].find(
+  const ownerEmailCandidate = [profileEmail, docIdEmail].find(
     (email) => email && EMAIL_RE.test(email)
   );
   if (!ownerEmailCandidate) return null;

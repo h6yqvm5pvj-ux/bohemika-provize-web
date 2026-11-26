@@ -1,6 +1,10 @@
+import { createCommissionCodeProjection, hasAnnualCommissionCodeSchedule } from "@/app/lib/commissionPayoutCodeAdjustment";
+import type { PremiumCodeReceipt } from "@/app/lib/commissionPremiumCodeAdjustment";
+import { commissionPeriodAfterMonths } from "@/app/lib/commissionPeriodForCode";
+import { premiumCodeProjection, premiumEvidenceByPeriod, projectConfirmedPremiumHistory } from "@/app/lib/commissionPremiumCodeAdjustment";
 import { createHash } from "node:crypto";
 
-import type { Product } from "@/app/types/domain";
+import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
 import {
   isAnnualAutoPayoutProduct,
   isAutoProduct,
@@ -18,6 +22,11 @@ import { resolveAutoPremiumBasis, previousConfirmedAutoAnnualPremium, type Premi
 import { isDomexNeuronStatementProduct, resolveDomexNeuronIndexation } from "@/app/lib/domexNeuronIndexation";
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import type { Position } from "@/app/types/domain";
+import type { PaymentFrequencyChange } from "@/app/lib/autoPaymentFrequency";
+import { combinedSemiannualAutoPremium } from "@/app/lib/autoSubsequentInstallmentCoverage";
+import { isKooperativaAutoRenewalPayout } from "@/app/lib/kooperativaCPayoutMeaning";
+import { kooperativaAutoRenewalPremium } from "@/app/lib/kooperativaAutoRenewalPremium";
+import { autoAnnualPremiumAtDate } from "@/app/lib/autoPaymentFrequency";
 
 const PREMIUM_CHANGE_TOLERANCE = 12;
 const LEGACY_STATEMENT_CREATED_CONTRACT_WINDOW_MS = 15 * 60 * 1000;
@@ -37,14 +46,22 @@ export type PremiumStatementRow = {
 };
 
 export type PremiumHistoryContract = {
+  commissionPayoutCodeAdjustment?: unknown;
+  paymentFrequencyChanges?: PaymentFrequencyChange[] | null;
+  items?: CommissionResultItemDTO[] | null;
+  entryType?: string | null;
+  commissionPayouts?: (PremiumCodeReceipt & { statementId?: string | null })[] | null;
   premiumStatementBaseResolutions?: PremiumBaseResolution[] | null;
   productKey?: Product | null;
   frequencyRaw?: string | null;
   inputAmount?: number | null;
+  signedAnnualPremiumOverride?: number | null;
   effectiveInputAmount?: number | null;
   calculationInputAmount?: number | null;
   premiumIndexationEnabled?: boolean | null;
   position?: Position | null;
+  contractSignedDate?: unknown;
+  commissionCoefficientSetOverride?: unknown;
   createdAt?: unknown;
   createdFromCommissionStatement?: unknown;
   createdFromCommissionStatementId?: unknown;
@@ -58,8 +75,12 @@ export type PremiumHistoryContract = {
 };
 
 export type PremiumStatementHistoryEntry = {
+  resolvedCommissionCode?: string;
+  commissionCodeCorrectionNote?: string;
   changeReason?: "indexation";
+  premiumDerivedFromCommission?: boolean;
   sourceBasePremium?: number;
+  combinedInstallmentCode?: string;
   paymentFrequencyAtImport?: string | null;
   basePremiumResolutionKey?: string;
   key: string;
@@ -356,12 +377,13 @@ const statementAnnualBase = (
 const autoPremiumBeforeStatement = (
   contract: PremiumHistoryContract,
   referenceMs: number | null,
-  options: { allowCurrentFallback?: boolean } = {}
+  options: { allowCurrentFallback?: boolean; ownPayoutsOnly?: boolean } = {}
 ): number | null => {
   const allowCurrentFallback = options.allowCurrentFallback ?? true;
   const history = contractPremiumHistoryArray(contract)
     .filter(
       (entry) =>
+        (!options.ownPayoutsOnly || entry.source !== "manager") &&
         (entry.premiumKind === "auto_initial" || entry.premiumKind === "auto_change") &&
         finiteMoneyOrNull(entry.newPremium) != null
     )
@@ -398,6 +420,31 @@ const autoPremiumBeforeStatement = (
 
 const isoDateFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+function combinedAutoPremiumFromStatement({ row, contract, code, statementId, payoutMonthKey, writtenBy }: {
+  row: PremiumStatementRow;
+  contract: PremiumHistoryContract;
+  code: string;
+  statementId: string;
+  payoutMonthKey: string | null;
+  writtenBy: string;
+}) {
+  if (row.source !== "own" || contract.frequencyRaw !== "semiannual") return null;
+  const writer = writtenBy.trim().toLowerCase();
+  if (!writer) return null;
+  const evidence = (contract.commissionPayouts ?? []).filter(payout => payout.writtenBy?.trim().toLowerCase() === writer);
+  // Manual basis confirmations retain the source identity. If they omit the
+  // amount, recover it from the exact recorded payout in the same scope.
+  const matching = row.commission == null ? evidence.filter(payout =>
+    payout.statementId === statementId && normalizeCommissionCodeKey(payout.statementCode ?? payout.code) === normalizeCommissionCodeKey(row.commissionCode) &&
+    payout.sourceBaseAmount === row.basePremium && payout.amount != null && payout.amount > 0 && payout.status !== "storno") : [];
+  const recorded = matching.length === 1 ? matching[0] : undefined;
+  const plannedSingle = contract.items?.find(item => /^B(?:C)?(?:101|1)$/.test(item.code ?? ""))?.amount;
+  return combinedSemiannualAutoPremium(contract, {
+    code, amount: row.commission ?? recorded?.amount, sourceBaseAmount: row.basePremium,
+    payoutMonthKey: payoutMonthKey ?? recorded?.payoutMonthKey,
+  }, evidence, plannedSingle);
+}
+
 export const premiumHistoryEntryFromStatementRow = ({
   row,
   contract,
@@ -412,6 +459,9 @@ export const premiumHistoryEntryFromStatementRow = ({
   writtenBy,
   allowCurrentPremiumFallback = true,
   indexationCoefficient,
+  allowCombinedAutoBase = true,
+  projectCommissionCode,
+  kooperativaRenewalPosition = contract.position,
 }: {
   row: PremiumStatementRow;
   contract: PremiumHistoryContract;
@@ -426,6 +476,9 @@ export const premiumHistoryEntryFromStatementRow = ({
   writtenBy: string;
   allowCurrentPremiumFallback?: boolean;
   indexationCoefficient?: number | null;
+  allowCombinedAutoBase?: boolean;
+  projectCommissionCode?: ReturnType<typeof createCommissionCodeProjection>;
+  kooperativaRenewalPosition?: Position | null;
 }): PremiumStatementHistoryEntry | null => {
   if (row.premiumKind === "life_increase") {
     // U životních produktů je základna NV/NB řádku pouze podklad pro
@@ -436,15 +489,24 @@ export const premiumHistoryEntryFromStatementRow = ({
   if (!isAutoProduct(contract.productKey ?? null) && !isPropertyProduct(contract.productKey ?? null)) {
     return null;
   }
+  if (contract.productKey !== "domexneuron" && row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
+  const project = projectCommissionCode ?? createCommissionCodeProjection(contract, contract.commissionPayouts ?? []);
+  const codeProjection = premiumCodeProjection(contract, { commissionCode: row.commissionCode, writtenBy, payoutMonthKey, statementDate, statementPeriod }, project);
+  const effectiveCode = codeProjection.resolvedCommissionCode ?? row.commissionCode;
+  const effectiveKind = codeProjection.resolvedCommissionCode ? "auto_change" : row.premiumKind;
+  if (contract.frequencyRaw === "semiannual" || hasAnnualCommissionCodeSchedule(contract)) {
+    contract = { ...contract, premiumStatementHistory: projectConfirmedPremiumHistory(contract, contractPremiumHistoryArray(contract), contract.commissionPayouts ?? []) };
+  }
+
   if (contract.productKey === "domexneuron") {
-    if (row.premiumKind !== "auto_change" || !isDomexNeuronStatementProduct(row)) return null;
+    if (effectiveKind !== "auto_change" || !isDomexNeuronStatementProduct(row)) return null;
     const start = toMillis(contract.policyStartDate);
-    const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(row.commissionCode, contract.frequencyRaw);
+    const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(effectiveCode, contract.frequencyRaw);
     const anniversaryDate = start == null || anniversaryNumber == null ? null : addUtcYearsClamped(start, anniversaryNumber);
     if (anniversaryDate == null) return null;
     const previousAnnualPremium = autoPremiumBeforeStatement(contract, anniversaryDate, { allowCurrentFallback: allowCurrentPremiumFallback });
     const indexation = resolveDomexNeuronIndexation({
-      contract, row, previousAnnualPremium, coefficient: indexationCoefficient,
+      contract, row: { ...row, commissionCode: effectiveCode }, previousAnnualPremium, coefficient: indexationCoefficient,
       referenceDate: periodEndMs ?? statementChronologyMs,
     });
     if (indexation.status !== "confirmed") return null;
@@ -455,7 +517,7 @@ export const premiumHistoryEntryFromStatementRow = ({
     const annualPremium = indexation.annualPremium!;
     const paymentPremium = indexation.paymentPremium!;
     return {
-      changeReason: "indexation", premiumKind: "auto_change",
+      ...codeProjection, changeReason: "indexation", premiumKind: "auto_change",
       key: compactHash([statementId, row.rowId, row.contractNumber, row.productCode, row.commissionCode,
         row.basePremium, indexation.basePremiumPeriod, anniversaryNumber].join(":"), 32),
       statementId, statementNumber, statementPeriod, statementDate, statementChronologyMs, payoutMonthKey,
@@ -469,21 +531,31 @@ export const premiumHistoryEntryFromStatementRow = ({
       validFrom: row.validFrom, source: row.source, writtenAtMs: nowMs, writtenBy,
     };
   }
-  if (row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
-
-  const autoSource = { ...row, statementId, statementNumber, statementPeriod, statementDate, statementOwnerEmail: writtenBy };
-  const autoBasis = isAutoProduct(contract.productKey) ? resolveAutoPremiumBasis(autoSource, contract) : null;
-  // A commission base does not declare its unit. Similarity to an old premium
-  // cannot tell an annual amount from a payment after a large price increase.
+  const autoSource = { ...row, ...codeProjection, statementId, statementNumber, statementPeriod, statementDate, statementOwnerEmail: writtenBy };
+  const isKooperativaRenewal = isKooperativaAutoRenewalPayout(contract.productKey, row.commissionCode);
+  const renewal = isKooperativaRenewal && row.source === "own"
+    ? kooperativaAutoRenewalPremium(contract, row, kooperativaRenewalPosition) : null;
+  if (isKooperativaRenewal && (!renewal || effectiveKind !== "auto_change" ||
+    (periodEndMs != null && Date.parse(renewal.anniversaryDate) > periodEndMs))) return null;
+  const combined = !renewal && allowCombinedAutoBase && effectiveKind === "auto_change"
+    ? combinedAutoPremiumFromStatement({ row, contract, code: effectiveCode, statementId, payoutMonthKey, writtenBy }) : null;
+  const autoBasis = !renewal && isAutoProduct(contract.productKey) ? resolveAutoPremiumBasis(autoSource, contract, Boolean(combined)) : null;
   if (autoBasis && autoBasis.status !== "resolved") return null;
   const resolvedAutoBasis = autoBasis?.status === "resolved" ? autoBasis : null;
-  const sourceMetadata = resolvedAutoBasis ? {
+  const combinedAnnual = resolvedAutoBasis?.period === "annual" ? combined : null;
+  const sourceMetadata = renewal ? {
+    premiumDerivedFromCommission: true,
+    sourceBasePremium: row.basePremium,
+    paymentFrequencyAtImport: renewal.frequency,
+  } : resolvedAutoBasis ? {
+    ...codeProjection,
+    ...(combinedAnnual ? { combinedInstallmentCode: combinedAnnual.firstCode } : {}),
     sourceBasePremium: row.basePremium,
     paymentFrequencyAtImport: contract.frequencyRaw ?? null,
     basePremiumResolutionKey: resolvedAutoBasis.key,
   } : {};
 
-  if (row.premiumKind === "auto_initial") {
+  if (effectiveKind === "auto_initial") {
     const policyStartMs =
       toMillis(contract.policyStartDate) ??
       parseCzechDate(row.validFrom) ??
@@ -515,7 +587,7 @@ export const premiumHistoryEntryFromStatementRow = ({
         ].join(":"),
         32
       ),
-      premiumKind: row.premiumKind,
+      premiumKind: effectiveKind,
       statementId,
       statementNumber,
       statementPeriod,
@@ -543,12 +615,12 @@ export const premiumHistoryEntryFromStatementRow = ({
 
   if (
     isAutoProduct(contract.productKey ?? null) &&
-    !isAutoSubsequentCommissionCode(baseCommissionCodeForPayoutComparison(row.commissionCode, contract.productKey))
+    !isAutoSubsequentCommissionCode(baseCommissionCodeForPayoutComparison(effectiveCode, contract.productKey))
   ) {
     return null;
   }
 
-  const policyStartMs = contract.productKey === "kooperativaAuto"
+  const policyStartMs = codeProjection.resolvedCommissionCode || contract.productKey === "kooperativaAuto"
     ? toMillis(contract.policyStartDate) ?? parseCzechDate(row.validFrom)
     : parseCzechDate(row.validFrom) ?? toMillis(contract.policyStartDate);
   if (policyStartMs == null) return null;
@@ -556,30 +628,34 @@ export const premiumHistoryEntryFromStatementRow = ({
   const scheduleFrequency = isAnnualAutoPayoutProduct(row.productKey ?? contract.productKey ?? null)
     ? "annual"
     : contract.frequencyRaw;
-  const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(
-    baseCommissionCodeForPayoutComparison(row.commissionCode, contract.productKey),
+  const anniversaryNumber = renewal?.anniversaryNumber ?? combinedAnnual?.anniversaryNumber ?? anniversaryNumberFromInstallmentCommissionCode(
+    baseCommissionCodeForPayoutComparison(effectiveCode, contract.productKey),
     scheduleFrequency
   );
   if (anniversaryNumber == null) return null;
 
-  const anniversaryDateMs = addUtcYearsClamped(policyStartMs, anniversaryNumber);
+  const anniversaryDateMs = renewal ? Date.parse(renewal.anniversaryDate)
+    : combinedAnnual ? parseCzechDate(combinedAnnual.anniversaryDate) : addUtcYearsClamped(policyStartMs, anniversaryNumber);
   if (anniversaryDateMs == null) return null;
 
-  const basePremiumPeriod = resolvedAutoBasis?.period ?? nonLifePremiumStatementBasePeriod(row, contract);
-  const annualPremium = resolvedAutoBasis?.annualPremium ?? statementAnnualBase(row, contract);
-  const previousAnnualPremium = (resolvedAutoBasis ? previousConfirmedAutoAnnualPremium(autoSource, contract) : null) ?? autoPremiumBeforeStatement(
-    contract,
-    anniversaryDateMs,
-    { allowCurrentFallback: allowCurrentPremiumFallback }
-  );
+  const basePremiumPeriod = renewal ? "payment" : resolvedAutoBasis?.period ?? nonLifePremiumStatementBasePeriod(row, contract);
+  const annualPremium = renewal?.annualPremium ?? resolvedAutoBasis?.annualPremium ?? statementAnnualBase(row, contract);
+  const annualCodeCorrection = codeProjection.resolvedCommissionCode && hasAnnualCommissionCodeSchedule(contract);
+  const previousCorrectedPeriod = annualCodeCorrection
+    ? commissionPeriodAfterMonths(isoDateFromMs(policyStartMs), (anniversaryNumber - 1) * 12) : null;
+  const previousAnnualPremium = annualCodeCorrection
+    ? premiumEvidenceByPeriod(contract, contractPremiumHistoryArray(contract), contract.commissionPayouts ?? [], project)(writtenBy, previousCorrectedPeriod)
+    : (resolvedAutoBasis ? previousConfirmedAutoAnnualPremium(autoSource, contract) : null) ?? autoPremiumBeforeStatement(
+        contract, anniversaryDateMs, { allowCurrentFallback: allowCurrentPremiumFallback && !renewal, ownPayoutsOnly: Boolean(renewal) }
+      ) ?? (renewal && allowCurrentPremiumFallback ? autoAnnualPremiumAtDate(contract, renewal.anniversaryDate) : null);
   const annualDifference =
     previousAnnualPremium == null
       ? null
       : Math.round((annualPremium - previousAnnualPremium) * 100) / 100;
-  if (annualDifference != null && Math.abs(annualDifference) <= PREMIUM_CHANGE_TOLERANCE) {
+  if (!combinedAnnual && !codeProjection.resolvedCommissionCode && annualDifference != null && Math.abs(annualDifference) <= PREMIUM_CHANGE_TOLERANCE) {
     return null;
   }
-  const paymentsPerYearValue = contractPaymentPeriodsPerYear(contract);
+  const paymentsPerYearValue = renewal?.paymentsPerYear ?? contractPaymentPeriodsPerYear(contract);
   const paymentPremium = Math.round((annualPremium / paymentsPerYearValue) * 100) / 100;
   const previousPaymentPremium =
     previousAnnualPremium == null
@@ -605,7 +681,7 @@ export const premiumHistoryEntryFromStatementRow = ({
       ].join(":"),
       32
     ),
-    premiumKind: row.premiumKind,
+    premiumKind: effectiveKind,
     statementId,
     statementNumber,
     statementPeriod,
@@ -669,6 +745,8 @@ const premiumHistoryCompletenessScore = (
   entry: PremiumStatementHistoryEntry
 ): number => {
   let score = 0;
+  if (entry.premiumDerivedFromCommission) score += 1;
+  if (entry.combinedInstallmentCode) score += 1;
   if (entry.basePremiumPeriod) score += 20;
   if (entry.previousAnnualPremium != null) score += 10;
   if (entry.newAnnualPremium != null) score += 10;
@@ -813,7 +891,8 @@ export function confirmedPremiumHistoryPatch(
   const resolutions = [...(contract.premiumStatementBaseResolutions ?? []).filter(item =>
     item.key !== confirmation.key || !sameWriter(item.writtenBy)), confirmation];
   const own = resolutions.filter(item => item.writtenBy === confirmation.writtenBy &&
-    item.frequencyRaw === contract.frequencyRaw && item.productKey === contract.productKey);
+    item.frequencyRaw === contract.frequencyRaw && item.productKey === contract.productKey &&
+    !isKooperativaAutoRenewalPayout(contract.productKey, item.commissionCode));
   const matches = (entry: PremiumStatementHistoryEntry, source: PremiumBaseResolution) =>
     entry.writtenBy === source.writtenBy && entry.source === source.source &&
     entry.rowId === source.rowId && entry.productCode === source.productCode &&

@@ -147,7 +147,13 @@ export function withBusinessDataEncryption(database: Firestore): Firestore {
         if (property === "batch") return () => wrap(object.batch(), "writer");
         if (property === "runTransaction") return (fn: (tx: any) => Promise<any>, options?: unknown) => object.runTransaction((tx: Sdk) => fn(wrap(tx, "writer")), options);
         if (property === "getAll") return async (...args: any[]) => (await object.getAll(...args.map(raw))).map((doc: Sdk) => wrapSnapshot(doc));
-        if (property === "get" && kind === "writer") return async (...args: any[]) => wrapSnapshot(await object.get(...args.map(raw)), args[0] && queryScopes.get(raw(args[0])));
+        if (property === "get" && kind === "writer") return async (...args: any[]) => {
+          const snapshot = await object.get(...args.map(raw));
+          // Aggregate snapshots expose scalar results, with no document reference or encrypted fields.
+          return typeof snapshot.data === "function" && !snapshot.ref
+            ? Object.freeze({ data: () => snapshot.data(), readTime: snapshot.readTime, query: args[0] })
+            : wrapSnapshot(snapshot, args[0] && queryScopes.get(raw(args[0])));
+        };
         if (property === "get" && (kind === "ref" || kind === "query")) return async (...args: any[]) => wrapSnapshot(await object.get(...args), scope);
         if (property === "where") return (...args: any[]) => wrap(where(object, scope, args), "query", scope);
         if (property === "orderBy") return (field: any, ...args: any[]) => {

@@ -8,8 +8,8 @@ import { encryptMailboxBytes, decryptMailboxBytes } from "./mailboxEncryption";
 const identity = ["clientName", "clientEmail", "clientPhone", "clientAddress", "contractNumber"];
 export const BUSINESS_PRIVATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
   entries: [...identity, "clientSearchKeys", "contractNumberSearchKeys", "duplicateLookupKey",
-    "refreshOriginalContractNumber", "refreshCommissionBase", "premiumStatementBaseResolutions",
-    "premiumStatementHistory", "commissionPayouts", "cashflowPayoutMatches",
+    "refreshOriginalContractNumber", "refreshCommissionBase", "neonCorrection", "premiumStatementBaseResolutions",
+    "premiumStatementHistory", "commissionPayouts", "commissionPayoutCodeAdjustment", "cashflowPayoutMatches",
     "tipContractSourceTipTitle", "tipContractSourceTipClientName",
     "carPlate", "carVin", "carTp", "carOrv", "maxxContractDetailUrl", "contractPdfAttachment"],
   clientContractLinks: [...identity, "clientSlug"],

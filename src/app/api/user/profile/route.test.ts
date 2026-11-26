@@ -64,10 +64,12 @@ function request({
   header = TARGET_EMAIL,
   target = TARGET_EMAIL,
   timeline = NEW_TIMELINE,
+  patch,
 }: {
   header?: string | null;
   target?: string | null;
   timeline?: typeof NEW_TIMELINE;
+  patch?: Record<string, unknown>;
 } = {}) {
   const url = new URL("https://example.test/api/user/profile");
   if (target != null) url.searchParams.set("targetEmail", target);
@@ -76,7 +78,7 @@ function request({
   return new NextRequest(url, {
     method: "PATCH",
     headers,
-    body: JSON.stringify({ positionTimeline: timeline }),
+    body: JSON.stringify(patch ?? { positionTimeline: timeline }),
   });
 }
 
@@ -168,5 +170,49 @@ describe("PATCH career history while impersonating", () => {
     expect(mocks.getUserByEmail).not.toHaveBeenCalled();
     expect(mocks.profiles.get(ADMIN_EMAIL)?.positionTimeline).toEqual(NEW_TIMELINE);
     expect(mocks.profiles.get(TARGET_EMAIL)).toEqual(ORIGINAL_TARGET);
+  });
+});
+
+
+describe("private office contribution preference", () => {
+  it.each([true, false])("stores only a private boolean for the verified represented account: %s", async enabled => {
+    const response = await PATCH(request({ patch: { cashflowOfficeContributionEnabled: enabled } }));
+    expect(response.status).toBe(200);
+    expect(mocks.write).toHaveBeenCalledExactlyOnceWith("usersPrivate", TARGET_EMAIL,
+      { cashflowOfficeContributionEnabled: enabled }, { merge: true });
+  });
+
+  it("allows the signed-in owner to enable their own forecast", async () => {
+    mocks.verifyIdToken.mockResolvedValue({ email: TARGET_EMAIL, uid: "advisor-uid" });
+    const response = await PATCH(request({ header: null, target: null, patch: { cashflowOfficeContributionEnabled: true } }));
+    expect(response.status).toBe(200);
+    expect(mocks.write).toHaveBeenCalledExactlyOnceWith("usersPrivate", TARGET_EMAIL,
+      { cashflowOfficeContributionEnabled: true }, { merge: true });
+  });
+
+  it.each([null, "true", 1, {}, []])("rejects malformed preferences %j", async value => {
+    const response = await PATCH(request({ patch: { cashflowOfficeContributionEnabled: value } }));
+    expect(response.status).toBe(400);
+    expectNoProfileChanges();
+  });
+
+  it("rejects another user's preference without administrator authority", async () => {
+    mocks.verifyIdToken.mockResolvedValue({ email: ADMIN_EMAIL, uid: "ordinary-user" });
+    expect((await PATCH(request({ patch: { cashflowOfficeContributionEnabled: true } }))).status).toBe(403);
+    expectNoProfileChanges();
+  });
+
+  it("rejects a forged target and privilege escalation alongside the preference", async () => {
+    expect((await PATCH(request({ header: null, patch: { cashflowOfficeContributionEnabled: true } }))).status).toBe(403);
+    expect((await PATCH(request({ patch: { cashflowOfficeContributionEnabled: true, admin: true } }))).status).toBe(403);
+    expectNoProfileChanges();
+  });
+
+  it("requires authentication before saving the preference", async () => {
+    const response = await PATCH(new NextRequest("https://example.test/api/user/profile", {
+      method: "PATCH", body: JSON.stringify({ cashflowOfficeContributionEnabled: true }),
+    }));
+    expect(response.status).toBe(401);
+    expectNoProfileChanges();
   });
 });

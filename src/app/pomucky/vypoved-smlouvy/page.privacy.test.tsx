@@ -69,8 +69,8 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-function preparePrefill() {
-  const key = storeContractTerminationPrefill(payload, getContractTerminationContext()!);
+function preparePrefill(details = payload) {
+  const key = storeContractTerminationPrefill(details, getContractTerminationContext()!);
   expect(key).toBeTruthy();
   window.history.replaceState(null, "", `/pomucky/vypoved-smlouvy?prefill=${key}&embedded=1`);
 }
@@ -97,6 +97,58 @@ describe("termination form privacy across browser and auth events", () => {
     expect(sessionStorage.length).toBe(0);
     expect(localStorage.length).toBe(0);
     expect(fetch).not.toHaveBeenCalled();
+    expect(container.querySelector('a[href^="https://epodatelna.nn.cz/"]')).toBeNull();
+  });
+
+  it("keeps the NN life submission link available in both document views without passing client data", async () => {
+    preparePrefill({ ...payload, insurer: "NN", insuranceType: "life", reason: "anniversary" });
+    await mount();
+
+    const panel = container.querySelector('section[aria-labelledby="nn-termination-upload"]');
+    const link = panel?.querySelector("a");
+    expect(link?.textContent?.trim()).toBe("Odeslat");
+    expect(link?.getAttribute("href")).toBe("https://epodatelna.nn.cz/life/contract-cancellation");
+    expect(link?.target).toBe("_blank");
+    expect(link?.relList.contains("noopener")).toBe(true);
+    expect(link?.relList.contains("noreferrer")).toBe(true);
+    expect(panel?.textContent).toContain("SMS kód");
+
+    const officialTab = container.querySelector<HTMLButtonElement>('button[title="Oficiální"]');
+    expect(officialTab?.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => { officialTab?.click(); });
+    expect(officialTab?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.contains(link ?? null)).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("offers only life insurance for NN after switching from a non-life selection", async () => {
+    await mount();
+
+    const clickChoice = async (label: string) => {
+      const button = [...container.querySelectorAll("button")].find(
+        (item) => item.getAttribute("aria-label") === label || item.textContent?.trim().startsWith(label),
+      );
+      expect(button).toBeDefined();
+      await act(async () => { button?.click(); });
+    };
+
+    await clickChoice("Vybrat pojišťovnu Allianz");
+    await clickChoice("Pokračovat");
+    await clickChoice("Neživotní pojištění");
+    await clickChoice("Zpět");
+    await clickChoice("Vybrat pojišťovnu NN");
+    await clickChoice("Pokračovat");
+
+    const options = container.querySelectorAll('[aria-labelledby="termination-selection-heading"] button');
+    expect([...options].map((option) => option.querySelector("strong")?.textContent)).toEqual([
+      "Životní pojištění",
+    ]);
+    await clickChoice("Dokončit výběr");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Vyber typ pojištění.");
+
+    await clickChoice("Životní pojištění");
+    await clickChoice("Pokračovat");
+    expect(container.querySelector("#termination-selection-heading")?.textContent).toBe("Jak chceš smlouvu ukončit?");
   });
 
   it("removes loaded client details as soon as logout starts, even before an offline response", async () => {

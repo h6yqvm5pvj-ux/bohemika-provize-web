@@ -21,6 +21,7 @@ export type ToolCatalogEntry = {
   description: string;
   href: string;
   hiddenFromHub?: boolean;
+  hiddenFromSearch?: boolean;
   news?: ToolCatalogNews;
 };
 
@@ -61,6 +62,7 @@ const TOOL_SEARCH_KEYWORDS: Record<ToolHubToolKey, readonly string[]> = {
     "pillow",
   ],
   dokumenty: ["šablony", "formuláře", "pdf", "podklady", "pojišťovna"],
+  "dokumenty-pro-klienta": ["pracovní neschopnost", "neschopenka", "denní dávka", "pojistné plnění", "srovnání", "pdf"],
   zaznam: ["jednání", "potřeby klienta", "povinná dokumentace"],
   "vypoved-smlouvy": [
     "výpověď",
@@ -269,6 +271,13 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     href: "/pomucky/dokumenty",
   },
   {
+    key: "dokumenty-pro-klienta",
+    category: "Obecné",
+    title: "Dokumenty pro klienta",
+    description: "Srovnání současného a navrhovaného krytí pracovní neschopnosti s tiskem do PDF a vizitkou poradce.",
+    href: "/pomucky/dokumenty-pro-klienta",
+  },
+  {
     key: "zaznam",
     category: "Obecné",
     title: "Záznam z jednání",
@@ -460,6 +469,8 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     title: "Srovnavač Pracovní neschopnosti",
     description: "Výběr produktů pro srovnání pracovní neschopnosti.",
     href: "/pomucky/srovnavac-pracovni-neschopnosti",
+    hiddenFromHub: true,
+    hiddenFromSearch: true,
   },
   {
     key: "srovnavac-odpovednosti-obcana",

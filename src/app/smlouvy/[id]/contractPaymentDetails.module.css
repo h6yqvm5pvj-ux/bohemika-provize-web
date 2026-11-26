@@ -26,19 +26,26 @@
 .close { display: grid; place-items: center; width: 33px; height: 33px; flex-shrink: 0; padding: 0; border: 1px solid #e9e4ed; border-radius: 50%; background: #fff; color: #8a8193; transition: background 150ms, color 150ms; }
 .close:hover { background: #f6f1fb; color: var(--payment-accent); }
 .content { min-height: 0; padding: 26px 28px; overflow-y: auto; overscroll-behavior: contain; }
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 254px; gap: 28px; align-items: stretch; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 254px; gap: 24px; align-items: stretch; }
 .detailColumn { min-width: 0; }
-.details { min-width: 0; margin: 0; }
-.amount { padding: 20px 22px; border: 1px solid #e8dcf3; border-radius: 17px; background: linear-gradient(120deg, #f5edfb, #fbf8fe); }
-.amount dt { margin: 0 0 8px; color: #7d5e96; font-size: 11px; font-weight: 650; letter-spacing: .7px; text-transform: uppercase; }
-.amount dd { margin: 0; color: #653b89; font-size: clamp(28px, 3.4vw, 38px); font-weight: 750; letter-spacing: -1.3px; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.detail { padding: 18px 2px 15px; border-bottom: 1px solid #f0edf3; }
-.detail dt { margin-bottom: 5px; color: var(--payment-muted); font-size: 12px; line-height: 1.4; }
-.detail dd { margin: 0; font-size: 18px; font-weight: 630; letter-spacing: .15px; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.dueDate { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 16px 2px 0; }
-.dueDate dt { display: inline-flex; align-items: center; gap: 7px; color: var(--payment-muted); font-size: 12px; }
-.dueDate dt svg { color: #a79aae; }
-.dueDate dd { margin: 0; color: #5a4e65; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.amountPanel { min-width: 0; margin: 0; }
+.amount { padding: 2px 0 19px; border: 0; border-bottom: 1px solid #e9e3ee; border-radius: 0; background: transparent; box-shadow: none; }
+.amountHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.amountHeading > dt { margin: 5px 0 0; color: #7d5e96; font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; }
+.amountValue { margin: 8px 0 0; color: #653b89; font-size: clamp(30px, 3.4vw, 39px); font-weight: 760; letter-spacing: -1.4px; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.frequency { display: flex; align-items: baseline; gap: 6px; padding: 5px 0 0; }
+.frequency dt { color: #8b8292; font-size: 11px; }
+.frequency dd { margin: 0; color: #68448a; font-size: 13px; font-weight: 720; }
+.paymentFieldsHeading { margin: 22px 0 10px; color: #65576f; font-size: 11px; font-weight: 720; letter-spacing: .7px; text-transform: uppercase; }
+.paymentFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; margin: 0; }
+.detail { display: flex; flex-direction: column; justify-content: center; min-width: 0; min-height: 70px; padding: 12px 2px; border: 0; border-bottom: 1px solid #eeeaf2; border-radius: 0; background: transparent; box-shadow: none; }
+.detail dt { margin-bottom: 5px; color: var(--payment-muted); font-size: 11px; line-height: 1.4; }
+.detail dd { margin: 0; color: #30283c; font-size: clamp(14px, 1.55vw, 17px); font-weight: 680; letter-spacing: .1px; line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dueDates { display: grid; gap: 0; margin: 0; }
+.dueDate { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 14px; min-height: 48px; padding: 10px 2px; border: 0; border-bottom: 1px solid #eeeaf2; border-radius: 0; background: transparent; }
+.dueDate dt { display: inline-flex; align-items: center; gap: 7px; color: var(--payment-muted); font-size: 11px; }
+.dueDate dt svg { color: #947ba6; }
+.dueDate dd { margin: 0; color: #51435e; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .insuredItems { margin-top: 22px; padding: 16px 18px; border: 1px solid #ece6f2; border-radius: 15px; background: #fcfafd; }
 .insuredItems h3 { margin: 0 0 9px; color: #6c547b; font-size: 13px; font-weight: 700; }
 .insuredItems ul { display: grid; gap: 7px; margin: 0; padding-left: 20px; color: #51485b; font-size: 13px; line-height: 1.5; }
@@ -76,10 +83,11 @@
   .heading p { font-size: 11px; }
   .content { padding: 20px; }
   .layout { grid-template-columns: minmax(0, 1fr); gap: 22px; }
-  .amount { padding: 18px 20px; }
-  .amount dd { font-size: 36px; }
-  .detail { padding-top: 16px; padding-bottom: 13px; }
-  .detail dd { font-size: 17px; }
+  .amount { padding: 2px 0 17px; }
+  .amountValue { font-size: 34px; }
+  .paymentFields { grid-template-columns: minmax(0, 1fr); }
+  .detail { min-height: 62px; padding: 10px 2px; }
+  .detail dd { font-size: 16px; }
   .qrPanel { padding: 17px; }
   .qrFrame { min-height: 200px; width: 200px; }
   .qrImage { width: 198px; }

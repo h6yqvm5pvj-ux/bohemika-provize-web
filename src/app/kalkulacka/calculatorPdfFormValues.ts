@@ -8,6 +8,7 @@ import { mapNeonPdfFormValues } from "./calculatorPdfNeonFields";
 import { createEmptyNeonPdfDetailFields } from "./neonPdfDetailFields";
 import type { ParsedContractPdf } from "./calculatorPdfImport";
 import { normalizeDomexNeuronData } from "../lib/domexNeuronValidation";
+import { isRecordOnlyProduct } from "../lib/productCatalog";
 
 export function createEmptyAutoPdfFormValues(): Partial<CalculatorPdfFormValues> {
   return {
@@ -96,7 +97,7 @@ export function pdfImportResetValues(importProduct: Product): Partial<Calculator
   if (importProduct === "koopmajetekobcan") return { koopInsuredCoverages: [] };
   if (importProduct === "koopodzam") return { koopOdzamDetail: null };
   if (importProduct === "domexneuron") return { ...createEmptyPropertyPdfFormValues(), automaticRenewal: null, premiumIndexationEnabled: null, policyTermEndDate: "", policyEndDate: "" };
-  if (importProduct === "cppAuto") return { ...createEmptyAutoPdfFormValues(), clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "" };
+  if (importProduct === "cppAuto" || isRecordOnlyProduct(importProduct)) return { ...createEmptyAutoPdfFormValues(), clientName: "", contractNumber: "", policyStartDate: "", contractSignedDate: "", ...(isRecordOnlyProduct(importProduct) ? { amountText: "", frequency: "annual" as const } : {}) };
   if (["cppAuto", "slaviaauto", "allianzAuto", "csobAuto", "uniqaAuto", "pillowAuto", "kooperativaAuto"].includes(importProduct)) return createEmptyAutoPdfFormValues();
   if (["domex", "domexneuron", "maxdomov"].includes(importProduct)) return createEmptyPropertyPdfFormValues();
   if (importProduct === "neon") return { neonPdfDetailFields: createEmptyNeonPdfDetailFields() };
@@ -117,7 +118,7 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     if (values.koopOdzamDetail) applied += 1;
   }
   values.pensionTargetAge = importProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
-  if (importProduct === "cppAuto") {
+  if (importProduct === "cppAuto" || isRecordOnlyProduct(importProduct)) {
     // A missing policyholder/identifier/date belongs to the current PDF; it
     // cannot inherit the previous contract's core fields in a reused form.
     if (!parsed.clientName) values.clientName = "";
@@ -125,7 +126,7 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     if (!parsed.policyStartDate) values.policyStartDate = "";
     if (!parsed.contractSignedDate) values.contractSignedDate = "";
   }
-  if (["conseqzenit", "cppPPRbez", "cppPPRs", "domexneuron"].includes(importProduct)) {
+  if (["conseqzenit", "cppPPRbez", "cppPPRs", "domexneuron"].includes(importProduct) || (importProduct === "flexi" && parsed.isEndorsement === true)) {
     if (!parsed.contractNumber) values.contractNumber = "";
     if (!parsed.clientName) values.clientName = "";
     if (!parsed.policyStartDate) values.policyStartDate = "";
@@ -161,7 +162,10 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     values.contractSignedDate = parsed.contractSignedDate;
     applied += 1;
   }
-  if (typeof parsed.amount === "number") {
+  if (isRecordOnlyProduct(importProduct)) {
+    values.amountText = "";
+    values.frequency = "annual";
+  } else if (typeof parsed.amount === "number") {
     values.amountText = String(parsed.amount);
     applied += 1;
   }
@@ -171,7 +175,7 @@ export function mapSinglePdfFormValues(importProduct: Product, parsed: ParsedCon
     values.renovationGuaranteeStatus = "unknown";
     if (typeof parsed.amount !== "number") values.amountText = "";
   }
-  if (parsed.frequency) {
+  if (!isRecordOnlyProduct(importProduct) && parsed.frequency) {
     const allowedForProduct = allowedFrequencies(importProduct);
     if (allowedForProduct.includes(parsed.frequency)) {
       values.frequency = parsed.frequency;
@@ -233,7 +237,7 @@ export function mapReviewPdfFormValues(reviewProduct: Product, parsed: ParsedCon
   values.pensionTargetAge = reviewProduct === "conseqzenit" ? parsedPdfNumberValue(parsed, "targetAge") : null;
   values.contractSignedDate = parsedPdfTextValue(parsed, "contractSignedDate");
   values.stornoDate = "";
-  values.amountText = amount != null ? String(amount) : "";
+  values.amountText = !isRecordOnlyProduct(reviewProduct) && amount != null ? String(amount) : "";
   values.renovationOriginalPremiumText = "";
   values.renovationIncreaseText = "";
   values.renovationGuaranteeStatus = "unknown";

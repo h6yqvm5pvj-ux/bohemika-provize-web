@@ -1,5 +1,7 @@
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
 import { toDate } from "@/app/lib/formatters";
+import { investmentInstitutionId } from "@/app/lib/productCatalog";
 import type { CommissionMode, Position, Product } from "@/app/types/domain";
 
 import { contractMatchKey } from "./statementContractMatching";
@@ -58,6 +60,32 @@ const POSITION_SET = new Set<string>(POSITION_VALUES);
 export const normalizePositionValue = (value: unknown): Position | null =>
   typeof value === "string" && POSITION_SET.has(value) ? (value as Position) : null;
 
+export type StatementCareerPosition = {
+  raw: string;
+  code: number;
+  position: Position;
+};
+
+export const statementCareerPositionFromValue = (
+  value: string | null | undefined
+): StatementCareerPosition | null => {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+  const match = raw.match(/\d+/);
+  if (!match) return null;
+  const code = Number(match[0]);
+  if (!Number.isFinite(code)) return null;
+
+  const candidate =
+    code >= 1 && code <= 10
+      ? `poradce${code}`
+      : code >= 104 && code <= 110
+        ? `manazer${code - 100}`
+        : null;
+  const position = normalizePositionValue(candidate);
+  return position ? { raw, code, position } : null;
+};
+
 export const normalizeCommissionModeValue = (value: unknown): CommissionMode =>
   value === "accelerated" || value === "standard" ? value : "standard";
 
@@ -102,6 +130,7 @@ export const systemContractStatusLabel = (
 export const systemCommissionMonthlyBase = (
   systemContract: MatchedSystemContract | null
 ): number => {
+  if (hasPendingFlexiRenovationBase(systemContract)) return Number.NaN;
   const refreshMonthly = Number(
     systemContract?.refreshCommissionBase?.calculationMonthlyPremium
   );
@@ -383,6 +412,11 @@ export const statementProductMatchesSystemProduct = (
 ): boolean => {
   if (!expectedProductKey || !systemProductKey) return false;
   if (expectedProductKey === systemProductKey) return true;
+  const investmentInstitution = investmentInstitutionId(expectedProductKey);
+  if (investmentInstitution && investmentInstitution === investmentInstitutionId(systemProductKey)) return true;
+  // CPP_PPR is the shared statement code. The paired contract identifies the underwriting variant.
+  if ((expectedProductKey === "cppPPRbez" || expectedProductKey === "cppPPRs") &&
+      (systemProductKey === "cppPPRbez" || systemProductKey === "cppPPRs")) return true;
   if ((expectedProductKey === "domex" || expectedProductKey === "domexneuron") &&
       (systemProductKey === "domex" || systemProductKey === "domexneuron")) return true;
   return (

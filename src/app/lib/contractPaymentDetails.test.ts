@@ -14,6 +14,12 @@ describe("contract payment details", () => {
     expect(buildContractPaymentQrPayload({ ...payment, dueDate })).not.toContain("*DT:");
   });
 
+  it("retains a valid recurring installment due-date schedule and rejects malformed values", () => {
+    expect(normalizeContractPaymentDetails({ ...payment, installmentDueDates: "17.8.|17.2." }))
+      .toEqual({ ...payment, installmentDueDates: "17.8.|17.2." });
+    expect(normalizeContractPaymentDetails({ ...payment, installmentDueDates: "31.15.|99.0." })).toBeNull();
+  });
+
   it.each([null, undefined, [], "payment", 123, true])("rejects a non-object input: %j", value => {
     expect(normalizeContractPaymentDetails(value)).toBeNull();
     expect(buildContractPaymentQrPayload(value)).toBeNull();

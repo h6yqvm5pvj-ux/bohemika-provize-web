@@ -4,9 +4,11 @@ import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
+import { OtherProductCommissionTable } from "./statementContractTables";
 import { comparisonStatus } from "./statementCommissionComparisons";
 import { statementContractIsVerified } from "./statementContractReview";
 import type { CommissionAmountComparison } from "./statementTypes";
+import { NEON_FULL_PREMIUM_ANNUAL_TOLERANCE } from "@/app/lib/neonCorrection";
 
 const comparison = (expectedAmount: number, statementAmount: number, label = "B105"): CommissionAmountComparison => ({
   key: label, label, expectedAmount, statementAmount,
@@ -21,6 +23,20 @@ const render = (props: ComponentProps<typeof AmountComparisonPanel>) => {
 };
 
 describe("commission comparison badges", () => {
+  it("accepts the 16 CZK annual rounding difference for verified full NEON premium", () => {
+    const base = {
+      key: "neon-base", label: "Základna B101", statementPremiumBase: 6100, statementPaymentBase: 6100 / 12,
+      statementBasePeriod: "annual" as const, systemPremiumBase: 507, systemPaymentAmount: 507,
+      systemPaymentFrequency: "monthly", paymentsPerYear: 12, statementAnnualPremiumBase: 6100,
+      systemAnnualPremiumBase: 6084, difference: 16 / 12, annualDifference: 16,
+      canBeAnniversaryPremiumChange: false, firstAnniversaryDate: null, anniversaryDate: null, referenceDate: null,
+    };
+    const tolerantBase = { ...base, annualTolerance: NEON_FULL_PREMIUM_ANNUAL_TOLERANCE };
+    const comparisons = [comparison(100, 100, "B101")];
+    expect(render({ comparisons, baseComparisons: [base] }).textContent).toContain("Rozdíl základny");
+    expect(render({ comparisons, baseComparisons: [tolerantBase] }).textContent).toContain("Vše sedí");
+    expect(statementContractIsVerified({ comparisons, baseComparisons: [tolerantBase], matched: true, hasWarnings: false })).toBe(true);
+  });
   it("does not excuse an unproven DOMEX Neuron overpayment as a higher commission", () => {
     const container = render({ comparisons: [{ ...comparison(333.60, 350.28), acceptHigherCommission: false }] });
     const badge = container.querySelector("tbody tr td:last-child span")!;
@@ -84,4 +100,40 @@ describe("commission comparison badges", () => {
     expect(rows[0].querySelector("td:last-child span")?.getAttribute("data-tone")).toBe("warn");
     expect(rows[1].querySelector("td:last-child span")?.textContent).toBe("Vyšší provize");
   });
+});
+
+it.each([
+  ["08", "Nesoulad pozice", "Poradce 8", "error"],
+  ["10", "Sedí", "Poradce 10", "ok"],
+  ["", "Nelze ověřit", "—", "warn"],
+] as const)("checks career %s independently of matching commission amounts", (career, status, statementLabel, tone) => {
+  const view = render({
+    comparisons: [comparison(771.24, 771.24)],
+    positionComparison: { systemPosition: "poradce10", rows: [{ career }] },
+  });
+  const [position, amount] = view.querySelectorAll("tbody tr");
+  expect(position.children[1].textContent).toBe("Poradce 10");
+  expect(position.children[2].textContent).toBe(statementLabel);
+  expect(position.querySelector("td:last-child span")?.textContent).toBe(status);
+  expect(position.querySelector("td:last-child span")?.getAttribute("data-tone")).toBe(tone);
+  expect(amount.querySelector("td:last-child span")?.textContent).toBe("Sedí");
+});
+
+it("puts both positions next to the premium base in the statement item table", () => {
+  const view = document.createElement("div");
+  view.innerHTML = renderToStaticMarkup(createElement(OtherProductCommissionTable, {
+    rows: [{
+      id: "1", product: "CPP_ACPIV", type: "B102", base: 6481, percent: "11,90%", career: "8",
+      commission: 771.24, reserveFund: 0,
+    }],
+    systemPosition: "poradce10", b36Payments: [], pairedB36PaymentIndexes: new Set<number>(),
+    generalCommissionKindClass: () => "",
+  }));
+  const headers = [...view.querySelectorAll("th")].map(cell => cell.textContent);
+  const cells = [...view.querySelectorAll("tbody td")];
+  const base = headers.indexOf("Základna");
+  expect(headers.slice(base, base + 3)).toEqual(["Základna", "Pozice Bohemka", "Pozice výpis"]);
+  expect(cells[base + 1].textContent).toBe("Poradce 10");
+  expect(cells[base + 2].textContent).toContain("Poradce 8");
+  expect(cells[base + 2].textContent).toContain("Nesoulad");
 });

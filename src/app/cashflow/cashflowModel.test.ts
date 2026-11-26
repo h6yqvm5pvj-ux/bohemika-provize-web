@@ -2,17 +2,19 @@ import { createHash } from "node:crypto";
 import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeWorkerFixture, WORKER_FILTER_CASES } from "../../../scripts/cashflow-worker/fixtures";
-import { REFERENCE_PROVENANCE, runReference } from "../../../scripts/cashflow-worker/reference";
+import { REFERENCE_PROVENANCE, runReference, runReferenceView } from "../../../scripts/cashflow-worker/reference";
 import searchReference from "../../../scripts/cashflow-worker/search-reference.json";
 import * as computation from "./computeCashflow";
 import * as helpers from "./helpers";
 import { formatCashflowItemCount } from "./cashflowLabels";
+import { isAutoProduct } from "@/app/lib/productCatalog";
 import { cashflowCanonicalJson } from "./shadowProtocol";
 import { createCashflowModel, type CashflowDataset, type CashflowModel } from "./cashflowModel";
 import type { CashflowItem, CashflowCommissionStatementSummary } from "./types";
 import { SUBSCRIPTION_CASHFLOW_OWNER_EMAIL } from "./subscriptionCashflow";
 import type { CashflowViewOptions } from "./buildCashflowView";
 
+const statelessCompute = computation.computeCashflow;
 const asOf = new Date(2026, 8, 12, 12);
 const defaultOptions = WORKER_FILTER_CASES[0].options;
 const digest = (value: unknown) => createHash("sha256").update(cashflowCanonicalJson(value)).digest("hex");
@@ -36,7 +38,10 @@ const legacySearchStats = new Function("filteredCashflowItems", "contractNumberS
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 function assertView(model: CashflowModel, input: CashflowDataset, options: CashflowViewOptions) {
-  const reference = runReference(input.snapshot, input.statements, options, input.asOf);
+  // Renewal estimates intentionally replace the frozen static auto amounts.
+  // Keep the independent frozen page composition as the cache/view oracle.
+  const items = statelessCompute(input.snapshot, { ...options, asOf: input.asOf });
+  const reference = { items, months: runReferenceView(items, input.statements, options, input.asOf) };
   const actual = model.view(options);
   const details = actual.months.map(month => model.month(month.key));
   expect(digest(details)).toBe(digest(reference.months));
@@ -55,6 +60,16 @@ function assertView(model: CashflowModel, input: CashflowDataset, options: Cashf
 }
 
 describe("cashflow model with bounded last-stage caches", () => {
+  it("preserves the frozen full calculation for portfolios outside the changed auto renewal rule", () => {
+    const input = dataset();
+    input.snapshot.ownEntries = input.snapshot.ownEntries.filter(entry => !isAutoProduct(entry.productKey));
+    input.snapshot.teamEntriesRaw = input.snapshot.teamEntriesRaw.filter(entry => !isAutoProduct(entry.productKey));
+    const reference = runReference(input.snapshot, input.statements, defaultOptions, input.asOf);
+    const model = createCashflowModel(input);
+    try { expect(digest(model.view(defaultOptions).months.map(month => model.month(month.key)))).toBe(digest(reference.months)); }
+    finally { model.dispose(); }
+  });
+
   it("keeps shifted overview, detail and total aligned and restores the complete view when disabled", () => {
     const input = dataset();
     input.statements = [{

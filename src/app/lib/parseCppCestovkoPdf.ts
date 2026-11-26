@@ -229,9 +229,11 @@ export async function parseCppCestovkoPdf(file: File, options: PdfReadOptions = 
     if (endIso) result.policyEndDate = endIso;
   }
 
-  // Datum sjednání: "Tisk SUS Plus WS, dd.mm.yyyy hh:mm" (na stránkách dole vpravo).
+  // Datum sjednání je uvedeno u „Datum a čas vytvoření nabídky“. Některé
+  // starší varianty PDF nemají toto pole, proto ponecháváme patičku jako fallback.
   const signedRaw =
-    fullText.match(/Tisk\s+SUS\s+Plus\s+WS,\s*(\d{1,2}\.\d{1,2}\.\d{4})\s+\d{1,2}:\d{2}/i)?.[1] ??
+    fullText.match(/Datum\s+a\s+čas\s+vytvoření\s+nabídky[\s\S]{0,100}?(\d{1,2}\.\s*\d{1,2}\.\s*\d{4})/i)?.[1] ??
+    fullText.match(/Tisk\s+SUS\s+Plus(?:\s+WS)?,\s*(\d{1,2}\.\d{1,2}\.\d{4})\s+\d{1,2}:\d{2}/i)?.[1] ??
     null;
   const signedIso = toDateInput(signedRaw);
   if (signedIso) result.contractSignedDate = signedIso;

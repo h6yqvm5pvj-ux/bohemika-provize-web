@@ -15,9 +15,9 @@ vi.mock("./contractsApi.projectedSearch", () => ({ readProjectedContractSearchPa
 
 const email = "owner@example.test";
 const ts = Date.parse("2026-09-10");
-const doc = (id: string) => ({ id, ref: { path: `users/${email}/entries/${id}` }, data: () => ({
+const doc = (id: string, fields: Record<string, string> = {}) => ({ id, ref: { path: `users/${email}/entries/${id}` }, data: () => ({
   clientName: "X test", productKey: "neon", contractSignedDate: new Date(ts), total: 42, items: [],
-  clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", note: "Private note",
+  clientPhone: "777123456", clientEmail: "client@example.test", clientAddress: "Praha 1", note: "Private note", ...fields,
 }) });
 const request = () => new NextRequest("https://example.test/api/contracts/list?scope=own&q=x&limit=1");
 
@@ -65,10 +65,34 @@ describe("contract search projection integration", () => {
     expect(mocks.fullRead).not.toHaveBeenCalled();
   });
 
+  it("returns the plate only for a matching motor contract in the signed-in portfolio", async () => {
+    mocks.projected.mockResolvedValue([
+      doc("auto", { productKey: "cppAuto", carPlate: "1AB 2345" }),
+      doc("number", { productKey: "cppAuto", carPlate: "2CD3456", contractNumber: "1AB2345" }),
+    ]);
+    const { handleContractsList } = await import("./contractsApi");
+    const post = (q: string) => new NextRequest("https://example.test/api/contracts/list", {
+      method: "POST", body: new URLSearchParams({ scope: "my", q }),
+    });
+    const result = await handleContractsList(post("1ab-2345"));
+    expect(result.status).toBe(200);
+    const { contracts } = await result.json();
+    expect(contracts).toHaveLength(2);
+    expect(contracts.find((row: { id: string }) => row.id === "auto")).toMatchObject({ carPlate: "1AB2345" });
+    expect(contracts.find((row: { id: string }) => row.id === "number")).not.toHaveProperty("carPlate");
+    const nameResults = await (await handleContractsList(post("test"))).json();
+    expect(nameResults.contracts).toHaveLength(2);
+    for (const row of nameResults.contracts) expect(row).not.toHaveProperty("carPlate");
+  });
+
   it("authenticates before projected or full contract reads", async () => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
     const { handleContractsList } = await import("./contractsApi");
     expect((await handleContractsList(request())).status).toBe(401);
+    const plateRequest = new NextRequest("https://example.test/api/contracts/list", {
+      method: "POST", body: new URLSearchParams({ scope: "team", q: "1ab-2345" }),
+    });
+    expect((await handleContractsList(plateRequest)).status).toBe(401);
     expect(mocks.projected).not.toHaveBeenCalled();
     expect(mocks.fullRead).not.toHaveBeenCalled();
   });

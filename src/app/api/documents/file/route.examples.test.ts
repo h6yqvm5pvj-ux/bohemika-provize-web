@@ -38,3 +38,32 @@ describe.each([
     expect(mocks.loadStored).not.toHaveBeenCalled();
   });
 });
+
+describe.each([
+  ["koop-odzam-neuron-2026-09", "KOOP NEURON ODZAM 261102-04.pdf"],
+  ["koop-obcan-neuron-2026-09", "KOOP NEURON OBCAN 261028-03.pdf"],
+])("commission document %s", (id, fileName) => {
+  const url = `https://example.test/api/documents/file?id=${id}`;
+
+  it("serves the bundled PDF to an authorized advisor", async () => {
+    const response = await GET(new NextRequest(url));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("cache-control")).toContain("private, no-store");
+    expect(response.headers.get("content-disposition")).toContain(encodeURIComponent(fileName));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes.subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it.each([401, 403])("rejects denied access (%i) even if the request claims an advisor role", async (status) => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
+    const response = await GET(new NextRequest(`${url}&role=advisor`));
+    expect(response.status).toBe(status);
+    expect(mocks.loadStored).not.toHaveBeenCalled();
+  });
+
+  it("rejects a file path supplied in place of a registered document ID", async () => {
+    const response = await GET(new NextRequest(`https://example.test/api/documents/file?id=provize%2F${id}.pdf`));
+    expect(response.status).toBe(404);
+  });
+});

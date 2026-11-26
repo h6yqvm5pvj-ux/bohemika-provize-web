@@ -1,3 +1,7 @@
+import { runReferenceItems } from "../../../scripts/cashflow-worker/reference";
+import { FLEXI_RENOVATION_MISSING_BASE } from "@/app/lib/flexiRenovation";
+import { isAutoProduct } from "@/app/lib/productCatalog";
+import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -154,11 +158,11 @@ function fingerprint(value: unknown): string {
 }
 
 const legacyCases: Array<[string, CashflowComputationOptions, string]> = [
-  ["combined", { scopeFilter: "combined", productFilter: "all" }, "c784a2bc89ddac5ae8ca2a510a54ee005ddc1dc2919475c0796e4b245035798a"],
+  ["combined", { scopeFilter: "combined", productFilter: "all" }, "5eef7a68e4ffbe9e974996ad20e5ef78708c987e8e942621671e565679639525"],
   ["own", { scopeFilter: "own", productFilter: "all" }, "4d4b6424c08418e66f6abf092a26e172162015cce11cdf71426ea3016187679c"],
-  ["team", { scopeFilter: "team", productFilter: "all" }, "4692379ea3f907de702b4eb60c4c2f9ac7868bbfac70528e24436e224c5eb4f1"],
-  ["life", { scopeFilter: "combined", productFilter: "life" }, "fa95fd6871507f01cc661615fd179538bb874b6fb9121c1976ca84909643c697"],
-  ["auto", { scopeFilter: "combined", productFilter: "auto" }, "c5420a3339d8b3d253a61ece8ff3f9e717d18c9276945d373cf26fa3e9d6fb70"],
+  ["team", { scopeFilter: "team", productFilter: "all" }, "cfdd267677f99a0145ee84c8c7479f7cf28508b8fb8d60c9d4d0129b71c03a6a"],
+  ["life", { scopeFilter: "combined", productFilter: "life" }, "aaa1dfd9827a833d275159c62670edc4eda4936b5492840805e06133fcf30dba"],
+  ["auto", { scopeFilter: "combined", productFilter: "auto" }, "a02faff539d2c3e9848181da46d5fc0368270064ec79a3a5de080dc1ac28ebe0"],
   ["tip", { scopeFilter: "own", productFilter: "tip" }, "d81fff1d49edd4125931996b4ef5c4fee843a509193dc9fd701055bee03408e4"],
   ["team tip", { scopeFilter: "team", productFilter: "tip" }, "d81fff1d49edd4125931996b4ef5c4fee843a509193dc9fd701055bee03408e4"],
   ["subscription", { scopeFilter: "own", productFilter: "subscription" }, "cd243808d363a2723b14790f08344ff211424828db11c14d3fb8525a58555b19"],
@@ -166,6 +170,27 @@ const legacyCases: Array<[string, CashflowComputationOptions, string]> = [
 ];
 
 describe("computeCashflow", () => {
+  it("shows only the viewer's received team FLEXI payments while their commission base is unknown", () => {
+    const snapshot = snapshotFixture();
+    snapshot.teamEntriesRaw = [{
+      id: "flexi-pending", userEmail: memberEmail, productKey: "flexi",
+      commissionCalculationStatus: FLEXI_RENOVATION_MISSING_BASE, inputAmount: 1500,
+      policyStartDate: "2026-08-01", frequencyRaw: "monthly", managerOverrides: [],
+      commissionPayouts: [
+        { key: "manager-paid", code: "A101", amount: 234.56, status: "paid", payoutMonthKey: "2026-09", writtenBy: email },
+        { key: "owner-paid", code: "A101", amount: 2345.67, status: "paid", payoutMonthKey: "2026-09", writtenBy: memberEmail },
+      ],
+    }];
+    const own = { ...snapshot.teamEntriesRaw[0], id: "own-flexi-pending", userEmail: email };
+    snapshot.ownEntries = [own];
+    snapshot.teamEntriesRaw.push(own);
+    const rows = computeCashflow(snapshot, { scopeFilter: "team", productFilter: "all", asOf })
+      .filter(row => row.productKey === "flexi");
+    expect(rows).toEqual([expect.objectContaining({
+      entryId: "flexi-pending", source: "manager", amount: 234.56, payoutStatus: "paid", predictedAmount: null,
+    })]);
+  });
+
   it("excludes retired own, team and TIP records from a cached snapshot", () => {
     const clean = snapshotFixture();
     const cached = snapshotFixture();
@@ -183,16 +208,28 @@ describe("computeCashflow", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  // Fingerprints were captured from the original hook calculation and original
-  // generator before extraction, with the clock frozen to the same local time.
-  it.each(legacyCases)("preserves every legacy output field for %s", (_name, options, expected) => {
+  // Frozen fingerprints guard the full cashflow output. Combined, team and auto
+  // reflect the corrected policy-period boundary for monthly auto installments.
+  // The life fingerprint includes NEON care payouts after completed policy years.
+  it.each(legacyCases)("preserves every output field for %s", (_name, options, expected) => {
     const legacyFields = computeCashflow(snapshotFixture(), { ...options, asOf }).map(item => {
       // Entitlement periods were previously exposed only for Kooperativa B1
       // rows. Compare every original field while allowing this new metadata.
       if (item.productKey === "kooperativaAuto" && /^B1\d{2,}$/.test(item.commissionCode ?? "")) return item;
       return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "commissionPeriodStart"));
     });
-    expect(fingerprint(legacyFields)).toBe(expected);
+    if (["combined", "own", "team", "auto"].includes(_name)) {
+      // Only B/C auto forecasts intentionally change. Preserve the complete
+      // frozen output of every acquisition, life, TIP and subscription row.
+      const unchanged = (item: Record<string, unknown>) => !(isAutoProduct(item.productKey as EntryDoc["productKey"]) &&
+        /^B/.test(baseCommissionCodeForPayoutComparison(item.commissionCode, item.productKey as EntryDoc["productKey"])));
+      const reference = runReferenceItems(snapshotFixture(), { ...options, tipsterMode: options.tipsterMode ?? false,
+        showPastYears: true, intelligentPredictionEnabled: false, contractNumberQuery: "" }, asOf).map(item => {
+        if (item.productKey === "kooperativaAuto" && /^B1\d{2,}$/.test(item.commissionCode ?? "")) return item;
+        return Object.fromEntries(Object.entries(item).filter(([key]) => key !== "commissionPeriodStart"));
+      });
+      expect(fingerprint(legacyFields.filter(unchanged))).toBe(fingerprint(reference.filter(unchanged)));
+    } else expect(fingerprint(legacyFields)).toBe(expected);
   });
 
   it("keeps original transfer positions and uses current own and manager positions", () => {

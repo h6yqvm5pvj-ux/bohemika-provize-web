@@ -9,6 +9,7 @@ import styles from "./calculatorSaveLoader.module.css";
 type CalculatorSaveLoaderProps = {
   stage: ContractSaveStage;
   hasPdfAttachment?: boolean;
+  checksVehicle?: boolean;
   clientName?: string | null;
   contractNumber?: string | null;
   isEndorsement?: boolean;
@@ -17,6 +18,7 @@ type CalculatorSaveLoaderProps = {
 export function CalculatorSaveLoader({
   stage,
   hasPdfAttachment = false,
+  checksVehicle = false,
   clientName,
   contractNumber,
   isEndorsement = false,
@@ -28,12 +30,15 @@ export function CalculatorSaveLoader({
     { id: "preparing", label: "Příprava" },
     { id: "saving", label: "Uložení" },
     ...(hasPdfAttachment ? [{ id: "attachment", label: "PDF příloha" }] : []),
+    ...(checksVehicle || stage === "checkingVehicle" ? [{ id: "checkingVehicle", label: "Kontrola vozidla" }] : []),
   ];
   const activeIndex = Math.max(0, steps.findIndex((step) => step.id === stage));
-  const title = stage === "attachment" ? "Přikládám PDF"
+  const title = stage === "checkingVehicle" ? "Dokončuji kontrolu SPZ a VIN"
+    : stage === "attachment" ? "Přikládám PDF"
     : stage === "saving" ? (isEndorsement ? "Ukládám dodatek" : "Ukládám smlouvu")
       : (isEndorsement ? "Připravuji dodatek" : "Připravuji smlouvu");
-  const description = stage === "attachment"
+  const description = stage === "checkingVehicle" ? "Smlouva je uložená. Ještě ověřuji shodu s aktivními smlouvami."
+    : stage === "attachment"
     ? `${isEndorsement ? "Dodatek je uložený" : "Smlouva je uložená"}. Ještě připojuji dokument.`
     : stage === "saving" ? "Zapisují se údaje do tvého přehledu smluv."
       : "Ověřuji údaje a připravuji vše k uložení.";

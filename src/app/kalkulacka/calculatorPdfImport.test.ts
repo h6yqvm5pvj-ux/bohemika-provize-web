@@ -14,6 +14,7 @@ import {
 const PRODUCTS_WITH_CONTRACT_PDF_PARSER: Product[] = [
   "conseqzenit",
   "cppAuto",
+  "cppAutoVozikZdarma",
   "slaviaauto",
   "allianzAuto",
   "csobAuto",
@@ -49,6 +50,18 @@ describe("AUTOMATED_PDF_PRODUCTS", () => {
   it("surfaces inconsistent premium values for review before save", () => {
     expect(buildPdfImportIssueMessage({ product: "cppPPRbez", parsed: { pdfImportWarnings: ["Pojistné: součet splátek se liší."] } })).toContain("součet splátek se liší");
   });
+  it("omits only the unconfirmed renewal warning for regular DOMEX", () => {
+    const renewal = "Prolongace: ověř ANO / NE a datum konce pojištění podle PDF.";
+    const missingEnd = "Prolongace: smlouva se automaticky neobnovuje, ale datum konce pojištění chybí nebo je neplatné.";
+    const parsed = {
+      clientName: "Jana Testovací", contractNumber: "1000000001", contractSignedDate: "2026-09-01",
+      policyStartDate: "2026-10-01", frequency: "annual", amount: 2000,
+    };
+    expect(buildPdfImportIssueMessage({ product: "domex", parsed: { ...parsed, pdfImportWarnings: [renewal] } })).toBeNull();
+    expect(buildPdfImportIssueMessage({ product: "domex", parsed: { ...parsed, pdfImportWarnings: [renewal, missingEnd] } })).toContain(missingEnd);
+    expect(buildPdfImportIssueMessage({ product: "domexneuron", parsed: { ...parsed, pdfImportWarnings: [renewal] } })).toContain(renewal);
+  });
+
   it("contains every product with a contract-PDF parser", () => {
     expect([...AUTOMATED_PDF_PRODUCTS].sort()).toEqual(
       [...PRODUCTS_WITH_CONTRACT_PDF_PARSER].sort()
@@ -70,6 +83,13 @@ describe("AUTOMATED_PDF_PRODUCTS", () => {
 });
 
 describe("PDF import missing amounts", () => {
+  it("requires only portfolio identity and dates for the free trailer", () => {
+    const complete = { clientName: "Jana Testovací", contractNumber: "3999000001", contractSignedDate: "2026-11-12", policyStartDate: "2026-12-16", pdfNativeTextReadable: true };
+    expect(missingPdfImportFields({ product: "cppAutoVozikZdarma", parsed: complete })).toEqual([]);
+    expect(buildPdfImportIssueMessage({ product: "cppAutoVozikZdarma", parsed: complete })).toBeNull();
+    expect(buildPdfParserReport({ product: "cppAutoVozikZdarma", parsed: complete, ocrAttempted: false })).toBeNull();
+    expect(buildPdfParserReport({ product: "cppAutoVozikZdarma", parsed: { ...complete, contractSignedDate: null }, ocrAttempted: false })?.missingFields).toEqual(["contractSignedDate"]);
+  });
   const parsed = {
     clientName: "Jan Novák", contractNumber: "9512345678", contractSignedDate: "2024-11-04",
     policyStartDate: "2025-01-01", policyEndDate: "2040-04-12", frequency: "monthly",

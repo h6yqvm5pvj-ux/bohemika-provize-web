@@ -228,6 +228,15 @@
 .productOptions > button:hover, .productOptions > button[aria-pressed="true"] { background: #f5eef9; }
 .productOptions strong { display: block; font-size: 12px; font-weight: 550; color: #7b5d8b; }
 .productOptions small { display: block; color: #ad97ba; font-size: 10px; margin-top: 3px; }
+.latestEdition {
+  display: inline-block;
+  margin-inline-start: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 600;
+}
 .insurerPicker[data-layout="centered"] .insurerGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 .insurerPicker[data-layout="centered"] .insurerCard { border-color: #e7e3ec; border-radius: 13px; background: #ffffffa6; box-shadow: 0 1px 3px #30203903; transition: border-color .18s, box-shadow .18s, background .18s, transform .18s; }
 .insurerPicker[data-layout="centered"] .insurerCard[data-selected="true"] { border-color: #e0dbe8; background: #fff; box-shadow: 0 2px 4px #30203903; }
@@ -298,6 +307,12 @@
 .pdfPersonalizationFields input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid #e5ddeb; border-radius: 9px; background: white; color: #584063; font: inherit; }
 .pdfPersonalizationFields input::placeholder { color: #a69aaf; }
 .pdfPersonalizationFields input:focus { outline: 2px solid #c4afd5; outline-offset: 1px; }
+.pdfAdvisorEditor { margin-top: 14px; }
+.pdfAdvisorEditor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.pdfAdvisorEditor legend { color: #584063; font-weight: 650; }
+.pdfAdvisorEditor p { margin: 5px 0 0; }
+.pdfAdvisorEditor button { border: 1px solid #e5ddeb; border-radius: 8px; padding: 6px 11px; background: #fff; color: #6d4d83; }
+.pdfAdvisorEditor button:disabled { opacity: .65; }
 @media(max-width:650px) { .pdfPersonalizationFields { grid-template-columns: minmax(0, 1fr); gap: 12px; } }
 @media(max-width:650px) { .resultsHeading { flex-direction:column; align-items:flex-start; }.pdfOptions { flex-wrap:wrap; gap:7px; }.pdfOptions select { font-size:11px; } }
 

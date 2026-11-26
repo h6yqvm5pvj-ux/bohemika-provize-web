@@ -43,6 +43,13 @@ const petr = { clientName: "Bc. Petr Novák", productKey: "neon", clientPhone: "
 beforeEach(() => { records.clear(); reads.length = 0; queries.length = 0; beforeTransaction = undefined; });
 
 describe("persistent client–contract links", () => {
+  it("retains the DIP flag when an investment contract is linked and read on a client card", async () => {
+    const data = { ...petr, productKey: "investikaEfektika", isDip: true };
+    writeClientContractLink(writer, ref(sourcePath("dip")), {}, data);
+    const links = await readClientContractLinks(db, owner, null, null, null);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ productKey: "investikaEfektika", isDip: true });
+  });
   it("links title variants to one card and stores only the permitted projection", () => {
     const data = clientContractIndexRecord({ ...petr, birthNumber: "secret", identityDocuments: ["secret"], items: ["commission"], note: "private" }, owner)!;
     expect(data.clientSlug).toBe(clientSlugForName("Petr Novák"));

@@ -1,8 +1,7 @@
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { ArrowDown, ArrowUpRight, ChartLine, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
-import { formatMoney } from "@/app/lib/formatters";
-import { cashflowMonthSourceLabel, paidSubscriptionAmount } from "../cashflowLabels";
+import { cashflowMonthSourceLabel, formatCashflowMonthAmount, paidSubscriptionAmount } from "../cashflowLabels";
 import { buildYearChart, cashflowMonthPercentageChange, CHART_MONTH_LABELS, formatChartAmount, isPastCashflowMonth } from "../yearChart";
 import { buildCashflowLineSegments, CASHFLOW_PLOT_HEIGHT, CASHFLOW_PLOT_WIDTH } from "../cashflowLineGraph";
 import { CASHFLOW_CURVE_REVEAL_MS, useCashflowChartReveal } from "../useCashflowChartReveal";
@@ -34,7 +33,8 @@ export function CashflowYearChart({ yearGroup, previousMonth = null, onSelectMon
   const activeIndex = activeInput === "focus" ? focusedMonth ?? hoveredMonth : hoveredMonth ?? focusedMonth;
   const active = activeIndex === null ? null : chart.months[activeIndex];
   const comparisonMonth = activeIndex === null ? null : activeIndex === 0 ? previousMonth : chart.months[activeIndex - 1];
-  const percentageChange = cashflowMonthPercentageChange(active, comparisonMonth);
+  const compareUnknownAmounts = [active, comparisonMonth].some(month => month?.totalSource === "predicted" && month.hasUnknownAmounts);
+  const percentageChange = compareUnknownAmounts ? null : cashflowMonthPercentageChange(active, comparisonMonth);
   const trend = percentageChange === null ? null : percentageChange > 0 ? "up" : percentageChange < 0 ? "down" : "flat";
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const highlighted = active ?? chart.strongest;
@@ -68,7 +68,7 @@ export function CashflowYearChart({ yearGroup, previousMonth = null, onSelectMon
             <span aria-hidden="true"> · </span>
             <span className={styles.capitalize}>{highlighted.label.replace(/\s+\d{4}$/, "")}</span>
           </p>
-          <strong>{formatMoney(highlighted.total)}</strong>
+          <strong>{formatCashflowMonthAmount(highlighted)}</strong>
         </div>}
       </div>
 
@@ -128,7 +128,7 @@ export function CashflowYearChart({ yearGroup, previousMonth = null, onSelectMon
                     aria-current={isCurrent ? "date" : undefined}
                     aria-describedby={month && activeIndex === index ? tooltipId : undefined}
                     disabled={!month}
-                    aria-label={month ? `${month.label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: ${formatMoney(month.total)}, ${cashflowMonthSourceLabel(month).toLocaleLowerCase("cs-CZ")}. Otevřít detail měsíce.` : `${label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
+                    aria-label={month ? `${month.label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: ${formatCashflowMonthAmount(month)}, ${cashflowMonthSourceLabel(month).toLocaleLowerCase("cs-CZ")}. Otevřít detail měsíce.` : `${label}${isCurrent ? ", aktuální měsíc" : isPast ? ", uplynulý měsíc" : ""}: bez dat v aktuálním výběru`}
                     onClick={() => { if (month) onSelectMonth(month); }}
                     onMouseEnter={() => { setHoveredMonth(index); setActiveInput("pointer"); }} onMouseLeave={() => setHoveredMonth(null)}
                     onFocus={() => { setFocusedMonth(index); setActiveInput("focus"); }} onBlur={() => setFocusedMonth(null)}>
@@ -156,7 +156,7 @@ export function CashflowYearChart({ yearGroup, previousMonth = null, onSelectMon
               </span>}
               <span className={styles.lineTooltipDetails}>
                 <span className={styles.lineTooltipMonth}>{active.label}</span>
-                <strong className={styles.lineTooltipAmount}>{formatMoney(active.total)}</strong>
+                <strong className={styles.lineTooltipAmount}>{formatCashflowMonthAmount(active)}</strong>
               </span>
               <span className={styles.lineTooltipSource}>{cashflowMonthSourceLabel(active)}</span>
               {percentageChange !== null && comparisonMonth && <span className={styles.lineTooltipComparison}>

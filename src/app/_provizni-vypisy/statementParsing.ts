@@ -1,5 +1,7 @@
+import { readStatementDates } from "@/app/lib/statementProcessingOrder";
+import { isLifeIncreaseCode, lifeIncreaseItemCode, lifeIncreaseExpectedAmount, lifeIncreaseCommissionLabel } from "@/app/lib/lifePremiumIncrease";
 import { PRODUCT_CATALOG } from "@/app/lib/productCatalog";
-import { isKooperativaCPayout } from "@/app/lib/kooperativaCPayoutMeaning";
+import { isKooperativaAutoRenewalPayout, isKooperativaCPayout } from "@/app/lib/kooperativaCPayoutMeaning";
 import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
 
 import type {
@@ -140,6 +142,9 @@ const resolveStatementProduct = (
 
 const isKooperativaCStatementRow = (row: { product: string; type: string }): boolean =>
   isKooperativaCPayout(resolveStatementProduct(row.product).productKey, row.type);
+
+const isKooperativaAutoRenewalStatementRow = (row: { product: string; type: string }): boolean =>
+  isKooperativaAutoRenewalPayout(resolveStatementProduct(row.product).productKey, row.type);
 
 const parseOptionalMoney = (value: string | null | undefined): number | null => {
   const normalized = String(value ?? "")
@@ -491,9 +496,7 @@ const managerCommissionCodeForSystemItems = (
   value: string | null | undefined
 ): string => {
   const code = normalizeStatementCommissionCode(value);
-  if (/^NB\d+/.test(code)) return "B0301";
-  if (/^NV(?:PZ?|Z)?\d+/.test(code)) return "A101";
-  return baseCommissionCodeForStatementComparison(code);
+  return lifeIncreaseItemCode(code) ?? baseCommissionCodeForStatementComparison(code);
 };
 
 const commissionCodeAliasesForPayoutHistory = (
@@ -514,7 +517,7 @@ const commissionCodeAliasesForPayoutHistory = (
   const comparableSystemCode = managerCommissionCodeForSystemItems(code);
   if (comparableSystemCode !== code) addAlias(comparableSystemCode);
 
-  const compact = code.replace(/[_-]/g, "");
+  const compact = (lifeIncreaseItemCode(code) ?? code).replace(/[_-]/g, "");
   const installmentRangeMatch = code.match(/^([AB])(\d{3})-\1(\d{3})$/);
   if (installmentRangeMatch) {
     const prefix = installmentRangeMatch[1] ?? "";
@@ -555,45 +558,14 @@ const commissionCodeAliasesForPayoutHistory = (
 
 /**
  * Výpisy označují provizi z dodatku kódy NV/NB, zatímco výpočet dodatku
- * ukládá stejné složky pod původními kódy A101/B0301. Porovnáváme proto
+ * ukládá složky jako A101, B0301, B3601 či B4801. Porovnáváme proto
  * konkrétní kódy z řádků výpisu, ne obecný text "navýšení" v názvu položky.
  */
 const expectedPremiumIncreaseAmountFromItems = (
   items: CommissionResultItemDTO[] | null | undefined,
   rows: Array<Pick<CommissionRow, "type">>
-): number => {
-  const expectedCodes = new Set(
-    rows
-      .map((row) => managerCommissionCodeForSystemItems(row.type))
-      .filter(Boolean)
-  );
-  const comparableItems = (items ?? []).filter((item) => {
-    const code = normalizeStatementCommissionCode(item.code);
-    const title = normalizeCommissionTitle(item.title);
-    return code !== "TOTAL" && title !== "celkem" && title !== "celkova provize";
-  });
-
-  return [...expectedCodes].reduce((sum, expectedCode) => {
-    const exactMatches = comparableItems.filter(
-      (item) => baseCommissionCodeForStatementComparison(item.code) === expectedCode
-    );
-    const matches =
-      exactMatches.length > 0
-        ? exactMatches
-        : comparableItems.filter((item) =>
-            normalizeCommissionTitle(item.title).includes(
-              normalizeCommissionTitle(expectedCode)
-            )
-          );
-    return (
-      sum +
-      matches.reduce(
-        (itemSum, item) =>
-          itemSum + (Number.isFinite(Number(item.amount)) ? Number(item.amount) : 0),
-        0
-      )
-    );
-  }, 0);
+): number | null => {
+  return lifeIncreaseExpectedAmount(items, rows.map(row => row.type));
 };
 
 const isNeonInitialCommissionCode = (value: string | null | undefined): boolean => {
@@ -605,7 +577,7 @@ const isLifePremiumIncreaseCommissionCode = (
   code: string | null | undefined
 ): boolean => {
   const cleanCode = normalizeStatementCommissionCode(code);
-  return /^(?:NV(?:PZ?|Z)?|NB)\d+/.test(cleanCode);
+  return isLifeIncreaseCode(cleanCode);
 };
 
 const classifyLifeSplitCommissionCode = (
@@ -615,7 +587,7 @@ const classifyLifeSplitCommissionCode = (
   const comparableCode = baseCommissionCodeForStatementComparison(cleanCode);
 
   if (isLifePremiumIncreaseCommissionCode(cleanCode)) {
-    return { kind: "increase", label: "Provize za navýšení smlouvy" };
+    return { kind: "increase", label: lifeIncreaseCommissionLabel(cleanCode)! };
   }
   if (comparableCode === "A101") {
     return {
@@ -668,6 +640,9 @@ const classifyGeneralCommissionCode = (
   const cleanCode = code.trim().toUpperCase();
   const cleanProduct = product.trim().toUpperCase();
 
+  if (resolveStatementProduct(cleanProduct).category === "investment") {
+    return { kind: "investment", label: "Investiční provize dle výpisu" };
+  }
   if (!cleanCode) return { kind: "unknown", label: "Nezařazený kód" };
   if (cleanCode === "ATP101") return { kind: "tip", label: "Provize z TIPU" };
   if (cleanProduct.startsWith("TU_")) {
@@ -681,7 +656,7 @@ const classifyGeneralCommissionCode = (
     return { kind: "gradual", label: "Provize s postupným vyplácením" };
   }
   if (isLifePremiumIncreaseCommissionCode(cleanCode)) {
-    return { kind: "increase", label: "Provize za navýšení smlouvy" };
+    return { kind: "increase", label: lifeIncreaseCommissionLabel(cleanCode)! };
   }
   if (/^(?:APZ|AP|AZ)\d+/.test(cleanCode)) {
     return { kind: "closing", label: "Provize za uzavření - rozdělená role sjednatele" };
@@ -851,6 +826,18 @@ const COMMISSION_CODE_RULES: CommissionCodeRule[] = [
     matchers: [/^KOMP$/],
   },
   {
+    codes: "NB3601 / NB036 / NB36",
+    label: "Provize za navýšení po 3 letech",
+    category: "increase",
+    matchers: [/^NB(?:3601|036|36)$/],
+  },
+  {
+    codes: "NB4801 / NB048 / NB48",
+    label: "Provize za navýšení po 4 letech",
+    category: "increase",
+    matchers: [/^NB(?:4801|048|48)$/],
+  },
+  {
     codes: "NV1-3 / NB",
     label: "Provize za navýšení smlouvy",
     category: "increase",
@@ -954,12 +941,8 @@ const extractHeader = (html: string, doc: Document): StatementHeader => {
 
   return {
     advisorNumber: plainText.match(/Číslo poradce:\s*([0-9]+)/i)?.[1] ?? null,
-    period:
-      plainText.match(
-        /Období:\s*([0-9]{2}\.[0-9]{2}\.[0-9]{4}\s*-\s*[0-9]{2}\.[0-9]{2}\.[0-9]{4})/i
-      )?.[1] ?? null,
+    ...readStatementDates(plainText, html),
     statementNumber: plainText.match(/Číslo výpisu:\s*([0-9]+)/i)?.[1] ?? null,
-    statementDate: html.match(/ze dne\s+([0-9]{2}\.[0-9]{2}\.[0-9]{4})/i)?.[1] ?? null,
   };
 };
 
@@ -1684,6 +1667,7 @@ export {
   baseCommissionCodeForStatementComparison,
   classifyGeneralCommissionCode,
   isKooperativaCStatementRow,
+  isKooperativaAutoRenewalStatementRow,
   classifyLifeSplitCommissionCode,
   closestB36PaidAmount,
   commissionRowCanReplaceDeduction,

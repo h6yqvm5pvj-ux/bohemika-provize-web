@@ -104,6 +104,7 @@ export function readContractsViewState(
       filterMode: parsed.filterMode === "anniversary" ? "anniversary" : "latest",
       searchText: typeof parsed.searchText === "string" ? parsed.searchText : "",
       showUnpaidOnly: Boolean(parsed.showUnpaidOnly),
+      showWithoutPdfOnly: Boolean(parsed.showWithoutPdfOnly),
       showRefreshOnly: Boolean(parsed.showRefreshOnly),
       showActiveOnly: Boolean(parsed.showActiveOnly),
       showStornoOnly: Boolean(parsed.showStornoOnly),

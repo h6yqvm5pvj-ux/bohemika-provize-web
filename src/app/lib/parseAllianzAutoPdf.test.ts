@@ -139,6 +139,40 @@ describe("parseAllianzAutoPdf", () => {
     });
   });
 
+  it("přenese do kalkulačky celý název firmy ze sloupce pojistníka", async () => {
+    pdfState.pages = [[
+      { str: "Pojistitel", x: 43, y: 750 },
+      { str: "Pojistník (Vy)", x: 306, y: 750 },
+      { str: "Ukázková pojišťovna, a.s.", x: 43, y: 738 },
+      { str: "DÍLNA 24 spol. s r.o.", x: 309, y: 738 },
+      { str: "IČO: 11111111", x: 43, y: 720 },
+      { str: "IČO:", x: 306, y: 720, width: 20 },
+      { str: "22222222", x: 371, y: 720 },
+      { str: "E-mail: pojistitel@example.cz", x: 43, y: 700 },
+      { str: "E-mail: klient@example.cz", x: 306, y: 700 },
+      { str: "Pojištěné vozidlo", x: 43, y: 670 },
+    ]];
+
+    const parsed = await parseAllianzAutoPdf(makePdfFile());
+    expect(parsed).toMatchObject({
+      clientName: "DÍLNA 24 spol. s r.o.",
+      personalId: "22222222",
+      clientEmail: "klient@example.cz",
+    });
+    expect(mapSinglePdfFormValues("allianzAuto", parsed).values.clientName).toBe("DÍLNA 24 spol. s r.o.");
+    expect(parsed.isRefresh).toBeFalsy();
+  });
+
+  it("při chybějícím názvu firmy nepoužije název z vedlejšího sloupce ani IČO", async () => {
+    pdfState.pages = [[
+      { str: "Pojistitel", x: 43, y: 750 },
+      { str: "Pojistník (Vy)", x: 306, y: 750 },
+      { str: "Ukázková Pojišťovna", x: 43, y: 738 },
+      { str: "IČO: 22222222", x: 306, y: 720 },
+    ]];
+    expect((await parseAllianzAutoPdf(makePdfFile())).clientName).toBeUndefined();
+  });
+
   it("reads the older two-column vehicle layout without treating the coverage heading as the make", async () => {
     pdfState.pages = [[
       { str: "Nabídka pojistitele č. 700000001", x: 28, y: 800 },

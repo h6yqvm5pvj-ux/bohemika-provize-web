@@ -127,6 +127,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails, contractNumber,
       `Číslo účtu: ${details.accountNumber}`,
       `Variabilní symbol: ${details.variableSymbol}`,
       ...(details.dueDate ? [`Datum splatnosti: ${formatDate(details.dueDate)}`] : []),
+      ...(details.installmentDueDates ? [`Splatnost dalších splátek: ${details.installmentDueDates}`] : []),
       ...(details.frequency ? [`Frekvence platby: ${frequencyLabels[details.frequency]}`] : []),
       ...(details.paymentNote ? [details.paymentNote] : []),
       "",
@@ -171,7 +172,7 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails, contractNumber,
         <span className={styles.headerIcon}><WalletCards size={23} strokeWidth={1.6} aria-hidden="true" /></span>
         <div className={styles.heading}>
           <h2 id={titleId}>Platební údaje</h2>
-          <p id={descriptionId}>Platební údaje a pojištěná rizika uvedená ve smlouvě.</p>
+          <p id={descriptionId}>Údaje pro platbu a QR kód podle smlouvy.</p>
         </div>
         <button ref={closeRef} type="button" aria-label="Zavřít platební údaje" onClick={close}
           className={styles.close}><X size={17} aria-hidden="true" /></button>
@@ -184,13 +185,23 @@ function OpenPaymentDetailsDialog({ onClose, loadPaymentDetails, contractNumber,
           </div>
             : <div className={styles.layout}>
               <div className={styles.detailColumn}>
-                <dl className={styles.details}>
-                  <div className={styles.amount}><dt>Částka k úhradě</dt><dd>{amountFormatter.format(current.details.amount)}</dd></div>
-                  {current.details.frequency && <div className={styles.detail}><dt>Frekvence platby</dt><dd>{frequencyLabels[current.details.frequency]}</dd></div>}
+                <dl className={styles.amountPanel}>
+                  <div className={styles.amount}>
+                    <div className={styles.amountHeading}><dt>Částka k úhradě</dt>
+                      {current.details.frequency && <div className={styles.frequency}><dt>Frekvence</dt><dd>{frequencyLabels[current.details.frequency]}</dd></div>}
+                    </div>
+                    <dd className={styles.amountValue}>{amountFormatter.format(current.details.amount)}</dd>
+                  </div>
+                </dl>
+                <h3 className={styles.paymentFieldsHeading}>Platební údaje</h3>
+                <dl className={styles.paymentFields}>
                   <div className={styles.detail}><dt>Číslo účtu</dt><dd>{current.details.accountNumber}</dd></div>
                   <div className={styles.detail}><dt>Variabilní symbol</dt><dd>{current.details.variableSymbol}</dd></div>
-                  {current.details.dueDate && <div className={styles.dueDate}><dt><CalendarDays size={14} aria-hidden="true" />Datum splatnosti</dt><dd>{formatDate(current.details.dueDate)}</dd></div>}
                 </dl>
+                {(current.details.dueDate || current.details.installmentDueDates) && <dl className={styles.dueDates}>
+                  {current.details.dueDate && <div className={styles.dueDate}><dt><CalendarDays size={15} aria-hidden="true" />Datum splatnosti</dt><dd>{formatDate(current.details.dueDate)}</dd></div>}
+                  {current.details.installmentDueDates && <div className={styles.dueDate}><dt><CalendarDays size={15} aria-hidden="true" />Další splátky</dt><dd>{current.details.installmentDueDates}</dd></div>}
+                </dl>}
                 {current.details.insuredItems?.length ? <section className={styles.insuredItems} aria-label="Co je pojištěno">
                   <h3>Co je pojištěno</h3>
                   <ul>{current.details.insuredItems.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>

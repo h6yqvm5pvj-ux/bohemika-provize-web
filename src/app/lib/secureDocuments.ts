@@ -70,10 +70,9 @@ export function useSecureDocumentBlob(id: SecureDocumentId | null): SecureDocume
           currentUser,
           secureDocumentPath(documentId)
         );
+        if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        if (!cancelled) {
-          setState({ blob, url: objectUrl, loading: false, error: null });
-        }
+        setState({ blob, url: objectUrl, loading: false, error: null });
       } catch (error) {
         if (objectUrl) {
           URL.revokeObjectURL(objectUrl);

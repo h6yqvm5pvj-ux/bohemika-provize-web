@@ -1,8 +1,16 @@
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
+import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { coverAcquisitionCashflowInstallments } from "./acquisitionInstallmentCoverage";
+import { PAYOUT_EXCEPTION_POSITION, PAYOUT_EXCEPTION_START_YEAR, payoutPositionException, payoutPositionExceptionItems } from "@/app/lib/payoutPositionException";
+import { autoFrequencyCommissionPeriods, autoFrequencyCommissionMultiplier, cppKomplexRenewalCommissionMultiplier, paymentFrequencyAtDate } from "@/app/lib/autoPaymentFrequency";
 import { estimatePayoutDate } from "../lib/commissionPayoutDate";
+import { contractPortalLinks } from "../lib/contractPortalLinks";
 import { isInheritedContract, isSubsequentCommissionItem } from "../lib/inheritedContracts";
+import { neonCorrectionPayoutAmount, neonExpectedStatementMonth } from "../lib/neonCorrection";
 import type { PaymentFrequency } from "../types/domain";
 import { cppBytexSubsequentPayoutYears } from "../lib/productFormulas/cppbytex";
 import { domexSubsequentPayoutYears } from "../lib/productFormulas/domex";
+import { MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE } from "../lib/productFormulas/maxcizinkomplex";
 import { toDate } from "./helpers";
 import type { CashflowItem, EntryDoc } from "./types";
 import { baseCommissionCodeForPayoutComparison } from "../lib/commissionPayoutRules";
@@ -11,6 +19,10 @@ import { calendarDate } from "../lib/calendarDates";
 import { createEndorsementCommissionPlan } from "../lib/endorsementCommissionPlan";
 import { commissionPeriodForCode } from "../lib/commissionPeriodForCode";
 import { isRetiredProduct } from "../lib/retiredProducts";
+import { isRecordOnlyProduct } from "../lib/productCatalog";
+import { activePayoutRecordsAfterFullStornos, neonEndorsementForOriginalPayout, uniqueFamilyCommissionReceipts, wasNeonCommissionSettledBefore, type LifeIncreaseReceiptIndex } from "../lib/commissionReceipts";
+import { isNeonPremiumIncreaseComponent, lifeIncreaseItemCode, lifeIncreaseCommissionLabel, normalizeLifeCommissionItemCode } from "../lib/lifePremiumIncrease";
+import { isNeonRecurringStatementCode } from "../lib/neonRecurringStatementBase";
 import { createDomexNeuronPremiumTimeline } from "../lib/domexNeuronPremiumHistory";
 
 export { estimatePayoutDate } from "../lib/commissionPayoutDate";
@@ -31,7 +43,7 @@ type IndexedCommissionPayout = {
   date: Date;
 };
 
-function estimateLifeFirstPayoutDate(
+export function estimateLifeFirstPayoutDate(
   policyStart: Date,
   agreementDate: Date,
   product: EntryDoc["productKey"],
@@ -215,8 +227,9 @@ const commissionCodeAliasesForCashflow = (code: string): string[] => {
   return [code];
 };
 
-const SETTLED_COMMISSION_PAYOUT_STATUSES = new Set(["paid", "difference"]);
+const SETTLED_COMMISSION_PAYOUT_STATUSES = new Set(["", "paid", "difference"]);
 const STATEMENT_ONLY_COMMISSION_PAYOUT_STATUSES = new Set([
+  "",
   "paid",
   "difference",
   "storno",
@@ -336,7 +349,7 @@ function indexStatementOnlyCommissionPayouts(
     .sort((a, b) => payoutSortValue(a) - payoutSortValue(b));
 }
 
-function cashflowCommissionPayoutsForViewer(
+export function cashflowCommissionPayoutsForViewer(
   entry: EntryDoc,
   viewerEmail?: string | null
 ): EntryDoc["commissionPayouts"] {
@@ -354,12 +367,13 @@ function cashflowCommissionPayoutsForViewer(
 function findSettledCommissionPayout(
   payouts: IndexedCommissionPayout[],
   consumedPayoutKeys: Set<string>,
-  amount: number,
+  amount: number | null,
   metadata: Partial<
     Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
   >,
   expectedDate: Date,
-  product?: EntryDoc["productKey"]
+  product?: EntryDoc["productKey"],
+  lifeEndorsement = false
 ): IndexedCommissionPayout | null {
   const itemCodes = uniqueCommissionCodes([
     metadata.commissionCode,
@@ -371,7 +385,8 @@ function findSettledCommissionPayout(
   const matchingPayouts = payouts.filter((indexedPayout) => {
     if (consumedPayoutKeys.has(indexedPayout.key)) return false;
 
-    const payoutCodes = uniqueCommissionCodes([indexedPayout.payout.code], product);
+    const payoutCode = lifeEndorsement ? lifeIncreaseItemCode(indexedPayout.payout.code) ?? indexedPayout.payout.code : indexedPayout.payout.code;
+    const payoutCodes = uniqueCommissionCodes([payoutCode], product);
     return payoutCodes.some((code) => itemCodeSet.has(code));
   });
   if (matchingPayouts.length === 0) return null;
@@ -382,12 +397,12 @@ function findSettledCommissionPayout(
       const aDistance = Math.abs(monthSerial(a.date) - expectedMonth);
       const bDistance = Math.abs(monthSerial(b.date) - expectedMonth);
       if (aDistance !== bDistance) return aDistance - bDistance;
-      const aAmountMatches =
+      const aAmountMatches = amount != null && (
         amountsMatchExpectedPayout(amount, a.payout.expectedAmount) ||
-        amountsMatchExpectedPayout(amount, a.payout.amount);
-      const bAmountMatches =
+        amountsMatchExpectedPayout(amount, a.payout.amount));
+      const bAmountMatches = amount != null && (
         amountsMatchExpectedPayout(amount, b.payout.expectedAmount) ||
-        amountsMatchExpectedPayout(amount, b.payout.amount);
+        amountsMatchExpectedPayout(amount, b.payout.amount));
       if (aAmountMatches !== bAmountMatches) return aAmountMatches ? -1 : 1;
       return payoutSortValue(a) - payoutSortValue(b);
     })[0] ?? null;
@@ -396,6 +411,8 @@ function findSettledCommissionPayout(
 function commissionLabelFromCode(code: string | null | undefined): string | null {
   const normalizedCode = normalizeCommissionCode(code);
   if (!normalizedCode) return null;
+  const increaseLabel = lifeIncreaseCommissionLabel(normalizedCode);
+  if (increaseLabel) return increaseLabel;
   if (/^A\d+$/.test(normalizedCode)) return `Provize ${normalizedCode}`;
   if (normalizedCode === "B0301") return "Provize B0301";
   if (normalizedCode === "B101-B104" || /^B1\d+$/.test(normalizedCode)) {
@@ -443,10 +460,11 @@ function splitImmediatePartFromTitle(
   title: string,
   amount: number,
   product: EntryDoc["productKey"],
-  code?: string | null
+  code?: string | null,
+  allowUnknownAmount = false
 ): ImmediateCashflowPart | null {
   if (!isSplitImmediateProduct(product)) return null;
-  if (!Number.isFinite(amount) || amount === 0) return null;
+  if (!Number.isFinite(amount) || (amount === 0 && !allowUnknownAmount)) return null;
   const normalizedCode = normalizeCommissionCode(code);
 
   if (normalizedCode === "A101" || title.includes("provize a101")) {
@@ -492,25 +510,104 @@ function splitImmediatePartFromTitle(
   return null;
 }
 
+const plannedPayoutIdentity = (item: CashflowItem) =>
+  JSON.stringify([item.ownerEmail, item.entryId, item.date.getTime(), item.commissionCode, item.commissionLabel, item.note]);
+
 export function generateCashflow(
   entries: EntryDoc[],
   horizonYears = 10,
   viewerEmail?: string | null,
   asOf: Date = new Date(),
-  timelineEntries: EntryDoc[] = entries
+  timelineEntries: EntryDoc[] = entries,
+  lifeReceiptEvidence?: LifeIncreaseReceiptIndex,
+): CashflowItem[] {
+  const base = generateCashflowSchedule(entries, horizonYears, viewerEmail, asOf, timelineEntries, lifeReceiptEvidence);
+  const revisedEntries = entries.flatMap(entry => {
+    if (entry.source === "manager" || hasPendingFlexiRenovationBase(entry) || !payoutPositionException(entry, "2026-01")) return [];
+    const items = payoutPositionExceptionItems(entry);
+    return items ? [{ ...entry, items, commissionPayouts: [], cashflowPayoutMatches: [] }] : [];
+  });
+  if (!revisedEntries.length) return base;
+
+  const revised = new Map(generateCashflowSchedule(revisedEntries, horizonYears, viewerEmail, asOf, timelineEntries)
+    .map(item => [plannedPayoutIdentity(item), item]));
+  return base.map(item => {
+    if (item.source === "manager" || item.payoutStatus === "paid" || item.isPartialPayoutBalance) return item;
+    const repriced = revised.get(plannedPayoutIdentity(item));
+    if (!repriced || repriced.amount === item.amount) return item;
+    if (item.date.getFullYear() < PAYOUT_EXCEPTION_START_YEAR) {
+      return { ...item, repricedAmountIfShifted: repriced.amount };
+    }
+    return {
+      ...item,
+      amount: repriced.amount,
+      originalPositionAmount: item.amount,
+      predictionPosition: PAYOUT_EXCEPTION_POSITION,
+      premiumChangeOriginalAmount: repriced.premiumChangeOriginalAmount,
+    };
+  });
+}
+
+function generateCashflowSchedule(
+  entries: EntryDoc[],
+  horizonYears = 10,
+  viewerEmail?: string | null,
+  asOf: Date = new Date(),
+  timelineEntries: EntryDoc[] = entries,
+  lifeReceiptEvidence?: LifeIncreaseReceiptIndex,
 ): CashflowItem[] {
   const out: CashflowItem[] = [];
   const endorsementPlan = createEndorsementCommissionPlan(timelineEntries.filter(entry => !isRetiredProduct(entry.productKey)));
+  const scheduleEntries = uniqueFamilyCommissionReceipts(entries, lifeReceiptEvidence);
+  const scheduleIdentity = (owner?: string | null, source?: string, id?: string | null) =>
+    JSON.stringify([normalizeEmail(owner), source ?? "own", id]);
+  const scheduleKey = (entry: EntryDoc, id = entry.originalEntryId ?? entry.id) =>
+    scheduleIdentity(entry.userEmail, entry.source, id);
+  const neonSchedules = new Map(scheduleEntries.filter(entry => entry.productKey === "neon")
+    .map(entry => [scheduleKey(entry), entry.items ?? []]));
+  const neonIncreasesByRoot = new Map<string, EntryDoc[]>();
+  for (const entry of scheduleEntries) {
+    if (entry.productKey !== "neon" || entry.entryType !== "endorsement") continue;
+    const rootId = endorsementPlan.neonRecurringRootId(entry);
+    if (!rootId) continue;
+    const key = scheduleKey(entry, rootId);
+    const increases = neonIncreasesByRoot.get(key) ?? [];
+    increases.push(entry);
+    neonIncreasesByRoot.set(key, increases);
+  }
+  const projectedNeonReceipts = new Map<EntryDoc, EntryCommissionPayout[]>();
+  for (const root of scheduleEntries) {
+    if (root.productKey !== "neon" || root.entryType === "endorsement") continue;
+    const increases = (neonIncreasesByRoot.get(scheduleKey(root)) ?? []).filter(entry =>
+      !root.contractNumber || !entry.contractNumber || root.contractNumber.trim() === entry.contractNumber.trim());
+    if (!increases.length) continue;
+    const remaining: EntryCommissionPayout[] = [];
+    for (const receipt of cashflowCommissionPayoutsForViewer(root, viewerEmail) ?? []) {
+      const target = neonEndorsementForOriginalPayout(receipt, increases);
+      if (!target) {
+        remaining.push(receipt);
+        continue;
+      }
+      const targetReceipts = projectedNeonReceipts.get(target) ?? cashflowCommissionPayoutsForViewer(target, viewerEmail) ?? [];
+      targetReceipts.push(receipt);
+      projectedNeonReceipts.set(target, targetReceipts);
+    }
+    projectedNeonReceipts.set(root, remaining);
+  }
+  const absorbedNeonComponents = new Map<string, Set<string>>();
   let globalItemSequence = 0;
   const now = calendarDate(asOf, asOf);
+  const today = dateToIsoDay(now) ?? "";
   const horizonEnd = calendarDate(now,
     now.getFullYear() + horizonYears,
     now.getMonth(),
     now.getDate()
   );
 
-  for (const entry of entries) {
-    if (isRetiredProduct(entry.productKey)) continue;
+  for (const entry of scheduleEntries) {
+    const entryOutputStart = out.length;
+    if (isRetiredProduct(entry.productKey) || isRecordOnlyProduct(entry.productKey)) continue;
+    const portalLinks = contractPortalLinks(entry);
     const baseEntryId = entry.originalEntryId ?? entry.id;
     const ownerEmail = entry.userEmail ?? null;
     const normalizedOwnerEmail = ownerEmail
@@ -520,11 +617,16 @@ export function generateCashflow(
     const isStorno = status === "storno";
     const parsedStornoDate = toDate(entry.stornoDate, { calendar: now });
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
-    const scopedPayouts = cashflowCommissionPayoutsForViewer(entry, viewerEmail);
+    const scopedPayouts = projectConfirmedCommissionCodes(entry,
+      projectedNeonReceipts.get(entry) ?? cashflowCommissionPayoutsForViewer(entry, viewerEmail) ?? []);
     const settledPayouts = indexSettledCommissionPayouts(scopedPayouts, now);
     const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts, now);
+    const lifeEndorsement = entry.entryType === "endorsement" && ["neon", "flexi", "maximaMaxEfekt"].includes(entry.productKey ?? "");
+    const activeNeonRecurringPayouts = entry.productKey === "neon" ? new Set(
+      activePayoutRecordsAfterFullStornos(scopedPayouts.filter(payout => isNeonRecurringStatementCode(payout.code)), "neon")
+    ) : null;
     const payoutPeriods = new Map([...settledPayouts, ...statementOnlyPayouts].map(record =>
-      [record.key, commissionPeriodForCode(entry, record.payout.code)]
+      [record.key, commissionPeriodForCode(entry, lifeEndorsement ? lifeIncreaseItemCode(record.payout.code) ?? record.payout.code : record.payout.code)]
     ));
     const consumedPayoutKeys = new Set<string>();
 
@@ -546,6 +648,8 @@ export function generateCashflow(
       policyEndPayoutDate ?? (status === "dozita" ? now : horizonEnd)
     );
     const product = entry.productKey;
+    const flexiWithoutBase = hasPendingFlexiRenovationBase(entry);
+    const pendingFlexiSchedule = flexiWithoutBase && entry.source !== "manager";
     const neuronPremiumTimeline = product === "domexneuron" ? createDomexNeuronPremiumTimeline(entry) : null;
     const currentMonthlyPremiumRaw =
       neuronPremiumTimeline?.premiumAtDate(dateToIsoDay(now)) ??
@@ -564,7 +668,7 @@ export function generateCashflow(
       (typeof entry.refreshCommissionBase?.calculationAnnualPremium === "number"
         ? entry.refreshCommissionBase.calculationAnnualPremium / 12
         : null);
-    const lifeStornoBaseMonthlyPremium =
+    const lifeStornoBaseMonthlyPremium = flexiWithoutBase ? null :
       typeof storedRefreshBaseMonthlyRaw === "number" &&
       Number.isFinite(storedRefreshBaseMonthlyRaw) &&
       storedRefreshBaseMonthlyRaw >= 0
@@ -590,7 +694,7 @@ export function generateCashflow(
       commissionPeriods.set(payout.getTime(), period);
       return period;
     };
-    const items = (entry.items ?? [])
+    const items = (pendingFlexiSchedule ? [] : entry.items ?? [])
       .filter((item) => !inherited || isSubsequentCommissionItem(item))
       .map((it) => ({
       title: (it.title ?? "").toLowerCase(),
@@ -628,8 +732,10 @@ export function generateCashflow(
         : {
             commissionLabel: "Okamžitá provize",
           };
-    const splitImmediateParts = items
-      .map((item) => splitImmediatePartFromTitle(item.title, item.amount, product, item.code))
+    const splitImmediateParts = (pendingFlexiSchedule
+      ? ["A101", "B0301", ...((entry.commissionMode ?? entry.mode) === "accelerated" ? ["B36_HALF"] : [])]
+        .map(code => splitImmediatePartFromTitle("", 0, product, code, true))
+      : items.map(item => splitImmediatePartFromTitle(item.title, item.amount, product, item.code)))
       .filter((item): item is ImmediateCashflowPart => Boolean(item));
     const po3 = items.find((item) => item.title.includes("po 3 letech"));
     const po4 = items.find((item) => item.title.includes("po 4 letech"));
@@ -675,9 +781,10 @@ export function generateCashflow(
       horizonLimit: Date = entryHorizonEnd,
       metadata: Partial<
         Pick<CashflowItem, "commissionCode" | "commissionCodeAliases" | "commissionLabel">
-      > = {}
+      > = {},
+      neonInstallmentCode?: string,
     ) => {
-      if (!Number.isFinite(amount) || amount === 0) return;
+      if (!Number.isFinite(amount) || (amount === 0 && !pendingFlexiSchedule)) return;
       if (inherited) {
         const period = commissionPeriods.get(date.getTime());
         const periodDay = dateToIsoDay(period);
@@ -690,25 +797,51 @@ export function generateCashflow(
       // arrives later. Initial commissions use the original start, not payday.
       const commissionPeriod = commissionPeriods.get(date.getTime()) ?? start;
       const commissionPeriodStart = dateToIsoDay(commissionPeriod);
-      const premiumChange = endorsementPlan.adjust(entry, amount, dateToIsoDay(commissionPeriod));
-      const plannedAmount = premiumChange?.amount ?? amount;
+      const amountAtPayoutDate = entry.neonCorrection
+        ? neonCorrectionPayoutAmount(entry, amount, neonExpectedStatementMonth(date)) : amount;
+      const neonComponent = product === "neon" && !lifeEndorsement
+        ? normalizeLifeCommissionItemCode(neonInstallmentCode ?? metadata.commissionCode) : "";
+      const neonAdjustments = neonComponent && isNeonPremiumIncreaseComponent(neonComponent)
+        ? (() => {
+          const codes = new Set((neonInstallmentCode ? [neonInstallmentCode] : [neonComponent, ...(metadata.commissionCodeAliases ?? [])])
+            .map(normalizeLifeCommissionItemCode));
+          const receipts = scopedPayouts.filter(payout =>
+            codes.has(normalizeLifeCommissionItemCode(baseCommissionCodeForPayoutComparison(payout.code, product))));
+          const through = commissionPeriodStart && commissionPeriodStart > today ? commissionPeriodStart : today;
+          return endorsementPlan.neonOpenCommissionAdjustments(entry, amountAtPayoutDate, through,
+            day => wasNeonCommissionSettledBefore(receipts, day, commissionPeriodStart));
+        })() : [];
+      for (const adjustment of neonAdjustments) {
+        const key = scheduleKey(entry, adjustment.endorsementEntryId);
+        const absorbed = absorbedNeonComponents.get(key) ?? new Set<string>();
+        absorbed.add(neonComponent);
+        absorbedNeonComponents.set(key, absorbed);
+      }
+      const neonAdjustment = neonAdjustments.at(-1);
+      const premiumChange = neonAdjustment ?? (pendingFlexiSchedule ? null : endorsementPlan.adjust(entry, amountAtPayoutDate, commissionPeriodStart));
+      const plannedAmount = premiumChange?.amount ?? amountAtPayoutDate;
 
       const settledPayout = findSettledCommissionPayout(
         settledPayouts.filter(record => {
+          if (neonInstallmentCode && activeNeonRecurringPayouts) {
+            return activeNeonRecurringPayouts.has(record.payout) &&
+              baseCommissionCodeForPayoutComparison(record.payout.code, product) === neonInstallmentCode;
+          }
           if (!isSplitImmediateProduct(product)) return true;
           const period = payoutPeriods.get(record.key);
           return !period || period === commissionPeriodStart;
         }),
         consumedPayoutKeys,
-        amount,
+        pendingFlexiSchedule ? null : neonAdjustment ? plannedAmount : amountAtPayoutDate,
         metadata,
         date,
-        product
+        product,
+        lifeEndorsement
       );
       if (settledPayout) {
         consumedPayoutKeys.add(settledPayout.key);
       }
-      if (!settledPayout && plannedAmount === 0) return;
+      if (!settledPayout && plannedAmount === 0 && !pendingFlexiSchedule) return;
       const outputDate = settledPayout?.date ?? date;
       const outputAmount =
         settledPayout && Number.isFinite(Number(settledPayout.payout.amount))
@@ -720,7 +853,9 @@ export function generateCashflow(
         date: outputDate,
         amount: outputAmount,
         productKey: product ?? "unknown",
-        frequency: entry.frequencyRaw ?? null,
+        frequency: entry.paymentFrequencyChanges?.length && commissionPeriodStart &&
+          !(product === "cppPPRs" && metadata.commissionCode?.startsWith("A"))
+          ? paymentFrequencyAtDate(entry, commissionPeriodStart) : entry.frequencyRaw ?? null,
         note:
           entry.source === "manager"
             ? note
@@ -732,6 +867,7 @@ export function generateCashflow(
         source: entry.source,
         contractNumber: entry.contractNumber ?? null,
         clientName: entry.clientName ?? null,
+        ...portalLinks,
         inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
         currentMonthlyPremium,
         lifeStornoBaseMonthlyPremium,
@@ -750,8 +886,13 @@ export function generateCashflow(
         predictionBaselinePosition: entry.predictionBaselinePosition ?? null,
         predictionCommissionMode: entry.predictionCommissionMode ?? null,
         durationYears: entry.durationYears ?? null,
-        payoutStatus: settledPayout ? "paid" : undefined,
-        predictedAmount: settledPayout ? amount : null,
+        payoutStatus: settledPayout ? "paid" : pendingFlexiSchedule ? "predicted" : undefined,
+        predictedAmount: settledPayout && !pendingFlexiSchedule
+          ? !neonAdjustment && entry.neonCorrection
+            ? neonCorrectionPayoutAmount(entry, amount, settledPayout.payout.statementPeriod ?? neonExpectedStatementMonth(outputDate))
+            : plannedAmount
+          : null,
+        ...(pendingFlexiSchedule && (settledPayout ? { isStatementOnly: true } : { amountUnknown: true })),
         ...(!settledPayout && premiumChange ? {
           premiumChangeOriginalAmount: premiumChange.originalAmount,
           premiumChangeEffectiveDate: premiumChange.effectiveDate,
@@ -761,11 +902,21 @@ export function generateCashflow(
           settledPayout && monthSerial(outputDate) !== monthSerial(date)
             ? date
             : null,
+        commissionCodeCorrectionNote: settledPayout?.payout.commissionCodeCorrectionNote,
         commissionPayoutKey: settledPayout?.key ?? null,
         commissionPeriodStart,
         commissionStatementNumber: settledPayout?.payout.statementNumber ?? null,
         commissionStatementPeriod: settledPayout?.payout.statementPeriod ?? null,
         ...metadata,
+        ...(pendingFlexiSchedule && settledPayout?.payout.code ? {
+          commissionCode: settledPayout.payout.code,
+          commissionCodeAliases: uniqueCommissionCodes([settledPayout.payout.code, metadata.commissionCode], product),
+        } : {}),
+        ...(lifeEndorsement && settledPayout && lifeIncreaseItemCode(settledPayout.payout.code) ? {
+          commissionCode: settledPayout.payout.code,
+          commissionLabel: lifeIncreaseCommissionLabel(settledPayout.payout.code) ?? "Provize za navýšení smlouvy",
+          commissionCodeAliases: [settledPayout.payout.code!, metadata.commissionCode!].filter(Boolean),
+        } : {}),
         ...(settledPayout && isKooperativaCPayout(product, settledPayout.payout.code) ? {
           // A C payout settles the B installment with the same suffix. Keep the
           // original statement code and receipt; old manual links are irrelevant.
@@ -778,40 +929,6 @@ export function generateCashflow(
         } : {}),
       };
       out.push(projectedItem);
-
-      // A smaller actual payment may settle only part of a revised entitlement.
-      // Count payments only when their code identifies this exact insured period;
-      // ambiguous range rows retain the existing statement reconciliation.
-      if (settledPayout && premiumChange && product !== "maxdomov" &&
-        payoutPeriods.get(settledPayout.key) === commissionPeriodStart) {
-        const itemCodes = new Set(uniqueCommissionCodes([
-          metadata.commissionCode, ...(metadata.commissionCodeAliases ?? []),
-        ], product));
-        const paidForPeriod = statementOnlyPayouts.filter(record =>
-          payoutPeriods.get(record.key) === commissionPeriodStart &&
-          uniqueCommissionCodes([record.payout.code], product).some(code => itemCodes.has(code))
-        ).reduce((sum, record) => sum + Number(record.payout.amount), 0);
-        const remaining = Math.round((plannedAmount - paidForPeriod) * 100) / 100;
-        if (remaining > 10) {
-          // Partition the revised expectation into receipts and the balance;
-          // the month's predicted total must not count the entitlement twice.
-          projectedItem.predictedAmount = paidForPeriod;
-          out.push({
-            ...projectedItem,
-            id: `${projectedItem.id}-remaining`, date,
-            amount: remaining, payoutStatus: "predicted", predictedAmount: null,
-            isPartialPayoutBalance: true,
-            ...metadata,
-            payoutPlanStatus: undefined, matchedPlannedCode: null,
-            originalDate: null, commissionPayoutKey: null,
-            commissionStatementNumber: null, commissionStatementPeriod: null,
-            note: `${projectedItem.note} · Zbývá doplatit`,
-            premiumChangeOriginalAmount: Math.max(0, Math.round((amount - paidForPeriod) * 100) / 100),
-            premiumChangeEffectiveDate: premiumChange.effectiveDate,
-            premiumChangeEntryId: premiumChange.endorsementEntryId,
-          });
-        }
-      }
     };
 
     const pushUnmatchedStatementPayouts = () => {
@@ -847,6 +964,7 @@ export function generateCashflow(
           source: entry.source,
           contractNumber: entry.contractNumber ?? null,
           clientName: entry.clientName ?? null,
+          ...portalLinks,
           inputAmount: Number.isFinite(Number(entry.inputAmount)) ? Number(entry.inputAmount) : null,
           currentMonthlyPremium,
           lifeStornoBaseMonthlyPremium,
@@ -869,17 +987,23 @@ export function generateCashflow(
           commissionCodeAliases: aliases,
           commissionLabel,
           payoutStatus: "paid",
-          predictedAmount: 0,
+          predictedAmount: flexiWithoutBase ? null : 0,
           isStatementOnly: true,
           ...(meaning?.kind === "correction" ? { payoutPlanStatus: "correction" as const } : {}),
           commissionPeriodStart: payoutPeriods.get(indexedPayout.key) ?? null,
           originalDate: null,
+          commissionCodeCorrectionNote: indexedPayout.payout.commissionCodeCorrectionNote,
           commissionPayoutKey: indexedPayout.key,
           commissionStatementNumber: indexedPayout.payout.statementNumber ?? null,
           commissionStatementPeriod: indexedPayout.payout.statementPeriod ?? null,
         });
       }
     };
+
+    if (flexiWithoutBase && !pendingFlexiSchedule) {
+      pushUnmatchedStatementPayouts();
+      continue;
+    }
 
     // Bez známého data sjednání zachováme dosavadní konzervativní odhad.
     const lifeFirstPayoutDate = toDate(entry.contractSignedDate, { calendar: now })
@@ -906,9 +1030,9 @@ export function generateCashflow(
       }
     };
 
-    const annPlusYears = (years: number) => {
-      const period = periodAfterMonths(years * 12);
-      const payoutPeriod = inherited ? period
+    const annPlusYears = (years: number, entitlementStartYear = years) => {
+      const period = periodAfterMonths(entitlementStartYear * 12);
+      const payoutPeriod = inherited ? periodAfterMonths(years * 12)
         : calendarDate(start, start.getFullYear() + years, start.getMonth(), start.getDate());
       const payout = estimatePayoutDate(payoutPeriod);
       commissionPeriods.set(payout.getTime(), period);
@@ -925,7 +1049,7 @@ export function generateCashflow(
             annPlusYears(3),
             "Provize po 3 letech",
             entryHorizonEnd,
-            commissionMetadataFromCode(po3.code, "Provize po 3 letech")
+            commissionMetadataFromCode(po3.code ?? "B3601", "Provize po 3 letech")
           );
         }
         if (po4) {
@@ -934,12 +1058,14 @@ export function generateCashflow(
             annPlusYears(4),
             "Provize po 4 letech",
             entryHorizonEnd,
-            commissionMetadataFromCode(po4.code, "Provize po 4 letech")
+            commissionMetadataFromCode(po4.code ?? "B4801", "Provize po 4 letech")
           );
         }
 
         const maxYears = Math.max(1, entry.durationYears ?? 10);
-        if (nasl25) {
+        const recurringRootId = endorsementPlan.neonRecurringRootId(entry);
+        const rootItems = recurringRootId ? neonSchedules.get(scheduleKey(entry, recurringRootId)) : null;
+        if (nasl25 && !rootItems?.some(item => item.amount > 0 && item.title.toLowerCase().includes("následná provize (2.–5. rok)"))) {
           // ČPP Životní pojištění NEON: položka "2.–5. rok" se v praxi vyplácí už od 1. výročí.
           for (let year = 1; year <= 4 && year <= maxYears; year++) {
             pushItem(
@@ -949,21 +1075,25 @@ export function generateCashflow(
               entryHorizonEnd,
               Object.keys(nasl25Metadata).length > 0
                 ? nasl25Metadata
-                : commissionMetadataFromCode("B101-B104", "Následná provize")
+                : commissionMetadataFromCode("B101-B104", "Následná provize"),
+              `B${100 + year}`
             );
           }
         }
-        if (nasl510) {
-          // Stejné posunutí o 1 rok i pro blok "5.–10. rok".
-          for (let year = 4; year <= 9 && year <= maxYears; year++) {
+        if (nasl510 && !rootItems?.some(item => item.amount > 0 && item.title.toLowerCase().includes("5.–10."))) {
+          // Care commission accrues in policy years 5–10 and is paid after
+          // each of those years ends. Keep the insured period for repricing.
+          for (let year = 5; year <= 10 && year - 1 <= maxYears; year++) {
+            const code = `B${196 + year}`;
             pushItem(
               nasl510.amount,
-              annPlusYears(year),
+              annPlusYears(year, year - 1),
               "ročně",
               entryHorizonEnd,
               Object.keys(nasl510Metadata).length > 0
                 ? nasl510Metadata
-                : commissionMetadataFromCode("B201-B206", "Pečovatelská provize")
+                : commissionMetadataFromCode("B201-B206", "Pečovatelská provize"),
+              code
             );
           }
         }
@@ -1035,33 +1165,33 @@ export function generateCashflow(
         const flexiHorizonEnd = earlierDate(flexiContractEnd, entryHorizonEnd);
 
         pushImmediateCashflowItems(flexiHorizonEnd);
-        if (po3) {
+        if (po3 || pendingFlexiSchedule) {
           pushItem(
-            po3.amount,
+            po3?.amount ?? 0,
             annPlusYears(3),
             "Provize po 3 letech",
             flexiHorizonEnd,
-            commissionMetadataFromCode(po3.code, "Provize po 3 letech")
+            commissionMetadataFromCode(po3 ? po3.code : "B36", "Provize po 3 letech")
           );
         }
-        if (po4) {
+        if (po4 || pendingFlexiSchedule) {
           pushItem(
-            po4.amount,
+            po4?.amount ?? 0,
             annPlusYears(4),
             "Provize po 4 letech",
             flexiHorizonEnd,
-            commissionMetadataFromCode(po4.code, "Provize po 4 letech")
+            commissionMetadataFromCode(po4 ? po4.code : "B48", "Provize po 4 letech")
           );
         }
 
-        if (naslOd6) {
+        if (naslOd6 || pendingFlexiSchedule) {
           let year = 6;
           while (true) {
             const date = annPlusYears(year);
             if (date > flexiHorizonEnd) break;
             const code = firstYearInstallmentCommissionCode("B", year - 5);
             pushItem(
-              naslOd6.amount,
+              naslOd6?.amount ?? 0,
               date,
               "ročně",
               flexiHorizonEnd,
@@ -1107,18 +1237,33 @@ export function generateCashflow(
 
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const firstPayout = estimatePayoutDate(start, agreement);
-        // Přechod na následnou provizi musí být navázaný na výplatní kalendář
-        // (stejné cutoff pravidlo jako u první výplaty), ne na holé výročí.
-        const subsequentStart = annPlusYears(1);
+        if (product === "cppPPRs" && entry.paymentFrequencyChanges?.length) {
+          const payoutOffset = monthSerial(firstPayout) - monthSerial(start);
+          for (const scheduled of autoFrequencyCommissionPeriods(entry, dateToIsoDay(entryHorizonEnd)!)) {
+            const [year, month, day] = scheduled.period.split("-").map(Number);
+            const payoutDate = calendarDate(now, year, month - 1 + payoutOffset, firstPayout.getDate());
+            commissionPeriods.set(payoutDate.getTime(), calendarDate(now, year, month - 1, day));
+            const subsequent = scheduled.code.startsWith("B");
+            const amount = subsequent
+              ? Math.round((subsequentDomex?.amount ?? 0) * cppKomplexRenewalCommissionMultiplier(entry, scheduled.period) * 100) / 100
+              : immediateDomexAmount ?? 0;
+            pushItem(amount, payoutDate, "ČPP KOMPLEX – ÚPIS", entryHorizonEnd,
+              commissionMetadataFromCode(scheduled.code, subsequent ? "Následná provize" : `Provize ${scheduled.code}`));
+          }
+          break;
+        }
+        // Kódy A/B se řídí pojistným obdobím, ne měsícem výplaty.
+        // Cutoff první výplaty se může lišit od termínu výplaty k výročí.
+        const subsequentStartPeriod = periodAfterMonths(12);
         const domexHistoricalSubsequentYears =
           product === "domex" ? domexSubsequentPayoutYears(contractSignedDateIso) : null;
         const cppBytexSubsequentYears =
           product === "cppbytex" ? cppBytexSubsequentPayoutYears() : null;
         const limitedSubsequentYears =
           domexHistoricalSubsequentYears ?? cppBytexSubsequentYears;
-        const subsequentEnd =
+        const subsequentEndPeriod =
           limitedSubsequentYears != null
-            ? annPlusYears(1 + limitedSubsequentYears)
+            ? periodAfterMonths((1 + limitedSubsequentYears) * 12)
             : null;
 
         let payout = firstPayout;
@@ -1126,9 +1271,9 @@ export function generateCashflow(
         let subsequentDomexInstallmentIndex = 0;
         while (payout <= entryHorizonEnd) {
           const commissionPeriod = rememberRecurringPeriod(payout, firstPayout);
-          const isImmediatePayout = payout < subsequentStart;
+          const isImmediatePayout = commissionPeriod < subsequentStartPeriod;
           const isWithinSubsequentWindow =
-            subsequentEnd == null || payout < subsequentEnd;
+            subsequentEndPeriod == null || commissionPeriod < subsequentEndPeriod;
           if (isImmediatePayout) {
             immediateDomexInstallmentIndex += 1;
           } else if (isWithinSubsequentWindow) {
@@ -1241,13 +1386,14 @@ export function generateCashflow(
           ? commissionMetadataFromCode(naslMaxdomov.code, "Následná provize")
           : {};
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
-        const endFirstYear = annPlusYears(1);
+        const firstSubsequentPeriod = periodAfterMonths(12);
 
         const firstPayout = estimatePayoutDate(start, agreement);
         let payout = firstPayout;
+        let renewal = 0;
         while (payout <= entryHorizonEnd) {
-          rememberRecurringPeriod(payout, firstPayout);
-          if (payout < endFirstYear) {
+          const commissionPeriod = rememberRecurringPeriod(payout, firstPayout);
+          if (commissionPeriod < firstSubsequentPeriod) {
             pushItem(
               perPaymentImmediate,
               payout,
@@ -1256,12 +1402,13 @@ export function generateCashflow(
               immediateMetadata
             );
           } else if (perPaymentSub != null) {
+            const code = entry.frequencyRaw === "annual" ? firstYearInstallmentCommissionCode("B", ++renewal) : null;
             pushItem(
               perPaymentSub,
               payout,
               "následná z platby",
               entryHorizonEnd,
-              subsequentMaxdomovMetadata
+              code ? commissionMetadataFromCode(code, "Následná provize") : subsequentMaxdomovMetadata
             );
           } else {
             pushItem(perPaymentImmediate, payout, undefined, entryHorizonEnd, immediateMetadata);
@@ -1362,14 +1509,28 @@ export function generateCashflow(
       case "koopflotila": {
         if (!immediate && !naslGeneric) break;
 
+        if (entry.paymentFrequencyChanges?.length) {
+          const first = estimateAutoFirstPayoutDate(start, agreement);
+          const payoutOffset = monthSerial(first) - monthSerial(start);
+          const endDay = dateToIsoDay(entryHorizonEnd)!;
+          for (const scheduled of autoFrequencyCommissionPeriods(entry, endDay)) {
+            const [year, month, day] = scheduled.period.split("-").map(Number);
+            const period = calendarDate(now, year, month - 1, day);
+            const payout = calendarDate(now, year, month - 1 + payoutOffset, first.getDate());
+            commissionPeriods.set(payout.getTime(), period);
+            const subsequent = scheduled.code.startsWith("B");
+            const originalAmount = subsequent ? naslGeneric?.amount ?? immediate?.amount ?? 0 : immediate?.amount ?? 0;
+            const amount = originalAmount * autoFrequencyCommissionMultiplier(entry, scheduled.period);
+            pushItem(amount, payout, subsequent ? "následná provize" : "okamžitá provize", entryHorizonEnd,
+              commissionMetadataFromCode(scheduled.code, `Provize ${scheduled.code}`));
+          }
+          break;
+        }
+
         const subsequentMetadata = naslGeneric
           ? commissionMetadataFromCode(naslGeneric.code, "Následná provize")
           : {};
-        const firstAnniversary = calendarDate(start,
-          start.getFullYear() + 1,
-          start.getMonth(),
-          start.getDate()
-        );
+        const firstSubsequentPeriod = periodAfterMonths(12);
         const stepMonths = monthsBetweenPayments(entry.frequencyRaw);
         const firstPayout = isAutoCashflowProduct(product)
           ? estimateAutoFirstPayoutDate(start, agreement)
@@ -1380,9 +1541,7 @@ export function generateCashflow(
 
         while (payout <= entryHorizonEnd) {
           const period = rememberRecurringPeriod(payout, firstPayout);
-          const isSubsequent = inherited
-            ? period >= periodAfterMonths(12)
-            : monthSerial(payout) >= monthSerial(firstAnniversary);
+          const isSubsequent = period >= firstSubsequentPeriod;
           if (isSubsequent) {
             subsequentInstallmentIndex += 1;
           } else {
@@ -1431,7 +1590,7 @@ export function generateCashflow(
             undefined,
             entryHorizonEnd,
             product === "maxcizinkomplex" && immediateCodes.length === 0
-              ? commissionMetadataFromCode("A101", "Okamžitá provize")
+              ? commissionMetadataFromCode(MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE, "Okamžitá provize")
               : immediateMetadata
           );
         }
@@ -1440,7 +1599,18 @@ export function generateCashflow(
     }
 
     pushUnmatchedStatementPayouts();
+    const entryOutput = out.slice(entryOutputStart);
+    const covered = coverAcquisitionCashflowInstallments(entryOutput, { ...entry, commissionPayouts: scopedPayouts });
+    if (covered !== entryOutput) out.splice(entryOutputStart, out.length - entryOutputStart, ...covered);
   }
 
-  return out.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const consolidated = absorbedNeonComponents.size === 0 ? out : out.flatMap(item => {
+    const absorbed = item.entryType === "endorsement" && absorbedNeonComponents.get(
+      scheduleIdentity(item.ownerEmail, item.source, item.entryId));
+    if (!absorbed) return [item];
+    const component = normalizeLifeCommissionItemCode(lifeIncreaseItemCode(item.commissionCode) ?? item.commissionCode);
+    if (!absorbed.has(component)) return [item];
+    return item.payoutStatus === "paid" ? [{ ...item, predictedAmount: 0, isStatementOnly: true }] : [];
+  });
+  return consolidated.sort((a, b) => a.date.getTime() - b.date.getTime());
 }

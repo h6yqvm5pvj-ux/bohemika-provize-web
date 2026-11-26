@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseCsobAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type CsobAutoPdfResult = {
   contractNumber?: string | null;
@@ -9,6 +10,7 @@ export type CsobAutoPdfResult = {
   contractSignedDate?: string | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
+  paymentDetails?: ContractPaymentDetails | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;
@@ -669,6 +671,45 @@ const extractFrequencyAndAmount = (
   return { frequency, amount };
 };
 
+const extractPaymentDetails = (
+  lines: string[],
+  asciiLines: string[],
+  amount: number | null,
+  contractNumber: string | null,
+): ContractPaymentDetails | null => {
+  if (amount == null || !contractNumber) return null;
+  const sectionStart = findSectionStart(asciiLines, /\bplaceni\s+pojistneho\b/);
+  if (sectionStart < 0) return null;
+  const sectionEnd = findSectionEnd(asciiLines, sectionStart, [
+    /\blhuta\s+k\s+prijeti\b/, /\bprilohy\b/, /\bzaverecna\s+ujednani\b/,
+  ]);
+  const sectionLines = lines.slice(sectionStart, sectionEnd + 1);
+  const sectionAscii = asciiLines.slice(sectionStart, sectionEnd + 1);
+  const findLabeledValue = (label: RegExp, valuePattern: RegExp): string | null => {
+    for (let index = 0; index < sectionLines.length; index++) {
+      const raw = sectionLines[index] ?? "";
+      if (!label.test(sectionAscii[index] ?? "")) continue;
+      const inline = raw.replace(/^[^:]*:?\s*/, "");
+      const inlineValue = valuePattern.exec(inline)?.[1];
+      if (inlineValue) return inlineValue;
+      for (let offset = 1; offset <= 3 && index + offset < sectionLines.length; offset++) {
+        const nextAscii = sectionAscii[index + offset] ?? "";
+        if (/^(?:forma placeni|cetnost placeni|pojistne|cislo uctu|variabilni symbol)\b/.test(nextAscii)) break;
+        const nextValue = valuePattern.exec(sectionLines[index + offset] ?? "")?.[1];
+        if (nextValue) return nextValue;
+      }
+    }
+    return null;
+  };
+  const formIndex = sectionAscii.findIndex(line => /\bforma\s+placeni\b/.test(line));
+  const paymentForm = formIndex < 0 ? "" : [0, 1, 2, 3].map(offset => sectionAscii[formIndex + offset] ?? "").join(" ");
+  if (!/\bz\s+uctu\b|bankovnim\s+prevodem/.test(paymentForm)) return null;
+  const accountNumber = findLabeledValue(/cislo uctu prijemce/, /((?:\d{1,6}-)?\d{2,10}\/\d{4})/);
+  const variableSymbol = findLabeledValue(/variabilni symbol/, /(\d{1,10})/);
+  if (!accountNumber || !variableSymbol || variableSymbol !== contractNumber) return null;
+  return normalizeContractPaymentDetails({ amount, accountNumber, variableSymbol, dueDate: null });
+};
+
 const extractLiabilityLimit = (lines: string[], asciiLines: string[]): number | null => {
   const sectionStart = findSectionStart(
     asciiLines,
@@ -918,6 +959,7 @@ export async function parseCsobAutoPdf(file: File, options: PdfReadOptions = {})
   const clientName = extractClientName(allLines, asciiLines);
   const { contractSignedDate, policyStartDate } = extractDates(allLines, asciiLines);
   const { frequency, amount } = extractFrequencyAndAmount(allLines, asciiLines);
+  const paymentDetails = extractPaymentDetails(allLines, asciiLines, amount, contractNumber);
   const carLiabilityLimit = extractLiabilityLimit(allLines, asciiLines);
   const { carHullSumInsured, carHullDeductible, carAddonGlass } = extractHullDetailsAndAddons(
     allLines,
@@ -933,6 +975,7 @@ export async function parseCsobAutoPdf(file: File, options: PdfReadOptions = {})
     policyStartDate,
     frequency,
     amount,
+    paymentDetails,
     carLiabilityLimit,
     carHullSumInsured,
     carHullDeductible,

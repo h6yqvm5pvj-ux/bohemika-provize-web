@@ -1,6 +1,7 @@
 import { readPdfText, type PdfReadOptions } from "./pdfDocumentText";
 // src/app/lib/parseUniqaAutoPdf.ts
 import { type PaymentFrequency } from "../types/domain";
+import { normalizeContractPaymentDetails, type ContractPaymentDetails } from "./contractPaymentDetails";
 
 export type UniqaAutoPdfResult = {
   contractNumber?: string | null;
@@ -10,6 +11,7 @@ export type UniqaAutoPdfResult = {
   contractSignedDate?: string | null;
   amount?: number | null;
   frequency?: PaymentFrequency | null;
+  paymentDetails?: ContractPaymentDetails | null;
   carMake?: string | null;
   carPlate?: string | null;
   carVin?: string | null;
@@ -483,6 +485,37 @@ export async function parseUniqaAutoPdf(file: File, options: PdfReadOptions = {}
       )?.[1]
     );
   if (amount != null) result.amount = amount;
+
+  const paymentSectionStart = asciiLines.findIndex(line => /pojistne\s+a\s+platebni\s+udaje/.test(line));
+  if (paymentSectionStart >= 0 && amount != null) {
+    const sectionLines = lines.slice(paymentSectionStart, paymentSectionStart + 50);
+    const sectionAscii = asciiLines.slice(paymentSectionStart, paymentSectionStart + 50);
+    const valueAfterLabel = (label: RegExp, valuePattern: RegExp): string | null => {
+      for (let index = 0; index < sectionLines.length; index += 1) {
+        if (!label.test(sectionAscii[index] ?? "")) continue;
+        for (let offset = 0; offset <= 3 && index + offset < sectionLines.length; offset += 1) {
+          const value = valuePattern.exec(sectionLines[index + offset] ?? "")?.[1];
+          if (value) return value;
+          if (offset > 0 && /^(?:cislo uctu|variabilni symbol|splatnost dalsich splatek|pojistne|forma placeni|frekvence placeni)\b/.test(sectionAscii[index + offset] ?? "")) break;
+        }
+      }
+      return null;
+    };
+    const accountNumber = valueAfterLabel(/cislo uctu (?:pojistitele|prijemce)/, /((?:\d{1,6}-)?\d{2,10}\/\d{4})/);
+    const variableSymbol = valueAfterLabel(/variabilni symbol/, /(\d{1,10})/);
+    const dueDatesRaw = valueAfterLabel(/splatnost dalsich splatek/, /((?:[1-9]|[12]\d|3[01])\s*[./]\s*(?:[1-9]|1[0-2])\s*\.\s*\|\s*(?:[1-9]|[12]\d|3[01])\s*[./]\s*(?:[1-9]|1[0-2])\s*\.)/);
+    const installmentDueDates = dueDatesRaw?.replace(/\s+/g, "").replace(/\//g, ".") ?? undefined;
+    if (accountNumber && variableSymbol && variableSymbol === contractNumber) {
+      const paymentDetails = normalizeContractPaymentDetails({
+        amount,
+        accountNumber,
+        variableSymbol,
+        dueDate: null,
+        ...(installmentDueDates ? { installmentDueDates } : {}),
+      });
+      if (paymentDetails) result.paymentDetails = paymentDetails;
+    }
+  }
 
   const vehicleHeaderLine = lines.find((line) => /RZ\s*:/.test(line) && /VIN\s*:/.test(line));
   const plate = normalizePlate(vehicleHeaderLine?.match(/RZ\s*:\s*([A-Z0-9]+)/i)?.[1]);

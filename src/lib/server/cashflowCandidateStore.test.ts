@@ -29,6 +29,8 @@ describe("diagnostic candidate validation before database access", () => {
     ["identity not canonical", { email: "Advisor@example.test" }],
     ["UID missing", { uid: "" }],
     ["unsupported version", { version: "old-version" }],
+    ["deferred increase receipts before NB component mapping", { version: "cashflow-shadow-v7" }],
+    ["commission receipts before family deduplication", { version: "cashflow-shadow-v6" }],
     ["commission plan before endorsement decreases", { version: "cashflow-shadow-v2" }],
     ["commission plan before automatic C payouts", { version: "cashflow-shadow-v3" }],
     ["old instant", { asOfMs: nowMs - 300_001 }],

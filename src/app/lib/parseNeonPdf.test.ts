@@ -248,6 +248,31 @@ describe("parseNeonPdf", () => {
     });
   });
 
+  it("reads amendment fields split across PDF text items and preserves cents", async () => {
+    pdfState.pages = [[
+      "ČPP", "NEON", "Žádanka", "o změnu", "Číslo", "pojistné smlouvy:", "94000 01234",
+      "Počátek pojištění: 12. 1. 2020", "Datum uzavření původní smlouvy: 4. 1. 2020",
+      "Modelováno s účinností", "změny od:", "1. 12. 2026", "Datum sjednání", "změny:", "24. 11. 2026",
+      "Celkové měsíční pojistné: 1 100 Kč", "Nové měsíční", "pojistné:", "1 299,50 Kč",
+    ]];
+    await expect(parseNeonPdf(makePdfFile(), { endorsementOnly: true })).resolves.toMatchObject({
+      isEndorsement: true, isRefresh: false, contractNumber: "9400001234", policyStartDate: "2026-12-01",
+      contractSignedDate: "2026-11-24", amount: 1299.5, frequency: "monthly",
+    });
+  });
+
+  it("does not use original policy fields or unrelated numbers for amendment prefill", async () => {
+    pdfState.pages = [["Česká podnikatelská pojišťovna", "NEON", "Žádanka o změnu",
+      "Počátek pojištění: 12. 1. 2020", "Datum uzavření původní smlouvy: 4. 1. 2020",
+      "Původní celkové měsíční pojistné: 1 100 Kč", "Variabilní symbol: 9400001234",
+    ]];
+    await expect(parseNeonPdf(makePdfFile(), { endorsementOnly: true })).resolves.toMatchObject({
+      isEndorsement: true, contractNumber: undefined, policyStartDate: null, contractSignedDate: null, amount: null,
+    });
+    pdfState.pages[0] = pdfState.pages[0].filter(line => line !== "Žádanka o změnu");
+    await expect(parseNeonPdf(makePdfFile(), { endorsementOnly: true })).resolves.toEqual({});
+  });
+
   it("parses NEON Risk basic accident death amount separately from regular death", async () => {
     pdfState.pages = [
       [

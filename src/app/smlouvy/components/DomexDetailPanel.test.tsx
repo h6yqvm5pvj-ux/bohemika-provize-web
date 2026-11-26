@@ -31,7 +31,7 @@ describe("DOMEX Neuron property details", () => {
     const neuron = createDomexNeuronDataFromLegacy(null); neuron.parserVersion = 2;
     neuron.sections.property = "not_insured"; neuron.sections.household = "not_found";
     const html = render({ domexDetail: { neuron, propertyAddress: "Dřívější stavba 10", propertyType: "dum", sumInsured: 4_000_000 } });
-    expect(html).toContain("Nesjednáno"); expect(html).toContain("Nenalezeno v PDF");
+    expect(html).toContain("Nesjednáno"); expect(html).not.toContain("Nenalezeno v PDF");
     expect(html).not.toContain("Dřívější stavba 10"); expect(html).not.toContain("data-object-id=");
   });
 

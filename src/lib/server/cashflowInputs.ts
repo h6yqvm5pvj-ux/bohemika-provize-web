@@ -9,7 +9,7 @@ import { CASHFLOW_CONTRACTS_PAGE_SIZE } from "@/app/lib/cashflowPagination";
 import { CASHFLOW_CONTRACT_TIMING_PHASES, type CashflowInputTimingName } from "@/app/cashflow/candidateCheckProtocol";
 import type { CashflowContractTimingObserver } from "./cashflowContractTiming";
 import type { AuthorizedContractsContext } from "@/app/api/contracts/_lib/contractsApi";
-import { loadPrivateCashflowExtraPayouts } from "./cashflowExtraPayouts";
+import { loadPrivateCashflowSettings } from "./cashflowExtraPayouts";
 
 const CONTRACT_PAGE_LIMIT = CASHFLOW_CONTRACTS_PAGE_SIZE;
 const TIP_PAGE_LIMIT = 100;
@@ -388,17 +388,20 @@ export async function loadCashflowInputs(
 
     const collectExtraPayouts = async () => {
       ensureActive();
-      if (tipsterMode) return [];
-      if (!options.trustedProfile) return normalizeCashflowExtraPayouts(profileData.cashflowExtraPayouts);
+      if (tipsterMode) return { extraPayouts: [], officeContributionEnabled: false };
+      if (!options.trustedProfile) return {
+        extraPayouts: normalizeCashflowExtraPayouts(profileData.cashflowExtraPayouts),
+        officeContributionEnabled: profileData.cashflowOfficeContributionEnabled === true,
+      };
       try {
-        return await wait(loadPrivateCashflowExtraPayouts(effectiveEmail));
+        return await wait(loadPrivateCashflowSettings(effectiveEmail));
       } catch (error) {
         if (error instanceof CashflowShadowInputsError) throw error;
         throw new CashflowShadowInputsError("upstream_failed");
       }
     };
 
-    const [portfolio, tipPayouts, subscriptionPayments, statements, extraPayouts] = await Promise.all([
+    const [portfolio, tipPayouts, subscriptionPayments, statements, { extraPayouts, officeContributionEnabled }] = await Promise.all([
       collectPortfolio(), collectTips(), collectSubscriptions(), collectStatements(),
       collectExtraPayouts(),
     ]);
@@ -407,6 +410,7 @@ export async function loadCashflowInputs(
       snapshot: {
         email: effectiveEmail, ...portfolio, tipPayouts, subscriptionPayments,
         ...(extraPayouts.length > 0 ? { extraPayouts } : {}),
+        ...(officeContributionEnabled ? { officeContributionEnabled: true } : {}),
       },
       statements,
       effectiveEmail,

@@ -11,13 +11,16 @@ function memory(initial = {}) {
   const ref = path => ({ path, get: async () => snapshot(path), collection: name => db.collection(`${path}/${name}`),
     set: async (value, options) => rows.set(path, options?.merge ? { ...rows.get(path), ...value } : value) });
   const db = { rows, collection(name) {
-    const query = (filters = [], max = Infinity) => ({
+    const query = (filters = [], max = Infinity, fields) => ({
       doc: id => ref(`${name}/${id}`),
       where: (field, op, value) => { assert.equal(op, "=="); return query([...filters, [field,value]], max); },
       limit: n => query(filters, n),
+      select: (...selected) => query(filters, max, selected),
       async get() {
         const docs = [...rows].filter(([k,v]) => k.startsWith(name + "/") && k.split("/").length === name.split("/").length + 1 && filters.every(([f,w]) => v[f] === w)).slice(0,max).map(([k]) => snapshot(k));
-        return { empty: !docs.length, docs };
+        return { empty: !docs.length, docs: fields ? docs.map(doc => ({
+          ...doc, data: () => Object.fromEntries(Object.entries(doc.data()).filter(([key]) => fields.includes(key))),
+        })) : docs };
       },
     });
     return query();
@@ -35,7 +38,7 @@ function memory(initial = {}) {
 function fixture() {
   const token = { uid:"uid-manager", email:"manager@example.invalid", email_verified:true, auth_time:200, firebase:{sign_in_provider:"password",sign_in_second_factor:"totp"} };
   const user = { uid:token.uid, email:token.email, emailVerified:true, disabled:false, multiFactor:{enrolledFactors:[{factorId:"totp"}]} };
-  const db = memory({ [`users/${token.email}`]:{userId:token.uid}, "users/recipient@example.invalid":{userId:"uid-recipient",managerEmail:token.email,fcmToken:"synthetic-device"} });
+  const db = memory({ [`users/${token.email}`]:{userId:token.uid, accountType:"advisor"}, "users/recipient@example.invalid":{userId:"uid-recipient",managerEmail:token.email,fcmToken:"synthetic-device"} });
   const calls = { verify:[],push:[],http:[],secrets:[] }; let authError;
   const firestore = () => db; firestore.Timestamp = { fromDate:date => ({toDate:() => new Date(date), iso:date.toISOString()}) };
   const admin = {initializeApp(){},firestore,auth:() => ({async verifyIdToken(value, revoked){calls.verify.push(revoked);if(authError)throw authError;if(value!=="valid")throw Object.assign(new Error("invalid"),{code:"auth/invalid-id-token"});return token;},async getUser(){return user;}}),messaging:()=>({async send(m){calls.push.push(m);return "synthetic-message";}})};
@@ -104,6 +107,58 @@ for (const message of ["Sensitive request content", { privateEncryption: 1, payl
  assert.equal(f.calls.push[0].data.requestId,"synthetic-request");
 });
 const protectedFunctions=["aiAssistant","sendTeamMessage","sendTestPush","cuzkSuggestAddress","cuzkLookupByAddress","cuzkLookupByAdresniMisto","rsvVehicleLookup"];
+for (const name of protectedFunctions.filter(name => name !== "sendTestPush")) {
+  test(`${name} denies an authenticated tipster before quota or external calls`, async () => {
+    const f = fixture();
+    f.db.rows.set(`users/${f.token.email}`, { userId: f.token.uid, accountType: "tipster" });
+    f.req.method = ["aiAssistant", "sendTeamMessage"].includes(name) ? "POST" : "GET";
+    f.req.query = { q: "Synthetic address", kod: "123", vin: "SYNTHETICVIN12345", accountType: "advisor" };
+    f.req.body = { prompt: "test", message: "test", managerEmail: f.token.email,
+      target: "selected", recipients: ["recipient@example.invalid"], userRole: "advisor" };
+    const result = await invoke(handlers(f)[name], f.req);
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, "ADVISOR_REQUIRED");
+    assert.equal([...f.db.rows.keys()].some(key => key.startsWith("_rateLimits/")), false);
+    assert.equal(f.calls.http.length, 0);
+    assert.equal(f.calls.push.length, 0);
+  });
+}
+
+test("advisor access follows current server roles, including legacy profiles", async () => {
+  const f = fixture();
+  const publicPath = `users/${f.token.email}`;
+  const privatePath = `usersPrivate/${f.token.email}`;
+  const ai = handlers(f).aiAssistant;
+  f.req.body = { prompt: "test" };
+  f.db.rows.set(publicPath, { userId: f.token.uid });
+  assert.equal((await invoke(ai, f.req)).status, 200); // Existing advisor without role fields.
+  for (const identity of [{ userId: f.token.uid }, { email: f.token.email }]) {
+    f.db.rows.set("users/legacy-id", { ...identity, userRole: " TIPSTER " });
+    assert.equal((await invoke(ai, f.req)).status, 403);
+  }
+  f.db.rows.delete("users/legacy-id");
+  f.db.rows.set(publicPath, { userId: f.token.uid, userRole: " Advisor " });
+  assert.equal((await invoke(ai, f.req)).status, 200);
+  f.db.rows.set(privatePath, { accountType: "tipster" });
+  assert.equal((await invoke(ai, f.req)).status, 403);
+  f.db.rows.set(privatePath, { accountType: "advisor" });
+  for (const role of ["tipster", "unknown", null]) {
+    f.db.rows.set(publicPath, { userId: f.token.uid, accountType: role });
+    assert.equal((await invoke(ai, f.req)).status, 403);
+  }
+  f.db.rows.set(publicPath, { userId: f.token.uid, email: "other@example.invalid", accountType: "advisor" });
+  assert.equal((await invoke(ai, f.req)).status, 403);
+  assert.equal(f.calls.http.length, 2);
+});
+
+test("a signed-in tipster can send a test push only to their own device", async () => {
+  const f = fixture();
+  f.db.rows.set(`users/${f.token.email}`, { userId: f.token.uid, userRole: "tipster" });
+  f.db.rows.set(`usersPrivate/${f.token.email}`, { fcmToken: "own-synthetic-device" });
+  f.req.body = { email: "recipient@example.invalid" };
+  assert.equal((await invoke(handlers(f).sendTestPush, f.req)).status, 200);
+  assert.deepEqual(f.calls.push.map(message => message.token), ["own-synthetic-device"]);
+});
 test("scheduled anniversary push hides client name and contract number", async () => {
  const f=fixture();
  f.Date=class extends Date { constructor(...args){ super(...(args.length?args:["2026-09-28T12:00:00Z"])); } };

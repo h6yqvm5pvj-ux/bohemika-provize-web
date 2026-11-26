@@ -171,7 +171,6 @@ describe("getUniversalLetterForSelection", () => {
     "ČSOB",
     "Generali",
     "MetLife",
-    "NN",
     "Maxima",
     "Simplea",
   ])("creates the universal letter for %s", (insurer) => {
@@ -182,6 +181,17 @@ describe("getUniversalLetterForSelection", () => {
         reason: "twoMonths",
       })
     ).not.toBeNull();
+  });
+
+  it("nenabízí výpověď pro neživotní pojištění NN", () => {
+    expect(getTerminationReasonsForSelection("nonLife", "NN")).toEqual([]);
+    expect(
+      getUniversalLetterForSelection({
+        insurer: "NN",
+        insuranceType: "nonLife",
+        reason: "twoMonths",
+      }),
+    ).toBeNull();
   });
 
   it("keeps ČPP outside the universal workflow", () => {

@@ -1,3 +1,4 @@
+import { invalidateWallUnreadCount } from "@/lib/server/intranetUnreadCount";
 import { NextResponse, type NextRequest } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -21,6 +22,7 @@ import {
   parseIntranetWallSources,
   parseIntranetWallSourcesJson,
 } from "@/app/intranet/wallSources";
+import { isWallId } from "@/app/intranet/wallPersonal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,17 +214,11 @@ const deleteAttachmentsBestEffort = async (attachments: StoredAttachment[]): Pro
         break;
       } catch (error) {
         if (isBucketMissingError(error)) continue;
-        console.warn("Intranet wall attachment delete failed for bucket.", {
-          bucketName,
-          path: attachment.path,
-          error,
-        });
+        console.warn("Intranet wall attachment delete failed for bucket.");
       }
     }
     if (!deleted) {
-      console.warn("Intranet wall attachment could not be deleted.", {
-        path: attachment.path,
-      });
+      console.warn("Intranet wall attachment could not be deleted.");
     }
   }
 };
@@ -621,7 +617,8 @@ export async function PATCH(
     });
     const attachments = [...keptAttachments, ...uploadedAttachments];
 
-    await postRef.update({
+    const batch = adminDb.batch();
+    batch.update(postRef, {
       title,
       text,
       section,
@@ -635,6 +632,8 @@ export async function PATCH(
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    invalidateWallUnreadCount(adminDb, batch);
+    await batch.commit();
     await deleteAttachmentsBestEffort(removedAttachments);
 
     return withRateLimitHeaders(
@@ -676,9 +675,8 @@ export async function DELETE(
     );
   }
 
-  const params = await context.params;
-  const postId = resolvePostId(params.postId);
-  if (!postId) {
+  const { postId } = await context.params;
+  if (!isWallId(postId)) {
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Neplatné ID příspěvku." },
@@ -689,47 +687,53 @@ export async function DELETE(
   }
 
   const postRef = adminDb.collection(POSTS_COLLECTION).doc(postId);
-  const postSnap = await postRef.get();
-  if (!postSnap.exists) {
-    return withRateLimitHeaders(
-      NextResponse.json(
-        { ok: false, error: "Příspěvek neexistuje." },
-        { status: 404 }
-      ),
-      ctx
-    );
-  }
-
-  const postRaw = (postSnap.data() ?? {}) as Record<string, unknown>;
-  const ownerEmail = normalizeEmail(postRaw.createdByEmail);
   const requesterEmail = normalizeEmail(ctx.email);
-  if (!ownerEmail || !requesterEmail || ownerEmail !== requesterEmail) {
-    return withRateLimitHeaders(
-      NextResponse.json(
-        { ok: false, error: "Příspěvek může smazat pouze autor." },
-        { status: 403 }
-      ),
-      ctx
-    );
-  }
-
-  const attachments = parseAttachments(postRaw.attachments);
 
   try {
-    await deleteAttachmentsBestEffort(attachments);
-  } catch (error) {
-    console.warn("Intranet wall attachment cleanup skipped due to error.", error);
-  }
+    const db = adminDb;
+    const result = await db.runTransaction(async (tx) => {
+      const post = await tx.get(postRef);
+      if (!post.exists) {
+        return { status: 404, error: "Příspěvek neexistuje." } as const;
+      }
 
-  try {
-    await adminDb.recursiveDelete(postRef);
+      const data = post.data();
+      if (!requesterEmail || normalizeEmail(data?.createdByEmail) !== requesterEmail) {
+        return { status: 403, error: "Příspěvek může smazat pouze autor." } as const;
+      }
+
+      const [comments, viewerStates] = await Promise.all([
+        tx.get(postRef.collection("comments").select()),
+        tx.get(postRef.collection("viewerStates").select()),
+      ]);
+      for (const doc of comments.docs) tx.delete(doc.ref);
+      for (const doc of viewerStates.docs) tx.delete(doc.ref);
+      tx.delete(postRef);
+      invalidateWallUnreadCount(db, tx);
+
+      return { status: 200, attachments: parseAttachments(data?.attachments) } as const;
+    });
+
+    if (result.status !== 200) {
+      return withRateLimitHeaders(
+        NextResponse.json({ ok: false, error: result.error }, { status: result.status }),
+        ctx
+      );
+    }
+
+    const attachments = result.attachments.filter(({ path }) => path?.startsWith(`intranet-wall/${postId}/`));
+    try {
+      await deleteAttachmentsBestEffort(attachments);
+    } catch {
+      console.warn("Intranet wall attachment cleanup failed.");
+    }
 
     return withRateLimitHeaders(
       NextResponse.json({ ok: true, postId }),
       ctx
     );
-  } catch (error) {
-    console.error("Intranet wall delete failed:", error);
+  } catch {
+    console.error("Intranet wall delete transaction failed.");
     return withRateLimitHeaders(
       NextResponse.json(
         { ok: false, error: "Nepodařilo se smazat příspěvek." },

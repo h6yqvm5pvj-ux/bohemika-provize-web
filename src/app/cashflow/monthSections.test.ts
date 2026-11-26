@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRODUCT_ORDER } from "@/app/lib/productCatalog";
+import { PRODUCT_ORDER, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 import { buildCashflowMonthSections, type CashflowSectionGroup } from "./monthSections";
 import type { CashflowItem } from "./types";
 
@@ -13,7 +13,7 @@ function group(productKey: CashflowItem["productKey"], amount = 100, overrides: 
 
 describe("cashflow month sections", () => {
   it("places every catalog product exactly once in the requested section order and preserves totals", () => {
-    const groups = PRODUCT_ORDER.map((product, index) => group(product, index + 1));
+    const groups = PRODUCT_ORDER.filter(product => !isRecordOnlyProduct(product)).map((product, index) => group(product, index + 1));
     const sections = buildCashflowMonthSections(groups);
     expect(sections.map((section) => section.id)).toEqual([
       "life", "property", "entrepreneurs", "travel", "pension", "foreigners", "auto",
@@ -24,6 +24,12 @@ describe("cashflow month sections", () => {
     expect(sections.reduce((sum, section) => sum + section.total, 0)).toBe(groups.reduce((sum, value) => sum + value.amount, 0));
     expect(sections.find((section) => section.id === "entrepreneurs")?.groups.map((value) => value.id)).toContain("kooppmop");
     expect(sections.find((section) => section.id === "property")?.groups.map((value) => value.id)).not.toContain("kooppmop");
+  });
+
+  it("excludes evidence-only contracts even when a stale cache contains a commission", () => {
+    const records = PRODUCT_ORDER.filter(isRecordOnlyProduct).map(product => group(product));
+    expect(records.length).toBeGreaterThan(0);
+    expect(buildCashflowMonthSections(records)).toEqual([]);
   });
 
   it("keeps grouped positive commission parts together and separates cancellation payouts", () => {

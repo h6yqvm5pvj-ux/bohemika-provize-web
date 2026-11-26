@@ -23,7 +23,34 @@ function assertRevocation(data, token) {
   }
 }
 
-async function authenticate(admin, req) {
+function checkDeclaredAdvisorRole(profile) {
+  const roles = [profile?.accountType, profile?.userRole].filter(role => role !== undefined);
+  if (roles.some(role => typeof role !== "string" || role.trim().toLowerCase() !== "advisor")) {
+    throw failure(403, "ADVISOR_REQUIRED");
+  }
+  return roles.length > 0;
+}
+
+async function requireAdvisorProfile(db, email, uid, profile) {
+  if (profile.email && emailKey(profile.email) !== email) throw failure(403, "PROFILE_REQUIRED");
+  const publicRole = checkDeclaredAdvisorRole(profile);
+  const privateProfile = await db.collection("usersPrivate").doc(email).get();
+  const privateRole = checkDeclaredAdvisorRole(privateProfile.data());
+  if (publicRole || privateRole) return;
+
+  // A role-less canonical profile can coexist with an older profile under a
+  // different document ID. Preserve legacy advisors only after checking both keys.
+  const users = db.collection("users");
+  const matches = await Promise.all([
+    users.where("userId", "==", uid).select("accountType", "userRole").get(),
+    users.where("email", "==", email).select("accountType", "userRole").get(),
+  ]);
+  for (const snapshot of matches) {
+    for (const doc of snapshot.docs) checkDeclaredAdvisorRole(doc.data());
+  }
+}
+
+async function authenticate(admin, req, { requireAdvisor = false } = {}) {
   const header = req.headers.authorization;
   const match = typeof header === "string" && header.match(/^Bearer ([^\s]+)$/i);
   if (!match || match[1].length > 16384) throw failure(401, "UNAUTHENTICATED");
@@ -48,7 +75,9 @@ async function authenticate(admin, req) {
     db.collection("accountBlocks").doc(token.uid).get(), db.collection("users").doc(email).get(),
   ]);
   assertRevocation(block.data(), token);
-  if (!profile.exists || profile.data()?.userId !== token.uid) throw failure(403, "PROFILE_REQUIRED");
+  const data = profile.data();
+  if (!profile.exists || data?.userId !== token.uid) throw failure(403, "PROFILE_REQUIRED");
+  if (requireAdvisor) await requireAdvisorProfile(db, email, token.uid, data);
   return { ...token, email };
 }
 
@@ -79,7 +108,7 @@ function securedRequest(admin, onRequest, name, options, handler) {
     if (req.method === "OPTIONS") return res.status(204).send("");
     if (req.method !== method) return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
     try {
-      const identity = await authenticate(admin, req);
+      const identity = await authenticate(admin, req, { requireAdvisor: name !== "sendTestPush" });
       if (method === "POST" && !/^application\/json(?:\s*;|$)/i.test(req.headers["content-type"] || "")) throw failure(415, "JSON_REQUIRED");
       if ((req.rawBody?.length || Buffer.byteLength(JSON.stringify(req.body || {}))) > 65536 ||
           Buffer.byteLength(req.originalUrl || "") > 8192) throw failure(413, "REQUEST_TOO_LARGE");

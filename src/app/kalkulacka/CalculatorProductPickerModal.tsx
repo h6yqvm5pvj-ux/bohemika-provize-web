@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 
 import { type Product } from "../types/domain";
 import { SUPPORTED_PRODUCTS } from "../lib/productFormulas";
-import { PRODUCT_OPTIONS } from "@/app/lib/productCatalog";
+import { PRODUCT_OPTIONS, isRecordOnlyProduct } from "@/app/lib/productCatalog";
 import {
   productInstitutionLabel,
   productInstitutionLogo,
@@ -236,7 +236,9 @@ export function CalculatorProductPickerModal({
                           <span className={styles.productText}>
                             <span className={styles.institution}>{productInstitutionLabel(productId)}</span>
                             <span className={styles.productName}>{option.label}</span>
-                            {!SUPPORTED_PRODUCTS.includes(productId) && <span className={styles.unsupported}>Zatím bez výpočtu</span>}
+                            {isRecordOnlyProduct(productId)
+                              ? <span className={styles.unsupported}>Bez výpočtu provize</span>
+                              : !SUPPORTED_PRODUCTS.includes(productId) && <span className={styles.unsupported}>Zatím bez výpočtu</span>}
                           </span>
                           <span className={styles.selectIcon} aria-hidden="true">
                             {isActive ? <Check size={16} strokeWidth={2.3} /> : <ArrowRight size={16} strokeWidth={1.8} />}

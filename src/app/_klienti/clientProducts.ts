@@ -17,6 +17,7 @@ export type ClientProductGroup = typeof CLIENT_PRODUCT_GROUPS[number]["value"];
 export type ClientProductFilter = "all" | ClientProductGroup;
 
 const CATEGORY_GROUPS: Record<ProductPrimaryCategory, ClientProductGroup> = {
+  investments: "investment",
   auto: "auto",
   property: "propertyLiability",
   life: "life",

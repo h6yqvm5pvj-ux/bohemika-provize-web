@@ -6,7 +6,7 @@ import type {
   MonthGroup,
 } from "./types";
 
-export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v5";
+export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v14";
 export const CASHFLOW_SNAPSHOT_MAX_ITEMS = 25_000;
 export const CASHFLOW_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_MONTHS = 2_400;
@@ -34,11 +34,13 @@ type Field = {
 };
 
 const products = {
+  conseqInvest: true,
+  investikaRealitniFond: true, investikaEfektika: true, investikaMonetika: true,
   conseqzenit: true, neon: true, flexi: true, maximaMaxEfekt: true,
   maxcizinkomplex: true, pillowInjury: true, zamex: true, cppbytex: true,
   domex: true, domexneuron: true, cpphafan: true, pillowmajetek: true,
   koopmajetekobcan: true, koopfit: true, koopodzam: true, kooppmop: true,
-  maxdomov: true, cppsimplex: true, cppAuto: true, slaviaauto: true,
+  maxdomov: true, cppsimplex: true, cppAuto: true, cppAutoVozikZdarma: true, slaviaauto: true,
   slaviaflotila: true, allianzAuto: true, allianzmujdomov: true,
   csobAuto: true, uniqaAuto: true, uniqaflotila: true, pillowAuto: true,
   kooperativaAuto: true, koopflotila: true, koopcestovko: true,
@@ -65,6 +67,8 @@ const optionalPosition = { ...optionalText, values: Object.keys(positions) };
 // A changed payload must get a reviewed codec instead of silently losing data.
 const itemFields = {
   id: { kind: "text" }, date: { kind: "date" }, amount: { kind: "number" },
+  maxxContractDetailUrl: { kind: "text", optional: true },
+  extranetContractDetailUrl: { kind: "text", optional: true },
   productKey: { kind: "text", values: Object.keys(products) },
   note: optionalText,
   frequency: { ...optionalText, values: Object.keys(frequencies) },
@@ -83,12 +87,21 @@ const itemFields = {
   commissionCodeAliases: { kind: "strings", optional: true }, commissionLabel: optionalText,
   isTipPayout: optionalBoolean, tipSourceAdviserEmail: optionalText,
   tipSourceAdviserName: optionalText, isSubscriptionPayment: optionalBoolean,
-  isExtraPayout: optionalBoolean,
+  isExtraPayout: optionalBoolean, isOfficeContribution: optionalBoolean,
   subscriptionPlan: { ...optionalText, values: ["monthly", "semiannual", "yearly"] },
   subscriptionUserEmail: optionalText, subscriptionUserName: optionalText,
   subscriptionPeriodFrom: optionalText, subscriptionPeriodUntil: optionalText,
   payoutStatus: { kind: "text", optional: true, values: ["predicted", "paid", "shifted"] },
-  predictedAmount: optionalNumber, isStatementOnly: optionalBoolean,
+  originalPositionAmount: { kind: "number", optional: true },
+  repricedAmountIfShifted: { kind: "number", optional: true },
+  predictedAmount: optionalNumber, amountUnknown: optionalBoolean, isStatementOnly: optionalBoolean,
+  autoCommissionForecastMinimum: { kind: "number", optional: true },
+  autoCommissionForecastMaximum: { kind: "number", optional: true },
+  autoCommissionConfirmedPolicyYear: optionalBoolean,
+  autoCommissionFromSavedPremium: optionalBoolean,
+  commissionCodeCorrectionNote: { kind: "text", optional: true },
+  installmentCoverageNote: { kind: "text", optional: true },
+  coveredByCombinedPayout: optionalBoolean,
   commissionPayoutKey: optionalText, commissionStatementNumber: optionalText,
   commissionPeriodStart: optionalText, matchedPlannedCode: optionalText,
   premiumChangeOriginalAmount: optionalNumber, premiumChangeEffectiveDate: optionalText,
@@ -118,6 +131,7 @@ const monthFields = {
   totalSource: { kind: "text", values: ["predicted", "paid"] },
   statementPayoutTotal: { kind: "number", nullable: true },
   extraPayoutTotal: { kind: "number", optional: true },
+  hasUnknownAmounts: optionalBoolean,
 } satisfies Record<Exclude<keyof MonthGroup, "items">, Field>;
 
 function invalid(): never { throw new Error("Invalid cashflow snapshot."); }

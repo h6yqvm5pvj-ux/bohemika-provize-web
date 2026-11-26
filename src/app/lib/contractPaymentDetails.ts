@@ -4,6 +4,7 @@ export type ContractPaymentDetails = {
   variableSymbol: string;
   dueDate?: string | null;
   frequency?: "monthly" | "quarterly" | "semiannual" | "annual";
+  installmentDueDates?: string;
 };
 
 const MAX_PAYMENT_AMOUNT = 9_999_999.99;
@@ -46,7 +47,13 @@ export function normalizeContractPaymentDetails(value: unknown): ContractPayment
   if (!/^\d{1,10}$/.test(variableSymbol)) return null;
   const dueDate = candidate.dueDate == null || candidate.dueDate === "" ? null : candidate.dueDate;
   if (dueDate != null && (typeof dueDate !== "string" || !validDueDate(dueDate))) return null;
-  return { amount, accountNumber: account.accountNumber, variableSymbol, dueDate };
+  const installmentDueDates = candidate.installmentDueDates;
+  if (installmentDueDates != null && (typeof installmentDueDates !== "string" || installmentDueDates.length > 32 ||
+    !/^(?:[1-9]|[12]\d|3[01])\.(?:[1-9]|1[0-2])\.(?:\|(?:[1-9]|[12]\d|3[01])\.(?:[1-9]|1[0-2])\.)?$/.test(installmentDueDates))) return null;
+  return {
+    amount, accountNumber: account.accountNumber, variableSymbol, dueDate,
+    ...(typeof installmentDueDates === "string" ? { installmentDueDates } : {}),
+  };
 }
 
 const modulo97 = (digits: string): number => {

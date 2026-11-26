@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContractPdfUploadButton } from "./ContractPdfUploadButton";
 
 const attachment = { hasFile: true, contentType: "application/pdf", originalName: "synthetic-contract.pdf",
-  sha256: "a".repeat(64), sizeBytes: 22, uploadedAtMs: 100 };
+  sha256: "a".repeat(64), sizeBytes: 22, uploadedAtMs: 100, contractNumberBindingStatus: "verified" as const };
 const requestUpload = vi.fn();
 const onUploaded = vi.fn();
 const defaults = { ownerEmail: "owner@example.test", entryId: "entry-A", requestUpload, onUploaded };
@@ -13,7 +13,7 @@ let container: HTMLDivElement;
 let root: Root | null;
 const pdf = () => new File(["%PDF-1.7 synthetic"], "synthetic-contract.PDF", { type: "application/pdf" });
 
-async function render(props: Partial<typeof defaults> & { disabled?: boolean } = {}) {
+async function render(props: Partial<typeof defaults> & { disabled?: boolean; bindExisting?: boolean; buttonLabel?: string } = {}) {
   await act(async () => root!.render(<ContractPdfUploadButton {...defaults} {...props} />));
 }
 async function choose(file: File) {
@@ -61,8 +61,20 @@ describe("late contract PDF attachment", () => {
     expect(form.get("onlyIfMissing")).toBe("1");
     expect(form.get("file")).toMatchObject({ name: "synthetic-contract.PDF", type: "application/pdf" });
     expect(signal).toBeInstanceOf(AbortSignal);
-    expect(onUploaded).toHaveBeenCalledWith(attachment);
+    expect(onUploaded).toHaveBeenCalledWith(attachment, "uploaded");
     expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("binds an existing PDF without asking the user to select or upload it again", async () => {
+    await render({ bindExisting: true, buttonLabel: "Zpevnit vazbu PDF" });
+    await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+    expect(requestUpload).toHaveBeenCalledOnce();
+    const [form] = requestUpload.mock.calls[0] as [FormData, AbortSignal];
+    expect(form.get("ownerEmail")).toBe("owner@example.test");
+    expect(form.get("entryId")).toBe("entry-A");
+    expect(form.get("bindExisting")).toBe("1");
+    expect(form.get("file")).toBeNull();
+    expect(onUploaded).toHaveBeenCalledWith(attachment, "bound");
   });
 
   it.each([

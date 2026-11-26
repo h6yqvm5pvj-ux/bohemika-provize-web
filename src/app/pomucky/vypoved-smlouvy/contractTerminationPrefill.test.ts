@@ -71,19 +71,22 @@ describe("contractTerminationPrefill", () => {
     });
   });
 
-  it("nepovolí u Directu životní pojištění", () => {
+  it.each([
+    { insurer: "Direct", unsupported: "life", supported: "nonLife" },
+    { insurer: "NN", unsupported: "nonLife", supported: "life" },
+  ])("omezí předvyplněný typ pojištění pro $insurer", ({ insurer, unsupported, supported }) => {
     expect(
       normalizeContractTerminationPrefill({
-        insurer: "Direct",
-        insuranceType: "life",
+        insurer,
+        insuranceType: unsupported,
       })?.insuranceType,
     ).toBeNull();
     expect(
       normalizeContractTerminationPrefill({
-        insurer: "Direct",
-        insuranceType: "nonLife",
+        insurer,
+        insuranceType: supported,
       })?.insuranceType,
-    ).toBe("nonLife");
+    ).toBe(supported);
   });
 
   it.each(["domex", "cpphafan", "zamex", "cppsimplex"] as const)(

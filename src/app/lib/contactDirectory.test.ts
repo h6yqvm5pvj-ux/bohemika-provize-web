@@ -9,6 +9,13 @@ import {
 import { DEFAULT_DIRECTORY_CONTACTS } from "@/lib/server/defaultContactDirectory";
 
 describe("contactDirectory", () => {
+  it("accepts saved Comfort Commodity contacts and preserves their audience", () => {
+    const contact = { id: "synthetic-comfort", institutionKey: "comfort-commodity",
+      emails: [{ value: "support@example.test" }], audience: { type: "specialists" as const } };
+    expect(normalizeDirectoryContacts([contact])).toEqual([contact]);
+    expect(CONTACT_INSTITUTIONS.find(institution => institution.key === contact.institutionKey))
+      .toMatchObject({ label: "Comfort Commodity", logoPath: "/icons/cclogo1.png" });
+  });
   it("obsahuje Pillow s připraveným logem", () => {
     expect(
       CONTACT_INSTITUTIONS.find((institution) => institution.key === "pillow"),

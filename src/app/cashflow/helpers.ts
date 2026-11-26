@@ -1,3 +1,6 @@
+import { lifeRecurringCommission } from "./commissionPresentation";
+import { PAYOUT_EXCEPTION_POSITION, PAYOUT_EXCEPTION_START_YEAR } from "@/app/lib/payoutPositionException";
+import { isExactAutoSubsequentStatementCode } from "@/app/lib/commissionStatementPayoutEvidence";
 import type {
   CommissionMode,
   CommissionResultItemDTO,
@@ -334,6 +337,7 @@ const predictionProduct = (item: CashflowItem): Product | null => {
 
 const isPredictionEligibleItem = (item: CashflowItem, today: Date): boolean => {
   if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout || item.isStatementOnly) return false;
+  if (item.autoCommissionForecastMinimum !== undefined) return false;
   if (item.payoutStatus === "paid") return false;
   if (!Number.isFinite(item.amount) || item.amount <= 0) return false;
   return monthDistance(currentMonthStart(today), item.date) >= 0;
@@ -586,7 +590,7 @@ const collectLifeReviewCandidates = (
   const candidates = new Map<string, LifeReviewCandidate>();
 
   for (const item of cashflowItems) {
-    if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout || item.isStatementOnly) continue;
+    if (item.isTipPayout || item.isSubscriptionPayment || item.isExtraPayout || item.isStatementOnly || item.amountUnknown) continue;
     if (isStornoStatus(item.contractStatus)) continue;
 
     const product = predictionProduct(item);
@@ -1003,6 +1007,12 @@ const hasPaidCommissionForItem = ({
   paidCommissionKeys: Set<string>;
   contractsWithPaidCommissionCodes: Set<string>;
 }): boolean => {
+  const neonRecurring = item.productKey === "neon" ? lifeRecurringCommission(item) : null;
+  if (neonRecurring) {
+    // Statement summaries are not scoped to a manager's individual override.
+    return item.source !== "manager" &&
+      paidCommissionKeys.has(`${normalizedContractNumber.toUpperCase()}:${neonRecurring.code}`);
+  }
   const commissionCodes = commissionCodesForItem(item);
   const hasAnyPaidCodeForContract = contractsWithPaidCommissionCodes.has(normalizedContractNumber.toUpperCase());
   if (hasAnyPaidCodeForContract) {
@@ -1023,6 +1033,70 @@ const statementPeriodLabels = (
 ): string[] =>
   [...new Set((statements ?? []).map((statement) => statement.period).filter(Boolean) as string[])];
 
+export function applyStatementAutoPayouts(
+  items: CashflowItem[],
+  statements: CashflowCommissionStatementSummary[],
+): CashflowItem[] {
+  const isCoveredForecast = (item: CashflowItem) => item.coveredByCombinedPayout && item.payoutStatus !== "paid";
+  type Installment = NonNullable<CashflowCommissionStatementSummary["paidAutoInstallments"]>[number];
+  const receipts = new Map<string, { amount: number; year: number; month: number; statement: CashflowCommissionStatementSummary } | null>();
+  const keyFor = (contract: string, product: CashflowProductKey, source: Installment["source"], code: string) =>
+    JSON.stringify([contract, product, source, code]);
+  for (const statement of statements) {
+    if (!statement.paidAutoInstallments?.length) continue;
+    const monthKey = /^(\d{4})-(\d{1,2})$/.exec(statementMonthKey(statement) ?? "");
+    if (!monthKey) continue;
+    const year = Number(monthKey[1]);
+    const month = Number(monthKey[2]) - 1;
+    if (year < 2000 || month < 0 || month > 11) continue;
+    for (const row of statement.paidAutoInstallments) {
+      const key = keyFor(row.contractNumber, row.productKey, row.source, row.code);
+      if (!isExactAutoSubsequentStatementCode(row.code) || !Number.isFinite(row.amount) || row.amount <= 0) continue;
+      receipts.set(key, receipts.has(key) ? null : { amount: row.amount, year, month, statement });
+    }
+  }
+  if (!receipts.size) return items.some(isCoveredForecast) ? items.filter(item => !isCoveredForecast(item)) : items;
+
+  const planned = new Map<string, CashflowItem | null>();
+  for (const item of items) {
+    if (item.productKey === "unknown" || item.productKey === "subscription" || !isAutoProduct(item.productKey) ||
+      item.isTipPayout || item.isExtraPayout || item.isSubscriptionPayment || item.amount <= 0) continue;
+    const contract = normalizeContractNumberSearch(item.contractNumber);
+    if (!contract) continue;
+    const source = item.source === "manager" || item.isManagerOverride ? "manager" : "own";
+    // A payment already linked to a contract takes precedence, including any
+    // provider alias preserved by the generator. Never reuse this receipt.
+    if (item.payoutStatus === "paid") {
+      for (const code of commissionCodesForItem(item)) receipts.delete(keyFor(contract, item.productKey, source, code));
+      continue;
+    }
+    const key = keyFor(contract, item.productKey, source, item.commissionCode ?? "");
+    if (!receipts.get(key)) continue;
+    planned.set(key, planned.has(key) || item.isPartialPayoutBalance ? null : item);
+  }
+
+  const matched = new Map<CashflowItem, CashflowItem>();
+  for (const [key, item] of planned) {
+    const receipt = receipts.get(key);
+    if (!item || !receipt) continue;
+    const original = item.originalDate ?? item.date;
+    const date = calendarDate(original, receipt.year, receipt.month, 25);
+    if (monthSerial(date) < monthSerial(original)) continue;
+    matched.set(item, {
+      ...item,
+      date,
+      amount: receipt.amount,
+      payoutStatus: "paid",
+      predictedAmount: item.amount,
+      originalDate: monthSerial(date) === monthSerial(original) ? null : original,
+      commissionStatementNumber: receipt.statement.statementNumber,
+      commissionStatementPeriod: receipt.statement.period,
+    });
+  }
+  const reconciled = matched.size ? items.map(item => matched.get(item) ?? item) : items;
+  return reconciled.some(isCoveredForecast) ? reconciled.filter(item => !isCoveredForecast(item)) : reconciled;
+}
+
 export function applyStatementMissingPayoutShifts({
   cashflowItems,
   statementsByMonthKey,
@@ -1037,6 +1111,7 @@ export function applyStatementMissingPayoutShifts({
   type MonthStatements = {
     paidContracts: Set<string>;
     paidCommissionKeys: Set<string>;
+    paidAutoInstallmentKeys: Set<string>;
     contractsWithPaidCommissionCodes: Set<string>;
     periodLabels: string[];
   };
@@ -1060,6 +1135,9 @@ export function applyStatementMissingPayoutShifts({
     const indexed = {
       paidContracts: paidContractSetForStatements(statements),
       paidCommissionKeys,
+      paidAutoInstallmentKeys: new Set(statements.flatMap(statement =>
+        (statement.paidAutoInstallments ?? []).flatMap(row => isExactAutoSubsequentStatementCode(row.code)
+          ? [`${row.contractNumber}:${row.code}`] : []))),
       contractsWithPaidCommissionCodes,
       periodLabels: statementPeriodLabels(statements),
     };
@@ -1077,6 +1155,14 @@ export function applyStatementMissingPayoutShifts({
     let date = item.date;
     let shifted = false;
     const missedStatementPeriods: string[] = [];
+    const shiftedPositionFields = (): Partial<CashflowItem> => {
+      if (date.getFullYear() < PAYOUT_EXCEPTION_START_YEAR || item.repricedAmountIfShifted == null) return {};
+      return {
+        amount: item.repricedAmountIfShifted,
+        originalPositionAmount: item.amount,
+        predictionPosition: PAYOUT_EXCEPTION_POSITION,
+      };
+    };
 
     for (let guard = 0; guard < 24; guard += 1) {
       if (isOnOrAfterStornoMonth(item, date)) return [];
@@ -1086,6 +1172,7 @@ export function applyStatementMissingPayoutShifts({
       if (!statements) {
         return [{
           ...item,
+          ...shiftedPositionFields(),
           id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: shifted ? "shifted" : "predicted",
@@ -1094,10 +1181,11 @@ export function applyStatementMissingPayoutShifts({
         }];
       }
 
-      const { paidContracts, paidCommissionKeys, contractsWithPaidCommissionCodes } = statements;
+      const { paidContracts, paidCommissionKeys, paidAutoInstallmentKeys, contractsWithPaidCommissionCodes } = statements;
       if (paidContracts.size === 0) {
         return [{
           ...item,
+          ...shiftedPositionFields(),
           id: shifted ? `${item.id}-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: shifted ? "shifted" : "predicted",
@@ -1107,7 +1195,9 @@ export function applyStatementMissingPayoutShifts({
       }
 
       if (
-        !item.isPartialPayoutBalance &&
+        !item.amountUnknown && !item.isPartialPayoutBalance &&
+        // An exact auto row with a known source must pass scoped matching above.
+        !paidAutoInstallmentKeys.has(`${normalizedContractNumber}:${item.commissionCode}`) &&
         hasPaidCommissionForItem({
           item,
           normalizedContractNumber,
@@ -1118,6 +1208,7 @@ export function applyStatementMissingPayoutShifts({
       ) {
         return [{
           ...item,
+          ...shiftedPositionFields(),
           id: shifted ? `${item.id}-paid-shifted-${monthKey}` : item.id,
           date,
           payoutStatus: "paid",
@@ -1136,6 +1227,7 @@ export function applyStatementMissingPayoutShifts({
 
     return [{
       ...item,
+      ...shiftedPositionFields(),
       id: `${item.id}-shifted-${fallbackMonthKey}`,
       date,
       payoutStatus: "shifted",
@@ -1174,8 +1266,9 @@ export function groupItemsByMonth(
     }
 
     const group = map.get(key)!;
+    if (item.amountUnknown) group.hasUnknownAmounts = true;
     group.total += item.amount;
-    if (item.isExtraPayout && item.payoutStatus === "paid" && Number.isFinite(item.amount)) {
+    if (item.isExtraPayout && !item.isOfficeContribution && item.payoutStatus === "paid" && Number.isFinite(item.amount)) {
       group.extraPayoutTotal = (group.extraPayoutTotal ?? 0) + item.amount;
     }
     group.predictedTotal += item.isStatementOnly
@@ -1187,8 +1280,8 @@ export function groupItemsByMonth(
   const groups = Array.from(map.values());
   groups.forEach((group) => {
     group.items.sort(compareCashflowItemsForDisplay);
-    if (group.extraPayoutTotal != null) {
-      group.extraPayoutTotal = Math.round(group.extraPayoutTotal * 100) / 100;
+    if (group.extraPayoutTotal != null || group.items.some(item => item.isOfficeContribution && item.payoutStatus === "paid")) {
+      if (group.extraPayoutTotal != null) group.extraPayoutTotal = Math.round(group.extraPayoutTotal * 100) / 100;
       // An independent receipt must not turn unpaid commissions into paid income.
       group.total = Math.round(group.items.reduce((sum, item) =>
         item.payoutStatus === "paid" ? sum + item.amount : sum, 0) * 100) / 100;

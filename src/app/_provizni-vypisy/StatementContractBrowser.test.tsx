@@ -62,6 +62,22 @@ describe("statement review navigation", () => {
     expect(items).toHaveLength(3);
   });
 
+  it("shows a matching life commission with a different base outside the review filter", async () => {
+    const review = statementContractReview({ matched: true, unpaired: false, issueCount: 0,
+      comparisons: [{ status: "ok" }], baseComparisons: [{ annualDifference: -1200 }], baseMismatchIsInformational: true, hasWarnings: false });
+    const other = { ...items[1], review: statementContractReview({ matched: true, unpaired: false,
+      issueCount: items[1].issueCount, comparisons: [{ status: "ok" }], hasWarnings: false }) };
+    const entries = [{ ...items[0], review }, other];
+    await act(async () => root.render(<StatementContractBrowser items={entries}><ReviewCategory entries={entries} /></StatementContractBrowser>));
+    expect(container.querySelector("article button")?.textContent).toContain("K prověření");
+    const lifeRow = Array.from(container.querySelectorAll("article")).find(row => row.textContent?.includes("ČPP NEON"));
+    expect(lifeRow?.querySelector('[data-tone="ok"]')?.textContent).toBe("Provize sedí");
+    expect(button("K prověření").textContent).toContain("1");
+    await act(async () => button("K prověření").click());
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(container.querySelector("article")?.textContent).toContain("Allianz Auto");
+  });
+
   it("groups identical badges stably without mutating the source", () => {
     const before = reviewItems.map(item => item.key);
     expect(sortStatementBrowserItems(reviewItems).map(item => item.key)).toEqual(["3", "1", "5", "2", "7", "0", "4", "6"]);

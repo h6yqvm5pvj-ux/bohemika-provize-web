@@ -8,6 +8,7 @@ export const SETTINGS_TABS = [
   { id: "account", label: "Zabezpečení", icon: ShieldCheck },
   { id: "subscription", label: "Předplatné", icon: CreditCard },
   { id: "career", label: "Kariéra", icon: TrendingUp },
+  { id: "cashflow", label: "Cashflow", icon: TrendingUp },
   { id: "notifications", label: "Notifikace", icon: Bell },
   { id: "onlineCard", label: "Online vizitka", icon: IdCard },
   { id: "requests", label: "Žádosti", icon: ClipboardList },

@@ -577,12 +577,12 @@ function computeItemsForEntry(
           : product === "cpphafan"
           ? calculateCppHafan(val, freq, pos)
           : product === "koopodzam"
-          ? calculateKoopOdzam(val, freq, pos)
+          ? calculateKoopOdzam(val, freq, pos, contractSignedDateIso)
           : product === "kooppmop"
           ? calculateKoopPmop(val, freq, pos)
           : product === "zamex"
           ? calculateZamex(val, freq, pos)
-          : calculateKoopMajetekObcan(val, freq, pos);
+          : calculateKoopMajetekObcan(val, freq, pos, contractSignedDateIso);
       const filtered = dto.items.filter((i) =>
         (i.title ?? "").toLowerCase().includes("(z platby)")
       );

@@ -1,3 +1,6 @@
+import { InsuranceDetailHeading } from "@/components/insurance/InsuranceDetailHeading";
+import detailStyles from "@/components/insurance/insuranceDetail.module.css";
+import { Accessibility, Bandage, BedDouble, BriefcaseMedical, CarFront, HandHeart, HeartPulse, Landmark, Shield, Stethoscope } from "lucide-react";
 import React from "react";
 import type { Product } from "@/app/types/domain";
 import { formatMoney as formatMoneyValue } from "@/app/lib/formatters";
@@ -189,9 +192,9 @@ const AmountRow = ({
   showType?: boolean;
 }) => (
   <div className="space-y-1">
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2">
       <span className="text-slate-600">{label}</span>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {showType ? (
           editMode ? (
             <select
@@ -330,10 +333,10 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
     fields.addonTravel;
 
   return (
-    <div className="space-y-3">
+    <div className={detailStyles.lifeGrid}>
       {(editMode || hasDeath || hasDeathTyped || hasDeathAccident) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Smrt</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
+          <InsuranceDetailHeading icon={HeartPulse}>Smrt</InsuranceDetailHeading>
           {hasDeath && (
             <AmountRow
               label="Smrt"
@@ -371,8 +374,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasSerious || hasSeriousForHim || hasSeriousForHer) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Vážná onemocnění</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="rose">
+          <InsuranceDetailHeading icon={Stethoscope}>Vážná onemocnění</InsuranceDetailHeading>
           {hasSerious && (
             <AmountRow
               label="Vážná onemocnění"
@@ -410,8 +413,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasPermanentIllness) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Trvalé následky nemoci</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
+          <InsuranceDetailHeading icon={HandHeart}>Trvalé následky nemoci</InsuranceDetailHeading>
           <AmountRow
             label="Pojistná částka"
             amountValue={fields.permanentIllnessAmount}
@@ -424,10 +427,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasInvalidityIllness) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">
-            Invalidita / snížená soběstačnost (úraz nebo nemoc)
-          </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+          <InsuranceDetailHeading icon={Accessibility}>Invalidita / snížená soběstačnost (úraz nebo nemoc)</InsuranceDetailHeading>
           {showInvalidityIllness3 && (
             <AmountRow
               label="Stupeň 3"
@@ -471,8 +472,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasHospitalGeneral) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Pobyt v nemocnici (nemoc/úraz)</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+          <InsuranceDetailHeading icon={BedDouble}>Pobyt v nemocnici (nemoc/úraz)</InsuranceDetailHeading>
           <AmountRow
             label="Denní částka"
             amountValue={fields.hospitalGeneralAmount}
@@ -485,8 +486,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasWorkIncapacity) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Pracovní neschopnost</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="cyan">
+          <InsuranceDetailHeading icon={BriefcaseMedical}>Pracovní neschopnost</InsuranceDetailHeading>
           <div className="space-y-2 text-sm text-slate-900">
             <div className="flex justify-between gap-2">
               <span className="text-slate-600">Plnění od</span>
@@ -548,8 +549,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasCaregiving) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Ošetřování</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
+          <InsuranceDetailHeading icon={HandHeart}>Ošetřování</InsuranceDetailHeading>
           <AmountRow
             label="Denní částka"
             amountValue={fields.caregivingAmount}
@@ -562,8 +563,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasPermanentAccident || hasInjuryDamage || hasAccidentDaily || hasHospitalAccident) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Úrazová rizika</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="amber">
+          <InsuranceDetailHeading icon={Bandage}>Úrazová rizika</InsuranceDetailHeading>
           {hasPermanentAccident && (
             <AmountRow
               label="Trvalé následky úrazu"
@@ -608,10 +609,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasInvalidityAccident) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">
-            Invalidita / snížená soběstačnost (úraz)
-          </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+          <InsuranceDetailHeading icon={Accessibility}>Invalidita / snížená soběstačnost (úraz)</InsuranceDetailHeading>
           {showInvalidityAccident3 && (
             <AmountRow
               label="Stupeň 3"
@@ -655,10 +654,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasTraffic) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">
-            Pojištění úrazu při dopravní nehodě
-          </div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="sky">
+          <InsuranceDetailHeading icon={CarFront}>Pojištění úrazu při dopravní nehodě</InsuranceDetailHeading>
           {(editMode || hasAmount(contract?.trafficDeathAccidentAmount, fields.trafficDeathAccidentAmount)) && (
             <AmountRow
               label="Smrt následkem úrazu"
@@ -733,8 +730,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasLoan) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Pojištění úvěru</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="violet">
+          <InsuranceDetailHeading icon={Landmark}>Pojištění úvěru</InsuranceDetailHeading>
           <AmountRow
             label="Smrt"
             amountValue={fields.loanDeathAmount}
@@ -800,8 +797,8 @@ export function FlexiDetailPanel({ prod, editMode, fields, contract, onChange }:
       )}
 
       {(editMode || hasAddon) && (
-        <div className="rounded-2xl border border-slate-300 bg-white p-3 space-y-2 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Doplňková připojištění</div>
+        <div className={`${detailStyles.card} space-y-3`} data-detail-tone="emerald">
+          <InsuranceDetailHeading icon={Shield}>Doplňková připojištění</InsuranceDetailHeading>
           {(editMode || fields.addonMajakBasic || contract?.addonMajakBasic) && (
             <ToggleRow
               label="MAJÁK zdravotní a sociální infolinka"

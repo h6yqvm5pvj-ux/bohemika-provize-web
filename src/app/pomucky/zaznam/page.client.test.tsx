@@ -16,6 +16,8 @@ let root: Root, container: HTMLDivElement;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(HTMLDialogElement.prototype, "showModal").mockImplementation(function (this: HTMLDialogElement) { this.open = true; });
+  vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement) { this.open = false; });
   setMeetingRecordIdentity(null);
   setMeetingRecordIdentity("synthetic-advisor-a");
   container = document.createElement("div");
@@ -45,10 +47,51 @@ async function click(label: string, parent: ParentNode = container) {
 }
 async function chooseArea(index: number) {
   await act(async () => container.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Oblast jednání"] > button')[index].click());
+  if (index === 3) await click("Občan", container.querySelector("dialog")!);
   await act(async () => { await vi.advanceTimersByTimeAsync(20); });
 }
 
 describe("shared client selection", () => {
+  it.each(["male", "female"] as const)("selects distinct liability content and copies employee wording for %s", async gender => {
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    await mount();
+    await click(gender === "female" ? "Žena" : "Muž");
+    const trigger = container.querySelector<HTMLButtonElement>('[data-sector="liability"]')!;
+    await act(async () => { trigger.focus(); trigger.click(); });
+    const dialog = container.querySelector("dialog")!;
+    expect(dialog.open).toBe(true);
+    expect(dialog.textContent).toContain("Jakou odpovědnost řešíš?");
+    expect(document.activeElement).toBe(button("Občan", dialog));
+    await click("Zaměstnanec", dialog);
+    expect(container.querySelector("dialog")).toBeNull();
+    const form = container.querySelector("#record-form")!;
+    expect(form.getAttribute("aria-label")).toBe("Odpovědnost zaměstnance");
+    expect(form.textContent).toContain(gender === "female" ? "Klientka vyžadovala vysvětlení pojmů" : "Klient vyžadoval vysvětlení pojmů");
+    expect(form.textContent).toContain(gender === "female" ? "cíle zákaznice" : "cíle zákazníka");
+    expect(form.textContent).not.toContain("50 mil.");
+    const limitRow = [...form.querySelectorAll("article")].find(row => row.textContent?.includes("4,5násobku"))!;
+    const expected = gender === "female"
+      ? "Klientka byla seznámena s doporučením sjednat pojistný limit ve výši 4,5násobku průměrného hrubého měsíčního výdělku. Byla upozorněna, že při sjednání nižšího limitu může být případná škoda kryta pouze částečně a zbývající část bude muset uhradit z vlastních prostředků."
+      : "Klient byl seznámen s doporučením sjednat pojistný limit ve výši 4,5násobku průměrného hrubého měsíčního výdělku. Byl upozorněn, že při sjednání nižšího limitu může být případná škoda kryta pouze částečně a zbývající část bude muset uhradit z vlastních prostředků.";
+    await click("Kopírovat", limitRow);
+    expect(copy).toHaveBeenLastCalledWith(expected);
+    await chooseArea(3);
+    expect(container.querySelector("#record-form")?.textContent).toContain("50 mil.");
+    expect(container.querySelector("#record-form")?.textContent).not.toContain("4,5násobku");
+  });
+
+  it("cancels liability selection without switching the current area and restores focus and scrolling", async () => {
+    await mount();
+    const trigger = container.querySelector<HTMLButtonElement>('[data-sector="liability"]')!;
+    const previousOverflow = document.body.style.overflow;
+    await act(async () => { trigger.focus(); trigger.click(); });
+    expect(document.body.style.overflow).toBe("hidden");
+    await act(async () => container.querySelector("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true })));
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.querySelector("#record-form")?.getAttribute("aria-label")).toBe("Životní pojištění");
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.style.overflow).toBe(previousOverflow);
+  });
   it("keeps one selector across all sectors and gives it precedence over an older life draft", async () => {
     writeMeetingRecord("lifeDraft", { clientGender: "male", deathOn: true, deathAmount: "500000" }, getMeetingRecordContext()!);
     await mount();

@@ -11,16 +11,18 @@ type Props = {
   ownerEmail: string;
   entryId: string;
   className?: string;
+  buttonLabel?: string;
+  bindExisting?: boolean;
   disabled?: boolean;
   requestUpload: (form: FormData, signal: AbortSignal) => Promise<ContractPdfUploadResponse>;
-  onUploaded: (attachment: ContractPdfUploadAttachment) => void;
+  onUploaded: (attachment: ContractPdfUploadAttachment, action?: "uploaded" | "bound") => void;
 };
 
 const MAX_PDF_BYTES = 12 * 1024 * 1024;
 type Scope = { ownerEmail: string; entryId: string };
 type UploadState = { scope: Scope; busy: boolean; error: string | null };
 
-function fileError(file: File): string | null {
+export function contractPdfFileError(file: File): string | null {
   if (!/\.pdf$/i.test(file.name) || !["", "application/pdf", "application/x-pdf"].includes(file.type.toLowerCase())) {
     return "Vyber soubor ve formátu PDF.";
   }
@@ -32,12 +34,12 @@ function fileError(file: File): string | null {
 function uploadError(error: unknown): string {
   const status = error && typeof error === "object" && "status" in error ? Number(error.status) : null;
   if (status === 401 || status === 403) return "K této smlouvě nemáš oprávnění nahrát PDF.";
-  if (status === 409) return "Ke smlouvě už bylo PDF připojeno nebo se mezitím změnila. Obnov detail.";
+  if (status === 409) return "Smlouva se změnila nebo nelze ověřit vazbu PDF. Obnov detail a zkontroluj číslo smlouvy.";
   if (status === 503) return "Výsledek nahrání se nepodařilo potvrdit. Obnov detail před dalším nahráním.";
   return "PDF se nepodařilo nahrát. Zkus to znovu.";
 }
 
-export function ContractPdfUploadButton({ ownerEmail, entryId, className, disabled = false, requestUpload, onUploaded }: Props) {
+export function ContractPdfUploadButton({ ownerEmail, entryId, className, buttonLabel = "Nahrát PDF smlouvy", bindExisting = false, disabled = false, requestUpload, onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const pending = useRef<{ scope: Scope; controller: AbortController } | null>(null);
   const scope = useMemo(() => ({ ownerEmail, entryId }), [ownerEmail, entryId]);
@@ -56,7 +58,7 @@ export function ContractPdfUploadButton({ ownerEmail, entryId, className, disabl
 
   const upload = async (file: File) => {
     if (disabled || pending.current || !ownerEmail.trim() || !entryId.trim()) return;
-    const validation = fileError(file);
+    const validation = contractPdfFileError(file);
     if (validation) {
       setState({ scope, busy: false, error: validation });
       return;
@@ -80,12 +82,39 @@ export function ContractPdfUploadButton({ ownerEmail, entryId, className, disabl
       }
       saved = true;
       setState({ scope, busy: false, error: null });
-      onUploaded(attachment);
+      onUploaded(attachment, "uploaded");
     } catch (error) {
       if (controller.signal.aborted) return;
       setState({ scope, busy: false, error: saved
         ? "PDF je uložené. Pro zobrazení přílohy obnov detail smlouvy."
         : uploadError(error) });
+    } finally {
+      if (pending.current?.controller === controller) pending.current = null;
+    }
+  };
+
+  const bindExistingAttachment = async () => {
+    if (disabled || pending.current || !ownerEmail.trim() || !entryId.trim()) return;
+    const controller = new AbortController();
+    pending.current = { scope, controller };
+    setState({ scope, busy: true, error: null });
+    try {
+      const form = new FormData();
+      form.set("ownerEmail", ownerEmail);
+      form.set("entryId", entryId);
+      form.set("bindExisting", "1");
+      const response = await requestUpload(form, controller.signal);
+      if (controller.signal.aborted) return;
+      const attachment = response?.attachment;
+      if (response?.ok === false || attachment?.hasFile !== true ||
+        attachment.contractNumberBindingStatus !== "verified") {
+        throw new Error("Invalid binding response.");
+      }
+      setState({ scope, busy: false, error: null });
+      onUploaded(attachment, "bound");
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setState({ scope, busy: false, error: uploadError(error) });
     } finally {
       if (pending.current?.controller === controller) pending.current = null;
     }
@@ -102,10 +131,14 @@ export function ContractPdfUploadButton({ ownerEmail, entryId, className, disabl
         }} />
       <button type="button" className={className} disabled={unavailable} aria-busy={busy}
         aria-describedby={current?.error ? errorId : undefined}
-        onClick={() => { if (!unavailable && !pending.current) inputRef.current?.click(); }}>
+        onClick={() => {
+          if (unavailable || pending.current) return;
+          if (bindExisting) void bindExistingAttachment();
+          else inputRef.current?.click();
+        }}>
         {busy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" size={14} strokeWidth={2} aria-hidden="true" />
           : <Upload size={14} strokeWidth={2} aria-hidden="true" />}
-        <span>{busy ? "Nahrávám…" : "Nahrát PDF smlouvy"}</span>
+        <span>{busy ? (bindExisting ? "Zpevňuji…" : "Nahrávám…") : buttonLabel}</span>
       </button>
       {current?.error && <p id={errorId} role="alert" className="max-w-sm text-xs font-medium leading-relaxed text-rose-100">{current.error}</p>}
     </div>

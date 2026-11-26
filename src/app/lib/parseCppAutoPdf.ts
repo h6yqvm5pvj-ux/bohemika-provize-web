@@ -261,7 +261,7 @@ const findLabelIndexes = (asciiLines: string[], label: RegExp): number[] => {
   return indexes;
 };
 
-const extractLayoutLinesFromTextItems = (
+export const extractCppAutoLayoutLines = (
   rawItems: Array<{ str?: unknown; transform?: number[]; width?: number }>
 ): CppAutoContractIdentityLine[] => {
   const items: PositionedTextItem[] = rawItems
@@ -427,6 +427,63 @@ const normalizeCppAssistancePlan = (value: string | null | undefined): string | 
   return null;
 };
 
+export function extractCppAutoBasicVehicleDetails(lines: string[]): Pick<CppAutoPdfResult,
+  "carMake" | "carVin" | "carPlate" | "carOrv" | "carLiabilityLimit"> {
+  const asciiLines = lines.map(line => stripDiacritics(line).toLowerCase());
+  const result: CppAutoPdfResult = {};
+  const manufacturer = normalizeVehicleMakeModel(
+    readNearestValueByLabel(lines, asciiLines, /tovarni\s+znacka/i, 4)
+  );
+  const model = normalizeVehicleMakeModel(
+    readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni\s*\/\s*typ/i, 4) ??
+      readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni/i, 4)
+  );
+  const mergedMakeModel = normalizeVehicleMakeModel(
+    [manufacturer, model].filter(Boolean).join(" ")
+  );
+  if (mergedMakeModel) {
+    result.carMake = mergedMakeModel;
+  } else if (manufacturer) {
+    result.carMake = manufacturer;
+  }
+
+  const vin = normalizeVin(
+    readNearestValueByLabel(lines, asciiLines, /vin\s*\(vyrobni\s+cislo\s+karoserie\)/i, 4) ??
+      readNearestValueByLabel(lines, asciiLines, /^vin\b/i, 4)
+  );
+  if (vin) {
+    result.carVin = vin;
+  }
+
+  const plate = normalizePlate(
+    readNearestValueByLabel(lines, asciiLines, /registracni\s+znacka(?:\s*\(spz\))?/i, 4)
+  );
+  if (plate) {
+    result.carPlate = plate;
+  }
+
+  const orv = normalizeVehicleDocCode(
+    readNearestValueByLabel(lines, asciiLines, /serie\s+a\s+cislo\s+orv/i, 4)
+  );
+  if (orv) {
+    result.carOrv = orv;
+  }
+
+  const liabilityRaw =
+    readNearestValueByLabel(
+      lines,
+      asciiLines,
+      /limit\s+pojistneho\s+plneni\s*\(skody\s+na\s+zdravi\s*\/\s*majetku\)/i,
+      4
+    ) ?? readNearestValueByLabel(lines, asciiLines, /limit\s+pojistneho\s+plneni/i, 4);
+  const liability = normalizeLiabilityLimit(liabilityRaw);
+  if (liability != null) {
+    result.carLiabilityLimit = liability;
+  }
+
+  return result;
+}
+
 export async function parseCppAutoPdf(file: File, options: PdfReadOptions = {}): Promise<CppAutoPdfResult> {
   const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
@@ -445,7 +502,7 @@ export async function parseCppAutoPdf(file: File, options: PdfReadOptions = {}):
       .filter(Boolean)
       .join("\n");
     pagesText.push(text);
-    const pageLines = extractLayoutLinesFromTextItems(rawItems);
+    const pageLines = extractCppAutoLayoutLines(rawItems);
     layoutPages.push(pageLines);
   }
 
@@ -515,55 +572,7 @@ export async function parseCppAutoPdf(file: File, options: PdfReadOptions = {}):
     result.amount = amount;
   }
 
-  const manufacturer = normalizeVehicleMakeModel(
-    readNearestValueByLabel(lines, asciiLines, /tovarni\s+znacka/i, 4)
-  );
-  const model = normalizeVehicleMakeModel(
-    readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni\s*\/\s*typ/i, 4) ??
-      readNearestValueByLabel(lines, asciiLines, /obchodni\s+oznaceni/i, 4)
-  );
-  const mergedMakeModel = normalizeVehicleMakeModel(
-    [manufacturer, model].filter(Boolean).join(" ")
-  );
-  if (mergedMakeModel) {
-    result.carMake = mergedMakeModel;
-  } else if (manufacturer) {
-    result.carMake = manufacturer;
-  }
-
-  const vin = normalizeVin(
-    readNearestValueByLabel(lines, asciiLines, /vin\s*\(vyrobni\s+cislo\s+karoserie\)/i, 4) ??
-      readNearestValueByLabel(lines, asciiLines, /^vin\b/i, 4)
-  );
-  if (vin) {
-    result.carVin = vin;
-  }
-
-  const plate = normalizePlate(
-    readNearestValueByLabel(lines, asciiLines, /registracni\s+znacka(?:\s*\(spz\))?/i, 4)
-  );
-  if (plate) {
-    result.carPlate = plate;
-  }
-
-  const orv = normalizeVehicleDocCode(
-    readNearestValueByLabel(lines, asciiLines, /serie\s+a\s+cislo\s+orv/i, 4)
-  );
-  if (orv) {
-    result.carOrv = orv;
-  }
-
-  const liabilityRaw =
-    readNearestValueByLabel(
-      lines,
-      asciiLines,
-      /limit\s+pojistneho\s+plneni\s*\(skody\s+na\s+zdravi\s*\/\s*majetku\)/i,
-      4
-    ) ?? readNearestValueByLabel(lines, asciiLines, /limit\s+pojistneho\s+plneni/i, 4);
-  const liability = normalizeLiabilityLimit(liabilityRaw);
-  if (liability != null) {
-    result.carLiabilityLimit = liability;
-  }
+  Object.assign(result, extractCppAutoBasicVehicleDetails(lines));
 
   const hullSumInsured = parseAmount(
     readNearestValueByLabel(

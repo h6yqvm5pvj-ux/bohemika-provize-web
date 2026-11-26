@@ -45,6 +45,26 @@ const makePdfFile = () =>
   new File(["pdf fixture"], "fixture.pdf", { type: "application/pdf" });
 
 describe("detectProductFromPdf", () => {
+  it("detects a FLEXI change request from both markers across pages", async () => {
+    pdfState.pages = [["FLEXI"], ["ŽÁDOST O ZMĚNU\nV POJISTNÉ SMLOUVĚ"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "flexi", confidence: "high" });
+  });
+  it.each(["FLEXI", "Žádost o změnu v pojistné smlouvě", "FLEXIBILNÍ Žádost o změnu v pojistné smlouvě"])("requires both exact FLEXI change markers (%s)", async text => {
+    pdfState.pages = [[text]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toBeNull();
+  });
+  it("prioritizes the free trailer over the ordinary ČPP auto rule", async () => {
+    pdfState.pages = [["Česká podnikatelská pojišťovna, a. s.", "AUTOPOJIŠTĚNÍ VOZÍK ZDARMA"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "cppAutoVozikZdarma", confidence: "high" });
+  });
+  it("detects the free trailer with normalized text across pages", async () => {
+    pdfState.pages = [["CESKA PODNIKATELSKA POJISTOVNA"], ["Vozík\u00a0\nZDARMA"]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "cppAutoVozikZdarma" });
+  });
+  it.each(["Jiná pojišťovna VOZÍK ZDARMA", "Česká podnikatelská pojišťovna VOZÍK", "Česká podnikatelská pojišťovna VOZÍK ZDARMATICKY"])("requires both exact free-trailer markers: %s", async text => {
+    pdfState.pages = [[text]];
+    await expect(detectProductFromPdf(makePdfFile())).resolves.toBeNull();
+  });
   it("detects ČPP KOMPLEX even when the insurer and product are on different pages", async () => {
     pdfState.pages = [["Česká podnikatelská pojišťovna"], ["Pojištění podnikatelů KOMPLEX"]];
     await expect(detectProductFromPdf(makePdfFile())).resolves.toMatchObject({ product: "cppPPRbez", confidence: "high" });

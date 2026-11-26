@@ -160,6 +160,22 @@ export const clientReportStyles = `
 .pdf-intro{font-size:11px;line-height:1.7;color:#657085;margin-bottom:12px!important}
 .pdf-chart{padding:9px 0;border-top:1px solid #e3e7ef;border-bottom:1px solid #e3e7ef;margin:20px 0 23px}
 .pdf-chart svg{width:100%;height:auto}
+.pdf-curve-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 24px;list-style:none;margin:0;padding:0}
+.pdf-curve-legend:has(>li:nth-child(15)){grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 16px}
+.pdf-content:has(>.pdf-curve-legend>li:nth-child(15))>.pdf-chart svg{max-height:290px}
+.pdf-curve-legend li{display:flex;gap:9px;min-width:0;align-items:flex-start}
+.pdf-curve-legend svg{margin-top:3px}
+.pdf-curve-legend strong,.pdf-curve-legend small{display:block;overflow-wrap:anywhere}
+.pdf-curve-legend strong{font-size:11px;line-height:1.35;color:#171b2b}
+.pdf-curve-legend small{font-size:9px;line-height:1.4;color:#526077;margin-top:2px}
+.pdf-advisor-card{display:grid;grid-template-columns:1.55fr 1fr;align-items:center;border:1px solid #dce5e9;border-radius:14px;background:#f4f7fa;overflow:hidden;margin-top:28px}
+.pdf-page>.pdf-advisor-card{position:absolute;left:46px;right:46px;bottom:104px;margin:0}
+.pdf-advisor-details{min-width:0;padding:20px 24px;overflow-wrap:anywhere}
+.pdf-advisor-details .pdf-kicker{color:#087f74}
+.pdf-advisor-details h2{font-size:23px;line-height:1.25;color:#172b42;margin:4px 0 6px}
+.pdf-advisor-details p{font-size:12px;line-height:1.5;color:#526077}
+.pdf-advisor-link{display:flex;align-items:center;justify-content:center;gap:12px;align-self:stretch;padding:12px;color:#08756b;font-weight:700;text-decoration:none;background:#e8f5f1}
+.pdf-advisor-link svg{width:24mm;height:24mm}
 .pdf-scenario-cards{display:flex;gap:25px;margin-top:18px}
 .pdf-scenario-card{flex:1;min-width:0;border-top:2px solid #6438e6;padding-top:13px}
 .pdf-scenario-card small{display:block;font-size:8px;letter-spacing:1px;line-height:1.5}

@@ -88,6 +88,6 @@ export function findToolSearchResults(
   if (normalizedQuery.length < 2) return [];
 
   return TOOL_CATALOG.filter((tool) =>
-    toolMatchesSearchQuery(tool, normalizedQuery),
+    !tool.hiddenFromSearch && toolMatchesSearchQuery(tool, normalizedQuery),
   ).slice(0, limit);
 }

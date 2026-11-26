@@ -13,6 +13,7 @@ export function ContractDetailNavigation({
       <a href="#contract-commissions">Provize</a>
       {hasChanges && <a href="#contract-changes">Dodatky</a>}
       <a href="#contract-notes" onClick={onOpenNotes}>Poznámky</a>
+      <a href="#contract-details">Detail smlouvy</a>
     </nav>
   );
 }

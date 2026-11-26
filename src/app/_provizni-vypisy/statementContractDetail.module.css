@@ -77,6 +77,7 @@
 .lineItems .table td:nth-child(-n+3), .lineItems .table th:nth-child(-n+3) { text-align: left; }
 .lineItems[data-kind="life"] .table :is(th,td):nth-child(3) { text-align: right; }
 .cellTitle { font-weight: 550; color: #66516f; }
+.lineItems .table .positionCell { white-space: nowrap; }
 .lineItems .table td:nth-last-child(2) { color: #68417e; font-weight: 650; }
 .lineItems .table [data-payment="true"] { background: #f7fbf8; }
 .cardToggle:focus-visible, .tableScroll:focus-visible, .actions > :is(a,button):focus-visible { outline: 2px solid #ad87c2; outline-offset: -3px; }

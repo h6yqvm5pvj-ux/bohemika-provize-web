@@ -7,6 +7,17 @@ export const normalizeContractSearchText = (value?: string | null): string =>
 export const compactContractSearchNumber = (value?: string | null): string =>
   normalizeContractSearchText(value).replace(/[^a-z0-9]/g, "");
 
+// A leading '=' requests the contract number exactly as recorded, including its format.
+export function exactContractNumberFromSearch(value: string): string | null {
+  return value.startsWith("=") ? value.slice(1).trim() || null : null;
+}
+
+export function normalizeContractListSearch(value: string): string {
+  const trimmed = value.trim();
+  const exactNumber = exactContractNumberFromSearch(trimmed);
+  return exactNumber ? `=${exactNumber}` : trimmed === "=" ? "" : normalizeContractSearchText(trimmed);
+}
+
 export function prepareContractSearch(query?: string | null) {
   const text = normalizeContractSearchText(query);
   const parsed = clientCompanySearchParts(text);

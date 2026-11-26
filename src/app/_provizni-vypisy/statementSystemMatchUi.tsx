@@ -1,4 +1,5 @@
 import type { Position, Product } from "@/app/types/domain";
+import { isInvestmentProduct } from "@/app/lib/productCatalog";
 import { CheckCircle2, CircleHelp, History } from "lucide-react";
 import styles from "./statementContractDetail.module.css";
 
@@ -148,6 +149,7 @@ export function SystemMatchPanel({
   return (
     <div className={styles.matchPanel}>
       {displayContracts.map((contract) => {
+        const investment = isInvestmentProduct(contract.productKey);
         const productMismatch =
           Boolean(expectedProductKey && contract.productKey) &&
           !presentation.statementProductMatchesSystemProduct(
@@ -180,13 +182,13 @@ export function SystemMatchPanel({
               <div><dt>Produkt</dt><dd>{productLabelFromKey(contract.productKey)}</dd></div>
               <div><dt>Poradce</dt><dd>{contract.adviserName || contract.adviserEmail || "—"}</dd></div>
               <div><dt>Pozice</dt><dd>{presentation.positionLabel(presentation.systemContractPosition(contract))}</dd></div>
-              <div><dt>Pojistné</dt><dd>
+              {!investment && <div><dt>Pojistné</dt><dd>
                 {Number.isFinite(inputAmount)
                   ? paymentAmountWithFrequencyLabel(inputAmount, contract.frequencyRaw)
                   : "—"}
-              </dd></div>
+              </dd></div>}
               <div><dt>Sjednáno</dt><dd>{formatSystemDate(contract.contractSignedDate)}</dd></div>
-              <div><dt>Počátek</dt><dd>{formatSystemDate(contract.policyStartDate)}</dd></div>
+              {!investment && <div><dt>Počátek</dt><dd>{formatSystemDate(contract.policyStartDate)}</dd></div>}
             </dl>
             {productMismatch && (
               <div className={styles.matchNotice}>

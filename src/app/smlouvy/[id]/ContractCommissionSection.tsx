@@ -1,14 +1,36 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Banknote, CalendarDays, ChevronDown, Coins, Eye, FileSearch, FileText, Info, Repeat2, X } from "lucide-react";
+import { applyAutoCommissionForecasts } from "@/app/cashflow/autoCommissionForecast";
+import { PAYOUT_EXCEPTION_POSITION, payoutExceptionStatementMonth, payoutPositionException } from "@/app/lib/payoutPositionException";
+import { autoCommissionPolicyYear, createAutoCommissionForecast, type AutoCommissionForecast } from "@/app/lib/autoCommissionForecast";
+import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { autoFrequencyCommissionMultiplier } from "@/app/lib/autoPaymentFrequency";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, Banknote, ChartNoAxesColumnIncreasing, CalendarDays, ChevronDown, Coins, Eye, FileSearch, FileText, Info, Repeat2, X } from "lucide-react";
 import styles from "./contractCommission.module.css";
+import { CommissionPayoutSummaryDialog } from "./CommissionPayoutSummaryDialog";
+import { summarizeCommissionPayouts, type CommissionPayoutComparison } from "./commissionPayoutComparison";
+import { CommissionComparisonRow } from "./CommissionComparisonRow";
 import { PayoutDifferenceExplanationContent } from "./PayoutDifferenceExplanationContent";
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
+import { projectAcquisitionInstallmentReceipts } from "@/app/lib/acquisitionInstallmentCoverage";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
-import { createEndorsementCommissionPlan } from "@/app/lib/endorsementCommissionPlan";
+import { isNeonRecurringStatementCode } from "@/app/lib/neonRecurringStatementBase";
+import {
+  activePayoutRecordsAfterFullStornos, commissionStatementDay, COMMISSION_PAYOUT_AMOUNT_TOLERANCE, contractStornoDeductionKind, isStornoPayoutRecord,
+  neonEndorsementForOriginalPayout, uniqueFamilyCommissionReceipts, validPayoutAmount, wasNeonCommissionSettledBefore,
+} from "@/app/lib/commissionReceipts";
+import { createEndorsementCommissionPlan, endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import { commissionPeriodAfterMonths, commissionPeriodForCode } from "@/app/lib/commissionPeriodForCode";
+import { contractLifecycleStatus } from "@/app/lib/contractLifecycle";
+import {
+  installmentCommissionScheduleFromCode,
+  isAutoSubsequentCommissionCode,
+} from "@/app/lib/productFormulas/autoCommission";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
-import { generateCashflow } from "@/app/cashflow/generator";
+import { MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE } from "@/app/lib/productFormulas/maxcizinkomplex";
+import { estimateLifeFirstPayoutDate, estimatePayoutDate, generateCashflow } from "@/app/cashflow/generator";
+import { neonCorrectionPayoutAmount, neonExpectedStatementMonth } from "@/app/lib/neonCorrection";
+import { toDate } from "@/app/lib/formatters";
 import {
   type CommissionMode,
   type CommissionResultItemDTO,
@@ -18,15 +40,23 @@ import {
 } from "../../types/domain";
 import {
   cleanResultTitle,
+  computeTotalWithMultipliers,
   formatDate,
   formatMoney,
+  nameFromEmail,
   positionLabel,
+  stripTotalRows,
 } from "./contractDetailHelpers";
+import { isAnnualAutoPayoutProduct } from "@/app/lib/productCatalog";
 import {
   hasNeonImmediateCoefficient,
 } from "./contractDetailLogic";
 import { type ContractCommissionPayout, type ContractDoc } from "./contractDetailTypes";
+import { isLifeIncreaseCode, isNeonPremiumIncreaseComponent, lifeIncreaseExpectedAmount, lifeIncreaseItemCode, normalizeLifeCommissionItemCode } from "@/app/lib/lifePremiumIncrease";
 import { ContractSectionHeading } from "./ContractDetailUi";
+import { neonCommissionFamily } from "./contractTimelineDetails";
+
+export { isStornoPayoutRecord } from "@/app/lib/commissionReceipts";
 
 export type MeziprovisionCard = {
   key: string;
@@ -58,7 +88,8 @@ type ContractCommissionSectionProps = {
   policyStartDate?: unknown;
   commissionEntry?: ContractDoc | null;
   commissionTimeline?: ContractDoc[];
-  onOpenStatement?: (statementId: string) => void;
+  consolidateNeonAmendments?: boolean;
+  onOpenStatement?: (statementId: string, commissionCodes?: string[]) => void;
   statementPreviewLoadingId?: string | null;
   adviserBreakdownPosition: Position | null;
   adviserBreakdownMode: CommissionMode | null;
@@ -70,9 +101,17 @@ type ContractCommissionSectionProps = {
   onOpenNeonImmediateBreakdown: (
     item: CommissionResultItemDTO,
     position: Position | null | undefined,
-    commissionMode: CommissionMode | null | undefined
+    commissionMode: CommissionMode | null | undefined,
+    source?: ContractDoc,
   ) => void;
 };
+
+const CommissionPositionBadge = ({ position }: { position: Position }) => (
+  <span
+    className={styles.positionBadge}
+    data-current={position === PAYOUT_EXCEPTION_POSITION}
+  >{positionLabel(position)}</span>
+);
 
 const commissionPanelClass = styles.panel;
 const commissionRowClass = styles.row;
@@ -84,8 +123,6 @@ const monoHeadingClass = "font-mono tracking-tight text-slate-900";
 const monoChipClass =
   "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-mono tracking-tight text-slate-900";
 const collapsibleButtonClass = styles.toggle;
-const COMMISSION_PAYOUT_AMOUNT_TOLERANCE = 10;
-const FULL_STORNO_OFFSET_TOLERANCE = 0.01;
 const AUTO_COMMISSION_PRODUCTS = new Set<Product>([
   "cppAuto",
   "slaviaauto",
@@ -127,7 +164,9 @@ const isB0301Title = (title: string): boolean =>
 const displayNoteForCommissionItem = (item: CommissionResultItemDTO): string | undefined =>
   isB0301Title(item.title) ? B0301_IMMEDIATE_NOTE : item.note;
 
-export type CommissionPayoutReadStatus = "pending" | "paid" | "partial" | "storno";
+export type CommissionPayoutReadStatus = "pending" | "paid" | "partial" | "difference" | "storno" | "cancelled";
+
+const cancelledCommissionLabel = "Po stornu se neočekává";
 
 type CommissionInstallment = {
   key: string;
@@ -144,23 +183,6 @@ const normalizePayoutCode = (value: string | null | undefined, product?: Product
 
 const normalizeEmail = (value: string | null | undefined): string =>
   String(value ?? "").trim().toLowerCase();
-
-const validPayoutAmount = (value: number | null | undefined): number =>
-  typeof value === "number" && Number.isFinite(value) ? value : 0;
-
-export const isStornoPayoutRecord = (
-  record: ContractCommissionPayout
-): boolean => {
-  const status = String(record.status ?? "").trim().toLowerCase();
-  const differenceReason = String(record.differenceReason ?? "")
-    .trim()
-    .toLowerCase();
-  return (
-    status === "storno" ||
-    differenceReason === "storno" ||
-    validPayoutAmount(record.amount) < 0
-  );
-};
 
 const isAnnualSummaryCommissionTitle = (title: string): boolean => {
   const normalized = cleanResultTitle(title).toLowerCase();
@@ -186,6 +208,7 @@ const payoutCodesForCommissionTitle = (
   if (normalized.includes("po 3 letech")) return ["B3601", "B36", "B036"];
   if (normalized.includes("po 4 letech")) return ["B4801", "B48", "B048"];
   if (normalized.startsWith("okamžitá provize") || normalized.startsWith("získatelská provize")) {
+    if (product === "maxcizinkomplex") return [MAX_CIZIN_KOMPLEX_IMMEDIATE_CODE, cleanTitle];
     return ["A101", "A102", cleanTitle];
   }
   if (isAutoCommissionProduct(product) && normalized.startsWith("následná provize")) {
@@ -316,19 +339,43 @@ const recurringInstallmentsForCommissionItem = (
   return [];
 };
 
+const policyYearForAutoInstallment = (
+  installment: CommissionInstallment,
+  product: Product | undefined,
+  frequency: PaymentFrequency | null | undefined,
+  start?: unknown,
+): number | null => {
+  if (!isAutoCommissionProduct(product)) return null;
+  const datedYear = installment.commissionPeriod && autoCommissionPolicyYear({ policyStartDate: start }, installment.commissionPeriod);
+  if (datedYear) return datedYear;
+  const annualSchedule = isAnnualAutoPayoutProduct(product) ||
+    product === "uniqaAuto" || product === "uniqaflotila";
+  const schedule = installment.code
+    ? installmentCommissionScheduleFromCode(
+      normalizePayoutCode(installment.code, product), annualSchedule ? "annual" : frequency
+    )
+    : null;
+  if (schedule?.phase === "subsequent") return schedule.policyYearNumber;
+  return installment.anniversaryYears > 0 ? installment.anniversaryYears : null;
+};
+
 const payoutRecordsForCodes = (
   payouts: ContractCommissionPayout[],
   codes: string[],
-  product?: Product
+  product?: Product,
+  lifeEndorsement = false
 ): ContractCommissionPayout[] => {
-  const normalizedCodes = new Set(codes.map(code => normalizePayoutCode(code, product)).filter(Boolean));
+  const normalizeTarget = (value: string | null | undefined) => {
+    const code = normalizePayoutCode(value, product);
+    return lifeEndorsement ? normalizeLifeCommissionItemCode(code) : code;
+  };
+  const normalizedCodes = new Set(codes.map(normalizeTarget).filter(Boolean));
   if (normalizedCodes.size === 0) return [];
 
   return payouts.filter((payout) => {
     const payoutTargets = [
-      normalizePayoutCode(payout.code, product),
-      normalizePayoutCode(payout.key, product),
-      normalizePayoutCode(payout.title, product),
+      normalizeTarget(lifeEndorsement ? lifeIncreaseItemCode(payout.code) ?? payout.code : payout.code),
+      ...(!payout.statementCode ? [normalizePayoutCode(payout.key, product), normalizePayoutCode(payout.title, product)] : []),
     ].filter(Boolean);
 
     return payoutTargets.some((target) => normalizedCodes.has(target));
@@ -338,76 +385,48 @@ const payoutRecordsForCodes = (
 const payoutTargetsForInstallment = (installment: CommissionInstallment): string[] =>
   installment.code ? [installment.code, installment.key] : [installment.key];
 
-const payoutAmountsMatch = (
-  left: number | null | undefined,
-  right: number | null | undefined
-): boolean =>
-  Math.abs(validPayoutAmount(left) - validPayoutAmount(right)) <=
-  FULL_STORNO_OFFSET_TOLERANCE;
-
-const payoutRecordsCanOffset = (
-  payout: ContractCommissionPayout,
-  storno: ContractCommissionPayout,
-  product?: Product
-): boolean => {
-  const payoutCode = normalizePayoutCode(payout.code, product);
-  const stornoCode = normalizePayoutCode(storno.code, product);
-  if (payoutCode && stornoCode && payoutCode !== stornoCode) return false;
-
-  const payoutCareer = normalizePayoutCode(payout.career);
-  const stornoCareer = normalizePayoutCode(storno.career);
-  return !payoutCareer || !stornoCareer || payoutCareer === stornoCareer;
-};
-
-const fullyOffsetPayoutRecordIndexes = (
+const expectedAmountFromPayoutRecords = (
   records: ContractCommissionPayout[],
-  product?: Product
-): Set<number> => {
-  const pairedIndexes = new Set<number>();
+  product: Product | undefined,
+  codes: string[]
+): number | null => {
+  const neonRecurring = product === "neon" && codes.some(isNeonRecurringStatementCode);
+  if (!neonRecurring && !isAutoCommissionProduct(product)) return null;
 
-  records.forEach((storno, stornoIndex) => {
-    if (!isStornoPayoutRecord(storno) || pairedIndexes.has(stornoIndex)) return;
+  const activeRecords = activePayoutRecordsAfterFullStornos(records, product);
+  const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
+  const subsequent = codes.some((code) => isAutoSubsequentCommissionCode(normalizePayoutCode(code, product)));
+  const reassignedAcquisition = product === "cppAuto" && nonStornoRecords.every((record) =>
+    /^A10[2-4]$/.test(normalizePayoutCode(record.code, product)) &&
+    /^B10[1-3]$/.test(normalizePayoutCode(record.statementCode, product))
+  );
+  if (
+    (!neonRecurring && !subsequent && !reassignedAcquisition) || nonStornoRecords.length === 0 ||
+    nonStornoRecords.some((record) =>
+      typeof record.expectedAmount !== "number" || !Number.isFinite(record.expectedAmount) || record.expectedAmount < 0
+    )
+  ) {
+    return null;
+  }
 
-    const stornoAmount = Math.abs(validPayoutAmount(storno.amount));
-    if (stornoAmount <= 0) return;
-
-    const payoutIndex = records.findIndex(
-      (payout, index) =>
-        !pairedIndexes.has(index) &&
-        !isStornoPayoutRecord(payout) &&
-        validPayoutAmount(payout.amount) > 0 &&
-        payoutAmountsMatch(payout.amount, stornoAmount) &&
-        payoutRecordsCanOffset(payout, storno, product)
-    );
-    if (payoutIndex < 0) return;
-
-    pairedIndexes.add(payoutIndex);
-    pairedIndexes.add(stornoIndex);
-  });
-
-  return pairedIndexes;
-};
-
-const activePayoutRecordsAfterFullStornos = (
-  records: ContractCommissionPayout[],
-  product?: Product
-): ContractCommissionPayout[] => {
-  const offsetIndexes = fullyOffsetPayoutRecordIndexes(records, product);
-  if (offsetIndexes.size === 0) return records;
-  return records.filter((_, index) => !offsetIndexes.has(index));
+  const latestRecord = [...nonStornoRecords].sort(
+    (left, right) => payoutRecordSortValue(right) - payoutRecordSortValue(left)
+  )[0];
+  return latestRecord ? Math.round(latestRecord.expectedAmount! * 100) / 100 : null;
 };
 
 export const payoutStatusForCodes = (
   payouts: ContractCommissionPayout[],
   codes: string[],
   expectedAmount: number,
-  product?: Product
+  product?: Product,
+  lifeEndorsement = false
 ): {
   status: CommissionPayoutReadStatus;
   paidAmount: number;
   records: ContractCommissionPayout[];
 } => {
-  const records = payoutRecordsForCodes(payouts, codes, product);
+  const records = payoutRecordsForCodes(payouts, codes, product, lifeEndorsement);
   const activeRecords = activePayoutRecordsAfterFullStornos(records, product);
   const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
   const paidAmount = nonStornoRecords.reduce(
@@ -416,10 +435,17 @@ export const payoutStatusForCodes = (
   );
   const hasStorno = records.some(isStornoPayoutRecord);
   const displayRecords = nonStornoRecords.length > 0 ? activeRecords : records;
+  const recordedExpectedAmount = expectedAmountFromPayoutRecords(displayRecords, product, codes);
+  const comparisonExpectedAmount = recordedExpectedAmount ?? expectedAmount;
+  const hasRecordedDifference = nonStornoRecords.some((record) => record.status === "difference");
+
+  if (hasRecordedDifference) {
+    return { status: "difference", paidAmount, records: displayRecords };
+  }
 
   if (
     paidAmount > 0 &&
-    paidAmount >= Math.max(0, expectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)
+    paidAmount >= Math.max(0, comparisonExpectedAmount - COMMISSION_PAYOUT_AMOUNT_TOLERANCE)
   ) {
     return { status: "paid", paidAmount, records: displayRecords };
   }
@@ -437,8 +463,12 @@ const payoutStatusLabel = (
       return "Vyplaceno";
     case "partial":
       return `Částečně ${formatMoney(paidAmount)}`;
+    case "difference":
+      return "Rozdíl";
     case "storno":
       return "Storno";
+    case "cancelled":
+      return cancelledCommissionLabel;
     default:
       return "Čeká na zápis";
   }
@@ -450,6 +480,8 @@ const payoutStatusClass = (status: CommissionPayoutReadStatus): string => {
       return "border-emerald-200 bg-emerald-50 text-emerald-800";
     case "partial":
       return "border-amber-200 bg-amber-50 text-amber-900";
+    case "difference":
+      return "border-rose-200 bg-rose-50 text-rose-800";
     case "storno":
       return "border-rose-200 bg-rose-50 text-rose-800";
     default:
@@ -530,6 +562,8 @@ const payoutDifferenceAmountClass = (difference: number): string =>
 const payoutRowClass = (status: CommissionPayoutReadStatus): string =>
   status === "paid"
     ? "border-emerald-200 bg-emerald-50/80"
+    : status === "difference"
+      ? "border-rose-200 bg-rose-50/70"
     : status === "partial"
       ? "border-amber-200 bg-amber-50/70"
       : status === "storno"
@@ -571,6 +605,21 @@ const payoutRecordSortValue = (record: ContractCommissionPayout): number => {
   const writtenAt = Number(record.writtenAtMs);
   return Number.isFinite(writtenAt) ? writtenAt : 0;
 };
+
+type CommissionForecastRange = { minimum: number; maximum: number };
+
+const combinedForecastRange = (
+  ranges: CommissionForecastRange[]
+): CommissionForecastRange | null => ranges.length === 0
+  ? null
+  : {
+      minimum: Math.round(ranges.reduce((sum, range) => sum + range.minimum, 0) * 100) / 100,
+      maximum: Math.round(ranges.reduce((sum, range) => sum + range.maximum, 0) * 100) / 100,
+    };
+
+const formatCommissionForecastRange = (range: CommissionForecastRange): string =>
+  range.minimum === range.maximum ? formatMoney(range.minimum)
+    : `${formatMoney(range.minimum).replace(/\s*Kč$/, "")}–${formatMoney(range.maximum)}`;
 
 const payoutDifferenceReasonFromRecord = (
   record: ContractCommissionPayout
@@ -668,6 +717,8 @@ const anniversaryYearsForCommissionItem = (item: CommissionResultItemDTO): numbe
 
 type CommissionRowPlan = {
   amount: number;
+  originalPositionAmount?: number;
+  estimatedLatePayout?: boolean;
   state: ReturnType<typeof payoutStatusForCodes>;
   adjustment: ReturnType<ReturnType<typeof createEndorsementCommissionPlan>["adjust"]>;
 };
@@ -700,6 +751,7 @@ export function ContractCommissionSection({
   policyStartDate = null,
   commissionEntry = null,
   commissionTimeline = [],
+  consolidateNeonAmendments = false,
   onOpenStatement,
   statementPreviewLoadingId = null,
   adviserBreakdownPosition,
@@ -711,7 +763,7 @@ export function ContractCommissionSection({
   onToggleAdvisorDetails,
   onOpenNeonImmediateBreakdown,
 }: ContractCommissionSectionProps) {
-  const normalizedCommissionPayouts = commissionPayouts ?? [];
+  const [showPayoutSummary, setShowPayoutSummary] = useState(false);
   const normalizedViewerEmail = normalizeEmail(viewerEmail);
   const normalizedOwnerEmail = normalizeEmail(contractOwnerEmail);
   const trimmedCommissionWarning = commissionWarning?.trim() || null;
@@ -720,24 +772,108 @@ export function ContractCommissionSection({
     ? { ...commissionEntry, userEmail: commissionEntry.userEmail ?? normalizedOwnerEmail }
     : null;
   const commissionStart = policyStartDate ?? commissionEntry?.policyStartDate ?? commissionEntry?.contractSignedDate;
+  const today = new Date();
+  const todayDay = endorsementCommissionDay(today) ?? "";
+  const cancellation = contractLifecycleStatus(commissionEntry, today) === "storno"
+    ? { effectiveDate: endorsementCommissionDay(commissionEntry?.stornoDate) } : undefined;
+  const cancellationCutoff = cancellation && (cancellation.effectiveDate ?? todayDay);
+  const currentPolicyYear = isAutoCommissionProduct(product)
+    ? autoCommissionPolicyYear({ policyStartDate: commissionStart }, todayDay) : null;
+  const nextPolicyYear = currentPolicyYear === null ? null : currentPolicyYear + 1;
+  const normalizedCommissionPayouts = planEntry && paymentFrequency === "semiannual"
+    ? projectConfirmedCommissionCodes({ ...planEntry, productKey: product, frequencyRaw: paymentFrequency,
+      policyStartDate: commissionStart, items: adviserItems }, commissionPayouts ?? []) : commissionPayouts ?? [];
+  const amendmentEntries = consolidateNeonAmendments && planEntry ? uniqueFamilyCommissionReceipts(neonCommissionFamily(
+    { ...planEntry, commissionPayouts: normalizedCommissionPayouts }, commissionTimeline, normalizedOwnerEmail,
+  )) : [];
+  const hasNeonAmendments = amendmentEntries.length > 1;
+  const panelClass = hasNeonAmendments ? `${commissionPanelClass} ${styles.neonCommissionPanel}` : commissionPanelClass;
+  const neonAdjustments = (entry: ContractDoc, amount: number, payouts: ContractCommissionPayout[],
+    codes: string[], period: string | null) => {
+    if (product !== "neon" || entry.entryType === "endorsement" || !codes.some(code => isNeonPremiumIncreaseComponent(normalizePayoutCode(code, product)))) return [];
+    const receipts = payoutRecordsForCodes(payouts, codes, product);
+    const through = period && period > todayDay ? period : todayDay;
+    return premiumPlan.neonOpenCommissionAdjustments(entry, amount, through,
+      day => wasNeonCommissionSettledBefore(receipts, day, period));
+  };
   const projectCommissionRow = (
     amount: number,
     payouts: ContractCommissionPayout[],
     codes: string[],
     anniversaryYears = 0,
-    commissionPeriod?: string | null
+    commissionPeriod?: string | null,
+    own = false,
+    source?: ContractDoc,
   ): CommissionRowPlan => {
-    const state = payoutStatusForCodes(payouts, codes, amount, product);
+    const sourceEntry = source ?? planEntry;
+    const sourceStart = source?.policyStartDate ?? commissionStart;
+    const lifeEndorsement = sourceEntry?.entryType === "endorsement" &&
+      ["neon", "flexi", "maximaMaxEfekt"].includes(product ?? "");
+    const normalizedCodes = new Set(codes.map(code => normalizePayoutCode(code, product)).filter(Boolean));
+    const autoSubsequent = isAutoCommissionProduct(product) &&
+      [...normalizedCodes].some(isAutoSubsequentCommissionCode);
     const period = commissionPeriod === undefined
-      ? commissionPeriodAfterMonths(commissionStart, anniversaryYears * 12)
+      ? commissionPeriodAfterMonths(sourceStart, anniversaryYears * 12)
       : commissionPeriod;
-    const adjustment = planEntry && period && state.status !== "paid"
-      ? premiumPlan.adjust(planEntry, amount, period)
+    const frequencyRepriced = product !== "cppPPRs" && !autoSubsequent && Boolean(planEntry && period && autoFrequencyCommissionMultiplier(planEntry, period) !== 1);
+    const correction = sourceEntry?.productKey === "neon" && sourceEntry.neonCorrection;
+    if (correction && sourceEntry && period) {
+      const settled = payoutStatusForCodes(payouts, codes, 0, product, lifeEndorsement).records
+        .find(record => !isStornoPayoutRecord(record) && validPayoutAmount(record.amount) > 0);
+      const policyPeriod = toDate(period);
+      const start = commissionPeriodAfterMonths(sourceStart, 0);
+      const signed = toDate(sourceEntry.contractSignedDate);
+      const planned = policyPeriod && (period === start && signed
+        ? estimateLifeFirstPayoutDate(policyPeriod, signed, "neon") : estimatePayoutDate(policyPeriod));
+      const reportPeriod = settled?.statementPeriod ?? (planned ? neonExpectedStatementMonth(planned) : null);
+      amount = neonCorrectionPayoutAmount(sourceEntry, amount, reportPeriod);
+    }
+    const neonAdjustment = sourceEntry ? neonAdjustments(sourceEntry, amount, payouts, codes, period).at(-1) : undefined;
+    // Compare with the corrected plan while retaining the original receipts.
+    const comparablePayouts = frequencyRepriced || correction || neonAdjustment
+      ? payoutRecordsForCodes(payouts, codes, product, lifeEndorsement).map(record => {
+        const staleAmountComparison = record.status === "difference" &&
+          (!record.differenceReason || record.differenceReason === "commission_amount_mismatch");
+        const rebasedComparison = neonAdjustment && !isStornoPayoutRecord(record) && record.differenceReason !== "career_mismatch";
+        return { ...record, expectedAmount: undefined, difference: undefined,
+          ...(staleAmountComparison || rebasedComparison ? { status: undefined, differenceReason: null, detail: null } : {}) };
+      }) : payouts;
+    const state = payoutStatusForCodes(comparablePayouts, codes, autoSubsequent ? 0 : neonAdjustment?.amount ?? amount, product, lifeEndorsement);
+    if (cancellationCutoff && state.status === "pending" && state.records.length === 0) {
+      const scheduledPeriod = commissionPeriod === undefined && anniversaryYears === 0
+        ? codes.map(code => commissionPeriodForCode({ ...sourceEntry, productKey: product,
+          frequencyRaw: sourceEntry?.frequencyRaw ?? paymentFrequency, policyStartDate: sourceStart }, code)).find(Boolean) ?? period
+        : period;
+      if (scheduledPeriod && scheduledPeriod >= cancellationCutoff) {
+        return { amount, state: { ...state, status: "cancelled" }, adjustment: null };
+      }
+    }
+    if (neonAdjustment) return { amount: neonAdjustment.amount, state, adjustment: neonAdjustment };
+    if (autoSubsequent) {
+      state.status = state.paidAmount > 0 ? "paid" : state.status === "storno" ? "storno" : "pending";
+    }
+    const recordedExpectedAmount = autoSubsequent ? null : expectedAmountFromPayoutRecords(state.records, product, codes);
+    if (recordedExpectedAmount != null) {
+      return { amount: recordedExpectedAmount, state, adjustment: null };
+    }
+
+    const adjustment = state.status !== "paid" && !autoSubsequent && sourceEntry && period
+      ? premiumPlan.adjust(sourceEntry, amount, period)
       : null;
+    const revised = own && !source && period && state.status === "pending" && state.records.length === 0
+      ? revisedPayouts.filter(payout => payout.commissionPeriodStart === period &&
+        [payout.commissionCode, ...(payout.commissionCodeAliases ?? [])]
+          .some(code => normalizedCodes.has(normalizePayoutCode(code, product))))
+      : [];
+    if (revised.length === 1) {
+      const payout = revised[0];
+      return { amount: payout.amount, originalPositionAmount: payout.originalPositionAmount,
+        estimatedLatePayout: payout.repricedAmountIfShifted != null, state, adjustment };
+    }
     const expectedAmount = adjustment?.amount ?? amount;
     return {
       amount: expectedAmount,
-      state: adjustment ? payoutStatusForCodes(payouts, codes, expectedAmount, product) : state,
+      state: adjustment ? payoutStatusForCodes(comparablePayouts, codes, expectedAmount, product, lifeEndorsement) : state,
       adjustment,
     };
   };
@@ -751,34 +887,87 @@ export function ContractCommissionSection({
       </span>
     );
   };
-  const renderPaidRemainder = (plan: CommissionRowPlan) => plan.adjustment && plan.state.paidAmount > 0 ? (
-    <span className="block text-xs font-medium text-slate-500">
-      Z výpisů {formatMoney(plan.state.paidAmount)}
-      {plan.state.status === "partial" ? ` · zbývá ${formatMoney(Math.max(0, plan.amount - plan.state.paidAmount))}` : ""}
-    </span>
-  ) : null;
-  const payoutsForRecurringInstallment = (payouts: ContractCommissionPayout[], installment: CommissionInstallment) =>
-    !installment.requirePeriodMatch ? payouts : payouts.filter((record) => planEntry &&
-      commissionPeriodForCode(planEntry, record.code || record.key || record.title) === installment.commissionPeriod);
-  const recurringInstallmentsForItem = (
-    item: CommissionResultItemDTO,
-    payouts: ContractCommissionPayout[]
-  ): CommissionInstallment[] => {
-    const existing = recurringInstallmentsForCommissionItem(item, product, contractDurationYears);
-    if (existing.length > 0 || !planEntry || !commissionTimeline.some((entry) => entry.changeType === "decrease" ||
-      (typeof entry.premiumDelta === "number" && entry.premiumDelta < 0)) ||
-      !/následná|pečovatelská/i.test(item.title)) return existing;
-    // Reuse the original schedule so payment intervals and policy ages agree
-    // with cashflow; the projection below applies the premium change once.
+  const renderPositionBadges = (records: ContractCommissionPayout[], own: boolean) => {
+    if (!own || !planEntry || !payoutPositionException(planEntry, "2026-01")) return null;
+    const original = planEntry.originalPosition ?? planEntry.position;
+    const positions = new Set<Position>();
+    for (const record of records) {
+      const level = Number(record.career?.match(/\d+/)?.[0]);
+      if (level >= 1 && level <= 10) {
+        positions.add(`poradce${level}` as Position);
+      } else {
+        const month = payoutExceptionStatementMonth(record.statementPeriod, record.payoutMonthKey ?? null);
+        if (month && original) positions.add(payoutPositionException(planEntry, month) ?? original);
+      }
+    }
+    if (!records.length && original) positions.add(original);
+    return [...positions].map(position => <CommissionPositionBadge key={position} position={position} />);
+  };
+  const renderCommissionAmounts = (plan: CommissionRowPlan, own: boolean) => {
+    if (plan.state.status === "cancelled") return null;
+    const hasRecordedPayment = plan.state.status !== "storno" && plan.state.records.some((record) =>
+      !isStornoPayoutRecord(record) && typeof record.amount === "number" && Number.isFinite(record.amount)
+    );
+    const remainingAmount = plan.state.status === "partial" ? formatMoney(Math.max(0, plan.amount - plan.state.paidAmount)) : null;
+    return (
+      <>
+        <span>{hasRecordedPayment || hasNeonAmendments ? "Očekáváno " : ""}{formatMoney(plan.amount)}</span>
+        {plan.originalPositionAmount == null ? renderPositionBadges(plan.state.records, own) : (
+          <>
+            <CommissionPositionBadge position={PAYOUT_EXCEPTION_POSITION} />
+            {plan.estimatedLatePayout && (
+              <span className="whitespace-normal text-xs font-medium text-slate-600">Odhad při výplatě od ledna 2026</span>
+            )}
+            <details className="max-w-full whitespace-normal text-xs font-medium text-slate-600">
+              <summary className="inline-flex cursor-pointer items-center gap-1">
+                <Info size={13} aria-hidden="true" /> Porovnat výpočet
+              </summary>
+              <div>Původní výpočet · {positionLabel(planEntry?.originalPosition ?? planEntry?.position)} · {formatMoney(plan.originalPositionAmount)}</div>
+              <div>Aktuální výpočet · Poradce 10 · {formatMoney(plan.amount)}</div>
+            </details>
+          </>
+        )}
+        {hasRecordedPayment && (
+          <>
+            <span className="block text-xs font-medium text-slate-600">
+              {plan.adjustment && !hasNeonAmendments ? "Z výpisů" : "Vyplaceno"} {formatMoney(plan.state.paidAmount)}
+              {plan.adjustment && !hasNeonAmendments && remainingAmount
+                ? ` · zbývá ${remainingAmount}`
+                : ""}
+            </span>
+            {hasNeonAmendments && remainingAmount && (
+              <span className="text-xs font-medium text-amber-800">
+                Zbývá {remainingAmount}
+              </span>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+  const payoutsForRecurringInstallment = (payouts: ContractCommissionPayout[], installment: CommissionInstallment, entry: ContractDoc | null = planEntry) =>
+    !installment.requirePeriodMatch ? payouts : payouts.filter((record) => entry &&
+      commissionPeriodForCode(entry, record.code || record.key || record.title) === installment.commissionPeriod);
+  const recurringInstallmentsForItem = (item: CommissionResultItemDTO, source?: ContractDoc): CommissionInstallment[] => {
+    const entry = source ?? planEntry;
+    const duration = source?.durationYears ?? contractDurationYears;
+    const existing = recurringInstallmentsForCommissionItem(item, product, duration);
+    if (existing.length > 0 || !entry || !/následná|pečovatelská/i.test(item.title)) return existing;
+    // Use the cashflow schedule so generic subsequent commissions expose the
+    // same B codes and payment periods as the forecast. The projection below
+    // applies premium changes to each installment exactly once.
     const schedule = generateCashflow([{
-      ...planEntry, items: [item], commissionPayouts: [], cashflowPayoutMatches: [], source: "own",
-    }], Math.min(80, Math.max(10, contractDurationYears ?? 10)), normalizedOwnerEmail, new Date(), []);
+      ...entry, payoutPositionOverride: null, neonCorrection: null, items: [item], commissionPayouts: [], cashflowPayoutMatches: [], source: "own",
+    }], Math.min(80, Math.max(10, duration ?? 10)), normalizedOwnerEmail, new Date(), []);
+    let subsequentIndex = 0;
     const installments = schedule.flatMap((scheduled): CommissionInstallment[] => {
-      const period = scheduled.commissionPeriodStart ?? commissionPeriodForCode(planEntry, scheduled.commissionCode);
+      const code = normalizePayoutCode(scheduled.commissionCode, product);
+      if (!/^B(?:C)?\d+$/.test(code)) return [];
+      const period = scheduled.commissionPeriodStart ?? commissionPeriodForCode(entry, scheduled.commissionCode);
       return !period ? [] : [{
-        key: `period-${period}-${scheduled.commissionCode ?? ""}`,
-        code: scheduled.commissionCode ?? null,
-        label: formatDate(period), amount: scheduled.amount, anniversaryYears: 0, commissionPeriod: period,
+        key: `period-${period}-${code}`,
+        code,
+        label: `${++subsequentIndex}. splátka`, amount: scheduled.amount, anniversaryYears: 0, commissionPeriod: period,
       }];
     });
     const codeCounts = new Map<string, number>();
@@ -789,39 +978,117 @@ export function ContractCommissionSection({
     installments.forEach((installment) => {
       installment.requirePeriodMatch = (codeCounts.get(normalizePayoutCode(installment.code)) ?? 0) > 1;
     });
-    return installments.some((installment) => projectCommissionRow(
-      installment.amount, payoutsForRecurringInstallment(payouts, installment), payoutTargetsForInstallment(installment), 0, installment.commissionPeriod
-    ).adjustment) ? installments : existing;
+    return installments;
   };
+  const isAutoSubsequentInstallment = (installment: CommissionInstallment): boolean =>
+    isAutoCommissionProduct(product) &&
+    Boolean(installment.code && isAutoSubsequentCommissionCode(normalizePayoutCode(installment.code, product)));
+  const autoForecastCache = new WeakMap<ContractCommissionPayout[], WeakMap<CommissionResultItemDTO[], ReturnType<typeof createAutoCommissionForecast>>>();
+  const autoProjection = (payouts: ContractCommissionPayout[], items: CommissionResultItemDTO[]) => {
+    let byItems = autoForecastCache.get(payouts);
+    if (!byItems) { byItems = new WeakMap(); autoForecastCache.set(payouts, byItems); }
+    let forecast = byItems.get(items);
+    if (!forecast) {
+      const subsequent = items.find(item => /následná|pečovatelská/i.test(item.title));
+      forecast = createAutoCommissionForecast({ ...planEntry, productKey: product, frequencyRaw: paymentFrequency,
+        policyStartDate: commissionStart, items, source: items === adviserItems ? "own" : "manager" }, payouts, subsequent?.amount);
+      byItems.set(items, forecast);
+    }
+    return forecast;
+  };
+  const forecastForInstallment = (
+    installment: CommissionInstallment,
+    payouts: ContractCommissionPayout[],
+    state: ReturnType<typeof payoutStatusForCodes>,
+    items: CommissionResultItemDTO[],
+  ): AutoCommissionForecast | null => {
+    if (!installment.code || state.status !== "pending" || !installment.commissionPeriod) return null;
+    const projection = autoProjection(payouts, items);
+    const estimate = projection.forPeriod(installment.code, installment.commissionPeriod);
+    return estimate?.basis === "premiumChange" || projection.inForecastYear(installment.commissionPeriod)
+      ? estimate : null;
+  };
+
   const commissionSummary = (
     items: CommissionResultItemDTO[], payouts: ContractCommissionPayout[],
-    originalTotal: number, paymentTotals: { immediate: number; subsequent: number } | null
+    originalTotal: number, paymentTotals: { immediate: number; subsequent: number } | null,
+    own = false, source?: ContractDoc, comparison?: { plans: CommissionPayoutComparison[]; records: Set<ContractCommissionPayout> },
   ) => {
+    const recordPlan = (title: string, codes: string[], amount: number | null, records: ContractCommissionPayout[]) => {
+      if (!comparison) return;
+      const code = codes.map(code => normalizePayoutCode(code, product)).find(Boolean) ?? "";
+      const position = source?.position ?? adviserBreakdownPosition ?? planEntry?.position;
+      const supplement = code && source && premiumPlan.neonRecurringRootId(source);
+      comparison.plans.push({ title: supplement ? `Doplatek za navýšení ${code}` : title, code, expected: amount,
+        position: position ? positionLabel(position) : null,
+        records, note: source ? `Dodatek od ${formatDate(source.policyStartDate)}` : undefined });
+    };
     const hasSplitImmediate = isSplitImmediateProduct(product) && items.some((item) => isSplitImmediateComponentTitle(item.title));
     let totalDelta = 0;
     let immediateDelta = 0;
     const annualSubsequentDeltas = new Map<number, number>();
     const annualSubsequentCounts = new Map<number, number>();
+    const autoForecastRanges: CommissionForecastRange[] = [];
+    let hasCurrentAutoInstallment = false;
+    let hasUnforecastableCurrentInstallment = false;
     for (const item of items) {
       const isSubsequent = /následná|pečovatelská/i.test(item.title);
       if ((item.excludeFromTotal && !(paymentTotals && isSubsequent)) ||
         (hasSplitImmediate && isLegacyImmediateTotalTitle(item.title))) continue;
       const amount = validPayoutAmount(item.amount);
-      const acquisition = acquisitionCommissionInstallments({ item, product, frequency: paymentFrequency, policyStartDate });
+      const acquisition = acquisitionCommissionInstallments({ item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
+        policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges });
       if (acquisition.length > 0) {
-        const delta = acquisition.reduce((sum, installment, index) => sum + projectCommissionRow(
-          installment.amount, payoutsForAcquisitionInstallment(payouts, installment), installment.codes, 0,
-          commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual")))
-        ).amount - installment.amount, 0);
+        const projected = commissionEntry?.paymentFrequencyChanges?.length ? payouts : projectAcquisitionInstallmentReceipts(payouts, acquisition);
+        if (comparison && projected !== payouts) {
+          for (const record of payouts) comparison.records.delete(record);
+          for (const record of projected) comparison.records.add(record);
+        }
+        const delta = acquisition.reduce((sum, installment, index) => {
+          const records = payoutsForAcquisitionInstallment(projected, installment);
+          const plan = projectCommissionRow(installment.amount, records, installment.codes, 0,
+            installment.commissionPeriod ?? commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual"))),
+            own);
+          recordPlan(`Získatelská provize · ${installment.label}`, [installment.code], plan.amount, records);
+          return sum + plan.amount - installment.amount;
+        }, 0);
         immediateDelta += delta;
         totalDelta += delta;
         continue;
       }
-      const recurring = recurringInstallmentsForItem(item, payouts);
+      const recurring = recurringInstallmentsForItem(item, source);
       if (recurring.length > 0) {
         recurring.forEach((installment) => {
-          const delta = projectCommissionRow(installment.amount, payoutsForRecurringInstallment(payouts, installment), payoutTargetsForInstallment(installment),
-            installment.anniversaryYears, installment.commissionPeriod).amount - installment.amount;
+          const installmentPayouts = payoutsForRecurringInstallment(payouts, installment, source ?? planEntry);
+          const installmentPlan = projectCommissionRow(
+            installment.amount, installmentPayouts, payoutTargetsForInstallment(installment),
+            installment.anniversaryYears, installment.commissionPeriod, own, source
+          );
+          if (comparison) {
+            const codes = payoutTargetsForInstallment(installment);
+            const records = payoutRecordsForCodes(installmentPayouts, codes, product, source?.entryType === "endorsement");
+            const recordsBeforeStorno = cancellation
+              ? records.filter(record => !contractStornoDeductionKind(record, cancellation.effectiveDate)) : records;
+            const expected = isAutoSubsequentInstallment(installment)
+              ? expectedAmountFromPayoutRecords(recordsBeforeStorno, product, codes) : installmentPlan.amount;
+            recordPlan(`${cleanResultTitle(item.title)} · ${installment.label}`, codes, expected, records);
+          }
+          const delta = installmentPlan.amount - installment.amount;
+          const installmentState = installmentPlan.state;
+          const isCurrent = currentPolicyYear !== null && isAutoSubsequentInstallment(installment) &&
+            policyYearForAutoInstallment(installment, product, paymentFrequency, commissionStart) === currentPolicyYear;
+          hasCurrentAutoInstallment ||= isCurrent;
+          if (
+            isCurrent &&
+            installmentState.status === "pending" &&
+            installment.code !== autoProjection(payouts, items).coverage.coveredCode
+          ) {
+            const range = installmentPlan.originalPositionAmount != null
+              ? { minimum: installmentPlan.amount, maximum: installmentPlan.amount }
+              : forecastForInstallment(installment, payouts, installmentState, items);
+            if (range) autoForecastRanges.push(range);
+            else hasUnforecastableCurrentInstallment = true;
+          }
           if (paymentTotals && installment.commissionPeriod) {
             const start = commissionPeriodAfterMonths(commissionStart, 0);
             if (start) {
@@ -835,7 +1102,14 @@ export function ContractCommissionSection({
         });
         continue;
       }
-      const delta = projectCommissionRow(amount, payouts, payoutCodesForCommissionItem(item, product), anniversaryYearsForCommissionItem(item)).amount - amount;
+      const codes = payoutCodesForCommissionItem(item, product);
+      const plan = projectCommissionRow(amount, payouts, codes, anniversaryYearsForCommissionItem(item), undefined, own, source);
+      if (comparison) {
+        const lifeEndorsement = (source ?? planEntry)?.entryType === "endorsement" &&
+          ["neon", "flexi", "maximaMaxEfekt"].includes(product ?? "");
+        recordPlan(cleanResultTitle(item.title), codes, plan.amount, payoutRecordsForCodes(payouts, codes, product, lifeEndorsement));
+      }
+      const delta = plan.amount - amount;
       totalDelta += delta;
       if (!isSubsequent) immediateDelta += delta;
     }
@@ -844,10 +1118,15 @@ export function ContractCommissionSection({
         annualSubsequentCounts.get(year) === periodsPerYear(paymentFrequency ?? "annual")
       ).map(([, delta]) => ({ amount: paymentTotals.subsequent + delta }))
       : [];
+    const autoForecastTotal = combinedForecastRange(autoForecastRanges);
     return {
       total: originalTotal + totalDelta,
       immediate: (paymentTotals?.immediate ?? 0) + immediateDelta,
-      subsequent: installmentAmountLabel(annualAmounts, paymentTotals?.subsequent ?? 0),
+      subsequent: isAutoCommissionProduct(product)
+        ? hasCurrentAutoInstallment && !hasUnforecastableCurrentInstallment
+          ? autoForecastTotal ? formatCommissionForecastRange(autoForecastTotal) : formatMoney(0)
+          : "— Kč"
+        : installmentAmountLabel(annualAmounts, paymentTotals?.subsequent ?? 0),
     };
   };
   const [payoutDifferenceExplanation, setPayoutDifferenceExplanation] =
@@ -872,10 +1151,11 @@ export function ContractCommissionSection({
 
   const payoutsForWriter = (
     writerEmail: string | null | undefined,
-    includeLegacyWithoutWriter = false
+    includeLegacyWithoutWriter = false,
+    payouts = amendmentEntries[0]?.commissionPayouts ?? normalizedCommissionPayouts,
   ): ContractCommissionPayout[] => {
     const normalizedWriter = normalizeEmail(writerEmail);
-    return normalizedCommissionPayouts.filter((payout) => {
+    return payouts.filter((payout) => {
       const writtenBy = normalizeEmail(payout.writtenBy);
       if (writtenBy) return normalizedWriter ? writtenBy === normalizedWriter : false;
       return includeLegacyWithoutWriter;
@@ -886,14 +1166,87 @@ export function ContractCommissionSection({
     normalizedOwnerEmail,
     isOwnContract
   );
-  const adviserSummary = commissionSummary(adviserItems, adviserPayouts, adviserTotalDisplay, paymentBasedAdviserTotals);
+  const exceptionEntry = isOwnContract && planEntry && payoutPositionException(planEntry, "2026-01")
+    ? { ...planEntry, source: "own" as const, items: adviserItems, commissionPayouts: adviserPayouts }
+    : null;
+  const currentPayoutPosition = exceptionEntry && payoutPositionException(exceptionEntry, endorsementCommissionDay(today)?.slice(0, 7) ?? null);
+  const scheduleHorizon = Math.min(80, Math.max(10, contractDurationYears ?? 10));
+  const revisedPayouts = exceptionEntry
+    ? applyAutoCommissionForecasts(
+      generateCashflow([exceptionEntry], scheduleHorizon, normalizedViewerEmail, today, commissionTimeline), [exceptionEntry], normalizedViewerEmail
+    )
+      .flatMap(payout => {
+        if (payout.originalPositionAmount != null) return [payout];
+        // The position for an overdue payout follows its expected payment date.
+        if (currentPayoutPosition && payout.repricedAmountIfShifted != null) {
+          return [{ ...payout, originalPositionAmount: payout.amount, amount: payout.repricedAmountIfShifted }];
+        }
+        return [];
+      })
+      .sort((first, second) => first.date.getTime() - second.date.getTime())
+    : [];
+  const amendmentsFor = (writer: string, rootItems: CommissionResultItemDTO[], adviser: boolean) => {
+    if (!planEntry || !hasNeonAmendments || (!adviser && writer !== normalizedViewerEmail)) return [];
+    const canReadReceipts = writer === normalizedViewerEmail;
+    const includeLegacyReceipts = adviser && isOwnContract;
+    const rootPayouts = payoutsForWriter(writer, includeLegacyReceipts);
+    const adjustmentsByAmendment = new Map<string, Set<string>>();
+    for (const item of rootItems) {
+      const codes = payoutCodesForCommissionItem(item, product);
+      const period = commissionPeriodAfterMonths(commissionStart, anniversaryYearsForCommissionItem(item) * 12);
+      for (const adjustment of neonAdjustments(planEntry, item.amount, rootPayouts, codes, period)) {
+        const rebased = adjustmentsByAmendment.get(adjustment.endorsementEntryId) ?? new Set<string>();
+        for (const code of codes) rebased.add(normalizeLifeCommissionItemCode(code));
+        adjustmentsByAmendment.set(adjustment.endorsementEntryId, rebased);
+      }
+    }
+    const rootRecurringCodes = new Set(rootItems.filter(item => item.amount > 0).flatMap(item =>
+      recurringInstallmentsForCommissionItem(item, "neon", contractDurationYears).map(installment => installment.code)));
+    const amendments = amendmentEntries.slice(1);
+    const increases = amendments.filter(entry => premiumPlan.neonRecurringRootId(entry));
+    return amendments.flatMap(entry => {
+      const override = adviser ? null : entry.managerOverrides?.find(row => normalizeEmail(row.email) === writer);
+      const payoutRows = canReadReceipts ? payoutsForWriter(writer, includeLegacyReceipts, entry.commissionPayouts ?? []) : [];
+      const isIncrease = increases.includes(entry);
+      if (canReadReceipts && isIncrease) {
+        payoutRows.push(...rootPayouts.filter(payout => neonEndorsementForOriginalPayout(payout, increases) === entry));
+      }
+      const sourceItems = stripTotalRows((adviser ? entry.items : override?.items) ?? []);
+      const hasSplitImmediate = sourceItems.some(item => isSplitImmediateComponentTitle(item.title));
+      const rebased = adjustmentsByAmendment.get(entry.id);
+      const items = sourceItems.filter(item => {
+        if (hasSplitImmediate && isLegacyImmediateTotalTitle(item.title)) return false;
+        if (rebased && payoutCodesForCommissionItem(item, product).some(code => rebased.has(normalizeLifeCommissionItemCode(code)))) return false;
+        if (!isIncrease) return true;
+        const installments = recurringInstallmentsForCommissionItem(item, "neon", entry.durationYears);
+        return installments.length === 0 || !installments.every(installment => rootRecurringCodes.has(installment.code));
+      });
+      const paidRebased = rebased ? payoutRows.filter(payout => {
+        const code = lifeIncreaseItemCode(payout.statementCode ?? payout.code);
+        return code != null && rebased.has(code);
+      }).sort((a, b) => (commissionStatementDay(a) ?? "").localeCompare(commissionStatementDay(b) ?? "")) : [];
+      if (!items.length && !payoutRows.length) return [];
+      const position = adviser ? entry.position : override?.position;
+      const mode = adviser ? entry.commissionMode : override?.commissionMode;
+      return [{ entry, items, sourceItems, payoutRows, paidRebased, position, mode }];
+    });
+  };
+  const adviserAmendments = amendmentsFor(normalizedOwnerEmail, adviserItems, true);
+  type CommissionAmendment = (typeof adviserAmendments)[number];
+  type AmendmentLine = { key: string; source: CommissionAmendment } & (
+    { kind: "planned"; item: CommissionResultItemDTO } | { kind: "receipt"; payout: ContractCommissionPayout }
+  );
+  const subsequentTotalLabel = isAutoCommissionProduct(product)
+    ? "Zbývá v aktuálním pojistném roce"
+    : "Celkem následně ročně";
 
   const renderPayoutStatusChip = (
     status: CommissionPayoutReadStatus,
     paidAmount: number,
     expectedAmount: number,
     records: ContractCommissionPayout[],
-    adjusted = false
+    adjusted = false,
+    showStatus = true
   ) => {
     const adjustedDifference = paidAmount - expectedAmount;
     const differenceAmount = adjusted
@@ -906,18 +1259,20 @@ export function ContractCommissionSection({
       records,
     });
     const stornoAmount = stornoPayoutAmountFromRecords(records);
+    const showsSameShortfall = hasNeonAmendments && status === "partial" &&
+      differenceAmount === Math.round(adjustedDifference * 100) / 100;
 
     return (
       <>
-        <span className={`${styles.status} ${payoutStatusClass(status)}`}>
+        {showStatus && !(hasNeonAmendments && (status === "partial" || status === "paid")) && <span className={`${styles.status} ${payoutStatusClass(status)}`}>
           {adjusted && expectedAmount === 0 && paidAmount === 0 ? "Bez nároku" : payoutStatusLabel(status, paidAmount)}
-        </span>
+        </span>}
         {stornoAmount !== null && (
           <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-800">
             Storno {formatSignedMoney(stornoAmount)}
           </span>
         )}
-        {differenceAmount !== null && (
+        {differenceAmount !== null && !showsSameShortfall && (
           <span
             className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${payoutDifferenceAmountClass(differenceAmount)}`}
           >
@@ -928,16 +1283,18 @@ export function ContractCommissionSection({
     );
   };
 
-  const renderPayoutRecordHint = (records: ContractCommissionPayout[]) => {
+  const renderPayoutRecordHint = (sourceRecords: ContractCommissionPayout[], autoRenewal = false, showSourceLabel = true) => {
+    const records = autoRenewal ? sourceRecords.map(record => record.differenceReason === "career_mismatch" || isStornoPayoutRecord(record)
+      ? record : { ...record, expectedAmount: undefined, difference: undefined, differenceReason: null, detail: null, status: "paid" }) : sourceRecords;
     const importantRecord = importantPayoutRecord(records);
     const label = payoutRecordLabel(importantRecord) ?? latestPayoutRecordLabel(records);
     const reason = importantRecord ? payoutDifferenceReasonFromRecord(importantRecord) : null;
     const explanation = payoutExplanationForRecords(records);
-    if (!label && !reason) return null;
+    if (!(showSourceLabel && label) && !reason) return null;
 
     return (
       <span className="mt-1 block">
-        {label && (
+        {showSourceLabel && label && (
           <span className="block text-[11px] font-medium text-slate-500">
             Zapsáno z {label}
           </span>
@@ -979,16 +1336,153 @@ export function ContractCommissionSection({
     );
   };
 
+  const renderCodeCorrectionNotes = (records: ContractCommissionPayout[]) => {
+    const notes = new Set(records.flatMap(record => record.commissionCodeCorrectionNote ? [record.commissionCodeCorrectionNote] : []));
+    return [...notes].map(note => <span key={note} className="mt-1 block text-xs font-medium text-sky-700">{note}</span>);
+  };
+  const renderInstallmentSources = (records: ContractCommissionPayout[], codes: string[], label: string) => {
+    const sources = Array.from(new Map(records
+      .filter(record => record.statementId || payoutRecordLabel(record))
+      .map(record => [record.statementId || payoutRecordLabel(record)!, record])).values());
+    if (!sources.length) return null;
+    return (
+      <span className={styles.installmentSources}>
+        {sources.map(record => {
+          const canOpen = onOpenStatement && record.statementId &&
+            (!normalizeEmail(record.writtenBy) || normalizeEmail(record.writtenBy) === normalizedViewerEmail);
+          const sourceLabel = `Výpis ${record.statementNumber || "– náhled"}`;
+          return (
+            <span key={record.statementId || payoutRecordLabel(record)} className={styles.installmentSource}>
+              {canOpen ? (
+                <button type="button" className={styles.sourceButton}
+                  disabled={statementPreviewLoadingId === record.statementId}
+                  onClick={() => onOpenStatement(record.statementId!, record.statementCode ? [record.statementCode] : record.installmentSourceCode ? [record.installmentSourceCode] : record.code ? [record.code] : codes)}
+                  aria-label={`Otevřít zdrojový výpis ${record.statementNumber || ""} pro ${label}`}>
+                  <Eye size={12} aria-hidden="true" />
+                  {statementPreviewLoadingId === record.statementId ? "Načítám…" : sourceLabel}
+                </button>
+              ) : <span className={styles.sourceReference}>{sourceLabel}</span>}
+              {(record.statementPeriod || record.statementDate) && (
+                <span className={styles.sourcePeriod}>{record.statementPeriod || record.statementDate}</span>
+              )}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
+
+  const renderAmendmentOrigin = (entry: ContractDoc) => (
+    <a className={styles.amendmentOrigin} href={`#contract-entry-${entry.id}`}>Dodatek od {formatDate(entry.policyStartDate)}</a>
+  );
+
+  const renderAmendmentReceipt = (line: Extract<AmendmentLine, { kind: "receipt" }>) => {
+    const { payout, source } = line;
+    const code = payout.statementCode ?? payout.code ?? "";
+    const component = lifeIncreaseItemCode(code) ?? code;
+    const storno = isStornoPayoutRecord(payout);
+    const includedAmount = lifeIncreaseExpectedAmount(source.sourceItems, [code]);
+    return (
+      <CommissionComparisonRow key={line.key} title={`Doplatek za navýšení ${component}`} statementCode={code}
+        supplement includedIn={component} expected={0} paid={validPayoutAmount(payout.amount)} storno={storno}>
+        {includedAmount !== null && <span>Část provize {component} za navýšení pojistného činí <strong>{formatMoney(includedAmount)}</strong>.</span>}
+        <span>Očekávaná provize {component} už zahrnuje celé nové pojistné. Samostatný doplatek má proto v plánu hodnotu 0 Kč.</span>
+        {renderAmendmentOrigin(source.entry)}
+        {renderInstallmentSources([payout], [code], code)}
+      </CommissionComparisonRow>
+    );
+  };
+
+  const renderNeonComparison = (
+    item: CommissionResultItemDTO, plan: CommissionRowPlan, key: string, codes: string[],
+    source?: ContractDoc, installmentTitle?: string, extraDetail?: ReactNode,
+  ) => {
+    const { state } = plan;
+    const increaseCodes = [...new Set(state.records.map(row => row.statementCode ?? row.code ?? "").filter(isLifeIncreaseCode))];
+    const component = lifeIncreaseItemCode(increaseCodes[0]) ?? item.code ?? codes[0];
+    const supplement = Boolean(source && premiumPlan.neonRecurringRootId(source) && component);
+    const baseTitle = installmentTitle ?? cleanResultTitle(item.title);
+    const title = supplement ? `Doplatek za navýšení ${component}${/po \d+ letech/i.test(baseTitle) ? ` · ${baseTitle}` : ""}`
+      : component && !baseTitle.includes(component) ? `${baseTitle} · ${component}` : baseTitle;
+    const storno = state.status === "storno";
+    const hasPayment = state.records.some(record => !isStornoPayoutRecord(record) && Number.isFinite(record.amount));
+    const note = displayNoteForCommissionItem(item);
+    const reversedAmount = stornoPayoutAmountFromRecords(state.records);
+    return (
+      <CommissionComparisonRow key={key} title={title} statementCode={increaseCodes.join(", ")} expected={plan.amount}
+        paid={storno ? reversedAmount ?? 0 : hasPayment ? state.paidAmount : null}
+        cancellationStatus={state.status === "cancelled" ? cancelledCommissionLabel : undefined}
+        storno={storno} flagged={state.status === "difference"} supplement={supplement}>
+        {source && renderAmendmentOrigin(source)}
+        {supplement && source?.premiumDelta != null && <span>Navýšení pojistného o {formatMoney(source.premiumDelta)} měsíčně.</span>}
+        {renderPremiumAdjustment(plan)}
+        {plan.adjustment && <span>Po přepočtu podle pojistného činí očekávaná provize {formatMoney(plan.amount)}.</span>}
+        {state.status === "paid" && hasPayment && Math.abs(state.paidAmount - plan.amount) > 0.005 &&
+          Math.abs(state.paidAmount - plan.amount) <= COMMISSION_PAYOUT_AMOUNT_TOLERANCE && (
+          <span>Výplata je v toleranci {formatMoney(COMMISSION_PAYOUT_AMOUNT_TOLERANCE)}.</span>
+        )}
+        {reversedAmount !== null && !storno && <span>Storno {formatSignedMoney(reversedAmount)}</span>}
+        {hasPayment && !storno && <span>Rozdíl mezi výplatou a plánem <strong>{formatSignedMoney(state.paidAmount - plan.amount)}</strong></span>}
+        {renderInstallmentSources(state.records, codes, title)}
+        {renderPayoutRecordHint(state.records, false, false)}
+        {note && <span>{note}</span>}
+        {state.status === "pending" && !state.records.length && <span>Výplata zatím není zapsaná ve výpisu.</span>}
+        {extraDetail}
+      </CommissionComparisonRow>
+    );
+  };
+
+  const renderImmediatePart = (
+    item: CommissionResultItemDTO, plan: CommissionRowPlan, key: string, own: boolean, source?: CommissionAmendment,
+  ) => {
+    if (hasNeonAmendments) {
+      const calculation = source && isLegacyImmediateTotalTitle(item.title) && hasNeonImmediateCoefficient(source.position) && (
+        <button type="button" className={styles.sourceButton} onClick={() => onOpenNeonImmediateBreakdown(item, source.position, source.mode, source.entry)}>
+          Zobrazit výpočet
+        </button>
+      );
+      return renderNeonComparison(item, plan, key, payoutCodesForCommissionItem(item, product), source?.entry, undefined, calculation);
+    }
+    const note = displayNoteForCommissionItem(item);
+    const { state } = plan;
+    return (
+      <div key={key} className={`${styles.breakdownRow} ${payoutRowClass(state.status)}`}>
+        <span className="min-w-0 text-sm font-medium text-slate-800">
+          <span>{cleanResultTitle(item.title)}</span>
+          {renderPremiumAdjustment(plan)}
+          {note && <span className="mt-1 block text-xs font-semibold text-red-600">{note}</span>}
+          {renderPayoutRecordHint(state.records)}
+        </span>
+        <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
+          {renderCommissionAmounts(plan, own)}
+          {renderPayoutStatusChip(state.status, state.paidAmount, plan.amount, state.records, Boolean(plan.adjustment))}
+        </span>
+      </div>
+    );
+  };
+
   const renderSplitImmediateGroup = (
     commissionItems: CommissionResultItemDTO[],
     key: string,
-    payoutsForRows: ContractCommissionPayout[]
+    payoutsForRows: ContractCommissionPayout[],
+    own: boolean,
+    related: Map<CommissionResultItemDTO, AmendmentLine[]>,
   ) => {
-    const parts = commissionItems.map((part) => ({
-      part,
-      plan: projectCommissionRow(validPayoutAmount(part.amount), payoutsForRows, payoutCodesForCommissionItem(part, product)),
-    }));
-    const total = parts.reduce((sum, { plan }) => sum + plan.amount, 0);
+    let total = 0;
+    const rows = commissionItems.flatMap((part, index) => {
+      const plan = projectCommissionRow(validPayoutAmount(part.amount), payoutsForRows, payoutCodesForCommissionItem(part, product), 0, undefined, own);
+      total += plan.amount;
+      return [
+        renderImmediatePart(part, plan, `${key}-${index}`, own),
+        ...(related.get(part) ?? []).map(line => {
+          if (line.kind === "receipt") return renderAmendmentReceipt(line);
+          const plan = projectCommissionRow(validPayoutAmount(line.item.amount), line.source.payoutRows,
+            payoutCodesForCommissionItem(line.item, product), 0, undefined, false, line.source.entry);
+          total += plan.amount;
+          return renderImmediatePart(line.item, plan, line.key, false, line.source);
+        }),
+      ];
+    });
 
     return (
       <details key={key} className="group">
@@ -1001,13 +1495,16 @@ export function ContractCommissionSection({
             </span>
             <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
               <span>Okamžitá provize</span>
-              <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              {!hasNeonAmendments && <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                 rozpis
-              </span>
+              </span>}
             </span>
           </span>
           <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-base font-semibold text-slate-900">
-            {formatMoney(total)}
+            <span>
+              {hasNeonAmendments && <span className="block text-xs font-medium text-slate-500">Očekáváno celkem</span>}
+              {formatMoney(total)}
+            </span>
             <ChevronDown
               size={18}
               strokeWidth={2.2}
@@ -1017,41 +1514,7 @@ export function ContractCommissionSection({
           </span>
         </summary>
 
-        <div className={styles.breakdown}>
-          {parts.map(({ part, plan }) => {
-            const partNote = displayNoteForCommissionItem(part);
-            const payoutState = plan.state;
-
-            return (
-              <div
-                key={part.title}
-                className={`${styles.breakdownRow} ${payoutRowClass(payoutState.status)}`}
-              >
-                <span className="min-w-0 text-sm font-medium text-slate-800">
-                  <span>{cleanResultTitle(part.title)}</span>
-                  {renderPremiumAdjustment(plan)}
-                  {partNote && (
-                    <span className="mt-1 block text-xs font-semibold text-red-600">
-                      {partNote}
-                    </span>
-                  )}
-                  {renderPayoutRecordHint(payoutState.records)}
-                </span>
-                <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
-                  <span>{formatMoney(plan.amount)}</span>
-                  {renderPaidRemainder(plan)}
-                  {renderPayoutStatusChip(
-                    payoutState.status,
-                    payoutState.paidAmount,
-                    plan.amount,
-                    payoutState.records,
-                    Boolean(plan.adjustment)
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        <div className={styles.breakdown}>{rows}</div>
       </details>
     );
   };
@@ -1061,7 +1524,10 @@ export function ContractCommissionSection({
     position: Position | null | undefined,
     commissionMode: CommissionMode | null | undefined,
     key: string,
-    payoutsForRows: ContractCommissionPayout[]
+    payoutsForRows: ContractCommissionPayout[],
+    allCommissionItems: CommissionResultItemDTO[],
+    own: boolean,
+    source?: ContractDoc,
   ) => {
     const normalizedTitle = cleanResultTitle(item.title).toLowerCase();
     const RowIcon = normalizedTitle.includes("následná")
@@ -1079,27 +1545,36 @@ export function ContractCommissionSection({
     const itemNote = displayNoteForCommissionItem(item);
     const payoutCodes = payoutCodesForCommissionItem(item, product);
     const plan = projectCommissionRow(
-      validPayoutAmount(item.amount), payoutsForRows, payoutCodes, anniversaryYearsForCommissionItem(item)
+      validPayoutAmount(item.amount), payoutsForRows, payoutCodes, anniversaryYearsForCommissionItem(item), undefined, own, source
     );
     const payoutState = plan.state;
-    const recurringInstallments = recurringInstallmentsForItem(item, payoutsForRows);
+    const recurringInstallments = recurringInstallmentsForItem(item, source);
 
     const acquisitionInstallments = acquisitionCommissionInstallments({
-      item, product, frequency: paymentFrequency, policyStartDate,
+      item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
+      policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges,
     });
     if (acquisitionInstallments.length > 0) {
+      const projected = commissionEntry?.paymentFrequencyChanges?.length ? payoutsForRows :
+        projectAcquisitionInstallmentReceipts(payoutsForRows, acquisitionInstallments);
       const installments = acquisitionInstallments.map((installment, index) => {
-        const records = payoutsForAcquisitionInstallment(payoutsForRows, installment);
+        const records = payoutsForAcquisitionInstallment(projected, installment);
         const installmentPlan = projectCommissionRow(
           installment.amount, records, installment.codes, 0,
-          commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual")))
+          installment.commissionPeriod ?? commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual"))),
+          own
         );
         return { ...installment, amount: installmentPlan.amount, state: installmentPlan.state, records, plan: installmentPlan };
       });
-      const paidCount = installments.filter(({ state }) => state.status === "paid").length;
-      const total = installments.reduce((sum, installment) => sum + installment.amount, 0);
+      const payableInstallments = installments.filter(({ state }) => state.status !== "cancelled");
+      const paidCount = payableInstallments.filter(({ state }) => state.status === "paid").length;
+      const receivedCount = installments.filter(({ state }) => state.paidAmount > 0).length;
+      const total = payableInstallments.reduce((sum, installment) => sum + installment.amount, 0);
       const hasPayment = installments.some(({ state }) => state.paidAmount > 0);
-      const status = paidCount === installments.length ? "paid" : hasPayment ? "partial" : installments.some(({ state }) => state.status === "storno") ? "storno" : "pending";
+      const hasDifference = installments.some(({ state }) => state.status === "difference");
+      const status = hasDifference ? "difference" : payableInstallments.length === 0 ? "cancelled"
+        : paidCount === payableInstallments.length ? "paid" : hasPayment ? "partial"
+          : installments.some(({ state }) => state.status === "storno") ? "storno" : "pending";
       const frequencyLabel = paymentFrequency === "monthly" ? "měsíčně" : paymentFrequency === "quarterly" ? "čtvrtletně" : "pololetně";
 
       return (
@@ -1109,16 +1584,16 @@ export function ContractCommissionSection({
               <span className={styles.icon}><Banknote size={18} strokeWidth={1.8} aria-hidden="true" /></span>
               <span className="min-w-0">
                 <span className={styles.installmentTitle}>Získatelská provize <span className={styles.frequency}>{frequencyLabel}</span></span>
-                <span className={styles.installmentMeta}>Vyplaceno {paidCount}/{installments.length} · první rok {formatMoney(total)}</span>
+                {payableInstallments.length > 0 && <span className={styles.installmentMeta} title="Počet splátek se zapsanou výplatou. Rozdíly v částkách jsou uvedeny samostatně.">Zapsané výplaty {receivedCount}/{payableInstallments.length} · první rok {formatMoney(total)}</span>}
                 {itemNote && <span className="mt-1 block text-xs font-semibold text-red-600">{itemNote}</span>}
                 <span className={styles.installmentProgress} aria-hidden="true">
-                  {installments.map((installment) => <span key={installment.code} data-status={installment.state.status} />)}
+                  {installments.map((installment) => <span key={installment.code} data-status={installment.state.status} data-received={installment.state.paidAmount > 0 ? "true" : undefined} />)}
                 </span>
               </span>
             </span>
             <span className={styles.installmentSummaryAmount}>
               <span className="flex flex-col items-end gap-1">
-                <span>{installmentAmountLabel(installments, item.amount)} <span className={styles.perInstallment}>/ splátka</span></span>
+                {payableInstallments.length > 0 && <span>{installmentAmountLabel(payableInstallments, item.amount)} <span className={styles.perInstallment}>/ splátka</span></span>}
                 <span className={`${styles.status} ${payoutStatusClass(status)}`}>
                   {status === "partial" ? "Částečně vyplaceno" : payoutStatusLabel(status, 0)}
                 </span>
@@ -1128,35 +1603,22 @@ export function ContractCommissionSection({
           </summary>
           <div className={styles.breakdown}>
             {installments.map((installment) => {
-              const sources = Array.from(new Map(installment.records
-                .filter((record) => record.statementId && (!normalizeEmail(record.writtenBy) || normalizeEmail(record.writtenBy) === normalizedViewerEmail))
-                .map((record) => [record.statementId!, record])).values());
               return (
-                <div key={installment.code} className={`${styles.breakdownRow} ${payoutRowClass(installment.state.status)}`}>
-                  <span className="min-w-0 text-sm font-medium text-slate-800">
-                    <span>{installment.label} <span className={styles.installmentCode}>{installment.code}</span></span>
-                    {installment.period && <span className={styles.installmentMeta}>Období splátky · {installment.period}</span>}
+                <div key={installment.code} className={`${styles.breakdownRow} ${styles.compactInstallmentRow} ${payoutRowClass(installment.state.status)}`}>
+                  <span className={styles.installmentDetails}>
+                    <span className={styles.installmentHeading}>
+                      <span>{installment.label}</span> <span className={styles.installmentCode}>{installment.code}</span>
+                      {installment.period && <span className={styles.installmentDate}><CalendarDays size={12} aria-hidden="true" /><span><span className="sr-only">Období splátky · </span>{installment.period}</span></span>}
+                    </span>
+                    {renderInstallmentSources(installment.records, installment.codes, installment.label)}
+                    {renderCodeCorrectionNotes(installment.state.records)}
+                    {[...new Set(installment.records.flatMap(record => record.installmentCoverageNote ? [record.installmentCoverageNote] : []))].map(note => <span key={note} className="mt-1 block text-xs font-medium text-emerald-700">{note}</span>)}
                     {renderPremiumAdjustment(installment.plan)}
-                    {renderPayoutRecordHint(installment.state.records)}
-                    {onOpenStatement && sources.length > 0 && (
-                      <span className={styles.installmentSources}>
-                        {sources.map((record) => (
-                          <button key={record.statementId} type="button" className={styles.sourceButton}
-                            disabled={statementPreviewLoadingId === record.statementId}
-                            onClick={() => onOpenStatement(record.statementId!)}
-                            aria-label={`Otevřít zdrojový výpis ${record.statementNumber || ""} pro ${installment.label}`}>
-                            <Eye size={13} aria-hidden="true" />
-                            {statementPreviewLoadingId === record.statementId ? "Načítám…" : `Výpis ${record.statementNumber || "– náhled"}`}
-                          </button>
-                        ))}
-                      </span>
-                    )}
+                    {renderPayoutRecordHint(installment.state.records, false, false)}
                   </span>
-                  <span className="flex shrink-0 flex-col items-end gap-1 text-sm font-semibold text-slate-950">
-                    <span>{formatMoney(installment.amount)}</span>
-                    {installment.plan.adjustment ? renderPaidRemainder(installment.plan)
-                      : installment.state.paidAmount > 0 && <span className={styles.installmentMeta}>Z výpisů {formatMoney(installment.state.paidAmount)}</span>}
-                    {renderPayoutStatusChip(installment.state.status, installment.state.paidAmount, installment.amount, installment.state.records, Boolean(installment.plan.adjustment))}
+                  <span className={styles.installmentAmounts}>
+                    {renderCommissionAmounts(installment.plan, own)}
+                    {renderPayoutStatusChip(installment.state.status, installment.state.paidAmount, installment.amount, installment.state.records, Boolean(installment.plan.adjustment), installment.state.status !== "paid")}
                   </span>
                 </div>
               );
@@ -1168,14 +1630,160 @@ export function ContractCommissionSection({
 
     if (recurringInstallments.length > 0) {
       const installments = recurringInstallments.map((installment) => {
+        const installmentPayouts = payoutsForRecurringInstallment(payoutsForRows, installment, source ?? planEntry);
         const installmentPlan = projectCommissionRow(
-          installment.amount, payoutsForRecurringInstallment(payoutsForRows, installment), payoutTargetsForInstallment(installment), installment.anniversaryYears,
-          installment.commissionPeriod
+          installment.amount, installmentPayouts, payoutTargetsForInstallment(installment), installment.anniversaryYears,
+          installment.commissionPeriod, own, source
         );
-        return { ...installment, amount: installmentPlan.amount, plan: installmentPlan };
+        const isAutoSubsequent = isAutoSubsequentInstallment(installment);
+        const policyYear = policyYearForAutoInstallment(installment, product, paymentFrequency, commissionStart);
+        const current = isAutoSubsequent && policyYear !== null && policyYear === currentPolicyYear;
+        const next = isAutoSubsequent && policyYear !== null && policyYear === nextPolicyYear;
+        const coverage = isAutoSubsequent ? autoProjection(payoutsForRows, allCommissionItems).coverage : null;
+        const covered = Boolean(coverage?.coveredCode && installment.code === coverage.coveredCode &&
+          (installmentPlan.state.status === "pending" || installmentPlan.state.status === "storno" || installmentPlan.state.status === "cancelled"));
+        const combined = Boolean(coverage?.combined && installment.code === normalizePayoutCode(coverage.combined.code, product));
+        const coveringPayment = covered && coverage?.combinedWithCode === installment.code
+          ? payoutsForRows.find(record => record === coverage.combined) : undefined;
+        const autoForecast = (current || next) && !covered && installmentPlan.originalPositionAmount == null
+          ? forecastForInstallment(installment, payoutsForRows, installmentPlan.state, allCommissionItems) : null;
+        return {
+          ...installment,
+          amount: installmentPlan.amount,
+          plan: installmentPlan,
+          autoForecast,
+          policyYear,
+          current,
+          next,
+          covered,
+          combined,
+          combinedWithCode: coverage?.combinedWithCode,
+          coveringPayment,
+        };
       });
-      const paidInstallments = installments.filter(({ plan }) => plan.state.status === "paid").length;
-      const recurringTotal = installments.reduce((sum, installment) => sum + installment.amount, 0);
+      const isAutoSubsequentItem = installments.some(({ code }) =>
+        isAutoCommissionProduct(product) && Boolean(code && isAutoSubsequentCommissionCode(normalizePayoutCode(code, product)))
+      );
+      const isVisibleInstallment = (installment: typeof installments[number]) =>
+        !isAutoSubsequentInstallment(installment) ||
+        installment.covered ||
+        installment.plan.state.records.length > 0 ||
+        installment.current ||
+        installment.next;
+      const visibleInstallments = installments.filter(isVisibleInstallment);
+      const payableInstallments = installments.filter(({ plan, covered }) => covered || plan.state.status !== "cancelled");
+      const currentInstallments = payableInstallments.filter(({ current }) => current);
+      const isSettled = ({ plan, covered }: typeof installments[number]) => plan.state.status === "paid" || covered;
+      const countedInstallments = isAutoSubsequentItem ? currentInstallments : payableInstallments;
+      const paidInstallments = countedInstallments.filter(isSettled).length;
+      const receivedInstallments = hasNeonAmendments
+        ? visibleInstallments.filter(({ plan }) => plan.state.paidAmount > 0).length : 0;
+      const unpaidNextInstallments = payableInstallments.filter(installment => installment.next && !isSettled(installment));
+      const showNextYear = paidInstallments === currentInstallments.length && unpaidNextInstallments.length > 0;
+      const forecastInstallments = showNextYear ? unpaidNextInstallments
+        : currentInstallments.filter(({ plan, covered }) => !covered && plan.state.status === "pending");
+      const forecastRanges = forecastInstallments.map(({ plan, autoForecast }) => {
+        if (plan.state.status !== "pending") return null;
+        return plan.originalPositionAmount != null ? { minimum: plan.amount, maximum: plan.amount } : autoForecast;
+      });
+      const forecastSummary = forecastRanges.every(range => range != null)
+        ? combinedForecastRange(forecastRanges) : null;
+      const autoSummaryAmount = forecastSummary ? formatCommissionForecastRange(forecastSummary)
+        : currentInstallments.length > 0 && forecastRanges.length === 0 ? formatMoney(0) : "— Kč";
+      const settlementLabel = countedInstallments.some(installment => installment.covered) ? "Pokryto" : "Vyplaceno";
+      const recurringTotal = payableInstallments.reduce((sum, installment) => sum + installment.amount, 0);
+      const allCancelled = payableInstallments.length === 0;
+      const renderInstallmentRow = (installment: typeof installments[number]) => {
+        const autoSubsequentPending = isAutoSubsequentInstallment(installment) &&
+          installment.plan.state.status === "pending";
+        const installmentState = installment.plan.state;
+        const sourceRecords = installment.coveringPayment
+          ? [...installmentState.records, installment.coveringPayment] : installmentState.records;
+
+        if (hasNeonAmendments) {
+          const code = installment.code ?? "";
+          return renderNeonComparison({ ...item, code }, installment.plan, installment.key,
+            code ? [code] : [], source, installment.label,
+            <>{installment.commissionPeriod && <span>Období provize {formatDate(installment.commissionPeriod)}</span>}
+              {renderCodeCorrectionNotes(installmentState.records)}</>);
+        }
+
+        return (
+          <div
+            key={installment.key}
+            className={`${styles.breakdownRow} ${styles.compactInstallmentRow} ${payoutRowClass(installment.covered ? "paid" : installmentState.status)}`}
+          >
+            <span className={styles.installmentDetails}>
+              <span className={styles.installmentHeading}>
+                <span>{installment.label}</span>
+                {installment.code && <> <span className={styles.installmentCode}>{installment.code}</span></>}
+                {installment.commissionPeriod && (
+                  <span className={styles.installmentDate}>
+                    <CalendarDays size={12} aria-hidden="true" />
+                    <span><span className="sr-only">Období provize · </span>{formatDate(installment.commissionPeriod)}</span>
+                  </span>
+                )}
+              </span>
+              {renderInstallmentSources(sourceRecords, installment.code ? [installment.code] : [], installment.code || installment.label)}
+              {installment.combined && <span className={styles.forecastNote}>{installment.combinedWithCode
+                ? `Souhrnná výplata pokrývá období ${installment.combinedWithCode} a ${installment.code}.`
+                : "Základna i částka odpovídají dvěma pololetním splátkám."}</span>}
+              {renderCodeCorrectionNotes(installmentState.records)}
+              {!autoSubsequentPending && renderPremiumAdjustment(installment.plan)}
+              {renderPayoutRecordHint(installmentState.records, isAutoSubsequentInstallment(installment), false)}
+            </span>
+            <span className={styles.installmentAmounts} data-status={installment.covered ? "paid" : installmentState.status}>
+              {installment.covered ? <span>{installment.coveringPayment?.code
+                ? `Pokryto výplatou ${installment.coveringPayment.code}` : "Pokryto souhrnem výplat"}</span>
+                : installmentState.status === "cancelled" || installment.plan.originalPositionAmount != null ? renderCommissionAmounts(installment.plan, own) : autoSubsequentPending ? (
+                <span>{installment.autoForecast
+                  ? `${installment.autoForecast.basis === "premiumChange" || installment.autoForecast.isConfirmedPolicyYear ? "Očekáváno" : "Odhad"} ${formatCommissionForecastRange(installment.autoForecast)}`
+                  : "— Kč"}</span>
+              ) : isAutoSubsequentInstallment(installment) ? (
+                <span>{installmentState.status === "storno" ? "Odúčtováno " : "Vyplaceno "}{formatMoney(installmentState.status === "storno" ? stornoPayoutAmountFromRecords(installmentState.records) ?? 0 : installmentState.paidAmount)}</span>
+              ) : renderCommissionAmounts(installment.plan, own)}
+              {isAutoSubsequentInstallment(installment) && installmentState.status !== "cancelled" && installment.plan.originalPositionAmount == null && renderPositionBadges(installmentState.records, own)}
+              {isAutoSubsequentInstallment(installment) && installment.autoForecast && (
+                <span className={styles.forecastNote}>
+                  {installment.autoForecast.basis === "premiumChange"
+                    ? `Roční pojistné ${formatMoney(installment.autoForecast.basisAmount)} · ${positionLabel(installment.autoForecast.position)} při sjednání`
+                    : installment.autoForecast.isConfirmedPolicyYear
+                    ? "Podle vyplacené provize ve stejném pojistném roce"
+                    : installment.autoForecast.basis === "initial" ? "Orientačně ±8 % podle provize v prvním roce" : "Orientačně ±8 % podle poslední vyplacené provize"}
+                </span>
+              )}
+              {isAutoSubsequentInstallment(installment) ? (
+                !installment.covered && installmentState.status !== "paid" && <span className={`${styles.status} ${payoutStatusClass(installmentState.status)}`}>{payoutStatusLabel(installmentState.status, installmentState.paidAmount)}</span>
+              ) : renderPayoutStatusChip(
+                installmentState.status,
+                installmentState.paidAmount,
+                validPayoutAmount(installment.amount),
+                installmentState.records,
+                Boolean(installment.plan.adjustment),
+                installmentState.status !== "paid"
+              )}
+            </span>
+          </div>
+        );
+      };
+      const autoAnnualGroups = (() => {
+        if (!isAutoSubsequentItem) return [];
+        const annualSchedule = isAnnualAutoPayoutProduct(product) ||
+          product === "uniqaAuto" || product === "uniqaflotila";
+        const installmentsPerPolicyYear = annualSchedule ? 1 : periodsPerYear(paymentFrequency ?? "annual");
+        const grouped = new Map<number, typeof installments>();
+
+        installments.forEach((installment, index) => {
+          if (!isVisibleInstallment(installment)) return;
+          const policyYear = installment.policyYear ?? 2 + Math.floor(index / installmentsPerPolicyYear);
+          const group = grouped.get(policyYear) ?? [];
+          group.push(installment);
+          grouped.set(policyYear, group);
+        });
+
+        return Array.from(grouped, ([policyYear, groupedInstallments]) => ({ policyYear, installments: groupedInstallments }))
+          .sort((left, right) => left.policyYear - right.policyYear);
+      })();
 
       return (
         <details key={key} className="group">
@@ -1188,16 +1796,34 @@ export function ContractCommissionSection({
               </span>
               <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
                 <span>{cleanResultTitle(item.title)}</span>
-                <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                  {recurringInstallments.length}x
-                </span>
-                <span className="mt-1 block text-xs font-medium text-slate-500">
-                  Vyplaceno {paidInstallments}/{recurringInstallments.length} · celkem {formatMoney(recurringTotal)}
-                </span>
+                {!hasNeonAmendments && !allCancelled && <span className="ml-2 inline-flex align-middle rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                  {visibleInstallments.length}x
+                </span>}
+                {!allCancelled && <span className="mt-1 block text-xs font-medium text-slate-500">
+                  {isAutoSubsequentItem
+                    ? currentInstallments.length > 0
+                      ? `Aktuální pojistný rok · ${settlementLabel} ${paidInstallments}/${currentInstallments.length}`
+                      : "V aktuálním pojistném roce bez následných provizí"
+                    : hasNeonAmendments
+                      ? `Zapsané výplaty ${receivedInstallments}/${payableInstallments.length}`
+                      : `Vyplaceno ${paidInstallments}/${payableInstallments.length} · celkem ${formatMoney(recurringTotal)}`}
+                </span>}
               </span>
             </span>
             <span className="flex items-center justify-end gap-2 whitespace-nowrap text-right text-base font-semibold text-slate-900">
-              {installmentAmountLabel(installments, item.amount)}
+              {allCancelled ? renderPayoutStatusChip("cancelled", 0, 0, []) : <span>
+                {showNextYear && (
+                  <span className="block text-xs font-medium text-slate-500">
+                    {forecastSummary ? "Odhad na další pojistný rok" : "Další pojistný rok"}
+                  </span>
+                )}
+                {hasNeonAmendments && <span className="block text-xs font-medium text-slate-500">Očekáváno celkem</span>}
+                {isAutoSubsequentItem ? autoSummaryAmount : hasNeonAmendments
+                  ? formatMoney(recurringTotal) : installmentAmountLabel(payableInstallments, item.amount)}
+              </span>}
+              {installments.every(installment => installment.plan.originalPositionAmount != null) && (
+                <CommissionPositionBadge position={PAYOUT_EXCEPTION_POSITION} />
+              )}
               <ChevronDown
                 size={18}
                 strokeWidth={2.2}
@@ -1207,40 +1833,67 @@ export function ContractCommissionSection({
             </span>
           </summary>
 
-          <div className={styles.breakdown}>
-            {installments.map((installment) => {
-              const installmentState = installment.plan.state;
+          {isAutoSubsequentItem ? (
+            <div className="space-y-3 px-2 pb-3 sm:px-3">
+              {autoAnnualGroups.length === 0 && (
+                <p className="px-4 py-3 text-sm text-slate-500">
+                  Pro aktuální ani následující pojistný rok není naplánovaná žádná následná provize.
+                </p>
+              )}
+              {autoAnnualGroups.map(({ policyYear, installments: annualInstallments }) => {
+                const paidCount = annualInstallments.filter(isSettled).length;
+                const hasDifference = annualInstallments.some(({ plan }) =>
+                  plan.state.status === "difference" || plan.state.status === "partial"
+                );
+                const countLabel = annualInstallments.length === 1
+                  ? "provize"
+                  : annualInstallments.length >= 2 && annualInstallments.length <= 4
+                    ? "provize"
+                    : "provizí";
 
-              return (
-                <div
-                  key={installment.key}
-                  className={`${styles.breakdownRow} ${payoutRowClass(installmentState.status)}`}
-                >
-                  <span className="min-w-0 text-sm font-medium text-slate-800">
-                    <span>
-                      {installment.label}
-                      {installment.code ? ` · ${installment.code}` : ""}
-                    </span>
-                    {renderPremiumAdjustment(installment.plan)}
-                    {renderPayoutRecordHint(installmentState.records)}
-                  </span>
-                  <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap pt-0.5 text-sm font-semibold text-slate-950">
-                    <span>{formatMoney(installment.amount)}</span>
-                    {renderPaidRemainder(installment.plan)}
-                    {renderPayoutStatusChip(
-                      installmentState.status,
-                      installmentState.paidAmount,
-                      validPayoutAmount(installment.amount),
-                      installmentState.records,
-                      Boolean(installment.plan.adjustment)
-                    )}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                return (
+                  <section
+                    key={policyYear}
+                    data-commission-policy-year={policyYear}
+                    className="overflow-hidden rounded-xl border border-violet-100 bg-white shadow-sm shadow-violet-950/[0.025]"
+                    aria-label={`${policyYear}. rok smlouvy, ${annualInstallments.length} ${countLabel}`}
+                  >
+                    <header className="flex flex-wrap items-center justify-between gap-2 border-b border-violet-100 bg-violet-50/65 px-4 py-3">
+                      <div>
+                        <h5 className="text-sm font-semibold text-slate-900">{policyYear}. rok smlouvy</h5>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {annualInstallments.length} {countLabel} v ročním období
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${hasDifference
+                        ? "bg-amber-100 text-amber-800"
+                        : paidCount === annualInstallments.length
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-slate-100 text-slate-600"
+                      }`}>
+                        {paidCount}/{annualInstallments.length} {annualInstallments.some(installment => installment.covered) ? "pokryto" : "vyplaceno"}
+                      </span>
+                    </header>
+                    <div className="px-3 pb-2">
+                      {annualInstallments.map(renderInstallmentRow)}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={styles.breakdown}>
+              {installments.map(renderInstallmentRow)}
+            </div>
+          )}
         </details>
       );
+    }
+
+    if (hasNeonAmendments) {
+      const calculation = clickable && <button type="button" className={styles.sourceButton}
+        onClick={() => onOpenNeonImmediateBreakdown(item, position, commissionMode, source)}>Zobrazit výpočet</button>;
+      return renderNeonComparison(item, plan, key, payoutCodes, source, undefined, calculation);
     }
 
     const content = (
@@ -1261,9 +1914,8 @@ export function ContractCommissionSection({
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap text-right text-base font-semibold text-slate-900">
-          <span>{formatMoney(plan.amount)}</span>
-          {renderPaidRemainder(plan)}
-          {payoutCodes.length > 0 &&
+          {renderCommissionAmounts(plan, own)}
+          {(payoutCodes.length > 0 || payoutState.status === "cancelled") &&
             renderPayoutStatusChip(
               payoutState.status,
               payoutState.paidAmount,
@@ -1288,7 +1940,9 @@ export function ContractCommissionSection({
         key={key}
         type="button"
         className={rowClass}
-        onClick={() => onOpenNeonImmediateBreakdown(item, position, commissionMode)}
+        onClick={() => source
+          ? onOpenNeonImmediateBreakdown(item, position, commissionMode, source)
+          : onOpenNeonImmediateBreakdown(item, position, commissionMode)}
       >
         {content}
       </button>
@@ -1300,45 +1954,116 @@ export function ContractCommissionSection({
     position: Position | null | undefined,
     commissionMode: CommissionMode | null | undefined,
     keyPrefix: string,
-    payoutsForRows: ContractCommissionPayout[]
+    payoutsForRows: ContractCommissionPayout[],
+    amendments: CommissionAmendment[] = [],
   ) => {
-    const splitImmediateItems =
-      isSplitImmediateProduct(product)
-        ? commissionItems.filter((item) => isSplitImmediateComponentTitle(item.title))
-        : [];
-    const hasSplitImmediate = splitImmediateItems.length > 0;
-    const regularCommissionItems = hasSplitImmediate
-      ? commissionItems.filter(
-          (item) =>
-            !isSplitImmediateComponentTitle(item.title) &&
-            !isLegacyImmediateTotalTitle(item.title)
-        )
+    const splitImmediateItems = isSplitImmediateProduct(product)
+      ? commissionItems.filter(item => isSplitImmediateComponentTitle(item.title)) : [];
+    const regularCommissionItems = splitImmediateItems.length
+      ? commissionItems.filter(item => !isSplitImmediateComponentTitle(item.title) && !isLegacyImmediateTotalTitle(item.title))
       : commissionItems;
 
+    const related = new Map<CommissionResultItemDTO, AmendmentLine[]>();
+    const otherLines: AmendmentLine[] = [];
+    if (amendments.length > 0) {
+      const displayCode = (code: string) => normalizeLifeCommissionItemCode(lifeIncreaseItemCode(code) ?? code);
+      const itemCodes = (item: CommissionResultItemDTO) => [
+        ...payoutCodesForCommissionItem(item, product).map(displayCode),
+        ...recurringInstallmentsForCommissionItem(item, product, contractDurationYears).flatMap(installment =>
+          installment.code ? [displayCode(installment.code)] : []),
+      ];
+      const originals = [...splitImmediateItems, ...regularCommissionItems].map(item => ({
+        item, codes: new Set(itemCodes(item)), title: cleanResultTitle(item.title).toLowerCase(),
+      }));
+      const orderedAmendments = [...amendments].sort((a, b) =>
+        (endorsementCommissionDay(a.entry.policyStartDate) ?? "").localeCompare(endorsementCommissionDay(b.entry.policyStartDate) ?? ""));
+      for (const amendment of orderedAmendments) {
+        const lines: AmendmentLine[] = [
+          ...amendment.items.map((item, index) => ({
+            kind: "planned" as const, item, key: `${amendment.entry.id}-planned-${index}`, source: amendment,
+          })),
+          ...amendment.paidRebased.map((payout, index) => ({
+            kind: "receipt" as const, payout, key: `${amendment.entry.id}-receipt-${index}`, source: amendment,
+          })),
+        ];
+        for (const line of lines) {
+          const codes = line.kind === "planned" ? itemCodes(line.item) : [displayCode(line.payout.statementCode ?? line.payout.code ?? "")];
+          const matches = originals.filter(original => codes.some(code => original.codes.has(code)));
+          const sameTitle = line.kind === "planned"
+            ? (matches.length > 0 ? matches : originals).filter(original => original.title === cleanResultTitle(line.item.title).toLowerCase())
+            : [];
+          const original = matches.length === 1 ? matches[0] : sameTitle.length === 1 ? sameTitle[0] : null;
+          if (!original) {
+            otherLines.push(line);
+            continue;
+          }
+          const siblings = related.get(original.item) ?? [];
+          siblings.push(line);
+          related.set(original.item, siblings);
+        }
+      }
+    }
+
+    const renderRelatedLine = (line: AmendmentLine) => {
+      if (line.kind === "receipt") return renderAmendmentReceipt(line);
+      const { source } = line;
+      return renderCommissionRow(line.item, source.position, source.mode, line.key, source.payoutRows, source.items, false, source.entry);
+    };
+
+    const own = keyPrefix === "adviser-own";
     return (
       <>
         <div className={styles.tableHeading} aria-hidden="true">
           <span>Složka provize</span>
           <span>Částka / stav</span>
         </div>
-        {hasSplitImmediate &&
-          renderSplitImmediateGroup(
-            splitImmediateItems,
-            `${keyPrefix}-split-immediate`,
-            payoutsForRows
-          )}
-        {regularCommissionItems.map((item, idx) =>
-          renderCommissionRow(
-            item,
-            position,
-            commissionMode,
-            `${keyPrefix}-${idx}-${item.title}`,
-            payoutsForRows
-          )
-        )}
+        {splitImmediateItems.length > 0 &&
+          renderSplitImmediateGroup(splitImmediateItems, `${keyPrefix}-split-immediate`, payoutsForRows, own, related)}
+        {regularCommissionItems.map((item, index) => {
+          const key = `${keyPrefix}-${index}-${item.title}`;
+          return (
+            <Fragment key={key}>
+              {renderCommissionRow(item, position, commissionMode, key, payoutsForRows, commissionItems, own)}
+              {related.get(item)?.map(renderRelatedLine)}
+            </Fragment>
+          );
+        })}
+        {otherLines.map(renderRelatedLine)}
       </>
     );
   };
+
+  const comparison = showPayoutSummary && isOwnContract ? {
+    plans: [] as CommissionPayoutComparison[],
+    records: new Set([...adviserPayouts, ...adviserAmendments.flatMap(source => source.payoutRows)]),
+  } : undefined;
+  const adviserSummary = commissionSummary(adviserItems, adviserPayouts, adviserTotalDisplay, paymentBasedAdviserTotals, true, undefined, comparison);
+  const amendmentsTotal = (amendments: typeof adviserAmendments, capture?: typeof comparison) => amendments.reduce((sum, source) =>
+    sum + commissionSummary(source.items, source.payoutRows, computeTotalWithMultipliers(source.items), null, false, source.entry, capture).total, 0);
+
+  if (comparison) {
+    for (const source of adviserAmendments) {
+      for (const payout of source.paidRebased) {
+        const code = lifeIncreaseItemCode(payout.statementCode ?? payout.code);
+        if (!code) continue;
+        const matches = comparison.plans.filter(plan => normalizeLifeCommissionItemCode(plan.code) === code);
+        if (matches.length !== 1) continue;
+        // The root plan already uses the full premium. Compare both receipts
+        // against that single amount and keep their statement rows separate.
+        const plan = matches[0];
+        plan.records.push(payout);
+        plan.note = "Plán zahrnuje celé nové pojistné včetně navýšení.";
+      }
+    }
+  }
+  const adviserAmendmentsTotal = !hideAnnualAutoTotals || comparison ? amendmentsTotal(adviserAmendments, comparison) : 0;
+  const payoutSummary = comparison ? summarizeCommissionPayouts(comparison.plans, comparison.records, product, cancellation) : null;
+  const viewerHasAmendmentOverride = !isOwnContract && Boolean(normalizedViewerEmail) && amendmentEntries.slice(1).some(entry =>
+    entry.managerOverrides?.some(row => normalizeEmail(row.email) === normalizedViewerEmail && row.items?.length));
+  const managerCards = viewerHasAmendmentOverride && !meziprovisionCards.some(card => normalizeEmail(card.email) === normalizedViewerEmail)
+    ? [...meziprovisionCards, { key: "neon-amendment-manager", email: normalizedViewerEmail, userName: nameFromEmail(normalizedViewerEmail),
+      position: null, mode: null, items: [], totals: null, totalDisplay: 0 } satisfies MeziprovisionCard]
+    : meziprovisionCards;
 
   const renderCommissionWarning = () =>
     trimmedCommissionWarning ? (
@@ -1350,12 +2075,13 @@ export function ContractCommissionSection({
 
   return (
     <div className="space-y-4">
-      {showAnyMeziprovision && (
+      {(showAnyMeziprovision || viewerHasAmendmentOverride) && (
         <section className="space-y-3">
-          {meziprovisionCards.map((card) => {
+          {managerCards.map((card) => {
             const isExpanded = expandedMeziprovisionKeys.includes(card.key);
             const cardPayouts = payoutsForWriter(card.email ?? normalizedViewerEmail);
             const cardSummary = isExpanded ? commissionSummary(card.items, cardPayouts, card.totalDisplay, card.totals) : null;
+            const amendments = isExpanded ? amendmentsFor(normalizeEmail(card.email ?? normalizedViewerEmail), card.items, false) : [];
             return (
               <div key={card.key} className="space-y-2.5">
                 <button
@@ -1390,14 +2116,15 @@ export function ContractCommissionSection({
                       )}
                     </h4>
 
-                    <div className={commissionPanelClass}>
+                    <div className={panelClass}>
                       <div className={styles.rows}>
                         {renderCommissionRows(
                           card.items,
                           card.position,
                           card.mode,
                           card.key,
-                          cardPayouts
+                          cardPayouts,
+                          amendments
                         )}
                       </div>
 
@@ -1412,7 +2139,7 @@ export function ContractCommissionSection({
                                 </span>
                               </div>
                               <div className={commissionTotalLineClass}>
-                                <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                                <span className={commissionTotalLabelClass}>{subsequentTotalLabel}</span>
                                 <span className={commissionTotalValueClass}>
                                   {cardSummary?.subsequent ?? formatMoney(card.totals.subsequent)}
                                 </span>
@@ -1420,9 +2147,9 @@ export function ContractCommissionSection({
                             </div>
                           ) : (
                             <div className={`${commissionTotalLineClass} w-full`}>
-                              <span className={commissionTotalLabelClass}>Celkem meziprovize</span>
+                              <span className={commissionTotalLabelClass}>{hasNeonAmendments ? "Očekávaná meziprovize celkem" : "Celkem meziprovize"}</span>
                               <span className={commissionTotalValueClass}>
-                                {formatMoney(cardSummary?.total ?? card.totalDisplay)}
+                                {formatMoney((cardSummary?.total ?? card.totalDisplay) + amendmentsTotal(amendments))}
                               </span>
                             </div>
                           )}
@@ -1439,12 +2166,15 @@ export function ContractCommissionSection({
 
       {isOwnContract ? (
         <section className="space-y-3">
-          <ContractSectionHeading
-            icon={<Coins size={17} strokeWidth={2.2} aria-hidden="true" />}
-          >
-            Výpočet provizí
-          </ContractSectionHeading>
-          <div className={commissionPanelClass}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ContractSectionHeading icon={<Coins size={17} strokeWidth={2.2} aria-hidden="true" />}>
+              Výpočet provizí
+            </ContractSectionHeading>
+            <button type="button" aria-haspopup="dialog" className={styles.summaryTrigger} onClick={() => setShowPayoutSummary(true)}>
+              <ChartNoAxesColumnIncreasing size={16} aria-hidden="true" /> Zobrazit souhrn
+            </button>
+          </div>
+          <div className={panelClass}>
             {renderCommissionWarning()}
             <div className={styles.rows}>
               {renderCommissionRows(
@@ -1452,7 +2182,8 @@ export function ContractCommissionSection({
                 adviserBreakdownPosition,
                 adviserBreakdownMode,
                 "adviser-own",
-                adviserPayouts
+                adviserPayouts,
+                adviserAmendments
               )}
             </div>
 
@@ -1467,7 +2198,7 @@ export function ContractCommissionSection({
                       </span>
                     </div>
                     <div className={commissionTotalLineClass}>
-                      <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                      <span className={commissionTotalLabelClass}>{subsequentTotalLabel}</span>
                       <span className={commissionTotalValueClass}>
                         {adviserSummary.subsequent}
                       </span>
@@ -1475,9 +2206,9 @@ export function ContractCommissionSection({
                   </div>
                 ) : (
                   <div className={`${commissionTotalLineClass} w-full`}>
-                    <span className={commissionTotalLabelClass}>Celkem</span>
+                    <span className={commissionTotalLabelClass}>{hasNeonAmendments ? "Očekávaná provize celkem" : "Celkem"}</span>
                     <span className={commissionTotalValueClass}>
-                      {formatMoney(adviserSummary.total)}
+                      {formatMoney(adviserSummary.total + adviserAmendmentsTotal)}
                     </span>
                   </div>
                 )}
@@ -1506,7 +2237,7 @@ export function ContractCommissionSection({
           </button>
 
           {showAdvisorDetails && (
-            <div className={commissionPanelClass}>
+            <div className={panelClass}>
               {renderCommissionWarning()}
               <div className={styles.rows}>
                 {renderCommissionRows(
@@ -1514,7 +2245,8 @@ export function ContractCommissionSection({
                   adviserBreakdownPosition,
                   adviserBreakdownMode,
                   "adviser-team",
-                  adviserPayouts
+                  adviserPayouts,
+                  adviserAmendments
                 )}
               </div>
 
@@ -1529,7 +2261,7 @@ export function ContractCommissionSection({
                         </span>
                       </div>
                       <div className={commissionTotalLineClass}>
-                        <span className={commissionTotalLabelClass}>Celkem následně ročně</span>
+                        <span className={commissionTotalLabelClass}>{subsequentTotalLabel}</span>
                         <span className={commissionTotalValueClass}>
                           {adviserSummary.subsequent}
                         </span>
@@ -1537,9 +2269,9 @@ export function ContractCommissionSection({
                     </div>
                   ) : (
                     <div className={`${commissionTotalLineClass} w-full`}>
-                      <span className={commissionTotalLabelClass}>Celkem</span>
+                      <span className={commissionTotalLabelClass}>{hasNeonAmendments ? "Očekávaná provize celkem" : "Celkem"}</span>
                       <span className={commissionTotalValueClass}>
-                        {formatMoney(adviserSummary.total)}
+                        {formatMoney(adviserSummary.total + adviserAmendmentsTotal)}
                       </span>
                     </div>
                   )}
@@ -1549,6 +2281,13 @@ export function ContractCommissionSection({
           )}
         </section>
       )}
+
+      {payoutSummary && <CommissionPayoutSummaryDialog summary={payoutSummary}
+        onClose={() => setShowPayoutSummary(false)}
+        onOpenStatement={onOpenStatement ? (id, codes) => {
+          setShowPayoutSummary(false);
+          onOpenStatement(id, codes);
+        } : undefined} />}
 
       {payoutDifferenceExplanation ? (
         <div

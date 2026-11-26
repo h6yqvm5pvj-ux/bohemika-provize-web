@@ -1,6 +1,7 @@
 import { isRetiredProduct } from "@/app/lib/retiredProducts";
 import { toDate } from "@/app/lib/formatters";
 import { productCoefficientValidityError } from "@/app/lib/productFormulas/coefficientSets";
+import { canSetNeonCorrection } from "@/app/lib/neonCorrection";
 
 import type { ContractDoc } from "./contractsApi.types";
 
@@ -108,6 +109,13 @@ export const validateContractCoreInvariants = (
   existing: ContractDoc,
   patch: Record<string, unknown>
 ): ValidationResult => {
+  if (existing.neonCorrection && hasOwn(patch, "contractSignedDate") &&
+      !canSetNeonCorrection({ ...existing, contractSignedDate: patch.contractSignedDate })) {
+    return { ok: false, error: "Datum sjednání smlouvy s ČPP korekcí musí být nejpozději 31. 12. 2021." };
+  }
+  if (existing.autoPremiumAmendment && ["inputAmount", "newInputAmount", "effectiveInputAmount", "previousInputAmount", "premiumDelta", "changeType", "frequencyRaw", "policyStartDate", "productKey"].some(key => hasOwn(patch, key))) {
+    return { ok: false, error: "Finanční údaje uloženého dodatku auta nelze přepsat. Přidej navazující změnu na původní smlouvě." };
+  }
   if (isRetiredProduct(existing.productKey)) {
     return { ok: false, error: "Produkt již není podporován." };
   }

@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomexNeuronData, DomexNeuronObject } from "@/app/lib/domexNeuronSchema";
+import { DOMEX_NEURON_PARSER_VERSION } from "@/app/lib/domexNeuronSchema";
 import { normalizeDomexNeuronData } from "@/app/lib/domexNeuronValidation";
 import { DomexNeuronObjectsPanel, DomexNeuronParserVersion } from "./DomexNeuronObjectsPanel";
 
@@ -30,14 +31,15 @@ describe("canonical Neuron object display", () => {
     expect(html).toContain("Verze parseru: 2");
   });
 
-  it("keeps not insured distinct from not found and unreadable", () => {
+  it("hides not found sections while preserving not insured and unreadable states", () => {
     const data = fixture(); data.objects = []; data.sections = { property: "not_insured", household: "not_found", liability: "unreadable", assistance: "not_found" };
     const html = renderToStaticMarkup(<DomexNeuronObjectsPanel value={data} />);
-    expect(html).toContain("Nesjednáno"); expect(html).toContain("Nenalezeno v PDF"); expect(html).toContain("Nelze přečíst z PDF");
+    expect(html).toContain("Nesjednáno"); expect(html).not.toContain("Nenalezeno v PDF"); expect(html).toContain("Nelze přečíst z PDF");
+    expect(html).not.toContain("Pojištění domácností"); expect(html).not.toContain("Asistenční služby");
     expect(html).not.toContain("data-object-id=");
   });
 
-  it.each([null, 1, 2])("identifies missing, older and current parser versions: %s", version => {
+  it.each([null, 1, DOMEX_NEURON_PARSER_VERSION])("identifies missing, older and current parser versions: %s", version => {
     const html = renderToStaticMarkup(<DomexNeuronParserVersion version={version} />);
     expect(html.includes("neuvedena")).toBe(version == null);
     expect(html.includes("Starší zpracování")).toBe(version === 1);

@@ -1,5 +1,7 @@
+import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import type { Product } from "@/app/types/domain";
 import { isAutoProduct, isLifeProduct } from "@/app/lib/productCatalog";
+import { neonFullPremiumMonthlyBase, type NeonCorrection } from "@/app/lib/neonCorrection";
 
 /** A real payment above a known positive expectation is not an underpayment. */
 export const isHigherCommissionPayout = ({ amount, expectedAmount, tolerance }: {
@@ -106,23 +108,64 @@ export const isLifeSubsequentCommissionPayout = ({
 }: {
   product: Product | null | undefined;
   commissionCode: unknown;
-}): boolean =>
-  isLifeProduct(product) &&
-  /^B1\d+(?:-B1\d+)?$/.test(baseCommissionCodeForPayoutComparison(commissionCode));
+}): boolean => {
+  const code = baseCommissionCodeForPayoutComparison(commissionCode);
+  return isLifeProduct(product) && (/^B1\d+(?:-B1\d+)?$/.test(code) ||
+    (product === "neon" && /^B20[1-6]$/.test(code)));
+};
 
 const positiveAmount = (value: unknown): number | null => {
   const amount = Number(value);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 };
 
+/** Older calculations can use full premium when the statement corroborates it. */
+export function neonRefreshCarePayoutBase(contract: {
+  productKey?: string | null;
+  isRefresh?: boolean | null;
+  inputAmount?: number | null;
+  calculationInputAmount?: number | null;
+  neonRefreshCareAnnualPremium?: number | null;
+  refreshCommissionBase?: { calculationMonthlyPremium?: number | null; calculationAnnualPremium?: number | null } | null;
+} | null | undefined, row: {
+  productCode: unknown;
+  commissionCode: unknown;
+  baseAmount: unknown;
+  commission: number;
+  status?: string;
+}) {
+  if (contract?.productKey !== "neon" || contract.isRefresh !== true || row.status === "storno" || !positiveAmount(row.commission) ||
+      !isNeonStatementProductCode(row.productCode) || !/^B20[1-6]$/.test(baseCommissionCodeForPayoutComparison(row.commissionCode))) return null;
+
+  const storedAnnual = positiveAmount(contract.neonRefreshCareAnnualPremium);
+  if (storedAnnual != null) return { monthly: storedAnnual / 12, annual: storedAnnual, multiplier: 1 };
+
+  const monthly = positiveAmount(contract.inputAmount);
+  const refresh = contract.refreshCommissionBase;
+  const refreshMonthly = positiveAmount(refresh?.calculationMonthlyPremium) ?? positiveAmount(contract.calculationInputAmount);
+  const refreshAnnual = positiveAmount(refresh?.calculationAnnualPremium) ?? (refreshMonthly == null ? null : refreshMonthly * 12);
+  const statement = positiveAmount(row.baseAmount);
+  if (monthly == null || refreshAnnual == null || statement == null) return null;
+  const annualCents = Math.round(monthly * 1200);
+  if (!Number.isSafeInteger(annualCents) || !Number.isFinite(refreshAnnual) ||
+      annualCents <= 0 || Math.round(statement * 100) !== annualCents) return null;
+  const annual = annualCents / 100;
+  return { monthly, annual, multiplier: annual / refreshAnnual };
+}
+
 export const lifeRiskAnnualPremiumBase = (contract: {
+  productKey?: string | null;
+  commissionCalculationStatus?: string | null;
   refreshCommissionBase?: { calculationMonthlyPremium?: number | null } | null;
   calculationInputAmount?: number | null;
   inputAmount?: number | null;
-} | null | undefined): number | null => {
+  neonCorrection?: NeonCorrection | null;
+} | null | undefined, payoutPeriod?: unknown): number | null => {
+  if (hasPendingFlexiRenovationBase(contract)) return null;
   // A renovation in the guarantee period with no increase has a real zero base.
   if (contract?.refreshCommissionBase?.calculationMonthlyPremium === 0) return 0;
+  const neonMonthly = neonFullPremiumMonthlyBase(contract, payoutPeriod);
   const monthly = positiveAmount(contract?.refreshCommissionBase?.calculationMonthlyPremium) ??
-    positiveAmount(contract?.calculationInputAmount) ?? positiveAmount(contract?.inputAmount);
+    positiveAmount(neonMonthly) ?? positiveAmount(contract?.calculationInputAmount) ?? positiveAmount(contract?.inputAmount);
   return monthly == null ? null : Math.round(monthly * 12 * 100) / 100;
 };

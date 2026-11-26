@@ -167,3 +167,17 @@ describe("profile database loading", () => {
     expect(mocks.reads.some(path => path.startsWith(`usersPrivate/${email}`))).toBe(false);
   });
 });
+
+
+describe("private office contribution setting", () => {
+  it("ignores a forged public preference and reads only the authorized private value", async () => {
+    mocks.records.set(`users/${email}`, { cashflowOfficeContributionEnabled: true });
+    expect((await (await GET(request())).json()).profile).not.toHaveProperty("cashflowOfficeContributionEnabled");
+    mocks.records.set(`usersPrivate/other@example.test`, { cashflowOfficeContributionEnabled: true });
+    expect((await (await GET(request())).json()).profile).not.toHaveProperty("cashflowOfficeContributionEnabled");
+    mocks.records.set(`usersPrivate/${email}`, { cashflowOfficeContributionEnabled: true });
+    expect((await (await GET(request())).json()).profile.cashflowOfficeContributionEnabled).toBe(true);
+    mocks.records.set(`usersPrivate/${email}`, { cashflowOfficeContributionEnabled: "true" });
+    expect((await (await GET(request())).json()).profile).not.toHaveProperty("cashflowOfficeContributionEnabled");
+  });
+});

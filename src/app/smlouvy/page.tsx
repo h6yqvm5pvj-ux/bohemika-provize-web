@@ -73,6 +73,7 @@ import {
 import {
   LIFE_PRODUCTS as LIFE_PRODUCTS_LIST,
   PRODUCT_CATALOG,
+  isRecordOnlyProduct,
   productInstitutionLabel,
   productLabel as productLabelFromCatalog,
 } from "@/app/lib/productCatalog";
@@ -80,6 +81,7 @@ import {
   commissionAuditSummaryForContract,
   isCommissionAuditFilterActive,
 } from "@/app/lib/commissionAudit";
+import { MISSING_STORNO_ESTIMATE_MODE, STORNO_ESTIMATE_ISSUE_LABELS } from "@/app/lib/commissionStornoAudit";
 import {
   institutionLogoImageClass,
 } from "@/app/lib/institutionLogoDisplay";
@@ -115,7 +117,6 @@ import {
   writeContractsViewState,
 } from "./contractsPageStorage";
 import type {
-  AppUser,
   CommissionAuditFilterCode,
   CommissionAuditFilterMode,
   ContractDetailWindowState,
@@ -127,12 +128,19 @@ import type {
   Institution,
   ProductCategory,
 } from "./contractsPageTypes";
+import { vehicleRegistrationForMatch } from "@/app/lib/vehicleOverlap";
+import { normalizeContractListSearch } from "@/app/lib/contractSearch";
+import { takeContractSearchHandoff } from "@/app/lib/contractSearchHandoff";
 
 const LIFE_PRODUCTS = new Set<Product>(LIFE_PRODUCTS_LIST);
 const CONTRACT_SEARCH_DEBOUNCE_MS = 200;
 const CONTRACT_SEARCH_CACHE_TTL_MS = 60_000;
 const CONTRACT_SEARCH_CACHE_MAX_ENTRIES = 24;
 const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
+  conseqInvest: "Invest",
+  investikaRealitniFond: "Realitní fond",
+  investikaEfektika: "EFEKTIKA",
+  investikaMonetika: "MONETIKA",
   conseqzenit: "Zenit DPS",
   neon: "Životní pojištění NEON",
   flexi: "Životní pojištění FLEXI",
@@ -170,6 +178,7 @@ const PRODUCT_CARD_LABELS: Partial<Record<Product, string>> = {
 };
 
 const CATEGORY_ICON_BY_ID: Record<ProductCategory, LucideIcon> = {
+  investments: CircleDollarSign,
   pension: CircleDollarSign,
   life: HeartPulse,
   auto: Car,
@@ -249,10 +258,12 @@ function contractStatusBadgeMeta({
   isStorno,
   isDozita,
   paid,
+  recordOnly = false,
 }: {
   isStorno: boolean;
   isDozita: boolean;
   paid?: boolean | null;
+  recordOnly?: boolean;
 }) {
   if (isStorno) {
     return {
@@ -270,9 +281,9 @@ function contractStatusBadgeMeta({
     };
   }
 
-  if (paid) {
+  if (paid || recordOnly) {
     return {
-      label: "Zaplaceno",
+      label: recordOnly ? "Aktivní" : "Zaplaceno",
       tone: "paid",
       Icon: Check,
     };
@@ -424,21 +435,9 @@ function isContractDozita(
   return contractLifecycleStatus(contract) === "dozita";
 }
 
-function getOldestContractDate(contracts: ContractDoc[]): Date | null {
-  if (contracts.length === 0) return null;
-  let oldest: Date | null = null;
-  for (const c of contracts) {
-    const d = getContractDate(c);
-    if (!d) continue;
-    if (!oldest || d.getTime() < oldest.getTime()) {
-      oldest = d;
-    }
-  }
-  return oldest;
-}
-
 function ContractsPageContent() {
   const searchParams = useSearchParams();
+  const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
   const [isFilterPending, startFilterTransition] = useTransition();
   const pendingScrollRestoreRef = useRef<number | null>(null);
   const refreshInFlightRef = useRef<{
@@ -447,26 +446,30 @@ function ContractsPageContent() {
     promise: Promise<void>;
   } | null>(null);
   const lastRefreshAtRef = useRef(0);
+  const lastTeamRefreshAtRef = useRef<number | null>(0);
+  const lastTeamRosterRef = useRef("");
+  const unfilteredMyListOwnerRef = useRef<string | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [currentUserPosition, setCurrentUserPosition] =
     useState<Position | null>(null);
   const [availablePositions, setAvailablePositions] = useState<Position[]>([]);
-  const teamUsersRef = useRef<AppUser[]>([]);
+  const [teamAdvisers, setTeamAdvisers] = useState<NonNullable<ContractsApiResponse["teamAdvisers"]>>([]);
 
   const [myContracts, setMyContracts] = useState<ContractDoc[]>([]);
   const [teamContracts, setTeamContracts] = useState<
     (ContractDoc & { adviserEmail: string | null })[]
   >([]);
   const [myHasMore, setMyHasMore] = useState(true);
-  const [teamHasMore, setTeamHasMore] = useState(true);
+  const [teamHasMore, setTeamHasMore] = useState(false);
   const [myCursorDate, setMyCursorDate] = useState<string | null>(null);
   const [teamCursorDate, setTeamCursorDate] = useState<string | null>(null);
 
   const [showTeam, setShowTeam] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("latest");
-  const [searchText, setSearchText] = useState("");
-  const [debouncedSearchText, setDebouncedSearchText] = useState("");
+  const [searchText, setSearchText] = useState(globalSearchParam);
+  const [debouncedSearchText, setDebouncedSearchText] = useState(() => normalizeContractListSearch(globalSearchParam));
   const [showUnpaidOnly, setShowUnpaidOnly] = useState(false);
+  const [showWithoutPdfOnly, setShowWithoutPdfOnly] = useState(false);
   const [showRefreshOnly, setShowRefreshOnly] = useState(false);
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [showStornoOnly, setShowStornoOnly] = useState(false);
@@ -474,14 +477,17 @@ function ContractsPageContent() {
   const [showCommissionEndedOnly, setShowCommissionEndedOnly] = useState(false);
   const [commissionAuditMode, setCommissionAuditMode] =
     useState<CommissionAuditFilterMode>("off");
+  const [stornoEstimateCount, setStornoEstimateCount] = useState<number | null>(null);
+  const auditingStorno = commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE;
   const [commissionAuditCodeFilter, setCommissionAuditCodeFilter] =
     useState<CommissionAuditFilterCode>("all");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [remoteReload, setRemoteReload] = useState(0);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
   const serverFilterRequestRef = useRef(0);
   const dataViewRevisionRef = useRef(0);
-  const previousServerFilterActiveRef = useRef(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -527,14 +533,17 @@ function ContractsPageContent() {
   });
   const lastListTransitionSignatureRef = useRef<string | null>(null);
   const shouldRestoreView = searchParams?.get("restore") === "1";
-  const globalSearchParam = (searchParams?.get("globalSearch") ?? "").trim().slice(0, 120);
   const normalizedUserEmail = useEffectiveUserEmail(user?.email);
-  const normalizedSearchText = normalizeSearchValue(searchText);
+  const normalizedSearchText = normalizeContractListSearch(searchText);
+  const exactSearchSelected = searchText.trimStart().startsWith("=");
+  const searchedPlate = vehicleRegistrationForMatch(searchText);
   const hasImmediateSearchQuery = normalizedSearchText.length > 0;
   const hasSearchQuery = debouncedSearchText.length > 0;
   const searchDebouncePending = normalizedSearchText !== debouncedSearchText;
-  const canShowTeamToggle =
-    isManagerPosition(currentUserPosition) || teamUsersRef.current.length > 0;
+  const hasTeamAdvisers = teamAdvisers.length > 0;
+  const teamRosterKey = teamAdvisers.map(adviser => adviser.email).join(",");
+  const canShowTeamToggle = isManagerPosition(currentUserPosition) || hasTeamAdvisers;
+  const viewingTeam = showTeam && canShowTeamToggle;
   const anniversaryModeActive =
     filterMode === "anniversary";
   const selectedCategoryList = useMemo(
@@ -561,28 +570,34 @@ function ContractsPageContent() {
   useEffect(() => {
     if (globalSearchParam) {
       setSearchText(globalSearchParam);
+      setDebouncedSearchText(normalizeContractListSearch(globalSearchParam));
     }
   }, [globalSearchParam]);
 
   useEffect(() => {
-    if (!hasImmediateSearchQuery) {
+    if (!normalizedSearchText) {
       setDebouncedSearchText("");
       return;
     }
+    if (!searchDebouncePending) return;
 
     const timer = window.setTimeout(() => {
       setDebouncedSearchText(normalizedSearchText);
     }, CONTRACT_SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [normalizedSearchText, hasImmediateSearchQuery]);
+  }, [normalizedSearchText, searchDebouncePending]);
 
   useEffect(() => {
-    searchResponseCacheRef.current.clear();
+    searchResponseCacheRef.current = new Map();
+    unfilteredMyListOwnerRef.current = null;
     serverFilterRequestRef.current += 1;
-    teamUsersRef.current = [];
+    setTeamAdvisers([]);
+    setTeamContracts([]);
+    setTeamHasMore(false);
+    setTeamCursorDate(null);
     setSelectedKeys(new Set());
-    setSelectedSubordinates(new Set());
-    setSelectedPositions(new Set());
+    setSelectedSubordinates(selected => selected.size > 0 ? new Set() : selected);
+    setSelectedPositions(selected => selected.size > 0 ? new Set() : selected);
     setAvailablePositions([]);
     setFilterModalOpen(false);
     setSelectMode(false);
@@ -595,6 +610,7 @@ function ContractsPageContent() {
     hasSearchQuery ||
     anniversaryModeActive ||
     showUnpaidOnly ||
+    showWithoutPdfOnly ||
     showRefreshOnly ||
     showActiveOnly ||
     showStornoOnly ||
@@ -604,12 +620,14 @@ function ContractsPageContent() {
     selectedCategoryList.length > 0 ||
     selectedInstitutionList.length > 0 ||
     selectedPositionList.length > 0 ||
-    (showTeam && canShowTeamToggle && selectedSubordinateList.length > 0);
+    (viewingTeam && selectedSubordinateList.length > 0);
+  const remoteListActive = serverFilterActive || viewingTeam;
   const activeListFilters = useMemo<ContractsListFilters>(
     () => ({
       query: debouncedSearchText.trim(),
       filterMode: anniversaryModeActive ? "anniversary" : "latest",
       showUnpaidOnly,
+      showWithoutPdfOnly,
       showRefreshOnly,
       showActiveOnly,
       showStornoOnly,
@@ -626,6 +644,7 @@ function ContractsPageContent() {
       debouncedSearchText,
       anniversaryModeActive,
       showUnpaidOnly,
+      showWithoutPdfOnly,
       showRefreshOnly,
       showActiveOnly,
       showStornoOnly,
@@ -640,8 +659,7 @@ function ContractsPageContent() {
     ]
   );
 
-  // Unfiltered refreshes contain both portfolios, so switching tabs keeps them valid.
-  const dataViewKey = JSON.stringify([normalizedUserEmail, serverFilterActive && showTeam, normalizedSearchText, activeListFilters]);
+  const dataViewKey = JSON.stringify([normalizedUserEmail, viewingTeam, normalizedSearchText, activeListFilters]);
   useEffect(() => { dataViewRevisionRef.current += 1; }, [dataViewKey]);
 
   const mergeContracts = <T extends { id: string }>(prev: T[], next: T[]): T[] => {
@@ -658,13 +676,11 @@ function ContractsPageContent() {
     async ({
       scope,
       cursor,
-      includeTeam,
       filters,
       signal,
     }: {
       scope: "my" | "team";
       cursor?: string | null;
-      includeTeam?: boolean;
       filters?: ContractsListFilters;
       signal?: AbortSignal;
     }) => {
@@ -679,9 +695,7 @@ function ContractsPageContent() {
         throw new DOMException("User scope changed", "AbortError");
       }
       const params = new URLSearchParams({ scope });
-      params.set("shape", "contractList");
       if (cursor) params.set("cursor", cursor);
-      if (includeTeam) params.set("includeTeam", "1");
       if (filters) {
         const query = filters.query.trim();
         if (query) params.set("q", query);
@@ -690,6 +704,9 @@ function ContractsPageContent() {
         }
         if (filters.showUnpaidOnly) {
           params.set("unpaidOnly", "1");
+        }
+        if (filters.showWithoutPdfOnly) {
+          params.set("withoutPdfOnly", "1");
         }
         if (filters.showRefreshOnly) {
           params.set("refreshOnly", "1");
@@ -730,8 +747,9 @@ function ContractsPageContent() {
         filters?.query.trim() && !cursor
           ? `${requestScopeEmail}:${params.toString()}`
           : null;
+      const searchCache = searchResponseCacheRef.current;
       if (searchCacheKey) {
-        const cached = searchResponseCacheRef.current.get(searchCacheKey);
+        const cached = searchCache.get(searchCacheKey);
         if (cached && cached.expiresAt > Date.now()) {
           if (signal?.aborted) {
             throw new DOMException("Request aborted", "AbortError");
@@ -741,11 +759,13 @@ function ContractsPageContent() {
           }
           return cached.data;
         }
-        if (cached) searchResponseCacheRef.current.delete(searchCacheKey);
+        if (cached) searchCache.delete(searchCacheKey);
       }
 
       const requestWithToken = async (token: string) =>
-        fetch(`/api/contracts/list?${params.toString()}`, {
+        fetch("/api/contracts/list", {
+          method: "POST",
+          body: params,
           headers: { Authorization: `Bearer ${token}` },
           signal,
         });
@@ -790,20 +810,21 @@ function ContractsPageContent() {
         );
       }
       if (!data) throw new Error("Nepodařilo se načíst smlouvy.");
+      signal?.throwIfAborted();
       if (effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail) {
         throw new DOMException("User scope changed", "AbortError");
       }
       if (searchCacheKey) {
-        searchResponseCacheRef.current.set(searchCacheKey, {
+        searchCache.set(searchCacheKey, {
           expiresAt: Date.now() + CONTRACT_SEARCH_CACHE_TTL_MS,
           data,
         });
         while (
-          searchResponseCacheRef.current.size > CONTRACT_SEARCH_CACHE_MAX_ENTRIES
+          searchCache.size > CONTRACT_SEARCH_CACHE_MAX_ENTRIES
         ) {
-          const oldestKey = searchResponseCacheRef.current.keys().next().value;
+          const oldestKey = searchCache.keys().next().value;
           if (!oldestKey) break;
-          searchResponseCacheRef.current.delete(oldestKey);
+          searchCache.delete(oldestKey);
         }
       }
       return data;
@@ -812,11 +833,7 @@ function ContractsPageContent() {
   );
 
   const applyContractsMetadata = useCallback((data: ContractsApiResponse) => {
-    if (data.teamEmails) {
-      teamUsersRef.current = data.teamEmails.map(normalizeEmail).filter(Boolean).map(email => ({
-        id: email, email, position: null, managerEmail: null,
-      }));
-    }
+    if (data.teamAdvisers) setTeamAdvisers(data.teamAdvisers);
     if (data.availablePositions) setAvailablePositions(normalizeCareerPositions(data.availablePositions));
     if (data.position !== undefined) setCurrentUserPosition(data.position);
     if (typeof data.canTransferContracts === "boolean") {
@@ -839,13 +856,11 @@ function ContractsPageContent() {
     async (
       startBefore: string | null,
       append: boolean,
-      filters?: ContractsListFilters,
-      requestId?: number,
+      filters: ContractsListFilters | undefined,
+      requestId: number,
       signal?: AbortSignal
     ) => {
-      if (!user || !normalizedUserEmail) {
-        return { list: [] as ContractDoc[], oldest: null as Date | null, hasMore: false };
-      }
+      if (!append) setStornoEstimateCount(null);
       const data = await apiFetchContracts({
         scope: "my",
         cursor: startBefore,
@@ -853,45 +868,32 @@ function ContractsPageContent() {
         signal,
       });
       const list = (data.contracts as ContractDoc[]) ?? [];
-      const oldest = getOldestContractDate(list);
-      const hasMore = Boolean(data.hasMore);
-
-      if (signal?.aborted) {
-        return { list, oldest, hasMore };
-      }
-      if (requestId != null && serverFilterRequestRef.current !== requestId) {
-        return { list, oldest, hasMore };
-      }
+      if (signal?.aborted || serverFilterRequestRef.current !== requestId) return;
 
       applyContractsMetadata(data);
+      if (filters) unfilteredMyListOwnerRef.current = null;
       setMyContracts((prev) => (append ? mergeContracts(prev, list) : list));
-      setMyHasMore(hasMore);
+      setMyHasMore(Boolean(data.hasMore));
       setMyCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
-
-      return { list, oldest, hasMore };
+      if (filters?.commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE) setStornoEstimateCount(data.totalCount ?? null);
     },
-    [apiFetchContracts, applyContractsMetadata, normalizedUserEmail, user]
+    [apiFetchContracts, applyContractsMetadata]
   );
 
   const fetchTeamPage = useCallback(
     async (
       startBefore: string | null,
       append: boolean,
-      filters?: ContractsListFilters,
-      requestId?: number,
+      filters: ContractsListFilters | undefined,
+      requestId: number,
       signal?: AbortSignal
     ) => {
-      const teamEmails = teamUsersRef.current.map((u) => u.email).filter(Boolean);
-      const hasExplicitSubordinateFilter =
-        (filters?.selectedSubordinates.length ?? 0) > 0;
-      if (teamEmails.length === 0 && !hasExplicitSubordinateFilter) {
-        if (requestId != null && serverFilterRequestRef.current !== requestId) {
-          return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
-        }
+      if (!append) setStornoEstimateCount(null);
+      if (!hasTeamAdvisers) {
         setTeamContracts([]);
         setTeamHasMore(false);
         setTeamCursorDate(null);
-        return { list: [] as (ContractDoc & { adviserEmail: string | null })[], oldest: null as Date | null, hasMore: false };
+        return;
       }
 
       const data = await apiFetchContracts({
@@ -901,63 +903,37 @@ function ContractsPageContent() {
         signal,
       });
       const list = (data.contracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
-      const oldest = getOldestContractDate(list);
-      const hasMore = Boolean(data.hasMore);
-
-      if (signal?.aborted) {
-        return { list, oldest, hasMore };
-      }
-      if (requestId != null && serverFilterRequestRef.current !== requestId) {
-        return { list, oldest, hasMore };
-      }
+      if (signal?.aborted || serverFilterRequestRef.current !== requestId) return;
 
       applyContractsMetadata(data);
       setTeamContracts((prev) => (append ? mergeContracts(prev, list) : list));
-      setTeamHasMore(hasMore);
+      setTeamHasMore(Boolean(data.hasMore));
       setTeamCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
-
-      return { list, oldest, hasMore };
+      if (filters?.commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE) setStornoEstimateCount(data.totalCount ?? null);
     },
-    [apiFetchContracts, applyContractsMetadata]
+    [apiFetchContracts, applyContractsMetadata, hasTeamAdvisers]
   );
 
   const applyContractsPayload = useCallback(
     (email: string, data: ContractsApiResponse) => {
       applyContractsMetadata(data);
       const myList = (data.contracts as ContractDoc[]) ?? [];
-      const teamList =
-        (data.teamContracts as (ContractDoc & { adviserEmail: string | null })[]) ?? [];
+      const myCursor = cursorFromApi(data.nextCursorToken, data.nextCursor);
 
-      setCurrentUserPosition(data.position ?? null);
+      unfilteredMyListOwnerRef.current = email;
       setMyContracts(myList);
-      setTeamContracts(teamList);
       setMyHasMore(Boolean(data.hasMore));
-      setTeamHasMore(Boolean(data.teamHasMore));
-      setMyCursorDate(cursorFromApi(data.nextCursorToken, data.nextCursor));
-      setTeamCursorDate(
-        cursorFromApi(data.teamNextCursorToken, data.teamNextCursor)
-      );
-
-      const teamEmails = (data.teamEmails ?? []).map((em) => em.toLowerCase());
-      teamUsersRef.current = teamEmails.map((em) => ({
-        id: em,
-        email: em,
-        position: null,
-        managerEmail: null,
-      }));
+      setMyCursorDate(myCursor);
 
       writeContractsCache({
         userEmail: email,
         position: data.position ?? null,
         availablePositions: normalizeCareerPositions(data.availablePositions),
         myContracts: myList,
-        teamContracts: teamList,
         savedAt: Date.now(),
         myHasMore: Boolean(data.hasMore),
-        teamHasMore: Boolean(data.teamHasMore),
-        myCursorDate: cursorFromApi(data.nextCursorToken, data.nextCursor),
-        teamCursorDate: cursorFromApi(data.teamNextCursorToken, data.teamNextCursor),
-        teamEmails,
+        myCursorDate: myCursor,
+        teamAdvisers: data.teamAdvisers,
       });
     },
     [applyContractsMetadata]
@@ -969,7 +945,7 @@ function ContractsPageContent() {
       if (!user || !email) return;
       // Při aktivních serverových filtrech by tichý refresh přepsal filtrovaný dataset
       // první nefiltrouvanou stránkou a UI by viditelně probliklo.
-      if (silent && serverFilterActive) return;
+      if (remoteListActive) return;
       if (silent && !force && Date.now() - lastRefreshAtRef.current < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
         return;
       }
@@ -985,13 +961,15 @@ function ContractsPageContent() {
         if (!silent) setLoading(true);
         setLoadError(null);
         try {
-          const data = await apiFetchContracts({ scope: "my", includeTeam: true });
+          const data = await apiFetchContracts({ scope: "my" });
           if (effectiveUserEmail(auth.currentUser?.email) !== email) return;
           refreshSucceeded = true;
           // The initial response still supplies team navigation metadata, but
           // must not replace a search that completed while it was loading.
-          applyContractsMetadata(data);
-          if (dataViewRevisionRef.current !== viewRevision) return;
+          if (dataViewRevisionRef.current !== viewRevision) {
+            applyContractsMetadata(data);
+            return;
+          }
           applyContractsPayload(email, data);
         } catch (e) {
           if ((e as { name?: string } | null)?.name === "AbortError") return;
@@ -1024,12 +1002,17 @@ function ContractsPageContent() {
         }
       }
     },
-    [normalizedUserEmail, user, apiFetchContracts, applyContractsPayload, applyContractsMetadata, serverFilterActive]
+    [normalizedUserEmail, user, apiFetchContracts, applyContractsPayload, applyContractsMetadata, remoteListActive]
   );
 
   // auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
+      const query = fbUser ? takeContractSearchHandoff(fbUser.uid) : null;
+      if (query) {
+        setSearchText(query);
+        setDebouncedSearchText(normalizeContractListSearch(query));
+      }
       setUser(fbUser);
     });
     return () => unsub();
@@ -1037,6 +1020,7 @@ function ContractsPageContent() {
 
   useEffect(() => {
     lastRefreshAtRef.current = 0;
+    lastTeamRefreshAtRef.current = 0;
   }, [normalizedUserEmail]);
 
   // load pozice + smlouvy
@@ -1048,6 +1032,7 @@ function ContractsPageContent() {
       if (!email || !user) {
         setMyContracts([]);
         setTeamContracts([]);
+        setStornoEstimateCount(null);
         setCurrentUserPosition(null);
         setMyHasMore(false);
         setTeamHasMore(false);
@@ -1061,42 +1046,20 @@ function ContractsPageContent() {
         setTransferTargetEmail("");
         return;
       }
-      if (serverFilterActive) {
-        return;
-      }
+      if (remoteListActive) return;
 
       const cached = readContractsCache(email);
       if (cached) {
-        setMyContracts(cached.myContracts ?? []);
-        setTeamContracts(cached.teamContracts ?? []);
-        setCurrentUserPosition(cached.position ?? null);
-        setAvailablePositions(normalizeCareerPositions(cached.availablePositions ?? [cached.position]));
-        setMyHasMore(cached.myHasMore ?? true);
-        setTeamHasMore(cached.teamHasMore ?? true);
-        setMyCursorDate(normalizeCursorToken(cached.myCursorDate));
-        setTeamCursorDate(normalizeCursorToken(cached.teamCursorDate));
-        if (cached.teamEmails?.length) {
-          teamUsersRef.current = cached.teamEmails.map((em) => ({
-            id: em,
-            email: em,
-            position: null,
-            managerEmail: null,
-          }));
-        } else if ((cached.teamContracts?.length ?? 0) > 0) {
-          const uniq = Array.from(
-            new Set(
-              cached.teamContracts
-                .map((c) => (c.userEmail ?? c.adviserEmail ?? "").toLowerCase())
-                .filter(Boolean)
-            )
-          );
-          teamUsersRef.current = uniq.map((em) => ({
-            id: em,
-            email: em,
-            position: null,
-            managerEmail: null,
-          }));
+        if (unfilteredMyListOwnerRef.current !== email) {
+          unfilteredMyListOwnerRef.current = email;
+          setMyContracts(cached.myContracts ?? []);
+          setCurrentUserPosition(cached.position ?? null);
+          setAvailablePositions(normalizeCareerPositions(cached.availablePositions ?? [cached.position]));
+          setMyHasMore(cached.myHasMore ?? true);
+          setMyCursorDate(normalizeCursorToken(cached.myCursorDate));
+          setTeamAdvisers(cached.teamAdvisers ?? []);
         }
+        setLoadError(null);
         setLoading(false);
       } else {
         setLoading(true);
@@ -1112,24 +1075,24 @@ function ContractsPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [normalizedUserEmail, user, refreshContracts, serverFilterActive]);
+  }, [normalizedUserEmail, user, refreshContracts, remoteListActive]);
 
   useEffect(() => {
-    if (!user || !normalizedUserEmail) return;
+    const cancelPagination = () => loadMoreControllerRef.current?.abort();
+    if (!user || !normalizedUserEmail) return cancelPagination;
 
     // Invalidate paginated responses as soon as the query changes, including the debounce window.
     const requestId = ++serverFilterRequestRef.current;
-    if (searchDebouncePending) return;
+    if (searchDebouncePending || !remoteListActive) return cancelPagination;
 
-    if (!serverFilterActive) {
-      if (previousServerFilterActiveRef.current) {
-        previousServerFilterActiveRef.current = false;
-        void refreshContracts({ silent: false });
-      }
-      return;
+    const lastTeamRefresh = lastTeamRefreshAtRef.current;
+    if (viewingTeam && !serverFilterActive && lastTeamRefresh && lastTeamRosterRef.current === teamRosterKey &&
+      Date.now() - lastTeamRefresh < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) {
+      setLoadError(null);
+      setLoading(false);
+      return cancelPagination;
     }
 
-    previousServerFilterActiveRef.current = true;
     let cancelled = false;
     const controller = new AbortController();
     const includesCommissionAudit =
@@ -1143,16 +1106,19 @@ function ContractsPageContent() {
       setSelectMode(false);
 
       try {
-        const scope: "my" | "team" =
-          showTeam && canShowTeamToggle ? "team" : "my";
-        if (scope === "team") {
+        if (viewingTeam) {
+          lastTeamRefreshAtRef.current = null;
           await fetchTeamPage(
             null,
             false,
-            activeListFilters,
+            serverFilterActive ? activeListFilters : undefined,
             requestId,
             controller.signal
           );
+          if (!cancelled) {
+            lastTeamRosterRef.current = teamRosterKey;
+            lastTeamRefreshAtRef.current = serverFilterActive ? 0 : Date.now();
+          }
         } else {
           await fetchMyPage(
             null,
@@ -1165,6 +1131,12 @@ function ContractsPageContent() {
       } catch (e) {
         if ((e as { name?: string } | null)?.name === "AbortError") return;
         if (cancelled || serverFilterRequestRef.current !== requestId) return;
+        if (viewingTeam) {
+          lastTeamRefreshAtRef.current = 0;
+          setTeamContracts([]);
+          setTeamHasMore(false);
+          setTeamCursorDate(null);
+        }
         const msg = getErrorMessage(e, "Nepodařilo se načíst filtrované smlouvy.");
         if (msg.toLowerCase().includes("síť") || msg.toLowerCase().includes("network")) {
           console.warn("Dočasný výpadek sítě při filtrování smluv:", msg);
@@ -1186,18 +1158,21 @@ function ContractsPageContent() {
     return () => {
       cancelled = true;
       controller.abort();
+      cancelPagination();
+      if (viewingTeam && lastTeamRefreshAtRef.current === null) lastTeamRefreshAtRef.current = 0;
     };
   }, [
     normalizedUserEmail,
     user,
     searchDebouncePending,
+    remoteListActive,
+    remoteReload,
     serverFilterActive,
     activeListFilters,
-    showTeam,
-    canShowTeamToggle,
+    viewingTeam,
+    teamRosterKey,
     fetchMyPage,
     fetchTeamPage,
-    refreshContracts,
   ]);
 
   useEffect(() => {
@@ -1210,14 +1185,24 @@ function ContractsPageContent() {
     if (typeof window === "undefined" || !user || !normalizedUserEmail) return;
 
     const triggerRefresh = () => {
-      searchResponseCacheRef.current.clear();
-      void refreshContracts({ silent: true });
+      searchResponseCacheRef.current = new Map();
+      if (viewingTeam && !serverFilterActive) {
+        const lastRefresh = lastTeamRefreshAtRef.current;
+        if (lastRefresh === null || Date.now() - lastRefresh < CONTRACTS_SILENT_REFRESH_COOLDOWN_MS) return;
+        lastTeamRefreshAtRef.current = null;
+        setRemoteReload(value => value + 1);
+      } else {
+        void refreshContracts({ silent: true });
+      }
     };
 
     const refreshAfterMutation = () => {
-      searchResponseCacheRef.current.clear();
+      searchResponseCacheRef.current = new Map();
+      lastTeamRefreshAtRef.current = 0;
+      lastRefreshAtRef.current = 0;
       // Known data changes must not wait for the passive focus cooldown.
-      void refreshContracts({ silent: true, force: true });
+      if (remoteListActive) setRemoteReload(value => value + 1);
+      else void refreshContracts({ silent: true, force: true });
     };
 
     const onVisibility = () => {
@@ -1245,18 +1230,18 @@ function ContractsPageContent() {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("storage", onStorage);
     };
-  }, [normalizedUserEmail, user, refreshContracts]);
+  }, [normalizedUserEmail, user, refreshContracts, remoteListActive, serverFilterActive, viewingTeam]);
 
   const subordinateFilterOptions = useMemo(() => {
     if (!canShowTeamToggle) return [] as { email: string; label: string }[];
     const emails = new Set<string>();
     const namesByEmail = new Map<string, string>();
 
-    for (const member of teamUsersRef.current) {
+    for (const member of teamAdvisers) {
       const email = normalizeEmail(member.email);
       if (!email) continue;
       emails.add(email);
-      const name = cleanDisplayName(member.fullName) || cleanDisplayName(member.name);
+      const name = cleanDisplayName(member.name);
       if (name) namesByEmail.set(email, name);
     }
 
@@ -1280,7 +1265,7 @@ function ContractsPageContent() {
         if (labelCompare !== 0) return labelCompare;
         return a.email.localeCompare(b.email, "cs", { sensitivity: "base" });
       });
-  }, [canShowTeamToggle, teamContracts]);
+  }, [canShowTeamToggle, teamAdvisers, teamContracts]);
 
   const displayedContracts = useMemo(() => {
     const base = (
@@ -1306,6 +1291,8 @@ function ContractsPageContent() {
         preferRootDisplay: boolean;
         endorsementCount: number;
         hasRefresh: boolean;
+        hasContractPdfAttachment: boolean;
+        carPlate: string | null;
         searchClientTokens: Set<string>;
         searchContractTokens: Set<string>;
         searchContractCompactTokens: Set<string>;
@@ -1352,6 +1339,8 @@ function ContractsPageContent() {
           preferRootDisplay,
           endorsementCount: isEndorsement ? 1 : 0,
           hasRefresh,
+          hasContractPdfAttachment: contract.hasContractPdfAttachment === true,
+          carPlate: contract.carPlate ?? null,
           searchClientTokens: new Set(
             normalizedClient.length > 0 ? [normalizedClient] : []
           ),
@@ -1365,8 +1354,12 @@ function ContractsPageContent() {
         return;
       }
 
+      if (contract.carPlate) existing.carPlate = contract.carPlate;
       if (isEndorsement) existing.endorsementCount += 1;
       if (hasRefresh) existing.hasRefresh = true;
+      if (contract.hasContractPdfAttachment === true) {
+        existing.hasContractPdfAttachment = true;
+      }
       if (normalizedClient.length > 0) {
         existing.searchClientTokens.add(normalizedClient);
       }
@@ -1410,6 +1403,7 @@ function ContractsPageContent() {
             : null;
         return {
           ...group.display,
+          carPlate: group.carPlate,
           ...(latestPremiumAmount != null
             ? {
                 inputAmount: latestPremiumAmount,
@@ -1419,6 +1413,7 @@ function ContractsPageContent() {
             : {}),
           groupedEndorsementCount: group.endorsementCount,
           groupedHasRefresh: group.hasRefresh,
+          hasContractPdfAttachment: group.hasContractPdfAttachment,
           groupedLatestSortMs: group.latestSortMs,
           groupedLatestCreatedMs: group.latestCreatedMs,
           searchClientTokens: Array.from(group.searchClientTokens),
@@ -1503,6 +1498,7 @@ function ContractsPageContent() {
         view: showTeam && canShowTeamToggle ? "team" : "mine",
         mode: filterMode,
         unpaidOnly: showUnpaidOnly,
+        withoutPdfOnly: showWithoutPdfOnly,
         refreshOnly: showRefreshOnly,
         activeOnly: showActiveOnly,
         stornoOnly: showStornoOnly,
@@ -1520,6 +1516,7 @@ function ContractsPageContent() {
       canShowTeamToggle,
       filterMode,
       showUnpaidOnly,
+      showWithoutPdfOnly,
       showRefreshOnly,
       showActiveOnly,
       showStornoOnly,
@@ -1624,8 +1621,10 @@ function ContractsPageContent() {
   }, [effectiveFilteredContracts.length, showTeam, filterMode, selectMode, commissionAuditActive]);
 
   const handleLoadMore = useCallback(async () => {
-    if (loadingMore || loading || searchDebouncePending) return;
+    if (loadingMore || loading || searchDebouncePending || loadMoreControllerRef.current) return;
     if (!user || !normalizedUserEmail) return;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
     setLoadingMore(true);
     const requestId = serverFilterRequestRef.current;
     try {
@@ -1635,7 +1634,8 @@ function ContractsPageContent() {
           teamCursorDate,
           true,
           serverFilterActive ? activeListFilters : undefined,
-          requestId
+          requestId,
+          controller.signal
         );
       } else {
         if (!myHasMore) return;
@@ -1643,7 +1643,8 @@ function ContractsPageContent() {
           myCursorDate,
           true,
           serverFilterActive ? activeListFilters : undefined,
-          requestId
+          requestId,
+          controller.signal
         );
       }
     } catch (e) {
@@ -1657,7 +1658,10 @@ function ContractsPageContent() {
       }
       setLoadError(msg);
     } finally {
-      setLoadingMore(false);
+      if (loadMoreControllerRef.current === controller) {
+        loadMoreControllerRef.current = null;
+        setLoadingMore(false);
+      }
     }
   }, [
     loadingMore,
@@ -1704,6 +1708,7 @@ function ContractsPageContent() {
       filterMode,
       searchText,
       showUnpaidOnly,
+      showWithoutPdfOnly,
       showRefreshOnly,
       showActiveOnly,
       showStornoOnly,
@@ -1723,6 +1728,7 @@ function ContractsPageContent() {
     filterMode,
     searchText,
     showUnpaidOnly,
+      showWithoutPdfOnly,
     showRefreshOnly,
     showActiveOnly,
     showStornoOnly,
@@ -1869,7 +1875,9 @@ function ContractsPageContent() {
     setShowTeam(saved.showTeam || restoredSubordinates.size > 0);
     setFilterMode(saved.filterMode);
     setSearchText(saved.searchText);
+    setDebouncedSearchText(normalizeContractListSearch(saved.searchText));
     setShowUnpaidOnly(saved.showUnpaidOnly);
+    setShowWithoutPdfOnly(saved.showWithoutPdfOnly);
     setShowRefreshOnly(saved.showRefreshOnly);
     setShowActiveOnly(saved.showActiveOnly);
     setShowStornoOnly(saved.showStornoOnly);
@@ -1909,6 +1917,7 @@ function ContractsPageContent() {
     searchText,
     showTeam,
     showUnpaidOnly,
+    showWithoutPdfOnly,
     showRefreshOnly,
     showActiveOnly,
     showStornoOnly,
@@ -1926,8 +1935,6 @@ function ContractsPageContent() {
     persistContractsViewState();
   }, [persistContractsViewState]);
 
-  const hasTeamContracts =
-    teamContracts.length > 0 && canShowTeamToggle;
   const currentFilterSelection = { ...activeListFilters,
     selectedSubordinates: showTeam && canShowTeamToggle ? selectedSubordinateList : [],
   };
@@ -2178,18 +2185,18 @@ function ContractsPageContent() {
                     <span className={toolbarStyles.searchIcon}><Search size={17} strokeWidth={1.7} aria-hidden="true" /></span>
                     <input
                       type="text"
-                      aria-label="Hledat klienta nebo číslo smlouvy"
+                      aria-label="Hledat klienta, číslo smlouvy nebo SPZ"
                       maxLength={120}
                       autoComplete="off"
                       enterKeyHint="search"
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
+                      value={exactSearchSelected ? searchText.trimStart().slice(1) : searchText}
+                      onChange={(event) => setSearchText(exactSearchSelected ? `=${event.target.value.slice(0, 119)}` : event.target.value)}
                       onKeyDown={(event) => {
                         if (event.nativeEvent.isComposing) return;
                         if (event.key === "Enter") setDebouncedSearchText(normalizedSearchText);
                         if (event.key === "Escape") { setSearchText(""); setDebouncedSearchText(""); }
                       }}
-                      placeholder="Hledat klienta nebo smlouvu"
+                      placeholder={exactSearchSelected ? "Číslo smlouvy v uloženém formátu" : "Klient, číslo smlouvy nebo SPZ"}
                       className={toolbarStyles.input}
                     />
                     {isSearchBusy && (
@@ -2209,6 +2216,17 @@ function ContractsPageContent() {
                         className={toolbarStyles.clear}
                       ><X size={15} aria-hidden="true" /></button>
                     )}
+                    <button
+                      type="button"
+                      className={toolbarStyles.exactSearch}
+                      aria-label="Přesné číslo smlouvy"
+                      aria-pressed={exactSearchSelected}
+                      title="Přesné číslo smlouvy v uloženém formátu"
+                      onClick={event => {
+                        setSearchText(value => exactSearchSelected ? value.trimStart().slice(1) : `=${value.trim().slice(0, 119)}`);
+                        event.currentTarget.parentElement?.querySelector("input")?.focus();
+                      }}
+                    >Přesně</button>
                 </div>
               </div>
 
@@ -2227,7 +2245,6 @@ function ContractsPageContent() {
                             setShowTeam(false);
                             setSelectedSubordinates(new Set());
                             setSelectedPositions(new Set());
-                            setAvailablePositions([]);
                             setFilterModalOpen(false);
                           }}
                           className={toolbarStyles.scopeButton}
@@ -2344,6 +2361,10 @@ function ContractsPageContent() {
           )}
         </div>
 
+        {auditingStorno && stornoEstimateCount !== null && !isFilteredListLoading && !isCommissionAuditFilterLoading && !loadError && (
+          <p role="status" className="text-sm font-medium text-slate-700">Nalezené smlouvy bez úplného odhadu storna <strong>{stornoEstimateCount.toLocaleString("cs-CZ")}</strong></p>
+        )}
+
         {/* LIST SMLOUV */}
         <div
           className={`transition-[opacity,transform] duration-300 ease-out will-change-transform ${
@@ -2362,7 +2383,7 @@ function ContractsPageContent() {
               <div className="mx-auto h-5 w-5 animate-spin rounded-full border-2 border-amber-200 border-t-amber-600" />
               <p className="font-medium">Načítám provizní filtr…</p>
               <p className="text-xs text-slate-500">
-                Kontroluji očekávané kódy provizí proti zapsaným výpisům.
+                {auditingStorno ? "Prověřuji odhady vratek u stornovaných smluv." : "Kontroluji očekávané kódy provizí proti zapsaným výpisům."}
               </p>
             </div>
           ) : loading && !serverFilterActive ? (
@@ -2422,6 +2443,8 @@ function ContractsPageContent() {
                     V aktuálním výběru nejsou žádné smlouvy mimo stav storno nebo dožitá.
                   </p>
                 </>
+              ) : auditingStorno ? (
+                <p className="font-medium">V tomto výběru žádná smlouva s chybějícím odhadem storna</p>
               ) : showStornoOnly || showMaturedOnly ? (
                 <>
                   <p className="font-medium">Žádné smlouvy v tomto stavu</p>
@@ -2444,7 +2467,7 @@ function ContractsPageContent() {
                 <>
                   <p className="font-medium">Nic nenalezeno</p>
                   <p className="text-xs text-slate-500">
-                    Zkus upravit hledaný text (klient nebo číslo smlouvy).
+                    Zkontroluj jméno klienta, číslo smlouvy nebo celou SPZ.
                   </p>
                   {!showTeam && canShowTeamToggle && (
                     <p className="text-xs text-slate-500">
@@ -2453,7 +2476,7 @@ function ContractsPageContent() {
                     </p>
                   )}
                 </>
-              ) : showTeam && hasTeamContracts ? (
+              ) : viewingTeam ? (
                 <>
                   <p className="font-medium">Žádné týmové smlouvy</p>
                   <p className="text-xs text-slate-500">
@@ -2563,15 +2586,18 @@ function ContractsPageContent() {
                   isStorno,
                   isDozita,
                   paid: c.paid,
+                  recordOnly: isRecordOnlyProduct(c.productKey),
                 });
                 const commissionAuditSummary =
-                  commissionAuditActive
+                  commissionAuditActive && !auditingStorno
                     ? commissionAuditSummaryForContract(c as ContractDoc, {
                         mode: commissionAuditMode,
                         codeFilter: commissionAuditCodeFilter,
                         viewerEmail: ownerEmail,
                       })
                     : null;
+                const issue = (c as ContractDoc).stornoEstimateIssue;
+                const stornoEstimateReason = auditingStorno && issue ? STORNO_ESTIMATE_ISSUE_LABELS[issue] : null;
                 const primaryCommissionAuditItem =
                   commissionAuditSummary?.items[0] ?? null;
                 const commissionAuditTone = primaryCommissionAuditItem
@@ -2611,9 +2637,13 @@ function ContractsPageContent() {
                               <span className={cardStyles.number} title={`Číslo smlouvy: ${c.contractNumber ?? "—"}`}>
                                 č. {c.contractNumber ?? "—"}
                               </span>
+                              {c.carPlate && c.carPlate === searchedPlate && (
+                                <span className={cardStyles.number}>SPZ {c.carPlate}</span>
+                              )}
                               {inherited ? (
                                 <span className={cardStyles.tag}>Převzatá</span>
                               ) : null}
+                              {c.isDip === true && <span className={cardStyles.tag}>DIP</span>}
                               {isEndorsement ? (
                                 <span className={cardStyles.tag} data-tone="neutral">Dodatek</span>
                               ) : null}
@@ -2654,10 +2684,10 @@ function ContractsPageContent() {
                         <div className={cardStyles.premium}>
                           <span className="sr-only">Pojistné </span>
                           <div className={cardStyles.amount}>
-                            {formatMoney(premiumDisplay.amount)}
+                            {isRecordOnlyProduct(c.productKey) ? c.productKey === "cppAutoVozikZdarma" ? "Zdarma" : "Bez výpočtu provize" : formatMoney(premiumDisplay.amount)}
                           </div>
                           <div className={cardStyles.cadence}>
-                            {premiumDisplay.cadenceLabel ?? "Částka"}
+                            {isRecordOnlyProduct(c.productKey) ? "Pouze evidence" : premiumDisplay.cadenceLabel ?? "Částka"}
                           </div>
                           {isEndorsement && premiumDelta != null ? (
                             <div
@@ -2687,6 +2717,11 @@ function ContractsPageContent() {
                           </span>
                         ) : null}
 
+                        {stornoEstimateReason && (
+                          <div className={`${cardStyles.audit} rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium leading-snug text-amber-900`}>
+                            {stornoEstimateReason}
+                          </div>
+                        )}
                         {primaryCommissionAuditItem && commissionAuditTone ? (
                           <div
                             className={`${cardStyles.audit} flex min-w-0 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium leading-snug ${commissionAuditTone.compact}`}
@@ -2762,7 +2797,7 @@ function ContractsPageContent() {
           )}
         </div>
 
-        {!loading && !hasTeamContracts && canShowTeamToggle && (
+        {!loading && !hasTeamAdvisers && canShowTeamToggle && (
           <p className="pt-1 text-[11px] text-slate-500">
             Zatím tu nejsou žádní podřízení vázaní na tvůj účet
             (kolekce <code>users</code>, pole{" "}
@@ -2785,6 +2820,7 @@ function ContractsPageContent() {
             startFilterTransition(() => {
               setFilterMode(next.filterMode);
               setShowUnpaidOnly(next.showUnpaidOnly);
+              setShowWithoutPdfOnly(next.showWithoutPdfOnly);
               setShowRefreshOnly(next.showRefreshOnly);
               setShowActiveOnly(next.showActiveOnly);
               setShowStornoOnly(next.showStornoOnly);
@@ -3037,7 +3073,7 @@ function ContractsPageContent() {
             }
           }}
         >
-          <div className="flex h-[min(900px,92vh)] w-[min(1240px,94vw)] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)]">
+          <div className="flex h-[min(900px,92vh)] w-[94vw] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_36px_92px_rgba(2,6,23,0.42)] sm:w-full sm:max-w-[1600px]">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 sm:px-4">
               <div className="min-w-0 px-1">
                 <p className="truncate text-xs font-bold uppercase tracking-[0.16em] text-slate-500">

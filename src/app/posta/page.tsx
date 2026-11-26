@@ -41,6 +41,7 @@ import {
 
 import { auth } from "@/app/firebase";
 import { fetchAuthedJsonOrThrow } from "@/app/lib/authenticatedApi";
+import { isLifeCommissionReminderMessageId, LIFE_COMMISSION_REMINDER_TYPE } from "@/app/lib/lifeCommissionReminder";
 import { SYSTEM_MAILBOX_RETENTION_DAYS } from "@/app/lib/mailboxRetention";
 import {
   effectiveUserEmail,
@@ -54,6 +55,7 @@ import { MailboxChatThread } from "./MailboxChatThread";
 import { MailboxSupportCard } from "./MailboxSupportCard";
 import { isMailboxSupportConversation, isMailboxSupportEmail, MAILBOX_SUPPORT_RECIPIENT } from "./mailboxSupport";
 import { MailboxGroupManager } from "./MailboxGroupManager";
+import { LifeCommissionReminderPreview } from "./LifeCommissionReminderPreview";
 import {
   COMPOSE_FILES_MAX_COUNT,
   COMPOSE_MESSAGE_MAX_LEN,
@@ -1289,6 +1291,9 @@ export default function PostaPage() {
     previewItem?.type === "weekly_team_report"
       ? weeklyTeamReportHref(previewItem, true)
       : null;
+  const lifeCommissionPreview = previewItem?.type === LIFE_COMMISSION_REMINDER_TYPE && effectiveEmail
+    ? <LifeCommissionReminderPreview item={previewItem} ownerEmail={effectiveEmail} />
+    : null;
 
   const loadChatAttachment = useCallback(async (
     messageId: string,
@@ -2691,7 +2696,7 @@ export default function PostaPage() {
       setPreviewModalOpen(openAsModal);
       return;
     }
-    if (item.type === "online_card_meeting_request") {
+    if (item.type === "online_card_meeting_request" || item.type === LIFE_COMMISSION_REMINDER_TYPE) {
       setSharedExportPreviewHtml(null);
       setSharedExportPreviewLoading(false);
       setPreviewItem(item);
@@ -2809,23 +2814,34 @@ export default function PostaPage() {
 
   useEffect(() => {
     const messageId = pendingDeepLinkMessageIdRef.current;
-    if (!messageId) return;
-    if (openedDeepLinkMessageIdRef.current === messageId) return;
-    const targetItem = items.find((item) => item.id === messageId);
-    if (!targetItem) return;
-
-    openedDeepLinkMessageIdRef.current = messageId;
-    void openItem(targetItem);
-
-    if (typeof window !== "undefined") {
+    if (!messageId || openedDeepLinkMessageIdRef.current === messageId || !user || !effectiveEmail) return;
+    const openTarget = (targetItem: MailboxItem) => {
+      openedDeepLinkMessageIdRef.current = messageId;
+      if (targetItem.type === LIFE_COMMISSION_REMINDER_TYPE) setMailFilter("system");
+      void openItem(targetItem);
       const nextUrl = new URL(window.location.href);
       nextUrl.searchParams.delete("messageId");
       const nextHref = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
       window.history.replaceState({}, "", nextHref);
+    };
+    const targetItem = items.find((item) => item.id === messageId);
+    if (targetItem) {
+      openTarget(targetItem);
+      return;
     }
+    if (!isLifeCommissionReminderMessageId(messageId)) return;
+    const controller = new AbortController();
+    void fetchAuthedJsonOrThrow<MailboxResponse>(user, `/api/mailbox?messageId=${encodeURIComponent(messageId)}`, { signal: controller.signal })
+      .then(payload => {
+        if (controller.signal.aborted || auth.currentUser?.uid !== user.uid || !mailboxScopeIsCurrent()) return;
+        const reminder = payload.items?.find(item => item.id === messageId && item.type === LIFE_COMMISSION_REMINDER_TYPE);
+        if (reminder) openTarget(reminder);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
     // `openItem` here intentionally follows current render state; guard refs prevent duplicate opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [effectiveEmail, items, mailboxScopeIsCurrent, user]);
 
   useEffect(() => {
     if (!previewItem) return;
@@ -2926,7 +2942,7 @@ export default function PostaPage() {
   const emptyFolderDescription: Record<MailFilterMode, string> = {
     all: "Vyhledej kolegu přes Nový chat a začni konverzaci.",
     unread: "Nové zprávy se zobrazí tady.",
-    system: `Systémová oznámení se automaticky mažou po ${SYSTEM_MAILBOX_RETENTION_DAYS} dnech.`,
+    system: `Běžná systémová oznámení se automaticky mažou po ${SYSTEM_MAILBOX_RETENTION_DAYS} dnech.`,
     snoozed: "Odložené zprávy a nastavená připomenutí se zobrazí tady.",
     archived: "Archivované chaty a oznámení se zobrazí tady.",
   };
@@ -3386,7 +3402,7 @@ export default function PostaPage() {
               </section>
 
               <aside className={`${styles.mailDetailPane} hidden min-w-0 flex-col bg-slate-50/65 xl:flex`}>
-                {previewItem && (mailboxPreviewHtml || weeklyReportPreviewHref || standardDirectPreviewItem) ? (
+                {previewItem && (lifeCommissionPreview || mailboxPreviewHtml || weeklyReportPreviewHref || standardDirectPreviewItem) ? (
                   <>
                     <div className={`${styles.conversationHeader} border-b border-slate-200 bg-white px-5 py-4`}>
                       <div className="flex items-center justify-between gap-3">
@@ -3437,6 +3453,8 @@ export default function PostaPage() {
                     <div className={`${styles.conversationScroll} min-h-0 flex-1 overflow-y-auto`}>
                       {standardDirectPreviewItem ? (
                         renderStandardDirectMessage(false)
+                      ) : lifeCommissionPreview ? (
+                        lifeCommissionPreview
                       ) : weeklyReportPreviewHref ? (
                         <iframe
                           src={weeklyReportPreviewHref ?? undefined}
@@ -4094,7 +4112,7 @@ export default function PostaPage() {
           </div>
         )}
 
-        {previewModalOpen && previewItem && (mailboxPreviewHtml || standardDirectPreviewItem) && (
+        {previewModalOpen && previewItem && (lifeCommissionPreview || mailboxPreviewHtml || standardDirectPreviewItem) && (
           <div className={`${styles.previewOverlay} ${standardDirectPreviewItem ? styles.chatPreviewOverlay : ""} fixed inset-0 z-[90]`}>
             <button
               type="button"
@@ -4173,6 +4191,8 @@ export default function PostaPage() {
                     <div className={`${styles.conversationScroll} min-h-0 flex-1 overflow-y-auto`}>
                       {renderStandardDirectMessage(false)}
                     </div>
+                  ) : lifeCommissionPreview ? (
+                    <div className="min-h-0 flex-1 overflow-y-auto">{lifeCommissionPreview}</div>
                   ) : previewItem.type === "production_export_share" && sharedExportPreviewLoading ? (
                     <div className="grid h-full place-items-center text-sm font-medium text-slate-700">
                       Načítám přesný náhled exportu…

@@ -390,6 +390,7 @@ async function markReminderDone(
     return;
   }
   await reminder.ref.update({
+    inboxSnoozeMs: 0,
     snoozedUntilMs: FieldValue.delete(),
     snoozedUntil: FieldValue.delete(),
     snoozedAtMs: FieldValue.delete(),

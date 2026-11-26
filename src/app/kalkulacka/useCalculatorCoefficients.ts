@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { CommissionMode, MaxCizinKomplexVariant, PaymentFrequency, Position, Product } from "../types/domain";
+import { coefficientSetSignedDateForProduct } from "../lib/productFormulas/coefficientSets";
 import {
   getCoefficientSummary,
   isNeonHistoricalPeriod,
@@ -16,8 +17,47 @@ import {
   isDomexEarlyHistoricalPeriod,
   isDomexHistoricalPeriod,
 } from "../lib/productFormulas";
-import { frequencyLabel, isIsoDay, paymentsPerYear } from "./calculatorHelpers";
+import {
+  isKoopMajetekObcanHistoricalPeriod,
+  KOOP_MAJETEK_OBCAN_CURRENT_VALID_FROM,
+} from "../lib/productFormulas/koopmajetekobcan";
+import { isKoopOdzamHistoricalPeriod, KOOP_ODZAM_CURRENT_VALID_FROM } from "../lib/productFormulas/koopodzam";
+import { MAXEFEKT5_VALID_FROM, MAXEFEKT7_VALID_FROM } from "../lib/productFormulas/maximaMaxEfekt";
+import { formatIsoDay, frequencyLabel, isIsoDay, paymentsPerYear } from "./calculatorHelpers";
 import type { NeonCoefficientView } from "./CalculatorCoefficientModal";
+
+const COEFFICIENT_VIEWS = ["current", "historical", "olderHistorical"] as const;
+const COEFFICIENT_VIEW_LABELS: Record<NeonCoefficientView, string> = {
+  current: "Aktuální",
+  historical: "Historické",
+  olderHistorical: "Nejstarší historické",
+};
+
+const CALCULATOR_COEFFICIENT_DATES: Partial<Record<Product, Partial<Record<NeonCoefficientView, string>>>> = {
+  maximaMaxEfekt: { current: MAXEFEKT7_VALID_FROM, historical: MAXEFEKT5_VALID_FROM },
+  koopodzam: { current: KOOP_ODZAM_CURRENT_VALID_FROM, historical: "2026-08-31" },
+  koopmajetekobcan: { current: KOOP_MAJETEK_OBCAN_CURRENT_VALID_FROM, historical: "2026-08-31" },
+};
+
+function calculatorCoefficientDateForView(product: Product, view: NeonCoefficientView) {
+  return CALCULATOR_COEFFICIENT_DATES[product]?.[view] ??
+    coefficientSetSignedDateForProduct(product, view === "olderHistorical" ? "earlyHistorical" : view);
+}
+
+export function calculatorCoefficientOptionsForProduct(product: Product) {
+  return COEFFICIENT_VIEWS.flatMap((value) => {
+    const date = calculatorCoefficientDateForView(product, value);
+    if (!date) return [];
+
+    const name = product === "maximaMaxEfekt"
+      ? (value === "current" ? "MAXEFEKT 7" : "MAXEFEKT 5")
+      : COEFFICIENT_VIEW_LABELS[value];
+    const boundary = value === "historical" && (product === "koopodzam" || product === "koopmajetekobcan")
+      ? "do"
+      : "od";
+    return [{ value, date, label: `${name} · ${boundary} ${formatIsoDay(date)}` }];
+  });
+}
 
 type CalculatorCoefficientOptions = {
   product: Product;
@@ -142,6 +182,11 @@ export function useCalculatorCoefficients({
       isKooperativaAutoHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
+  const isKoopOdzamHistoricalBySignedDate =
+    product === "koopodzam" && isKoopOdzamHistoricalPeriod(contractSignedDateForNeon);
+  const isKoopMajetekObcanHistoricalBySignedDate =
+    product === "koopmajetekobcan" && isKoopMajetekObcanHistoricalPeriod(contractSignedDateForNeon);
+  const isHistoricalCoefficientView = neonCoefficientView === "historical";
   const isMaxEfekt5BySignedDate = useMemo(
     () =>
       product === "maximaMaxEfekt" &&
@@ -160,74 +205,21 @@ export function useCalculatorCoefficients({
       isDomexHistoricalPeriod(contractSignedDateForNeon),
     [product, contractSignedDateForNeon]
   );
-  const neonCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2024-06-30";
-    return "2024-07-01";
-  }, [neonCoefficientView]);
-  const cppAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const allianzAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const csobAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const uniqaAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "olderHistorical") return "2023-02-01";
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const uniqaFlotilaCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const pillowAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const kooperativaAutoCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2026-03-31";
-    return "2026-04-01";
-  }, [neonCoefficientView]);
-  const maxEfektCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "historical") return "2023-04-21";
-    return "2026-04-23";
-  }, [neonCoefficientView]);
-  const domexCoefficientDateForView = useMemo(() => {
-    if (neonCoefficientView === "olderHistorical") return "2017-06-01";
-    if (neonCoefficientView === "historical") return "2023-06-01";
-    return "2024-09-01";
-  }, [neonCoefficientView]);
-  const coefficientDateForView = useMemo(() => {
-    if (product === "neon") return neonCoefficientDateForView;
-    if (product === "maximaMaxEfekt") return maxEfektCoefficientDateForView;
-    if (product === "domex") return domexCoefficientDateForView;
-    if (product === "cppAuto") return cppAutoCoefficientDateForView;
-    if (product === "allianzAuto") return allianzAutoCoefficientDateForView;
-    if (product === "csobAuto") return csobAutoCoefficientDateForView;
-    if (product === "uniqaAuto") return uniqaAutoCoefficientDateForView;
-    if (product === "uniqaflotila") return uniqaFlotilaCoefficientDateForView;
-    if (product === "pillowAuto") return pillowAutoCoefficientDateForView;
-    if (product === "kooperativaAuto") return kooperativaAutoCoefficientDateForView;
-    return contractSignedDateForNeon;
-  }, [
-    product,
-    neonCoefficientDateForView,
-    cppAutoCoefficientDateForView,
-    allianzAutoCoefficientDateForView,
-    csobAutoCoefficientDateForView,
-    uniqaAutoCoefficientDateForView,
-    uniqaFlotilaCoefficientDateForView,
-    pillowAutoCoefficientDateForView,
-    kooperativaAutoCoefficientDateForView,
-    maxEfektCoefficientDateForView,
-    domexCoefficientDateForView,
-    contractSignedDateForNeon,
-  ]);
+  let coefficientViewBySignedDate: NeonCoefficientView = "current";
+  if (isUniqaAutoEarlyHistoricalBySignedDate || isDomexEarlyHistoricalBySignedDate) {
+    coefficientViewBySignedDate = "olderHistorical";
+  } else if (
+    isNeonHistoricalBySignedDate || isCppAutoHistoricalBySignedDate ||
+    isAllianzAutoHistoricalBySignedDate || isCsobAutoHistoricalBySignedDate ||
+    isUniqaAutoHistoricalBySignedDate || isUniqaFlotilaHistoricalBySignedDate ||
+    isPillowAutoHistoricalBySignedDate || isKooperativaAutoHistoricalBySignedDate ||
+    isKoopOdzamHistoricalBySignedDate || isKoopMajetekObcanHistoricalBySignedDate ||
+    isMaxEfekt5BySignedDate || isDomexHistoricalBySignedDate
+  ) {
+    coefficientViewBySignedDate = "historical";
+  }
+  const coefficientDateForView =
+    calculatorCoefficientDateForView(product, neonCoefficientView) ?? contractSignedDateForNeon;
   const isMaxEfekt5InCoefModal = useMemo(
     () =>
       product === "maximaMaxEfekt" &&
@@ -454,6 +446,7 @@ export function useCalculatorCoefficients({
     if (product === "domex" && isDomexHistoricalInCoefModal) {
       return DOMEX_HISTORICAL_TERMS_PREVIEW_URL;
     }
+    if (product === "koopodzam" && !isHistoricalCoefficientView) return null;
     return AUTO_TERMS_PREVIEW_BY_PRODUCT[product] ?? null;
   }, [
     product,
@@ -469,8 +462,14 @@ export function useCalculatorCoefficients({
     isKooperativaAutoHistoricalInCoefModal,
     isDomexEarlyHistoricalInCoefModal,
     isDomexHistoricalInCoefModal,
+    isHistoricalCoefficientView,
   ]);
-  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl);
+  const secureTermsDocumentId = isHistoricalCoefficientView
+    ? null
+    : product === "koopodzam"
+      ? "koop-odzam-neuron-2026-09"
+      : product === "koopmajetekobcan" ? "koop-obcan-neuron-2026-09" : null;
+  const showAutoTermsPreview = Boolean(autoTermsPreviewUrl || secureTermsDocumentId);
   const neonPeriod = neonCoefficientView === "historical" ? "2019" : "2024";
   const neonPreviewRole: "poradce" | "manazer" = documentPosition.startsWith("poradce")
     ? "poradce"
@@ -487,6 +486,7 @@ export function useCalculatorCoefficients({
 
   return {
     contractSignedDateForNeon,
+    coefficientViewBySignedDate,
     isNeonHistoricalBySignedDate,
     isCppAutoHistoricalBySignedDate,
     isAllianzAutoHistoricalBySignedDate,
@@ -496,6 +496,8 @@ export function useCalculatorCoefficients({
     isUniqaFlotilaHistoricalBySignedDate,
     isPillowAutoHistoricalBySignedDate,
     isKooperativaAutoHistoricalBySignedDate,
+    isKoopOdzamHistoricalBySignedDate,
+    isKoopMajetekObcanHistoricalBySignedDate,
     isMaxEfekt5BySignedDate,
     isDomexEarlyHistoricalBySignedDate,
     isDomexHistoricalBySignedDate,
@@ -516,6 +518,7 @@ export function useCalculatorCoefficients({
     coefList,
     coefExplanation,
     autoTermsPreviewUrl,
+    secureTermsDocumentId,
     showAutoTermsPreview,
     neonPeriod,
     neonTermsPreviewUrl,
