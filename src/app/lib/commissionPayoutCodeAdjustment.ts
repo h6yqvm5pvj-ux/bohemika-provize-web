@@ -1,4 +1,5 @@
 import type { CommissionResultItemDTO, Product } from "@/app/types/domain";
+import { confirmedQuarterlyProjection, type ConfirmedInstallmentSplit, type ConfirmedQuarterlyRule } from "./confirmedQuarterlyInstallments";
 import { baseCommissionCodeForPayoutComparison } from "./commissionPayoutRules";
 import { endorsementCommissionDay } from "./endorsementCommissionPlan";
 import { isAutoProduct, isLifeProduct, isRecordOnlyProduct } from "./productCatalog";
@@ -12,9 +13,11 @@ export type CommissionPayoutCodeAdjustment = {
 } & (
   | { kind: "cpp-auto-annual-sequence-offset"; fromPayoutMonthKey: string }
   | { kind: "cpp-auto-quarterly-sequence-offset"; sourceStatementIds: readonly string[] }
+  | ConfirmedQuarterlyRule
   | { kind: "cpp-pprs-acquisition-a201"; statementId: string; payoutKey: string }
 );
 export type AdjustedCommissionPayout = {
+  confirmedInstallmentSplit?: ConfirmedInstallmentSplit;
   statementCode?: string | null;
   commissionCodeCorrectionNote?: string;
   basePremiumPeriod?: "annual";
@@ -107,7 +110,12 @@ function createSemiannualCodeProjection(entry: CommissionCodeContract, evidence:
 export function createCommissionCodeProjection(entry: CommissionCodeContract, evidence: readonly CommissionCodeReceipt[]) {
   const unchanged = <T extends CommissionCodeReceipt>(receipt: T): T & AdjustedCommissionPayout => receipt;
   if (entry.frequencyRaw === "semiannual") return createSemiannualCodeProjection(entry, evidence);
-  const rule = entry.commissionPayoutCodeAdjustment as Partial<CommissionPayoutCodeAdjustment> | null | undefined;
+  const rule = entry.commissionPayoutCodeAdjustment as CommissionPayoutCodeAdjustment | null | undefined;
+  if (rule?.kind === "cpp-auto-quarterly-combined-start" && entry.productKey === "cppAuto" &&
+      entry.frequencyRaw === "quarterly" && entry.entryType !== "endorsement" &&
+      email(rule.writtenBy) && Number.isFinite(rule.confirmedAtMs) && rule.confirmedAtMs > 0) {
+    return confirmedQuarterlyProjection(rule, evidence);
+  }
   if (entry.frequencyRaw === "quarterly" && entry.productKey === "cppAuto" &&
       entry.entryType !== "endorsement" && rule?.kind === "cpp-auto-quarterly-sequence-offset" &&
       email(rule.writtenBy) && typeof rule.confirmedAtMs === "number" && rule.confirmedAtMs > 0 &&

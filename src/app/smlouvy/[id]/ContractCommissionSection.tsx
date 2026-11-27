@@ -12,6 +12,7 @@ import { CommissionComparisonRow } from "./CommissionComparisonRow";
 import { PayoutDifferenceExplanationContent } from "./PayoutDifferenceExplanationContent";
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
 import { projectAcquisitionInstallmentReceipts } from "@/app/lib/acquisitionInstallmentCoverage";
+import { splitConfirmedOpeningReceipt } from "@/app/lib/confirmedQuarterlyInstallments";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import { isNeonRecurringStatementCode } from "@/app/lib/neonRecurringStatementBase";
@@ -397,8 +398,9 @@ const expectedAmountFromPayoutRecords = (
   const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
   const subsequent = codes.some((code) => isAutoSubsequentCommissionCode(normalizePayoutCode(code, product)));
   const reassignedAcquisition = product === "cppAuto" && nonStornoRecords.every((record) =>
-    /^A10[2-4]$/.test(normalizePayoutCode(record.code, product)) &&
-    /^B10[1-3]$/.test(normalizePayoutCode(record.statementCode, product))
+    (record.installmentSourceCode === "A101" && record.statementCode === "A101") ||
+    (/^A10[2-4]$/.test(normalizePayoutCode(record.code, product)) &&
+      /^B10[1-3]$/.test(normalizePayoutCode(record.statementCode, product)))
   );
   if (
     (!neonRecurring && !subsequent && !reassignedAcquisition) || nonStornoRecords.length === 0 ||
@@ -1555,7 +1557,8 @@ export function ContractCommissionSection({
       policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges,
     });
     if (acquisitionInstallments.length > 0) {
-      const projected = commissionEntry?.paymentFrequencyChanges?.length ? payoutsForRows :
+      const projected = payoutsForRows.some(row => row.confirmedInstallmentSplit) ? splitConfirmedOpeningReceipt(payoutsForRows) :
+        commissionEntry?.paymentFrequencyChanges?.length ? payoutsForRows :
         projectAcquisitionInstallmentReceipts(payoutsForRows, acquisitionInstallments);
       const installments = acquisitionInstallments.map((installment, index) => {
         const records = payoutsForAcquisitionInstallment(projected, installment);

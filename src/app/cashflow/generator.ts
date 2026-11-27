@@ -1,5 +1,6 @@
 import { hasPendingFlexiRenovationBase } from "@/app/lib/flexiRenovation";
 import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
+import { splitConfirmedOpeningReceipt } from "@/app/lib/confirmedQuarterlyInstallments";
 import { coverAcquisitionCashflowInstallments } from "./acquisitionInstallmentCoverage";
 import { PAYOUT_EXCEPTION_POSITION, PAYOUT_EXCEPTION_START_YEAR, payoutPositionException, payoutPositionExceptionItems } from "@/app/lib/payoutPositionException";
 import { autoFrequencyCommissionPeriods, autoFrequencyCommissionMultiplier, cppKomplexRenewalCommissionMultiplier, paymentFrequencyAtDate } from "@/app/lib/autoPaymentFrequency";
@@ -617,8 +618,8 @@ function generateCashflowSchedule(
     const isStorno = status === "storno";
     const parsedStornoDate = toDate(entry.stornoDate, { calendar: now });
     const stornoCutoffDate = isStorno ? parsedStornoDate ?? now : null;
-    const scopedPayouts = projectConfirmedCommissionCodes(entry,
-      projectedNeonReceipts.get(entry) ?? cashflowCommissionPayoutsForViewer(entry, viewerEmail) ?? []);
+    const scopedPayouts = splitConfirmedOpeningReceipt(projectConfirmedCommissionCodes(entry,
+      projectedNeonReceipts.get(entry) ?? cashflowCommissionPayoutsForViewer(entry, viewerEmail) ?? []));
     const settledPayouts = indexSettledCommissionPayouts(scopedPayouts, now);
     const statementOnlyPayouts = indexStatementOnlyCommissionPayouts(scopedPayouts, now);
     const lifeEndorsement = entry.entryType === "endorsement" && ["neon", "flexi", "maximaMaxEfekt"].includes(entry.productKey ?? "");

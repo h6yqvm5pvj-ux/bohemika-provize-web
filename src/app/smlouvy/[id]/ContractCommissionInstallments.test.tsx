@@ -99,6 +99,29 @@ describe("contract commission installment interaction", () => {
     expect(onOpenStatement).toHaveBeenCalledWith("s1", ["B101"]);
   });
 
+  it("shows two different opening amounts and opens the same original A101 for both", async () => {
+    const onOpenStatement = vi.fn();
+    const entry = { id: "quarterly", productKey: "cppAuto" as const, frequencyRaw: "quarterly" as const,
+      userEmail: owner, policyStartDate: "2024-01-10", paymentFrequencyChanges: [
+        { effectiveDate: "2024-04-01", frequency: "quarterly" as const, baseAnnualPremium: 2000, annualPremium: 2400 },
+      ] };
+    const payouts = [{ key: "first", code: "A101", amount: 110, status: "difference", writtenBy: owner,
+      statementId: "original", statementNumber: "TEST-1", confirmedInstallmentSplit: { secondCents: 6000, secondDueDate: "2024-04-01" },
+      commissionCodeCorrectionNote: "Společná výplata A101 a A102." }];
+    await act(async () => root.render(<ContractCommissionSection {...props} product="cppAuto" paymentFrequency="quarterly"
+      policyStartDate={entry.policyStartDate} commissionEntry={entry} paymentBasedAdviserTotals={null}
+      adviserItems={[{ title: "Okamžitá provize", code: "A101", amount: 50 }]} commissionPayouts={payouts} onOpenStatement={onOpenStatement} />));
+    const group = container.querySelector("details")!;
+    expect(group.querySelector("summary")?.textContent).toContain("Zapsané výplaty 2/4");
+    const parts = [...group.querySelectorAll("div")].filter(node => node.className.includes("breakdownRow"));
+    for (const [index, amount] of ["50,00", "60,00"].entries()) {
+      expect(parts[index].textContent).toContain(`Očekáváno ${amount} Kč`);
+      expect(parts[index].textContent).toContain("Vyplaceno");
+      await act(async () => parts[index].querySelector("button")!.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith("original", ["A101"]);
+    }
+  });
+
   it("shows A104 covered by the quarterly A103 payment with a doubled statement base", async () => {
     const onOpenStatement = vi.fn();
     const entry = { id: "synthetic-quarterly", userEmail: owner, productKey: "cppAuto" as const,

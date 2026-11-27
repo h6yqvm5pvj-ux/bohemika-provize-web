@@ -4225,6 +4225,8 @@ const processStatementWrites = async ({
         contract.refreshStatementResolvedStatementDate !== statementDate ||
         contract.refreshStatementResolvedStatementChronologyMs !== statementChronologyMs);
     const codeEvidenceForRow = (row: CommissionStatementPayoutRow) => ({
+      ...(contract.commissionPayoutCodeAdjustment?.kind === "cpp-auto-quarterly-combined-start"
+        ? { statementId: docId, key: statementPayoutKey(docId, row) } : {}),
       code: row.commissionCode, payoutMonthKey, writtenBy: ctxEmail,
       amount: row.status === "storno" ? -Math.abs(row.commission) : row.commission, status: row.status,
       sourceBaseAmount: row.baseAmount, statementDate, statementPeriod,
