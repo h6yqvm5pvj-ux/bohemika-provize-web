@@ -1,7 +1,7 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
 
-// Renewal receipts can restart their source-code numbering in a later period.
-export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v32";
+// Includes half-year renewals reported two months after the installment.
+export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v33";
 export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
 export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;

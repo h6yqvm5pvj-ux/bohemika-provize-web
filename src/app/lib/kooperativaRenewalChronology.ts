@@ -8,6 +8,7 @@ type Period = FrequencyCommissionPeriod;
 const originalCode = (row: CommissionCodeReceipt) => (row.statementCode ?? row.code ?? "").trim().toUpperCase();
 const recipient = (row: CommissionCodeReceipt) => row.writtenBy?.trim().toLowerCase() ?? "";
 const reversed = (row: CommissionCodeReceipt) => row.status === "storno" || (row.amount ?? 0) < 0;
+const periodMonth = (slot: Period) => Number(slot.period.slice(0, 4)) * 12 + Number(slot.period.slice(5, 7));
 
 function statementMonth(row: CommissionCodeReceipt) {
   if (!row.statementPeriod) return autoCommissionReceiptMonth(row);
@@ -27,7 +28,7 @@ export function kooperativaRenewalChronology(contract: CommissionCodeContract, e
     return [{ raw, nominal: "B" + raw.slice(1), month, writer, row }];
   });
   if (rows.length < 2) return;
-  const latest = Math.max(...rows.map(row => row.month)) + 1;
+  const latest = Math.max(...rows.map(row => row.month)) + 2;
   const until = new Date(Date.UTC(Math.floor((latest - 1) / 12), (latest - 1) % 12 + 1, 0)).toISOString().slice(0, 10);
   const end = endorsementCommissionDay(contract.policyEndDate);
   let schedule: Period[];
@@ -38,11 +39,13 @@ export function kooperativaRenewalChronology(contract: CommissionCodeContract, e
     return;
   }
   const nearby = new Map<number, { distance: number; slot: Period | null }>();
-  for (const slot of schedule) {
-    const month = Number(slot.period.slice(0, 4)) * 12 + Number(slot.period.slice(5, 7));
-    // Quarterly and longer installments can be reported in an adjacent month's statement.
+  for (const [index, slot] of schedule.entries()) {
+    const month = periodMonth(slot);
     const tolerance = slot.frequency === "monthly" ? 0 : 1;
-    for (let offset = -tolerance; offset <= tolerance; offset++) {
+    const next = schedule[index + 1];
+    // Two months after a half-year installment can still be closer to it than to the next one.
+    const lateLimit = slot.frequency === "semiannual" && (!next || periodMonth(next) - month > 4) ? 2 : tolerance;
+    for (let offset = -tolerance; offset <= lateLimit; offset++) {
       const distance = Math.abs(offset);
       const previous = nearby.get(month + offset);
       if (!previous || distance < previous.distance) nearby.set(month + offset, { distance, slot });
@@ -52,8 +55,10 @@ export function kooperativaRenewalChronology(contract: CommissionCodeContract, e
   const key = (writer: string, raw: string, month: number) => JSON.stringify([writer, raw, month]);
   const byWriter = new Map<string, Map<string, typeof rows>>();
   for (const item of rows) {
-    const slot = nearby.get(item.month)?.slot;
-    if (!slot?.code.startsWith("B") || reversed(item.row) || (slot.frequency === "monthly" && !item.row.statementPeriod)) continue;
+    const match = nearby.get(item.month);
+    if (!match?.slot?.code.startsWith("B") || reversed(item.row) ||
+      ((match.slot.frequency === "monthly" || match.distance === 2) && !item.row.statementPeriod)) continue;
+    const slot = match.slot;
     const periods = byWriter.get(item.writer) ?? new Map<string, typeof rows>();
     const payments = periods.get(slot.code) ?? [];
     payments.push(item);
@@ -70,9 +75,15 @@ export function kooperativaRenewalChronology(contract: CommissionCodeContract, e
       if (group.some(item => item.nominal === slot.code)) { settled.add(slot.code); continue; }
       const [first] = group;
       const previous = "B" + (Number(slot.code.slice(1)) - 1);
-      if (group.some(item => item.raw !== first.raw) || !(settled.has(first.nominal) || settled.has(previous))) continue;
-      for (const item of group) moves.set(key(writer, item.raw, item.month), slot);
-      settled.add(slot.code);
+      const nominalSettled = settled.has(first.nominal);
+      const previousSettled = settled.has(previous);
+      if (group.some(item => item.raw !== first.raw) || !(nominalSettled || previousSettled)) continue;
+      for (const item of group) {
+        // For a late restart require both the already-covered code and the preceding installment.
+        if (item.month === periodMonth(slot) + 2 && !(nominalSettled && previousSettled)) continue;
+        moves.set(key(writer, item.raw, item.month), slot);
+        settled.add(slot.code);
+      }
     }
   }
   if (!moves.size) return;
@@ -92,7 +103,9 @@ export function kooperativaRenewalChronology(contract: CommissionCodeContract, e
     if (month === null) return;
     const raw = originalCode(row);
     const identity = key(recipient(row), raw, month);
-    const slot = reversed(row) ? corrections.get(JSON.stringify([identity, Math.abs(row.amount ?? 0)])) : moves.get(identity);
+    const reversal = reversed(row);
+    const slot = reversal ? corrections.get(JSON.stringify([identity, Math.abs(row.amount ?? 0)])) : moves.get(identity);
+    if (slot && !reversal && month === periodMonth(slot) + 2 && !row.statementPeriod) return;
     if (slot) return { ...row, code: slot.code, statementCode: row.code,
       commissionCodeCorrectionNote: `Kód výpisu ${raw} → ${slot.code}. Podle pořadí výpisů patří ke splátce od ${slot.period.split("-").reverse().join(".")}.` };
   };

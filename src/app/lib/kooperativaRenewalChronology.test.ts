@@ -46,6 +46,28 @@ describe("Kooperativa Auto chronological renewal installments", () => {
     expect(codes([later])).toEqual(["B101"]);
     expect(codes([rows[2], { ...later, statementPeriod: "invalid" }])).toEqual(["C101", "B101"]);
   });
+  it("assigns a two-month-late restart to the next half year when both preceding installments are documented", () => {
+    const later = receipt("B101", "01.04.2024 - 30.04.2024", 53);
+    const sequence = [rows[2], rows[3], later];
+    expect(codes(sequence)).toEqual(["C101", "C102", "B103"]);
+    expect(codes([...sequence].reverse())).toEqual(["B103", "C102", "C101"]);
+    const settled = generateCashflow([{ ...entry, commissionPayouts: sequence }], 1, owner, new Date(2024, 11, 1))
+      .filter(row => row.payoutStatus === "paid");
+    expect(settled.map(row => [row.commissionPeriodStart, row.amount])).toEqual([
+      ["2023-02-15", 40], ["2023-08-15", 41], ["2024-02-15", 53],
+    ]);
+    const reversal = receipt("B101", "01.09.2024 - 30.09.2024", -53);
+    expect(codes([...sequence, reversal]).at(-1)).toBe("B103");
+  });
+  it("requires a dated statement and a unique half-year period for the longer delay", () => {
+    const later = receipt("B101", "01.04.2024 - 30.04.2024", 53);
+    expect(codes([rows[2], later]).at(-1)).toBe("B101");
+    expect(codes([rows[3], later]).at(-1)).toBe("B101");
+    expect(codes([rows[2], rows[3], { ...later, statementPeriod: "" }]).at(-1)).toBe("B101");
+    expect(codes([rows[2], rows[3], receipt("B101", "01.05.2024 - 31.05.2024", 53)]).at(-1)).toBe("B101");
+    const changed = { ...entry, paymentFrequencyChanges: [{ effectiveDate: "2024-06-15", frequency: "quarterly" as const }] };
+    expect(projectConfirmedCommissionCodes(changed, [rows[2], rows[3], later]).at(-1)?.code).toBe("B101");
+  });
   it("requires independent evidence for the same recipient and leaves competing same-period rows alone", () => {
     expect(codes([{ ...rows[2], writtenBy: "other@example.test" }, rows[5]])).toEqual(["C101", "B101"]);
     expect(codes([...rows, { ...rows[5], code: "C104" }]).slice(-2)).toEqual(["B101", "C104"]);
