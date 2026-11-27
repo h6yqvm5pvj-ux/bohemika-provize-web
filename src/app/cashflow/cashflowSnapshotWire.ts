@@ -6,7 +6,7 @@ import type {
   MonthGroup,
 } from "./types";
 
-export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v14";
+export const CASHFLOW_SNAPSHOT_WIRE_VERSION = "cashflow-snapshot-wire-v15";
 export const CASHFLOW_SNAPSHOT_MAX_ITEMS = 25_000;
 export const CASHFLOW_SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_MONTHS = 2_400;
@@ -84,6 +84,7 @@ const itemFields = {
   predictionBaselinePosition: optionalPosition,
   predictionCommissionMode: { ...optionalText, values: Object.keys(modes) },
   durationYears: optionalNumber, commissionCode: optionalText,
+  statementCode: optionalText,
   commissionCodeAliases: { kind: "strings", optional: true }, commissionLabel: optionalText,
   isTipPayout: optionalBoolean, tipSourceAdviserEmail: optionalText,
   tipSourceAdviserName: optionalText, isSubscriptionPayment: optionalBoolean,

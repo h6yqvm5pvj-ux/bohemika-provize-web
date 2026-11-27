@@ -1,5 +1,4 @@
-import { autoAnnualPremiumAtDate, autoFrequencyCommissionPeriods, cppKomplexRenewalCommissionMultiplier, hasDatedCommissionSchedule, paymentFrequencyAtDate, type PaymentFrequencyChange } from "./autoPaymentFrequency";
-import type { PaymentFrequency, Product } from "@/app/types/domain";
+import { autoAnnualPremiumAtDate, autoFrequencyCommissionPeriods, cppPaymentCommissionMultiplier, hasDatedCommissionSchedule, paymentFrequencyAtDate, supportsCppPropertyPaymentChanges, type PaymentFrequencyContract } from "./autoPaymentFrequency";
 import { endorsementCommissionDay } from "./endorsementCommissionPlan";
 import { baseCommissionCodeForPayoutComparison } from "./commissionPayoutRules";
 import { isAutoProduct, isFrequencyAutoPayoutProduct, isLifeProduct } from "./productCatalog";
@@ -23,12 +22,7 @@ export function commissionPeriodAfterMonths(policyStartDate: unknown, months: nu
  * Resolve an unambiguous entitlement period from a contractual commission code.
  * Statement/payout dates never substitute for the period being commissioned.
  */
-export function commissionPeriodForCode(entry: {
-  productKey?: Product | null;
-  frequencyRaw?: PaymentFrequency | string | null;
-  policyStartDate?: unknown;
-  paymentFrequencyChanges?: PaymentFrequencyChange[] | null;
-}, value: unknown): string | null {
+export function commissionPeriodForCode(entry: PaymentFrequencyContract, value: unknown): string | null {
   const code = baseCommissionCodeForPayoutComparison(value, entry.productKey);
   const product = entry.productKey;
   const at = (months: number) => commissionPeriodAfterMonths(entry.policyStartDate, months);
@@ -75,17 +69,18 @@ export function commissionPeriodForCode(entry: {
     ? at(0) : null;
 }
 
-/** The original contract owns the renewal. Its dated change supplies the terms. */
-export function cppKomplexRenewalTerms(entry: Parameters<typeof autoAnnualPremiumAtDate>[0], value: unknown) {
-  if (entry.productKey !== "cppPPRs" || !entry.paymentFrequencyChanges?.length) return null;
-  const code = baseCommissionCodeForPayoutComparison(value, entry.productKey).replace(/^BC/, "B");
-  if (!/^B\d+$/.test(code)) return null;
+/** The original contract owns the commission. Its dated change supplies the terms. */
+export function cppPropertyCommissionTerms(entry: Parameters<typeof autoAnnualPremiumAtDate>[0], value: unknown) {
+  if (!supportsCppPropertyPaymentChanges(entry.productKey) || !entry.paymentFrequencyChanges?.length) return null;
+  const code = baseCommissionCodeForPayoutComparison(value, entry.productKey).replace(/^([AB])C/, "$1");
+  const acquisition = entry.productKey === "domex" && /^A\d+$/.test(code);
+  if (!acquisition && !/^B\d+$/.test(code)) return null;
   const period = commissionPeriodForCode(entry, code);
   if (!period) return null;
   const frequency = paymentFrequencyAtDate(entry, period);
   const annualPremium = autoAnnualPremiumAtDate(entry, period);
   if (!frequency || annualPremium == null) return null;
   const change = entry.paymentFrequencyChanges.findLast(item => item.effectiveDate <= period);
-  return { period, frequency, annualPremium, paymentPremium: annualPremium / periodsPerYear(frequency),
-    multiplier: cppKomplexRenewalCommissionMultiplier(entry, period), change };
+  return { acquisition, period, frequency, annualPremium, paymentPremium: annualPremium / periodsPerYear(frequency),
+    multiplier: cppPaymentCommissionMultiplier(entry, period), change };
 }

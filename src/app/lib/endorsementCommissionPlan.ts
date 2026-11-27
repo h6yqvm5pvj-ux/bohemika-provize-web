@@ -208,7 +208,7 @@ export function createEndorsementCommissionPlan(entries: readonly EndorsementCom
       if (!day || !resolved?.complete || resolved.index !== 0 || !resolved.chain[0].usesFullNeonRecurringPremium) return null;
       const applicable = resolved.chain.slice(1).filter(node => node.start! <= day);
       const latest = applicable.at(-1);
-      if (!latest || !applicable.some(node => node.kind === "increase")) return null;
+      if (!latest || !applicable.some(node => node.kind === "decrease" || node.kind === "increase")) return null;
       return {
         originalMonthlyPremium: resolved.chain[0].premium!,
         monthlyPremium: latest.premium!,

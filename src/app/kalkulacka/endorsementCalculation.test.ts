@@ -111,6 +111,21 @@ describe("prepareEndorsementDraft", () => {
     expect(result.draft.total).toBe(-118);
   });
 
+  it.each([
+    [400, "commission_statement", 180, -270],
+    [600, "commission_statement", 180, -270],
+    [800, "commission_statement", 60, -30],
+    [400, "calculator", 300, -150],
+  ] as const)("previews a Refresh reduced to %i with base source %s", (premium, sourceKind, monthlyBase, a101) => {
+    const [source] = buildEndorsementSourceEntries([{ id: "root", productKey: "neon", isRefresh: true,
+      userEmail: "owner@example.test", position: "poradce4", effectiveInputAmount: 900, durationYears: 20,
+      policyStartDate: "2023-02-01", commissionBaseSource: sourceKind, refreshCommissionBase: { calculationAnnualPremium: 3600 },
+      items: [{ code: "A101", title: "Provize A101", amount: 450 }],
+    }], "neon");
+    const result = prepare({ source, targetProduct: "neon", newPremiumAmount: premium, policyStartDateIso: "2025-02-01" });
+    expect(result).toMatchObject({ ok: true, draft: { calculationAmount: monthlyBase, items: [{ code: "A101", amount: a101 }] } });
+  });
+
   it("asks for a manually entered duration when MaxEfekt has none to inherit", () => {
     const result = prepare({
       source: sourceEntry({

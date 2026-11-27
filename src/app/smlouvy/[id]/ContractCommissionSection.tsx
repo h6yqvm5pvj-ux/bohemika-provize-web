@@ -2,19 +2,21 @@ import { applyAutoCommissionForecasts } from "@/app/cashflow/autoCommissionForec
 import { PAYOUT_EXCEPTION_POSITION, payoutExceptionStatementMonth, payoutPositionException } from "@/app/lib/payoutPositionException";
 import { autoCommissionPolicyYear, createAutoCommissionForecast, type AutoCommissionForecast } from "@/app/lib/autoCommissionForecast";
 import { projectConfirmedCommissionCodes } from "@/app/lib/commissionPayoutCodeAdjustment";
-import { autoFrequencyCommissionMultiplier } from "@/app/lib/autoPaymentFrequency";
+import { autoFrequencyCommissionMultiplier, cppPaymentCommissionMultiplier } from "@/app/lib/autoPaymentFrequency";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Banknote, ChartNoAxesColumnIncreasing, CalendarDays, ChevronDown, Coins, Eye, FileSearch, FileText, Info, Repeat2, X } from "lucide-react";
 import styles from "./contractCommission.module.css";
 import { CommissionPayoutSummaryDialog } from "./CommissionPayoutSummaryDialog";
-import { summarizeCommissionPayouts, type CommissionPayoutComparison } from "./commissionPayoutComparison";
+import { payoutCents, summarizeCommissionPayouts, type CommissionPayoutComparison } from "./commissionPayoutComparison";
 import { CommissionComparisonRow } from "./CommissionComparisonRow";
 import { PayoutDifferenceExplanationContent } from "./PayoutDifferenceExplanationContent";
 import { acquisitionCommissionInstallments, payoutsForAcquisitionInstallment } from "./contractCommissionInstallments";
 import { projectAcquisitionInstallmentReceipts } from "@/app/lib/acquisitionInstallmentCoverage";
+import { splitConfirmedOpeningReceipt } from "@/app/lib/confirmedQuarterlyInstallments";
 
 import { baseCommissionCodeForPayoutComparison } from "@/app/lib/commissionPayoutRules";
 import { isNeonRecurringStatementCode } from "@/app/lib/neonRecurringStatementBase";
+import { neonCareInstallments } from "@/app/lib/neonCarePayoutCodes";
 import {
   activePayoutRecordsAfterFullStornos, commissionStatementDay, COMMISSION_PAYOUT_AMOUNT_TOLERANCE, contractStornoDeductionKind, isStornoPayoutRecord,
   neonEndorsementForOriginalPayout, uniqueFamilyCommissionReceipts, validPayoutAmount, wasNeonCommissionSettledBefore,
@@ -47,7 +49,7 @@ import {
   positionLabel,
   stripTotalRows,
 } from "./contractDetailHelpers";
-import { isAnnualAutoPayoutProduct } from "@/app/lib/productCatalog";
+import { isAnnualAutoPayoutProduct, isLifeProduct } from "@/app/lib/productCatalog";
 import {
   hasNeonImmediateCoefficient,
 } from "./contractDetailLogic";
@@ -397,8 +399,9 @@ const expectedAmountFromPayoutRecords = (
   const nonStornoRecords = activeRecords.filter((record) => !isStornoPayoutRecord(record));
   const subsequent = codes.some((code) => isAutoSubsequentCommissionCode(normalizePayoutCode(code, product)));
   const reassignedAcquisition = product === "cppAuto" && nonStornoRecords.every((record) =>
-    /^A10[2-4]$/.test(normalizePayoutCode(record.code, product)) &&
-    /^B10[1-3]$/.test(normalizePayoutCode(record.statementCode, product))
+    (record.installmentSourceCode === "A101" && record.statementCode === "A101") ||
+    (/^A10[2-4]$/.test(normalizePayoutCode(record.code, product)) &&
+      /^B10[1-3]$/.test(normalizePayoutCode(record.statementCode, product)))
   );
   if (
     (!neonRecurring && !subsequent && !reassignedAcquisition) || nonStornoRecords.length === 0 ||
@@ -772,6 +775,30 @@ export function ContractCommissionSection({
     ? { ...commissionEntry, userEmail: commissionEntry.userEmail ?? normalizedOwnerEmail }
     : null;
   const commissionStart = policyStartDate ?? commissionEntry?.policyStartDate ?? commissionEntry?.contractSignedDate;
+  const plannedPayoutLabel = (codes: string[], source?: ContractDoc): string => {
+    if (!isLifeProduct(product)) return "";
+    const code = codes.map(code => lifeIncreaseItemCode(code) ?? normalizeLifeCommissionItemCode(code))
+      .find(code => /^(?:B3601|B4801|B(?:36|036|3601)_HALF|B[12]\d{2})$/.test(code));
+    if (!code) return "";
+    const entry = source ?? commissionEntry;
+    const startDay = endorsementCommissionDay(source ? source.policyStartDate : commissionStart);
+    if (!startDay) return "";
+    const start = new Date(`${startDay}T12:00:00`);
+    let payout: Date | undefined;
+    if (product === "neon" && /^B20[1-6]$/.test(code)) {
+      payout = neonCareInstallments(start, entry?.durationYears ?? contractDurationYears, entry?.acquisitionType === "inherited")
+        .find(installment => installment.code === code)?.due;
+    } else if (code.endsWith("_HALF")) {
+      const signed = endorsementCommissionDay(entry?.contractSignedDate);
+      const created = endorsementCommissionDay(entry?.createdAt);
+      payout = signed ? estimateLifeFirstPayoutDate(start, new Date(`${signed}T12:00:00`), product)
+        : estimatePayoutDate(start, created ? new Date(`${created}T12:00:00`) : null);
+    } else {
+      const period = commissionPeriodForCode({ productKey: product, policyStartDate: startDay }, code);
+      if (period) payout = estimatePayoutDate(new Date(`${period}T12:00:00`));
+    }
+    return payout ? ` · plánovaná výplata ${payout.getFullYear()}` : "";
+  };
   const today = new Date();
   const todayDay = endorsementCommissionDay(today) ?? "";
   const cancellation = contractLifecycleStatus(commissionEntry, today) === "storno"
@@ -780,9 +807,10 @@ export function ContractCommissionSection({
   const currentPolicyYear = isAutoCommissionProduct(product)
     ? autoCommissionPolicyYear({ policyStartDate: commissionStart }, todayDay) : null;
   const nextPolicyYear = currentPolicyYear === null ? null : currentPolicyYear + 1;
-  const normalizedCommissionPayouts = planEntry && paymentFrequency === "semiannual"
+  const normalizedCommissionPayouts = planEntry && (paymentFrequency === "semiannual" || product === "neon")
     ? projectConfirmedCommissionCodes({ ...planEntry, productKey: product, frequencyRaw: paymentFrequency,
-      policyStartDate: commissionStart, items: adviserItems }, commissionPayouts ?? []) : commissionPayouts ?? [];
+      policyStartDate: product === "neon" ? policyStartDate ?? planEntry.policyStartDate : commissionStart,
+      items: adviserItems }, commissionPayouts ?? []) : commissionPayouts ?? [];
   const amendmentEntries = consolidateNeonAmendments && planEntry ? uniqueFamilyCommissionReceipts(neonCommissionFamily(
     { ...planEntry, commissionPayouts: normalizedCommissionPayouts }, commissionTimeline, normalizedOwnerEmail,
   )) : [];
@@ -815,7 +843,8 @@ export function ContractCommissionSection({
     const period = commissionPeriod === undefined
       ? commissionPeriodAfterMonths(sourceStart, anniversaryYears * 12)
       : commissionPeriod;
-    const frequencyRepriced = product !== "cppPPRs" && !autoSubsequent && Boolean(planEntry && period && autoFrequencyCommissionMultiplier(planEntry, period) !== 1);
+    const frequencyRepriced = product !== "cppPPRs" && !autoSubsequent && Boolean(planEntry && period &&
+      (product === "domex" ? cppPaymentCommissionMultiplier : autoFrequencyCommissionMultiplier)(planEntry, period) !== 1);
     const correction = sourceEntry?.productKey === "neon" && sourceEntry.neonCorrection;
     if (correction && sourceEntry && period) {
       const settled = payoutStatusForCodes(payouts, codes, 0, product, lifeEndorsement).records
@@ -1009,6 +1038,12 @@ export function ContractCommissionSection({
       ? estimate : null;
   };
 
+  function acquisitionReceipts(payouts: ContractCommissionPayout[], installments: ReturnType<typeof acquisitionCommissionInstallments>) {
+    const confirmed = splitConfirmedOpeningReceipt(payouts);
+    if (confirmed !== payouts || commissionEntry?.paymentFrequencyChanges?.length) return confirmed;
+    return projectAcquisitionInstallmentReceipts(payouts, installments);
+  }
+
   const commissionSummary = (
     items: CommissionResultItemDTO[], payouts: ContractCommissionPayout[],
     originalTotal: number, paymentTotals: { immediate: number; subsequent: number } | null,
@@ -1019,7 +1054,10 @@ export function ContractCommissionSection({
       const code = codes.map(code => normalizePayoutCode(code, product)).find(Boolean) ?? "";
       const position = source?.position ?? adviserBreakdownPosition ?? planEntry?.position;
       const supplement = code && source && premiumPlan.neonRecurringRootId(source);
-      comparison.plans.push({ title: supplement ? `Doplatek za navýšení ${code}` : title, code, expected: amount,
+      const deduction = source?.productKey === "neon" && amount != null && amount < 0;
+      const planTitle = deduction ? `Odpočet ${code} za snížení pojistného`
+        : supplement ? `Doplatek za navýšení ${code}` : title;
+      comparison.plans.push({ title: planTitle, code, expected: amount,
         position: position ? positionLabel(position) : null,
         records, note: source ? `Dodatek od ${formatDate(source.policyStartDate)}` : undefined });
     };
@@ -1028,6 +1066,8 @@ export function ContractCommissionSection({
     let immediateDelta = 0;
     const annualSubsequentDeltas = new Map<number, number>();
     const annualSubsequentCounts = new Map<number, number>();
+    const domexYearTotals = new Map<number, number>();
+    const datedDomex = product === "domex" && Boolean(planEntry?.paymentFrequencyChanges?.length);
     const autoForecastRanges: CommissionForecastRange[] = [];
     let hasCurrentAutoInstallment = false;
     let hasUnforecastableCurrentInstallment = false;
@@ -1039,25 +1079,33 @@ export function ContractCommissionSection({
       const acquisition = acquisitionCommissionInstallments({ item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
         policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges });
       if (acquisition.length > 0) {
-        const projected = commissionEntry?.paymentFrequencyChanges?.length ? payouts : projectAcquisitionInstallmentReceipts(payouts, acquisition);
+        const projected = acquisitionReceipts(payouts, acquisition);
         if (comparison && projected !== payouts) {
           for (const record of payouts) comparison.records.delete(record);
           for (const record of projected) comparison.records.add(record);
         }
-        const delta = acquisition.reduce((sum, installment, index) => {
+        const plannedAcquisition = acquisition.reduce((sum, installment, index) => {
           const records = payoutsForAcquisitionInstallment(projected, installment);
           const plan = projectCommissionRow(installment.amount, records, installment.codes, 0,
             installment.commissionPeriod ?? commissionPeriodAfterMonths(commissionStart, index * (12 / periodsPerYear(paymentFrequency ?? "annual"))),
             own);
           recordPlan(`Získatelská provize · ${installment.label}`, [installment.code], plan.amount, records);
-          return sum + plan.amount - installment.amount;
+          return sum + plan.amount;
         }, 0);
+        const originalAcquisition = datedDomex ? amount * periodsPerYear(paymentFrequency ?? "annual")
+          : acquisition.reduce((sum, installment) => sum + installment.amount, 0);
+        const delta = plannedAcquisition - originalAcquisition;
         immediateDelta += delta;
         totalDelta += delta;
         continue;
       }
       const recurring = recurringInstallmentsForItem(item, source);
       if (recurring.length > 0) {
+        // A forecast can end mid-year. Only include complete DOMEX years in the annual comparison.
+        const lastCode = recurring.at(-1)?.code;
+        const nextPeriod = datedDomex && planEntry && lastCode && /^B\d+$/.test(lastCode)
+          ? commissionPeriodForCode(planEntry, `B${Number(lastCode.slice(1)) + 1}`) : null;
+        const truncatedYear = nextPeriod ? autoCommissionPolicyYear({ policyStartDate: commissionStart }, nextPeriod) : null;
         recurring.forEach((installment) => {
           const installmentPayouts = payoutsForRecurringInstallment(payouts, installment, source ?? planEntry);
           const installmentPlan = projectCommissionRow(
@@ -1090,6 +1138,11 @@ export function ContractCommissionSection({
             else hasUnforecastableCurrentInstallment = true;
           }
           if (paymentTotals && installment.commissionPeriod) {
+            if (datedDomex) {
+              const year = autoCommissionPolicyYear({ policyStartDate: commissionStart }, installment.commissionPeriod);
+              if (year != null && year !== truncatedYear) domexYearTotals.set(year, (domexYearTotals.get(year) ?? 0) + installmentPlan.amount);
+              return;
+            }
             const start = commissionPeriodAfterMonths(commissionStart, 0);
             if (start) {
               const months = (Number(installment.commissionPeriod.slice(0, 4)) - Number(start.slice(0, 4))) * 12 +
@@ -1113,7 +1166,7 @@ export function ContractCommissionSection({
       totalDelta += delta;
       if (!isSubsequent) immediateDelta += delta;
     }
-    const annualAmounts = paymentTotals && annualSubsequentDeltas.size > 0
+    const annualAmounts = datedDomex ? Array.from(domexYearTotals.values(), amount => ({ amount })) : paymentTotals && annualSubsequentDeltas.size > 0
       ? [...annualSubsequentDeltas].filter(([year]) =>
         annualSubsequentCounts.get(year) === periodsPerYear(paymentFrequency ?? "annual")
       ).map(([, delta]) => ({ amount: paymentTotals.subsequent + delta }))
@@ -1402,17 +1455,21 @@ export function ContractCommissionSection({
     const component = lifeIncreaseItemCode(increaseCodes[0]) ?? item.code ?? codes[0];
     const supplement = Boolean(source && premiumPlan.neonRecurringRootId(source) && component);
     const baseTitle = installmentTitle ?? cleanResultTitle(item.title);
-    const title = supplement ? `Doplatek za navýšení ${component}${/po \d+ letech/i.test(baseTitle) ? ` · ${baseTitle}` : ""}`
+    const deduction = plan.amount < 0;
+    const title = deduction ? `Odpočet ${component ?? baseTitle} za snížení pojistného`
+      : supplement ? `Doplatek za navýšení ${component}${/po \d+ letech/i.test(baseTitle) ? ` · ${baseTitle}` : ""}`
       : component && !baseTitle.includes(component) ? `${baseTitle} · ${component}` : baseTitle;
     const storno = state.status === "storno";
     const hasPayment = state.records.some(record => !isStornoPayoutRecord(record) && Number.isFinite(record.amount));
     const note = displayNoteForCommissionItem(item);
     const reversedAmount = stornoPayoutAmountFromRecords(state.records);
+    const paid = deduction && state.records.length ? state.records.reduce((sum, row) => sum + payoutCents(row), 0) / 100
+      : storno ? reversedAmount ?? 0 : hasPayment ? state.paidAmount : null;
     return (
-      <CommissionComparisonRow key={key} title={title} statementCode={increaseCodes.join(", ")} expected={plan.amount}
-        paid={storno ? reversedAmount ?? 0 : hasPayment ? state.paidAmount : null}
+      <CommissionComparisonRow key={key} title={title + plannedPayoutLabel(codes, source)} statementCode={increaseCodes.join(", ")} expected={plan.amount}
+        paid={paid}
         cancellationStatus={state.status === "cancelled" ? cancelledCommissionLabel : undefined}
-        storno={storno} flagged={state.status === "difference"} supplement={supplement}>
+        storno={storno && !deduction} flagged={state.status === "difference"} supplement={supplement}>
         {source && renderAmendmentOrigin(source)}
         {supplement && source?.premiumDelta != null && <span>Navýšení pojistného o {formatMoney(source.premiumDelta)} měsíčně.</span>}
         {renderPremiumAdjustment(plan)}
@@ -1422,11 +1479,12 @@ export function ContractCommissionSection({
           <span>Výplata je v toleranci {formatMoney(COMMISSION_PAYOUT_AMOUNT_TOLERANCE)}.</span>
         )}
         {reversedAmount !== null && !storno && <span>Storno {formatSignedMoney(reversedAmount)}</span>}
-        {hasPayment && !storno && <span>Rozdíl mezi výplatou a plánem <strong>{formatSignedMoney(state.paidAmount - plan.amount)}</strong></span>}
+        {paid !== null && deduction && <span>Rozdíl mezi odpočtem a plánem <strong>{formatSignedMoney(paid - plan.amount)}</strong></span>}
+        {hasPayment && !deduction && !storno && <span>Rozdíl mezi výplatou a plánem <strong>{formatSignedMoney(state.paidAmount - plan.amount)}</strong></span>}
         {renderInstallmentSources(state.records, codes, title)}
         {renderPayoutRecordHint(state.records, false, false)}
         {note && <span>{note}</span>}
-        {state.status === "pending" && !state.records.length && <span>Výplata zatím není zapsaná ve výpisu.</span>}
+        {state.status === "pending" && !state.records.length && <span>{deduction ? "Odpočet zatím není spárovaný s výpisem." : "Výplata zatím není zapsaná ve výpisu."}</span>}
         {extraDetail}
       </CommissionComparisonRow>
     );
@@ -1448,7 +1506,7 @@ export function ContractCommissionSection({
     return (
       <div key={key} className={`${styles.breakdownRow} ${payoutRowClass(state.status)}`}>
         <span className="min-w-0 text-sm font-medium text-slate-800">
-          <span>{cleanResultTitle(item.title)}</span>
+          <span>{cleanResultTitle(item.title)}</span>{plannedPayoutLabel(payoutCodesForCommissionItem(item, product), source?.entry)}
           {renderPremiumAdjustment(plan)}
           {note && <span className="mt-1 block text-xs font-semibold text-red-600">{note}</span>}
           {renderPayoutRecordHint(state.records)}
@@ -1555,8 +1613,7 @@ export function ContractCommissionSection({
       policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges,
     });
     if (acquisitionInstallments.length > 0) {
-      const projected = commissionEntry?.paymentFrequencyChanges?.length ? payoutsForRows :
-        projectAcquisitionInstallmentReceipts(payoutsForRows, acquisitionInstallments);
+      const projected = acquisitionReceipts(payoutsForRows, acquisitionInstallments);
       const installments = acquisitionInstallments.map((installment, index) => {
         const records = payoutsForAcquisitionInstallment(projected, installment);
         const installmentPlan = projectCommissionRow(
@@ -1575,7 +1632,8 @@ export function ContractCommissionSection({
       const status = hasDifference ? "difference" : payableInstallments.length === 0 ? "cancelled"
         : paidCount === payableInstallments.length ? "paid" : hasPayment ? "partial"
           : installments.some(({ state }) => state.status === "storno") ? "storno" : "pending";
-      const frequencyLabel = paymentFrequency === "monthly" ? "měsíčně" : paymentFrequency === "quarterly" ? "čtvrtletně" : "pololetně";
+      const frequencyLabel = product === "domex" && commissionEntry?.paymentFrequencyChanges?.length ? "dle plateb"
+        : paymentFrequency === "monthly" ? "měsíčně" : paymentFrequency === "quarterly" ? "čtvrtletně" : "pololetně";
 
       return (
         <details key={key} className={`group ${styles.installmentGroup}`}>
@@ -1717,6 +1775,7 @@ export function ContractCommissionSection({
               <span className={styles.installmentHeading}>
                 <span>{installment.label}</span>
                 {installment.code && <> <span className={styles.installmentCode}>{installment.code}</span></>}
+                {installment.code && plannedPayoutLabel([installment.code], source)}
                 {installment.commissionPeriod && (
                   <span className={styles.installmentDate}>
                     <CalendarDays size={12} aria-hidden="true" />
@@ -1903,7 +1962,7 @@ export function ContractCommissionSection({
             <RowIcon size={18} strokeWidth={1.8} aria-hidden="true" />
           </span>
           <span className="min-w-0 leading-tight [overflow-wrap:anywhere]">
-            <span>{cleanResultTitle(item.title)}</span>
+            <span>{cleanResultTitle(item.title)}</span>{plannedPayoutLabel(payoutCodes, source)}
             {renderPremiumAdjustment(plan)}
             {itemNote && (
               <span className="mt-1 block text-xs font-semibold text-red-600">

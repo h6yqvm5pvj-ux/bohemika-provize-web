@@ -38,6 +38,7 @@ import {
 } from "@/app/lib/statementCalculatorHandoff";
 import {
   calculateNeonDecreaseStornoBase,
+  projectNeonImmediateDeduction,
   calculateNeonRefreshCommissionBase,
   type NeonRefreshCommissionBase,
 } from "../lib/productFormulas/neon";
@@ -128,7 +129,6 @@ import {
   dateToIsoDay,
   durationYearsLabel,
   negativeImmediateCommissionResult,
-  negativeImmediateCommissionResultFromSourceItems,
   resolveRemainingEndorsementDurationMonths,
   resolveRemainingEndorsementDurationYears,
 } from "./endorsementCalculation";
@@ -6800,6 +6800,7 @@ export default function CalculatorPage() {
     const changeType: EndorsementChangeType =
       deltaAmount > 0 ? "increase" : deltaAmount < 0 ? "decrease" : "same";
     let calculationAmount = Math.abs(deltaAmount);
+    let decreaseCommissionRatio = 0;
 
     if (changeType === "decrease" && product === "neon") {
       const originalStornoStartDateIso =
@@ -6807,12 +6808,14 @@ export default function CalculatorPage() {
         dateToIsoDay(endorsementPreviewSource.contractSignedDate);
       const endorsementPolicyStartDateIso = policyStartDate.trim();
       const decreaseBase = calculateNeonDecreaseStornoBase({
+        confirmedRefreshAnnualBase: endorsementPreviewSource.confirmedRefreshAnnualBase,
         previousMonthlyPremium: previousPremiumAmount,
         newMonthlyPremium: newPremiumAmount,
         originalStornoStartDateIso,
         endorsementPolicyStartDateIso,
       });
       calculationAmount = decreaseBase?.calculationMonthlyPremium ?? 0;
+      decreaseCommissionRatio = decreaseBase?.commissionRatio ?? 0;
     } else if (changeType === "decrease") {
       calculationAmount = 0;
     }
@@ -6852,11 +6855,7 @@ export default function CalculatorPage() {
     }
     const sourceDecreaseResult =
       changeType === "decrease" && product === "neon"
-        ? negativeImmediateCommissionResultFromSourceItems({
-            sourceItems: endorsementPreviewSource.items,
-            previousPremiumAmount,
-            calculationAmount,
-          })
+        ? projectNeonImmediateDeduction(endorsementPreviewSource.items, decreaseCommissionRatio)
         : null;
     const result = computeItemsForPositionAndMode(
       changeType === "decrease" && product === "neon"

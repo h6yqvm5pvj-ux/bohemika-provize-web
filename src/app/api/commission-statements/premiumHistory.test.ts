@@ -88,6 +88,19 @@ describe("premium statement history", () => {
       sourceBasePremium: 1000, premiumDerivedFromCommission: true });
   });
 
+  it("does not reimport a later B101 payment as a premium change at the first anniversary", () => {
+    const writtenBy = "owner@example.test";
+    const earlier = { code: "C101", amount: 92.84, writtenBy, statementPeriod: "01.05.2024 - 31.05.2024" };
+    const period = "01.11.2025 - 30.11.2025";
+    const later = { code: "B101", amount: 82, writtenBy, statementPeriod: period };
+    expect(premiumHistoryEntryFromStatementRow({
+      row: { ...autoSubsequentRow, productCode: "KOO_NAMIRU", productKey: "kooperativaAuto", commissionCode: "B101", commission: 82 },
+      contract: { productKey: "kooperativaAuto", frequencyRaw: "semiannual", policyStartDate: "2023-05-03", contractSignedDate: "2023-05-01",
+        inputAmount: 1000, position: "poradce7", commissionPayouts: [earlier, later] },
+      ...statementContext, statementId: "synthetic-reset", statementPeriod: period, periodEndMs: Date.UTC(2025, 10, 30), writtenBy,
+    })).toBeNull();
+  });
+
   it.each([["semiannual", "C102"], ["quarterly", "C104"], ["monthly", "C112"]] as const)(
     "does not store the %s %s midyear installment as another anniversary increase", (frequencyRaw, code) => {
       expect(premiumHistoryEntryFromStatementRow({

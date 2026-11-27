@@ -18,6 +18,9 @@ export const CONTRACT_FILTER_PROJECTION = [
   "contractPdfAttachment", "entryType", "rootContractEntryId",
 ] as const;
 
+const COMMISSION_END_PROJECTION = [...CONTRACT_FILTER_PROJECTION, "frequencyRaw", "paymentFrequencyChanges",
+  "commissionPayouts", "transferEffectiveDate", "originalAdviserEmail", "servicingOwnerEmail", "commissionOwnerEmail"];
+
 export async function readFilteredContractPage({ db, owners, filters, cursor, pageSize, viewer, hydrate = true }: {
   db: Firestore;
   owners: string[];
@@ -30,10 +33,11 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
   const auditStorno = filters.commissionAuditMode === MISSING_STORNO_ESTIMATE_MODE;
   const project = filters.commissionAuditMode === "off" || auditStorno;
   const projection = withVehicleSearchField(
-    !auditStorno && canUseProjectedContractSearch(filters) ? CONTRACT_SEARCH_PROJECTION : CONTRACT_FILTER_PROJECTION,
+    filters.commissionEndedOnly ? COMMISSION_END_PROJECTION
+      : !auditStorno && canUseProjectedContractSearch(filters) ? CONTRACT_SEARCH_PROJECTION : CONTRACT_FILTER_PROJECTION,
     filters,
   );
-  if (filters.withoutPdfOnly && filters.commissionAuditMode === "off") {
+  if (filters.withoutPdfOnly && filters.commissionAuditMode === "off" && !filters.commissionEndedOnly) {
     return { matches: await readWithoutPdfPage(db, owners, filters, cursor, pageSize, projection, hydrate) };
   }
   const rowFilters: ContractListFilters = auditStorno ? { ...filters, stornoOnly: true, commissionAuditMode: "off" } : filters;
@@ -61,6 +65,7 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
       let query: FirebaseFirestore.Query = entries;
       if (!filters.withoutPdfOnly && !auditStorno) {
         if (exactNumber) query = entries.where("contractNumber", "==", exactNumber);
+        else if (filters.commissionEndedOnly) query = entries.where("productKey", "==", "domex");
         else if (productKeys && productKeys.length <= 30) query = entries.where("productKey", "in", productKeys);
         else if (filters.positions.size > 0) query = entries.where("position", "in", [...filters.positions]);
       }
@@ -93,8 +98,11 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
 
       const hasFamilyPdf = (id: string, contract: ContractDoc) => filters.withoutPdfOnly
         ? familyHasPdf.has(contractPdfFamilyKey({ ownerEmail, docId: id, contract, explicitRootEntryKeys })) : undefined;
-      const matchesRow = (id: string, contract: ContractDoc) =>
-        contractMatchesListFilters(contract, rowFilters, ownerEmail, search, hasFamilyPdf(id, contract));
+      const matchesRow = (id: string, contract: ContractDoc) => {
+        const visible = project && !filters.commissionEndedOnly ? contract
+          : filterStatementDerivedContractDataForViewer({ contract, ownerEmail, ...viewer });
+        return contractMatchesListFilters(visible, rowFilters, ownerEmail, search, hasFamilyPdf(id, contract));
+      };
 
       const auditEntries = new Map<string, ContractDoc & { id: string }>();
       const auditFamilies = new Map<string, (ContractDoc & { id: string })[]>();
@@ -140,8 +148,7 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
           if (ts === null || ts > cursor.ts) continue;
           if (ts === cursor.ts && (!cursor.key || `${ownerEmail}___${doc.id}` >= cursor.key)) continue;
         }
-        const data = project ? contract : filterStatementDerivedContractDataForViewer({ contract, ownerEmail, ...viewer });
-        if (!matchesRow(doc.id, data)) continue;
+        if (!matchesRow(doc.id, contract)) continue;
         let stornoEstimateIssue: StornoEstimateIssue | undefined;
         if (auditStorno) {
           const entry = auditEntries.get(doc.id);
@@ -150,12 +157,12 @@ export async function readFilteredContractPage({ db, owners, filters, cursor, pa
           if (!issue) continue;
           stornoEstimateIssue = issue;
           totalCount++;
-          ts = contractSortDate(data)?.getTime() ?? 0;
+          ts = contractSortDate(contract)?.getTime() ?? 0;
           if (cursor && (ts > cursor.ts || (ts === cursor.ts && (!cursor.key || `${ownerEmail}___${doc.id}` >= cursor.key)))) continue;
         }
         candidates.push({
           doc: auditDocs.get(doc.id) ?? doc, ownerEmail, readTime: snapshot.readTime,
-          ts: ts === undefined ? contractSortDate(data)?.getTime() ?? null : ts,
+          ts: ts === undefined ? contractSortDate(contract)?.getTime() ?? null : ts,
           key: `${ownerEmail}___${doc.id}`,
           stornoEstimateIssue,
         });

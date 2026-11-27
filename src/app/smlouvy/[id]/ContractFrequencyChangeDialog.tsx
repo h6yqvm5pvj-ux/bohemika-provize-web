@@ -96,7 +96,7 @@ export function ContractFrequencyChangeDialog({ contract, onSave, onClose, inclu
     </header>
     <form onSubmit={save} className={styles.form}>
       <div className={styles.content}>
-        <div className={styles.notice}><p>{includePremium ? "Vytvoří se dodatek s přehledem změny. Od účinnosti se přepočítají očekávané následné provize podle nového pojistného a frekvence. Zapsané výplaty zůstanou zachované." : "Původní frekvence při sjednání zůstane zachovaná. Od data účinnosti se změní četnost a přepočítá částka jednotlivých očekávaných provizí. Základna ani zapsané výplaty se nemění."}</p></div>
+        <div className={styles.notice}><p>{includePremium ? `Vytvoří se dodatek s přehledem změny. Od účinnosti se přepočítají očekávané ${contract.productKey === "domex" ? "provize z plateb" : "následné provize"} podle nového pojistného a frekvence. Zapsané výplaty zůstanou zachované.` : "Původní frekvence při sjednání zůstane zachovaná. Od data účinnosti se změní četnost a přepočítá částka jednotlivých očekávaných provizí. Základna ani zapsané výplaty se nemění."}</p></div>
         {committed && <p role="status">Změna už je uložená. Zbývá dokončit přílohu nebo obnovit detail.</p>}
         {includePremium && <p className="mb-3 font-semibold">{contract.clientName}</p>}
         <dl className={styles.summary}>

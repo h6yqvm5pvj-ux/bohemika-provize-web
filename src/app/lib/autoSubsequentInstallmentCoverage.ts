@@ -39,9 +39,10 @@ function monthNumber(key: string | null | undefined): number | null {
 export function autoCommissionReceiptMonth(receipt: AutoCommissionReceipt | null | undefined): number | null {
   const paidMonth = monthNumber(receipt?.payoutMonthKey);
   if (paidMonth != null) return paidMonth;
-  const dated = /^(?:\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/.exec(receipt?.statementDate?.trim() ?? "");
+  const statementDate = typeof receipt?.statementDate === "string" ? receipt.statementDate.trim() : "";
+  const dated = /^(?:\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/.exec(statementDate);
   if (dated) return monthNumber(`${dated[2]}-${dated[1]}`);
-  const isoDate = /^(\d{4}-\d{2})-\d{2}$/.exec(receipt?.statementDate?.trim() ?? "");
+  const isoDate = /^(\d{4}-\d{2})-\d{2}$/.exec(statementDate);
   if (isoDate) return monthNumber(isoDate[1]);
   const periodEnd = /-\s*\d{1,2}\.\s*(\d{1,2})\.\s*(\d{4})\s*$/.exec(receipt?.statementPeriod ?? "");
   const periodMonth = periodEnd ? monthNumber(`${periodEnd[2]}-${periodEnd[1]}`) : null;

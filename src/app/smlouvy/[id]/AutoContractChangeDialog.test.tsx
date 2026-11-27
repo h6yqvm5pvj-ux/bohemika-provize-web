@@ -10,14 +10,14 @@ async function input(host: HTMLElement, selector: string, value: string) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event("input", { bubbles: true })); });
 }
 describe("auto contract change workflow", () => {
-  it("attaches a dropped PDF to the newly saved KOMPLEX amendment", async () => {
+  it.each(["cppPPRs", "domex"] as const)("saves the %s change from detail and attaches the PDF to the new amendment", async productKey => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-    const komplex = { ...contract, productKey: "cppPPRs" as const };
-    const request = vi.fn().mockResolvedValueOnce({ endorsementId: "komplex-change" }).mockResolvedValueOnce({ ok: true });
+    const propertyContract = { ...contract, productKey };
+    const request = vi.fn().mockResolvedValueOnce({ endorsementId: "property-change" }).mockResolvedValueOnce({ ok: true });
     const onSaved = vi.fn().mockResolvedValue(undefined);
     try {
-      await act(async () => root.render(<AutoContractChangeDialog ownerEmail="advisor@example.test" contract={komplex} entryId="root"
+      await act(async () => root.render(<AutoContractChangeDialog ownerEmail="advisor@example.test" contract={propertyContract} entryId="root"
         request={request} onClose={() => {}} onSaved={onSaved} />));
       expect([...host.querySelectorAll("select option")].map(option => (option as HTMLOptionElement).value)).toEqual(["quarterly", "semiannual", "annual"]);
       await input(host, 'input[type="date"]', "2024-09-01");
@@ -38,7 +38,7 @@ describe("auto contract change workflow", () => {
       expect(JSON.parse(request.mock.calls[0][1].body)).toMatchObject({ entryId: "root", annualPremium: 12000, effectiveDate: "2024-09-01" });
       const [uploadUrl, uploadOptions] = request.mock.calls[1];
       expect(uploadUrl).toBe("/api/contracts/attachment");
-      expect(uploadOptions.body.get("entryId")).toBe("komplex-change");
+      expect(uploadOptions.body.get("entryId")).toBe("property-change");
       expect(uploadOptions.body.get("file").name).toBe("dodatek.pdf");
       expect(onSaved).toHaveBeenCalledOnce();
     } finally { await act(async () => root.unmount()); host.remove(); }

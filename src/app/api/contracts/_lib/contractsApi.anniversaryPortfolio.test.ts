@@ -99,3 +99,18 @@ describe("Radar server portfolio scan", () => {
     expect(reads).toEqual([]);
   });
 });
+
+it("returns active contracts with an open callback past their anniversary, within the authorized portfolio", async () => {
+  const recent = { policyStartDate: new Date("2020-09-01T12:00:00Z"), hasAnniversaryCallback: true };
+  const { db } = database({
+    "own@example.test": [
+      { id: "callback", data: contract(recent) },
+      { id: "cleared", data: contract({ ...recent, hasAnniversaryCallback: false }) },
+      { id: "closed", data: contract({ ...recent, status: "storno" }) },
+    ],
+    "other@example.test": [{ id: "foreign", data: contract(recent) }],
+  });
+  const page = await readAnniversaryPortfolioPage({ db, owners: ["own@example.test"], cursor: null });
+  expect(page.contracts.map(item => item.id)).toEqual(["callback"]);
+  expect(page.contracts[0]).not.toHaveProperty("hasAnniversaryCallback");
+});

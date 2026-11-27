@@ -13,6 +13,7 @@ export type ContractCommissionPayoutStatus =
   | "storno";
 
 export type ContractCommissionPayout = {
+  confirmedInstallmentSplit?: import("@/app/lib/confirmedQuarterlyInstallments").ConfirmedInstallmentSplit;
   statementCode?: string | null;
   commissionCodeCorrectionNote?: string;
   basePremiumPeriod?: "annual";

@@ -77,6 +77,10 @@ const includesEmailInCollection = (value: unknown, targetEmail: string): boolean
   return value.some((item) => extractEmailFromUnknown(item) === targetEmail);
 };
 
+export const CONTRACT_ACCESS_FIELDS = [
+  "productKey", "userEmail", "managerEmailSnapshot", "managerChain", "managerOverrides",
+] as const satisfies readonly (keyof ContractDoc)[];
+
 export const hasContractAccess = ({
   viewerEmail,
   teamEmails,
@@ -86,7 +90,7 @@ export const hasContractAccess = ({
   viewerEmail: string;
   teamEmails: string[];
   ownerEmail: string;
-  contract: ContractDoc;
+  contract: Pick<ContractDoc, (typeof CONTRACT_ACCESS_FIELDS)[number]>;
 }): boolean => {
   if (isRetiredProduct(contract.productKey)) return false;
   const normalizedViewer = normalizeAccessEmail(viewerEmail);

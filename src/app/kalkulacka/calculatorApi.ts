@@ -39,6 +39,8 @@ export type ContractsFindApiResponse = {
     adviserName?: string | null;
     userEmail?: string | null;
     productKey?: Product | null;
+    isRefresh?: boolean | null;
+    commissionBaseSource?: string | null;
     position?: Position | null;
     commissionMode?: CommissionMode | null;
     rootContractEntryId?: string | null;

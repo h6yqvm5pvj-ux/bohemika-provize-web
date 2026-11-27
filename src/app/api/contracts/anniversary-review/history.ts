@@ -1,3 +1,4 @@
+import { getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowMutationTracking";
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { openPrivateRecord, sealPrivateRecord } from "@/lib/server/privateRecords";
@@ -19,7 +20,7 @@ export function legacyHistory(data: Record<string, unknown>): AnniversaryHistory
   if (!data.note && !data.contactOutcome && !data.reviewedAt) return null;
   return {
     id: "legacy", sequence: 1, kind: "legacy", occurrenceKey: text(data.occurrenceKey) ?? "",
-    contactOutcome: outcome(data.contactOutcome), note: text(data.note), meetingAt: text(data.meetingAt),
+    contactOutcome: outcome(data.contactOutcome), note: text(data.note), meetingAt: text(data.meetingAt), callbackOn: text(data.callbackOn),
     actorEmail: text(data.updatedBy) ?? text(data.reviewedBy),
     createdAtMs: toDate(data.updatedAt)?.getTime() ?? toDate(data.reviewedAt)?.getTime() ?? null,
   };
@@ -29,7 +30,7 @@ export function reviewDto(data: Record<string, unknown>): AnniversaryReview {
   return {
     ownerEmail: text(data.ownerEmail) ?? "", entryId: text(data.entryId) ?? "",
     occurrenceKey: text(data.occurrenceKey) ?? "", contactOutcome: outcome(data.contactOutcome),
-    note: text(data.note), meetingAt: text(data.meetingAt), reviewedBy: text(data.reviewedBy),
+    note: text(data.note), meetingAt: text(data.meetingAt), callbackOn: text(data.callbackOn), reviewedBy: text(data.reviewedBy),
     handled: Boolean(data.reviewedAt || outcome(data.contactOutcome)),
     // A legacy contact/review never implies that the case is complete.
     processingStatus: data.processingStatus === "completed" || data.processingStatus === "in_progress" ? data.processingStatus : null,
@@ -55,7 +56,7 @@ export async function readReviewHistory(db: Firestore, ownerEmail: string, entry
       id: doc.id, sequence: event.sequence as number,
       kind: event.kind as AnniversaryHistoryEvent["kind"],
       occurrenceKey: text(event.occurrenceKey) ?? "", contactOutcome: outcome(event.contactOutcome),
-      note: text(event.note), meetingAt: text(event.meetingAt), actorEmail: text(event.actorEmail),
+      note: text(event.note), meetingAt: text(event.meetingAt), callbackOn: text(event.callbackOn), actorEmail: text(event.actorEmail),
       createdAtMs: typeof event.createdAtMs === "number" ? event.createdAtMs : null,
     } satisfies AnniversaryHistoryEvent;
   });
@@ -76,6 +77,7 @@ export type ReviewMutation = {
   note?: string | null;
   contactOutcome?: ContactOutcome;
   meetingAt?: string | null;
+  callbackOn?: string | null;
   requestId?: string;
 };
 
@@ -101,8 +103,15 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
       return reviewDto(current);
     }
 
+    const today = getTodayIsoInPrague();
+    if (mutation.callbackOn && mutation.callbackOn < today) {
+      throw new ReviewMutationError("Zvol dnešní nebo budoucí datum telefonátu.", 400);
+    }
     const occurrenceKey = mutation.occurrenceKey ?? text(current.occurrenceKey) ?? "";
     const sameOccurrence = current.occurrenceKey === occurrenceKey;
+    if (occurrenceKey < today && typeof current.occurrenceKey === "string" && occurrenceKey < current.occurrenceKey) {
+      throw new ReviewMutationError("Tato smlouva už má novější výročí. Obnov Radar.", 409);
+    }
     const wasCompleted = sameOccurrence && current.processingStatus === "completed";
     if (mutation.action === "complete" && wasCompleted) return reviewDto(current);
     if (mutation.action === "reopen" && !wasCompleted) {
@@ -126,6 +135,7 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
       occurrenceKey, historyId, historyCount: count + 1,
       contactOutcome: sameOccurrence ? outcome(current.contactOutcome) : null,
       meetingAt: sameOccurrence ? text(current.meetingAt) : null,
+      callbackOn: sameOccurrence ? text(current.callbackOn) : null,
       note: sameOccurrence ? text(current.note) : null,
       reviewedAt: sameOccurrence ? current.reviewedAt ?? null : null,
       reviewedBy: sameOccurrence ? text(current.reviewedBy) : null,
@@ -140,6 +150,7 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
     let kind: AnniversaryHistoryEvent["kind"] = "note";
     if (mutation.action === "complete") {
       next.processingStatus = "completed";
+      next.callbackOn = null;
       next.completedAtMs = Date.now(); next.completedBy = actorEmail;
       kind = "completed";
     } else if (mutation.action === "reopen") {
@@ -147,12 +158,14 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
       next.completedAtMs = null; next.completedBy = null;
       kind = "reopened";
     } else if (mutation.action === "clearOutcome" || mutation.action === "unmark") {
+      next.callbackOn = null;
       next.contactOutcome = null; next.meetingAt = null; next.reviewedAt = null; next.reviewedBy = null;
       if (mutation.action === "unmark") next.note = null;
       next.processingStatus = text(next.note) ? "in_progress" : null;
       kind = "reopened";
     } else if (mutation.contactOutcome || mutation.action === "mark") {
       next.contactOutcome = mutation.contactOutcome ?? next.contactOutcome;
+      next.callbackOn = mutation.contactOutcome === "no_answer" ? mutation.callbackOn ?? null : null;
       if (mutation.contactOutcome !== "meeting") next.meetingAt = null;
       next.reviewedAt = FieldValue.serverTimestamp(); next.reviewedBy = actorEmail;
       next.processingStatus = "in_progress";
@@ -164,18 +177,23 @@ export async function appendReviewHistory(db: Firestore, mutation: ReviewMutatio
       id: eventId, sequence: count + 1, kind, occurrenceKey,
       contactOutcome: kind === "contact" ? outcome(next.contactOutcome) : null,
       note: workflowAction ? null : text(next.note), meetingAt: kind === "contact" ? text(next.meetingAt) : null,
+      callbackOn: kind === "contact" ? text(next.callbackOn) : null,
       actorEmail, createdAtMs: Date.now(),
     };
     tx.set(eventRef, sealPrivateRecord(eventRef.path, { ...event, fingerprint }));
     tx.set(ref, sealPrivateRecord(ref.path, next), { merge: true });
     const outcomeLabels: Record<string, string> = { reached: "Kontaktován", no_answer: "Nezastižen", meeting: "Domluvena schůzka", ignore: "Nekontaktovat" };
     const kindLabels: Record<string, string> = { contact: "Kontakt s klientem", completed: "Výročí dokončeno", reopened: "Výročí vráceno k řešení", reviewed: "Výročí zkontrolováno", note: "Poznámka k výročí" };
-    tx.set(contractRef, withContractHistory(tx, contractRef, contract.data() ?? {}, {}, {
+    // Keep open callbacks in the portfolio scan even after their anniversary passes.
+    const contractPatch = Boolean(next.callbackOn) !== (contract.data()?.hasAnniversaryCallback === true)
+      ? { hasAnniversaryCallback: Boolean(next.callbackOn) } : {};
+    tx.set(contractRef, withContractHistory(tx, contractRef, contract.data() ?? {}, contractPatch, {
       actorEmail, kind: "review", title: kindLabels[kind] ?? "Úprava výročí", atMs: event.createdAtMs,
       changes: [
         { label: "Výročí", before: null, after: occurrenceKey || null },
         ...(next.contactOutcome !== current.contactOutcome ? [{ label: "Výsledek kontaktu", before: outcomeLabels[String(current.contactOutcome)] ?? null, after: outcomeLabels[String(next.contactOutcome)] ?? null }] : []),
         ...(next.note !== current.note ? [{ label: "Poznámka", before: text(current.note), after: text(next.note) }] : []),
+        ...(next.callbackOn !== (current.callbackOn ?? null) ? [{ label: "Zavolat znovu", before: text(current.callbackOn), after: text(next.callbackOn) }] : []),
         ...(next.meetingAt !== current.meetingAt ? [{ label: "Schůzka", before: text(current.meetingAt), after: text(next.meetingAt) }] : []),
       ],
     }), { merge: true });

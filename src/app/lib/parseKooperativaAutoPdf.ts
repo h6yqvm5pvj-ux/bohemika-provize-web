@@ -146,10 +146,12 @@ function coverageLimit(
 }
 
 const policyholderHeading = (line: string): boolean =>
-  /^(?:b\s*[.)\-–—:]?\s+)?pojistnik(?:\s*\/\s*pojisteny)?(?:\s*\([^)]*\))?\s*:?$/i.test(line);
+  /^(?:(?:[a-z]|\d+)\s*[.)\-–—:]?\s+)?(?:pojistnik(?:\s*\/\s*pojisteny)?|udaje o pojistnikovi)(?:\s*\([^)]*\))?\s*:?$/i.test(line);
 
 const identitySectionBoundary = (line: string): boolean =>
   (!identityFieldLabel(line) && /^[a-z]\s*[.)\-–—:]?\s+\p{L}/iu.test(line)) ||
+  /^(?:(?:\d+\.?|prvni|druhy|dalsi|hlavni)\s+)?(?:pojisten[ayie]|pojisteneho|obmyslen\w*|zamestnavatel|opravnen\w* osob\w*)\b/i.test(line) ||
+  /^(?:udaje o pojisten|seznam pojisten|co je pojisteno|na jak dlouho|udaje o pojistnem|pojistna nebezpeci|rozsah pojisteni|pojisteni\b)/i.test(line) ||
   /^(?:pojisteny|vlastnik|provozovatel|ridic|udaje o vozidle|pojistitel|kooperativa pojistovna|pojistny zprostredkovatel|zprostredkovatel|zastupce|zastoupen|zastupujici|statutarni|zmocnenec|kontaktni osoba|osoba opravnena|osoba jednajici|opravnena osoba|jednajici osoba)\b/i.test(line);
 
 const identityFieldLabel = (line: string): boolean =>
@@ -164,7 +166,8 @@ function policyholderIdentity(
   const bounds = starts.map(start => {
     let end = Math.min(lines.length, start + 128);
     for (let index = start + 1; index < end; index++) {
-      if (policyholderHeading(asciiLines[index]) || identitySectionBoundary(asciiLines[index])) { end = index; break; }
+      if (positionedItems[index]?.page !== positionedItems[start]?.page ||
+        policyholderHeading(asciiLines[index]) || identitySectionBoundary(asciiLines[index])) { end = index; break; }
     }
     return { start, end };
   });
@@ -192,8 +195,8 @@ function policyholderIdentity(
     }
     return found;
   };
-  const birthLabel = /^rodne\s+cislo(?:\s*\/\s*i\s*c(?:\s*o)?)?\b/i;
-  const companyLabel = /^(?:i\s*c(?:\s*o)?|rodne\s+cislo\s*\/\s*i\s*c(?:\s*o)?)\b/i;
+  const birthLabel = /^(?:rodne\s+cislo|rc)(?:\s*\/\s*i\s*c(?:\s*o)?)?\b/i;
+  const companyLabel = /^(?:i\s*c(?:\s*o)?|identifikacni cislo(?: osoby)?|(?:rodne\s+cislo|rc)\s*\/\s*i\s*c(?:\s*o)?)\b/i;
   const dateLabel = /^datum\s+narozeni\b/i;
   const normalizeBirth = (value: string) => /^\d{6}\/?\d{3,4}$/.test(value.replace(/\s+/g, "")) ? normalizeCzechBirthNumber(value) : null;
   const birthNumbers = values(birthLabel, normalizeBirth);
@@ -586,9 +589,9 @@ const inferFrequencyFromPremiumRatio = ({
   return null;
 };
 
-export async function parseKooperativaAutoPdf(
+async function readKooperativaPdfLines(
   file: File, options: PdfReadOptions = {}
-): Promise<KooperativaAutoPdfResult> {
+) {
   const doc = await readPdfText(file, options);
   const pagesText: string[] = [];
   const positionedTextItems: PositionedTextItem[] = [];
@@ -596,8 +599,7 @@ export async function parseKooperativaAutoPdf(
 
   for (let i = 1; i <= doc.pages.length; i++) {
     const page = doc.pages[i - 1];
-    const content = { items: page.items };
-    content.items.forEach((item: any) => {
+    page.items.forEach((item) => {
       if (typeof item?.str !== "string" || !item.str.trim()) return;
       item.str.split(/\n+/).map((line: string) => line.trim()).filter(Boolean).forEach((text: string) => {
         positionedTextItems.push({
@@ -607,8 +609,8 @@ export async function parseKooperativaAutoPdf(
         });
       });
     });
-    const text = content.items
-      .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
+    const text = page.items
+      .map((item) => item.str)
       .filter(Boolean)
       .join("\n");
     pagesText.push(text);
@@ -621,9 +623,10 @@ export async function parseKooperativaAutoPdf(
     .filter(Boolean);
   const asciiLines = lines.map((line) => stripDiacritics(line).toLowerCase());
   const asciiText = stripDiacritics(fullText).toLowerCase().replace(/\s+/g, " ").trim();
+  return { lines, asciiLines, fullText, asciiText, positionedTextItems };
+}
 
-  const result: KooperativaAutoPdfResult = {};
-
+function autoContractNumber({ lines, asciiLines, fullText, asciiText }: Awaited<ReturnType<typeof readKooperativaPdfLines>>) {
   const contractCandidates: string[] = [];
   const contractByLabel = normalizeContractNumber(
     readNearestValueByLabel(lines, asciiLines, /cislo\s+navrhu/i, 5) ??
@@ -651,7 +654,32 @@ export async function parseKooperativaAutoPdf(
       .map(([value]) => value);
     contractCandidates.push(...ranked);
   }
-  result.contractNumber = pickBestContractNumber(contractCandidates);
+  return pickBestContractNumber(contractCandidates);
+}
+
+/** Only the policyholder and contract number are needed to open the insurer portal. */
+export async function parseKooperativaStatusPdf(
+  file: File, options: PdfReadOptions = {}
+): Promise<Pick<KooperativaAutoPdfResult, "contractNumber" | "birthNumber" | "policyholderBirthDate" | "companyId" | "policyholderType">> {
+  const text = await readKooperativaPdfLines(file, options);
+  const numbers = new Set<string>();
+  for (const [index, line] of text.asciiLines.entries()) {
+    const label = /^(?:cislo (?:pojistne smlouvy|smlouvy|navrhu)|(?:navrh pojistne smlouvy|pojistna smlouva) (?:c\.|cislo))\s*:?\s*(.*)$/.exec(line);
+    if (!label) continue;
+    const value = (label[1] || text.lines[index + 1] || "").replace(/\s+/g, "");
+    if (/^\d{6,14}$/.test(value)) numbers.add(value);
+  }
+  if (numbers.size > 1) return {};
+  const contractNumber = numbers.values().next().value ?? autoContractNumber(text);
+  return { contractNumber, ...policyholderIdentity(text.lines, text.asciiLines, text.positionedTextItems) };
+}
+
+export async function parseKooperativaAutoPdf(
+  file: File, options: PdfReadOptions = {}
+): Promise<KooperativaAutoPdfResult> {
+  const text = await readKooperativaPdfLines(file, options);
+  const { lines, asciiLines, asciiText, positionedTextItems } = text;
+  const result: KooperativaAutoPdfResult = { contractNumber: autoContractNumber(text) };
 
   const replacementClauses = [...asciiText.matchAll(
     /\bnahrada\s+pojistne\s+smlouvy\s*:?\s*dnem\s+pocatku\s+teto\s+pojistne\s+smlouvy\s+se\s+v\s+plnem\s+rozsahu\s+rusi\s+pojistna\s+smlouva\s+c\./g

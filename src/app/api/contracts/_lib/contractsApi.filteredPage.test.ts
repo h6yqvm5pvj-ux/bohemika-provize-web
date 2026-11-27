@@ -185,7 +185,22 @@ describe("complete filtered contract pagination", () => {
     const next = await readFilteredContractPage({ db, owners: [owner], filters, cursor: { ts: Date.parse("2020-01-01"), key: `${owner}___old-b` }, pageSize: 1 });
     expect(next.map(item => item.doc.id)).toEqual(["old-a"]);
     expect(new Set(state.owners)).toEqual(new Set([owner]));
-    expect(state.fields).toEqual([[...CONTRACT_FILTER_PROJECTION], [...CONTRACT_FILTER_PROJECTION]]);
+    expect(state.fields).toHaveLength(2);
+    for (const fields of state.fields) {
+      expect(fields).toEqual(expect.arrayContaining([...CONTRACT_FILTER_PROJECTION, "frequencyRaw", "paymentFrequencyChanges", "commissionPayouts"]));
+    }
+  });
+
+  it.each([false, true])("filters fully paid DOMEX renewals using only authorized receipts (without PDF %s)", async withoutPdf => {
+    const receipts = Array.from({ length: 4 }, (_, i) => ({ code: `B${101 + i}`, status: "paid", amount: 100, writtenBy: owner }));
+    const values = { productKey: "domex" as const, frequencyRaw: "annual" as const, policyStartDate: "2022-09-01",
+      contractSignedDate: "2022-08-15", commissionPayouts: receipts };
+    const { db } = database([record("complete", values), record("open", { ...values, commissionPayouts: receipts.slice(1) })]);
+    const filters = filter({ commissionEndedOnly: "1", withoutPdfOnly: withoutPdf ? "1" : "0" });
+    const options = { db, owners: [owner], filters, cursor: null, pageSize: 10 };
+    expect((await readFilteredContractPage(options)).map(row => row.doc.id)).toEqual(["complete"]);
+    const hidden = await readPage({ ...options, viewer: { viewerEmail: "other@example.test", teamEmails: [] } });
+    expect(hidden.matches).toHaveLength(0);
   });
 
   it("finds old team search matches beyond the first 1,500 records without search indexes", async () => {

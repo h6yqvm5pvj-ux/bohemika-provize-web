@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ guard: vi.fn(), access: vi.fn(), get: vi.fn(), normalize: vi.fn(), bindingStatus: vi.fn(), numberFingerprint: vi.fn(), strengthen: vi.fn(), download: vi.fn(), upload: vi.fn(), fill: vi.fn(), fillCompanyId: vi.fn(), commit: vi.fn(), update: vi.fn(), remove: vi.fn(), validateAmendment: vi.fn() }));
 const db = vi.hoisted(() => ({
+  getAll: vi.fn(),
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
 }));
@@ -51,6 +52,7 @@ beforeEach(() => {
   mocks.bindingStatus.mockImplementation((attachment) => attachment?.contractNumberFingerprint ? "mismatch" : attachment ? "legacy" : "unverified");
   mocks.strengthen.mockImplementation(async ({ attachment }) => ({ ...attachment, contractNumberFingerprint: fingerprint, contractNumberBindingVersion: 1 }));
   mocks.get.mockResolvedValue({ exists: true, data: () => ({ productKey: "cppAuto", contractNumber: "POLICY-123" }), updateTime: "version" });
+  db.getAll.mockImplementation(async () => [await mocks.get()]);
   mocks.upload.mockResolvedValue({ sha256: "verified-hash", storagePath: `contract-pdfs/owner/contract-${fingerprint}/entry/file.pdf`, originalName: "file.pdf", contractNumberFingerprint: fingerprint });
   mocks.commit.mockResolvedValue(undefined); mocks.fill.mockResolvedValue("saved");
 });
@@ -83,6 +85,9 @@ describe("attachment contract boundary", () => {
     mocks.access.mockReturnValue(false);
     const response = await GET(new NextRequest(`http://localhost/api/contracts/attachment?ownerEmail=${owner}&entryId=entry`));
     expect(response.status).toBe(403);
+    expect(db.getAll).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+      fieldMask: ["productKey", "userEmail", "managerEmailSnapshot", "managerChain", "managerOverrides", "contractNumber", "contractPdfAttachment"],
+    });
     expect(mocks.normalize).not.toHaveBeenCalled();
   });
 

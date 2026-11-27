@@ -8,9 +8,9 @@ import { withContractHistory } from "@/lib/server/contractHistory";
 import { savePremiumBaseResolution, PremiumBaseResolutionError } from "@/lib/server/premiumBaseResolution";
 import { saveLifeStatementPremiumChange } from "@/lib/server/lifeStatementPremiumChange";
 import { isLifeIncreaseCode, matchesLifePremiumIncrease, lifeIncreaseExpectedAmount } from "@/app/lib/lifePremiumIncrease";
-import { createEndorsementCommissionPlan, type EndorsementCommissionPlanEntry } from "@/app/lib/endorsementCommissionPlan";
-import { commissionPeriodForCode, cppKomplexRenewalTerms } from "@/app/lib/commissionPeriodForCode";
-import { expectedCppPPRsRenewalAmount } from "@/app/lib/productFormulas/cppPPRs";
+import { createEndorsementCommissionPlan, endorsementCommissionDay, type EndorsementCommissionPlanEntry } from "@/app/lib/endorsementCommissionPlan";
+import { commissionPeriodForCode, cppPropertyCommissionTerms } from "@/app/lib/commissionPeriodForCode";
+import { expectedCppPropertyCommissionAmount } from "@/app/lib/separatedPeriodCommissions";
 import { matchesNeonRecurringStatementBase, matchingNeonRecurringStatementPremium, neonRecurringStatementPeriod } from "@/app/lib/neonRecurringStatementBase";
 import { neonRefreshCareBackfillBase } from "@/app/lib/neonRefreshCareBackfill";
 import { neonCorrectionPayoutAmount } from "@/app/lib/neonCorrection";
@@ -1908,12 +1908,16 @@ const expectedPayoutAmountForRow = (
   context?: StatementEndorsementContext
 ): number | null => {
   const code = baseCommissionCodeForStatementComparison(row.commissionCode, contract.productKey);
-  if (contract.productKey === "cppPPRs" && normalizeProductCode(row.productCode) === "CPP_PPR" && contract.paymentFrequencyChanges?.length &&
-      /^B(?:C)?\d+$/.test(code)) {
-    const renewal = cppKomplexRenewalTerms(contract, code);
-    if (!renewal) return null;
-    const items = row.source === "manager" ? managerOverrideItemsForViewer(contract, viewerEmail) : contract.items ?? [];
-    return expectedCppPPRsRenewalAmount(items, renewal.multiplier);
+  if (contract.paymentFrequencyChanges?.length) {
+    const productCode = normalizeProductCode(row.productCode);
+    const datedPayment = contract.productKey === "domex" && PROPERTY_STATEMENT_PRODUCT_KEYS[productCode] === "domex" && /^[AB](?:C)?\d+$/.test(code) ||
+      contract.productKey === "cppPPRs" && productCode === "CPP_PPR" && /^B(?:C)?\d+$/.test(code);
+    if (datedPayment) {
+      const terms = cppPropertyCommissionTerms(contract, code);
+      if (!terms) return null;
+      const items = row.source === "manager" ? managerOverrideItemsForViewer(contract, viewerEmail) : contract.items ?? [];
+      return expectedCppPropertyCommissionAmount(items, terms);
+    }
   }
   const amount = baseExpectedPayoutAmountForRow(contract, row, viewerEmail);
   const careBase = neonRefreshCarePayoutBase(contract, row);
@@ -3477,7 +3481,7 @@ function matchLifeStatementPayout<T extends StatementEndorsementEntry>(
   periodEndMs: number | null,
   plan?: StatementEndorsementContext["plan"],
 ): T | null {
-  const selected = matchLifeStatementEntry(entries, row);
+  const selected = matchLifeStatementEntry(entries, row, endorsementCommissionDay(periodEndMs));
   if (!selected || selected.productKey !== "neon" || selected.entryType !== "endorsement") return selected;
   const root = entries.find(entry => entry.id === selected.rootContractEntryId && entry.entryType !== "endorsement");
   return root && neonRecurringPremiumForRow(root, row, periodEndMs, plan ?? createEndorsementCommissionPlan(entries))
@@ -4142,7 +4146,7 @@ const processStatementWrites = async ({
           : family.length <= 1 || matchLifeStatementPayout(family, row, periodEndMs, endorsementPlan)?.id === resolution.entryId);
       if (family.length > 1) {
         contractPremiumRows = contractPremiumRows.filter(row =>
-          matchLifeStatementEntry(family, { ...row, baseAmount: row.basePremium })?.id === resolution.entryId);
+          matchLifeStatementEntry(family, { ...row, baseAmount: row.basePremium }, endorsementCommissionDay(periodEndMs))?.id === resolution.entryId);
       }
       if (!contractPayoutRows.length && !contractPremiumRows.length) continue;
     }
@@ -4225,6 +4229,8 @@ const processStatementWrites = async ({
         contract.refreshStatementResolvedStatementDate !== statementDate ||
         contract.refreshStatementResolvedStatementChronologyMs !== statementChronologyMs);
     const codeEvidenceForRow = (row: CommissionStatementPayoutRow) => ({
+      ...(contract.commissionPayoutCodeAdjustment?.kind === "cpp-auto-quarterly-combined-start"
+        ? { statementId: docId, key: statementPayoutKey(docId, row) } : {}),
       code: row.commissionCode, payoutMonthKey, writtenBy: ctxEmail,
       amount: row.status === "storno" ? -Math.abs(row.commission) : row.commission, status: row.status,
       sourceBaseAmount: row.baseAmount, statementDate, statementPeriod,

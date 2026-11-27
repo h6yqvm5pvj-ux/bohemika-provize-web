@@ -114,3 +114,23 @@ describe("anniversary reviews for complete teams", () => {
     await expect(GET(request())).rejects.toThrow("unavailable");
   });
 });
+
+describe("callback access and validation", () => {
+  const callback = { contactOutcome: "no_answer", callbackOn: "2027-01-10", meetingAt: null };
+  it("passes a valid callback date to the authorized transaction", async () => {
+    expect((await POST(post(callback))).status).toBe(200);
+    expect(mocks.append.mock.calls[0][1]).toMatchObject(callback);
+  });
+  it.each([{ callbackOn: "2027-02-30" }, { callbackOn: {} }, { action: "save" }, { contactOutcome: "meeting" }])("rejects invalid callback fields", async overrides => {
+    expect((await POST(post({ ...callback, ...overrides }))).status).toBe(400);
+    expect(mocks.append).not.toHaveBeenCalled();
+  });
+  it("requires the authenticated advisor and authorized owner even with forged role or actor", async () => {
+    expect((await POST(post({ ...callback, ownerEmail: "stranger@example.test", role: "admin" }))).status).toBe(403);
+    mocks.guard.mockResolvedValueOnce({ ok: true, ctx: { email: "own@example.test", accountType: "tipster" }, withRateLimit: (r: Response) => r });
+    expect((await POST(post({ ...callback, actorEmail: "admin@example.test" }))).status).toBe(403);
+    mocks.guard.mockResolvedValueOnce({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+    expect((await POST(post(callback))).status).toBe(401);
+    expect(mocks.append).not.toHaveBeenCalled();
+  });
+});

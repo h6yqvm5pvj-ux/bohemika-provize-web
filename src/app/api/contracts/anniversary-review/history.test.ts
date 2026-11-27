@@ -211,3 +211,42 @@ describe("persistent anniversary contact history", () => {
     expect(docs.has(reviewPath)).toBe(false);
   });
 });
+
+describe("scheduled callbacks", () => {
+  const actor = "own@example.test";
+  const entryPath = "users/own@example.test/entries/contract-1";
+
+  it("persists an encrypted date, includes it in history and preserves it when saving notes", async () => {
+    const { db, docs } = memoryDatabase();
+    const scheduled = mutation({ callbackOn: "2026-09-09" });
+    expect((await appendReviewHistory(db, scheduled, actor)).callbackOn).toBe("2026-09-09");
+    expect(docs.get(entryPath)?.hasAnniversaryCallback).toBe(true);
+    expect(docs.get(reviewPath)?.callbackOn).toMatchObject({ privateEncryption: 1 });
+    vi.setSystemTime(new Date("2026-09-11T09:00:00Z"));
+    expect((await appendReviewHistory(db, scheduled, actor)).historyCount).toBe(1);
+    const noted = await appendReviewHistory(db, mutation({ action: "save", contactOutcome: undefined, note: "Nová poznámka", requestId: "request-write-note" }), actor);
+    expect(noted.callbackOn).toBe("2026-09-09");
+    const events = await readReviewHistory(db, actor, scheduled.entryId, null);
+    expect(events.history.find(event => event.kind === "contact")?.callbackOn).toBe("2026-09-09");
+    await expect(appendReviewHistory(db, { ...scheduled, requestId: "past-new-callback" }, actor)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it.each(["reached", "complete", "clearOutcome", "no_answer"] as const)("clears a pending call after %s", async outcome => {
+    const { db, docs } = memoryDatabase();
+    await appendReviewHistory(db, mutation({ callbackOn: "2026-09-08" }), actor);
+    const next = outcome === "complete" || outcome === "clearOutcome"
+      ? mutation({ action: outcome, contactOutcome: undefined, requestId: "remove-reminder-1" })
+      : mutation({ contactOutcome: outcome, requestId: "remove-reminder-1" });
+    expect((await appendReviewHistory(db, next, actor)).callbackOn).toBeNull();
+    expect(docs.get(entryPath)?.hasAnniversaryCallback).toBe(false);
+  });
+
+  it("reschedules independently and rejects stale writes from an older anniversary", async () => {
+    const { db } = memoryDatabase();
+    await appendReviewHistory(db, mutation({ callbackOn: "2026-09-08" }), actor);
+    expect((await appendReviewHistory(db, mutation({ callbackOn: "2026-09-14", requestId: "reschedule-callback" }), actor)).callbackOn).toBe("2026-09-14");
+    vi.setSystemTime(new Date("2027-09-07T09:00:00Z"));
+    await appendReviewHistory(db, mutation({ occurrenceKey: "2027-09-10", requestId: "next-review-year" }), actor);
+    await expect(appendReviewHistory(db, mutation({ action: "complete", requestId: "old-review-year" }), actor)).rejects.toMatchObject({ status: 409 });
+  });
+});

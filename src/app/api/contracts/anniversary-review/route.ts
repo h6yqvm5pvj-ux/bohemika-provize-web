@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { adminDb } from "@/lib/server/firebaseAdmin";
 import { requireContractsEntryGuard } from "../_lib/contractsApi";
-import { CONTACT_OUTCOMES, type ContactOutcome } from "@/app/lib/anniversaryReviews";
+import { pragueMeetingStart, CONTACT_OUTCOMES, type ContactOutcome } from "@/app/lib/anniversaryReviews";
 import { appendReviewHistory, readReviewHistory, reviewDto, ReviewMutationError, REVIEWS_COLLECTION as COLLECTION, safeId, type ReviewMutation } from "./history";
 
 export const runtime = "nodejs";
@@ -13,7 +13,6 @@ const RATE_LIMIT = 60;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const FIRESTORE_IN_QUERY_MAX = 30;
 const OCCURRENCE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MEETING_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const validDay = (value: string): boolean => {
   if (!OCCURRENCE_KEY_RE.test(value)) return false;
   const date = new Date(`${value}T12:00:00Z`);
@@ -158,8 +157,9 @@ export async function POST(req: NextRequest) {
   const contractNumber = normalizeText(payload.contractNumber, 120);
   const noteProvided = hasOwn(payload, "note");
   const contactOutcomeProvided = hasOwn(payload, "contactOutcome");
+  const callbackProvided = hasOwn(payload, "callbackOn");
   const meetingAtProvided = hasOwn(payload, "meetingAt");
-  if ((action === "complete" || action === "reopen") && (noteProvided || contactOutcomeProvided || meetingAtProvided)) {
+  if ((action === "complete" || action === "reopen") && (noteProvided || contactOutcomeProvided || meetingAtProvided || callbackProvided)) {
     return withRateLimit(NextResponse.json({ ok: false, error: "Změnu stavu zapiš samostatně od kontaktu a poznámky." }, { status: 400 }));
   }
   const contactOutcome =
@@ -171,10 +171,15 @@ export async function POST(req: NextRequest) {
       NextResponse.json({ ok: false, error: "Neplatný výsledek kontaktu." }, { status: 400 })
     );
   }
-  if (meetingAtProvided && meetingAt && (!MEETING_AT_RE.test(meetingAt) || !validDay(meetingAt.slice(0, 10)) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(meetingAt.slice(11)))) {
+  if (meetingAtProvided && payload.meetingAt !== null && (typeof payload.meetingAt !== "string" || (meetingAt && !pragueMeetingStart(meetingAt)))) {
     return withRateLimit(
       NextResponse.json({ ok: false, error: "Neplatný datum nebo čas schůzky." }, { status: 400 })
     );
+  }
+
+  if (callbackProvided && (action !== "mark" || contactOutcome !== "no_answer" ||
+      (payload.callbackOn !== null && (typeof payload.callbackOn !== "string" || !validDay(payload.callbackOn))))) {
+    return withRateLimit(NextResponse.json({ ok: false, error: "Neplatný termín dalšího telefonátu." }, { status: 400 }));
   }
 
   if (hasOwn(payload, "requestId") && (typeof payload.requestId !== "string" || !/^[a-zA-Z0-9_-]{16,100}$/.test(payload.requestId))) {
@@ -188,6 +193,7 @@ export async function POST(req: NextRequest) {
     occurrenceKey: occurrenceKeyRaw,
     requestId: typeof payload.requestId === "string" ? payload.requestId : undefined,
   };
+  if (callbackProvided) mutation.callbackOn = typeof payload.callbackOn === "string" ? payload.callbackOn : null;
   if (noteProvided) mutation.note = normalizeText(payload.note, 280);
   if (meetingAtProvided) mutation.meetingAt = meetingAt || null;
   if (contactOutcomeProvided && contactOutcome) mutation.contactOutcome = contactOutcome as ContactOutcome;
@@ -196,7 +202,7 @@ export async function POST(req: NextRequest) {
     return withRateLimit(NextResponse.json({ ok: true, marked: review.handled, review }, { headers: { "Cache-Control": "private, no-store" } }));
   } catch (error) {
     if (error instanceof ReviewMutationError) return withRateLimit(NextResponse.json({ ok: false, error: error.message }, { status: error.status }));
-    console.error("Anniversary contact could not be saved", error);
+    console.error("Anniversary contact could not be saved");
     return withRateLimit(NextResponse.json({ ok: false, error: "Záznam se nepodařilo uložit. Zkus to prosím znovu." }, { status: 503 }));
   }
 }

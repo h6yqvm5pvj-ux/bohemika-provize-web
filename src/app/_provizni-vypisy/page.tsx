@@ -55,7 +55,7 @@ import { domexNeuronStatementBaseIsConfirmed, domexNeuronStatementCommissionCode
 import {
   buildStatementCodeComparisons,
   autoSubsequentExpectedAmountForRow,
-  cppKomplexStatementRenewal,
+  cppStatementPaymentTerms,
   isAmountComparisonExplainedByAutoPremiumChange,
   isHigherStatementCommission,
   comparisonStatus,
@@ -63,7 +63,7 @@ import {
   STATEMENT_AMOUNT_PRESENCE_TOLERANCE,
   statementAmountForSinglePayout,
 } from "./statementCommissionComparisons";
-import { expectedCppPPRsRenewalAmount } from "@/app/lib/productFormulas/cppPPRs";
+import { expectedCppPropertyCommissionAmount } from "@/app/lib/separatedPeriodCommissions";
 import { applyTipContractAdjustmentToCommissionResult } from "@/app/lib/tipContractCommission";
 import {
   type CommissionMode,
@@ -2493,11 +2493,11 @@ const otherProductPremiumBaseForComparison = (
     : null;
 };
 
-const cppKomplexBaseComparison = (
+const cppDatedBaseComparison = (
   row: Pick<CommissionRow, "product" | "type" | "base">,
   systemContract: MatchedSystemContract | null
 ): PremiumBaseComparison | null => {
-  const renewal = cppKomplexStatementRenewal(systemContract, row);
+  const renewal = cppStatementPaymentTerms(systemContract, row);
   if (!renewal || !systemContract) return null;
   const statementPeriod = renewal.frequency === "annual" ? "annual" : resolveStatementPremiumBasePeriod({
     product: row.product, statementBase: row.base, systemPaymentBase: renewal.paymentPremium,
@@ -2506,7 +2506,7 @@ const cppKomplexBaseComparison = (
   const comparison = premiumBaseComparison(row.base, { ...systemContract, frequencyRaw: renewal.frequency }, statementPeriod, renewal.paymentPremium);
   return comparison && {
     ...comparison,
-    key: `komplex-base-${row.type}-${row.base}`,
+    key: `${systemContract.productKey === "domex" ? "domex" : "komplex"}-base-${row.type}-${row.base}`,
     label: renewal.change ? `Základna ${row.type} podle dodatku` : `Základna ${row.type}`,
     canBeAnniversaryPremiumChange: false,
     firstAnniversaryDate: null,
@@ -2532,7 +2532,7 @@ const otherProductPremiumBaseComparisonsForContract = (
 
   const dated = new Map<string, PremiumBaseComparison>();
   const remainingRows = contract.rows.filter(row => {
-    const comparison = cppKomplexBaseComparison(row, systemContract);
+    const comparison = cppDatedBaseComparison(row, systemContract);
     if (!comparison) return true;
     dated.set(comparison.key, comparison);
     return false;
@@ -3839,14 +3839,16 @@ const buildOtherProductAmountComparisons = (
   ];
 
   const comparisons: CommissionAmountComparison[] = groups.flatMap((group) => {
-    if (group.key === "subsequent") {
+    const datedAcquisition = group.key === "closing" && group.rows.length > 0 &&
+      group.rows.every(row => cppStatementPaymentTerms(systemContract, row)?.acquisition);
+    if (datedAcquisition || group.key === "subsequent") {
       return buildStatementCodeComparisons({
         rows: group.rows,
         keyPrefix: group.key,
         expectedForRows: (rows) => {
-          const renewal = cppKomplexStatementRenewal(systemContract, rows[0]);
-          if (renewal && rows.every(row => cppKomplexStatementRenewal(systemContract, row)?.period === renewal.period)) {
-            const amount = expectedCppPPRsRenewalAmount(items, renewal.multiplier);
+          const renewal = cppStatementPaymentTerms(systemContract, rows[0]);
+          if (renewal && rows.every(row => cppStatementPaymentTerms(systemContract, row)?.period === renewal.period)) {
+            const amount = expectedCppPropertyCommissionAmount(items, renewal);
             if (amount != null) return { amount, detailLines: renewal.change
               ? [`Pojistné podle dodatku účinného od ${formatSystemDate(renewal.change.effectiveDate)}.`] : undefined };
           }
@@ -4128,7 +4130,7 @@ const managerCommissionPremiumBaseMismatch = (
   }
 
   const careBase = neonRefreshCareStatementBase(systemContract, row);
-  const datedBase = cppKomplexBaseComparison(row, systemContract);
+  const datedBase = cppDatedBaseComparison(row, systemContract);
   const statementBasePeriod = datedBase?.statementBasePeriod ?? (careBase ? "annual" : managerCommissionStatementBasePeriod(row, systemContract));
   const fullNeonBase = careBase?.monthly ?? neonFullPremiumMonthlyBase(systemContract, monthKeyFromStatementPeriod(statementPeriod));
   const mismatch = datedBase ?? premiumBaseComparison(
@@ -4188,7 +4190,7 @@ const managerCommissionBaseComparison = (
 ): PremiumBaseComparison | null => {
   if (isInvestmentProduct(systemContract?.productKey) || resolveStatementProduct(row.product).category === "investment") return null;
   if (isKooperativaAutoRenewalStatementRow(row) || usesIndependentStatementCommissionBase(row.product)) return null;
-  const datedBase = cppKomplexBaseComparison(row, systemContract);
+  const datedBase = cppDatedBaseComparison(row, systemContract);
   if (datedBase) return { ...datedBase, key: `manager-${managerCommissionRowIdentity(row)}-base` };
   const indexation = managerDomexNeuronExpectation(row, systemContract, currentUserEmail, statementPeriod, sameCodeRows).indexation;
   if (indexation.status === "confirmed") return null;
@@ -4306,8 +4308,8 @@ const buildManagerCommissionAmountComparison = (
 
   const comparisonCode = domexNeuronStatementCommissionCode(row, systemContract);
   const comparisonRow = comparisonCode === row.type ? row : { ...row, type: comparisonCode };
-  const renewal = cppKomplexStatementRenewal(systemContract, row);
-  const datedAmount = renewal ? expectedCppPPRsRenewalAmount(items, renewal.multiplier) : null;
+  const renewal = cppStatementPaymentTerms(systemContract, row);
+  const datedAmount = renewal ? expectedCppPropertyCommissionAmount(items, renewal) : null;
   const expectedAbsAmount = datedAmount ?? expectedManagerAmountForStatementBase(
     row, systemContract, neonCorrectionPayoutAmount(systemContract, expectedManagerAmountFromItems(items, comparisonRow), monthKeyFromStatementPeriod(statementPeriod))
   ) * (neonRefreshCareStatementBase(systemContract, row)?.multiplier ?? 1);

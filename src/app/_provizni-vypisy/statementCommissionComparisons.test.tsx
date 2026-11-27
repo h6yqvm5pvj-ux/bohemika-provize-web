@@ -2,8 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { calculateKoopMajetekObcan } from "@/app/lib/productFormulas/koopmajetekobcan";
-import { calculateCppPPRs, expectedCppPPRsRenewalAmount } from "@/app/lib/productFormulas/cppPPRs";
-import { autoSubsequentExpectedAmountForRow, buildStatementCodeComparisons, comparisonStatus, cppKomplexStatementRenewal, isAmountComparisonExplainedByAutoPremiumChange, statementAmountForSinglePayout, statementCommissionGroups } from "./statementCommissionComparisons";
+import { expectedCppPropertyCommissionAmount } from "@/app/lib/separatedPeriodCommissions";
+import { calculateCppPPRs } from "@/app/lib/productFormulas/cppPPRs";
+import { autoSubsequentExpectedAmountForRow, buildStatementCodeComparisons, comparisonStatus, cppStatementPaymentTerms, isAmountComparisonExplainedByAutoPremiumChange, statementAmountForSinglePayout, statementCommissionGroups } from "./statementCommissionComparisons";
 import { AmountComparisonPanel } from "./statementAmountComparisonPanel";
 import { statementContractIsVerified, statementContractReview } from "./statementContractReview";
 import type { CommissionRow } from "./statementTypes";
@@ -59,6 +60,22 @@ describe("duplicate single-payout commissions", () => {
 });
 
 describe("statement comparisons for separate commission codes", () => {
+  it.each(["CPP_DOMX", "CPP_DOMX+2", "CPP_DOMEX+"])("uses separate DOMEX acquisition and renewal rates for %s after a change", product => {
+    const root = { id: "domex", adviserEmail: "owner@example.test", productKey: "domex" as const,
+      policyStartDate: "2024-02-01", contractSignedDate: "2024-01-10", frequencyRaw: "quarterly" as const,
+      inputAmount: 1000, paymentFrequencyChanges: [
+        { effectiveDate: "2024-08-01", frequency: "semiannual" as const, annualPremium: 4800, baseAnnualPremium: 4000 },
+      ] };
+    const items = [{ title: "Okamžitá provize (z platby)", amount: 100 }, { title: "Následná provize (z platby)", amount: 25 }];
+    const acquisition = cppStatementPaymentTerms(root, { product, type: "AC103" })!;
+    const renewal = cppStatementPaymentTerms(root, { product, type: "B101" })!;
+    expect(acquisition).toMatchObject({ period: "2024-08-01", paymentPremium: 2400 });
+    expect(expectedCppPropertyCommissionAmount(items, acquisition)).toBe(240);
+    expect(expectedCppPropertyCommissionAmount(items, renewal)).toBe(60);
+    expect(cppStatementPaymentTerms(root, { product, type: "B109" })).toBeNull();
+    expect(cppStatementPaymentTerms(root, { product: "CPP_DOMX+N", type: "B101" })).toBeNull();
+  });
+
   it("uses the KOMPLEX amendment in force for each B code and keeps the acquisition separate", () => {
     const root = { id: "komplex", adviserEmail: "owner@example.test", productKey: "cppPPRs" as const,
       policyStartDate: "2023-10-15", frequencyRaw: "annual" as const, inputAmount: 10000,
@@ -68,15 +85,15 @@ describe("statement comparisons for separate commission codes", () => {
       ] };
     const items = calculateCppPPRs(10000, "annual", "poradce7").items.reverse();
     const firstRow = row("B101", 809.60, { product: "CPP_PPR", base: 11500 });
-    const first = cppKomplexStatementRenewal(root, firstRow)!;
+    const first = cppStatementPaymentTerms(root, firstRow)!;
     expect(first).toMatchObject({ period: "2024-10-15", paymentPremium: 11500, change: { endorsementId: "first" } });
-    expect(comparisonStatus(firstRow.commission, expectedCppPPRsRenewalAmount(items, first.multiplier)!)).toBe("ok");
-    const second = cppKomplexStatementRenewal(root, row("B102", 0, { product: "CPP_PPR", base: 99999 }))!;
+    expect(comparisonStatus(firstRow.commission, expectedCppPropertyCommissionAmount(items, first)!)).toBe("ok");
+    const second = cppStatementPaymentTerms(root, row("B102", 0, { product: "CPP_PPR", base: 99999 }))!;
     expect(second).toMatchObject({ period: "2025-10-15", paymentPremium: 6000, annualPremium: 12000, change: { endorsementId: "second" } });
-    expect(expectedCppPPRsRenewalAmount(items, second.multiplier)).toBe(422.40);
-    expect(cppKomplexStatementRenewal(root, { ...firstRow, type: "A201" })).toBeNull();
-    expect(cppKomplexStatementRenewal(root, { ...firstRow, product: "CPP_PPD" })).toBeNull();
-    expect(cppKomplexStatementRenewal({ ...root, productKey: "cppPPRbez" }, firstRow)).toBeNull();
+    expect(expectedCppPropertyCommissionAmount(items, second)).toBe(422.40);
+    expect(cppStatementPaymentTerms(root, { ...firstRow, type: "A201" })).toBeNull();
+    expect(cppStatementPaymentTerms(root, { ...firstRow, product: "CPP_PPD" })).toBeNull();
+    expect(cppStatementPaymentTerms({ ...root, productKey: "cppPPRbez" }, firstRow)).toBeNull();
   });
 
   it.each(["C101", "C102", "C103", "B102"])("compares Kooperativa Auto %s with the historical subsequent rate and preserves an underpayment", code => {

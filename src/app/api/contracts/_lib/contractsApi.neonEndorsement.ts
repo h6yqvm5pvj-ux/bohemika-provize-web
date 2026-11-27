@@ -1,6 +1,6 @@
 import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
 import { toDate } from "@/app/lib/formatters";
-import { calculateNeonDecreaseStornoBase } from "@/app/lib/productFormulas/neon";
+import { calculateNeonDecreaseStornoBase, confirmedNeonRefreshAnnualBase } from "@/app/lib/productFormulas/neon";
 import { resolveRemainingEndorsementDurationYears } from "@/app/kalkulacka/endorsementCalculation";
 import { isSafeContractNoteId } from "../notes/contractNotes";
 import { normalizeContractNumber, normalizeContractEntryType } from "./contractsApi.identity";
@@ -88,6 +88,7 @@ export function buildNeonEndorsementPayload(input: NeonEndorsementRequest, root:
   const calculationAmount = delta > 0 ? delta : calculateNeonDecreaseStornoBase({
     previousMonthlyPremium: previous, newMonthlyPremium: input.monthlyPremium,
     originalStornoStartDateIso: parentDay, endorsementPolicyStartDateIso: input.effectiveDate,
+    confirmedRefreshAnnualBase: confirmedNeonRefreshAnnualBase(parent.data),
   })?.calculationMonthlyPremium;
   if (calculationAmount == null) throw new NeonEndorsementError(400, "Nepodařilo se spočítat storno základnu dodatku Neon.");
 

@@ -491,7 +491,9 @@ export const premiumHistoryEntryFromStatementRow = ({
   }
   if (contract.productKey !== "domexneuron" && row.productKey && contract.productKey && row.productKey !== contract.productKey) return null;
   const project = projectCommissionCode ?? createCommissionCodeProjection(contract, contract.commissionPayouts ?? []);
-  const codeProjection = premiumCodeProjection(contract, { commissionCode: row.commissionCode, writtenBy, payoutMonthKey, statementDate, statementPeriod }, project);
+  const codeProjection = premiumCodeProjection(contract, { commissionCode: row.commissionCode, writtenBy, payoutMonthKey, statementDate, statementPeriod,
+    ...((contract.commissionPayoutCodeAdjustment as { kind?: string } | undefined)?.kind === "cpp-auto-quarterly-combined-start" ? { statementId } : {}),
+  }, project);
   const effectiveCode = codeProjection.resolvedCommissionCode ?? row.commissionCode;
   const effectiveKind = codeProjection.resolvedCommissionCode ? "auto_change" : row.premiumKind;
   if (contract.frequencyRaw === "semiannual" || hasAnnualCommissionCodeSchedule(contract)) {
@@ -534,7 +536,7 @@ export const premiumHistoryEntryFromStatementRow = ({
   const autoSource = { ...row, ...codeProjection, statementId, statementNumber, statementPeriod, statementDate, statementOwnerEmail: writtenBy };
   const isKooperativaRenewal = isKooperativaAutoRenewalPayout(contract.productKey, row.commissionCode);
   const renewal = isKooperativaRenewal && row.source === "own"
-    ? kooperativaAutoRenewalPremium(contract, row, kooperativaRenewalPosition) : null;
+    ? kooperativaAutoRenewalPremium(contract, { ...row, commissionCode: effectiveCode }, kooperativaRenewalPosition) : null;
   if (isKooperativaRenewal && (!renewal || effectiveKind !== "auto_change" ||
     (periodEndMs != null && Date.parse(renewal.anniversaryDate) > periodEndMs))) return null;
   const combined = !renewal && allowCombinedAutoBase && effectiveKind === "auto_change"
@@ -544,6 +546,7 @@ export const premiumHistoryEntryFromStatementRow = ({
   const resolvedAutoBasis = autoBasis?.status === "resolved" ? autoBasis : null;
   const combinedAnnual = resolvedAutoBasis?.period === "annual" ? combined : null;
   const sourceMetadata = renewal ? {
+    ...codeProjection,
     premiumDerivedFromCommission: true,
     sourceBasePremium: row.basePremium,
     paymentFrequencyAtImport: renewal.frequency,

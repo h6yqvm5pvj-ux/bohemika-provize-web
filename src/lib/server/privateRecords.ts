@@ -9,8 +9,8 @@ export function privateRecordFields(path: string, data: Record<string, unknown>)
   if (/^users\/[^/]+\/entries\/[^/]+\/contractNotes\/[^/]+$/.test(path)) return ["text", "clientName", "contractNumber"];
   if (/^users\/[^/]+\/entries\/[^/]+$/.test(path)) return ["note"];
   if (/^contractHistories\/[^/]+\/events\/[^/]+$/.test(path)) return ["title", "changes"];
-  if (/^anniversaryReviews\/[^/]+$/.test(path)) return ["note", "meetingAt", "contractNumber"];
-  if (/^anniversaryReviewHistories\/[^/]+\/events\/[^/]+$/.test(path)) return ["note", "meetingAt"];
+  if (/^anniversaryReviews\/[^/]+$/.test(path)) return ["note", "meetingAt", "callbackOn", "contractNumber"];
+  if (/^anniversaryReviewHistories\/[^/]+\/events\/[^/]+$/.test(path)) return ["note", "meetingAt", "callbackOn"];
   if (/^userRequests\/[^/]+$/.test(path)) return ["message", "feedback", "requestedCorporateEmail", "requestedFullName", "requestedAgencyNumber", "requestedManagerEmail", "requestedPosition", "requestedCommissionMode"];
   if (/^mailboxSharedPayloads\/[^/]+$/.test(path)) return ["snapshot", "noteText", "senderName", "recipientName", "previewHtml"];
   if (/^usersPrivate\/[^/]+\/mailbox\/[^/]+$/.test(path) && isPrivateSystemMessage(data.type)) return ["title", "body", "metadata"];

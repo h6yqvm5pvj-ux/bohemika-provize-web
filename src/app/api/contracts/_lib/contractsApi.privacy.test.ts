@@ -75,6 +75,25 @@ describe("contract response privacy at the API boundary", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await response.json()).toMatchObject({ contract: { id: "root" } });
   });
+  it("returns the corrected legacy Refresh decrease on the authorized detail without rewriting its statement", async () => {
+    const items = [{ title: "Provize A101", code: "A101", amount: 450 }, { title: "Provize B0301", code: "B0301", amount: 125 }];
+    entry("root", { policyStartDate: "2022-09-01", inputAmount: 900, effectiveInputAmount: 900, isRefresh: true,
+      commissionBaseSource: "commission_statement", refreshCommissionBase: { calculationAnnualPremium: 3600 }, items });
+    const oldItems = [{ ...items[0], amount: -150 }, { ...items[1], amount: -41.67 }];
+    const payout = { code: "A101", amount: -269.83, writtenBy: owner, status: "storno" };
+    entry("decrease", { parentContractEntryId: "root", policyStartDate: "2024-09-01", previousInputAmount: 900, newInputAmount: 400,
+      calculationInputAmount: 300, inputAmount: 300, items: oldItems, result: { items: oldItems, total: -191.67 }, commissionPayouts: [payout] });
+    const { handleContractsGet } = await import("./contractsApi");
+    const read = () => handleContractsGet(new NextRequest(`https://example.test/api/contracts/detail?ownerEmail=${owner}&entryId=decrease`), "detail");
+    const response = await read();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const expected = { items: [{ ...items[0], amount: -270 }, { ...items[1], amount: -75 }], total: -345 };
+    expect(body.contract).toMatchObject({ ...expected, result: expected, calculationInputAmount: 180, commissionPayouts: [payout] });
+    expect(body.timeline.find((node: { id: string }) => node.id === "decrease")).toMatchObject(expected);
+    asUser(former);
+    expect((await read()).status).toBe(403);
+  });
   it("repairs separate equal increase receipts from their authorized archived rows in the timeline", async () => {
     const { extractCommissionPayoutRowsFromStoredHtml, statementPayoutKey } = await import("@/app/api/commission-statements/statementPayoutRows");
     const payout = (statementId: string, day: string, payoutMonthKey: string) => {

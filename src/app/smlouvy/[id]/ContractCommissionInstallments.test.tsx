@@ -33,6 +33,112 @@ describe("contract commission installment interaction", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses the DOMEX amendment premium in the first-year installments, renewals and annual totals", async () => {
+    const items = [
+      { title: "Okamžitá provize (z platby)", code: "A101-A104", amount: 100 },
+      { title: "Následná provize (z platby)", code: "B101-B104", amount: 25, excludeFromTotal: true },
+    ];
+    const entry = { id: "domex-change", productKey: "domex" as const, frequencyRaw: "quarterly" as const,
+      contractSignedDate: "2024-01-10", policyStartDate: "2024-02-01", inputAmount: 1000, items,
+      paymentFrequencyChanges: [{ effectiveDate: "2024-08-01", frequency: "semiannual" as const, annualPremium: 4800, baseAnnualPremium: 4000 }],
+    };
+    await act(async () => root.render(<ContractCommissionSection {...props} product="domex" commissionEntry={entry}
+      paymentFrequency={entry.frequencyRaw} policyStartDate={entry.policyStartDate} adviserItems={items}
+      paymentBasedAdviserTotals={{ immediate: 400, subsequent: 100 }} adviserTotalDisplay={400} />));
+    const content = container.textContent?.replace(/\s+/g, " ");
+    expect(content).toContain("první rok 440,00 Kč");
+    expect(content).toContain("Celkem v 1. roce440,00 Kč");
+    expect(content).toContain("Celkem následně ročně120,00 Kč");
+    expect(content).toContain("Vyplaceno 0/8 · celkem 480,00 Kč");
+  });
+
+  it.each([
+    { product: "neon", recurring: "Následná provize (2.–5. rok)", firstYear: 2022 },
+    { product: "flexi", recurring: "Následná provize (od 6. roku)", firstYear: 2027 },
+    { product: "maximaMaxEfekt", recurring: "Následná provize (od 5. roku)", firstYear: 2026 },
+    { product: "pillowInjury", recurring: null, firstYear: null },
+  ] as const)("shows the scheduled calendar year on each life commission for $product", async ({ product, recurring, firstYear }) => {
+    const items = [
+      { title: "Provize po 3 letech", code: "B36", amount: 100 },
+      { title: "Provize po 4 letech", code: "B48", amount: 80 },
+      ...(recurring ? [{ title: recurring, amount: 50 }] : []),
+    ];
+    // A November 26 anniversary is paid in January. Even a late receipt keeps the scheduled year.
+    await act(async () => root.render(<ContractCommissionSection {...props} product={product} isPaymentBasedProduct={false}
+      policyStartDate="2020-11-26" adviserItems={items} contractDurationYears={8} paymentBasedAdviserTotals={null}
+      commissionPayouts={[{ code: "B36", amount: 100, writtenBy: owner, status: "paid", statementDate: "2025-02-25" }]} />));
+    expect(container.textContent).toContain("Provize po 3 letech · plánovaná výplata 2024");
+    expect(container.textContent).toContain("Provize po 4 letech · plánovaná výplata 2025");
+    if (firstYear !== null) {
+      const headings = [...container.querySelectorAll('[class*="installmentHeading"]')];
+      expect(headings.length).toBeGreaterThan(0);
+      headings.forEach((heading, i) => {
+        expect(heading.textContent).toContain(`B${101 + i} · plánovaná výplata ${firstYear + i}`);
+      });
+    }
+  });
+
+  it("omits the payout year without a usable contract date", async () => {
+    await act(async () => root.render(<ContractCommissionSection {...props} product="neon" policyStartDate={null}
+      adviserItems={[{ title: "Provize po 3 letech", code: "B3601", amount: 100 }]} />));
+    expect(container.textContent).toContain("Provize po 3 letech");
+    expect(container.textContent).not.toContain("plánovaná výplata");
+  });
+
+  it("labels the upfront half of B36 separately from its deferred payment", async () => {
+    const entry = { id: "accelerated", productKey: "flexi" as const, policyStartDate: "2020-11-25", contractSignedDate: "2020-10-20" };
+    await act(async () => root.render(<ContractCommissionSection {...props} product="flexi" commissionEntry={entry}
+      policyStartDate={entry.policyStartDate} isPaymentBasedProduct={false} paymentBasedAdviserTotals={null}
+      adviserItems={[{ title: "Provize 50% z B36", code: "B36_HALF", amount: 100 },
+        { title: "Provize po 3 letech", code: "B36", amount: 100 }]} />));
+    expect(container.textContent).toContain("Provize 50% z B36 · plánovaná výplata 2020");
+    expect(container.textContent).toContain("Provize po 3 letech · plánovaná výplata 2023");
+  });
+
+  it("assigns two shifted NEON care payments once and opens each under the code actually printed", async () => {
+    const onOpenStatement = vi.fn();
+    const care = { title: "Pečovatelská provize (5.–10. rok)", amount: 120, code: "B201-B206" };
+    const entry = { id: "synthetic-life", productKey: "neon" as const, policyStartDate: "2018-02-01",
+      userEmail: owner, frequencyRaw: "monthly" as const, items: [care], commissionPayouts: [
+        { code: "B202", title: "CPP_NEON · B202", amount: 120, status: "paid", payoutMonthKey: "2023-11", writtenBy: owner, statementId: "first" },
+        { code: "B203", title: "CPP_NEON · B203", amount: 120, status: "paid", payoutMonthKey: "2024-03", writtenBy: owner, statementId: "second" },
+      ] };
+    const records = projectContractCommissionPayouts(entry, [], owner, owner);
+    await act(async () => root.render(<ContractCommissionSection {...props} product="neon" isPaymentBasedProduct={false}
+      paymentFrequency="monthly" adviserItems={[care]} policyStartDate={entry.policyStartDate} commissionEntry={entry}
+      commissionPayouts={records} onOpenStatement={onOpenStatement} />));
+    const rows = [...container.querySelectorAll('div[class*="breakdownRow"]')];
+    for (const [index, source] of entry.commissionPayouts.entries()) {
+      const row = rows.find(el => el.querySelector('[class*="installmentCode"]')?.textContent === records[index].code)!;
+      expect(row.textContent).toContain(`plánovaná výplata ${2023 + index}`);
+      expect(row.textContent).toContain(`${source.code} → B20${index + 1}`);
+      await act(async () => row.querySelector("button")!.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith(source.statementId, [source.code]);
+    }
+    expect(rows.filter(row => row.querySelector('[data-status="paid"]'))).toHaveLength(2);
+  });
+
+  it("opens the earlier C101 from B101 and the restarted B101 only from the later half year", async () => {
+    const open = vi.fn();
+    const entry = { id: "synthetic", userEmail: owner, productKey: "kooperativaAuto" as const, frequencyRaw: "semiannual" as const,
+      policyStartDate: "2023-02-10" };
+    const payouts = [
+      { code: "C101", statementId: "early", statementPeriod: "01.02.2024 - 29.02.2024", amount: 80 },
+      { code: "B101", statementId: "later", statementPeriod: "01.08.2025 - 31.08.2025", amount: 95 },
+    ].map(row => ({ ...row, expectedAmount: row.amount, writtenBy: owner, status: "paid" }));
+    await act(async () => root.render(<ContractCommissionSection {...props} product="kooperativaAuto" paymentFrequency="semiannual"
+      commissionEntry={entry} policyStartDate={entry.policyStartDate} paymentBasedAdviserTotals={null}
+      adviserItems={[{ title: "Následná provize", code: "B101", amount: 80 }]} commissionPayouts={payouts} onOpenStatement={open} />));
+    for (const [planned, statement, raw] of [["B101", "early", "C101"], ["B104", "later", "B101"]]) {
+      const label = [...container.querySelectorAll("span")].find(el => !el.childElementCount && el.textContent === planned);
+      const row = label?.closest("div[class*='breakdownRow']");
+      const sources = row?.querySelectorAll("button");
+      expect(sources).toHaveLength(1);
+      await act(async () => sources![0].click());
+      expect(open).toHaveBeenLastCalledWith(statement, [raw]);
+    }
+  });
+
   it("shows the seventh year paid under corrected B106 and opens the original B105 source", async () => {
     const onOpenStatement = vi.fn();
     const entry = { id: "synthetic", userEmail: owner, productKey: "cppAuto" as const, frequencyRaw: "annual" as const,
@@ -97,6 +203,29 @@ describe("contract commission installment interaction", () => {
     expect(second.textContent).toContain("B101 → A102");
     await act(async () => second.querySelector("button")!.click());
     expect(onOpenStatement).toHaveBeenCalledWith("s1", ["B101"]);
+  });
+
+  it("shows two different opening amounts and opens the same original A101 for both", async () => {
+    const onOpenStatement = vi.fn();
+    const entry = { id: "quarterly", productKey: "cppAuto" as const, frequencyRaw: "quarterly" as const,
+      userEmail: owner, policyStartDate: "2024-01-10", paymentFrequencyChanges: [
+        { effectiveDate: "2024-04-01", frequency: "quarterly" as const, baseAnnualPremium: 2000, annualPremium: 2400 },
+      ] };
+    const payouts = [{ key: "first", code: "A101", amount: 110, status: "difference", writtenBy: owner,
+      statementId: "original", statementNumber: "TEST-1", confirmedInstallmentSplit: { secondCents: 6000, secondDueDate: "2024-04-01" },
+      commissionCodeCorrectionNote: "Společná výplata A101 a A102." }];
+    await act(async () => root.render(<ContractCommissionSection {...props} product="cppAuto" paymentFrequency="quarterly"
+      policyStartDate={entry.policyStartDate} commissionEntry={entry} paymentBasedAdviserTotals={null}
+      adviserItems={[{ title: "Okamžitá provize", code: "A101", amount: 50 }]} commissionPayouts={payouts} onOpenStatement={onOpenStatement} />));
+    const group = container.querySelector("details")!;
+    expect(group.querySelector("summary")?.textContent).toContain("Zapsané výplaty 2/4");
+    const parts = [...group.querySelectorAll("div")].filter(node => node.className.includes("breakdownRow"));
+    for (const [index, amount] of ["50,00", "60,00"].entries()) {
+      expect(parts[index].textContent).toContain(`Očekáváno ${amount} Kč`);
+      expect(parts[index].textContent).toContain("Vyplaceno");
+      await act(async () => parts[index].querySelector("button")!.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith("original", ["A101"]);
+    }
   });
 
   it("shows A104 covered by the quarterly A103 payment with a doubled statement base", async () => {

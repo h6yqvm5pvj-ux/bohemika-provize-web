@@ -135,7 +135,7 @@ export function ContractFiltersDialog({ value, advisers, availablePositions, can
               <div className={styles.choices}>
                 <Choice checked={draft.showUnpaidOnly} onChange={() => setDraft(toggleUnpaidFilter)}>Nezaplacené</Choice>
                 <Choice checked={draft.showWithoutPdfOnly} onChange={() => change({ showWithoutPdfOnly: !draft.showWithoutPdfOnly })} description="Zobrazí smlouvy bez přiloženého PDF souboru.">Bez PDF přílohy</Choice>
-                <Choice checked={draft.showCommissionEndedOnly} onChange={() => change({ showCommissionEndedOnly: !draft.showCommissionEndedOnly })} description="Historické ČPP DOMEX po skončení období následných provizí.">Provizně ukončené smlouvy</Choice>
+                <Choice checked={draft.showCommissionEndedOnly} onChange={() => change({ showCommissionEndedOnly: !draft.showCommissionEndedOnly })} description="Historické ČPP DOMEX po vyplacení všech následných splátek nebo po konci provizního období.">Provizně ukončené smlouvy</Choice>
                 <Choice checked={draft.showRefreshOnly} onChange={() => change({ showRefreshOnly: !draft.showRefreshOnly })}>Refresh / náhrada</Choice>
               </div>
               <p className={styles.hint}>Nezaplacené zahrnují aktivní smlouvy bez označené úhrady.</p>

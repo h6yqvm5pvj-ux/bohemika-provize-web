@@ -84,6 +84,7 @@ export function AnniversaryHistory({ user, ownerEmail, entryId, occurrenceKey, v
                 </time> : <span className="text-[11px] text-slate-400">Datum původního zápisu není známo</span>}
               </div>
               {event.kind === "legacy" && event.contactOutcome && <p className="mt-1 text-xs text-slate-600">{contactLabel(event)}</p>}
+              {event.callbackOn && <p className="mt-1 text-xs font-medium text-violet-700">Zavolat znovu {new Date(event.callbackOn + "T12:00:00").toLocaleDateString("cs-CZ")}</p>}
               {event.meetingAt && <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-violet-700"><CalendarCheck className="h-3.5 w-3.5" /> Schůzka: {new Date(event.meetingAt).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>}
               {event.note && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-600">{event.note}</p>}
               <p className="mt-1.5 break-all text-[10px] text-slate-400">

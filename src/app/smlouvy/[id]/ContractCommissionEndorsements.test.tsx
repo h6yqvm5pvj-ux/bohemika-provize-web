@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ContractCommissionSection } from "./ContractCommissionSection";
 import type { ContractDoc } from "./contractDetailTypes";
+import { neonCommissionDisplayFamily } from "./neonDecreaseReceipts";
 
 const owner = "adviser@example.test";
 const manager = "manager@example.test";
@@ -88,6 +89,36 @@ describe("contract commission premium decreases", () => {
     expect(container.textContent).toMatch(/Celkem280,00 Kč/);
   });
 
+  it("uses the premium effective for each care year for booked and future installments alike", async () => {
+    const care = { title: "Pečovatelská provize (5.–10. rok)", code: "B201-B206", amount: 120 };
+    const records = ["B201", "B202"].map((code, i) => ({
+      code, statementCode: `B${202 + i}`, statementId: `statement-${i}`, key: `row-${i}`,
+      statementDate: `${2030 + i}-02-01`, writtenBy: owner, amount: 72, expectedAmount: 120,
+      difference: -48, status: "difference", differenceReason: "commission_amount_mismatch",
+    }));
+    const contract = { ...original, items: [care], commissionPayouts: records };
+    const family = neonCommissionDisplayFamily(contract, [contract, decrease], owner, owner);
+    await act(async () => root.render(<ContractCommissionSection {...base} consolidateNeonAmendments
+      commissionEntry={family[0]} adviserItems={[care]} adviserTotalDisplay={720}
+      commissionTimeline={family} commissionPayouts={family[0].commissionPayouts} />));
+
+    const group = [...container.querySelectorAll("details")].find(el => el.querySelector("summary")?.textContent?.includes(care.title));
+    expect(group?.querySelector("summary")?.textContent).toContain("Zapsané výplaty 2/6");
+    expect(group?.querySelector("summary")?.textContent).toContain("Očekáváno celkem432,00 Kč");
+    const rows = [...group!.querySelectorAll("details[data-tone]")];
+    expect(rows).toHaveLength(6);
+    for (const [i, row] of rows.entries()) {
+      const summary = row.querySelector("summary")?.textContent;
+      expect(summary).toContain(`B${201 + i} · plánovaná výplata ${2030 + i}`);
+      expect(summary).toContain("Očekáváno 72,00 Kč");
+      expect(summary).toContain(i < 2 ? "Vyplaceno dle očekávání" : "Čeká na výplatu");
+    }
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Zobrazit souhrn"))?.click());
+    expect(container.querySelector('section[aria-label="Porovnání plánu s výplatami"]')?.textContent)
+      .toContain("Očekáváno144,00 KčVyplaceno144,00 Kč");
+    expect(records[0].expectedAmount).toBe(120);
+  });
+
   it("shows one calculation with combined recurring NEON payments and separate amendment acquisition", async () => {
     const care = { title: "Pečovatelská provize (5.–10. rok)", code: "B201-B206", amount: 299.38 };
     const rootEntry: ContractDoc = { ...original, inputAmount: 900, effectiveInputAmount: 900, policyStartDate: "2020-10-01" };
@@ -120,7 +151,107 @@ describe("contract commission premium decreases", () => {
     expect(container.textContent).toContain("Vyplaceno 51,00 Kč");
     expect(container.textContent?.match(/Složka provize/g)).toHaveLength(1);
     expect(container.querySelector('[class*="rows"]')?.lastElementChild?.textContent).toContain("Provize po 4 letech");
+    expect(container.querySelector('[class*="rows"]')?.lastElementChild?.querySelector("summary")?.textContent)
+      .toContain("Provize po 4 letech · plánovaná výplata 2025");
     expect(container.querySelector('a[href="#contract-entry-foreign"]')).toBeNull();
+  });
+
+  it.each([
+    { a: -99.60, b: -4.80, tone: "matched", labels: ["Odečteno dle očekávání", "Odečteno dle očekávání"], total: "415,60" },
+    { a: -130, b: -22, tone: "difference", labels: ["Odečteno více o 30,00 Kč", "Odečteno více o 17,00 Kč"], total: "368,00" },
+  ])("links both existing deductions when a decrease is saved and shows their actual amounts ($tone)", async ({ a, b, tone, labels, total }) => {
+    const items = [
+      { title: "Provize A101", code: "A101", amount: 400 },
+      { title: "Provize B0301", code: "B0301", amount: 120 },
+    ];
+    const payments = items.map(item => ({ code: item.code, amount: item.amount, status: "paid", writtenBy: owner,
+      key: item.code, statementDate: "2025-01-31", statementId: "original-payment" }));
+    const deductions = items.map((item, index) => ({ code: item.code, amount: index === 0 ? a : b,
+      status: "storno", writtenBy: owner, key: item.code, statementId: "may-deductions", statementPeriod: "01.05.2026 - 31.05.2026" }));
+    const contract = { ...original, contractNumber: "SYNTHETIC", items, commissionPayouts: [...payments, ...deductions] };
+    const amendment = { ...decrease, contractNumber: contract.contractNumber, policyStartDate: "2026-04-09",
+      items: items.map((item, index) => ({ ...item, amount: index === 0 ? -100 : -5 })) };
+    const onOpenStatement = vi.fn();
+    async function render(timeline: ContractDoc[]) {
+      const family = neonCommissionDisplayFamily(contract, timeline, owner, owner);
+      await act(async () => root.render(<ContractCommissionSection {...base} commissionEntry={contract} adviserItems={items}
+        adviserTotalDisplay={520} consolidateNeonAmendments={family.length > 0} commissionTimeline={family}
+        commissionPayouts={family[0]?.commissionPayouts ?? contract.commissionPayouts} onOpenStatement={onOpenStatement} />));
+    }
+    await render([contract]);
+    await render([contract, amendment]);
+    const rows = [...container.querySelectorAll("details[data-tone]")];
+    const amendmentRows = rows.filter(row => row.querySelector("a[href='#contract-entry-decrease']"));
+    expect(amendmentRows).toHaveLength(2);
+    for (const [index, row] of amendmentRows.entries()) {
+      expect(row.getAttribute("data-tone")).toBe(tone);
+      expect(row.querySelector("summary")?.textContent).toContain(labels[index]);
+      const actual = deductions[index].amount.toLocaleString("cs-CZ", { minimumFractionDigits: 2 });
+      expect(row.querySelector("summary")?.textContent).toContain(`Odečteno ${actual} Kč`);
+      await act(async () => row.querySelector("button")?.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith("may-deductions", [items[index].code]);
+    }
+    expect(rows.filter(row => row.textContent?.includes("Vyplaceno dle očekávání"))).toHaveLength(2);
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Zobrazit souhrn"))?.click());
+    const dialog = container.querySelector("dialog")!;
+    expect(dialog.querySelector('section[aria-label="Porovnání plánu s výplatami"]')?.textContent)
+      .toContain(`Očekáváno415,00 KčVyplaceno${total} Kč`);
+    expect(dialog.textContent).not.toContain("bez spárovaného plánu");
+    expect(contract.commissionPayouts).toEqual([...payments, ...deductions]);
+  });
+
+  it("shows the Refresh reversal from the preceding period alongside the stored decrease estimate", async () => {
+    const items = [{ title: "Provize A101", code: "A101", amount: 450 }, { title: "Provize B0301", code: "B0301", amount: 125 }];
+    const payments = items.map(item => ({ key: item.code, code: item.code, amount: item.amount, writtenBy: owner,
+      statementId: "initial", statementDate: "2022-09-30", sourceBaseAmount: 3600 }));
+    const deductions = payments.map((row, i) => ({ ...row, statementId: "august", amount: i === 0 ? -269.83 : -75.01,
+      status: "storno", statementPeriod: "01.08.2024 - 31.08.2024", statementDate: "23.09.2024" }));
+    const contract = { ...original, contractNumber: "SYNTHETIC", isRefresh: true, policyStartDate: "2022-09-01",
+      effectiveInputAmount: 900, inputAmount: 900, commissionBaseSource: "commission_statement",
+      refreshCommissionBase: { calculationAnnualPremium: 3600 }, items, commissionPayouts: [...payments, ...deductions] };
+    const amendment = { ...decrease, contractNumber: contract.contractNumber, policyStartDate: "2024-09-01",
+      contractSignedDate: "2024-08-01", previousInputAmount: 900, newInputAmount: 400, effectiveInputAmount: 400,
+      premiumDelta: -500, items: items.map((item, i) => ({ ...item, amount: i === 0 ? -150 : -45 })) };
+    const family = neonCommissionDisplayFamily(contract, [contract, amendment], owner, owner);
+    const onOpenStatement = vi.fn();
+    await act(async () => root.render(<ContractCommissionSection {...base} consolidateNeonAmendments
+      commissionEntry={contract} commissionTimeline={family} commissionPayouts={family[0].commissionPayouts}
+      policyStartDate={contract.policyStartDate} adviserItems={items} adviserTotalDisplay={575} onOpenStatement={onOpenStatement} />));
+    const rows = [...container.querySelectorAll("details[data-tone]")].filter(row => row.querySelector("a[href='#contract-entry-decrease']"));
+    expect(rows).toHaveLength(2);
+    for (const [i, row] of rows.entries()) {
+      expect(row.querySelector("summary")?.textContent).toContain(i === 0 ? "Odečteno více o 119,83 Kč" : "Odečteno více o 30,01 Kč");
+      await act(async () => row.querySelector("button")?.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith("august", [items[i].code]);
+    }
+  });
+
+  it("shows both historical month-dated top-ups as paid with their original statement codes", async () => {
+    const items = [{ code: "A101", title: "Provize A101", amount: 400 }, { code: "B0301", title: "Provize B0301", amount: 120 }];
+    const payments = items.map(item => ({ key: item.code, code: item.code, amount: item.amount, writtenBy: owner,
+      statementId: "original-payment", statementDate: "2025-01-31" }));
+    const topUps = [{ code: "NV101", amount: 40.18 }, { code: "NB0301", amount: 12.15 }].map(row => ({
+      ...row, key: row.code, writtenBy: owner, statementId: "increase-payment", sourceBaseAmount: 1200,
+      sourceValidFrom: "01.05.2026", sourceSignedAt: "01.05.2026", statementPeriod: "01.05.2026 - 31.05.2026",
+    }));
+    const contract = { ...original, contractNumber: "SYNTHETIC", items, commissionPayouts: [...payments, ...topUps] };
+    const increase = { ...decrease, id: "increase", contractNumber: contract.contractNumber, policyStartDate: "2026-05-14",
+      newInputAmount: 1100, effectiveInputAmount: 1100, premiumDelta: 100, changeType: "increase" as const,
+      items: items.map(item => ({ ...item, amount: item.amount / 10 })) };
+    const family = neonCommissionDisplayFamily(contract, [contract, increase], owner, owner);
+    const onOpenStatement = vi.fn();
+    await act(async () => root.render(<ContractCommissionSection {...base} consolidateNeonAmendments commissionEntry={contract}
+      commissionTimeline={family} commissionPayouts={family[0].commissionPayouts} adviserItems={items} adviserTotalDisplay={520}
+      onOpenStatement={onOpenStatement} />));
+    const rows = [...container.querySelectorAll('details[data-tone]')].filter(row => row.querySelector('a[href="#contract-entry-increase"]'));
+    expect(rows).toHaveLength(2);
+    for (const [index, row] of rows.entries()) {
+      expect(row.getAttribute("data-tone")).toBe("matched");
+      expect(row.querySelector("summary")?.textContent).toContain("Vyplaceno dle očekávání");
+      expect(row.textContent).toContain(topUps[index].code);
+      await act(async () => row.querySelector("button")?.click());
+      expect(onOpenStatement).toHaveBeenLastCalledWith("increase-payment", [topUps[index].code]);
+    }
   });
 
   it.each([false, true])("reprices open NEON components after an increase (B0301 already paid: %s)", async (earlyB0301) => {

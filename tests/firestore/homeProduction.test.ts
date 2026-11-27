@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { initializeApp, deleteApp, type App } from "firebase-admin/app";
 import { getFirestore, Query, type Firestore, type DocumentReference } from "firebase-admin/firestore";
-import { loadOwnerHomeProduction } from "../../src/lib/server/homeProduction";
+import { loadHomeProductionOwners, loadOwnerHomeProduction } from "../../src/lib/server/homeProduction";
+import { withBusinessDataEncryption } from "../../src/lib/server/businessDataFirestore";
 import { withContractHistory } from "../../src/lib/server/contractHistory";
 import { markHallOwnerDirty } from "../../src/lib/server/hallOfFameProjection";
 
@@ -60,6 +61,32 @@ describe("home sums in real Firestore emulator", () => {
       expect((await loadOwnerHomeProduction(db, other, period)).current.count).toBe(0);
     } finally { reads.mockRestore(); }
   });
+  it("validates 24 warm owner summaries in one transaction and rebuilds only the changed owner", async () => {
+    const wrapped = withBusinessDataEncryption(db);
+    const owners = Array.from({ length: 24 }, (_, index) => `batch-${index}@example.test`);
+    const entry = (email: string) => db.collection("users").doc(email).collection("entries").doc("contract");
+    await Promise.all(owners.map((email, index) => change(entry(email), {
+      ...data, userEmail: email, items: [{ code: "A101", title: "Provize", amount: index + 1 }],
+    })));
+    const cold = await loadHomeProductionOwners(wrapped, owners, period);
+    const transactions = vi.spyOn(db, "runTransaction");
+    const reads = vi.spyOn(Query.prototype, "get");
+    try {
+      const warm = await loadHomeProductionOwners(wrapped, [...owners].reverse(), period);
+      expect(warm).toEqual(cold);
+      expect(owners.map(email => warm.get(email)?.current.immediate)).toEqual(owners.map((_, i) => i + 1));
+      expect(transactions).toHaveBeenCalledTimes(1);
+      expect(reads).not.toHaveBeenCalled();
+      await change(entry(owners[11]), { items: [{ code: "A101", title: "Provize", amount: 900 }] });
+      transactions.mockClear();
+      const changed = await loadHomeProductionOwners(wrapped, owners, period);
+      expect(changed.get(owners[11])?.current.immediate).toBe(900);
+      expect(changed.get(owners[12])).toEqual(cold.get(owners[12]));
+      expect(transactions).toHaveBeenCalledTimes(2);
+      expect(reads).toHaveBeenCalledTimes(2);
+    } finally { transactions.mockRestore(); reads.mockRestore(); }
+  });
+
   it("handles missing signing dates and excludes an old contract imported this month", async () => {
     const email = "home-legacy@example.test";
     const entries = db.collection("users").doc(email).collection("entries");

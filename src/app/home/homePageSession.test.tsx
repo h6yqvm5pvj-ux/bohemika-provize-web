@@ -27,10 +27,12 @@ vi.mock("@/app/lib/adminImpersonation", () => ({ readAdminImpersonationState: ()
 vi.mock("@/components/AppLayout", () => ({ AppLayout: ({ children }: { children: ReactNode }) => <div data-layout>{children}</div> }));
 vi.mock("@/components/search/GlobalSearchCommand", () => ({ GlobalSearchCommand: () => null }));
 vi.mock("../posta/useMailboxRefresh", () => ({ useMailboxRefresh: (_enabled: boolean, refresh: () => Promise<void>) => { mocks.refreshMailbox = refresh; } }));
-vi.mock("next/dynamic", () => ({ default: () => () => null }));
+vi.mock("next/dynamic", () => ({ default: () => (props: Record<string, unknown>) =>
+  "onDataShown" in props ? <ProductionSummarySection {...props as Parameters<typeof ProductionSummarySection>[0]} /> : null }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...props }: { href: string; children: ReactNode }) => <a href={href} {...props}>{children}</a> }));
 
 import HomePage from "../page";
+import { ProductionSummarySection } from "./components/ProductionSummarySection";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -67,6 +69,7 @@ describe("home page session transitions", () => {
       summaryLoading: false, summaryRefreshing: false, historyLoading: false, tipSummaryLoading: false,
     });
     window.localStorage.clear();
+    sessionStorage.clear();
     window.history.replaceState(null, "", "/");
     container = document.createElement("div");
     document.body.append(container);
@@ -164,6 +167,41 @@ describe("home page session transitions", () => {
     await mount(); await emit(user); await resolveProfile(user, "tipster");
     expect(latestDataEmail()).toBeNull();
     expect(container.querySelector("h1")).toBeNull();
+  });
+
+  it("uses saved hidden widgets on the first authorized data request", async () => {
+    const user = advisor("custom");
+    await mount(); await emit(user);
+    await act(async () => profiles.get(user.uid)!.resolve({ ok: true, profile: {
+      email: user.email, accountType: "advisor", homeWidgets: { productionSummary: false, monthlyGoal: false },
+    } }));
+    const loads = mocks.homeData.mock.calls.filter(([options]) => options.email === user.email);
+    expect(loads.length).toBeGreaterThan(0);
+    expect(loads.every(([options]) => options.loadTipSummary === false)).toBe(true);
+  });
+
+  it.each([false, true])("measures profile and first displayed sums once for team=%s", async hasTeam => {
+    const user = advisor("timed");
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const measured = () => JSON.parse(sessionStorage.getItem("home.performance.v1") ?? "[]") as Array<{
+      stage: string; outcome: string; audience?: string; durationMs: number;
+    }>;
+    const state = mocks.homeData.getMockImplementation()!();
+    mocks.homeData.mockReturnValue({ ...state, hasTeam, summaryLoading: true });
+    await mount(); await emit(user);
+    expect(measured()).toEqual([]);
+    await act(async () => profiles.get(user.uid)!.resolve({ ok: true, hasTeam, profile: {
+      email: user.email, accountType: "advisor",
+    } }));
+    const audience = hasTeam ? "manager" : "advisor";
+    expect(measured()).toMatchObject([{ stage: "homeProfile", outcome: "success", audience }]);
+    mocks.homeData.mockReturnValue({ ...state, hasTeam, summaryLoading: false, summaryUpdatedAt: Date.now() });
+    await mount(); await mount();
+    expect(measured()).toMatchObject([
+      { stage: "homeProfile", outcome: "success", audience },
+      { stage: "firstProduction", outcome: "success", audience },
+    ]);
+    expect(measured()[1].durationMs).toBeGreaterThanOrEqual(measured()[0].durationMs);
   });
 
   it("keeps the gold tool in quick actions without restoring the homepage price widget", async () => {

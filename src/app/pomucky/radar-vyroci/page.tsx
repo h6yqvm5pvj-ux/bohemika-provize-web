@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
+  BellRing,
+  CalendarDays,
   BriefcaseBusiness,
   CarFront,
   CalendarCheck,
@@ -22,7 +24,6 @@ import {
   MessageSquareText,
   PhoneCall,
   PhoneMissed,
-  Radar,
   RotateCcw,
   ShieldCheck,
   Search,
@@ -39,6 +40,9 @@ import type { AnniversaryContract as ContractRow } from "@/app/lib/anniversaryPo
 import { findAnniversaryRadarTarget, isAnniversaryRadarTarget } from "@/app/lib/anniversaryRadarLink";
 import { loadRadarData } from "./loadRadarData";
 import type { AnniversaryReview, AnniversaryReviewMutationResponse, ContactOutcome } from "@/app/lib/anniversaryReviews";
+import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
+import { groupByRadarClient } from "./radarClientGroups";
+import { meetingCalendar } from "./meetingCalendar";
 import { AnniversaryHistory } from "./AnniversaryHistory";
 import { anniversaryStage, RADAR_STAGE_LABELS, type RadarActivityFilter } from "./radarActivity";
 import styles from "./radar.module.css";
@@ -68,6 +72,7 @@ import {
 } from "@/app/lib/contractAnniversary";
 
 const WINDOW_OPTIONS = [14, 30, 60, DEFAULT_ANNIVERSARY_WINDOW_DAYS] as const;
+const shortMonth = new Intl.DateTimeFormat("cs-CZ", { month: "short" });
 
 const ACTIVITY_FILTERS = [
   { key: "new", label: RADAR_STAGE_LABELS.new, icon: Inbox },
@@ -78,11 +83,11 @@ const ACTIVITY_FILTERS = [
 
 const ACTIVITY_COPY: Record<RadarActivityFilter, { title: string; description: string; emptyTitle: string; emptyDescription: string }> = {
   new: {
-    title: "Tady začíná další kontakt", description: "Smlouvy bez kontaktu či poznámky k aktuálnímu výročí.",
+    title: "K prvnímu kontaktu", description: "Smlouvy bez kontaktu či poznámky k aktuálnímu výročí.",
     emptyTitle: "V tomto období nejsou žádná nezpracovaná výročí", emptyDescription: "Zkus delší období nebo jiný druh pojištění.",
   },
   active: {
-    title: "Navaž na předchozí jednání", description: "Zapsaný kontakt nebo poznámka. Případ zůstává rozpracovaný, dokud ho neoznačíš jako dokončený.",
+    title: "Probíhající jednání", description: "Smlouvy se zapsaným kontaktem nebo poznámkou.",
     emptyTitle: "Žádné rozpracované případy", emptyDescription: "Po uložení kontaktu nebo poznámky se případ přesune sem. Dokončené najdeš zvlášť.",
   },
   completed: {
@@ -90,7 +95,7 @@ const ACTIVITY_COPY: Record<RadarActivityFilter, { title: string; description: s
     emptyTitle: "Zatím žádné dokončené případy", emptyDescription: "Dovolání ani schůzka případ neuzavřou. Až bude vše vyřešené, použij tlačítko Dokončit.",
   },
   all: {
-    title: "Všechna výročí na jednom místě", description: "Nejprve nezpracované, potom rozpracované a nakonec dokončené případy.",
+    title: "Všechna výročí", description: "Případy podle stavu zpracování, v každé skupině od nejbližšího výročí.",
     emptyTitle: "V tomto období nejsou žádná výročí", emptyDescription: "Zkus delší období nebo jiný druh pojištění.",
   },
 };
@@ -173,9 +178,9 @@ const DEFAULT_CHECKLIST = [
 type Tone = "urgent" | "soon" | "later";
 
 const TONE_META: Record<Tone, { label: string }> = {
-  urgent: { label: "Tento týden" },
+  urgent: { label: "Do 7 dní" },
   soon: { label: "Za 8–14 dní" },
-  later: { label: "Později" },
+  later: { label: "Za 15 dní a déle" },
 };
 
 function toneFor(daysLeft: number): Tone {
@@ -203,6 +208,7 @@ type RadarItem = {
   contractNumber: string | null;
   clientName: string;
   clientPhone: string | null;
+  clientEmail: string | null;
   product: Product | null | undefined;
   next: Date;
   daysLeft: number;
@@ -276,6 +282,7 @@ type ContactDialogState = {
   note: string;
   meetingDate: string;
   meetingTime: string;
+  callbackOn: string;
 };
 
 function contractDetailHref(ownerEmail: string, entryId: string): string {
@@ -358,11 +365,19 @@ function RadarVyrociContent() {
   const [portfolioFailed, setPortfolioFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [view, setView] = useState<"dates" | "clients" | "callbacks">("dates");
+  const [today, setToday] = useState(() => getTodayIsoInPrague());
+  useEffect(() => {
+    const refreshDay = () => setToday(getTodayIsoInPrague());
+    const timer = window.setInterval(refreshDay, 60_000);
+    window.addEventListener("focus", refreshDay);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refreshDay); };
+  }, []);
   const [windowDays, setWindowDays] = useState<number>(30);
   const [showTeam, setShowTeam] = useState(false);
   const [activityFilter, setActivityFilter] = useState<RadarActivityFilter>("new");
   const [searchQuery, setSearchQuery] = useState("");
-  const [savedNotice, setSavedNotice] = useState<{ message: string; destination: RadarActivityFilter } | null>(null);
+  const [savedNotice, setSavedNotice] = useState<{ message: string; destination: RadarActivityFilter; meeting?: { item: RadarItem; at: string } } | null>(null);
   const [productFilter, setProductFilter] = useState<RadarProductFilter>("all");
 
   const [position, setPosition] = useState<Position | null>(null);
@@ -514,6 +529,7 @@ function RadarVyrociContent() {
         note: "",
         meetingDate: "",
         meetingTime: "",
+        callbackOn: "",
       });
     },
     []
@@ -521,8 +537,9 @@ function RadarVyrociContent() {
 
   const canShowTeam = isManagerPosition(position);
 
-  const availableRadarItems = useMemo<RadarItem[]>(() => {
+  const portfolioItems = useMemo<RadarItem[]>(() => {
     const items: RadarItem[] = [];
+    const referenceDay = new Date(today + "T12:00:00");
     for (const contract of contracts) {
       if ((contract.entryType ?? "contract") !== "contract") continue;
       if (!shouldTrackAnniversary(contract.productKey ?? null)) continue;
@@ -532,8 +549,8 @@ function RadarVyrociContent() {
       const ownerEmail = contractOwnerEmail(contract);
       if (!ownerEmail) continue;
       const start = getAnniversaryStartDate(contract);
-      const info = isAnniversarySoon(start, DEFAULT_ANNIVERSARY_WINDOW_DAYS);
-      if (!info.soon || !info.next || info.daysLeft == null) continue;
+      const info = isAnniversarySoon(start, DEFAULT_ANNIVERSARY_WINDOW_DAYS, referenceDay);
+      if (!info.next || info.daysLeft == null || !info.anniversaryNumber) continue;
 
       const occurrenceKey = anniversaryOccurrenceKey(info.next);
       if (!occurrenceKey) continue;
@@ -545,6 +562,7 @@ function RadarVyrociContent() {
         contractNumber: contract.contractNumber ?? null,
         clientName: contract.clientName?.trim() || "Bez jména",
         clientPhone: contract.clientPhone ?? null,
+        clientEmail: contract.clientEmail ?? null,
         product: contract.productKey,
         next: info.next,
         daysLeft: info.daysLeft,
@@ -563,7 +581,29 @@ function RadarVyrociContent() {
     }
     items.sort((a, b) => a.daysLeft - b.daysLeft);
     return items;
-  }, [contracts]);
+  }, [contracts, today]);
+
+  const availableRadarItems = useMemo(() => portfolioItems.filter(item => item.daysLeft <= DEFAULT_ANNIVERSARY_WINDOW_DAYS), [portfolioItems]);
+  const dueItems = useMemo(() => {
+    const due: Array<{ item: RadarItem; callbackOn: string }> = [];
+    for (const item of portfolioItems) {
+      const review = reviewRecords.get(item.key);
+      if ((!showTeam && item.ownerEmail !== effectiveUserEmail) || !review?.callbackOn || review.callbackOn > today ||
+          review.contactOutcome !== "no_answer" || review.processingStatus === "completed") continue;
+      const next = new Date(review.occurrenceKey + "T12:00:00");
+      const daysLeft = (Date.parse(review.occurrenceKey) - Date.parse(today)) / 86_400_000;
+      if (!Number.isFinite(daysLeft)) continue;
+      due.push({
+        callbackOn: review.callbackOn,
+        item: {
+          ...item, next, daysLeft, occurrenceKey: review.occurrenceKey,
+          anniversaryNumber: item.anniversaryNumber == null ? undefined : item.anniversaryNumber + next.getFullYear() - item.next.getFullYear(),
+        },
+      });
+    }
+    return due.sort((a, b) => a.callbackOn.localeCompare(b.callbackOn) || a.item.daysLeft - b.item.daysLeft)
+      .map(entry => entry.item);
+  }, [portfolioItems, reviewRecords, today, effectiveUserEmail, showTeam]);
 
   useEffect(() => {
     pendingLinkedFocus.current = null;
@@ -575,6 +615,7 @@ function RadarVyrociContent() {
       if (cancelled) return;
       setLinkedCase({ account: effectiveUserEmail, target: linkedTarget, key: item?.key ?? null });
       if (!item) return;
+      setView("dates");
       setWindowDays(DEFAULT_ANNIVERSARY_WINDOW_DAYS);
       setShowTeam(item.ownerEmail !== effectiveUserEmail);
       setActivityFilter("all");
@@ -602,8 +643,8 @@ function RadarVyrociContent() {
   ), [availableRadarItems, effectiveUserEmail, showTeam, windowDays]);
 
   const productFilteredItems = useMemo(
-    () => radarItems.filter((item) => matchesRadarProductFilter(item.product, productFilter)),
-    [productFilter, radarItems]
+    () => (view === "callbacks" ? dueItems : radarItems).filter(item => matchesRadarProductFilter(item.product, productFilter)),
+    [productFilter, radarItems, dueItems, view]
   );
 
   const searchedItems = useMemo(() => {
@@ -621,9 +662,9 @@ function RadarVyrociContent() {
   }, [searchedItems, reviewRecords]);
 
   const visibleItems = useMemo(() => searchedItems.filter(item => {
-    if (activityFilter === "all") return true;
+    if (view === "callbacks" || activityFilter === "all") return true;
     return anniversaryStage(reviewRecords.get(item.key), item.occurrenceKey) === activityFilter;
-  }), [searchedItems, activityFilter, reviewRecords]);
+  }), [searchedItems, activityFilter, reviewRecords, view]);
 
   useEffect(() => {
     if (!currentLinkedCase?.key || pendingLinkedFocus.current !== currentLinkedCase.key || !linkedCardRef.current) return;
@@ -632,7 +673,16 @@ function RadarVyrociContent() {
     pendingLinkedFocus.current = null;
   }, [currentLinkedCase, visibleItems]);
 
-  const groups = useMemo(() => {
+  const groups = useMemo<Array<{ key: string; label: string; tone: Tone; items: RadarItem[]; activity?: keyof typeof RADAR_STAGE_LABELS }>>(() => {
+    if (view === "clients") {
+      return groupByRadarClient(visibleItems).map(({ key, label, items }) => ({ key, label, items, tone: "later" }));
+    }
+    if (view === "callbacks") {
+      return [
+        { key: "overdue", label: "Po termínu", tone: "urgent" as const, items: visibleItems.filter(item => reviewRecords.get(item.key)?.callbackOn !== today) },
+        { key: "today", label: "Zavolat dnes", tone: "soon" as const, items: visibleItems.filter(item => reviewRecords.get(item.key)?.callbackOn === today) },
+      ].filter(group => group.items.length > 0);
+    }
     return (["new", "active", "completed"] as const).flatMap(activity => {
       const buckets: Record<Tone, RadarItem[]> = { urgent: [], soon: [], later: [] };
       for (const item of visibleItems) {
@@ -642,12 +692,14 @@ function RadarVyrociContent() {
       return (["urgent", "soon", "later"] as Tone[])
         .map(tone => ({ activity, tone, items: buckets[tone] }))
         .filter(group => group.items.length > 0)
-        .map((group, index) => ({ ...group, firstInActivity: index === 0 }));
+        .map((group, index) => ({ key: `${activity}-${group.tone}`, label: TONE_META[group.tone].label,
+          tone: activity === "completed" ? "later" as const : group.tone, items: group.items,
+          activity: activityFilter === "all" && index === 0 ? activity : undefined }));
     });
-  }, [visibleItems, reviewRecords]);
+  }, [visibleItems, reviewRecords, view, today, activityFilter]);
 
   const mutateReview = useCallback(
-    async (item: RadarItem, changes: { action: "mark" | "save" | "clearOutcome" | "complete" | "reopen"; note?: string; contactOutcome?: ContactOutcome; meetingAt?: string | null }) => {
+    async (item: RadarItem, changes: { action: "mark" | "save" | "clearOutcome" | "complete" | "reopen"; note?: string; contactOutcome?: ContactOutcome; meetingAt?: string | null; callbackOn?: string | null }) => {
       if (!user || pendingMutations.current.has(item.key)) return false;
       const account = effectiveUserEmail;
       const body = {
@@ -716,12 +768,19 @@ function RadarVyrociContent() {
     const saved = await mutateReview(contactDialog.item, {
       action: "mark", contactOutcome: contactDialog.outcome,
       note: contactDialog.note.slice(0, 280),
+      ...(contactDialog.outcome === "no_answer" ? { callbackOn: contactDialog.callbackOn || null } : {}),
       meetingAt: contactDialog.outcome === "meeting"
         ? combineMeetingAt(contactDialog.meetingDate, contactDialog.meetingTime) : null,
     });
     if (saved) {
       const destination = anniversaryStage(saved, contactDialog.item.occurrenceKey);
-      setSavedNotice({ message: `${contactDialog.item.clientName}: kontakt uložen. ${destination === "active" ? "Případ zůstává rozpracovaný." : `Aktuální přehled: ${RADAR_STAGE_LABELS[destination]}.`}`, destination });
+      setSavedNotice({
+        message: saved.callbackOn
+          ? `${contactDialog.item.clientName}: zavolat znovu ${new Date(saved.callbackOn + "T12:00:00").toLocaleDateString("cs-CZ")}.`
+          : `${contactDialog.item.clientName}: kontakt uložen. ${destination === "active" ? "Případ zůstává rozpracovaný." : `Aktuální přehled: ${RADAR_STAGE_LABELS[destination]}.`}`,
+        destination,
+        meeting: saved.contactOutcome === "meeting" && saved.meetingAt ? { item: contactDialog.item, at: saved.meetingAt } : undefined,
+      });
       setContactDialog(null);
     }
   }, [contactDialog, mutateReview]);
@@ -746,6 +805,7 @@ function RadarVyrociContent() {
       "Stav zpracování",
       "Výsledek kontaktu",
       "Termín schůzky",
+      "Zavolat znovu",
       "Poznámka",
     ];
     const rows = visibleItems.map((item) => {
@@ -761,6 +821,7 @@ function RadarVyrociContent() {
         RADAR_STAGE_LABELS[anniversaryStage(review, item.occurrenceKey)],
         outcomeLabel(contactOutcome) || (isReviewHandled(review, item.occurrenceKey) ? "Zkontrolováno" : ""),
         formatMeetingAt(isCurrentReview(review, item.occurrenceKey) ? review?.meetingAt : null),
+        isCurrentReview(review, item.occurrenceKey) ? review?.callbackOn ?? "" : "",
         isCurrentReview(review, item.occurrenceKey) ? review?.note ?? "" : "",
       ]
         .map(csvEscape)
@@ -776,6 +837,20 @@ function RadarVyrociContent() {
     URL.revokeObjectURL(url);
   }, [visibleItems, reviewRecords]);
 
+  async function addMeetingToCalendar(item: RadarItem, meetingAt: string) {
+    try {
+      const event = await meetingCalendar(item, meetingAt);
+      const url = URL.createObjectURL(new Blob([event], { type: "text/calendar;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "schuzka-k-vyroci.ics";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError("Schůzku se nepodařilo přidat do kalendáře. Zkontroluj její datum a čas.");
+    }
+  }
+
   const isInitialLoading = !authReady || (Boolean(user) && (loading || !loadedOnce || loadedFor !== effectiveUserEmail));
   const contactDialogPending = contactDialog ? pendingKeys.has(contactDialog.item.key) : false;
   const contactDialogDateIncomplete = Boolean(
@@ -784,20 +859,20 @@ function RadarVyrociContent() {
       (!contactDialog.meetingDate || !contactDialog.meetingTime)
   );
   const contactDialogCanSave = Boolean(
-    contactDialog?.outcome && !contactDialogDateIncomplete && !contactDialogPending
+    contactDialog?.outcome && !contactDialogDateIncomplete &&
+      (!contactDialog.callbackOn || contactDialog.callbackOn >= today) && !contactDialogPending
   );
   const contactDialogReview = contactDialog ? reviewRecords.get(contactDialog.item.key) : undefined;
   const contactDialogIsHandled = contactDialog
     ? isReviewHandled(contactDialogReview, contactDialog.item.occurrenceKey)
     : false;
+  const savedMeeting = savedNotice?.meeting;
   const hasProcessedItems = activityCounts.active + activityCounts.completed > 0;
 
   if (isInitialLoading) {
     return (
       <AppLayout active="tools">
-        <div className="w-full max-w-6xl">
-          <RadarAnniversaryLoader />
-        </div>
+        <RadarAnniversaryLoader />
       </AppLayout>
     );
   }
@@ -825,35 +900,40 @@ function RadarVyrociContent() {
       <div className={styles.page}>
         <header className={styles.hero}>
           <div>
-            <div className={styles.eyebrow}><Radar size={14} /> Péče o klienty</div>
             <h1 className={styles.title}>Radar výročí</h1>
-            <p className={styles.subtitle}>Ozvi se klientům včas. Kontakty, poznámky a další kroky na jednom místě.</p>
+            <p className={styles.subtitle}>Nadcházející výročí smluv a poslední jednání s klienty.</p>
           </div>
-          <div className={styles.heroIcon} aria-hidden="true"><Radar size={42} strokeWidth={1.3} /></div>
+          <div className={styles.radarGraphic} aria-hidden="true" />
         </header>
 
         {error && <div role="alert" className={styles.notice}>{error}</div>}
         {linkedNotice && <div role="status" className={styles.linkedNotice}>{linkedNotice}</div>}
 
-        <section className={styles.workspace} aria-label="Přehled výročí smluv">
-          <div className={styles.tabs} role="group" aria-label="Stav zpracování">
+        <section aria-label="Přehled výročí smluv">
+          <div className={styles.views} role="group" aria-label="Zobrazení Radaru">
+            <button type="button" aria-pressed={view === "dates"} onClick={() => setView("dates")}><CalendarDays size={15} />Podle výročí</button>
+            <button type="button" aria-pressed={view === "clients"} onClick={() => { setView("clients"); setActivityFilter("all"); }}><Users size={15} />Podle klientů</button>
+            <button type="button" aria-pressed={view === "callbacks"} onClick={() => setView("callbacks")}><BellRing size={15} />Dnes a po termínu <span>{dueItems.length}</span></button>
+          </div>
+          {view !== "callbacks" && <div className={styles.tabs} role="group" aria-label="Stav zpracování">
             {ACTIVITY_FILTERS.map(({ key, label, icon: Icon }) => (
               <button key={key} type="button" className={styles.tab} aria-pressed={activityFilter === key} onClick={() => setActivityFilter(key)}>
-                <Icon size={15} /><span>{label}</span><span className={styles.tabCount}>{activityCounts[key]}</span>
+                <span className={styles.tabIcon}><Icon size={17} aria-hidden="true" /></span>
+                <span>{label}</span><span className={styles.tabCount}>{activityCounts[key]}</span>
               </button>
             ))}
-          </div>
+          </div>}
 
           <div className={styles.filters}>
             <div className={styles.filterRow}>
-              <div className={styles.windowFilter}>
+              {view !== "callbacks" && <div className={styles.windowFilter}>
                 <span className={styles.filterLabel}>Výročí do</span>
                 <div className={styles.segments} role="group" aria-label="Období výročí">
                   {WINDOW_OPTIONS.map(days => (
                     <button key={days} type="button" className={styles.segment} aria-pressed={windowDays === days} onClick={() => setWindowDays(days)}>{days} dní</button>
                   ))}
                 </div>
-              </div>
+              </div>}
               <div className={styles.search}>
                 <Search size={15} aria-hidden="true" />
                 <input type="search" aria-label="Hledat klienta, smlouvu nebo telefon" placeholder="Hledat klienta nebo smlouvu…" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} />
@@ -872,36 +952,36 @@ function RadarVyrociContent() {
           <div className={styles.list}>
             <div className={styles.listIntro}>
               <div>
-                <h2>{ACTIVITY_COPY[activityFilter].title}</h2>
-                <p>{ACTIVITY_COPY[activityFilter].description} Seřazeno od nejbližšího výročí.</p>
+                <h2>{view === "callbacks" ? "Telefonáty na řadě" : view === "clients" ? "Výročí podle klientů" : ACTIVITY_COPY[activityFilter].title}</h2>
+                <p>{view === "callbacks" ? "Domluvené telefonáty od nejstaršího termínu." : view === "clients" ? "Každá smlouva má vlastní výsledek kontaktu a historii." : ACTIVITY_COPY[activityFilter].description}</p>
               </div>
               <button type="button" className={styles.export} onClick={exportCsv} disabled={visibleItems.length === 0} aria-label="Export CSV" title="Exportovat právě zobrazené smlouvy"><Download size={14} /><span>Export CSV</span></button>
             </div>
 
             {savedNotice && <div className={styles.savedNotice} role="status">
               <Check size={14} /><span>{savedNotice.message}</span>
-              {activityFilter !== savedNotice.destination && activityFilter !== "all" && <button type="button" onClick={() => setActivityFilter(savedNotice.destination)}>Zobrazit {savedNotice.destination === "completed" ? "dokončené" : savedNotice.destination === "new" ? "nezpracované" : "rozpracované"}</button>}
+              {savedMeeting && <button type="button" onClick={() => void addMeetingToCalendar(savedMeeting.item, savedMeeting.at)}>Přidat do kalendáře</button>}
+              {activityFilter !== savedNotice.destination && activityFilter !== "all" && <button type="button" onClick={() => { setView("dates"); setActivityFilter(savedNotice.destination); }}>Zobrazit {savedNotice.destination === "completed" ? "dokončené" : savedNotice.destination === "new" ? "nezpracované" : "rozpracované"}</button>}
               <button type="button" onClick={() => setSavedNotice(null)} aria-label="Zavřít oznámení"><X size={14} /></button>
             </div>}
 
             {visibleItems.length === 0 ? (
               <div className={styles.empty}>
                 <div className={styles.emptyIcon}>{searchQuery.trim() ? <Search size={24} /> : activityFilter === "completed" || (activityFilter === "new" && hasProcessedItems) ? <CircleCheck size={24} /> : <Inbox size={24} />}</div>
-                <h3>{searchQuery.trim() ? "Žádná shoda" : activityFilter === "new" && hasProcessedItems ? "Všechny smlouvy už mají první krok" : ACTIVITY_COPY[activityFilter].emptyTitle}</h3>
-                <p>{searchQuery.trim() ? "Zkus jiné jméno, číslo smlouvy nebo jiný stav zpracování." : activityFilter === "new" && hasProcessedItems ? "Případy najdeš v přehledech Rozpracované a Dokončené." : ACTIVITY_COPY[activityFilter].emptyDescription}</p>
+                <h3>{searchQuery.trim() ? "Žádná shoda" : view === "callbacks" ? "Žádný telefonát na řadě" : activityFilter === "new" && hasProcessedItems ? "Všechny smlouvy už mají první krok" : ACTIVITY_COPY[activityFilter].emptyTitle}</h3>
+                <p>{searchQuery.trim() ? "Zkus jiné jméno, číslo smlouvy nebo jiný stav zpracování." : view === "callbacks" ? "Zde se zobrazí připomínky s dnešním nebo dřívějším termínem." : activityFilter === "new" && hasProcessedItems ? "Případy najdeš v přehledech Rozpracované a Dokončené." : ACTIVITY_COPY[activityFilter].emptyDescription}</p>
                 {searchQuery.trim() ? <button type="button" onClick={() => setSearchQuery("")}>Vymazat hledání</button>
-                  : activityFilter === "new" && hasProcessedItems ? <button type="button" onClick={() => setActivityFilter("all")}>Zobrazit všechny smlouvy</button>
+                  : view === "callbacks" ? null : activityFilter === "new" && hasProcessedItems ? <button type="button" onClick={() => setActivityFilter("all")}>Zobrazit všechny smlouvy</button>
                   : activityFilter === "completed" ? <button type="button" onClick={() => setActivityFilter("active")}>Zobrazit rozpracované</button>
                   : activityFilter === "active" ? <button type="button" onClick={() => setActivityFilter("new")}>Přejít na nezpracované</button> : null}
               </div>
             ) : (
               groups.map(group => {
-                const meta = TONE_META[group.tone];
                 return (
-                  <div key={`${group.activity}-${group.tone}`} className={styles.group}>
-                    {activityFilter === "all" && group.firstInActivity && <h2 className={styles.activityHeading}>{RADAR_STAGE_LABELS[group.activity]} <span className={styles.tabCount}>{activityCounts[group.activity]}</span></h2>}
-                    <div className={styles.groupHeading} data-tone={group.activity === "completed" ? "later" : group.tone}>
-                      <span className={styles.groupDot} /><h3>{meta.label}</h3><span>{group.items.length}</span>
+                  <div key={group.key} className={styles.group} data-client={view === "clients"}>
+                    {group.activity && <h2 className={styles.activityHeading}>{RADAR_STAGE_LABELS[group.activity]} <span className={styles.tabCount}>{activityCounts[group.activity]}</span></h2>}
+                    <div className={styles.groupHeading} data-tone={group.tone}>
+                      <span className={styles.groupDot} /><h3>{group.label}</h3><span>{group.items.length}</span>
                     </div>
                     <div className={styles.cards}>
                       {group.items.map(item => {
@@ -916,26 +996,34 @@ function RadarVyrociContent() {
                         const isPending = pendingKeys.has(item.key);
                         const savedNote = isCurrentReview(review, item.occurrenceKey) ? review?.note ?? "" : "";
                         const meetingAt = isCurrentReview(review, item.occurrenceKey) ? review?.meetingAt ?? null : null;
+                        const callbackOn = isCurrentReview(review, item.occurrenceKey) ? review?.callbackOn : null;
                         const noteDraft = noteDrafts.get(item.key) ?? savedNote;
                         const noteDirty = noteDraft.trim() !== savedNote.trim();
                         const isLinked = currentLinkedCase?.key === item.key;
                         return (
-                          <article key={item.key} ref={isLinked ? linkedCardRef : undefined} tabIndex={isLinked ? -1 : undefined} className={styles.card} data-linked={isLinked} data-urgent={group.tone === "urgent" && !hasActivity} data-completed={isCompleted} aria-label={`${item.clientName}, smlouva ${item.contractNumber ?? item.entryId}`}>
+                          <article key={item.key} ref={isLinked ? linkedCardRef : undefined} tabIndex={isLinked ? -1 : undefined} className={styles.card} data-linked={isLinked} data-urgent={toneFor(item.daysLeft) === "urgent" && !hasActivity} data-completed={isCompleted} aria-label={`${item.clientName}, smlouva ${item.contractNumber ?? item.entryId}`}>
                             {isLinked && <div className={styles.linkedLabel}>Vybrané výročí z přehledu klientů</div>}
                             <div className={styles.cardRow}>
-                              <div className={styles.client}>
-                                <span className={styles.categoryIcon}><ProductCategoryIcon product={item.product} /></span>
-                                <div className={styles.clientInfo}>
-                                  <div className={styles.clientName} title={item.clientName}>{item.clientName}</div>
-                                  <div className={styles.productName} title={productLabel(item.product)}>{productLabel(item.product)}{productInstitutionLabel(item.product) ? ` · ${productInstitutionLabel(item.product)}` : ""}</div>
-                                  {item.contractNumber && <div className={styles.contractNumber}>#{item.contractNumber}</div>}
-                                  {showTeam && item.ownerEmail !== effectiveUserEmail && <div className={styles.contractNumber} title={item.ownerEmail}>{item.ownerEmail}</div>}
+                              <div className={styles.deadline} data-tone={isCompleted || item.daysLeft < 0 ? "later" : toneFor(item.daysLeft)}>
+                                <time dateTime={item.occurrenceKey} className={styles.calendarDate}>
+                                  <span className="sr-only">{item.next.toLocaleDateString("cs-CZ")}</span>
+                                  <strong aria-hidden="true">{item.next.getDate()}</strong>
+                                  <span aria-hidden="true">{shortMonth.format(item.next)}</span>
+                                </time>
+                                <div>
+                                  <div className={styles.daysLeft}>{item.daysLeft < 0 ? "Proběhlé výročí" : item.daysLeft === 0 ? "Výročí dnes" : item.daysLeft === 1 ? "Výročí zítra" : `Za ${formatDaysLeft(item.daysLeft)}`}</div>
+                                  <div className={styles.anniversaryNumber}>{item.anniversaryNumber != null && `${item.anniversaryNumber}. výročí · `}{item.next.getFullYear()}</div>
                                 </div>
                               </div>
-                              <div className={styles.deadline} data-tone={isCompleted ? "later" : group.tone}>
-                                <div className={styles.daysLeft}>{item.daysLeft === 0 ? "Výročí dnes" : item.daysLeft === 1 ? "Výročí zítra" : `Za ${formatDaysLeft(item.daysLeft)}`}</div>
-                                <time dateTime={item.occurrenceKey}>{item.next.toLocaleDateString("cs-CZ")}</time>
-                                {item.anniversaryNumber != null && <div className={styles.anniversaryNumber}>{item.anniversaryNumber}. výročí smlouvy</div>}
+                              <div className={styles.client}>
+                                <div className={styles.clientName} title={item.clientName}>{item.clientName}</div>
+                                <div className={styles.productName} title={productLabel(item.product)}>
+                                  <ProductCategoryIcon product={item.product} />
+                                  <span>{productLabel(item.product)}{productInstitutionLabel(item.product) ? ` · ${productInstitutionLabel(item.product)}` : ""}</span>
+                                </div>
+                                {item.contractNumber && <div className={styles.contractNumber}>#{item.contractNumber}</div>}
+                                {view === "callbacks" && item.clientPhone && <div className={styles.callbackPhone}><PhoneCall size={12} aria-hidden="true" />{item.clientPhone}</div>}
+                                {showTeam && item.ownerEmail !== effectiveUserEmail && <div className={styles.contractNumber} title={item.ownerEmail}>{item.ownerEmail}</div>}
                               </div>
                               <div className={styles.status}>
                                 <span className={styles.statusBadge} data-outcome={isCompleted ? "completed" : activeOutcome ?? (hasActivity && !isHandled ? "note" : "new")}>
@@ -943,7 +1031,11 @@ function RadarVyrociContent() {
                                   <span>{isCompleted ? "Dokončeno" : outcomeLabel(activeOutcome) || (savedNote && !isHandled ? "Uložena poznámka" : hasActivity ? "Rozpracováno" : "Čeká na první krok")}</span>
                                 </span>
                                 {isCompleted && activeOutcome && <span className={styles.statusNote}>{outcomeLabel(activeOutcome)}</span>}
-                                {meetingAt && <span className={styles.meeting}>{formatMeetingAt(meetingAt)}</span>}
+                                {callbackOn && <span className={styles.meeting}>Zavolat {new Date(callbackOn + "T12:00:00").toLocaleDateString("cs-CZ")}</span>}
+                                {meetingAt && <>
+                                  <span className={styles.meeting}>{formatMeetingAt(meetingAt)}</span>
+                                  <button type="button" className={styles.calendarButton} onClick={() => void addMeetingToCalendar(item, meetingAt)}><CalendarDays size={13} />Přidat do kalendáře</button>
+                                </>}
                                 {savedNote && <span className={styles.statusNote} title={savedNote}>{savedNote}</span>}
                                 {!isCompleted && <button type="button" className={styles.completeButton} disabled={isPending || noteDirty} onClick={() => changeCompletion(item, true)} title={noteDirty ? "Nejdřív ulož rozepsanou poznámku" : "Označit toto výročí jako dokončené"} aria-label={`Dokončit případ: ${item.clientName}`}><CircleCheck size={13} /> Dokončit</button>}
                                 {!isCompleted && noteDirty && <span className={styles.statusNote}>Nejdřív ulož rozepsanou poznámku.</span>}
@@ -1081,6 +1173,7 @@ function RadarVyrociContent() {
                               ? {
                                   ...current,
                                   outcome: option.value,
+                                  callbackOn: option.value === "no_answer" ? current.callbackOn : "",
                                   meetingDate: option.value === "meeting" ? current.meetingDate : "",
                                   meetingTime: option.value === "meeting" ? current.meetingTime : "",
                                 }
@@ -1114,6 +1207,21 @@ function RadarVyrociContent() {
                 </div>
               </div>
 
+              {contactDialog.outcome === "no_answer" && (
+                <fieldset className={styles.callbackFields}>
+                  <legend>Připomenout další kontakt</legend>
+                  <div>
+                    {[{ days: 1, label: "Zavolat zítra" }, { days: 7, label: "Za týden" }].map(({ days, label }) => (
+                      <button key={days} type="button" aria-pressed={contactDialog.callbackOn === addDaysIso(today, days)}
+                        onClick={() => setContactDialog({ ...contactDialog, callbackOn: addDaysIso(today, days) })}>{label}</button>
+                    ))}
+                  </div>
+                  <label>Vlastní datum
+                    <input type="date" min={today} value={contactDialog.callbackOn} onChange={event => setContactDialog({ ...contactDialog, callbackOn: event.target.value })} />
+                  </label>
+                  {contactDialog.callbackOn && contactDialog.callbackOn < today && <p className="text-xs text-rose-700">Zvol dnešní nebo budoucí datum telefonátu.</p>}
+                </fieldset>
+              )}
               {contactDialog.outcome === "meeting" && (
                 <div className="animate-in fade-in slide-in-from-top-1 rounded-2xl border border-violet-100 bg-violet-50/70 p-3 duration-200">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">

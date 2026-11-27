@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   beginMutation: vi.fn(), completeMutation: vi.fn(), failMutation: vi.fn(),
 }));
 const db = vi.hoisted(() => ({
+  getAll: async () => [await mocks.get()],
   batch: () => ({ update: mocks.update, commit: mocks.commit }),
   collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ get: mocks.get, get firestore() { return db; } }) }) }) }),
 }));

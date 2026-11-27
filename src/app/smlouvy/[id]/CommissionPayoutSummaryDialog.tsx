@@ -151,6 +151,9 @@ export function CommissionPayoutSummaryDialog({ summary, onClose, onOpenStatemen
                   const delta = row.expected === null || row.hasUndatedDeduction ? null
                     : (showCancellation ? row.paidBeforeStorno : row.paid) - row.expected;
                   const codes = [...new Set(row.records.map(record => record.statementCode || record.installmentSourceCode || record.code).filter(Boolean))];
+                  const plannedDeduction = row.expected != null && row.expected < 0;
+                  const paid = showCancellation ? row.paidBeforeStorno : row.paid;
+                  const showPaid = !showCancellation || row.hasPayment || plannedDeduction;
                   return (
                     <details key={index}>
                       <summary>
@@ -159,8 +162,8 @@ export function CommissionPayoutSummaryDialog({ summary, onClose, onOpenStatemen
                           {codes.length > 0 && <span>{codes.join(" · ")}</span>}
                         </span>
                         <span className={styles.metric}><small>Očekáváno</small><strong>{row.expected === null ? "—" : money(row.expected)}</strong></span>
-                        <span className={styles.metric}><small>Vyplaceno</small>
-                          <strong>{showCancellation ? row.hasPayment ? money(row.paidBeforeStorno) : "—" : money(row.paid)}</strong>
+                        <span className={styles.metric}><small>{plannedDeduction ? "Odečteno" : "Vyplaceno"}</small>
+                          <strong>{showPaid ? money(paid) : "—"}</strong>
                         </span>
                         {showCancellation ? <>
                           <span className={`${styles.metric} ${styles.rowDeduction}`}><small>{row.hasUndatedDeduction ? "Odúčtování" : "Storno"}</small><strong>{row.storno ? money(row.storno) : "—"}</strong></span>

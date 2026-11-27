@@ -1,14 +1,16 @@
-import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode } from "./statementParsing";
+import { COMMISSION_AMOUNT_TOLERANCE, normalizeStatementCommissionCode, resolveStatementProduct } from "./statementParsing";
 import type { CommissionAmountComparison, CommissionAmountComparisonStatus, CommissionRow, MatchedSystemContract } from "./statementTypes";
 import { normalizeStatementProductMapCode } from "./statementProductMap";
 import { baseCommissionCodeForPayoutComparison, isHigherCommissionPayout } from "@/app/lib/commissionPayoutRules";
-import { cppKomplexRenewalTerms } from "@/app/lib/commissionPeriodForCode";
+import { cppPropertyCommissionTerms } from "@/app/lib/commissionPeriodForCode";
 import { autoSubsequentCoefficientForProduct, isAutoSubsequentCommissionCode } from "@/app/lib/productFormulas/autoCommission";
 import type { Position, Product } from "@/app/types/domain";
 
-export function cppKomplexStatementRenewal(contract: MatchedSystemContract | null, row: Pick<CommissionRow, "product" | "type">) {
-  return contract && normalizeStatementProductMapCode(row.product) === "CPP_PPR"
-    ? cppKomplexRenewalTerms(contract, row.type) : null;
+export function cppStatementPaymentTerms(contract: MatchedSystemContract | null, row: Pick<CommissionRow, "product" | "type">) {
+  if (!contract?.paymentFrequencyChanges?.length) return null;
+  const matchesProduct = contract.productKey === "domex" && resolveStatementProduct(row.product).productKey === "domex" ||
+    contract.productKey === "cppPPRs" && normalizeStatementProductMapCode(row.product) === "CPP_PPR";
+  return matchesProduct ? cppPropertyCommissionTerms(contract, row.type) : null;
 }
 
 /** Use the same per-payment base and product-specific code aliases as payout import. */

@@ -31,55 +31,73 @@ function validSummary(value: unknown): value is OwnerProductionSummary {
   });
 }
 
-/** Reuse the contract-production revision already atomically invalidated by
- * creates, updates, deletes and transfers. Cache documents contain sums only. */
-export async function loadOwnerHomeProduction(db: Firestore, email: string, window: ProductionWindow, force = false): Promise<OwnerProductionSummary> {
-  const marker = db.collection("hallOfFameOwners").doc(hallParticipantId(email));
-  const key = createHash("sha256").update(JSON.stringify(window)).digest("hex");
-  const cache = marker.collection("homeProduction").doc(key);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const state = await db.runTransaction(async tx => {
-      const [revisionDoc, cachedDoc] = await tx.getAll(marker, cache);
-      const revision = revisionDoc.data()?.revision ?? null;
-      const data = cachedDoc.data();
-      return { revision, cached: data?.version === VERSION && data.revision === revision
-        && typeof data.builtAt === "number" && data.builtAt <= Date.now() && Date.now() - data.builtAt < MAX_AGE_MS
-        && validSummary(data.summary) ? data.summary : null };
-    });
-    if (state.cached && !force) return state.cached;
-    const entries = db.collection("users").doc(email).collection("entries");
-    const [signed, created] = await Promise.all(["contractSignedDate", "createdAt"].map(field => entries
-      .where(field, ">=", new Date(window.from)).where(field, "<", new Date(window.to)).select(...FIELDS).get()));
-    const rows = new Map<string, EntryDoc>();
-    for (const doc of [...signed.docs, ...created.docs]) {
-      const data = doc.data();
-      // Match the existing shape=home serializer for legacy malformed fields.
-      rows.set(doc.id, { ...data, id: doc.id,
-        items: Array.isArray(data.items) ? data.items : [],
-        managerOverrides: Array.isArray(data.managerOverrides) ? data.managerOverrides : [],
-      } as EntryDoc);
-    }
-    const summary = summarizeOwnerProduction([...rows.values()], window);
-    const published = await db.runTransaction(async tx => {
-      const current = await tx.get(marker);
-      if ((current.data()?.revision ?? null) !== state.revision) return false;
-      tx.set(cache, { version: VERSION, revision: state.revision, builtAt: Date.now(), window, summary });
-      return true;
-    });
-    if (published) return summary;
-    // A concurrent source write invalidates both persistence and this response.
+async function calculateOwnerProduction(db: Firestore, email: string, window: ProductionWindow) {
+  const entries = db.collection("users").doc(email).collection("entries");
+  const [signed, created] = await Promise.all(["contractSignedDate", "createdAt"].map(field => entries
+    .where(field, ">=", new Date(window.from)).where(field, "<", new Date(window.to)).select(...FIELDS).get()));
+  const rows = new Map<string, EntryDoc>();
+  for (const doc of [...signed.docs, ...created.docs]) {
+    const data = doc.data();
+    // Match the existing shape=home serializer for legacy malformed fields.
+    rows.set(doc.id, { ...data, id: doc.id,
+      items: Array.isArray(data.items) ? data.items : [],
+      managerOverrides: Array.isArray(data.managerOverrides) ? data.managerOverrides : [],
+    } as EntryDoc);
   }
-  throw new Error("Produkce se právě mění. Zopakujte načtení.");
+  return summarizeOwnerProduction([...rows.values()], window);
 }
 
+const CACHE_BATCH_SIZE = 32;
+const PARALLEL_REBUILDS = 8;
+
+/** Read each cached sum and its source revision in the same snapshot. Only
+ * publish a rebuild if the revision still matches that snapshot. */
 export async function loadHomeProductionOwners(db: Firestore, emails: string[], window: ProductionWindow, force = false) {
+  const key = createHash("sha256").update(JSON.stringify(window)).digest("hex");
   const result = new Map<string, OwnerProductionSummary>();
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(8, emails.length) }, async () => {
-    while (next < emails.length) {
-      const email = emails[next++];
-      result.set(email, await loadOwnerHomeProduction(db, email, window, force));
+  const owners = [...new Set(emails)];
+  for (let start = 0; start < owners.length; start += CACHE_BATCH_SIZE) {
+    let pending = owners.slice(start, start + CACHE_BATCH_SIZE).map(email => {
+      const marker = db.collection("hallOfFameOwners").doc(hallParticipantId(email));
+      return { email, marker, cache: marker.collection("homeProduction").doc(key) };
+    });
+    for (let attempt = 0; pending.length && attempt < 3; attempt++) {
+      const refs = pending.flatMap(owner => [owner.marker, owner.cache]);
+      const snapshots = await db.runTransaction(tx => tx.getAll(...refs));
+      // The Firestore SDK returns snapshots in the same order as the references.
+      const misses = pending.flatMap((owner, index) => {
+        const revision = snapshots[2 * index].data()?.revision ?? null;
+        const data = snapshots[2 * index + 1].data();
+        if (!force && data?.version === VERSION && data.revision === revision
+          && typeof data.builtAt === "number" && data.builtAt <= Date.now() && Date.now() - data.builtAt < MAX_AGE_MS
+          && validSummary(data.summary)) {
+          result.set(owner.email, data.summary);
+          return [];
+        }
+        return [{ ...owner, revision }];
+      });
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(PARALLEL_REBUILDS, misses.length) }, async () => {
+        while (next < misses.length) {
+          const { email, marker, cache, revision } = misses[next++];
+          const summary = await calculateOwnerProduction(db, email, window);
+          const published = await db.runTransaction(async tx => {
+            const current = await tx.get(marker);
+            if ((current.data()?.revision ?? null) !== revision) return false;
+            tx.set(cache, { version: VERSION, revision, builtAt: Date.now(), window, summary });
+            return true;
+          });
+          if (published) result.set(email, summary);
+        }
+      }));
+      pending = pending.filter(owner => !result.has(owner.email));
     }
-  }));
+    if (pending.length) throw new Error("Produkce se právě mění. Zopakujte načtení.");
+  }
   return result;
+}
+
+export async function loadOwnerHomeProduction(db: Firestore, email: string, window: ProductionWindow, force = false) {
+  const summaries = await loadHomeProductionOwners(db, [email], window, force);
+  return summaries.get(email)!;
 }

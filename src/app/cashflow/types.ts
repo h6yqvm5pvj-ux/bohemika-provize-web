@@ -78,6 +78,7 @@ export type EntryDoc = {
   calculationInputAmount?: number | null;
   neonCorrection?: import("../lib/neonCorrection").NeonCorrection | null;
   isRefresh?: boolean | null;
+  commissionBaseSource?: string | null;
   requiresStatementRefresh?: boolean | null;
   commissionCalculationStatus?: string | null;
   commissionCoefficientSetOverride?: string | null;
@@ -208,6 +209,7 @@ export type CashflowItem = {
   commissionPeriodStart?: string | null;
   payoutPlanStatus?: "matched" | "unmatched" | "correction";
   matchedPlannedCode?: string | null;
+  statementCode?: string | null;
   commissionStatementNumber?: string | null;
   commissionStatementPeriod?: string | null;
   originalDate?: Date | null;

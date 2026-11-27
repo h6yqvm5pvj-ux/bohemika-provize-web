@@ -1,4 +1,4 @@
-import { autoFrequencyCommissionPeriods, autoFrequencyCommissionMultiplier, type PaymentFrequencyChange } from "@/app/lib/autoPaymentFrequency";
+import { autoFrequencyCommissionPeriods, autoFrequencyCommissionMultiplier, cppPaymentCommissionMultiplier, type PaymentFrequencyChange } from "@/app/lib/autoPaymentFrequency";
 import { commissionPeriodAfterMonths } from "@/app/lib/commissionPeriodForCode";
 import { isFrequencyAutoPayoutProduct } from "@/app/lib/productCatalog";
 import { isPerPaymentSeparatedPeriodProduct } from "@/app/lib/separatedPeriodCommissions";
@@ -17,6 +17,7 @@ export function projectContractCommissionPayouts(
   ownerEmail?: string | null,
 ): ContractCommissionPayout[] {
   const payouts = contract?.commissionPayouts ?? [];
+  if (contract?.productKey === "neon") return projectConfirmedCommissionCodes(contract, payouts);
   if (!contract?.frequencyRaw || contract.frequencyRaw === "annual" ||
       !contract.productKey || !isFrequencyAutoPayoutProduct(contract.productKey)) return payouts;
   const viewer = viewerEmail?.trim().toLowerCase();
@@ -65,11 +66,16 @@ export function acquisitionCommissionInstallments({
 
   if (paymentFrequencyChanges?.length) {
     const end = commissionPeriodAfterMonths(policyStartDate, 12);
-    const schedule = end ? autoFrequencyCommissionPeriods({ productKey: product, frequencyRaw: frequency, policyStartDate, paymentFrequencyChanges }, end) : [];
-    if (schedule.length > 0) return schedule.filter(period => period.code.startsWith("A")).map((period, index) => ({
+    const contract = { productKey: product, frequencyRaw: frequency, policyStartDate, paymentFrequencyChanges };
+    const schedule = end ? autoFrequencyCommissionPeriods(contract, end) : [];
+    const acquisition = schedule.filter(period => period.code.startsWith("A"));
+    if (product === "domex" && count === 1 && acquisition.length === 1) return [];
+    if (schedule.length > 0) return acquisition.map((period, index) => ({
       commissionPeriod: period.period, code: period.code, codes: [period.code, `A${Number(period.code.slice(1)) - 100}`, `AC${period.code.slice(1)}`, `AC${Number(period.code.slice(1)) - 100}`], label: `${index + 1}. splátka`,
       period: new Date(`${period.period}T00:00:00Z`).toLocaleDateString("cs-CZ", { month: "long", year: "numeric", timeZone: "UTC" }),
-      amount: Number.isFinite(item.amount) ? item.amount * (product === "cppPPRs" ? 1 : autoFrequencyCommissionMultiplier({ productKey: product, frequencyRaw: frequency, paymentFrequencyChanges }, period.period)) : 0,
+      amount: !Number.isFinite(item.amount) ? 0 : product === "domex"
+        ? Math.round(item.amount * cppPaymentCommissionMultiplier(contract, period.period) * 100) / 100
+        : item.amount * (product === "cppPPRs" ? 1 : autoFrequencyCommissionMultiplier(contract, period.period)),
     }));
   }
 

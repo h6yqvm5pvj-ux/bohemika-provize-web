@@ -151,18 +151,15 @@ export async function checkAdvisorSetup({
   uid: string;
   profile?: { docId: string; data: Record<string, unknown> } | null;
 }): Promise<AdvisorSetupCheck> {
-  const loadedProfile =
+  const [loadedProfile, authUser] = await Promise.all([
     profile === undefined
-      ? await loadUserProfileForAdvisorSetup({ email, uid })
-      : profile;
+      ? loadUserProfileForAdvisorSetup({ email, uid })
+      : profile,
+    adminAuth && uid ? adminAuth.getUser(uid).catch(() => null) : null,
+  ]);
   const data = loadedProfile?.data ?? null;
   const accountType = resolveAccountType(data);
-
-  let hasTotpMfa = false;
-  if (adminAuth && uid) {
-    const authUser = await adminAuth.getUser(uid).catch(() => null);
-    hasTotpMfa = authUserHasTotpMfa(authUser);
-  }
+  const hasTotpMfa = authUserHasTotpMfa(authUser);
 
   const missing: string[] = [];
   if (accountType === "advisor") {

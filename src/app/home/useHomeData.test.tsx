@@ -66,10 +66,9 @@ describe("home summaries independent of TIP completion", () => {
   const tipCalls = () => calls.filter(call => call.url.pathname.includes("tip-payouts"));
   const contractCalls = (scope: string) => calls.filter(call => call.url.searchParams.get("scope") === scope);
   const settleSummaries = async () => {
-    await act(async () => {
-      contractCalls("my")[0].job.resolve(contracts(own));
-      contractCalls("team")[0].job.resolve(contracts(team));
-    });
+    // A legacy response still needs the separately authorized team request.
+    await act(async () => contractCalls("my")[0].job.resolve(contracts(own)));
+    await act(async () => contractCalls("team")[0].job.resolve(contracts(team)));
   };
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -91,7 +90,7 @@ describe("home summaries independent of TIP completion", () => {
       return job.promise;
     }));
     vi.spyOn(console, "error").mockImplementation(() => {});
-    props = { email: "advisor@example.test", loadPersonalHistory: false, teamHistoryMonths: 0, initialHasTeam: true };
+    props = { email: "advisor@example.test", loadPersonalHistory: false, teamHistoryMonths: 0 };
     root = createRoot(document.createElement("div"));
   });
   afterEach(async () => {
@@ -115,8 +114,9 @@ describe("home summaries independent of TIP completion", () => {
     expect(latest).toMatchObject({ summaryUpdatedAt: updatedAt, summaryRefreshing: false, myImmediateSum: 100 });
     expect(latest.summaryError).toBeTruthy();
     await render({ ...props, reloadKey: 2 });
+    await act(async () => contractCalls("my")[2].job.resolve(contracts(own)));
     await act(async () => {
-      contractCalls("my")[2].job.resolve(contracts(own)); contractCalls("team")[2].job.resolve(contracts(team));
+      contractCalls("team")[1].job.resolve(contracts(team));
       tipCalls()[2].job.resolve(currentTips());
     });
     expect(latest.summaryUpdatedAt).toBe(Date.now());
@@ -153,8 +153,8 @@ describe("home summaries independent of TIP completion", () => {
   it("excludes retired products from current rows and historical team rows", async () => {
     const retired = { ...entry("retired", 8, 99_999), productKey: "comfortcc" } as unknown as EntryDoc;
     await render({ ...props, teamHistoryMonths: 6 });
+    await act(async () => contractCalls("my")[0].job.resolve(contracts([...own, retired])));
     await act(async () => {
-      contractCalls("my")[0].job.resolve(contracts([...own, retired]));
       contractCalls("team")[0].job.resolve(contracts([...team, { ...retired, id: "retired-team" }]));
     });
     await act(async () => {
@@ -180,7 +180,7 @@ describe("home summaries independent of TIP completion", () => {
 
   it("publishes own/team totals and starts history while TIP is stalled, caching only the complete result", async () => {
     await render({ ...props, loadPersonalHistory: true, teamHistoryMonths: 6 });
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     await settleSummaries();
     expect(latest).toMatchObject({ summaryLoading: false, loading: false, tipSummaryLoading: true,
       historyLoading: true, myContractsCount: 1, myImmediateSum: 100, myImmediatePrevSum: 50,
@@ -208,28 +208,46 @@ describe("home summaries independent of TIP completion", () => {
 
   it("uses compact monthly sums without downloading contracts and requests history only on range selection", async () => {
     await render();
-    const summary = (rows: EntryDoc[], scope: "my" | "team") => Response.json({ ok: true, hasTeam: true, hasMore: false,
-      summary: combineOwnerProduction([{ email: scope === "my" ? "advisor@example.test" : "team@example.test", name: "Poradce",
-        summary: summarizeOwnerProduction(rows, { from: day(7, 1), split: day(8, 1), to: day(9, 1) }) }], "advisor@example.test", scope) });
+    const summary = (rows: EntryDoc[], scope: "my" | "team") =>
+      combineOwnerProduction([{ email: scope === "my" ? "advisor@example.test" : "team@example.test", name: "Poradce",
+        summary: summarizeOwnerProduction(rows, { from: day(7, 1), split: day(8, 1), to: day(9, 1) }) }], "advisor@example.test", scope);
     await act(async () => {
-      contractCalls("my")[0].job.resolve(summary(own, "my"));
-      contractCalls("team")[0].job.resolve(summary(team, "team"));
+      contractCalls("my")[0].job.resolve(Response.json({
+        ok: true, hasTeam: true, hasMore: false, summary: summary(own, "my"), teamSummary: summary(team, "team"),
+      }));
       tipCalls()[0].job.resolve(currentTips());
     });
     expect(latest).toMatchObject({ myContractsCount: 1, myImmediateSum: 100, myImmediatePrevSum: 50,
       teamImmediateSum: 200, teamImmediatePrevSum: 75, teamEntries: [], historyLoading: false });
     expect(latest.monthlyLeaderboard).toEqual([{ email: "team@example.test", name: "Poradce", life: 0, other: 1000, hasLife: false, hasOther: true }]);
     expect(contractCalls("my")[0].url.searchParams.get("homeSummary")).toBe("1");
-    expect(calls).toHaveLength(3);
+    expect(contractCalls("my")[0].url.searchParams.get("includeTeam")).toBe("1");
+    expect(calls).toHaveLength(2);
     await render({ ...props, teamHistoryMonths: 6 });
-    const historic = contractCalls("team")[1];
+    const historic = contractCalls("team")[0];
     expect(historic.url.searchParams.get("leaderboardMonths")).toBe("6");
     await act(async () => historic.job.resolve(leaderboard()));
     expect(latest.teamEntries).toEqual([]);
     expect(latest.rangeLeaderboard).toEqual([leaderboardRow(1000)]);
     await render({ ...props, teamHistoryMonths: 0 });
-    expect(contractCalls("team")).toHaveLength(2);
+    expect(contractCalls("team")).toHaveLength(1);
     expect(latest.monthlyLeaderboard?.[0].other).toBe(1000);
+  });
+
+  it("skips TIP for hidden widgets, then loads real totals when a widget is enabled", async () => {
+    await render({ ...props, loadTipSummary: false });
+    await settleSummaries();
+    expect(tipCalls()).toHaveLength(0);
+    expect(latest).toMatchObject({ myImmediateSum: 100, tipSummaryLoading: false, tipSummaryError: null });
+    expect(mocks.write).not.toHaveBeenCalled();
+    await render({ ...props, loadTipSummary: true });
+    expect(tipCalls()).toHaveLength(1);
+    expect(latest.tipSummaryLoading).toBe(true);
+    await act(async () => contractCalls("my")[1].job.resolve(contracts(own)));
+    await act(async () => contractCalls("team")[1].job.resolve(contracts(team)));
+    await act(async () => tipCalls()[0].job.resolve(currentTips()));
+    expect(latest.myTipImmediateSum).toBe(60);
+    expect(mocks.write).toHaveBeenCalledTimes(1);
   });
 
   it("reports an incomplete monthly summary rather than caching apparent zero production", async () => {
@@ -350,8 +368,8 @@ describe("home summaries independent of TIP completion", () => {
     root = createRoot(document.createElement("div"));
     await render();
     const freshRegular = async () => {
+      await act(async () => contractCalls("my")[1].job.resolve(contracts([entry("fresh-own", 8, 500)])));
       await act(async () => {
-        contractCalls("my")[1].job.resolve(contracts([entry("fresh-own", 8, 500)]));
         contractCalls("team")[1].job.resolve(contracts([entry("fresh-team", 8, 600, "team@example.test")]));
       });
     };

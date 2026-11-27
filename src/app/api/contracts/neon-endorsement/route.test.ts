@@ -134,6 +134,20 @@ describe("Neon endorsement from contract detail", () => {
     expect(saved?.total).toBeLessThan(0);
   });
 
+  it("saves the unearned immediate commission when a reduction exhausts the confirmed Refresh base", async () => {
+    const items = [{ code: "A101", title: "Provize A101", amount: 450 }, { code: "B0301", title: "Provize B0301", amount: 125 }];
+    Object.assign(records.get(rootPath)!, { isRefresh: true, inputAmount: 900, effectiveInputAmount: 900, items,
+      commissionBaseSource: "commission_statement", refreshCommissionBase: { calculationAnnualPremium: 3600 } });
+    const request = { effectiveDate: "2025-02-01", signedDate: "2025-01-15", monthlyPremium: 400 };
+    const saved = await post(request);
+    expect(saved.status).toBe(200);
+    expect(records.get(`${entriesPath}/${saved.body.entryId}`)).toMatchObject({
+      inputAmount: 180, calculationInputAmount: 180, previousInputAmount: 900, newInputAmount: 400,
+      items: [{ ...items[0], amount: -270 }, { ...items[1], amount: -75 }], total: -345,
+    });
+    expect(await post(request)).toMatchObject({ status: 200, body: { entryId: saved.body.entryId, idempotentReplay: true } });
+  });
+
   it("prevents the calculator from creating a second branch after an amendment is saved in detail", async () => {
     const first = await post();
     expect(first.status).toBe(200);

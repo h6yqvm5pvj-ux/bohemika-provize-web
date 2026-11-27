@@ -1,4 +1,4 @@
-import { type Product } from "@/app/types/domain";
+import { type CommissionResultItemDTO, type Product } from "@/app/types/domain";
 
 const PER_PAYMENT_SEPARATED_PERIOD_PRODUCTS = new Set<Product>([
   "domexneuron",
@@ -42,4 +42,14 @@ export function isSeparatedPeriodCommissionProduct(
     isPerPaymentSeparatedPeriodProduct(product) ||
     isAnnualSeparatedPeriodProduct(product)
   );
+}
+
+export function expectedCppPropertyCommissionAmount(items: CommissionResultItemDTO[], terms: { multiplier: number; acquisition: boolean }): number | null {
+  const titlePart = terms.acquisition ? "okamzita provize" : "nasledna provize";
+  const candidates = items.filter(item => typeof item?.title === "string" && Number.isFinite(item.amount)).map(item => ({
+    amount: item.amount,
+    title: item.title.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase(),
+  })).filter(item => item.title.includes(titlePart) && !item.title.includes("za rok"));
+  const perPayment = candidates.find(item => item.title.includes("z platby")) ?? candidates[0];
+  return perPayment ? Math.round(perPayment.amount * terms.multiplier * 100) / 100 : null;
 }

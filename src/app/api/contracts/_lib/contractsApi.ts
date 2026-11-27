@@ -26,6 +26,8 @@ import {
   resolveNeonEndorsementSource,
 } from "./contractsApi.neonEndorsement";
 import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
+import { projectNeonRefreshDecreaseEstimates } from "@/app/lib/neonRefreshDecreaseEstimates";
+import { projectNeonCareReceiptComparisons } from "@/app/lib/neonCareReceiptComparisons";
 import { projectTipMatchData, projectTipMatchResponse } from "./contractsApi.tipProjection";
 import { filterStatementDerivedContractDataForViewer, type StatementDataViewer } from "./contractsApi.statementVisibility";
 import { withCashflowMutation, trackCashflowWrite, markCashflowMutationIncomplete } from "@/lib/server/cashflowMutationTracking";
@@ -118,6 +120,8 @@ import { calculateFlexiRenovationBase, hasPendingFlexiRenovationBase } from "@/a
 import { normalizeCommissionCoefficientSet } from "@/app/lib/productFormulas/coefficientSets";
 import {
   calculateNeonDecreaseStornoBase,
+  confirmedNeonRefreshAnnualBase,
+  projectNeonImmediateDeduction,
   calculateNeonRefreshCommissionBase,
   isNeonHistoricalPeriod,
   NEON_REFRESH_STORNO_MONTHS,
@@ -1042,6 +1046,7 @@ const toContractListResponseItem = ({
           ? data.premiumDelta
           : undefined,
       refreshCommissionBase: publicRefreshCommissionBase(data.refreshCommissionBase) ?? null,
+      ...(confirmedNeonRefreshAnnualBase(data) != null ? { commissionBaseSource: "commission_statement" } : {}),
       ...(data.isRefresh === true ? { isRefresh: true } : {}),
       ...(data.requiresStatementRefresh === true ? { requiresStatementRefresh: true } : {}),
       ...(hasPendingFlexiRenovationBase(data) ? { commissionCalculationStatus: data.commissionCalculationStatus } : {}),
@@ -1963,41 +1968,6 @@ const negativeImmediateCommissionResult = (
       amount: -Math.abs(roundToCents(item.amount ?? 0)),
     }))
     .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  return {
-    items,
-    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
-  };
-};
-
-const negativeImmediateCommissionResultFromSourceItems = ({
-  sourceItems,
-  previousPremiumAmount,
-  calculationAmount,
-}: {
-  sourceItems: CommissionResultItemDTO[];
-  previousPremiumAmount: number;
-  calculationAmount: number;
-}): { items: CommissionResultItemDTO[]; total: number } | null => {
-  if (
-    sourceItems.length === 0 ||
-    previousPremiumAmount <= 0 ||
-    calculationAmount <= 0
-  ) {
-    return null;
-  }
-
-  const ratio = calculationAmount / previousPremiumAmount;
-  if (!Number.isFinite(ratio) || ratio <= 0) return null;
-
-  const items = sourceItems
-    .filter(isImmediateCommissionItem)
-    .map((item) => ({
-      ...item,
-      amount: -Math.abs(roundToCents((item.amount ?? 0) * ratio)),
-    }))
-    .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  if (items.length === 0) return null;
-
   return {
     items,
     total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
@@ -4280,8 +4250,6 @@ export async function handleContractsGet(
   }
   const { email, position, teamEmails, contractAccessEmails, users } = ctx;
   const usersByEmail = new Map(users.map((item) => [item.email, item]));
-  const { canTransferContracts, transferTargets } =
-    contractTransferAccessForContext(ctx);
 
   const detailOwnerEmail = normalizeEmail(search.get("ownerEmail"));
   const detailEntryId = (search.get("entryId") ?? "").trim();
@@ -4464,10 +4432,11 @@ export async function handleContractsGet(
       }
     }
 
-    timeline = await projectContractLifeReceipts(timeline, {
+    timeline = await projectContractLifeReceipts(projectNeonRefreshDecreaseEstimates(timeline), {
       viewerEmail: email, teamEmails, canViewAllStatementDerivedRecords: ctx.canManageContractsAsAdmin,
     });
-    contract = timeline.find(entry => entry.id === contract.id) ?? contract;
+    timeline = projectNeonCareReceiptComparisons(timeline.map(entry => withOwnPayoutPosition(entry, email)));
+    contract = timeline.find(entry => entry.id === contract.id) ?? withOwnPayoutPosition(contract, email);
     const ownerNode = usersByEmail.get(detailOwnerEmail) ?? null;
     const ownerPosition = ownerNode?.position ?? null;
     let managerEmail = normalizeEmail(ownerNode?.managerEmail ?? null);
@@ -4494,6 +4463,7 @@ export async function handleContractsGet(
     const managerPosition =
       (managerEmail ? usersByEmail.get(managerEmail)?.position : null) ?? null;
 
+    const { canTransferContracts, transferTargets } = contractTransferAccessForContext(ctx);
     const response: ContractDetailResponse = {
       ok: true,
       mode: "detail",
@@ -4503,8 +4473,8 @@ export async function handleContractsGet(
       canManageContract,
       canTransferContracts,
       transferTargets,
-      contract: withOwnPayoutPosition(contract, email),
-      timeline: timeline.map(entry => withOwnPayoutPosition(entry, email)),
+      contract,
+      timeline,
       ownerMeta: {
         position: ownerPosition,
         managerEmail: managerEmail || null,
@@ -4590,17 +4560,25 @@ export async function handleContractsGet(
     }
     const started = performance.now();
     try {
-      const summaries = await loadHomeProductionOwners(adminDb!, owners, window, search.get("homeRefresh") === "1");
-      const summary = combineOwnerProduction(owners.map(owner => ({
-        email: owner, name: ownerNamesByEmail.get(owner) ?? null, summary: summaries.get(owner)!,
-      })), email, scopeParam === "team" ? "team" : "my");
+      const withTeamSummary = scopeParam === "my" && includeTeam;
+      const teamOwners = withTeamSummary ? selectContractListOwners({
+        scope: "team", viewerEmail: email, teamEmails, selectedSubordinates,
+      }) : [];
+      const requestedOwners = teamOwners.length ? [...new Set([...owners, ...teamOwners])] : owners;
+      const summaries = await loadHomeProductionOwners(adminDb!, requestedOwners, window, search.get("homeRefresh") === "1");
+      const combine = (selected: string[], scope: "my" | "team") => combineOwnerProduction(
+        selected.map(owner => ({ email: owner, name: ownerNamesByEmail.get(owner) ?? null, summary: summaries.get(owner)! })),
+        email, scope,
+      );
       return withRateLimit(NextResponse.json({
         ok: true, scope: scopeParam, position, commissionMode: ctx.commissionMode,
-        hasTeam: teamEmails.length > 0, teamEmails, summary,
+        hasTeam: teamEmails.length > 0, summary: combine(owners, scopeParam),
+        teamEmails: withTeamSummary ? undefined : teamEmails,
+        teamSummary: withTeamSummary && teamEmails.length ? combine(teamOwners, "team") : undefined,
         contracts: [], hasMore: false,
       }, { headers: { "Cache-Control": "private, no-store", "Server-Timing": `home_production;dur=${(performance.now() - started).toFixed(1)}` } }));
-    } catch (error) {
-      console.warn("Měsíční souhrn produkce se nepodařilo načíst:", error);
+    } catch {
+      console.warn("Měsíční souhrn produkce se nepodařilo načíst.");
       return withRateLimit(NextResponse.json({ ok: false, error: "Produkci se nepodařilo načíst." }, { status: 503 }));
     }
   }
@@ -4717,6 +4695,7 @@ export async function handleContractsGet(
     const teamNextCursor = teamRes?.nextCursor;
     const teamNextCursorToken = teamRes?.nextCursorToken;
 
+    const { canTransferContracts, transferTargets } = contractTransferAccessForContext(ctx);
     const response: ContractsResponse = {
       availablePositions: responseShape === "contractList" ? heldCareerPositions(usersByEmail.get(email)) : undefined,
       ok: true,
@@ -4901,7 +4880,7 @@ const resolveContractsFindContracts = async ({
     }
   }
 
-  return sortContractsFindResults(contracts);
+  return sortContractsFindResults(projectNeonCareReceiptComparisons(projectNeonRefreshDecreaseEstimates(contracts)));
 };
 
 const createContractsFindResolverContext = ({
@@ -5817,7 +5796,7 @@ async function createContractWithContext(
     }
 
     let neonDecreaseSourceItems: CommissionResultItemDTO[] = [];
-    let neonDecreasePreviousPremiumAmount: number | null = null;
+    let neonDecreaseCommissionRatio: number | null = null;
     let neonDecreaseFallbackPosition: Position | null = null;
     let neonDecreaseFallbackMode: CommissionMode | null = null;
     let neonDecreaseFallbackSignedDateIso: string | null = null;
@@ -5871,13 +5850,18 @@ async function createContractWithContext(
         );
       }
 
-      const previousMonthlyPremium =
-        positivePremiumAmount(normalizedEntry.payload.previousInputAmount) ??
+      const refreshAnnualBase = confirmedNeonRefreshAnnualBase(parentData);
+      const submittedPrevious = positivePremiumAmount(normalizedEntry.payload.previousInputAmount);
+      const parentPremium = positivePremiumAmount(parentData.effectiveInputAmount ?? parentData.inputAmount);
+      if (refreshAnnualBase != null && (parentPremium == null || (submittedPrevious != null && submittedPrevious !== parentPremium))) {
+        return NextResponse.json({ ok: false, error: "Původní pojistné nesouhlasí s Refreshem. Načti smlouvu znovu." }, { status: 409 });
+      }
+      const previousMonthlyPremium = refreshAnnualBase != null ? parentPremium : submittedPrevious ??
         lifePremiumAmountForEntry(parentData);
       const newMonthlyPremium =
         nonNegativePremiumAmount(normalizedEntry.payload.newInputAmount) ??
         nonNegativePremiumAmount(normalizedEntry.payload.effectiveInputAmount);
-      const getStornoDay = neonInput ? endorsementCommissionDay : isoDayFromUnknown;
+      const getStornoDay = neonInput || refreshAnnualBase != null ? endorsementCommissionDay : isoDayFromUnknown;
       const originalStornoStartDateIso = getStornoDay(parentData.policyStartDate) ?? getStornoDay(parentData.contractSignedDate);
       const endorsementPolicyStartDateIso = toIsoDay(normalizedEntry.payload.policyStartDate);
       const decreaseBase = calculateNeonDecreaseStornoBase({
@@ -5885,6 +5869,7 @@ async function createContractWithContext(
         newMonthlyPremium,
         originalStornoStartDateIso,
         endorsementPolicyStartDateIso,
+        confirmedRefreshAnnualBase: refreshAnnualBase,
       });
 
       if (!decreaseBase) {
@@ -5903,7 +5888,7 @@ async function createContractWithContext(
         : Array.isArray(parentData.items)
           ? parentData.items
           : [];
-      neonDecreasePreviousPremiumAmount = previousMonthlyPremium;
+      neonDecreaseCommissionRatio = decreaseBase.commissionRatio;
       neonDecreaseFallbackPosition =
         normalizePositionValue(parentData.position) ?? trustedPosition;
       neonDecreaseFallbackMode =
@@ -5958,13 +5943,9 @@ async function createContractWithContext(
 
     if (isNeonDecreaseEndorsement) {
       const sourceDecreaseResult =
-        neonDecreasePreviousPremiumAmount == null
+        neonDecreaseCommissionRatio == null
           ? null
-          : negativeImmediateCommissionResultFromSourceItems({
-              sourceItems: neonDecreaseSourceItems,
-              previousPremiumAmount: neonDecreasePreviousPremiumAmount,
-              calculationAmount: commissionInputAmount,
-            });
+          : projectNeonImmediateDeduction(neonDecreaseSourceItems, neonDecreaseCommissionRatio);
       const fallbackDecreaseBaseResult =
         sourceDecreaseResult || !neonDecreaseFallbackPosition
           ? null
@@ -6071,6 +6052,7 @@ async function createContractWithContext(
       ...normalizedEntry.payload,
       ...trustedListIndexFields,
       ...contractSearchIndexFieldsForContract(normalizedEntry.payload),
+      ...(isNeonDecreaseEndorsement ? { inputAmount: commissionInputAmount } : {}),
       calculationInputAmount: flexiWithoutBase ? null : commissionInputAmount,
       refreshCommissionBase,
       ...(neonRefreshCareAnnualPremium != null && neonRefreshCareAnnualPremium > 0 ? { neonRefreshCareAnnualPremium } : {}),

@@ -6,6 +6,8 @@ import {
   type CommissionResultItemDTO,
 } from "../../types/domain";
 
+import { isImmediateCommissionItem } from "../commissionTotals";
+
 // ---------- NEON ----------
 
 type NeonK = {
@@ -112,6 +114,8 @@ export type NeonRefreshCommissionBase = {
 };
 
 export type NeonDecreaseStornoBase = {
+  coversRefreshBase: boolean;
+  commissionRatio: number;
   calculationMethod: "storno_60_60";
   previousMonthlyPremium: number;
   newMonthlyPremium: number;
@@ -224,17 +228,37 @@ export function calculateNeonRefreshCommissionBase({
   };
 }
 
+export function confirmedNeonRefreshAnnualBase(source: {
+  productKey?: string | null; entryType?: string | null; isRefresh?: boolean | null;
+  commissionBaseSource?: string | null; refreshCommissionBase?: { calculationAnnualPremium?: number | null } | null;
+}): number | null {
+  const annual = source.refreshCommissionBase?.calculationAnnualPremium;
+  return source.productKey === "neon" && source.entryType !== "endorsement" && source.isRefresh === true &&
+    source.commissionBaseSource === "commission_statement" && typeof annual === "number" && Number.isFinite(annual) && annual > 0
+    ? annual : null;
+}
+
+export function projectNeonImmediateDeduction(sourceItems: CommissionResultItemDTO[], ratio: number): CommissionResultDTO | null {
+  if (!sourceItems.length || !Number.isFinite(ratio) || ratio <= 0) return null;
+  const items = sourceItems.filter(isImmediateCommissionItem)
+    .map(item => ({ ...item, amount: -Math.abs(roundToCents(item.amount * ratio)) }))
+    .filter(item => Math.abs(item.amount) > 0);
+  return items.length ? { items, total: roundToCents(items.reduce((sum, item) => sum + item.amount, 0)) } : null;
+}
+
 export function calculateNeonDecreaseStornoBase({
   previousMonthlyPremium,
   newMonthlyPremium,
   originalStornoStartDateIso,
   endorsementPolicyStartDateIso,
+  confirmedRefreshAnnualBase,
   stornoMonths = NEON_REFRESH_STORNO_MONTHS,
 }: {
   previousMonthlyPremium: number | null | undefined;
   newMonthlyPremium: number | null | undefined;
   originalStornoStartDateIso: string | null | undefined;
   endorsementPolicyStartDateIso: string | null | undefined;
+  confirmedRefreshAnnualBase?: number | null;
   stornoMonths?: number;
 }): NeonDecreaseStornoBase | null {
   const safePrevious = Number(previousMonthlyPremium);
@@ -262,15 +286,21 @@ export function calculateNeonDecreaseStornoBase({
   const earnedRatio = elapsedMonths / safeStornoMonths;
   const remainingRatio = remainingMonths / safeStornoMonths;
   const premiumDecreaseMonthly = safePrevious - safeNew;
-  const calculationMonthlyRaw = premiumDecreaseMonthly * remainingRatio;
-  const calculationAnnualPremium = roundToCents(calculationMonthlyRaw * 12);
+  const premiumDecreaseAnnual = roundToCents(premiumDecreaseMonthly * 12);
+  const coversRefreshBase = typeof confirmedRefreshAnnualBase === "number" && Number.isFinite(confirmedRefreshAnnualBase) &&
+    confirmedRefreshAnnualBase > 0 && premiumDecreaseAnnual >= confirmedRefreshAnnualBase;
+  const calculationAnnualPremium = coversRefreshBase
+    ? roundToCents(confirmedRefreshAnnualBase * remainingRatio)
+    : roundToCents(premiumDecreaseMonthly * remainingRatio * 12);
 
   return {
     calculationMethod: "storno_60_60",
+    coversRefreshBase,
+    commissionRatio: coversRefreshBase ? remainingRatio : calculationAnnualPremium / 12 / safePrevious,
     previousMonthlyPremium: roundToCents(safePrevious),
     newMonthlyPremium: roundToCents(safeNew),
     premiumDecreaseMonthly: roundToCents(premiumDecreaseMonthly),
-    premiumDecreaseAnnual: roundToCents(premiumDecreaseMonthly * 12),
+    premiumDecreaseAnnual,
     calculationMonthlyPremium: calculationAnnualPremium / 12,
     calculationAnnualPremium,
     elapsedMonths,

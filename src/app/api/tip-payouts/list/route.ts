@@ -3,7 +3,7 @@ import { FieldPath } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 
 import { adminAuth, adminDb } from "@/lib/server/firebaseAdmin";
-import { getAdvisorSetupError } from "@/lib/server/advisorSetupGuard";
+import { advisorSetupError, checkAdvisorSetup } from "@/lib/server/advisorSetupGuard";
 import { getLoginAttemptLockoutError } from "@/lib/server/loginAttemptLockout";
 import { resolveServerImpersonation } from "@/lib/server/impersonation";
 import { applyRateLimitHeaders, consumeRateLimit } from "@/lib/server/rateLimit";
@@ -83,43 +83,6 @@ const pickProfileName = (data: Record<string, unknown>): string =>
   normalizeText(data.fullName) ||
   normalizeText(data.name) ||
   normalizeText(data.displayName);
-
-const resolveUserDocId = async ({
-  email,
-  uid,
-}: {
-  email: string;
-  uid: string | null | undefined;
-}): Promise<string> => {
-  if (!adminDb) return email;
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) return "";
-
-  const usersCol = adminDb.collection("users");
-  const directSnap = await usersCol.doc(normalizedEmail).get();
-  if (directSnap.exists) {
-    return directSnap.id;
-  }
-
-  const byEmailSnap = await usersCol
-    .where("email", "==", normalizedEmail)
-    .limit(5)
-    .get();
-  if (!byEmailSnap.empty) {
-    return byEmailSnap.docs[0].id;
-  }
-
-  const normalizedUid =
-    typeof uid === "string" ? uid.trim() : "";
-  if (normalizedUid) {
-    const byUidSnap = await usersCol.where("userId", "==", normalizedUid).limit(5).get();
-    if (!byUidSnap.empty) {
-      return byUidSnap.docs[0].id;
-    }
-  }
-
-  return normalizedEmail;
-};
 
 const getBearerToken = (req: NextRequest): string | null => {
   const header = req.headers.get("authorization") ?? "";
@@ -331,13 +294,11 @@ export async function GET(req: NextRequest) {
     let decoded: Awaited<ReturnType<typeof adminAuth.verifyIdToken>>;
     try {
       decoded = await adminAuth.verifyIdToken(token, true);
-    } catch (err: any) {
-      const code = err?.code || "auth/invalid-token";
-      const message = err?.message || "Invalid or expired token";
+    } catch {
       return NextResponse.json(
         {
           ok: false,
-          error: `Invalid or expired token (${code}): ${message}`,
+          error: "Neplatné nebo vypršené přihlášení.",
         } satisfies TipPayoutsErrorResponse,
         { status: 401 }
       );
@@ -383,8 +344,9 @@ export async function GET(req: NextRequest) {
       uid = impersonationResult.impersonation.targetUid;
     }
 
-    const setupError = await getAdvisorSetupError({ email, uid });
-    if (setupError) {
+    const setup = await checkAdvisorSetup({ email, uid });
+    if (setup.accountType === "advisor" && setup.missing.length > 0) {
+      const setupError = advisorSetupError(setup.missing);
       return NextResponse.json(
         {
           ok: false,
@@ -393,10 +355,7 @@ export async function GET(req: NextRequest) {
         { status: setupError.status }
       );
     }
-    const userDocId = await resolveUserDocId({
-      email,
-      uid,
-    });
+    const userDocId = setup.profileDocId;
     if (!userDocId) {
       return NextResponse.json(
         { ok: false, error: "Nepodařilo se určit profil uživatele." } satisfies TipPayoutsErrorResponse,
@@ -582,11 +541,11 @@ export async function GET(req: NextRequest) {
       hasMore,
       nextCursor: hasMore ? lastTs : null,
       nextCursorToken,
-    } satisfies TipPayoutsListResponse);
+    } satisfies TipPayoutsListResponse, { headers: { "Cache-Control": "private, no-store" } });
     applyRateLimitHeaders(response.headers, rateLimitResult);
     return response;
-  } catch (err) {
-    console.error("GET /api/tip-payouts/list failed", err);
+  } catch {
+    console.error("GET /api/tip-payouts/list failed");
     return NextResponse.json(
       {
         ok: false,

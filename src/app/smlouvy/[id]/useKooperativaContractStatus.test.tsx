@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useKooperativaContractStatus } from "./useKooperativaContractStatus";
 
 const mocks = vi.hoisted(() => ({ parse: vi.fn() }));
-vi.mock("@/app/lib/parseKooperativaAutoPdf", () => ({ parseKooperativaAutoPdf: mocks.parse }));
+vi.mock("@/app/lib/parseKooperativaAutoPdf", () => ({ parseKooperativaStatusPdf: mocks.parse }));
 const source = { fileName: "synthetic-contract.pdf", entryId: "root" };
 const parsed = { contractNumber: "TEST-1", birthNumber: "9507141234", policyholderType: "natural_person" };
 const download = vi.fn();
@@ -77,7 +77,7 @@ describe("Kooperativa contract status loading and privacy", () => {
   it("discards an ambiguous or missing policyholder identifier", async () => {
     mocks.parse.mockResolvedValue({ contractNumber: "TEST-1" });
     await render(); await openAndWait();
-    expect(state.identity).toBeNull(); expect(state.error).toContain("oddílu B Pojistník");
+    expect(state.identity).toBeNull(); expect(state.error).toContain("IČO pojistníka");
   });
 
   it("aborts a closed request and ignores a late parser result", async () => {

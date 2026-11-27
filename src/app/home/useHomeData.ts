@@ -122,10 +122,9 @@ export type HomeDataState = {
 type UseHomeDataOptions = {
   email: string | null;
   loadPersonalHistory: boolean;
+  loadTipSummary?: boolean;
   /** Zero keeps the initial request to the current/previous-month summary. */
   teamHistoryMonths: number;
-  /** The profile request that opens the page already knows this for managers. */
-  initialHasTeam?: boolean;
   reloadKey?: number;
 };
 
@@ -136,6 +135,7 @@ type ContractsApiResponse = {
   hasTeam?: boolean;
   teamEmails?: string[];
   summary?: HomeProductionSummary;
+  teamSummary?: HomeProductionSummary;
   contracts?: (EntryDoc & { adviserEmail?: string | null; adviserName?: string | null })[];
   hasMore?: boolean;
   nextCursorToken?: string | null;
@@ -236,8 +236,8 @@ async function fetchTeamLeaderboard(months: number, signal: AbortSignal, force =
 export function useHomeData({
   email,
   loadPersonalHistory,
+  loadTipSummary = true,
   teamHistoryMonths,
-  initialHasTeam = false,
   reloadKey = 0,
 }: UseHomeDataOptions): HomeDataState {
   const calendarDay = useCalendarDay();
@@ -274,7 +274,7 @@ export function useHomeData({
   const baseLoadCompletedRef = useRef(false);
   const uid = auth.currentUser?.uid ?? "";
   const identity = email ? `${uid}|${email.toLowerCase()}` : null;
-  const dataIdentity = `${identity}|${calendarMonth}`;
+  const dataIdentity = `${identity}|${calendarMonth}|${loadTipSummary}`;
   const [stateIdentity, setStateIdentity] = useState(dataIdentity);
   const activeIdentity = useRef<string | null>(null);
   if (stateIdentity !== dataIdentity) {
@@ -302,7 +302,7 @@ export function useHomeData({
     setTeamImmediatePrevSum(0);
     setSummaryLoading(Boolean(identity));
     setSummaryError(null);
-    setTipSummaryLoading(Boolean(identity));
+    setTipSummaryLoading(Boolean(identity) && loadTipSummary);
     setTipSummaryError(null);
     setHistoryLoading(Boolean(identity));
     setLoading(Boolean(identity));
@@ -319,7 +319,7 @@ export function useHomeData({
       return;
     }
 
-    const baseLoadKey = `${identity}|${calendarMonth}|${initialHasTeam ? "team" : "solo"}|${
+    const baseLoadKey = `${dataIdentity}|${
       loadPersonalHistory ? "history" : "summary"
     }|${reloadKey}`;
     const rangeOnlyChange =
@@ -392,7 +392,7 @@ export function useHomeData({
     setHistoryUpdatedAt(null);
     setSummaryRefreshing(true);
     const finishProduction = startHomeTiming("production");
-    const finishTip = startHomeTiming("productionTip");
+    const finishTip = loadTipSummary ? startHomeTiming("productionTip") : undefined;
     const finishLeaderboard = startHomeTiming("leaderboard");
     let productionReady = false;
     baseLoadKeyRef.current = baseLoadKey;
@@ -470,6 +470,7 @@ export function useHomeData({
           params.set("shape", "home");
           if (signedFromMs === summaryRangeStartMs && !cursor) {
             params.set("homeSummary", "1");
+            if (scope === "my") params.set("includeTeam", "1");
             if (reloadKey > 0) params.set("homeRefresh", "1");
             params.set("summarySplit", String(monthStart.getTime()));
             params.set("summaryTo", String(nextMonthStart.getTime()));
@@ -612,7 +613,7 @@ export function useHomeData({
         let freshSummaryReady = false;
         let stagedTipSummary: TipSummary | null = null;
         const publishTipState = () => {
-          if (!isCurrent() || !tipUpdatesAllowed) return;
+          if (!loadTipSummary || !isCurrent() || !tipUpdatesAllowed) return;
           if (!tipSettled) {
             setTipSummaryLoading(true);
             setTipSummaryError(null);
@@ -629,14 +630,14 @@ export function useHomeData({
         };
         // A seeded result stays coherent until the fresh regular summary is
         // ready. Never combine a new TIP amount with cached own/team amounts.
-        const tipSummaryPromise = collectTipSummaryForRecentMonths().then(value => {
-          finishTip("success");
+        const tipSummaryPromise = !loadTipSummary ? null : collectTipSummaryForRecentMonths().then(value => {
+          finishTip?.("success");
           tipSettled = true;
           stagedTipSummary = value;
           if (freshSummaryReady) publishTipState();
           return value;
         }, () => {
-          finishTip(controller.signal.aborted ? "cancelled" : "error");
+          finishTip?.(controller.signal.aborted ? "cancelled" : "error");
           tipSettled = true;
           if (freshSummaryReady) publishTipState();
           return null;
@@ -648,6 +649,7 @@ export function useHomeData({
           teamEmailsHint: string[];
           positionHint: Position | null;
           summary?: HomeProductionSummary;
+          teamSummary?: HomeProductionSummary;
         };
 
         const collectScope = async (
@@ -674,7 +676,10 @@ export function useHomeData({
             }
             if (response.summary) {
               if (!isHomeProductionSummary(response.summary) || response.hasMore !== false) throw new Error("Neúplný souhrn produkce.");
-              return { entries: [], hasTeamHint, teamEmailsHint, positionHint, summary: response.summary };
+              if (response.teamSummary !== undefined && !isHomeProductionSummary(response.teamSummary)) {
+                throw new Error("Neúplný týmový souhrn produkce.");
+              }
+              return { entries: [], hasTeamHint, teamEmailsHint, positionHint, summary: response.summary, teamSummary: response.teamSummary };
             }
             pages += 1;
 
@@ -778,22 +783,6 @@ export function useHomeData({
           return { count, immediate };
         };
 
-        // Fáze 1: rychlé souhrny za aktuální měsíc (UI dostane čísla co nejdřív).
-        // U manažera známe existenci týmu už z profilu, proto jsou obě
-        // nezávislá čtení souběžná. U staršího profilu zůstává původní postup.
-        let teamSummaryPromise: Promise<ScopeCollection> | null = initialHasTeam
-          ? collectScope("team", summaryRangeStartMs)
-          : null;
-        if (teamSummaryPromise) {
-          void teamSummaryPromise.catch(() => undefined);
-        }
-        const loadTeamSummary = () => {
-          if (!teamSummaryPromise) {
-            teamSummaryPromise = collectScope("team", summaryRangeStartMs);
-          }
-          return teamSummaryPromise;
-        };
-
         const ownSummaryResult = await collectScope("my", summaryRangeStartMs);
         if (!position && ownSummaryResult.positionHint) {
           position = ownSummaryResult.positionHint;
@@ -802,10 +791,11 @@ export function useHomeData({
         let hasTeamValue =
           ownSummaryResult.hasTeamHint || (ownSummaryResult.teamEmailsHint?.length ?? 0) > 0;
         let teamSummaryEntries: EntryDoc[] = [];
-        let teamSummary: HomeProductionSummary | undefined;
-        if (hasTeamValue) {
+        let teamSummary = ownSummaryResult.teamSummary;
+        // Older servers return the own summary or contract rows without a team summary.
+        if (hasTeamValue && !teamSummary) {
           try {
-            const teamSummaryResult = await loadTeamSummary();
+            const teamSummaryResult = await collectScope("team", summaryRangeStartMs);
             teamSummaryEntries = teamSummaryResult.entries;
             teamSummary = teamSummaryResult.summary;
             hasTeamValue = hasTeamValue || teamSummaryEntries.length > 0;
@@ -975,7 +965,7 @@ export function useHomeData({
           setLoading(true);
           setSummaryLoading(true);
           setHistoryLoading(true);
-          setTipSummaryLoading(true);
+          setTipSummaryLoading(loadTipSummary);
           setTipSummaryError(null);
         } else {
           setLoading(false);
@@ -1035,7 +1025,7 @@ export function useHomeData({
         controller.abort();
         console.error("Chyba při načítání produkce:", e);
         finishProduction("error");
-        finishTip("error");
+        finishTip?.("error");
         finishLeaderboard("error");
         if (productionReady) {
           // A historical-range failure must not replace fresh monthly totals.
@@ -1044,7 +1034,7 @@ export function useHomeData({
           setTeamEntries([]);
           setRangeLeaderboard([]);
           setTipSummaryLoading(false);
-          if (!tipSettled) setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
+          if (loadTipSummary && !tipSettled) setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
           return;
         }
         setSummaryError("Produkci se nepodařilo načíst. Obnovte prosím stránku.");
@@ -1064,7 +1054,7 @@ export function useHomeData({
           setHistoryLoading(false);
         } else {
           setTipSummaryLoading(false);
-          setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
+          if (loadTipSummary) setTipSummaryError("TIP produkci se nepodařilo načíst. Obnovte prosím stránku.");
         }
       } finally {
         if (isCurrent()) {
@@ -1080,12 +1070,12 @@ export function useHomeData({
     void load();
     return () => {
       finishProduction("cancelled");
-      finishTip("cancelled");
+      finishTip?.("cancelled");
       finishLeaderboard("cancelled");
       cancelled = true;
       controller.abort();
     };
-  }, [email, identity, uid, initialHasTeam, loadPersonalHistory, reloadKey, teamHistoryMonths, calendarMonth, leaderboardDay]);
+  }, [email, identity, dataIdentity, uid, loadTipSummary, loadPersonalHistory, reloadKey, teamHistoryMonths, calendarMonth, leaderboardDay]);
 
   return {
     userMeta,
@@ -1112,8 +1102,8 @@ export function useHomeData({
     historyError,
     summaryLoading,
     summaryError,
-    tipSummaryLoading,
-    tipSummaryError,
+    tipSummaryLoading: loadTipSummary && tipSummaryLoading,
+    tipSummaryError: loadTipSummary ? tipSummaryError : null,
     historyLoading,
     loading,
   };

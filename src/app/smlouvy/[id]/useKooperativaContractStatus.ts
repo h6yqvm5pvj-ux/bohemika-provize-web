@@ -53,13 +53,13 @@ export function useKooperativaContractStatus<Source extends { fileName: string }
     setState({ scope, identity: null, loading: true, error: null });
     void (async () => {
       try {
-        const [pdfBlob, { parseKooperativaAutoPdf }, { resolveKooperativaStatusIdentity }] = await Promise.all([
+        const [pdfBlob, { parseKooperativaStatusPdf }, { resolveKooperativaStatusIdentity }] = await Promise.all([
           downloadPdf(sourcePdf, controller.signal),
           import("@/app/lib/parseKooperativaAutoPdf"),
           import("@/app/lib/kooperativaContractStatus"),
         ]);
         if (controller.signal.aborted) return;
-        const parsed = await parseKooperativaAutoPdf(
+        const parsed = await parseKooperativaStatusPdf(
           new File([pdfBlob], sourcePdf.fileName, { type: "application/pdf" }),
           { signal: controller.signal },
         );
@@ -72,7 +72,7 @@ export function useKooperativaContractStatus<Source extends { fileName: string }
         }
         const identity = resolveKooperativaStatusIdentity(parsed);
         setState({ scope, identity, loading: false,
-          error: identity ? null : "V oddílu B Pojistník se nepodařilo jednoznačně načíst datum narození ani IČO. Údaj ověř v PDF a zadej na portálu ručně." });
+          error: identity ? null : "V PDF se nepodařilo jednoznačně určit datum narození ani IČO pojistníka. Údaj můžeš zadat přímo na portálu." });
       } catch {
         if (controller.signal.aborted) return;
         // Parser/network errors can contain document contents or internal URLs.

@@ -108,6 +108,24 @@ describe("generateCashflow", () => {
       ],
     });
 
+    it("changes payment periods from the effective date, keeping settled receipts and the historical renewal limit", () => {
+      const entry: EntryDoc = {
+        ...fixture("annual"), inputAmount: 3600, policyStartDate: "2024-07-26", contractSignedDate: "2024-07-25",
+        items: [{ title: "Okamžitá provize (z platby)", amount: 810.72 }, { title: "Následná provize (z platby)", amount: 202.68 }],
+        commissionPayouts: [{ key: "original", code: "A101", amount: 810, status: "paid", payoutMonthKey: "2024-8" }],
+        paymentFrequencyChanges: [
+          { effectiveDate: "2025-07-26", frequency: "semiannual", annualPremium: 4000, baseAnnualPremium: 3600 },
+          { effectiveDate: "2026-04-10", frequency: "semiannual", annualPremium: 5000, baseAnnualPremium: 3600 },
+        ],
+      };
+      const rows = generateCashflow([entry], 10, undefined, new Date(2025, 6, 1));
+      expect(rows[0]).toMatchObject({ commissionCode: "A101", amount: 810, commissionPayoutKey: "original" });
+      expect(rows.slice(1, 4).map(row => [row.commissionCode, row.commissionPeriodStart, row.amount])).toEqual([
+        ["B101", "2025-07-26", 112.60], ["B102", "2026-01-26", 112.60], ["B103", "2026-07-26", 140.75],
+      ]);
+      expect(rows.at(-1)).toMatchObject({ commissionCode: "B108", commissionPeriodStart: "2029-01-26" });
+    });
+
     it.each([
       ["annual", ["A101", "B101", "B102", "B103"], ["2025-07-31", "2026-07-31", "2027-07-31", "2028-07-31"]],
       ["semiannual", ["A101", "A102", "B101", "B102"], ["2025-07-31", "2026-01-31", "2026-07-31", "2027-01-31"]],

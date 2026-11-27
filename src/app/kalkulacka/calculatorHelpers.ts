@@ -802,6 +802,7 @@ export type ContractEntryType = "contract" | "endorsement";
 export type EndorsementChangeType = "increase" | "decrease" | "same";
 
 export type EndorsementSourceEntry = {
+  confirmedRefreshAnnualBase?: number | null;
   id: string;
   path: string;
   productKey: Product | null;

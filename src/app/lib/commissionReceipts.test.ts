@@ -51,4 +51,25 @@ describe("one receipt per authorized policy family", () => {
     expect(assign({ ...source, rows: rows.map(row => ({ ...row, contractNumber: "987654321" })) })).toEqual([[], ["first", "second"], []]);
     expect(assign({ ...source, rows: [...rows, { ...rows[0], validFrom: "01.05.2025" }] })).toEqual([[], ["first", "second"], []]);
   });
+
+  it("reconciles both archived month-dated receipts when an increase is entered after the statement", () => {
+    const contractNumber = "123456789";
+    const receipts = [receipt, { ...receipt, key: "second", code: "NB0301", amount: 25 }]
+      .map(payout => ({ ...payout, statementPeriod: "01.05.2025 - 31.05.2025" }));
+    const original = { ...receipt, key: "initial", code: "A101", amount: 500 };
+    const entries = [
+      { ...root, contractNumber, commissionPayouts: [original, ...receipts] },
+      { ...amendment, contractNumber, policyStartDate: "2025-05-17", premiumDelta: 100, commissionPayouts: [] },
+    ];
+    const rows: LifeIncreaseReceiptEvidence[] = receipts.map(payout => ({
+      ...payout, contractNumber, productKey: "neon", source: "own", validFrom: "01.05.2025", signedAt: "01.05.2025", baseAmount: 1200,
+    }));
+    const evidence = indexLifeIncreaseReceiptEvidence([{ id: receipt.statementId, writer: owner, rows }]);
+    const projected = uniqueFamilyCommissionReceipts(entries, evidence);
+    expect(projected.map(entry => entry.commissionPayouts.map(payout => [payout.code, payout.amount]))).toEqual([
+      [["A101", 500]], [["NV101", 100], ["NB0301", 25]],
+    ]);
+    expect(uniqueFamilyCommissionReceipts(projected, evidence)).toEqual(projected);
+    expect(entries[0].commissionPayouts).toEqual([original, ...receipts]);
+  });
 });

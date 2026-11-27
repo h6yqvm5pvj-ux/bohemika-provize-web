@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { User } from "firebase/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnniversaryContract } from "@/app/lib/anniversaryPortfolio";
+import { addDaysIso, getTodayIsoInPrague } from "@/lib/subscriptionAccess";
 import { anniversaryRadarTarget } from "@/app/lib/anniversaryRadarLink";
 
 const mocks = vi.hoisted(() => ({
@@ -41,7 +42,7 @@ const contract = (ownerEmail: string, days: number, id = "same-id"): Anniversary
   policyStartDate: `${Number(dateAt(days).slice(0, 4)) - 2}${dateAt(days).slice(4)}`,
 });
 
-describe("client links into anniversary radar", () => {
+describe("anniversary radar workflows and client links", () => {
   let container: HTMLDivElement;
   let root: Root;
   const own = contract("advisor@example.test", 10);
@@ -163,4 +164,48 @@ describe("client links into anniversary radar", () => {
     await act(async () => mocks.authCallback?.(null));
     expect(container.textContent).toContain("Pro zobrazení výročí se přihlas");
   });
+  it("keeps overdue calls after the anniversary and sorts them before today's, independently of the period filter", async () => {
+    const ownerEmail = mocks.user.email;
+    const items = [-5, 65, 3, 2].map((days, i) => ({ ...contract(ownerEmail, days, String(i)), clientName: `Test ${i}` }));
+    mocks.load.mockResolvedValue({ contracts: items, position: null, reviews: items.map((item, i) => ({
+      ownerEmail, entryId: item.id, occurrenceKey: dateAt([-5, 65, 3, 2][i]),
+      callbackOn: addDaysIso(getTodayIsoInPrague(), [0, -2, 1, -1][i]), contactOutcome: "no_answer", processingStatus: i === 3 ? "completed" : "in_progress",
+    })) });
+    await render();
+    const queue = Array.from(container.querySelectorAll("button")).find(el => el.textContent?.includes("Dnes a po termínu"))!;
+    await act(async () => queue.click());
+    expect(Array.from(container.querySelectorAll("article")).map(el => el.getAttribute("aria-label"))).toEqual(["Test 1, smlouva 1", "Test 0, smlouva 0"]);
+    expect(container.textContent).toContain("Proběhlé výročí");
+    expect(container.querySelector('[aria-label="Období výročí"]')).toBeNull();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("shows a client's different anniversaries together and saves the chosen callback only for the selected contract", async () => {
+    const ownerEmail = mocks.user.email;
+    const items = [2, 25].map((days, i) => ({ ...contract(ownerEmail, days, String(i)), clientEmail: "test-client@example.test" }));
+    mocks.load.mockResolvedValue({ contracts: items, position: null, reviews: [] });
+    mocks.fetch.mockImplementation(async (_user, _url, options) => {
+      if (!options.body) return { ok: true, history: [], hasMore: false };
+      return { ok: true, review: { ...JSON.parse(options.body), processingStatus: "in_progress" } };
+    });
+    await render();
+    const button = (root: ParentNode, text: string) => Array.from(root.querySelectorAll("button")).find(el => el.textContent === text)!;
+    await act(async () => button(container, "Podle klientů").click());
+    expect(container.querySelectorAll('div[data-client="true"]')).toHaveLength(1);
+    const cards = container.querySelectorAll("article");
+    expect(cards).toHaveLength(2);
+    await act(async () => button(cards[1], "Zapsat kontakt").click());
+    await act(async () => button(container, "Nezvedá").click());
+    await act(async () => button(container, "Za týden").click());
+    const dialog = container.querySelector('[role="dialog"]')!;
+    const chosen = dialog.querySelector("input")!.value;
+    expect(chosen).toBe(addDaysIso(getTodayIsoInPrague(), 7));
+    await act(async () => button(dialog, "Přidat záznam").click());
+    const writes = mocks.fetch.mock.calls.filter(call => call[2]?.method === "POST");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][2].body)).toMatchObject({ ownerEmail, entryId: "1", contactOutcome: "no_answer", callbackOn: chosen });
+    expect(container.querySelectorAll("article")[0].textContent).toContain("Čeká na první krok");
+    expect(container.querySelectorAll("article")[1].textContent).toContain("Zavolat");
+  });
+
 });

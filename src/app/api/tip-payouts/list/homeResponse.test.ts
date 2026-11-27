@@ -44,7 +44,10 @@ vi.mock("@/lib/server/firebaseAdmin", () => {
         doc: (id: string) => ({
           get: async () => { mocks.reads({ kind: "profile", id }); return { id, exists: true, data: () => ({ fullName: "Synthetic Source" }) }; },
           collection: (child: string) => {
-            if (name === "users" && child === "tipPayouts") return query();
+            if (name === "users" && child === "tipPayouts") {
+              mocks.reads({ kind: "payoutOwner", id });
+              return query();
+            }
             if (name === "users" && child === "entries") return {
               doc: (entry: string) => ({ get: async () => {
                 mocks.reads({ kind: "entry", id, entry });
@@ -58,7 +61,9 @@ vi.mock("@/lib/server/firebaseAdmin", () => {
     },
   };
 });
-vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorSetupError: mocks.setup }));
+vi.mock("@/lib/server/advisorSetupGuard", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/server/advisorSetupGuard")>(), checkAdvisorSetup: mocks.setup,
+}));
 vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: mocks.lockout }));
 vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: mocks.impersonation }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: mocks.rate, applyRateLimitHeaders: () => {} }));
@@ -107,7 +112,7 @@ beforeEach(() => {
   mocks.records.clear();
   mocks.failBounded = false;
   mocks.verify.mockResolvedValue({ email: "advisor@example.test", uid: "synthetic-uid" });
-  mocks.setup.mockResolvedValue(null);
+  mocks.setup.mockResolvedValue({ accountType: "advisor", missing: [], profileDocId: "advisor@example.test" });
   mocks.lockout.mockResolvedValue(null);
   mocks.impersonation.mockResolvedValue({ ok: true });
   mocks.rate.mockResolvedValue({ allowed: true });
@@ -183,9 +188,9 @@ describe("home TIP response projection", () => {
     expect(fullReads.filter(entry => entry.kind === "payout")).toHaveLength(1);
     expect(homeReads.filter(entry => entry.kind === "payout")).toHaveLength(1);
     expect(fullReads.filter(entry => entry.kind === "entry")).toHaveLength(100);
-    expect(fullReads.filter(entry => entry.kind === "profile")).toHaveLength(2);
+    expect(fullReads.filter(entry => entry.kind === "profile")).toHaveLength(1);
     expect(homeReads.filter(entry => entry.kind === "entry")).toHaveLength(0);
-    expect(homeReads.filter(entry => entry.kind === "profile")).toHaveLength(1);
+    expect(homeReads.filter(entry => entry.kind === "profile")).toHaveLength(0);
     const evidence = {
       rows: home.payouts.length,
       fullBytes: Buffer.byteLength(JSON.stringify(full)), homeBytes: Buffer.byteLength(JSON.stringify(home)),
@@ -206,6 +211,21 @@ describe("home TIP response projection", () => {
 
   it("does not apply home validation to the existing full list", async () => {
     expect((await GET(request(params(false, { productionFrom: "invalid", shape: "other" })))).status).toBe(200);
+  });
+
+  it("uses the verified legacy profile ID and ignores client-supplied owner and role", async () => {
+    mocks.setup.mockResolvedValue({ accountType: "advisor", missing: [], profileDocId: "legacy-profile-id" });
+    mocks.records.set("one", { payoutDate: new Date(monthStart), amount: 25 });
+    await read(params(true, { ownerEmail: "foreign@example.test", role: "admin" }));
+    expect(mocks.setup).toHaveBeenCalledExactlyOnceWith({ email: "advisor@example.test", uid: "synthetic-uid" });
+    expect(mocks.reads.mock.calls.map(([entry]) => entry).filter(entry => entry.kind === "payoutOwner"))
+      .toEqual([{ kind: "payoutOwner", id: "legacy-profile-id" }]);
+  });
+
+  it("denies incomplete setup before reading payouts", async () => {
+    mocks.setup.mockResolvedValue({ accountType: "advisor", missing: ["totpMfa"], profileDocId: "advisor@example.test" });
+    expect((await GET(request(params(true)))).status).toBe(403);
+    expect(mocks.reads).not.toHaveBeenCalled();
   });
 
   it("keeps authentication, impersonation and rate-limit guards before payout reads", async () => {

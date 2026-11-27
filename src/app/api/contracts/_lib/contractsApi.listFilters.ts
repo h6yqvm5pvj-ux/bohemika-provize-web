@@ -543,7 +543,7 @@ export function contractMatchesListFilters(
     }
   }
 
-  if (filters.commissionEndedOnly && !isContractCommissionEnded(contract)) {
+  if (filters.commissionEndedOnly && !isContractCommissionEnded(contract, new Date(), ownerEmail)) {
     return false;
   }
 

@@ -126,9 +126,18 @@ describe("auto premium amendments", () => {
   });
 });
 
-describe("ČPP KOMPLEX underwriting amendments", () => {
+describe.each(["cppPPRs", "domex"])("ČPP %s payment amendments", productKey => {
   beforeEach(() => {
-    mocks.contract = { ...mocks.contract, productKey: "cppPPRs", frequencyRaw: "quarterly", inputAmount: 2500 };
+    mocks.contract = { ...mocks.contract, productKey, frequencyRaw: "quarterly", inputAmount: 2500 };
+  });
+
+  it.each([
+    { frequency: "quarterly", annualPremium: 11000, inputAmount: 2750, changeType: "increase" },
+    { frequency: "annual", annualPremium: 10000, inputAmount: 10000, changeType: "same" },
+  ])("allows changing either premium or frequency on its own", async ({ frequency, annualPremium, inputAmount, changeType }) => {
+    expect((await POST(request({ frequency, annualPremium }))).status).toBe(200);
+    expect(mocks.create.mock.calls[0][1]).toMatchObject({ productKey, inputAmount, frequencyRaw: frequency,
+      policyStartDate: base.effectiveDate, previousInputAmount: 2500, changeType });
   });
 
   it("stores a dated premium change and keeps the original commission and receipts", async () => {
@@ -137,7 +146,7 @@ describe("ČPP KOMPLEX underwriting amendments", () => {
     expect(response.status).toBe(200);
     const { endorsementId } = await response.json();
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ id: endorsementId }), expect.objectContaining({
-      productKey: "cppPPRs", entryType: "endorsement", rootContractEntryId: base.entryId,
+      productKey, entryType: "endorsement", rootContractEntryId: base.entryId,
       policyStartDate: base.effectiveDate, inputAmount: 6000, previousInputAmount: 2500,
       autoPremiumAnnual: 12000, autoPremiumPreviousAnnual: 10000, items: [], autoPremiumAmendment: true,
     }));

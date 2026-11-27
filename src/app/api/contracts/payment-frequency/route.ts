@@ -7,7 +7,7 @@ import { withCashflowMutation, trackCashflowWrite } from "@/lib/server/cashflowM
 import { withContractHistory } from "@/lib/server/contractHistory";
 import { isSafeContractNoteId } from "../notes/contractNotes";
 import { endorsementCommissionDay } from "@/app/lib/endorsementCommissionPlan";
-import { autoAnnualPremiumAtDate, contractPaymentFrequencies, MAX_PAYMENT_FREQUENCY_CHANGES, normalizePaymentFrequencyChanges, paymentFrequencyAtDate } from "@/app/lib/autoPaymentFrequency";
+import { autoAnnualPremiumAtDate, contractPaymentFrequencies, MAX_PAYMENT_FREQUENCY_CHANGES, normalizePaymentFrequencyChanges, paymentFrequencyAtDate, supportsCppPropertyPaymentChanges } from "@/app/lib/autoPaymentFrequency";
 import { isFrequencyAutoPayoutProduct } from "@/app/lib/productCatalog";
 import { periodsPerYear } from "@/app/lib/productFormulas/shared";
 import { historyValue } from "@/app/lib/contractHistory";
@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
         const contract = openPrivateRecord(ref.path, snapshot.data()!) as ContractDoc;
         if (contract.userEmail && contract.userEmail.trim().toLowerCase() !== owner) throw failure(409, "Správce smlouvy se změnil. Obnov detail.");
         if ((contract.entryType != null && contract.entryType !== "contract") || !contractPaymentFrequencies(contract.productKey).includes(frequency)) throw failure(400, "Pro tento produkt nelze vybranou frekvenci nastavit.");
-        const isKomplex = contract.productKey === "cppPPRs";
-        if (isKomplex && (!premiumChange || Math.round(Number(data.annualPremium) * 100) % periodsPerYear(frequency) !== 0)) {
+        const isCppPropertyChange = supportsCppPropertyPaymentChanges(contract.productKey);
+        if (isCppPropertyChange && (!premiumChange || Math.round(Number(data.annualPremium) * 100) % periodsPerYear(frequency) !== 0)) {
           throw failure(400, "Zadej pojistné za jednu platbu v Kč, nejvýše na dvě desetinná místa.");
         }
         const start = endorsementCommissionDay(contract.policyStartDate);
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         if (endorsementId) {
           const amendmentRef = ref.parent.doc(endorsementId);
           // The amendment changes the original contract's schedule and has no commission of its own.
-          const perPayment = isKomplex || isFrequencyAutoPayoutProduct(contract.productKey);
+          const perPayment = isCppPropertyChange || isFrequencyAutoPayoutProduct(contract.productKey);
           const count = perPayment ? periodsPerYear(frequency) : 1;
           const oldCount = perPayment ? periodsPerYear(previous) : 1;
           const newInput = Math.round(Number(data.annualPremium) / count * 100) / 100;
@@ -90,13 +90,13 @@ export async function POST(request: NextRequest) {
             position: contract.position ?? null, commissionMode: contract.commissionMode ?? null,
           };
           transaction.create(amendmentRef, withContractHistory(transaction, amendmentRef, {}, amendment, {
-            actorEmail: guard.ctx.actorEmail, kind: "created", title: isKomplex ? "Změna pojistného nebo frekvence na smlouvě" : "Změna pojistného / frekvence na smlouvě auta",
+            actorEmail: guard.ctx.actorEmail, kind: "created", title: isCppPropertyChange ? "Změna pojistného nebo frekvence na smlouvě" : "Změna pojistného / frekvence na smlouvě auta",
             changes: [{ label: "Roční pojistné", before: historyValue(oldAnnual), after: historyValue(data.annualPremium) },
               { label: "Frekvence placení", before: historyValue(previous), after: historyValue(data.frequency) }],
           }));
         }
         transaction.update(ref, withContractHistory(transaction, ref, contract as Record<string, unknown>, patch, {
-          actorEmail: guard.ctx.actorEmail, kind: "updated", title: premiumChange ? (isKomplex ? "Změna na smlouvě" : "Změna na smlouvě auta") : "Změna frekvence placení",
+          actorEmail: guard.ctx.actorEmail, kind: "updated", title: premiumChange ? (isCppPropertyChange ? "Změna na smlouvě" : "Změna na smlouvě auta") : "Změna frekvence placení",
           changes: [{ label: "Frekvence placení", before: historyValue(previous), after: historyValue(data.frequency) }, { label: "Účinnost změny", before: null, after: historyValue(day) }, ...(premiumChange ? [{ label: "Roční pojistné", before: historyValue(oldAnnual), after: historyValue(data.annualPremium) }] : [])],
         }));
       }));

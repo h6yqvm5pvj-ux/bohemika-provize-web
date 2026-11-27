@@ -72,7 +72,7 @@ export function KooperativaContractStatusDialog({ contractNumber, identity, load
       <header className={styles.header}>
         <div className={styles.brand}>
           <span className={styles.logo}><Image src="/icons/koop-v2.png" alt="" width={34} height={34} /></span>
-          <span>Kooperativa Auto</span>
+          <span>Kooperativa</span>
         </div>
         <button ref={closeRef} type="button" className={styles.close} aria-label="Zavřít stav smlouvy" onClick={onClose}>
           <X size={20} strokeWidth={1.8} aria-hidden="true" />

@@ -8,7 +8,7 @@ vi.mock("@/lib/server/firebaseAdmin", () => ({
   get adminDb() { return state.db; },
   adminAuth: { verifyIdToken: async () => ({ email: "tip-home-sdk@example.test", uid: "synthetic-tip-home" }) },
 }));
-vi.mock("@/lib/server/advisorSetupGuard", () => ({ getAdvisorSetupError: async () => null }));
+vi.mock("@/lib/server/advisorSetupGuard", () => ({ checkAdvisorSetup: async () => ({ accountType: "advisor", profileDocId: email, missing: [] }) }));
 vi.mock("@/lib/server/loginAttemptLockout", () => ({ getLoginAttemptLockoutError: async () => null }));
 vi.mock("@/lib/server/impersonation", () => ({ resolveServerImpersonation: async () => ({ ok: true }) }));
 vi.mock("@/lib/server/rateLimit", () => ({ consumeRateLimit: async () => ({ allowed: true }), applyRateLimitHeaders: () => {} }));

@@ -68,10 +68,10 @@ describe("home monthly summary authorization", () => {
     const to = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
     return new NextRequest(`https://example.test/api/contracts/list?shape=home&homeSummary=1&signedFrom=${from}&summarySplit=${split}&summaryTo=${to}${extra}`);
   };
-  it("checks authorization before touching cached financial sums", async () => {
-    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status: 401 }) });
+  it.each([401, 403, 429])("propagates %i before touching either financial summary", async status => {
+    mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({ ok: false }, { status }) });
     const { handleContractsList } = await import("./contractsApi");
-    expect((await handleContractsList(summaryRequest())).status).toBe(401);
+    expect((await handleContractsList(summaryRequest("&scope=my&includeTeam=1"))).status).toBe(status);
     expect(mocks.production).not.toHaveBeenCalled();
   });
   it("rejects team summaries for advisers without team access", async () => {
@@ -105,6 +105,31 @@ describe("home monthly summary authorization", () => {
     const { handleContractsList } = await import("./contractsApi");
     expect((await handleContractsList(summaryRequest())).status).toBe(503);
     warning.mockRestore();
+  });
+  it("loads both summaries once using the current team and only the viewer's override", async () => {
+    const adviser = "adviser@example.test";
+    const other = "outsider@example.test";
+    mocks.team.push(adviser);
+    const month = { count: 1, immediate: 120, premiums: { lifeMonthly: 50, otherAnnual: 0 },
+      managers: { [email]: 15, [other]: 75 }, leaderboard: { life: 50, other: 0, hasLife: true, hasOther: false } };
+    mocks.production.mockResolvedValue(new Map([email, adviser].map(owner => [owner, { current: month, previous: month }])));
+    const { handleContractsList } = await import("./contractsApi");
+    const request = () => summaryRequest(`&scope=my&includeTeam=1&subordinates=${adviser},${other}&role=admin&homeRefresh=1`);
+    const result = await handleContractsList(request());
+    const body = await result.json();
+    expect(result.status).toBe(200);
+    expect(body).toMatchObject({ hasTeam: true, summary: { current: { immediate: 120 } },
+      teamSummary: { current: { immediate: 15 }, leaderboard: [{ email: adviser }] } });
+    expect(JSON.stringify(body)).not.toContain(other);
+    expect(body).not.toHaveProperty("teamEmails");
+    expect(mocks.guard).toHaveBeenCalledOnce();
+    expect(mocks.production).toHaveBeenCalledExactlyOnceWith(expect.anything(), [email, adviser], expect.anything(), true);
+
+    mocks.team.length = 0;
+    const solo = await (await handleContractsList(request())).json();
+    expect(mocks.production.mock.lastCall?.[1]).toEqual([email]);
+    expect(solo).toMatchObject({ hasTeam: false, summary: { current: { immediate: 120 } } });
+    expect(solo).not.toHaveProperty("teamSummary");
   });
 });
 

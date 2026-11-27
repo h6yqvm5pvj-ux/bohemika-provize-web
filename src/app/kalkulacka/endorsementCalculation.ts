@@ -1,5 +1,5 @@
 import { calculateCommission } from "@/app/lib/calculateCommission";
-import { calculateNeonDecreaseStornoBase } from "@/app/lib/productFormulas/neon";
+import { calculateNeonDecreaseStornoBase, confirmedNeonRefreshAnnualBase, projectNeonImmediateDeduction } from "@/app/lib/productFormulas/neon";
 import { toDate, formatMoney } from "@/app/lib/formatters";
 import type {
   CommissionMode,
@@ -113,7 +113,7 @@ export const buildEndorsementSourceEntries = (
   targetProduct: Product
 ): EndorsementSourceEntry[] =>
   contracts
-    .map((entry) => {
+    .map((entry): EndorsementSourceEntry | null => {
       const entryId = typeof entry.id === "string" ? entry.id.trim() : "";
       if (!entryId) return null;
       const ownerEmail = contractOwnerEmail(entry);
@@ -136,6 +136,7 @@ export const buildEndorsementSourceEntries = (
             ? entry.rootContractEntryId
             : null) ?? null,
         effectiveInputAmount: resolveEffectivePremium(entry),
+        confirmedRefreshAnnualBase: confirmedNeonRefreshAnnualBase(entry),
         durationYears:
           storedDurationYears ?? durationYearsFromDates(policyStartDate, policyEndDate),
         durationMonths: finitePositiveDuration(entry?.durationMonths),
@@ -225,41 +226,6 @@ export const negativeImmediateCommissionResult = (
       amount: -Math.abs(roundToCents(item.amount ?? 0)),
     }))
     .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  return {
-    items,
-    total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
-  };
-};
-
-export const negativeImmediateCommissionResultFromSourceItems = ({
-  sourceItems,
-  previousPremiumAmount,
-  calculationAmount,
-}: {
-  sourceItems: CommissionResultItemDTO[];
-  previousPremiumAmount: number;
-  calculationAmount: number;
-}): CommissionResultDTO | null => {
-  if (
-    sourceItems.length === 0 ||
-    previousPremiumAmount <= 0 ||
-    calculationAmount <= 0
-  ) {
-    return null;
-  }
-
-  const ratio = calculationAmount / previousPremiumAmount;
-  if (!Number.isFinite(ratio) || ratio <= 0) return null;
-
-  const items = sourceItems
-    .filter((item) => isImmediateCommissionTitle(item.title ?? ""))
-    .map((item) => ({
-      ...item,
-      amount: -Math.abs(roundToCents((item.amount ?? 0) * ratio)),
-    }))
-    .filter((item) => Math.abs(item.amount ?? 0) > 0);
-  if (items.length === 0) return null;
-
   return {
     items,
     total: roundToCents(items.reduce((sum, item) => sum + (item.amount ?? 0), 0)),
@@ -392,6 +358,7 @@ export const prepareEndorsementDraft = ({
     const originalStornoStartDateIso =
       dateToIsoDay(source.policyStartDate) ?? dateToIsoDay(source.contractSignedDate);
     const decreaseBase = calculateNeonDecreaseStornoBase({
+      confirmedRefreshAnnualBase: source.confirmedRefreshAnnualBase,
       previousMonthlyPremium: previousPremiumAmount,
       newMonthlyPremium: newPremiumAmount,
       originalStornoStartDateIso,
@@ -409,11 +376,7 @@ export const prepareEndorsementDraft = ({
     }
     calculationAmount = decreaseBase.calculationMonthlyPremium;
     if (calculationAmount > 0) {
-      const sourceResult = negativeImmediateCommissionResultFromSourceItems({
-        sourceItems: source.items,
-        previousPremiumAmount,
-        calculationAmount,
-      });
+      const sourceResult = projectNeonImmediateDeduction(source.items, decreaseBase.commissionRatio);
       const fallbackResult = calculateEndorsementCommission({
         productKey: targetProduct,
         position: source.position ?? position,

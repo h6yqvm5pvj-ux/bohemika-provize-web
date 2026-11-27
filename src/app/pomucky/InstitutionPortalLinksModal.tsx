@@ -120,13 +120,18 @@ export function InstitutionPortalLinksModal({ onClose }: InstitutionPortalLinksM
         </div>
         <div className={`${ui.content} ${styles.grid}`}>
           {targets.map((target) => (
-            <a key={target.key} href={target.href} target="_blank" rel="noopener noreferrer" className={styles.portalCard} onClick={onClose}>
-              <span className={styles.logo}><Image src={target.logoPath} alt="" width={64} height={44} /></span>
-              <div className={styles.copy}>
-                <h3>{target.label}</h3>
-                <p>{new URL(target.href).hostname.replace(/^www\./, "")}</p>
-              </div>
-              <span className={styles.arrow}><ArrowUpRight size={18} aria-hidden="true" /></span>
+            <a
+              key={target.key}
+              data-portal={target.key}
+              href={target.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.portalCard}
+              onClick={onClose}
+            >
+              <Image className={styles.logo} src={target.logoPath} alt="" width={96} height={44} />
+              <span className={styles.name}>{target.label}</span>
+              <span className={styles.arrow} aria-hidden="true"><ArrowUpRight size={15} /></span>
             </a>
           ))}
           {targets.length === 0 && <div className={ui.empty}><Search size={28} /><p>Žádný portál neodpovídá hledání.</p><button type="button" onClick={() => setSearch("")}>Zobrazit všechny portály</button></div>}

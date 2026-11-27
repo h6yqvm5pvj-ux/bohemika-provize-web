@@ -48,12 +48,12 @@ export function startHomeTiming(stage: HomePerformanceStage) {
   let hidden = typeof document === "undefined" || document.visibilityState === "hidden";
   const onVisibility = () => { if (document.visibilityState === "hidden") hidden = true; };
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
-  return (outcome: HomePerformanceSample["outcome"]) => {
+  return (outcome: HomePerformanceSample["outcome"], audience?: HomePerformanceSample["audience"]) => {
     if (finished) return;
     finished = true;
     if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
     const durationMs = Math.round(performance.now() - started);
     if (auth.currentUser !== user || hidden || durationMs < 0 || durationMs > 180_000) return;
-    record({ stage, durationMs, outcome, device: window.innerWidth < 768 ? "mobile" : "desktop" });
+    record({ stage, durationMs, outcome, ...(audience && { audience }), device: window.innerWidth < 768 ? "mobile" : "desktop" });
   };
 }

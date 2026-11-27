@@ -1000,18 +1000,20 @@ const hasPaidCommissionForItem = ({
   paidContracts,
   paidCommissionKeys,
   contractsWithPaidCommissionCodes,
+  usedCareCodes,
 }: {
   item: CashflowItem;
   normalizedContractNumber: string;
   paidContracts: Set<string>;
   paidCommissionKeys: Set<string>;
   contractsWithPaidCommissionCodes: Set<string>;
+  usedCareCodes?: ReadonlySet<string>;
 }): boolean => {
   const neonRecurring = item.productKey === "neon" ? lifeRecurringCommission(item) : null;
   if (neonRecurring) {
     // Statement summaries are not scoped to a manager's individual override.
-    return item.source !== "manager" &&
-      paidCommissionKeys.has(`${normalizedContractNumber.toUpperCase()}:${neonRecurring.code}`);
+    const key = `${normalizedContractNumber.toUpperCase()}:${neonRecurring.code}`;
+    return item.source !== "manager" && !usedCareCodes?.has(key) && paidCommissionKeys.has(key);
   }
   const commissionCodes = commissionCodesForItem(item);
   const hasAnyPaidCodeForContract = contractsWithPaidCommissionCodes.has(normalizedContractNumber.toUpperCase());
@@ -1118,6 +1120,17 @@ export function applyStatementMissingPayoutShifts({
   // Each calculation owns its indexes. Reusing one month's sets across items
   // never retains another account's statements or survives an input update.
   const indexedMonths = new Map<string, MonthStatements | null>();
+  // A statement code already used for another NEON care year cannot also
+  // settle a missing forecast through the monthly statement summary.
+  const usedCareCodes = new Map<string, Set<string>>();
+  for (const item of cashflowItems) {
+    if (item.productKey !== "neon" || item.source === "manager" || item.payoutStatus !== "paid" ||
+        !item.statementCode || !item.contractNumber) continue;
+    const month = monthKeyFromDate(item.date);
+    const used = usedCareCodes.get(month) ?? new Set<string>();
+    used.add(`${normalizeContractNumberSearch(item.contractNumber).toUpperCase()}:${item.statementCode.trim().toUpperCase()}`);
+    usedCareCodes.set(month, used);
+  }
   const statementsForMonth = (monthKey: string): MonthStatements | null => {
     if (indexedMonths.has(monthKey)) return indexedMonths.get(monthKey)!;
     const statements = statementsByMonthKey[monthKey];
@@ -1204,6 +1217,7 @@ export function applyStatementMissingPayoutShifts({
           paidContracts,
           paidCommissionKeys,
           contractsWithPaidCommissionCodes,
+          usedCareCodes: usedCareCodes.get(monthKey),
         })
       ) {
         return [{

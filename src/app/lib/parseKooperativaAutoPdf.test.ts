@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   birthDateFromCzechBirthNumber,
   parseKooperativaAutoPdf,
+  parseKooperativaStatusPdf,
 } from "./parseKooperativaAutoPdf";
 
 type PdfTextItemFixture =
@@ -36,6 +37,37 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
 
 const makePdfFile = () =>
   new File(["pdf fixture"], "kooperativa-auto.pdf", { type: "application/pdf" });
+
+describe("Kooperativa policy status across product forms", () => {
+  it.each(["Číslo smlouvy 0012345678", "Číslo pojistné smlouvy: 0012345678", "Návrh pojistné smlouvy č. 0012345678"])(
+    "reads only policyholder data beside the labelled contract number %s", async header => {
+      pdfState.pages = [[header, "Pojistník", "Datum narození: 07.11.1990",
+        "Pojištěné osoby", "Datum narození: 03.04.2004", "IČO: 12345678"]];
+      expect(await parseKooperativaStatusPdf(makePdfFile())).toEqual({
+        contractNumber: "0012345678", policyholderBirthDate: "1990-11-07",
+      });
+    });
+
+  it("finds a business policyholder's IČO on a property policy", async () => {
+    pdfState.pages = [["Číslo návrhu", "0012345678", "Údaje o pojistníkovi", "Typ osoby: právnická osoba",
+      "Identifikační číslo osoby: 00123456", "Zástupce", "Rodné číslo: 950714/1234"]];
+    expect(await parseKooperativaStatusPdf(makePdfFile())).toEqual({
+      contractNumber: "0012345678", policyholderType: "legal_entity", companyId: "00123456",
+    });
+  });
+
+  it.each(["1. pojištěný", "Pojištěná osoba", "Obmyšlené osoby", "Údaje o pojištěném"])(
+    "keeps a missing policyholder birth date empty before %s", async heading => {
+      pdfState.pages = [["Číslo smlouvy: 0012345678", "Pojistník", heading, "Datum narození: 07.11.1990"]];
+      expect(await parseKooperativaStatusPdf(makePdfFile())).toEqual({ contractNumber: "0012345678" });
+    });
+
+  it("omits identity when two policy numbers are present", async () => {
+    pdfState.pages = [["Číslo smlouvy: 0012345678", "Pojistník", "Datum narození: 07.11.1990"],
+      ["Číslo smlouvy: 0012345679"]];
+    expect(await parseKooperativaStatusPdf(makePdfFile())).toEqual({});
+  });
+});
 
 describe("parseKooperativaAutoPdf", () => {
   beforeEach(() => {

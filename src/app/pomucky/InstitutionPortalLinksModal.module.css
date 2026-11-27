@@ -1,15 +1,123 @@
-.panel { max-width: 1040px; }
-.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.portalCard { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 78px; padding: 12px; border: 1px solid #e9e2f1; border-radius: 12px; background: #fff; box-shadow: 0 2px 5px #321a5903; text-decoration: none; transition: border-color 150ms, box-shadow 150ms, background 150ms; }
-.portalCard:hover { border-color: #ceb5e9; box-shadow: 0 5px 16px #61378d0a; background: #fdfbff; }
-.logo { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; padding: 5px; border: 1px solid #eeeaf3; border-radius: 8px; background: #fff; }
-.logo img { min-height: 0; min-width: 0; width: 100%; height: 100%; object-fit: contain; }
-.copy { min-width: 0; }
-.copy h3 { margin: 0; font-size: 13px; line-height: 1.35; font-weight: 650; letter-spacing: -.015em; color: #352644; overflow-wrap: anywhere; }
-.copy p { margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; line-height: 1.35; color: #7d6b8c; }
-.arrow { display: grid; place-items: center; flex-shrink: 0; margin-left: auto; width: 22px; height: 22px; border-radius: 7px; color: #ae96c1; background: #f8f4fc; transition: color 150ms, background 150ms; }
-.arrow svg { width: 16px; height: 16px; }
-.portalCard:hover .arrow { color: #8956b8; background: #eee4fa; }
-@media(max-width:1050px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media(max-width:800px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media(max-width:540px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel {
+  max-width: 1040px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portalCard {
+  --accent: #73519c;
+  display: grid;
+  grid-template-areas: "logo arrow" "name name";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: 16px 8px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, white);
+  border-radius: 16px;
+  background: linear-gradient(145deg, white 35%, color-mix(in srgb, var(--accent) 8%, white));
+  box-shadow: 0 2px 5px #30213c08;
+  text-decoration: none;
+  transition: border-color 160ms, box-shadow 160ms;
+}
+
+.portalCard[data-portal="allianz-alfa"],
+.portalCard[data-portal="uniqa-unihub"] {
+  --accent: #235b99;
+}
+
+.portalCard[data-portal="cpp-sus"],
+.portalCard[data-portal="maxima-secure2"] {
+  --accent: #b84352;
+}
+
+.portalCard[data-portal="kooperativa-knz"] {
+  --accent: #21744d;
+}
+
+.portalCard[data-portal="csob-zeus"],
+.portalCard[data-portal="conseq"] {
+  --accent: #247286;
+}
+
+.portalCard[data-portal="pillow-portal"],
+.portalCard[data-portal="investika"] {
+  --accent: #5a6372;
+}
+
+.logo {
+  grid-area: logo;
+  width: 96px;
+  max-width: 100%;
+  height: 44px;
+  object-fit: contain;
+  object-position: left center;
+  mix-blend-mode: multiply;
+}
+
+.name {
+  grid-area: name;
+  align-self: end;
+  color: #302539;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  overflow-wrap: anywhere;
+}
+
+.arrow {
+  grid-area: arrow;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, white);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .portalCard:hover {
+    border-color: color-mix(in srgb, var(--accent) 50%, white);
+    box-shadow: 0 5px 16px #30213c12;
+  }
+
+  .portalCard:hover .arrow {
+    color: white;
+    background: var(--accent);
+  }
+}
+
+.panel .portalCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 650px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .portalCard { gap: 12px 6px; padding: 14px; }
+  .logo { height: 36px; }
+  .name { font-size: 14px; }
+}
+
+@media (max-width: 360px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .portalCard {
+    grid-template-areas: "logo name arrow";
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    grid-template-rows: auto;
+    align-items: center;
+    column-gap: 12px;
+  }
+  .name { align-self: center; }
+}

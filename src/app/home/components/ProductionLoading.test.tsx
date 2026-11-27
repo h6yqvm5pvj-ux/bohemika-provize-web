@@ -36,6 +36,16 @@ describe("production UI with an unfinished TIP summary", () => {
     vi.unstubAllGlobals();
   });
 
+  it("reports the first committed production numbers after the loader, including a valid zero", async () => {
+    const onDataShown = vi.fn();
+    await act(async () => root.render(<ProductionSummarySection {...production} loading onDataShown={onDataShown} />));
+    expect(onDataShown).not.toHaveBeenCalled();
+    await act(async () => root.render(<ProductionSummarySection {...production} myImmediateSum={0}
+      updatedAt={1000} onDataShown={onDataShown} />));
+    expect(cards("own")[0].querySelector('[data-money="0"]')).not.toBeNull();
+    expect(onDataShown).toHaveBeenCalledOnce();
+  });
+
   it("shows finished own/team amounts while hiding pending TIP/combined amounts and trends", async () => {
     await act(async () => root.render(<ProductionSummarySection {...production} tipSummaryLoading />));
     expect(cards("own").every(card => card.querySelector('[data-money="111"]'))).toBe(true);

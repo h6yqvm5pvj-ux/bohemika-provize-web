@@ -60,7 +60,8 @@ export function summarizeCommissionPayouts(
     records.forEach(record => assigned.add(record));
     const active = activePayoutRecordsAfterFullStornos(records.filter(record => !deductions.has(record)), product);
     const payout = amounts(records);
-    const expected = !payout.hasPayment || row.expected === null || !Number.isFinite(row.expected) ? null
+    const plannedDeduction = row.expected !== null && row.expected < 0 && payout.paidBeforeStorno < 0;
+    const expected = (!payout.hasPayment && !plannedDeduction) || row.expected === null || !Number.isFinite(row.expected) ? null
       : active.length === 0 ? 0 : Math.round(row.expected * 100);
     return [{ ...row, expected, ...payout, records }];
   });

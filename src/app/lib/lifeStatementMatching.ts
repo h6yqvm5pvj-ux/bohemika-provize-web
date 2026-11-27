@@ -19,6 +19,8 @@ export type LifeStatementEntry = {
 
 export type LifeStatementSource = {
   commissionCode?: string | null;
+  commission?: number | null;
+  status?: string | null;
   baseAmount?: number | null;
   validFrom?: string | null;
   signedAt?: string | null;
@@ -80,18 +82,35 @@ export function matchFlexiIncreaseByCommission<T extends LifeStatementEntry>(ent
 }
 
 /** The caller supplies a single, backend-authorized policy family. Never break ties by order. */
-export function matchLifeStatementEntry<T extends LifeStatementEntry>(entries: T[], row: LifeStatementSource): T | null {
+export function matchLifeStatementEntry<T extends LifeStatementEntry>(
+  entries: T[], row: LifeStatementSource, statementDay?: string | null,
+): T | null {
   const increase = isLifeIncreaseCode(row.commissionCode);
   const endorsements = entries.filter(entry => entry.entryType === "endorsement");
-  let candidates = increase
-    ? endorsements.filter(entry => matchesLifePremiumIncrease(entry, row.baseAmount ?? NaN))
-    : entries;
+  let candidates = increase ? endorsements : entries;
   // Keep evidence on a standalone legacy original without claiming it settles
   // its acquisition commission. Once amendments exist, an increase must match one.
   if (increase && endorsements.length === 0 && entries.length === 1) return entries[0];
   const effective = sourceDay(row.validFrom);
   if (row.validFrom && !effective) return null;
-  if (effective) candidates = candidates.filter(entry => endorsementCommissionDay(entry.policyStartDate) === effective);
+  if (effective) {
+    const exact = candidates.filter(entry => endorsementCommissionDay(entry.policyStartDate) === effective);
+    if (!exact.length) {
+      // Some NEON top-up rows give the first of the month for both dates.
+      const component = lifeIncreaseItemCode(row.commissionCode);
+      const monthDatedTopUp = (component === "A101" || component === "B0301") && effective.endsWith("-01") &&
+        sourceDay(row.signedAt) === effective && row.status !== "storno" && (row.commission ?? 0) > 0;
+      if (!monthDatedTopUp || !statementDay) return null;
+      const sameMonth = endorsements.filter(entry => {
+        const start = endorsementCommissionDay(entry.policyStartDate);
+        return entry.productKey === "neon" && start?.slice(0, 7) === effective.slice(0, 7) &&
+          start <= statementDay && matchesLifePremiumIncrease(entry, row.baseAmount ?? NaN);
+      });
+      return sameMonth.length === 1 ? sameMonth[0] : null;
+    }
+    candidates = exact;
+  }
+  if (increase) candidates = candidates.filter(entry => matchesLifePremiumIncrease(entry, row.baseAmount ?? NaN));
   if (!effective && !increase) candidates = candidates.filter(entry => entry.entryType !== "endorsement");
   if (candidates.length > 1) {
     const signed = sourceDay(row.signedAt);
@@ -100,13 +119,14 @@ export function matchLifeStatementEntry<T extends LifeStatementEntry>(entries: T
   return candidates.length === 1 ? candidates[0] : null;
 }
 
-export function matchDatedLifeIncreaseReceipt<T extends LifeStatementEntry>(entries: T[], row: FlexiIncreaseSource): T | null {
+export function matchDatedLifeIncreaseReceipt<T extends LifeStatementEntry>(
+  entries: T[], row: FlexiIncreaseSource, statementDay?: string | null,
+): T | null {
   const effective = sourceDay(row.validFrom);
   if (!effective || !isLifeIncreaseCode(row.commissionCode)) return null;
-  const endorsements = entries.filter(entry => entry.entryType === "endorsement" &&
-    endorsementCommissionDay(entry.policyStartDate) === effective);
+  const endorsements = entries.filter(entry => entry.entryType === "endorsement");
   if (endorsements.length === 0) return null;
   return isFlexiIncreaseWithoutBase(endorsements[0].productKey, row)
-    ? matchFlexiIncreaseByCommission(endorsements, [row])
-    : matchLifeStatementEntry(endorsements, row);
+    ? matchFlexiIncreaseByCommission(endorsements.filter(entry => endorsementCommissionDay(entry.policyStartDate) === effective), [row])
+    : matchLifeStatementEntry(endorsements, row, statementDay);
 }

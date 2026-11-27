@@ -23,6 +23,7 @@ export type FirestoreTimestamp = {
 };
 
 export type ContractDoc = {
+  hasAnniversaryCallback?: boolean;
   neonCorrection?: import("@/app/lib/neonCorrection").NeonCorrection | null;
   commissionPayoutCodeAdjustment?: import("@/app/lib/commissionPayoutCodeAdjustment").CommissionPayoutCodeAdjustment | null;
   isDip?: boolean | null;

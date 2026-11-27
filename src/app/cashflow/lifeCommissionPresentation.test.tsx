@@ -6,6 +6,8 @@ import { commissionLabelForItem } from "./commissionPresentation";
 import { CashflowCommissionCard } from "./components/CashflowCommissionCard";
 import { buildCashflowView } from "./buildCashflowView";
 import { generateCashflow } from "./generator";
+import { applyStatementMissingPayoutShifts } from "./helpers";
+import { parseCashflowSnapshot, serializeCashflowSnapshot } from "./cashflowSnapshotWire";
 import type { CashflowCommissionStatementSummary, CashflowItem, EntryDoc } from "./types";
 
 const entry: EntryDoc = {
@@ -29,6 +31,34 @@ describe("specific life commission labels in cashflow", () => {
       Array.from({ length: 6 }, (_, index) => new Date(2026 + index, 6, 25))
     );
     expect(care[0].commissionPeriodStart).toBe("2025-06-01");
+  });
+
+  it("keeps shifted care receipts in their actual payout month and the next care year open", () => {
+    const policy = { ...entry, policyStartDate: "2018-02-01", source: "own" as const, contractNumber: "1234567890",
+      commissionPayouts: [
+        { code: "B202", key: "care-a", amount: 110, status: "difference", payoutMonthKey: "2023-11", writtenBy: entry.userEmail },
+        { code: "B203", key: "care-b", amount: 110, status: "difference", statementDate: "25.03.2024", writtenBy: entry.userEmail },
+      ] };
+    const items = generateCashflow([policy], 10, policy.userEmail!, new Date(2023, 0, 1));
+    const [first, second, next] = items.filter(item => item.commissionCode === "B201-B206");
+    expect(items.filter(item => item.commissionPayoutKey)).toHaveLength(2);
+    expect(first).toMatchObject({ date: new Date(2023, 10, 25), commissionPeriodStart: "2022-02-01",
+      statementCode: "B202", payoutStatus: "paid", amount: 110, commissionPayoutKey: "care-a" });
+    expect(second).toMatchObject({ date: new Date(2024, 2, 25), commissionPeriodStart: "2023-02-01",
+      statementCode: "B203", payoutStatus: "paid", amount: 110, commissionPayoutKey: "care-b" });
+    expect(commissionLabelForItem(next)).toContain("B203");
+    expect(next.commissionPayoutKey).toBeNull();
+    expect(parseCashflowSnapshot(serializeCashflowSnapshot({ items, months: [] }))?.items).toEqual(items);
+
+    const statement: CashflowCommissionStatementSummary = {
+      id: "test", fileName: "test.html", statementDate: null, period: null, advisorNumber: null, statementNumber: null,
+      periodStartMs: null, periodEndMs: null, statementDateMs: null, payoutMonthKey: "2024-3",
+      paidContractNumbers: [policy.contractNumber], paidCommissionKeys: [`${policy.contractNumber}:B203`],
+      commissionTotal: 110, payoutTotal: 110, otherPaymentsTotal: 0, managerCommissionTotal: 0, createdAtMs: 1, updatedAtMs: 1,
+    };
+    const reconciled = applyStatementMissingPayoutShifts({ enabled: true, statementsByMonthKey: { "2024-3": [statement] },
+      cashflowItems: [second, { ...next, date: second.date }] });
+    expect(reconciled.map(item => item.payoutStatus)).toEqual(["paid", "shifted"]);
   });
 
   it("keeps a June B201 receipt in 2026 and forecasts B202 in 2027 through month reconciliation", () => {

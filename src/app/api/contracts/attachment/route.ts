@@ -29,6 +29,7 @@ import {
   requireContractsEntryGuard,
 } from "../_lib/contractsApi";
 import type { ContractDoc, ErrorResponse } from "../_lib/contractsApi.types";
+import { CONTRACT_ACCESS_FIELDS } from "../_lib/contractsApi.access";
 import { isSafeContractNoteId } from "../notes/contractNotes";
 
 export const runtime = "nodejs";
@@ -79,11 +80,13 @@ async function loadContractForAttachment({
   entryId,
   viewerEmail,
   teamEmails,
+  forDownload = false,
 }: {
   ownerEmail: string;
   entryId: string;
   viewerEmail: string;
   teamEmails: string[];
+  forDownload?: boolean;
 }) {
   if (!adminDb) {
     return {
@@ -103,7 +106,11 @@ async function loadContractForAttachment({
     .doc(ownerEmail)
     .collection("entries")
     .doc(entryId);
-  const entrySnap = await entryRef.get();
+  const entrySnap = forDownload
+    ? (await adminDb.getAll(entryRef, {
+        fieldMask: [...CONTRACT_ACCESS_FIELDS, "contractNumber", "contractPdfAttachment"],
+      }))[0]
+    : await entryRef.get();
   if (!entrySnap.exists) {
     return {
       ok: false,
@@ -400,6 +407,7 @@ export async function GET(req: NextRequest) {
   const ownerEmail = normalizeEmail(req.nextUrl.searchParams.get("ownerEmail"));
   const entryId = normalizeEntryId(req.nextUrl.searchParams.get("entryId"));
   const loaded = await loadContractForAttachment({
+    forDownload: true,
     ownerEmail,
     entryId,
     viewerEmail: ctx.email,

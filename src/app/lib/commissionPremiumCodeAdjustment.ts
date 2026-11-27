@@ -1,6 +1,7 @@
 import { createCommissionCodeProjection, hasAnnualCommissionCodeSchedule, type CommissionCodeContract, type CommissionCodeReceipt } from "./commissionPayoutCodeAdjustment";
 import { commissionPeriodAfterMonths, commissionPeriodForCode } from "./commissionPeriodForCode";
 import { anniversaryNumberFromInstallmentCommissionCode, installmentPaymentsPerYear } from "./productFormulas/autoCommission";
+import { normalizePaymentFrequencyChanges } from "./autoPaymentFrequency";
 
 type CodeProjection = ReturnType<typeof createCommissionCodeProjection>;
 export type PremiumCodeProjection = { resolvedCommissionCode?: string; commissionCodeCorrectionNote?: string };
@@ -43,7 +44,7 @@ const positive = (value: unknown): number | null => typeof value === "number" &&
 
 /** Recompute derived periods and deltas, retaining original source codes and all stored evidence. */
 export function projectConfirmedPremiumHistory<T extends History>(entry: CommissionCodeContract, history: T[], payouts: readonly PremiumCodeReceipt[] = []): (T & PremiumCodeProjection)[] {
-  if (entry.frequencyRaw === "semiannual" ||
+  if (entry.frequencyRaw === "semiannual" || (entry.productKey === "kooperativaAuto" && !hasAnnualCommissionCodeSchedule(entry)) ||
       (entry.frequencyRaw === "quarterly" && entry.commissionPayoutCodeAdjustment)) {
     const paymentsPerYear = installmentPaymentsPerYear(entry.frequencyRaw);
     const project = createCommissionCodeProjection(entry, payouts);
@@ -52,8 +53,12 @@ export function projectConfirmedPremiumHistory<T extends History>(entry: Commiss
       if (record.premiumKind !== "auto_change") return [record];
       const projection = premiumCodeProjection(entry, { ...record, resolvedCommissionCode: undefined }, project);
       if (!projection.resolvedCommissionCode) return [record];
-      const date = commissionPeriodForCode({ ...entry, paymentFrequencyChanges: undefined }, projection.resolvedCommissionCode);
-      const anniversaryNumber = anniversaryNumberFromInstallmentCommissionCode(projection.resolvedCommissionCode, entry.frequencyRaw);
+      const date = commissionPeriodForCode({ ...entry, paymentFrequencyChanges: entry.productKey === "kooperativaAuto"
+        ? normalizePaymentFrequencyChanges(entry.paymentFrequencyChanges) : undefined }, projection.resolvedCommissionCode);
+      const start = entry.productKey === "kooperativaAuto" && commissionPeriodAfterMonths(entry.policyStartDate, 0);
+      const years = start && date ? Number(date.slice(0, 4)) - Number(start.slice(0, 4)) : null;
+      const anniversaryNumber = years === null ? anniversaryNumberFromInstallmentCommissionCode(projection.resolvedCommissionCode, entry.frequencyRaw)
+        : years > 0 && commissionPeriodAfterMonths(start, years * 12) === date ? years : null;
       if (date && anniversaryNumber != null) {
         corrected.add(JSON.stringify([record.writtenBy, date]));
         return [{ ...record, ...projection, anniversaryDate: date, anniversaryNumber }];

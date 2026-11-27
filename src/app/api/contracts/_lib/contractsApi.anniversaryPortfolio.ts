@@ -61,7 +61,7 @@ export async function readAnniversaryPortfolioPage({
   for (let i = cursor ? owners.indexOf(cursor.owner) : 0; i < owners.length; i++) {
     const owner = owners[i]!;
     let query = db.collection("users").doc(owner).collection("entries")
-      .select(...fields, ...dateFields).orderBy(FieldPath.documentId());
+      .select(...fields, ...dateFields, "hasAnniversaryCallback").orderBy(FieldPath.documentId());
     if (cursor?.owner === owner && cursor.entry) query = query.startAfter(cursor.entry);
     const snapshot = await query.limit(remaining + 1).get();
     const scanned = snapshot.docs.slice(0, remaining);
@@ -71,7 +71,7 @@ export async function readAnniversaryPortfolioPage({
         (!data.entryType || data.entryType === "contract") &&
         shouldTrackAnniversary(data.productKey) &&
         contractLifecycleStatus(data) === "active" &&
-        isAnniversarySoon(getAnniversaryStartDate(data)).soon
+        (data.hasAnniversaryCallback === true || isAnniversarySoon(getAnniversaryStartDate(data)).soon)
       ) {
         contracts.push(toAnniversaryContract(doc.id, owner, data));
       }

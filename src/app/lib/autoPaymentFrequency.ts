@@ -2,12 +2,14 @@ import type { PaymentFrequency, Product } from "@/app/types/domain";
 import { isAutoProduct, isFrequencyAutoPayoutProduct } from "./productCatalog";
 import { endorsementCommissionDay } from "./endorsementCommissionPlan";
 import { periodsPerYear } from "./productFormulas/shared";
+import { domexSubsequentPayoutYears } from "./productFormulas/domex";
 
 export type PaymentFrequencyChange = { effectiveDate: string; frequency: PaymentFrequency; annualPremium?: number; baseAnnualPremium?: number; endorsementId?: string };
 export type PaymentFrequencyContract = {
   productKey?: Product | null;
   frequencyRaw?: PaymentFrequency | string | null;
   policyStartDate?: unknown;
+  contractSignedDate?: unknown;
   paymentFrequencyChanges?: PaymentFrequencyChange[] | null;
 };
 export const MAX_PAYMENT_FREQUENCY_CHANGES = 50;
@@ -20,11 +22,15 @@ export function autoPaymentFrequencies(product?: Product | null): PaymentFrequen
 }
 
 export function contractPaymentFrequencies(product?: Product | null): PaymentFrequency[] {
-  return product === "cppPPRs" ? frequencies.slice(1) : autoPaymentFrequencies(product);
+  return supportsCppPropertyPaymentChanges(product) ? frequencies.slice(1) : autoPaymentFrequencies(product);
+}
+
+export function supportsCppPropertyPaymentChanges(product?: Product | null): boolean {
+  return product === "cppPPRs" || product === "domex";
 }
 
 export function hasDatedCommissionSchedule(product?: Product | null): boolean {
-  return product === "cppPPRs" || (isFrequencyAutoPayoutProduct(product) && product !== "uniqaAuto" && product !== "uniqaflotila");
+  return supportsCppPropertyPaymentChanges(product) || (isFrequencyAutoPayoutProduct(product) && product !== "uniqaAuto" && product !== "uniqaflotila");
 }
 
 export function normalizePaymentFrequencyChanges(value: unknown): PaymentFrequencyChange[] {
@@ -82,6 +88,9 @@ export function autoFrequencyCommissionPeriods(contract: PaymentFrequencyContrac
   const changes = normalizePaymentFrequencyChanges(contract.paymentFrequencyChanges);
   if (changes.some(change => change.effectiveDate <= start)) throw new Error("Změna musí následovat po počátku smlouvy.");
   const anniversary = afterMonths(start, 12);
+  const renewalYears = contract.productKey === "domex"
+    ? domexSubsequentPayoutYears(endorsementCommissionDay(contract.contractSignedDate)) : null;
+  const scheduleEnd = renewalYears != null ? afterMonths(start, (1 + renewalYears) * 12) : null;
   const frequencyChanges = changes.filter((change, index) => change.frequency !== (index ? changes[index - 1].frequency : initial));
   // KOMPLEX keeps the original acquisition installments. The new frequency
   // applies to subsequent installments, starting at the first anniversary.
@@ -100,7 +109,7 @@ export function autoFrequencyCommissionPeriods(contract: PaymentFrequencyContrac
     // The supported date range has at most 3,600 monthly installments per segment.
     for (let offset = 0; offset <= 3600; offset += step) {
       const period = afterMonths(segment.effectiveDate, offset);
-      if (period > until || (next && period >= next)) break;
+      if (period > until || (next && period >= next) || (scheduleEnd && period >= scheduleEnd)) break;
       const subsequent = period >= anniversary;
       const sequence = subsequent ? ++subsequentIndex : ++initialIndex;
       result.push({ code: `${subsequent ? "B" : "A"}${100 + sequence}`, period, frequency: segment.frequency });
@@ -114,7 +123,7 @@ export function autoAnnualPremiumAtDate(contract: PaymentFrequencyContract & { i
   const changes = normalizePaymentFrequencyChanges(contract.paymentFrequencyChanges);
   const count = contract.frequencyRaw === "monthly" ? 12 : contract.frequencyRaw === "quarterly" ? 4 : contract.frequencyRaw === "semiannual" ? 2 : 1;
   const original = changes.find(change => change.baseAnnualPremium != null)?.baseAnnualPremium ?? contract.signedAnnualPremiumOverride ??
-    (typeof contract.inputAmount === "number" ? contract.inputAmount * (isFrequencyAutoPayoutProduct(contract.productKey) || contract.productKey === "cppPPRs" ? count : 1) : null);
+    (typeof contract.inputAmount === "number" ? contract.inputAmount * (isFrequencyAutoPayoutProduct(contract.productKey) || supportsCppPropertyPaymentChanges(contract.productKey) ? count : 1) : null);
   let premium = original;
   for (const change of changes) {
     if (change.effectiveDate > day) break;
@@ -123,10 +132,10 @@ export function autoAnnualPremiumAtDate(contract: PaymentFrequencyContract & { i
   return premium != null && Number.isFinite(premium) && premium > 0 ? premium : null;
 }
 
-/** Apply the dated premium and payment count to a stored KOMPLEX renewal item. */
-export function cppKomplexRenewalCommissionMultiplier(contract: Parameters<typeof autoAnnualPremiumAtDate>[0], day: string): number {
+/** Scale a stored per-payment commission by the change in premium per installment. */
+export function cppPaymentCommissionMultiplier(contract: Parameters<typeof autoAnnualPremiumAtDate>[0], day: string): number {
   const start = endorsementCommissionDay(contract.policyStartDate);
-  if (contract.productKey !== "cppPPRs" || !start || !contract.paymentFrequencyChanges?.length) return 1;
+  if (!supportsCppPropertyPaymentChanges(contract.productKey) || !start || !contract.paymentFrequencyChanges?.length) return 1;
   const base = autoAnnualPremiumAtDate(contract, start);
   const current = autoAnnualPremiumAtDate(contract, day);
   return base != null && current != null ? current / base * autoFrequencyCommissionMultiplier(contract, day) : 1;

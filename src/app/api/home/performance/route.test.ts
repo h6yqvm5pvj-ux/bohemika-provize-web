@@ -14,12 +14,18 @@ describe("bounded authenticated home performance reporting", () => {
     expect(console.info).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ event: "home.performance", version: 1, samples: [sample] }));
     expect(mocks.guard).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ limit: 20, windowMs: 60_000 }));
   });
+  it.each(["homeProfile", "firstProduction"])("accepts the bounded audience for %s", async stage => {
+    const samples = ["advisor", "manager"].map(audience => ({ ...sample, stage, audience }));
+    expect((await POST(request({ version: 1, samples }))).status).toBe(200);
+    expect(JSON.parse(vi.mocked(console.info).mock.calls[0][0]).samples).toEqual(samples);
+  });
   it.each([401, 403, 429])("honors the authentication and rate limit guard (%s) before accepting metrics", async status => {
     mocks.guard.mockResolvedValue({ ok: false, response: NextResponse.json({}, { status }) });
     expect((await POST(request({ version: 1, samples: [sample] }))).status).toBe(status);
     expect(console.info).not.toHaveBeenCalled();
   });
   it.each([
+    { ...sample, audience: "manager" }, { ...sample, stage: "homeProfile", audience: "private@example.test" },
     { ...sample, amount: 12345 }, { ...sample, email: "a@example.test" }, { ...sample, durationMs: -1 },
     { ...sample, durationMs: 180001 }, { ...sample, durationMs: 1.5 }, { ...sample, stage: "arbitrary" },
     { ...sample, outcome: "private error" }, { ...sample, device: "unknown" }, null,

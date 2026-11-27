@@ -24,11 +24,15 @@ export function CommissionComparisonRow({
   const differs = Math.abs(difference) > COMMISSION_PAYOUT_AMOUNT_TOLERANCE;
   const tone = storno || includedIn || flagged ? "difference"
     : paid === null ? "pending" : differs ? "difference" : "matched";
+  const deduction = expected < 0;
+  const differenceLabel = deduction
+    ? difference < 0 ? "Odečteno více o" : "Odečteno méně o"
+    : difference < 0 ? "Vyplaceno méně o" : "Vyplaceno více o";
   const status = cancellationStatus ?? (storno ? "Storno"
     : includedIn ? "Výplata nad plán"
-    : paid === null ? (expected === 0 ? "Bez očekávané výplaty" : "Čeká na výplatu")
-    : differs ? `${difference < 0 ? "Vyplaceno méně o" : "Vyplaceno více o"} ${formatMoney(Math.abs(difference))}`
-    : flagged ? "Nesrovnalost ve výpisu" : "Vyplaceno dle očekávání");
+    : paid === null ? (deduction ? "Čeká na odpočet" : expected === 0 ? "Bez očekávané výplaty" : "Čeká na výplatu")
+    : differs ? `${differenceLabel} ${formatMoney(Math.abs(difference))}`
+    : flagged ? "Nesrovnalost ve výpisu" : deduction ? "Odečteno dle očekávání" : "Vyplaceno dle očekávání");
   const StatusIcon = cancellationStatus ? Minus : tone === "matched" ? Check : tone === "pending" ? Clock3 : CircleAlert;
 
   return (
@@ -48,7 +52,7 @@ export function CommissionComparisonRow({
             <strong>{formatMoney(expected)}</strong>
           </span>
           <span className={styles.comparisonMetric}>
-            <small>{storno ? "Odúčtováno" : "Vyplaceno"} </small>
+            <small>{deduction ? "Odečteno" : storno ? "Odúčtováno" : "Vyplaceno"} </small>
             <strong>{paid === null ? "—" : formatMoney(paid)}</strong>
           </span>
         </>}

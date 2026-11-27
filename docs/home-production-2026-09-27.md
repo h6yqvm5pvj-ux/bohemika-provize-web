@@ -45,8 +45,10 @@ Výše uvedené ověření proběhlo lokálně. Změna nevyžaduje migraci ani p
 
 ### Měření po nasazení
 
-`home.performance` jsou události v existujících serverových logách, nikoli nové dokumenty databáze. Obsahují pouze etapu, celé milisekundy, výsledek a rozlišení mobil/desktop podle šířky 768 px:
+`home.performance` jsou události v existujících serverových logách. Zaznamenávají etapu, celé milisekundy, výsledek a rozlišení mobil/desktop podle šířky 768 px. U etap `homeProfile` a `firstProduction` umožňuje volitelné pole `audience` porovnat poradce (`advisor`) a manažery (`manager`).
 
+- `homeProfile` měří dobu od zahájení načítání profilu po potvrzení přihlášeného účtu do vyhodnocení profilu.
+- `firstProduction` začíná ve stejný okamžik a končí, když React zobrazí první částky v kartě produkce. Započítává i dříve úspěšně načtené částky z cache. Vypnutá karta ukončí měření jako zrušené.
 - `production`: vlastní a týmový měsíční souhrn od spuštění načítání.
 - `productionTip`: samostatná TIP produkce.
 - `leaderboard`: připravenost aktuálního nebo vybraného historického období, včetně rychlého použití klientské cache.

@@ -59,15 +59,6 @@ export function cppPPRsSubsequentCoefficient(position: Position): number {
   return cppPPRsCoefficient(position);
 }
 
-export function expectedCppPPRsRenewalAmount(items: CommissionResultItemDTO[], multiplier: number): number | null {
-  const candidates = items.filter(item => typeof item?.title === "string" && Number.isFinite(item.amount)).map(item => ({
-    amount: item.amount,
-    title: item.title.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase(),
-  })).filter(item => item.title.includes("nasledna provize") && !item.title.includes("za rok"));
-  const perPayment = candidates.find(item => item.title.includes("z platby")) ?? candidates[0];
-  return perPayment ? Math.round(perPayment.amount * multiplier * 100) / 100 : null;
-}
-
 export function calculateCppPPRs(
   amount: number,
   frequency: PaymentFrequency,

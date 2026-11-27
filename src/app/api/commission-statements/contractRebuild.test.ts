@@ -440,10 +440,10 @@ describe("statement comparisons after premium-decrease endorsements", () => {
     expect(payouts()).toEqual([expect.objectContaining({ code: "A102", expectedAmount: 80, status: "paid" })]);
   });
 
-  it("compares a KOMPLEX renewal to the dated premium and frequency of its insured period", async () => {
-    setup(rowHtml("B101", 480, 6000).replace("CPP_NEON", "CPP_PPR"));
+  it.each([["cppPPRs", "CPP_PPR"], ["domex", "CPP_DOMEX+"]])("compares a %s renewal to the dated premium and frequency of its insured period", async (productKey, statementCode) => {
+    setup(rowHtml("B101", 480, 6000).replace("CPP_NEON", statementCode));
     records.delete(decreasePath);
-    Object.assign(records.get(entryPath)!, { productKey: "cppPPRs", frequencyRaw: "annual", inputAmount: 10000,
+    Object.assign(records.get(entryPath)!, { productKey, frequencyRaw: "annual", inputAmount: 10000,
       items: [{ code: "B101", title: "Následná provize (z platby)", amount: 800 }],
       paymentFrequencyChanges: [{ effectiveDate: "2025-01-01", frequency: "semiannual", annualPremium: 12000, baseAnnualPremium: 10000 }],
     });
@@ -1910,8 +1910,8 @@ describe("equal life premium increases in one policy family", () => {
       ownerEmail: owner, entryId: path.split("/").at(-1), entryPath: path, contractNumberNormalized: contractNumber,
     });
   };
-  const row = (id: number, code: string, effective: string, base: number | "", amount: number, product = "CPP_N_LIFE") => {
-    const cells = [id, contractNumber, "01.01.2024", effective, "Synthetic client", "R", product, code, base, "", "", product === "KOOP_FLEXI" ? "10" : "7", amount, 0];
+  const row = (id: number, code: string, effective: string, base: number | "", amount: number, product = "CPP_N_LIFE", signedAt = "01.01.2024") => {
+    const cells = [id, contractNumber, signedAt, effective, "Synthetic client", "R", product, code, base, "", "", product === "KOOP_FLEXI" ? "10" : "7", amount, 0];
     return `<tr>${cells.map(value => `<td>${value}</td>`).join("")}</tr>`;
   };
   const uploadFamily = async (rows: string, number = "family-1", statementDate = "23.10.2025", period = "01.09.2025 - 30.09.2025") => {
@@ -2009,6 +2009,16 @@ describe("equal life premium increases in one policy family", () => {
     await uploadFamily(row(1, "NV101", "01.05.2025", 1200, 100) + row(2, "NB0301", "01.05.2025", 1200, 25));
     expect(codes(firstPath)).toEqual(["NV101", "NB0301"]);
     expect(codes(secondPath)).toEqual([]);
+  });
+  it("imports both month-dated immediate NEON payouts onto the mid-month increase only once", async () => {
+    setupFamily();
+    records.get(firstPath)!.policyStartDate = "2025-05-14";
+    const rows = row(1, "NV101", "01.05.2025", 1200, 100.18, "CPP_N_LIFE", "01.05.2025") +
+      row(2, "NB0301", "01.05.2025", 1200, 25.15, "CPP_N_LIFE", "01.05.2025");
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await uploadFamily(rows);
+      expect([codes(entryPath), codes(firstPath), codes(secondPath)]).toEqual([[], ["NV101", "NB0301"], []]);
+    }
   });
   it("assigns two equal NV101 rows independently when their statements arrive out of order", async () => {
     setupFamily();

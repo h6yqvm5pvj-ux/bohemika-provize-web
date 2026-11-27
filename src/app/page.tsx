@@ -52,6 +52,7 @@ import {
 import { AppLayout } from "@/components/AppLayout";
 import headerStyles from "./home/components/homeHeader.module.css";
 import { GlobalSearchCommand } from "@/components/search/GlobalSearchCommand";
+import { startHomeTiming } from "./home/homePerformance";
 import { invalidateHomeCache, useHomeData } from "./home/useHomeData";
 import { type PaymentFrequency, type Product } from "./types/domain";
 import {
@@ -476,9 +477,12 @@ export default function HomePage() {
   const [accessProfileReady, setAccessProfileReady] = useState(false);
   const [accessProfileError, setAccessProfileError] = useState<string | null>(null);
   const [accessProfile, setAccessProfile] = useState<Record<string, unknown> | null>(null);
-  const [accessProfileHasTeam, setAccessProfileHasTeam] = useState(false);
   const [mailUnreadCount, setMailUnreadCount] = useState(0);
   const normalizedEmail = useEffectiveUserEmail(user?.email) || null;
+  const homeScope = user && normalizedEmail ? JSON.stringify([user.uid, normalizedEmail]) : null;
+  const [profileScope, setProfileScope] = useState<string | null>(null);
+  const [settingsScope, setSettingsScope] = useState<string | null>(null);
+  const firstProduction = useRef<ReturnType<typeof startHomeTiming> | null>(null);
   const effectiveAdvisorEmail = useMemo(
     () => resolveEffectiveAdvisorEmail(user, accessProfile),
     [accessProfile, user]
@@ -489,7 +493,8 @@ export default function HomePage() {
   const copy = HOME_COPY[language];
   const accountType = useMemo(() => resolveAccountType(accessProfile), [accessProfile]);
   const shouldLoadAdvisorHome =
-    authReady && !!user && accessProfileReady && accountType !== "tipster";
+    authReady && !!user && accessProfileReady && !accessProfileError && accountType !== "tipster" &&
+    homeScope !== null && profileScope === homeScope && settingsScope === homeScope;
   const advisorDataEmail = shouldLoadAdvisorHome ? effectiveAdvisorEmail : null;
   const shouldLoadExpectedPayout =
     shouldLoadAdvisorHome && homeWidgets.expectedPayout;
@@ -531,8 +536,8 @@ export default function HomePage() {
   } = useHomeData({
     email: advisorDataEmail,
     loadPersonalHistory: false,
+    loadTipSummary: homeWidgets.productionSummary || homeWidgets.monthlyGoal,
     teamHistoryMonths,
-    initialHasTeam: accessProfileHasTeam,
     reloadKey: homeReloadKey,
   });
   const [expectedPayoutLoading, setExpectedPayoutLoading] = useState(false);
@@ -576,7 +581,8 @@ export default function HomePage() {
     let lastUserId: string | null = null;
     const clearProfileState = (ready: boolean) => {
       setAccessProfile(null);
-      setAccessProfileHasTeam(false);
+      setProfileScope(null);
+      setSettingsScope(null);
       setAccessProfileError(null);
       setAccessProfileReady(ready);
       setMailUnreadCount(0);
@@ -650,37 +656,50 @@ export default function HomePage() {
 
     let cancelled = false;
     const requestScopeEmail = normalizedEmail;
+    const profileTiming = startHomeTiming("homeProfile");
+    const firstTiming = startHomeTiming("firstProduction");
+    firstProduction.current = firstTiming;
+    let generation = 0;
 
     const loadProfile = (force = false) => {
+      const attempt = ++generation;
       setAccessProfileReady(false);
       setAccessProfileError(null);
 
       getUserProfileCached(user, { maxAgeMs: 60 * 1000, force })
         .then((payload) => {
           if (
-            cancelled ||
+            cancelled || attempt !== generation || auth.currentUser?.uid !== user.uid ||
             effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
           ) return;
           const profile = (payload?.profile ?? {}) as Record<string, unknown>;
+          if (resolveAccountType(profile) === "tipster") {
+            profileTiming("cancelled");
+            firstTiming("cancelled");
+          } else {
+            const manager = payload?.hasTeam || (typeof profile.position === "string" && profile.position.startsWith("manazer"));
+            profileTiming("success", manager ? "manager" : "advisor");
+          }
+          setProfileScope(homeScope);
           setAccessProfile(profile);
-          setAccessProfileHasTeam(payload?.hasTeam === true);
           if (typeof profile.language === "string") {
             setLanguage(applyHomeLanguagePreference(profile.language));
           }
         })
         .catch((error) => {
           if (
-            cancelled ||
+            cancelled || attempt !== generation || auth.currentUser?.uid !== user.uid ||
             effectiveUserEmail(auth.currentUser?.email) !== requestScopeEmail
           ) return;
+          profileTiming("error");
+          firstTiming("error");
           console.error("Ověření typu účtu selhalo:", error);
           setAccessProfile(null);
-          setAccessProfileHasTeam(false);
           setAccessProfileError(HOME_COPY.cs.profileTypeLoadError);
         })
         .finally(() => {
           if (
-            !cancelled &&
+            !cancelled && attempt === generation && auth.currentUser?.uid === user.uid &&
             effectiveUserEmail(auth.currentUser?.email) === requestScopeEmail
           ) {
             setAccessProfileReady(true);
@@ -697,9 +716,12 @@ export default function HomePage() {
 
     return () => {
       cancelled = true;
+      profileTiming("cancelled");
+      firstTiming("cancelled");
+      firstProduction.current = null;
       window.removeEventListener("app:refresh-user-profile", onRefreshProfile);
     };
-  }, [authReady, normalizedEmail, user]);
+  }, [authReady, homeScope, normalizedEmail, user]);
 
   const refreshMailUnreadCount = useCallback(async () => {
     const currentUser = auth.currentUser;
@@ -797,7 +819,9 @@ export default function HomePage() {
   // Nastavení domova jsou vždy synchronizována s profilem; lokální uložiště slouží
   // jen jako okamžitá záloha při nedostupném připojení.
   useEffect(() => {
-    if (!normalizedEmail) return;
+    if (!normalizedEmail || !user || !homeScope) return;
+    let active = true;
+    const current = () => active && auth.currentUser?.uid === user.uid && effectiveUserEmail(user.email) === normalizedEmail;
     const email = normalizedEmail;
 
     const loadFromDevice = () => {
@@ -813,13 +837,10 @@ export default function HomePage() {
 
     const load = async () => {
       try {
-        if (!auth.currentUser) {
-          loadFromDevice();
-          return;
-        }
-        const payload = await getUserProfileCached(auth.currentUser, {
+        const payload = await getUserProfileCached(user, {
           maxAgeMs: 60 * 1000,
         });
+        if (!current()) return;
         const data = (payload?.profile ?? {}) as any;
 
         const cloudLayout = (data?.homeLayout as HomeSection[] | undefined) ?? null;
@@ -891,13 +912,17 @@ export default function HomePage() {
           void pushHomeSettingsToCloud(settingsToSynchronize);
         }
       } catch (e) {
+        if (!current()) return;
         console.error("Načtení nastavení domova selhalo", e);
         loadFromDevice();
+      } finally {
+        if (current()) setSettingsScope(homeScope);
       }
     };
 
-    load();
-  }, [normalizedEmail, pushHomeSettingsToCloud]);
+    void load();
+    return () => { active = false; };
+  }, [homeScope, normalizedEmail, pushHomeSettingsToCloud, user]);
 
   useEffect(() => {
     homeLayoutRef.current = homeLayout;
@@ -923,6 +948,14 @@ export default function HomePage() {
   }, [normalizedEmail]);
 
   const isManager = isManagerPosition(userMeta?.position ?? null) || hasTeam;
+  const reportFirstProduction = useCallback(() => {
+    firstProduction.current?.("success", isManager ? "manager" : "advisor");
+  }, [isManager]);
+  useEffect(() => {
+    if (!shouldLoadAdvisorHome) return;
+    if (!homeWidgets.productionSummary) firstProduction.current?.("cancelled");
+    else if (summaryError && !summaryUpdatedAt) firstProduction.current?.("error", isManager ? "manager" : "advisor");
+  }, [homeWidgets.productionSummary, isManager, shouldLoadAdvisorHome, summaryError, summaryUpdatedAt]);
   const showTeamBox = hasTeam;
   const hasTipContract = myTipContractsCount > 0 || tipSummaryLoading || Boolean(tipSummaryError);
   // Poradce bez týmu potřebuje plnou šířku až ve chvíli, kdy vedle vlastní
@@ -1219,6 +1252,7 @@ export default function HomePage() {
         if (!showProductionSummary) return null;
         return (
           <ProductionSummarySection
+            onDataShown={reportFirstProduction}
             language={language}
             loading={summaryLoading}
             error={summaryError}
@@ -1357,7 +1391,7 @@ export default function HomePage() {
     return <AppLayout active="home">{null}</AppLayout>;
   }
 
-  if (!accessProfileReady) {
+  if (!accessProfileReady || (!accessProfileError && profileScope !== homeScope)) {
     return (
       <AppLayout active="home">
         <div className="flex min-h-[70vh] w-full items-center justify-center bg-slate-50 px-4">

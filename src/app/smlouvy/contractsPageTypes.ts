@@ -52,6 +52,7 @@ export type ContractDoc = {
   premiumDelta?: number | null;
   changeType?: "increase" | "decrease" | "same" | string | null;
   frequencyRaw?: PaymentFrequency | null;
+  paymentFrequencyChanges?: import("@/app/lib/autoPaymentFrequency").PaymentFrequencyChange[] | null;
   total?: number;
 
   userEmail?: string | null;

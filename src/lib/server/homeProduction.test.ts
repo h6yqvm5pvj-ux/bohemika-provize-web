@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
-import { loadOwnerHomeProduction, parseProductionWindow } from "./homeProduction";
+import { loadHomeProductionOwners, loadOwnerHomeProduction, parseProductionWindow } from "./homeProduction";
 import { markHallOwnerDirty } from "./hallOfFameProjection";
 
 const email = "owner@example.test";
@@ -19,6 +19,21 @@ function database() {
 }
 
 describe("persisted home production", () => {
+  it("bounds cache reads for large rosters, deduplicates owners and rejects an incomplete batch", async () => {
+    const fake = database();
+    const owners = Array.from({ length: 33 }, (_, i) => `owner-${i}@example.test`);
+    await loadHomeProductionOwners(fake.db, owners, window);
+    fake.readEntries.mockClear();
+    const readBatch = vi.spyOn(fake.tx, "getAll");
+    const totals = await loadHomeProductionOwners(fake.db, [...owners, owners[0]], window);
+    expect(totals.size).toBe(owners.length);
+    expect(readBatch.mock.calls.map(refs => refs.length)).toEqual([64, 2]);
+    expect(fake.readEntries).not.toHaveBeenCalled();
+
+    const originalRead = readBatch.getMockImplementation()!;
+    readBatch.mockImplementationOnce(originalRead).mockRejectedValueOnce(new Error("offline"));
+    await expect(loadHomeProductionOwners(fake.db, owners, window)).rejects.toThrow("offline");
+  });
   it("rebuilds old cached totals and excludes retired contracts from the replacement", async () => {
     const fake = database();
     await loadOwnerHomeProduction(fake.db, email, window);

@@ -28,10 +28,10 @@ export function nextAnniversaryDate(start: Date, now: Date): Date {
 
 export function isAnniversarySoon(
   date: Date | null,
-  windowDays: number = DEFAULT_ANNIVERSARY_WINDOW_DAYS
+  windowDays: number = DEFAULT_ANNIVERSARY_WINDOW_DAYS,
+  nowRaw = new Date()
 ): AnniversarySoonInfo {
   if (!date) return { soon: false };
-  const nowRaw = new Date();
   const now = new Date(nowRaw.getFullYear(), nowRaw.getMonth(), nowRaw.getDate());
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const next = nextAnniversaryDate(start, now);

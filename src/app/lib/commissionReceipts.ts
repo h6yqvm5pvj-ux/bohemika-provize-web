@@ -135,8 +135,9 @@ export function neonEndorsementForOriginalPayout<T extends EndorsementCommission
   if (!isLifeIncreaseCode(receipt.statementCode ?? receipt.code)) return null;
   if (receipt.sourceValidFrom) {
     return matchDatedLifeIncreaseReceipt(increases, { commissionCode: receipt.statementCode ?? receipt.code,
+      status: isStornoPayoutRecord(receipt) ? "storno" : receipt.status,
       baseAmount: receipt.sourceBaseAmount ?? receipt.statementBaseAmount, validFrom: receipt.sourceValidFrom,
-      signedAt: receipt.sourceSignedAt, commission: validPayoutAmount(receipt.amount) });
+      signedAt: receipt.sourceSignedAt, commission: validPayoutAmount(receipt.amount) }, commissionStatementDay(receipt));
   }
   const base = receipt.sourceBaseAmount ?? receipt.statementBaseAmount;
   const candidates = base != null ? increases.filter(change => matchesLifePremiumIncrease(change, base)) : increases;
@@ -179,7 +180,7 @@ export function uniqueFamilyCommissionReceipts<T extends Entry>(entries: T[], ev
         const amendment = increase && payout.sourceValidFrom && amount > 0 && !isStornoPayoutRecord(payout)
           ? matchDatedLifeIncreaseReceipt(family, { commissionCode: code, commission: amount,
               validFrom: payout.sourceValidFrom, signedAt: payout.sourceSignedAt,
-              baseAmount: payout.sourceBaseAmount ?? payout.statementBaseAmount }) : null;
+              baseAmount: payout.sourceBaseAmount ?? payout.statementBaseAmount }, commissionStatementDay(payout)) : null;
         const preferredKind = increase ? entry.entryType === "endorsement" : entry.entryType !== "endorsement";
         const rank = (amendment ? 4 : 0) + (preferredKind ? 2 : 0) + Number(typeof payout.expectedAmount === "number");
         const identity = JSON.stringify([writer, payout.statementId, payout.key, payout.code, amount]);

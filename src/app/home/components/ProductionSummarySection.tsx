@@ -19,6 +19,7 @@ type Props = {
   loading: boolean;
   error?: string | null;
   updatedAt?: number | null;
+  onDataShown?: () => void;
   refreshing?: boolean;
   tipSummaryLoading?: boolean;
   tipSummaryError?: string | null;
@@ -234,6 +235,7 @@ export function ProductionSummarySection({
   loading,
   error,
   updatedAt,
+  onDataShown,
   refreshing,
   tipSummaryLoading = false,
   tipSummaryError = null,
@@ -255,6 +257,9 @@ export function ProductionSummarySection({
   totalPrevWithTeam,
   isLiteUI,
 }: Props) {
+  useEffect(() => {
+    if (updatedAt) onDataShown?.();
+  }, [updatedAt, onDataShown]);
   const copy = PRODUCTION_SUMMARY_COPY[language];
   const [mobileCardIndex, setMobileCardIndex] = useState(0);
   const mobileCarouselRef = useRef<HTMLDivElement | null>(null);
