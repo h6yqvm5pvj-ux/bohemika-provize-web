@@ -1011,6 +1011,12 @@ export function ContractCommissionSection({
       ? estimate : null;
   };
 
+  function acquisitionReceipts(payouts: ContractCommissionPayout[], installments: ReturnType<typeof acquisitionCommissionInstallments>) {
+    const confirmed = splitConfirmedOpeningReceipt(payouts);
+    if (confirmed !== payouts || commissionEntry?.paymentFrequencyChanges?.length) return confirmed;
+    return projectAcquisitionInstallmentReceipts(payouts, installments);
+  }
+
   const commissionSummary = (
     items: CommissionResultItemDTO[], payouts: ContractCommissionPayout[],
     originalTotal: number, paymentTotals: { immediate: number; subsequent: number } | null,
@@ -1041,7 +1047,7 @@ export function ContractCommissionSection({
       const acquisition = acquisitionCommissionInstallments({ item, product, frequency: source?.frequencyRaw ?? paymentFrequency,
         policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges });
       if (acquisition.length > 0) {
-        const projected = commissionEntry?.paymentFrequencyChanges?.length ? payouts : projectAcquisitionInstallmentReceipts(payouts, acquisition);
+        const projected = acquisitionReceipts(payouts, acquisition);
         if (comparison && projected !== payouts) {
           for (const record of payouts) comparison.records.delete(record);
           for (const record of projected) comparison.records.add(record);
@@ -1557,9 +1563,7 @@ export function ContractCommissionSection({
       policyStartDate: source?.policyStartDate ?? policyStartDate, paymentFrequencyChanges: (source ?? commissionEntry)?.paymentFrequencyChanges,
     });
     if (acquisitionInstallments.length > 0) {
-      const projected = payoutsForRows.some(row => row.confirmedInstallmentSplit) ? splitConfirmedOpeningReceipt(payoutsForRows) :
-        commissionEntry?.paymentFrequencyChanges?.length ? payoutsForRows :
-        projectAcquisitionInstallmentReceipts(payoutsForRows, acquisitionInstallments);
+      const projected = acquisitionReceipts(payoutsForRows, acquisitionInstallments);
       const installments = acquisitionInstallments.map((installment, index) => {
         const records = payoutsForAcquisitionInstallment(projected, installment);
         const installmentPlan = projectCommissionRow(
