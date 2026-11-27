@@ -33,6 +33,27 @@ describe("contract commission installment interaction", () => {
     vi.unstubAllGlobals();
   });
 
+  it("opens the earlier C101 from B101 and the restarted B101 only from the later half year", async () => {
+    const open = vi.fn();
+    const entry = { id: "synthetic", userEmail: owner, productKey: "kooperativaAuto" as const, frequencyRaw: "semiannual" as const,
+      policyStartDate: "2023-02-10" };
+    const payouts = [
+      { code: "C101", statementId: "early", statementPeriod: "01.02.2024 - 29.02.2024", amount: 80 },
+      { code: "B101", statementId: "later", statementPeriod: "01.08.2025 - 31.08.2025", amount: 95 },
+    ].map(row => ({ ...row, expectedAmount: row.amount, writtenBy: owner, status: "paid" }));
+    await act(async () => root.render(<ContractCommissionSection {...props} product="kooperativaAuto" paymentFrequency="semiannual"
+      commissionEntry={entry} policyStartDate={entry.policyStartDate} paymentBasedAdviserTotals={null}
+      adviserItems={[{ title: "Následná provize", code: "B101", amount: 80 }]} commissionPayouts={payouts} onOpenStatement={open} />));
+    for (const [planned, statement, raw] of [["B101", "early", "C101"], ["B104", "later", "B101"]]) {
+      const label = [...container.querySelectorAll("span")].find(el => !el.childElementCount && el.textContent === planned);
+      const row = label?.closest("div[class*='breakdownRow']");
+      const sources = row?.querySelectorAll("button");
+      expect(sources).toHaveLength(1);
+      await act(async () => sources![0].click());
+      expect(open).toHaveBeenLastCalledWith(statement, [raw]);
+    }
+  });
+
   it("shows the seventh year paid under corrected B106 and opens the original B105 source", async () => {
     const onOpenStatement = vi.fn();
     const entry = { id: "synthetic", userEmail: owner, productKey: "cppAuto" as const, frequencyRaw: "annual" as const,

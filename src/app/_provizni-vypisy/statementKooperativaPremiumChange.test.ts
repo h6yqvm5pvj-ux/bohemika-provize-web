@@ -57,6 +57,12 @@ describe("Kooperativa renewal premium derived from the commission", () => {
       .toMatchObject({ anniversaryDate: "2025-02-28" });
   });
 
+  it("does not present a restarted B101 series as another change at the first anniversary", () => {
+    const earlier = { code: "C101", amount: 92.84, writtenBy: system.adviserEmail, statementPeriod: "01.05.2024 - 31.05.2024" };
+    expect(statementKooperativaPremiumChange(source([row("B101", 80)]), { ...system, commissionPayouts: [earlier] },
+      "01.11.2025 - 30.11.2025")).toBeNull();
+  });
+
   it("uses the frequency applicable at the anniversary", () => {
     expect(statementKooperativaPremiumChange(source([row("C103", 92.84)]), { ...system,
       paymentFrequencyChanges: [{ effectiveDate: "2025-05-03", frequency: "annual" }],

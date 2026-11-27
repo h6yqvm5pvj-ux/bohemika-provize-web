@@ -1,7 +1,7 @@
 import type { CashflowViewOptions } from "./buildCashflowView";
 
-// Match older MAXIMA foreign nationals plans using A501.
-export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v31";
+// Renewal receipts can restart their source-code numbering in a later period.
+export const CASHFLOW_SHADOW_VERSION = "cashflow-shadow-v32";
 export const CASHFLOW_SHADOW_MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const CASHFLOW_SHADOW_MAX_AGE_MS = 5 * 60 * 1000;
 export const CASHFLOW_SHADOW_MAX_ITEMS = 25_000;
